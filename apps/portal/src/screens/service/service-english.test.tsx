@@ -27,11 +27,11 @@ describe('service pages in English', () => {
     );
     const nav = screen.getByRole('tablist', { name: /^Tabs for/ });
     expect(within(nav).getByText('Overview')).toBeTruthy();
-    expect(within(nav).getByText('Advanced settings')).toBeTruthy();
     expect(within(nav).getByText('Developer tools')).toBeTruthy();
     const sub = screen.getByRole('tablist', { name: 'Developer tools' });
     expect(within(sub).getByText('Versions')).toBeTruthy();
     expect(within(sub).getByText('Log')).toBeTruthy();
+    expect(within(nav).queryByText('Advanced settings')).toBeNull();
   });
 
   it('labels every section in both languages', () => {

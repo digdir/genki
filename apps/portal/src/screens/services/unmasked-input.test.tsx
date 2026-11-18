@@ -208,7 +208,7 @@ describe('the published version', () => {
     },
   } as ServiceDefinition;
 
-  it('shows who recorded the unmasked input, when and why', () => {
+  it('shows who recorded the unmasked input, when and why', async () => {
     const api = {
       usage: async () => ({ byService: [] }),
       tasks: async () => ({ data: [] }),
@@ -235,7 +235,7 @@ describe('the published version', () => {
         published={latest}
       />,
     );
-    expect(screen.getByText('Sendes umaskert')).toBeTruthy();
+    expect(await screen.findByText('Sendes umaskert')).toBeTruthy();
     expect(screen.getByText('Tekstfiler (text/plain): Innsendte skjemaer må leses')).toBeTruthy();
     expect(screen.getByText(/^Bekreftet av Kari Nordmann, /)).toBeTruthy();
   });

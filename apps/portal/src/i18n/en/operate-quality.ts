@@ -527,7 +527,6 @@ export const qualityArea = {
     loading: 'Loading the quality of the service',
     back: 'Back to Quality',
     technical: 'Technical',
-    gatesLink: 'Quality requirements for the organisation',
     testSetsTitle: 'Test sets',
     testSetsLead:
       'Questions with known good answers. Run them before you publish to see whether a change made the answers worse.',

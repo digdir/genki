@@ -1,0 +1,303 @@
+.ov-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 12px;
+}
+
+.ov-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 148px;
+  padding: 16px 18px;
+  box-sizing: border-box;
+  border: 1px solid var(--ds-color-neutral-border-subtle);
+  border-radius: var(--ds-border-radius-lg);
+  color: var(--ds-color-neutral-text-default);
+  text-decoration: none;
+}
+
+.ov-tile:hover {
+  border-color: var(--ds-color-accent-border-default);
+}
+
+.ov-tile:focus-visible {
+  outline: 3px solid var(--ds-color-focus-outer);
+  outline-offset: 2px;
+}
+
+.ov-tile-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ds-color-neutral-text-subtle);
+}
+
+.ov-tile-value {
+  font-size: 30px;
+  font-weight: 600;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+}
+
+.ov-tile-sub {
+  font-size: 14px;
+}
+
+.ov-tile-foot {
+  margin-top: auto;
+}
+
+.ov-tone-neutral {
+  color: var(--ds-color-neutral-text-subtle);
+}
+
+.ov-tone-danger {
+  color: var(--ds-color-danger-text-default);
+}
+
+.ov-tone-warning {
+  color: var(--ds-color-warning-text-default);
+}
+
+.ov-tone-success {
+  color: var(--ds-color-success-text-default);
+}
+
+.ov-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 28px;
+}
+
+.ov-bars > span {
+  flex: 1;
+  border-radius: 2px 2px 0 0;
+  background: var(--ds-color-accent-surface-tinted);
+}
+
+.ov-bars-accent > span:last-child {
+  background: var(--ds-color-accent-base-default);
+}
+
+.ov-bars-danger > span:last-child {
+  background: var(--ds-color-danger-base-default);
+}
+
+.ov-bars-success > span {
+  background: var(--ds-color-success-surface-tinted);
+}
+
+.ov-bars-success > span:last-child {
+  background: var(--ds-color-success-base-default);
+}
+
+.ov-needs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  gap: 12px;
+}
+
+.ov-need {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--ds-color-neutral-border-subtle);
+  border-radius: var(--ds-border-radius-md);
+}
+
+.ov-need > a {
+  align-self: flex-start;
+}
+
+.ov-need-danger {
+  border-color: var(--ds-color-danger-border-subtle);
+  background: var(--ds-color-danger-surface-tinted);
+}
+
+.ov-need-warning {
+  border-color: var(--ds-color-warning-border-subtle);
+  background: var(--ds-color-warning-surface-tinted);
+}
+
+.ov-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 520px), 1fr));
+  gap: 24px;
+  align-items: start;
+}
+
+.ov-side {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+
+.ov-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px 20px;
+  border: 1px solid var(--ds-color-neutral-border-subtle);
+  border-radius: var(--ds-border-radius-lg);
+}
+
+.ov-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ov-kv {
+  grid-template-columns: minmax(110px, auto) minmax(0, 1fr);
+  gap: 10px 16px;
+}
+
+.ov-chip {
+  font-size: 14px;
+  padding: 0 8px;
+  border: 1px solid var(--ds-color-neutral-border-subtle);
+  border-radius: var(--ds-border-radius-sm);
+}
+
+.ov-who {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 15px;
+}
+
+.ov-who > li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--ds-color-neutral-border-subtle);
+}
+
+.ov-who > li > a {
+  align-self: center;
+  font-size: 14px;
+}
+
+.ov-changes {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  font-size: 15px;
+}
+
+.ov-changes > li {
+  display: flex;
+  flex-direction: column;
+  padding-left: 22px;
+  position: relative;
+}
+
+.ov-changes > li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 7px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--ds-color-neutral-border-default);
+}
+
+.ov-changes > li[data-kind='draft']::before {
+  background: var(--ds-color-accent-base-default);
+}
+
+.ov-changes > li[data-kind='live']::before {
+  background: var(--ds-color-success-base-default);
+}
+
+.ov-run-skeleton {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--ds-color-neutral-border-subtle);
+}
+
+.ov-run-skeleton > div {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--ds-color-neutral-border-subtle);
+}
+
+.ov-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 28px;
+  border: 1px dashed var(--ds-color-neutral-border-default);
+  border-radius: var(--ds-border-radius-lg);
+}
+
+.ov-start {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px 24px;
+  border: 1px solid var(--ds-color-accent-border-subtle);
+  border-radius: var(--ds-border-radius-lg);
+  background: var(--ds-color-accent-surface-tinted);
+}
+
+.ov-steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: 12px;
+}
+
+.ov-step {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px 14px 42px;
+  position: relative;
+  border: 1px solid var(--ds-color-neutral-border-subtle);
+  border-radius: var(--ds-border-radius-md);
+  background: var(--ds-color-neutral-background-default);
+}
+
+.ov-step::before {
+  content: '';
+  position: absolute;
+  left: 14px;
+  top: 17px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--ds-color-neutral-border-default);
+}
+
+.ov-step[data-done='true']::before {
+  border-color: var(--ds-color-success-base-default);
+  background: var(--ds-color-success-base-default);
+}
+
+.ov-step > a {
+  align-self: flex-start;
+}
+
+.link-tab-count {
+  margin-left: auto;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--ds-color-neutral-text-subtle);
+}
+
+.service-subnav a {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}

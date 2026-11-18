@@ -520,7 +520,6 @@ export const qualityArea = {
     loading: 'Henter kvaliteten for tjenesten',
     back: 'Tilbake til Kvalitet',
     technical: 'Teknisk',
-    gatesLink: 'Kvalitetskrav for virksomheten',
     testSetsTitle: 'Testsett',
     testSetsLead:
       'Spørsmål med kjente gode svar. Kjør dem før du publiserer, så ser du om en endring gjorde svarene dårligere.',

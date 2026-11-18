@@ -12,6 +12,7 @@ import { RunsTab } from '../log/RunsTab';
 import { draftOf, specOf } from './ClientForm';
 import { LogSection } from './LogSection';
 import { ServiceKeys } from './ServiceKeys';
+import { EnvironmentsSection } from './EnvironmentsSection';
 import { Versions } from './Versions';
 
 document.getAnimations ??= () => [];
@@ -109,7 +110,7 @@ describe('service environments in the portal', () => {
         return staged();
       },
     });
-    render(asManager(<Versions api={api} tenant={tenant} serviceId="klarsprak" />));
+    render(asManager(<EnvironmentsSection api={api} tenant={tenant} serviceId="klarsprak" />));
 
     expect(await screen.findByText(/Tjenesten har bare prod/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Legg til miljø' }));
@@ -138,7 +139,7 @@ describe('service environments in the portal', () => {
         environments: [env('prod', 3, true)],
       }),
     });
-    render(asManager(<Versions api={api} tenant={tenant} serviceId="klarsprak" />));
+    render(asManager(<EnvironmentsSection api={api} tenant={tenant} serviceId="klarsprak" />));
 
     fireEvent.click(await screen.findByRole('button', { name: 'Legg til miljø' }));
     fireEvent.change(screen.getByLabelText('Navn'), { target: { value: 'Test miljø' } });
@@ -160,7 +161,7 @@ describe('service environments in the portal', () => {
         environments: [env('prod', 3, false, 2), env('test', 3, true)],
       }),
     });
-    render(asManager(<Versions api={api} tenant={tenant} serviceId="klarsprak" />));
+    render(asManager(<EnvironmentsSection api={api} tenant={tenant} serviceId="klarsprak" />));
 
     fireEvent.click(
       await screen.findByRole('button', { name: 'Ta versjonen test kjører i bruk i prod' }),
@@ -189,7 +190,7 @@ describe('service environments in the portal', () => {
         environments: [env('prod', 1, false, 2), env('test', 3, true)],
       }),
     });
-    render(asManager(<Versions api={api} tenant={tenant} serviceId="klarsprak" />));
+    render(asManager(<EnvironmentsSection api={api} tenant={tenant} serviceId="klarsprak" />));
 
     fireEvent.click(await screen.findByRole('button', { name: 'Rull tilbake prod' }));
     const choice = screen.getByLabelText('Versjonen prod skal kjøre') as HTMLSelectElement;
@@ -226,7 +227,7 @@ describe('service environments in the portal', () => {
       },
       { slow: true },
     );
-    render(asManager(<Versions api={api} tenant={tenant} serviceId="klarsprak" />));
+    render(asManager(<EnvironmentsSection api={api} tenant={tenant} serviceId="klarsprak" />));
 
     fireEvent.click(
       await screen.findByRole('button', { name: 'Ta versjonen test kjører i bruk i prod' }),
@@ -257,7 +258,7 @@ describe('service environments in the portal', () => {
         return { latestVersion: 3, environments: [env('prod', 3, true)] };
       },
     });
-    render(asManager(<Versions api={api} tenant={tenant} serviceId="klarsprak" />));
+    render(asManager(<EnvironmentsSection api={api} tenant={tenant} serviceId="klarsprak" />));
 
     fireEvent.click(await screen.findByRole('button', { name: 'Fjern test' }));
     expect(calls.some((c) => c.method === 'DELETE')).toBe(false);
@@ -293,7 +294,7 @@ describe('service environments in the portal', () => {
       [`GET ${definitionPath}`]: history,
       [`GET ${environmentsPath}`]: staged,
     });
-    render(<Versions api={api} tenant={tenant} serviceId="klarsprak" />);
+    render(<EnvironmentsSection api={api} tenant={tenant} serviceId="klarsprak" />);
 
     const list = await screen.findByRole('list', { name: 'Miljøer' });
     expect(within(list).getByText('Kjører versjon 2')).toBeTruthy();
@@ -327,9 +328,12 @@ describe('service environments in the portal', () => {
     await waitFor(() => expect(screen.queryByText('Kjøring t1')).toBeNull());
     expect(screen.getByText('Kjøring t2')).toBeTruthy();
     expect((screen.getByLabelText('Miljø') as HTMLSelectElement).value).toBe('test');
-    expect(calls.some((c) => /\/tasks\?service=klarsprak&environment=test$/.test(c.path))).toBe(
-      true,
-    );
+    const asked = calls
+      .filter((c) => c.path.includes('/tasks?'))
+      .map((c) => new URL(c.path, 'http://portal').searchParams);
+    expect(
+      asked.some((q) => q.get('service') === 'klarsprak' && q.get('environment') === 'test'),
+    ).toBe(true);
   });
 
   it('filters the run log by environment only once a service is chosen', async () => {

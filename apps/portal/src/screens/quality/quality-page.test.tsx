@@ -374,7 +374,7 @@ describe('feedback from users', () => {
     await within(fb).findByText('«Manglet Askøy.»');
     vi.setSystemTime(new Date(now.getTime() + 25 * 60_000));
     window.location.hash = '#/services/rapportassistenten';
-    await screen.findByRole('heading', { name: 'Hva tjenesten gjør' });
+    await screen.findByRole('heading', { name: 'Slik går det' });
     window.location.hash = base;
     await within(await section('Tilbakemeldinger fra brukerne')).findByText('«Manglet Askøy.»');
 

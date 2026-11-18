@@ -59,7 +59,9 @@ const navLink = (name: string) =>
   within(screen.getByRole('tablist', { name: /^Faner for/ })).getByRole('tab', { name });
 
 const subLink = (tab: string, name: string) =>
-  within(screen.getByRole('tablist', { name: tab })).getByRole('tab', { name });
+  within(screen.getByRole('tablist', { name: tab })).getByRole('tab', {
+    name: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`),
+  });
 
 const yamlField = () => screen.getByLabelText('Tjenestedefinisjon (YAML)') as HTMLTextAreaElement;
 
@@ -141,12 +143,11 @@ describe('builder', () => {
       ['Oversikt', '#/services/rapportassistenten'],
       ['Oppsett', '#/services/rapportassistenten/setup'],
       ['Grensesnitt', '#/services/rapportassistenten/interface'],
-      ['Avanserte innstillinger', '#/services/rapportassistenten/settings'],
       ['Kvalitet', '#/services/rapportassistenten/quality'],
       ['Utviklerverktøy', '#/services/rapportassistenten/versions'],
     ]);
     expect(navLink('Oversikt').getAttribute('aria-selected')).toBe('true');
-    expect(screen.getByRole('heading', { level: 2, name: 'Hva tjenesten gjør' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { level: 2, name: 'Slik går det' })).toBeTruthy();
     expect(screen.getByText('Utkast basert på versjon 7 · lagres automatisk')).toBeTruthy();
     expect(screen.queryByRole('complementary', { name: 'Byggeassistent' })).toBeNull();
     expect(screen.queryByRole('navigation', { name: 'Brødsmuler' })).toBeNull();
@@ -163,10 +164,10 @@ describe('builder', () => {
 
   it.each([
     ['/setup', 'Oppsett', undefined, /^Formål og målgruppe/],
-    ['/settings', 'Avanserte innstillinger', 'Innstillinger', /Eksporter og importer/],
+    ['/settings', 'Oppsett', undefined, /Eksporter og importer/],
     ['/quality', 'Kvalitet', undefined, /Testsett/],
-    ['/log', 'Utviklerverktøy', 'Logg', /Kjøringer/],
-    ['/channels', 'Avanserte innstillinger', 'Kanaler og frontend', /Start og kanaler/],
+    ['/log', 'Utviklerverktøy', 'Logg', /Logg/],
+    ['/channels', 'Utviklerverktøy', 'Nøkler og kanaler', /Start og kanaler/],
   ])('deep-links %s inside the same page', async (path, label, sub, content) => {
     await openBuilder(`#/services/rapportassistenten${path}`, 'Rapportassistenten');
     expect(navLink(label).getAttribute('aria-selected')).toBe('true');
@@ -179,7 +180,8 @@ describe('builder', () => {
     ['/how-it-works', '#/services/rapportassistenten/setup/how'],
     ['?tab=oppsett', '#/services/rapportassistenten/setup'],
     ['?tab=test', '#/services/rapportassistenten/test'],
-    ['?tab=yaml', '#/services/rapportassistenten/versions?view=yaml'],
+    ['?tab=yaml', '#/services/rapportassistenten/definition'],
+    ['/versions?view=yaml', '#/services/rapportassistenten/definition'],
     ['?tab=versjoner', '#/services/rapportassistenten/versions'],
     ['/unknown', '#/services/rapportassistenten'],
   ])('redirects the old route %s', async (old, target) => {
@@ -337,7 +339,7 @@ describe('developer view', () => {
     await screen.findByRole('heading', { level: 1, name: 'Ny tjeneste' });
     fireEvent.click(screen.getByRole('button', { name: /^Svarer/ }));
     await screen.findByText('Satte jobb: svarer på spørsmål');
-    go('#/services/new/versions');
+    go('#/services/new/definition');
     await screen.findByLabelText('Tjenestedefinisjon (YAML)');
     const apply = screen.getByRole('button', { name: 'Bruk endringene' });
     expect(apply.getAttribute('aria-disabled')).toBe('true');
@@ -363,7 +365,7 @@ describe('pasting the example definitions', () => {
     await screen.findByRole('heading', { level: 1, name: 'Ny tjeneste' });
     fireEvent.click(screen.getByRole('button', { name: /^Svarer/ }));
     await screen.findByText('Satte jobb: svarer på spørsmål');
-    go('#/services/new/versions');
+    go('#/services/new/definition');
     await screen.findByLabelText('Tjenestedefinisjon (YAML)');
     fireEvent.change(yamlField(), { target: { value: text } });
     fireEvent.click(screen.getByRole('button', { name: 'Bruk endringene' }));

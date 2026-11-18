@@ -35,7 +35,9 @@ export const Environments = ({
   versions,
   canManage,
   onChanged,
+  facts = {},
 }: {
+  facts?: Record<string, { runsToday?: number | undefined; keys?: number | undefined }>;
   api: ApiClient;
   tenant: string;
   serviceId: string;
@@ -234,7 +236,7 @@ export const Environments = ({
     <section aria-labelledby="svc-env-h" className="stack-sm">
       <div className="fe-head">
         <div className="stack-xs">
-          <Heading level={3} data-size="2xs" id="svc-env-h">
+          <Heading level={2} data-size="xs" id="svc-env-h">
             {t('serviceEnvironments.heading')}
           </Heading>
           <Paragraph data-size="sm" className="meta">
@@ -258,7 +260,7 @@ export const Environments = ({
       </div>
       {action?.kind === 'add' ? (
         <div className="fe-form stack-sm" role="group" aria-labelledby="env-add-h">
-          <Heading level={4} data-size="2xs" id="env-add-h">
+          <Heading level={3} data-size="2xs" id="env-add-h">
             {t('serviceEnvironments.addHeading')}
           </Heading>
           {errorAlert}
@@ -278,27 +280,42 @@ export const Environments = ({
           {buttons(t('serviceEnvironments.addSubmit'))}
         </div>
       ) : null}
-      <ul className="plain-list version-list" aria-label={t('serviceEnvironments.listLabel')}>
+      <ul className="plain-list env-cards" aria-label={t('serviceEnvironments.listLabel')}>
         {environments.map((e) => {
           const idle = canManage && !onlyProd && action === undefined;
+          const fact = facts[e.name];
           return (
-            <li key={e.name}>
-              <div className="tag-row">
-                <span className="version-name">{e.name}</span>
-                <Tag
-                  data-size="sm"
-                  data-color={e.name === productionEnvironment ? 'success' : 'info'}
-                >
-                  {t('serviceEnvironments.runs', { version: e.version ?? '' })}
-                </Tag>
-                <span className="meta">
+            <li key={e.name} className="env-card">
+              <div className="row-between">
+                <Heading level={3} data-size="2xs" id={`env-${e.name}-h`}>
+                  {e.name}
+                </Heading>
+                <Tag data-size="sm" data-color={e.followsPublishes ? 'info' : 'neutral'}>
                   {e.followsPublishes
                     ? t('serviceEnvironments.follows')
                     : t('serviceEnvironments.pinned')}
-                </span>
+                </Tag>
               </div>
+              <strong>{t('serviceEnvironments.runs', { version: e.version ?? '' })}</strong>
+              {fact && (fact.runsToday !== undefined || fact.keys !== undefined) ? (
+                <span className="meta">
+                  {[
+                    fact.runsToday !== undefined
+                      ? t('serviceDev.envRunsToday', { count: fact.runsToday })
+                      : '',
+                    fact.keys !== undefined ? t('serviceDev.envKeys', { count: fact.keys }) : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
+                </span>
+              ) : null}
               {idle ? (
                 <div className="row-wrap">
+                  {e.name !== productionEnvironment && e.version === prod?.version ? (
+                    <span className="meta">
+                      {t('serviceDev.prodAlready', { version: e.version ?? '' })}
+                    </span>
+                  ) : null}
                   {e.name !== productionEnvironment && e.version !== prod?.version ? (
                     <Button
                       variant="secondary"

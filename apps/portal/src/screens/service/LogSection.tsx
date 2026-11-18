@@ -1,16 +1,59 @@
-import { Field, Heading, Label, Link, Select, Table, Tag } from '@digdir/designsystemet-react';
-import { useState } from 'react';
+import {
+  Button,
+  Field,
+  Heading,
+  Label,
+  Link,
+  Paragraph,
+  Search,
+  Select,
+  Table,
+  Tag,
+} from '@digdir/designsystemet-react';
+import { useEffect, useState } from 'react';
 import type { ApiClient } from '../../api';
-import { notPriced, statusOf } from '../../format';
-import { useT } from '../../i18n';
-import { useFormat } from '@genai/i18n/react';
+import { BackLink } from '../../components/BackLink';
+import { usePortalFormat } from '../../format';
 import { useAsync } from '../../hooks';
+import type { PlainKey } from '../../i18n';
 import { EmptyState, ErrorState, Loading } from '../../states';
 import { RunDetail } from '../log/RunDetail';
 import { actorText } from '../log/format';
 import { servicePath } from './sections';
 import '../log.css';
-import { BackLink } from '../../components/BackLink';
+
+const dayMs = 86_400_000;
+const pageSizes = [25, 50, 100];
+const searchDelayMs = 300;
+
+type Period = 'today' | 'week' | 'month' | 'all';
+
+const periods: [Period, PlainKey][] = [
+  ['today', 'serviceDev.periodToday'],
+  ['week', 'serviceDev.periodWeek'],
+  ['month', 'serviceDev.periodMonth'],
+  ['all', 'serviceDev.periodAll'],
+];
+
+const statuses: [string, PlainKey][] = [
+  ['', 'serviceDev.statusAll'],
+  ['completed', 'taskStatus.completed'],
+  ['failed', 'taskStatus.failed'],
+  ['running', 'taskStatus.running'],
+  ['queued', 'taskStatus.queued'],
+  ['interrupted', 'taskStatus.interrupted'],
+  ['cancelled', 'taskStatus.cancelled'],
+];
+
+const fromOf = (period: Period, now: Date) => {
+  if (period === 'all') return undefined;
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+  const back = period === 'today' ? 0 : period === 'week' ? 6 : 29;
+  return new Date(start.getTime() - back * dayMs).toISOString();
+};
+
+const initialQuery = () => new URLSearchParams(window.location.hash.split('?')[1] ?? '');
 
 export const LogSection = ({
   api,
@@ -18,20 +61,39 @@ export const LogSection = ({
   id,
   runId,
   live,
+  now = () => new Date(),
 }: {
   api: ApiClient;
   tenant: string;
   id: string;
   runId: string | undefined;
   live: boolean;
+  now?: () => Date;
 }) => {
-  const t = useT();
-  const f = useFormat();
-  const kr = (micro: number | null | undefined) =>
-    micro === null || micro === undefined
-      ? notPriced
-      : f.currency(micro / 1_000_000, { digits: 2 });
+  const { t, f, kroner, status: statusText } = usePortalFormat();
+  const [start] = useState(initialQuery);
+  const [period, setPeriod] = useState<Period>(() => {
+    const p = start.get('period');
+    return periods.some(([v]) => v === p) ? (p as Period) : 'all';
+  });
+  const [status, setStatus] = useState(() => {
+    const s = start.get('status') ?? '';
+    return statuses.some(([v]) => v === s) ? s : '';
+  });
   const [environment, setEnvironment] = useState('');
+  const [typed, setTyped] = useState('');
+  const [q, setQ] = useState('');
+  const [size, setSize] = useState(25);
+  const [offset, setOffset] = useState(0);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setQ(typed.trim());
+      setOffset(0);
+    }, searchDelayMs);
+    return () => clearTimeout(timer);
+  }, [typed]);
+
   const [environments] = useAsync(
     async (signal) =>
       live
@@ -43,12 +105,15 @@ export const LogSection = ({
   );
   const names = environments.status === 'ready' ? environments.data : [];
   const staged = names.length > 1;
+  const from = fromOf(period, now());
   const [state, retry, pending] = useAsync(
-    async (signal) =>
-      (
-        await api.tasks(tenant, { service: id, ...(environment ? { environment } : {}) }, signal)
-      ).data.filter((r) => r.service === id),
-    [api, tenant, id, environment],
+    (signal) =>
+      api.serviceTabs.taskPage(
+        tenant,
+        { service: id, status, environment, from, q, limit: size, offset },
+        signal,
+      ),
+    [api, tenant, id, status, environment, from, q, size, offset],
     { keepPreviousFor: id },
   );
   const href = (run: string) => `#${servicePath(id, 'log', `/${encodeURIComponent(run)}`)}`;
@@ -61,106 +126,263 @@ export const LogSection = ({
       </div>
     );
 
-  const usageShown = state.status === 'ready' && state.data.some((r) => r.usage !== undefined);
+  const reset = () => {
+    setPeriod('all');
+    setStatus('');
+    setEnvironment('');
+    setTyped('');
+    setQ('');
+    setOffset(0);
+  };
+  const active = [
+    period !== 'all' ? t(periods.find(([v]) => v === period)?.[1] ?? 'serviceDev.periodAll') : '',
+    status ? statusText(status).text : '',
+    environment,
+    q ? `«${q}»` : '',
+  ].filter(Boolean);
+  const page = state.status === 'ready' ? state.data : undefined;
+  const rows = page?.data.filter((r) => r.service === id) ?? [];
+  const usageShown = rows.some((r) => r.usage !== undefined);
+  const duration = (createdAt: string, endedAt: string | null) =>
+    endedAt
+      ? t('common.seconds', {
+          value: f.number((Date.parse(endedAt) - Date.parse(createdAt)) / 1000, {
+            maximumFractionDigits: 1,
+          }),
+        })
+      : '–';
 
   return (
     <section aria-labelledby="svc-log-h" className="stack-sm">
-      <Heading level={2} data-size="xs" id="svc-log-h">
-        {t('serviceLog.heading')}
-      </Heading>
-      <p className="meta">{t('serviceLog.intro')}</p>
-      {staged ? (
-        <Field className="fe-field-md" data-size="sm">
-          <Label htmlFor="svc-log-env">{t('serviceLog.environment')}</Label>
+      <div className="stack-xs">
+        <Heading level={2} data-size="xs" id="svc-log-h">
+          {t('service.sectionLog')}
+        </Heading>
+        <Paragraph data-size="sm" className="meta">
+          {t('serviceLog.intro')}
+        </Paragraph>
+      </div>
+      <div role="search" className="dv-filters">
+        <Field className="dv-filter-search">
+          <Label htmlFor="svc-log-q">{t('serviceDev.searchLabel')}</Label>
+          <Search>
+            <Search.Input
+              id="svc-log-q"
+              placeholder={t('serviceDev.searchPlaceholder')}
+              value={typed}
+              onChange={(e) => setTyped(e.target.value)}
+            />
+          </Search>
+        </Field>
+        <Field>
+          <Label htmlFor="svc-log-period">{t('serviceDev.period')}</Label>
           <Select
-            id="svc-log-env"
-            value={environment}
-            onChange={(e) => setEnvironment(e.target.value)}
+            id="svc-log-period"
+            value={period}
+            onChange={(e) => {
+              setPeriod(e.target.value as Period);
+              setOffset(0);
+            }}
           >
-            <Select.Option value="">{t('serviceLog.allEnvironments')}</Select.Option>
-            {names.map((name) => (
-              <Select.Option key={name} value={name}>
-                {name}
+            {periods.map(([value, key]) => (
+              <Select.Option key={value} value={value}>
+                {t(key)}
               </Select.Option>
             ))}
           </Select>
         </Field>
+        <Field>
+          <Label htmlFor="svc-log-status">{t('serviceLog.colStatus')}</Label>
+          <Select
+            id="svc-log-status"
+            value={status}
+            onChange={(e) => {
+              setStatus(e.target.value);
+              setOffset(0);
+            }}
+          >
+            {statuses.map(([value, key]) => (
+              <Select.Option key={value} value={value}>
+                {t(key)}
+              </Select.Option>
+            ))}
+          </Select>
+        </Field>
+        {staged ? (
+          <Field>
+            <Label htmlFor="svc-log-env">{t('serviceLog.environment')}</Label>
+            <Select
+              id="svc-log-env"
+              value={environment}
+              onChange={(e) => {
+                setEnvironment(e.target.value);
+                setOffset(0);
+              }}
+            >
+              <Select.Option value="">{t('serviceLog.allEnvironments')}</Select.Option>
+              {names.map((name) => (
+                <Select.Option key={name} value={name}>
+                  {name}
+                </Select.Option>
+              ))}
+            </Select>
+          </Field>
+        ) : null}
+      </div>
+      {active.length ? (
+        <div className="tag-row">
+          <span className="meta">{t('serviceDev.filters')}</span>
+          {active.map((a) => (
+            <Tag key={a} data-size="sm" data-color="neutral">
+              {a}
+            </Tag>
+          ))}
+          <Button variant="tertiary" data-size="sm" onClick={reset}>
+            {t('serviceDev.reset')}
+          </Button>
+        </div>
       ) : null}
-      {state.status === 'loading' ? (
+      {state.status === 'loading' && !page ? (
         <Loading
           label={t('serviceLog.loading')}
           shape="table"
           columns={[
-            t('serviceLog.colRun'),
+            t('serviceLog.colStarted'),
+            t('serviceDev.colQuestion'),
             t('serviceLog.colBy'),
             t('serviceLog.colStatus'),
-            t('serviceLog.colStarted'),
           ]}
           onRetry={retry}
         />
       ) : null}
       {state.status === 'error' ? <ErrorState error={state.error} onRetry={retry} /> : null}
-      {state.status === 'ready' && state.data.length === 0 ? (
-        <EmptyState title={t('serviceLog.emptyTitle')}>
-          <p className="body-sm">{t('serviceLog.emptyBody')}</p>
-        </EmptyState>
+      {page && rows.length === 0 ? (
+        active.length ? (
+          <Paragraph data-size="sm">{t('serviceDev.noMatch')}</Paragraph>
+        ) : (
+          <EmptyState title={t('serviceLog.emptyTitle')}>
+            <p className="body-sm">{t('serviceLog.emptyBody')}</p>
+          </EmptyState>
+        )
       ) : null}
-      {state.status === 'ready' && state.data.length ? (
-        <div tabIndex={0} role="region" aria-labelledby="svc-log-h" className="scroll-x">
-          <Table data-size="sm" aria-busy={pending || undefined}>
-            <Table.Head>
-              <Table.Row>
-                <Table.HeaderCell scope="col">{t('serviceLog.colRun')}</Table.HeaderCell>
-                <Table.HeaderCell scope="col">{t('serviceLog.colBy')}</Table.HeaderCell>
-                {staged ? (
-                  <Table.HeaderCell scope="col">{t('serviceLog.colEnvironment')}</Table.HeaderCell>
-                ) : null}
-                <Table.HeaderCell scope="col">{t('serviceLog.colStatus')}</Table.HeaderCell>
-                <Table.HeaderCell scope="col">{t('serviceLog.colStarted')}</Table.HeaderCell>
-                {usageShown ? (
-                  <>
-                    <Table.HeaderCell scope="col" className="right">
-                      {t('serviceLog.colTokens')}
+      {page && rows.length ? (
+        <>
+          <div tabIndex={0} role="region" aria-labelledby="svc-log-h" className="scroll-x">
+            <Table data-size="sm" aria-busy={pending || undefined}>
+              <Table.Head>
+                <Table.Row>
+                  <Table.HeaderCell scope="col">{t('serviceLog.colStarted')}</Table.HeaderCell>
+                  <Table.HeaderCell scope="col">{t('serviceDev.colQuestion')}</Table.HeaderCell>
+                  <Table.HeaderCell scope="col">{t('serviceLog.colBy')}</Table.HeaderCell>
+                  {staged ? (
+                    <Table.HeaderCell scope="col">
+                      {t('serviceLog.colEnvironment')}
                     </Table.HeaderCell>
-                    <Table.HeaderCell scope="col" className="right">
-                      {t('serviceLog.colCost')}
-                    </Table.HeaderCell>
-                  </>
-                ) : null}
-              </Table.Row>
-            </Table.Head>
-            <Table.Body>
-              {state.data.map((r) => {
-                const s = statusOf(r.status, t);
-                return (
-                  <Table.Row key={r.id}>
-                    <Table.Cell>
-                      <Link href={href(r.id)}>{r.excerpt || r.serviceName || r.id}</Link>
-                    </Table.Cell>
-                    <Table.Cell>{actorText(r.actor, t)}</Table.Cell>
-                    {staged ? <Table.Cell>{r.environment ?? '–'}</Table.Cell> : null}
-                    <Table.Cell>
-                      <Tag data-size="sm" data-color={s.color}>
-                        {s.text}
-                      </Tag>
-                    </Table.Cell>
-                    <Table.Cell>{f.dateTime(r.createdAt, 'medium')}</Table.Cell>
-                    {usageShown ? (
-                      <>
-                        <Table.Cell className="right numeric">
-                          {r.usage ? f.number(r.usage.inputTokens + r.usage.outputTokens) : ''}
-                        </Table.Cell>
-                        <Table.Cell className="right numeric">
-                          {r.usage ? kr(r.usage.costMicroNok) : ''}
-                        </Table.Cell>
-                      </>
-                    ) : null}
-                  </Table.Row>
-                );
+                  ) : null}
+                  <Table.HeaderCell scope="col">{t('serviceLog.colStatus')}</Table.HeaderCell>
+                  <Table.HeaderCell scope="col" className="right">
+                    {t('serviceDev.colDuration')}
+                  </Table.HeaderCell>
+                  {usageShown ? (
+                    <>
+                      <Table.HeaderCell scope="col" className="right">
+                        {t('serviceLog.colTokens')}
+                      </Table.HeaderCell>
+                      <Table.HeaderCell scope="col" className="right">
+                        {t('serviceLog.colCost')}
+                      </Table.HeaderCell>
+                    </>
+                  ) : null}
+                </Table.Row>
+              </Table.Head>
+              <Table.Body>
+                {rows.map((r) => {
+                  const s = statusText(r.status);
+                  return (
+                    <Table.Row key={r.id}>
+                      <Table.Cell className="nowrap numeric">
+                        {f.dateTime(r.createdAt, 'medium')}
+                      </Table.Cell>
+                      <Table.Cell>
+                        <Link href={href(r.id)}>{r.excerpt || r.serviceName || r.id}</Link>
+                        {r.failure ? (
+                          <div className="meta danger-text">{r.failure.reason}</div>
+                        ) : null}
+                      </Table.Cell>
+                      <Table.Cell>{actorText(r.actor, t)}</Table.Cell>
+                      {staged ? <Table.Cell>{r.environment ?? '–'}</Table.Cell> : null}
+                      <Table.Cell>
+                        <Tag data-size="sm" data-color={s.color}>
+                          {s.text}
+                        </Tag>
+                      </Table.Cell>
+                      <Table.Cell className="right numeric">
+                        {duration(r.createdAt, r.endedAt)}
+                      </Table.Cell>
+                      {usageShown ? (
+                        <>
+                          <Table.Cell className="right numeric">
+                            {r.usage ? f.number(r.usage.inputTokens + r.usage.outputTokens) : ''}
+                          </Table.Cell>
+                          <Table.Cell className="right numeric">
+                            {r.usage ? kroner(r.usage.costMicroNok) : ''}
+                          </Table.Cell>
+                        </>
+                      ) : null}
+                    </Table.Row>
+                  );
+                })}
+              </Table.Body>
+            </Table>
+          </div>
+          <nav aria-label={t('qualityTabs.pages')} className="row-between">
+            <span className="meta">
+              {t('serviceDev.pageText', {
+                from: f.number(page.offset + 1),
+                to: f.number(page.offset + page.data.length),
+                total: f.number(page.total),
               })}
-            </Table.Body>
-          </Table>
-        </div>
+              {page.q && page.searched !== undefined
+                ? ` ${t('serviceDev.searched', { count: page.searched })}`
+                : ''}
+            </span>
+            <span className="row-wrap align-end">
+              <Field data-size="sm">
+                <Label htmlFor="svc-log-size">{t('serviceDev.perPage')}</Label>
+                <Select
+                  id="svc-log-size"
+                  value={String(size)}
+                  onChange={(e) => {
+                    setSize(Number(e.target.value));
+                    setOffset(0);
+                  }}
+                >
+                  {pageSizes.map((n) => (
+                    <Select.Option key={n} value={String(n)}>
+                      {n}
+                    </Select.Option>
+                  ))}
+                </Select>
+              </Field>
+              <Button
+                variant="secondary"
+                data-size="sm"
+                aria-disabled={offset === 0 || undefined}
+                onClick={() => offset > 0 && setOffset(Math.max(0, offset - size))}
+              >
+                {t('qualityTabs.previous')}
+              </Button>
+              <Button
+                variant="secondary"
+                data-size="sm"
+                aria-disabled={offset + size >= page.total || undefined}
+                onClick={() => offset + size < page.total && setOffset(offset + size)}
+              >
+                {t('qualityTabs.next')}
+              </Button>
+            </span>
+          </nav>
+        </>
       ) : null}
     </section>
   );

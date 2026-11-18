@@ -10,7 +10,7 @@ import {
 } from '@digdir/designsystemet-react';
 import { useEffect, useId, useRef, useState } from 'react';
 import type { ApiClient } from '../../api';
-import type { EvalRun, ServiceTestSet } from '../../api/quality';
+import type { EvalRun, ServiceDraft, ServiceTestSet } from '../../api/quality';
 import { usePortalFormat } from '../../format';
 import { useAsync } from '../../hooks';
 import type { PlainKey, T } from '../../i18n';
@@ -20,6 +20,14 @@ import type { FeedbackItem } from '../../types';
 import { servicePath } from '../service/sections';
 import { Improvements } from './Improvements';
 import { active, metricLabel, RunEstimate, versionText } from './RunHistory';
+import {
+  CasesSection,
+  CompareSection,
+  GatesCard,
+  LiveQualityComing,
+  QualityNow,
+  RunningCard,
+} from './QualityOverview';
 import { problemTitle, type SetFlash } from './shared';
 
 const pollMs = 2000;
@@ -66,11 +74,13 @@ const TestSetRow = ({
   canManage,
   serviceId,
   onRun,
+  current = false,
 }: {
   api: ApiClient;
   tenant: string;
   set: ServiceTestSet;
   runs: EvalRun[];
+  current?: boolean;
   started: { run: string; before?: number } | undefined;
   starting: boolean;
   canManage: boolean;
@@ -109,7 +119,7 @@ const TestSetRow = ({
       ? t('quality.addCasesFirst')
       : undefined;
   return (
-    <li className="quality-set">
+    <li className="quality-set" data-current={current || undefined}>
       <div className="quality-set-name">
         <Link href={qualityAddress(serviceId, `set=${encodeURIComponent(set.id)}`)}>
           {set.name}
@@ -232,37 +242,33 @@ const RulesSection = ({ run, serviceId }: { run: EvalRun | undefined; serviceId:
   );
 };
 
-const TestSetsAndRules = ({
-  api,
-  tenant,
-  serviceId,
-  setFlash,
-}: {
-  api: ApiClient;
-  tenant: string;
-  serviceId: string;
-  setFlash: SetFlash;
-}) => {
+export interface QualityData {
+  sets: ServiceTestSet[];
+  runs: EvalRun[];
+  draft: ServiceDraft | undefined;
+}
+
+const useQualityData = (api: ApiClient, tenant: string, serviceId: string, setFlash: SetFlash) => {
   const { t } = usePortalFormat();
-  const canManage = useRights().has('manage-services');
   const [round, setRound] = useState(0);
   const [state] = useAsync(
-    async (signal) => {
+    async (signal): Promise<QualityData> => {
       const [sets, runs, draft] = await Promise.all([
         api.quality.testSets(tenant, serviceId, signal),
         api.quality.runs(tenant, serviceId, signal),
         api.quality.draft(tenant, serviceId, signal).catch(() => undefined),
       ]);
-      return { sets, runs, hasDraft: draft !== undefined };
+      return { sets, runs, draft };
     },
     [api, tenant, serviceId, round],
   );
-  const seen = useRef<{ sets: ServiceTestSet[]; runs: EvalRun[]; hasDraft: boolean }>(undefined);
+  const seen = useRef<QualityData>(undefined);
   if (state.status === 'ready') seen.current = state.data;
   const [starting, setStarting] = useState<string>();
   const [started, setStarted] = useState<Record<string, { run: string; before?: number }>>({});
   const runs = seen.current?.runs ?? [];
   const running = runs.some(active);
+  const reload = () => setRound((r) => r + 1);
 
   useEffect(() => {
     if (!running) return;
@@ -273,7 +279,7 @@ const TestSetsAndRules = ({
   const run = async (set: ServiceTestSet) => {
     if (starting) return;
     setStarting(set.id);
-    const version = seen.current?.hasDraft ? 'draft' : 'published';
+    const version = seen.current?.draft ? 'draft' : 'published';
     const before = completed(runs.filter((r) => r.testSet === set.id))[0]?.passed ?? undefined;
     try {
       const { id } = await api.quality.startRun(
@@ -286,7 +292,7 @@ const TestSetsAndRules = ({
         ...all,
         [set.id]: { run: id, ...(before === undefined ? {} : { before }) },
       }));
-      setRound((r) => r + 1);
+      reload();
     } catch (error) {
       setFlash({ text: problemTitle(error, t), color: 'danger' });
     } finally {
@@ -294,56 +300,85 @@ const TestSetsAndRules = ({
     }
   };
 
-  const data = seen.current;
+  return {
+    data: seen.current,
+    failed: state.status === 'error' && !seen.current,
+    refreshing: state.status === 'loading' && seen.current !== undefined && !running,
+    starting,
+    started,
+    run,
+    reload,
+  };
+};
+
+type Quality = ReturnType<typeof useQualityData>;
+
+const TestSets = ({
+  api,
+  tenant,
+  serviceId,
+  quality,
+}: {
+  api: ApiClient;
+  tenant: string;
+  serviceId: string;
+  quality: Quality;
+}) => {
+  const { t } = usePortalFormat();
+  const canManage = useRights().has('manage-services');
+  const data = quality.data;
+  const runs = data?.runs ?? [];
+  const current = completed(runs)[0]?.testSet;
   return (
-    <>
-      <section aria-labelledby="quality-sets-h" className="quality-section">
+    <section aria-labelledby="quality-sets-h" className="quality-section">
+      <div className="row-between">
         <div className="stack-xs">
           <Heading level={2} data-size="sm" id="quality-sets-h">
             {t('qualityPage.testSetsTitle')}
           </Heading>
           <Paragraph>{t('qualityPage.testSetsLead')}</Paragraph>
         </div>
-        {!data && state.status === 'error' ? (
-          <SectionError retry={() => setRound((r) => r + 1)} t={t} loading={false} />
-        ) : !data ? (
-          <Loading
-            label={t('quality.setsLoading')}
-            shape="list"
-            rows={3}
-            onRetry={() => setRound((r) => r + 1)}
-          />
-        ) : data.sets.length === 0 ? (
-          <div className="quality-empty">
-            <Heading level={3} data-size="2xs">
-              {t('qualityPage.noSets')}
-            </Heading>
-            <Paragraph>{t('qualityPage.noSetsText')}</Paragraph>
-            <Button asChild variant="primary">
-              <a href={qualityAddress(serviceId, 'view=testsets')}>{t('qualityPage.createSet')}</a>
-            </Button>
-          </div>
-        ) : (
-          <ul className="quality-rows">
-            {data.sets.map((s) => (
-              <TestSetRow
-                key={s.id}
-                api={api}
-                tenant={tenant}
-                set={s}
-                runs={runs}
-                started={started[s.id]}
-                starting={starting === s.id}
-                canManage={canManage}
-                serviceId={serviceId}
-                onRun={() => void run(s)}
-              />
-            ))}
-          </ul>
-        )}
-      </section>
-      <RulesSection run={completed(runs)[0]} serviceId={serviceId} />
-    </>
+        <div className="row-wrap">
+          <Link href={qualityAddress(serviceId, 'view=feedback')}>
+            {t('qualityTabs.fromFeedback')}
+          </Link>
+          <Link href={qualityAddress(serviceId, 'view=testsets')}>{t('qualityTabs.newSet')}</Link>
+        </div>
+      </div>
+      {quality.failed ? (
+        <SectionError retry={quality.reload} t={t} loading={false} />
+      ) : !data ? (
+        <Loading label={t('quality.setsLoading')} shape="list" rows={3} onRetry={quality.reload} />
+      ) : data.sets.length === 0 ? (
+        <div className="quality-empty">
+          <Heading level={3} data-size="2xs">
+            {t('qualityPage.noSets')}
+          </Heading>
+          <Paragraph>{t('qualityPage.noSetsText')}</Paragraph>
+          <Button asChild variant="primary">
+            <a href={qualityAddress(serviceId, 'view=testsets')}>{t('qualityPage.createSet')}</a>
+          </Button>
+        </div>
+      ) : (
+        <ul className="quality-rows quality-set-cards" aria-busy={quality.refreshing || undefined}>
+          {data.sets.map((s) => (
+            <TestSetRow
+              key={s.id}
+              api={api}
+              tenant={tenant}
+              set={s}
+              runs={runs}
+              current={s.id === current}
+              started={quality.started[s.id]}
+              starting={quality.starting === s.id}
+              canManage={canManage}
+              serviceId={serviceId}
+              onRun={() => void quality.run(s)}
+            />
+          ))}
+        </ul>
+      )}
+    </section>
   );
 };
 
@@ -442,6 +477,7 @@ const FeedbackSection = ({
   if (state.status !== 'loading') failed.current = state.status === 'error';
   const radios = useId();
   const [reserved] = useState(() => feedbackRowsToReserve(tenant, serviceId));
+  const tallest = useRef(0);
   const listed = state.status === 'ready' ? Math.min(state.data.items.length, feedbackShown) : 0;
   useEffect(() => {
     if (state.status === 'ready') rememberFeedbackRows(tenant, serviceId, listed);
@@ -496,40 +532,56 @@ const FeedbackSection = ({
               down: state.data.items.filter((i) => i.rating === 'down').length,
             })}
           </Paragraph>
-          {state.data.items.some(shown) ? (
-            <ul className="quality-rows">
-              {state.data.items
-                .filter(shown)
-                .slice(0, feedbackShown)
-                .map((item, i) => {
-                  const question = item.task ? state.data.questions.get(item.task) : undefined;
-                  return (
-                    <li key={`${item.task ?? 'anon'}-${item.at}-${i}`} className="quality-feedback">
-                      <Tag data-size="sm" data-color={item.rating === 'up' ? 'success' : 'warning'}>
-                        {t(item.rating === 'up' ? 'qualityPage.thumbUp' : 'qualityPage.thumbDown')}
-                      </Tag>
-                      <span className="quality-feedback-text">
-                        {item.task ? (
-                          <Link href={`#/log/${encodeURIComponent(item.task)}`}>
-                            {question ?? t('qualityPage.openRun')}
-                          </Link>
-                        ) : (
-                          <span className="meta">{t('qualityPage.hiddenQuestion')}</span>
-                        )}
-                        {item.comment ? (
-                          <span className="quality-feedback-comment">«{item.comment}»</span>
-                        ) : null}
-                      </span>
-                      <span className="meta nowrap">
-                        {/^\d{4}-\d{2}-\d{2}$/.test(item.at) ? date(item.at) : dateTime(item.at)}
-                      </span>
-                    </li>
-                  );
-                })}
-            </ul>
-          ) : (
-            <Paragraph data-size="sm">{t('qualityPage.feedbackNoneInFilter')}</Paragraph>
-          )}
+          <div
+            ref={(el) => {
+              if (el && filter === 'all')
+                tallest.current = Math.max(tallest.current, el.offsetHeight);
+            }}
+            style={tallest.current ? { minHeight: tallest.current } : undefined}
+          >
+            {state.data.items.some(shown) ? (
+              <ul className="quality-rows">
+                {state.data.items
+                  .filter(shown)
+                  .slice(0, feedbackShown)
+                  .map((item, i) => {
+                    const question = item.task ? state.data.questions.get(item.task) : undefined;
+                    return (
+                      <li
+                        key={`${item.task ?? 'anon'}-${item.at}-${i}`}
+                        className="quality-feedback"
+                      >
+                        <Tag
+                          data-size="sm"
+                          data-color={item.rating === 'up' ? 'success' : 'warning'}
+                        >
+                          {t(
+                            item.rating === 'up' ? 'qualityPage.thumbUp' : 'qualityPage.thumbDown',
+                          )}
+                        </Tag>
+                        <span className="quality-feedback-text">
+                          {item.task ? (
+                            <Link href={`#/log/${encodeURIComponent(item.task)}`}>
+                              {question ?? t('qualityPage.openRun')}
+                            </Link>
+                          ) : (
+                            <span className="meta">{t('qualityPage.hiddenQuestion')}</span>
+                          )}
+                          {item.comment ? (
+                            <span className="quality-feedback-comment">«{item.comment}»</span>
+                          ) : null}
+                        </span>
+                        <span className="meta nowrap">
+                          {/^\d{4}-\d{2}-\d{2}$/.test(item.at) ? date(item.at) : dateTime(item.at)}
+                        </span>
+                      </li>
+                    );
+                  })}
+              </ul>
+            ) : (
+              <Paragraph data-size="sm">{t('qualityPage.feedbackNoneInFilter')}</Paragraph>
+            )}
+          </div>
         </>
       )}
       <Link href={qualityAddress(serviceId, 'view=feedback')}>{t('qualityPage.allFeedback')}</Link>
@@ -549,15 +601,44 @@ export const QualityPage = ({
   setFlash: SetFlash;
 }) => {
   const { t } = usePortalFormat();
+  const quality = useQualityData(api, tenant, serviceId, setFlash);
+  const data = quality.data;
+  const runs = data?.runs ?? [];
+  const running = runs.find(active);
+  const latest = completed(runs)[0];
   return (
     <>
-      <TestSetsAndRules api={api} tenant={tenant} serviceId={serviceId} setFlash={setFlash} />
+      <div className="q-top">
+        {!data ? (
+          <section aria-label={t('qualityTabs.nowTitle')} className="q-card" aria-busy="true">
+            <Skeleton variant="text" width="40%" />
+            <Skeleton variant="rectangle" width="30%" height={48} />
+            <Skeleton variant="text" width="60%" />
+          </section>
+        ) : running ? (
+          <RunningCard api={api} tenant={tenant} serviceId={serviceId} run={running} />
+        ) : (
+          <QualityNow
+            api={api}
+            tenant={tenant}
+            serviceId={serviceId}
+            sets={data.sets}
+            runs={runs}
+            hasDraft={data.draft !== undefined}
+            onRun={(set) => void quality.run(set)}
+          />
+        )}
+        <GatesCard api={api} tenant={tenant} serviceId={serviceId} draft={data?.draft} />
+      </div>
+      <TestSets api={api} tenant={tenant} serviceId={serviceId} quality={quality} />
+      <CasesSection api={api} tenant={tenant} serviceId={serviceId} run={running ?? latest} />
+      <div className="q-pair">
+        <RulesSection run={latest} serviceId={serviceId} />
+        <CompareSection api={api} tenant={tenant} serviceId={serviceId} runs={runs} />
+      </div>
+      <LiveQualityComing />
       <FeedbackSection api={api} tenant={tenant} serviceId={serviceId} />
       <Improvements api={api} tenant={tenant} serviceId={serviceId} setFlash={setFlash} />
-      <details className="quality-technical">
-        <summary>{t('qualityPage.technical')}</summary>
-        <Link href={qualityAddress(serviceId, 'view=gates')}>{t('qualityPage.gatesLink')}</Link>
-      </details>
     </>
   );
 };

@@ -470,7 +470,7 @@ describe('the live builder and the server draft', () => {
       ['interface', 'Grensesnitt'],
       ['versions', 'Utviklerverktøy'],
       ['quality', 'Kvalitet'],
-      ['settings', 'Avanserte innstillinger'],
+      ['settings', 'Oppsett'],
       ['log', 'Utviklerverktøy'],
       ['setup', 'Oppsett'],
     ] as const) {
