@@ -2115,8 +2115,10 @@ export const Builder = ({
             testHref={`#${servicePath(routeId, 'quality')}`}
             backHref={`#${servicePath(routeId, 'setup')}`}
             canPublish={canPublish}
-            blocked={!!blockedBy || checkProblems.length > 0 || unmaskedMissing > 0}
-            blockedReason={blockedBy}
+            blocked={
+              check?.status !== 'done' || invalid || checkProblems.length > 0 || unmaskedMissing > 0
+            }
+            blockedReason={check?.status === 'done' ? blockedBy : t('services.checkingDraft')}
             onPublish={async (reason) => {
               await doPublish({ reason, include: [] });
               go('setup');

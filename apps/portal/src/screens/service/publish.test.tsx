@@ -162,6 +162,26 @@ describe('publishing the draft in live mode', () => {
     expect(posts.some((p) => p.url.endsWith('/definitions'))).toBe(false);
   });
 
+  it('keeps Publiser locked until the platform has checked the draft', async () => {
+    const { fetch: base, posts } = platform({});
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const fetch: typeof globalThis.fetch = async (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (url.endsWith('/definitions/validate')) await held;
+      return base(input, init);
+    };
+    const page = await openPublishPage(fetch);
+    const button = within(page).getByRole('button', { name: 'Publiser versjon 2' });
+    expect(button.getAttribute('aria-disabled')).toBe('true');
+    expect(within(page).getByText('Sjekker utkastet mot plattformen …')).toBeTruthy();
+    fireEvent.click(button);
+    expect(posts.some((p) => p.url.endsWith('/definitions'))).toBe(false);
+
+    release();
+    await waitFor(() => expect(button.getAttribute('aria-disabled')).toBeNull());
+  });
+
   it('validates, publishes with the files and shows the new version', async () => {
     const { fetch, posts } = platform({});
     await publishFromHeader(fetch);

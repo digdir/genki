@@ -496,7 +496,7 @@ describe('live service page', () => {
     ).toBe(value);
     expect(
       within(screen.getByRole('navigation', { name: 'Deler av oppsettet' })).getByRole('button', {
-        name: new RegExp(`^Arbeidsmåte.*${name.replace(/[()]/g, '\\$&')}`),
+        name: new RegExp(`^Arbeidsmåte.*${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`),
       }),
     ).toBeTruthy();
   });
