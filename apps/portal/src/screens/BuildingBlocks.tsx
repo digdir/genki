@@ -12,15 +12,16 @@ import {
   type BlockTab,
   type ServiceRuns,
 } from './buildingblocks/BlockDetail';
+import { TypeHeader, TypeList, type TypeFilters } from './buildingblocks/BlockList';
+import { OverviewBody, OverviewHeader, SearchAll } from './buildingblocks/BlocksOverview';
 import {
-  BlockList,
-  ListHeader,
-  listKinds,
-  type ListFilters,
-  type ListTab,
-} from './buildingblocks/BlockList';
+  movedKindHash,
+  movedListHash,
+  typeFromSegment,
+  typeHref,
+  type TypeKey,
+} from './buildingblocks/block-types';
 import { SkillBlockPage } from './skills/SkillBlockPage';
-import { StepFlowEditor } from './StepFlows';
 import { FlashMessage, settled, type Flash } from './buildingblocks/common';
 import { ConnectorsPage } from './buildingblocks/ConnectorsPage';
 import { RegisterBlock } from './buildingblocks/RegisterBlock';
@@ -29,17 +30,10 @@ import { ModelsInUse } from './models/ModelsInUse';
 import { BackLink } from '../components/BackLink';
 import './buildingblocks.css';
 
-const listSegments: Record<string, ListTab> = { 'in-use': 'in-use', catalogue: 'catalog' };
-const tabSegment: Record<ListTab, string> = { 'in-use': 'in-use', catalog: 'catalogue' };
-
-const filtersOf = (route: Route): ListFilters => {
-  const type = route.query.get('type');
-  return {
-    tab: listSegments[route.segments[1] ?? ''] ?? 'in-use',
-    q: route.query.get('q') ?? '',
-    kind: listKinds.find((k) => k === type) ?? 'all',
-  };
-};
+const filtersOf = (route: Route): TypeFilters => ({
+  show: route.query.get('show') === 'catalogue' ? 'catalogue' : 'in-use',
+  q: route.query.get('q') ?? '',
+});
 
 export const kindAliases: Record<string, BlockKind> = {
   'step-flow': 'step_flow',
@@ -48,30 +42,8 @@ export const kindAliases: Record<string, BlockKind> = {
   'extension-point': 'extension_point',
 };
 
-export const listHash = (filters: ListFilters) => {
-  const query = new URLSearchParams();
-  if (filters.kind !== 'all') query.set('type', filters.kind);
-  if (filters.q) query.set('q', filters.q);
-  const search = query.toString();
-  return `/building-blocks/${tabSegment[filters.tab]}${search ? `?${search}` : ''}`;
-};
-
-const ListPage = ({
-  api,
-  tenant,
-  tenantName,
-  filters,
-  onFilters,
-  onFlash,
-  version,
-}: ScreenProps & {
-  filters: ListFilters;
-  onFilters: (f: ListFilters) => void;
-  onFlash: (flash: Flash) => void;
-  version: number;
-}) => {
-  const t = useT();
-  const [state, retry, pending] = useAsync(
+const useBlockList = (api: ScreenProps['api'], tenant: string, version: number) =>
+  useAsync(
     async (signal) => {
       const [list, proposals, connectors] = await Promise.all([
         api.buildingBlocks.list(tenant, {}, signal),
@@ -83,36 +55,97 @@ const ListPage = ({
     [tenant, version],
     { keepPreviousFor: tenant },
   );
-  if (state.status !== 'ready') {
-    const catalogue = filters.tab === 'catalog';
+
+const ListError = ({ catalogue, onRetry }: { catalogue: boolean; onRetry: () => void }) => {
+  const t = useT();
+  return (
+    <Alert data-color="danger" role="alert">
+      <Heading level={2} data-size="xs">
+        {catalogue ? t('blockPages.errorCatalogueTitle') : t('blockPages.errorInUseTitle')}
+      </Heading>
+      <Paragraph>
+        {catalogue ? t('blockPages.errorCatalogueBody') : t('blockPages.errorInUseBody')}
+      </Paragraph>
+      <Button variant="secondary" data-size="sm" onClick={onRetry}>
+        {t('common.tryAgain')}
+      </Button>
+    </Alert>
+  );
+};
+
+const OverviewPage = ({
+  api,
+  tenant,
+  tenantName,
+  q,
+  onQuery,
+  version,
+}: ScreenProps & { q: string; onQuery: (q: string) => void; version: number }) => {
+  const t = useT();
+  const [state, retry, pending] = useBlockList(api, tenant, version);
+  return (
+    <div className="stack">
+      <OverviewHeader tenantName={tenantName} />
+      <SearchAll q={q} onQuery={onQuery} />
+      {state.status === 'loading' ? (
+        <Loading label={t('blocks.loadingList')} shape="list" onRetry={retry} />
+      ) : state.status === 'error' ? (
+        <ListError catalogue={false} onRetry={retry} />
+      ) : (
+        <OverviewBody
+          api={api}
+          tenant={tenant}
+          items={state.data.data}
+          refreshing={pending}
+          proposals={state.data.proposals.ok ? state.data.proposals.data : []}
+          partialError={
+            state.data.proposals.ok ? undefined : { error: state.data.proposals.error, retry }
+          }
+          q={q}
+          onQuery={onQuery}
+        />
+      )}
+    </div>
+  );
+};
+
+const TypePage = ({
+  api,
+  tenant,
+  tenantName,
+  type,
+  filters,
+  onFilters,
+  onFlash,
+  version,
+}: ScreenProps & {
+  type: TypeKey;
+  filters: TypeFilters;
+  onFilters: (f: TypeFilters) => void;
+  onFlash: (flash: Flash) => void;
+  version: number;
+}) => {
+  const t = useT();
+  const [state, retry, pending] = useBlockList(api, tenant, version);
+  if (state.status !== 'ready')
     return (
       <div className="stack">
-        <ListHeader tab={filters.tab} tenantName={tenantName} />
+        <TypeHeader type={type} />
         {state.status === 'loading' ? (
           <Loading label={t('blocks.loadingList')} shape="list" onRetry={retry} />
         ) : (
-          <Alert data-color="danger" role="alert">
-            <Heading level={2} data-size="xs">
-              {catalogue ? t('blockPages.errorCatalogueTitle') : t('blockPages.errorInUseTitle')}
-            </Heading>
-            <Paragraph>
-              {catalogue ? t('blockPages.errorCatalogueBody') : t('blockPages.errorInUseBody')}
-            </Paragraph>
-            <Button variant="secondary" data-size="sm" onClick={retry}>
-              {t('common.tryAgain')}
-            </Button>
-          </Alert>
+          <ListError catalogue={filters.show === 'catalogue'} onRetry={retry} />
         )}
       </div>
     );
-  }
   const { proposals, connectors } = state.data;
   const failed = !proposals.ok ? proposals.error : !connectors.ok ? connectors.error : undefined;
   return (
-    <BlockList
+    <TypeList
       api={api}
       tenant={tenant}
       tenantName={tenantName}
+      type={type}
       items={state.data.data}
       refreshing={pending}
       proposals={proposals.ok ? proposals.data : []}
@@ -124,10 +157,7 @@ const ListPage = ({
       onAdopted={(flash, adopted) =>
         onFlash(
           adopted
-            ? {
-                ...flash,
-                link: { href: '#/building-blocks/in-use', label: t('blockPages.seeInUse') },
-              }
+            ? { ...flash, link: { href: typeHref(type), label: t('blockPages.seeInUse') } }
             : flash,
         )
       }
@@ -214,16 +244,40 @@ const DetailPage = ({
   );
 };
 
+const blockKindList: readonly string[] = [
+  'model',
+  'dataset',
+  'search_engine',
+  'tool',
+  'skill',
+  'extension_point',
+  'guardrail',
+  'judge',
+  'step_flow',
+  'shared_service',
+];
+
+const movedHash = (route: Route) => {
+  const [, kind, id] = route.segments;
+  if (kind === 'in-use' || kind === 'catalogue') return movedListHash(route);
+  if (kind && blockKindList.includes(kind))
+    return movedKindHash(kind as BlockKind, id, route.query);
+  if (kind && !id && !typeFromSegment(kind) && !['new', 'models', 'connectors'].includes(kind))
+    return '#/building-blocks';
+  return undefined;
+};
+
 export const BuildingBlocks = (props: ScreenProps) => {
   const t = useT();
   const { route } = props;
   const [, kind, id, view] = route.segments;
   const fromRoute = filtersOf(route);
   const [typed, setTyped] = useState(fromRoute);
-  const filters = { ...typed, tab: fromRoute.tab };
+  const filters = { ...typed, show: fromRoute.show };
   const [flash, setFlash] = useState<{ path: string; flash: Flash } | null>(null);
   const [version, setVersion] = useState(0);
   const path = route.path;
+  const type = typeFromSegment(kind);
 
   const search = route.query.toString();
   useEffect(() => {
@@ -241,22 +295,33 @@ export const BuildingBlocks = (props: ScreenProps) => {
     window.scrollTo?.(0, 0);
   };
 
-  const changeFilters = (next: ListFilters) => {
+  const changeFilters = (next: TypeFilters) => {
+    if (!type) return;
     setTyped(next);
-    if (next.tab !== filters.tab) navigate(listHash(next));
-    else window.location.replace(`#${listHash(next)}`);
+    const hash = typeHref(type, next.show, next.q);
+    if (next.show !== filters.show) navigate(hash.slice(1));
+    else window.location.replace(hash);
+  };
+
+  const changeQuery = (q: string) => {
+    setTyped({ ...typed, q });
+    window.location.replace(
+      q ? `#/building-blocks?q=${encodeURIComponent(q)}` : '#/building-blocks',
+    );
   };
 
   const alias = kind ? kindAliases[kind] : undefined;
+  const moved = alias ? undefined : movedHash(route);
   useEffect(() => {
     if (alias)
       window.location.replace(
         `#${path.replace(`/building-blocks/${kind}`, `/building-blocks/${alias}`)}`,
       );
-  }, [alias, path]);
+    else if (moved) window.location.replace(moved);
+  }, [alias, moved, path]);
 
   let page;
-  if (alias) page = <Loading label={t('blocks.loadingOne')} shape="detail" />;
+  if (alias || moved) page = <Loading label={t('blocks.loadingOne')} shape="detail" />;
   else if (kind === 'new')
     page = (
       <RegisterBlock
@@ -273,8 +338,6 @@ export const BuildingBlocks = (props: ScreenProps) => {
     page = id === 'in-use' ? <ModelsInUse {...props} /> : <ModelCatalog {...props} />;
   else if (kind === 'connectors' && !id)
     page = <ConnectorsPage {...props} version={version} onFlash={(next) => show(next)} />;
-  else if (kind === 'step_flow' && id && view === 'edit')
-    page = <StepFlowEditor {...props} id={id} />;
   else if (kind === 'skill' && id) page = <SkillBlockPage {...props} id={id} tab={view} />;
   else if (kind && id)
     page = (
@@ -286,16 +349,18 @@ export const BuildingBlocks = (props: ScreenProps) => {
         onChanged={(next) => show(next)}
       />
     );
-  else
+  else if (type)
     page = (
-      <ListPage
+      <TypePage
         {...props}
+        type={type}
         filters={filters}
         onFilters={changeFilters}
         onFlash={(next) => show(next)}
         version={version}
       />
     );
+  else page = <OverviewPage {...props} q={typed.q} onQuery={changeQuery} version={version} />;
 
   return (
     <div className="stack">

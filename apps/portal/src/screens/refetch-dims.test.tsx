@@ -83,8 +83,8 @@ describe('a refetch keeps the rows on screen, dimmed, until the new ones arrive'
   it('Byggeklosser keeps the blocks dimmed while the list is fetched again', async () => {
     const api = switchable(mockFetch());
     api.fail(/proposals/);
-    await open('#/building-blocks', api.fetch, false);
-    const row = await screen.findByRole('link', { name: 'Borealis-27B' });
+    await open('#/building-blocks/tool', api.fetch, false);
+    const row = await screen.findByRole('link', { name: 'Lovdata' });
     const retry = await screen.findByRole('button', { name: 'Prøv igjen' });
 
     api.fail(undefined);
@@ -92,7 +92,7 @@ describe('a refetch keeps the rows on screen, dimmed, until the new ones arrive'
     fireEvent.click(retry);
 
     await waitFor(() => expect(busyAround(row)).not.toBeNull());
-    expect(screen.getByRole('link', { name: 'Borealis-27B' })).toBe(row);
+    expect(screen.getByRole('link', { name: 'Lovdata' })).toBe(row);
   });
 
   it('Brukerflater keeps the frontends dimmed while the list is fetched again', async () => {

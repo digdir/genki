@@ -521,6 +521,56 @@ export const blockFlow = defineNamespace({
   errorBody: 'Tjenestene som bruker den, virker som før. Det er bare visningen her som mangler.',
 });
 
+export const blockTypes = defineNamespace({
+  overviewLead:
+    'Delene tjenestene i {tenant} bygges av. Velg en type for å se det dere bruker og det som finnes i katalogen.',
+  searchAll: 'Søk i alle byggeklosser',
+  searchAllPlaceholder: 'Søk i alle byggeklosser, både i bruk og i katalogen',
+  typesHeading: 'Typer',
+  ownPlaceHeading: 'Har sitt eget sted',
+  ownPlaceLead:
+    'Disse er også byggeklosser, men lages og stelles et annet sted. Vi viser dem ikke her i kopi.',
+  stepTypes: 'Stegtyper',
+  purposeModel: 'Skriver svarene. Hver har sitt datasted og sin pris.',
+  purposeSearchEngine: 'Finner de riktige delene av datasettene til et spørsmål.',
+  purposeTool: 'Slår opp i eller sender til andre systemer.',
+  purposeSkill: 'Ferdige fremgangsmåter modellen kan bruke, som å skrive vedtaksbrev.',
+  purposeGuardrail:
+    'Stopper eller endrer spørsmål og svar før de går videre. I tjenesten heter de vakter.',
+  purposeJudge: 'Vurderer svarene i testsettene under Kvalitet.',
+  purposeExtensionPoint: 'Kode eller et endepunkt som kjøres på et fast punkt i en kjøring.',
+  purposeStepType: 'Delene en stegflyt settes sammen av, som «Kall en operasjon».',
+  purposeStepFlow: 'Faste oppskrifter i flere steg, med versjoner.',
+  purposeDataset: 'Dokumentene tjenestene kan svare ut fra.',
+  purposeSharedService: 'Ferdige tjenester fra Digdir og andre som dere kan ta i bruk.',
+  placeStepFlows: 'Utviklerverktøy, Stegflyter',
+  placeDatasets: 'Datasett',
+  placeSharedServices: 'Fellestjenester',
+  opensIn: 'Åpnes i {place}',
+  countBoth: '{inUse} i bruk · {catalogue} i katalogen',
+  countInUse: '{count} i bruk',
+  countCatalogue: '{count} i katalogen',
+  countNone: 'Ingen ennå',
+  waiting: '{count} venter',
+  resultsHeading: 'Treff i alle byggeklosser',
+  resultsCount: { one: '{count} treff', other: '{count} treff' },
+  noResults: 'Ingen byggeklosser passer søket, verken i bruk eller i katalogen.',
+  resetSearch: 'Nullstill søket',
+  searchType: 'Søk i {type}',
+  showLabel: 'Vis',
+  showInUse: 'I bruk {count}',
+  showCatalogue: 'Katalog {count}',
+  emptyInUseTitle: 'Ingen av denne typen er i bruk ennå',
+  emptyInUseBody: 'Se hva som finnes i katalogen, og ta i bruk det tjenestene trenger.',
+  emptyCatalogueTitle: 'Ingen flere av denne typen i katalogen',
+  recommended: 'Anbefalt',
+  callTypes: 'Typer kall den kan brukes til',
+  facts: 'Fakta',
+  factUsedIn: 'Brukes i',
+  usedInServices: { one: '{count} tjeneste', other: '{count} tjenester' },
+  usedInNone: 'Ingen tjenester',
+});
+
 export const blocksLane = {
   blocks,
   blockPages,
@@ -528,5 +578,6 @@ export const blocksLane = {
   blockTool,
   blockFlow,
   blockRegister,
+  blockTypes,
   ...sharedLane,
 } as const;

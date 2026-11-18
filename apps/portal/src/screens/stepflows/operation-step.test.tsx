@@ -37,9 +37,8 @@ const recording = (base: typeof globalThis.fetch = mockFetch()) => {
 };
 
 const newFlow = async (fetch?: typeof globalThis.fetch) => {
-  await renderAt('#/step-flows', fetch);
-  await screen.findByRole('heading', { level: 1, name: 'Stegflyter' });
-  fireEvent.click(screen.getByRole('button', { name: 'Ny stegflyt' }));
+  await renderAt('#/developer/step-flows', fetch);
+  fireEvent.click(await screen.findByRole('link', { name: 'Ny stegflyt' }));
   await screen.findByRole('heading', { level: 1, name: 'Arbeidsmåte' });
 };
 
@@ -67,7 +66,7 @@ describe('a new step flow', () => {
     await newFlow();
     expect(screen.queryByRole('navigation', { name: 'Brødsmuler' })).toBeNull();
     expect(screen.getByRole('link', { name: 'Stegflyter' }).getAttribute('href')).toBe(
-      '#/building-blocks/in-use?type=step_flow',
+      '#/developer/step-flows',
     );
     expect(screen.queryByRole('link', { name: 'Ny tjeneste' })).toBeNull();
   });
@@ -186,7 +185,6 @@ const workspace = (rights: PortalRight[], fetch: typeof globalThis.fetch = mockF
           tenant="999888777"
           query={new URLSearchParams()}
           flowId="svar-med-kilder"
-          library={false}
         />
       </SchemaFormProvider>
     </RightsProvider>,
