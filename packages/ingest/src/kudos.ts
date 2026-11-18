@@ -326,7 +326,7 @@ export const kudosOrgFields = (record: Record<string, unknown>) => {
   };
 };
 
-/** The 17 ministries' abbreviations; 9,057 KUDOS titles ended with one on 18 Nov 2026 (issue 677). */
+/** The 17 ministries' abbreviations on 18 Nov 2026 (9,057 KUDOS titles, issue 677); add a renamed ministry's here. */
 const ministries = new Set([
   'AID',
   'BFD',
