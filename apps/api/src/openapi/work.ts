@@ -2153,6 +2153,9 @@ const MatrixRunView = z.object({
   costNok: z.number().nullable(),
   testSets: z.number().int(),
   done: z.number().int(),
+  casesDone: z.number().int(),
+  casesTotal: z.number().int(),
+  resumed: z.number().int().optional(),
   error: z.string().optional(),
 });
 
