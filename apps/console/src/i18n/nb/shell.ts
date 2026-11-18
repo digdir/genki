@@ -18,6 +18,7 @@ export const shell = defineNamespace({
   pageQuality: 'Kvalitet',
   pageQualityMatrix: 'Kvalitetsmatrise og dommere',
   pagePolicies: 'Kvalitetskrav og vern',
+  pagePlatformSecrets: 'Plattformhemmeligheter',
   pageTracing: 'Sporing og evaluering',
   pageOperations: 'Drift',
   pageDiagnostics: 'Diagnostikk',

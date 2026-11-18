@@ -62,6 +62,7 @@ import type {
   KnowledgeEndpointItem,
   KnowledgeEngine,
   StoredSecret,
+  PlatformSecret,
   AccessRequest,
   AnswerSource,
   BlockApprovalRequest,
@@ -1055,6 +1056,8 @@ export const createApiClient = ({
         body: price,
         headers: { 'change-reason': reason },
       }),
+    platformSecrets: async (signal?: AbortSignal) =>
+      (await call<{ data: PlatformSecret[] }>('GET', '/operator/secrets', { signal })).data,
     saveSecret: (name: string, value: string, reason: string) =>
       call<unknown>('PUT', `/operator/secrets/${encodeURIComponent(name)}`, {
         body: { value },

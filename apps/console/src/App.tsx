@@ -13,6 +13,7 @@ import { Forward, Models } from './screens/Models';
 import { Onboarding } from './screens/Onboarding';
 import { Operations } from './screens/Operations';
 import { PlatformDefaults } from './screens/PlatformDefaults';
+import { PlatformSecrets } from './screens/PlatformSecrets';
 import { Policies } from './screens/Policies';
 import { pendingCount, Queue } from './screens/Queue';
 import { Quality } from './screens/Quality';
@@ -277,6 +278,7 @@ export const App = ({ auth, fetch: send, baseUrl = '/api', live = false }: Props
     ),
     '/onboarding': () => <Onboarding api={api} live={live} />,
     '/models': () => <Models api={api} params={params} />,
+    '/platform-secrets': () => <PlatformSecrets api={api} />,
     '/model-operations': () => <Forward to="/models" params={apisTab} />,
     '/catalog': () => <Catalog api={api} tab={params.get('tab') ?? undefined} />,
     '/policies': () => <Policies api={api} tab={params.get('tab') ?? undefined} />,

@@ -115,6 +115,7 @@ export interface ModuleDeps extends Omit<SearchModuleExtras, 'now'> {
   vault?: {
     set(tenant: string, name: string, value: string, hosts?: readonly string[]): Promise<string>;
     delete(tenant: string, name: string): Promise<void>;
+    names(tenant: string): Promise<string[]>;
   };
   defaultEmbedding?: { model: string; dimensions: number; residency: Residency };
   hookRuntime?: HookRuntime;

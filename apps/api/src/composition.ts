@@ -332,6 +332,7 @@ import { documentAccessRoutes } from './openapi/access.js';
 import { modelChoice } from './model-choice.js';
 import { modelMatrixModule, releaseGate } from './model-matrix.js';
 import { operatorModelsModule } from './operator-models.js';
+import { platformSecretsModule } from './platform-secrets.js';
 import { operatorOperationsModule } from './operator-operations.js';
 import {
   describedStepProblems,
@@ -413,6 +414,7 @@ export const platformModules: PlatformModuleFactory[] = [
   serviceLifecycleModule,
   serviceEnvironmentsModule,
   operatorModelsModule,
+  platformSecretsModule,
   operatorOperationsModule,
   operationGovernanceModule,
   operationDescriptorsModule,

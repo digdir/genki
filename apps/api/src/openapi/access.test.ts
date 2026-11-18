@@ -264,6 +264,17 @@ describe('access and extensions API reference', () => {
       200,
     );
     await conforms(
+      await send('/operator/secrets/sigma2-key', 'drift', {
+        method: 'PUT',
+        body: { value: 'ikke-en-ekte-verdi' },
+        reason,
+      }),
+      'put',
+      '/operator/secrets/{name}',
+      200,
+    );
+    await conforms(await send('/operator/secrets', 'drift'), 'get', '/operator/secrets', 200);
+    await conforms(
       await send(`${t}/connectors`, 'kari'),
       'get',
       '/tenants/{tenant}/connectors',
