@@ -32,8 +32,11 @@ export const failStoppedRuns = async (deps: StoppedRunDeps): Promise<string[]> =
     if (!stored || !['queued', 'running'].includes(stored.task.status)) continue;
     const scope = { tenant: claimed.tenant, key: claimed.scope };
     const statuses = await deps.events.ofType([claimed.id], 'kernel.task.status');
+    const errors = (await deps.events.ofType([claimed.id], 'kernel.error')).filter(
+      (e) => (e.data as { code?: unknown } | undefined)?.code === stoppedRunCode,
+    );
     const last = statuses.at(-1);
-    let lastSeq = Math.max(stored.lastSeq, last?.seq ?? -1);
+    let lastSeq = Math.max(stored.lastSeq, last?.seq ?? -1, ...errors.map((e) => e.seq));
     const append = async (type: string, data: unknown, audit = false) => {
       const appended = await deps.events.append(
         {
@@ -49,12 +52,11 @@ export const failStoppedRuns = async (deps: StoppedRunDeps): Promise<string[]> =
       );
       lastSeq = appended.seq;
     };
-    if ((last?.data as { status?: unknown } | undefined)?.status !== 'failed') {
-      const error = { code: stoppedRunCode, message: stoppedRunMessage };
-      await append('kernel.error', error, true);
-      await append('kernel.error', error);
+    const error = { code: stoppedRunCode, message: stoppedRunMessage };
+    if (!errors.some((e) => e.audience === 'audit')) await append('kernel.error', error, true);
+    if (!errors.some((e) => e.audience !== 'audit')) await append('kernel.error', error);
+    if ((last?.data as { status?: unknown } | undefined)?.status !== 'failed')
       await append('kernel.task.status', { status: 'failed' });
-    }
     const usage = usageOf(await deps.events.ofType([claimed.id], 'kernel.usage'));
     await deps.tasks.put(
       {

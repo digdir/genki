@@ -395,7 +395,8 @@ export const createKernel = (options: KernelOptions): StoppableKernel => {
     return appended;
   };
 
-  const setStatus = async (l: Live, status: TaskStatus) => {
+  const setStatus = async (l: Live, status: TaskStatus, leaseChecked = false) => {
+    if (!leaseChecked && !isRunning(status) && !(await holdsLease(l))) return release(l);
     await emit(l, { type: 'kernel.task.status', data: { status } }, 'kernel');
     l.task.status = status;
     if (isTerminal(status)) l.task.endedAt = now().toISOString();
@@ -412,9 +413,19 @@ export const createKernel = (options: KernelOptions): StoppableKernel => {
 
   const cancelled = () => new KernelError('cancelled', 'task was cancelled');
 
+  const holdsLease = async (l: Live) => {
+    if (!l.leased || !store.renewLeases) return true;
+    const held = await store.renewLeases([l.task.id]).catch(() => [l.task.id]);
+    return held.includes(l.task.id);
+  };
+
   const lose = (l: Live) => {
     if (l.finished) return;
     l.finished = true;
+    release(l);
+  };
+
+  function release(l: Live) {
     const error = new KernelError('server_stopped', 'the task lease ran out on this instance');
     abort(l, error);
     l.task.status = 'failed';
@@ -422,7 +433,7 @@ export const createKernel = (options: KernelOptions): StoppableKernel => {
     l.settle.reject(error);
     log.wake(l.task.id);
     settleIdle();
-  };
+  }
 
   let renewedAt = Number.NEGATIVE_INFINITY;
   const renewLeases = async () => {
@@ -510,6 +521,7 @@ export const createKernel = (options: KernelOptions): StoppableKernel => {
   const fail = async (l: Live, error: Error) => {
     if (l.finished) return;
     l.finished = true;
+    if (!(await holdsLease(l))) return release(l);
     const code = error instanceof KernelError ? error.code : 'strategy_error';
     const provider = providerFailureOf(error);
     await emit(
@@ -523,7 +535,7 @@ export const createKernel = (options: KernelOptions): StoppableKernel => {
     );
     const clientMessage = error instanceof KernelError ? error.message : 'the service failed';
     await emit(l, { type: 'kernel.error', data: { code, message: clientMessage } }, 'kernel');
-    await setStatus(l, 'failed');
+    await setStatus(l, 'failed', true);
     l.settle.reject(error);
   };
 

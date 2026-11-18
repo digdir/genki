@@ -123,7 +123,8 @@ export class PostgresTaskStore implements TaskStore {
        where tasks.status = 'interrupted'
          or (tasks.status in ('queued', 'running')
            and (tasks.lease_owner is null or tasks.lease_owner = $13))
-         or (tasks.status in ('completed', 'failed', 'cancelled') and tasks.status = excluded.status)`,
+         or (tasks.status in ('completed', 'failed', 'cancelled') and tasks.status = excluded.status
+           and tasks.ended_at is not distinct from excluded.ended_at)`,
       [
         task.id,
         task.tenant,

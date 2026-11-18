@@ -1322,6 +1322,35 @@ describe('kernel: leases and stopping', () => {
     expect(kernel.running()).toBe(0);
   });
 
+  it('a run that fails after it lost its lease writes no failure of its own', async () => {
+    let fail: (error: Error) => void = () => undefined;
+    const failing = strategy('failing', async function* () {
+      yield { type: 'kernel.part.delta', data: { text: '...' } };
+      await new Promise<never>((_, reject) => (fail = reject));
+    });
+    const tasks = new InMemoryTaskStore();
+    const log = new InMemoryEventLog();
+    let held = true;
+    const kernel = kernelWith({
+      strategies: [failing],
+      capabilities: [capability('ka', 'failing')],
+      log,
+      tasks: leasedStore(tasks, async (ids) => (held ? [...ids] : [])),
+      limits: { cancelPollMs: 60_000 },
+    });
+    const run = await kernel.invoke(kari, 'ka', {});
+    for await (const e of run.events) if (e.type === 'kernel.part.delta') break;
+
+    held = false;
+    fail(new Error('the model went away'));
+
+    await expect(run.result).rejects.toMatchObject({ code: 'server_stopped' });
+    const events = [];
+    for await (const e of log.read(run.task, 0, () => false)) events.push(e);
+    expect(events.filter((e) => e.type === 'kernel.error')).toEqual([]);
+    expect((await tasks.get(run.task))?.task.status).toBe('running');
+  });
+
   it('accepts no new run while stopping', async () => {
     const kernel = kernelWith({ strategies: [stuck], capabilities: [capability('ka', 'stuck')] });
 

@@ -104,29 +104,44 @@ describe('runs whose server stopped', () => {
     });
   });
 
-  it('a run claimed again after a sweep that stopped half way gets no second failure', async () => {
-    const { tasks, read, deps, reclaim } = await setup(['t1']);
-    const halfWay = {
-      ...deps,
-      tasks: {
-        ...deps.tasks,
-        put: async () => {
-          throw new Error('the database went away');
+  it.each([1, 2, 3])(
+    'a run claimed again after a sweep that stopped after %i of its writes gets no second failure',
+    async (writes) => {
+      const { tasks, read, deps, reclaim } = await setup(['t1']);
+      let left = writes;
+      const halfWay = {
+        ...deps,
+        events: {
+          ...deps.events,
+          append: async (event: Omit<Event, 'seq'>) => {
+            if (left-- <= 0) throw new Error('the database went away');
+            return deps.events.append(event);
+          },
         },
-      },
-    };
+        tasks: {
+          ...deps.tasks,
+          put: async () => {
+            throw new Error('the database went away');
+          },
+        },
+      };
 
-    await expect(failStoppedRuns(halfWay)).rejects.toThrow('the database went away');
-    reclaim('t1');
-    await failStoppedRuns(deps);
+      await expect(failStoppedRuns(halfWay)).rejects.toThrow('the database went away');
+      reclaim('t1');
+      await failStoppedRuns(deps);
 
-    const events = await read('t1');
-    expect(events.filter((e) => e.type === 'kernel.task.status').map((e) => e.data)).toEqual([
-      { status: 'running' },
-      { status: 'failed' },
-    ]);
-    expect((await tasks.get('t1'))?.task.status).toBe('failed');
-  });
+      const events = await read('t1');
+      expect(events.filter((e) => e.type === 'kernel.task.status').map((e) => e.data)).toEqual([
+        { status: 'running' },
+        { status: 'failed' },
+      ]);
+      expect(
+        events.filter((e) => e.type === 'kernel.error').map((e) => e.audience ?? 'client'),
+      ).toEqual(['audit', 'client']);
+      expect((await tasks.get('t1'))?.task.status).toBe('failed');
+      expect((await tasks.get('t1'))?.lastSeq).toBe(events.at(-1)?.seq);
+    },
+  );
 
   it('a run that ended before the sweep read it is left as it ended', async () => {
     const { tasks, read, deps } = await setup(['t1']);

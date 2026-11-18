@@ -4,7 +4,13 @@ import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Event, Principal } from '@genai/contracts';
 import { failStoppedRuns } from '@genai/jobs';
-import { createKernel, type Run, type StoppableKernel, type TaskStore } from '@genai/kernel';
+import {
+  createKernel,
+  type Run,
+  type StoppableKernel,
+  type Strategy,
+  type TaskStore,
+} from '@genai/kernel';
 import { createPostgresStores, LocalKeyWrapper, type PostgresTaskStore } from './index.js';
 import { stopPostgres } from './testing/index.js';
 
@@ -20,19 +26,16 @@ const kari: Principal = { kind: 'employee', issuer: 'test', subject: 'kari', ten
 
 const replica = (instance: string) => stores.tasks.withLease({ instance, now });
 
-const kernelOn = (tasks: TaskStore): StoppableKernel =>
+const answers: Strategy['run'] = async function* (ctx) {
+  await ctx.budget.charge({ inputTokens: 40, outputTokens: 5, requests: 1 });
+  yield { type: 'kernel.part.delta', data: { text: 'Svaret kommer' } };
+  await new Promise<never>(() => undefined);
+};
+
+const kernelOn = (tasks: TaskStore, run = answers): StoppableKernel =>
   createKernel({
     strategies: [
-      {
-        id: 'answers',
-        version: '1',
-        requires: { kernel: 1, ports: [], features: [] },
-        run: async function* (ctx) {
-          await ctx.budget.charge({ inputTokens: 40, outputTokens: 5, requests: 1 });
-          yield { type: 'kernel.part.delta', data: { text: 'Svaret kommer' } };
-          await new Promise<never>(() => undefined);
-        },
-      },
+      { id: 'answers', version: '1', requires: { kernel: 1, ports: [], features: [] }, run },
     ],
     capabilities: [
       {
@@ -142,13 +145,16 @@ describe('run leases across API replicas', () => {
 
     const stored = await stale.get(lost.task);
     if (!stored) throw new Error('the run is gone');
+    const scope = { tenant, key: JSON.stringify(['task', lost.task]) };
+    clock = minutes(4);
+    await stale.put({ ...stored, task: { ...stored.task, status: 'completed' } }, scope);
     await stale.put(
-      { ...stored, task: { ...stored.task, status: 'completed' } },
-      { tenant, key: JSON.stringify(['task', lost.task]) },
+      { ...stored, task: { ...stored.task, endedAt: minutes(4).toISOString() }, lastSeq: 99 },
+      scope,
     );
 
     expect(await stale.renewLeases([lost.task])).toEqual([]);
-    expect((await stale.get(lost.task))?.task.status).toBe('failed');
+    expect(await stale.get(lost.task)).toEqual(stored);
     await gone.cancel(kari, lost.task);
   });
 
@@ -172,6 +178,39 @@ describe('run leases across API replicas', () => {
     await expect(run.result).rejects.toMatchObject({ code: 'server_stopped' });
     expect(kernel.running()).toBe(0);
     expect((await replica('reader').get(run.task))?.task.status).toBe('failed');
+  });
+
+  it('a stale replica that fails its run after the sweep failed it changes nothing', async () => {
+    clock = minutes(0);
+    const store = replica('replica-g');
+    let fail: (error: Error) => void = () => undefined;
+    let partitioned = true;
+    const kernel = kernelOn(
+      {
+        ...stoppedReplica(store),
+        renewLeases: async (ids) => {
+          if (partitioned) throw new Error('the database is out of reach');
+          return store.renewLeases(ids);
+        },
+      },
+      async function* () {
+        yield { type: 'kernel.part.delta', data: { text: 'Svaret kommer' } };
+        await new Promise<never>((_, reject) => (fail = reject));
+      },
+    );
+    const run = await started(kernel);
+    clock = minutes(3);
+    expect(await sweep()).toContain(run.task);
+    const before = await eventsOf(run.task);
+    const swept = await replica('reader').get(run.task);
+
+    clock = minutes(4);
+    partitioned = false;
+    fail(new Error('the model went away'));
+    await expect(run.result).rejects.toMatchObject({ code: 'server_stopped' });
+
+    expect(await eventsOf(run.task)).toEqual(before);
+    expect((await replica('reader').get(run.task))?.task).toEqual(swept?.task);
   });
 
   it('two sweepers at once fail each stopped run once', async () => {
