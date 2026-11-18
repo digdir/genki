@@ -99,8 +99,15 @@ export interface SearchMade {
   failedCompletely?: SearchFailureReason;
 }
 
+const searchSeparator = ' search: ';
+
 /** `<strategy> search: <message>`, but not the pipeline's `skipped <x> search: …` notices. */
-const failedStrategy = /^(?!skipped )(.+?) search: ([\s\S]+)$/;
+const failedStrategy = (warning: string) => {
+  if (warning.startsWith('skipped ')) return undefined;
+  const at = warning.indexOf(searchSeparator);
+  const message = warning.slice(at + searchSeparator.length);
+  return at > 0 && message ? { strategy: warning.slice(0, at), message } : undefined;
+};
 
 const timedOut = /statement timeout|took longer than|timed out/i;
 
@@ -115,10 +122,10 @@ const failureReasons: [RegExp, SearchFailureReason][] = [
 export const searchFailures = (attribution: SearchAttribution | undefined): SearchFailure[] => {
   const seen = new Set<string>();
   return (attribution?.warnings ?? []).flatMap((warning) => {
-    const m = failedStrategy.exec(warning);
-    if (!m) return [];
-    const strategy = m[1] as string;
-    const reason = failureReasons.find(([p]) => p.test(m[2] as string))?.[1] ?? 'error';
+    const failed = failedStrategy(warning);
+    if (!failed) return [];
+    const { strategy, message } = failed;
+    const reason = failureReasons.find(([p]) => p.test(message))?.[1] ?? 'error';
     const key = `${strategy}:${reason}`;
     if (seen.has(key)) return [];
     seen.add(key);
