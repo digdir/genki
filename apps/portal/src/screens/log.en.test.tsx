@@ -25,8 +25,9 @@ describe('Log in English', () => {
   it('shows the runs tab with English chrome and statuses', async () => {
     await open('#/log');
     expect(await screen.findByRole('heading', { level: 1, name: 'Log' })).toBeTruthy();
-    expect(screen.getByRole('tab', { name: 'Runs' })).toBeTruthy();
-    expect(screen.getByRole('tab', { name: 'Changes' })).toBeTruthy();
+    const tabs = screen.getByRole('navigation', { name: 'Log' });
+    expect(within(tabs).getByRole('link', { name: 'Runs' })).toBeTruthy();
+    expect(within(tabs).getByRole('link', { name: 'Changes' })).toBeTruthy();
     const table = await screen.findByRole('table', { name: 'Runs' });
     expect(
       within(table)

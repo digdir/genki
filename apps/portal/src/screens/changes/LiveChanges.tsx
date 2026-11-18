@@ -1,4 +1,14 @@
-import { Button, Chip, Field, Fieldset, Label, Select, Tag } from '@digdir/designsystemet-react';
+import {
+  Button,
+  Chip,
+  Field,
+  Fieldset,
+  Label,
+  Paragraph,
+  Select,
+  Switch,
+  Tag,
+} from '@digdir/designsystemet-react';
 import { useState } from 'react';
 import type { ApiClient, AuditRow } from '../../api';
 import { usePortalFormat } from '../../format';
@@ -10,10 +20,11 @@ import { useAuditPages } from './audit-pages';
 import { relativeTime } from '../log/format';
 import {
   actorOf,
-  areaOf,
+  areaOfEntry,
   changeAreas,
   changeParts,
   collapseRepeats,
+  isDigdirCatalogChange,
   keyOfActor,
   newestFirst,
   type ChangeArea,
@@ -33,6 +44,8 @@ interface Loaded {
   entries: AuditRow[];
   services: Map<string, string>;
   keys: Map<string, string>;
+  models: Map<string, string>;
+  auditDays?: number;
 }
 
 const load = async (
@@ -41,13 +54,16 @@ const load = async (
   signal: AbortSignal,
   paged: boolean,
 ): Promise<Loaded> => {
-  const [audit, services] = await Promise.all([
+  const [audit, services, models, settings] = await Promise.all([
     paged ? [] : api.audit(tenant, signal),
     api.services(tenant, signal).then(
       (r) => r.data,
       () => [],
     ),
+    api.listModels({}, signal).catch(() => []),
+    paged ? api.tenantEffectiveSettings(tenant, signal).catch(() => undefined) : undefined,
   ]);
+  const auditDays = settings?.['retention.auditDays']?.value;
   const entries = Array.isArray(audit) ? audit : [];
   const keys =
     paged || entries.some((e) => keyOfActor(e.actor) !== undefined)
@@ -60,6 +76,8 @@ const load = async (
     entries: collapseRepeats(newestFirst(entries)),
     services: new Map(services.map((s) => [s.id, s.name])),
     keys: new Map(keys.map((k) => [k.id, k.name])),
+    models: new Map(models.flatMap((m) => (m.name ? [[m.id, m.name] as const] : []))),
+    ...(typeof auditDays === 'number' ? { auditDays } : {}),
   };
 };
 
@@ -81,6 +99,7 @@ export const LiveChanges = ({
   const allowed = useRights().has('manage-services');
   const [area, setArea] = useState<ChangeArea | ''>('');
   const [person, setPerson] = useState('');
+  const [digdir, setDigdir] = useState(false);
   const pages = useAuditPages(api, tenant, auditPageSize, allowed && paged);
   const [loaded, retryLoad] = useAsync(
     async (signal) => (allowed ? load(api, tenant, signal, paged) : undefined),
@@ -99,8 +118,9 @@ export const LiveChanges = ({
   if ((paged && pages.first.status === 'loading') || loaded.status === 'loading')
     return <Loading label={t('changes.loading')} />;
   const data = loaded.data;
-  const entries = paged ? collapseRepeats(newestFirst(pages.rows)) : (data?.entries ?? []);
-  if (!data || entries.length === 0)
+  const all = paged ? collapseRepeats(newestFirst(pages.rows)) : (data?.entries ?? []);
+  const entries = filters && !digdir ? all.filter((e) => !isDigdirCatalogChange(e)) : all;
+  if (!data || all.length === 0)
     return (
       <div className="card-empty">
         <span className="empty-title">{t('changes.none')}</span>
@@ -110,7 +130,7 @@ export const LiveChanges = ({
   const who = (e: AuditRow) => actorOf(e, t, (id) => data.keys.get(id));
   const people = [...new Set(entries.map(who))].sort((a, b) => a.localeCompare(b));
   const matching = entries
-    .filter((e) => !area || areaOf(e.action) === area)
+    .filter((e) => !area || areaOfEntry(e) === area)
     .filter((e) => !person || who(e) === person);
   const shown = paged ? matching : matching.slice(0, limit);
   const reset = () => {
@@ -118,13 +138,20 @@ export const LiveChanges = ({
     setPerson('');
   };
   const sentence = (e: AuditRow) => {
-    const { label, target, suffix } = changeParts(e, t, (id) => data.services.get(id));
+    const { label, target, suffix } = changeParts(
+      e,
+      t,
+      (id) => data.services.get(id),
+      (kind, id) => (kind === 'model' ? data.models.get(id) : undefined),
+    );
     return (
       <>
         <strong>{who(e)}</strong> {label}
         {target ? ' ' : null}
         {target?.service ? (
           <a href={`#/services/${encodeURIComponent(target.service)}`}>{target.text}</a>
+        ) : target?.href ? (
+          <a href={target.href}>{target.text}</a>
         ) : (
           target?.text
         )}
@@ -182,6 +209,11 @@ export const LiveChanges = ({
           </Select>
         </Field>
       </div>
+      <Switch
+        label={t('logChanges.showDigdir')}
+        checked={digdir}
+        onChange={() => setDigdir(!digdir)}
+      />
       <div className="row-between">
         <p role="status" className="changes-count">
           {t('changes.showing', {
@@ -205,10 +237,15 @@ export const LiveChanges = ({
       ) : (
         <ol className="plain-list changes-list" aria-label={t('log.tabChanges')}>
           {shown.map((e) => {
-            const a = areaOf(e.action);
+            const a = areaOfEntry(e);
+            const fromDigdir = isDigdirCatalogChange(e);
             return (
               <li key={e.task} className="changes-row">
-                <Tag data-size="sm" data-color="neutral" className="changes-area-tag">
+                <Tag
+                  data-size="sm"
+                  data-color={fromDigdir ? 'info' : 'neutral'}
+                  className="changes-area-tag"
+                >
                   {t(areaKeys[a])}
                 </Tag>
                 <span className="changes-text">
@@ -237,6 +274,13 @@ export const LiveChanges = ({
             {pages.more === 'loading' ? t('changesPaging.loadingMore') : t('changesPaging.more')}
           </Button>
         </div>
+      ) : null}
+      {data.auditDays ? (
+        <Paragraph data-size="sm" className="meta">
+          {data.auditDays === 730
+            ? t('logChanges.keptTwoYears')
+            : t('logChanges.keptDays', { count: data.auditDays })}
+        </Paragraph>
       ) : null}
     </div>
   );

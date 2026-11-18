@@ -312,7 +312,7 @@ export const SettingPanel = ({
   if (el !== 'V' && isSet(here))
     actions.push({ label: t('settings.panelResetInherited'), change: { kind: 'reset' } });
   if (ctx.kind === 'tenant' && isSet(here))
-    actions.push({ label: t('settings.panelResetPlatform'), change: { kind: 'reset' } });
+    actions.push({ label: t('settings.allUseDefault'), change: { kind: 'reset' } });
   if (!liveMode && ctx.kind !== 'tenant' && !pinned && !isSet(here) && e.L === 'P')
     actions.push({ label: t('settings.panelPin'), change: { kind: 'pin' } });
   if (!liveMode && ctx.kind !== 'tenant' && pinned)
@@ -485,6 +485,9 @@ export const SettingPanel = ({
       <Paragraph>
         {settingDesc(t, s)} {s.notDecided ? <NotDecided /> : null}
       </Paragraph>
+      {ctx.kind === 'tenant' && s.type !== 'secret' ? (
+        <Paragraph data-size="sm">{t('settings.allDefault', { value: show(s.P) })}</Paragraph>
+      ) : null}
       <dl className="kv panel-kv">
         <dt>{t('settings.panelType')}</dt>
         <dd>{typeText(t, s.type)}</dd>

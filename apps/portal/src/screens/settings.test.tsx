@@ -26,9 +26,10 @@ const recording = (base: typeof fetch = mockFetch()) => {
 };
 
 const grid = () => screen.findByRole('region', { name: 'Innstillinger per lag' });
+const allTable = () => screen.findByRole('region', { name: 'Alle innstillinger' });
 const panel = () => screen.getByRole('dialog');
-const open = async (label: string) => {
-  fireEvent.click(within(await grid()).getByRole('button', { name: label }));
+const open = async (label: string, region = allTable) => {
+  fireEvent.click(within(await region()).getByRole('button', { name: label }));
   return panel();
 };
 
@@ -38,21 +39,18 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('Innstillinger for virksomheten', () => {
-  it('shows the layered grid built from the settings catalog', async () => {
+  it('lists every setting with its key, the value that applies and where it comes from', async () => {
     const { calls, fetch } = recording();
     await renderAt('#/settings/all', fetch);
 
-    const region = await grid();
+    const region = await allTable();
     expect(calls.some((c) => c.url.endsWith('/settings') && c.method === 'GET')).toBe(true);
-    expect(
-      screen.getByRole('heading', { level: 1, name: 'Innstillinger for Testetaten' }),
-    ).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 1, name: 'Innstillinger' })).toBeTruthy();
     expect(
       screen.getByText(
-        'Det dere setter her, gjelder alle tjenester og datasett i Testetaten som ikke har satt noe selv.',
+        'Gjelder alle tjenestene i Testetaten, med mindre en tjeneste sier noe annet.',
       ),
     ).toBeTruthy();
-    expect(screen.queryByLabelText('Tjeneste')).toBeNull();
     expect(
       screen.getByRole('tab', { name: 'Alle innstillinger' }).getAttribute('aria-selected'),
     ).toBe('true');
@@ -60,65 +58,60 @@ describe('Innstillinger for virksomheten', () => {
     const heads = within(region)
       .getAllByRole('columnheader')
       .map((h) => h.textContent);
-    expect(heads).toEqual([
-      'Innstilling',
-      'PlattformstandardDigdir',
-      'VirksomhetTestetaten',
-      'Gjelder',
-    ]);
-    for (const cat of ['Søk', 'Svar', 'Modell', 'Vern', 'Innlesing', 'Grenser'])
-      expect(
-        within(region).getByRole('rowheader', { name: new RegExp(`^${cat} \\(\\d+\\)$`) }),
-      ).toBeTruthy();
+    expect(heads).toEqual(['Innstilling', 'Verdi', 'Kommer fra']);
 
     const topK = within(region)
       .getByRole('button', { name: 'Antall treff som leses' })
       .closest('tr') as HTMLElement;
     expect(within(topK).getByText('retrieval.topK')).toBeTruthy();
-    expect(within(topK).getByText('Arvet fra plattformstandard')).toBeTruthy();
-    expect(within(topK).getAllByText('10 treff').length).toBeGreaterThan(0);
-
-    const language = within(region)
-      .getByRole('button', { name: 'Svarspråk' })
-      .closest('tr') as HTMLElement;
-    expect(within(language).getByText('Kan ikke settes')).toBeTruthy();
+    expect(within(topK).getByText('10 treff')).toBeTruthy();
+    expect(within(topK).getByText('Standard')).toBeTruthy();
 
     expect(
       within(region).getByRole('button', { name: 'Fjern personopplysninger før modellkall' }),
     ).toBeTruthy();
-    expect(
-      within(region).getByRole('button', { name: 'Hold personopplysninger utenfor loggen' }),
-    ).toBeTruthy();
     expectAccessible();
   });
 
-  it('filters by search, category and overridden values', async () => {
+  it('marks the setting whose panel is open as expanded', async () => {
     await renderAt('#/settings/all');
-    await grid();
+    const region = await allTable();
+    const button = within(region).getByRole('button', { name: 'Antall treff som leses' });
+    expect(button.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(button);
+    expect(button.getAttribute('aria-expanded')).toBe('true');
+  });
+
+  it('filters by name or key and by changed settings, and resets both', async () => {
+    await renderAt('#/settings/all');
+    await allTable();
     const total = /Viser (\d+) av (\d+) innstillinger/.exec(document.body.textContent ?? '');
     expect(total?.[1]).toBe(total?.[2]);
 
-    fireEvent.change(screen.getByLabelText('Søk i innstillinger'), {
-      target: { value: 'personopplysninger' },
-    });
+    const search = screen.getByLabelText('Søk i innstillingene');
+    expect(search.getAttribute('placeholder')).toBe('Navn eller nøkkel');
+    fireEvent.change(search, { target: { value: 'personopplysninger' } });
     expect(screen.getByText(/^Viser 2 av \d+ innstillinger$/)).toBeTruthy();
 
-    fireEvent.change(screen.getByLabelText('Søk i innstillinger'), { target: { value: '' } });
-    fireEvent.click(screen.getByRole('radio', { name: 'Innlesing' }));
-    expect(screen.getByText(/^Viser 3 av \d+ innstillinger$/)).toBeTruthy();
-
-    fireEvent.click(
-      screen.getByRole('switch', { name: 'Bare de som er satt her eller overstyrt' }),
-    );
+    fireEvent.change(search, { target: { value: 'retrieval.topK' } });
     expect(screen.getByText(/^Viser 1 av \d+ innstillinger$/)).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Tekstgjenkjenning' })).toBeTruthy();
 
-    fireEvent.change(screen.getByLabelText('Søk i innstillinger'), {
-      target: { value: 'finnes ikke' },
-    });
-    expect(screen.getByText(/Ingen innstillinger passer søket/)).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Nullstill' }));
+    fireEvent.change(search, { target: { value: '' } });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Bare endrede' }));
+    const changed = within(await allTable())
+      .getAllByRole('row')
+      .slice(1)
+      .map((r) => r.lastElementChild?.textContent);
+    expect(changed.length).toBeGreaterThan(0);
+    expect(changed).not.toContain('Standard');
+
+    fireEvent.change(search, { target: { value: 'finnes ikke' } });
+    expect(screen.getByText('Ingen innstillinger passer søket og filteret.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Nullstill søk og filter' }));
     expect(screen.getByText(total?.[0] ?? '')).toBeTruthy();
+    expect(
+      (screen.getByRole('checkbox', { name: 'Bare endrede' }) as HTMLInputElement).checked,
+    ).toBe(false);
   });
 
   it('previews a tenant value through the API and saves it with a reason', async () => {
@@ -263,12 +256,13 @@ describe('Innstillinger for virksomheten', () => {
       fail ? broken(input, init) : ok(input, init),
     );
     expect(await screen.findByRole('heading', { level: 1, name: 'Innstillinger' })).toBeTruthy();
+    expect(
+      screen.getByRole('heading', { level: 2, name: 'Vi fikk ikke hentet innstillingene deres' }),
+    ).toBeTruthy();
     fail = false;
     fireEvent.click(await screen.findByRole('button', { name: 'Prøv igjen' }));
-    await grid();
-    expect(
-      screen.getByRole('heading', { level: 1, name: 'Innstillinger for Testetaten' }),
-    ).toBeTruthy();
+    await allTable();
+    expect(screen.getByRole('heading', { level: 1, name: 'Innstillinger' })).toBeTruthy();
   });
 });
 
@@ -294,7 +288,7 @@ describe('Innstillinger for en tjeneste', () => {
       .closest('tr') as HTMLElement;
     expect(within(topK).getByText('Satt på tjenesten')).toBeTruthy();
 
-    const side = await open('Maks lengde på svar');
+    const side = await open('Maks lengde på svar', grid);
     expect(within(side).getByText('Legges i utkastet til v8')).toBeTruthy();
     fireEvent.change(within(side).getByLabelText('Verdi (tokens)'), { target: { value: '2500' } });
     fireEvent.click(within(side).getByRole('button', { name: 'Forhåndsvis endring' }));
@@ -315,9 +309,17 @@ describe('Innstillinger for en tjeneste', () => {
     expectAccessible();
   });
 
+  it('explains inherited values in the legend in words, without a sample digit', async () => {
+    await renderAt('#/services/vedtaksutkast/settings');
+    await grid();
+    const legend = document.querySelector('.settings-legend') as HTMLElement;
+    expect(legend.textContent).toContain('arvet: verdien kommer fra laget til venstre');
+    expect(legend.querySelector('em')?.textContent).toBe('arvet');
+  });
+
   it('blocks turning off human approval for a high-risk service', async () => {
     await renderAt('#/services/vedtaksutkast/settings');
-    const side = await open('Menneskelig godkjenning');
+    const side = await open('Menneskelig godkjenning', grid);
     fireEvent.change(within(side).getByLabelText('Verdi'), { target: { value: 'av' } });
     fireEvent.click(within(side).getByRole('button', { name: 'Forhåndsvis endring' }));
     const preview = await within(side).findByRole('region', { name: 'Forhåndsvisning' });

@@ -71,7 +71,7 @@ const Facts = () => {
   const t = useT();
   const facts = [
     [t('about.factWhoTitle'), t('about.factWho')],
-    [t('about.factWhereTitle'), t('dataHandling.processingToday')],
+    [t('about.factWhereTitle'), t('about.residencyStatement')],
     [t('about.factCostTitle'), t('about.factCost')],
   ] as const;
   return (

@@ -10,6 +10,8 @@ vi.hoisted(() => {
   vi.useFakeTimers({ now: new Date('2026-11-17T13:00:00Z'), toFake: ['Date'] });
 });
 
+const tab = (name: string) =>
+  within(screen.getByRole('navigation', { name: 'Logg' })).getByRole('link', { name });
 const steps = () => screen.findByRole('list', { name: 'Steg i kjøringen' });
 const table = () => screen.findByRole('table', { name: 'Kjøringer' });
 const rowOf = (name: RegExp) =>
@@ -37,9 +39,7 @@ describe('Logg: Kjøringer', () => {
     await renderAt('#/log');
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Logg' })).toBeTruthy();
-    expect(screen.getByRole('tab', { name: 'Kjøringer' }).getAttribute('aria-selected')).toBe(
-      'true',
-    );
+    expect(tab('Kjøringer').getAttribute('aria-current')).toBe('page');
     const headers = within(await table())
       .getAllByRole('columnheader')
       .map((h) => h.textContent);
@@ -246,14 +246,10 @@ describe('Logg: Kjøringer', () => {
     await renderAt('#/log?status=failed&period=7');
     await table();
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Endringer' }));
+    fireEvent.click(tab('Endringer'));
     await waitFor(() => expect(window.location.hash).toBe('#/log/changes?status=failed&period=7'));
-    await waitFor(() =>
-      expect(screen.getByRole('tab', { name: 'Endringer' }).getAttribute('aria-selected')).toBe(
-        'true',
-      ),
-    );
-    fireEvent.click(screen.getByRole('tab', { name: 'Kjøringer' }));
+    await waitFor(() => expect(tab('Endringer').getAttribute('aria-current')).toBe('page'));
+    fireEvent.click(tab('Kjøringer'));
     await waitFor(() => expect(window.location.hash).toBe('#/log?status=failed&period=7'));
 
     expect(((await screen.findByLabelText('Periode')) as HTMLSelectElement).value).toBe('7');
@@ -649,4 +645,149 @@ describe('Logg: Endringer', () => {
     ).toHaveLength(1);
     expectAccessible();
   });
+});
+
+const rewriting =
+  (
+    match: RegExp,
+    change: (body: Record<string, unknown>, url: string) => unknown,
+  ): typeof globalThis.fetch =>
+  async (input, init) => {
+    const response = await mockFetch()(input, init);
+    const url = String(input);
+    if (!match.test(url) || !response.ok) return response;
+    return Response.json(change((await response.json()) as Record<string, unknown>, url));
+  };
+
+describe('Logg: the run crumb names the list it came from', () => {
+  it('reads a 7d period in the address as the last 7 days, in the crumb and its link', async () => {
+    await renderAt('#/log/t4?status=failed&period=7d');
+
+    const crumbs = await screen.findByRole('navigation', { name: 'Brødsmuler' });
+    expect(
+      within(crumbs)
+        .getByRole('link', { name: 'Kjøringer: feilet, siste 7 dager' })
+        .getAttribute('href'),
+    ).toBe('#/log?status=failed&period=7');
+  });
+
+  it('names a one-day address as that day, not as a range from the day to itself', async () => {
+    await renderAt('#/log/t4?status=failed&date=2026-11-17');
+
+    const crumbs = await screen.findByRole('navigation', { name: 'Brødsmuler' });
+    expect(within(crumbs).getByRole('link', { name: 'Kjøringer: feilet, i dag' })).toBeTruthy();
+  });
+});
+
+describe('Logg: tabs', () => {
+  it('the Kjøringer and Endringer tabs are links, and the arrow keys move between them', async () => {
+    await renderAt('#/log');
+    await table();
+
+    tab('Kjøringer').focus();
+    fireEvent.keyDown(tab('Kjøringer'), { key: 'ArrowRight' });
+    expect(document.activeElement).toBe(tab('Endringer'));
+    fireEvent.keyDown(tab('Endringer'), { key: 'ArrowRight' });
+    expect(document.activeElement).toBe(tab('Kjøringer'));
+    fireEvent.keyDown(tab('Kjøringer'), { key: 'End' });
+    expect(document.activeElement).toBe(tab('Endringer'));
+  });
+});
+
+describe('Logg: run rows', () => {
+  it('a failed run shows the reason it failed under its title', async () => {
+    await renderAt(
+      '#/log?status=failed&period=7',
+      rewriting(/\/tasks\?/, (body) => ({
+        ...body,
+        data: (body.data as Record<string, unknown>[]).map((r) =>
+          r.status === 'failed'
+            ? {
+                ...r,
+                failure: { code: 'deadline_exceeded', reason: 'Modellen svarte ikke i tide.' },
+              }
+            : r,
+        ),
+      })),
+    );
+
+    const row = (await screen.findByRole('link', { name: /^Nettsider på nynorsk/ })).closest('tr');
+    expect(within(row as HTMLElement).getByText('Modellen svarte ikke i tide.')).toBeTruthy();
+  });
+
+  it('with no runs at all, the list says so and points to the playground instead of the filters', async () => {
+    await renderAt(
+      '#/log',
+      rewriting(/\/tasks(\?|$)/, () => ({ data: [], total: 0 })),
+    );
+
+    expect(await screen.findByRole('heading', { name: 'Ingen kjøringer ennå' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Åpne prøveområdet' }).getAttribute('href')).toBe(
+      '#/playground',
+    );
+    expect(screen.queryByRole('search')).toBeNull();
+  });
+
+  it('with no runs today but runs before, the list keeps its filters and says none match', async () => {
+    await renderAt(
+      '#/log',
+      rewriting(/\/tasks(\?|$)/, (body, url) =>
+        url.includes('from=') ? { data: [], total: 0 } : body,
+      ),
+    );
+
+    expect(
+      await screen.findByRole('heading', { name: 'Ingen kjøringer passer filtrene' }),
+    ).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Ingen kjøringer ennå' })).toBeNull();
+    expect(screen.getByRole('search')).toBeTruthy();
+  });
+});
+
+describe('Logg: the run trace', () => {
+  it('copies the trace id and links Langfuse when the timeline names a trace', async () => {
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    await renderAt(
+      '#/log/t1',
+      rewriting(/\/tasks\/t1\/timeline$/, (body) => ({
+        ...body,
+        trace: { id: '4f2a9c71e0b84d3a', url: 'https://langfuse.example/trace/4f2a9c71e0b84d3a' },
+      })),
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Kopier sporings-id' }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('4f2a9c71e0b84d3a'));
+    expect(await screen.findByText('Sporings-id-en er kopiert.')).toBeTruthy();
+    expect(
+      screen.getByRole('link', { name: 'Åpne i Langfuse (åpnes i ny fane)' }).getAttribute('href'),
+    ).toBe('https://langfuse.example/trace/4f2a9c71e0b84d3a');
+  });
+
+  it('copies the run id while the timeline names no trace', async () => {
+    await renderAt('#/log/t1');
+
+    expect(await screen.findByRole('button', { name: 'Kopier kjørings-id' })).toBeTruthy();
+    expect(screen.queryByText('Sporings-id')).toBeNull();
+  });
+});
+
+describe('Logg: no wasted calls', () => {
+  it.each(['#/log/runs', '#/log/changes'])(
+    'never asks for the tab name as a run when %s opens',
+    async (hash) => {
+      const urls: string[] = [];
+      const base = mockFetch();
+      const fetch: typeof globalThis.fetch = (input, init) => {
+        urls.push(
+          typeof input === 'string' ? input : input instanceof URL ? input.href : input.url,
+        );
+        return base(input, init);
+      };
+      await renderAt(hash, fetch);
+      await screen.findByRole('heading', { level: 1, name: 'Logg' });
+      await new Promise((r) => setTimeout(r, 50));
+      expect(urls.filter((u) => /\/tasks\/(runs|changes)(\/timeline)?$/.test(u))).toEqual([]);
+    },
+  );
 });

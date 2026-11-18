@@ -85,4 +85,15 @@ export const statusArea = {
   account: {
     email: 'Email',
   },
+  devStatus: {
+    checked: 'Last checked at {time}. We check automatically every minute.',
+    checking: 'Checking ...',
+    apiHow: 'Calls /health every minute while the page is open',
+    slow: 'Slow',
+    somethingSlow: 'Something is slow',
+    lastKnownOk: 'The last known status was «Everything works» at {time}.',
+    lastKnownNotOk: 'The last known status at {time} was that something did not work as usual.',
+    environment: 'Environment',
+    pastIncidents: 'Earlier incidents',
+  },
 } satisfies Translation<typeof source>;

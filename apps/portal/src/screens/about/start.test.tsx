@@ -70,7 +70,7 @@ describe('public start page', () => {
     open('#/');
     await screen.findByRole('heading', { level: 1 });
 
-    expect(within(main()).getAllByText(nb('dataHandling.processingToday'))).toHaveLength(1);
+    expect(within(main()).getAllByText(nb('about.residencyStatement'))).toHaveLength(1);
     expect(within(main()).getAllByText(nb('about.factCost'))).toHaveLength(1);
     expect(
       [...main().querySelectorAll('a')].filter((a) => a.href === 'https://github.com/digdir/genki')
@@ -164,11 +164,16 @@ describe('public start page', () => {
     expect(document.title).toBe('Pris og vilkår | Genki');
   });
 
-  it('opens the price and terms page without signing in, with the open questions tagged', async () => {
+  it('opens the price and terms page without signing in, with how use is counted, the free trial and the terms', async () => {
     open('#/about/price-and-terms');
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Pris og vilkår' })).toBeTruthy();
-    expect(within(main()).getAllByText('Ikke bestemt')).toHaveLength(2);
+    expect(
+      within(main())
+        .getAllByRole('heading', { level: 2 })
+        .map((h) => h.textContent),
+    ).toEqual(['Slik regnes bruken', 'Gratis under utprøving', 'Vilkår']);
+    expect(within(main()).getByText(nb('about.priceLede'))).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Slik behandles data' }).getAttribute('href')).toBe(
       '#/data-handling',
     );

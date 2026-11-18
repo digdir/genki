@@ -52,11 +52,14 @@ const areas: Partial<Record<string, Area>> = {
         api.tasks(tenant, { ...runsRequest(noFilters, new Date()), origin: 'playground' }, signal),
       serviceNames,
     ],
-    item: (id) => [
-      serviceNames,
-      (api, tenant, _live, signal) => api.task(tenant, id, signal),
-      (api, tenant, _live, signal) => api.getTaskTimeline(tenant, id, signal),
-    ],
+    item: (id) =>
+      id === 'runs' || id === 'changes'
+        ? []
+        : [
+            serviceNames,
+            (api, tenant, _live, signal) => api.task(tenant, id, signal),
+            (api, tenant, _live, signal) => api.getTaskTimeline(tenant, id, signal),
+          ],
   },
   access: {
     chunk: () => import('./screens/Access'),

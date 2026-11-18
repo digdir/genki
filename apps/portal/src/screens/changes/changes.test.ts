@@ -140,3 +140,20 @@ describe('change rows', () => {
     expect(areaOf('platform.incident.resolve')).toBe('settings');
   });
 });
+
+describe('service copies and tool withdrawals', () => {
+  it('labels copying a service and withdrawing a tool approval, both under Tjenester', () => {
+    const nb = translator('nb');
+    const en = translator('en');
+    expect(changeParts(row('platform.service.copy'), nb).label).toBe('kopierte tjenesten');
+    expect(changeParts(row('platform.service.copy'), en).label).toBe('copied the service');
+    expect(changeParts(row('platform.tools.revoke'), nb).label).toBe(
+      'trakk tilbake godkjenningen av et verktøy',
+    );
+    expect(changeParts(row('platform.tools.revoke'), en).label).toBe(
+      'withdrew approval for a tool',
+    );
+    expect(areaOf('platform.service.copy')).toBe('services');
+    expect(areaOf('platform.tools.revoke')).toBe(areaOf('platform.tools.approve'));
+  });
+});

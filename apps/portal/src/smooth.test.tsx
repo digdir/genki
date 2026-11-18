@@ -273,7 +273,7 @@ describe('a smooth portal', () => {
       await renderLiveAt('#/settings', api.fetch, [
         { orgNumber: '999888777', name: 'Testetaten', actions: ['use-services', right] },
       ] as typeof kari.organisations);
-      await screen.findByRole('heading', { level: 1, name: 'Innstillinger for Testetaten' });
+      await screen.findByRole('heading', { level: 1, name: 'Innstillinger' });
       await settle();
 
       expect(api.gets(/\/export$/) > 0).toBe(exports);

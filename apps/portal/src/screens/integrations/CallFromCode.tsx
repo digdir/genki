@@ -60,6 +60,15 @@ export interface CodeService {
 const typeOf = (outputKind: string | undefined): CodeServiceType =>
   outputKind === 'fields' ? 'felter' : outputKind === 'document' ? 'dokument' : 'svar';
 
+/** A service's name, with its variant only where two choices share the name. */
+export const serviceOptionLabel = (
+  service: Pick<CodeService, 'id' | 'name'>,
+  all: readonly Pick<CodeService, 'id' | 'name'>[],
+) => {
+  const twin = all.some((other) => other.id !== service.id && other.name === service.name);
+  return twin ? `${service.name} (${service.id.split('__')[1] ?? service.id})` : service.name;
+};
+
 export const liveCodeServices = (
   access: AccessView['services'],
   services: ServiceSummaryView[],
@@ -276,7 +285,7 @@ export const CallFromCode = ({
           >
             {services.map((s) => (
               <Select.Option key={s.id} value={s.id}>
-                {s.name} ({s.id})
+                {serviceOptionLabel(s, services)}
               </Select.Option>
             ))}
           </Select>

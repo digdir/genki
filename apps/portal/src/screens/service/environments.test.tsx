@@ -346,7 +346,7 @@ describe('service environments in the portal', () => {
       [`GET /tenants/${tenant}/services`]: () => ({
         data: [{ id: 'klarsprak', name: 'Klarspråk' }],
       }),
-      [`GET /tenants/${tenant}/tasks`]: () => ({ data: [], total: 0 }),
+      [`GET /tenants/${tenant}/tasks`]: () => ({ data: [], total: 4 }),
       [`GET ${environmentsPath}`]: staged,
     });
     window.location.hash = '#/log';

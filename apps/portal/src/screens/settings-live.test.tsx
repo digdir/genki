@@ -100,7 +100,68 @@ interface Options {
   effectiveFails?: boolean;
   secret?: boolean;
   audit?: unknown[];
+  extraCatalog?: unknown[];
+  tenantValues?: Record<string, unknown>;
+  usage?: unknown;
+  models?: unknown[];
+  overrides?: Record<string, unknown[]>;
 }
+
+const sourcesSetting = {
+  key: 'answers.showSources',
+  description: 'Always show the documents the answer is based on.',
+  category: 'answers',
+  axis: 'service',
+  sensitivity: 'normal',
+  default: true,
+  settableAt: ['platform', 'tenant', 'service'],
+};
+
+const retentionSetting = {
+  key: 'retention.class',
+  description: 'How long questions and answers are kept.',
+  category: 'retention',
+  axis: 'service',
+  sensitivity: 'normal',
+  default: 'standard',
+  settableAt: ['platform', 'tenant', 'service'],
+  schema: { type: 'string', enum: ['transient', 'standard', 'case'] },
+};
+
+const tokens = (input: number) => ({
+  inputTokens: input,
+  outputTokens: 0,
+  requests: 1,
+  costMicroNok: 0,
+});
+
+const novemberUsage = (byModel: [string, number][], quota?: { used: number; monthly: number }) => ({
+  from: '2026-11-01',
+  to: '2026-11-17',
+  priced: true,
+  totals: tokens(41_000_000),
+  daily: [{ date: '2026-11-10', usage: tokens(41_000_000) }],
+  byService: [],
+  byModel: byModel.map(([model, n]) => ({ model, usage: tokens(n) })),
+  ...(quota
+    ? {
+        quota: {
+          usedTokens: quota.used,
+          monthlyTokens: quota.monthly,
+          usedPercent: (quota.used / quota.monthly) * 100,
+          alertPercent: 80,
+          alert: false,
+        },
+      }
+    : {}),
+});
+
+const offeredModels = [
+  { id: 'foundry/gpt-5.6-terra', name: 'gpt-5.6-terra', residency: 'eu', capabilities: [] },
+  { id: 'foundry/text-embedding-3-large', residency: 'eu', capabilities: [] },
+  { id: 'local/borealis-27b', name: 'Borealis-27B', residency: 'norway', capabilities: [] },
+  { id: 'foundry/gpt-global', name: 'gpt-global', residency: 'global', capabilities: [] },
+];
 
 const otherSave = (key: string, reason: string) => ({
   task: 't9',
@@ -114,7 +175,17 @@ const otherSave = (key: string, reason: string) => ({
   reason,
 });
 
-const platform = ({ onWrite, effectiveFails = false, secret = false, audit }: Options = {}) => {
+const platform = ({
+  onWrite,
+  effectiveFails = false,
+  secret = false,
+  audit,
+  extraCatalog = [],
+  tenantValues = {},
+  usage,
+  models = [],
+  overrides = {},
+}: Options = {}) => {
   const calls: Call[] = [];
   const state: { tenant?: number | undefined; service?: number | undefined } = {};
   const fetch: typeof globalThis.fetch = async (input, init) => {
@@ -156,10 +227,22 @@ const platform = ({ onWrite, effectiveFails = false, secret = false, audit }: Op
       return json({ task: 't2', value: {} });
     const served = strategyRoutes(path);
     if (served) return json(served);
-    if (path === '/settings') return json({ data: catalog });
+    if (path === '/settings') return json({ data: [...catalog, ...extraCatalog] });
+    const overridden = /\/settings\/([^/]+)\/overrides$/.exec(path);
+    if (overridden) return json({ data: overrides[overridden[1] ?? ''] ?? [] });
+    if (usage && /\/usage\?/.test(path)) return json(usage);
     if (/\/settings\/effective\?service=ka$/.test(path))
       return json(effective(state.tenant, state.service));
-    if (/\/settings\/effective$/.test(path)) return json(effective(state.tenant));
+    if (/\/settings\/effective$/.test(path))
+      return json({
+        ...effective(state.tenant),
+        ...Object.fromEntries(
+          Object.entries(tenantValues).map(([key, value]) => [
+            key,
+            { key, value, source: 'tenant', defaultVersion: 1, overridden: [], rejected: [] },
+          ]),
+        ),
+      });
     if (path.includes('?dryRun=true')) return json({ dryRun: true, tenant: {}, services: [] });
     if (/\/settings\/retrieval\.retrieveTopK$/.test(path) && method === 'PUT') {
       state.tenant = (calls.at(-1)?.body as { value: number }).value;
@@ -219,7 +302,7 @@ const platform = ({ onWrite, effectiveFails = false, secret = false, audit }: Op
       return json({ kind: 'Service', tenant: '991825827', id: 'ka', version: 4, definition });
     }
     if (path.endsWith('/definitions')) return json({ data: [] });
-    if (path.startsWith('/models')) return json({ data: [] });
+    if (path.startsWith('/models')) return json({ data: models });
     if (path.startsWith('/datasets')) return json({ datasets: [] });
     return json({});
   };
@@ -234,6 +317,7 @@ const renderLive = async (path: string, fetch: typeof globalThis.fetch) => {
 };
 
 const grid = () => screen.findByRole('region', { name: 'Innstillinger per lag' });
+const allTable = () => screen.findByRole('region', { name: 'Alle innstillinger' });
 
 const defaultTimeout = getConfig().asyncUtilTimeout;
 beforeAll(() => configure({ asyncUtilTimeout: 5000 }));
@@ -247,7 +331,7 @@ describe('live settings', () => {
   it('shows platform settings with Norwegian names, effective value and source', async () => {
     const { fetch } = platform();
     await renderLive('#/settings/all', fetch);
-    const region = await grid();
+    const region = await allTable();
 
     const row = within(region)
       .getByRole('button', { name: 'Treff som hentes (top-k)' })
@@ -259,7 +343,9 @@ describe('live settings', () => {
   it('shows a limit Digdir sets read-only to the organisation, with a note that Digdir sets it', async () => {
     const { calls, fetch } = platform();
     await renderLive('#/settings/all', fetch);
-    fireEvent.click(await within(await grid()).findByRole('button', { name: 'Tokens per måned' }));
+    fireEvent.click(
+      await within(await allTable()).findByRole('button', { name: 'Tokens per måned' }),
+    );
     const side = await screen.findByRole('dialog');
 
     const edit = within(side).getByRole('region', { name: 'Digdir setter denne grensen' });
@@ -273,7 +359,7 @@ describe('live settings', () => {
     const { calls, fetch } = platform();
     await renderLive('#/settings/all', fetch);
     fireEvent.click(
-      await within(await grid()).findByRole('button', { name: 'Treff som hentes (top-k)' }),
+      await within(await allTable()).findByRole('button', { name: 'Treff som hentes (top-k)' }),
     );
     const side = await screen.findByRole('dialog');
 
@@ -358,7 +444,7 @@ describe('Innstillinger: Vanlige', () => {
     const { calls, fetch } = platform();
     await renderLive('#/settings', fetch);
     expect(await screen.findByRole('tab', { name: 'Vanlige', selected: true })).toBeTruthy();
-    const select = await screen.findByLabelText('Målform i svar');
+    const select = await screen.findByLabelText('Språk tjenestene svarer på');
     expect((select as HTMLSelectElement).value).toBe('user');
 
     fireEvent.change(select, { target: { value: 'nynorsk' } });
@@ -385,7 +471,7 @@ describe('Innstillinger: Vanlige', () => {
         path.endsWith('answers.writtenStandard') ? problem(403, 'Forbidden') : undefined,
     });
     await renderLive('#/settings', fetch);
-    fireEvent.change(await screen.findByLabelText('Målform i svar'), {
+    fireEvent.change(await screen.findByLabelText('Språk tjenestene svarer på'), {
       target: { value: 'bokmal' },
     });
     fireEvent.change(screen.getByLabelText(/Hvorfor endrer du dette/), {
@@ -397,7 +483,9 @@ describe('Innstillinger: Vanlige', () => {
       await screen.findByText(/ble ikke lagret: du mangler «Administrere tjenester»/),
     ).toBeTruthy();
     expect(screen.queryByText(/Lagret kl\./)).toBeNull();
-    expect((screen.getByLabelText('Målform i svar') as HTMLSelectElement).value).toBe('bokmal');
+    expect((screen.getByLabelText('Språk tjenestene svarer på') as HTMLSelectElement).value).toBe(
+      'bokmal',
+    );
   });
 
   it('shows what someone else saved first and keeps the choice and reason, without reloading', async () => {
@@ -409,7 +497,7 @@ describe('Innstillinger: Vanlige', () => {
           : undefined,
     });
     await renderLive('#/settings', fetch);
-    fireEvent.change(await screen.findByLabelText('Målform i svar'), {
+    fireEvent.change(await screen.findByLabelText('Språk tjenestene svarer på'), {
       target: { value: 'bokmal' },
     });
     fireEvent.change(screen.getByLabelText(/Hvorfor endrer du dette/), {
@@ -418,7 +506,9 @@ describe('Innstillinger: Vanlige', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Lagre endringene' }));
 
     expect(await screen.findByText(/Noen andre lagret en endring/)).toBeTruthy();
-    expect((screen.getByLabelText('Målform i svar') as HTMLSelectElement).value).toBe('bokmal');
+    expect((screen.getByLabelText('Språk tjenestene svarer på') as HTMLSelectElement).value).toBe(
+      'bokmal',
+    );
     expect((screen.getByLabelText(/Hvorfor endrer du dette/) as HTMLInputElement).value).toBe(
       'Vi svarer alltid på bokmål',
     );
@@ -439,7 +529,7 @@ describe('Innstillinger: Vanlige', () => {
       audit: [otherSave('answers.writtenStandard', 'Vi svarer på nynorsk')],
     });
     await renderLive('#/settings', fetch);
-    fireEvent.change(await screen.findByLabelText('Målform i svar'), {
+    fireEvent.change(await screen.findByLabelText('Språk tjenestene svarer på'), {
       target: { value: 'bokmal' },
     });
     fireEvent.change(screen.getByLabelText(/Hvorfor endrer du dette/), {
@@ -456,22 +546,27 @@ describe('Innstillinger: Vanlige', () => {
   it('shows an error instead of the defaults when the saved settings cannot be loaded', async () => {
     const { fetch } = platform({ effectiveFails: true });
     await renderLive('#/settings', fetch);
-    expect(await screen.findByText(/Vi viser ikke standardverdiene i stedet/)).toBeTruthy();
-    expect(screen.queryByLabelText('Målform i svar')).toBeNull();
+    expect(
+      await screen.findByText(/Vi viser ikke skjemaet før vi vet hva som gjelder/),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('heading', { level: 2, name: 'Vi fikk ikke hentet innstillingene deres' }),
+    ).toBeTruthy();
+    expect(screen.queryByLabelText('Språk tjenestene svarer på')).toBeNull();
     expect(screen.getByRole('button', { name: 'Prøv igjen' })).toBeTruthy();
   });
 
   it('asks before switching tab with unsaved changes', async () => {
     const { fetch } = platform();
     await renderLive('#/settings', fetch);
-    fireEvent.change(await screen.findByLabelText('Målform i svar'), {
+    fireEvent.change(await screen.findByLabelText('Språk tjenestene svarer på'), {
       target: { value: 'bokmal' },
     });
     fireEvent.click(screen.getByRole('tab', { name: 'Alle innstillinger' }));
     expect(screen.getByText(/Vil du forlate siden uten å lagre/)).toBeTruthy();
     expect(window.location.hash).toBe('#/settings');
     fireEvent.click(screen.getByRole('button', { name: 'Forlat uten å lagre' }));
-    expect(await grid()).toBeTruthy();
+    expect(await allTable()).toBeTruthy();
     expect(window.location.hash).toBe('#/settings/all');
   });
 
@@ -482,10 +577,104 @@ describe('Innstillinger: Vanlige', () => {
     expect(screen.queryByLabelText('Tokens per måned')).toBeNull();
   });
 
+  it('shows the sources setting as a checkbox and saves it as true or false', async () => {
+    const { calls, fetch } = platform({ extraCatalog: [sourcesSetting] });
+    await renderLive('#/settings', fetch);
+    const box = await screen.findByRole('checkbox', {
+      name: 'Vis alltid hvilke dokumenter svaret bygger på',
+    });
+    expect((box as HTMLInputElement).checked).toBe(true);
+    expect(screen.getByText('Kilder i svarene')).toBeTruthy();
+
+    fireEvent.click(box);
+    fireEvent.change(screen.getByLabelText(/Hvorfor endrer du dette/), {
+      target: { value: 'Kildene forvirrer brukerne' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Lagre endringene' }));
+    expect(await screen.findByText(/^Lagret kl\./)).toBeTruthy();
+    const put = calls.find((c) => c.method === 'PUT' && c.path.endsWith('answers.showSources'));
+    expect(put?.body).toEqual({ value: false });
+  });
+
+  it('offers no sources control while the platform has no such setting', async () => {
+    const { fetch } = platform();
+    await renderLive('#/settings', fetch);
+    await screen.findByLabelText('Språk tjenestene svarer på');
+    expect(screen.queryByText('Kilder i svarene')).toBeNull();
+    expect(screen.queryByRole('checkbox')).toBeNull();
+  });
+
+  it('names the services that keep questions and answers for another time than the organisation', async () => {
+    const { fetch } = platform({
+      extraCatalog: [retentionSetting],
+      tenantValues: { 'retention.class': 'standard' },
+      overrides: {
+        'retention.class': [
+          { service: 'postsortering', name: 'Postsortering', value: 'transient' },
+          { service: 'rapport', name: 'Rapportassistenten', value: 'case' },
+        ],
+      },
+    });
+    await renderLive('#/settings', fetch);
+    const note = await screen.findByText(/2 tjenester overstyrer dette:/);
+    expect(note.textContent).toBe(
+      '2 tjenester overstyrer dette: Postsortering (7 dager) og Rapportassistenten (1 år).',
+    );
+    expect(screen.getByRole('link', { name: 'Rapportassistenten' }).getAttribute('href')).toBe(
+      '#/services/rapport',
+    );
+  });
+
+  it('says data stays in the EU/EEA only when every model used this month does', async () => {
+    const { fetch } = platform({
+      usage: novemberUsage([
+        ['foundry/gpt-5.6-terra', 30_000_000],
+        ['foundry/text-embedding-3-large', 1_000_000],
+        ['local/borealis-27b', 10_000_000],
+      ]),
+      models: offeredModels,
+    });
+    await renderLive('#/settings', fetch);
+    expect(
+      await screen.findByText(
+        'I EU/EØS. gpt-5.6-terra og text-embedding-3-large behandler data i EU/EØS. Borealis-27B behandler data i Norge.',
+      ),
+    ).toBeTruthy();
+  });
+
+  it('says plainly which model used this month may process data outside the EU/EEA', async () => {
+    const { fetch } = platform({
+      usage: novemberUsage([
+        ['foundry/gpt-5.6-terra', 30_000_000],
+        ['foundry/gpt-global', 1_000_000],
+      ]),
+      models: offeredModels,
+    });
+    await renderLive('#/settings', fetch);
+    expect(
+      await screen.findByText(
+        'Ikke bare i EU/EØS. gpt-5.6-terra behandler data i EU/EØS. gpt-global kan behandle data utenfor EU/EØS.',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/^I EU\/EØS\./)).toBeNull();
+  });
+
+  it('shows the quota used this month and always offers to ask for more', async () => {
+    const { fetch } = platform({
+      usage: novemberUsage([], { used: 18_000_000, monthly: 50_000_000 }),
+    });
+    await renderLive('#/settings', fetch);
+    expect(
+      await screen.findByText(/^50 millioner tokens\. 18 millioner er brukt i november\./),
+    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Be om mer kvote' })).toBeTruthy();
+    expect(screen.getByText(/Varsel når kvoten nesten er brukt opp kommer senere/)).toBeTruthy();
+  });
+
   it('sends the old export address on to Alle innstillinger', async () => {
     const { fetch } = platform();
     await renderLive('#/settings?tab=transfer', fetch);
-    expect(await grid()).toBeTruthy();
+    expect(await allTable()).toBeTruthy();
     expect(window.location.hash).toBe('#/settings/all');
     expect(screen.getByRole('heading', { name: 'Eksporter og importer' })).toBeTruthy();
   });
@@ -495,7 +684,9 @@ describe('Innstillinger: ærlig lagring i tabellen', () => {
   it('does not offer to save a secret value the portal cannot send', async () => {
     const { calls, fetch } = platform({ secret: true });
     await renderLive('#/settings/all', fetch);
-    fireEvent.click(await within(await grid()).findByRole('button', { name: 'tools.lovdata.key' }));
+    fireEvent.click(
+      await within(await allTable()).findByRole('button', { name: 'tools.lovdata.key' }),
+    );
     const side = await screen.findByRole('dialog');
     expect(within(side).getByText(/Hemmelige verdier kan ikke settes her ennå/)).toBeTruthy();
     expect(within(side).queryByLabelText('Ny hemmelig verdi')).toBeNull();
@@ -512,7 +703,7 @@ describe('Innstillinger: ærlig lagring i tabellen', () => {
     });
     await renderLive('#/settings/all', fetch);
     fireEvent.click(
-      await within(await grid()).findByRole('button', { name: 'Treff som hentes (top-k)' }),
+      await within(await allTable()).findByRole('button', { name: 'Treff som hentes (top-k)' }),
     );
     const side = await screen.findByRole('dialog');
     fireEvent.change(within(side).getByLabelText('Verdi'), { target: { value: '120' } });
@@ -545,7 +736,7 @@ describe('Innstillinger: ærlig lagring i tabellen', () => {
     });
     await renderLive('#/settings/all', fetch);
     fireEvent.click(
-      await within(await grid()).findByRole('button', { name: 'Treff som hentes (top-k)' }),
+      await within(await allTable()).findByRole('button', { name: 'Treff som hentes (top-k)' }),
     );
     const side = await screen.findByRole('dialog');
     fireEvent.change(within(side).getByLabelText('Verdi'), { target: { value: '120' } });
@@ -584,7 +775,7 @@ describe('Innstillinger: ærlig lagring i tabellen', () => {
     });
     await renderLive('#/settings/all', fetch);
     fireEvent.click(
-      await within(await grid()).findByRole('button', { name: 'Treff som hentes (top-k)' }),
+      await within(await allTable()).findByRole('button', { name: 'Treff som hentes (top-k)' }),
     );
     const side = await screen.findByRole('dialog');
     fireEvent.change(within(side).getByLabelText('Verdi'), { target: { value: '120' } });

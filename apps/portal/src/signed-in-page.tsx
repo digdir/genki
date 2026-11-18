@@ -2,6 +2,7 @@ import { Heading, Paragraph } from '@digdir/designsystemet-react';
 import { lazy, useEffect } from 'react';
 import { useT } from './i18n';
 import type { ScreenProps } from './screen';
+import { priceSegment } from './screens/about/public-pages';
 import { apiReferenceHashFor, developerHashFor } from './screens/developer-routes';
 import { Overview } from './screens/Overview';
 import { navigation } from './Shell';
@@ -13,6 +14,9 @@ const BuildingBlocks = lazy(() =>
 );
 const DataHandling = lazy(() =>
   import('./screens/DataHandling').then((m) => ({ default: m.DataHandling })),
+);
+const PricePage = lazy(() =>
+  import('./screens/about/PricePage').then((m) => ({ default: m.PricePage })),
 );
 const Contact = lazy(() => import('./screens/FooterPages').then((m) => ({ default: m.Contact })));
 const Datasets = lazy(() => import('./screens/Datasets').then((m) => ({ default: m.Datasets })));
@@ -103,6 +107,7 @@ export const Page = ({
     return <MovedTo hash="#/settings/all" />;
   if (area === 'settings') return <Settings {...props} context={{ kind: 'tenant' }} />;
   if (area === 'data-handling') return <DataHandling api={props.api} />;
+  if (area === 'about' && id === priceSegment) return <PricePage />;
   const item = navigation.find((n) => n.path === `/${area}`);
   if (Object.hasOwn(footerPages, area))
     return (

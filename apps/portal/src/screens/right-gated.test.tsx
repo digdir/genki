@@ -77,7 +77,7 @@ describe('buttons the person has no right for', () => {
 
   it('API key buttons are disabled with the missing right next to them', async () => {
     const calls = await renderAs('#/integrations?tab=keys', useOnly);
-    const create = await screen.findByRole('button', { name: 'Lag API-nøkkel' });
+    const create = await screen.findByRole('button', { name: 'Ny API-nøkkel' });
     expectLockedWithReason(create);
     fireEvent.click(create);
     expect(screen.queryByRole('heading', { name: 'Ny API-nøkkel' })).toBeNull();
@@ -213,13 +213,13 @@ describe('rights in live mode', () => {
       [{ orgNumber: '312521172', name: 'FALSK IDIOTSIKKER ELEFANT' }],
       fromApi('312521172', ['use-services', 'manage-services', 'view-usage']),
     );
-    const create = await screen.findByRole('button', { name: 'Lag API-nøkkel' });
+    const create = await screen.findByRole('button', { name: 'Ny API-nøkkel' });
     await expect.poll(() => create.getAttribute('aria-disabled')).not.toBe('true');
   });
 
   it('the API answer wins over the actions in the login', async () => {
     await renderAs('#/integrations?tab=keys', manager, fromApi('999888777', ['use-services']));
-    const create = await screen.findByRole('button', { name: 'Lag API-nøkkel' });
+    const create = await screen.findByRole('button', { name: 'Ny API-nøkkel' });
     await expect.poll(() => create.getAttribute('aria-disabled')).toBe('true');
   });
 });
