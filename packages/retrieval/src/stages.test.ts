@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { retrievalConfig } from './config.js';
 import {
   capPerDocument,
+  collapseReportCopies,
   detectOrganisations,
   detectYears,
   fileDigestsOf,
@@ -148,6 +149,145 @@ describe('diversity and duplicate files', () => {
     expect(
       fileDigestsOf({ ...base, fields: { docs: { files: [{ sha256: 'y' }, { name: 'z' }] } } }),
     ).toEqual(['y']);
+  });
+});
+
+describe('records of one report', () => {
+  const key = 'årsrapport|983544622|2023|årsrapport helsedirektoratet 2023';
+  const salary = 'For kvinner utgjorde gjennomsnittslønnen kr. 826 000, for menn kr. 861 000.';
+  /** A hit from one KUDOS record of Helsedirektoratet's 2023 annual report (issue 677). */
+  const record = (
+    id: string,
+    document: string,
+    report: { own: boolean; date: string; pages: number },
+    text = salary,
+  ) =>
+    chunk(id, {
+      document,
+      text,
+      fields: {
+        report: { key, own: report.own, pages: report.pages },
+        publish_date: report.date,
+        page: 18,
+      },
+    });
+  const own = { own: true, date: '2024-04-15', pages: 151 };
+  const sameYearCopy = { own: false, date: '2023-01-01', pages: 153 };
+  const hod = { own: false, date: '2024-01-01', pages: 151 };
+
+  it("hits on the same page of two records with one report key come back once, from the agency's own record", () => {
+    const kept = collapseReportCopies([
+      chunk('other-1', { document: 'other' }),
+      record('hod#18', 'kudos:fdfac1a8', hod),
+      record('own#18', 'kudos:51fe0107', own),
+      record('dup#18', 'kudos:a2a2fe02', sameYearCopy),
+      chunk('other-2', { document: 'other' }),
+    ]);
+
+    expect(kept.map((c) => c.id)).toEqual(['other-1', 'own#18', 'other-2']);
+    expect(kept[1]?.copies).toEqual([
+      { id: 'hod#18', document: 'kudos:fdfac1a8' },
+      { id: 'dup#18', document: 'kudos:a2a2fe02' },
+    ]);
+  });
+
+  it('keeps the hits on pages only a copy has', () => {
+    const kept = collapseReportCopies([
+      record('own#18', 'kudos:51fe0107', own),
+      record('hod#2', 'kudos:fdfac1a8', hod, 'Forord fra departementet om oppdraget og rammene.'),
+    ]);
+
+    expect(kept.map((c) => c.id)).toEqual(['own#18', 'hod#2']);
+  });
+
+  it('a record whose page count differs by more than 5 % is not grouped', () => {
+    const kept = collapseReportCopies([
+      record('own#18', 'kudos:51fe0107', own),
+      record('summary#18', 'kudos:summary', { own: true, date: '2024-05-01', pages: 140 }),
+    ]);
+
+    expect(kept.map((c) => c.id)).toEqual(['own#18', 'summary#18']);
+  });
+
+  it('the kept record of a group is not a ministry copy and has a real publish date', () => {
+    const kept = collapseReportCopies([
+      record('dup#18', 'kudos:a2a2fe02', sameYearCopy),
+      record('hod#18', 'kudos:fdfac1a8', hod),
+      record('own#18', 'kudos:51fe0107', own),
+      record('older#18', 'kudos:older', { own: true, date: '2024-03-01', pages: 151 }),
+    ]);
+
+    expect(kept.map((c) => c.id)).toEqual(['own#18']);
+  });
+
+  it('two hits of one record are never collapsed into each other', () => {
+    const kept = collapseReportCopies([
+      record('own#18a', 'kudos:51fe0107', own),
+      record('own#18b', 'kudos:51fe0107', own),
+    ]);
+
+    expect(kept.map((c) => c.id)).toEqual(['own#18a', 'own#18b']);
+  });
+
+  it('hits without text are grouped only when their page and page count are equal', () => {
+    const blank = (id: string, document: string, page: number, pages: number) =>
+      chunk(id, {
+        document,
+        fields: { report: { key, own: document === 'own', pages }, page },
+      });
+
+    expect(
+      collapseReportCopies([blank('a', 'copy', 18, 151), blank('b', 'own', 18, 151)]).map(
+        (c) => c.id,
+      ),
+    ).toEqual(['b']);
+    expect(
+      collapseReportCopies([blank('a', 'copy', 18, 153), blank('b', 'own', 18, 151)]).map(
+        (c) => c.id,
+      ),
+    ).toEqual(['a', 'b']);
+    expect(
+      collapseReportCopies([blank('a', 'copy', 17, 151), blank('b', 'own', 18, 151)]).map(
+        (c) => c.id,
+      ),
+    ).toEqual(['a', 'b']);
+  });
+
+  it('hits of only a few words are grouped only on the same page', () => {
+    const footer = (id: string, document: string, page: number) =>
+      chunk(id, {
+        document,
+        text: 'Helsedirektoratet årsrapport 2023',
+        fields: { report: { key, own: document === 'own', pages: 151 }, page },
+      });
+
+    expect(
+      collapseReportCopies([footer('a', 'copy', 3), footer('b', 'own', 40)]).map((c) => c.id),
+    ).toEqual(['a', 'b']);
+    expect(
+      collapseReportCopies([footer('a', 'copy', 3), footer('b', 'own', 3)]).map((c) => c.id),
+    ).toEqual(['b']);
+  });
+
+  it('a record with no page count is never grouped', () => {
+    const noPages = chunk('np', {
+      document: 'np',
+      text: salary,
+      fields: { report: { key, own: true } },
+    });
+
+    expect(
+      collapseReportCopies([record('hod#18', 'kudos:fdfac1a8', hod), noPages]).map((c) => c.id),
+    ).toEqual(['hod#18', 'np']);
+  });
+
+  it('leaves hits with no report key as they are', () => {
+    const hits = [
+      chunk('a', { document: 'd1', text: salary }),
+      chunk('b', { document: 'd2', text: salary }),
+    ];
+
+    expect(collapseReportCopies(hits)).toEqual(hits);
   });
 });
 

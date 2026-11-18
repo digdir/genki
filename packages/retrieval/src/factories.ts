@@ -54,6 +54,8 @@ export interface RetrievedSummary {
   publishedAt?: string;
   /** The organisation that published the document, several joined with a comma. */
   publisher?: string;
+  /** Hits on the same page of other records of this report, left out for this one (issue 677). */
+  copies?: { chunkId: string; document?: string }[];
 }
 
 export interface RetrievedChunk extends RetrievedSummary {
@@ -201,6 +203,14 @@ const describe = (
 
 const summarize = (c: Chunk): RetrievedSummary => ({
   ...describe(c.id, c),
+  ...(c.copies?.length
+    ? {
+        copies: c.copies.map((copy) => ({
+          chunkId: copy.id,
+          ...optional('document', copy.document),
+        })),
+      }
+    : {}),
   ...optional('score', c.retrievalPrior),
   ...optional('rerankScore', c.rerankScore),
   rank: c.originalRank,

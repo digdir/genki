@@ -35,6 +35,7 @@ import {
   prioritize,
   relaxedCap,
   suppressDuplicateFiles,
+  collapseReportCopies,
   unionMerge,
   type Chunk,
   type Detection,
@@ -103,6 +104,8 @@ export interface PassTrace {
   chunksAfterDiversity: number;
   droppedByDiversity: number;
   droppedAsDuplicateFile: number;
+  /** Hits on a page another record of the same report also hit (issue 677). */
+  droppedAsReportCopy: number;
   rerank: { status: RerankStatus; candidates: number; ms: number; error?: string };
   warnings: string[];
   skipped?: SkippedDocument[];
@@ -529,6 +532,7 @@ export const retrieve = async (input: RetrieveInput): Promise<RetrievalResult> =
   ) => {
     const started = now();
     const errors: string[] = [];
+    const texts = new Map<string, string>();
     const outcomes = await Promise.all(
       lists
         .filter((l) => l.hits.length > 0)
@@ -549,6 +553,7 @@ export const retrieve = async (input: RetrieveInput): Promise<RetrievalResult> =
               const hit = byId.get(h.id);
               if (!hit) return [];
               content.set(hit.id, hit.text);
+              texts.set(hit.id, hit.text);
               return [
                 toChunk(hit, {
                   searchTypes: [],
@@ -580,15 +585,16 @@ export const retrieve = async (input: RetrieveInput): Promise<RetrievalResult> =
       const current = best.get(c.id);
       if (!current || (c.rerankScore ?? 0) >= (current.rerankScore ?? 0)) best.set(c.id, c);
     });
-    const merged = [...best.values()]
-      .sort(
-        (x, y) =>
-          (y.rerankScore ?? 0) - (x.rerankScore ?? 0) ||
-          (firstSeen.get(x.id) ?? 0) - (firstSeen.get(y.id) ?? 0),
-      )
-      .slice(0, config.rerank.finalCap);
+    const sorted = [...best.values()].sort(
+      (x, y) =>
+        (y.rerankScore ?? 0) - (x.rerankScore ?? 0) ||
+        (firstSeen.get(x.id) ?? 0) - (firstSeen.get(y.id) ?? 0),
+    );
+    // Each strategy's list is reranked on its own, so its records of one report meet here.
+    const collapsed = collapseReportCopies(sorted, (c) => texts.get(c.id) ?? c.text);
     return {
-      chunks: merged,
+      chunks: collapsed.slice(0, config.rerank.finalCap),
+      droppedAsReportCopy: sorted.length - collapsed.length,
       trace: {
         status: (errors.length > 0 ? 'degraded' : 'reranked') as RerankStatus,
         candidates: outcomes.reduce((n, o) => n + o.length, 0),
@@ -651,13 +657,21 @@ export const retrieve = async (input: RetrieveInput): Promise<RetrievalResult> =
       config.maxPerDocument ??
       relaxedCap(boosted, config.diversity.defaultMaxPerDocument, config.diversity);
     const capped = capPerDocument(boosted, maxPerDocument);
-    const final = config.duplicateFiles === 'never' ? capped : suppressDuplicateFiles(capped);
+    // Before the file check, so a copy of the same file never displaces the agency's own record.
+    const collapsed = collapseReportCopies(capped, (c) => content.get(c.id) ?? c.text);
+    const final = config.duplicateFiles === 'never' ? collapsed : suppressDuplicateFiles(collapsed);
+    let droppedAsReportCopy = capped.length - collapsed.length;
 
     const query = queries[0] ?? '';
     const reranked = !config.rerank.enabled
       ? { chunks: final, trace: { status: 'off' as RerankStatus, candidates: 0, ms: 0 } }
       : config.rerank.perStrategy
-        ? await perStrategyRerank(result.baseLists, query, result.seen, note)
+        ? await perStrategyRerank(result.baseLists, query, result.seen, note).then(
+            ({ droppedAsReportCopy: dropped, ...r }) => {
+              droppedAsReportCopy = dropped;
+              return r;
+            },
+          )
         : await rerankList(final, query, content);
 
     return {
@@ -676,7 +690,8 @@ export const retrieve = async (input: RetrieveInput): Promise<RetrievalResult> =
         chunksBeforeDiversity: boosted.length,
         chunksAfterDiversity: final.length,
         droppedByDiversity: Math.max(0, boosted.length - capped.length),
-        droppedAsDuplicateFile: Math.max(0, capped.length - final.length),
+        droppedAsDuplicateFile: Math.max(0, collapsed.length - final.length),
+        droppedAsReportCopy,
         rerank: reranked.trace,
         warnings: [...result.warnings, ...notices],
         ...(skipped.size > 0 ? { skipped: [...skipped.values()] } : {}),
@@ -692,7 +707,10 @@ export const retrieve = async (input: RetrieveInput): Promise<RetrievalResult> =
   if (!runUnion) return { chunks: expansion.chunks, trace: { expansion: expansion.trace } };
   const intentPass = await pass([intent]);
   return {
-    chunks: unionMerge(intentPass.chunks, expansion.chunks, union.mode, union.cap, union.rrfK),
+    // Each pass collapses on its own, so one may hold the copy the other dropped.
+    chunks: collapseReportCopies(
+      unionMerge(intentPass.chunks, expansion.chunks, union.mode, union.cap, union.rrfK),
+    ),
     trace: {
       expansion: expansion.trace,
       intent: intentPass.trace,
