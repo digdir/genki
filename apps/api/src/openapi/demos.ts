@@ -294,7 +294,9 @@ export const demoRoutes: RouteConfig[] = [
       400: problem('Invalid body'),
       ...recorderOnly,
       404: problem('No such demo, or a queued recording of another demo'),
-      409: problem('urn:genai:problem:recording-finished: the queued recording was cancelled'),
+      409: problem(
+        'urn:genai:problem:recording-open: another recording of the demo has not ended; urn:genai:problem:recording-finished: the queued recording was cancelled',
+      ),
     },
   }),
   createRoute({

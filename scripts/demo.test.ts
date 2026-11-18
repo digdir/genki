@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -17,6 +17,8 @@ import {
   parseArgs,
   parseDemo,
   pickDemos,
+  recordDemo,
+  RecordingOpen,
   posterArgs,
   readyFailure,
   retrying,
@@ -403,6 +405,39 @@ describe('reporting to the demo library', () => {
     fail(409);
 
     await expect(library.upload('r1', 'step-1.png', 'f')).rejects.toBeInstanceOf(Cancelled);
+  });
+
+  it('tells an open recording of the demo apart from an ended one when starting', async () => {
+    const send = (async (input: string | URL | Request) =>
+      String(input).endsWith('/health')
+        ? Response.json({ version: '0.44.0' })
+        : Response.json(
+            { type: 'urn:genai:problem:recording-open' },
+            { status: 409 },
+          )) as typeof fetch;
+    const library = libraryOf('https://api.example', 'k', send, () => Buffer.from('x'));
+
+    await expect(library.start('playground', true)).rejects.toBeInstanceOf(RecordingOpen);
+  });
+
+  it('skips a demo whose recording is already open and writes nothing for it', async () => {
+    const name = `open-${Date.now()}`;
+    const library = {
+      start: () => Promise.reject(new RecordingOpen('open')),
+      upload: () => Promise.reject(new Error('no upload expected')),
+      finish: () => Promise.reject(new Error('no finish expected')),
+    };
+
+    const result = await recordDemo(parseDemo(minimal('  - say: Hei\n')), name, true, {
+      library,
+    });
+
+    expect(result).toEqual({
+      name,
+      outcome: 'skipped',
+      reason: 'another recording of it is open',
+    });
+    expect(existsSync(join('demos/out', name))).toBe(false);
   });
 
   it('reports a failed step with the command it was running and why', () => {

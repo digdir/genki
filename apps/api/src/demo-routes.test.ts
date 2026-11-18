@@ -416,6 +416,64 @@ describe('recording from the console', () => {
     expect(await second.json()).toMatchObject({ type: 'urn:genai:problem:recording-open' });
   });
 
+  it('refuses the recorder a new recording while one queued from the console is open', async () => {
+    const { request, record, send } = await queued();
+    const recording = await readJson<Recording>(await request());
+
+    const started = await record('/recorder/demos/playground/recordings', {
+      json: { genkiVersion: '0.44.0', narrated: true },
+    });
+    const detail = await readJson<{ recordings: Recording[] }>(
+      await send('/operator/demos/playground', 'operator'),
+    );
+
+    expect(started.status).toBe(409);
+    expect(await started.json()).toMatchObject({ type: 'urn:genai:problem:recording-open' });
+    expect(detail.recordings).toMatchObject([{ id: recording.id, status: 'queued' }]);
+  });
+
+  it('refuses the recorder a second recording while its first is running', async () => {
+    const { start, record } = await queued();
+    await start();
+
+    const second = await record('/recorder/demos/playground/recordings', {
+      json: { genkiVersion: '0.44.0', narrated: true },
+    });
+
+    expect(second.status).toBe(409);
+    expect(await second.json()).toMatchObject({ type: 'urn:genai:problem:recording-open' });
+  });
+
+  it.each(['console', 'recorder'])(
+    'keeps one open recording when the console and the recorder start at once, %s first',
+    async (first) => {
+      const { request, record, send } = await queued();
+      const fromConsole = () => request();
+      const fromRecorder = () =>
+        record('/recorder/demos/playground/recordings', {
+          json: { genkiVersion: '0.44.0', narrated: true },
+        });
+
+      const [lead, follow] =
+        first === 'console' ? [fromConsole, fromRecorder] : [fromRecorder, fromConsole];
+
+      const leading = lead();
+      await new Promise((resolve) => setImmediate(resolve));
+      const answers = await Promise.all([leading, follow()]);
+      const detail = await readJson<{ recordings: Recording[] }>(
+        await send('/operator/demos/playground', 'operator'),
+      );
+
+      const refused = answers.filter((a) => a.status === 409);
+      expect(refused).toHaveLength(1);
+      expect(answers.every((a) => [201, 202, 409].includes(a.status))).toBe(true);
+      expect(await refused[0]?.json()).toMatchObject({ type: 'urn:genai:problem:recording-open' });
+      expect(
+        detail.recordings.filter((r) => ['queued', 'running'].includes(r.status)),
+      ).toHaveLength(1);
+    },
+  );
+
   it('refuses to queue without a reason, and from someone who is not a demo editor', async () => {
     const { send } = await queued();
 

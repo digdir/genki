@@ -340,6 +340,7 @@ export class StepFailure extends Error {
 }
 
 export class Cancelled extends Error {}
+export class RecordingOpen extends Error {}
 
 export const stepFailure = (index: number, step: DemoStep, command: string[], error: unknown) =>
   new StepFailure(
@@ -573,7 +574,12 @@ export const libraryOf = (
       headers: { 'x-recorder-key': key, ...(type ? { 'content-type': type } : {}) },
       ...(body === undefined ? {} : { body }),
     });
-    if (res.status === 409) throw new Cancelled(`${path} answered 409: the recording has ended`);
+    if (res.status === 409) {
+      const problem = (await res.json().catch(() => ({}))) as { type?: string };
+      if (problem.type === 'urn:genai:problem:recording-open')
+        throw new RecordingOpen(`${path} answered 409: another recording of the demo is open`);
+      throw new Cancelled(`${path} answered 409: the recording has ended`);
+    }
     if (!res.ok) throw new Error(`${method} ${path} answered ${res.status}`);
     return res;
   };
@@ -683,7 +689,7 @@ async function recordStored(id: string, silent: boolean): Promise<DemoResult> {
   });
 }
 
-async function recordDemo(
+export async function recordDemo(
   demo: Demo,
   name: string,
   silent: boolean,
@@ -697,14 +703,26 @@ async function recordDemo(
   }
   const out = resolve('demos/out', name);
   const cache = cacheDir();
-  rmSync(out, { recursive: true, force: true });
-  mkdirSync(out, { recursive: true });
-  mkdirSync(cache, { recursive: true });
-
   const narrate = !silent && narrationOf(demo, cache, speechConfigured());
   if (!narrate) console.log(`${name}: no voice, recording with subtitles only`);
   const library = reporting?.library;
-  const recording = library ? await library.start(name, narrate, reporting.recording) : undefined;
+  let recording: string | undefined;
+  try {
+    recording = library ? await library.start(name, narrate, reporting.recording) : undefined;
+  } catch (error) {
+    if (error instanceof RecordingOpen) {
+      console.log(`${name}: skipped, another recording of it is open`);
+      return { name, outcome: 'skipped', reason: 'another recording of it is open' };
+    }
+    if (error instanceof Cancelled) {
+      console.log(`${name}: cancelled`);
+      return { name, outcome: 'skipped', reason: 'cancelled' };
+    }
+    throw error;
+  }
+  rmSync(out, { recursive: true, force: true });
+  mkdirSync(out, { recursive: true });
+  mkdirSync(cache, { recursive: true });
   const upload = async (file: string, as: string) => {
     if (library && recording) await library.upload(recording, as, file);
   };

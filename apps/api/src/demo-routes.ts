@@ -161,6 +161,10 @@ export const createDemosModule =
         ifVersion: current.version,
       });
 
+    const refuseOpen = async (demo: string, except?: string) => {
+      const open = (await recordingsOf(store, demo)).find((r) => r.id !== except && isOpen(r.spec));
+      if (open) throw new DemoRefused('recording', `recording ${open.id} has not finished`);
+    };
     const finished = (c: Context) =>
       problem(
         c,
@@ -339,9 +343,7 @@ export const createDemosModule =
               `demo-recording:${id}`,
               () =>
                 one(async () => {
-                  const open = (await recordingsOf(store, demo.id)).find((r) => isOpen(r.spec));
-                  if (open)
-                    throw new DemoRefused('recording', `recording ${open.id} has not finished`);
+                  await refuseOpen(demo.id);
                   const settings = await settingsOf(store);
                   return appendVersion<RecordingSpec>(store, {
                     kind: recordingKind,
@@ -574,8 +576,10 @@ export const createDemosModule =
                     const current = (await latestRecording(store, id)) ?? claimed;
                     if (current.spec.status !== 'queued')
                       throw new DemoRefused('status', 'the recording has finished');
+                    await refuseOpen(demo.id, id);
                     return update(current, spec, `platform:${principal.subject}`, 'started');
                   }
+                  await refuseOpen(demo.id);
                   return appendVersion<RecordingSpec>(store, {
                     kind: recordingKind,
                     scope: platformScope,
@@ -590,6 +594,13 @@ export const createDemosModule =
             c.header('genai-task', done.task);
             return c.json(recordingView(done.value), 201);
           } catch (error) {
+            if (error instanceof DemoRefused && error.path === 'recording')
+              return problem(
+                c,
+                409,
+                [{ path: error.path, message: error.message }],
+                recordingOpenType,
+              );
             if (error instanceof DemoRefused) return finished(c);
             return conflictOr(c, error);
           }
