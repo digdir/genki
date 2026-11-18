@@ -174,7 +174,7 @@ describe('synthesis context selection', () => {
             () => result('', [call('read_chunks', { chunk_ids: ['c1'] })]),
             () => result('', [call('read_chunks', { chunk_ids: ['c2'] })]),
           ],
-          read: [() => readSignal('gap-remaining'), allSupported],
+          read: [unsure, allSupported],
           synth: [() => 'Svar [1].'],
         },
       },
