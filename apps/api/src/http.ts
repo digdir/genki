@@ -40,11 +40,11 @@ export const problems = {
   422: { content: problemContent, description: 'The change is invalid' },
 } as const;
 
-export const problem = <S extends 400 | 401 | 403 | 404 | 422>(
+export const problem = <S extends 400 | 401 | 403 | 404 | 409 | 422>(
   c: Context,
   status: S,
   title: string,
-  extra: { detail?: string; errors?: ValidationError[] } = {},
+  extra: { type?: string; detail?: string; errors?: ValidationError[] } = {},
 ) =>
   c.json({ type: 'about:blank', title, status: status as number, ...extra }, status, {
     'content-type': 'application/problem+json',

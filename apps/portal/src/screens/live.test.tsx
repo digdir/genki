@@ -157,18 +157,13 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('live mode shows only platform data', () => {
-  it('keeps example ingestions and changes off Oversikt, and reads changes from the audit log', async () => {
+  it('keeps example ingestions and changes off Oversikt on a fresh platform', async () => {
     await renderLive('#/overview');
 
     await screen.findByRole('heading', { level: 1, name: 'Oversikt' });
+    expect(await screen.findByText('0 av 4 steg er gjort')).toBeTruthy();
     expect(screen.queryByText('Nettsidene til Testetaten')).toBeNull();
     expect(screen.queryByText('Ola Nordmann')).toBeNull();
-    expect(
-      screen.getByRole('heading', { name: 'Innlesinger som trenger oppfølging' }),
-    ).toBeTruthy();
-    expect(screen.queryByText('Ikke tilgjengelig ennå')).toBeNull();
-    expect(screen.getByText('Ingen datasett ennå')).toBeTruthy();
-    expect(await screen.findByText('Ingen endringer ennå')).toBeTruthy();
   });
 
   it('lists no example services on a fresh platform', async () => {
@@ -269,7 +264,7 @@ describe('live mode shows only platform data', () => {
     expect(screen.queryByText(/faithful/)).toBeNull();
   });
 
-  it('says a service limit cannot be set yet in live mode', async () => {
+  it('shows no service limit column in live mode, since limits cannot be stored', async () => {
     const used = { inputTokens: 100, outputTokens: 50, requests: 2, costMicroNok: 1000 };
     const withUsage: typeof fetch = async (input, init) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
@@ -293,8 +288,8 @@ describe('live mode shows only platform data', () => {
     const row = (await screen.findByRole('rowheader', { name: /Svartjenesten/ })).closest(
       'tr',
     ) as HTMLElement;
-    expect(within(row).getByText('Kan ikke settes ennå')).toBeTruthy();
-    expect(within(row).queryByText('Ingen egen grense')).toBeNull();
+    expect(within(row).queryByText('Kan ikke settes ennå')).toBeNull();
+    expect(screen.queryByRole('columnheader', { name: /Grense/ })).toBeNull();
   });
 
   it('does not show the example no-access page in live mode', async () => {

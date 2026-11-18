@@ -154,7 +154,7 @@ export const DeveloperToolsFrame = ({
               return (
                 <li key={tool.id}>
                   <a
-                    href={`#/developer/${tool.id}`}
+                    href={tool.id === 'step-flows' ? '#/step-flows' : `#/developer/${tool.id}`}
                     aria-current={active ? 'page' : undefined}
                     className={active ? 'active' : undefined}
                   >
@@ -230,7 +230,7 @@ export const DeveloperTools = ({
         </div>
       ) : null}
       {current.id === 'status' ? (
-        <DevStatus api={api} />
+        <DevStatus api={api} tenant={tenant} />
       ) : current.id === 'api' ? (
         <ApiPage {...props} integrations={integrations} />
       ) : current.id === 'guardrails' ? (

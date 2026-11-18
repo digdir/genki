@@ -290,6 +290,112 @@ export const mountDatasetSearch = <E extends Env, S extends Schema, B extends st
       shared ?? deps.platformTenant,
     );
   });
+
+  mountDatasetDocuments(app, deps);
+};
+
+export const datasetDocumentsPeopleOnlyType = 'urn:genai:problem:dataset-documents-people-only';
+export const datasetDocumentsUnsupportedType = 'urn:genai:problem:dataset-documents-unsupported';
+export const datasetDocumentsFailedType = 'urn:genai:problem:dataset-documents-failed';
+
+export const maxDocumentsLimit = 100;
+
+export const datasetDocumentsQuery = z.object({
+  limit: z.coerce.number().int().min(1).max(maxDocumentsLimit).default(50),
+  offset: z.coerce.number().int().min(0).max(100_000).default(0),
+});
+
+export interface DatasetDocumentsPage {
+  dataset: string;
+  limit: number;
+  offset: number;
+  found?: number;
+  documents: { id: string; title?: string; url?: string; fields: Record<string, unknown> }[];
+}
+
+const typed = (c: Context, type: string, status: 403 | 422 | 502, title: string) =>
+  c.json({ type, title, status }, status, { 'content-type': 'application/problem+json' });
+
+export const mountDatasetDocuments = <E extends Env, S extends Schema, B extends string>(
+  app: Hono<E, S, B>,
+  deps: Pick<DatasetSearchDeps, 'knowledge' | 'catalog' | 'authenticate' | 'access' | 'logger'>,
+) => {
+  app.get('/tenants/:tenant/datasets/:id/documents', async (c) => {
+    const principal = await deps.authenticate(c.req.raw);
+    if (!principal) return problem(c, 401, t('problems.notSignedIn'));
+    if (!searchers.has(principal.kind))
+      return typed(
+        c,
+        datasetDocumentsPeopleOnlyType,
+        403,
+        t('problems.datasetDocumentsPeopleOnly'),
+      );
+    const tenant = c.req.param('tenant') ?? '';
+    const entered = enterTenant(c, deps.access, principal, tenant);
+    if ('response' in entered) return entered.response;
+    const parsed = datasetDocumentsQuery.safeParse(c.req.query());
+    if (!parsed.success)
+      return problem(c, 422, t('problems.invalidRequest'), {
+        errors: parsed.error.issues.map((i) => ({
+          path: i.path.join('.') || 'query',
+          message: i.message,
+        })),
+      });
+    const { limit, offset } = parsed.data;
+    if (offset % limit !== 0)
+      return problem(c, 422, t('problems.invalidRequest'), {
+        errors: [{ path: 'offset', message: t('problems.datasetDocumentsOffsetNotPage') }],
+      });
+    const asked = c.req.param('id') ?? '';
+    const ids = new Set(
+      [asked, deps.catalog.qualify(tenant, asked)].map((id) => deps.knowledge.resolve(id) ?? id),
+    );
+    const item = deps.catalog.visibleTo(tenant).find((i) => i.kind === 'dataset' && ids.has(i.id));
+    if (!item) return problem(c, 404, t('problems.diagnosticsDatasetNotFound'));
+    try {
+      const port = deps.knowledge.open(
+        { kind: 'dataset', id: item.id, tenant },
+        {
+          tenant,
+          principal: entered.principal,
+          task: 'dataset-documents',
+          signal: c.req.raw.signal,
+          meter: async () => undefined,
+        },
+      );
+      if (!port.documents)
+        return typed(
+          c,
+          datasetDocumentsUnsupportedType,
+          422,
+          t('problems.datasetDocumentsUnsupported'),
+        );
+      const page = await port.documents({ limit, offset });
+      const answer: DatasetDocumentsPage = {
+        dataset: item.id,
+        limit,
+        offset,
+        ...(page.found === undefined ? {} : { found: page.found }),
+        documents: page.documents.map((d) => ({
+          id: d.id,
+          ...(d.title === undefined ? {} : { title: d.title }),
+          ...(d.url === undefined ? {} : { url: d.url }),
+          fields: d.fields,
+        })),
+      };
+      return c.json(answer);
+    } catch (error) {
+      const code = codeOf(error);
+      if (error instanceof KnowledgeError && code === 'forbidden')
+        return problem(c, 404, t('problems.diagnosticsDatasetNotFound'));
+      deps.logger?.('dataset document listing failed', {
+        dataset: item.id,
+        tenant,
+        code: code ?? 'unknown',
+      });
+      return typed(c, datasetDocumentsFailedType, 502, t('problems.datasetDocumentsFailed'));
+    }
+  });
 };
 
 const missingSearchTask: TrackedWork = async () => {

@@ -14,6 +14,7 @@ import {
   environmentNamePattern,
 } from '@genai/identity';
 import type { TaskErasure } from '@genai/kernel';
+import type { Residency } from '@genai/port-model';
 import type { ConnectionRegistry } from '@genai/providers-mcp-client';
 import {
   combine,
@@ -166,6 +167,12 @@ export class InMemoryTenantApiKeys implements TenantApiKeys, ApiKeyStore, KeyPol
   }
 }
 
+interface TaskFailure {
+  code: string;
+  reason: string;
+  step?: string;
+}
+
 export interface ServiceRequirement {
   resource: string;
   action: string;
@@ -187,10 +194,12 @@ export interface PortalRouteDeps {
   connections: ConnectionRegistry;
   requirementFor(tenant: string, service: string): ServiceRequirement;
   prices?: Record<string, ModelPrice>;
+  modelResidency?(model: string): Residency | undefined;
   ingestionUsage?(
     tenant: string,
   ): Promise<{ at: string; dataset: string; model: string; usage: Usage }[]>;
   projectTasks?(tenant: string): Promise<{ task: string; project: string; name: string }[]>;
+  quota?(tenant: string): Promise<{ usedTokens: number; monthlyTokens: number }>;
   serviceHealth?(tenant: string, service: string): Promise<ServiceHealth | undefined>;
   lifecycle?(tenant: string, service: string): Promise<LifecycleView>;
   names?: { namesOf(actors: string[]): Promise<Map<string, string>> };
@@ -205,6 +214,25 @@ export interface PortalRouteDeps {
   newKey?(): string;
   newId?(): string;
 }
+
+export const quotaAlertPercent = 80;
+
+export const quotaView = ({
+  usedTokens,
+  monthlyTokens,
+}: {
+  usedTokens: number;
+  monthlyTokens: number;
+}) => {
+  const usedPercent = Math.round((usedTokens / monthlyTokens) * 1000) / 10;
+  return {
+    usedTokens,
+    monthlyTokens,
+    usedPercent,
+    alertPercent: quotaAlertPercent,
+    alert: usedTokens * 100 >= quotaAlertPercent * monthlyTokens,
+  };
+};
 
 const forTenant = (principal: Principal, tenant: string) =>
   principal.kind === 'operator' || principal.tenant === tenant;
@@ -755,6 +783,7 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
         const metadata = (latest?.definition.metadata ?? {}) as { name?: string };
         const spec = (latest?.definition.spec ?? {}) as Record<string, unknown>;
         const output = (spec.output ?? {}) as { kind?: unknown };
+        const primary = (spec.model as { primary?: unknown } | undefined)?.primary;
         const health = await deps.serviceHealth?.(tenant, d.id);
         const lifecycle = (await deps.lifecycle?.(tenant, d.id)) ?? { state: 'active' as const };
         const by = latest ? people?.get(latest.publishedBy) : undefined;
@@ -764,6 +793,10 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
           purpose: typeof spec.purpose === 'string' ? spec.purpose : '',
           outputKind: typeof output.kind === 'string' ? output.kind : 'answer',
           channels: channelsOf(spec),
+          model:
+            typeof primary === 'string'
+              ? { id: primary, residency: deps.modelResidency?.(primary) ?? null }
+              : null,
           latestVersion: latest?.version ?? null,
           status: lifecycle.state === 'paused' ? 'paused' : (health?.status ?? 'active'),
           statusReason:
@@ -901,6 +934,34 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
     });
   };
 
+  const failuresOf = async (tasks: string[]) => {
+    const errors = new Map<string, Event[]>();
+    const keep = (event: Event) =>
+      errors.set(event.task, [...(errors.get(event.task) ?? []), event]);
+    if (tasks.length === 0) return new Map<string, TaskFailure>();
+    if (deps.eventsOfType) {
+      for (const event of await deps.eventsOfType(tasks, 'kernel.error')) keep(event);
+    } else if (deps.events) {
+      const events = deps.events;
+      await Promise.all(
+        tasks.map(async (task) => {
+          for await (const event of events(task)) if (event.type === 'kernel.error') keep(event);
+        }),
+      );
+    }
+    const out = new Map<string, TaskFailure>();
+    for (const [task, found] of errors) {
+      const failure = failureOf(found);
+      if (failure)
+        out.set(task, {
+          code: failure.code,
+          reason: failureReason(failure),
+          ...(failure.step ? { step: failure.step } : {}),
+        });
+    }
+    return out;
+  };
+
   const gatewayWindow = async (tenants: string[], from: Date, to: Date): Promise<GatewayWindow> => {
     if (!deps.gatewayUsage) return { rows: [], rates: [] };
     const [rows, rates] = await Promise.all([
@@ -1016,9 +1077,12 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
     }
     let testing = empty();
     const byOrigin = new Map<string, Tally>();
+    const dailyTesting = new Map<string, Tally>();
+    const dailyIngestion = new Map<string, Tally>();
     for (const t of testRuns) {
       const { tally, models } = taskTally(t, usage.get(t.id));
       testing = add(testing, tally);
+      bump(dailyTesting, day(t.createdAt), tally);
       totals = add(totals, tally);
       bump(daily, day(t.createdAt), tally);
       bump(byOrigin, originOf(t.service.capability.id), tally);
@@ -1034,6 +1098,7 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       if (!within(run.at)) continue;
       const tally = tallyOf(run.usage, deps.prices?.[run.model]);
       ingestion = add(ingestion, tally);
+      bump(dailyIngestion, day(run.at), tally);
       totals = add(totals, tally);
       bump(daily, day(run.at), tally);
       bump(byModel, run.model, tally);
@@ -1101,6 +1166,8 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
         },
         byService: views(dailyService.get(d), (s) => runs.get(`day|${d}|${s}`) ?? 0),
         byModel: views(dailyModel.get(d)),
+        testing: usageView(dailyTesting.get(d) ?? empty()),
+        ingestion: usageView(dailyIngestion.get(d) ?? empty()),
       });
     }
     const rows = <K extends string>(map: Map<string, Tally>, key: K) =>
@@ -1112,12 +1179,21 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
               usage: ReturnType<typeof usageView>;
             },
         );
+    const unpricedModels = [
+      ...new Set(
+        [...byModel, ...gatewayByModel]
+          .filter(([id, tally]) => id && !usageView(tally).priced)
+          .map(([id]) => id),
+      ),
+    ].sort();
+    const totalsView = usageView(totals);
     return {
       from: from.toISOString(),
       to: to.toISOString(),
-      priced: totals.unpricedTokens === 0,
+      priced: totalsView.priced,
       totals: {
-        ...usageView(totals),
+        ...totalsView,
+        unpricedModels,
         runs: runs.get('') ?? 0,
         ...sources(genkiTotals, gatewayTotals),
       },
@@ -1455,16 +1531,11 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
     const from = new Date(to.getTime() - (days - 1) * 86_400_000);
     const project = c.req.query('project')?.trim() || undefined;
     const environment = c.req.query('environment')?.trim() || undefined;
-    return c.json(
-      await usageOver(
-        g.tenant,
-        new Date(day(from.toISOString())),
-        to,
-        project,
-        undefined,
-        environment,
-      ),
-    );
+    const [usage, quota] = await Promise.all([
+      usageOver(g.tenant, new Date(day(from.toISOString())), to, project, undefined, environment),
+      deps.quota?.(g.tenant),
+    ]);
+    return c.json({ ...usage, ...(quota ? { quota: quotaView(quota) } : {}) });
   });
 
   app.get('/tenants/:tenant/tasks', async (c) => {
@@ -1492,13 +1563,21 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       .filter((r) => !from || r.createdAt >= from)
       .filter((r) => !to || r.createdAt <= to)
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-    const data = await taskViews(
-      g.tenant,
-      caps,
-      rows.slice(0, limit).map((r) => byId.get(r.id) as Task),
-      requireRight(g.principal, g.tenant, 'manage-services').ok,
-      requireRight(g.principal, g.tenant, 'view-usage').ok,
-    );
+    const shown = rows.slice(0, limit).map((r) => byId.get(r.id) as Task);
+    const [views, failures] = await Promise.all([
+      taskViews(
+        g.tenant,
+        caps,
+        shown,
+        requireRight(g.principal, g.tenant, 'manage-services').ok,
+        requireRight(g.principal, g.tenant, 'view-usage').ok,
+      ),
+      failuresOf(shown.filter((t) => t.status === 'failed').map((t) => t.id)),
+    ]);
+    const data = views.map((view) => {
+      const failure = failures.get(view.id);
+      return failure ? { ...view, failure } : view;
+    });
     return c.json({ data, total: rows.length });
   });
 
@@ -1513,29 +1592,17 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       .filter((t) => t.principal.id === self && (!status || t.status === status))
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
       .slice(0, limit);
-    const data = await Promise.all(
-      own.map(async (t) => {
-        const events: Event[] = [];
-        if (t.status === 'failed' && deps.events)
-          for await (const e of deps.events(t.id)) if (e.type === 'kernel.error') events.push(e);
-        const failure = failureOf(events);
-        const title = caps.find((x) => x.capability.descriptor.id === t.service.capability.id)
-          ?.capability.descriptor.title;
-        return {
-          ...taskBase(caps, t),
-          ...(title ? { serviceName: title } : {}),
-          ...(failure
-            ? {
-                failure: {
-                  code: failure.code,
-                  reason: failureReason(failure),
-                  ...(failure.step ? { step: failure.step } : {}),
-                },
-              }
-            : {}),
-        };
-      }),
-    );
+    const failures = await failuresOf(own.filter((t) => t.status === 'failed').map((t) => t.id));
+    const data = own.map((t) => {
+      const failure = failures.get(t.id);
+      const title = caps.find((x) => x.capability.descriptor.id === t.service.capability.id)
+        ?.capability.descriptor.title;
+      return {
+        ...taskBase(caps, t),
+        ...(title ? { serviceName: title } : {}),
+        ...(failure ? { failure } : {}),
+      };
+    });
     return c.json({ data });
   });
 
@@ -1549,14 +1616,18 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       ![serviceOrigin, 'playground'].includes(originOf(found.service.capability.id))
     )
       return problem(c, 404, 'Not found');
-    const [view] = await taskViews(
-      g.tenant,
-      await capabilitiesOf(g.tenant),
-      [found],
-      requireRight(g.principal, g.tenant, 'manage-services').ok,
-      requireRight(g.principal, g.tenant, 'view-usage').ok,
-    );
-    return c.json(view);
+    const [[view], failures] = await Promise.all([
+      taskViews(
+        g.tenant,
+        await capabilitiesOf(g.tenant),
+        [found],
+        requireRight(g.principal, g.tenant, 'manage-services').ok,
+        requireRight(g.principal, g.tenant, 'view-usage').ok,
+      ),
+      failuresOf(found.status === 'failed' ? [found.id] : []),
+    ]);
+    const failure = failures.get(found.id);
+    return c.json(view && failure ? { ...view, failure } : view);
   });
 
   app.get('/tenants/:tenant/services', async (c) => {

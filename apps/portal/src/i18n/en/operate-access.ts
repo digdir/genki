@@ -35,6 +35,12 @@ const access = {
   colleaguesInAltinn:
     'The portal does not fetch your colleagues’ rights from Altinn yet. See who has which rights in Altinn.',
   servicesLead: 'Everyone with «{right}» can use all the services.',
+  serviceKeysLead:
+    'Systems call a service with an API key bound to it. The keys are made and revoked under Channels and frontends on the service, and every change is logged.',
+  serviceKeys: {
+    one: '1 API key is bound to the service',
+    other: '{count} API keys are bound to the service',
+  },
   loadingServices: 'Fetching the services',
   noServicesTitle: 'No services yet',
   noServicesText: 'The services you publish are shown here.',

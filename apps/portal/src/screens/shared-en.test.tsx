@@ -37,7 +37,7 @@ describe('shared services in English', () => {
     expect(screen.getByRole('button', { name: 'Try and see details for Summary' })).toBeTruthy();
   });
 
-  it('shows the residency and missing score of a live service in English on the detail page', async () => {
+  it('shows the residency of a live service in English on the detail page', async () => {
     const api = {
       sharedServices: () => Promise.resolve([service]),
       listModels: () => Promise.resolve(models),
@@ -50,15 +50,21 @@ describe('shared services in English', () => {
     render(inEnglish(<SharedServices {...props} />));
     expect(await screen.findByRole('heading', { level: 1, name: 'Summary' })).toBeTruthy();
     const fact = (label: string) => screen.getByText(label, { selector: 'dt' }).nextElementSibling;
-    expect(fact('Where data is processed')?.textContent).toBe('Norway');
-    expect(screen.getByText('Not measured')).toBeTruthy();
+    expect(fact('Where data is processed')?.textContent).toBe('Norway How data is handled');
   });
 
   it('shows the detail page chrome and validation in English', () => {
     const capability = sharedCapabilities[0] as (typeof sharedCapabilities)[number];
     render(
       inEnglish(
-        <SharedServiceDetail api={{} as ApiClient} capability={capability} publicName="x" />,
+        <SharedServiceDetail
+          api={{} as ApiClient}
+          tenant="999888777"
+          capability={capability}
+          publicName="x"
+          block={undefined}
+          blockId="991825827/klarsprak"
+        />,
       ),
     );
     expect(screen.getByRole('heading', { name: 'Try now' })).toBeTruthy();

@@ -1,21 +1,75 @@
 import { Alert, Button, Heading, Paragraph, Tag } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
-import type { ReactNode } from 'react';
 import type { ApiClient } from '../../api';
+import type { ComponentStatus, TenantStatus } from '../../api/platform-status';
 import { useAsync } from '../../hooks';
-import { useT } from '../../i18n';
+import { useT, type PlainKey } from '../../i18n';
 import { Loading } from '../../states';
-
-const link = (href: string) => (chunks: ReactNode) => <a href={href}>{chunks}</a>;
 
 export const shortVersion = (version: string) =>
   /^[0-9a-f]{8,40}$/i.test(version) ? version.slice(0, 7) : version;
 
+const statusLabels: Record<ComponentStatus, PlainKey> = {
+  normal: 'platformStatus.statusNormal',
+  degraded: 'platformStatus.statusDegraded',
+  down: 'platformStatus.statusDown',
+};
+
+const statusColors: Record<ComponentStatus, 'success' | 'warning' | 'danger'> = {
+  normal: 'success',
+  degraded: 'warning',
+  down: 'danger',
+};
+
+const queueLabels: Record<TenantStatus['queue'][number]['status'], PlainKey> = {
+  running: 'platformStatus.queueRunning',
+  waiting: 'platformStatus.queueWaiting',
+  failed: 'platformStatus.queueFailed',
+};
+
+const serverComponents = (status: TenantStatus) =>
+  status.components.filter((c) => c.name !== 'API');
+
+export const overallStatus = (status: TenantStatus): ComponentStatus => {
+  const states = serverComponents(status).map((c) => c.status);
+  if (states.includes('down')) return 'down';
+  if (states.includes('degraded') || status.incidents.length > 0) return 'degraded';
+  return 'normal';
+};
+
+const Summary = ({ status }: { status: TenantStatus }) => {
+  const t = useT();
+  const overall = overallStatus(status);
+  const affected = serverComponents(status)
+    .filter((c) => c.status !== 'normal')
+    .map((c) => c.name);
+  return (
+    <div role="status" className={`dev-status-summary ${overall}`}>
+      <strong>
+        {overall === 'normal'
+          ? t('platformStatus.allWorks')
+          : overall === 'down'
+            ? t('platformStatus.somethingDown')
+            : t('platformStatus.somethingDegraded')}
+      </strong>
+      <span>
+        {overall === 'normal'
+          ? t('platformStatus.allWorksText')
+          : affected.length > 0
+            ? t('platformStatus.affects', { names: affected.join(', ') })
+            : t('platformStatus.incidentOpen')}
+      </span>
+    </div>
+  );
+};
+
 export const DevStatus = ({
   api,
+  tenant,
   now = () => new Date(),
 }: {
-  api: Pick<ApiClient, 'getHealth' | 'cache'>;
+  api: Pick<ApiClient, 'getHealth' | 'cache' | 'platformStatus'>;
+  tenant: string;
   now?: () => Date;
 }) => {
   const t = useT();
@@ -28,9 +82,15 @@ export const DevStatus = ({
     },
     [api],
   );
+  const [status, retryStatus] = useAsync(
+    (signal) => api.platformStatus.tenant(tenant, signal),
+    [api, tenant],
+  );
+  const loading = health.status === 'loading' || status.status === 'loading';
   const checkNow = () => {
     api.cache.invalidate();
     retry();
+    retryStatus();
   };
   return (
     <div className="stack-md">
@@ -42,13 +102,13 @@ export const DevStatus = ({
         </Paragraph>
         <Button
           variant="secondary"
-          aria-disabled={health.status === 'loading' || undefined}
-          onClick={() => health.status !== 'loading' && checkNow()}
+          aria-disabled={loading || undefined}
+          onClick={() => !loading && checkNow()}
         >
           {t('devTools.statusCheckNow')}
         </Button>
       </div>
-      {health.status === 'loading' ? (
+      {loading ? (
         <Loading label={t('app.statusChecking')} />
       ) : health.status === 'error' ? (
         <Alert data-color="danger">
@@ -60,8 +120,36 @@ export const DevStatus = ({
             {t('app.statusCheckAgain')}
           </Button>
         </Alert>
-      ) : (
+      ) : health.status === 'ready' ? (
         <>
+          {status.status === 'error' ? (
+            <Alert data-color="warning">
+              <Heading level={3} data-size="xs">
+                {t('platformStatus.noContact')}
+              </Heading>
+              <Paragraph>{t('platformStatus.noContactText')}</Paragraph>
+              <Button variant="secondary" data-size="sm" onClick={checkNow}>
+                {t('common.tryAgain')}
+              </Button>
+            </Alert>
+          ) : status.status === 'ready' ? (
+            <Summary status={status.data} />
+          ) : null}
+          {status.status === 'ready' && status.data.incidents.length > 0 ? (
+            <section aria-labelledby="ds-incidents" className="stack-sm">
+              <Heading level={3} data-size="2xs" id="ds-incidents">
+                {t('platformStatus.incidents')}
+              </Heading>
+              <ul className="plain-list stack-sm">
+                {status.data.incidents.map((incident, i) => (
+                  <li key={`${incident.title}-${i}`} className="dev-status-incident">
+                    <strong>{incident.title}</strong>
+                    <span>{incident.text}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
           <section aria-labelledby="ds-checks" className="stack-sm">
             <Heading level={3} data-size="2xs" id="ds-checks">
               {t('devTools.statusWhatWeCheck')}
@@ -73,17 +161,89 @@ export const DevStatus = ({
                   <span className="meta">{t('devTools.statusApiHow')}</span>
                 </span>
                 <Tag data-size="sm" data-color="success">
-                  {t('app.statusUp')}
+                  {t('platformStatus.statusNormal')}
                 </Tag>
                 <span className="meta">
                   {t('devTools.statusAnsweredIn', { ms: health.data.ms })}
                 </span>
               </li>
+              {status.status === 'ready'
+                ? serverComponents(status.data).map((c) => (
+                    <li key={c.name}>
+                      <span className="stack-xs">
+                        <strong>{c.name}</strong>
+                      </span>
+                      <Tag data-size="sm" data-color={statusColors[c.status]}>
+                        {t(statusLabels[c.status])}
+                      </Tag>
+                      <span className="meta">
+                        {c.note ??
+                          (c.errorRate
+                            ? t('platformStatus.failedShare', { rate: c.errorRate })
+                            : '')}
+                      </span>
+                    </li>
+                  ))
+                : null}
             </ul>
           </section>
+          {status.status === 'ready' && status.data.queue.length > 0 ? (
+            <section aria-labelledby="ds-queue" className="stack-sm">
+              <Heading level={3} data-size="2xs" id="ds-queue">
+                {t('platformStatus.queue')}
+              </Heading>
+              <ul className="plain-list dev-status-checks">
+                {status.data.queue.map((q) => (
+                  <li key={`${q.what}-${q.at}`}>
+                    <span className="stack-xs">
+                      <strong>{q.what}</strong>
+                      <span className="meta">{q.type}</span>
+                    </span>
+                    <Tag data-size="sm" data-color={q.status === 'failed' ? 'danger' : 'info'}>
+                      {t(queueLabels[q.status])}
+                    </Tag>
+                    <span className="meta">{t('platformStatus.queueAge', { age: q.age })}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
+          {status.status === 'ready' && status.data.triggers.length > 0 ? (
+            <section aria-labelledby="ds-schedules" className="stack-sm">
+              <Heading level={3} data-size="2xs" id="ds-schedules">
+                {t('platformStatus.failingSchedules')}
+              </Heading>
+              <ul className="plain-list dev-status-checks">
+                {status.data.triggers.map((s) => (
+                  <li key={`${s.what}-${s.failedAt}`}>
+                    <span className="stack-xs">
+                      <strong>{s.what}</strong>
+                      <span className="meta">{s.error}</span>
+                    </span>
+                    <Tag data-size="sm" data-color="danger">
+                      {t('platformStatus.statusDown')}
+                    </Tag>
+                    <span className="meta">
+                      {t('platformStatus.failedAt', { when: f.dateTime(s.failedAt) })}
+                      {' · '}
+                      {s.lastSuccess
+                        ? t('platformStatus.lastSuccess', { when: f.dateTime(s.lastSuccess) })
+                        : t('platformStatus.noLastSuccess')}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
           <dl className="kv">
             <dt>{t('app.statusVersion')}</dt>
             <dd>
+              {health.data.builtAt ? (
+                <>
+                  {f.date(health.data.builtAt)}
+                  {' · '}
+                </>
+              ) : null}
               <code>{shortVersion(health.data.version)}</code>
             </dd>
             {health.data.lockdown === undefined ? null : (
@@ -98,10 +258,7 @@ export const DevStatus = ({
             )}
           </dl>
         </>
-      )}
-      <Paragraph>
-        {t.rich('app.statusScope', { services: link('#/services'), log: link('#/log') })}
-      </Paragraph>
+      ) : null}
     </div>
   );
 };

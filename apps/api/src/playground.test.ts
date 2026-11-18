@@ -318,6 +318,21 @@ describe('the playground', () => {
     expect(tasks.data).toEqual([]);
   });
 
+  it('counts playground runs as testing on the day they ran', async () => {
+    const { call, run } = await boot();
+
+    await run({ setup: own('Svar på bokmål.'), input: { text: 'Hei' } });
+    const usage = (await call(`/tenants/${tenant}/usage?days=1`)).body as {
+      testing: { usage: { inputTokens: number } };
+      daily: { testing: { inputTokens: number }; ingestion: { inputTokens: number } }[];
+    };
+
+    expect(usage.daily.map((d) => d.testing.inputTokens)).toEqual([
+      usage.testing.usage.inputTokens,
+    ]);
+    expect(usage.daily.map((d) => d.ingestion.inputTokens)).toEqual([0]);
+  });
+
   it('a run on a service draft uses the draft, not the published version', async () => {
     const { platform, run } = await boot();
     await platform.definitions.publish(service('svar', 'Svar på nynorsk.'), 'test', 'første');

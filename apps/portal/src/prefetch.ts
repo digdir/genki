@@ -1,5 +1,7 @@
 import type { ApiClient } from './api';
 import { prefetchSignal } from './api/cache';
+import { daysThisMonth } from './usage-window';
+import { noFilters, runsRequest } from './screens/log/filters';
 
 type Load = (
   api: ApiClient,
@@ -14,7 +16,6 @@ interface Area {
   item?: (id: string) => readonly Load[];
 }
 
-const tasks: Load = (api, tenant, _live, signal) => api.tasks(tenant, {}, signal);
 const serviceNames: Load = (api, tenant, live, signal) =>
   live ? api.services(tenant, signal) : Promise.resolve(undefined);
 
@@ -24,7 +25,7 @@ const areas: Partial<Record<string, Area>> = {
   overview: {
     list: [
       (api, tenant, _live, signal) => api.overview(tenant, signal),
-      (api, tenant, _live, signal) => api.usage(tenant, Math.max(new Date().getDate(), 1), signal),
+      (api, tenant, _live, signal) => api.usage(tenant, daysThisMonth(), signal),
       (api, tenant, _live, signal) => api.tenantEffectiveSettings(tenant, signal),
       (api, tenant, _live, signal) => api.datasets.list(tenant, signal),
     ],
@@ -45,10 +46,15 @@ const areas: Partial<Record<string, Area>> = {
   },
   log: {
     chunk: () => import('./screens/Log'),
-    list: [tasks, serviceNames],
-    item: (id) => [
-      tasks,
+    list: [
+      (api, tenant, _live, signal) => api.tasks(tenant, runsRequest(noFilters, new Date()), signal),
+      (api, tenant, _live, signal) =>
+        api.tasks(tenant, { ...runsRequest(noFilters, new Date()), origin: 'playground' }, signal),
       serviceNames,
+    ],
+    item: (id) => [
+      serviceNames,
+      (api, tenant, _live, signal) => api.task(tenant, id, signal),
       (api, tenant, _live, signal) => api.getTaskTimeline(tenant, id, signal),
     ],
   },

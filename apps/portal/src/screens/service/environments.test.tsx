@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createApiClient } from '../../api';
 import { exampleUsage, mockFetch } from '../../mock';
+import { useRoute } from '../../hooks';
 import { RightsProvider } from '../../Shell';
 import { renderAt } from '../../test-utils';
 import type { ClientView } from '../../types';
@@ -348,28 +349,22 @@ describe('service environments in the portal', () => {
       [`GET /tenants/${tenant}/tasks`]: () => ({ data: [], total: 0 }),
       [`GET ${environmentsPath}`]: staged,
     });
-    render(
-      <RunsTab
-        api={api}
-        tenant={tenant}
-        runId={undefined}
-        itemIndex={undefined}
-        canReveal={false}
-        live
-        onChange={() => undefined}
-      />,
-    );
+    window.location.hash = '#/log';
+    const Routed = () => {
+      const [route] = useRoute();
+      return <RunsTab api={api} tenant={tenant} live query={route.query} />;
+    };
+    render(<Routed />);
 
     expect(await screen.findByRole('option', { name: 'Klarspråk' })).toBeTruthy();
     expect(screen.queryByLabelText('Miljø')).toBeNull();
     fireEvent.change(screen.getByLabelText('Tjeneste'), { target: { value: 'klarsprak' } });
     fireEvent.change(await screen.findByLabelText('Miljø'), { target: { value: 'test' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Søk' }));
 
     await waitFor(() =>
-      expect(calls.some((c) => /\/tasks\?service=klarsprak&environment=test$/.test(c.path))).toBe(
-        true,
-      ),
+      expect(
+        calls.some((c) => /\/tasks\?service=klarsprak&environment=test&from=/.test(c.path)),
+      ).toBe(true),
     );
   });
 

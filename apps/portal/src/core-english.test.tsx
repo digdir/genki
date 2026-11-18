@@ -123,8 +123,8 @@ describe('screens in English', () => {
     ).toEqual(['Overview', 'Services', 'Shared services']);
     expect(screen.getByRole('link', { name: 'Skip to main content' })).toBeTruthy();
     expect(await screen.findByRole('heading', { level: 2, name: 'Latest changes' })).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: /open user menu/ }));
-    expect(screen.getByRole('link', { name: 'Profile' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Log out' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /User menu for/ }));
+    expect(screen.getByRole('menuitem', { name: 'Profile' })).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: 'Log out' })).toBeTruthy();
   });
 });

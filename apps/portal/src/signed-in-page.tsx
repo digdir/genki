@@ -15,7 +15,6 @@ const DataHandling = lazy(() =>
   import('./screens/DataHandling').then((m) => ({ default: m.DataHandling })),
 );
 const Contact = lazy(() => import('./screens/FooterPages').then((m) => ({ default: m.Contact })));
-const Guide = lazy(() => import('./screens/FooterPages').then((m) => ({ default: m.Guide })));
 const Datasets = lazy(() => import('./screens/Datasets').then((m) => ({ default: m.Datasets })));
 const DeveloperTools = lazy(() =>
   import('./screens/DeveloperTools').then((m) => ({ default: m.DeveloperTools })),
@@ -25,6 +24,9 @@ const Integrations = lazy(() =>
 );
 const Log = lazy(() => import('./screens/Log').then((m) => ({ default: m.Log })));
 const Profile = lazy(() => import('./screens/Profile').then((m) => ({ default: m.Profile })));
+const Onboarding = lazy(() =>
+  import('./screens/Onboarding').then((m) => ({ default: m.Onboarding })),
+);
 const Playground = lazy(() =>
   import('./screens/Playground').then((m) => ({ default: m.Playground })),
 );
@@ -77,6 +79,10 @@ export const Page = ({
   if (area === 'developer' && id === 'api' && sub === 'code')
     return <MovedTo hash="#/developer/api" />;
   if (area === 'developer' && id === 'settings') return <MovedTo hash="#/settings/all" />;
+  if (area === 'developer' && id === 'step-flows')
+    return (
+      <MovedTo hash={window.location.hash.replace(/^#\/developer\/step-flows/, '#/step-flows')} />
+    );
   if (area === 'developer')
     return id === 'hooks' && sub ? (
       <Integrations {...props} />
@@ -84,18 +90,13 @@ export const Page = ({
       <DeveloperTools {...props} integrations={(p) => <Integrations {...p} />} />
     );
   if (area === 'integrations') return <MovedTo hash={developerHashFor(props.route)} />;
-  if (area === 'profile') return <Profile />;
+  if (area === 'profile')
+    return <Profile api={props.api} tenant={props.tenant} tenantName={props.tenantName} />;
   if (area === 'help') return <MovedTo hash="#/onboarding" />;
-  if (area === 'onboarding')
-    return (
-      <>
-        <Heading level={1} data-size="lg">
-          {t('shell.menuOnboarding')}
-        </Heading>
-        <Guide />
-      </>
-    );
+  if (area === 'onboarding') return <Onboarding {...props} />;
   if (area === 'api-reference') return <MovedTo hash={apiReferenceHashFor(props.route)} />;
+  if (area === 'log' && !id && props.route.query.get('tab') === 'changes')
+    return <MovedTo hash="#/log/changes" />;
   if (area === 'log') return <Log {...props} />;
   if (area === 'status') return <MovedTo hash="#/developer/status" />;
   if (area === 'settings' && props.route.query.get('tab') === 'transfer')
@@ -115,13 +116,19 @@ export const Page = ({
   return (
     <>
       <Heading level={1} data-size="lg">
-        {item
-          ? t(item.label)
-          : Object.hasOwn(footerPages, area)
-            ? t(footerPages[area as keyof typeof footerPages])
-            : t('app.notFound')}
+        {t('notFound.title')}
       </Heading>
-      <Paragraph>{t.rich('app.notDrawn', { link: (c) => <a href="#/overview">{c}</a> })}</Paragraph>
+      <Paragraph>{t('notFound.text', { path: window.location.hash })}</Paragraph>
+      <ul>
+        {item ? (
+          <li>
+            <a href={`#${item.path}`}>{t('notFound.goTo', { area: t(item.label) })}</a>
+          </li>
+        ) : null}
+        <li>
+          <a href="#/overview">{t('notFound.goToOverview')}</a>
+        </li>
+      </ul>
     </>
   );
 };

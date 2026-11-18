@@ -347,7 +347,7 @@ describe('the live builder and the server draft', () => {
       improvements: [ready],
     });
     const card = await screen.findByRole('region', { name: /^Forslag fra/ });
-    fireEvent.click(within(card).getByRole('button', { name: 'Godta i utkastet' }));
+    fireEvent.click(within(card).getByRole('button', { name: 'Godkjenn' }));
     await within(card).findByText('Godtatt i utkastet');
 
     window.location.hash = '#/services/rapportassistenten/setup/instructions';
@@ -409,7 +409,7 @@ describe('the live builder and the server draft', () => {
   it('opening a service opens its draft once', async () => {
     const { calls } = await openService('#/services/rapportassistenten/setup');
     await screen.findByRole('heading', { level: 1, name: 'Rapportassistenten' });
-    await screen.findByText(/^Versjon 7 · publisert/);
+    await screen.findByText(/^Versjon 7 i bruk · publisert/);
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(calls.filter((c) => c.url.endsWith('/draft?rebase=clean'))).toHaveLength(1);
   });
@@ -419,7 +419,7 @@ describe('the live builder and the server draft', () => {
     const header = (
       await screen.findByRole('heading', { level: 1, name: 'Rapportassistenten' })
     ).closest('header') as HTMLElement;
-    expect(await within(header).findByText(/^Versjon 7 · publisert/)).toBeTruthy();
+    expect(await within(header).findByText(/^Versjon 7 i bruk · publisert/)).toBeTruthy();
 
     const found = exampleServices.find((s) => s.id === 'rapportassistenten');
     await fetch('/api/definitions', {
@@ -430,7 +430,7 @@ describe('the live builder and the server draft', () => {
     vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 60_000);
     window.location.hash = '#/services/rapportassistenten/quality';
 
-    expect(await screen.findByText(/^Versjon 8 · publisert/)).toBeTruthy();
+    expect(await screen.findByText(/^Versjon 8 i bruk · publisert/)).toBeTruthy();
   });
 });
 

@@ -212,6 +212,7 @@ export interface Improvement {
   examples?: { input: string; before: string; after: string }[];
   reasons?: string[] | string;
   createdAt: string;
+  decision?: { approved: boolean; at: string; reason: string };
 }
 
 export interface ServiceDraft {

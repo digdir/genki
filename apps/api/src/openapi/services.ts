@@ -79,6 +79,19 @@ const ServiceSummary = z
     purpose: z.string(),
     outputKind: z.string(),
     channels: z.array(z.string()),
+    model: z
+      .object({
+        id: z.string(),
+        residency: residency
+          .nullable()
+          .describe(
+            "Where the model processes data, from the platform's model list; null when the model is not in it",
+          ),
+      })
+      .nullable()
+      .describe(
+        "The primary model. Its residency is the model's own, not spec.model.residency, which is the widest the service allows",
+      ),
     latestVersion: z.number().int().nullable(),
     status: z.enum(['active', 'paused']),
     statusReason: z.string().nullable(),

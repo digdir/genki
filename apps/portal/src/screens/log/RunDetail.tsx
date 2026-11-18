@@ -36,9 +36,7 @@ import { notPricedLabel, serviceLabel, statusOf } from '../../format';
 import { BatchView } from './BatchView';
 import { Steps } from './Steps';
 
-type Flash = { text: string; color: 'success' | 'info' } | undefined;
-
-const ErasedNotice = ({ erasure }: { erasure: RunErasure }) => {
+export const ErasedNotice = ({ erasure }: { erasure: RunErasure }) => {
   const t = useT();
   const f = useFormat();
   const when = erasure.at ? f.dateTime(erasure.at) : undefined;
@@ -75,7 +73,6 @@ export const RunDetail = ({
   itemIndex,
   canReveal,
   live = false,
-  onStatus,
   onChange,
 }: {
   api: ApiClient;
@@ -102,15 +99,8 @@ export const RunDetail = ({
   );
   const extras = live ? undefined : runExtras[runId];
   const [open, setOpen] = useState<Record<string, boolean>>({});
-  const [decision, setDecision] = useState<
-    { ok: boolean; comment: string; by: string; at: string } | undefined
-  >();
-  const [comment, setComment] = useState('');
-  const [commentError, setCommentError] = useState('');
-  const [flash, setFlash] = useState<Flash>();
-  const [retried, setRetried] = useState(false);
   const [done, setDone] = useState(138);
-  const [cancelled, setCancelled] = useState(false);
+  const cancelled = false;
   const [reveal, setReveal] = useState<{
     open: boolean;
     reason: string;
@@ -140,60 +130,12 @@ export const RunDetail = ({
       : done >= BATCH_TOTAL
         ? 'completed'
         : 'running'
-    : decision
-      ? decision.ok
-        ? 'completed'
-        : 'cancelled'
-      : retried
-        ? 'running'
-        : run.status;
+    : run.status;
 
-  const runSteps = (): TimelineStep[] => {
-    if (retried) {
-      const failedAt = run.steps.findIndex((s) => s.state === 'failed');
-      if (failedAt > 0) {
-        const last = run.steps[failedAt - 1] as TimelineStep;
-        const rest = { ...last, state: 'running' as const };
-        delete rest.durationSeconds;
-        delete rest.tokens;
-        return [...run.steps.slice(0, failedAt - 1), rest];
-      }
-    }
-    if (!decision) return run.steps;
-    const approvalAt = run.steps.findIndex((s) => s.type === 'approval');
-    const after = extras?.afterApproval;
-    return run.steps.map((s, i) => {
-      if (i === approvalAt)
-        return {
-          ...s,
-          state: decision.ok ? 'ok' : 'rejected',
-          summary: `${t(decision.ok ? 'logRun.approvedBy' : 'logRun.rejectedBy', { by: decision.by })}${decision.comment ? t('logRun.withComment', { comment: decision.comment }) : ''}`,
-        };
-      if (i > approvalAt && s.state === 'pending')
-        return decision.ok
-          ? {
-              ...s,
-              title: after?.approvedTitle ?? s.title,
-              summary: after?.approvedSummary ?? t('logRun.deliveredAfterApproval'),
-              state: 'ok',
-              at: run.durationSeconds + 21,
-              blocks: after ? [{ kind: 'kv', rows: after.approvedRows }] : s.blocks,
-            }
-          : {
-              ...s,
-              title: t('logRun.notDelivered'),
-              summary: t('logRun.stoppedRejected'),
-              state: 'cancelled',
-              at: run.durationSeconds + 21,
-            };
-      return s;
-    });
-  };
-
-  const steps = child ? batchItemSteps(child) : isBatch ? [] : runSteps();
+  const steps = child ? batchItemSteps(child) : isBatch ? [] : run.steps;
   const key = (i: number) => `${child ? child.i : 'run'}:${i}`;
   const isOpen = (step: TimelineStep, i: number) =>
-    open[key(i)] ?? (step.type === 'approval' && step.state === 'waiting' && !decision);
+    open[key(i)] ?? (step.type === 'approval' && step.state === 'waiting');
   const allOpen = steps.length > 0 && steps.every((s, i) => isOpen(s, i));
 
   const usageShown = run.inputTokens !== undefined && run.outputTokens !== undefined;
@@ -250,11 +192,9 @@ export const RunDetail = ({
           {
             l: t('logRun.totalTime'),
             v:
-              decision && extras?.afterApproval
-                ? extras.afterApproval.totalTime
-                : run.status === 'running' || run.status === 'interrupted'
-                  ? t('logRun.soFar', { value: formatDuration(run.durationSeconds, f, t) })
-                  : formatDuration(run.durationSeconds, f, t),
+              run.status === 'running' || run.status === 'interrupted'
+                ? t('logRun.soFar', { value: formatDuration(run.durationSeconds, f, t) })
+                : formatDuration(run.durationSeconds, f, t),
           },
           ...(usageShown
             ? [
@@ -327,22 +267,6 @@ export const RunDetail = ({
   const hasApproval = run.steps.some((s) => s.type === 'approval');
   const revealable = canReveal && Boolean(pseudonym) && Boolean(extras?.revealedName) && !child;
 
-  const decide = (ok: boolean) => {
-    if (!ok && !comment.trim()) {
-      setCommentError(t('logRun.rejectProblem'));
-      return;
-    }
-    const at = relativeTime(new Date().toISOString(), t, f);
-    setDecision({ ok, comment: comment.trim(), by: approver, at });
-    onStatus(runId, ok ? 'completed' : 'cancelled');
-    setFlash({
-      text: ok
-        ? (extras?.afterApproval?.approvedFlash ?? t('logRun.approvedFlash'))
-        : (extras?.afterApproval?.rejectedFlash ?? t('logRun.rejectedFlash')),
-      color: ok ? 'success' : 'info',
-    });
-  };
-
   const confirmReveal = () => {
     if (!reveal.reason) {
       setReveal((r) => ({ ...r, error: t('logRun.reasonProblem') }));
@@ -402,35 +326,6 @@ export const RunDetail = ({
                 }
               >
                 {allOpen ? t('logRun.closeAll') : t('logRun.openAll')}
-              </Button>
-            ) : null}
-            {isBatch && !child && status === 'running' ? (
-              <Button
-                variant="secondary"
-                data-size="sm"
-                onClick={() => {
-                  setCancelled(true);
-                  onStatus(runId, 'cancelled');
-                  setFlash({
-                    text: t('logRun.cancelledFlash', { count: BATCH_TOTAL - done }),
-                    color: 'info',
-                  });
-                }}
-              >
-                {t('logRun.cancelJob')}
-              </Button>
-            ) : null}
-            {!child && status === 'failed' ? (
-              <Button
-                variant="primary"
-                data-size="sm"
-                onClick={() => {
-                  setRetried(true);
-                  onStatus(runId, 'running');
-                  setFlash({ text: t('logRun.retriedFlash'), color: 'info' });
-                }}
-              >
-                {t('logRun.retry')}
               </Button>
             ) : null}
           </div>
@@ -511,13 +406,6 @@ export const RunDetail = ({
             </div>
           ))}
         </dl>
-        <div aria-live="polite">
-          {flash ? (
-            <Alert data-color={flash.color} data-size="sm">
-              {flash.text}
-            </Alert>
-          ) : null}
-        </div>
       </div>
       {isBatch && !child ? (
         <BatchView items={items} status={status} cancelled={cancelled} runId={runId} />
@@ -531,18 +419,7 @@ export const RunDetail = ({
             const step = steps[i] as TimelineStep;
             setOpen((o) => ({ ...o, [key(i)]: !isOpen(step, i) }));
           }}
-          approval={{
-            ...(live ? { details: [] } : {}),
-            decision,
-            comment,
-            error: commentError,
-            onComment: (v) => {
-              setComment(v);
-              setCommentError('');
-            },
-            onApprove: () => decide(true),
-            onReject: () => decide(false),
-          }}
+          {...(live ? { approvalDetails: [] } : {})}
         />
       ) : null}
     </>

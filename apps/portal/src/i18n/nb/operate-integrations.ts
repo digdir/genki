@@ -153,6 +153,10 @@ export const integrationsArea = {
       'Dere har ingen publiserte tjenester ennå. Publiser en tjeneste før du registrerer en brukerflate.',
   }),
   integTriggers: defineNamespace({
+    runsFailed: 'Vi fikk ikke hentet hendelsene',
+    runsFailedWhy:
+      'Hendelsene for utløseren svarte ikke. Det betyr ikke at det ikke har vært noen.',
+    runsUnknown: 'Fikk ikke hentet hendelsene',
     runQuota: 'Ikke startet fordi månedskvoten for tokens er brukt opp',
     runCost: ' · {cost}',
     kindDocument: 'Når et dokument kommer inn',
@@ -346,7 +350,6 @@ export const integrationsArea = {
   }),
   integKeys: defineNamespace({
     loading: 'Henter API-nøkler',
-    notUsedYet: 'ikke brukt ennå',
     createdToday: 'i dag av deg',
     rotatedToday: 'rotert i dag av deg',
     unknownDate: 'ukjent dato',
@@ -392,6 +395,8 @@ export const integrationsArea = {
     listLabel: 'API-nøkler',
     revokedStatus: 'Trukket tilbake',
     prefixCreated: '{prefix}… · laget {created}',
+    rateNotUsed: '{rate} kall per minutt · ikke brukt ennå',
+    rateOnly: '{rate} kall per minutt',
     rateLastUsed: '{rate} kall per minutt · sist brukt {last}',
     editAccess: 'Endre tilgang',
     rotate: 'Roter',

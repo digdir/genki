@@ -44,6 +44,7 @@ export interface DatasetView {
   chunks: number | null;
   lastExecution: LastExecution | null;
   nextRunAt: string | null;
+  usedByCount?: number;
 }
 
 export interface DatasetReader {

@@ -43,7 +43,7 @@ const tabs: [Tab, PlainKey][] = [
 
 const tabFrom = (v: string | null): Tab => (tabs.some(([t]) => t === v) ? (v as Tab) : 'systems');
 
-const defaultOpen: Partial<Record<Tab, string>> = { systems: 'okon', triggers: 'ko-post' };
+const exampleOpen: Partial<Record<Tab, string>> = { systems: 'okon', triggers: 'ko-post' };
 
 type Flash = { text: string; color: 'success' | 'info' | 'danger' };
 
@@ -75,8 +75,9 @@ const Overview = ({ api, tenant, tenantName, route, live }: ScreenProps) => {
   const forService = useContext(IntegrationService);
   const queryTab = only ?? route.query.get('tab');
   const tab = tabFrom(queryTab);
+  const defaultOpen = (shownTab: Tab) => (live ? undefined : exampleOpen[shownTab]);
   const [open, setOpen] = useState<string | undefined>(
-    () => route.query.get('open') ?? defaultOpen[tab],
+    () => route.query.get('open') ?? defaultOpen(tab),
   );
   const [systems, setSystems] = useState<SystemClient[]>(live ? [] : exampleSystems);
   const [frontends, setFrontends] = useState<Frontend[]>(live ? [] : exampleFrontends);
@@ -99,7 +100,7 @@ const Overview = ({ api, tenant, tenantName, route, live }: ScreenProps) => {
     const before = shown.current;
     shown.current = { tab: queryTab, open: openParam };
     if (before.tab === queryTab && before.open === openParam) return;
-    setOpen(openParam ?? defaultOpen[tab]);
+    setOpen(openParam ?? defaultOpen(tab));
     if (before.tab !== queryTab) setFlash(undefined);
   }, [queryTab, openParam]);
 

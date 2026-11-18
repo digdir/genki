@@ -6,6 +6,7 @@ import { apiKeyDigest, createAuthenticator, InMemoryApiKeys, keyReaches } from '
 import { InMemoryUsageBuckets, memoryUsageSource, pollUsage } from '@genai/port-usage';
 import { InMemoryConnections } from '@genai/providers-mcp-client';
 import { createAdmin } from '../admin.js';
+import { failureReason } from '../failures.js';
 import {
   auth,
   digdir,
@@ -719,6 +720,60 @@ describe('usage you can trust', () => {
     );
   });
 
+  it('flags the monthly quota once usage reaches 80 percent of it, and not before', async () => {
+    const used: Record<string, number> = { [digdir]: 40_000, [other]: 39_999 };
+    const { send } = await setup({
+      quota: async (tenant) => ({ usedTokens: used[tenant] ?? 0, monthlyTokens: 50_000 }),
+    });
+    const quotaOf = async (tenant: string, who: string) =>
+      (
+        await json<{ quota: { usedPercent: number; alertPercent: number; alert: boolean } }>(
+          await send(`/tenants/${tenant}/usage`, who),
+        )
+      ).quota;
+
+    expect(await quotaOf(digdir, 'kari')).toMatchObject({
+      usedPercent: 80,
+      alertPercent: 80,
+      alert: true,
+    });
+    expect(await quotaOf(other, 'ola')).toMatchObject({ alert: false });
+  });
+
+  it('splits ingestion usage per day', async () => {
+    const { send } = await setup({
+      ingestionUsage: async () => [
+        {
+          at: '2026-10-05T07:00:00Z',
+          dataset: `${digdir}/veiledning`,
+          model: 'foundry/text-embedding-3-small',
+          usage: { inputTokens: 1_000, requests: 10 },
+        },
+        {
+          at: '2026-10-06T07:00:00Z',
+          dataset: `${digdir}/veiledning`,
+          model: 'foundry/text-embedding-3-small',
+          usage: { inputTokens: 3_000, requests: 30 },
+        },
+      ],
+    });
+    const body = await json<{
+      daily: {
+        date: string;
+        ingestion: { inputTokens: number };
+        testing: { inputTokens: number };
+      }[];
+    }>(await send(`/tenants/${digdir}/usage?days=3`, 'kari'));
+
+    expect(body.daily.map((d) => [d.date, d.ingestion.inputTokens, d.testing.inputTokens])).toEqual(
+      [
+        ['2026-10-04', 0, 0],
+        ['2026-10-05', 1_000, 0],
+        ['2026-10-06', 3_000, 0],
+      ],
+    );
+  });
+
   it('shows a service whose primary model is retired as paused in the overview', async () => {
     const { send } = await setup({
       serviceHealth: async () => ({
@@ -851,6 +906,34 @@ describe('service summaries and run headers', () => {
     expect(body.data[2]).toMatchObject({ channels: ['chatOwn', 'api'] });
     expect(body.data[0]?.updatedAt).toEqual(expect.any(String));
     expect(loaded.sort()).toEqual(['t1', 't2']);
+  });
+
+  it("shows the primary model's own residency from the model list, not the widest residency the service allows", async () => {
+    const { send } = await prepare({
+      modelResidency: (id) => (id === 'foundry/gpt-4o' ? 'eu' : undefined),
+    });
+
+    const body = await json<{ data: { id: string; model: unknown }[] }>(
+      await send(`/tenants/${digdir}/services`, 'kari'),
+    );
+
+    expect(body.data.find((s) => s.id === 'klarsprak')?.model).toEqual({
+      id: 'foundry/gpt-4o',
+      residency: 'eu',
+    });
+  });
+
+  it('answers no residency for a primary model the model list does not know', async () => {
+    const { send } = await prepare({ modelResidency: () => undefined });
+
+    const body = await json<{ data: { id: string; model: unknown }[] }>(
+      await send(`/tenants/${digdir}/services`, 'kari'),
+    );
+
+    expect(body.data.find((s) => s.id === 'klarsprak')?.model).toEqual({
+      id: 'foundry/gpt-4o',
+      residency: null,
+    });
   });
 
   it('keeps the service list to the tenant of the caller', async () => {
@@ -1336,5 +1419,182 @@ describe('usage totals with open units', () => {
     const view = usageView(tallyOf({ units: { page: 3 }, costMicroNok: 30_000 }));
 
     expect(view).toMatchObject({ priced: true, units: { page: 3 }, unpricedUnits: {} });
+  });
+});
+
+describe('the failure cause on the run list', () => {
+  const failed = (task: string, message: string): Event =>
+    ({
+      task,
+      seq: 4,
+      type: 'kernel.error',
+      v: 1,
+      ts: '2026-10-06T08:00:02Z',
+      actor: { kind: 'kernel', id: 'kernel' },
+      audience: 'audit',
+      data: { code: 'deadline_exceeded', message },
+    }) as Event;
+  const leaky = 'provider said: invalid key sk-hemmelig-1234 for https://intern.example';
+  const withErrors = () =>
+    setup({
+      events: async function* (id): AsyncIterable<Event> {
+        if (id === 't2') yield failed('t2', leaky);
+        if (id === 't3') yield failed('t3', 'step summarize failed: timeout');
+      },
+    });
+  const reader: Principal = {
+    kind: 'employee',
+    issuer: 'test',
+    subject: 'leser',
+    tenant: digdir,
+    authorizedFor: [{ org: digdir, actions: ['read'] }],
+  };
+  Object.assign(principals, { leser: reader });
+
+  it('gives each failed run on the tenant run list a code and a fixed reason, for any member', async () => {
+    const { send } = await withErrors();
+
+    const body = await json<{ data: { id: string; failure?: unknown }[] }>(
+      await send(`/tenants/${digdir}/tasks`, 'leser'),
+    );
+
+    expect(body.data.find((r) => r.id === 't2')?.failure).toEqual({
+      code: 'deadline_exceeded',
+      reason: expect.any(String),
+    });
+    expect(body.data.find((r) => r.id === 't1')).not.toHaveProperty('failure');
+  });
+
+  it('never puts the provider or model error text in a failure on the run list', async () => {
+    const { send } = await withErrors();
+
+    const text = await (await send(`/tenants/${digdir}/tasks?status=failed`, 'leser')).text();
+
+    expect(text).not.toContain('sk-hemmelig');
+    expect(text).not.toContain('intern.example');
+  });
+
+  it('gives a failed run its failure cause when read on its own', async () => {
+    const { send } = await withErrors();
+
+    const body = await json<{ failure?: { code: string } }>(
+      await send(`/tenants/${digdir}/tasks/t2`, 'leser'),
+    );
+
+    expect(body.failure?.code).toBe('deadline_exceeded');
+  });
+
+  it('reads failure causes in one batch of error events and gives the fixed reason of the audit event', async () => {
+    const asked: { tasks: string[]; type: string }[] = [];
+    const error = (audience: string, code: string, message: string) =>
+      ({ ...failed('t2', message), audience, data: { code, message } }) as Event;
+    const { send } = await setup({
+      events: async function* (): AsyncIterable<Event> {},
+      eventsOfType: async (tasks, type) => {
+        asked.push({ tasks, type });
+        if (type !== 'kernel.error') return [];
+        return [
+          error('client', 'model_error', 'kunden ser dette'),
+          error('audit', 'deadline_exceeded', leaky),
+        ];
+      },
+    });
+
+    const body = await json<{ data: { id: string; failure?: { code: string; reason: string } }[] }>(
+      await send(`/tenants/${digdir}/tasks?status=failed`, 'leser'),
+    );
+
+    expect(asked.filter((a) => a.type === 'kernel.error')).toEqual([
+      { tasks: ['t2'], type: 'kernel.error' },
+    ]);
+    expect(body.data.find((r) => r.id === 't2')?.failure).toEqual({
+      code: 'deadline_exceeded',
+      reason: failureReason({ code: 'deadline_exceeded' }),
+    });
+  });
+
+  it("never lists another tenant's failed runs or their causes", async () => {
+    const { send } = await withErrors();
+
+    const text = await (await send(`/tenants/${digdir}/tasks`, 'leser')).text();
+
+    expect(text).not.toContain('t3');
+    expect(text).not.toContain('summarize');
+    expect((await send(`/tenants/${other}/tasks`, 'leser')).status).toBe(404);
+  });
+});
+
+describe('one price source for every cost figure', () => {
+  const usageEvent = (task: string, model: string): Event =>
+    ({
+      task,
+      seq: 3,
+      type: 'kernel.usage',
+      v: 1,
+      ts: '2026-10-06T08:00:01Z',
+      actor: { kind: 'kernel', id: 'kernel' },
+      data: {
+        usage: { inputTokens: 1000, outputTokens: 200, requests: 1 },
+        model: { kind: 'model', id: model },
+      },
+    }) as Event;
+  const withModels = (models: Record<string, string>, extra = {}) =>
+    setup({
+      events: async function* (id): AsyncIterable<Event> {
+        const model = models[id];
+        if (model) yield usageEvent(id, model);
+      },
+      ...extra,
+    });
+
+  it('names the models without a price in usage totals and counts only the priced part', async () => {
+    const { send } = await withModels({ t1: 'foundry/gpt-4o', t2: 'foundry/uten-pris' });
+
+    const body = await json<{
+      priced: boolean;
+      totals: { priced: boolean; costMicroNok: number | null; unpricedModels: string[] };
+    }>(await send(`/tenants/${digdir}/usage?days=30`, 'kari'));
+
+    expect(body.totals.unpricedModels).toEqual(['foundry/uten-pris']);
+    expect(body.totals.priced).toBe(false);
+    expect(body.totals.costMicroNok).toBe(42_840);
+  });
+
+  it('gives the overview the same unpriced models and cost as the usage report', async () => {
+    const { send } = await withModels({ t1: 'foundry/gpt-4o', t2: 'foundry/uten-pris' });
+
+    const usage = await json<{ totals: { costMicroNok: number; unpricedModels: string[] } }>(
+      await send(`/tenants/${digdir}/usage?days=6`, 'kari'),
+    );
+    const overview = await json<{
+      usageThisMonth: { costMicroNok: number; unpricedModels: string[] };
+    }>(await send(`/tenants/${digdir}/overview`, 'kari'));
+
+    expect(overview.usageThisMonth.unpricedModels).toEqual(['foundry/uten-pris']);
+    expect(overview.usageThisMonth.unpricedModels).toEqual(usage.totals.unpricedModels);
+    expect(overview.usageThisMonth.costMicroNok).toBe(usage.totals.costMicroNok);
+  });
+
+  it('marks the usage report unpriced whenever its totals are, also for an open unit without a price', async () => {
+    const { send } = await withModels(
+      { t1: 'foundry/gpt-4o', t2: 'foundry/gpt-4o' },
+      {
+        ingestionUsage: async () => [
+          {
+            at: '2026-10-06T07:00:00Z',
+            dataset: 'filer',
+            model: 'foundry/gpt-4o',
+            usage: { inputTokens: 10, units: { page: 3 } },
+          },
+        ],
+      },
+    );
+
+    const body = await json<{ priced: boolean; totals: { priced: boolean } }>(
+      await send(`/tenants/${digdir}/usage?days=30`, 'kari'),
+    );
+
+    expect(body.totals.priced).toBe(false);
+    expect(body.priced).toBe(body.totals.priced);
   });
 });

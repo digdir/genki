@@ -151,7 +151,7 @@ import { datasetEnrichmentModule, enrichmentOutputTokens } from './dataset-enric
 import { lastImportAt, publicDatasetState } from './dataset-status.js';
 import { datasetDeleteModule } from './dataset-delete.js';
 import { datasetSearchModule } from './dataset-search.js';
-import { datasetReaders } from './dataset-readers.js';
+import { datasetReaderCounts, datasetReaders } from './dataset-readers.js';
 import { datasetUploadsModule } from './dataset-uploads.js';
 import { type ApiLog } from './failure-log.js';
 import {
@@ -219,7 +219,14 @@ import {
 import { tenantAccess } from './access.js';
 import { actorNames } from './actor-names.js';
 import { platformScope } from './config-store.js';
-import { operationsOverview, type PipelineRuns } from './operations.js';
+import {
+  forTenant,
+  operationsOverview,
+  type OperationsDeps,
+  type PipelineRuns,
+} from './operations.js';
+import { openIncidentsFor, platformStatusModule } from './platform-status.js';
+import { quotaRequestsModule } from './quota-requests.js';
 import { organizationLookup } from './organizations.js';
 import { locationOf } from './residency.js';
 import { retiredModelMessage, serviceHealth, type ServiceModels } from './service-health.js';
@@ -287,6 +294,7 @@ import { qualityModule } from './quality.js';
 import { batchRunsModule } from './batch-run-routes.js';
 import { projectsModule } from './project-routes.js';
 import { resultReviewsModule } from './result-reviews.js';
+import { tenantRunCancelModule } from './tenant-run-cancel.js';
 import { userPreferencesModule } from './user-preferences.js';
 import { projectTasks } from './project-usage.js';
 import { governanceModule } from './governance.js';
@@ -391,6 +399,9 @@ export const platformModules: PlatformModuleFactory[] = [
   batchRunsModule,
   projectsModule,
   resultReviewsModule,
+  tenantRunCancelModule,
+  quotaRequestsModule,
+  platformStatusModule,
   userPreferencesModule,
   onboardingModule,
   maskinportenClientsModule,
@@ -1526,6 +1537,15 @@ export const createPlatform = async (input: PlatformInput) => {
         },
         dataset,
       ),
+    usedByCounts: (tenant) =>
+      datasetReaderCounts(
+        {
+          definitions,
+          configEntries: configurables.store,
+          resolve: (id) => knowledge.resolve(id),
+        },
+        tenant,
+      ),
   });
   if (input.logger) logFailedIngestion(config.ingestion, input.logger);
   const locationDeps = {
@@ -1958,6 +1978,42 @@ export const createPlatform = async (input: PlatformInput) => {
   });
   const apiKeys = input.apiKeys ?? new InMemoryTenantApiKeys();
   let adminRef: Admin | undefined;
+  const pipelineRuns = async (tenant?: string) => {
+    const runs: PipelineRuns[] = [];
+    for (const item of config.catalog.list({ kind: 'dataset' })) {
+      const owner = item.scope === platformScope ? platformTenant : item.scope;
+      if (tenant !== undefined && owner !== tenant) continue;
+      for (const pipeline of await config.ingestion.list(item.scope, item.id))
+        runs.push({
+          tenant: owner,
+          dataset: item.id,
+          pipeline: pipeline.spec.name,
+          scheduled: pipeline.spec.enabled && pipeline.spec.schedule !== 'none',
+          executions: await config.ingestion.executions(item.id, pipeline.id),
+        });
+    }
+    return runs;
+  };
+  const operationsDeps: OperationsDeps = {
+    now: () => new Date(),
+    models: () => models.describe(),
+    ingestion: () => config.ingestion.backend,
+    pipelines: () => pipelineRuns(),
+    tasks: () => taskIndex.all(),
+    tenantNames: async () => new Map((await directory.list()).map((t) => [t.orgNumber, t.name])),
+    ...(input.databasePing ? { database: input.databasePing } : {}),
+  };
+  const tenantOperations = (tenant: string) =>
+    operationsOverview(
+      forTenant(
+        {
+          ...operationsDeps,
+          pipelines: () => pipelineRuns(tenant),
+          tasks: () => taskIndex.all(tenant),
+        },
+        tenant,
+      ),
+    );
   const consoleOperator: Principal = { kind: 'operator', issuer: 'platform', subject: 'console' };
   const consoleDeps: ConsoleDeps = {
     names: actorNames(configEntries),
@@ -1999,29 +2055,10 @@ export const createPlatform = async (input: PlatformInput) => {
         : undefined;
     },
     cancel: (task) => kernel.cancel(consoleOperator, task),
-    operations: () =>
-      operationsOverview({
-        now: () => new Date(),
-        models: () => models.describe(),
-        ingestion: () => config.ingestion.backend,
-        pipelines: async () => {
-          const runs: PipelineRuns[] = [];
-          for (const item of config.catalog.list({ kind: 'dataset' }))
-            for (const pipeline of await config.ingestion.list(item.scope, item.id))
-              runs.push({
-                tenant: item.scope === platformScope ? platformTenant : item.scope,
-                dataset: item.id,
-                pipeline: pipeline.spec.name,
-                scheduled: pipeline.spec.enabled && pipeline.spec.schedule !== 'none',
-                executions: await config.ingestion.executions(item.id, pipeline.id),
-              });
-          return runs;
-        },
-        tasks: () => taskIndex.all(),
-        tenantNames: async () =>
-          new Map((await directory.list()).map((t) => [t.orgNumber, t.name])),
-        ...(input.databasePing ? { database: input.databasePing } : {}),
-      }),
+    operations: async () => ({
+      ...(await operationsOverview(operationsDeps)),
+      incidents: await openIncidentsFor(configurables.store),
+    }),
     organization: organizationLookup({
       tenants: () => directory.list(),
       ...(input.organizationRegistry
@@ -2088,6 +2125,7 @@ export const createPlatform = async (input: PlatformInput) => {
     blobs: blobStore,
     prices,
     quota,
+    tenantOperations,
     drafts,
     evalSlots: caseSlots,
     pinService: async (tenant, service, version) => {
@@ -2188,6 +2226,7 @@ export const createPlatform = async (input: PlatformInput) => {
         source: mcp,
         secrets: new TenantSecrets(vault.resolver(input.secrets)),
         onToolsChanged: refreshTools,
+        ...(input.logger ? { log: input.logger } : {}),
       },
       directory,
     }),
@@ -2272,6 +2311,7 @@ export const createPlatform = async (input: PlatformInput) => {
             action: 'use-services',
           })),
         prices,
+        modelResidency: (id) => models.describe().find((m) => m.id === id)?.residency,
         ingestionUsage,
         ...(input.gatewayUsage ? { gatewayUsage: input.gatewayUsage } : {}),
         countingRule: () => {
@@ -2283,6 +2323,7 @@ export const createPlatform = async (input: PlatformInput) => {
           );
         },
         projectTasks: (tenant) => projectTasks(configurables.store, tenant),
+        quota,
         serviceHealth: async (tenant, service) => {
           const found = await definitions.get('Service', tenant, service);
           const spec = (found?.definition as { spec?: { model?: ServiceModels } } | undefined)

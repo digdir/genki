@@ -14,6 +14,7 @@ import { useT, type T } from '../../i18n';
 import { ErrorState, Loading } from '../../states';
 import { reasonProblem } from '../../components/ReasonField';
 import { hostsToStore, SecretHostsProblem } from '../../secret-hosts';
+import { SyncAttention, SyncLine } from './SyncStatus';
 
 const errorText = (error: unknown, t: T) =>
   error instanceof ApiError
@@ -47,7 +48,22 @@ const DialogHead = ({ id, title, onClose }: { id: string; title: string; onClose
 
 export const Connections = ({ api, tenant }: { api: ApiClient; tenant: string }) => {
   const t = useT();
-  const [state, retry] = useAsync((signal) => api.integrations(tenant, signal), [api, tenant]);
+  const [state, retryList] = useAsync((signal) => api.integrations(tenant, signal), [api, tenant]);
+  const [syncs, retrySyncs] = useAsync(
+    (signal) => api.toolConnections(tenant, signal),
+    [api, tenant],
+  );
+  const retry = () => {
+    retryList();
+    retrySyncs();
+  };
+  const lastSyncs = new Map(
+    (syncs.status === 'ready' ? syncs.data : []).map((c) => [c.id, c.lastSync]),
+  );
+  const failing =
+    state.status === 'ready'
+      ? state.data.connections.filter((c) => lastSyncs.get(c.id)?.ok === false)
+      : [];
   const [message, setMessage] = useState<string>();
   const [form, setForm] = useState<typeof emptyForm>();
   const [askDiscard, setAskDiscard] = useState(false);
@@ -164,6 +180,9 @@ export const Connections = ({ api, tenant }: { api: ApiClient; tenant: string })
           </Alert>
         ) : null}
       </div>
+      {failing.map((c) => (
+        <SyncAttention key={c.id} name={c.name} sync={lastSyncs.get(c.id)} panel={`conn-${c.id}`} />
+      ))}
       {state.status === 'loading' ? <Loading label={t('integConnections.loading')} /> : null}
       {state.status === 'error' ? (
         <ErrorState error={state.error} onRetry={retry} headingLevel={4} />
@@ -177,13 +196,20 @@ export const Connections = ({ api, tenant }: { api: ApiClient; tenant: string })
         ) : (
           <ul className="int-connections">
             {state.data.connections.map((c) => (
-              <li key={c.id} role="region" aria-label={c.name}>
+              <li key={c.id} id={`conn-${c.id}`} role="region" aria-label={c.name} tabIndex={-1}>
                 <div className="row-wrap">
                   <span className="int-row-name">{c.name}</span>
-                  <Tag data-size="sm" data-color={c.pending.length ? 'warning' : 'success'}>
-                    {t(c.pending.length ? 'taskStatus.interrupted' : 'integrations.statusActive')}
-                  </Tag>
+                  {lastSyncs.get(c.id)?.ok === false ? (
+                    <Tag data-size="sm" data-color="danger">
+                      {t('connectionSync.tagFailed')}
+                    </Tag>
+                  ) : (
+                    <Tag data-size="sm" data-color={c.pending.length ? 'warning' : 'success'}>
+                      {t(c.pending.length ? 'taskStatus.interrupted' : 'integrations.statusActive')}
+                    </Tag>
+                  )}
                 </div>
+                {syncs.status === 'ready' ? <SyncLine sync={lastSyncs.get(c.id)} /> : null}
                 <span className="meta int-wrap">
                   {t('integConnections.endpointVersion', {
                     endpoint: c.endpoint,

@@ -18,6 +18,7 @@ import { qualityMock } from './mock/quality';
 import { batchRunsMock } from './mock/batch-runs';
 import { searchEnginesMock } from './mock/search-engines';
 import { skillsMock } from './mock/skills';
+import { platformStatusMock } from './mock/platform-status';
 import { exampleSecretNames } from './data/building-blocks';
 import { inputFieldsOf } from './data/playground';
 import { parseYaml } from './yaml';
@@ -46,7 +47,7 @@ import type {
   TaskRow,
   UsageReport,
 } from './types';
-import { logTasks, logTimelines, playgroundTimeline } from './data/log';
+import { logTasks, logTimelines, playgroundTasks, playgroundTimeline } from './data/log';
 import { exampleQualityFeedback, exampleQualityRuns, exampleQualityTestSets } from './data/quality';
 
 export const exampleOrganisations: Organisation[] = [
@@ -406,6 +407,7 @@ export const exampleAccess: AccessView = {
       datasets: [],
       agents: ['nettsider-nynorsk__default'],
       createdAt: '2026-08-14T10:00:00Z',
+      lastUsedAt: '2026-10-07T08:30:00Z',
       expiresAt: null,
       revokedAt: null,
     },
@@ -418,6 +420,7 @@ export const exampleAccess: AccessView = {
       datasets: [],
       agents: [],
       createdAt: '2026-10-02T09:00:00Z',
+      lastUsedAt: null,
       expiresAt: null,
       revokedAt: null,
     },
@@ -485,6 +488,7 @@ const featureMocks = {
   triggers: triggersMock,
   environments: environmentsMock,
   preferences: preferencesMock,
+  platformStatus: platformStatusMock,
 };
 
 export type FeatureMockOptions = {
@@ -500,6 +504,7 @@ export interface MockExtras {
   chatReply?: string;
   stepFlows?: DefinitionWithHistory[];
   tasks?: TaskRow[];
+  playgroundTasks?: TaskRow[];
   usage?: UsageReport;
   shared?: SharedService[];
   access?: AccessView;
@@ -747,6 +752,24 @@ const strategyNeeds: Record<string, string[]> = {
   'rag-single-shot@1': ['json-schema'],
 };
 
+const withMockQuota = (report: UsageReport): UsageReport => {
+  const month = report.to.slice(0, 7);
+  const usedTokens = report.daily
+    .filter((d) => d.date.startsWith(month))
+    .reduce((n, d) => n + d.usage.inputTokens + d.usage.outputTokens, 0);
+  const usedPercent = (usedTokens / quotaTokensPerMonth) * 100;
+  return {
+    ...report,
+    quota: {
+      usedTokens: Math.round(usedTokens),
+      monthlyTokens: quotaTokensPerMonth,
+      usedPercent,
+      alertPercent: 80,
+      alert: usedPercent >= 80,
+    },
+  };
+};
+
 export const mockFetch = (
   services = exampleServices,
   timelines: TaskTimeline[] = logTimelines,
@@ -761,8 +784,12 @@ export const mockFetch = (
   const capabilities = extras.capabilities ?? exampleCapabilities;
   const chatReply = extras.chatReply ?? exampleChatReply;
   const taskRows = extras.tasks ?? exampleTasks;
-  const lifecycles = new Map<string, { state: string; reason: string }>();
-  const usageReport = extras.usage ?? exampleUsage;
+  const trialRows = extras.playgroundTasks ?? playgroundTasks;
+  const lifecycles = new Map<
+    string,
+    { state: string; reason?: string; by?: string; at?: string }
+  >();
+  const usageReport = extras.usage ?? withMockQuota(exampleUsage);
   const shared = extras.shared ?? exampleShared;
   let access = structuredClone(extras.access ?? exampleAccess);
   const clientRoutes = clientMock();
@@ -780,6 +807,7 @@ export const mockFetch = (
     featureMocks.hooks(extras.features?.hooks),
     featureMocks.triggers(extras.features?.triggers),
     featureMocks.preferences(extras.features?.preferences),
+    featureMocks.platformStatus(extras.features?.platformStatus),
     batchRuns,
     featureMocks.environments({
       latest: (service) =>
@@ -831,7 +859,8 @@ export const mockFetch = (
       if (unknown) return json({ error: `dataset digdir/kudos cannot filter on ${unknown}` }, 400);
       return json({ fields: fields.map((field) => ({ field, options: exampleFacets[field] })) });
     }
-    if (path === '/health') return json({ status: 'ok', version: 'mock' });
+    if (path === '/health')
+      return json({ status: 'ok', version: 'mock', builtAt: '2026-10-06T08:00:00Z' });
     if (path === '/settings') return json({ data: exampleSettingsCatalog });
     if (/^\/tenants\/[^/]+\/settings\/effective$/.test(path)) return json(exampleEffective);
     if (/^\/tenants\/[^/]+\/settings\/[^/]+$/.test(path) && init?.method === 'DELETE')
@@ -1030,7 +1059,17 @@ export const mockFetch = (
       if (init?.method === 'PUT') {
         if (needsReason()) return missingReason();
         const { state } = JSON.parse(String(init.body)) as { state: string };
-        lifecycles.set(id, { state, reason: reasonOf(init) ?? '' });
+        lifecycles.set(
+          id,
+          state === 'active'
+            ? { state }
+            : {
+                state,
+                reason: reasonOf(init) ?? '',
+                by: 'employee:ansattporten:kari',
+                at: new Date().toISOString(),
+              },
+        );
       }
       return json(lifecycles.get(id) ?? { state: 'active' });
     }
@@ -1063,7 +1102,9 @@ export const mockFetch = (
       });
     const taskOne = /^\/tenants\/[^/]+\/tasks\/([^/]+)$/.exec(path);
     if (taskOne) {
-      const found = taskRows.find((t) => t.id === decodeURIComponent(taskOne[1] ?? ''));
+      const found = [...taskRows, ...trialRows].find(
+        (t) => t.id === decodeURIComponent(taskOne[1] ?? ''),
+      );
       return found ? json(found) : notFound();
     }
     const portal = /^\/tenants\/([^/]+)\/(overview|access|usage|tasks|integrations)$/.exec(path);
@@ -1112,13 +1153,19 @@ export const mockFetch = (
       const status = url.searchParams.get('status');
       const wanted = url.searchParams.get('service');
       const environment = url.searchParams.get('environment');
-      const data = taskRows.filter(
+      const from = url.searchParams.get('from');
+      const to = url.searchParams.get('to');
+      const limit = Number(url.searchParams.get('limit') ?? 100) || 100;
+      const rows = url.searchParams.get('origin') === 'playground' ? trialRows : taskRows;
+      const matching = rows.filter(
         (t) =>
           (!status || t.status === status) &&
           (!wanted || t.service === wanted) &&
-          (!environment || t.environment === environment),
+          (!environment || t.environment === environment) &&
+          (!from || t.createdAt >= from) &&
+          (!to || t.createdAt <= to),
       );
-      return json({ data, total: data.length });
+      return json({ data: matching.slice(0, limit), total: matching.length });
     }
     if (/^\/tenants\/[^/]+\/api-keys$/.test(path) && init?.method === 'POST') {
       if (needsReason()) return missingReason();

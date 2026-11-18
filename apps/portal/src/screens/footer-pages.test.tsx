@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { App } from '../App';
 import { mockAnsattporten } from '../auth';
@@ -31,53 +31,48 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('footer pages', () => {
-  it('links the user guide to the real portal screens', async () => {
+  it('Kom i gang promises no way to limit access under Tilgang, which cannot restrict anyone', async () => {
+    await open('#/onboarding');
+    await screen.findByRole('heading', { level: 1, name: 'Kom i gang' });
+
+    expect(await screen.findByText(/kan alle i virksomheten med «Bruke tjenester»/)).toBeTruthy();
+    expect(screen.queryByText(/begrense det under Tilgang/)).toBeNull();
+  });
+
+  it("Kom i gang shows the four steps ticked from the organisation's real data", async () => {
     await open('#/onboarding');
     expect(await screen.findByRole('heading', { level: 1, name: 'Kom i gang' })).toBeTruthy();
-    const targets = Object.fromEntries(
-      [
-        'Oversikt',
-        'Tjenester',
-        'Datasett',
-        'Byggeklosser',
-        'Fellestjenester',
-        'Prøveområdet',
-        'Kall en tjeneste fra kode',
-        'API-referansen',
-        'Statistikk',
-        'Logg',
-        'Tilgang',
-        'Innstillinger',
-      ].map((name) => [
-        name,
-        screen
-          .getAllByRole('link', { name })
-          .map((a) => a.getAttribute('href'))
-          .find((href) => href !== null && document.querySelector(`main a[href="${href}"]`)),
-      ]),
+
+    expect(
+      await screen.findByRole('heading', { level: 2, name: /1. Legg til en kilde \(gjort\)/ }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('heading', { level: 2, name: /2. Lag tjenesten \(gjort\)/ }),
+    ).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Se datasettene' }).getAttribute('href')).toBe(
+      '#/datasets',
     );
-    expect(targets).toMatchObject({
-      Oversikt: '#/overview',
-      Tjenester: '#/services',
-      Datasett: '#/datasets',
-      Byggeklosser: '#/building-blocks',
-      Fellestjenester: '#/shared-services',
-      Prøveområdet: '#/playground',
-      'Kall en tjeneste fra kode': '#/developer/api/code',
-      'API-referansen': '#/api-reference',
-      Statistikk: '#/statistics',
-      Logg: '#/log',
-      Tilgang: '#/access',
-      Innstillinger: '#/settings',
-    });
+    expect(screen.getByRole('link', { name: 'Slik behandles data' }).getAttribute('href')).toBe(
+      '#/data-handling',
+    );
     expectAccessible();
+  });
+
+  it('says a missing page is not found and links to Oversikt', async () => {
+    await open('#/docs');
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Fant ikke siden' })).toBeTruthy();
+    expect(screen.getByText('Adressen «#/docs» finnes ikke, eller siden er flyttet.')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Gå til Oversikt' }).getAttribute('href')).toBe(
+      '#/overview',
+    );
   });
 
   it('shows what Driftsstatus checks, that the API answers, and the version', async () => {
     await open('#/developer/status', health([up('1.4.2')]));
     expect(await screen.findByText('1.4.2')).toBeTruthy();
-    expect(screen.getByText('API-et svarer')).toBeTruthy();
-    expect(screen.getByText('Svarer')).toBeTruthy();
+    const check = screen.getByText('API-et svarer').closest('li') as HTMLElement;
+    expect(within(check).getByText('Virker')).toBeTruthy();
     expect(screen.getByText('Versjon')).toBeTruthy();
   });
 
@@ -87,8 +82,10 @@ describe('footer pages', () => {
   });
 
   it('checks again when the person presses Sjekk nå', async () => {
-    await open('#/developer/status', health([up('1.0.0'), up('1.0.1')]));
+    let version = '1.0.0';
+    await open('#/developer/status', health([() => up(version)()]));
     expect(await screen.findByText('1.0.0')).toBeTruthy();
+    version = '1.0.1';
     fireEvent.click(screen.getByRole('button', { name: 'Sjekk nå' }));
     expect(await screen.findByText('1.0.1')).toBeTruthy();
   });
@@ -110,7 +107,7 @@ describe('footer pages', () => {
   it('shows the footer pages in English when the language is English', async () => {
     await open('#/developer/status', health([up('dev')]), ['en']);
     expect(await screen.findByRole('heading', { level: 1, name: 'Developer tools' })).toBeTruthy();
-    expect(await screen.findByText('Answering')).toBeTruthy();
+    expect(await screen.findByText('Everything works')).toBeTruthy();
     cleanup();
     await open('#/contact', mockFetch(), ['en']);
     expect(

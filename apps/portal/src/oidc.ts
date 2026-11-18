@@ -141,6 +141,17 @@ export const organisationsFromApi =
 const textClaim = (...values: unknown[]) =>
   values.find((v) => typeof v === 'string' && v) as string | undefined;
 
+const fullName = (claims: Record<string, unknown>) =>
+  [textClaim(claims.given_name), textClaim(claims.family_name)].filter(Boolean).join(' ') ||
+  undefined;
+
+const publicSession = (session: StoredSession): Session => ({
+  name: session.name,
+  organisations: session.organisations,
+  token: session.token,
+  ...(session.email ? { email: session.email } : {}),
+});
+
 export const ansattporten = (options: AnsattportenOptions): OidcAuthClient => {
   const sessionKey = `${options.clientId}.session`;
   const loginKey = `${options.clientId}.login`;
@@ -217,7 +228,16 @@ export const ansattporten = (options: AnsattportenOptions): OidcAuthClient => {
     previous?: StoredSession,
   ) => {
     const access = decodeJwt(tokens.access_token);
-    const name = textClaim(id.name, access.name, previous?.name, id.email, access.email) ?? '';
+    const email = textClaim(id.email, access.email, previous?.email);
+    const name =
+      textClaim(
+        id.name,
+        access.name,
+        fullName(id),
+        fullName(access),
+        previous?.name === previous?.email ? undefined : previous?.name,
+        email,
+      ) ?? '';
     const listed = organisationsFrom(access, options.altinnResource);
     const organisations =
       listed.length === 0 && options.organisations
@@ -229,12 +249,13 @@ export const ansattporten = (options: AnsattportenOptions): OidcAuthClient => {
       name: name || translator(resolveLocale(options.uiLocales?.()))('app.unknownUser'),
       organisations,
       token: tokens.access_token,
+      ...(email ? { email } : {}),
       ...(typeof access.exp === 'number' ? { expiresAt: access.exp * 1000 } : {}),
       ...(refreshToken ? { refreshToken } : {}),
       ...(idToken ? { idToken } : {}),
     };
     options.storage.setItem(sessionKey, JSON.stringify(session));
-    return { name: session.name, organisations: session.organisations, token: session.token };
+    return publicSession(session);
   };
 
   const stored = () => {
@@ -244,7 +265,7 @@ export const ansattporten = (options: AnsattportenOptions): OidcAuthClient => {
       options.storage.removeItem(sessionKey);
       return undefined;
     }
-    return { name: session.name, organisations: session.organisations, token: session.token };
+    return publicSession(session);
   };
 
   const redirect = async (): Promise<Session> => {
