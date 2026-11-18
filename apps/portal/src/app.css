@@ -14,10 +14,14 @@ a:not([class^='ds-'], [class*=' ds-']):hover {
   color: var(--ds-color-accent-text-subtle);
 }
 
-:focus-visible {
-  outline: 3px solid var(--ds-color-focus-outer);
-  outline-offset: 3px;
-  box-shadow: 0 0 0 3px var(--ds-color-focus-inner);
+/* Under Designsystemet's components and the blocks: one that draws its own focus, as the Composer
+   does on its frame, turns this ring off on the field inside it. */
+@layer ds.base {
+  :focus-visible {
+    outline: 3px solid var(--ds-color-focus-outer);
+    outline-offset: 3px;
+    box-shadow: 0 0 0 3px var(--ds-color-focus-inner);
+  }
 }
 
 [aria-disabled='true'] {
