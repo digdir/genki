@@ -122,6 +122,20 @@ To check it: `curl localhost:8080/health` reports `lockdown`, the API log at sta
 
 Without the Foundry and Typesense settings, the seeded services (Kunnskapsassistenten, Klarspråk, Nynorsk and the rest) are skipped, so "Lokal testchat" is the only service until you add them.
 
+**Pulling a published service from genki-test.** The seed publishes a service only when it is missing, so a local database keeps the version it first got while genki-test moves on. To bring a newer published version into a running local genki in development mode:
+
+```sh
+ADMIN_MCP_CLIENT_ID=<the console's client id> npm run service:pull -- <service> --from genki-test --tenant <organisation number>
+```
+
+- It logs in to genki-test as you, in the browser, as the [genki-admin MCP server](../apps/admin-mcp/README.md#against-genki-test) does. For a run without a browser, put your own access token in `GENKI_SOURCE_TOKEN` instead; it must be a login token (a JWT), never an API key. Set it in your environment or `.env.local`, never as a flag, so it stays out of shell history. Without either, the command refuses to run. The token is never printed or sent anywhere but genki-test.
+- It only reads from genki-test (`GET /tenants/{tenant}/definitions/services/{id}`, or `/versions/{n}` with `--version <n>`), with your rights there. `--from` takes only the names the command knows (today `genki-test`), never a URL, so your login only goes to that API. Without `--tenant` it looks the service up by name.
+- Locally it logs in with the mock dev login and imports the definition and its prompt files through `POST /tenants/{tenant}/import` into `--local-tenant` (default `991825827`), with the change reason `Pulled version <n> of <service> from genki-test`. `--to` (default `http://localhost:8080`) must be on this machine.
+- It says which version it pulled and the local version it became. When that version is already the newest local one, it publishes nothing and says so. The local version number is the local store's own and can differ from genki-test's.
+- Only the definition and its prompt files are copied. Runs, questions, feedback, test sets, keys and secrets are not. The service keeps the local sharing (`spec.availableTo`, `spec.visibility`), and the risk class is confirmed as the local person, not as whoever confirmed it in genki-test. Datasets, tools, skills and step flows stay references by id and must exist locally; the command lists the datasets, tools and skills, and the local import refuses a definition that names one the local genki does not have.
+
+Running a published version that no longer fits the platform (a strategy or block version that is gone) in the playground answers `422` `urn:genai:problem:definition-outdated`, naming the problem and the newest version of the service.
+
 **A local Langfuse.** Screens that read from an agency's Langfuse (judges, judge costs, labels, datasets) show something only with a Langfuse connection that has data in it. `npm run langfuse` starts Langfuse 4.72.0, the version production is moving to, from `compose.langfuse.yaml`, or reuses the one already running, and returns once `/api/public/health` answers. Every worktree shares that one instance (compose project `langfuse-genki`, about 2 GiB of memory): its web UI is on `http://localhost:34620`, where you log in as `genki@example.com` with the password `genki-local-only`. `npm run setup` and `npm start` leave it alone; stop it with `docker compose -p langfuse-genki stop`. It is for made-up data only, never CI or a deploy. Its start project has the keys `pk-lf-genki-test` / `sk-lf-genki-test`. A connection to it takes the address `http://127.0.0.1:34620`, not `localhost`: the API's fetch tries `::1` for `localhost`, where Langfuse does not listen, and fails with `ECONNREFUSED ::1:34620`; the web UI stays on `localhost`, where its login works. For a walk or a feature, make a project of your own:
 
 ```sh
