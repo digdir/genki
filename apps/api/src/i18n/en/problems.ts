@@ -185,4 +185,8 @@ export const problems = {
     'Version {version} of {service} no longer fits the platform: {problem}. Use the newest version, {latest}.',
   definitionOutdatedNewest:
     'Version {version} of {service} no longer fits the platform: {problem}. It is the newest version, so correct the definition and publish a new version.',
+  playgroundInstructionsNotSingle:
+    'The {strategy} way of working has no single instructions field, so the playground cannot replace them. Change the steps in a draft instead.',
+  playgroundDatasetNotAvailable:
+    'The dataset {dataset} does not exist, or the organisation has no access to it.',
 } satisfies Translation<typeof source>;

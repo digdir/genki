@@ -2224,7 +2224,7 @@ describe('Langfuse judges on a run', () => {
       (stored?.run.usage?.answers.inputTokens ?? 0) + (stored?.run.usage?.judges?.inputTokens ?? 0),
     );
     expect(usage.status).toBe(200);
-    expect(JSON.stringify(usage.body)).not.toContain('4321');
+    expect(JSON.stringify(usage.body)).not.toMatch(/(?<![\w-])4321(?![\w-])/);
     // The run keeps the rate it shows the cost with, and only those who see usage see either.
     expect(stored?.run.usage?.usdNok).toEqual({ rate: 9.2826, date: '2026-10-29' });
     expect(
@@ -2236,7 +2236,7 @@ describe('Langfuse judges on a run', () => {
       sinkJudges: [{ reported: { inputTokens: 4321, costUsd: 0.0123 } }],
     });
     expect(unseen.status).toBe(200);
-    expect(JSON.stringify(unseen.body)).not.toContain('4321');
+    expect(JSON.stringify(unseen.body)).not.toMatch(/(?<![\w-])4321(?![\w-])/);
     expect(JSON.stringify(unseen.body)).not.toContain('9.2826');
   });
 

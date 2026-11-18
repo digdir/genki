@@ -187,4 +187,8 @@ export const problems = defineNamespace({
     'Versjon {version} av {service} passer ikke lenger med plattformen: {problem}. Bruk den nyeste versjonen, {latest}.',
   definitionOutdatedNewest:
     'Versjon {version} av {service} passer ikke lenger med plattformen: {problem}. Det er den nyeste versjonen, så rett definisjonen og publiser en ny versjon.',
+  playgroundInstructionsNotSingle:
+    'Arbeidsmåten {strategy} har ikke ett felt for instruksjoner, så prøveområdet kan ikke bytte dem ut. Endre stegene i et utkast i stedet.',
+  playgroundDatasetNotAvailable:
+    'Datasettet {dataset} finnes ikke, eller virksomheten har ikke tilgang til det.',
 });

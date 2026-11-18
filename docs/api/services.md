@@ -20,6 +20,14 @@ A playground run whose model or step fails answers `502` as `application/problem
 
 A playground run on a published version that no longer fits the platform, for example one whose strategy version is gone, answers `422` with `type: urn:genai:problem:definition-outdated`, `setup`, `service`, `version`, `latestVersion` and the validation `errors`. The title names the first problem and points to the newest version, in bokmål or English.
 
+## Playground changes on top of a service version
+
+A playground setup with `service` runs that version's definition. `model`, `instructions` and `datasets` in the same setup change it for that run only; genki never writes the change to the service, a version or a draft. The changed definition is validated and checked against the building block policy like any other.
+
+- `datasets` replaces the version's datasets. A dataset the version already has keeps its settings; any other must exist and be shared with the tenant, or the run answers `422` with the path `setup.datasets[i]`, the same answer for both cases. A setup without a service gets the same check.
+- `instructions` replaces the one instructions field of the strategy the chosen variant runs: the variant's own strategy, or else `spec.strategy`, and the variant's `overrides.instructions` when it sets one. A strategy with several steps keeps its steps; agent-loop uses the replaced text wherever it uses its instructions. A strategy without one instructions field, such as step-flow, whose prompts live in the flow's steps, answers `422` with the path `setup.instructions` and a text in bokmål or English. `takesInstructions` on the version's `strategy` in `GET .../playground/options` tells beforehand.
+- `skills`, `blocks` and `fields` are still ignored with a service.
+
 ## Typical sequence: change and publish a service
 
 1. `GET /tenants/{tenant}/services`: the published services with status and channels. `GET /tenants/{tenant}/service-drafts`: the saved drafts, newest first, with `latestVersion: null` for a service never published (ADR 0051).

@@ -1,4 +1,5 @@
 import type { SettingsRegistry } from '@genai/definitions';
+import type { UsagePrice } from '@genai/contracts';
 import type { ModelDescription } from '@genai/port-model';
 import { blockStatusFor, type BlockPolicy } from './building-blocks.js';
 import { defaultModelSetting } from './service-template.js';
@@ -42,3 +43,6 @@ export const unavailableReason = (
   if (status === 'requires_approval' || status === 'pending_approval') return 'requires_approval';
   return undefined;
 };
+
+export const publicPrice = (prices: Record<string, UsagePrice>, id: string): UsagePrice | null =>
+  prices[id] ?? null;

@@ -1139,6 +1139,22 @@ const playgroundPolicy = z.object({
 });
 const blockStatus = z.enum(['allowed', 'requires_approval', 'not_allowed']);
 const playgroundOutput = z.enum(['text', 'fields']);
+const PlaygroundStrategy = z
+  .object({
+    id: z.string(),
+    version: z.number().int(),
+    title: UiText,
+    takesInstructions: z
+      .boolean()
+      .describe(
+        'Whether the strategy has one instructions field that setup.instructions can replace in a run',
+      ),
+    flow: z
+      .object({ ref: z.string(), id: z.string(), version: z.number().int(), title: UiText })
+      .optional()
+      .describe('The step flow a step-flow strategy runs; title is its recipe title, or its name'),
+  })
+  .openapi('PlaygroundStrategy');
 
 const PlaygroundOptions = z
   .object({
@@ -1164,12 +1180,16 @@ const PlaygroundOptions = z
               blocks: z.array(z.string()),
               output: playgroundOutput,
             }),
+            strategy: PlaygroundStrategy.optional().describe("The version's spec.strategy"),
             variants: z
               .array(
                 z.object({
                   id: z.string(),
                   title: z.string().optional(),
                   model: z.string().optional(),
+                  strategy: PlaygroundStrategy.optional().describe(
+                    'Only when the variant has its own strategy',
+                  ),
                 }),
               )
               .optional(),
@@ -1186,6 +1206,11 @@ const PlaygroundOptions = z
         dataLocation: residency,
         status: blockStatus,
         policy: playgroundPolicy.optional(),
+        candidate: z.literal(true).optional(),
+        price: z
+          .object({ inputPerThousand: z.number(), outputPerThousand: z.number() })
+          .nullable()
+          .describe('Kroner per 1,000 tokens, as GET /models gives it, or null without a price'),
       }),
     ),
     datasets: z.array(
@@ -1310,7 +1335,7 @@ const playgroundErrors = {
   409: problem('The playground is turned off for the tenant'),
   413: problem('The file is too large'),
   422: problem(
-    'Invalid setup or file; urn:genai:problem:definition-outdated when a published version no longer fits the platform (with `service`, `version` and `latestVersion`)',
+    'Invalid setup or file, a dataset the tenant may not use, or instructions for a strategy without one instructions field; urn:genai:problem:definition-outdated when a published version no longer fits the platform (with `service`, `version` and `latestVersion`)',
   ),
   429: problem('The monthly token quota is used up (with `quota`)'),
 };
