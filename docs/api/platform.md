@@ -1,6 +1,6 @@
 # Platform
 
-The platform describing itself: `GET /health` (status, version and `builtAt`, the commit time of the image, from `APP_BUILT_AT`; absent in local builds), `GET /up` (liveness), `GET /openapi.json` (this API), `GET /reference` (the browsable reference) and the configuration schemas.
+The platform describing itself: `GET /health` (status, version and `builtAt`, the commit time of the image, from `APP_BUILT_AT`; absent in local builds; `status` is `degraded`, still with 200, while `modelDiscovery.state` is `retrying` because the providers' model listing has not succeeded yet), `GET /up` (liveness), `GET /openapi.json` (this API), `GET /reference` (the browsable reference) and the configuration schemas.
 
 ## Rights
 

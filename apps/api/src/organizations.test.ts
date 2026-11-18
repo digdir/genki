@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { organizationLookup } from './organizations.js';
+import { cachedOrganizationLookup, organizationLookup } from './organizations.js';
 
 const tenants = async () => [{ orgNumber: '991825827', name: 'Digitaliseringsdirektoratet' }];
 
@@ -87,5 +87,24 @@ describe('organisation lookup', () => {
 
     expect(await failing('974760673')).toBeUndefined();
     expect(await mismatch('974760673')).toBeUndefined();
+  });
+
+  it('asks Enhetsregisteret once per organisation, and again only after the cache runs out', async () => {
+    let clock = 0;
+    let asked = 0;
+    const lookup = cachedOrganizationLookup(
+      async (orgNumber) => {
+        asked += 1;
+        return { orgNumber, name: 'BRØNNØYSUNDREGISTRENE', source: 'enhetsregisteret' };
+      },
+      { foundMs: 1000, now: () => clock },
+    );
+
+    await Promise.all([lookup('974760673'), lookup('974760673')]);
+    await lookup('974760673');
+    clock = 1001;
+    await lookup('974760673');
+
+    expect(asked).toBe(2);
   });
 });
