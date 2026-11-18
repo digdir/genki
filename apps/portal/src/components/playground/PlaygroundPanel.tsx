@@ -8,7 +8,6 @@ import {
   Label,
   Link,
   Paragraph,
-  Spinner,
   Textarea,
 } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
@@ -54,7 +53,9 @@ import {
 import { useEscape, useNarrow } from '../../hooks';
 import { useT, type T } from '../../i18n';
 import { ApiCallPanel } from '../ApiCall';
+import { BusyButton } from '../BusyButton';
 import { Icon } from '../Icon';
+import { Loading } from '../../states';
 import { isModelFailure, ModelNoAnswer, RunFailure, type RunFailureInfo } from '../RunFailure';
 import { AnswerCard } from './AnswerCard';
 import { formErrors, formInput, InputForm, type FormValues } from './InputForm';
@@ -728,10 +729,7 @@ export const PlaygroundPanel = ({
     return (
       <section {...sectionProps}>
         {header}
-        <span role="status" className="playground-status">
-          <Spinner aria-hidden data-size="xs" />
-          {t('playground.loadingSetup')}
-        </span>
+        <Loading label={t('playground.loadingSetup')} shape="form" rows={2} headingLevel={3} />
       </section>
     );
 
@@ -1047,12 +1045,7 @@ export const PlaygroundPanel = ({
           </ol>
           <div className="playground-thread-foot">
             <span role="status" className="playground-status">
-              {busy ? (
-                <>
-                  <Spinner aria-hidden data-size="xs" />
-                  {t(comparing ? 'playground.runningBoth' : 'playground.running')}
-                </>
-              ) : null}
+              {busy ? t(comparing ? 'playground.runningBoth' : 'playground.running') : null}
             </span>
             {messages.length && !isExtract ? (
               <Button variant="tertiary" data-size="sm" onClick={newConversation}>
@@ -1135,9 +1128,15 @@ export const PlaygroundPanel = ({
                   }}
                 />
               </Field>
-              <Button variant="primary" type="submit" aria-disabled={cantSend ? true : undefined}>
+              <BusyButton
+                variant="primary"
+                type="submit"
+                busy={busy}
+                busyLabel={t('playground.sending')}
+                aria-disabled={draft ? true : undefined}
+              >
                 {t('playground.send')}
-              </Button>
+              </BusyButton>
             </form>
           )}
         </div>

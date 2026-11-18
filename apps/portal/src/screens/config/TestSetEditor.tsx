@@ -351,6 +351,7 @@ export const TestSetEditor = ({
   const [state, retry] = useAsync(
     (signal) => api.listTestSets(tenant, serviceId, signal),
     [api, tenant, serviceId, round],
+    { keepPreviousFor: `${tenant}/${serviceId}` },
   );
   const [open, setOpen] = useState<string>();
   const [creating, setCreating] = useState(false);

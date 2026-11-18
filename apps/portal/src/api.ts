@@ -8,6 +8,7 @@ import { datasetsApi } from './api/datasets';
 import { environmentsApi } from './api/environments';
 import { keyPoliciesApi } from './api/key-policies';
 import { maskinportenApi } from './api/maskinporten';
+import { modelsApi } from './api/models';
 import { hooksApi } from './api/hooks';
 import { tracingApi } from './api/tracing';
 import { triggersApi } from './api/triggers';
@@ -192,6 +193,7 @@ const featureClients = (ctx: ApiContext) => ({
   quotaRequests: quotaRequestsApi(ctx),
   accessPeople: accessApi(ctx),
   blocks: blocksApi(ctx),
+  models: modelsApi(ctx),
 });
 
 const kindPaths: Record<PublishedDefinition['kind'], string> = {

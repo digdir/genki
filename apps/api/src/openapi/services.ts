@@ -1277,7 +1277,9 @@ const playgroundErrors = {
   404: problem('The tenant is not reachable for the caller'),
   409: problem('The playground is turned off for the tenant'),
   413: problem('The file is too large'),
-  422: problem('Invalid setup or file'),
+  422: problem(
+    'Invalid setup or file; urn:genai:problem:definition-outdated when a published version no longer fits the platform (with `service`, `version` and `latestVersion`)',
+  ),
   429: problem('The monthly token quota is used up (with `quota`)'),
 };
 

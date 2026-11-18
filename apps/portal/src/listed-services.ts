@@ -8,3 +8,10 @@ export const listedServiceCount = (
 ) =>
   drafts.filter((d) => d.latestVersion === null).length +
   services.filter((s) => s.lifecycle !== 'archived').length;
+
+const knownNames = new Map<string, string>();
+
+export const rememberServiceNames = (tenant: string, rows: { id: string; name: string }[]) =>
+  rows.forEach((row) => knownNames.set(`${tenant}/${row.id}`, row.name));
+
+export const knownServiceName = (tenant: string, id: string) => knownNames.get(`${tenant}/${id}`);

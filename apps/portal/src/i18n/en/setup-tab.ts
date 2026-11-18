@@ -201,16 +201,8 @@ export const setup = {
   improveLabel: 'Let the platform suggest changes to the instructions',
   improveHelp:
     'The platform can suggest better instructions based on feedback and test sets. You accept each suggestion yourself. Applies from the next publication.',
-  allowedModels: 'Models Digdir allows',
-  modelNotAllowed:
-    'The model {model} is not among the models Digdir currently allows. Choose one of the models below.',
-  noModels: 'No models are available. The operations team must make a model available first.',
-  via: 'via {via}',
-  dataIn: 'Data is processed in {where}',
-  cost: 'Cost: {cost}',
   modelPrice: 'NOK {input} in and NOK {output} out per 1,000 tokens',
   notPriced: 'not priced',
-  speed: 'Speed: {speed}',
   operationModels: 'Model per operation',
   operationModelsHelp:
     'The flow calls these operations. Choose the model that performs each of them. Where data is processed follows the model.',

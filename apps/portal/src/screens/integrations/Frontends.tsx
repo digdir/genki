@@ -46,7 +46,7 @@ export const Frontends = ({
   const { has } = useRights();
   const canManage = has('manage-services');
   const [tick, setTick] = useState(0);
-  const [state, retry] = useAsync(
+  const [state, retry, pending] = useAsync(
     async (signal) => {
       const [view, overview] = await Promise.all([
         api.listClients(tenant, undefined, signal),
@@ -55,6 +55,7 @@ export const Frontends = ({
       return { clients: view.clients, services: overview?.services ?? [] };
     },
     [api, tenant, tick],
+    { keepPreviousFor: tenant },
   );
   const [open, setOpen] = useState<string>();
   const [editing, setEditing] = useState<{ client?: ClientView; service: string }>();
@@ -64,9 +65,37 @@ export const Frontends = ({
   const [removeError, setRemoveError] = useState('');
   const [busy, setBusy] = useState<string>();
 
-  if (state.status === 'loading')
-    return <Loading label={t('integFrontends.loading')} shape="list" onRetry={retry} />;
-  if (state.status === 'error') return <ErrorState error={state.error} onRetry={retry} />;
+  const intro = (
+    <div className="int-intro">
+      <Paragraph className="meta int-intro-text">{t('integrations.introFrontends')}</Paragraph>
+      {canManage ? (
+        <Button
+          variant="primary"
+          aria-disabled={state.status !== 'ready' || undefined}
+          onClick={() => {
+            if (state.status !== 'ready') return;
+            setSaveError('');
+            setEditing({ service: state.data.services[0]?.id ?? '' });
+          }}
+        >
+          {t('integrations.addFrontend')}
+        </Button>
+      ) : (
+        <span className="meta">{needsRight('manage-services', t)}</span>
+      )}
+    </div>
+  );
+  if (state.status !== 'ready')
+    return (
+      <div className="stack-md">
+        {intro}
+        {state.status === 'loading' ? (
+          <Loading label={t('integFrontends.loading')} shape="list" onRetry={retry} />
+        ) : (
+          <ErrorState error={state.error} onRetry={retry} />
+        )}
+      </div>
+    );
   const { clients, services } = state.data;
   const serviceName = (id: string) => services.find((s) => s.id === id)?.name ?? id;
   const reload = () => setTick((t) => t + 1);
@@ -229,27 +258,11 @@ export const Frontends = ({
     };
   });
 
-  const firstService = services[0]?.id ?? '';
-
   return (
     <div className="stack-md">
-      <div className="int-intro">
-        <Paragraph className="meta int-intro-text">{t('integrations.introFrontends')}</Paragraph>
-        {canManage ? (
-          <Button
-            variant="primary"
-            onClick={() => {
-              setSaveError('');
-              setEditing({ service: firstService });
-            }}
-          >
-            {t('integrations.addFrontend')}
-          </Button>
-        ) : (
-          <span className="meta">{needsRight('manage-services', t)}</span>
-        )}
-      </div>
+      {intro}
       <ItemList
+        busy={pending}
         items={items}
         open={open}
         onToggle={(id) => setOpen(open === id ? undefined : id)}

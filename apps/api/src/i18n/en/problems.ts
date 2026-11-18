@@ -181,4 +181,8 @@ export const problems = {
   status504: 'A service behind the platform did not answer in time',
   altinnNotConnected: 'Altinn is not connected',
   altinnUnavailable: 'Altinn did not answer',
+  definitionOutdated:
+    'Version {version} of {service} no longer fits the platform: {problem}. Use the newest version, {latest}.',
+  definitionOutdatedNewest:
+    'Version {version} of {service} no longer fits the platform: {problem}. It is the newest version, so correct the definition and publish a new version.',
 } satisfies Translation<typeof source>;

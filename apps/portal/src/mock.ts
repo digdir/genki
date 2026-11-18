@@ -926,6 +926,8 @@ export const mockFetch = (
       return json({
         data: models.filter(
           (m) =>
+            (url.searchParams.get('all') === 'true' ||
+              (m as { available?: boolean }).available !== false) &&
             (!residency ||
               residencyOrder.indexOf(m.residency) <= residencyOrder.indexOf(residency)) &&
             needs.every((n) => m.capabilities.includes(n)),

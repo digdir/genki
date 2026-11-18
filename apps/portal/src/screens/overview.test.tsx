@@ -473,6 +473,29 @@ describe('Oversikt: the usage card and the service count', () => {
     expect(within(usage).queryByText('Ikke priset')).toBeNull();
   });
 
+  it('names a model without a price even when the policy holds it back, since it asks for all models', async () => {
+    const held = [
+      {
+        id: 'ai-gateway/borealis-27b',
+        name: 'Borealis 27B',
+        residency: 'norway' as const,
+        capabilities: [],
+        available: false,
+      },
+    ];
+    await renderAt(
+      '#/overview',
+      mockFetch(exampleServices, [exampleTimeline], held, undefined, { usage: lowerBound() }),
+    );
+
+    const usage = await screen.findByRole('region', { name: /Bruk i/ });
+    expect(
+      await within(usage).findByText(
+        'Prisen mangler for modellen Borealis 27B, så kostnaden er minst dette.',
+      ),
+    ).toBeTruthy();
+  });
+
   it('counts the same services as the Tjenester list: unpublished drafts and every service not archived', async () => {
     const summary = (id: string, lifecycle: 'active' | 'paused' | 'archived') => ({
       id,

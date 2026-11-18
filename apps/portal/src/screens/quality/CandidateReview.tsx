@@ -59,6 +59,7 @@ export const CandidateReview = ({
   const [state, retry] = useAsync(
     (signal) => api.quality.candidates(tenant, serviceId, signal),
     [api, tenant, serviceId, round],
+    { keepPreviousFor: `${tenant}/${serviceId}` },
   );
 
   const review = async (c: Candidate, accept: Accepting | undefined) => {

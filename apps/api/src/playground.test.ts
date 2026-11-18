@@ -4,7 +4,13 @@ import { Hono } from 'hono';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parse as parseYaml } from 'yaml';
 import type { Principal } from '@genai/contracts';
-import { InMemoryDefinitionStore, platformSettings, SettingsRegistry } from '@genai/definitions';
+import {
+  InMemoryDefinitionStore,
+  platformSettings,
+  SettingsRegistry,
+  type DefinitionStore,
+  type PluginSchemas,
+} from '@genai/definitions';
 import { parseTestSet } from '@genai/eval';
 import { envSecrets } from '@genai/kernel';
 import { InMemoryBlobStore } from '@genai/port-blob';
@@ -127,7 +133,12 @@ const openPolicy = {
 const boot = async ({
   residencyRule = false,
   taskIndex,
-}: { residencyRule?: boolean; taskIndex?: TaskIndex } = {}) => {
+  store = (plugins) => new InMemoryDefinitionStore(plugins),
+}: {
+  residencyRule?: boolean;
+  taskIndex?: TaskIndex;
+  store?: (plugins: PluginSchemas) => DefinitionStore;
+} = {}) => {
   const model = await fakeHttp(modelReply);
   const search = await fakeHttp((body) => ({
     status: 200,
@@ -152,7 +163,7 @@ const boot = async ({
     },
     prices: { [modelId]: { inputPerThousand: 1, outputPerThousand: 2 } },
     secrets: envSecrets({ FOUNDRY_OPENAI_KEY: 'm', TYPESENSE_KEY: 't', COLBERT_API_KEY: 'c' }),
-    definitions: (plugins) => new InMemoryDefinitionStore(plugins),
+    definitions: store,
     settings,
     ...(taskIndex ? { taskIndex } : {}),
     policy: { decide: async () => ({ allow: true }) },
@@ -459,6 +470,32 @@ describe('the playground', () => {
     });
   });
 
+  it("refuses the caller's own model choice as a validation error, not as an outdated version", async () => {
+    const { platform, run } = await boot();
+    const published = service('eu-svar', 'Svar på bokmål.');
+    await platform.definitions.publish(
+      { ...published, spec: { ...published.spec, model: { primary: euModel, residency: 'eu' } } },
+      'test',
+      'første',
+    );
+
+    const res = await run({
+      setup: { service: { id: 'eu-svar', version: 1 }, model: modelId, output: 'text' },
+      input: { text: 'Hei' },
+    });
+
+    expect(res.status).toBe(422);
+    expect(res.body.type).not.toBe('urn:genai:problem:definition-outdated');
+    expect(res.body).toMatchObject({
+      errors: [
+        {
+          path: expect.stringContaining('spec.model'),
+          message: expect.stringContaining('outside eu'),
+        },
+      ],
+    });
+  });
+
   it('a service draft with broken YAML is refused with 422 naming the definition', async () => {
     const { run } = await boot();
 
@@ -474,6 +511,80 @@ describe('the playground', () => {
     expect(res.body.errors).toEqual([
       { path: 'setup.service.definition', message: expect.stringMatching(/line \d+/) },
     ]);
+  });
+
+  it('a published version that no longer fits the platform is refused naming the problem and the newest version', async () => {
+    class FirstVersionOutdated extends InMemoryDefinitionStore {
+      override async get(...args: Parameters<InMemoryDefinitionStore['get']>) {
+        const found = await super.get(...args);
+        if (found?.version !== 1) return found;
+        const definition = found.definition as unknown as { spec: Record<string, unknown> };
+        return {
+          ...found,
+          definition: {
+            ...definition,
+            spec: { ...definition.spec, strategy: { id: 'single-call', version: 99, config: {} } },
+          },
+        } as unknown as typeof found;
+      }
+    }
+    const { platform, run } = await boot({ store: (p) => new FirstVersionOutdated(p) });
+    await platform.definitions.publish(service('svar', 'Svar på nynorsk.'), 'test', 'første');
+    await platform.definitions.publish(service('svar', 'Svar på bokmål.'), 'test', 'andre');
+
+    const res = await run({
+      setup: { service: { id: 'svar', version: 1 }, output: 'text' },
+      input: { text: 'Hei' },
+    });
+
+    expect(res.status).toBe(422);
+    expect(res.body).toMatchObject({
+      type: 'urn:genai:problem:definition-outdated',
+      service: 'svar',
+      version: 1,
+      latestVersion: 2,
+    });
+    expect(res.body.title).toMatch(
+      /^Versjon 1 av svar passer ikke lenger med plattformen: spec\.strategy/,
+    );
+    expect(res.body.title).toContain('Bruk den nyeste versjonen, 2.');
+  });
+
+  it('the outdated version refusal is in English for an English reader', async () => {
+    class OnlyVersionOutdated extends InMemoryDefinitionStore {
+      override async get(...args: Parameters<InMemoryDefinitionStore['get']>) {
+        const found = await super.get(...args);
+        if (!found) return found;
+        const definition = found.definition as unknown as { spec: Record<string, unknown> };
+        return {
+          ...found,
+          definition: {
+            ...definition,
+            spec: { ...definition.spec, strategy: { id: 'single-call', version: 99, config: {} } },
+          },
+        } as unknown as typeof found;
+      }
+    }
+    const { platform, app } = await boot({ store: (p) => new OnlyVersionOutdated(p) });
+    await platform.definitions.publish(service('svar', 'Svar på nynorsk.'), 'test', 'første');
+
+    const res = await app.request(`/tenants/${tenant}/playground/runs`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: 'Bearer kari',
+        'accept-language': 'en',
+      },
+      body: JSON.stringify({
+        setup: { service: { id: 'svar', version: 1 }, output: 'text' },
+        input: { text: 'Hei' },
+      }),
+    });
+
+    expect(res.status).toBe(422);
+    const body = (await res.json()) as { title: string };
+    expect(body.title).toMatch(/^Version 1 of svar no longer fits the platform: spec\.strategy/);
+    expect(body.title).toContain('It is the newest version');
   });
 
   it('the playground is refused when the setting turns it off', async () => {

@@ -18,6 +18,8 @@ Build, test and publish services. A service is a versioned definition; drafts, t
 
 A playground run whose model or step fails answers `502` as `application/problem+json` with `type: urn:genai:problem:playground-unavailable`, `status: 502`, `setup`, `code` and, when the caller may see it, `detail` and `runId`. The streamed `failed` event carries the same problem.
 
+A playground run on a published version that no longer fits the platform, for example one whose strategy version is gone, answers `422` with `type: urn:genai:problem:definition-outdated`, `setup`, `service`, `version`, `latestVersion` and the validation `errors`. The title names the first problem and points to the newest version, in bokmål or English.
+
 ## Typical sequence: change and publish a service
 
 1. `GET /tenants/{tenant}/services`: the published services with status and channels. `GET /tenants/{tenant}/service-drafts`: the saved drafts, newest first, with `latestVersion: null` for a service never published (ADR 0051).

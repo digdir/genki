@@ -7,6 +7,7 @@ import type { ScreenProps } from '../screen';
 import { ErrorState, Loading } from '../states';
 import {
   BlockDetail,
+  BlockDetailLoading,
   blockTabs,
   type BlockTab,
   type ServiceRuns,
@@ -23,6 +24,8 @@ import { StepFlowEditor } from './StepFlows';
 import { FlashMessage, settled, type Flash } from './buildingblocks/common';
 import { ConnectorsPage } from './buildingblocks/ConnectorsPage';
 import { RegisterBlock } from './buildingblocks/RegisterBlock';
+import { ModelCatalog } from './models/ModelCatalog';
+import { ModelsInUse } from './models/ModelsInUse';
 import { BackLink } from '../components/BackLink';
 import './buildingblocks.css';
 
@@ -68,7 +71,7 @@ const ListPage = ({
   version: number;
 }) => {
   const t = useT();
-  const [state, retry] = useAsync(
+  const [state, retry, pending] = useAsync(
     async (signal) => {
       const [list, proposals, connectors] = await Promise.all([
         api.buildingBlocks.list(tenant, {}, signal),
@@ -111,6 +114,7 @@ const ListPage = ({
       tenant={tenant}
       tenantName={tenantName}
       items={state.data.data}
+      refreshing={pending}
       proposals={proposals.ok ? proposals.data : []}
       connectors={connectors.ok ? connectors.data : []}
       partialError={failed === undefined ? undefined : { error: failed, retry }}
@@ -174,7 +178,14 @@ const DetailPage = ({
     [tenant],
   );
   if (state.status === 'loading')
-    return <Loading label={t('blocks.loadingOne')} shape="detail" onRetry={retry} />;
+    return (
+      <BlockDetailLoading
+        block={{ kind, id }}
+        tab={tab}
+        label={t('blocks.loadingOne')}
+        onRetry={retry}
+      />
+    );
   if (state.status === 'error')
     return (
       <div className="stack">
@@ -257,6 +268,8 @@ export const BuildingBlocks = (props: ScreenProps) => {
         }}
       />
     );
+  else if (kind === 'models')
+    page = id === 'in-use' ? <ModelsInUse {...props} /> : <ModelCatalog {...props} />;
   else if (kind === 'connectors' && !id)
     page = <ConnectorsPage {...props} version={version} onFlash={(next) => show(next)} />;
   else if (kind === 'step_flow' && id && view === 'edit')
