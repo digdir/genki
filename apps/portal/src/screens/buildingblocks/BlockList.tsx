@@ -52,7 +52,7 @@ export const openProposals = (proposals: CatalogProposal[]) =>
   proposals.filter((p) => p.state === 'pending' || p.state === 'sent_for_approval');
 
 export const proposalType = (proposal: CatalogProposal): TypeKey | string =>
-  proposal.item ? typeOf(proposal.item) : 'tool';
+  proposal.level === 2 || !proposal.item ? 'tool' : typeOf(proposal.item);
 
 export const TypeHeader = ({ type }: { type: TypeKey }) => {
   const t = useT();

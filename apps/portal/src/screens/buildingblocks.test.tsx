@@ -56,6 +56,13 @@ const connectorProposal: CatalogProposal = {
   ],
   permissions: [{ type: 'network', value: 'db.fagsystem.testetaten.example.no, port 5432' }],
   tests: [{ name: 'Testlesing: 50 søknader lest uten feil.', passed: true }],
+  item: {
+    ...(exampleBlocks.find((b) => b.kind === 'dataset') as CatalogItem),
+    id: 'fagsystem',
+    name: 'Kobling for Søknadsuttrekk',
+    status: 'available',
+    usedBy: [],
+  },
 };
 
 const settingFor = (label: string) =>
@@ -176,6 +183,19 @@ describe('Byggeklosser: oversikt etter type', () => {
       true,
     );
     expectAccessible();
+  });
+});
+
+describe('Byggeklosser: koblingsforslag', () => {
+  it('a connector proposal stored as a dataset item shows as waiting on Verktøy and in the overview badge', async () => {
+    await open('#/building-blocks', { proposals: [connectorProposal] });
+    await screen.findByRole('heading', { level: 2, name: 'Typer' });
+    expect(within(card('Verktøy')).getByText('1 venter')).toBeTruthy();
+    expect(within(card('Datasett')).queryByText(/venter/)).toBeNull();
+    cleanup();
+    await open('#/building-blocks/tool', { proposals: [connectorProposal] });
+    expect(await screen.findByText('1 ny kobling venter på godkjenning.')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Se og godkjenn koblingene' })).toBeTruthy();
   });
 });
 
