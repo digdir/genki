@@ -6,6 +6,14 @@ export const usageArea = {
     thousands: '{value} k',
     notPriced: 'Ikke priset',
     money: '{value} kr',
+    atLeast: 'minst {value}',
+    priceMissing: {
+      one: 'Prisen mangler for modellen {models}. Kostnaden er derfor minst det som står her, og blir riktig når prisen er lagt inn.',
+      other:
+        'Prisen mangler for modellene {models}. Kostnaden er derfor minst det som står her, og blir riktig når prisene er lagt inn.',
+    },
+    priceMissingUnnamed:
+      'Prisen mangler for minst én modell. Kostnaden er derfor minst det som står her, og blir riktig når prisen er lagt inn.',
     via: 'Via {via}',
     residencyNorway: 'I Norge',
     residencyEu: 'I EU/EØS',
@@ -40,6 +48,7 @@ export const usageArea = {
     colTokensIn: 'tokens_inn',
     colTokensOut: 'tokens_ut',
     colCost: 'kostnad_kr',
+    colCostAtLeast: 'kostnad_er_minst',
     colTokens: 'tokens',
     exportFile: 'forbruk-{name}.{format}',
     downloaded: 'Filen {file} er lastet ned.',
@@ -51,8 +60,6 @@ export const usageArea = {
     meterText: '{used} av {quota} tokens brukt. Forventet {forecast} ved slutten av måneden.',
     usedSoFar: 'Brukt hittil',
     forecast: 'Forventet ved månedsslutt: {value} ({percent})',
-    quotaUsedUp:
-      'Når kvoten er brukt opp, stopper nye kjøringer til neste måned. Digdir kan øke kvoten. <link>Kontakt Digdir</link>.',
     costIn: 'Beregnet kostnad i {month}',
     someUnpriced: 'Minst én modell er ikke priset',
     forecastCost: 'Forventet {value} for hele måneden',

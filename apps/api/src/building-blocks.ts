@@ -722,7 +722,8 @@ export const createBuildingBlocksModule =
       return found.flat();
     };
 
-    const sources = async (tenant: string): Promise<Source[]> => {
+    const sources = async (tenant: string, only?: string): Promise<Source[]> => {
+      const wants = (kind: string) => only === undefined || only === kind;
       const out: Source[] = [];
       const shown = deps.catalog.visibleTo(tenant);
       const visible =
@@ -811,7 +812,7 @@ export const createBuildingBlocksModule =
           });
         }
       }
-      for (const state of await deps.connections.list(tenant)) {
+      for (const state of wants('tool') ? await deps.connections.list(tenant) : []) {
         const connection = state.connection;
         const ownTimeout = Math.max(1, Math.round((connection.timeoutMs ?? 10_000) / 1000));
         out.push({
@@ -883,7 +884,7 @@ export const createBuildingBlocksModule =
         });
       }
       const definitionOwners = [...new Set([tenant, deps.platformTenant])];
-      for (const owner of definitionOwners) {
+      for (const owner of wants('skill') || wants('step_flow') ? definitionOwners : []) {
         for (const entry of await deps.definitions.list(owner)) {
           if (entry.kind === 'Service') continue;
           const history = await deps.definitions.versions(entry.kind, owner, entry.id);
@@ -997,7 +998,7 @@ export const createBuildingBlocksModule =
       }
       const judgeIds = new Set<string>(['answer-quality', 'pairwise-preference']);
       // A sink's judge is listed from its connection below, not from the runs it scored.
-      for (const stored of await deps.evalStores.runs.list({ tenant }))
+      for (const stored of wants('judge') ? await deps.evalStores.runs.list({ tenant }) : [])
         // One block per evaluator, whichever model judged a run; a sink's judges have their own.
         for (const judge of stored.run.provenance.judges)
           if (!deps.traceSinks?.isSinkJudge?.(judge)) judgeIds.add(evaluatorOfJudge(judge));
@@ -1022,7 +1023,7 @@ export const createBuildingBlocksModule =
           history: async () => [],
         });
       }
-      for (const judge of await sinkJudges(tenant)) {
+      for (const judge of wants('judge') ? await sinkJudges(tenant) : []) {
         const unread = judge.refused?.reason === 'unreadable';
         out.push({
           block: {
@@ -1076,7 +1077,7 @@ export const createBuildingBlocksModule =
           names: Set<string>;
         }
       >();
-      for (const compiled of await deps.definitions.capabilities()) {
+      for (const compiled of wants('shared_service') ? await deps.definitions.capabilities() : []) {
         if (compiled.service.tenant === tenant) continue;
         const availableTo = compiled.capability.descriptor.availableTo;
         if (availableTo !== '*' && !(Array.isArray(availableTo) && availableTo.includes(tenant)))
@@ -1315,7 +1316,7 @@ export const createBuildingBlocksModule =
     };
 
     const find = async (tenant: string, kind: string, id: string) => {
-      const source = (await sources(tenant)).find(
+      const source = (await sources(tenant, kind)).find(
         (s) => s.block.kind === kind && s.block.id === id,
       );
       if (!source) return undefined;

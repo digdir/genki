@@ -1,4 +1,12 @@
-import { Heading, Link, Paragraph, Table, Tag } from '@digdir/designsystemet-react';
+import {
+  Button,
+  Heading,
+  Link,
+  Paragraph,
+  Skeleton,
+  Table,
+  Tag,
+} from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
 import type { ApiClient } from '../../api';
 import { blockHref } from '../../api/building-blocks';
@@ -9,9 +17,12 @@ import { mediaKind } from '../../data/unmasked-input';
 import { actorLabel, formatDateTime, formatSeconds, notPriced, statusOf } from '../../format';
 import { useAsync } from '../../hooks';
 import { useT, type PlainKey } from '../../i18n';
+import { runsOf } from '../usage/model';
 import type { PublishedDefinition, TaskRow } from '../../types';
 import type { VersionItem } from '../services/VersionsTab';
+import { rightLabel } from '../../Shell';
 import { PausedBanner } from './PausedBanner';
+import { servicePath } from './sections';
 
 const dayMs = 86_400_000;
 
@@ -22,17 +33,18 @@ const residencyKeys: Record<string, PlainKey> = {
 };
 
 interface Activity {
-  costMicroNok: number | null | undefined;
   runs: number | undefined;
   failed: number | undefined;
   today: number | undefined;
   failedToday: number | undefined;
-  cause: string | undefined;
+  latestFailure: (TaskRow & { failure?: { reason?: string } }) | undefined;
   recent: TaskRow[];
 }
 
 const settled = <T,>(r: PromiseSettledResult<T>) =>
   r.status === 'fulfilled' ? r.value : undefined;
+
+const startOfHour = (d: Date) => Math.floor(d.getTime() / 3_600_000) * 3_600_000;
 
 const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
 
@@ -45,10 +57,14 @@ export const OverviewSection = ({
   id,
   definition: d,
   published,
+  tenantName,
+  canBatch = false,
   now = () => new Date(),
 }: {
   api: ApiClient;
   tenant: string;
+  tenantName?: string;
+  canBatch?: boolean;
   id: string;
   definition: ServiceDefinition;
   versions?: VersionItem[];
@@ -63,38 +79,51 @@ export const OverviewSection = ({
       : f.currency(micro / 1_000_000, { digits: 2 });
   const today = startOfDay(now());
 
+  const [usageState] = useAsync(
+    async (signal) => {
+      const usage = await api.usage(tenant, 30, signal);
+      return usage.byService.find((x) => x.service === id)?.usage;
+    },
+    [api, tenant, id],
+  );
   const [state] = useAsync(
     async (signal): Promise<Activity> => {
-      const from = new Date(now().getTime() - 30 * dayMs).toISOString();
+      const from = new Date(startOfHour(now()) - 30 * dayMs).toISOString();
       const since = startOfDay(now()).toISOString();
       const count = (filter: { status?: string; from: string }) =>
         api.tasks(tenant, { service: id, limit: 1, ...filter }, signal);
-      const [usage, recent, runs, failed, todayRuns, failedToday] = await Promise.allSettled([
-        api.usage(tenant, 30, signal),
+      const [recent, runs, failed, todayRuns, failedToday] = await Promise.allSettled([
         api.tasks(tenant, { service: id, limit: 5 }, signal),
         count({ from }),
         count({ status: 'failed', from }),
         count({ from: since }),
         count({ status: 'failed', from: since }),
       ]);
-      const latestFailure = settled(failedToday)?.data[0];
-      const timeline = latestFailure
-        ? await api.getTaskTimeline(tenant, latestFailure.id, signal).catch(() => undefined)
-        : undefined;
-      const cause = timeline?.steps.find((s) => s.type === 'error')?.summary.trim();
-      const serviceUsage = settled(usage)?.byService.find((s) => s.service === id)?.usage;
       return {
-        costMicroNok: settled(usage) ? (serviceUsage?.costMicroNok ?? 0) : undefined,
         runs: settled(runs)?.total,
         failed: settled(failed)?.total,
         today: settled(todayRuns)?.total,
         failedToday: settled(failedToday)?.total,
-        cause: cause || undefined,
+        latestFailure: settled(failedToday)?.data[0],
         recent: (settled(recent)?.data ?? []).filter((r) => r.service === id).slice(0, 5),
       };
     },
     [api, tenant, id],
   );
+  const latestFailure = state.status === 'ready' ? state.data.latestFailure : undefined;
+  const [causeState] = useAsync(
+    async (signal) => {
+      if (!latestFailure) return undefined;
+      const reason = latestFailure.failure?.reason?.trim();
+      if (reason) return reason.charAt(0).toLocaleLowerCase('nb') + reason.slice(1);
+      const timeline = await api
+        .getTaskTimeline(tenant, latestFailure.id, signal)
+        .catch(() => undefined);
+      return timeline?.steps.find((s) => s.type === 'error')?.summary.trim() || undefined;
+    },
+    [api, tenant, latestFailure?.id],
+  );
+  const cause = causeState.status === 'ready' ? causeState.data : undefined;
   const [lookups] = useAsync(
     async (signal) => {
       const [datasets, models] = await Promise.allSettled([
@@ -109,7 +138,7 @@ export const OverviewSection = ({
 
   const primary = d.spec.model.primary;
   const model = known?.models?.find((m) => m.id === primary);
-  const residency = model?.residency ?? d.spec.model.residency;
+  const residency = known ? (model?.residency ?? d.spec.model.residency) : undefined;
   const residencyKey = residency ? residencyKeys[residency] : undefined;
   const sources = datasetsOf(d.spec);
   const consent = (published?.definition as ServiceDefinition | undefined)?.spec?.riskConfirmation;
@@ -133,7 +162,11 @@ export const OverviewSection = ({
     r.endedAt ? formatSeconds((Date.parse(r.endedAt) - Date.parse(r.createdAt)) / 1000, f, t) : '–';
   const activity = state.status === 'ready' ? state.data : undefined;
   const failedToday = activity?.failedToday ?? 0;
+  const serviceUsage = usageState.status === 'ready' ? usageState.data : undefined;
+  const usageFailed = usageState.status === 'error';
+  const waiting = <Skeleton variant="text" width="4em" />;
   const logHref = (query: string) => `#/log?${query}`;
+  const notAvailable = t('serviceOverview.notAvailable');
 
   return (
     <div className="service-overview stack">
@@ -143,6 +176,10 @@ export const OverviewSection = ({
         id={id}
         name={d.metadata.name || id}
         published={published}
+        datasets={sources.flatMap((ref) => {
+          const found = matchDataset(known?.datasets, tenant, ref.dataset);
+          return found ? [found] : [];
+        })}
       />
 
       <section aria-labelledby="ov-what" className="stack-sm">
@@ -153,28 +190,38 @@ export const OverviewSection = ({
         <dl className="kv service-facts">
           <dt>{t('serviceOverview.sources')}</dt>
           <dd>
-            {sources.length
-              ? sources.map((ref, i) => {
-                  const found = matchDataset(known?.datasets, tenant, ref.dataset);
-                  return (
-                    <span key={ref.dataset}>
-                      {i > 0 ? ', ' : ''}
-                      {found ? (
-                        <Link href={`#/datasets/${encodeURIComponent(found.id)}`}>
-                          {found.name}
-                        </Link>
-                      ) : (
-                        ref.dataset
-                      )}
-                    </span>
-                  );
-                })
-              : t('serviceOverview.noDatasets')}
+            {!known && sources.length
+              ? waiting
+              : sources.length
+                ? sources.map((ref, i) => {
+                    const found = matchDataset(known?.datasets, tenant, ref.dataset);
+                    return (
+                      <span key={ref.dataset}>
+                        {i > 0 ? ', ' : ''}
+                        {found ? (
+                          <Link href={`#/datasets/${encodeURIComponent(found.id)}`}>
+                            {found.name}
+                          </Link>
+                        ) : (
+                          ref.dataset
+                        )}
+                      </span>
+                    );
+                  })
+                : t('serviceOverview.noDatasets')}
           </dd>
           <dt>{t('serviceOverview.model')}</dt>
           <dd>
-            <Link href={blockHref({ kind: 'model', id: primary })}>{model?.name ?? primary}</Link>
-            {residencyKey ? t('serviceOverview.modelWhere', { where: t(residencyKey) }) : ''}
+            {known ? (
+              <>
+                <Link href={blockHref({ kind: 'model', id: primary })}>
+                  {model?.name ?? primary}
+                </Link>
+                {residencyKey ? t('serviceOverview.modelWhere', { where: t(residencyKey) }) : ''}
+              </>
+            ) : (
+              waiting
+            )}
           </dd>
           {consent?.unmaskedInput?.length ? (
             <>
@@ -202,6 +249,13 @@ export const OverviewSection = ({
               </dd>
             </>
           ) : null}
+          <dt>{t('serviceOverview.whoCanUse')}</dt>
+          <dd>
+            {t('serviceOverview.everyoneWith', {
+              org: tenantName || tenant,
+              right: rightLabel(t, 'use-services'),
+            })}
+          </dd>
         </dl>
       </section>
 
@@ -209,31 +263,47 @@ export const OverviewSection = ({
         <Heading level={2} data-size="xs" id="ov-use">
           {t('serviceOverview.usage')}
         </Heading>
-        {state.status === 'loading' ? (
-          <p className="meta">{t('serviceOverview.usageLoading')}</p>
-        ) : null}
-        {activity ? (
-          <dl className="facts">
-            {activity.runs !== undefined ? (
-              <div>
-                <dt>{t('serviceOverview.runs')}</dt>
-                <dd>{f.number(activity.runs)}</dd>
-              </div>
-            ) : null}
-            {activity.runs !== undefined && activity.failed !== undefined ? (
-              <div>
-                <dt>{t('serviceOverview.errorShare')}</dt>
-                <dd>{f.percent(activity.runs ? activity.failed / activity.runs : 0, 1)}</dd>
-              </div>
-            ) : null}
-            {activity.costMicroNok !== undefined ? (
-              <div>
-                <dt>{t('serviceOverview.cost')}</dt>
-                <dd>{kr(activity.costMicroNok)}</dd>
-              </div>
-            ) : null}
-          </dl>
-        ) : null}
+        <dl
+          className="facts"
+          aria-busy={state.status === 'loading' || usageState.status === 'loading' || undefined}
+        >
+          <div>
+            <dt>{t('serviceOverview.runs')}</dt>
+            <dd>
+              {serviceUsage
+                ? f.number(runsOf(serviceUsage))
+                : usageFailed
+                  ? notAvailable
+                  : usageState.status === 'ready'
+                    ? f.number(0)
+                    : waiting}
+            </dd>
+          </div>
+          <div>
+            <dt>{t('serviceOverview.errorShare')}</dt>
+            <dd>
+              {activity
+                ? activity.runs !== undefined && activity.failed !== undefined
+                  ? f.percent(activity.runs ? activity.failed / activity.runs : 0, 1)
+                  : notAvailable
+                : waiting}
+            </dd>
+          </div>
+          <div>
+            <dt>{t('serviceOverview.cost')}</dt>
+            <dd>
+              {usageState.status === 'ready'
+                ? serviceUsage &&
+                  serviceUsage.priced === false &&
+                  serviceUsage.costMicroNok !== null
+                  ? t('serviceOverview.costAtLeast', { cost: kr(serviceUsage.costMicroNok) })
+                  : kr(serviceUsage ? serviceUsage.costMicroNok : 0)
+                : usageFailed
+                  ? notAvailable
+                  : waiting}
+            </dd>
+          </div>
+        </dl>
         <Link href="#/statistics">{t('serviceOverview.seeStatistics')}</Link>
       </section>
 
@@ -247,18 +317,18 @@ export const OverviewSection = ({
               {t('serviceOverview.failedTag')}
             </Tag>
             <span>
-              {activity.cause
+              {cause
                 ? t('serviceOverview.failedTodayCause', {
                     count: failedToday,
-                    cause: activity.cause,
+                    cause,
                   })
                 : t('serviceOverview.failedToday', { count: failedToday })}
               {activity.today !== undefined
                 ? ` ${t('serviceOverview.othersToday', { count: activity.today - failedToday })}`
                 : ''}
             </span>
-            <Link href={logHref(`service=${encodeURIComponent(id)}&status=failed`)}>
-              {t('serviceOverview.seeFailed')}
+            <Link href={logHref(`service=${encodeURIComponent(id)}&status=failed&period=today`)}>
+              {t('serviceOverview.seeFailed', { count: failedToday })}
             </Link>
           </div>
         </section>
@@ -315,6 +385,20 @@ export const OverviewSection = ({
           <p className="body-sm">{t('serviceOverview.noRuns')}</p>
         )}
       </section>
+
+      {canBatch ? (
+        <section aria-labelledby="ov-batch" className="service-batch-offer">
+          <div className="stack-xs">
+            <Heading level={2} data-size="xs" id="ov-batch">
+              {t('serviceOverview.batchTitle')}
+            </Heading>
+            <Paragraph data-size="sm">{t('serviceOverview.batchLead')}</Paragraph>
+          </div>
+          <Button asChild variant="secondary" data-size="sm">
+            <a href={`#${servicePath(id, 'batch')}`}>{t('serviceOverview.batchTitle')}</a>
+          </Button>
+        </section>
+      ) : null}
     </div>
   );
 };

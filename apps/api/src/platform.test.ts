@@ -737,9 +737,31 @@ describe('task timeline and the operator tenant list', () => {
     expect(tenants.find((t) => t.orgNumber === other)?.name).toBe('Testetaten');
   });
 
-  it('leaves an archived service out of the tenant service count', async () => {
-    const { send, publish } = setup({ lifecycle: async () => ({ state: 'archived' }) });
+  it('names an organisation known only by its number from Enhetsregisteret, for the person and for operators', async () => {
+    const { send, publish } = setup({
+      registeredName: async (org) => (org === digdir ? 'DIGITALISERINGSDIREKTORATET' : undefined),
+    });
     await publish('kari', klarsprak());
+
+    const me = (await (await send('/me', 'kari')).json()) as {
+      organisations: { orgNumber: string; name: string }[];
+    };
+    const tenants = await listed<{ orgNumber: string; name: string }>(
+      await send('/operator/tenants', 'operator'),
+    );
+
+    expect(me.organisations.find((o) => o.orgNumber === digdir)?.name).toBe(
+      'DIGITALISERINGSDIREKTORATET',
+    );
+    expect(tenants.find((t) => t.orgNumber === digdir)?.name).toBe('DIGITALISERINGSDIREKTORATET');
+    expect(tenants.find((t) => t.orgNumber === other)?.name).toBe('Testetaten');
+  });
+
+  it('leaves an archived service out of the tenant service count', async () => {
+    let state = 'active';
+    const { send, publish } = setup({ lifecycle: async () => ({ state }) });
+    await publish('kari', klarsprak());
+    state = 'archived';
 
     const tenants = await listed<{ orgNumber: string; services: number }>(
       await send('/operator/tenants', 'operator'),

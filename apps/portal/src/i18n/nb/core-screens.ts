@@ -89,6 +89,11 @@ export const getStarted = defineNamespace({
   stepTitle: '{n}. {title}',
   done: '(gjort)',
   notDone: '(ikke gjort)',
+  doneAt: 'Gjort {when}.',
+  doneAtBy: 'Gjort {when} av {by}.',
+  doneAtWhat: 'Gjort {when}: {what}.',
+  doneAtByWhat: 'Gjort {when} av {by}: {what}.',
+  publishedWhat: '{service} ble publisert',
   datasetTitle: 'Legg til en kilde',
   datasetBody:
     'Et datasett er dokumentene tjenesten svarer fra: nettsider, filer dere laster opp, eller et delt datasett som Kudos.',

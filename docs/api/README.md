@@ -221,7 +221,7 @@ jq -n --arg data "$(base64 < brev.txt | tr -d '\n')" '{
 
 ### 2026-11-03: usage from an AI gateway
 
-Only when an AI gateway is configured (`GATEWAY_USAGE_URL` and `GATEWAY_USAGE_CREDENTIAL`, see [gateway.md](gateway.md)); without one every answer is as before.
+Only when an AI gateway is configured (`GATEWAY_USAGE_URL` with `GATEWAY_USAGE_CREDENTIAL` or `GATEWAY_USAGE_APP_*`, see [gateway.md](gateway.md)); without one every answer is as before.
 
 - `totals`, `daily[].usage` on `GET /tenants/{tenant}/usage`, `usageThisMonth` on `GET /tenants/{tenant}/overview` and each `usage` on `GET /operator/usage` are the sum of genki's own usage and the gateway's. Each gains `bySource: [{ "source": "genki", "usage" }, { "source": "gateway", "usage" }]`.
 - `byModel` rows gain `source`, `genki` or `gateway`. The gateway's rows also come as `bySubject`: the owner (`subject`, or `null` for a key without one), `usage` in kroner, the amount the gateway charged as `cost: { currency, micros }`, and the latest `rate` used with its `rateDay`. A gateway amount with no rate counts as unpriced, never as 0 kr.

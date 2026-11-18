@@ -227,7 +227,7 @@ import {
 } from './operations.js';
 import { openIncidentsFor, platformStatusModule } from './platform-status.js';
 import { quotaRequestsModule } from './quota-requests.js';
-import { organizationLookup } from './organizations.js';
+import { cachedOrganizationLookup, organizationLookup } from './organizations.js';
 import { locationOf } from './residency.js';
 import { retiredModelMessage, serviceHealth, type ServiceModels } from './service-health.js';
 import { serviceDrafts } from './service-drafts.js';
@@ -317,6 +317,7 @@ import { createKeyPoliciesModule } from './key-policies.js';
 import { maskinportenClientsModule } from './maskinporten-clients.js';
 import { triggersModule } from './triggers.js';
 import { lifecycleOf, pausedMessage, serviceLifecycleModule } from './service-lifecycle.js';
+import { archivedPublishRefusal } from './archived-services.js';
 import {
   allowedEnvironments,
   chooseEnvironment,
@@ -1675,6 +1676,8 @@ export const createPlatform = async (input: PlatformInput) => {
     ];
   };
 
+  const serviceLifecycle = (tenant: string, service: string) =>
+    lifecycleOf(configEntries, tenant, service);
   const compiled = compiledCapabilityCache(() => store.capabilities());
   const resync = async () => {
     compiled.invalidate();
@@ -1688,6 +1691,8 @@ export const createPlatform = async (input: PlatformInput) => {
       resolve: (...args) => store.resolve(...args),
       capabilities: () => compiled.get(),
       publish: async (...args) => {
+        const archived = await archivedPublishRefusal(args[0], serviceLifecycle);
+        if (archived) return archived;
         const problems = await checkBeforePublish(args[0], args[1]);
         if (problems) return { ok: false, errors: problems };
         const result = await store.publish(...args);
@@ -1994,6 +1999,19 @@ export const createPlatform = async (input: PlatformInput) => {
     }
     return runs;
   };
+  const organization = cachedOrganizationLookup(
+    organizationLookup({
+      tenants: () => directory.list(),
+      ...(input.organizationRegistry
+        ? {
+            registryUrl: input.organizationRegistry.url,
+            ...(input.organizationRegistry.fetch
+              ? { fetch: input.organizationRegistry.fetch }
+              : {}),
+          }
+        : {}),
+    }),
+  );
   const operationsDeps: OperationsDeps = {
     now: () => new Date(),
     models: () => models.describe(),
@@ -2059,17 +2077,7 @@ export const createPlatform = async (input: PlatformInput) => {
       ...(await operationsOverview(operationsDeps)),
       incidents: await openIncidentsFor(configurables.store),
     }),
-    organization: organizationLookup({
-      tenants: () => directory.list(),
-      ...(input.organizationRegistry
-        ? {
-            registryUrl: input.organizationRegistry.url,
-            ...(input.organizationRegistry.fetch
-              ? { fetch: input.organizationRegistry.fetch }
-              : {}),
-          }
-        : {}),
-    }),
+    organization,
   };
   const pluginRegistry = new PluginRegistry({ runs: configContractRuns(configurables.store) });
   const externalTargets = {
@@ -2627,6 +2635,8 @@ export const createPlatform = async (input: PlatformInput) => {
     plugins,
     extensions,
     directory,
+    organization,
+    modelDiscovery: runtime.modelDiscovery,
     labels,
     apiKeys,
     clients,

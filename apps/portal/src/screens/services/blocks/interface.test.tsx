@@ -53,7 +53,7 @@ describe('the Grensesnitt tab', () => {
     expectAccessible();
   });
 
-  it('is on the page of a new service, between Oppsett and Test', async () => {
+  it('is on the page of a new service, between Oppsett and Avanserte innstillinger', async () => {
     await renderAt('#/services/new');
     await screen.findByRole('heading', { level: 1, name: 'Ny tjeneste' });
     fireEvent.click(screen.getByRole('button', { name: /Henter ut opplysninger/ }));
@@ -63,7 +63,7 @@ describe('the Grensesnitt tab', () => {
       within(nav)
         .getAllByRole('link')
         .map((a) => a.textContent),
-    ).toEqual(['Oppsett', 'Grensesnitt', 'Test', 'Versjoner']);
+    ).toEqual(['Oppsett', 'Grensesnitt', 'Avanserte innstillinger', 'Utviklerverktøy']);
     fireEvent.click(navLink('Grensesnitt'));
     expect(await screen.findByRole('group', { name: 'Byggeklosser og maler' })).toBeTruthy();
     expectAccessible();

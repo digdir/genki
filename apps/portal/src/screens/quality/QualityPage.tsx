@@ -1,4 +1,13 @@
-import { Alert, Button, Chip, Heading, Link, Paragraph, Tag } from '@digdir/designsystemet-react';
+import {
+  Alert,
+  Button,
+  Chip,
+  Heading,
+  Link,
+  Paragraph,
+  Skeleton,
+  Tag,
+} from '@digdir/designsystemet-react';
 import { useEffect, useId, useRef, useState } from 'react';
 import type { ApiClient } from '../../api';
 import type { EvalRun, ServiceTestSet } from '../../api/quality';
@@ -16,6 +25,7 @@ import { problemTitle, type SetFlash } from './shared';
 const pollMs = 2000;
 const feedbackDays = 30;
 const feedbackShown = 20;
+const hourMs = 3_600_000;
 
 export const qualityAddress = (serviceId: string, query = '') =>
   `#${servicePath(serviceId, 'quality', query ? `?${query}` : '')}`;
@@ -379,7 +389,7 @@ const FeedbackSection = ({
   serviceId: string;
 }) => {
   const { t, dateTime, date } = usePortalFormat();
-  const [now] = useState(() => Date.now());
+  const [now] = useState(() => Math.floor(Date.now() / hourMs) * hourMs);
   const since = now - feedbackDays * 24 * 60 * 60 * 1000;
   const [filter, setFilter] = useState<FeedbackFilter>('all');
   const [state, retry] = useAsync(
@@ -440,7 +450,12 @@ const FeedbackSection = ({
           text={t('qualityPage.feedbackErrorText')}
         />
       ) : state.status === 'loading' ? (
-        <Loading label={t('qualityPage.feedbackLoading')} />
+        <div className="stack-sm" role="status" aria-label={t('qualityPage.feedbackLoading')}>
+          <Skeleton variant="text" width="40%" />
+          {[0, 1, 2, 3].map((i) => (
+            <Skeleton key={i} variant="rectangle" height={40} />
+          ))}
+        </div>
       ) : state.data.items.length === 0 ? (
         <Paragraph>{t('qualityPage.feedbackNone')}</Paragraph>
       ) : (

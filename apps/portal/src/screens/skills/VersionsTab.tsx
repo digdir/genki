@@ -1,74 +1,43 @@
-import { Tag } from '@digdir/designsystemet-react';
-import type { SkillVersion } from '../../api/skills';
 import { useFormat } from '@genai/i18n/react';
+import type { SkillUse, SkillVersion } from '../../api/skills';
 import { changedWhen } from '../../components/ChangeLogged';
-import { useT, type PlainKey } from '../../i18n';
-import { scoreText } from '../../data/skills';
-
-export interface DraftRow {
-  version: number;
-  changes: string[];
-  score: string;
-}
-
-const stateOf = (v: SkillVersion, inUse: boolean): PlainKey =>
-  !v.current
-    ? 'skills.versionPrevious'
-    : v.shared
-      ? 'skills.versionSharedState'
-      : inUse
-        ? 'skills.versionInUse'
-        : 'skills.versionPublished';
+import { useT } from '../../i18n';
 
 export const VersionsTab = ({
-  draft,
   versions,
-  inUse,
+  services,
 }: {
-  draft: DraftRow | undefined;
   versions: SkillVersion[];
-  inUse: boolean;
+  services: SkillUse[];
 }) => {
   const t = useT();
   const f = useFormat();
+  const inUse = new Set(services.map((s) => s.version));
+  const sorted = [...versions].sort((a, b) => b.version - a.version);
+  if (sorted.length === 0) return <p className="skill-help">{t('skills.versionsNone')}</p>;
   return (
-    <ol className="plain-list skill-versions" aria-label={t('skills.versionsLabel')}>
-      {draft ? (
-        <li>
-          <span className="skill-version-label">
-            {t('skills.versionDraftOf', { version: draft.version })}
-          </span>
-          <Tag data-size="sm" data-color="neutral">
-            {t('skills.versionDraftTag')}
-          </Tag>
-          <span className="skill-version-meta">{draft.changes.join(' · ')}</span>
-          <span>{draft.score}</span>
-        </li>
-      ) : null}
-      {versions.map((v) => {
-        const state = t(stateOf(v, inUse));
+    <ul className="plain-list skill-versions" aria-label={t('skills.versionsLabel')}>
+      {sorted.map((v) => {
+        const line = {
+          version: v.version,
+          when: changedWhen(new Date(v.publishedAt), undefined, f, t),
+          by: v.by,
+        };
         return (
           <li key={v.version}>
-            <span className="skill-version-label">
-              {t('skills.versionN', { version: v.version })}
+            <span className="skill-version-title">
+              {inUse.has(v.version)
+                ? t('skills.versionLineInUse', line)
+                : t('skills.versionLine', line)}
             </span>
-            <Tag data-size="sm" data-color={v.current ? 'success' : 'neutral'}>
-              {state}
-            </Tag>
-            <span className="skill-version-meta">
-              {changedWhen(new Date(v.publishedAt), undefined, f, t)} · {v.by}
-            </span>
-            <span>
-              {v.score
-                ? scoreText(t, v.score.passed, v.score.total)
-                : v.testedBy
-                  ? t('skills.versionTestedBy', { name: v.testedBy })
-                  : t('skills.versionNoTests')}
+            <span className="skill-help">
+              {v.reason
+                ? t('skills.versionReason', { reason: v.reason })
+                : t('skills.versionNoReason')}
             </span>
           </li>
         );
       })}
-      {!draft && versions.length === 0 ? <li>{t('skills.versionsNone')}</li> : null}
-    </ol>
+    </ul>
   );
 };

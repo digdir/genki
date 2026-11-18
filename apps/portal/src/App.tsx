@@ -220,13 +220,20 @@ const Portal = ({
   }, [api, live, tenantKey, token]);
 
   const routePath = route.path;
+  const [rightsKey, setRightsKey] = useState('');
+  const reportRights = useCallback(
+    (rights: readonly string[]) => setRightsKey(rights.join(' ')),
+    [],
+  );
   useEffect(() => {
-    if (tenantKey && token) prefetchPath(routePath, api, tenantKey, live);
-  }, [routePath, api, tenantKey, token, live]);
+    const rights = new Set(rightsKey.split(' '));
+    if (tenantKey && token) prefetchPath(routePath, api, tenantKey, live, rights);
+  }, [routePath, api, tenantKey, token, live, rightsKey]);
   useEffect(() => {
     if (!tenantKey || !token) return;
-    return prefetchOnIntent(document, (path) => prefetchPath(path, api, tenantKey, live));
-  }, [api, tenantKey, token, live]);
+    const rights = new Set(rightsKey.split(' '));
+    return prefetchOnIntent(document, (path) => prefetchPath(path, api, tenantKey, live, rights));
+  }, [api, tenantKey, token, live, rightsKey]);
 
   save.current = (next) => {
     locale.current = next ?? negotiate(languages) ?? 'nb';
@@ -303,6 +310,7 @@ const Portal = ({
           .filter((o) => o.orgNumber !== organisation.orgNumber && !unregistered.has(o.orgNumber))
           .map((o) => o.name)}
         api={api}
+        onRights={reportRights}
         badges={
           failing > 0
             ? {

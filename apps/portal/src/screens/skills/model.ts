@@ -1,5 +1,6 @@
 import type { SkillSpec } from '../../api/skills';
 import type { ProposalSection } from '../../data/skills';
+import type { AppliedCard } from './assistant';
 
 export interface EditorCard {
   id: string;
@@ -27,4 +28,9 @@ export interface AssistantNotice {
   text: string;
 }
 
-export type EditorTab = 'setup' | 'tests' | 'usage' | 'yaml' | 'versions';
+export interface AskState {
+  open: boolean;
+  applied: AppliedCard[];
+  rejected: RejectedEditorCard[];
+  notice?: Omit<AssistantNotice, 'section'>;
+}

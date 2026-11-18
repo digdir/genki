@@ -115,7 +115,7 @@ export const gatewayUsageConfigFromEnv = (
       id: 'gateway',
       baseUrl: withoutTrailingSlashes(baseUrl as string),
       ...(federatedApp ? { federatedApp } : { credential: credential as string }),
-      genkiClients: [genkiClient],
+      genkiClients: [...new Set([genkiClient, ...(federatedApp ? [federatedApp.clientId] : [])])],
       since,
       timeoutMs,
       maxResponseBytes: 32 * 1024 * 1024,

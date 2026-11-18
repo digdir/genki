@@ -4,6 +4,7 @@ import type { runs as source } from '../nb/runs.js';
 export const runs = {
   taskStatusOneOf: 'status is one of {values}',
   failModel: 'We did not get a response from the model.',
+  failModelUnavailable: 'The model the service uses is not available right now.',
   failStrategy: 'The service failed along the way.',
   originBuilder: 'The builder (draft)',
   originPlayground: 'The playground (draft)',

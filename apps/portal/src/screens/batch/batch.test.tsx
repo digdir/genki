@@ -92,12 +92,12 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('Samlet jobb', () => {
-  it('is reachable from the service navigation and explains an empty list', async () => {
+  it('belongs to the Oversikt tab of the service and explains an empty list', async () => {
     await open();
     const nav = screen.getByRole('navigation', { name: 'Tjenesten' });
-    expect(
-      within(nav).getByRole('link', { name: 'Samlet jobb' }).getAttribute('aria-current'),
-    ).toBe('page');
+    expect(within(nav).getByRole('link', { name: 'Oversikt' }).getAttribute('aria-current')).toBe(
+      'page',
+    );
     expect(await screen.findByRole('heading', { name: 'Ingen samlede jobber ennå' })).toBeTruthy();
     expectAccessible();
   });

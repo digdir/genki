@@ -3,7 +3,8 @@ import { Alert, Button, Heading, Paragraph } from '@digdir/designsystemet-react'
 import { useT } from '../i18n';
 import { useAsync } from '../hooks';
 import type { ScreenProps } from '../screen';
-import { allDone, startProgress, StartSteps } from './start-progress';
+import { useRights } from '../Shell';
+import { allDone, startProgress, StartSteps, stepHistory } from './start-progress';
 import { monthUsage, tokensOf, withTrialRows } from './usage/model';
 import './overview.css';
 
@@ -17,11 +18,19 @@ export const Onboarding = ({ api, tenant, tenantName }: ScreenProps) => {
         api.usage(tenant, daysThisMonth(), signal).catch(() => undefined),
       ]);
       const trialTokens = usage ? tokensOf(monthUsage(withTrialRows(usage)).trial) : 0;
-      return startProgress(tenant, { datasets, services: overview.services, trialTokens });
+      return {
+        progress: startProgress(tenant, { datasets, services: overview.services, trialTokens }),
+        names: new Map(overview.services.map((s) => [s.id, s.name])),
+      };
     },
     [api, tenant],
   );
-  const progress = facts.status === 'ready' ? facts.data : undefined;
+  const progress = facts.status === 'ready' ? facts.data.progress : undefined;
+  const canReadLog = useRights().has('manage-services');
+  const [history] = useAsync(
+    async (signal) => (canReadLog ? stepHistory(await api.audit(tenant, signal)) : {}),
+    [api, tenant, canReadLog],
+  );
   return (
     <div className="stack">
       <div className="stack-xs">
@@ -48,7 +57,15 @@ export const Onboarding = ({ api, tenant, tenantName }: ScreenProps) => {
           {t('getStarted.checking')}
         </span>
       ) : null}
-      <StartSteps progress={progress} headingLevel={2} long />
+      <StartSteps
+        progress={progress}
+        headingLevel={2}
+        long
+        history={history.status === 'ready' ? history.data : {}}
+        serviceName={(id) =>
+          (facts.status === 'ready' ? facts.data.names.get(id) : undefined) ?? id
+        }
+      />
       <p>
         {t.rich('getStarted.dataHandling', {
           link: (c) => <a href="#/data-handling">{c}</a>,

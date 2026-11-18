@@ -1,4 +1,4 @@
-import { daysThisMonth } from '../usage-window';
+import { daysThisMonth, failedRunsRequest } from '../usage-window';
 import { PlusIcon } from '@navikt/aksel-icons';
 import {
   Alert,
@@ -26,7 +26,7 @@ import type { ScreenProps } from '../screen';
 import { useRights } from '../Shell';
 import { failureText } from './datasets/live-model';
 import { datasetTabPath } from './datasets/model';
-import { ErrorState, Loading, limitOf, refusalOf } from '../states';
+import { ErrorState, limitOf, refusalOf } from '../states';
 import type { Overview as OverviewData, TaskRow, UsageReport } from '../types';
 import { LiveChanges } from './changes/LiveChanges';
 import { allDone, doneCount, ownDataset, startProgress, StartSteps } from './start-progress';
@@ -60,8 +60,6 @@ export const monthLabel = (f: Format, date: Date) => {
   const name = f.month(date, { year: true });
   return name.charAt(0).toUpperCase() + name.slice(1);
 };
-
-const dayMs = 86_400_000;
 
 export const startOfDay = (now: Date) => new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
@@ -249,6 +247,43 @@ const UsageFigures = ({ report, quota }: { report: UsageReport; quota: number | 
   );
 };
 
+const AttentionChecking = ({ label }: { label: string }) => (
+  <div role="status" aria-label={label} className="attention-list">
+    {['70%', '55%'].map((width) => (
+      <div key={width} className="attention-row">
+        <Skeleton variant="text" width={width} />
+      </div>
+    ))}
+  </div>
+);
+
+const OverviewSkeleton = ({ label }: { label: string }) => {
+  const t = useT();
+  return (
+    <div role="status" aria-label={label} className="stack">
+      <section className="stack-sm">
+        <Heading level={2} data-size="sm">
+          {t('overview.attention')}
+        </Heading>
+        <AttentionChecking label={t('overview.checking')} />
+      </section>
+      <div className="overview-grid">
+        <div className="stack-sm overview-top">
+          <Skeleton variant="text" width="40%" height={28} />
+          {[0, 1, 2, 3, 4].map((row) => (
+            <Skeleton key={row} variant="text" width="100%" height={36} />
+          ))}
+        </div>
+        <div className="stack-sm overview-aside">
+          <Skeleton variant="text" width="60%" height={28} />
+          <Skeleton variant="text" width="60%" height={32} />
+          <Skeleton width="100%" height={8} />
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const AttentionList = ({
   items,
   checking,
@@ -278,7 +313,7 @@ const AttentionList = ({
           ))}
         </ul>
       ) : checking ? (
-        <Loading label={t('overview.checking')} />
+        <AttentionChecking label={t('overview.checking')} />
       ) : (
         <p className="attention-none">
           {t('overview.nothing', { time: checkedAt ? f.time(checkedAt) : '' })}
@@ -398,11 +433,7 @@ export const Overview = ({
   const [failedRuns, retryFailedRuns] = useAsync(
     async (signal) => {
       if (!hasServices) return undefined;
-      const result = await api.tasks(
-        tenant,
-        { status: 'failed', from: new Date(now.getTime() - 7 * dayMs).toISOString(), limit: 500 },
-        signal,
-      );
+      const result = await api.tasks(tenant, failedRunsRequest(now), signal);
       return countFailedRuns(result.data, result.total, now);
     },
     [api, tenant, now, hasServices],
@@ -450,7 +481,7 @@ export const Overview = ({
     return (
       <div className="stack overview">
         {header(canCreate)}
-        <Loading label={t('overview.loading')} />
+        <OverviewSkeleton label={t('overview.loading')} />
       </div>
     );
   if (overview.status === 'error')

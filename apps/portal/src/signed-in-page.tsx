@@ -1,12 +1,47 @@
 import { Heading, Paragraph } from '@digdir/designsystemet-react';
 import { lazy, useEffect } from 'react';
-import { useT } from './i18n';
+import { translator, useT } from './i18n';
 import type { ScreenProps } from './screen';
 import { priceSegment } from './screens/about/public-pages';
 import { apiReferenceHashFor, developerHashFor } from './screens/developer-routes';
 import { Overview } from './screens/Overview';
 import { navigation } from './Shell';
 import { StrategyCatalogue } from './strategy-catalogue';
+import './not-found.css';
+
+const distance = (a: string, b: string) => {
+  let row = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const next = [i];
+    for (let j = 1; j <= b.length; j++)
+      next[j] = Math.min(
+        (row[j] ?? 0) + 1,
+        (next[j - 1] ?? 0) + 1,
+        (row[j - 1] ?? 0) + (a[i - 1] === b[j - 1] ? 0 : 1),
+      );
+    row = next;
+  }
+  return row[b.length] ?? 0;
+};
+
+const names = (item: (typeof navigation)[number]) => [
+  item.path.slice(1),
+  ...(['nb', 'en'] as const).map((l) => translator(l)(item.label).toLowerCase()),
+];
+
+/** The menu item an unknown address most likely meant, by prefix or a near spelling. */
+export const guessArea = (area: string) => {
+  const wanted = area.toLowerCase();
+  if (wanted.length < 3) return undefined;
+  return navigation.find((item) =>
+    names(item).some(
+      (name) =>
+        name.startsWith(wanted) ||
+        wanted.startsWith(name) ||
+        distance(wanted, name) <= Math.min(2, Math.floor(name.length / 3)),
+    ),
+  );
+};
 
 const Access = lazy(() => import('./screens/Access').then((m) => ({ default: m.Access })));
 const BuildingBlocks = lazy(() =>
@@ -108,7 +143,7 @@ export const Page = ({
   if (area === 'settings') return <Settings {...props} context={{ kind: 'tenant' }} />;
   if (area === 'data-handling') return <DataHandling api={props.api} />;
   if (area === 'about' && id === priceSegment) return <PricePage />;
-  const item = navigation.find((n) => n.path === `/${area}`);
+  const item = guessArea(area);
   if (Object.hasOwn(footerPages, area))
     return (
       <>
@@ -124,10 +159,12 @@ export const Page = ({
         {t('notFound.title')}
       </Heading>
       <Paragraph>{t('notFound.text', { path: window.location.hash })}</Paragraph>
-      <ul>
+      <ul className="not-found-links">
         {item ? (
           <li>
-            <a href={`#${item.path}`}>{t('notFound.goTo', { area: t(item.label) })}</a>
+            <a className="ds-button" data-variant="primary" href={`#${item.path}`}>
+              {t('notFound.goTo', { area: t(item.label) })}
+            </a>
           </li>
         ) : null}
         <li>

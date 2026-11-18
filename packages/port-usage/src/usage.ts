@@ -202,6 +202,7 @@ export const gatewayUsageSource = (
     usage: async (query) => {
       const step = bucketMs(query.bucket);
       const rows = new Map<string, UsageRow>();
+      const dollars = new Map<string, number>();
       const from = startOfHour(query.from);
       const to = endOfHour(query.to);
       for (const piece of rangePieces(from, to, query.bucket)) {
@@ -235,8 +236,10 @@ export const gatewayUsageSource = (
           sum.cachedInputTokens += bucket.cacheReadTokens;
           sum.cacheWriteTokens += bucket.cacheWriteTokens;
           sum.requests += bucket.requests;
-          sum.cost.micros += Math.round(bucket.cost * 1_000_000);
-          rows.set(rowKey(row), sum);
+          const key = rowKey(row);
+          dollars.set(key, (dollars.get(key) ?? 0) + bucket.cost);
+          sum.cost.micros = Math.round((dollars.get(key) ?? 0) * 1_000_000);
+          rows.set(key, sum);
         }
       }
       return {

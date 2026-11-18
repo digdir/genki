@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { discoverWithRetry } from './discovery-retry.js';
 import {
   unitPricesFor,
   type PriceSpec,
@@ -632,9 +633,10 @@ export const createRuntime = async (input: RuntimeInput) => {
   });
   if (Object.values(migrated).some((n) => n > 0))
     input.logger?.('model connections moved to the shape of ADR 0048', { ...migrated });
-  const discovery = await models.refresh();
-  for (const f of discovery.failed)
-    input.onWarning?.(`model discovery failed for ${f.endpoint}: ${f.error}`);
+  const modelDiscovery = await discoverWithRetry({
+    refresh: () => models.refresh(),
+    ...(input.onWarning ? { onWarning: input.onWarning } : {}),
+  });
   const tools = new ToolRegistry();
   tools.register(
     stateOrganisationTool({
@@ -1101,6 +1103,7 @@ export const createRuntime = async (input: RuntimeInput) => {
   return {
     kernel,
     gate,
+    modelDiscovery,
     registry,
     ports,
     strategies,

@@ -61,6 +61,7 @@ export const services = defineNamespace({
   connectorName: 'Kobling for {service}',
   seedReason: 'Lastet fra den lokale konfigurasjonen',
   archivedByTenant: 'Tjenesten er arkivert og kan ikke kjøres.',
+  archivedReadOnly: 'Tjenesten er arkivert og kan bare leses. Gjenopprett den for å endre den.',
   pausedByTenant: 'Tjenesten er satt på pause. Begrunnelse: {reason}',
   variantAnswer: 'Svar med kilder',
   variantDefault: 'Standard',

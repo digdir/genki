@@ -34,11 +34,17 @@ const refused = z.object({
   error_codes: z.array(z.number().int().nonnegative()).max(5).optional(),
 });
 
+const federatedRecordCodes = new Set([70021, 700211, 700212, 700213]);
+
 const describeRefusal = (status: number, body: unknown) => {
   const found = refused.safeParse(body);
   const error = found.data?.error;
-  const codes = (found.data?.error_codes ?? []).map((c) => `AADSTS${c}`).join(', ');
-  return [error ?? `status ${status}`, codes ? `(${codes})` : ''].filter(Boolean).join(' ');
+  const codes = found.data?.error_codes ?? [];
+  const named = codes.map((c) => `AADSTS${c}`).join(', ');
+  const hint = codes.some((c) => federatedRecordCodes.has(c))
+    ? `; check the app's federated credential: issuer, subject and audience ${tokenExchangeAudience.replace('/.default', '')}`
+    : '';
+  return [error ?? `status ${status}`, named ? `(${named})` : ''].filter(Boolean).join(' ') + hint;
 };
 
 const checked = (app: FederatedApp) => {

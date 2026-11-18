@@ -1,4 +1,5 @@
 import { publishRefusals } from './internal-services.js';
+import { serviceArchived, serviceArchivedType } from './archived-services.js';
 import { createRoute, z, type OpenAPIHono } from '@hono/zod-openapi';
 import type { Context } from 'hono';
 import {
@@ -170,7 +171,7 @@ const routes = {
       },
       409: {
         content: problemContent,
-        description: `${draftOutdatedType}: the body's draftRevision names a draft started from an older version, and publishing it would undo newer published changes; rebase the draft first`,
+        description: `${draftOutdatedType}: the body's draftRevision names a draft started from an older version, and publishing it would undo newer published changes; rebase the draft first. ${serviceArchivedType}: the service is archived; restore it first`,
       },
       422: { content: problemContent, description: 'The definition is invalid' },
     },
@@ -432,6 +433,7 @@ export const registerDefinitionRoutes = (app: OpenAPIHono, options: DefinitionsA
     c.header('genai-task', result.task);
     if (!result.ok && result.type === shareOperatorOnlyType)
       return sharingRefused(c, result.errors);
+    if (!result.ok && result.type === serviceArchivedType) return serviceArchived(c);
     if (!result.ok)
       return problem(c, 422, 'Invalid definition', { errors: redact(result.errors, tenant) });
     if (service && !fromDraft)

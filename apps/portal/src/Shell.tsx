@@ -247,6 +247,7 @@ interface ShellProps {
   unregistered?: boolean;
   registeredElsewhere?: string[];
   api: ApiClient;
+  onRights?: (rights: readonly PortalRight[]) => void;
   children: ReactNode;
 }
 
@@ -345,6 +346,7 @@ export const Shell = ({
   unregistered = false,
   registeredElsewhere = [],
   api,
+  onRights,
   children,
 }: ShellProps) => {
   const t = useT();
@@ -412,6 +414,7 @@ export const Shell = ({
   const actions = organisation.actions ?? profile.rights;
   const actionsKey = actions.join('\u0000');
   const { rights, labels } = useMemo(() => rightsFor(actions, t), [actionsKey, t]);
+  useEffect(() => onRights?.(rights), [onRights, rights]);
   const gated =
     unregistered && !readableUnregistered.some((p) => path === p || path.startsWith(`${p}/`));
   const orgMeta = t(unregistered ? 'shell.orgMetaUnregistered' : 'shell.orgMeta', { orgNr });
