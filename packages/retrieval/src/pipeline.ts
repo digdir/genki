@@ -114,7 +114,7 @@ export interface PassTrace {
 export interface RetrievalTrace {
   expansion: PassTrace;
   intent?: PassTrace;
-  union?: { mode: string; cap: number; rrfK: number };
+  union?: { mode: string; cap: number; rrfK: number; droppedAsReportCopy: number };
 }
 
 export interface RetrievalResult {
@@ -595,6 +595,7 @@ export const retrieve = async (input: RetrieveInput): Promise<RetrievalResult> =
     return {
       chunks: collapsed.slice(0, config.rerank.finalCap),
       droppedAsReportCopy: sorted.length - collapsed.length,
+      texts,
       trace: {
         status: (errors.length > 0 ? 'degraded' : 'reranked') as RerankStatus,
         candidates: outcomes.reduce((n, o) => n + o.length, 0),
@@ -604,7 +605,9 @@ export const retrieve = async (input: RetrieveInput): Promise<RetrievalResult> =
     };
   };
 
-  const pass = async (queries: string[]): Promise<{ chunks: Chunk[]; trace: PassTrace }> => {
+  const pass = async (
+    queries: string[],
+  ): Promise<{ chunks: Chunk[]; texts: Map<string, string>; trace: PassTrace }> => {
     const notices = [...datasetNotices];
     const note: Note = (message) => {
       if (!notices.includes(message)) notices.push(message);
@@ -653,22 +656,24 @@ export const retrieve = async (input: RetrieveInput): Promise<RetrievalResult> =
           ),
         )
       : chunks;
+    // Before the cap and the file check, so neither keeps a copy in place of the agency's own record.
+    const collapsed = collapseReportCopies(boosted, (c) => content.get(c.id) ?? c.text);
+    let droppedAsReportCopy = boosted.length - collapsed.length;
     const maxPerDocument =
       config.maxPerDocument ??
-      relaxedCap(boosted, config.diversity.defaultMaxPerDocument, config.diversity);
-    const capped = capPerDocument(boosted, maxPerDocument);
-    // Before the file check, so a copy of the same file never displaces the agency's own record.
-    const collapsed = collapseReportCopies(capped, (c) => content.get(c.id) ?? c.text);
-    const final = config.duplicateFiles === 'never' ? collapsed : suppressDuplicateFiles(collapsed);
-    let droppedAsReportCopy = capped.length - collapsed.length;
+      relaxedCap(collapsed, config.diversity.defaultMaxPerDocument, config.diversity);
+    const capped = capPerDocument(collapsed, maxPerDocument);
+    const final = config.duplicateFiles === 'never' ? capped : suppressDuplicateFiles(capped);
+    let texts = content;
 
     const query = queries[0] ?? '';
     const reranked = !config.rerank.enabled
       ? { chunks: final, trace: { status: 'off' as RerankStatus, candidates: 0, ms: 0 } }
       : config.rerank.perStrategy
         ? await perStrategyRerank(result.baseLists, query, result.seen, note).then(
-            ({ droppedAsReportCopy: dropped, ...r }) => {
+            ({ droppedAsReportCopy: dropped, texts: reranked, ...r }) => {
               droppedAsReportCopy = dropped;
+              texts = reranked;
               return r;
             },
           )
@@ -676,6 +681,7 @@ export const retrieve = async (input: RetrieveInput): Promise<RetrievalResult> =
 
     return {
       chunks: reranked.chunks,
+      texts,
       trace: {
         queries,
         hitsPerStrategy: result.hitsPerStrategy,
@@ -687,10 +693,10 @@ export const retrieve = async (input: RetrieveInput): Promise<RetrievalResult> =
         ...(detected.error ? { autoFilterError: detected.error } : {}),
         fetched: fetched.length,
         effectiveMaxPerDocument: maxPerDocument,
-        chunksBeforeDiversity: boosted.length,
+        chunksBeforeDiversity: collapsed.length,
         chunksAfterDiversity: final.length,
-        droppedByDiversity: Math.max(0, boosted.length - capped.length),
-        droppedAsDuplicateFile: Math.max(0, collapsed.length - final.length),
+        droppedByDiversity: Math.max(0, collapsed.length - capped.length),
+        droppedAsDuplicateFile: Math.max(0, capped.length - final.length),
         droppedAsReportCopy,
         rerank: reranked.trace,
         warnings: [...result.warnings, ...notices],
@@ -706,15 +712,21 @@ export const retrieve = async (input: RetrieveInput): Promise<RetrievalResult> =
   const runUnion = union.enabled && intent && !(queries.length === 1 && queries[0] === intent);
   if (!runUnion) return { chunks: expansion.chunks, trace: { expansion: expansion.trace } };
   const intentPass = await pass([intent]);
+  const merged = unionMerge(intentPass.chunks, expansion.chunks, union.mode, union.cap, union.rrfK);
+  // Each pass collapses on its own, so one may hold the copy the other dropped.
+  const textOf = (c: Chunk) => intentPass.texts.get(c.id) ?? expansion.texts.get(c.id) ?? c.text;
+  const chunks = collapseReportCopies(merged, textOf);
   return {
-    // Each pass collapses on its own, so one may hold the copy the other dropped.
-    chunks: collapseReportCopies(
-      unionMerge(intentPass.chunks, expansion.chunks, union.mode, union.cap, union.rrfK),
-    ),
+    chunks,
     trace: {
       expansion: expansion.trace,
       intent: intentPass.trace,
-      union: { mode: union.mode, cap: union.cap, rrfK: union.rrfK },
+      union: {
+        mode: union.mode,
+        cap: union.cap,
+        rrfK: union.rrfK,
+        droppedAsReportCopy: merged.length - chunks.length,
+      },
     },
   };
 };

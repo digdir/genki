@@ -215,9 +215,43 @@ describe('records of one report', () => {
       record('hod#18', 'kudos:fdfac1a8', hod),
       record('own#18', 'kudos:51fe0107', own),
       record('older#18', 'kudos:older', { own: true, date: '2024-03-01', pages: 151 }),
+      record('later-hod#18', 'kudos:later', { own: false, date: '2025-01-01', pages: 151 }),
     ]);
 
     expect(kept.map((c) => c.id)).toEqual(['own#18']);
+  });
+
+  it('a record joins a group only when its page count is within 5 % of every record in it', () => {
+    const kept = collapseReportCopies([
+      record('a#18', 'kudos:a', { own: false, date: '2024-01-01', pages: 100 }),
+      record('b#18', 'kudos:b', { own: false, date: '2023-01-01', pages: 96 }),
+      record('c#18', 'kudos:c', { own: true, date: '2024-04-15', pages: 104 }),
+    ]);
+
+    expect(kept.map((c) => c.id)).toEqual(['a#18', 'c#18']);
+  });
+
+  it('a hit of only a few words never stands in for a longer hit on the same page', () => {
+    const kept = collapseReportCopies([
+      record('hod#18', 'kudos:fdfac1a8', hod),
+      record('own#18', 'kudos:51fe0107', own, 'Side 18'),
+    ]);
+
+    expect(kept.map((c) => c.id)).toEqual(['hod#18', 'own#18']);
+  });
+
+  it('names each left-out record once when hits already carrying copies are collapsed again', () => {
+    const kept = collapseReportCopies([
+      { ...record('own#18', 'kudos:own', own), copies: [{ id: 'hod#18', document: 'kudos:hod' }] },
+      { ...record('hod#18', 'kudos:hod', hod), copies: [{ id: 'dup#18', document: 'kudos:dup' }] },
+    ]);
+
+    expect(kept.map((c) => c.copies)).toEqual([
+      [
+        { id: 'hod#18', document: 'kudos:hod' },
+        { id: 'dup#18', document: 'kudos:dup' },
+      ],
+    ]);
   });
 
   it('two hits of one record are never collapsed into each other', () => {

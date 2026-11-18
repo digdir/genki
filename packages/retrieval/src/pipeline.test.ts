@@ -92,6 +92,14 @@ const corpus: Record<string, Doc> = {
     digest: 'sha-own',
     report: { own: false, date: '2023-01-01', pages: 151 },
   },
+  c9: {
+    document: 'kudos:51fe0107',
+    position: 1,
+    title: 'Årsrapport Helsedirektoratet 2023',
+    text: 'Forord: direktoratet la frem sin årsrapport for 2023 med mange nye tall.',
+    digest: 'sha-own',
+    report: { own: true, date: '2024-04-15', pages: 151 },
+  },
 };
 
 type Script = (request: SearchRequest) => string[];
@@ -454,6 +462,51 @@ describe('retrieval pipeline', () => {
     expect(result.chunks.map((c) => c.id)).toEqual(['c6']);
   });
 
+  it("the per-document cap never brings back a copy's page in place of the agency's own record", async () => {
+    const script: (r: SearchRequest) => string[] = (r) =>
+      r.profile === 'content' ? ['c9', 'c7', 'c6'] : [];
+
+    const result = await retrieve({
+      knowledge: knowledgeStub(script).port,
+      queries: ['gjennomsnittslønn kvinner Helsedirektoratet 2023'],
+      config: { autoFilter: { enabled: false }, queryAwareBoost: false, maxPerDocument: 1 },
+    });
+
+    expect(result.chunks.map((c) => c.id)).toEqual(['c9']);
+  });
+
+  it('the user-intent union compares the pages of one report by their text when hits carry none', async () => {
+    const script: (r: SearchRequest) => string[] = (r) =>
+      r.profile !== 'content' ? [] : r.query === 'intent' ? ['c6'] : ['c7'];
+
+    const result = await retrieve({
+      knowledge: knowledgeStub(script).port,
+      queries: ['gjennomsnittslønn'],
+      userIntent: 'intent',
+      config: {
+        autoFilter: { enabled: false },
+        metadataOnly: true,
+        userIntentUnion: { enabled: true },
+      },
+    });
+
+    expect(result.chunks.map((c) => c.id)).toEqual(['c6']);
+  });
+
+  it('the trace counts the records of one report the user-intent union leaves out', async () => {
+    const script: (r: SearchRequest) => string[] = (r) =>
+      r.profile !== 'content' ? [] : r.query === 'intent' ? ['c6'] : ['c7'];
+
+    const result = await retrieve({
+      knowledge: knowledgeStub(script).port,
+      queries: ['gjennomsnittslønn'],
+      userIntent: 'intent',
+      config: { autoFilter: { enabled: false }, userIntentUnion: { enabled: true } },
+    });
+
+    expect(result.trace.union?.droppedAsReportCopy).toBe(1);
+  });
+
   it('collapses records of one report that meet only after a per-strategy rerank', async () => {
     const script: (r: SearchRequest) => string[] = (r) =>
       r.profile === 'content' ? ['c7'] : r.profile === 'phrase' ? ['c6'] : [];
@@ -626,7 +679,7 @@ describe('retrieval pipeline', () => {
     });
 
     expect(result.chunks.map((c) => c.id)).toEqual(['c4', 'c1']);
-    expect(result.trace.union).toEqual({ mode: 'cap', cap: 1, rrfK: 60 });
+    expect(result.trace.union).toEqual({ mode: 'cap', cap: 1, rrfK: 60, droppedAsReportCopy: 0 });
     expect(result.trace.intent?.queries).toEqual(['intent']);
     expect(same.trace.intent).toBeUndefined();
   });

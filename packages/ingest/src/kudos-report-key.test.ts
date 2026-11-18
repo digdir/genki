@@ -95,9 +95,25 @@ describe('the report key of a KUDOS record', () => {
     expect(kudosReportFields(ministryCopy()).report?.own).toBe(false);
     expect(kudosReportFields(annualReport({ publish_date: '2023-01-01' })).report?.own).toBe(false);
     expect(kudosReportFields(annualReport({ publish_date: undefined })).report?.own).toBe(false);
+    expect(
+      kudosReportFields(annualReport({ title: 'Årsrapport Helsedirektoratet 2023 (HOD)' })).report
+        ?.own,
+    ).toBe(false);
   });
 
-  it('keeps the report fields out of the text a metadata search reads', () => {
+  it('only a ministry abbreviation in brackets marks a copy; other acronyms are part of the title', () => {
+    const fields = (title: string) => kudosReportFields(annualReport({ title })).report;
+
+    expect(fields('Strategi for digitalisering (IKT)')).toMatchObject({
+      key: 'årsrapport|983544622|2023|strategi for digitalisering (ikt)',
+      own: true,
+    });
+    expect(fields('Tildelingsbrev 2023 (KDD)')?.key).toBe(
+      'årsrapport|983544622|2023|tildelingsbrev 2023',
+    );
+  });
+
+  it('stores the report fields as one object, which the metadata text leaves out', () => {
     const fields = prepareKudosDoc(annualReport(), 1);
 
     expect(typeof fields.report).toBe('object');

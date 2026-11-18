@@ -344,7 +344,8 @@ describe('the fields job', () => {
       ).rows;
     const chunksBefore = await chunks();
 
-    expect((await row(generation, 'kudos:f1'))?.fields).not.toHaveProperty('report');
+    const before = await row(generation, 'kudos:f1');
+    expect(before?.fields).not.toHaveProperty('report');
 
     await fieldsWork({ records }).handler(
       job({ tenant: 'platform', dataset: name, fill: 'kudos-report-keys' }),
@@ -356,7 +357,7 @@ describe('the fields job', () => {
       own: true,
       pages: 12,
     });
-    expect(filled?.fields_text).not.toContain('årsrapport helsedirektoratet 2025');
+    expect(filled?.fields_text).toBe(before?.fields_text);
     expect(await chunks()).toEqual(chunksBefore);
   });
 });

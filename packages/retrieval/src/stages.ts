@@ -269,14 +269,27 @@ export const collapseReportCopies = (
   chunks: Chunk[],
   textOf: (c: Chunk) => string | undefined = (c) => c.text,
 ): Chunk[] => {
-  interface Slot {
-    keeper: Chunk;
+  interface Member {
     info: ReportInfo;
     words: Set<string>;
     page: unknown;
+  }
+  interface Slot {
+    keeper: Chunk;
+    info: ReportInfo;
+    members: Member[];
     documents: Set<string>;
     copies: Chunk[];
   }
+  const samePage = (a: Member, b: Member) => {
+    const aLong = a.words.size >= samePageMinWords;
+    const bLong = b.words.size >= samePageMinWords;
+    if (aLong && bLong) return overlap(a.words, b.words) >= samePageOverlap;
+    // A short hit, such as a footer, only matches another short one on the same page.
+    return (
+      !aLong && !bLong && a.info.pages === b.info.pages && a.page !== undefined && a.page === b.page
+    );
+  };
   const slotsByKey = new Map<string, Slot[]>();
   const out: (Chunk | Slot)[] = [];
   for (const c of chunks) {
@@ -286,41 +299,47 @@ export const collapseReportCopies = (
       out.push(c);
       continue;
     }
-    const words = tokenize(textOf(c));
-    const page = c.fields.page;
+    const member = { info, words: tokenize(textOf(c)), page: c.fields.page };
     const slots = slotsByKey.get(info.key) ?? [];
     const slot = slots.find(
       (s) =>
         !s.documents.has(document) &&
-        closePages(s.info.pages, info.pages) &&
-        (words.size >= samePageMinWords && s.words.size >= samePageMinWords
-          ? overlap(words, s.words) >= samePageOverlap
-          : s.info.pages === info.pages && page !== undefined && page === s.page),
+        s.members.every((m) => closePages(m.info.pages, info.pages)) &&
+        s.members.some((m) => samePage(m, member)),
     );
     if (!slot) {
-      const fresh = { keeper: c, info, words, page, documents: new Set([document]), copies: [] };
+      const fresh = {
+        keeper: c,
+        info,
+        members: [member],
+        documents: new Set([document]),
+        copies: [],
+      };
       slots.push(fresh);
       slotsByKey.set(info.key, slots);
       out.push(fresh);
       continue;
     }
     slot.documents.add(document);
+    slot.members.push(member);
     if (preferred(info, slot.info)) {
       slot.copies.push(slot.keeper);
-      Object.assign(slot, { keeper: c, info, words, page });
+      Object.assign(slot, { keeper: c, info });
     } else slot.copies.push(c);
   }
   return out.map((x): Chunk => {
     if (!('keeper' in x)) return x;
     if (x.copies.length === 0) return x.keeper;
-    const copies = [
+    const named = new Map<string, ReportCopy>();
+    for (const copy of [
       ...(x.keeper.copies ?? []),
       ...x.copies.flatMap((c) => [
         { id: c.id, ...(c.document === undefined ? {} : { document: c.document }) },
         ...(c.copies ?? []),
       ]),
-    ];
-    return { ...x.keeper, copies };
+    ])
+      if (copy.id !== x.keeper.id && !named.has(copy.id)) named.set(copy.id, copy);
+    return { ...x.keeper, copies: [...named.values()] };
   });
 };
 

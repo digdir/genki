@@ -326,7 +326,26 @@ export const kudosOrgFields = (record: Record<string, unknown>) => {
   };
 };
 
-const isUpper = (c: string) => c !== c.toLowerCase() && c === c.toUpperCase();
+/** The 17 ministries' abbreviations; 9,057 KUDOS titles ended with one on 18 Nov 2026 (issue 677). */
+const ministries = new Set([
+  'AID',
+  'BFD',
+  'DFD',
+  'ED',
+  'FD',
+  'FIN',
+  'HOD',
+  'JD',
+  'KD',
+  'KDD',
+  'KLD',
+  'KUD',
+  'LMD',
+  'NFD',
+  'SD',
+  'SMK',
+  'UD',
+]);
 
 /** A trailing "(HOD)", "(KUD)": the abbreviation a ministry adds to its copy of a report, else undefined. */
 export const ministrySuffix = (title: string): string | undefined => {
@@ -334,9 +353,7 @@ export const ministrySuffix = (title: string): string | undefined => {
   if (!t.endsWith(')')) return undefined;
   const open = t.lastIndexOf('(');
   const inner = t.slice(open + 1, -1);
-  return open > 0 && inner.length >= 2 && inner.length <= 6 && [...inner].every(isUpper)
-    ? inner
-    : undefined;
+  return open > 0 && ministries.has(inner) ? inner : undefined;
 };
 
 /** A title without its ministry suffix, in lower case, its whitespace collapsed. */
@@ -346,7 +363,7 @@ export const reportTitle = (title: string) => {
   return bare.normalize('NFC').toLowerCase().split(/\s+/).filter(Boolean).join(' ');
 };
 
-/** KUDOS dates the records it has no date for 1 January, and ministry copies always. */
+/** KUDOS dates the records it has no date for 1 January, and most ministry copies. */
 const isRealDate = (date: unknown) =>
   typeof date === 'string' && /^\d{4}-\d{2}-\d{2}/.test(date) && date.slice(5, 10) !== '01-01';
 
