@@ -951,9 +951,11 @@ export const mockFetch = (
     if (queueReply) return queueReply;
     const modelReply = modelRoute(path, method, reason, body);
     if (modelReply) return modelReply;
-    demos ??= import('./screens/demos/mock').then((m) => m.demosMock());
-    const demoReply = await (await demos)(path, method, reason, body);
-    if (demoReply) return demoReply;
+    if (/^\/operator\/(demos(\/|$)|recordings\/|demo-settings$)/.test(path)) {
+      demos ??= import('./screens/demos/mock').then((m) => m.demosMock());
+      const demoReply = await (await demos)(path, method, reason, body);
+      if (demoReply) return demoReply;
+    }
     const engineReply = searchEngines(path, method, reason, body);
     if (engineReply) return engineReply;
     const configReply = configRoute(path, url.search, method, reason, body);
