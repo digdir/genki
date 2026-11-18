@@ -104,7 +104,8 @@ export const LiveCallFromCode = ({
     },
     [api, tenant],
   );
-  if (state.status === 'loading') return <Loading label={t('integCode.loadingServices')} />;
+  if (state.status === 'loading')
+    return <Loading label={t('integCode.loadingServices')} shape="detail" onRetry={retry} />;
   if (state.status === 'error') return <ErrorState error={state.error} onRetry={retry} />;
   if (!state.data.length)
     return (

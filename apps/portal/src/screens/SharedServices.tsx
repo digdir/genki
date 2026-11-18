@@ -133,15 +133,29 @@ export const SharedServices = ({ api, tenant, route, live }: ScreenProps) => {
   const t = useT();
   const f = useFormat();
   const [state, retry] = useAsync((signal) => api.sharedServices(signal), [api]);
-  const [models] = useAsync((signal) => api.listModels({}, signal), [api]);
-  const [blocks] = useAsync(
+  const [models, retryModels] = useAsync((signal) => api.listModels({}, signal), [api]);
+  const [blocks, retryBlocks] = useAsync(
     async (signal) =>
       (await api.buildingBlocks.list(tenant, { kind: 'shared_service' }, signal)).data,
     [api, tenant],
   );
+  const retryPending = () => {
+    if (state.status !== 'ready') retry();
+    if (models.status !== 'ready') retryModels();
+    if (blocks.status !== 'ready') retryBlocks();
+  };
   const id = route.segments[1];
   if (state.status === 'loading' || models.status === 'loading' || blocks.status === 'loading')
-    return <Loading label={t('sharedServices.loading')} />;
+    return id ? (
+      <Loading label={t('sharedServices.loading')} shape="detail" onRetry={retryPending} />
+    ) : (
+      <>
+        <Heading level={1} data-size="lg">
+          {t('sharedServices.title')}
+        </Heading>
+        <Loading label={t('sharedServices.loading')} shape="list" onRetry={retryPending} />
+      </>
+    );
   if (state.status === 'error')
     return (
       <>

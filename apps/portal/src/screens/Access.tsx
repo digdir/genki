@@ -1000,7 +1000,8 @@ export const Access = ({ api, tenant, tenantName, route, live }: ScreenProps) =>
   const people = peopleState.status === 'ready' ? peopleState.data : undefined;
 
   const body = () => {
-    if (restState.status === 'loading') return <Loading label={t('access.loadingServices')} />;
+    if (restState.status === 'loading')
+      return <Loading label={t('access.loadingServices')} shape="list" onRetry={retryRest} />;
     if (restState.status === 'error') {
       if (tab === 'people') return <ErrorState error={restState.error} onRetry={retryRest} />;
       return (
@@ -1031,7 +1032,8 @@ export const Access = ({ api, tenant, tenantName, route, live }: ScreenProps) =>
           onSaved={retryRest}
         />
       );
-    if (peopleState.status === 'loading') return <Loading label={t('access.loadingPeople')} />;
+    if (peopleState.status === 'loading')
+      return <Loading label={t('access.loadingPeople')} shape="list" onRetry={retryPeople} />;
     if (notConnected)
       return (
         <div className="access-stack">

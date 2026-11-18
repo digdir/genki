@@ -247,7 +247,9 @@ export const ServiceKeys = ({
           </div>
         </div>
       ) : null}
-      {state.status === 'loading' ? <Loading label={t('serviceKeys.loading')} /> : null}
+      {state.status === 'loading' ? (
+        <Loading label={t('serviceKeys.loading')} shape="list" onRetry={retry} />
+      ) : null}
       {state.status === 'error' ? <ErrorState error={state.error} onRetry={retry} /> : null}
       {state.status === 'ready' && state.data.length === 0 ? (
         <div className="fe-empty">

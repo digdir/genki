@@ -1,4 +1,4 @@
-import { Button, Spinner, Tag } from '@digdir/designsystemet-react';
+import { Button, Tag } from '@digdir/designsystemet-react';
 import { useEffect, useState } from 'react';
 import type { PlaygroundResult, PlaygroundStreamEvent, RunStats } from '../../api/playground';
 import { useFormat } from '@genai/i18n/react';
@@ -132,7 +132,6 @@ export const RunHeader = ({ run, result }: { run: LiveRun; result?: PlaygroundRe
   return (
     <div className="playground-run-head">
       <Tag data-size="sm" data-color={color}>
-        {running ? <Spinner aria-hidden="true" data-size="2xs" /> : null}
         {t(label)}
       </Tag>
       <dl className="playground-meta">

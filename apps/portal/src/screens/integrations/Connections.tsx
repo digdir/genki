@@ -278,7 +278,9 @@ export const Connections = ({
           onShow={() => setOpen(c.id)}
         />
       ))}
-      {state.status === 'loading' ? <Loading label={t('integConnections.loading')} /> : null}
+      {state.status === 'loading' ? (
+        <Loading label={t('integConnections.loading')} shape="list" onRetry={retryList} />
+      ) : null}
       {state.status === 'error' ? (
         <PageError
           error={state.error}

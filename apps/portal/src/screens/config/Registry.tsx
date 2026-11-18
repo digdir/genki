@@ -97,7 +97,8 @@ const History = ({ api, path }: { api: ApiClient; path: string }) => {
   const t = useT();
   const f = useFormat();
   const [state, retry] = useAsync((signal) => api.configHistory(path, signal), [api, path]);
-  if (state.status === 'loading') return <Loading label={t('config.historyLoading')} />;
+  if (state.status === 'loading')
+    return <Loading label={t('config.historyLoading')} shape="list" rows={3} onRetry={retry} />;
   if (state.status === 'error') return <ErrorState error={state.error} onRetry={retry} />;
   if (state.data.length === 0)
     return <Paragraph data-size="sm">{t('config.historyEmpty')}</Paragraph>;
@@ -324,7 +325,19 @@ export const Registry = ({
   const [open, setOpen] = useState<string | 'new'>();
   const flash = useFlash();
   if (state.status === 'loading')
-    return <Loading label={t('config.registryLoading', { label: label.toLowerCase() })} />;
+    return (
+      <Loading
+        label={t('config.registryLoading', { label: label.toLowerCase() })}
+        shape="table"
+        columns={[
+          t('config.colId'),
+          t('config.colScope'),
+          t('config.colVersion'),
+          t('config.colChanged'),
+        ]}
+        onRetry={retry}
+      />
+    );
   if (state.status === 'error') return <ErrorState error={state.error} onRetry={retry} />;
   const rows = state.data.data.filter(filter ?? (() => true));
   const selected = rows.find((r) => `${r.scope ?? ''}/${r.id}` === open);

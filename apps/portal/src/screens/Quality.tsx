@@ -55,7 +55,8 @@ const AllFeedback = ({
     async (signal) => feedbackFrom(await api.listFeedback(tenant, id, signal), true, f),
     [api, tenant, id, f],
   );
-  if (state.status === 'loading') return <Loading label={t('qualityPage.feedbackLoading')} />;
+  if (state.status === 'loading')
+    return <Loading label={t('qualityPage.feedbackLoading')} shape="list" onRetry={retry} />;
   if (state.status === 'error') return <ErrorState error={state.error} onRetry={retry} />;
   return (
     <FeedbackTab

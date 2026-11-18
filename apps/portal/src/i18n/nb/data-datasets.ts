@@ -578,6 +578,7 @@ export const searchEngine = defineNamespace({
   swCostNote:
     'Kostnaden er et anslag og telles i forbruket til {tenant}. Overføringen kjøres som en vanlig innlesing og vises under Innlesinger.',
   swStart: 'Start overføringen',
+  swStarting: 'Starter ...',
   swPercent: '{percent} prosent',
   swStoppedHeading: 'Overføringen stoppet ved {percent} prosent',
   swStoppedText:
@@ -588,6 +589,7 @@ export const searchEngine = defineNamespace({
   swAdmissionSoon:
     'Innlesingen er sluppet inn bare til {time}. Slipp den inn igjen før det, ellers stopper overføringen og må startes på nytt.',
   swReadmit: 'Slipp inn igjen',
+  swReadmitting: 'Slipper inn ...',
   swReadmitReason: 'Sluppet inn igjen fra portalen',
   swPollRetrying: 'Fikk ikke hentet status akkurat nå. Vi prøver igjen av oss selv.',
   swMayClose:
@@ -618,6 +620,7 @@ export const searchEngine = defineNamespace({
     '{engine} beholdes i {days} dager <undecided/>, så du kan gå tilbake uten å lese inn på nytt.',
   swWorseReason: 'Treffene ble dårligere på testsettet. Forklar hvorfor dere bytter likevel.',
   swAdopt: 'Ta i bruk',
+  swAdopting: 'Tar i bruk ...',
 });
 
 export const datasetsLane = { datasets, searchEngine } as const;

@@ -1,14 +1,7 @@
 import { ExternalLinkIcon } from '@navikt/aksel-icons';
-import {
-  Avatar,
-  Button,
-  Field,
-  Heading,
-  Label,
-  Spinner,
-  Textarea,
-} from '@digdir/designsystemet-react';
+import { Avatar, Button, Field, Heading, Label, Textarea } from '@digdir/designsystemet-react';
 import { useEffect, useId, useState } from 'react';
+import { BusyButton } from '../components/BusyButton';
 import { Icon } from '../components/Icon';
 import { accessManagers } from '../data/access';
 import { useT, type PlainKey } from '../i18n';
@@ -160,13 +153,13 @@ const NoAccessContent = ({
         <span className="recheck-title">{t('noAccess.justGot')}</span>
         <span className="body-sm">{t('noAccess.mayTake')}</span>
         <div className="actions">
-          <Button
+          <BusyButton
             variant="secondary"
             data-size="sm"
-            aria-disabled={checking || undefined}
+            busy={checking}
+            busyLabel={t('noAccess.checking')}
             onClick={() => {
-              if (checking) return;
-              setCheckMsg(t('noAccess.checking'));
+              setCheckMsg('');
               setChecking(true);
               if (!onRecheck) return;
               void onRecheck()
@@ -179,9 +172,8 @@ const NoAccessContent = ({
             }}
           >
             {t('noAccess.checkNow')}
-          </Button>
+          </BusyButton>
           <span role="status" className="recheck-status">
-            {checking ? <Spinner aria-hidden="true" data-size="xs" /> : null}
             {checkMsg}
           </span>
         </div>

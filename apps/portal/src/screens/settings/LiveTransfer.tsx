@@ -139,7 +139,8 @@ const Export = ({
   );
   const [include, setInclude] = useState({ definitions: true, settings: true });
   const [error, setError] = useState('');
-  if (state.status === 'loading') return <Loading label={t('settings.liveLoadingExport')} />;
+  if (state.status === 'loading')
+    return <Loading label={t('settings.liveLoadingExport')} shape="form" onRetry={retry} />;
   if (state.status === 'error') return <ErrorState error={state.error} onRetry={retry} />;
   if (!state.data) return <Paragraph data-size="sm">{needsRight('manage-services', t)}</Paragraph>;
   const bundle = pick(state.data, include);

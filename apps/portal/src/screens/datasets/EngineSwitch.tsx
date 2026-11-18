@@ -1,4 +1,4 @@
-import { Alert, Button, Heading, Spinner, Tag } from '@digdir/designsystemet-react';
+import { Alert, Button, Heading, Tag } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
 import { useEffect, useRef, useState } from 'react';
 import { ApiError, type ApiClient } from '../../api';
@@ -10,6 +10,7 @@ import type {
   SwitchMethod,
 } from '../../api/search-engines';
 import { ApiCallLink } from '../../components/ApiCall';
+import { BusyButton } from '../../components/BusyButton';
 import { DataLocationTag } from '../../components/DataLocationTag';
 import { NotDecided } from '../../components/NotDecided';
 import { reasonProblem, ReasonField } from '../../components/ReasonField';
@@ -500,9 +501,14 @@ export const EngineSwitch = ({
             <Button variant="secondary" onClick={() => goStep(1)}>
               {t('common.back')}
             </Button>
-            <Button variant="primary" loading={busy} onClick={() => void start()}>
+            <BusyButton
+              variant="primary"
+              busy={busy}
+              busyLabel={t('searchEngine.swStarting')}
+              onClick={() => void start()}
+            >
               {t('searchEngine.swStart')}
-            </Button>
+            </BusyButton>
             <ApiCallLink
               call={{
                 action: t('searchEngine.swStart'),
@@ -548,14 +554,15 @@ export const EngineSwitch = ({
                 </p>
               )}
               <div className="actions">
-                <Button
+                <BusyButton
                   variant="secondary"
                   data-size="sm"
-                  loading={busy}
+                  busy={busy}
+                  busyLabel={t('searchEngine.swReadmitting')}
                   onClick={() => void readmit()}
                 >
                   {t('searchEngine.swReadmit')}
-                </Button>
+                </BusyButton>
               </div>
             </div>
           ) : null}
@@ -583,10 +590,7 @@ export const EngineSwitch = ({
             </Alert>
           ) : null}
           {running ? (
-            <span className="engine-leave subtle small-text">
-              <Spinner aria-hidden="true" data-size="xs" />
-              {t('searchEngine.swMayClose')}
-            </span>
+            <span className="engine-leave subtle small-text">{t('searchEngine.swMayClose')}</span>
           ) : null}
         </div>
       ) : null}
@@ -620,7 +624,6 @@ export const EngineSwitch = ({
           ) : null}
           {!comparison && !compared ? (
             <span className="engine-leave subtle" role="status">
-              <Spinner aria-hidden="true" data-size="xs" />
               {t('searchEngine.swTesting')}
             </span>
           ) : null}
@@ -749,7 +752,6 @@ export const EngineSwitch = ({
           ) : null}
           {sw?.state === 'activating' ? (
             <span className="engine-leave subtle" role="status">
-              <Spinner aria-hidden="true" data-size="xs" />
               {t('searchEngine.swRefreshing', { engine: dest.title })}
             </span>
           ) : (
@@ -770,9 +772,14 @@ export const EngineSwitch = ({
                 <Button variant="secondary" onClick={() => goStep(4)}>
                   {t('common.back')}
                 </Button>
-                <Button variant="primary" loading={busy} onClick={adopt}>
+                <BusyButton
+                  variant="primary"
+                  busy={busy}
+                  busyLabel={t('searchEngine.swAdopting')}
+                  onClick={adopt}
+                >
                   {t('searchEngine.swAdopt')}
-                </Button>
+                </BusyButton>
                 <ApiCallLink
                   call={{
                     action: t('searchEngine.swAdopt'),

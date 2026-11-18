@@ -4,7 +4,6 @@ import {
   Heading,
   List,
   Paragraph,
-  Spinner,
   Table,
   TableBody,
   TableCell,
@@ -18,6 +17,7 @@ import { access } from '../data/data-handling';
 import { useAsync, type AsyncState } from '../hooks';
 import { useT, type PlainKey } from '../i18n';
 import { modelLabel } from '../models';
+import { Loading } from '../states';
 import type { ModelOption, Residency } from '../types';
 import './data-handling.css';
 
@@ -136,10 +136,12 @@ const Models = ({
   if (!models) return <Paragraph>{t('about.dhModelsSignIn')}</Paragraph>;
   if (models.status === 'loading')
     return (
-      <span role="status" className="row-wrap">
-        <Spinner aria-hidden="true" data-size="xs" />
-        {t('about.dhModelsLoading')}
-      </span>
+      <Loading
+        label={t('about.dhModelsLoading')}
+        shape="table"
+        columns={columns.map(([, label]) => t(label))}
+        {...(onRetry ? { onRetry } : {})}
+      />
     );
   if (models.status === 'error')
     return (

@@ -368,7 +368,8 @@ export const SearchEngine = (props: Props) => {
       ]),
     [api, tenant, datasetId],
   );
-  if (state.status === 'loading') return <Loading label={t('searchEngine.loading')} />;
+  if (state.status === 'loading')
+    return <Loading label={t('searchEngine.loading')} shape="detail" onRetry={retry} />;
   if (state.status === 'error') return <ErrorState error={state.error} onRetry={retry} />;
   const [initial, engines] = state.data;
   return <Loaded {...props} initial={initial} engines={engines} />;

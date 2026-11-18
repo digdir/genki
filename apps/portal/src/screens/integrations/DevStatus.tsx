@@ -147,7 +147,7 @@ export const DevStatus = ({
         </Button>
       </div>
       {loading ? (
-        <Loading label={t('app.statusChecking')} />
+        <Loading label={t('app.statusChecking')} shape="list" onRetry={retry} />
       ) : health.status === 'error' ? (
         <Alert data-color="danger">
           <Heading level={3} data-size="xs">

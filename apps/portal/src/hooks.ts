@@ -22,9 +22,18 @@ export const useAsync = <T>(
   const [attempt, setAttempt] = useState(0);
   const [refreshed, setRefreshed] = useState(0);
   const silent = useRef(false);
+  const retried = useRef(false);
+  const shown = useRef(state);
   const shownFor = useRef<unknown>(none);
   useLayoutEffect(() => {
-    const keep = keepPreviousFor !== none && shownFor.current === keepPreviousFor;
+    shown.current = state;
+  });
+  useLayoutEffect(() => {
+    const again = retried.current;
+    retried.current = false;
+    const keep =
+      (keepPreviousFor !== none && shownFor.current === keepPreviousFor) ||
+      (again && shown.current.status === 'ready');
     shownFor.current = keepPreviousFor;
     const controller = new AbortController();
     const quiet = silent.current;
@@ -66,7 +75,10 @@ export const useAsync = <T>(
       setTimeout(() => controller.abort(), 0);
     };
   }, [...deps, keepPreviousFor, attempt, refreshed]);
-  const retry = useCallback(() => setAttempt((n) => n + 1), []);
+  const retry = useCallback(() => {
+    retried.current = true;
+    setAttempt((n) => n + 1);
+  }, []);
   return [state, retry, pending] as const;
 };
 

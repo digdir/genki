@@ -387,7 +387,8 @@ export const ServiceChannels = ({
     }
   };
 
-  if (state.status === 'loading') return <Loading label={t('serviceChannels.loading')} />;
+  if (state.status === 'loading')
+    return <Loading label={t('serviceChannels.loading')} shape="list" onRetry={retry} />;
   if (state.status === 'error') return <ErrorState error={state.error} onRetry={retry} />;
   const view = state.data;
 

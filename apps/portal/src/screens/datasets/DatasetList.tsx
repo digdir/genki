@@ -95,10 +95,12 @@ export const DatasetList = ({
   datasets,
   canCreate = true,
   onRetry,
+  pending = false,
 }: {
   datasets: DatasetListItem[];
   canCreate?: boolean;
   onRetry?: (id: string) => Promise<void>;
+  pending?: boolean;
 }) => {
   const t = useT();
   const [{ query, filter }, setView] = useState(fromAddress);
@@ -197,7 +199,11 @@ export const DatasetList = ({
       ) : null}
       {rows.length > 0 ? (
         <div className="table-scroll" role="region" aria-label={t('datasets.title')} tabIndex={0}>
-          <Table className="dataset-table" aria-label={t('datasets.title')}>
+          <Table
+            className="dataset-table"
+            aria-label={t('datasets.title')}
+            aria-busy={pending || undefined}
+          >
             <TableHead>
               <TableRow>
                 <TableHeaderCell scope="col">{t('datasets.columnDataset')}</TableHeaderCell>

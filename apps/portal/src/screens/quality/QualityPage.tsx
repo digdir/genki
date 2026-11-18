@@ -307,7 +307,12 @@ const TestSetsAndRules = ({
         {!data && state.status === 'error' ? (
           <SectionError retry={() => setRound((r) => r + 1)} t={t} loading={false} />
         ) : !data ? (
-          <Loading label={t('quality.setsLoading')} />
+          <Loading
+            label={t('quality.setsLoading')}
+            shape="list"
+            rows={3}
+            onRetry={() => setRound((r) => r + 1)}
+          />
         ) : data.sets.length === 0 ? (
           <div className="quality-empty">
             <Heading level={3} data-size="2xs">

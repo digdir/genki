@@ -340,7 +340,7 @@ const Portal = ({
           </Alert>
         ) : null}
         {slowNavigation ? <NavigationProgress label={t('common.loading')} /> : null}
-        <Suspense fallback={<PageLoading label={t('common.loading')} />}>
+        <Suspense fallback={<PageLoading label={t('common.loading')} shape="detail" />}>
           <Page
             api={api}
             tenant={organisation.orgNumber}

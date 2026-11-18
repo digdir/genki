@@ -90,19 +90,10 @@
 
 .service-body {
   width: 100%;
-  max-width: 1200px;
-  margin: 0 auto;
+  max-width: var(--page-max);
+  margin: 0;
   padding: 24px 24px 64px;
   box-sizing: border-box;
-}
-
-.service-body.service-setup,
-.service-body.service-test {
-  max-width: 880px;
-}
-
-.builder-split .service-body {
-  max-width: 880px;
 }
 
 .service-page .spread {
@@ -123,10 +114,6 @@
   line-height: 1.5;
 }
 
-.service-facts {
-  max-width: 760px;
-}
-
 .strategy-steps {
   margin: 0;
   padding: 0;
@@ -134,7 +121,6 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-width: 560px;
   counter-reset: step;
 }
 

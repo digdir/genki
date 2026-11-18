@@ -496,7 +496,7 @@ describe('Uten tilgang', () => {
 
     const recheck = screen.getByRole('button', { name: 'Sjekk på nytt' });
     fireEvent.click(recheck);
-    expect(screen.getByText('Sjekker Altinn')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Sjekker Altinn' })).toBe(recheck);
     expect(recheck.getAttribute('aria-disabled')).toBe('true');
     await act(() => vi.advanceTimersByTimeAsync(1300));
     await waitFor(() =>

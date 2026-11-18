@@ -360,7 +360,8 @@ export const TestSetEditor = ({
   const [failed, setFailed] = useState<string>();
   const [flash, setFlash] = useState('');
 
-  if (state.status === 'loading') return <Loading label={t('config.testSetsLoading')} />;
+  if (state.status === 'loading')
+    return <Loading label={t('config.testSetsLoading')} shape="list" onRetry={retry} />;
   if (state.status === 'error') return <ErrorState error={state.error} onRetry={retry} />;
   const changed = (message: string) => {
     setFlash(message);

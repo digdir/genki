@@ -116,7 +116,8 @@ export const Keys = ({
   const [saveError, setSaveError] = useState('');
   const summary = useRef<ComponentRef<typeof ErrorSummary>>(null);
 
-  if (state.status === 'loading') return <Loading label={t('integKeys.loading')} />;
+  if (state.status === 'loading')
+    return <Loading label={t('integKeys.loading')} shape="list" onRetry={retry} />;
   if (state.status === 'error') return <ErrorState error={state.error} onRetry={retry} />;
 
   const serviceChoices = merge(

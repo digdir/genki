@@ -25,7 +25,7 @@ import { statusColors, statusKeys, type DatasetStatus } from '../../data/dataset
 import { navigate, useAsync } from '../../hooks';
 import { useT } from '../../i18n';
 import { useRights } from '../../Shell';
-import { ErrorState, Loading } from '../../states';
+import { ErrorState, Loading, PageLoading } from '../../states';
 import { admissionRunsOutSoon } from './admission';
 import { backoffDelay } from './backoff';
 import { DeleteDataset, LeaveDialog, SourceSettings, Technical } from './DatasetSettings';
@@ -113,7 +113,13 @@ export const LiveDatasetDetail = ({
     (signal) => api.datasets.get(tenant, id, signal),
     [api, tenant, id],
   );
-  if (detail.status === 'loading') return <Loading label={t('datasets.loadingOne')} />;
+  if (detail.status === 'loading')
+    return (
+      <div className="stack">
+        <BackLink label={t('datasets.title')} href="#/datasets" />
+        <PageLoading label={t('datasets.loadingOne')} shape="detail" onRetry={retryDetail} />
+      </div>
+    );
   if (detail.status === 'error')
     return detail.error instanceof ApiError && detail.error.status === 404 ? (
       <>
@@ -562,7 +568,12 @@ const Loaded = ({
           ) : runsError !== undefined && !runs ? (
             <ErrorState error={runsError} onRetry={() => void load()} headingLevel={3} />
           ) : pipelines.status === 'loading' || (pipeline && !runs) ? (
-            <Loading label={t('datasets.loadingRuns')} />
+            <Loading
+              label={t('datasets.loadingRuns')}
+              shape="list"
+              headingLevel={3}
+              onRetry={retryPipelines}
+            />
           ) : (
             <section className="stack-sm" aria-labelledby="runs-h">
               <Heading level={2} data-size="xs" id="runs-h">
@@ -620,7 +631,12 @@ const Loaded = ({
         </Tabs.Panel>
         <Tabs.Panel value="source">
           {canEdit && pipelines.status === 'loading' ? (
-            <Loading label={t('datasets.loadingOne')} />
+            <Loading
+              label={t('datasets.loadingOne')}
+              shape="form"
+              headingLevel={3}
+              onRetry={retryPipelines}
+            />
           ) : canEdit ? (
             <SourceSettings
               key={`${view.name}-${pipeline?.version ?? 0}-${formKey}`}
