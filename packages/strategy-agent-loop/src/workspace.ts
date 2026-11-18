@@ -380,6 +380,7 @@ export class Workspace {
       const summary = summaries.get(c.chunkId);
       return [
         Number(evidence.has(c.chunkId)),
+        Number(!this.nonSupporting.has(c.chunkId)),
         Number(explicit.has(c.chunkId)),
         summary?.['rerank-score'] ?? c.rerankScore ?? 0,
         summary?.['retrieval-prior'] ?? c.score ?? 0,
@@ -397,12 +398,11 @@ export class Workspace {
         }
         return a.index - b.index;
       });
-    // Refunds can leave more readable content than the read budget. Bound synthesis
-    // by actual text size, without cutting evidence mid-chunk or imposing a count cap.
+    // Whole chunks within the read budget, and always the top one so the context is never empty.
     let remaining = this.limits.readChars;
-    return ranked.flatMap(({ chunk }) => {
+    return ranked.flatMap(({ chunk }, i) => {
       const length = Math.max(1, chunk.content.length);
-      if (length > remaining) return [];
+      if (i > 0 && length > remaining) return [];
       remaining -= length;
       return [chunk];
     });

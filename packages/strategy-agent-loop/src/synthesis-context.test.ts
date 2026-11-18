@@ -69,11 +69,10 @@ describe('synthesis context selection', () => {
     },
   );
 
-  it('keeps attachments first and explicit reads ahead of auto-reads ranked higher in search', async () => {
-    const r = retrieval();
-    const out = await run({
+  const explicitAndAutoReads = () =>
+    run({
       parts: [attached],
-      retrieval: r.impl,
+      retrieval: retrieval().impl,
       config: {
         ...baseConfig,
         strategy: { ...baseConfig.strategy, search: { autoReadTopK: 2 } },
@@ -91,9 +90,17 @@ describe('synthesis context selection', () => {
       },
     });
 
+  it('puts attachments first when no rerank selected the context', async () => {
+    const out = await explicitAndAutoReads();
+
+    expect(sourcesIn(out)[0]).toBe('[1] Attached instructions.');
+  });
+
+  it('ranks explicit reads ahead of auto-reads ranked higher in search', async () => {
+    const out = await explicitAndAutoReads();
+
     // Read results carry no scores: use search summaries, where c3 ranks above c4.
-    expect(sourcesIn(out)).toEqual([
-      '[1] Attached instructions.',
+    expect(sourcesIn(out).slice(1)).toEqual([
       '[2] Innhold i chunk 3.',
       '[3] Innhold i chunk 4.',
       '[4] Innhold i chunk 1.',
@@ -110,11 +117,10 @@ describe('synthesis context selection', () => {
     });
   });
 
-  it('preserves rerank selection and numbering after later reads, with attachments first', async () => {
-    const r = retrieval({ rerank: async () => [chunk(3), chunk(1)] });
-    const out = await run({
+  const rerankThenRead = () =>
+    run({
       parts: [attached],
-      retrieval: r.impl,
+      retrieval: retrieval({ rerank: async () => [chunk(3), chunk(1)] }).impl,
       scripts: {
         primary: {
           loop: [
@@ -130,12 +136,11 @@ describe('synthesis context selection', () => {
       },
     });
 
+  it('keeps the reranked selection and its order after later reads', async () => {
+    const out = await rerankThenRead();
+
     expect(out.loops).toHaveLength(5);
-    expect(sourcesIn(out)).toEqual([
-      '[1] Attached instructions.',
-      '[2] Innhold i chunk 3.',
-      '[3] Innhold i chunk 1.',
-    ]);
+    expect(sourcesIn(out).slice(1)).toEqual(['[2] Innhold i chunk 3.', '[3] Innhold i chunk 1.']);
     expect(promptFrom(out)).not.toContain(chunk(2).content);
     expect(promptFrom(out)).not.toContain(chunk(4).content);
     expect(out.meta).toEqual({
@@ -147,12 +152,17 @@ describe('synthesis context selection', () => {
     });
   });
 
-  it('bounds refunded reads by actual content size and puts supporting evidence first', async () => {
-    const earlier = [chunk(1, { content: 'a'.repeat(600), contentLength: 600 })];
-    const decisive = chunk(2, { content: 'Decisive evidence.'.repeat(30), contentLength: 1 });
-    const r = retrieval({}, new Map([...earlier, decisive].map((c) => [c.chunkId, c])));
-    const out = await run({
-      retrieval: r.impl,
+  it('puts attachments first when a rerank selected the context', async () => {
+    const out = await rerankThenRead();
+
+    expect(sourcesIn(out)[0]).toBe('[1] Attached instructions.');
+  });
+
+  const earlier = chunk(1, { content: 'a'.repeat(600), contentLength: 600 });
+  const decisive = chunk(2, { content: 'Decisive evidence.'.repeat(30), contentLength: 1 });
+  const refundedThenSupported = () =>
+    run({
+      retrieval: retrieval({}, new Map([earlier, decisive].map((c) => [c.chunkId, c]))).impl,
       config: {
         ...baseConfig,
         strategy: { ...baseConfig.strategy, budget: { readChars: 700 } },
@@ -170,11 +180,139 @@ describe('synthesis context selection', () => {
       },
     });
 
-    expect(sourcesIn(out)).toEqual([`[1] ${decisive.content}`]);
-    expect(promptFrom(out)).not.toContain(earlier[0]?.content);
-    // All read sources remain available in output; only synthesis is budgeted.
-    expect(out.sources.map((s) => s.chunkId)).toEqual(['c2', 'c1']);
+  it('ranks a read that supports a claim ahead of earlier reads', async () => {
+    const out = await refundedThenSupported();
+
+    expect(sourcesIn(out)[0]).toBe(`[1] ${decisive.content}`);
     expect(out.meta).toEqual({ citations: [{ index: 1, chunkId: 'c2' }] });
+  });
+
+  it('leaves a read out of the synthesis when refunds let the reads exceed the read budget', async () => {
+    const out = await refundedThenSupported();
+
+    expect(promptFrom(out)).not.toContain(earlier.content);
+  });
+
+  it('keeps every read chunk as a source when the synthesis is bounded', async () => {
+    const out = await refundedThenSupported();
+
+    expect(out.sources.map((s) => s.chunkId)).toEqual(['c2', 'c1']);
+  });
+
+  const sized = (n: number, length: number) =>
+    chunk(n, { content: `Kilde ${n}. `.padEnd(length, 'x'), contentLength: 1 });
+  const numbered = (...chunks: ReturnType<typeof chunk>[]) =>
+    chunks.map((c, i) => `[${i + 1}] ${c.content}`);
+  const answerWithin = (
+    readChars: number,
+    chunks: ReturnType<typeof chunk>[],
+    reads: string[][],
+    options: {
+      summaries?: Record<string, { rank: number; score: number; hitCount: number }>;
+      read?: (() => string)[];
+    } = {},
+  ) =>
+    run({
+      retrieval: retrieval(
+        {
+          search: async () => ({
+            chunks: chunks.map(({ content: _content, ...summary }, i) => ({
+              ...summary,
+              rank: i + 1,
+              score: 1 - i / 10,
+              ...options.summaries?.[summary.chunkId],
+            })),
+          }),
+        },
+        new Map(chunks.map((c) => [c.chunkId, c])),
+      ).impl,
+      config: { ...baseConfig, strategy: { ...baseConfig.strategy, budget: { readChars } } },
+      scripts: {
+        primary: {
+          loop: [
+            () => result('', [call('search', { queries: ['evidence'] })]),
+            ...reads.map((ids) => () => result('', [call('read_chunks', { chunk_ids: ids })])),
+            () => result('', [call('generate_response', { query: 'evidence' })]),
+          ],
+          read: options.read ?? reads.map(() => unsure),
+          synth: [() => 'Svar [1].'],
+        },
+      },
+    });
+
+  it('ranks a read that a contradiction cites ahead of reads ranked higher in search', async () => {
+    const chunks = [1, 2, 3].map((n) => sized(n, 400));
+    const out = await answerWithin(500, chunks, [['c1', 'c2', 'c3']], {
+      read: [
+        () =>
+          readSignal('conflicting', {
+            contradictions: [{ claim_id: 'answer-bearing-evidence', chunk_ids: ['c3'] }],
+          }),
+      ],
+    });
+
+    expect(sourcesIn(out)).toEqual(numbered(chunks[2] as ReturnType<typeof chunk>));
+  });
+
+  it('ranks a read judged not to support the answer after a later read', async () => {
+    const [first, second] = [sized(1, 600), sized(2, 594)];
+    const out = await answerWithin(700, [first, second], [['c1'], ['c2']], {
+      read: [() => readSignal('gap-remaining'), unsure],
+    });
+
+    expect(sourcesIn(out)).toEqual(numbered(second));
+  });
+
+  it('breaks equal rerank scores by the higher retrieval prior', async () => {
+    const chunks = [sized(1, 400), sized(2, 400)];
+    const out = await answerWithin(500, chunks, [['c1', 'c2']], {
+      summaries: {
+        c1: { rank: 1, score: 0.5, hitCount: 1 },
+        c2: { rank: 1, score: 0.9, hitCount: 1 },
+      },
+    });
+
+    expect(sourcesIn(out)).toEqual(numbered(chunks[1] as ReturnType<typeof chunk>));
+  });
+
+  it('breaks equal retrieval priors by the higher hit count', async () => {
+    const chunks = [sized(1, 400), sized(2, 400)];
+    const out = await answerWithin(500, chunks, [['c1', 'c2']], {
+      summaries: {
+        c1: { rank: 1, score: 0.5, hitCount: 1 },
+        c2: { rank: 1, score: 0.5, hitCount: 3 },
+      },
+    });
+
+    expect(sourcesIn(out)).toEqual(numbered(chunks[1] as ReturnType<typeof chunk>));
+  });
+
+  it('breaks equal hit counts by the lower original rank', async () => {
+    const chunks = [sized(1, 400), sized(2, 400)];
+    const out = await answerWithin(500, chunks, [['c1', 'c2']], {
+      summaries: {
+        c1: { rank: 5, score: 0.5, hitCount: 1 },
+        c2: { rank: 2, score: 0.5, hitCount: 1 },
+      },
+    });
+
+    expect(sourcesIn(out)).toEqual(numbered(chunks[1] as ReturnType<typeof chunk>));
+  });
+
+  it('skips a read that no longer fits the read budget and adds a smaller one after it', async () => {
+    const chunks = [sized(1, 400), sized(2, 400), sized(3, 100)];
+    const out = await answerWithin(700, chunks, [['c1', 'c2', 'c3']]);
+
+    expect(sourcesIn(out)).toEqual(
+      numbered(chunks[0] as ReturnType<typeof chunk>, chunks[2] as ReturnType<typeof chunk>),
+    );
+  });
+
+  it('keeps the top-ranked read when it alone is longer than the read budget', async () => {
+    const long = sized(1, 1_000);
+    const out = await answerWithin(700, [long], [['c1']]);
+
+    expect(sourcesIn(out)).toEqual(numbered(long));
   });
 
   it('keeps the latest known rerank score when a later search omits it', async () => {
