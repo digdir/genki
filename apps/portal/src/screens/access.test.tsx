@@ -228,6 +228,20 @@ describe('Tilgang: tjenester', () => {
     ).toBeTruthy();
   });
 
+  it('offers nobody to choose for a service, and says why, while Altinn is not connected', async () => {
+    await renderAt('#/access/services', withAccess({ altinn: 'not-configured', limits: [] }));
+    const mode = await openService('Postsortering');
+    fireEvent.click(within(mode).getByRole('radio', { name: 'Bare utvalgte personer' }));
+    expect(screen.getByRole('heading', { name: 'Altinn er ikke koblet til ennå.' })).toBeTruthy();
+    expect(
+      screen.getByText(
+        'Derfor er det ingen å velge blant her ennå. Når Altinn er koblet til, kan du velge hvem som får bruke tjenesten.',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByLabelText('Legg til person')).toBeNull();
+    expect(screen.queryByText('Vi fikk ikke kontakt med Altinn.')).toBeNull();
+  });
+
   it('says a limit controls who can use a service, not who can read or copy its setup', async () => {
     await renderAt('#/access/services', withAccess({ limits: [] }));
     const mode = await openService('Postsortering');

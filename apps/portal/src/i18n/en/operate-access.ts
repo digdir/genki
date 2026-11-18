@@ -92,6 +92,8 @@ const access = {
   addPerson: 'Add a person',
   pickPerson: 'Choose a person',
   add: 'Add',
+  noPeopleToPick:
+    'So there is nobody to choose from here yet. Once Altinn is connected, you can choose who may use the service.',
   pickAtLeastOne:
     'Choose at least one person, or let everyone with «Bruke tjenester» use the service.',
   unsaved: 'You have unsaved changes',

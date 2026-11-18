@@ -194,6 +194,8 @@ Plain settings come from the GitHub environment's variables (Settings → Enviro
 | `ALTINN_PDP_MASKINPORTEN_CLIENT_ID`                                                      | The Maskinporten client that asks the decision point                                                                                                                                                                                                                                                                                                                                  |
 | `MASKINPORTEN_ISSUER`, `MASKINPORTEN_TOKEN_URL`                                          | Maskinporten, for the decision point and for systems calling the API                                                                                                                                                                                                                                                                                                                  |
 | `OPERATOR_SUBJECTS`                                                                      | People with the operator role: comma-separated `issuer\|subject` pairs of Ansattporten logins. The API refuses to start with a bare subject or without `OPERATOR_CLIENT_IDS`. A listed person is an operator only when logging in through one of those clients. Maskinporten clients never become operators                                                                           |
+| `ALTINN_PEOPLE_URL`                                                                      | Test only. Altinn's platform address for the Tilgang people list, `https://platform.tt02.altinn.no` in test. Unset leaves the list off: Tilgang says Altinn is not connected. Once set, the API needs `access-person-key-secret` in Key Vault and does not start without it. See [Tilgang people list](#tilgang-people-list)                                                          |
+| `ALTINN_PEOPLE_MASKINPORTEN_CLIENT_ID`, `ALTINN_PEOPLE_MASKINPORTEN_SCOPE`               | Test only, optional. The people list's own Maskinporten client, which then needs `altinn-people-maskinporten-key` in Key Vault, and its scope. Unset, the list uses the decision point's client and `altinn:accessmanagement/enduser:connections:toothers.read`                                                                                                                       |
 | `ALTINN_RESOURCE`                                                                        | Test only. The Altinn resource whose rights count in genki                                                                                                                                                                                                                                                                                                                            |
 | `PLATFORM_TENANT`                                                                        | Test only. The organisation that plays Digdir, for test organisations. Empty means Digdir                                                                                                                                                                                                                                                                                             |
 | `FOUNDRY_OPENAI_BASE_URL`, `FOUNDRY_CLAUDE_BASE_URL`, `TYPESENSE_URL`, `COLBERT_API_URL` | Models, search and reranking                                                                                                                                                                                                                                                                                                                                                          |
@@ -217,17 +219,19 @@ The API audience (`digdir:genai`) has a default in `main.bicep`. genki-test read
 
 Secrets live only in Key Vault. Each name in `keyVaultSecretNames` becomes an environment variable in the API and worker, which the platform reads as `secret://env/<name>`:
 
-| Key Vault secret              | Env var in the app            |
-| ----------------------------- | ----------------------------- |
-| `content-master-key`          | `CONTENT_MASTER_KEY`          |
-| `altinn-pdp-maskinporten-key` | `ALTINN_PDP_MASKINPORTEN_KEY` |
-| `altinn-subscription-key`     | `ALTINN_SUBSCRIPTION_KEY`     |
-| `foundry-openai-key`          | `FOUNDRY_OPENAI_KEY`          |
-| `foundry-claude-key`          | `FOUNDRY_CLAUDE_KEY`          |
-| `typesense-key`               | `TYPESENSE_KEY` (search only) |
-| `colbert-api-key`             | `COLBERT_API_KEY`             |
-| `langfuse-public-key`         | `LANGFUSE_PUBLIC_KEY` (test)  |
-| `langfuse-secret-key`         | `LANGFUSE_SECRET_KEY` (test)  |
+| Key Vault secret                 | Env var in the app                                                                                                   |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `content-master-key`             | `CONTENT_MASTER_KEY`                                                                                                 |
+| `altinn-pdp-maskinporten-key`    | `ALTINN_PDP_MASKINPORTEN_KEY`                                                                                        |
+| `altinn-subscription-key`        | `ALTINN_SUBSCRIPTION_KEY`                                                                                            |
+| `foundry-openai-key`             | `FOUNDRY_OPENAI_KEY`                                                                                                 |
+| `foundry-claude-key`             | `FOUNDRY_CLAUDE_KEY`                                                                                                 |
+| `typesense-key`                  | `TYPESENSE_KEY` (search only)                                                                                        |
+| `colbert-api-key`                | `COLBERT_API_KEY`                                                                                                    |
+| `langfuse-public-key`            | `LANGFUSE_PUBLIC_KEY` (test)                                                                                         |
+| `langfuse-secret-key`            | `LANGFUSE_SECRET_KEY` (test)                                                                                         |
+| `access-person-key-secret`       | `ACCESS_PERSON_KEY_SECRET` (test, once `ALTINN_PEOPLE_URL` is set)                                                   |
+| `altinn-people-maskinporten-key` | `ALTINN_PEOPLE_MASKINPORTEN_KEY` (test, once `ALTINN_PEOPLE_URL` and `ALTINN_PEOPLE_MASKINPORTEN_CLIENT_ID` are set) |
 
 `docling-api-key` is not in `keyVaultSecretNames`: the template gives it only to the worker (`DOCLING_API_KEY`) and the Docling server (`DOCLING_SERVE_API_KEY`), see [Docling server](#docling-server). Create it like the others.
 
@@ -274,6 +278,18 @@ Register one Ansattporten integration per app and environment: in Ansattporten's
 Each asks for `openid profile`, the API audience `digdir:genai`, and `authorization_details` of type `ansattporten:altinn:resource` for the environment's Altinn resource: `urn:altinn:resource:digdir-genai-platform-test` in test, `urn:altinn:resource:digdir-genai-platform` in prod. Put the client ids in `PORTAL_CLIENT_ID`, `WORKSPACE_CLIENT_ID` and `CONSOLE_CLIENT_ID` of the matching GitHub environment.
 
 The decision point needs, per environment, the Altinn resource, a Maskinporten client owned by Digdir with the scope `altinn:authorization/authorize`, and an Altinn subscription key: in tt02 and Maskinporten test for genki-test, in Altinn production (`https://platform.altinn.no`) and production Maskinporten (`https://maskinporten.no/`) for prod. Issues #42 and #43 describe them.
+
+### Tilgang people list
+
+Tilgang lists who in an organisation holds the platform's rights by reading Altinn access management as that organisation's system user ([ADR 0060](../docs/adr/0060-people-and-service-access-from-altinn.md)). Until it is set up, Tilgang says Altinn is not connected and shows only the signed-in person's own rights. For genki-test, in tt02 and Maskinporten test:
+
+1. **Maskinporten client** owned by Digdir, with the system user scopes (`altinn:authentication/systemregister.write`, `altinn:authentication/systemuser.request.write`, `altinn:authentication/systemuser.request.read`) and `altinn:accessmanagement/enduser:connections:toothers.read`. The decision point's client can carry them, or a client of its own.
+2. **System in the Altinn system register** (`https://platform.tt02.altinn.no/authentication/api/v1/systemregister/vendor`), linked to that client id, offering the access package that lets a system user read the organisation's access management.
+3. **System user** for each test organisation that uses Tilgang: request it as the vendor and approve it in Altinn as the organisation's access manager, with that access package. `PLATFORM_TENANT`'s organisation first.
+4. **Key Vault secrets**: `access-person-key-secret` (`openssl rand -base64 32`, at least 32 characters; never change it afterwards, since every stored service limit points at hashes made with it) and, only with a client of its own, `altinn-people-maskinporten-key` (the client's private JWK as JSON). `altinn-subscription-key` is the decision point's.
+5. **GitHub variables** in the test environment, last, after the secrets exist: `ALTINN_PEOPLE_URL` = `https://platform.tt02.altinn.no`, and with a client of its own `ALTINN_PEOPLE_MASKINPORTEN_CLIENT_ID`. Then run **deploy**.
+
+The secret names join `keyVaultSecretNames` only once those variables are set, so the order above never stops a revision. The API refuses to start if `ALTINN_PEOPLE_URL` is set and a setting is missing. Still to confirm with the Altinn team (ADR 0060): that the connections API accepts a system user token, the exact scope (set `ALTINN_PEOPLE_MASKINPORTEN_SCOPE` if it differs) and which access package the system user needs. Prod is not set up.
 
 ## What the platform owner creates once
 
