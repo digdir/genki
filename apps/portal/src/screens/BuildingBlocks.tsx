@@ -23,6 +23,8 @@ import { StepFlowEditor } from './StepFlows';
 import { FlashMessage, settled, type Flash } from './buildingblocks/common';
 import { ConnectorsPage } from './buildingblocks/ConnectorsPage';
 import { RegisterBlock } from './buildingblocks/RegisterBlock';
+import { ModelCatalog } from './models/ModelCatalog';
+import { ModelsInUse } from './models/ModelsInUse';
 import { BackLink } from '../components/BackLink';
 import './buildingblocks.css';
 
@@ -257,6 +259,8 @@ export const BuildingBlocks = (props: ScreenProps) => {
         }}
       />
     );
+  else if (kind === 'models')
+    page = id === 'in-use' ? <ModelsInUse {...props} /> : <ModelCatalog {...props} />;
   else if (kind === 'connectors' && !id)
     page = <ConnectorsPage {...props} version={version} onFlash={(next) => show(next)} />;
   else if (kind === 'step_flow' && id && view === 'edit')

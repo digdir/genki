@@ -558,7 +558,7 @@ export const RunHistory = ({
   if (confirming === 'marked' && marked.length === 0) setConfirming(undefined);
   const [round, setRound] = useState(0);
   const [version, setVersion] = useState<'draft' | 'published'>('draft');
-  const [models] = useAsync((signal) => api.listModels({}, signal), [api]);
+  const [models] = useAsync((signal) => api.listModels({ all: true }, signal), [api]);
   const modelList = models.status === 'ready' ? models.data : [];
   const [starting, setStarting] = useState(false);
   const [trace, setTrace] = useState(false);

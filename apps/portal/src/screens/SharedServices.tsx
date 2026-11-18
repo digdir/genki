@@ -133,7 +133,7 @@ export const SharedServices = ({ api, tenant, route, live }: ScreenProps) => {
   const t = useT();
   const f = useFormat();
   const [state, retry] = useAsync((signal) => api.sharedServices(signal), [api]);
-  const [models, retryModels] = useAsync((signal) => api.listModels({}, signal), [api]);
+  const [models, retryModels] = useAsync((signal) => api.listModels({ all: true }, signal), [api]);
   const [blocks, retryBlocks] = useAsync(
     async (signal) =>
       (await api.buildingBlocks.list(tenant, { kind: 'shared_service' }, signal)).data,
