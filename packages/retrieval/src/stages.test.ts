@@ -303,6 +303,22 @@ describe('records of one report', () => {
     ).toEqual(['b']);
   });
 
+  it('a kept hit never lists itself among the records it left out', () => {
+    const tie = { own: true, date: '2024-04-15', pages: 151 };
+    const [first] = collapseReportCopies([
+      record('a#18', 'kudos:a', tie),
+      record('b#18', 'kudos:b', tie),
+    ]);
+    const [second] = collapseReportCopies([
+      record('b#18', 'kudos:b', tie),
+      record('a#18', 'kudos:a', tie),
+    ]);
+
+    const kept = collapseReportCopies([first as Chunk, second as Chunk]);
+
+    expect(kept.map((c) => [c.id, c.copies?.map((x) => x.id)])).toEqual([['a#18', ['b#18']]]);
+  });
+
   it('a record with no page count is never grouped', () => {
     const noPages = chunk('np', {
       document: 'np',

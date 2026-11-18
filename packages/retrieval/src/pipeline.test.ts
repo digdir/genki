@@ -493,6 +493,35 @@ describe('retrieval pipeline', () => {
     expect(result.chunks.map((c) => c.id)).toEqual(['c6']);
   });
 
+  it('the user-intent union compares pages by their text after a per-strategy rerank of hits that carry none', async () => {
+    const script: (r: SearchRequest) => string[] = (r) =>
+      r.query === 'intent'
+        ? r.profile === 'content'
+          ? ['c6']
+          : []
+        : r.profile === 'phrase'
+          ? ['c7']
+          : ['c1'];
+    const rr = rerankStub((r) => r.documents.map((_, i) => ({ index: i, score: 1, rank: 1 })));
+
+    const result = await retrieve({
+      knowledge: knowledgeStub(script).port,
+      rerank: rr.port,
+      queries: ['gjennomsnittslønn'],
+      userIntent: 'intent',
+      config: {
+        autoFilter: { enabled: false },
+        metadataOnly: true,
+        retrieveTopK: 1,
+        rerank: { enabled: true, perStrategy: true },
+        userIntentUnion: { enabled: true },
+      },
+    });
+
+    expect(result.chunks.map((c) => c.id)).not.toContain('c7');
+    expect(result.trace.union?.droppedAsReportCopy).toBe(1);
+  });
+
   it('the trace counts the records of one report the user-intent union leaves out', async () => {
     const script: (r: SearchRequest) => string[] = (r) =>
       r.profile !== 'content' ? [] : r.query === 'intent' ? ['c6'] : ['c7'];
