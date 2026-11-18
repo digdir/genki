@@ -607,6 +607,7 @@ const platform = await createPlatform({
 const admin = createAdmin({
   platformTenant,
   store: platform.definitions,
+  lifecycle: platform.lifecycle,
   plugins: platform.plugins,
   settings,
   models: platform.models,
@@ -618,6 +619,7 @@ const admin = createAdmin({
 const builtAt = buildTimeOf(process.env.APP_BUILT_AT);
 const app = createApp(version, {
   ...(builtAt ? { builtAt } : {}),
+  modelDiscovery: platform.modelDiscovery.state,
   requestTiming: {
     write: (entry) => log('request', { ...entry }),
     slowMs: Number(process.env.SLOW_REQUEST_MS) || defaultSlowRequestMs,
@@ -637,6 +639,7 @@ const app = createApp(version, {
     tenantDirectory: () => platform.directory.list(),
     organisationName: (orgNumber) =>
       (testData.organisations ?? []).find((o) => o.orgno === orgNumber)?.name,
+    registeredName: async (orgNumber) => (await platform.organization(orgNumber))?.name,
     tenantQuota: platform.quota,
     tenantGate: platform.tenantGate,
     registered: platform.registered,

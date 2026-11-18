@@ -208,6 +208,53 @@ describe('the ai gateway usage source', () => {
     ]);
   });
 
+  it("counts a call as genki's whether the gateway names genki's client genki or the app's client id", async () => {
+    const { fake, server } = await serve();
+    const appId = '334f8fa1-437e-4b84-bceb-f320fb60f3ed';
+    const call = { model: 'aivar:borealis', org: '991825827', inputTokens: 16, outputTokens: 3 };
+    fake.record({ ...call, client: 'genki', at: new Date(day + 60_000) });
+    fake.record({ ...call, client: appId, at: new Date(day + 120_000) });
+    fake.record({ ...call, client: 'other-app', at: new Date(day + 180_000) });
+    const { config } = gatewayUsageConfigFromEnv({
+      GATEWAY_USAGE_URL: server.url,
+      GATEWAY_USAGE_APP_CLIENT_ID: appId,
+      GATEWAY_USAGE_APP_TENANT: '008e560f-08af-4cec-a056-b35447503991',
+      GATEWAY_USAGE_APP_SCOPE: 'api://3eca282e-8b4d-49d6-991f-79849dffd652/.default',
+    });
+    const source = aiGatewayUsageSource(
+      { ...configFor(server), genkiClients: config?.genkiClients ?? [] },
+      { secrets, egress },
+    );
+    const { rows } = await source.usage(window);
+
+    expect(rows.map((r) => [r.subject?.kind, r.requests])).toEqual([
+      ['genki', 2],
+      ['org', 1],
+    ]);
+  });
+
+  it("sums the gateway's dollar cost before rounding to micros, so many small calls are not lost", async () => {
+    const { server } = await serve();
+    const many = JSON.parse(realAnswer) as {
+      buckets: { group: Record<string, string | null>; cost: number }[];
+    };
+    const bucket = many.buckets[0] as (typeof many.buckets)[number];
+    many.buckets = ['app-a', 'app-b', 'app-c'].map((client) => ({
+      ...structuredClone(bucket),
+      group: { ...bucket.group, 'usage.client': client },
+      cost: 0.0000004,
+    }));
+    server.answerWith(JSON.stringify(many));
+    const source = aiGatewayUsageSource(configFor(server), { secrets, egress });
+    const { rows } = await source.usage({
+      from: new Date('2026-11-17T10:00:00Z'),
+      to: new Date('2026-11-17T12:00:00Z'),
+      bucket: 'hour',
+    });
+
+    expect(rows.map((r) => [r.requests, r.cost])).toEqual([[3, { currency: 'USD', micros: 1 }]]);
+  });
+
   it('treats a null attribute in the group as absent, so the row has no organisation', async () => {
     const { server } = await serve();
     const lacking = JSON.parse(realAnswer) as {
@@ -404,7 +451,7 @@ describe('gateway settings', () => {
 
     expect(problems).toEqual([]);
     expect(config?.credential).toBeUndefined();
-    expect(config?.genkiClients).toEqual(['genki']);
+    expect(config?.genkiClients).toEqual(['genki', '334f8fa1-437e-4b84-bceb-f320fb60f3ed']);
     expect(config?.federatedApp).toEqual({
       clientId: '334f8fa1-437e-4b84-bceb-f320fb60f3ed',
       tenant: '11111111-2222-3333-4444-555555555555',

@@ -1,6 +1,6 @@
 # 0004 Service, capability and version
 
-Status: accepted, 2026-10-12 (built; the data version for datasets on the knowledge database, 2026-11-03; sharing changed only by operators, 2026-11-11; service environments partly built, 2026-11-11; internal services built, 2026-11-12; environments in the portal, 2026-11-13). Proposed 2026-10-06
+Status: accepted, 2026-10-12 (built; the data version for datasets on the knowledge database, 2026-11-03; sharing changed only by operators, 2026-11-11; service environments partly built, 2026-11-11; internal services built, 2026-11-12; environments in the portal, 2026-11-13; archived services read only, 2026-11-18). Proposed 2026-10-06
 
 ## Decision
 
@@ -52,6 +52,7 @@ The plan had services, agents, modes and capabilities with no defined mapping, a
 
 The API enforces `spec.visibility: internal` in `apps/api/src/internal-services.ts`, mostly in one place rather than route by route:
 
+- **An archived service is read only.** While `PUT /tenants/{tenant}/services/{id}/lifecycle` has it `archived`, every change under `/tenants/{tenant}/services/{id}/` and every new version answer 409 `urn:genai:problem:service-archived`. The platform's definition store refuses the publish, so `POST /definitions`, an operator's sharing change and the seed all meet it; `POST /tenants/{tenant}/import` checks it with its other checks before it writes anything, so an import that would publish an archived service imports nothing, and the error names the service (an import with `onConflict=skip` leaves the archived service alone and does not fail). Reads, restoring through `/lifecycle` and the batch-run routes, which refuse to run it on their own, stay open. A caller who may not act for the tenant, or is not signed in, gets the route's own answer, so the state does not leak.
 - **Who is looking.** A middleware reads the caller of every request once and keeps, for the rest of the request, whether it sees internal services (`seesInternalServices` in `@genai/identity`: an operator, a platform `workload` principal or a test-runner key). Which services are internal is looked up once per service per request.
 - **The definition store.** The store the API and its modules read through leaves internal services out of `list`, `get`, `versions`, `capabilities` and `resolve` for anyone else. So the lists built from it leave them out: the portal's services, overview, playground, access and shared services, `GET /tenants/{tenant}/definitions`, `GET /services/by-name/{name}`, the builder, building blocks and the lists of where a dataset, skill or block is used. `/v1/models`, MCP and A2A resolve through the same store, so the service is not a model there and a run answers 404 `model_not_found`.
 - **Service paths.** `/tenants/{tenant}/services/{id}/...` answers a signed-in caller 404: with `errors: []` where a route exists, as those routes answer an unknown id, and with the platform's plain not-found body where none does. An anonymous caller gets the route's own 401. The definition and diagnostics routes answer from the filtered store.

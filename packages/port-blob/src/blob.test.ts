@@ -248,4 +248,33 @@ describe('watching a folder', () => {
 
     expect(seen).toEqual(['innboks/a.txt', 'innboks/a.txt']);
   });
+
+  it.skipIf(process.platform === 'win32')(
+    'lists one folder without reading the rest of the tenant',
+    async () => {
+      const dir = await mkdtemp(join(tmpdir(), 'blob-list-'));
+      dirs.push(dir);
+      const store = new FileSystemBlobStore(dir);
+      await store.put(
+        { tenant, path: 'datasets/docs/uploads/a.md' },
+        encoder.encode('a'),
+        'text/markdown',
+      );
+      await store.put(
+        { tenant, path: 'datasets/other/uploads/b.md' },
+        encoder.encode('b'),
+        'text/markdown',
+      );
+      const { chmod } = await import('node:fs/promises');
+      const elsewhere = join(dir, tenant, 'meta', 'datasets', 'other');
+      await chmod(elsewhere, 0o000);
+      try {
+        expect((await store.list(tenant, 'datasets/docs/uploads/')).map((i) => i.path)).toEqual([
+          'datasets/docs/uploads/a.md',
+        ]);
+      } finally {
+        await chmod(elsewhere, 0o755);
+      }
+    },
+  );
 });

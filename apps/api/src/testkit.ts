@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { refusingArchivedPublishes } from './archived-services.js';
 import { join } from 'node:path';
 import { z } from 'zod';
 import type { Principal } from '@genai/contracts';
@@ -159,12 +160,14 @@ export const setup = (
     tenantQuota?: PlatformOptions['tenantQuota'];
     lifecycle?: PlatformOptions['lifecycle'];
     organisationName?: PlatformOptions['organisationName'];
+    registeredName?: PlatformOptions['registeredName'];
     settings?: SettingDefinition[];
   } = {},
 ) => {
   let clock = new Date('2026-10-06T10:00:00Z');
   const now = () => clock;
-  const store = new InMemoryDefinitionStore(plugins, now);
+  const stored = new InMemoryDefinitionStore(plugins, now);
+  const store = options.lifecycle ? refusingArchivedPublishes(stored, options.lifecycle) : stored;
   const settings = new SettingsRegistry(options.settings ?? settingDefinitions, now);
   let ids = 0;
   const names = actorNames(new InMemoryConfigEntryStore());
@@ -174,6 +177,7 @@ export const setup = (
     settings,
     now,
     names,
+    ...(options.lifecycle ? { lifecycle: options.lifecycle } : {}),
     newId: () => `id-${++ids}`,
     ...(options.minutes ? { maxSupportMinutes: options.minutes } : {}),
   });
@@ -190,6 +194,7 @@ export const setup = (
       ...(options.tenantQuota ? { tenantQuota: options.tenantQuota } : {}),
       ...(options.lifecycle ? { lifecycle: options.lifecycle } : {}),
       ...(options.organisationName ? { organisationName: options.organisationName } : {}),
+      ...(options.registeredName ? { registeredName: options.registeredName } : {}),
     },
   });
   const send = (path: string, who: string | undefined, init: SendInit = {}) =>
@@ -321,6 +326,7 @@ export const bootPlatform = async (options: BootOptions = {}) => {
     extensions: platform.extensions,
     models: platform.models,
     tenants: () => platform.directory.list(),
+    lifecycle: platform.lifecycle,
   });
   const app = createApp('test', {
     platform: {

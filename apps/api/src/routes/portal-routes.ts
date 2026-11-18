@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { usageUnits, type Event, type Principal, type Task, type Usage } from '@genai/contracts';
 import { invalidInputProblem } from '@genai/adapter-openai';
@@ -592,6 +593,13 @@ export const usageView = (t: Tally) => {
 const day = (iso: string) => iso.slice(0, 10);
 
 const windowLimit = 50_000;
+const defaultEnvelopeLimit = 1000;
+
+interface RememberedWindow {
+  since: string | undefined;
+  limit: number;
+  found: Promise<Task[]>;
+}
 
 type ModelUsage = { model: string; usage: Usage };
 
@@ -612,6 +620,32 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
   const now = deps.now ?? (() => new Date());
   const newKey = deps.newKey ?? (() => `gp_${randomBytes(24).toString('base64url')}`);
   const newId = deps.newId ?? (() => randomUUID());
+
+  const envelopeMemo = new AsyncLocalStorage<Map<string, RememberedWindow[]>>();
+  app.use('/tenants/:tenant/*', (_c, next) => envelopeMemo.run(new Map(), next));
+  const envelopes = async (
+    tenant: string,
+    query: { since?: string; limit?: number },
+  ): Promise<Task[]> => {
+    const read = deps.taskEnvelopes as NonNullable<PortalRouteDeps['taskEnvelopes']>;
+    const memo = envelopeMemo.getStore();
+    if (!memo) return read(tenant, query);
+    const limit = query.limit ?? defaultEnvelopeLimit;
+    const known = memo.get(tenant) ?? [];
+    const same = known.find((w) => w.since === query.since && w.limit === limit);
+    if (same) return (await same.found).slice();
+    const since = query.since;
+    if (since !== undefined)
+      for (const wider of known) {
+        if (wider.since === undefined || wider.since > since) continue;
+        const found = await wider.found;
+        if (found.length < wider.limit)
+          return found.filter((t) => t.createdAt >= since).slice(0, limit);
+      }
+    const found = read(tenant, query);
+    memo.set(tenant, [...known, { since, limit, found }]);
+    return (await found).slice();
+  };
 
   const access = tenantAccess(deps.admin);
   const guard = async (
@@ -651,7 +685,7 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
     fromService: boolean,
   ) => {
     const tasks = deps.taskEnvelopes
-      ? (await deps.taskEnvelopes(tenant, {})).filter((t) =>
+      ? (await envelopes(tenant, {})).filter((t) =>
           keep({ task: t.id, tenant: t.tenant, status: t.status, at: t.endedAt ?? t.createdAt }),
         )
       : await Promise.all(
@@ -676,7 +710,7 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
     );
   const tasksSince = async (tenant: string, since: string | undefined, fromService: boolean) => {
     const found = deps.taskEnvelopes
-      ? await deps.taskEnvelopes(tenant, since ? { since, limit: windowLimit } : {})
+      ? await envelopes(tenant, since ? { since, limit: windowLimit } : {})
       : await tasksOf(tenant, (row) => since === undefined || row.at >= since, fromService);
     return withoutHiddenTasks(
       found.filter(
@@ -1244,17 +1278,18 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
     const start = now();
     const month = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1));
     const dayAgo = new Date(start.getTime() - 86_400_000).toISOString();
+    const weekAgo = new Date(start.getTime() - weekMs).toISOString();
+    const monthStart = month.toISOString();
     const seesUsage = requireRight(g.principal, g.tenant, 'view-usage').ok;
-    const [caps, summaries, latest, lastDay, usage, connections, qualityWarnings] =
-      await Promise.all([
-        capabilitiesOf(g.tenant),
-        serviceSummaries(g.tenant),
-        tasksSince(g.tenant, undefined, true),
-        tasksSince(g.tenant, dayAgo, true),
-        seesUsage ? usageOver(g.tenant, month, start) : undefined,
-        deps.connections.list(g.tenant),
-        deps.qualityWarnings?.(g.tenant),
-      ]);
+    const window = await tasksSince(g.tenant, monthStart < weekAgo ? monthStart : weekAgo, true);
+    const [caps, summaries, latest, usage, connections, qualityWarnings] = await Promise.all([
+      capabilitiesOf(g.tenant),
+      serviceSummaries(g.tenant),
+      window.length >= 5 ? window : tasksSince(g.tenant, undefined, true),
+      seesUsage ? usageOver(g.tenant, month, start) : undefined,
+      deps.connections.list(g.tenant),
+      deps.qualityWarnings?.(g.tenant),
+    ]);
     const services = summaries.map((s) => ({
       id: s.id,
       name: s.name,
@@ -1275,7 +1310,8 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       qualityWarnings: qualityWarnings ?? [],
       review: {
         pendingToolChanges: connections.reduce((n, s) => n + s.pending.length, 0),
-        failedTasksLastDay: lastDay.filter((t) => t.status === 'failed').length,
+        failedTasksLastDay: window.filter((t) => t.createdAt >= dayAgo && t.status === 'failed')
+          .length,
       },
     });
   });

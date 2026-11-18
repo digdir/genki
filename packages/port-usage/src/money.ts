@@ -22,13 +22,13 @@ export const rateFor = (
   return found;
 };
 
-/** An amount in millionths of a krone, with the rate used; none when no rate is known, never 0. */
+/** An amount in millionths of a krone, with the rate used; none when a non-zero amount has no rate, never 0. */
 export const inNok = (
   money: Money,
   day: string,
   rates: readonly CurrencyRate[],
 ): { micros: number; rate?: CurrencyRate } | undefined => {
-  if (money.currency === nok) return { micros: money.micros };
+  if (money.currency === nok || money.micros === 0) return { micros: money.micros };
   const rate = rateFor(money.currency, day, rates);
   return rate ? { micros: Math.round(money.micros * rate.nokPerUnit), rate } : undefined;
 };
