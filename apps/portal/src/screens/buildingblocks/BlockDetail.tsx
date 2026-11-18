@@ -3,6 +3,7 @@ import { useFormat } from '@genai/i18n/react';
 import { useId, useState } from 'react';
 import type { BlockFacts, ToolConnectionView } from '../../api/blocks';
 import type { ApiClient } from '../../api';
+import type { CatalogModel } from '../../api/models';
 import {
   blockPath,
   changeOf,
@@ -43,43 +44,45 @@ import {
   type Settled,
 } from './common';
 import { SettingsForm } from './SettingsForm';
-import { StepFlowView } from './StepFlowView';
-import { BackLink } from '../../components/BackLink';
+import { useModelText } from '../../components/model-text';
 import { LinkTabs } from '../../components/LinkTabs';
 import { SyncButton, ToolConnectionSections } from './ToolConnection';
-import { UseInService } from '../stepflows/UseInService';
+import { homeHrefs, typeCardHref, typeNames, typeOf } from './block-types';
 
-export type BlockTab = 'about' | 'diagram' | 'yaml' | 'used-by' | 'versions';
+export type BlockTab = 'about' | 'used-by' | 'versions';
 
 export interface ServiceRuns extends BlockUser {
   runsThisWeek?: number;
 }
 
 export const blockTabs: Record<string, BlockTab> = {
-  diagram: 'diagram',
-  yaml: 'yaml',
   'used-by': 'used-by',
   versions: 'versions',
 };
 
 const tabLabels = {
   about: 'blocks.tabAbout',
-  diagram: 'blocks.tabDiagram',
-  yaml: 'blocks.tabYaml',
   'used-by': 'blocks.tabUsedBy',
   versions: 'blocks.tabVersions',
 } as const;
 
-export const hasFlowDefinition = (item: Pick<CatalogItem, 'kind' | 'id'>) =>
-  item.kind === 'step_flow' && !item.id.includes('@');
+const tabs: BlockTab[] = ['about', 'used-by', 'versions'];
 
-export const tabsFor = (item: Pick<CatalogItem, 'kind' | 'id'>, flowShown = true): BlockTab[] =>
-  hasFlowDefinition(item) && flowShown
-    ? ['diagram', 'yaml', 'used-by', 'versions']
-    : ['about', 'used-by', 'versions'];
-
-export const flowEditHref = (item: Pick<CatalogItem, 'kind' | 'id' | 'publisher'>) =>
-  hasFlowDefinition(item) && item.publisher.type === 'own' ? `${blockHref(item)}/edit` : undefined;
+export const BlockCrumbs = ({ block }: { block: Pick<CatalogItem, 'kind' | 'id'> }) => {
+  const t = useT();
+  const type = typeOf(block);
+  const href =
+    type === 'step_flow' || type === 'dataset' || type === 'shared_service'
+      ? homeHrefs[type]
+      : typeCardHref(type);
+  return (
+    <nav aria-label={t('components.breadcrumbs')} className="bb-crumbs">
+      <a href="#/building-blocks">{t('blocks.title')}</a>
+      <span aria-hidden="true">/</span>
+      <a href={href}>{t(typeNames[type])}</a>
+    </nav>
+  );
+};
 
 export const priceText = (
   t: T,
@@ -152,12 +155,11 @@ export const BlockDetailLoading = ({
   onRetry?: () => void;
 }) => {
   const t = useT();
-  const tabs = tabsFor(block);
-  const current = tabs.includes(tab) ? tab : (tabs[0] ?? 'about');
+  const current = tab;
   return (
     <div className="stack">
       <div className="stack-sm">
-        <BackLink label={t('blocks.title')} href="#/building-blocks" />
+        <BlockCrumbs block={block} />
         <span className="bb-meta">{kindLabel(t, block.kind)}</span>
         <HeadingSkeleton label={label} />
       </div>
@@ -166,7 +168,7 @@ export const BlockDetailLoading = ({
         tabs={tabs.map((k) => ({
           key: k,
           label: t(tabLabels[k]),
-          href: `${blockHref(block)}${k === tabs[0] ? '' : `/${k}`}`,
+          href: `${blockHref(block)}${k === 'about' ? '' : `/${k}`}`,
         }))}
         current={current}
       />
@@ -211,9 +213,7 @@ export const BlockDetail = ({
     connection: useId(),
     price: useId(),
   };
-  const [missingFlow, setMissingFlow] = useState('');
-  const tabs = tabsFor(item, missingFlow !== item.id);
-  const current = tabs.includes(tab) ? tab : (tabs[0] ?? 'about');
+  const current = tab;
   const facts2 = item as CatalogItem & BlockFacts;
   const ownTool = item.kind === 'tool' && item.publisher.type === 'own';
   const [extra, reloadExtra] = useAsync(
@@ -233,12 +233,11 @@ export const BlockDetail = ({
   const model = extra.status === 'ready' ? extra.data.model : undefined;
   const connection = extra.status === 'ready' ? extra.data.connection : undefined;
   const [syncMessage, setSyncMessage] = useState<{ ok: boolean; text: string } | null>(null);
-  const [using, setUsing] = useState(false);
   const maker = facts2.maker ?? model?.maker;
   const operator = facts2.operator ?? model?.operator;
   const rights = useBlockRights();
+  const modelText = useModelText();
   const canChange = rights.canChange(item.kind);
-  const editorHref = flowEditHref(item);
   const [pending, setPending] = useState<Pending>(null);
   const [reason, setReason] = useState('');
   const [tried, setTried] = useState(false);
@@ -355,6 +354,12 @@ export const BlockDetail = ({
           },
         ]
       : []),
+    {
+      label: t('blockTypes.factUsedIn'),
+      value: used.length
+        ? t('blockTypes.usedInServices', { count: used.length })
+        : t('blockTypes.usedInNone'),
+    },
     { label: t('blocks.factChangedBy'), value: right },
     { label: t('blocks.factId'), value: item.id },
   ];
@@ -366,38 +371,51 @@ export const BlockDetail = ({
       : item.description;
   const publisherName = item.publisher.type === 'own' ? tenantName : item.publisher.name;
   const runsOf = (id: string) => services.find((s) => s.id === id)?.runsThisWeek;
-  const tabHref = (next: BlockTab) => `${blockHref(item)}${next === tabs[0] ? '' : `/${next}`}`;
+  const tabHref = (next: BlockTab) => `${blockHref(item)}${next === 'about' ? '' : `/${next}`}`;
 
   return (
     <div className="stack">
       <div className="stack-sm">
-        <BackLink label={t('blocks.title')} href="#/building-blocks" />
+        <BlockCrumbs block={item} />
         <span className="bb-meta">
           {t('blocks.kindFrom', { kind: kindLabel(t, item.kind), publisher: publisherName })}
         </span>
-        <div className="bb-title">
-          <Heading level={1} data-size="md">
-            {item.name}
-          </Heading>
-          <Tag data-color={status.color}>{t(status.label)}</Tag>
-          {item.dataLocation ? <DataLocationTag location={item.dataLocation} /> : null}
-          {ownTool && canChange ? (
-            <SyncButton
-              api={api}
-              tenant={tenant}
-              connection={item}
-              onSynced={(message) => {
-                setSyncMessage(message);
-                reloadExtra();
-              }}
-            />
-          ) : null}
-          {hasFlowDefinition(item) &&
-          (item.publisher.type === 'own' || item.status === 'in_use') &&
-          rights.canChange('step_flow') ? (
-            <Button variant="primary" onClick={() => setUsing(true)}>
-              {t('blockFlow.useInService')}
-            </Button>
+        <div className="bb-detail-head">
+          <div className="bb-title">
+            <Heading level={1} data-size="lg">
+              {item.name}
+            </Heading>
+            <Tag data-color={status.color}>{t(status.label)}</Tag>
+            {(model as CatalogModel | undefined)?.recommended ? (
+              <Tag data-color="success">{t('blockTypes.recommended')}</Tag>
+            ) : null}
+            {item.dataLocation ? <DataLocationTag location={item.dataLocation} /> : null}
+          </div>
+          {canChange ? (
+            <div className="actions">
+              {item.status === 'available' ? (
+                <Button variant="primary" onClick={() => open('adopt')}>
+                  {t('blocks.adoptHere')}
+                </Button>
+              ) : null}
+              {item.status === 'requires_approval' ? (
+                <Button variant="primary" onClick={() => open('request')}>
+                  {t('blocks.requestApproval')}
+                </Button>
+              ) : null}
+              {ownTool ? (
+                <SyncButton
+                  api={api}
+                  tenant={tenant}
+                  connection={item}
+                  onSynced={(message) => {
+                    setSyncMessage(message);
+                    reloadExtra();
+                  }}
+                />
+              ) : null}
+              <ApiCallButton call={call} />
+            </div>
           ) : null}
         </div>
         <p className="lead bb-desc">
@@ -511,25 +529,6 @@ export const BlockDetail = ({
 
       {canChange ? (
         <div className="stack-sm">
-          <div className="actions">
-            {item.status === 'available' ? (
-              <Button variant="primary" onClick={() => open('adopt')}>
-                {t('blocks.adoptHere')}
-              </Button>
-            ) : null}
-            {item.status === 'requires_approval' ? (
-              <Button variant="primary" onClick={() => open('request')}>
-                {t('blocks.requestApproval')}
-              </Button>
-            ) : null}
-            {editorHref ? (
-              <Button asChild variant="secondary">
-                <a href={editorHref}>{t('blocks.openStepFlow')}</a>
-              </Button>
-            ) : null}
-            <ApiCallButton call={call} />
-          </div>
-
           {pending ? (
             <section aria-labelledby={ids.pending} className="bb-confirm">
               <Heading level={2} data-size="2xs" id={ids.pending}>
@@ -569,17 +568,6 @@ export const BlockDetail = ({
         tabs={tabs.map((k) => ({ key: k, label: t(tabLabels[k]), href: tabHref(k) }))}
         current={current}
       />
-
-      {current === 'diagram' || current === 'yaml' ? (
-        <StepFlowView
-          api={api}
-          tenant={tenant}
-          id={item.id}
-          own={item.publisher.type === 'own'}
-          view={current}
-          onMissing={() => setMissingFlow(item.id)}
-        />
-      ) : null}
 
       {current === 'used-by' ? (
         <section aria-labelledby={ids.used} className="stack-sm">
@@ -676,6 +664,17 @@ export const BlockDetail = ({
                       </li>
                     );
                   })}
+                </ul>
+              </section>
+            ) : item.kind === 'model' && model ? (
+              <section aria-labelledby={ids.caps} className="stack-sm">
+                <Heading level={2} data-size="xs" id={ids.caps}>
+                  {t('blockTypes.callTypes')}
+                </Heading>
+                <ul className="bb-list">
+                  {modelText.uses(model).map((op) => (
+                    <li key={op}>{modelText.use(op)}</li>
+                  ))}
                 </ul>
               </section>
             ) : item.capabilities.length ? (
@@ -781,33 +780,8 @@ export const BlockDetail = ({
               </section>
             ) : null}
 
-            <SettingsForm
-              key={`${item.id}-${JSON.stringify(item.tenantOverrides)}`}
-              api={api}
-              tenant={tenant}
-              tenantName={tenantName}
-              item={item}
-              canChange={canChange}
-              onSaved={onChanged}
-            />
-          </div>
-
-          <aside className="bb-aside">
-            <section aria-labelledby={ids.facts} className="bb-facts">
-              <Heading level={2} data-size="2xs" id={ids.facts}>
-                {item.kind === 'model' ? t('blocks.aboutModel') : t('blocks.about')}
-              </Heading>
-              <dl className="kv bb-kv">
-                {facts.map((fact) => (
-                  <div key={fact.label} className="bb-kv-row">
-                    <dt>{fact.label}</dt>
-                    <dd>{fact.value}</dd>
-                  </div>
-                ))}
-              </dl>
-            </section>
             <section aria-labelledby={ids.quality} className="stack-sm">
-              <Heading level={2} data-size="2xs" id={ids.quality}>
+              <Heading level={2} data-size="xs" id={ids.quality}>
                 {t('blocks.testSetQuality')}
               </Heading>
               {item.scores.length ? (
@@ -845,16 +819,33 @@ export const BlockDetail = ({
                 <p className="bb-meta">{t('blocks.noTestSets', { tenant: tenantName })}</p>
               )}
             </section>
+            <SettingsForm
+              key={`${item.id}-${JSON.stringify(item.tenantOverrides)}`}
+              api={api}
+              tenant={tenant}
+              tenantName={tenantName}
+              item={item}
+              canChange={canChange}
+              onSaved={onChanged}
+            />
+          </div>
+
+          <aside className="bb-aside">
+            <section aria-labelledby={ids.facts} className="bb-facts">
+              <Heading level={2} data-size="2xs" id={ids.facts}>
+                {t('blockTypes.facts')}
+              </Heading>
+              <dl className="kv bb-kv">
+                {facts.map((fact) => (
+                  <div key={fact.label} className="bb-kv-row">
+                    <dt>{fact.label}</dt>
+                    <dd>{fact.value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </section>
           </aside>
         </div>
-      ) : null}
-      {using ? (
-        <UseInService
-          api={api}
-          tenant={tenant}
-          flow={{ id: item.id, version: Number(item.version), name: item.name }}
-          onClose={() => setUsing(false)}
-        />
       ) : null}
     </div>
   );

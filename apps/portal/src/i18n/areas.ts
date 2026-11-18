@@ -144,7 +144,14 @@ export const areas = {
   contact: [],
   dataHandling: [],
   datasets: ['serviceUi', 'playgroundUi', 'configLane'],
-  developerTools: ['serviceUi', 'configLane', 'integrationsArea', 'apirefArea'],
+  developerTools: [
+    'serviceUi',
+    'stepflowsUi',
+    'configLane',
+    'integrationsArea',
+    'apirefArea',
+    'blocksLane',
+  ],
   integrations: ['serviceUi', 'blocksLane', 'integrationsArea'],
   log: ['playgroundUi'],
   onboarding: [],
@@ -168,7 +175,7 @@ export const areas = {
   settings: ['batchUi', 'playgroundUi', 'skillsLane', 'settingsArea'],
   sharedServices: ['blocksLane', 'configLane'],
   skills: ['serviceUi', 'playgroundUi', 'skillsLane', 'modelsLane', 'qualityArea'],
-  stepFlows: ['stepflowsUi', 'playgroundUi'],
+  stepFlows: ['stepflowsUi', 'playgroundUi', 'blocksLane'],
   usage: [],
 } satisfies Record<string, readonly Part[]>;
 

@@ -135,7 +135,10 @@ export const Page = ({
   const [area = 'overview', id, sub] = props.route.segments;
   if (area === 'overview') return <Overview {...props} onFailingIngests={onFailingIngests} />;
   if (area === 'services') return <Services {...props} />;
-  if (area === 'step-flows') return <StepFlows {...props} />;
+  if (area === 'step-flows')
+    return (
+      <MovedTo hash={window.location.hash.replace(/^#\/step-flows/, '#/developer/step-flows')} />
+    );
   if (area === 'shared-services') return <SharedServices {...props} />;
   if (area === 'datasets' && id && id !== 'new' && sub === 'settings')
     return <Settings {...props} context={{ kind: 'dataset', id }} />;
@@ -150,10 +153,7 @@ export const Page = ({
   if (area === 'developer' && id === 'api' && sub === 'code')
     return <MovedTo hash="#/developer/api" />;
   if (area === 'developer' && id === 'settings') return <MovedTo hash="#/settings/all" />;
-  if (area === 'developer' && id === 'step-flows')
-    return (
-      <MovedTo hash={window.location.hash.replace(/^#\/developer\/step-flows/, '#/step-flows')} />
-    );
+  if (area === 'developer' && id === 'step-flows' && sub) return <StepFlows {...props} />;
   if (area === 'developer')
     return id === 'hooks' && sub ? (
       <Integrations {...props} />

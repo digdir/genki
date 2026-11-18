@@ -9,7 +9,7 @@ import { mockAnsattporten } from '../auth';
 import type { ToolConnectionDetail } from '../api/blocks';
 import type { CatalogItem, CatalogProposal } from '../api/building-blocks';
 import { exampleBlocks, exampleProposal } from '../data/building-blocks';
-import { exampleStepFlow, mockFetch } from '../mock';
+import { mockFetch } from '../mock';
 import type { BuildingBlocksMockOptions } from '../mock/building-blocks';
 import { translator } from '../i18n';
 import { versionText } from './buildingblocks/common';
@@ -58,12 +58,6 @@ const connectorProposal: CatalogProposal = {
   tests: [{ name: 'Testlesing: 50 søknader lest uten feil.', passed: true }],
 };
 
-const groupHeadings = () =>
-  within(screen.getByRole('main'))
-    .getAllByRole('heading', { level: 2 })
-    .map((h) => h.textContent)
-    .filter((t) => t !== 'Kunne ikke hente dataene');
-
 const settingFor = (label: string) =>
   screen.getByLabelText(label, { exact: false }).closest('.bb-setting') as HTMLElement;
 
@@ -83,172 +77,95 @@ afterEach(() => cleanup());
 
 const nbT = translator('nb');
 
-describe('Byggeklosser: liste', () => {
-  it('shows the blocks in use grouped by type under the design header, with link tabs and a live count', async () => {
-    await open('#/building-blocks');
+const card = (name: string) =>
+  within(screen.getByRole('main')).getByRole('link', { name: new RegExp(`^${name}`) });
+
+describe('Byggeklosser: oversikt etter type', () => {
+  it('shows each type with what it is for and how many are in use and in the catalogue', async () => {
+    await open('#/building-blocks', { proposals: [] });
     expect(await screen.findByRole('heading', { level: 1, name: 'Byggeklosser' })).toBeTruthy();
     expect(
       screen.getByText(
-        'Delene tjenestene i Testetaten bygges av: modeller, søk, verktøy, ferdigheter, vern, dommere og stegflyter.',
+        'Delene tjenestene i Testetaten bygges av. Velg en type for å se det dere bruker og det som finnes i katalogen.',
       ),
     ).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Registrer byggekloss' }).getAttribute('href')).toBe(
       '#/building-blocks/new',
     );
-    const inUse = screen.getByRole('tab', { name: 'I bruk hos oss' });
-    expect(inUse.getAttribute('aria-selected')).toBe('true');
-    expect(inUse.getAttribute('href')).toBe('#/building-blocks/in-use');
-    expect(screen.getByRole('tab', { name: 'Katalog' }).getAttribute('href')).toBe(
-      '#/building-blocks/catalogue',
-    );
-    expect(screen.getByText('Viser 18 av 18 byggeklosser')).toBeTruthy();
-    expect(screen.getByRole('heading', { level: 2, name: 'Modeller (1)' })).toBeTruthy();
-    const borealis = screen
-      .getByRole('link', { name: 'Borealis-27B' })
-      .closest('li') as HTMLElement;
-    expect(within(borealis).getByText('Data i Norge')).toBeTruthy();
-    expect(within(borealis).getByText('Oppdatering tilgjengelig')).toBeTruthy();
-    expect(within(borealis).getByText('Brukes i 5 tjenester')).toBeTruthy();
+    expect(screen.queryByRole('tablist')).toBeNull();
+    expect(screen.getByRole('heading', { level: 2, name: 'Typer' })).toBeTruthy();
+    const tools = card('Verktøy');
+    expect(tools.getAttribute('href')).toBe('#/building-blocks/tool');
+    expect(tools.textContent).toContain('Slår opp i eller sender til andre systemer.');
+    expect(tools.textContent).toContain('2 i bruk · 1 i katalogen');
+    expect(card('Søkemotorer').textContent).toContain('2 i bruk · 1 i katalogen');
+    expect(card('Dommere').textContent).toContain('2 i bruk');
     expectAccessible();
   });
 
-  it('has no publisher filter and no API-call button, which the design does not have', async () => {
+  it('opens Modeller in the model catalogue instead of a second list', async () => {
     await open('#/building-blocks', { proposals: [] });
-    await screen.findByRole('link', { name: 'Borealis-27B' });
-    expect(screen.queryByLabelText('Utgiver')).toBeNull();
-    expect(screen.queryByRole('button', { name: /API-kall/ })).toBeNull();
+    await screen.findByRole('heading', { level: 2, name: 'Typer' });
+    expect(card('Modeller').getAttribute('href')).toBe('#/building-blocks/models');
   });
 
-  it('type chips are pressed buttons with counts that filter the groups', async () => {
-    await open('#/building-blocks/catalogue', { proposals: [] });
-    const all = await screen.findByRole('button', { name: 'Alle 9' });
-    expect(all.getAttribute('aria-pressed')).toBe('true');
-    fireEvent.click(screen.getByRole('button', { name: 'Modeller 3' }));
-    expect(groupHeadings()).toEqual(['Modeller (3)']);
-    expect(screen.getByText('Viser 3 av 9 i katalogen')).toBeTruthy();
-    fireEvent.change(screen.getByLabelText('Søk i katalogen'), { target: { value: 'zzz' } });
+  it('links the types that have their own home there instead of copying them', async () => {
+    await open('#/building-blocks', { proposals: [] });
+    await screen.findByRole('heading', { level: 2, name: 'Har sitt eget sted' });
+    expect(card('Stegflyter').getAttribute('href')).toBe('#/developer/step-flows');
+    expect(card('Stegflyter').textContent).toContain('Åpnes i Utviklerverktøy, Stegflyter');
+    expect(card('Datasett').getAttribute('href')).toBe('#/datasets');
+    expect(card('Fellestjenester').getAttribute('href')).toBe('#/shared-services');
+    expect(screen.queryByRole('link', { name: 'Kudos-rapporter' })).toBeNull();
+  });
+
+  it('counts what waits for approval on the card of its type', async () => {
+    await open('#/building-blocks', { proposals: [exampleProposal] });
+    await screen.findByRole('heading', { level: 2, name: 'Typer' });
+    expect(within(card('Verktøy')).getByText('1 venter')).toBeTruthy();
+    expect(within(card('Ferdigheter')).queryByText(/venter/)).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Oppslag i Enhetsregisteret' })).toBeNull();
+  });
+
+  it('searches all building blocks, in use and in the catalogue, from a search typed while the list loads, and keeps it in the address', async () => {
+    await open('#/building-blocks', { proposals: [] });
+    const search = await screen.findByRole('searchbox', { name: 'Søk i alle byggeklosser' });
+    fireEvent.change(search, { target: { value: 'søk' } });
+    expect(await screen.findByRole('link', { name: 'Hybridsøk' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Grafsøk' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { level: 2, name: 'Typer' })).toBeNull();
+    await waitFor(() => expect(window.location.hash).toBe('#/building-blocks?q=s%C3%B8k'));
+    cleanup();
+    await open('#/building-blocks?q=borealis', { proposals: [] });
+    expect(await screen.findByRole('link', { name: 'Borealis-27B' })).toBeTruthy();
     expect(
-      screen.getByRole('heading', { name: 'Ingen byggeklosser i katalogen passer søket' }),
-    ).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Nullstill søk og filter' }));
-    expect(screen.getByRole('button', { name: 'Alle 9' })).toBeTruthy();
-  });
-
-  it('the catalogue lists only blocks not in use yet', async () => {
-    await open('#/building-blocks/catalogue', { proposals: [] });
-    expect(await screen.findByRole('link', { name: 'Qwen3.8-27B' })).toBeTruthy();
-    expect(screen.queryByRole('link', { name: 'Borealis-27B' })).toBeNull();
-  });
-
-  it('Ta i bruk in the catalogue asks why, takes the block into use and links to it under I bruk hos oss', async () => {
-    await open('#/building-blocks/catalogue', { proposals: [] });
-    fireEvent.click(await screen.findByRole('button', { name: 'Ta i bruk Qwen3.8-27B' }));
-    const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByRole('heading', { name: 'Ta i bruk Qwen3.8-27B?' })).toBeTruthy();
-    expect(
-      within(dialog).getByText(
-        'Alle tjenesteeiere i Testetaten kan velge Qwen3.8-27B når de bygger. Ingen tjeneste endres før noen velger den.',
-      ),
-    ).toBeTruthy();
-    fireEvent.change(within(dialog).getByLabelText('Hvorfor tar dere den i bruk?'), {
-      target: { value: 'Lokal modell for korte svar' },
-    });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Ta i bruk' }));
-    expect(
-      await screen.findByText(/Qwen3\.8-27B er tatt i bruk\. Tjenestene kan velge den nå\./),
-    ).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Se den under I bruk hos oss' })).toBeTruthy();
-    await waitFor(() => expect(screen.queryByRole('link', { name: 'Qwen3.8-27B' })).toBeNull());
-  });
-
-  it('a block that needs approval is sent for approval from the catalogue and then waits', async () => {
-    await open('#/building-blocks/catalogue', { proposals: [] });
-    fireEvent.click(
-      await screen.findByRole('button', { name: 'Ta i bruk GPT-4.1 (Azure OpenAI)' }),
-    );
-    const dialog = await screen.findByRole('dialog');
-    fireEvent.change(within(dialog).getByLabelText('Hvorfor tar dere den i bruk?'), {
-      target: { value: 'Trengs for lange tabeller' },
-    });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Send til godkjenning' }));
-    expect(await screen.findByText(/venter på godkjenning\. Vi sier fra på Oversikt/)).toBeTruthy();
-    const row = (await screen.findByRole('link', { name: 'GPT-4.1 (Azure OpenAI)' })).closest(
-      'li',
-    ) as HTMLElement;
-    expect(await within(row).findByText('Venter på godkjenning')).toBeTruthy();
-    expect(within(row).queryByRole('button', { name: /Ta i bruk/ })).toBeNull();
-  });
-
-  it('closing the adopt dialog with a typed reason asks before discarding it', async () => {
-    await open('#/building-blocks/catalogue', { proposals: [] });
-    fireEvent.click(await screen.findByRole('button', { name: 'Ta i bruk Qwen3.8-27B' }));
-    const dialog = await screen.findByRole('dialog');
-    fireEvent.change(within(dialog).getByLabelText('Hvorfor tar dere den i bruk?'), {
-      target: { value: 'Noe jeg skrev' },
-    });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Avbryt' }));
-    expect(within(dialog).getByText('Forkaste det du har skrevet?')).toBeTruthy();
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Fortsett å skrive' }));
-    expect(
-      (within(dialog).getByLabelText('Hvorfor tar dere den i bruk?') as HTMLTextAreaElement).value,
-    ).toBe('Noe jeg skrev');
-  });
-
-  it('shows the design empty state with a link to the catalogue when nothing is in use', async () => {
-    await open('#/building-blocks', { empty: true });
-    expect(
-      await screen.findByRole('heading', { name: 'Ingen byggeklosser i bruk ennå' }),
-    ).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Se katalogen' }).getAttribute('href')).toBe(
-      '#/building-blocks/catalogue',
-    );
-    expectAccessible();
-  });
-
-  it('lets a new organisation with nothing in use create or import a skill', async () => {
-    await open('#/building-blocks/in-use?type=skill', { empty: true });
-    await screen.findByRole('heading', { name: 'Ingen byggeklosser i bruk ennå' });
-    expect(await screen.findByRole('button', { name: 'Ny ferdighet' })).toBeTruthy();
-    expect(screen.getByText('Importer pakke')).toBeTruthy();
-  });
-
-  it('shows only three step flows until asked for all of them', async () => {
-    const flow = exampleBlocks.find((b) => b.id === 'postruting') as CatalogItem;
-    const flows = Array.from({ length: 5 }, (_, i) => ({
-      ...flow,
-      id: `flyt-${i}`,
-      name: `Flyt ${i}`,
-    }));
-    await open('#/building-blocks', { items: flows, proposals: [] });
-    await screen.findByRole('heading', { level: 2, name: 'Stegflyter (5)' });
-    expect(screen.queryByRole('link', { name: 'Flyt 3' })).toBeNull();
-    const more = screen.getByRole('button', { name: 'Vis alle 5 stegflyter' });
-    expect(more.getAttribute('aria-expanded')).toBe('false');
-    fireEvent.click(more);
-    expect(screen.getByRole('link', { name: 'Flyt 4' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Vis færre stegflyter' })).toBeTruthy();
+      (screen.getByRole('searchbox', { name: 'Søk i alle byggeklosser' }) as HTMLInputElement)
+        .value,
+    ).toBe('borealis');
+    expect(screen.getByText('1 treff')).toBeTruthy();
   });
 
   it('shows the design error text with retry when the list cannot be loaded', async () => {
     await renderAt(
-      '#/building-blocks/catalogue',
+      '#/building-blocks',
       failingFetch(/\/building-blocks(\?|$)/, 503, blocksFetch()),
     );
     expect(
-      await screen.findByRole('heading', { name: 'Vi fikk ikke hentet katalogen' }),
+      await screen.findByRole('heading', { name: 'Vi fikk ikke hentet byggeklossene' }),
     ).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 1, name: 'Byggeklosser' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Prøv igjen' })).toBeTruthy();
   });
 
   it('read-only users see no change buttons and the rights alert', async () => {
     await openAsViewer('#/building-blocks');
-    await screen.findByRole('heading', { level: 1, name: 'Byggeklosser' });
+    await screen.findByRole('heading', { level: 2, name: 'Typer' });
     expect(screen.getByText(/Du kan se byggeklossene, men ikke endre dem/)).toBeTruthy();
     expect(screen.queryByRole('link', { name: 'Registrer byggekloss' })).toBeNull();
     expectAccessible();
     cleanup();
-    await openAsViewer('#/building-blocks/catalogue');
-    await screen.findByRole('link', { name: 'Qwen3.8-27B' });
+    await openAsViewer('#/building-blocks/search_engine?show=catalogue');
+    await screen.findByRole('link', { name: 'Grafsøk' });
     expect(screen.queryByRole('button', { name: /^Ta i bruk/ })).toBeNull();
     cleanup();
     await openAsViewer('#/building-blocks/model/qwen');
@@ -262,41 +179,127 @@ describe('Byggeklosser: liste', () => {
   });
 });
 
-describe('Byggeklosser: adressen', () => {
-  it('opens the catalogue tab from its own address', async () => {
-    await open('#/building-blocks/catalogue', { proposals: [] });
-    const tab = await screen.findByRole('tab', { name: 'Katalog' });
-    expect(tab.getAttribute('aria-selected')).toBe('true');
-    expect(screen.getByText('Viser 9 av 9 i katalogen')).toBeTruthy();
+describe('Byggeklosser: én type', () => {
+  it('lists the blocks of a type in use, with I bruk and Katalog as filters instead of tabs', async () => {
+    await open('#/building-blocks/tool', { proposals: [] });
+    expect(await screen.findByRole('heading', { level: 1, name: 'Verktøy' })).toBeTruthy();
+    expect(
+      within(screen.getByRole('main'))
+        .getByRole('link', { name: 'Byggeklosser' })
+        .getAttribute('href'),
+    ).toBe('#/building-blocks');
+    expect(screen.queryByRole('tablist')).toBeNull();
+    const inUse = screen.getByRole('button', { name: 'I bruk 2' });
+    expect(inUse.getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('link', { name: 'Lovdata' })).toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'Skatteveilederen' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Borealis-27B' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Katalog 1' }));
+    await waitFor(() => expect(window.location.hash).toBe('#/building-blocks/tool?show=catalogue'));
+    expect(await screen.findByRole('link', { name: 'Skatteveilederen' })).toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'Lovdata' })).toBeNull();
+    expectAccessible();
   });
 
-  it('arrow keys move between the tabs and change the address', async () => {
-    await open('#/building-blocks', { proposals: [] });
-    await screen.findByRole('link', { name: 'Borealis-27B' });
-    const inUse = screen.getByRole('tab', { name: 'I bruk hos oss' });
-    fireEvent.keyDown(inUse, { key: 'ArrowRight' });
-    await waitFor(() => expect(window.location.hash).toBe('#/building-blocks/catalogue'));
-    expect(document.activeElement?.textContent).toBe('Katalog');
-  });
-
-  it('keeps the type filter and the search in the address', async () => {
-    await open('#/building-blocks/catalogue', { proposals: [] });
-    fireEvent.click(await screen.findByRole('button', { name: 'Modeller 3' }));
-    fireEvent.change(screen.getByLabelText('Søk i katalogen'), { target: { value: 'qwen' } });
+  it('keeps the search and the filter of a type in the address', async () => {
+    await open('#/building-blocks/tool?show=catalogue', { proposals: [] });
+    await screen.findByRole('link', { name: 'Skatteveilederen' });
+    fireEvent.change(screen.getByLabelText('Søk i verktøy'), { target: { value: 'zzz' } });
     await waitFor(() =>
-      expect(window.location.hash).toBe('#/building-blocks/catalogue?type=model&q=qwen'),
+      expect(window.location.hash).toBe('#/building-blocks/tool?show=catalogue&q=zzz'),
     );
     cleanup();
-
-    await open('#/building-blocks/catalogue?type=model&q=qwen', { proposals: [] });
+    await open('#/building-blocks/tool?show=catalogue&q=zzz', { proposals: [] });
     expect(
-      (await screen.findByRole('button', { name: 'Modeller 1' })).getAttribute('aria-pressed'),
+      (await screen.findByRole('button', { name: 'Katalog 1' })).getAttribute('aria-pressed'),
     ).toBe('true');
-    expect((screen.getByLabelText('Søk i katalogen') as HTMLInputElement).value).toBe('qwen');
-    expect(groupHeadings()).toEqual(['Modeller (1)']);
+    expect((screen.getByLabelText('Søk i verktøy') as HTMLInputElement).value).toBe('zzz');
+    expect(screen.getByText('Viser 0 av 1 i katalogen')).toBeTruthy();
   });
 
-  it('keeps the chosen type when a render of an older address arrives after the click', async () => {
+  it('lists step types as their own type and opens them as building blocks', async () => {
+    const flow = exampleBlocks.find((b) => b.id === 'postruting') as CatalogItem;
+    const stepType = { ...flow, id: 'call-operation@1', name: 'Kall en operasjon', usedBy: [] };
+    await open('#/building-blocks', { items: [flow, stepType], proposals: [] });
+    await screen.findByRole('heading', { level: 2, name: 'Typer' });
+    expect(card('Stegtyper').getAttribute('href')).toBe('#/building-blocks/step-types');
+    cleanup();
+    await open('#/building-blocks/step-types', { items: [flow, stepType], proposals: [] });
+    expect(await screen.findByRole('heading', { level: 1, name: 'Stegtyper' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Kall en operasjon' }).getAttribute('href')).toBe(
+      '#/building-blocks/step_flow/call-operation%401',
+    );
+    expect(screen.queryByRole('link', { name: 'Postruting' })).toBeNull();
+  });
+
+  it('Ta i bruk in the catalogue asks why, takes the block into use and links to it under I bruk', async () => {
+    await open('#/building-blocks/search_engine?show=catalogue', { proposals: [] });
+    fireEvent.click(await screen.findByRole('button', { name: 'Ta i bruk Grafsøk' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByRole('heading', { name: 'Ta i bruk Grafsøk?' })).toBeTruthy();
+    fireEvent.change(within(dialog).getByLabelText('Hvorfor tar dere den i bruk?'), {
+      target: { value: 'Trengs for søk i relasjoner' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Ta i bruk' }));
+    expect(await screen.findByText(/Grafsøk er tatt i bruk\./)).toBeTruthy();
+    expect(
+      screen.getByRole('link', { name: 'Se den under I bruk hos oss' }).getAttribute('href'),
+    ).toBe('#/building-blocks/search_engine');
+    await waitFor(() => expect(screen.queryByRole('link', { name: 'Grafsøk' })).toBeNull());
+  });
+
+  it('a block that needs approval is sent for approval from the catalogue and then waits', async () => {
+    await open('#/building-blocks/tool?show=catalogue', { proposals: [] });
+    fireEvent.click(await screen.findByRole('button', { name: 'Ta i bruk Skatteveilederen' }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText('Hvorfor tar dere den i bruk?'), {
+      target: { value: 'Trengs for skattesaker' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Send til godkjenning' }));
+    expect(await screen.findByText(/venter på godkjenning\. Vi sier fra på Oversikt/)).toBeTruthy();
+    const row = (await screen.findByRole('link', { name: 'Skatteveilederen' })).closest(
+      'li',
+    ) as HTMLElement;
+    expect(await within(row).findByText('Venter på godkjenning')).toBeTruthy();
+    expect(within(row).queryByRole('button', { name: /Ta i bruk/ })).toBeNull();
+  });
+
+  it('closing the adopt dialog with a typed reason asks before discarding it', async () => {
+    await open('#/building-blocks/search_engine?show=catalogue', { proposals: [] });
+    fireEvent.click(await screen.findByRole('button', { name: 'Ta i bruk Grafsøk' }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText('Hvorfor tar dere den i bruk?'), {
+      target: { value: 'Noe jeg skrev' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Avbryt' }));
+    expect(within(dialog).getByText('Forkaste det du har skrevet?')).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Fortsett å skrive' }));
+    expect(
+      (within(dialog).getByLabelText('Hvorfor tar dere den i bruk?') as HTMLTextAreaElement).value,
+    ).toBe('Noe jeg skrev');
+  });
+
+  it('shows an empty state with a link to the catalogue when none of a type is in use', async () => {
+    await open('#/building-blocks/tool', { empty: true, proposals: [] });
+    expect(
+      await screen.findByRole('heading', { name: 'Ingen av denne typen er i bruk ennå' }),
+    ).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Se katalogen' }).getAttribute('href')).toBe(
+      '#/building-blocks/tool?show=catalogue',
+    );
+    expectAccessible();
+  });
+
+  it('lets a new organisation with nothing in use create or import a skill', async () => {
+    await open('#/building-blocks/skill', { empty: true });
+    await screen.findByRole('heading', { name: 'Ingen av denne typen er i bruk ennå' });
+    expect((await screen.findAllByRole('button', { name: 'Ny ferdighet' })).length).toBeGreaterThan(
+      0,
+    );
+    expect(screen.getAllByText('Importer pakke').length).toBeGreaterThan(0);
+  });
+
+  it('keeps the typed search when a render of an older address arrives after typing', async () => {
     const props = {
       api: createApiClient({
         baseUrl: '/api',
@@ -307,29 +310,26 @@ describe('Byggeklosser: adressen', () => {
       tenantName: 'Testetaten',
       live: true,
     };
-    window.location.hash = '#/building-blocks';
+    window.location.hash = '#/building-blocks/tool';
     const { rerender } = render(
-      <BuildingBlocks {...props} route={parseRoute('#/building-blocks')} />,
+      <BuildingBlocks {...props} route={parseRoute('#/building-blocks/tool')} />,
     );
-    fireEvent.click(await screen.findByRole('button', { name: 'Modeller 1' }));
-    rerender(<BuildingBlocks {...props} route={parseRoute('#/building-blocks/in-use')} />);
-    expect(screen.getByRole('button', { name: 'Modeller 1' }).getAttribute('aria-pressed')).toBe(
-      'true',
-    );
-    expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
-      'Modeller (1)',
-    ]);
+    await screen.findByRole('link', { name: 'Lovdata' });
+    fireEvent.change(screen.getByLabelText('Søk i verktøy'), { target: { value: 'lov' } });
+    rerender(<BuildingBlocks {...props} route={parseRoute('#/building-blocks/tool?q=l')} />);
+    expect((screen.getByLabelText('Søk i verktøy') as HTMLInputElement).value).toBe('lov');
+    expect(screen.queryByRole('link', { name: 'Saksarkivet' })).toBeNull();
   });
 
   it('shows a failed proposals load with retry instead of hiding it', async () => {
     let fail = true;
     const ok = blocksFetch();
     const broken = failingFetch(/\/proposals\?/, 503, ok);
-    await renderAt('#/building-blocks', (input, init) =>
+    await renderAt('#/building-blocks/tool', (input, init) =>
       fail ? broken(input, init) : ok(input, init),
     );
     expect(await screen.findByRole('heading', { name: 'Kunne ikke hente dataene' })).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Borealis-27B' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Lovdata' })).toBeTruthy();
     fail = false;
     fireEvent.click(screen.getByRole('button', { name: 'Prøv igjen' }));
     await waitFor(() =>
@@ -338,9 +338,37 @@ describe('Byggeklosser: adressen', () => {
   });
 });
 
+describe('Byggeklosser: gamle adresser', () => {
+  const lands = async (from: string, to: string) => {
+    await open(from, { proposals: [] });
+    await waitFor(() => expect(window.location.hash).toBe(to));
+    cleanup();
+  };
+
+  it('sends the old I bruk and Katalog tabs to the overview or to the type they filtered', async () => {
+    await lands('#/building-blocks/in-use', '#/building-blocks');
+    await lands('#/building-blocks/catalogue?q=qwen', '#/building-blocks?q=qwen');
+    await lands('#/building-blocks/in-use?type=tool', '#/building-blocks/tool');
+    await lands(
+      '#/building-blocks/catalogue?type=guardrail&q=pii',
+      '#/building-blocks/guardrail?show=catalogue&q=pii',
+    );
+    await lands('#/building-blocks/in-use?type=model', '#/building-blocks/models/in-use');
+    await lands('#/building-blocks/catalogue?type=model', '#/building-blocks/models');
+  });
+
+  it('sends old addresses of types with their own home to that home', async () => {
+    await lands('#/building-blocks/in-use?type=step_flow', '#/developer/step-flows');
+    await lands('#/building-blocks/catalogue?type=dataset', '#/datasets');
+    await lands('#/building-blocks/in-use?type=shared_service', '#/shared-services');
+    await lands('#/building-blocks/step_flow', '#/developer/step-flows');
+    await lands('#/building-blocks/model', '#/building-blocks/models');
+  });
+});
+
 describe('Byggeklosser: forslag fra byggeassistenten', () => {
   it('approving a level-3 proposal asks for a reason and needs the register right', async () => {
-    await open('#/building-blocks', { proposals: [exampleProposal] });
+    await open('#/building-blocks/tool', { proposals: [exampleProposal] });
     const section = (
       await screen.findByRole('heading', { name: 'Oppslag i Enhetsregisteret' })
     ).closest('section') as HTMLElement;
@@ -369,7 +397,7 @@ describe('Byggeklosser: forslag fra byggeassistenten', () => {
     );
     expect(await screen.findByRole('link', { name: 'Oppslag i Enhetsregisteret' })).toBeTruthy();
     cleanup();
-    await openAs('#/building-blocks', ['Bruke tjenester', 'Administrere tjenester'], {
+    await openAs('#/building-blocks/tool', ['Bruke tjenester', 'Administrere tjenester'], {
       proposals: [exampleProposal],
     });
     const other = await proposalSection();
@@ -381,7 +409,7 @@ describe('Byggeklosser: forslag fra byggeassistenten', () => {
   });
 
   it('a user without the right can send a proposal for approval', async () => {
-    await openAs('#/building-blocks', ['Bruke tjenester', 'Administrere tjenester'], {
+    await openAs('#/building-blocks/tool', ['Bruke tjenester', 'Administrere tjenester'], {
       proposals: [exampleProposal],
     });
     const section = await proposalSection();
@@ -405,7 +433,7 @@ describe('Byggeklosser: forslag fra byggeassistenten', () => {
   });
 
   it('rejecting leaves nothing active', async () => {
-    await open('#/building-blocks', { proposals: [exampleProposal] });
+    await open('#/building-blocks/tool', { proposals: [exampleProposal] });
     const section = await proposalSection();
     fireEvent.click(within(section).getByRole('button', { name: 'Avvis' }));
     expect(
@@ -416,13 +444,13 @@ describe('Byggeklosser: forslag fra byggeassistenten', () => {
     await waitFor(() =>
       expect(screen.queryByRole('heading', { name: 'Oppslag i Enhetsregisteret' })).toBeNull(),
     );
-    fireEvent.click(screen.getByRole('tab', { name: /Katalog/ }));
-    expect(await screen.findByRole('link', { name: 'Qwen3.8-27B' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /^Katalog/ }));
+    expect(await screen.findByRole('link', { name: 'Skatteveilederen' })).toBeTruthy();
     expect(screen.queryByRole('link', { name: 'Oppslag i Enhetsregisteret' })).toBeNull();
   });
 
-  it('a level-2 connector is approved on the Koblinger page, linked from the list', async () => {
-    await openAs('#/building-blocks', ['Bruke tjenester', 'Administrere tjenester'], {
+  it('a level-2 connector is approved on the Koblinger page, linked from the Verktøy type', async () => {
+    await openAs('#/building-blocks/tool', ['Bruke tjenester', 'Administrere tjenester'], {
       proposals: [connectorProposal],
     });
     const summary = (
@@ -1419,11 +1447,11 @@ describe('Byggeklosser: API-format', () => {
       calls.push(`${init?.method ?? 'GET'} ${new URL(url, 'http://mock').pathname}`);
       return fetch(input, init);
     };
-    await renderAt('#/building-blocks', recording);
+    await renderAt('#/building-blocks/guardrail', recording);
     const guard = (await screen.findByRole('link', { name: 'fnr' })).closest('li') as HTMLElement;
     expect(within(guard).getByText('Brukes i 1 tjeneste')).toBeTruthy();
     expect(within(guard).queryByText(/^Data /)).toBeNull();
-    window.location.hash = '#/building-blocks/catalogue';
+    window.location.hash = '#/building-blocks?q=llama';
     const link = await screen.findByRole('link', { name: 'Llama 3 (lokal)' });
     expect(link.getAttribute('href')).toBe('#/building-blocks/model/local%2Fllama-3');
     expect(within(link.closest('li') as HTMLElement).getByText('Data i Norge')).toBeTruthy();
@@ -1488,8 +1516,7 @@ describe('Byggeklosser: Langfuse-dommere', () => {
     });
     const items = [judgeBlock(), short];
 
-    await open('#/building-blocks', { items });
-    fireEvent.click(await screen.findByRole('tab', { name: /Katalog/ }));
+    await open('#/building-blocks/judge?show=catalogue', { items });
     expect(await screen.findByRole('link', { name: rule })).toBeTruthy();
     expect(screen.getByRole('link', { name: 'svar_er_kort-eksperimenter' })).toBeTruthy();
     cleanup();
@@ -1709,7 +1736,7 @@ describe('Byggeklosser: Langfuse-dommere', () => {
 
 describe('skills in Byggeklosser', () => {
   it('opens a Digdir skill from the catalogue with its owner in the link', async () => {
-    await open('#/building-blocks/catalogue');
+    await open('#/building-blocks/skill?show=catalogue');
     const link = await screen.findByRole('link', { name: 'Klarspråk i brev' });
     await waitFor(() =>
       expect(link.getAttribute('href')).toBe(
@@ -1763,120 +1790,35 @@ describe('a step flow in Byggeklosser', () => {
   const flow = exampleBlocks.find((b) => b.id === 'postruting') as CatalogItem;
   const stepType: CatalogItem = { ...flow, id: 'call-operation@1', name: 'Kall en operasjon' };
 
-  it('opens an own flow in the step-flow editor under Byggeklosser', async () => {
-    await open('#/building-blocks/step_flow/postruting');
-    await screen.findByRole('heading', { level: 1, name: 'Postruting' });
-    expect(screen.getByRole('link', { name: 'Åpne i stegflyteditoren' }).getAttribute('href')).toBe(
-      '#/building-blocks/step_flow/postruting/edit',
+  const lands = async (from: string, to: string) => {
+    await open(from);
+    await waitFor(() => expect(window.location.hash).toBe(to));
+    cleanup();
+  };
+
+  it('sends every old step flow address to the flow under Utviklerverktøy, keeping the query', async () => {
+    await lands('#/building-blocks/step_flow/postruting', '#/developer/step-flows/postruting');
+    await lands(
+      '#/building-blocks/step_flow/postruting/edit?flyt=sak',
+      '#/developer/step-flows/postruting?flyt=sak',
     );
+    await lands('#/building-blocks/step_flow/postruting/yaml', '#/developer/step-flows/postruting');
+    await lands('#/building-blocks/step-flow/postruting', '#/developer/step-flows/postruting');
+    await lands('#/step-flows/postruting?flyt=sak', '#/developer/step-flows/postruting?flyt=sak');
+    await lands('#/step-flows', '#/developer/step-flows');
   });
 
-  it('shows an own step flow as a read-only diagram and as YAML inside Byggeklosser', async () => {
-    await open('#/building-blocks/step_flow/postruting/diagram');
-    await screen.findByRole('heading', { level: 1, name: 'Postruting' });
-    expect((await screen.findAllByText('Klassifiser')).length).toBeGreaterThan(0);
-    expect(screen.queryByRole('button', { name: /Legg til steg/ })).toBeNull();
-    window.location.hash = '#/building-blocks/step_flow/postruting/yaml';
-    const yaml = await screen.findByRole('region', { name: 'Stegflyten som YAML' });
-    expect(yaml.textContent).toContain('kind: StepFlow');
-    expect(yaml.textContent).toContain('id: klassifiser');
-  });
-
-  it('shows a Digdir step flow as a diagram and its YAML from the published definition', async () => {
-    const definition = {
-      ...exampleStepFlow.latest.definition,
-      metadata: { id: 'sf-hoering', name: 'Høringsoppsummering', version: 3 },
-    };
-    await renderAt(
-      '#/building-blocks/step_flow/sf-hoering',
-      mockFetch(undefined, undefined, undefined, undefined, {
-        features: {
-          blocks: {
-            flowDefinitions: {
-              'sf-hoering': {
-                id: 'sf-hoering',
-                owner: 'digdir',
-                version: 3,
-                publishedAt: '2026-10-01T10:00:00Z',
-                yaml: 'kind: StepFlow\nmetadata:\n  id: sf-hoering # as published\n',
-                definition,
-              },
-            },
-          },
-        },
-      }),
-    );
-    await screen.findByRole('heading', { level: 1, name: 'Høringsoppsummering' });
-    expect(screen.getByRole('tab', { name: 'Diagram' }).getAttribute('aria-selected')).toBe('true');
-    expect((await screen.findAllByText('Klassifiser')).length).toBeGreaterThan(0);
-    expect(screen.queryByRole('link', { name: 'Åpne i stegflyteditoren' })).toBeNull();
-    window.location.hash = '#/building-blocks/step_flow/sf-hoering/yaml';
-    const yaml = await screen.findByRole('region', { name: 'Stegflyten som YAML' });
-    expect(yaml.textContent).toContain('id: sf-hoering # as published');
-  });
-
-  it('hides Diagram and YAML on a flow the API does not show, without blaming the publisher', async () => {
-    await open('#/building-blocks/step_flow/sf-hoering/diagram');
-    await screen.findByRole('heading', { level: 1, name: 'Høringsoppsummering' });
-    await waitFor(() =>
-      expect(screen.getAllByRole('tab').map((x) => x.textContent)).toEqual([
-        'Om',
-        'Brukes av',
-        'Versjoner',
-      ]),
-    );
-    expect(screen.queryByText(/Utgiveren har ikke delt/)).toBeNull();
-    expect(screen.queryByRole('alert')).toBeNull();
-  });
-
-  it('offers Bruk i en tjeneste only on a flow that is in use or our own, not one still in the catalogue', async () => {
-    await open('#/building-blocks/step_flow/sf-hoering');
-    await screen.findByRole('heading', { level: 1, name: 'Høringsoppsummering' });
-    expect(screen.queryByRole('button', { name: 'Bruk i en tjeneste' })).toBeNull();
-  });
-
-  it('offers Bruk i en tjeneste on a step flow, which puts it in a service draft', async () => {
-    await open('#/building-blocks/step_flow/postruting/used-by');
-    await screen.findByRole('heading', { level: 1, name: 'Postruting' });
-    fireEvent.click(screen.getByRole('button', { name: 'Bruk i en tjeneste' }));
-    const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByRole('heading', { name: /Postruting/ })).toBeTruthy();
-    expect(within(dialog).getByRole('button', { name: 'Koble til tjenesten' })).toBeTruthy();
-  });
-
-  it('shows no Norwegian close button on the use-in-service dialog for an English user', async () => {
-    await renderAt(
-      '#/building-blocks/step_flow/postruting/used-by',
-      mockFetch(undefined, undefined, undefined, undefined, {
-        features: { preferences: { language: 'en' } },
-      }),
-    );
-    fireEvent.click(await screen.findByRole('button', { name: 'Use in a service' }));
-    const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).queryByRole('button', { name: /Lukk/ })).toBeNull();
-  });
-
-  it('gives a step type no link to the step-flow editor', async () => {
+  it('opens a step type as a building block under Stegtyper, with no link to the step-flow editor', async () => {
     await open(`#/building-blocks/step_flow/${encodeURIComponent(stepType.id)}`, {
       items: [...exampleBlocks, stepType],
     });
     await screen.findByRole('heading', { level: 1, name: 'Kall en operasjon' });
-    expect(screen.queryByRole('link', { name: 'Åpne i stegflyteditoren' })).toBeNull();
-  });
-
-  it('sends the old step-flow editor address to the editor under Byggeklosser', async () => {
-    await open('#/step-flows/postruting?flyt=sak');
-    await waitFor(() =>
-      expect(window.location.hash).toBe('#/building-blocks/step_flow/postruting/edit?flyt=sak'),
+    const crumbs = screen.getByRole('navigation', { name: 'Brødsmuler' });
+    expect(within(crumbs).getByRole('link', { name: 'Stegtyper' }).getAttribute('href')).toBe(
+      '#/building-blocks/step-types',
     );
-  });
-
-  it('sends a hyphenated kind in the address to the block, so step-flow links are not dead', async () => {
-    await open('#/building-blocks/step-flow/postruting');
-    await waitFor(() =>
-      expect(window.location.hash).toBe('#/building-blocks/step_flow/postruting'),
-    );
-    expect(await screen.findByRole('heading', { level: 1, name: 'Postruting' })).toBeTruthy();
+    expect(window.location.hash).toBe('#/building-blocks/step_flow/call-operation%401');
+    expect(screen.queryByRole('link', { name: /stegflyteditoren/ })).toBeNull();
   });
 });
 
@@ -1938,9 +1880,7 @@ describe('Byggeklosser: modell, verktøy og fart', () => {
       ),
     );
     await screen.findByRole('heading', { level: 1, name: 'Borealis-27B' });
-    const facts = screen
-      .getByRole('heading', { name: 'Om modellen' })
-      .closest('section') as HTMLElement;
+    const facts = screen.getByRole('heading', { name: 'Fakta' }).closest('section') as HTMLElement;
     expect(await within(facts).findByText('Laget av')).toBeTruthy();
     expect(within(facts).getByText('Drives av')).toBeTruthy();
     expect(within(facts).getByText('AIVAR, Norge')).toBeTruthy();
@@ -1954,15 +1894,31 @@ describe('Byggeklosser: modell, verktøy og fart', () => {
     expect(screen.queryByText('Drives av')).toBeNull();
   });
 
-  it('has a single Byggeklosser back link instead of a slash breadcrumb', async () => {
+  it('shows Byggeklosser and the type of the block as breadcrumbs, and the type opens its own list', async () => {
     await open('#/building-blocks/model/aivar%2Fborealis-27b');
     await screen.findByRole('heading', { level: 1, name: 'Borealis-27B' });
-    expect(screen.queryByRole('navigation', { name: /brødsmule|breadcrumb/i })).toBeNull();
-    expect(
-      within(screen.getByRole('main'))
-        .getByRole('link', { name: 'Byggeklosser' })
-        .getAttribute('href'),
-    ).toBe('#/building-blocks');
+    const crumbs = screen.getByRole('navigation', { name: 'Brødsmuler' });
+    expect(within(crumbs).getByRole('link', { name: 'Byggeklosser' }).getAttribute('href')).toBe(
+      '#/building-blocks',
+    );
+    expect(within(crumbs).getByRole('link', { name: 'Modeller' }).getAttribute('href')).toBe(
+      '#/building-blocks/models',
+    );
+  });
+
+  it('keeps the detail to Om, Brukes av and Versjoner with the facts beside it', async () => {
+    await open('#/building-blocks/model/aivar%2Fborealis-27b');
+    await screen.findByRole('heading', { level: 1, name: 'Borealis-27B' });
+    expect(screen.getAllByRole('tab').map((x) => x.textContent)).toEqual([
+      'Om',
+      'Brukes av',
+      'Versjoner',
+    ]);
+    const facts = (await screen.findByRole('heading', { level: 2, name: 'Fakta' })).closest(
+      'section',
+    ) as HTMLElement;
+    expect(within(facts).getByText('Brukes i')).toBeTruthy();
+    expect(within(facts).getByText('5 tjenester')).toBeTruthy();
   });
 
   it('shows the block without waiting for the slow overview', async () => {

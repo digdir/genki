@@ -174,20 +174,20 @@ describe('shell', () => {
     ['#/status', '#/developer/status'],
     ['#/developer/api/code', '#/developer/api'],
     ['#/developer/settings', '#/settings/all'],
-    ['#/developer/step-flows', '#/step-flows'],
-    ['#/developer/step-flows/ai-overview', '#/step-flows/ai-overview'],
+    ['#/step-flows', '#/developer/step-flows'],
+    ['#/step-flows/ai-overview', '#/developer/step-flows/ai-overview'],
     ['#/log?tab=changes', '#/log/changes'],
   ])('sends the old address %s on to %s', async (from, to) => {
     await renderAt(from);
     await waitFor(() => expect(window.location.hash).toBe(to));
   });
 
-  it('marks Byggeklosser, not Tjenester, as the current menu item on the step-flow page', async () => {
-    await renderAt('#/step-flows');
+  it('marks Utviklerverktøy, not Tjenester, as the current menu item on the step-flow page', async () => {
+    await renderAt('#/developer/step-flows/ai-overview');
 
     const menu = screen.getByRole('navigation', { name: 'Hovedmeny' });
     expect(
-      within(menu).getByRole('link', { name: 'Byggeklosser' }).getAttribute('aria-current'),
+      within(menu).getByRole('link', { name: 'Utviklerverktøy' }).getAttribute('aria-current'),
     ).toBe('page');
     expect(within(menu).getByRole('link', { name: 'Tjenester' }).getAttribute('aria-current')).toBe(
       null,
@@ -389,7 +389,7 @@ describe('shell', () => {
 
   it.each([
     ['/building-blocks', 'Byggeklosser', 'Byggeklosser'],
-    ['/skills', 'Byggeklosser', 'Byggeklosser'],
+    ['/skills', 'Ferdigheter', 'Byggeklosser'],
     ['/playground', 'Prøveområde', 'Prøveområde'],
   ])('renders the %s page and highlights %s in the menu', async (path, heading, item) => {
     await renderAt(`#${path}`);

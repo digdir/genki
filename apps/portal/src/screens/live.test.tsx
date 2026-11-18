@@ -35,6 +35,7 @@ const emptyPlatform: typeof fetch = async (input) => {
     if (/^\/tenants\/[^/]+\/services$/.test(path)) return { data: [] };
     if (/^\/tenants\/[^/]+\/service-drafts$/.test(path)) return { data: [] };
     if (path.endsWith('/definitions')) return { data: [] };
+    if (path.endsWith('/building-blocks')) return { data: [] };
     if (path.endsWith('/audit')) return { data: [] };
     if (path.endsWith('/access')) return { services: [], keys: [] };
     if (path.endsWith('/tasks')) return { data: [], total: 0 };
@@ -337,7 +338,7 @@ describe('live mode shows only platform data', () => {
   });
 
   it('shows the empty state for step flows and datasets', async () => {
-    await renderLive('#/step-flows');
+    await renderLive('#/developer/step-flows');
     expect(await screen.findByText('Ingen stegflyter ennå')).toBeTruthy();
     cleanup();
 

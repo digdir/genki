@@ -8,7 +8,8 @@ import type { CatalogItem } from '../../api/building-blocks';
 import { exampleBlocks, exampleProposal } from '../../data/building-blocks';
 import { RightsProvider } from '../../Shell';
 import { BlockDetail } from './BlockDetail';
-import { BlockList, initialFilters } from './BlockList';
+import { BlocksOverview } from './BlocksOverview';
+import { initialFilters, TypeList } from './BlockList';
 import { MappingTable, ProposalSection } from './ProposalSection';
 
 afterEach(cleanup);
@@ -22,38 +23,40 @@ const api = {
 const borealis = exampleBlocks.find((b) => b.id === 'aivar/borealis-27b') as CatalogItem;
 
 describe('building blocks in English', () => {
-  it('lists blocks with English headings, counts and tags', () => {
+  it('shows the overview by type in English, with counts and the places that have their own home', () => {
     render(
       inEnglish(
         <RightsProvider value={['manage-services', 'register-building-blocks']}>
-          <BlockList
+          <BlocksOverview
             api={api}
             tenant="t"
             tenantName="Testetaten"
             items={exampleBlocks}
             proposals={[]}
-            filters={initialFilters}
-            onFilters={() => undefined}
-            onFlash={() => undefined}
+            q=""
+            onQuery={() => undefined}
           />
         </RightsProvider>,
       ),
     );
     expect(screen.getByRole('heading', { level: 1, name: 'Building blocks' })).toBeTruthy();
-    expect(screen.getByText(/^Showing \d+ of \d+ building blocks$/)).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Register a building block' })).toBeTruthy();
-    expect(screen.getByRole('tab', { name: 'In use here' })).toBeTruthy();
-    expect(screen.getByRole('heading', { level: 2, name: /^Models \(\d+\)$/ })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 2, name: 'Types' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: /^Models/ }).textContent).toMatch(/\d+ in use/);
+    expect(screen.getByRole('link', { name: /^Step flows/ }).textContent).toContain(
+      'Opens in Developer tools, Step flows',
+    );
   });
 
   it('describes a row in English', () => {
     render(
       inEnglish(
         <RightsProvider value={['manage-services']}>
-          <BlockList
+          <TypeList
             api={api}
             tenant="t"
             tenantName="Testetaten"
+            type="model"
             items={[borealis]}
             proposals={[]}
             filters={initialFilters}
