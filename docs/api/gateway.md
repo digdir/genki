@@ -284,38 +284,46 @@ On every chat, streamed chat, embedding and rerank call through a gateway connec
 
 ## Operator steps for genki-test
 
-Usage, on the API and the worker:
+genki signs in as its multi-tenant app `genki-test-ai-gateway` (client id `334f8fa1-437e-4b84-bceb-f320fb60f3ed`). The app's federated credential trusts the managed identity `genai-test-api-id`, whose client id is `AZURE_CLIENT_ID` in the API and the worker. The token comes from the gateway's tenant `008e560f-08af-4cec-a056-b35447503991` for the scope `api://3eca282e-8b4d-49d6-991f-79849dffd652/.default`. The gateway gives the app its roles; genki never reads them, since their names may change.
 
-| Variable                      | Value                                                |
-| ----------------------------- | ---------------------------------------------------- |
-| `GATEWAY_USAGE_URL`           | `https://api.aivar.no`, without `/v1`                |
-| `GATEWAY_USAGE_APP_CLIENT_ID` | The client id of genki's multi-tenant app            |
-| `GATEWAY_USAGE_APP_TENANT`    | The id of the gateway's Entra tenant                 |
-| `GATEWAY_USAGE_APP_SCOPE`     | The gateway's scope, `api://<gateway app>/.default`  |
-| `GATEWAY_USAGE_SINCE`         | `2026-11-01T00:00:00Z`, or the day genki-test starts |
-| `GATEWAY_USAGE_GENKI_CLIENT`  | Only if genki's `usage.client` is not `genki`        |
+Usage, on the API and the worker, set in `infra/env/test.bicepparam`:
 
-Leave `GATEWAY_USAGE_CREDENTIAL` empty. Both processes refuse to start with it and the app set.
+| Variable                      | Value                                                                     |
+| ----------------------------- | ------------------------------------------------------------------------- |
+| `GATEWAY_USAGE_URL`           | `https://api.aivar.no`, without `/v1`                                     |
+| `GATEWAY_USAGE_APP_CLIENT_ID` | `334f8fa1-437e-4b84-bceb-f320fb60f3ed`                                    |
+| `GATEWAY_USAGE_APP_TENANT`    | `008e560f-08af-4cec-a056-b35447503991`                                    |
+| `GATEWAY_USAGE_APP_SCOPE`     | `api://3eca282e-8b4d-49d6-991f-79849dffd652/.default`                     |
+| `GATEWAY_USAGE_SINCE`         | Unset, so the first poll starts on 2026-11-01                             |
+| `GATEWAY_USAGE_GENKI_CLIENT`  | Only if genki's `usage.client` is neither `genki` nor the app's client id |
 
-The free models, as a model connection the operator adds in the console (Models, New connection) or with `POST /operator/model-endpoints`:
+Leave `GATEWAY_USAGE_CREDENTIAL` empty. Both processes refuse to start with it and the app set. A call whose `usage.client` is `genki` or the app's client id counts as genki's own.
+
+The free models (`sigma2:*`, `aivar:borealis`, `borealis2`), as a model connection the operator adds in the console (Models, New connection) or with `POST /operator/model-endpoints`:
 
 ```yaml
 id: ai-gateway
 baseURL: https://api.aivar.no/v1
 auth:
   kind: federated-app
-  clientId: <genki's app>
-  tenant: <the gateway's tenant>
-  scope: api://<gateway app>/.default
+  clientId: 334f8fa1-437e-4b84-bceb-f320fb60f3ed
+  tenant: 008e560f-08af-4cec-a056-b35447503991
+  scope: api://3eca282e-8b4d-49d6-991f-79849dffd652/.default
 families: { openai: '' }
 gateway: true
 discovery:
   - source: openai-models
-    include: ['sigma2:*', 'aivar:borealis*']
+    include: ['sigma2:*', 'aivar:borealis*', 'borealis2*']
     apis: { chat: openai/chat-completions@1 }
 ```
 
-Then refresh the models, confirm the `sigma2:*` and Borealis candidates with their residency and capabilities, and register the processor record for the connection. A call on one of them sends `genki-tenant`, and the next hourly poll shows it under the tenant's usage.
+Then refresh the models, confirm the candidates with their residency and capabilities, and register the processor record for the connection. A call on one of them sends `genki-tenant`, and the next hourly poll shows it under the tenant's usage. The Azure models stay on genki's own AI Foundry connections, which the gateway's usage does not include.
+
+When it fails:
+
+- `401` on `/usage`: the token is not from the gateway's tenant or has the wrong audience; check `GATEWAY_USAGE_APP_TENANT` and `GATEWAY_USAGE_APP_SCOPE`.
+- `403`: the app lacks a role, or the request breaks a rule (bucket under an hour, range under an hour or over 31 days).
+- An `AADSTS` error when genki gets the token: the federated credential on genki's app (issuer, subject `4a8e6033-797b-48f5-8378-429d36628233`, audience `api://AzureADTokenExchange`).
 
 ## What the aivar lab does not do yet
 
@@ -398,7 +406,7 @@ export interface UsageSource {
 | `genki:<n>`               | `n`           |
 | `apiKey`, or no subject   | None          |
 
-- From the gateway's usage route, a row with `usage.org` gets `org:<n>`, or `genki:<n>` when `usage.client` is genki's own app (`GATEWAY_USAGE_GENKI_CLIENT`, by default `genki`). A row without a valid `usage.org` has no subject.
+- From the gateway's usage route, a row with `usage.org` gets `org:<n>`, or `genki:<n>` when `usage.client` is genki's own app: `GATEWAY_USAGE_GENKI_CLIENT` (by default `genki`) or the federated app's client id. A row without a valid `usage.org` has no subject.
 - The organisation must be a tenant in `tenants`. The row then gets that tenant, and row-level security keeps it in that tenant (ADR 0022).
 - **The per-organisation filter.** The poll reads every organisation's usage in one request, since the token can. No request reads the gateway. `GET /tenants/{tenant}/usage` reads only the rows of the tenant the `view-usage` check passed for, never an organisation from the query or body; `GET /operator/usage` and `GET /operator/usage/unassigned` are for operators only. The test `shows a tenant only its own organisation's gateway usage, whatever tenant or organisation the request names` holds it.
 - A row with no organisation, or one that is not a tenant, goes to `usage_unassigned`, which only operators read. Rows there mean a key without a subject or a scope that does not match genki's tenants.
@@ -413,7 +421,8 @@ ADR 0038 leaves open whether `costMicroNok` gets a sibling with currency and rat
 - It is the contract's shape, so nothing is converted on the way in, and a sum per currency stays exact.
 - A rate belongs to a day, not to a row. Copying it onto every row repeats one number thousands of times, and a wrong rate could never be corrected.
 - genki's own `Usage.costMicroNok` stays as it is: genki's prices are in kroner, and events are not rewritten. #22 adds `cost: Money` to `Usage` when it brings prices in other currencies.
-- A row with no rate at all shows its original amount and counts as unpriced in kroner, never as 0.
+- A row with no rate at all shows its original amount and counts as unpriced in kroner, never as 0. A zero amount, as the gateway gives for its free models, is zero kroner without a rate.
+- The gateway's dollar cost is summed per row before it is rounded to micros.
 
 ### No double counting
 
@@ -432,7 +441,7 @@ The test, `a call is counted once whether genki or the gateway measured it`, put
 
 - **Packages.** `packages/port-usage` holds the types, `UsageGateway` (the gateway's `POST /usage`) next to `UsageSource`, `gatewayUsageSource` that maps one to the other, the fake `memoryUsageSource`, `combine`, the poll (`pollUsage`) and the suite `usage@2` (`@genai/port-usage/contract`). `@genai/port-usage/testing` serves any `UsageGateway` over HTTP behind a bearer token. `packages/providers-ai-gateway` is the HTTP client. The suite runs against the fake and against the provider with the fake behind HTTP.
 - **The suite is written against `UsageGateway`, not `UsageSource`,** since its rules on filters, grouping and ranges need the full request.
-- **Settings.** The API and the worker read `GATEWAY_USAGE_URL` (the base URL), `GATEWAY_USAGE_CREDENTIAL` (a `secret://` reference) or, to sign in as the federated app, `GATEWAY_USAGE_APP_CLIENT_ID`, `GATEWAY_USAGE_APP_TENANT` and `GATEWAY_USAGE_APP_SCOPE` instead, `GATEWAY_USAGE_GENKI_CLIENT` (the `usage.client` of genki's model calls, by default `genki`), `GATEWAY_USAGE_SINCE` (the first run's start, default 2026-11-01) and `GATEWAY_USAGE_TIMEOUT_MS` (default 60 seconds, for the whole answer). With neither of the first two set, nothing is polled and no route reads `usage_buckets`. One set without the other, or a credential that is not a `secret://` reference, stops both from starting.
+- **Settings.** The API and the worker read `GATEWAY_USAGE_URL` (the base URL), `GATEWAY_USAGE_CREDENTIAL` (a `secret://` reference) or, to sign in as the federated app, `GATEWAY_USAGE_APP_CLIENT_ID`, `GATEWAY_USAGE_APP_TENANT` and `GATEWAY_USAGE_APP_SCOPE` instead, `GATEWAY_USAGE_GENKI_CLIENT` (the `usage.client` of genki's model calls, by default `genki`; the federated app's client id counts too), `GATEWAY_USAGE_SINCE` (the first run's start, default 2026-11-01) and `GATEWAY_USAGE_TIMEOUT_MS` (default 60 seconds, for the whole answer). With neither of the first two set, nothing is polled and no route reads `usage_buckets`. One set without the other, or a credential that is not a `secret://` reference, stops both from starting.
 - **The queue.** `usage-gateway-poll` in `packages/jobs/src/usage-queues.ts`: policy `singleton`, scheduled per source with the source id as key, expiry 30 minutes, heartbeat 1 minute, 2 retries from 5 minutes with backoff, and a dead-letter queue. A `429`, `502`, `503` or `504` ends the job without error and the next hourly run fills the gap. Any other failure, `401` and `403` among them, fails the job, so it ends in the dead-letter queue that operators see.
 - **Empty hours.** A group with no calls has no row, so an hour without rows says nothing about whether it is closed. The poll counts such an hour as closed when a later hour in the same answer has closed rows, or 20 minutes after its end, the job's settle time. `closedThrough` then moves past it. The contract should say how long a gateway may take to close a bucket.
 - **Tables.** `usage_buckets` has a tenant column and row-level security per ADR 0022; the API reads its own tenant's rows and, for `GET /operator/usage`, every listed tenant's rows in one call through `platform_usage_buckets`. `usage_unassigned` has no policy for the API's role and no grant, and is read only through `platform_usage_unassigned`, also offered as `GET /operator/usage/unassigned`. The worker writes both through `store_usage_bucket` under platform access. `usage_marks` and `currency_rates` are platform tables without a tenant. A row's tenant is fixed when it is stored; a closed row stored as unassigned stays there if its organisation later becomes a tenant.

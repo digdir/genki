@@ -135,6 +135,8 @@ export const profile = {
   actingFor: 'Acting for',
   organisation: '{name} (org. no. {orgNr})',
   noRights: 'You have no rights in {name} yet.',
+  howToAsk: 'How to ask for access',
+  rightsLead: 'Granted in Altinn for {name}. Your access manager changes them.',
   useServicesLine: 'Ask questions and get answers in the services your organisation uses.',
   manageServicesLine: 'Build, change and publish services, and see what has changed.',
   manageDatasetsLine: 'Add sources, upload files and ingest again.',

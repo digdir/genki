@@ -363,6 +363,23 @@ describe('feedback from users', () => {
     expect(await within(fb).findByText('Siste 30 dager: 2 tommel opp, 1 tommel ned.')).toBeTruthy();
   });
 
+  it('asks for the questions of the last 30 days with the same window on every visit within the hour, so a return is served at once', async () => {
+    const { calls } = await open('', {}, { feedback, tasks });
+    const fb = await section('Tilbakemeldinger fra brukerne');
+    await within(fb).findByText('«Manglet Askøy.»');
+    vi.setSystemTime(new Date(now.getTime() + 25 * 60_000));
+    window.location.hash = '#/services/rapportassistenten';
+    await screen.findByRole('heading', { name: 'Hva tjenesten gjør' });
+    window.location.hash = base;
+    await within(await section('Tilbakemeldinger fra brukerne')).findByText('«Manglet Askøy.»');
+
+    const windows = calls
+      .filter((c) => c.path.includes('/tasks?') && c.path.includes('limit=500'))
+      .map((c) => new URL(c.path, 'http://portal').searchParams.get('from'));
+    expect(windows.length).toBeGreaterThan(0);
+    expect(new Set(windows)).toEqual(new Set(['2026-10-18T12:00:00.000Z']));
+  });
+
   it('says so when no one has given feedback yet', async () => {
     await open('', {}, { feedback: [] });
     const fb = await section('Tilbakemeldinger fra brukerne');

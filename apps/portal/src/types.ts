@@ -284,6 +284,7 @@ export interface UsageTotals {
   runs?: number;
   costMicroNok: number | null;
   priced?: boolean;
+  unpricedModels?: string[];
   bySource?: { source: UsageSourceId; usage: UsageTotals }[];
 }
 

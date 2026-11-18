@@ -4,6 +4,7 @@ import { InMemoryConfigEntryStore, platformScope } from './config-store.js';
 import {
   demoKind,
   isRecorderKey,
+  stepsDone,
   readDemo,
   readDemoSeeds,
   recorderKeyDigest,
@@ -113,5 +114,14 @@ describe('demo records', () => {
     expect(isRecorderKey('feil-nøkkel', digest)).toBe(false);
     expect(isRecorderKey('riktig-nøkkel', undefined)).toBe(false);
     expect(isRecorderKey(undefined, digest)).toBe(false);
+  });
+
+  it('counts the steps a recording has done by the screenshot taken after each step', () => {
+    const file = (name: string) => ({ name, size: 1, contentType: 'image/png' });
+
+    expect(stepsDone({ files: [] })).toBe(0);
+    expect(
+      stepsDone({ files: [file('step-1.png'), file('step-3.png'), file('failed-step-4.png')] }),
+    ).toBe(3);
   });
 });

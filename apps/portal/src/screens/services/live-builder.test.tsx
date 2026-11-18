@@ -407,6 +407,98 @@ describe('the live builder and the server draft', () => {
     expect(calls.filter((c) => c.url.endsWith('/draft?rebase=clean'))).toHaveLength(1);
   });
 
+  it('switching tabs does not open the draft again and keeps the whole header line in place', async () => {
+    const calls: Call[] = [];
+    const base = mockFetch(exampleServices, logTimelines, liveModels, exampleDatasets);
+    const fetch: typeof globalThis.fetch = async (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      calls.push({ url, method: init?.method ?? 'GET', body: undefined });
+      const response = await base(input, init);
+      if (!url.endsWith('/definitions/services/rapportassistenten')) return response;
+      const found = (await response.json()) as { latest: Record<string, unknown> };
+      return Response.json({
+        ...found,
+        latest: { ...found.latest, publishedByName: 'Kari Nordmann' },
+      });
+    };
+    const auth = mockAnsattporten({ name: 'Ingrid Berg', organisations: exampleOrganisations });
+    await auth.login();
+    window.location.hash = '#/services/rapportassistenten/setup';
+    render(<App auth={auth} fetch={fetch} live />);
+    const header = (
+      await screen.findByRole('heading', { level: 1, name: 'Rapportassistenten' })
+    ).closest('header') as HTMLElement;
+    const line = await within(header).findByText(
+      /^Versjon 7 i bruk · publisert .* av Kari Nordmann/,
+    );
+    const shown = line.textContent;
+
+    for (const [section, tab] of [
+      ['interface', 'Grensesnitt'],
+      ['versions', 'Utviklerverktøy'],
+      ['quality', 'Kvalitet'],
+      ['settings', 'Avanserte innstillinger'],
+      ['log', 'Utviklerverktøy'],
+      ['setup', 'Oppsett'],
+    ] as const) {
+      window.location.hash = `#/services/rapportassistenten/${section}`;
+      await waitFor(() =>
+        expect(
+          within(screen.getByRole('navigation', { name: 'Tjenesten' })).getByRole('link', {
+            current: 'page',
+          }).textContent,
+        ).toBe(tab),
+      );
+      expect(within(header).getByText(/^Versjon 7/).textContent).toBe(shown);
+    }
+    expect(header.isConnected).toBe(true);
+    expect(
+      calls.filter((c) => c.url.endsWith('/rapportassistenten/draft?rebase=clean')),
+    ).toHaveLength(1);
+  });
+
+  it('offers Prøv tjenesten in the header of a draft too', async () => {
+    await startBuilder(mockFetch(exampleServices, logTimelines, liveModels, exampleDatasets));
+    const header = screen
+      .getAllByRole('heading', { level: 1 })[0]
+      ?.closest('header') as HTMLElement;
+    expect(
+      within(header).getByRole('link', { name: 'Prøv tjenesten' }).getAttribute('href'),
+    ).toMatch(/^#\/services\/[^/]+\/test$/);
+  });
+
+  it('makes a copy as a new draft named Kopi av, with the files, and opens it at Oppsett', async () => {
+    const { calls } = await openService('#/services/rapportassistenten');
+    fireEvent.click(await screen.findByRole('button', { name: 'Mer' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Lag en kopi', hidden: true }));
+
+    const copyPath = /\/services\/(utkast-[0-9a-f]{8})\/draft$/;
+    await waitFor(() =>
+      expect(calls.some((c) => c.method === 'PUT' && copyPath.test(c.url))).toBe(true),
+    );
+    const saved = calls.find((c) => c.method === 'PUT' && copyPath.test(c.url));
+    const copyId = copyPath.exec(saved?.url ?? '')?.[1];
+    expect(saved?.body).toMatchObject({
+      revision: 0,
+      definition: { metadata: { name: 'Kopi av Rapportassistenten', version: 1 } },
+    });
+    expect(draftWrites(calls, 'PUT')).toEqual([]);
+    await waitFor(() => expect(window.location.hash).toBe(`#/services/${copyId}/setup`));
+    expect(((await screen.findByLabelText('Navn')) as HTMLInputElement).value).toBe(
+      'Kopi av Rapportassistenten',
+    );
+  });
+
+  it('offers Prøv tjenesten in the header, leading to the test of the service', async () => {
+    await openService('#/services/rapportassistenten');
+    const header = (
+      await screen.findByRole('heading', { level: 1, name: 'Rapportassistenten' })
+    ).closest('header') as HTMLElement;
+    expect(within(header).getByRole('link', { name: 'Prøv tjenesten' }).getAttribute('href')).toBe(
+      '#/services/rapportassistenten/test',
+    );
+  });
+
   it('shows the latest published version in the header, also after a publish elsewhere', async () => {
     const { fetch } = await openService('#/services/rapportassistenten/setup');
     const header = (
@@ -707,6 +799,18 @@ describe('a new service saved as a draft on the server', () => {
     );
     expect(screen.getByRole('link', { name: 'Oppsett', current: 'page' })).toBeTruthy();
   });
+
+  it.each(['settings', 'quality', 'log'])(
+    'moves the address of a draft-only service from /%s to Oppsett, the section it shows',
+    async (section) => {
+      const { fetch, id } = await startNamed('Permisjonssvar');
+
+      await elsewhere(fetch, `#/services/${id}/${section}`);
+
+      await screen.findByLabelText('Navn');
+      await waitFor(() => expect(window.location.hash).toBe(`#/services/${id}/setup`));
+    },
+  );
 
   const deleteQuestion = /^Vil du slette utkastet til Permisjonssvar\?/;
   const confirmBox = async () =>

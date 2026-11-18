@@ -1,4 +1,5 @@
 import { defineNamespace } from '@genai/i18n';
+import { sharedLane } from './data-shared';
 
 export const blocks = defineNamespace({
   title: 'Byggeklosser',
@@ -401,4 +402,123 @@ export const blocks = defineNamespace({
   yamlRegion: 'Stegflyten som YAML',
 });
 
-export const blocksLane = { blocks } as const;
+export const blockPages = defineNamespace({
+  lead: 'Delene tjenestene i {tenant} bygges av: modeller, søk, verktøy, ferdigheter, vern, dommere og stegflyter.',
+  register: 'Registrer byggekloss',
+  searchInUse: 'Søk i byggeklosser',
+  searchCatalogue: 'Søk i katalogen',
+  searchPlaceholder: 'Søk i navn og beskrivelse',
+  countInUse: 'Viser {shown} av {total} byggeklosser',
+  countCatalogue: 'Viser {shown} av {total} i katalogen',
+  groupTitle: '{kind} ({count})',
+  allFlows: 'Vis alle {count} stegflyter',
+  fewerFlows: 'Vis færre stegflyter',
+  noMatchInUse: 'Ingen byggeklosser passer søket',
+  noMatchInUseBody: 'Prøv et annet ord, eller se om den finnes i katalogen.',
+  noMatchCatalogue: 'Ingen byggeklosser i katalogen passer søket',
+  noMatchCatalogueBody: 'Kanskje dere allerede bruker den, eller den må registreres.',
+  resetSearch: 'Nullstill søk og filter',
+  emptyInUseTitle: 'Ingen byggeklosser i bruk ennå',
+  emptyInUseBody:
+    'En byggekloss er en del en tjeneste kan bruke, for eksempel en modell, et verktøy som slår opp i et register, eller et vern som fjerner personopplysninger. Velg fra katalogen for å komme i gang.',
+  seeCatalogue: 'Se katalogen',
+  emptyCatalogueTitle: 'Dere bruker alt som finnes i katalogen',
+  emptyCatalogueBody:
+    'Katalogen viser byggeklosser fra Digdir og andre virksomheter som dere ikke har tatt i bruk ennå. Har dere et eget system tjenestene skal bruke, kan dere registrere det selv.',
+  errorInUseTitle: 'Vi fikk ikke hentet byggeklossene',
+  errorInUseBody:
+    'Tjenesten svarte ikke. Tjenestene deres virker som før; det er bare listen her som mangler.',
+  errorCatalogueTitle: 'Vi fikk ikke hentet katalogen',
+  errorCatalogueBody:
+    'Katalogen hos Digdir svarte ikke. Byggeklossene dere allerede bruker, virker som før.',
+  otherSkills: 'Utkast og andre ferdigheter ({count})',
+  draftTag: 'Utkast',
+  notUsed: 'Ikke i bruk',
+  fromPublisher: 'Fra {publisher}',
+  adopt: 'Ta i bruk',
+  adoptNamed: 'Ta i bruk {name}',
+  adopting: 'Tar i bruk ...',
+  sendForApproval: 'Send til godkjenning',
+  pendingTag: 'Venter på godkjenning',
+  sentTo: 'Sendt til {approver} {date}',
+  adoptQuestion: 'Ta i bruk {name}?',
+  adoptConsequence:
+    'Alle tjenesteeiere i {tenant} kan velge {name} når de bygger. Ingen tjeneste endres før noen velger den.',
+  adoptReason: 'Hvorfor tar dere den i bruk?',
+  adoptReasonHelp: 'Vises i Logg, Endringer.',
+  close: 'Lukk',
+  discardQuestion: 'Forkaste det du har skrevet?',
+  keepWriting: 'Fortsett å skrive',
+  discard: 'Forkast',
+  adoptedMessage: '{name} er tatt i bruk. Tjenestene kan velge den nå.',
+  seeInUse: 'Se den under I bruk hos oss',
+  pendingMessage: '{name} venter på godkjenning. Vi sier fra på Oversikt når den er klar.',
+});
+
+export const blockModel = defineNamespace({
+  maker: 'Laget av',
+  operator: 'Drives av',
+  publishedBy: 'Utgitt av',
+  adopted: 'Tatt i bruk',
+  price: 'Pris',
+  priceIn: 'Tekst inn',
+  priceOut: 'Tekst ut',
+  pricePerThousand: '{price} kr per 1 000 tokens',
+  priceNote: 'Prisene er anslått og gjelder også prøvekjøringer.',
+  notPriced: 'Prisen er ikke beregnet ennå.',
+});
+
+export const blockTool = defineNamespace({
+  syncNow: 'Synkroniser nå',
+  syncing: 'Synkroniserer ...',
+  syncReason: 'Synkronisert fra Byggeklosser for å hente verktøylisten på nytt',
+  synced: 'Synkronisert. {active} verktøy er godkjent, {pending} venter på godkjenning.',
+  syncFailed: 'Synkroniseringen feilet. Prøv igjen om litt.',
+  lastSync: 'Sist synkronisert',
+  lastSyncFailed: '{at}, feilet',
+  neverSynced: 'Ikke synkronisert ennå',
+  ownServers: 'På serverne til den som driver verktøyet. Bare det tjenesten sender, går ut.',
+  failedHeading: '{name} svarte ikke ved siste synkronisering {at}.',
+  failedBody:
+    'Tjenestene bruker verktøylisten fra forrige vellykkede synkronisering. Sjekk at serveren er oppe, og synkroniser på nytt.',
+  approvedCount: '{approved} av {total} godkjent',
+  approvalNote:
+    'Tjenestene kan bare bruke verktøy som er godkjent. Verktøy som endrer noe, bør bare godkjennes når en tjeneste trenger dem.',
+  approvedLegend: 'Godkjente verktøy',
+  noToolsTitle: '{name} tilbyr ingen verktøy ennå',
+  noToolsBody: 'Sjekk at serveren har verktøy satt opp, og synkroniser på nytt.',
+  changesData: 'Endrer data',
+  newSince: 'Ny {date}',
+  saved: 'Lagret kl. {time}. Endringen står i Logg, Endringer.',
+  unsavedRegion: 'Ulagrede endringer',
+  unsaved: 'Du har endringer som ikke er lagret',
+  save: 'Lagre',
+  saving: 'Lagrer ...',
+  why: 'Hvorfor endrer du dette?',
+});
+
+export const blockRegister = defineNamespace({
+  residency: 'Hvor behandles dataene?',
+  residencyHelp: 'Vises for alle som vurderer å bruke byggeklossen.',
+  residencyNorway: 'I Norge',
+  residencyEu: 'I EU/EØS',
+  residencyGlobal: 'Utenfor EU/EØS',
+});
+
+export const blockFlow = defineNamespace({
+  useInService: 'Bruk i en tjeneste',
+  errorTitle: 'Vi fikk ikke hentet stegflyten',
+  errorBody: 'Tjenestene som bruker den, virker som før. Det er bare visningen her som mangler.',
+  notShared:
+    'Utgiveren har ikke delt diagrammet og YAML-en for denne stegflyten ennå. Du kan bruke den i en tjeneste som før.',
+});
+
+export const blocksLane = {
+  blocks,
+  blockPages,
+  blockModel,
+  blockTool,
+  blockFlow,
+  blockRegister,
+  ...sharedLane,
+} as const;

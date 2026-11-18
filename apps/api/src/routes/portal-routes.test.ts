@@ -1101,7 +1101,7 @@ describe('the dashboard on a busy tenant', () => {
     return { ...env, calls };
   };
 
-  it('builds the overview from a few batched queries and counts every task of the month, past the newest thousand', async () => {
+  it('builds the overview from one envelope query and counts every task of the month, past the newest thousand', async () => {
     const { send, calls } = await busy();
     const body = await json<{
       recentTasks: { id: string; usage: { inputTokens: number } }[];
@@ -1120,12 +1120,12 @@ describe('the dashboard on a busy tenant', () => {
     ]);
     expect(body.recentTasks[0]?.usage.inputTokens).toBe(1000);
     expect(body.review.failedTasksLastDay).toBe(4);
-    expect(calls.envelopes).toBe(5);
+    expect(calls.envelopes).toBe(1);
     expect(calls.usage).toBe(2);
     expect(calls.inputs).toBe(0);
   });
 
-  it('builds the usage report from one envelope query per origin and one usage query', async () => {
+  it('builds the usage report from one envelope query and one usage query', async () => {
     const { send, calls } = await busy();
     const body = await json<{ totals: { runs: number; inputTokens: number } }>(
       await send(`/tenants/${digdir}/usage?days=30`, 'kari'),
@@ -1133,7 +1133,7 @@ describe('the dashboard on a busy tenant', () => {
 
     expect(body.totals.runs).toBe(3000);
     expect(body.totals.inputTokens).toBe(3_000_000);
-    expect(calls).toEqual({ envelopes: 2, usage: 1, inputs: 0 });
+    expect(calls).toEqual({ envelopes: 1, usage: 1, inputs: 0 });
   });
 
   it('lists tasks from one envelope query and one input query, without decrypting tasks one by one', async () => {

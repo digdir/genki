@@ -68,6 +68,12 @@ States to show: an empty library, a demo being recorded, a demo marked «Utdater
 - The console's audit log is not recorded: the smoke key may read only the operator screens in the test runner's view, and the audit log is not one of them. `console-models` points at it instead.
 - A failed demo names its step and leaves `failed-step-<n>.png` in the artifact. A start page that never shows `ready` fails as step 0.
 
+## Phase 2 as built
+
+- The `record` job hands each recording to the library when `DEMO_RECORDER_KEY` (a secret in `genki-test`) and `SMOKE_API_URL` are set: it starts a recording, uploads a screenshot after each step (`step-<n>.png`, which the console shows as progress), the video, its subtitles, a still (`poster.jpg`) and a sample of the voice (`sample.mp3`), and finishes it as recorded or failed with the step, the command as JSON and the error. The API needs `DEMO_RECORDER_KEY_SHA256`.
+- The console has every screen above: the library with a recording in progress, the detail with the recording history and «Ta opp på nytt», the editor («Ny demo» and «Rediger») with «Prøv dette steget» and «Vis YAML», «Opptak pågår» with progress per step, the latest screenshot and cancel, «Feilet opptak» with the step, what the recorder looked for and what it found, and «Innstillinger for demoer».
+- «Ta opp på nytt» and «Prøv dette steget» need the recorder job. Until it runs, the API answers `503 recorder-not-set-up`, and the console shows the workflow instead of the buttons. The chat with `demo-writer` comes with phase 3.
+
 ## Add a demo
 
 1. Copy a file in `demos/` and give it a short English file name, such as `service-from-template.yaml`. The title and every line are in bokmål, with no em-dashes.

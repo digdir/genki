@@ -1,45 +1,22 @@
-import { Alert } from '@digdir/designsystemet-react';
-import { useState } from 'react';
+import { useEffect } from 'react';
+import type { Route } from '../hooks';
+import { useT } from '../i18n';
 import type { ScreenProps } from '../screen';
-import { SkillEditor } from './skills/SkillEditor';
-import { SkillList } from './skills/SkillList';
-import './skills.css';
+import { Loading } from '../states';
+import { skillHref } from './skills/SkillBlockPage';
 
-export const Skills = (props: ScreenProps) => {
-  const id = props.route.query.get('id');
-  const owner = props.route.query.get('owner') ?? undefined;
-  const [flash, setFlash] = useState<{
-    text: string;
-    at: string | null;
-    color: 'success' | 'danger';
-  }>();
-  const notify = (text: string, at: string | null = id, color: 'success' | 'danger' = 'success') =>
-    setFlash({ text, at, color });
-  const shown = flash && flash.at === id ? flash : undefined;
-  return (
-    <div className="stack skills">
-      <div aria-live="polite">
-        {shown ? (
-          <Alert
-            data-color={shown.color}
-            data-size="sm"
-            role={shown.color === 'danger' ? 'alert' : undefined}
-          >
-            {shown.text}
-          </Alert>
-        ) : null}
-      </div>
-      {id ? (
-        <SkillEditor
-          key={`${owner ?? ''}/${id}`}
-          {...props}
-          id={id}
-          owner={owner}
-          notify={notify}
-        />
-      ) : (
-        <SkillList {...props} notify={notify} />
-      )}
-    </div>
-  );
+export const skillsRedirect = (route: Route) => {
+  const id = route.query.get('id');
+  return id
+    ? skillHref(id, 'setup', route.query.get('owner') ?? undefined)
+    : '#/building-blocks/in-use?type=skill';
+};
+
+export const Skills = ({ route }: ScreenProps) => {
+  const t = useT();
+  const target = skillsRedirect(route);
+  useEffect(() => {
+    window.location.replace(target);
+  }, [target]);
+  return <Loading label={t('skills.editorLoading')} />;
 };

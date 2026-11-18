@@ -379,7 +379,7 @@ describe('shell', () => {
 
   it.each([
     ['/building-blocks', 'Byggeklosser', 'Byggeklosser'],
-    ['/skills', 'Ferdigheter', 'Byggeklosser'],
+    ['/skills', 'Byggeklosser', 'Byggeklosser'],
     ['/playground', 'Prøveområde', 'Prøveområde'],
   ])('renders the %s page and highlights %s in the menu', async (path, heading, item) => {
     await renderAt(`#${path}`);

@@ -13,15 +13,24 @@ export interface ActorNames {
   namesOf(actors: string[]): Promise<Map<string, string>>;
 }
 
-const createActorNames = (store: ConfigEntryStore): ActorNames => {
+const unknownForMs = 5 * 60 * 1000;
+
+const createActorNames = (store: ConfigEntryStore, now: () => number): ActorNames => {
   const known = new Map<string, string>();
+  const unknown = new Map<string, number>();
   const nameOf = async (actor: string) => {
     const cached = known.get(actor);
     if (cached !== undefined) return cached;
+    const missedAt = unknown.get(actor);
+    if (missedAt !== undefined && now() - missedAt < unknownForMs) return undefined;
     const latest = (await store.history(actorNameKind, scope, actor)).at(-1);
     const name = latest && !latest.deleted ? (latest.spec as { name?: unknown }).name : undefined;
-    if (typeof name !== 'string' || !name) return undefined;
+    if (typeof name !== 'string' || !name) {
+      unknown.set(actor, now());
+      return undefined;
+    }
     known.set(actor, name);
+    unknown.delete(actor);
     return name;
   };
   return {
@@ -31,6 +40,7 @@ const createActorNames = (store: ConfigEntryStore): ActorNames => {
       const actor = actorOf(person);
       if ((await nameOf(actor)) === name) return;
       known.set(actor, name);
+      unknown.delete(actor);
       await appendVersion(store, {
         kind: actorNameKind,
         scope,
@@ -43,24 +53,32 @@ const createActorNames = (store: ConfigEntryStore): ActorNames => {
     },
     nameOf,
     namesOf: async (actors) => {
-      const out = new Map<string, string>();
-      for (const actor of new Set(actors)) {
-        const name = await nameOf(actor);
-        if (name) out.set(actor, name);
-      }
-      return out;
+      const unique = [...new Set(actors)];
+      const found = await Promise.all(unique.map(nameOf));
+      return new Map(unique.flatMap((actor, i) => (found[i] ? [[actor, found[i]] as const] : [])));
     },
   };
 };
 
 const shared = new WeakMap<ConfigEntryStore, ActorNames>();
 
-export const actorNames = (store: ConfigEntryStore): ActorNames => {
+export const actorNames = (store: ConfigEntryStore, now = () => Date.now()): ActorNames => {
   const existing = shared.get(store);
   if (existing) return existing;
-  const created = createActorNames(store);
+  const created = createActorNames(store, now);
   shared.set(store, created);
   return created;
+};
+
+const looksLikeEmail = (value: string) => /^[^\s@]+@[^\s@]+$/.test(value);
+
+/** The token's own name wins; an email standing in for a name gives way to the sign-in name. */
+export const personNameOf = (principal: Principal, header: string | undefined) => {
+  const person = principal.actor ?? principal;
+  const claimed = person.name;
+  if (claimed && !looksLikeEmail(claimed)) return claimed;
+  if (header && !looksLikeEmail(header)) return header;
+  return claimed ?? header;
 };
 
 export const rememberActorNames =
@@ -69,8 +87,8 @@ export const rememberActorNames =
     const header = actorNameOf(c);
     if (header) {
       const principal = await auth.authenticate(c.req.raw).catch(() => undefined);
-      const name = (principal?.actor ?? principal)?.name ?? header;
-      if (principal) await names.remember(principal, name).catch(() => undefined);
+      const name = principal ? personNameOf(principal, header) : undefined;
+      if (principal && name) await names.remember(principal, name).catch(() => undefined);
     }
     await next();
   };

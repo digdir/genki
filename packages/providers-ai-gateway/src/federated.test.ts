@@ -91,8 +91,8 @@ describe('federated app sign-in', () => {
       Response.json(
         {
           error: 'invalid_client',
-          error_description: `AADSTS700213: No matching federated identity record for ${assertion}`,
-          error_codes: [700213],
+          error_description: `AADSTS700016: Application not found for ${assertion}`,
+          error_codes: [700016],
         },
         { status: 401 },
       ),
@@ -107,10 +107,27 @@ describe('federated app sign-in', () => {
 
     expect(error).toBeInstanceOf(FederatedSignInError);
     expect((error as Error).message).toBe(
-      `Entra ID refused the token exchange for app ${app.clientId} in tenant ${app.tenant}: invalid_client (AADSTS700213)`,
+      `Entra ID refused the token exchange for app ${app.clientId} in tenant ${app.tenant}: invalid_client (AADSTS700016)`,
     );
     expect(JSON.stringify(error)).not.toContain(assertion);
     expect(String((error as Error).stack)).not.toContain(assertion);
+  });
+
+  it("points a refusal for a missing federated record at the app's federated credential", async () => {
+    const seen = exchangeWith(() =>
+      Response.json({ error: 'invalid_client', error_codes: [700213] }, { status: 401 }),
+    );
+    const token = federatedAppTokens({
+      assertion: async () => ({ token: assertion }),
+      fetch: seen.fetch,
+      now: () => start,
+    })(app);
+
+    const error = await token().catch((e: unknown) => e);
+
+    expect((error as Error).message).toBe(
+      `Entra ID refused the token exchange for app ${app.clientId} in tenant ${app.tenant}: invalid_client (AADSTS700213); check the app's federated credential: issuer, subject and audience api://AzureADTokenExchange`,
+    );
   });
 
   it('tries the exchange again after a failure instead of keeping the failure', async () => {

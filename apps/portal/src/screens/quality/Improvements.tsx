@@ -19,6 +19,7 @@ import { useT, type PlainKey, type T } from '../../i18n';
 import { rightLabel, useRights } from '../../Shell';
 import { ErrorState, Loading } from '../../states';
 import { servicePath } from '../service/sections';
+import { draftChanged } from '../service/draft-events';
 import { DiffLines } from './DiffLines';
 import { problemTitle, type SetFlash } from './shared';
 
@@ -258,6 +259,7 @@ export const Improvements = ({
       );
       seen.current = list.map((x) => (x.id === p.id ? { ...x, ...decided } : x));
       setRound((r) => r + 1);
+      if (approve) draftChanged(tenant, serviceId);
     } catch (error) {
       setFlash({ text: problemTitle(error, t), color: 'danger' });
     } finally {

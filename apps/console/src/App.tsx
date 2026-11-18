@@ -286,7 +286,7 @@ export const App = ({ auth, fetch: send, baseUrl = '/api', live = false }: Props
     '/shared-services': () => <SharedServices api={api} />,
     '/demos': () => (
       <Suspense fallback={null}>
-        <Demos api={api} demo={params.get('demo') ?? undefined} />
+        <Demos api={api} params={params} />
       </Suspense>
     ),
     '/settings': () => <Settings api={api} />,

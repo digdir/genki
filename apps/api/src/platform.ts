@@ -1,4 +1,5 @@
 import { isHiddenAuditTarget } from './internal-services.js';
+import { refusedAsArchived, serviceArchived, serviceArchivedType } from './archived-services.js';
 import { createRoute, z, type OpenAPIHono } from '@hono/zod-openapi';
 import type { Context } from 'hono';
 import { toJSONSchema } from 'zod';
@@ -67,6 +68,7 @@ export interface PlatformApiOptions {
     { orgNumber: string; name: string; status?: 'active' | 'onboarding' | 'paused' }[]
   >;
   organisationName?: (orgNumber: string) => string | undefined;
+  registeredName?: (orgNumber: string) => Promise<string | undefined>;
   tenantQuota?: (tenant: string) => Promise<{ usedPercent: number }>;
   lifecycle?: (tenant: string, service: string) => Promise<{ state: string }>;
   names?: ActorNames;
@@ -575,7 +577,10 @@ const routes = {
         content: problemContent,
         description: `Not allowed for this tenant; ${shareOperatorOnlyType}: the bundle changes a service's spec.availableTo, which only operators change; or ${operatorOnlySettingType}: the bundle sets or pins a limit only an operator changes for a tenant`,
       },
-      409: conflict,
+      409: {
+        content: problemContent,
+        description: `Changed elsewhere since it was read; or ${serviceArchivedType}: the bundle would publish a new version of an archived service, and nothing is imported (errors name the service)`,
+      },
       422: problems[422],
       404: problems[404],
     },
@@ -919,16 +924,20 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
     const directory = orgs.length > 0 ? ((await options.tenantDirectory?.()) ?? []) : [];
     return c.json(
       {
-        organisations: orgs.map((orgNumber) => ({
-          orgNumber,
-          name:
-            [
-              directory.find((d) => d.orgNumber === orgNumber)?.name,
-              principal.orgNames?.[orgNumber],
-              options.organisationName?.(orgNumber),
-            ].find((name) => name && name !== orgNumber) ?? orgNumber,
-          rights: [...rightsOf(principal, orgNumber)],
-        })),
+        organisations: await Promise.all(
+          orgs.map(async (orgNumber) => ({
+            orgNumber,
+            name:
+              [
+                directory.find((d) => d.orgNumber === orgNumber)?.name,
+                principal.orgNames?.[orgNumber],
+                options.organisationName?.(orgNumber),
+              ].find((name) => name && name !== orgNumber) ??
+              (await options.registeredName?.(orgNumber).catch(() => undefined)) ??
+              orgNumber,
+            rights: [...rightsOf(principal, orgNumber)],
+          })),
+        ),
         ...(principal.email ? { email: principal.email } : {}),
         ...(options.lockdown && readOnlyInLockdown(principal) ? { lockdownReadOnly: true } : {}),
       },
@@ -950,6 +959,16 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
     const used = await Promise.all(
       orgs.map(async (org) => (await options.tenantQuota?.(org))?.usedPercent ?? 0),
     );
+    const looked = await Promise.all(
+      orgs.map(async (org) => {
+        const entry = directory.find((d) => d.orgNumber === org)?.name;
+        if (entry && entry !== org) return entry;
+        return (
+          options.organisationName?.(org) ??
+          (await options.registeredName?.(org).catch(() => undefined))
+        );
+      }),
+    );
     return c.json(
       {
         data: orgs.map((orgNumber, i) => {
@@ -957,7 +976,7 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
           const count = counts.get(orgNumber) ?? 0;
           return {
             orgNumber,
-            name: entry?.name ?? options.organisationName?.(orgNumber) ?? orgNumber,
+            name: looked[i] ?? orgNumber,
             status: entry?.status ?? (count > 0 ? ('active' as const) : ('onboarding' as const)),
             services: count,
             quotaUsedPercent: used[i] ?? 0,
@@ -1175,6 +1194,7 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
         check: admin.importCheck(acting),
       });
       if (!plan.ok && plan.operatorOnly) return operatorOnlyRefused(c, plan.errors);
+      if (!plan.ok && refusedAsArchived(plan.errors)) return serviceArchived(c, plan.errors);
       if (!plan.ok) return problem(c, 422, 'Invalid bundle', { errors: plan.errors });
       return c.json({ dryRun: true, plan: plan.plan }, 200);
     }
@@ -1183,6 +1203,7 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
     if (!result.ok && result.conflict) return conflicted(c);
     if (!result.ok && result.type === shareOperatorOnlyType)
       return sharingRefused(c, result.errors);
+    if (!result.ok && result.type === serviceArchivedType) return serviceArchived(c, result.errors);
     if (!result.ok && result.type === operatorOnlySettingType)
       return operatorOnlyRefused(c, result.errors);
     if (!result.ok) return problem(c, 422, 'Invalid bundle', { errors: result.errors });

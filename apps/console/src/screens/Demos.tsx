@@ -20,53 +20,50 @@ import {
 } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { ApiClient, Demo, DemoApp, DemoAudience, DemoDetail, DemoRecording } from '../api';
-import { useAsync } from '../hooks';
-import { useT, type PlainKey } from '../i18n';
+import {
+  type ApiClient,
+  type Demo,
+  type DemoApp,
+  type DemoAudience,
+  type DemoDetail,
+  type DemoRecording,
+  type RecorderMode,
+} from '../api';
+import { navigate, useAsync } from '../hooks';
+import { useT } from '../i18n';
 import { EmptyState, ErrorState, Loading } from '../states';
-import { Flash, PageHeader, TableRegion, useFlash, VisuallyHidden } from '../ui';
+import { Flash, PageHeader, ReasonDialog, TableRegion, VisuallyHidden } from '../ui';
+import { DemoEditor } from './demos/Editor';
+import { DemoSettingsScreen } from './demos/DemoSettings';
+import { RecordingScreen } from './demos/Recording';
+import {
+  useFileUrl,
+  actorName,
+  appLabel,
+  audienceLabel,
+  clock,
+  Crumbs,
+  demoHref,
+  demoState,
+  editHref,
+  hasFile,
+  isOpen,
+  progressText,
+  requestRecording,
+  RecordingTag,
+  recordingHref,
+  states,
+  stateLabel,
+  StateTag,
+  useActions,
+  workflowUrl,
+  type DemoState,
+} from './demos/shared';
 import './demos.css';
 
-type DemoState = 'ready' | 'outdated' | 'failed' | 'none';
+export { clock, demoState } from './demos/shared';
 
-const states: DemoState[] = ['ready', 'outdated', 'failed', 'none'];
-
-const stateLabel: Record<DemoState, PlainKey> = {
-  ready: 'demos.stateReady',
-  outdated: 'demos.stateOutdated',
-  failed: 'demos.stateFailed',
-  none: 'demos.stateNone',
-};
-
-const stateColor: Record<DemoState, 'success' | 'warning' | 'danger' | 'neutral'> = {
-  ready: 'success',
-  outdated: 'warning',
-  failed: 'danger',
-  none: 'neutral',
-};
-
-const appLabel: Record<DemoApp, PlainKey> = {
-  portal: 'demos.appPortal',
-  console: 'demos.appConsole',
-  workspace: 'demos.appWorkspace',
-};
-
-const audienceLabel: Record<DemoAudience, PlainKey> = {
-  municipality: 'demos.audienceMunicipality',
-  'state-agency': 'demos.audienceStateAgency',
-  internal: 'demos.audienceInternal',
-};
-
-export const demoState = (demo: Demo, genkiVersion: string | null): DemoState => {
-  if (demo.latest?.status === 'failed') return 'failed';
-  if (!demo.recorded) return 'none';
-  return genkiVersion && demo.recorded.genkiVersion !== genkiVersion ? 'outdated' : 'ready';
-};
-
-export const clock = (seconds: number) => {
-  const total = Math.round(seconds);
-  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
-};
+const pollMs = 3000;
 
 export const cueStarts = (srt: string) =>
   [...srt.matchAll(/(\d{2}):(\d{2}):(\d{2}),(\d{3}) -->/g)].map(
@@ -75,63 +72,40 @@ export const cueStarts = (srt: string) =>
 
 const asVtt = (srt: string) => `WEBVTT\n\n${srt.replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2')}`;
 
-const hasFile = (recording: DemoRecording | undefined, name: string) =>
-  recording?.files.some((f) => f.name === name) ?? false;
-
-const demoLink = (id: string) =>
-  `${window.location.origin}${window.location.pathname}#/demos?demo=${encodeURIComponent(id)}`;
-
-const save = (blob: Blob, name: string) => {
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = name;
-  anchor.click();
-  setTimeout(() => URL.revokeObjectURL(url), 0);
-};
-
-const useActions = (api: ApiClient) => {
-  const t = useT();
-  const flash = useFlash();
-  return {
-    flash,
-    download: async (recording: DemoRecording, name: string) => {
-      try {
-        save(await api.demoFile(recording.id, name), `${recording.demo}-${name}`);
-      } catch {
-        flash.show(t('demos.downloadFailed'), 'danger');
-      }
-    },
-    copy: async (id: string) => {
-      try {
-        await navigator.clipboard.writeText(demoLink(id));
-        flash.show(t('demos.linkCopied'));
-      } catch {
-        flash.show(t('demos.linkNotCopied'), 'danger');
-      }
-    },
-  };
-};
-
-const StateTag = ({ state }: { state: DemoState }) => {
-  const t = useT();
-  return (
-    <Tag data-color={stateColor[state]} data-size="sm">
-      {t(stateLabel[state])}
-    </Tag>
-  );
-};
-
 const audienceText = (demo: Demo, t: ReturnType<typeof useT>) =>
   [t(appLabel[demo.app]), demo.audience.map((a) => t(audienceLabel[a])).join(', ')]
     .filter(Boolean)
     .join(' · ');
 
+const Still = ({ api, demo }: { api: ApiClient; demo: Demo }) => {
+  const t = useT();
+  const recorded = demo.recorded;
+  const poster = useFileUrl(
+    api,
+    hasFile(recorded, 'poster.jpg') ? recorded?.id : undefined,
+    'poster.jpg',
+  );
+  return (
+    <div
+      className="demo-still"
+      role="img"
+      aria-label={t('demos.stillLabel', { title: demo.title })}
+    >
+      {poster.status === 'ready' ? <img src={poster.url} alt="" /> : null}
+      {recorded?.seconds !== undefined ? (
+        <span className="demo-length">{clock(recorded.seconds)}</span>
+      ) : null}
+    </div>
+  );
+};
+
 const DemoCard = ({
+  api,
   demo,
   state,
   actions,
 }: {
+  api: ApiClient;
   demo: Demo;
   state: DemoState;
   actions: ReturnType<typeof useActions>;
@@ -141,21 +115,14 @@ const DemoCard = ({
   const recorded = demo.recorded;
   return (
     <li className="demo-card">
-      <div
-        className="demo-still"
-        role="img"
-        aria-label={t('demos.stillLabel', { title: demo.title })}
-      >
-        {recorded?.seconds !== undefined ? (
-          <span className="demo-length">{clock(recorded.seconds)}</span>
-        ) : null}
-      </div>
+      <Still api={api} demo={demo} />
       <div className="demo-card-body">
-        <div>
+        <div className="demo-tags">
           <StateTag state={state} />
+          {demo.open ? <RecordingTag /> : null}
         </div>
         <Heading level={3} data-size="xs">
-          <Link href={`#/demos?demo=${encodeURIComponent(demo.id)}`}>{demo.title}</Link>
+          <Link href={demoHref(demo.id)}>{demo.title}</Link>
         </Heading>
         <Paragraph data-size="sm" className="muted">
           {audienceText(demo, t)}
@@ -178,21 +145,28 @@ const DemoCard = ({
             </div>
           </dl>
         ) : null}
+        {demo.open ? (
+          <Paragraph data-size="sm">
+            {progressText(demo.open, t)}{' '}
+            <Link href={recordingHref(demo.open.id)}>{t('demos.followRecording')}</Link>
+          </Paragraph>
+        ) : null}
         {state === 'failed' && demo.latest?.failure ? (
           <Paragraph data-size="sm">
             {t(recorded ? 'demos.failedAt' : 'demos.failedNoGood', {
               step: demo.latest.failure.step,
               steps: demo.latest.steps,
-            })}
+            })}{' '}
+            <Link href={recordingHref(demo.latest.id)}>{t('demos.seeFailure')}</Link>
           </Paragraph>
         ) : null}
-        {!recorded && state !== 'failed' ? (
+        {!recorded && state !== 'failed' && !demo.open ? (
           <Paragraph data-size="sm">{t('demos.notRecorded')}</Paragraph>
         ) : null}
         {recorded ? (
           <div className="demo-actions">
             <Button asChild variant="secondary" data-size="sm">
-              <a href={`#/demos?demo=${encodeURIComponent(demo.id)}`}>{t('demos.play')}</a>
+              <a href={demoHref(demo.id)}>{t('demos.play')}</a>
             </Button>
             <Button
               variant="tertiary"
@@ -227,13 +201,29 @@ const Library = ({ api }: { api: ApiClient }) => {
         : [],
     [state],
   );
+  const recording = rated.some((r) => r.demo.open);
+  useEffect(() => {
+    if (!recording) return;
+    const timer = setInterval(retry, pollMs);
+    return () => clearInterval(timer);
+  }, [recording, retry]);
 
   const header = (
-    <PageHeader
-      eyebrow={t('shell.groupPlatform')}
-      title={t('demos.title')}
-      intro={t('demos.intro')}
-    />
+    <>
+      <PageHeader
+        eyebrow={t('shell.groupPlatform')}
+        title={t('demos.title')}
+        intro={t('demos.intro')}
+      />
+      <div className="actions-row demo-header-actions">
+        <Button asChild data-size="sm">
+          <a href="#/demos?new=1">{t('demos.newDemo')}</a>
+        </Button>
+        <Button asChild variant="secondary" data-size="sm">
+          <a href="#/demos?settings=1">{t('demos.settings')}</a>
+        </Button>
+      </div>
+    </>
   );
   if (state.status === 'loading')
     return (
@@ -273,7 +263,11 @@ const Library = ({ api }: { api: ApiClient }) => {
               ? t('demos.outdatedOneTitle')
               : t('demos.outdatedTitle', { count: outdated })}
           </Heading>
-          <Paragraph>{t('demos.outdatedText', { version: state.data.genkiVersion })}</Paragraph>
+          <Paragraph>
+            {t(state.data.recorder === 'job' ? 'demos.outdatedTextJob' : 'demos.outdatedText', {
+              version: state.data.genkiVersion,
+            })}
+          </Paragraph>
         </Alert>
       ) : null}
       {rated.length === 0 ? (
@@ -356,7 +350,13 @@ const Library = ({ api }: { api: ApiClient }) => {
           ) : (
             <ul className="demo-grid">
               {visible.map((r) => (
-                <DemoCard key={r.demo.id} demo={r.demo} state={r.state} actions={actions} />
+                <DemoCard
+                  key={r.demo.id}
+                  api={api}
+                  demo={r.demo}
+                  state={r.state}
+                  actions={actions}
+                />
               ))}
             </ul>
           )}
@@ -412,27 +412,73 @@ const useMedia = (api: ApiClient, recording: DemoRecording | undefined) => {
   return media;
 };
 
+const resultText = (r: DemoRecording, t: ReturnType<typeof useT>) =>
+  r.status === 'recorded'
+    ? t('demos.resultRecorded', { length: clock(r.seconds ?? 0) })
+    : r.status === 'failed'
+      ? t('demos.resultFailed', { step: r.failure?.step ?? 0 })
+      : r.status === 'cancelled'
+        ? t('demos.resultCancelled')
+        : r.status === 'queued'
+          ? t('demos.resultQueued')
+          : t('demos.resultRunning');
+
+const RecordActions = ({
+  demo,
+  recorder,
+  busy,
+  onAsk,
+}: {
+  api: ApiClient;
+  demo: Demo;
+  recorder: RecorderMode;
+  busy: boolean;
+  onAsk: () => void;
+}) => {
+  const t = useT();
+  return (
+    <div className="stack-sm demo-record-actions">
+      <div className="actions-row">
+        {recorder === 'job' ? (
+          <Button data-size="sm" onClick={onAsk} disabled={busy}>
+            {t('demos.recordAgain')}
+          </Button>
+        ) : null}
+        <Button asChild variant="secondary" data-size="sm">
+          <a href={editHref(demo.id)}>{t('demos.edit')}</a>
+        </Button>
+      </div>
+      {recorder === 'workflow' ? (
+        <Paragraph data-size="sm" className="muted">
+          {t('demos.workflowOnly', { id: demo.id })}{' '}
+          <Link href={workflowUrl} target="_blank" rel="noreferrer">
+            {t('demos.workflowLink')}
+          </Link>
+        </Paragraph>
+      ) : null}
+    </div>
+  );
+};
+
 const Detail = ({ api, id }: { api: ApiClient; id: string }) => {
   const t = useT();
   const f = useFormat();
   const actions = useActions(api);
   const [state, retry] = useAsync((signal) => api.demo(id, signal), [api, id]);
   const detail = state.status === 'ready' ? state.data : undefined;
-  const recorded = detail?.recordings.find((r) => r.status === 'recorded');
+  const full = detail?.recordings.filter((r) => r.upTo === undefined) ?? [];
+  const recorded = full.find((r) => r.status === 'recorded');
+  const open = detail?.recordings.find(isOpen);
   const media = useMedia(api, recorded);
   const video = useRef<HTMLVideoElement>(null);
+  const [asking, setAsking] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    const timer = setInterval(retry, pollMs);
+    return () => clearInterval(timer);
+  }, [open?.id, retry]);
 
-  const crumbs = (title?: string) => (
-    <nav aria-label={t('demos.breadcrumb')} className="demo-crumbs">
-      <Link href="#/demos">{t('demos.back')}</Link>
-      {title ? (
-        <>
-          <span aria-hidden="true">/</span>
-          <span aria-current="page">{title}</span>
-        </>
-      ) : null}
-    </nav>
-  );
+  const crumbs = (title?: string) => <Crumbs title={title} />;
 
   if (state.status === 'loading')
     return (
@@ -456,7 +502,7 @@ const Detail = ({ api, id }: { api: ApiClient; id: string }) => {
     );
 
   const demo: DemoDetail = state.data;
-  const latest = demo.recordings[0];
+  const latest = full.find((r) => !isOpen(r) && r.status !== 'cancelled');
   const current = demoState(
     { ...demo, ...(latest ? { latest } : {}), ...(recorded ? { recorded } : {}) },
     demo.genkiVersion,
@@ -487,12 +533,46 @@ const Detail = ({ api, id }: { api: ApiClient; id: string }) => {
           {demo.title}
         </Heading>
         {demo.description ? <p className="intro">{demo.description}</p> : null}
+        <Paragraph data-size="sm" className="muted">
+          {t('demos.changedBy')}:{' '}
+          {t('demos.changedByText', {
+            who: actorName(demo.updatedBy),
+            when: f.dateTime(new Date(demo.updatedAt), 'medium'),
+          })}
+        </Paragraph>
       </div>
+      <RecordActions
+        api={api}
+        demo={demo}
+        recorder={demo.recorder ?? 'workflow'}
+        busy={Boolean(open)}
+        onAsk={() => setAsking(true)}
+      />
+      <ReasonDialog
+        open={asking}
+        title={t('demos.recordAgainTitle', { title: demo.title })}
+        text={t('demos.recordAgainText')}
+        confirmLabel={t('demos.recordAgainConfirm')}
+        onClose={() => setAsking(false)}
+        onConfirm={async (reason) => {
+          const started = await requestRecording(api, demo.id, reason, t);
+          navigate('/demos', { recording: started.id });
+        }}
+      />
       <div className="demo-detail">
         <div className="stack">
-          {current === 'failed' && latest?.failure && recorded ? (
+          {open ? (
+            <Alert data-color="info">
+              {progressText(open, t)}{' '}
+              <Link href={recordingHref(open.id)}>{t('demos.followRecording')}</Link>
+            </Alert>
+          ) : null}
+          {current === 'failed' && latest?.failure ? (
             <Alert data-color="warning">
-              {t('demos.latestFailed', { step: latest.failure.step, steps: latest.steps })}
+              {recorded
+                ? t('demos.latestFailed', { step: latest.failure.step, steps: latest.steps })
+                : t('demos.failedNoGood', { step: latest.failure.step, steps: latest.steps })}{' '}
+              <Link href={recordingHref(latest.id)}>{t('demos.seeFailure')}</Link>
             </Alert>
           ) : null}
           {!recorded ? (
@@ -535,7 +615,11 @@ const Detail = ({ api, id }: { api: ApiClient; id: string }) => {
                       <TableHeaderCell>{t('demos.colDate')}</TableHeaderCell>
                       <TableHeaderCell>{t('demos.colGenki')}</TableHeaderCell>
                       <TableHeaderCell>{t('demos.colDemoVersion')}</TableHeaderCell>
+                      <TableHeaderCell>{t('demos.colKind')}</TableHeaderCell>
                       <TableHeaderCell>{t('demos.colResult')}</TableHeaderCell>
+                      <TableHeaderCell>
+                        <VisuallyHidden>{t('demos.openRecording')}</VisuallyHidden>
+                      </TableHeaderCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
@@ -545,11 +629,18 @@ const Detail = ({ api, id }: { api: ApiClient; id: string }) => {
                         <TableCell>{r.genkiVersion}</TableCell>
                         <TableCell>{r.demoVersion}</TableCell>
                         <TableCell>
-                          {r.status === 'recorded'
-                            ? t('demos.resultRecorded', { length: clock(r.seconds ?? 0) })
-                            : r.status === 'failed'
-                              ? t('demos.resultFailed', { step: r.failure?.step ?? 0 })
-                              : t('demos.resultRunning')}
+                          {r.upTo === undefined
+                            ? t('demos.kindFull')
+                            : t('demos.trialOf', { upTo: r.upTo })}
+                        </TableCell>
+                        <TableCell>{resultText(r, t)}</TableCell>
+                        <TableCell>
+                          <Link
+                            href={recordingHref(r.id)}
+                            aria-label={`${t('demos.openRecording')}: ${f.dateTime(new Date(r.startedAt), 'medium')}`}
+                          >
+                            {t('demos.openRecording')}
+                          </Link>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -651,5 +742,21 @@ const Detail = ({ api, id }: { api: ApiClient; id: string }) => {
   );
 };
 
-export const Demos = ({ api, demo }: { api: ApiClient; demo?: string | undefined }) =>
-  demo ? <Detail api={api} id={demo} /> : <Library api={api} />;
+export const Demos = ({
+  api,
+  params = new URLSearchParams(),
+  demo = params.get('demo') ?? undefined,
+}: {
+  api: ApiClient;
+  params?: URLSearchParams;
+  demo?: string | undefined;
+}) => {
+  const recording = params.get('recording');
+  const edit = params.get('edit');
+  if (params.get('settings')) return <DemoSettingsScreen api={api} />;
+  if (params.get('new')) return <DemoEditor api={api} />;
+  if (edit)
+    return <DemoEditor api={api} id={edit} step={Number(params.get('step')) || undefined} />;
+  if (recording) return <RecordingScreen api={api} id={recording} />;
+  return demo ? <Detail api={api} id={demo} /> : <Library api={api} />;
+};

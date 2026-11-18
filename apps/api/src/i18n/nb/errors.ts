@@ -658,6 +658,9 @@ export const demoErrors = defineNamespace({
   failureNeedsReason: 'et mislykket opptak sier hvorfor',
   demoIsMapping: 'en demo er en YAML-mapping',
   notSlug: 'ikke en slug med små bokstaver',
+  demoStepCount: 'demoen har {steps} steg',
+  recordedByWorkflow: 'opptakene gjøres av arbeidsflyten demos',
+  recordingNotQueued: 'opptaket kunne ikke settes i kø',
 });
 
 export const errors = {

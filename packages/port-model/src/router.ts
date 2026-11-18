@@ -428,6 +428,9 @@ export class ModelRouter implements PortProvider<ModelPort> {
             });
         }
       }
+    for (const [id, route] of this.#discovered)
+      if (failed.some((f) => f.endpoint === route.model.endpoint) && !discovered.has(id))
+        discovered.set(id, route);
     this.#discovered = discovered;
     this.#rebuild();
     return { discovered: discovered.size, failed };

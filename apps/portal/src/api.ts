@@ -3,6 +3,7 @@ import type { StepBlockSchema } from './data/step-blocks';
 import type { StepOperation } from './data/step-operations';
 import type { StrategyEntry } from './data/strategies';
 import { buildingBlocksApi } from './api/building-blocks';
+import { blocksApi } from './api/blocks';
 import { datasetsApi } from './api/datasets';
 import { environmentsApi } from './api/environments';
 import { keyPoliciesApi } from './api/key-policies';
@@ -190,6 +191,7 @@ const featureClients = (ctx: ApiContext) => ({
   platformStatus: platformStatusApi(ctx),
   quotaRequests: quotaRequestsApi(ctx),
   accessPeople: accessApi(ctx),
+  blocks: blocksApi(ctx),
 });
 
 const kindPaths: Record<PublishedDefinition['kind'], string> = {

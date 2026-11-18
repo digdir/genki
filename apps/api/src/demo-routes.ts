@@ -13,8 +13,11 @@ import {
 import {
   demoIdPattern,
   demoKind,
+  demoSettings,
   demoSpec,
+  isOpen,
   isRecorderKey,
+  latestSettings,
   latestDemo,
   latestDemos,
   latestRecording,
@@ -28,8 +31,13 @@ import {
   recordingFileType,
   recordingFinish,
   recordingKind,
+  recordingRequest,
   recordingStart,
+  settingsId,
+  settingsKind,
+  settingsOf,
   type DemoProblem,
+  type DemoSettings,
   type DemoSpec,
   type RecordingSpec,
 } from './demos.js';
@@ -50,6 +58,7 @@ const titles = {
   404: 'Not found',
   409: 'Conflict',
   413: 'Payload too large',
+  503: 'Service unavailable',
 } as const;
 
 type Status = keyof typeof titles;
@@ -57,6 +66,19 @@ type Status = keyof typeof titles;
 export const recorderKeyType = 'urn:genai:problem:recorder-key';
 export const recordingFinishedType = 'urn:genai:problem:recording-finished';
 export const fileTooLargeType = 'urn:genai:problem:file-too-large';
+export const recorderNotSetUpType = 'urn:genai:problem:recorder-not-set-up';
+export const recordingOpenType = 'urn:genai:problem:recording-open';
+
+export type RecorderMode = 'job' | 'workflow';
+
+class DemoRefused extends Error {
+  constructor(
+    readonly path: string,
+    message: string,
+  ) {
+    super(message);
+  }
+}
 
 const problem = (c: Context, status: Status, errors: DemoProblem[] = [], type = 'about:blank') =>
   c.json({ type, title: titles[status], status, errors }, status, {
@@ -76,6 +98,8 @@ const demoView = (entry: ConfigEntry<DemoSpec>) => ({
 const newestFirst = (a: ConfigEntry<RecordingSpec>, b: ConfigEntry<RecordingSpec>) =>
   b.spec.startedAt.localeCompare(a.spec.startedAt);
 
+const isTrial = (r: ConfigEntry<RecordingSpec>) => r.spec.upTo !== undefined;
+
 const recordingsOf = async (store: ConfigEntryStore, demo?: string) =>
   (await latestRecordings(store))
     .filter((r) => demo === undefined || r.spec.demo === demo)
@@ -94,6 +118,8 @@ const bodyOf = async (c: Context) => {
 
 export interface DemosOptions {
   now?: () => Date;
+  /** Hands a queued recording to the recorder job; without it recordings come from the workflow. */
+  sendRecording?: (recording: string) => Promise<void>;
 }
 
 export const createDemosModule =
@@ -103,6 +129,7 @@ export const createDemosModule =
     const store = deps.configEntries;
     const tenant = deps.platformTenant;
     const one = serialized();
+    const mode: RecorderMode = options.sendRecording ? 'job' : 'workflow';
 
     const viewer = async (c: Context, mounted: MountDeps, edit = false) => {
       const principal = await mounted.authenticate(c.req.raw);
@@ -134,6 +161,10 @@ export const createDemosModule =
         ifVersion: current.version,
       });
 
+    const refuseOpen = async (demo: string, except?: string) => {
+      const open = (await recordingsOf(store, demo)).find((r) => r.id !== except && isOpen(r.spec));
+      if (open) throw new DemoRefused('recording', `recording ${open.id} has not finished`);
+    };
     const finished = (c: Context) =>
       problem(
         c,
@@ -183,15 +214,18 @@ export const createDemosModule =
             .sort((a, b) => a.spec.title.localeCompare(b.spec.title, 'nb'))
             .map((demo) => {
               const own = recordings.filter((r) => r.spec.demo === demo.id);
-              const latest = own[0];
-              const recorded = own.find((r) => r.spec.status === 'recorded');
+              const full = own.filter((r) => !isTrial(r) && r.spec.status !== 'cancelled');
+              const latest = full.find((r) => !isOpen(r.spec));
+              const recorded = full.find((r) => r.spec.status === 'recorded');
+              const open = own.find((r) => isOpen(r.spec));
               return {
                 ...demoView(demo),
                 ...(latest ? { latest: recordingView(latest) } : {}),
                 ...(recorded ? { recorded: recordingView(recorded) } : {}),
+                ...(open ? { open: recordingView(open) } : {}),
               };
             });
-          return c.json({ genkiVersion: deps.appVersion ?? null, data });
+          return c.json({ genkiVersion: deps.appVersion ?? null, recorder: mode, data });
         });
 
         app.get('/operator/demos/:id', async (c) => {
@@ -202,6 +236,7 @@ export const createDemosModule =
           return c.json({
             ...demoView(demo),
             genkiVersion: deps.appVersion ?? null,
+            recorder: mode,
             recordings: (await recordingsOf(store, demo.id)).map(recordingView),
           });
         });
@@ -276,6 +311,226 @@ export const createDemosModule =
           });
         });
 
+        app.post('/operator/demos/:id/recordings', async (c) => {
+          const g = await viewer(c, mounted, true);
+          if ('response' in g) return g.response;
+          const reason = changeReasonOf(c) ?? '';
+          if (!isReasonLongEnough(reason))
+            return problem(c, 400, [{ path: 'change-reason', message: reasonTooShort }]);
+          const demo = await latestDemo(store, c.req.param('id') ?? '');
+          if (!demo) return problem(c, 404);
+          const body = recordingRequest.safeParse(await c.req.json().catch(() => ({})));
+          if (!body.success) return problem(c, 400, problemsOf(body.error));
+          const upTo = body.data.upTo;
+          if (upTo !== undefined && upTo > demo.spec.steps.length)
+            return problem(c, 400, [
+              { path: 'upTo', message: `the demo has ${demo.spec.steps.length} steps` },
+            ]);
+          const send = options.sendRecording;
+          if (!send)
+            return problem(
+              c,
+              503,
+              [{ path: 'recorder', message: 'recordings are made by the demos workflow' }],
+              recorderNotSetUpType,
+            );
+          const id = crypto.randomUUID();
+          try {
+            const done = await audited(
+              g.principal,
+              'platform.demo.recording.start',
+              reason,
+              `demo-recording:${id}`,
+              () =>
+                one(async () => {
+                  await refuseOpen(demo.id);
+                  const settings = await settingsOf(store);
+                  return appendVersion<RecordingSpec>(store, {
+                    kind: recordingKind,
+                    scope: platformScope,
+                    id,
+                    spec: {
+                      demo: demo.id,
+                      demoVersion: demo.version,
+                      genkiVersion: deps.appVersion ?? 'unknown',
+                      status: 'queued',
+                      steps: upTo ?? demo.spec.steps.length,
+                      narrated: upTo === undefined,
+                      ...(upTo === undefined ? { voice: demo.spec.voice ?? settings.voice } : {}),
+                      startedAt: now().toISOString(),
+                      files: [],
+                      requestedBy: actorOf(g.principal),
+                      ...(upTo !== undefined ? { upTo } : {}),
+                    },
+                    deleted: false,
+                    by: actorOf(g.principal),
+                    reason,
+                  });
+                }),
+            );
+            try {
+              await send(id);
+            } catch {
+              await one(async () => {
+                const current = await latestRecording(store, id);
+                if (current?.spec.status === 'queued')
+                  await update(
+                    current,
+                    {
+                      ...current.spec,
+                      status: 'failed',
+                      finishedAt: now().toISOString(),
+                      failure: { step: 0, message: 'the recording could not be handed to the job' },
+                    },
+                    actorOf(g.principal),
+                    'not queued',
+                  );
+              });
+              return problem(
+                c,
+                503,
+                [{ path: 'recorder', message: 'the recording could not be queued' }],
+                recorderNotSetUpType,
+              );
+            }
+            c.header('genai-task', done.task);
+            return c.json(recordingView(done.value), 202);
+          } catch (error) {
+            if (error instanceof DemoRefused)
+              return problem(
+                c,
+                409,
+                [{ path: error.path, message: error.message }],
+                recordingOpenType,
+              );
+            return conflictOr(c, error);
+          }
+        });
+
+        app.post('/operator/recordings/:id/cancel', async (c) => {
+          const g = await viewer(c, mounted, true);
+          if ('response' in g) return g.response;
+          const reason = changeReasonOf(c) ?? '';
+          if (!isReasonLongEnough(reason))
+            return problem(c, 400, [{ path: 'change-reason', message: reasonTooShort }]);
+          const found = await latestRecording(store, c.req.param('id') ?? '');
+          if (!found) return problem(c, 404);
+          if (!isOpen(found.spec)) return finished(c);
+          try {
+            const done = await audited(
+              g.principal,
+              'platform.demo.recording.finish',
+              reason,
+              `demo-recording:${found.id}`,
+              () =>
+                one(async () => {
+                  const current = (await latestRecording(store, found.id)) ?? found;
+                  if (!isOpen(current.spec))
+                    throw new DemoRefused('status', 'the recording has finished');
+                  return update(
+                    current,
+                    {
+                      ...current.spec,
+                      status: 'cancelled',
+                      finishedAt: now().toISOString(),
+                      cancelledBy: actorOf(g.principal),
+                    },
+                    actorOf(g.principal),
+                    reason,
+                  );
+                }),
+            );
+            c.header('genai-task', done.task);
+            return c.json(recordingView(done.value));
+          } catch (error) {
+            if (error instanceof DemoRefused) return finished(c);
+            return conflictOr(c, error);
+          }
+        });
+
+        const settingsView = async () => {
+          const entry = await latestSettings(store);
+          const settings = await settingsOf(store);
+          const sample = (await recordingsOf(store)).find(
+            (r) =>
+              r.spec.voice === settings.voice && r.spec.files.some((f) => f.name === 'sample.mp3'),
+          );
+          return {
+            ...settings,
+            version: entry?.version ?? 0,
+            ...(entry ? { updatedBy: entry.by, updatedAt: entry.at } : {}),
+            recorder: mode,
+            ...(sample ? { sample: { recording: sample.id, file: 'sample.mp3' } } : {}),
+          };
+        };
+
+        app.get('/operator/demo-settings', async (c) => {
+          const g = await viewer(c, mounted);
+          if ('response' in g) return g.response;
+          return c.json(await settingsView());
+        });
+
+        app.put('/operator/demo-settings', async (c) => {
+          const g = await viewer(c, mounted, true);
+          if ('response' in g) return g.response;
+          const reason = changeReasonOf(c) ?? '';
+          if (!isReasonLongEnough(reason))
+            return problem(c, 400, [{ path: 'change-reason', message: reasonTooShort }]);
+          const body = demoSettings.safeParse(await c.req.json().catch(() => undefined));
+          if (!body.success) return problem(c, 400, problemsOf(body.error));
+          const ifMatch = c.req.header('if-match')?.replace(/"/g, '');
+          const expected = ifMatch === undefined ? undefined : Number(ifMatch);
+          if (expected !== undefined && !Number.isInteger(expected))
+            return problem(c, 400, [{ path: 'if-match', message: 'if-match is a version number' }]);
+          try {
+            const done = await audited(
+              g.principal,
+              'platform.demo.save',
+              reason,
+              'demo-settings',
+              () =>
+                one(() =>
+                  appendVersion<DemoSettings>(store, {
+                    kind: settingsKind,
+                    scope: platformScope,
+                    id: settingsId,
+                    spec: body.data,
+                    deleted: false,
+                    by: actorOf(g.principal),
+                    reason,
+                    ...(expected !== undefined ? { ifVersion: expected } : {}),
+                  }),
+                ),
+            );
+            c.header('genai-task', done.task);
+            return c.json(await settingsView());
+          } catch (error) {
+            return conflictOr(c, error);
+          }
+        });
+
+        app.get('/recorder/recordings/:id', async (c) => {
+          const principal = recorder(c);
+          if (!principal) return problem(c, 401, [], recorderKeyType);
+          const found = await latestRecording(store, c.req.param('id') ?? '');
+          if (!found) return problem(c, 404);
+          const version = (await store.history(demoKind, platformScope, found.spec.demo)).find(
+            (v) => v.version === found.spec.demoVersion,
+          ) as ConfigEntry<DemoSpec> | undefined;
+          if (!version) return problem(c, 404);
+          const settings = await settingsOf(store);
+          return c.json({
+            ...recordingView(found),
+            demoSpec: version.spec,
+            settings: {
+              voice: settings.voice,
+              viewport: settings.viewport,
+              tenant: settings.tenant,
+              login: settings.login,
+            },
+          });
+        });
+
         app.post('/recorder/demos/:id/recordings', async (c) => {
           const principal = recorder(c);
           if (!principal) return problem(c, 401, [], recorderKeyType);
@@ -283,36 +538,72 @@ export const createDemosModule =
           if (!demo) return problem(c, 404);
           const body = recordingStart.safeParse(await c.req.json().catch(() => undefined));
           if (!body.success) return problem(c, 400, problemsOf(body.error));
-          const id = crypto.randomUUID();
+          const claimed = body.data.recording
+            ? await latestRecording(store, body.data.recording)
+            : undefined;
+          if (body.data.recording && (!claimed || claimed.spec.demo !== demo.id))
+            return problem(c, 404);
+          if (claimed && claimed.spec.status !== 'queued') return finished(c);
+          const id = claimed?.id ?? crypto.randomUUID();
+          const narrated = body.data.narrated && claimed?.spec.upTo === undefined;
           const spec: RecordingSpec = {
-            demo: demo.id,
-            demoVersion: demo.version,
+            ...(claimed?.spec ?? {
+              demo: demo.id,
+              demoVersion: demo.version,
+              steps: demo.spec.steps.length,
+              files: [],
+            }),
             genkiVersion: body.data.genkiVersion,
             status: 'running',
-            steps: demo.spec.steps.length,
-            narrated: body.data.narrated,
-            ...(body.data.narrated ? { voice: demo.spec.voice } : {}),
+            narrated,
+            ...(narrated
+              ? {
+                  voice: claimed ? (claimed.spec.voice ?? demo.spec.voice) : demo.spec.voice,
+                }
+              : {}),
             startedAt: now().toISOString(),
-            files: [],
           };
-          const done = await audited(
-            principal,
-            'platform.demo.recording.start',
-            'recorded by the demo recorder',
-            `demo-recording:${id}`,
-            () =>
-              appendVersion<RecordingSpec>(store, {
-                kind: recordingKind,
-                scope: platformScope,
-                id,
-                spec,
-                deleted: false,
-                by: `platform:${principal.subject}`,
-                reason: `recording of ${demo.id}`,
-              }),
-          );
-          c.header('genai-task', done.task);
-          return c.json(recordingView(done.value), 201);
+          if (!narrated) delete spec.voice;
+          try {
+            const done = await audited(
+              principal,
+              'platform.demo.recording.start',
+              'recorded by the demo recorder',
+              `demo-recording:${id}`,
+              () =>
+                one(async () => {
+                  if (claimed) {
+                    const current = (await latestRecording(store, id)) ?? claimed;
+                    if (current.spec.status !== 'queued')
+                      throw new DemoRefused('status', 'the recording has finished');
+                    await refuseOpen(demo.id, id);
+                    return update(current, spec, `platform:${principal.subject}`, 'started');
+                  }
+                  await refuseOpen(demo.id);
+                  return appendVersion<RecordingSpec>(store, {
+                    kind: recordingKind,
+                    scope: platformScope,
+                    id,
+                    spec,
+                    deleted: false,
+                    by: `platform:${principal.subject}`,
+                    reason: `recording of ${demo.id}`,
+                  });
+                }),
+            );
+            c.header('genai-task', done.task);
+            return c.json(recordingView(done.value), 201);
+          } catch (error) {
+            if (error instanceof DemoRefused && error.path === 'recording')
+              return problem(
+                c,
+                409,
+                [{ path: error.path, message: error.message }],
+                recordingOpenType,
+              );
+            if (error instanceof DemoRefused) return finished(c);
+            return conflictOr(c, error);
+          }
         });
 
         app.put('/recorder/recordings/:id/files/:name', async (c) => {

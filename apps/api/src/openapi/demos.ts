@@ -1,7 +1,9 @@
 import { createRoute, z, type RouteConfig } from '@hono/zod-openapi';
 import {
+  demoSettings,
   demoSpec,
   recordingFailure,
+  recordingRequest,
   recordingFinish,
   recordingStart,
   recordingStatuses,
@@ -38,7 +40,9 @@ const fileParams = z.object({
   name: z
     .string()
     .openapi({ param: { name: 'name', in: 'path' }, example: 'demo.mp4' })
-    .describe('demo.mp4, demo.srt, poster.jpg or failed-step-{n}.png'),
+    .describe(
+      'demo.mp4, demo.srt, poster.jpg, sample.mp3, step-{n}.png after each step, or failed-step-{n}.png',
+    ),
 });
 
 const RecordingFile = z.object({
@@ -62,8 +66,32 @@ const Recording = z
     seconds: z.number().optional(),
     files: z.array(RecordingFile),
     failure: recordingFailure.optional(),
+    requestedBy: z.string().optional().describe('Who asked for it from the console'),
+    upTo: z
+      .number()
+      .int()
+      .optional()
+      .describe('A trial of the first steps only, kept out of the library'),
+    cancelledBy: z.string().optional(),
   })
   .openapi('DemoRecording');
+
+const recorder = z
+  .enum(['job', 'workflow'])
+  .describe('job: the console can start recordings; workflow: they come from the demos workflow');
+
+const Settings = demoSettings
+  .extend({
+    version: z.number().int().describe('0 while the defaults are in use'),
+    updatedBy: z.string().optional(),
+    updatedAt: z.string().optional(),
+    recorder,
+    sample: z
+      .object({ recording: z.string(), file: z.literal('sample.mp3') })
+      .optional()
+      .describe('A recording file with a sample of the default voice'),
+  })
+  .openapi('DemoSettings');
 
 const Demo = demoSpec
   .extend({
@@ -75,8 +103,11 @@ const Demo = demoSpec
   .openapi('Demo');
 
 const DemoInLibrary = Demo.extend({
-  latest: Recording.optional().describe('The newest recording, whatever its result'),
-  recorded: Recording.optional().describe('The newest recording that finished'),
+  latest: Recording.optional().describe(
+    'The newest full recording that ended, whatever its result',
+  ),
+  recorded: Recording.optional().describe('The newest full recording that finished'),
+  open: Recording.optional().describe('A recording that is queued or running'),
 });
 
 const genkiVersion = z
@@ -90,7 +121,7 @@ export const demoRoutes: RouteConfig[] = [
     path: '/operator/demos',
     summary: 'The demo library: every demo with its newest and newest finished recording',
     responses: {
-      200: json(z.object({ genkiVersion, data: z.array(DemoInLibrary) }), 'Demos'),
+      200: json(z.object({ genkiVersion, recorder, data: z.array(DemoInLibrary) }), 'Demos'),
       ...viewerOnly,
     },
   }),
@@ -100,7 +131,10 @@ export const demoRoutes: RouteConfig[] = [
     summary: 'One demo with every recording, newest first',
     request: { params: idParam },
     responses: {
-      200: json(Demo.extend({ genkiVersion, recordings: z.array(Recording) }), 'The demo'),
+      200: json(
+        Demo.extend({ genkiVersion, recorder, recordings: z.array(Recording) }),
+        'The demo',
+      ),
       ...viewerOnly,
       404: problem('No such demo'),
     },
@@ -135,6 +169,67 @@ export const demoRoutes: RouteConfig[] = [
     },
   }),
   createRoute({
+    method: 'post',
+    path: '/operator/demos/{id}/recordings',
+    summary:
+      'Queue a recording of the demo as it is stored now, or a silent trial of its first steps (demo editors, audited as platform.demo.recording.start)',
+    request: {
+      params: idParam,
+      headers: changeReason,
+      body: { required: false, content: { 'application/json': { schema: recordingRequest } } },
+    },
+    responses: {
+      202: json(Recording, 'Queued for the recorder job'),
+      400: problem('Invalid body, upTo past the last step, or missing reason'),
+      ...viewerOnly,
+      404: problem('No such demo'),
+      409: problem('urn:genai:problem:recording-open: the demo has a recording that has not ended'),
+      503: problem(
+        'urn:genai:problem:recorder-not-set-up: no recorder job here; record with the demos workflow',
+      ),
+    },
+  }),
+  createRoute({
+    method: 'post',
+    path: '/operator/recordings/{id}/cancel',
+    summary:
+      'Cancel a queued or running recording (demo editors, audited as platform.demo.recording.finish)',
+    request: { params: recordingParam, headers: changeReason },
+    responses: {
+      200: json(Recording, 'Cancelled'),
+      400: problem('Missing reason'),
+      ...viewerOnly,
+      404: problem('No such recording'),
+      409: problem('urn:genai:problem:recording-finished: the recording has ended'),
+    },
+  }),
+  createRoute({
+    method: 'get',
+    path: '/operator/demo-settings',
+    summary: 'The settings for recording demos',
+    responses: { 200: json(Settings, 'The settings'), ...viewerOnly },
+  }),
+  createRoute({
+    method: 'put',
+    path: '/operator/demo-settings',
+    summary: 'Save the settings for recording demos (demo editors, audited as platform.demo.save)',
+    request: {
+      headers: changeReason.extend({
+        'if-match': z
+          .string()
+          .optional()
+          .openapi({ description: 'The version you read; 409 if it moved' }),
+      }),
+      body: { required: true, content: { 'application/json': { schema: demoSettings } } },
+    },
+    responses: {
+      200: json(Settings, 'Saved'),
+      400: problem('Invalid settings or missing reason'),
+      ...viewerOnly,
+      409: problem('The settings moved past the version in if-match'),
+    },
+  }),
+  createRoute({
     method: 'get',
     path: '/operator/recordings/{id}',
     summary: 'One recording of a demo',
@@ -159,6 +254,7 @@ export const demoRoutes: RouteConfig[] = [
           'application/x-subrip': { schema: z.string() },
           'image/jpeg': { schema: z.string().openapi({ format: 'binary' }) },
           'image/png': { schema: z.string().openapi({ format: 'binary' }) },
+          'audio/mpeg': { schema: z.string().openapi({ format: 'binary' }) },
         },
       },
       ...viewerOnly,
@@ -166,9 +262,28 @@ export const demoRoutes: RouteConfig[] = [
     },
   }),
   createRoute({
+    method: 'get',
+    path: '/recorder/recordings/{id}',
+    summary:
+      'A recording with the demo version it records and the recording settings (the recorder only)',
+    request: { params: recordingParam, headers: recorderKey },
+    responses: {
+      200: json(
+        Recording.extend({
+          demoSpec,
+          settings: demoSettings.pick({ voice: true, viewport: true, tenant: true, login: true }),
+        }),
+        'The recording',
+      ),
+      ...recorderOnly,
+      404: problem('No such recording'),
+    },
+  }),
+  createRoute({
     method: 'post',
     path: '/recorder/demos/{id}/recordings',
-    summary: 'Start a recording of the demo as it is stored now (the recorder only)',
+    summary:
+      'Start a recording of the demo as it is stored now, or take up a queued one named by recording (the recorder only)',
     request: {
       params: idParam,
       headers: recorderKey,
@@ -178,7 +293,10 @@ export const demoRoutes: RouteConfig[] = [
       201: json(Recording, 'The recording, running'),
       400: problem('Invalid body'),
       ...recorderOnly,
-      404: problem('No such demo'),
+      404: problem('No such demo, or a queued recording of another demo'),
+      409: problem(
+        'urn:genai:problem:recording-open: another recording of the demo has not ended; urn:genai:problem:recording-finished: the queued recording was cancelled',
+      ),
     },
   }),
   createRoute({

@@ -297,7 +297,7 @@ describe('an archived service', () => {
     expect(within(header).queryByRole('button', { name: 'Sett på pause' })).toBeNull();
     const tabs = screen.getByRole('navigation', { name: 'Tjenesten' });
     expect(within(tabs).queryByRole('link', { name: 'Oppsett' })).toBeNull();
-    expect(within(tabs).getByRole('link', { name: 'Versjoner' })).toBeTruthy();
+    expect(within(tabs).getByRole('link', { name: 'Utviklerverktøy' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Gjenopprett' })).toBeTruthy();
   });
 });
@@ -330,6 +330,16 @@ describe('an archived service opened at an editing address', () => {
       expect(within(main).queryByRole('button', { name: /^Lagre/ })).toBeNull();
     },
   );
+
+  it('moves the address to Oversikt, the section it shows', async () => {
+    const auth = mockAnsattporten(kari);
+    await auth.login();
+    window.location.hash = '#/services/rapportassistenten/settings';
+    render(<App auth={auth} fetch={archivedFetch()} live />);
+
+    await screen.findByText('Tjenesten er arkivert og kan bare leses.');
+    await waitFor(() => expect(window.location.hash).toBe('#/services/rapportassistenten'));
+  });
 });
 
 describe('Service header in live mode', () => {
@@ -359,8 +369,9 @@ describe('Service header in live mode', () => {
         }}
       />,
     );
-    return (await screen.findByRole('heading', { level: 1, name: 'Rapportassistenten' }))
-      .parentElement as HTMLElement;
+    return (await screen.findByRole('heading', { level: 1, name: 'Rapportassistenten' })).closest(
+      'header',
+    ) as HTMLElement;
   };
 
   it('shows a paused service as Satt på pause, not I bruk', async () => {

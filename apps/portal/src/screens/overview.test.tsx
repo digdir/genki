@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { exampleServices, exampleTimeline, mockFetch } from '../mock';
-import { expectAccessible, failingFetch, renderAt } from '../test-utils';
+import { expectAccessible, failingFetch, heldFetch, renderAt } from '../test-utils';
 import type { Overview, UsageReport, UsageTotals } from '../types';
 
 const totals = (
@@ -65,6 +65,7 @@ const calm: Overview = {
 };
 
 const noFailedDatasets = { features: { datasets: { datasets: [] } } };
+const nothingFailed = { ...noFailedDatasets, tasks: [] };
 
 const normalUsage = report({ rapportassistenten: 3_000_000, postsortering: 2_000_000 });
 
@@ -119,10 +120,20 @@ describe('Oversikt', () => {
     expect(screen.getAllByRole('button', { name: 'Prøv igjen' }).length).toBeGreaterThan(0);
   });
 
+  it('holds the shape of the page while it loads, with no lone spinner under the heading', async () => {
+    const held = heldFetch(/\/overview$/);
+    const { container } = await renderAt('#/overview', held.fetch);
+
+    const loading = await screen.findByRole('status', { name: 'Henter oversikten' });
+    expect(within(loading).getByRole('heading', { level: 2, name: 'Trenger deg nå' })).toBeTruthy();
+    expect(container.querySelector('main .ds-spinner')).toBeNull();
+    await held.release();
+  });
+
   it('says nothing needs you only when every check worked and found nothing', async () => {
     await renderAt(
       '#/overview',
-      replacing(/\/overview$/, calm, withUsage(normalUsage, noFailedDatasets)),
+      replacing(/\/overview$/, calm, withUsage(normalUsage, nothingFailed)),
     );
 
     expect(await screen.findByText(/Ingenting trenger deg nå. Sist sjekket kl./)).toBeTruthy();

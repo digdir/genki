@@ -7,7 +7,7 @@ import { mockFetch } from '../../mock';
 import '../../test-utils';
 import { translator } from '../../i18n';
 import { ServiceChannels } from './Channels';
-import { ServiceNav } from './ServiceNav';
+import { ServiceNav, ServiceSubNav } from './ServiceNav';
 import { describeProblem } from './publish';
 import { sectionLabels } from './sections';
 
@@ -19,13 +19,19 @@ describe('service pages in English', () => {
   it('names the navigation and sections in English', () => {
     render(
       inEnglish(
-        <ServiceNav id="klarsprak" sections={['overview', 'channels', 'log']} current="log" />,
+        <>
+          <ServiceNav id="klarsprak" sections={['overview', 'channels', 'log']} current="log" />
+          <ServiceSubNav id="klarsprak" sections={['overview', 'versions', 'log']} current="log" />
+        </>,
       ),
     );
     const nav = screen.getByRole('navigation', { name: 'Service' });
     expect(within(nav).getByText('Overview')).toBeTruthy();
-    expect(within(nav).getByText('Channels and frontends')).toBeTruthy();
-    expect(within(nav).getByText('Log')).toBeTruthy();
+    expect(within(nav).getByText('Advanced settings')).toBeTruthy();
+    expect(within(nav).getByText('Developer tools')).toBeTruthy();
+    const sub = screen.getByRole('navigation', { name: 'Developer tools' });
+    expect(within(sub).getByText('Versions')).toBeTruthy();
+    expect(within(sub).getByText('Log')).toBeTruthy();
   });
 
   it('labels every section in both languages', () => {

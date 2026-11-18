@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../App';
 import { mockAnsattporten } from '../auth';
-import { mockFetch } from '../mock';
+import { exampleModels, mockFetch } from '../mock';
 import { expectAccessible, failingFetch, renderAt } from '../test-utils';
 
 const urlOf = (input: RequestInfo | URL) =>
@@ -13,6 +13,22 @@ const openDetail = async (key: string, name: string, fetch?: typeof globalThis.f
   await renderAt(`#/shared-services/${key}`, fetch);
   await screen.findByRole('heading', { level: 1, name });
 };
+
+const pricedModels = exampleModels.map((m) =>
+  m.id === 'aivar/borealis-27b'
+    ? { ...m, price: { inputPerThousand: 0.0119, outputPerThousand: 0.0952 } }
+    : m,
+);
+const withPrices = () => mockFetch(undefined, undefined, pricedModels);
+const withoutPrices = () =>
+  mockFetch(
+    undefined,
+    undefined,
+    exampleModels.map(({ price: _price, ...m }) => m),
+  );
+const fact = (label: string) => screen.getByText(label, { selector: 'dt' }).nextElementSibling;
+const cardOf = async (name: string) =>
+  (await screen.findByRole('link', { name })).closest('li') as HTMLElement;
 
 const resultBox = () => screen.getByText('Resultat').parentElement as HTMLElement;
 
@@ -94,8 +110,38 @@ describe('Fellestjenester: liste', () => {
     const felt = (await screen.findByRole('link', { name: 'Hent ut opplysninger' })).closest(
       'li',
     ) as HTMLElement;
-    expect(within(felt).getByText('Behandler data i Norge')).toBeTruthy();
+    expect(within(felt).getByText(/^Behandler data i Norge · /)).toBeTruthy();
   });
+  it("adds the model's price per 1 000 tokens from /models to the line on each card", async () => {
+    await renderAt('#/shared-services', withPrices());
+    expect(
+      within(await cardOf('Klarspråk')).getByText(
+        'Behandler data i Norge · 0,0119 kr inn og 0,0952 kr ut per 1 000 tokens',
+      ),
+    ).toBeTruthy();
+  });
+
+  it('says on a card that the price is not calculated when its model has no price', async () => {
+    await renderAt('#/shared-services', withoutPrices());
+    expect(
+      within(await cardOf('Klarspråk')).getByText('Behandler data i Norge · pris ikke beregnet'),
+    ).toBeTruthy();
+  });
+
+  it('says on a card that the price could not be fetched when the model list fails', async () => {
+    await renderAt('#/shared-services', failingFetch(/\/models/));
+    expect(within(await cardOf('Klarspråk')).getByText(/· kunne ikke hente prisen$/)).toBeTruthy();
+  });
+
+  it('introduces the list as ready-made services from Digdir, in the words of the design', async () => {
+    await renderAt('#/shared-services');
+    expect(
+      await screen.findByText(
+        'Ferdige tjenester fra Digdir. Bruk dem direkte, kall dem fra et system, eller legg dem inn i en av tjenestene deres.',
+      ),
+    ).toBeTruthy();
+  });
+
   it('ends the list by asking which shared services are needed, linked to the contact page', async () => {
     await renderAt('#/shared-services');
     expect(await screen.findByText(/Flere fellestjenester kommer\./)).toBeTruthy();
@@ -150,7 +196,7 @@ describe('Fellestjenester: liste', () => {
     );
     expect(await screen.findByRole('link', { name: 'Tolk' })).toBeTruthy();
     expect(screen.getByText('Tolker tekst.')).toBeTruthy();
-    expect(screen.getByText('Behandler data i EU/EØS')).toBeTruthy();
+    expect(screen.getByText(/^Behandler data i EU\/EØS · /)).toBeTruthy();
     expectAccessible();
   });
 });
@@ -181,9 +227,9 @@ describe('Fellestjenester: detalj', () => {
     expect(screen.queryByText('Versjon')).toBeNull();
   });
 
-  it('leaves out price and quality, which the API does not give', async () => {
+  it('leaves out quality, which the API does not give', async () => {
     await openDetail('klarsprak', 'Klarspråk');
-    for (const label of ['Pris', 'Kvalitet på testsett', 'Per 1 000 kjøringer'])
+    for (const label of ['Kvalitet på testsett', 'Per 1 000 kjøringer'])
       expect(screen.queryByText(label, { selector: 'dt' })).toBeNull();
     expect(screen.queryByText(/av 100/)).toBeNull();
     expect(screen.queryByText(/Kvaliteten falt/)).toBeNull();
@@ -195,6 +241,44 @@ describe('Fellestjenester: detalj', () => {
     ).toBeTruthy();
     const fact = screen.getByText('Ansvarlig', { selector: 'dt' }).nextElementSibling;
     expect(fact?.textContent).toBe('Digdir');
+  });
+
+  it('lists the facts Modell, Hvor data behandles, Lagres, Pris, Språk and Ansvarlig in that order', async () => {
+    await openDetail('klarsprak', 'Klarspråk');
+    const labels = [...screen.getByRole('complementary').querySelectorAll('dt')].map(
+      (d) => d.textContent,
+    );
+    expect(labels).toEqual([
+      'Modell',
+      'Hvor data behandles',
+      'Lagres',
+      'Pris',
+      'Språk',
+      'Ansvarlig',
+    ]);
+  });
+
+  it("shows the model's price per 1 000 tokens from /models as the Pris fact", async () => {
+    await openDetail('klarsprak', 'Klarspråk', withPrices());
+    expect(fact('Pris')?.textContent).toBe('0,0119 kr inn og 0,0952 kr ut per 1 000 tokens');
+  });
+
+  it('says the price is not calculated when the model has no price', async () => {
+    await openDetail('klarsprak', 'Klarspråk', withoutPrices());
+    expect(fact('Pris')?.textContent).toBe('Ikke beregnet');
+  });
+
+  it('says what is stored and which languages it takes are not stated yet, since the API does not give them', async () => {
+    await openDetail('klarsprak', 'Klarspråk');
+    expect(fact('Lagres')?.textContent).toBe('Ikke oppgitt ennå');
+    expect(fact('Språk')?.textContent).toBe('Ikke oppgitt ennå');
+  });
+
+  it('names the owner by organisation number and says nothing about usage when its building block is missing', async () => {
+    await openDetail('klarsprak', 'Klarspråk', failingFetch(/building-blocks/));
+    expect(fact('Ansvarlig')?.textContent).toBe('Organisasjonsnummer 991825827');
+    expect(screen.queryByText(/Brukes/)).toBeNull();
+    expect(screen.queryByText(/^Fra /)).toBeNull();
   });
 
   it('says how many services use it and names them, linked to each service', async () => {
