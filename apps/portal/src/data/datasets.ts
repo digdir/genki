@@ -78,7 +78,7 @@ export const sourceKeys: Record<SourceKind, PlainKey> = {
 export const statusKeys: Record<DatasetStatus, PlainKey> = {
   Klar: 'datasets.statusReady',
   'Delvis lest inn': 'datasets.statusPartial',
-  Feilet: 'datasets.statusFailed',
+  Feilet: 'datasets.statusIngestionFailed',
   'Innlesing pågår': 'datasets.statusRunning',
   'Ikke lest inn': 'datasets.statusNotRead',
   'Utenfor plattformen': 'datasets.statusExternal',

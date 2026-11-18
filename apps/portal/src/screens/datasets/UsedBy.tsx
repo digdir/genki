@@ -15,7 +15,7 @@ import { useFormat } from '@genai/i18n/react';
 import type { ApiClient } from '../../api';
 import type { DatasetReader } from '../../api/datasets';
 import { useAsync } from '../../hooks';
-import { useT, type PlainKey } from '../../i18n';
+import { useT, type Format, type PlainKey, type T } from '../../i18n';
 import type { ServiceSummaryView, TaskRow } from '../../types';
 
 interface ServiceFacts {
@@ -30,6 +30,14 @@ const lifecycleText: Record<ServiceSummaryView['lifecycle'], PlainKey> = {
 };
 
 const lifecycleColor = { active: 'success', paused: 'warning', archived: 'neutral' } as const;
+
+const addedText = (t: T, f: Format, reader: DatasetReader) => {
+  if (!reader.addedAt) return t('datasets.notAvailable');
+  const who = reader.addedByName ?? reader.addedBy;
+  return who
+    ? t('datasets.addedOnBy', { when: f.date(reader.addedAt), who })
+    : f.date(reader.addedAt);
+};
 
 const logHref = (service: string) => `#/log?service=${encodeURIComponent(service)}`;
 
@@ -109,6 +117,7 @@ export const UsedBy = ({
               <TableHeaderCell scope="col" className="numeric right">
                 {t('datasets.columnRunsWeek')}
               </TableHeaderCell>
+              <TableHeaderCell scope="col">{t('datasets.columnAdded')}</TableHeaderCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -139,6 +148,7 @@ export const UsedBy = ({
                   <TableCell className="numeric right">
                     {fact?.summary ? f.number(fact.summary.runsThisWeek) : empty}
                   </TableCell>
+                  <TableCell>{addedText(t, f, s)}</TableCell>
                 </TableRow>
               );
             })}
@@ -152,6 +162,7 @@ export const UsedBy = ({
                 <TableCell>{t('datasets.notAvailable')}</TableCell>
                 <TableCell>{t('datasets.notAvailable')}</TableCell>
                 <TableCell className="numeric right">{t('datasets.notAvailable')}</TableCell>
+                <TableCell>{addedText(t, f, r)}</TableCell>
               </TableRow>
             ))}
           </TableBody>

@@ -20,12 +20,13 @@ import {
 import { useFormat } from '@genai/i18n/react';
 import { useRef, useState, type ComponentRef } from 'react';
 import type { ApiClient } from '../../api';
-import type { PipelineSource, Schedule } from '../../api/datasets';
+import type { EndpointAuth, PipelineSource, Schedule, SearchScope } from '../../api/datasets';
 import { Icon } from '../../components/Icon';
 import { reasonProblem, ReasonField } from '../../components/ReasonField';
 import { kudosDocumentTypes } from '../../data/datasets';
 import { useAsync } from '../../hooks';
 import { ErrorState } from '../../states';
+import { ApiError } from '../../api/error';
 import { useT, type PlainKey, type T } from '../../i18n';
 import { FilePicker } from './FilePicker';
 import {
@@ -40,16 +41,26 @@ import {
   failureText,
 } from './live-model';
 
-type Source = 'web' | 'upload' | 'kudos';
+type Source = 'web' | 'upload' | 'endpoint' | 'kudos';
+type AuthKind = EndpointAuth['kind'];
 
 const urlPattern = /^https:\/\/[^\s.]+\.[^\s]+/;
+const headerPattern = /^[A-Za-z0-9-]{1,64}$/;
 const years = ['2010', '2015', '2018', '2020', '2022', '2024'];
 
 const choices: [Source, PlainKey, PlainKey][] = [
   ['web', 'datasets.sourceWeb', 'datasets.liveChoiceWebDesc'],
   ['upload', 'datasets.uploadFiles', 'datasets.liveChoiceUploadDesc'],
+  ['endpoint', 'datasets.sourceEndpoint', 'datasets.choiceEndpointDesc'],
   ['kudos', 'datasets.sourceKudos', 'datasets.choiceKudosDesc'],
 ];
+
+const authKinds: [AuthKind, PlainKey][] = [
+  ['api-key', 'datasets.authApiKey'],
+  ['none', 'datasets.authNone'],
+];
+
+const scopeChoices: SearchScope[] = ['tenant', 'all'];
 
 const frequencies: [Schedule, PlainKey][] = [
   ['daily', 'datasets.scheduleNightly'],
@@ -57,7 +68,11 @@ const frequencies: [Schedule, PlainKey][] = [
   ['none', 'datasets.scheduleManual'],
 ];
 
-const pipelineIds: Record<Source, string> = { web: 'website', upload: 'upload', kudos: 'kudos' };
+const pipelineIds: Record<Exclude<Source, 'endpoint'>, string> = {
+  web: 'website',
+  upload: 'upload',
+  kudos: 'kudos',
+};
 
 interface Picked {
   file: File;
@@ -74,6 +89,11 @@ interface Form {
   fromYear: string;
   files: Picked[];
   schedule: Schedule;
+  endpointUrl: string;
+  auth: AuthKind;
+  apiKey: string;
+  apiKeyHeader: string;
+  searchScope: SearchScope;
   reason: string;
   tried: boolean;
 }
@@ -88,15 +108,23 @@ const blank: Form = {
   fromYear: '2020',
   files: [],
   schedule: 'daily',
+  endpointUrl: '',
+  auth: 'api-key',
+  apiKey: '',
+  apiKeyHeader: '',
+  searchScope: 'tenant',
   reason: '',
   tried: false,
 };
 
-type FieldKey = 'name' | 'sitemap' | 'files' | 'reason';
+type FieldKey = 'name' | 'sitemap' | 'files' | 'endpointUrl' | 'auth' | 'header' | 'reason';
 const anchors: Record<FieldKey, string> = {
   name: '#felt-navn',
   sitemap: '#felt-sitemap',
   files: '#filvelger-sone',
+  endpointUrl: '#felt-endepunkt',
+  auth: '#felt-innlogging-verdi',
+  header: '#felt-innlogging-header',
   reason: '#felt-begrunnelse',
 };
 
@@ -109,9 +137,44 @@ const errorsFor = (t: T, f: Form, taken: string[]): Partial<Record<FieldKey, str
     e.sitemap = t('datasets.sitemapProblem');
   if (f.source === 'upload' && !f.files.some((x) => !x.problem))
     e.files = t('datasets.filesProblem');
+  if (f.source === 'endpoint' && !urlPattern.test(f.endpointUrl.trim()))
+    e.endpointUrl = t('datasets.urlProblem');
+  if (f.source === 'endpoint' && f.auth === 'api-key' && !f.apiKey.trim())
+    e.auth = t('datasets.apiKeyProblem');
+  if (
+    f.source === 'endpoint' &&
+    f.auth === 'api-key' &&
+    f.apiKeyHeader.trim() &&
+    !headerPattern.test(f.apiKeyHeader.trim())
+  )
+    e.header = t('datasets.headerProblem');
   const reason = reasonProblem(f.reason, t);
   if (reason) e.reason = reason;
   return e;
+};
+
+const authOf = (f: Form): EndpointAuth =>
+  f.auth === 'api-key'
+    ? {
+        kind: 'api-key',
+        apiKey: f.apiKey.trim(),
+        ...(f.apiKeyHeader.trim() ? { header: f.apiKeyHeader.trim() } : {}),
+      }
+    : { kind: 'none' };
+
+const endpointProblems: Record<number, PlainKey> = {
+  403: 'datasets.endpointKeyRights',
+  409: 'datasets.endpointExists',
+};
+
+const endpointFailure = (t: T, error: unknown) => {
+  if (error instanceof ApiError) {
+    if (error.problem?.type === 'urn:genai:problem:endpoint-not-allowed')
+      return t('datasets.endpointNotAllowed');
+    const known = endpointProblems[error.status];
+    if (known) return t(known);
+  }
+  return failureText(t, error);
 };
 
 const sourceOf = (f: Form): PipelineSource =>
@@ -133,11 +196,13 @@ const sourceOf = (f: Form): PipelineSource =>
 export const LiveNewDataset = ({
   api,
   tenant,
+  tenantName,
   onCreated,
   onCancel,
 }: {
   api: ApiClient;
   tenant: string;
+  tenantName: string;
   onCreated: (fullId: string) => void;
   onCancel: () => void;
 }) => {
@@ -149,9 +214,12 @@ export const LiveNewDataset = ({
   const [busy, setBusy] = useState('');
   const [failure, setFailure] = useState('');
   const summaryRef = useRef<ComponentRef<typeof ErrorSummary>>(null);
-  const done = useRef<{ id?: string; created?: boolean; pipeline?: boolean; uploaded?: boolean }>(
-    {},
-  );
+  const done = useRef<{
+    id?: string;
+    created?: boolean;
+    pipeline?: boolean;
+    uploaded?: boolean;
+  }>({});
   const [engines, retryEngines] = useAsync(
     (signal) => api.searchEngines.endpoints(tenant, signal),
     [api, tenant],
@@ -184,9 +252,29 @@ export const LiveNewDataset = ({
     setFailure('');
     if (!prerequisitesReady) return;
     const taken = existing.status === 'ready' ? existing.data.map((d) => d.id) : [];
+    const reason = f.reason.trim();
+    if (f.source === 'endpoint') {
+      try {
+        setBusy(tRef.current('datasets.busyCreating'));
+        const created = await api.datasets.createEndpoint(
+          tenant,
+          {
+            name: f.name.trim(),
+            residency: 'global',
+            searchScope: f.searchScope,
+            endpointSource: { url: f.endpointUrl.trim(), auth: authOf(f) },
+          },
+          reason,
+        );
+        onCreated(created.fullId);
+      } catch (error) {
+        setFailure(endpointFailure(tRef.current, error));
+        setBusy('');
+      }
+      return;
+    }
     const id = done.current.id ?? uniqueId(f.name, taken);
     done.current.id = id;
-    const reason = f.reason.trim();
     const pipelineId = pipelineIds[f.source];
     try {
       if (!done.current.created) {
@@ -198,6 +286,7 @@ export const LiveNewDataset = ({
             name: f.name.trim(),
             endpoint: platformEngine,
             residency,
+            searchScope: f.searchScope,
             ...(embedding
               ? { embedding: { model: embedding.model, dimensions: embedding.dimensions } }
               : {}),
@@ -215,7 +304,7 @@ export const LiveNewDataset = ({
             id: pipelineId,
             name: f.name.trim(),
             source: sourceOf(f),
-            schedule: f.source === 'upload' ? 'none' : f.schedule,
+            schedule: f.schedule,
           },
           reason,
         );
@@ -324,7 +413,7 @@ export const LiveNewDataset = ({
                 type="radio"
                 name="kilde"
                 checked={f.source === id}
-                onChange={() => set({ source: id })}
+                onChange={() => set({ source: id, schedule: id === 'upload' ? 'none' : 'daily' })}
               />
               <span className="stack-xs">
                 <span className="source-option-label">{t(label)}</span>
@@ -368,6 +457,61 @@ export const LiveNewDataset = ({
                 />
               </Field>
             </div>
+          </div>
+        ) : null}
+        {f.source === 'endpoint' ? (
+          <div className="stack">
+            <Textfield
+              id="felt-endepunkt"
+              className="narrow-field"
+              type="url"
+              placeholder="https://"
+              label={t('datasets.endpointUrl')}
+              description={t('datasets.endpointUrlHelp')}
+              value={f.endpointUrl}
+              error={errors.endpointUrl}
+              onChange={(e) => set({ endpointUrl: e.target.value })}
+            />
+            <Field className="narrow-field">
+              <Label htmlFor="felt-innlogging">{t('datasets.endpointAuth')}</Label>
+              <Select
+                id="felt-innlogging"
+                value={f.auth}
+                onChange={(e) => set({ auth: e.target.value as AuthKind })}
+              >
+                {authKinds.map(([value, label]) => (
+                  <Select.Option key={value} value={value}>
+                    {t(label)}
+                  </Select.Option>
+                ))}
+              </Select>
+            </Field>
+            {f.auth === 'api-key' ? (
+              <>
+                <Textfield
+                  id="felt-innlogging-verdi"
+                  className="narrow-field"
+                  type="password"
+                  autoComplete="off"
+                  label={t('datasets.apiKey')}
+                  description={t('datasets.apiKeyHelp')}
+                  value={f.apiKey}
+                  error={errors.auth}
+                  onChange={(e) => set({ apiKey: e.target.value })}
+                />
+                <Textfield
+                  id="felt-innlogging-header"
+                  className="narrow-field"
+                  autoComplete="off"
+                  label={t('datasets.apiKeyHeader')}
+                  description={t('datasets.apiKeyHeaderHelp')}
+                  placeholder="x-api-key"
+                  value={f.apiKeyHeader}
+                  error={errors.header}
+                  onChange={(e) => set({ apiKeyHeader: e.target.value })}
+                />
+              </>
+            ) : null}
           </div>
         ) : null}
         {f.source === 'kudos' ? (
@@ -439,7 +583,7 @@ export const LiveNewDataset = ({
             ) : null}
           </div>
         ) : null}
-        {f.source !== 'upload' ? (
+        {f.source !== 'endpoint' ? (
           <Fieldset>
             <Fieldset.Legend>{t('datasets.howOftenAgain')}</Fieldset.Legend>
             {frequencies.map(([value, label]) => (
@@ -454,38 +598,57 @@ export const LiveNewDataset = ({
             ))}
           </Fieldset>
         ) : null}
-        <section aria-labelledby="lagring-h" className="stack-xs">
-          <Heading level={2} data-size="2xs" id="lagring-h">
-            {t('datasets.whereStored')}
-          </Heading>
-          {engines.status === 'loading' ? (
-            <span role="status" className="row-wrap">
-              <Spinner aria-hidden="true" data-size="xs" />
-              {t('searchEngine.loading')}
-            </span>
-          ) : engines.status === 'error' ? (
-            <ErrorState error={engines.error} onRetry={retryEngines} headingLevel={3} />
-          ) : (
-            <Paragraph data-size="sm">
-              {t('datasets.storedIn', {
-                engine: engine?.title ?? t('datasets.builtinSearch'),
-              })}
-              {engine?.tech ? ` (${engine.tech})` : ''}
-              {engine?.dataLocation
-                ? t('datasets.engineRunsAt', { place: t(residencyWords[engine.dataLocation]) })
-                : t('datasets.engineRunsUnknown')}{' '}
-              {embedding
-                ? t('datasets.embeddingSent', {
-                    model: embedding.model.split('/').pop() ?? '',
-                    place: embedding.residency
-                      ? t(residencyWords[embedding.residency])
-                      : t('datasets.placeUnknown'),
-                  })
-                : t('datasets.noEmbedding')}{' '}
-              {usableBy(t, known)}
-            </Paragraph>
-          )}
-        </section>
+        <Fieldset>
+          <Fieldset.Legend>{t('datasets.whoSearchesQuestion')}</Fieldset.Legend>
+          {scopeChoices.map((value) => (
+            <Radio
+              key={value}
+              name="search-scope"
+              value={value}
+              label={
+                value === 'tenant'
+                  ? t('datasets.scopeTenant', { tenant: tenantName })
+                  : t('datasets.scopeAll')
+              }
+              checked={f.searchScope === value}
+              onChange={() => set({ searchScope: value })}
+            />
+          ))}
+        </Fieldset>
+        {f.source !== 'endpoint' ? (
+          <section aria-labelledby="lagring-h" className="stack-xs">
+            <Heading level={2} data-size="2xs" id="lagring-h">
+              {t('datasets.whereStored')}
+            </Heading>
+            {engines.status === 'loading' ? (
+              <span role="status" className="row-wrap">
+                <Spinner aria-hidden="true" data-size="xs" />
+                {t('searchEngine.loading')}
+              </span>
+            ) : engines.status === 'error' ? (
+              <ErrorState error={engines.error} onRetry={retryEngines} headingLevel={3} />
+            ) : (
+              <Paragraph data-size="sm">
+                {t('datasets.storedIn', {
+                  engine: engine?.title ?? t('datasets.builtinSearch'),
+                })}
+                {engine?.tech ? ` (${engine.tech})` : ''}
+                {engine?.dataLocation
+                  ? t('datasets.engineRunsAt', { place: t(residencyWords[engine.dataLocation]) })
+                  : t('datasets.engineRunsUnknown')}{' '}
+                {embedding
+                  ? t('datasets.embeddingSent', {
+                      model: embedding.model.split('/').pop() ?? '',
+                      place: embedding.residency
+                        ? t(residencyWords[embedding.residency])
+                        : t('datasets.placeUnknown'),
+                    })
+                  : t('datasets.noEmbedding')}{' '}
+                {usableBy(t, known)}
+              </Paragraph>
+            )}
+          </section>
+        ) : null}
         <div id="felt-begrunnelse">
           <ReasonField
             value={f.reason}

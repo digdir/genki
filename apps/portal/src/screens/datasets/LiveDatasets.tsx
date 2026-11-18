@@ -1,19 +1,11 @@
-import {
-  Button,
-  Details,
-  DetailsContent,
-  DetailsSummary,
-  Heading,
-  Paragraph,
-} from '@digdir/designsystemet-react';
+import { Button, Heading, Paragraph } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
-import { useState } from 'react';
 import { navigate, useAsync } from '../../hooks';
 import { useT } from '../../i18n';
 import type { ScreenProps } from '../../screen';
 import { needsRight, useRights } from '../../Shell';
 import { EmptyState, ErrorState, Loading } from '../../states';
-import { TenantCatalog } from '../config/TenantCatalog';
+import type { DatasetView } from '../../api/datasets';
 import { DatasetList } from './DatasetList';
 import { failureText, listItemOf } from './live-model';
 import { ApiError } from '../../api/error';
@@ -21,17 +13,37 @@ import { LiveDatasetDetail } from './LiveDatasetDetail';
 import { LiveNewDataset } from './LiveNewDataset';
 import { datasetHref, detailTabOf } from './model';
 
-const Technical = ({ api, tenant }: Pick<ScreenProps, 'api' | 'tenant'>) => {
-  const t = useT();
-  const { has } = useRights();
-  const [open, setOpen] = useState(false);
-  if (!has('manage-datasets') && !has('manage-services')) return null;
-  return (
-    <Details onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}>
-      <DetailsSummary>{t('datasets.technicalCatalog')}</DetailsSummary>
-      <DetailsContent>{open ? <TenantCatalog api={api} tenant={tenant} /> : null}</DetailsContent>
-    </Details>
+/** Documents the API counts for datasets whose list entry has no count, such as shared ones. */
+const useFoundCounts = (
+  api: ScreenProps['api'],
+  tenant: string,
+  views: DatasetView[] | undefined,
+) => {
+  const missing = (views ?? [])
+    .filter((v) => v.documents === null && v.state !== 'external')
+    .map((v) => v.id);
+  const [found] = useAsync(
+    async (signal) =>
+      new Map(
+        await Promise.all(
+          missing.map(async (id): Promise<[string, number | undefined]> => {
+            try {
+              const page = await api.datasets.documents(
+                tenant,
+                id,
+                { limit: 1, offset: 0 },
+                signal,
+              );
+              return [id, page.found];
+            } catch {
+              return [id, undefined];
+            }
+          }),
+        ),
+      ),
+    [api, tenant, missing.join(',')],
   );
+  return found.status === 'ready' ? found.data : undefined;
 };
 
 const List = ({ api, tenant }: ScreenProps) => {
@@ -41,6 +53,11 @@ const List = ({ api, tenant }: ScreenProps) => {
     keepPreviousFor: tenant,
   });
   const canCreate = useRights().has('manage-datasets');
+  const found = useFoundCounts(api, tenant, state.status === 'ready' ? state.data : undefined);
+  const withFound = (d: DatasetView): DatasetView => {
+    const n = found?.get(d.id);
+    return d.documents === null && n !== undefined ? { ...d, documents: n } : d;
+  };
   const onRetry = async (fullId: string) => {
     const view = state.status === 'ready' ? state.data.find((d) => d.fullId === fullId) : undefined;
     if (!view) return;
@@ -82,17 +99,15 @@ const List = ({ api, tenant }: ScreenProps) => {
             </Button>
           ) : null}
         </EmptyState>
-        <Technical api={api} tenant={tenant} />
       </div>
     );
   return (
     <div className="stack">
       <DatasetList
-        datasets={state.data.map((d) => listItemOf(t, f, d))}
+        datasets={state.data.map((d) => listItemOf(t, f, withFound(d)))}
         canCreate={canCreate}
         {...(canCreate ? { onRetry } : {})}
       />
-      <Technical api={api} tenant={tenant} />
     </div>
   );
 };
@@ -107,6 +122,7 @@ export const LiveDatasets = (props: ScreenProps) => {
       <LiveNewDataset
         api={api}
         tenant={tenant}
+        tenantName={tenantName}
         onCreated={(fullId) => {
           window.location.hash = datasetHref(fullId);
         }}

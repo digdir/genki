@@ -25,6 +25,7 @@ import type {
   PipelineSource,
   PipelineView,
   Schedule,
+  SearchScope,
 } from '../../api/datasets';
 import { reasonProblem, ReasonField } from '../../components/ReasonField';
 import { kudosDocumentTypes } from '../../data/datasets';
@@ -50,6 +51,7 @@ interface SourceForm {
   types: string[];
   fromYear: string;
   schedule: Schedule;
+  searchScope: SearchScope;
 }
 
 const formOf = (view: DatasetDetailView, pipeline: PipelineView | undefined): SourceForm => {
@@ -63,6 +65,7 @@ const formOf = (view: DatasetDetailView, pipeline: PipelineView | undefined): So
     types: source?.kind === 'kudos' ? source.types : [],
     fromYear: source?.kind === 'kudos' && source.since ? source.since.slice(0, 4) : defaultFromYear,
     schedule: pipeline?.spec.schedule ?? 'none',
+    searchScope: view.searchScope ?? 'tenant',
   };
 };
 
@@ -94,9 +97,12 @@ const frequencies: [Schedule, PlainKey, PlainKey][] = [
   ['none', 'datasets.scheduleManual', 'datasets.scheduleManualHelp'],
 ];
 
+const scopes: SearchScope[] = ['tenant', 'all'];
+
 export const SourceSettings = ({
   api,
   tenant,
+  tenantName,
   view,
   pipeline,
   onSaved,
@@ -105,6 +111,7 @@ export const SourceSettings = ({
 }: {
   api: ApiClient;
   tenant: string;
+  tenantName: string;
   view: DatasetDetailView;
   pipeline: PipelineView | undefined;
   onSaved: (text: string) => void;
@@ -115,6 +122,7 @@ export const SourceSettings = ({
   const fmt = useFormat();
   const tRef = useRef(t);
   tRef.current = t;
+  const ownScope = view.editable;
   const [saved, setSaved] = useState(() => formOf(view, pipeline));
   const [form, setForm] = useState(saved);
   const [reason, setReason] = useState('');
@@ -149,11 +157,20 @@ export const SourceSettings = ({
     setFailure('');
     const why = reason.trim();
     try {
-      if (form.name.trim() !== view.name || form.description.trim() !== (view.description ?? ''))
+      const scopeChanged = form.searchScope !== saved.searchScope;
+      if (
+        form.name.trim() !== view.name ||
+        form.description.trim() !== (view.description ?? '') ||
+        scopeChanged
+      )
         await api.datasets.rename(
           tenant,
           view.id,
-          { name: form.name.trim(), description: form.description.trim() },
+          {
+            name: form.name.trim(),
+            description: form.description.trim(),
+            ...(scopeChanged ? { searchScope: form.searchScope } : {}),
+          },
           why,
         );
       if (pipeline && source) {
@@ -161,7 +178,7 @@ export const SourceSettings = ({
           ...pipeline.spec,
           name: form.name.trim(),
           source: sourceFrom(form, source),
-          schedule: source.kind === 'upload' ? ('none' as const) : form.schedule,
+          schedule: form.schedule,
         };
         if (JSON.stringify(spec) !== JSON.stringify(pipeline.spec))
           await api.datasets.savePipeline(tenant, view.id, pipeline.id, spec, why);
@@ -272,7 +289,7 @@ export const SourceSettings = ({
           </>
         ) : null}
       </section>
-      {source && source.kind !== 'upload' ? (
+      {source ? (
         <section aria-labelledby="innlesing-h" className="source-card">
           <h2 id="innlesing-h" className="card-title">
             {t('datasets.ingestionHeading')}
@@ -285,9 +302,44 @@ export const SourceSettings = ({
                 name="frequency"
                 value={value}
                 label={t(label)}
-                description={t(help)}
+                description={t(
+                  value === 'none' && source.kind === 'upload'
+                    ? 'datasets.scheduleManualUploadHelp'
+                    : help,
+                )}
                 checked={form.schedule === value}
                 onChange={() => set({ schedule: value })}
+              />
+            ))}
+          </Fieldset>
+        </section>
+      ) : null}
+      {ownScope ? (
+        <section aria-labelledby="hvem-h" className="source-card">
+          <h2 id="hvem-h" className="card-title">
+            {t('datasets.whoSearches')}
+          </h2>
+          <Fieldset>
+            <Fieldset.Legend className="visually-hidden">
+              {t('datasets.whoSearches')}
+            </Fieldset.Legend>
+            {scopes.map((value) => (
+              <Radio
+                key={value}
+                name="search-scope"
+                value={value}
+                label={
+                  value === 'tenant'
+                    ? t('datasets.scopeTenant', { tenant: tenantName })
+                    : t('datasets.scopeAll')
+                }
+                description={
+                  value === 'tenant'
+                    ? t('datasets.scopeTenantHelp', { tenant: tenantName })
+                    : t('datasets.scopeAllHelp')
+                }
+                checked={form.searchScope === value}
+                onChange={() => set({ searchScope: value })}
               />
             ))}
           </Fieldset>
@@ -433,7 +485,10 @@ export const DeleteDataset = ({
             <Heading level={2} data-size="xs" id="slett-dialog-h">
               {t('datasets.deleteQuestion', { name: view.name })}
             </Heading>
-            <Paragraph>{t('datasets.deleteForGood')}</Paragraph>
+            <Paragraph>
+              {t('datasets.deleteForGood')}
+              {view.source === 'endpoint' ? ` ${t('datasets.deleteEndpointToo')}` : ''}
+            </Paragraph>
             <Textfield
               label={t('datasets.typeNameToConfirm')}
               autoComplete="off"

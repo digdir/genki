@@ -250,7 +250,7 @@ const ExampleDatasets = ({ api, tenant, tenantName, route, live }: ScreenProps) 
         tenant={tenant}
         tenantName={tenantName}
         dataset={dataset}
-        tab={detailTabOf(route)}
+        tab={detailTabOf(route) === 'content' ? 'ingestions' : detailTabOf(route)}
         onTab={(next) => navigate(datasetTabPath(id, next))}
         {...(route.query.get('run') ? { initialRun: route.query.get('run') as string } : {})}
         flash={flash}

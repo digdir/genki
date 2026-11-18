@@ -147,11 +147,7 @@ export const Run = ({
           <dl className="run-facts">
             <div>
               <dt>{t('datasets.startedBy')}</dt>
-              <dd>
-                {run.startedBy === scheduledActor
-                  ? t('datasets.startedBySchedule')
-                  : (run.startedBy ?? t('datasets.notAvailable'))}
-              </dd>
+              <dd>{startedByText(t, run)}</dd>
             </div>
             <div>
               <dt>{t('datasets.durationLabel')}</dt>
@@ -194,6 +190,84 @@ export const Run = ({
         </div>
       ) : null}
     </li>
+  );
+};
+
+const startedByText = (t: T, run: ExecutionView) =>
+  run.startedBy === scheduledActor
+    ? t('datasets.startedBySchedule')
+    : (run.startedBy ?? t('datasets.notAvailable'));
+
+const whatHappened = (t: T, f: Format, run: ExecutionView) => {
+  const stored = f.number(run.report?.stored ?? 0);
+  if (run.status === 'running') return t('datasets.pagesSoFar', { amount: stored });
+  if (run.status === 'failed')
+    return [run.error, t('datasets.noPagesChanged')].filter(Boolean).join('. ');
+  if (run.status === 'cancelled') return t('datasets.runCancelledText', { amount: stored });
+  const skipped = skippedCount(run);
+  return skipped
+    ? t('datasets.pagesWithSkipped', { amount: stored, skipped: f.number(skipped) })
+    : t('datasets.pagesStored', { amount: stored });
+};
+
+export const RunTable = ({
+  runs,
+  onCancel,
+}: {
+  runs: ExecutionView[];
+  onCancel?: (run: ExecutionView) => void;
+}) => {
+  const t = useT();
+  const f = useFormat();
+  return (
+    <div className="table-scroll">
+      <Table aria-label={t('datasets.tabIngestions')}>
+        <TableHead>
+          <TableRow>
+            <TableHeaderCell scope="col">{t('datasets.columnStarted')}</TableHeaderCell>
+            <TableHeaderCell scope="col">{t('datasets.columnStatus')}</TableHeaderCell>
+            <TableHeaderCell scope="col">{t('datasets.columnWhat')}</TableHeaderCell>
+            <TableHeaderCell scope="col">{t('datasets.startedBy')}</TableHeaderCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {runs.map((run) => {
+            const status = executionStatus(t, run);
+            const running = run.status === 'running';
+            return (
+              <TableRow key={run.id} id={`run-${run.id}`}>
+                <TableCell>{f.dateTime(run.startedAt)}</TableCell>
+                <TableCell>
+                  <Tag data-size="sm" data-color={status.color}>
+                    {running ? <Spinner aria-hidden="true" data-size="2xs" /> : null}
+                    {status.text}
+                  </Tag>
+                </TableCell>
+                <TableCell className="wrap">
+                  <span>{whatHappened(t, f, run)}</span>
+                  {running ? (
+                    <span className="run-live">
+                      <progress aria-label={t('datasets.storedSoFarLabel')} />
+                      {onCancel ? (
+                        <Button
+                          variant="secondary"
+                          data-color="danger"
+                          data-size="sm"
+                          onClick={() => onCancel(run)}
+                        >
+                          {t('datasets.cancelIngestion')}
+                        </Button>
+                      ) : null}
+                    </span>
+                  ) : null}
+                </TableCell>
+                <TableCell>{startedByText(t, run)}</TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+    </div>
   );
 };
 

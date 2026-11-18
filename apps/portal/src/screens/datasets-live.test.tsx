@@ -4,7 +4,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import { App } from '../App';
 import { createApiClient } from '../api';
 import { RightsProvider } from '../Shell';
-import { LiveDatasetDetail } from './datasets/LiveDatasetDetail';
+import { LiveDatasetDetail, pollMs } from './datasets/LiveDatasetDetail';
 import { mockAnsattporten } from '../auth';
 import { exampleOrganisations, mockFetch, type FeatureMockOptions } from '../mock';
 import { exampleLiveDatasets } from '../mock/datasets';
@@ -141,6 +141,7 @@ describe('live new dataset', () => {
       name: 'Nettsidene våre',
       endpoint: 'platform-pg',
       residency: 'global',
+      searchScope: 'tenant',
       embedding: { model: 'foundry/text-embedding-3-small', dimensions: 1536 },
     });
     expect(writes[1]?.body).toEqual({
@@ -170,7 +171,9 @@ describe('live new dataset', () => {
     await screen.findByRole('heading', { level: 1, name: 'Nytt datasett' });
     fireEvent.click(screen.getByRole('radio', { name: /Last opp filer/ }));
     fireEvent.change(screen.getByLabelText('Navn'), { target: { value: 'Høring' } });
-    expect(screen.queryByRole('radio', { name: 'Hver uke' })).toBeNull();
+    expect(
+      (screen.getByRole('radio', { name: 'Bare når jeg ber om det' }) as HTMLInputElement).checked,
+    ).toBe(true);
     expect(screen.queryByRole('button', { name: 'Bruk eksempelfiler' })).toBeNull();
     fireEvent.change(screen.getByLabelText('Velg filer'), {
       target: {
@@ -357,7 +360,7 @@ describe('live new dataset', () => {
 describe('live dataset detail', () => {
   it('shows real facts and executions with skipped documents in Norwegian', async () => {
     const { calls, fetch } = recorded();
-    await renderLive(veiledere, fetch);
+    await renderLive(`${veiledere}/ingestions`, fetch);
     await screen.findByRole('heading', { level: 1, name: 'Veiledere og rundskriv' });
     expect(
       screen.getByText(/^Opplastede filer · Siste innlesing .+ · 6 dokumenter lest inn$/),
@@ -397,7 +400,7 @@ describe('live dataset detail', () => {
         ],
       },
     });
-    await renderLive(veiledere, fetch);
+    await renderLive(`${veiledere}/ingestions`, fetch);
     const runs = await screen.findByRole('list', { name: 'Innlesinger' });
     fireEvent.click(within(runs).getByRole('button', { expanded: false }));
     const skipped = within(runs).getByRole('table', { name: 'Hoppet over' });
@@ -417,7 +420,7 @@ describe('live dataset detail', () => {
   it('runs "Les inn på nytt" against the pipeline and polls until it is done', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const { calls, fetch } = recorded({ pollsUntilDone: 3 });
-    await renderLive(veiledere, fetch);
+    await renderLive(`${veiledere}/ingestions`, fetch);
     await screen.findByRole('list', { name: 'Innlesinger' });
     fireEvent.click(screen.getByRole('button', { name: 'Les inn på nytt' }));
     expect(await screen.findByText(/Innlesingen pågår\. Siden oppdateres/)).toBeTruthy();
@@ -427,24 +430,20 @@ describe('live dataset detail', () => {
     expect(
       screen.getByRole('button', { name: 'Les inn på nytt' }).getAttribute('aria-disabled'),
     ).toBe('true');
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(4000);
-    });
+    // act() holds React updates until it ends, so each poll gets its own act to re-arm the next.
+    for (let poll = 0; poll < 3; poll += 1)
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(pollMs);
+      });
     expect(await screen.findByRole('heading', { name: 'Innlesingen er ferdig' })).toBeTruthy();
     expect(screen.queryByText(/Innlesingen pågår\. Siden oppdateres/)).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Vis API-kall' }));
-    expect(
-      (
-        await screen.findAllByText(
-          /\/tenants\/999888777\/datasets\/veiledere\/pipelines\/upload\/execute/,
-        )
-      ).length,
-    ).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: 'Vis API-kall' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Prøv' })).toBeNull();
   });
 
   it('asks before it cancels a running ingestion, then cancels it with a reason', async () => {
     const { calls, fetch } = recorded({ pollsUntilDone: 100 });
-    await renderLive(veiledere, fetch);
+    await renderLive(`${veiledere}/ingestions`, fetch);
     await screen.findByRole('list', { name: 'Innlesinger' });
     expect(screen.queryByRole('button', { name: 'Avbryt innlesingen' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Les inn på nytt' }));
@@ -490,7 +489,7 @@ describe('live dataset detail', () => {
       }
       return undefined;
     });
-    await renderLive(veiledere, fetch);
+    await renderLive(`${veiledere}/ingestions`, fetch);
     const warned = await screen.findByText(/sluppet inn bare til 15\. november 2026 kl\. 08\.56/);
     expect(warned.closest('[data-color="warning"]')).not.toBeNull();
 
@@ -533,7 +532,7 @@ describe('live dataset detail', () => {
   it('the portal shows the open run whose admission runs out first, whichever the list shows first', async () => {
     vi.useFakeTimers({ now: new Date('2026-11-15T05:00:00Z'), shouldAdvanceTime: true });
     const { calls, fetch } = openRuns([queued, runningSoon]);
-    await renderLive(veiledere, fetch);
+    await renderLive(`${veiledere}/ingestions`, fetch);
 
     expect(
       await screen.findByText(/sluppet inn bare til 15\. november 2026 kl\. 08\.56/),
@@ -559,7 +558,7 @@ describe('live dataset detail', () => {
           { status: 403, headers: { 'content-type': 'application/problem+json' } },
         ),
     );
-    await renderLive(veiledere, fetch);
+    await renderLive(`${veiledere}/ingestions`, fetch);
     fireEvent.click(await screen.findByRole('button', { name: 'Slipp inn igjen' }));
 
     expect(
@@ -611,7 +610,7 @@ describe('live dataset detail', () => {
           )
         : undefined,
     );
-    await renderLive(veiledere, fetch);
+    await renderLive(`${veiledere}/ingestions`, fetch);
     await screen.findByRole('list', { name: 'Innlesinger' });
     fireEvent.click(screen.getByRole('button', { name: 'Les inn på nytt' }));
 
@@ -799,7 +798,7 @@ describe('live dataset detail', () => {
     expect(screen.queryByRole('button', { name: 'Les inn på nytt' })).toBeNull();
     expect(screen.getByText(/^Kudos, delt med dere · /)).toBeTruthy();
     expect(screen.queryByRole('switch', { name: 'Kan brukes som filter' })).toBeNull();
-    expect(await screen.findByText('Årsrapport')).toBeTruthy();
+    expect(await screen.findByRole('checkbox', { name: 'Årsrapport' })).toBeTruthy();
   });
 });
 
@@ -888,17 +887,32 @@ describe('live dataset tabs and polling', () => {
     const { fetch } = recorded();
     await renderLive(nettsider, fetch);
     await screen.findByRole('heading', { level: 1, name: 'Nettsidene til Testetaten' });
-    fireEvent.click(screen.getByRole('tab', { name: 'Filtre i søket' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Brukes av' }));
     await waitFor(() =>
       expect(window.location.hash).toBe(
-        `#/datasets/${encodeURIComponent('999888777/nettsider')}/filters`,
+        `#/datasets/${encodeURIComponent('999888777/nettsider')}/used-by`,
       ),
     );
     await waitFor(() =>
-      expect(
-        screen.getByRole('tab', { name: 'Filtre i søket' }).getAttribute('aria-selected'),
-      ).toBe('true'),
+      expect(screen.getByRole('tab', { name: 'Brukes av' }).getAttribute('aria-selected')).toBe(
+        'true',
+      ),
     );
+  });
+
+  it('opens a dataset on its Innhold tab, as the design does', async () => {
+    const { fetch } = recorded();
+    await renderLive(nettsider, fetch);
+    await screen.findByRole('heading', { level: 1, name: 'Nettsidene til Testetaten' });
+    expect(screen.getByRole('tab', { name: 'Innhold' }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.queryByRole('tab', { name: 'Filtre i søket' })).toBeNull();
+  });
+
+  it('opens the old filters address on the Innhold tab', async () => {
+    const { fetch } = recorded();
+    await renderLive(`${nettsider}/filters`, fetch);
+    await screen.findByRole('heading', { level: 1, name: 'Nettsidene til Testetaten' });
+    expect(screen.getByRole('tab', { name: 'Innhold' }).getAttribute('aria-selected')).toBe('true');
   });
 
   it('opens the tab named by the old tab query', async () => {
@@ -951,7 +965,7 @@ describe('live dataset tabs and polling', () => {
         ? new Response(JSON.stringify({ title: 'Feil' }), { status: 500 })
         : undefined,
     );
-    await renderLive(veiledere, fetch);
+    await renderLive(`${veiledere}/ingestions`, fetch);
     await screen.findByRole('heading', { level: 1, name: 'Veiledere og rundskriv' });
     expect(await screen.findByText('Kunne ikke hente dataene')).toBeTruthy();
     expect(screen.queryByText('Ingen innlesinger ennå.')).toBeNull();
@@ -970,7 +984,7 @@ describe('live dataset tabs and polling', () => {
       }
       return undefined;
     });
-    await renderLive(veiledere, fetch);
+    await renderLive(`${veiledere}/ingestions`, fetch);
     await screen.findByRole('list', { name: 'Innlesinger' });
     fireEvent.click(screen.getByRole('button', { name: 'Les inn på nytt' }));
     expect(await screen.findByText(/Innlesingen pågår\. Siden oppdateres/)).toBeTruthy();
@@ -989,7 +1003,7 @@ describe('live dataset tabs and polling', () => {
 
   it('sends the ingestion audit reason in the language the person uses', async () => {
     const { calls, fetch } = recorded();
-    await renderLive(veiledere, fetch);
+    await renderLive(`${veiledere}/ingestions`, fetch);
     await screen.findByRole('list', { name: 'Innlesinger' });
     fireEvent.click(screen.getByRole('button', { name: 'Les inn på nytt' }));
     await waitFor(() =>
@@ -1084,15 +1098,26 @@ describe('live dataset list', () => {
     );
   });
 
-  it('keeps the raw catalog closed under a technical section instead of a second list', async () => {
+  it('shows one dataset table and no raw catalogue section, as the design does', async () => {
     const { fetch } = recorded();
     await renderLive('#/datasets', fetch);
     await screen.findByRole('heading', { level: 1, name: 'Datasett' });
     expect(screen.getAllByRole('table', { name: 'Datasett' })).toHaveLength(1);
     expect(screen.queryByRole('heading', { name: 'Egne datasett og endepunkter' })).toBeNull();
     expect(
-      screen.getByText('Teknisk: katalogoppføringer for datasett, søkemotorer og modeller'),
-    ).toBeTruthy();
+      screen.queryByText('Teknisk: katalogoppføringer for datasett, søkemotorer og modeller'),
+    ).toBeNull();
+  });
+
+  it('counts the documents of a shared dataset from the documents route when the list has none', async () => {
+    const { calls, fetch } = recorded();
+    await renderLive('#/datasets', fetch);
+    const table = await screen.findByRole('table', { name: 'Datasett' });
+    const kudos = within(table).getByRole('link', { name: 'Kudos-rapporter' }).closest('tr');
+    await waitFor(() => expect(kudos?.textContent).toMatch(/48\s312/));
+    expect(
+      calls.some((c) => /\/datasets\/digdir%2Fkudos\/documents\?limit=1&offset=0$/.test(c.url)),
+    ).toBe(true);
   });
 });
 
