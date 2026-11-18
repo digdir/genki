@@ -28,3 +28,4 @@ export * from './chunk-places.js';
 export * from './stored-converter.js';
 export * from './docling-pages.js';
 export * from './docling.js';
+export * from './docling-parts.js';
