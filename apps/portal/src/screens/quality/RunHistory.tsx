@@ -754,13 +754,19 @@ export const RunHistory = ({
       ) : null}
       {state.status === 'loading' && !seen.current ? (
         <Loading label={t('quality.runsLoading')} shape="list" headingLevel={3} onRetry={retry} />
-      ) : state.status === 'error' ? (
+      ) : state.status === 'error' && !seen.current ? (
         <ErrorState error={state.error} onRetry={retry} headingLevel={3} />
       ) : runs.length === 0 ? (
         <Paragraph data-size="sm">{t('quality.notRunYet')}</Paragraph>
       ) : (
         <div tabIndex={0} role="region" aria-labelledby="kj-h" className="table-scroll">
-          <Table className="runs-table">
+          {state.status === 'error' ? (
+            <ErrorState error={state.error} onRetry={retry} headingLevel={3} />
+          ) : null}
+          <Table
+            className="runs-table"
+            aria-busy={(state.status === 'loading' && !running) || undefined}
+          >
             <Table.Head>
               <Table.Row>
                 <Table.HeaderCell scope="col">{t('quality.started')}</Table.HeaderCell>

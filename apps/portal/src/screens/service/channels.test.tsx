@@ -238,15 +238,28 @@ describe('channels and frontends for a service', () => {
       allowedOverrides: ['retrieval.*', 'answer.language'],
     });
     const keys = await screen.findByRole('list', { name: 'API-nøkler for tjenesten' });
+    const allowed = await within(keys).findByRole('list', { name: 'Har lov til' });
     expect(
-      await within(keys).findByText('Kan overstyre: Alt om søk, Språket svaret skrives på'),
-    ).toBeTruthy();
+      within(allowed)
+        .getAllByRole('listitem')
+        .map((i) => i.textContent),
+    ).toEqual(['Alt om søk', 'Språket svaret skrives på']);
 
     fireEvent.click(within(keys).getByRole('button', { name: 'Roter Overstyrer' }));
     const rotating = await screen.findByRole('group', { name: 'Roter Overstyrer' });
     fireEvent.click(within(rotating).getByLabelText('Språket svaret skrives på'));
     fireEvent.click(within(rotating).getByRole('button', { name: 'Lag ny nøkkel' }));
-    expect(await within(keys).findByText('Kan overstyre: Alt om søk')).toBeTruthy();
+    await waitFor(() =>
+      expect(
+        within(keys)
+          .getAllByRole('list', { name: 'Har lov til' })
+          .map((l) =>
+            within(l)
+              .getAllByRole('listitem')
+              .map((i) => i.textContent),
+          ),
+      ).toContainEqual(['Alt om søk']),
+    );
     const rotated = calls.find((c) => c.url.endsWith('/rotate'));
     expect(rotated?.body).toEqual({ allowedOverrides: ['retrieval.*'] });
     expectAccessible();

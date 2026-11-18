@@ -3,6 +3,7 @@ import {
   Button,
   Dialog,
   Heading,
+  Link,
   Paragraph,
   Tabs,
   TabsList,
@@ -113,6 +114,7 @@ import { Versions } from '../service/Versions';
 import { problemErrors } from '../service/definition';
 import { describeProblem, publishDraft, type PublishProblem } from '../service/publish';
 import { VersionsSection } from '../service/VersionsSection';
+import { EnvironmentsSection } from '../service/EnvironmentsSection';
 import { LanguageInstructionTabs } from './LanguageInstructionTabs';
 import { InterfaceTab } from './blocks/InterfaceTab';
 import { TryViewKeeper } from './blocks/TryViewKeeper';
@@ -1173,7 +1175,7 @@ export const Builder = ({
     : availableSections({ isNew });
   const withAssistant = !readOnly && (section === 'setup' || section === 'test');
   const screenProps = { api, tenant, tenantName, route, live };
-  const versionsView = route.query.get('view') === 'yaml' ? 'yaml' : 'history';
+  const versionsView = section === 'definition' ? 'yaml' : 'history';
   const latest = versions[0];
   const shown =
     remoteLatest && remoteLatest.version > (latest?.n ?? 0)
@@ -1295,7 +1297,6 @@ export const Builder = ({
           definition={service}
           versions={versions}
           tenantName={tenantName}
-          canBatch={canPublish && !archived}
           {...(remoteLatest ? { published: remoteLatest } : {})}
         />
       );
@@ -1378,11 +1379,13 @@ export const Builder = ({
       return <BatchSection api={api} tenant={tenant} id={id} runId={detail} />;
     if (section === 'log')
       return <LogSection api={api} tenant={tenant} id={id} runId={detail} live={live} />;
-    if (section === 'versions')
+    if (section === 'environments')
+      return <EnvironmentsSection api={api} tenant={tenant} serviceId={id} />;
+    if (section === 'versions' || section === 'definition')
       return live && !isNew ? (
         <VersionsSection
           view={versionsView}
-          onView={(v) => go('versions', v === 'yaml' ? '?view=yaml' : '')}
+          onView={(v) => go(v === 'yaml' ? 'definition' : 'versions')}
           showHistory
           history={
             <Versions
@@ -1404,7 +1407,7 @@ export const Builder = ({
       ) : (
         <VersionsSection
           view={versionsView}
-          onView={(v) => go('versions', v === 'yaml' ? '?view=yaml' : '')}
+          onView={(v) => go(v === 'yaml' ? 'definition' : 'versions')}
           showHistory={!isNew}
           history={<VersionsTab versions={versions} changes={changes} onRollback={rollback} />}
           yaml={
@@ -1423,12 +1426,18 @@ export const Builder = ({
           <Paragraph data-size="sm" className="meta">
             {t('service.draftNote')}
           </Paragraph>
+        ) : sections.includes('settings') ? (
+          <Paragraph data-size="sm">
+            <Link href={`#${servicePath(routeId, 'settings')}`}>{t('service.settingsLink')}</Link>
+          </Paragraph>
         ) : null}
       </div>
     );
   })();
 
-  const subNav = <ServiceSubNav id={routeId} sections={sections} current={section} />;
+  const subNav = (
+    <ServiceSubNav id={routeId} sections={sections} current={section} api={api} tenant={tenant} />
+  );
   const content = (
     <div className={`service-body service-${section}`}>
       {subSections(tabOf(section), sections).length > 1 ? (

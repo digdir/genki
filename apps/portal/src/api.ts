@@ -8,6 +8,7 @@ import { datasetsApi } from './api/datasets';
 import { environmentsApi } from './api/environments';
 import { keyPoliciesApi } from './api/key-policies';
 import { maskinportenApi } from './api/maskinporten';
+import { serviceTabsApi } from './api/service-tabs';
 import { modelsApi } from './api/models';
 import { hooksApi } from './api/hooks';
 import { tracingApi } from './api/tracing';
@@ -194,6 +195,7 @@ const featureClients = (ctx: ApiContext) => ({
   accessPeople: accessApi(ctx),
   blocks: blocksApi(ctx),
   models: modelsApi(ctx),
+  serviceTabs: serviceTabsApi(ctx),
 });
 
 const kindPaths: Record<PublishedDefinition['kind'], string> = {
