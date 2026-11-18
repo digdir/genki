@@ -228,6 +228,17 @@ describe('Tilgang: tjenester', () => {
     ).toBeTruthy();
   });
 
+  it('says a limit controls who can use a service, not who can read or copy its setup', async () => {
+    await renderAt('#/access/services', withAccess({ limits: [] }));
+    const mode = await openService('Postsortering');
+    fireEvent.click(within(mode).getByRole('radio', { name: 'Bare utvalgte personer' }));
+    expect(
+      screen.getByText(
+        'Begrensningen styrer hvem som kan bruke tjenesten, ikke hvem som kan lese eller kopiere oppsettet. Den som kan åpne prøveområdet, kan kjøre en kopi.',
+      ),
+    ).toBeTruthy();
+  });
+
   it('limits a service to chosen people and saves it with the reason', async () => {
     const calls = recording(withAccess({ limits: [] }));
     await renderAt('#/access/services', calls.fetch);

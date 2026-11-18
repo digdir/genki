@@ -5,6 +5,7 @@ import {
   httpAltinnPeople,
   peopleFromTestData,
   personKeys,
+  withoutTrailingSlashes,
   type AltinnPeople,
   type IdentityTestDataInput,
 } from './index.js';
@@ -116,6 +117,19 @@ describe('people with platform rights in an organisation', () => {
       },
     });
     await expect(people.list(ORG)).rejects.toThrow('Altinn access management answered 401');
+  });
+});
+
+describe('the Altinn address', () => {
+  it('drops trailing slashes, and does so quickly on a long run of them', () => {
+    expect(withoutTrailingSlashes('https://platform.tt02.altinn.no///')).toBe(
+      'https://platform.tt02.altinn.no',
+    );
+    expect(withoutTrailingSlashes('https://a.no/x')).toBe('https://a.no/x');
+    const slashes = `https://a.no${'/'.repeat(200_000)}x${'/'.repeat(200_000)}`;
+    const started = performance.now();
+    expect(withoutTrailingSlashes(slashes)).toBe(`https://a.no${'/'.repeat(200_000)}x`);
+    expect(performance.now() - started).toBeLessThan(100);
   });
 });
 

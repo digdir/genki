@@ -656,7 +656,12 @@ const ServiceEditor = ({
           checked={draft.some}
           onChange={() => onChange({ ...draft, some: true })}
         />
-        {draft.some ? <Paragraph data-size="sm">{t('access.modeSomeScope')}</Paragraph> : null}
+        {draft.some ? (
+          <>
+            <Paragraph data-size="sm">{t('access.modeSomeScope')}</Paragraph>
+            <Paragraph data-size="sm">{t('access.modeSomeCopy')}</Paragraph>
+          </>
+        ) : null}
       </Fieldset>
       {draft.some ? (
         <div className="access-stack">

@@ -80,6 +80,8 @@ const access = defineNamespace({
   modeSome: 'Bare utvalgte personer',
   modeSomeScope:
     'Gjelder personer som logger inn med Ansattporten. Innlogging med Entra kommer ikke inn. API-nøkler, systemer og driften påvirkes ikke, og heller ikke andre virksomheter som bruker en delt tjeneste.',
+  modeSomeCopy:
+    'Begrensningen styrer hvem som kan bruke tjenesten, ikke hvem som kan lese eller kopiere oppsettet. Den som kan åpne prøveområdet, kan kjøre en kopi.',
   memberLacksUse: 'Mangler «Bruke tjenester» i Altinn',
   memberLacksUseNote: 'Kommer ikke inn før rettigheten er gitt.',
   memberGone: 'Har ingen rettigheter i Altinn lenger.',

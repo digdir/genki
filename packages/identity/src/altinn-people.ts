@@ -173,9 +173,15 @@ const inBatches = async <T, R>(items: T[], size: number, work: (item: T) => Prom
   return out;
 };
 
+export const withoutTrailingSlashes = (url: string) => {
+  let end = url.length;
+  while (end > 0 && url[end - 1] === '/') end -= 1;
+  return url.slice(0, end);
+};
+
 /** Lists who in an organisation holds the platform's rights, through Altinn 3 access management (end-user API, system user token). */
 export const httpAltinnPeople = (options: HttpAltinnPeopleOptions): AltinnPeople => {
-  const base = options.baseURL.replace(/\/+$/, '');
+  const base = withoutTrailingSlashes(options.baseURL);
   const call = async (org: string, path: string, query: Record<string, string>, page = 0) => {
     const url = `${base}${accessManagement}${path}?${new URLSearchParams(query)}`;
     const response = await (options.fetch ?? fetch)(url, {

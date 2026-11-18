@@ -81,6 +81,8 @@ const access = {
   modeSome: 'Only selected people',
   modeSomeScope:
     'Applies to people who log in with Ansattporten. Entra logins cannot use the service. API keys, systems and operators are not affected, nor other organisations using a shared service.',
+  modeSomeCopy:
+    'The limit controls who can use the service, not who can read or copy its setup. Anyone who can open the playground can run a copy.',
   memberLacksUse: 'Lacks «Bruke tjenester» in Altinn',
   memberLacksUseNote: 'Cannot get in until the right is given.',
   memberGone: 'Has no rights in Altinn any more.',

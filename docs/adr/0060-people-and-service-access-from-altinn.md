@@ -25,4 +25,5 @@ Reading rights from Altinn keeps one source of truth and lets the organisation's
 - `createMockAltinnAccessManagement` serves the three Altinn reads from the local test data, and the HTTP client is tested against it.
 - `apps/api/src/main.ts` mounts the module and wraps the invoke policy with `serviceAccessPolicy`. Without `ALTINN_PEOPLE_URL` outside dev mode the people list answers `altinn_not_configured`, and the invoke check still applies to limited services.
 - To confirm with the Altinn team before this is accepted: that the end-user connections API accepts a system user token for these reads, the exact scope, and which access package the system user needs.
+- A limit controls who can use the service, not who can read or copy its setup. Any member can read a service's definition, and a member who can open the playground (Administrere tjenester or Administrere datasett) can run a copy under another id, which the limit does not cover. This is accepted; the Tilgang page says so where a limit is chosen.
 - Changing `ACCESS_PERSON_KEY_SECRET` makes every stored limit point at unknown ids; rotating it needs a migration of the `service-access` entries.

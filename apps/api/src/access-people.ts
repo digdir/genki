@@ -10,6 +10,7 @@ import {
   type AltinnDirectory,
   type IdentityTestDataInput,
   type OrgPerson,
+  withoutTrailingSlashes,
   type PersonKey,
 } from '@genai/identity';
 import type { Context } from 'hono';
@@ -125,7 +126,7 @@ export const peopleSourceFrom = (
   ];
   if (missing.length > 0)
     throw new Error(`ALTINN_PEOPLE_URL is set, but these are missing: ${missing.join(', ')}`);
-  const baseURL = (env.ALTINN_PEOPLE_URL as string).replace(/\/+$/, '');
+  const baseURL = withoutTrailingSlashes(env.ALTINN_PEOPLE_URL as string);
   if (!baseURL.startsWith('https://')) throw new Error('ALTINN_PEOPLE_URL must use HTTPS');
   if ((env.ACCESS_PERSON_KEY_SECRET as string).length < minKeySecretLength)
     throw new Error(`ACCESS_PERSON_KEY_SECRET must be at least ${minKeySecretLength} characters`);
