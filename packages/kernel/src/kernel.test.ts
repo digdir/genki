@@ -1269,3 +1269,140 @@ describe('kernel: what a strategy can see', () => {
     expect(responder).toBe('leder');
   });
 });
+
+const leasedStore = (
+  tasks: InMemoryTaskStore,
+  renewLeases: (ids: readonly string[]) => Promise<string[]>,
+): TaskStore => ({
+  put: (stored) => tasks.put(stored),
+  get: (id) => tasks.get(id),
+  pendingFor: (who) => tasks.pendingFor(who),
+  renewLeases,
+});
+
+describe('kernel: leases and stopping', () => {
+  const stuck = strategy('stuck', async function* () {
+    yield { type: 'kernel.part.delta', data: { text: '...' } };
+    await never();
+  });
+
+  it('renews the lease of every task it runs', async () => {
+    const renewed: string[][] = [];
+    const tasks = new InMemoryTaskStore();
+    const kernel = kernelWith({
+      strategies: [stuck],
+      capabilities: [capability('ka', 'stuck')],
+      tasks: leasedStore(tasks, async (ids) => {
+        renewed.push([...ids]);
+        return [...ids];
+      }),
+      limits: { cancelPollMs: 5, leaseRenewMs: 0 },
+    });
+
+    const run = await kernel.invoke(kari, 'ka', {});
+    await expect.poll(() => renewed.length).toBeGreaterThan(1);
+
+    expect(renewed.at(-1)).toEqual([run.task]);
+    expect((await kernel.task(kari, run.task)).status).toBe('running');
+  });
+
+  it('stops a run whose lease another instance took, without writing over its record', async () => {
+    const tasks = new InMemoryTaskStore();
+    const kernel = kernelWith({
+      strategies: [stuck],
+      capabilities: [capability('ka', 'stuck')],
+      tasks: leasedStore(tasks, async () => []),
+      limits: { cancelPollMs: 5, leaseRenewMs: 0 },
+    });
+
+    const run = await kernel.invoke(kari, 'ka', {});
+
+    await expect(run.result).rejects.toMatchObject({ code: 'server_stopped' });
+    expect((await tasks.get(run.task))?.task.status).toBe('running');
+    expect(kernel.running()).toBe(0);
+  });
+
+  it('a run that fails after it lost its lease writes no failure of its own', async () => {
+    let fail: (error: Error) => void = () => undefined;
+    const failing = strategy('failing', async function* () {
+      yield { type: 'kernel.part.delta', data: { text: '...' } };
+      await new Promise<never>((_, reject) => (fail = reject));
+    });
+    const tasks = new InMemoryTaskStore();
+    const log = new InMemoryEventLog();
+    let held = true;
+    const kernel = kernelWith({
+      strategies: [failing],
+      capabilities: [capability('ka', 'failing')],
+      log,
+      tasks: leasedStore(tasks, async (ids) => (held ? [...ids] : [])),
+      limits: { cancelPollMs: 60_000 },
+    });
+    const run = await kernel.invoke(kari, 'ka', {});
+    for await (const e of run.events) if (e.type === 'kernel.part.delta') break;
+
+    held = false;
+    fail(new Error('the model went away'));
+
+    await expect(run.result).rejects.toMatchObject({ code: 'server_stopped' });
+    const events = [];
+    for await (const e of log.read(run.task, 0, () => false)) events.push(e);
+    expect(events.filter((e) => e.type === 'kernel.error')).toEqual([]);
+    expect((await tasks.get(run.task))?.task.status).toBe('running');
+  });
+
+  it('accepts no new run while stopping', async () => {
+    const kernel = kernelWith({ strategies: [stuck], capabilities: [capability('ka', 'stuck')] });
+
+    kernel.stop();
+
+    await expect(kernel.invoke(kari, 'ka', {})).rejects.toMatchObject({ code: 'server_stopped' });
+  });
+
+  it('lets a run that started before the stop start its children', async () => {
+    let open: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => (open = resolve));
+    const child = strategy('child', async function* () {
+      yield { type: 'kernel.result', data: [textPart('barn')] };
+    });
+    const parent = strategy(
+      'parent',
+      async function* (ctx) {
+        await gate;
+        const sub = await ctx.invoke('helper', {});
+        yield { type: 'kernel.result', data: await sub.result };
+      },
+      { requires: { kernel: 1, ports: [], features: ['subinvoke'] } },
+    );
+    const kernel = kernelWith({
+      strategies: [child, parent],
+      capabilities: [capability('ka', 'parent'), capability('helper', 'child')],
+    });
+
+    const run = await kernel.invoke(kari, 'ka', {});
+    kernel.stop();
+    open();
+
+    expect(await run.result).toEqual([textPart('barn')]);
+  });
+
+  it('drains once every running task has ended', async () => {
+    let open: () => void = () => undefined;
+    const waits = strategy('waits', async function* () {
+      await new Promise<void>((resolve) => (open = resolve));
+      yield { type: 'kernel.result', data: [textPart('ok')] };
+    });
+    const kernel = kernelWith({ strategies: [waits], capabilities: [capability('ka', 'waits')] });
+    const run = await kernel.invoke(kari, 'ka', {});
+    let drained = false;
+    const draining = kernel.drain().then(() => (drained = true));
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(drained).toBe(false);
+    open();
+    await run.result;
+    await draining;
+
+    expect(drained).toBe(true);
+  });
+});

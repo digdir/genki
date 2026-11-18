@@ -24,6 +24,7 @@ const reasons: Record<string, ApiKey> = {
   misconfigured: 'runs.failMisconfigured',
   cancelled: 'runs.failCancelled',
   interrupted: 'runs.failInterrupted',
+  server_stopped: 'runs.failServerStopped',
 };
 
 export const failedStep = (message: string) =>

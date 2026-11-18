@@ -41,6 +41,7 @@ export interface TaskStore {
   /** Records a cancel for whichever instance runs the task; only a queued or running task takes one. */
   requestCancel?(id: string, at: string): Promise<void>;
   cancelRequested?(ids: readonly string[]): Promise<string[]>;
+  renewLeases?(ids: readonly string[]): Promise<string[]>;
 }
 
 export interface StateStore {
@@ -118,6 +119,13 @@ export class InMemoryTaskStore implements TaskStore {
   readonly #cancels = new Map<string, string>();
 
   async put(stored: StoredTask): Promise<void> {
+    const known = this.#tasks.get(stored.task.id)?.task;
+    if (
+      known &&
+      ['completed', 'failed', 'cancelled'].includes(known.status) &&
+      (known.status !== stored.task.status || known.endedAt !== stored.task.endedAt)
+    )
+      return;
     this.#tasks.set(stored.task.id, structuredClone(stored));
     if (stored.task.status !== 'queued' && stored.task.status !== 'running')
       this.#cancels.delete(stored.task.id);

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
@@ -43,6 +44,7 @@ import {
   assistantCapabilityPrefix,
   costOf,
   deleteSinkTraces,
+  failStoppedRuns,
   InMemoryTriggerRuns,
   monthlyModelQuota,
   monthlyQuotaGate,
@@ -999,6 +1001,25 @@ const providerObjectSweep = db
     })
   : undefined;
 
+const stoppedRunsLease = db
+  ? new PostgresLeaderLease(db.pool, 'genai-worker-stopped-runs')
+  : undefined;
+const stoppedRunTasks = db?.tasks.withLease({ instance: `sweep:${randomUUID()}` });
+const failStopped = async () => {
+  if (!db || !stoppedRunTasks || !(await stoppedRunsLease?.tryAcquire())) return;
+  const failed = await failStoppedRuns({ tasks: stoppedRunTasks, events: db.log });
+  if (failed.length > 0) log('runs failed after their server stopped', { tasks: failed });
+};
+const stoppedRunSweep = db
+  ? setInterval(
+      () =>
+        void failStopped().catch((error: unknown) =>
+          log('stopped run sweep failed', { error: String(error) }),
+        ),
+      60_000,
+    )
+  : undefined;
+
 // Ends runs whose jobs have ended, starts queued runs and applies send-backs (ADR 0042, "Jobs").
 const knowledgeRunsLease = db
   ? new PostgresLeaderLease(db.pool, 'genai-worker-knowledge-runs')
@@ -1086,6 +1107,7 @@ const stop = () => {
   exchangeRate?.stop();
   stateRegister?.stop();
   providerObjectSweep?.stop();
+  if (stoppedRunSweep) clearInterval(stoppedRunSweep);
   if (knowledgeReconciler) clearInterval(knowledgeReconciler);
   if (nightWindowTimer) clearInterval(nightWindowTimer);
   stopFollowingChanges?.();

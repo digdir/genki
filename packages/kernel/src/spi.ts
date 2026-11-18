@@ -167,7 +167,8 @@ export type KernelErrorCode =
   | 'interrupted'
   | 'cancelled'
   | 'misconfigured'
-  | 'quota_exhausted';
+  | 'quota_exhausted'
+  | 'server_stopped';
 
 export class KernelError extends Error {
   constructor(

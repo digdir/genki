@@ -42,6 +42,7 @@ import { FileSystemBlobStore } from '@genai/port-blob';
 import type { PolicyDecisionPoint } from '@genai/kernel';
 import { documentConverterFrom, phraseArchiveFrom } from './document-converter.js';
 import { evalSlotLimitsFromEnv, shutdownGraceFromEnv } from './eval-slots.js';
+import { drainBeforeExit } from './shutdown.js';
 import { createAdmin, platformActor } from './admin.js';
 import { createAccessPeopleModule, peopleSourceFrom, selectedPeople } from './access-people.js';
 import { draftServices } from './access-draft-services.js';
@@ -823,10 +824,17 @@ let stopping = false;
 const stop = (signal: string) => {
   if (stopping) process.exit(1);
   stopping = true;
-  log('api stopping', { signal, casesInFlight: platform.evalSlots.inFlight(), shutdownGraceMs });
-  const deadline = new Promise<void>((resolve) => setTimeout(resolve, shutdownGraceMs).unref());
-  void Promise.race([platform.evalSlots.drain(), deadline]).finally(() => {
-    log('api stopped', { casesInFlight: platform.evalSlots.inFlight() });
+  log('api stopping', {
+    signal,
+    casesInFlight: platform.evalSlots.inFlight(),
+    runsInFlight: platform.kernel.running(),
+    shutdownGraceMs,
+  });
+  void drainBeforeExit(platform.kernel, platform.evalSlots, shutdownGraceMs).finally(() => {
+    log('api stopped', {
+      casesInFlight: platform.evalSlots.inFlight(),
+      runsInFlight: platform.kernel.running(),
+    });
     server.close();
     process.exit(0);
   });
