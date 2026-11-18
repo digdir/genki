@@ -1,6 +1,7 @@
 import { createRoute, z, type RouteConfig } from '@hono/zod-openapi';
 import { definitionKinds } from '@genai/definitions';
 import { evalRunStates, metricSummary } from '@genai/eval';
+import { caseChanges } from '../eval-compare.js';
 import { serviceIntents, skillIntents, unavailableReasons } from '@genai/strategy-builder';
 import { turnBody } from '../assistant.js';
 import { InputField } from '../frontend-openapi.js';
@@ -439,6 +440,67 @@ const EvalRunSummary = z
     ...sinkJudgeFields,
   })
   .openapi('ServiceEvalRunSummary');
+
+const ComparedRun = z
+  .object({
+    id: z.string(),
+    status: z.enum(evalRunStates),
+    version: z.union([z.literal('draft'), z.number().int()]),
+    variant: z.string().optional(),
+    environment: z.string().optional(),
+    split: z.enum(['locked', 'open']).optional(),
+    selected: z.array(z.string()).optional(),
+    testSetVersion: z.number().int(),
+    startedAt: z.string(),
+    endedAt: z.string().nullable(),
+    score: z.number().nullable().describe('Share of cases that pass, once the run is completed'),
+    passed: z.number().int(),
+    cases: z.number().int().describe('Cases with a result so far'),
+    judges: z.array(z.string()).describe('Each judge as <id>@<version>+<model>'),
+  })
+  .openapi('ServiceEvalComparedRun');
+
+const CaseOutcome = z
+  .object({
+    pass: z.boolean(),
+    score: z
+      .number()
+      .nullable()
+      .describe("The case type's own verdict score, the mean over repeats; null when not scored"),
+    reason: z.string().optional().describe("The judge's reason"),
+  })
+  .nullable();
+
+const EvalComparison = z
+  .object({
+    testSet: z.string(),
+    baseline: ComparedRun.extend({
+      published: z
+        .boolean()
+        .describe('Whether the baseline was chosen as the run of the published version'),
+    }),
+    candidate: ComparedRun,
+    counts: z.record(z.enum(caseChanges), z.number().int()).describe('Cases per change, all pages'),
+    data: z.array(
+      z.object({
+        case: z.string(),
+        input: z.string(),
+        type: z.string(),
+        split: z.enum(['locked', 'open']),
+        change: z
+          .enum(caseChanges)
+          .describe(
+            'better or worse when the verdict flipped, same when it did not, new or missing when only the candidate or the baseline has the case, pending when the run without it is still running. A case outside the split or selected cases of the run without it is left out',
+          ),
+        baseline: CaseOutcome,
+        candidate: CaseOutcome,
+      }),
+    ),
+    total: z.number().int().describe('Cases that match change, before offset and limit'),
+    offset: z.number().int(),
+    limit: z.number().int(),
+  })
+  .openapi('ServiceEvalComparison');
 
 const Improvement = z
   .object({
@@ -1497,6 +1559,44 @@ export const serviceRoutes: RouteConfig[] = [
     summary: "The service's evaluation runs without case results. Any member",
     request: { params: z.object({ tenant, id: service }) },
     responses: { 200: json(z.object({ data: z.array(EvalRunSummary) }), 'Runs'), ...tenantErrors },
+  }),
+  createRoute({
+    method: 'get',
+    path: '/tenants/{tenant}/services/{id}/eval-runs/compare',
+    summary:
+      'Two test runs of the service on the same test set, case by case: each verdict and whether the candidate did better or worse. Any member',
+    request: {
+      params: z.object({ tenant, id: service }),
+      query: z.object({
+        candidate: z.string().openapi({ description: 'The run to judge, by id' }),
+        baseline: z.string().optional().openapi({
+          description:
+            'The run to compare with, by id, or published (the default): the newest completed run of the whole test set by the version the prod environment runs',
+        }),
+        change: z
+          .enum(caseChanges)
+          .optional()
+          .openapi({ description: 'Only cases with this change' }),
+        limit: z
+          .string()
+          .optional()
+          .openapi({ description: 'Cases per page, 1 to 200, default 50' }),
+        offset: z
+          .string()
+          .optional()
+          .openapi({ description: 'Cases to skip, 0 to 100000, default 0' }),
+      }),
+    },
+    responses: {
+      200: json(EvalComparison, 'Comparison'),
+      400: problem(
+        'Missing candidate, an invalid change, limit or offset (eval-compare-invalid), or runs of different test sets (eval-runs-not-comparable)',
+      ),
+      ...tenantErrors,
+      404: problem(
+        'No such run of this service, or no completed run of the published version on the test set',
+      ),
+    },
   }),
   createRoute({
     method: 'post',

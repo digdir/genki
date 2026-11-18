@@ -68,6 +68,10 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 - `POST /tenants/{tenant}/playground/runs` (and `/stream`) now applies `setup.instructions` and `setup.datasets` when `setup.service` is set; before, they were ignored. They change that run only and never the service, a version or a draft (see [services.md](services.md#playground-changes-on-top-of-a-service-version)). A dataset the tenant may not use, or instructions for a strategy without one instructions field (a step flow), answers `422`. A dataset that does not exist or is not shared with the tenant now answers `422` before the run in the setup without a service too.
 - `GET /tenants/{tenant}/playground/options` gives each version `strategy`: `id`, `version`, `title` in bokmål and English, `takesInstructions` and, for a step flow, `flow` with its `ref`, `id`, `version` and `title`. A variant with its own strategy has `strategy` too. Each model adds `price`, the same as on `GET /models`, or `null`.
 
+### 2026-11-18: comparing two test runs case by case
+
+- New `GET /tenants/{tenant}/services/{id}/eval-runs/compare?candidate={runId}`: two test-set runs of a service, case by case, with each verdict, a `change` per case (`better`, `worse`, `same`, `new`, `missing`, `pending`) and `counts`; the baseline is a named run or, by default, the run of the published version. Paged with `limit` and `offset` (see [work.md](work.md#two-kinds-of-evaluation-run)).
+
 ### 2026-11-18: platform secrets on their own console screen
 
 - `GET /operator/secrets` lists the platform secrets for operators: each name, whether a value is stored, when it last changed (from the audit log) and the platform catalog entries that name it, such as a connection. Never a value.
