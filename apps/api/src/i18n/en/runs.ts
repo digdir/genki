@@ -7,6 +7,7 @@ export const runs = {
   failModelUnavailable: 'The model the service uses is not available right now.',
   failStrategy: 'The service failed along the way.',
   originBuilder: 'The builder (draft)',
+  originTrial: 'Trial run in the builder (draft)',
   originPlayground: 'The playground (draft)',
   originSkillTest: 'Skill test (draft)',
   originAssistant: 'The builder assistant',

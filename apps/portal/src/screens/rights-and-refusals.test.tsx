@@ -385,7 +385,8 @@ describe('an organisation Digdir has not registered', () => {
     await screen.findByRole('form', { name: 'Be om tilgang' });
     expect(screen.getByRole('heading', { name: 'Du handler for flere virksomheter' })).toBeTruthy();
     fireEvent.click(within(main).getByRole('button', { name: 'Bytt virksomhet' }));
-    expect(screen.getByRole('dialog', { name: 'Velg virksomhet' })).toBeTruthy();
+    const menu = screen.getByRole('menu', { name: 'Brukermeny' });
+    expect(within(menu).getByRole('group', { name: 'Handler for' })).toBeTruthy();
   });
 
   it('lets an unregistered organisation read the API reference', async () => {

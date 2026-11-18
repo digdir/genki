@@ -61,16 +61,41 @@ describe('Innstillinger for virksomheten', () => {
     expect(heads).toEqual(['Innstilling', 'Verdi', 'Kommer fra']);
 
     const topK = within(region)
-      .getByRole('button', { name: 'Antall treff som leses' })
+      .getByRole('button', { name: 'Treff som hentes (top-k)' })
       .closest('tr') as HTMLElement;
-    expect(within(topK).getByText('retrieval.topK')).toBeTruthy();
-    expect(within(topK).getByText('10 treff')).toBeTruthy();
+    expect(within(topK).getByText('retrieval.retrieveTopK')).toBeTruthy();
+    expect(within(topK).getByText('100')).toBeTruthy();
     expect(within(topK).getByText('Standard')).toBeTruthy();
 
     expect(
       within(region).getByRole('button', { name: 'Fjern personopplysninger før modellkall' }),
     ).toBeTruthy();
     expectAccessible();
+  });
+
+  it('keeps the open setting in the address, and opens it again from the address', async () => {
+    await renderAt('#/settings/all');
+    const region = await allTable();
+    fireEvent.click(within(region).getByRole('button', { name: 'Antall treff som leses' }));
+    expect(window.location.hash).toBe('#/settings/all?setting=search.top_k');
+
+    cleanup();
+    await renderAt('#/settings/all?setting=search.top_k');
+    const again = await allTable();
+    expect(
+      within(again)
+        .getByRole('button', { name: 'Antall treff som leses' })
+        .getAttribute('aria-expanded'),
+    ).toBe('true');
+  });
+
+  it('keeps sensitivity, type, allowed values and the layers behind Tekniske detaljer in the panel', async () => {
+    await renderAt('#/settings/all');
+    const region = await allTable();
+    fireEvent.click(within(region).getByRole('button', { name: 'Antall treff som leses' }));
+    const details = (await screen.findByText('Tekniske detaljer')).closest('details');
+    expect(details?.open).toBe(false);
+    expect(details?.textContent).toMatch(/Sensitivitet/);
   });
 
   it('marks the setting whose panel is open as expanded', async () => {
@@ -284,7 +309,7 @@ describe('Innstillinger for en tjeneste', () => {
     ).toContain('VedtaksutkastTjeneste');
 
     const topK = within(region)
-      .getByRole('button', { name: 'Antall treff som leses' })
+      .getByRole('button', { name: 'Treff som hentes (top-k)' })
       .closest('tr') as HTMLElement;
     expect(within(topK).getByText('Satt på tjenesten')).toBeTruthy();
 
@@ -315,6 +340,14 @@ describe('Innstillinger for en tjeneste', () => {
     const legend = document.querySelector('.settings-legend') as HTMLElement;
     expect(legend.textContent).toContain('arvet: verdien kommer fra laget til venstre');
     expect(legend.querySelector('em')?.textContent).toBe('arvet');
+  });
+
+  it('keeps the wide grid inside its own scroll box, so a phone page does not scroll sideways', async () => {
+    await renderAt('#/services/vedtaksutkast/settings');
+    await grid();
+    const table = document.querySelector('.settings-table') as HTMLElement;
+    expect(table.parentElement?.className).toContain('settings-grid-scroll');
+    expect(table.parentElement?.className).toContain('table-scroll');
   });
 
   it('blocks turning off human approval for a high-risk service', async () => {

@@ -2,6 +2,7 @@ import {
   Alert,
   Button,
   Chip,
+  Details,
   Field,
   Fieldset,
   Heading,
@@ -469,76 +470,83 @@ export const SettingPanel = ({
 
   return (
     <SidePanel title={label} eyebrow={`${categoryText(t, s.cat)} · ${key}`} onClose={onClose}>
-      <div className="tag-row">
-        <Tag data-size="sm" data-color={sensColor[s.sens]}>
-          {t('settings.panelSensitivity', { value: sensText(t, s.sens) })}
-        </Tag>
-        <Tag data-size="sm" data-color="neutral">
-          {t('settings.panelEditing', { layer: layerLabel })}
-        </Tag>
-        {isDraft ? (
+      {isDraft ? (
+        <div className="tag-row">
           <Tag data-size="sm" data-color="info">
             {t('settings.panelGoesToDraft', { version: draftVersion })}
           </Tag>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
       <Paragraph>
         {settingDesc(t, s)} {s.notDecided ? <NotDecided /> : null}
       </Paragraph>
       {ctx.kind === 'tenant' && s.type !== 'secret' ? (
         <Paragraph data-size="sm">{t('settings.allDefault', { value: show(s.P) })}</Paragraph>
       ) : null}
-      <dl className="kv panel-kv">
-        <dt>{t('settings.panelType')}</dt>
-        <dd>{typeText(t, s.type)}</dd>
-        <dt>{t('settings.panelAllowed')}</dt>
-        <dd>{allowedText(s, t, f)}</dd>
-        <dt>{t('settings.panelScope')}</dt>
-        <dd>{scopeText(s, t)}</dd>
-        {rule || s.minRisk ? (
-          <>
-            <dt>{t('settings.panelRule')}</dt>
-            <dd>{rule ?? settingMinRisk(t, s)}</dd>
-          </>
-        ) : null}
-        {s.categories ? (
-          <>
-            <dt>{t('settings.panelApplies')}</dt>
-            <dd>
-              <ul className="tag-row plain-list" aria-label={t('settings.panelCategories')}>
-                {s.categories.map((c) => (
-                  <li key={c}>
-                    <Tag data-size="sm" data-color="neutral">
-                      {piiText(t, c)}
-                    </Tag>
-                  </li>
-                ))}
-              </ul>
-            </dd>
-          </>
-        ) : null}
-      </dl>
-      <div className="stack-xs">
-        <span className="panel-label">{t('settings.panelChain')}</span>
-        <ol className="chain plain-list">
-          {chain.map((c) => (
-            <li key={c.layer} className={c.effective ? 'effective' : undefined}>
-              <span>{c.layer}</span>
-              <span className={c.inherited ? 'inherited' : c.effective ? 'strong' : undefined}>
-                {c.text}
-              </span>
-            </li>
-          ))}
-          {e.L === 'pin' ? (
-            <li className="pinned">
-              <span>{t('settings.panelPinnedLayer')}</span>
-              <span className="strong">
-                {show(e.v)} ({e.pinVersion})
-              </span>
-            </li>
-          ) : null}
-        </ol>
-      </div>
+      <Details className="panel-technical">
+        <Details.Summary>{t('settings.panelTechnical')}</Details.Summary>
+        <Details.Content className="stack-sm">
+          <div className="tag-row">
+            <Tag data-size="sm" data-color={sensColor[s.sens]}>
+              {t('settings.panelSensitivity', { value: sensText(t, s.sens) })}
+            </Tag>
+            <Tag data-size="sm" data-color="neutral">
+              {t('settings.panelEditing', { layer: layerLabel })}
+            </Tag>
+          </div>
+          <dl className="kv panel-kv">
+            <dt>{t('settings.panelType')}</dt>
+            <dd>{typeText(t, s.type)}</dd>
+            <dt>{t('settings.panelAllowed')}</dt>
+            <dd>{allowedText(s, t, f)}</dd>
+            <dt>{t('settings.panelScope')}</dt>
+            <dd>{scopeText(s, t)}</dd>
+            {rule || s.minRisk ? (
+              <>
+                <dt>{t('settings.panelRule')}</dt>
+                <dd>{rule ?? settingMinRisk(t, s)}</dd>
+              </>
+            ) : null}
+            {s.categories ? (
+              <>
+                <dt>{t('settings.panelApplies')}</dt>
+                <dd>
+                  <ul className="tag-row plain-list" aria-label={t('settings.panelCategories')}>
+                    {s.categories.map((c) => (
+                      <li key={c}>
+                        <Tag data-size="sm" data-color="neutral">
+                          {piiText(t, c)}
+                        </Tag>
+                      </li>
+                    ))}
+                  </ul>
+                </dd>
+              </>
+            ) : null}
+          </dl>
+          <div className="stack-xs">
+            <span className="panel-label">{t('settings.panelChain')}</span>
+            <ol className="chain plain-list">
+              {chain.map((c) => (
+                <li key={c.layer} className={c.effective ? 'effective' : undefined}>
+                  <span>{c.layer}</span>
+                  <span className={c.inherited ? 'inherited' : c.effective ? 'strong' : undefined}>
+                    {c.text}
+                  </span>
+                </li>
+              ))}
+              {e.L === 'pin' ? (
+                <li className="pinned">
+                  <span>{t('settings.panelPinnedLayer')}</span>
+                  <span className="strong">
+                    {show(e.v)} ({e.pinVersion})
+                  </span>
+                </li>
+              ) : null}
+            </ol>
+          </div>
+        </Details.Content>
+      </Details>
       <section className="panel-edit stack-sm" aria-label={editHeading}>
         <Heading level={3} data-size="2xs">
           {editHeading}

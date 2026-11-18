@@ -59,9 +59,26 @@ export const logHash = (f: RunFilters, runId?: string) => {
 export const trialLabel = (row: Pick<TaskRow, 'capability'>, t: T) =>
   row.capability.includes('/playground/')
     ? t('logRuns.playground')
-    : row.capability.startsWith('platform/operation-try/')
-      ? t('logRuns.operationTry')
-      : t('usage.trialRuns');
+    : /^platform\/draft\/(builder|trial)\//.test(row.capability)
+      ? t('logRuns.builder')
+      : row.capability.startsWith('platform/operation-try/')
+        ? t('logRuns.operationTry')
+        : t('usage.trialRuns');
+
+const trialPlaceKeys: Record<string, PlainKey> = {
+  builder: 'logRuns.inBuilder',
+  trial: 'logRuns.inBuilder',
+  playground: 'logRuns.inPlayground',
+  'skill-test': 'logRuns.inSkillTest',
+  assistant: 'logRuns.inAssistant',
+};
+
+export const trialPlace = (row: Pick<TaskRow, 'capability'>, t: T) => {
+  if (row.capability.startsWith('platform/operation-try/')) return t('logRuns.inOperationTry');
+  const origin = /^platform\/draft\/([^/]+)\//.exec(row.capability)?.[1];
+  const key = origin ? trialPlaceKeys[origin] : undefined;
+  return key ? t(key) : undefined;
+};
 
 export const useServiceNames = (api: ApiClient, tenant: string, live: boolean) => {
   const [services] = useAsync(
@@ -416,7 +433,9 @@ export const RunsTab = ({
                 <a href={href(row)}>{title(row)}</a>
                 <span className="meta">
                   {[
-                    row.actor ? actorText(row.actor, t) : '',
+                    [row.actor ? actorText(row.actor, t) : '', trialPlace(row, t) ?? '']
+                      .filter(Boolean)
+                      .join(' '),
                     row.status === 'completed' ? '' : statusOf(row.status, t).text,
                     duration(row),
                     cost(row),

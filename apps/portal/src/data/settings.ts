@@ -137,7 +137,6 @@ export const exampleSettings: SettingRow[] = [
   }),
   row({
     id: 'answer.language',
-    apiKey: 'answer.language',
     cat: 'Svar',
     label: 'Svarspråk',
     desc: 'Hvilken målform svaret skal ha.',

@@ -169,6 +169,7 @@ const throughAdminTasks = [
   'POST /tenants/:tenant/testcase-candidates/:id/review',
   'POST /tenants/:tenant/tool-connections',
   'POST /tenants/:tenant/tool-connections/:id/approve',
+  'POST /tenants/:tenant/tool-connections/:id/revoke',
   'POST /tenants/:tenant/tool-connections/:id/sync',
   'POST /testcase-candidates/:id/review',
   'PUT /operator/catalog/:kind/:id',

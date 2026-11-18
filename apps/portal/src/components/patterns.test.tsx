@@ -3,8 +3,11 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiCallLink, type ApiCallPreview } from './ApiCall';
+import { BackLink } from './BackLink';
 import { ChangeLogged, changedWhen } from './ChangeLogged';
+import { Crumbs } from './Crumbs';
 import { DataLocationTag } from './DataLocationTag';
+import { LinkTabs } from './LinkTabs';
 import { PlaygroundPanel } from './playground/PlaygroundPanel';
 import { ReasonField } from './ReasonField';
 import { StepList } from './StepList';
@@ -257,5 +260,77 @@ describe('PlaygroundPanel', () => {
     await within(panel).findByRole('button', { name: 'Sammenlign' });
     fireEvent.click(within(panel).getByRole('button', { name: 'Lukk' }));
     expect(onClose).toHaveBeenCalledOnce();
+  });
+});
+
+describe('BackLink', () => {
+  it('is one plain link to the page above, with no slash breadcrumb', () => {
+    render(<BackLink label="Datasett" href="#/datasets" />);
+
+    const link = screen.getByRole('link', { name: 'Datasett' });
+    expect(link.getAttribute('href')).toBe('#/datasets');
+    expect(screen.queryByRole('navigation')).toBeNull();
+    expect(document.body.textContent).not.toContain('/');
+  });
+});
+
+describe('Crumbs', () => {
+  it('shows only a back link to the page above, never a slash trail', () => {
+    render(
+      <Crumbs
+        items={[
+          { label: 'Utviklerverktøy', href: '#/developer' },
+          { label: 'Kroker', href: '#/developer/hooks' },
+          { label: 'Ny krok' },
+        ]}
+      />,
+    );
+
+    expect(screen.getAllByRole('link').map((a) => a.textContent)).toEqual(['Kroker']);
+    expect(screen.queryByText('Utviklerverktøy')).toBeNull();
+    expect(screen.queryByText('/')).toBeNull();
+  });
+});
+
+describe('LinkTabs', () => {
+  const tabs = [
+    { key: 'content', label: 'Innhold', href: '#/datasets/d1' },
+    { key: 'ingestions', label: 'Innlesinger', href: '#/datasets/d1/ingestions' },
+    { key: 'settings', label: 'Innstillinger', href: '#/datasets/d1/settings' },
+  ];
+  const tab = (name: string) => screen.getByRole('tab', { name });
+  afterEach(() => {
+    window.location.hash = '';
+  });
+
+  it('makes every tab a link with its own address and marks the current one', () => {
+    render(<LinkTabs label="Tilsynsrapporter" tabs={tabs} current="ingestions" />);
+
+    expect(screen.getByRole('tablist', { name: 'Tilsynsrapporter' })).toBeTruthy();
+    expect(tab('Innstillinger').getAttribute('href')).toBe('#/datasets/d1/settings');
+    expect(tab('Innlesinger').getAttribute('aria-selected')).toBe('true');
+    expect(tab('Innhold').getAttribute('aria-selected')).toBe('false');
+    expect(tab('Innlesinger').tabIndex).toBe(0);
+    expect(tab('Innhold').tabIndex).toBe(-1);
+  });
+
+  it('moves to the next tab and its address with the arrow keys, wrapping at the ends', () => {
+    render(<LinkTabs label="Tilsynsrapporter" tabs={tabs} current="settings" />);
+
+    fireEvent.keyDown(tab('Innstillinger'), { key: 'ArrowRight' });
+    expect(document.activeElement).toBe(tab('Innhold'));
+    expect(window.location.hash).toBe('#/datasets/d1');
+    fireEvent.keyDown(tab('Innhold'), { key: 'ArrowLeft' });
+    expect(document.activeElement).toBe(tab('Innstillinger'));
+    expect(window.location.hash).toBe('#/datasets/d1/settings');
+  });
+
+  it('jumps to the first and last tab with Home and End', () => {
+    render(<LinkTabs label="Tilsynsrapporter" tabs={tabs} current="ingestions" />);
+
+    fireEvent.keyDown(tab('Innlesinger'), { key: 'End' });
+    expect(document.activeElement).toBe(tab('Innstillinger'));
+    fireEvent.keyDown(tab('Innstillinger'), { key: 'Home' });
+    expect(document.activeElement).toBe(tab('Innhold'));
   });
 });

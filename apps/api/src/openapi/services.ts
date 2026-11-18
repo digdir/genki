@@ -469,6 +469,10 @@ const Lifecycle = z
     state: z.enum(['active', 'paused', 'archived']),
     reason: z.string().optional(),
     by: z.string().optional(),
+    byName: z
+      .string()
+      .optional()
+      .describe('The name of the person who paused or archived the service, when genki knows it'),
     at: z.string().optional(),
   })
   .openapi('ServiceLifecycle');
@@ -2669,6 +2673,24 @@ export const serviceRoutes: RouteConfig[] = [
               residency: z.string().nullable(),
               model: z.string().nullable(),
               exposure: z.array(z.string()),
+              storage: z
+                .object({ keepsText: z.boolean(), logDays: z.number().int() })
+                .optional()
+                .describe(
+                  "Whether questions and answers are kept, and for how many days, under the owner's retention",
+                ),
+              languages: z
+                .object({ in: z.array(z.string()), out: z.string() })
+                .optional()
+                .describe(
+                  'The languages it takes questions in, and the language it answers in: same, nb or nn',
+                ),
+              estimatedCostPerThousandRuns: z
+                .object({ microNok: z.number().int(), basis: z.string() })
+                .optional()
+                .describe(
+                  "What a thousand runs cost at the model's price, from the owner's completed runs of the last 30 days, rounded to two significant digits; absent with fewer than 20 priced runs",
+                ),
               variants: z.array(
                 z.object({ id: z.string(), publicName: z.string(), aliases: z.array(z.string()) }),
               ),

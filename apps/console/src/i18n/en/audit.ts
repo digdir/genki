@@ -48,6 +48,7 @@ export const audit = {
   actionTaskCancel: 'Cancelled run',
   actionTestsetSave: 'Saved test set',
   actionToolsApprove: 'Approved tool',
+  actionToolsRevoke: 'Revoked tool approval',
   actionToolsRegister: 'Registered tool',
   actionToolsSync: 'Updated tools',
   actionDatasetEnrichmentApply: 'Applied dataset enrichment',

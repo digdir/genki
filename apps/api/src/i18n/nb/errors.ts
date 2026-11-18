@@ -75,6 +75,7 @@ export const catalogErrors = defineNamespace({
   onlyTenantRegistersTools: 'bare virksomheten eller en operatør registrerer verktøy',
   onlyTenantSyncsTools: 'bare virksomheten eller en operatør synkroniserer verktøy',
   onlyTenantApprovesTools: 'bare virksomheten eller en operatør godkjenner endringer i verktøy',
+  onlyTenantRevokesTools: 'bare virksomheten eller en operatør trekker tilbake verktøy',
   onlyOperatorsPlatformSecrets: 'bare operatører setter hemmeligheter for plattformen',
   invalidSecretName: 'ikke et gyldig navn på en hemmelighet',
   onlyTenantSecrets: 'bare virksomheten eller en operatør setter hemmelighetene',

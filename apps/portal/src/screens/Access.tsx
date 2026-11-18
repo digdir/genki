@@ -338,6 +338,7 @@ const ServicesTab = ({
   tenant,
   data,
   people,
+  notConnected,
   openFirst,
   onDirty,
   leaveAsk,
@@ -349,6 +350,7 @@ const ServicesTab = ({
   tenant: string;
   data: Omit<AccessData, 'people'>;
   people: AccessPerson[] | undefined;
+  notConnected: boolean;
   openFirst: string | undefined;
   onDirty: (dirty: boolean) => void;
   leaveAsk: boolean;
@@ -538,6 +540,7 @@ const ServicesTab = ({
                   service={openService}
                   draft={current(s.id)}
                   people={people ?? []}
+                  notConnected={notConnected}
                   whoAll={whoAll}
                   nameOf={(id) => nameOf(id, limitOf(data.limits, s.id))}
                   pick={pick}
@@ -603,6 +606,7 @@ const ServiceEditor = ({
   service,
   draft,
   people,
+  notConnected,
   whoAll,
   nameOf,
   pick,
@@ -616,6 +620,7 @@ const ServiceEditor = ({
   service: ServiceSummaryView;
   draft: Draft;
   people: AccessPerson[];
+  notConnected: boolean;
   whoAll: string;
   nameOf: (id: string) => string;
   pick: string;
@@ -719,29 +724,38 @@ const ServiceEditor = ({
               </div>
             </div>
           ) : null}
-          <div className="add-person">
-            <Field>
-              <Label htmlFor={pickId}>{t('access.addPerson')}</Label>
-              <Select id={pickId} value={pick} onChange={(e) => onPick(e.target.value)}>
-                <Select.Option value="">{t('access.pickPerson')}</Select.Option>
-                {candidates.map((c) => (
-                  <Select.Option key={c.id} value={c.id}>
-                    {c.name}
-                  </Select.Option>
-                ))}
-              </Select>
-            </Field>
-            <Button
-              variant="secondary"
-              onClick={() => {
-                if (!pick || draft.members.includes(pick)) return;
-                onChange({ ...draft, members: [...draft.members, pick] });
-                onPick('');
-              }}
-            >
-              {t('access.add')}
-            </Button>
-          </div>
+          {notConnected ? (
+            <Alert data-color="info" data-size="sm">
+              <Heading level={3} data-size="2xs">
+                {t('access.altinnNotConnected')}
+              </Heading>
+              <Paragraph data-size="sm">{t('access.noPeopleToPick')}</Paragraph>
+            </Alert>
+          ) : (
+            <div className="add-person">
+              <Field>
+                <Label htmlFor={pickId}>{t('access.addPerson')}</Label>
+                <Select id={pickId} value={pick} onChange={(e) => onPick(e.target.value)}>
+                  <Select.Option value="">{t('access.pickPerson')}</Select.Option>
+                  {candidates.map((c) => (
+                    <Select.Option key={c.id} value={c.id}>
+                      {c.name}
+                    </Select.Option>
+                  ))}
+                </Select>
+              </Field>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  if (!pick || draft.members.includes(pick)) return;
+                  onChange({ ...draft, members: [...draft.members, pick] });
+                  onPick('');
+                }}
+              >
+                {t('access.add')}
+              </Button>
+            </div>
+          )}
         </div>
       ) : null}
       {saved ? (
@@ -1008,6 +1022,7 @@ export const Access = ({ api, tenant, tenantName, route, live }: ScreenProps) =>
           tenant={tenant}
           data={restState.data}
           people={people?.people}
+          notConnected={notConnected}
           openFirst={route.query.get('open') ?? undefined}
           onDirty={setDirty}
           leaveAsk={leaveAsk}

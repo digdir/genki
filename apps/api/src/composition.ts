@@ -76,6 +76,7 @@ import {
 import {
   gateQuota,
   InMemoryTraceDeliveries,
+  retentionFor,
   klarsprakChecklist,
   nynorskReference,
   type TraceDeliveryStore,
@@ -2293,6 +2294,7 @@ export const createPlatform = async (input: PlatformInput) => {
         allTasks: () => taskIndex.all(),
         catalogSkips: input.catalogSkips ?? [],
         hiddenService: (tenant, id) => isHiddenService(definitions, tenant, id),
+        names: actorNames(configEntries),
         eval: {
           kernel,
           evalCapability: evalCapability.descriptor.id,
@@ -2308,6 +2310,7 @@ export const createPlatform = async (input: PlatformInput) => {
         authenticate,
         definitions,
         tasks: (tenant) => taskIndex.all(tenant),
+        retentionOf: (capability) => retentionFor(settings, capability.service.tenant, capability),
         task: hidingInternalTasks(definitions, async (id) => (await taskStore.get(id))?.task),
         ...(taskIndex.envelopes ? { taskEnvelopes: taskIndex.envelopes } : {}),
         events: (id) => log.read(id, 0, () => false),
@@ -2406,16 +2409,29 @@ export const createPlatform = async (input: PlatformInput) => {
         .filter((m) => !principal.tenant || !ownedElsewhere(config.catalog, m.id, principal.tenant))
         .filter((m) => !residency || residencyAllows(residency, m.residency))
         .filter((m) => wanted.every((w) => m.capabilities.includes(w)))
-        .map(({ id, family, residency: r, capabilities, operations, parameters }) => ({
-          id,
-          name: displayNames.get(id) ?? id,
-          ...(family ? { family } : {}),
-          residency: r,
-          capabilities,
-          operations,
-          parameters,
-          price: prices[id] ?? null,
-        }));
+        .map(
+          ({
+            id,
+            family,
+            maker,
+            operator,
+            residency: r,
+            capabilities,
+            operations,
+            parameters,
+          }) => ({
+            id,
+            name: displayNames.get(id) ?? id,
+            ...(family ? { family } : {}),
+            ...(maker ? { maker } : {}),
+            ...(operator ? { operator } : {}),
+            residency: r,
+            capabilities,
+            operations,
+            parameters,
+            price: prices[id] ?? null,
+          }),
+        );
       return c.json({ data });
     });
     app.route(

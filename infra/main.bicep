@@ -43,6 +43,11 @@ param maskinportenJwksUri string = ''
 param maskinportenTokenUrl string = ''
 param maskinportenRequiredScope string = ''
 
+@description('Altinn access management for the Tilgang people list (ADR 0060). Empty leaves it off.')
+param altinnPeopleUrl string = ''
+param altinnPeopleMaskinportenClientId string = ''
+param altinnPeopleMaskinportenScope string = ''
+
 @description('Comma-separated person identifiers that get the operator role.')
 param operatorSubjects string = ''
 
@@ -419,6 +424,9 @@ module apps 'modules/containerapps.bicep' = {
       MASKINPORTEN_JWKS_URI: maskinportenJwksUri
       MASKINPORTEN_TOKEN_URL: maskinportenTokenUrl
       MASKINPORTEN_REQUIRED_SCOPE: maskinportenRequiredScope
+      ALTINN_PEOPLE_URL: altinnPeopleUrl
+      ALTINN_PEOPLE_MASKINPORTEN_CLIENT_ID: altinnPeopleMaskinportenClientId
+      ALTINN_PEOPLE_MASKINPORTEN_SCOPE: altinnPeopleMaskinportenScope
       OPERATOR_SUBJECTS: operatorSubjects
       PLATFORM_TENANT: platformTenant
       EMPLOYEE_CLIENT_IDS: join(filter([portalClientId, workspaceClientId, consoleClientId], id => !empty(id)), ',')

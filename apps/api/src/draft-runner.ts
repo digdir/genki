@@ -56,7 +56,10 @@ export const priced = (usage: Usage, price: ModelPrice | undefined) =>
     : 0);
 
 export const serviceOrigin = 'service';
-export const draftOrigins = ['builder', 'playground', 'skill-test', 'assistant'] as const;
+export const draftOrigins = ['builder', 'playground', 'skill-test', 'assistant', 'trial'] as const;
+
+/** Runs a person starts to try a draft out, as opposed to test cases and the assistant's own calls. */
+export const trialOrigins: readonly RunOrigin[] = ['playground', 'trial'];
 export type DraftOrigin = (typeof draftOrigins)[number];
 export type RunOrigin = DraftOrigin | typeof serviceOrigin;
 
@@ -71,6 +74,12 @@ export const originOf = (capabilityId: string): RunOrigin => {
   if (!capabilityId.startsWith(draftCapabilityPrefix)) return serviceOrigin;
   const segment = capabilityId.slice(draftCapabilityPrefix.length).split('/')[0];
   return draftOrigins.find((o) => o === segment) ?? 'builder';
+};
+
+export const draftServiceOf = (capabilityId: string): string | undefined => {
+  if (!capabilityId.startsWith(draftCapabilityPrefix)) return undefined;
+  const parts = capabilityId.slice(draftCapabilityPrefix.length).split('/');
+  return parts.length === 3 ? parts[1] : undefined;
 };
 
 export type DraftInputPart = { kind: 'text'; text: string } | { kind: 'file'; blob: string };
@@ -461,7 +470,12 @@ export const createDraftRunner = (deps: DraftRunnerDeps): DraftRunner => {
     definition: unknown,
     compiled: CompiledCapability,
   ): Promise<Omit<PreparedDraft, 'definition'> | DraftRunFailure> => {
-    const id = `${draftCapabilityPrefix}${input.origin}/${createHash('sha256')
+    const serviceId = (definition as { metadata?: { id?: unknown } }).metadata?.id;
+    const segment =
+      typeof serviceId === 'string' && /^[a-z0-9][a-z0-9-]{0,62}$/.test(serviceId)
+        ? `${serviceId}/`
+        : '';
+    const id = `${draftCapabilityPrefix}${input.origin}/${segment}${createHash('sha256')
       .update(
         `${input.tenant}/${(definition as { metadata: { id: string } }).metadata.id}/${Date.now()}/${Math.random()}`,
       )

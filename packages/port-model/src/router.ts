@@ -124,6 +124,8 @@ export interface ModelDescription {
   endpoint: string;
   deployment: string;
   family?: string;
+  maker?: string;
+  operator?: { name: string; region?: string };
   residency: Residency;
   capabilities: Capability[];
   apis: ApiBindings;
@@ -413,6 +415,7 @@ export class ModelRouter implements PortProvider<ModelPort> {
                 residency: 'global',
                 capabilities: rule.capabilities,
                 apis,
+                ...(rule.maker ? { maker: rule.maker } : {}),
                 options: {},
               },
               ...(found.model ? { family: found.model } : {}),
@@ -467,6 +470,7 @@ export class ModelRouter implements PortProvider<ModelPort> {
 
   #describe(route: Route): ModelDescription {
     const model = this.#effective(route);
+    const operator = this.#catalog.endpoints[model.endpoint]?.operator;
     const chat = model.apis.chat;
     const transport = chat
       ? this.#connections
@@ -484,6 +488,15 @@ export class ModelRouter implements PortProvider<ModelPort> {
       endpoint: model.endpoint,
       deployment: model.deployment,
       ...(route.family ? { family: route.family } : {}),
+      ...(model.maker ? { maker: model.maker } : {}),
+      ...(operator
+        ? {
+            operator: {
+              name: operator.name,
+              ...(operator.region ? { region: operator.region } : {}),
+            },
+          }
+        : {}),
       residency: model.residency,
       capabilities: model.capabilities,
       apis: model.apis,

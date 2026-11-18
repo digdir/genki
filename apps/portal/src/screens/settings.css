@@ -530,3 +530,8 @@
   font-size: var(--ds-body-sm-font-size, 0.875rem);
   color: var(--ds-color-neutral-text-subtle);
 }
+
+.settings-grid-scroll {
+  position: relative;
+  max-width: 100%;
+}

@@ -18,8 +18,8 @@ const calm: TenantStatus = {
 };
 
 const api = (
-  health: { lockdown?: boolean; builtAt?: string } = {},
-  status: TenantStatus | Error = calm,
+  health: { lockdown?: boolean; builtAt?: string; environment?: string } = {},
+  status: (TenantStatus & { pastIncidents?: unknown[] }) | Error = calm,
 ): Pick<ApiClient, 'getHealth' | 'cache' | 'platformStatus'> => ({
   getHealth: () => Promise.resolve({ status: 'ok', version: 'a3f9c12e1d', ...health }),
   cache: { invalidate: () => undefined } as ApiClient['cache'],
@@ -32,6 +32,29 @@ document.getAnimations ??= () => [];
 afterEach(cleanup);
 
 describe('Driftsstatus', () => {
+  it('names the environment from /health and lists past incidents from the status, newest first as sent', async () => {
+    render(
+      <DevStatus
+        api={api(
+          { environment: 'genki-test' },
+          {
+            ...calm,
+            pastIncidents: [
+              {
+                date: '2026-11-12T08:00:00Z',
+                title: 'Treg innlesing',
+                text: 'Løst etter 40 minutter.',
+              },
+            ],
+          },
+        )}
+        tenant="999888777"
+      />,
+    );
+    expect(await screen.findByText('genki-test')).toBeTruthy();
+    expect(screen.getByText('Treg innlesing. Løst etter 40 minutter.')).toBeTruthy();
+  });
+
   it('says the environment is locked when the API reports lockdown', async () => {
     render(<DevStatus api={api({ lockdown: true })} tenant="999888777" />);
     expect(await screen.findByText('Låst miljø')).toBeTruthy();

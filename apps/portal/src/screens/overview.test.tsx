@@ -230,7 +230,10 @@ describe('Oversikt', () => {
     endedAt: null,
   });
 
-  const withFailedRuns = (rows: ReturnType<typeof failedRun>[], total = rows.length) => {
+  const withFailedRuns = (
+    rows: (ReturnType<typeof failedRun> & { failure?: unknown })[],
+    total = rows.length,
+  ) => {
     const asked: string[] = [];
     const base = replacing(
       /\/overview$/,
@@ -276,6 +279,25 @@ describe('Oversikt', () => {
       '#/log/runs?status=failed&service=klarsprak&date=2026-10-07',
     );
     expect(asked.some((u) => /limit=500/.test(u))).toBe(true);
+  });
+
+  it('names the most common reason today next to the failed-run count', async () => {
+    onFixedDay();
+    const timeout = { code: 'deadline_exceeded', reason: 'Kjøringen tok for lang tid.' };
+    const noModel = { code: 'model_error', reason: 'Vi fikk ikke svar fra modellen.' };
+    const { fetch } = withFailedRuns([
+      { ...failedRun('r1', 'klarsprak', 'Klarspråk', today), failure: noModel },
+      { ...failedRun('r2', 'klarsprak', 'Klarspråk', today), failure: timeout },
+      { ...failedRun('r3', 'klarsprak', 'Klarspråk', today), failure: timeout },
+      { ...failedRun('r4', 'klarsprak', 'Klarspråk', threeDaysAgo), failure: noModel },
+      { ...failedRun('r5', 'klarsprak', 'Klarspråk', threeDaysAgo), failure: noModel },
+    ]);
+    await renderAt('#/overview', fetch);
+
+    const attention = await screen.findByRole('region', { name: 'Trenger deg nå' });
+    expect(
+      await within(attention).findByText(/3 kjøringer feilet i dag\. Kjøringen tok for lang tid\./),
+    ).toBeTruthy();
   });
 
   it('never lists playground try runs as a service', async () => {
@@ -420,5 +442,82 @@ describe('Oversikt', () => {
     await screen.findByRole('heading', { name: 'Trenger deg nå' });
     const menu = screen.getByRole('navigation', { name: 'Hovedmeny' });
     expect(within(menu).getByRole('link', { name: 'Datasett' }).textContent).toBe('Datasett');
+  });
+});
+
+describe('Oversikt: the usage card and the service count', () => {
+  const lowerBound = (): UsageReport => {
+    const base = report({ rapportassistenten: 3_000_000 });
+    const partly = (u: UsageTotals): UsageTotals => ({ ...u, priced: false });
+    return {
+      ...base,
+      priced: false,
+      totals: { ...partly(base.totals), unpricedModels: ['ai-gateway/borealis-27b'] },
+      daily: base.daily.map((d) => ({ ...d, usage: partly(d.usage) })),
+    } as UsageReport;
+  };
+
+  it('shows the cost as at least the priced part and names the model without a price, as Statistikk does', async () => {
+    const models = { data: [{ id: 'ai-gateway/borealis-27b', name: 'Borealis 27B' }] };
+    await renderAt('#/overview', replacing(/\/models$/, models, withUsage(lowerBound())));
+
+    const usage = await screen.findByRole('region', { name: /Bruk i/ });
+    expect(
+      (await within(usage).findByText('Anslått kostnad')).nextElementSibling?.textContent,
+    ).toBe('minst 1,00 kr');
+    expect(
+      await within(usage).findByText(
+        'Prisen mangler for modellen Borealis 27B, så kostnaden er minst dette.',
+      ),
+    ).toBeTruthy();
+    expect(within(usage).queryByText('Ikke priset')).toBeNull();
+  });
+
+  it('counts the same services as the Tjenester list: unpublished drafts and every service not archived', async () => {
+    const summary = (id: string, lifecycle: 'active' | 'paused' | 'archived') => ({
+      id,
+      name: id,
+      purpose: '',
+      outputKind: 'answer',
+      channels: [],
+      latestVersion: 1,
+      status: lifecycle === 'paused' ? 'paused' : 'active',
+      statusReason: null,
+      lifecycle,
+      runsThisWeek: 0,
+    });
+    const draft = (id: string, latestVersion: number | null) => ({
+      id,
+      name: id,
+      purpose: '',
+      outputKind: 'answer',
+      latestVersion,
+      revision: 1,
+      at: '2026-10-07T10:00:00Z',
+      by: 'kari',
+    });
+    const fetch = replacing(
+      /\/service-drafts$/,
+      { data: [draft('ny', null), draft('a', 1)] },
+      replacing(
+        /\/services$/,
+        { data: [summary('a', 'active'), summary('b', 'paused'), summary('c', 'archived')] },
+        withUsage(normalUsage),
+      ),
+    );
+    await renderAt('#/overview', fetch);
+
+    const top = await screen.findByRole('region', { name: 'Mest brukt siste 7 dager' });
+    expect(await within(top).findByRole('link', { name: 'Alle 3 tjenester' })).toBeTruthy();
+  });
+
+  it('writes the month in lower case in Norwegian, as in running text', async () => {
+    vi.useFakeTimers({ now: new Date('2026-11-18T10:00:00Z'), toFake: ['Date'] });
+    try {
+      await renderAt('#/overview', withUsage(normalUsage));
+      expect(await screen.findByText(/· november 2026$/)).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

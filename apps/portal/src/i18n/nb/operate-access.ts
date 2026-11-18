@@ -91,6 +91,8 @@ const access = defineNamespace({
   addPerson: 'Legg til person',
   pickPerson: 'Velg en person',
   add: 'Legg til',
+  noPeopleToPick:
+    'Derfor er det ingen å velge blant her ennå. Når Altinn er koblet til, kan du velge hvem som får bruke tjenesten.',
   pickAtLeastOne: 'Velg minst én person, eller la alle med «Bruke tjenester» bruke tjenesten.',
   unsaved: 'Du har endringer som ikke er lagret',
   reasonLabel: 'Hvorfor endrer du dette? (vises i loggen)',

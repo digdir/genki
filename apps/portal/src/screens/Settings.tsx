@@ -12,7 +12,7 @@ import {
 } from '@digdir/designsystemet-react';
 import { useCallback, useState } from 'react';
 import { useT } from '../i18n';
-import { Crumbs } from '../components/Crumbs';
+import { BackLink } from '../components/BackLink';
 import { useInServicePage } from './service/context';
 import {
   exampleDatasetNames,
@@ -62,7 +62,19 @@ const View = ({
   const serviceNames = live ? [] : exampleServiceNames;
   const datasetNames = live ? [] : exampleDatasetNames;
   const [rows, setRows] = useState(loaded.rows);
-  const [panel, setPanel] = useState<string>();
+  const [panel, setPanelState] = useState(route.query.get('setting') ?? undefined);
+  const setPanel = (next?: string) => {
+    setPanelState(next);
+    const [path = '', search = ''] = window.location.hash.replace(/^#/, '').split('?');
+    const query = new URLSearchParams(search);
+    if (next) query.set('setting', next);
+    else query.delete('setting');
+    window.history.replaceState(
+      window.history.state,
+      '',
+      `#${path}${query.size ? `?${query.toString()}` : ''}`,
+    );
+  };
   const [log, setLog] = useState<LogEntry[]>([]);
   const [flash, setFlash] = useState('');
   const [draftMsg, setDraftMsg] = useState('');
@@ -85,23 +97,12 @@ const View = ({
       : context.kind === 'dataset'
         ? `/datasets/${encodeURIComponent(context.id)}/settings`
         : '/settings';
-  const crumbs =
+  const back =
     context.kind === 'service'
-      ? [
-          { label: t('settings.crumbServices'), href: '#/services' },
-          { label: loaded.target, href: `#/services/${encodeURIComponent(context.id)}` },
-          { label: t('settings.crumbSettings') },
-        ]
+      ? { label: loaded.target, href: `#/services/${encodeURIComponent(context.id)}` }
       : context.kind === 'dataset'
-        ? [
-            { label: t('settings.crumbDatasets'), href: '#/datasets' },
-            { label: loaded.target, href: `#/datasets/${encodeURIComponent(context.id)}` },
-            { label: t('settings.crumbSettings') },
-          ]
-        : [
-            { label: t('settings.crumbOverview'), href: '#/overview' },
-            { label: t('settings.crumbSettings') },
-          ];
+        ? { label: loaded.target, href: `#/datasets/${encodeURIComponent(context.id)}` }
+        : undefined;
   const title = t('settings.titleTenant', {
     name: context.kind === 'tenant' ? tenantName : loaded.target,
   });
@@ -130,7 +131,7 @@ const View = ({
       names={{ services: serviceNames, datasets: datasetNames }}
       draftVersion={loaded.draftVersion}
       log={log.filter((l) => l.id === selected.id)}
-      onClose={() => setPanel(undefined)}
+      onClose={() => setPanel()}
       onSaved={(row, entry, kind, what) => {
         setRows((all) => all.map((r) => (r.id === row.id ? row : r)));
         setLog((all) => [entry, ...all]);
@@ -254,7 +255,7 @@ const View = ({
           </a>
         </Alert>
       ) : null}
-      {embedded ? null : <Crumbs items={crumbs} />}
+      {embedded || !back ? null : <BackLink label={back.label} href={back.href} />}
       <div className="settings-header">
         <div className="settings-title">
           {embedded ? null : (

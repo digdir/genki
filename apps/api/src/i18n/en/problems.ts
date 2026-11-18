@@ -6,6 +6,7 @@ export const problems = {
   invalidWrittenStandard: 'Invalid written standard',
   invalidLanguage: 'Invalid language',
   reasonTooShort: 'Write a reason of at least {count} characters.',
+  toolNotFound: 'The connection has no such tool to decide on',
   invalidRequest: 'Invalid request',
   notFound: 'Not found',
   unauthorized: 'Unauthorized',

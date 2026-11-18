@@ -45,6 +45,7 @@ interface Loaded {
   services: Map<string, string>;
   keys: Map<string, string>;
   models: Map<string, string>;
+  datasets: Map<string, { name: string; fullId: string }>;
   auditDays?: number;
 }
 
@@ -54,13 +55,16 @@ const load = async (
   signal: AbortSignal,
   paged: boolean,
 ): Promise<Loaded> => {
-  const [audit, services, models, settings] = await Promise.all([
-    paged ? [] : api.audit(tenant, signal),
+  const [audit, services, models, datasets, settings] = await Promise.all([
+    paged
+      ? []
+      : api.auditPage(tenant, { limit: auditPageSize, offset: 0 }, signal).then((p) => p.data),
     api.services(tenant, signal).then(
       (r) => r.data,
       () => [],
     ),
     api.listModels({}, signal).catch(() => []),
+    api.datasets.list(tenant, signal).catch(() => []),
     paged ? api.tenantEffectiveSettings(tenant, signal).catch(() => undefined) : undefined,
   ]);
   const auditDays = settings?.['retention.auditDays']?.value;
@@ -77,6 +81,12 @@ const load = async (
     services: new Map(services.map((s) => [s.id, s.name])),
     keys: new Map(keys.map((k) => [k.id, k.name])),
     models: new Map(models.flatMap((m) => (m.name ? [[m.id, m.name] as const] : []))),
+    datasets: new Map(
+      datasets.flatMap((d) => {
+        const named = { name: d.name, fullId: d.fullId };
+        return [[d.fullId, named] as const, [d.id, named] as const];
+      }),
+    ),
     ...(typeof auditDays === 'number' ? { auditDays } : {}),
   };
 };
@@ -142,7 +152,13 @@ export const LiveChanges = ({
       e,
       t,
       (id) => data.services.get(id),
-      (kind, id) => (kind === 'model' ? data.models.get(id) : undefined),
+      (kind, id) =>
+        kind === 'model'
+          ? data.models.get(id)
+          : kind === 'dataset'
+            ? data.datasets.get(id)?.name
+            : undefined,
+      (id) => data.datasets.get(id)?.fullId,
     );
     return (
       <>

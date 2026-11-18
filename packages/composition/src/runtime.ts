@@ -189,7 +189,12 @@ import {
 } from './retrieval-ports.js';
 import { stateOrganisationTool, stateOrganisationToolRef } from './state-organisation-tool.js';
 import { createGuardrailRuleRegistry, resolveRules } from './scoped-registry.js';
-import { answerLanguageFor, houseStyleFor, withSettings } from './settings-runtime.js';
+import {
+  answerLanguageFor,
+  houseStyleFor,
+  withSettings,
+  withSourcesSetting,
+} from './settings-runtime.js';
 import type { TenantSecretVault } from './tenant-secrets.js';
 import { userPreferenceReader } from './user-preferences.js';
 
@@ -750,21 +755,24 @@ export const createRuntime = async (input: RuntimeInput) => {
       (dataset) => knowledge.resolve(dataset),
       wrap(
         withHooks(
-          guardStrategy(withSettings(settings, strategy), {
-            decisions: true,
-            rules: ruleHooks,
-            answerLanguage: async (ctx, request, config, question) =>
-              answerLanguageFor(
-                settings,
-                ctx,
-                request,
-                config,
-                question,
-                await preferences.of(ctx.tenant, ctx.principal),
-              ),
-            houseStyle: (ctx, _request, config, language) =>
-              houseStyleFor(settings, ctx, config, language),
-          }),
+          withSourcesSetting(
+            settings,
+            guardStrategy(withSettings(settings, strategy), {
+              decisions: true,
+              rules: ruleHooks,
+              answerLanguage: async (ctx, request, config, question) =>
+                answerLanguageFor(
+                  settings,
+                  ctx,
+                  request,
+                  config,
+                  question,
+                  await preferences.of(ctx.tenant, ctx.principal),
+                ),
+              houseStyle: (ctx, _request, config, language) =>
+                houseStyleFor(settings, ctx, config, language),
+            }),
+          ),
           { hooks: hookRuntime.forContext, invoke: hookRuntime.invoke },
         ),
       ),

@@ -1,4 +1,4 @@
-import type { Input, Principal } from '@genai/contracts';
+import type { Input, Part, Principal } from '@genai/contracts';
 import {
   checkSettingValue,
   languageInstructionsSetting,
@@ -15,7 +15,7 @@ import {
   type WrittenStandard,
 } from '@genai/guardrails';
 import { OVERRIDE_SCOPE } from '@genai/identity';
-import type { InvocationContext, Strategy } from '@genai/kernel';
+import type { Emitted, InvocationContext, Strategy } from '@genai/kernel';
 
 export const legacyOverrideAliases: Record<string, string> = {
   'retrieve-top-k': 'retrieval.retrieveTopK',
@@ -293,3 +293,90 @@ export const withSettings = <C>(registry: SettingsRegistry, inner: Strategy<C>):
       }
     : {}),
 });
+
+export const tenantSampleRate =
+  (registry: Pick<SettingsRegistry, 'effective'>) =>
+  (tenant: string): number | undefined => {
+    const rate = registry.effective(tenant)['tracing.sampleRate']?.value;
+    return typeof rate === 'number' ? rate : undefined;
+  };
+
+export const showSourcesSetting = 'answers.showSources';
+const sourcesMime = 'application/vnd.genai.sources+json';
+
+const sourceMarker = / ?\[\d{1,3}\]/g;
+const partialMarker = / ?(?:\[\d{0,3})?$/;
+const deltaText = (event: Emitted) =>
+  event.type === 'kernel.part.delta' &&
+  isObject(event.data) &&
+  typeof (event.data as { text?: unknown }).text === 'string'
+    ? (event.data as { text: string }).text
+    : undefined;
+
+const withoutSources = (part: Part): Part => {
+  if (part.mime === sourcesMime && part.body.kind === 'json' && isObject(part.body.json))
+    return { ...part, body: { kind: 'json', json: { ...part.body.json, sources: [] } } };
+  if (part.body.kind !== 'text') return part;
+  return {
+    ...part,
+    body: { kind: 'text', text: part.body.text.replace(sourceMarker, '') },
+    ...(part.meta?.citations !== undefined ? { meta: { ...part.meta, citations: [] } } : {}),
+  };
+};
+
+export const withSourcesSetting = <C>(
+  registry: SettingsRegistry,
+  inner: Strategy<C>,
+): Strategy<C> => {
+  const filtered = async function* (
+    shown: boolean,
+    events: AsyncIterable<Emitted>,
+  ): AsyncIterable<Emitted> {
+    if (shown) {
+      yield* events;
+      return;
+    }
+    let held: Emitted | undefined;
+    const release = function* () {
+      if (held && deltaText(held)) yield held;
+      held = undefined;
+    };
+    for await (const event of events) {
+      const text = deltaText(event);
+      if (text === undefined) {
+        yield* release();
+        yield event.type === 'kernel.result' && Array.isArray(event.data)
+          ? { ...event, data: (event.data as Part[]).map(withoutSources) }
+          : event;
+        continue;
+      }
+      const joined = (held ? (deltaText(held) ?? '') : '') + text;
+      const clean = joined.replace(sourceMarker, '');
+      const partial = partialMarker.exec(clean)?.[0] ?? '';
+      const visible = clean.slice(0, clean.length - partial.length);
+      held = { ...event, data: { ...(event.data as object), text: partial } };
+      if (visible) yield { ...event, data: { ...(event.data as object), text: visible } };
+    }
+    yield* release();
+  };
+  const shows = (ctx: InvocationContext, config: unknown) =>
+    settingsFor(registry, ctx, config)[showSourcesSetting]?.value !== false;
+  return {
+    ...inner,
+    run: (ctx, input, config) => filtered(shows(ctx, config), inner.run(ctx, input, config)),
+    ...(inner.resume
+      ? {
+          resume: (ctx: InvocationContext, checkpoint: unknown, response: Input, config: C) =>
+            filtered(
+              shows(ctx, config),
+              (inner.resume as NonNullable<Strategy<C>['resume']>)(
+                ctx,
+                checkpoint,
+                response,
+                config,
+              ),
+            ),
+        }
+      : {}),
+  };
+};

@@ -158,6 +158,12 @@ a:not([class^='ds-'], [class*=' ds-']):hover {
   gap: 4px;
 }
 
+.org-options-legend {
+  padding: 0 0 4px;
+  font-size: 14px;
+  color: var(--ds-color-neutral-text-subtle);
+}
+
 .org-option {
   display: flex;
   gap: 12px;
@@ -488,7 +494,7 @@ a:not([class^='ds-'], [class*=' ds-']):hover {
 
 @media (max-width: 900px) {
   .dev-tools {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .dev-tools-nav {
@@ -527,6 +533,42 @@ a:not([class^='ds-'], [class*=' ds-']):hover {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
+}
+
+.back-link {
+  align-self: flex-start;
+  font-size: 15px;
+}
+
+.link-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 24px;
+  border-bottom: 1px solid var(--ds-color-neutral-border-subtle);
+}
+
+.link-tabs a {
+  display: block;
+  padding: 10px 4px;
+  white-space: nowrap;
+  color: var(--ds-color-neutral-text-default);
+  text-decoration: none;
+  border-bottom: 3px solid transparent;
+}
+
+.link-tabs a:hover {
+  border-bottom-color: var(--ds-color-accent-border-subtle);
+}
+
+.link-tabs a[aria-selected='true'] {
+  color: var(--ds-color-accent-text-default);
+  font-weight: 600;
+  border-bottom-color: var(--ds-color-accent-base-default);
+}
+
+.link-tabs a:focus-visible {
+  outline: 3px solid var(--ds-color-focus-outer);
+  outline-offset: -3px;
 }
 
 .meta {
@@ -681,6 +723,7 @@ a:not([class^='ds-'], [class*=' ds-']):hover {
 }
 
 .table-scroll {
+  position: relative;
   overflow-x: auto;
   border: 1px solid var(--ds-color-neutral-border-subtle);
   border-radius: var(--ds-border-radius-lg);

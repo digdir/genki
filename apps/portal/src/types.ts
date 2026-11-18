@@ -254,11 +254,19 @@ export interface FeedbackItem {
   at: string;
 }
 
+export interface CapabilityFileLimits {
+  accepts: string[];
+  max_bytes: number;
+  max_count: number;
+}
+
 export interface CapabilityModel {
   id: string;
   description?: string;
   _agent_id?: string;
   _mode?: string;
+  _media?: CapabilityFileLimits;
+  _files?: CapabilityFileLimits;
 }
 
 export interface UnmaskedInputUse {
@@ -309,12 +317,14 @@ export interface TaskRow {
   createdAt: string;
   endedAt: string | null;
   usage?: UsageTotals;
+  failure?: { code: string; reason: string; step?: string };
 }
 
 export interface ServiceLifecycleView {
   state: 'active' | 'paused' | 'archived';
   reason?: string;
   by?: string;
+  byName?: string;
   at?: string;
 }
 

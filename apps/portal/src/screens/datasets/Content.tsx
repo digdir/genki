@@ -28,6 +28,7 @@ import { useT, type PlainKey, type T } from '../../i18n';
 import { useRights } from '../../Shell';
 import { Loading } from '../../states';
 import type { FacetField } from '../../types';
+import { isOwnEndpoint } from './live-model';
 import { datasetTabPath } from './model';
 
 export const pageSize = 50;
@@ -100,6 +101,11 @@ const problemText = (t: T, error: unknown) => {
     return t('datasets.filtersInvalid');
   return t('datasets.contentUnsupported');
 };
+
+const unlistable = (error: unknown) =>
+  error instanceof ApiError &&
+  error.status === 422 &&
+  !problemOf(error)?.errors?.some((e) => e.path.startsWith('filters'));
 
 const downloadProblems: Record<string, PlainKey> = {
   'urn:genai:problem:original-not-kept': 'datasets.originalNotKept',
@@ -280,10 +286,13 @@ export const Content = ({
     return () => clearTimeout(timer);
   }, [query]);
 
+  const endpoint = isOwnEndpoint(view);
   const [page, retry] = useAsync(
     (signal): Promise<DatasetDocumentsPage> =>
-      api.datasets.documents(tenant, view.id, { limit: pageSize, offset: 0 }, signal),
-    [api, tenant, view.id],
+      endpoint
+        ? Promise.resolve({ dataset: view.id, limit: pageSize, offset: 0, documents: [] })
+        : api.datasets.documents(tenant, view.id, { limit: pageSize, offset: 0 }, signal),
+    [api, tenant, view.id, endpoint],
   );
   const filters = filtersOf(chosen, view.valueTypes);
   const filterKey = JSON.stringify(filters);
@@ -335,7 +344,25 @@ export const Content = ({
     setChosen({});
   };
 
+  if (endpoint)
+    return (
+      <section className="stack-sm" aria-labelledby="content-endpoint-h">
+        <Heading level={2} data-size="xs" id="content-endpoint-h">
+          {t('datasets.endpointContentTitle')}
+        </Heading>
+        <Paragraph data-size="sm">{t('datasets.endpointContent')}</Paragraph>
+      </section>
+    );
   if (page.status === 'loading') return <Loading label={t('datasets.loadingDocuments')} />;
+  if (page.status === 'error' && unlistable(page.error))
+    return (
+      <section className="stack-sm" aria-labelledby="content-unlisted-h">
+        <Heading level={2} data-size="xs" id="content-unlisted-h">
+          {t('datasets.tabContent')}
+        </Heading>
+        <Paragraph data-size="sm">{t('datasets.contentUnsupported')}</Paragraph>
+      </section>
+    );
   if (page.status === 'error')
     return (
       <Alert data-color="danger" role="alert">

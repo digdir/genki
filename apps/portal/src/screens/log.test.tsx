@@ -2,16 +2,18 @@
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { logTimelines } from '../data/log';
+import { translator } from '../i18n';
 import { mockFetch } from '../mock';
 import type { TaskTimeline } from '../types';
 import { expectAccessible, failingFetch, renderAt } from '../test-utils';
+import { trialLabel, trialPlace } from './log/RunsTab';
 
 vi.hoisted(() => {
   vi.useFakeTimers({ now: new Date('2026-11-17T13:00:00Z'), toFake: ['Date'] });
 });
 
 const tab = (name: string) =>
-  within(screen.getByRole('navigation', { name: 'Logg' })).getByRole('link', { name });
+  within(screen.getByRole('tablist', { name: 'Logg' })).getByRole('tab', { name });
 const steps = () => screen.findByRole('list', { name: 'Steg i kjøringen' });
 const table = () => screen.findByRole('table', { name: 'Kjøringer' });
 const rowOf = (name: RegExp) =>
@@ -39,7 +41,7 @@ describe('Logg: Kjøringer', () => {
     await renderAt('#/log');
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Logg' })).toBeTruthy();
-    expect(tab('Kjøringer').getAttribute('aria-current')).toBe('page');
+    expect(tab('Kjøringer').getAttribute('aria-selected')).toBe('true');
     const headers = within(await table())
       .getAllByRole('columnheader')
       .map((h) => h.textContent);
@@ -156,8 +158,9 @@ describe('Logg: Kjøringer', () => {
         within(screen.getByRole('table', { name: 'Kjøringer' })).getAllByRole('link', {
           name: /^Prøveområdet: Hva er omsøkt beløp/,
         }),
-      ).toHaveLength(2),
+      ).toHaveLength(1),
     );
+    expect(screen.getByRole('link', { name: /^Byggeren: Hva er omsøkt beløp/ })).toBeTruthy();
     expect(screen.queryByRole('link', { name: /^Rapportassistenten/ })).toBeNull();
     expect(api.tasks().some((c) => c.includes('origin=playground'))).toBe(true);
     expect(window.location.hash).toBe('#/log?service=trial');
@@ -167,10 +170,10 @@ describe('Logg: Kjøringer', () => {
     await renderAt('#/log');
     await table();
 
-    const trials = screen.getByText(
-      /^Prøvekjøringer fra prøveområdet og prøving av operasjoner: 2$/,
-    );
+    const trials = screen.getByText(/^Prøvekjøringer fra prøveområdet og byggeren: 2$/);
     const group = trials.closest('details') as HTMLElement;
+    expect(within(group).getByText(/^Per Hansen i prøveområdet · /)).toBeTruthy();
+    expect(within(group).getByText(/^Kari Nordmann i byggeren · /)).toBeTruthy();
     expect(
       within(group).getByRole('link', { name: 'Vis alle prøvekjøringene' }).getAttribute('href'),
     ).toBe('#/log?service=trial');
@@ -248,7 +251,7 @@ describe('Logg: Kjøringer', () => {
 
     fireEvent.click(tab('Endringer'));
     await waitFor(() => expect(window.location.hash).toBe('#/log/changes?status=failed&period=7'));
-    await waitFor(() => expect(tab('Endringer').getAttribute('aria-current')).toBe('page'));
+    await waitFor(() => expect(tab('Endringer').getAttribute('aria-selected')).toBe('true'));
     fireEvent.click(tab('Kjøringer'));
     await waitFor(() => expect(window.location.hash).toBe('#/log?status=failed&period=7'));
 
@@ -264,19 +267,16 @@ describe('opening a run', () => {
     fireEvent.click(screen.getByRole('link', { name: /^Nettsider på nynorsk/ }));
 
     await waitFor(() => expect(window.location.hash).toBe('#/log/t4?status=failed&period=7'));
-    const crumbs = await screen.findByRole('navigation', { name: 'Brødsmuler' });
     expect(
-      within(crumbs)
-        .getByRole('link', { name: 'Kjøringer: feilet, siste 7 dager' })
-        .getAttribute('href'),
+      (await screen.findByRole('link', { name: 'Kjøringer: feilet, siste 7 dager' })).getAttribute(
+        'href',
+      ),
     ).toBe('#/log?status=failed&period=7');
   });
 
   it('keeps the filters when going back to the list', async () => {
     await renderAt('#/log/t4?status=failed&period=7');
-    const crumbs = await screen.findByRole('navigation', { name: 'Brødsmuler' });
-
-    fireEvent.click(within(crumbs).getByRole('link'));
+    fireEvent.click(await screen.findByRole('link', { name: 'Kjøringer: feilet, siste 7 dager' }));
 
     await waitFor(() => expect(window.location.hash).toBe('#/log?status=failed&period=7'));
     await table();
@@ -319,11 +319,12 @@ describe('opening a run', () => {
       '#/log/t1?service=rapportassistenten&period=custom&from=2026-11-01&to=2026-11-17',
     );
 
-    const crumbs = await screen.findByRole('navigation', { name: 'Brødsmuler' });
     expect(
-      within(crumbs)
-        .getByRole('link', { name: 'Kjøringer: Rapportassistenten, 01.11.2026 til 17.11.2026' })
-        .getAttribute('href'),
+      (
+        await screen.findByRole('link', {
+          name: 'Kjøringer: Rapportassistenten, 01.11.2026 til 17.11.2026',
+        })
+      ).getAttribute('href'),
     ).toBe('#/log?service=rapportassistenten&period=custom&from=2026-11-01&to=2026-11-17');
   });
 
@@ -370,14 +371,18 @@ describe('opening a run', () => {
     ).toBeTruthy();
   });
 
-  it('copies the run id and says so', async () => {
+  it('offers Kopier sporings-id without a trace and copies the run id, saying why', async () => {
     const writeText = vi.fn(() => Promise.resolve());
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
     await renderAt('#/log/t1');
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Kopier kjørings-id' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Kopier sporings-id' }));
 
-    expect(await screen.findByText('Kjørings-id-en er kopiert.')).toBeTruthy();
+    expect(
+      await screen.findByText(
+        'Kjøringen har ingen egen sporings-id, så kjørings-id-en er kopiert. Søk etter den i sporingsverktøyet.',
+      ),
+    ).toBeTruthy();
     expect(writeText).toHaveBeenCalledWith('t1');
   });
 
@@ -493,34 +498,12 @@ describe('opening a run', () => {
     expect(screen.queryByRole('button', { name: 'Kjør på nytt' })).toBeNull();
   });
 
-  it('t5: batch view with a 10 % live region, progressbar, filters and item timelines', async () => {
+  it('t5: a batch run opens as a plain run, with no invented batch view or pseudonym reveal', async () => {
     await renderAt('#/log/t5');
-    const bar = await screen.findByRole('progressbar', { name: 'Fremdrift for jobben' });
-    expect(bar.getAttribute('aria-valuetext')).toMatch(/av 214 ferdig/);
-    expect(screen.getByText('Omtrent 60 % ferdig').getAttribute('role')).toBe('status');
-    expect(screen.getByText('Viser 12 av 214')).toBeTruthy();
-
-    fireEvent.click(screen.getByRole('radio', { name: /Feilet/ }));
-    expect(
-      screen.getAllByText(/Filen er passordbeskyttet/, { selector: '.meta' }).length,
-    ).toBeGreaterThan(0);
-    const open = screen.getAllByRole('link', {
-      name: /Åpne tidslinjen for Høringssvar_017.pdf/,
-    })[0];
-    expect(open?.getAttribute('href')).toBe('#/log/t5/17');
-    expect(screen.queryByRole('button', { name: 'Avbryt jobben' })).toBeNull();
-    expectAccessible();
-  });
-
-  it('t5: a batch item has its own timeline with a breadcrumb back', async () => {
-    await renderAt('#/log/t5/17');
-    await screen.findByText('Kunne ikke lese filen');
-    const crumbs = screen.getAllByRole('navigation', { name: 'Brødsmuler' });
-    expect(
-      within(crumbs.at(-1) as HTMLElement)
-        .getByRole('link', { name: 'Høringsoppsummering' })
-        .getAttribute('href'),
-    ).toBe('#/log/t5');
+    await screen.findByRole('heading', { level: 1 });
+    expect(screen.queryByRole('progressbar')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Vis hvem' })).toBeNull();
+    expect(screen.queryByText(/Langfuse \(Testetaten\)|utvalget på 25/)).toBeNull();
   });
 
   it('t6: a cancelled run shows dashed cancelled steps', async () => {
@@ -631,18 +614,14 @@ describe('search notes and links to a run', () => {
 });
 
 describe('Logg: Endringer', () => {
-  it('filters changes by type and shows an empty state', async () => {
-    await renderAt('#/log?tab=changes');
+  it('the mock shows the live Endringer, read from the audit log, with area, person and Digdir filters', async () => {
+    await renderAt('#/log/changes');
     const list = await screen.findByRole('list', { name: 'Endringer' });
-    expect(within(list).getByText(/Lise Dahl, Digdir, åpnet portalen/)).toBeTruthy();
-    expect(within(list).getByText(/kan endre på vegne av Testetaten/)).toBeTruthy();
-    expect(within(list).getByText(/Under støttetilgang kl\. 10\.41–11\.11/)).toBeTruthy();
-    expect(within(list).queryByText(/bare lesing/)).toBeNull();
-
-    fireEvent.click(screen.getByRole('radio', { name: 'Publisering' }));
-    expect(
-      within(screen.getByRole('list', { name: 'Endringer' })).getAllByRole('listitem'),
-    ).toHaveLength(1);
+    expect(within(list).getAllByRole('listitem').length).toBeGreaterThan(0);
+    expect(screen.getByRole('radio', { name: 'Alle' })).toBeTruthy();
+    expect(screen.getByLabelText('Person')).toBeTruthy();
+    expect(screen.getByRole('switch', { name: /Vis endringer fra Digdir/ })).toBeTruthy();
+    expect(screen.queryByText(/Lise Dahl, Digdir, åpnet portalen/)).toBeNull();
     expectAccessible();
   });
 });
@@ -663,24 +642,22 @@ describe('Logg: the run crumb names the list it came from', () => {
   it('reads a 7d period in the address as the last 7 days, in the crumb and its link', async () => {
     await renderAt('#/log/t4?status=failed&period=7d');
 
-    const crumbs = await screen.findByRole('navigation', { name: 'Brødsmuler' });
     expect(
-      within(crumbs)
-        .getByRole('link', { name: 'Kjøringer: feilet, siste 7 dager' })
-        .getAttribute('href'),
+      (await screen.findByRole('link', { name: 'Kjøringer: feilet, siste 7 dager' })).getAttribute(
+        'href',
+      ),
     ).toBe('#/log?status=failed&period=7');
   });
 
   it('names a one-day address as that day, not as a range from the day to itself', async () => {
     await renderAt('#/log/t4?status=failed&date=2026-11-17');
 
-    const crumbs = await screen.findByRole('navigation', { name: 'Brødsmuler' });
-    expect(within(crumbs).getByRole('link', { name: 'Kjøringer: feilet, i dag' })).toBeTruthy();
+    expect(await screen.findByRole('link', { name: 'Kjøringer: feilet, i dag' })).toBeTruthy();
   });
 });
 
 describe('Logg: tabs', () => {
-  it('the Kjøringer and Endringer tabs are links, and the arrow keys move between them', async () => {
+  it('the Kjøringer and Endringer tabs are the shared link tabs, and the arrow keys move between them', async () => {
     await renderAt('#/log');
     await table();
 
@@ -764,10 +741,10 @@ describe('Logg: the run trace', () => {
     ).toBe('https://langfuse.example/trace/4f2a9c71e0b84d3a');
   });
 
-  it('copies the run id while the timeline names no trace', async () => {
+  it('shows no Sporings-id under Teknisk while the timeline names no trace', async () => {
     await renderAt('#/log/t1');
 
-    expect(await screen.findByRole('button', { name: 'Kopier kjørings-id' })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: 'Kopier sporings-id' })).toBeTruthy();
     expect(screen.queryByText('Sporings-id')).toBeNull();
   });
 });
@@ -790,4 +767,17 @@ describe('Logg: no wasted calls', () => {
       expect(urls.filter((u) => /\/tasks\/(runs|changes)(\/timeline)?$/.test(u))).toEqual([]);
     },
   );
+});
+
+describe('Logg: where a trial run comes from', () => {
+  const nb = translator('nb');
+  const en = translator('en');
+
+  it('names a trial run from the builder, origin trial, as the builder in nb and en', () => {
+    const row = { capability: 'platform/draft/trial/t9' };
+    expect(trialLabel(row, nb)).toBe('Byggeren');
+    expect(trialPlace(row, nb)).toBe('i byggeren');
+    expect(trialLabel(row, en)).toBe('Builder');
+    expect(trialPlace(row, en)).toBe('in the builder');
+  });
 });

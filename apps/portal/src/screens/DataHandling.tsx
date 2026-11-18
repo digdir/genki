@@ -29,11 +29,14 @@ export const residencyKeys: Record<Residency, PlainKey> = {
 
 const gatewayPrefix = 'ai-gateway/';
 
-type Column = 'model' | 'where' | 'stored' | 'howLong';
+type ModelFacts = ModelOption & { maker?: string; operator?: { name: string; region?: string } };
+
+type Column = 'model' | 'where' | 'operator' | 'stored' | 'howLong';
 
 const columns: readonly (readonly [Column, PlainKey])[] = [
   ['model', 'about.dhColumnModel'],
   ['where', 'about.dhColumnWhere'],
+  ['operator', 'about.dhColumnOperator'],
   ['stored', 'about.dhColumnStored'],
   ['howLong', 'about.dhColumnHowLong'],
 ];
@@ -42,18 +45,30 @@ interface Row {
   id: string;
   model: string;
   where: string;
+  operator: string;
   stored: string;
   howLong: string;
 }
 
-const ModelTable = ({ models }: { models: ModelOption[] }) => {
+const isPlatformHost = (m: ModelFacts) => /azure|microsoft/i.test(m.operator?.name ?? '');
+
+const isGateway = (m: ModelFacts) =>
+  m.operator ? /gateway/i.test(m.operator.name) : m.id.startsWith(gatewayPrefix);
+
+const ModelTable = ({ models }: { models: ModelFacts[] }) => {
   const t = useT();
   const [sort, setSort] = useState<{ key: Column; dir: 1 | -1 }>({ key: 'model', dir: 1 });
   const rows: Row[] = models.map((m) => ({
     id: m.id,
     model: modelLabel(m.id, models),
-    where: t(residencyKeys[m.residency]),
-    stored: t('about.dhStoredEu'),
+    where: m.operator?.region
+      ? t('about.dhWhereRegion', {
+          where: t(residencyKeys[m.residency]),
+          region: m.operator.region,
+        })
+      : t(residencyKeys[m.residency]),
+    operator: m.operator?.name ?? t('about.dhOperatorUnknown'),
+    stored: t('about.dhStoredWhere'),
     howLong: t('about.dhHowLongStandard'),
   }));
   rows.sort(
@@ -98,6 +113,7 @@ const ModelTable = ({ models }: { models: ModelOption[] }) => {
                   </span>
                 </TableCell>
                 <TableCell>{r.where}</TableCell>
+                <TableCell>{r.operator}</TableCell>
                 <TableCell>{r.stored}</TableCell>
                 <TableCell>{r.howLong}</TableCell>
               </TableRow>
@@ -144,24 +160,30 @@ const Models = ({
   return <ModelTable models={models.data} />;
 };
 
-const Subprocessors = ({ models }: { models?: AsyncState<ModelOption[]> }) => {
+const Subprocessors = ({ models }: { models?: AsyncState<ModelFacts[]> }) => {
   const t = useT();
-  const gateway =
-    models?.status === 'ready'
-      ? models.data
-          .filter((m) => m.id.startsWith(gatewayPrefix))
-          .map((m) => modelLabel(m.id, models.data))
-      : [];
+  const known: ModelFacts[] = models?.status === 'ready' ? models.data : [];
+  const names = (list: ModelFacts[]) => list.map((m) => modelLabel(m.id, known)).join(', ');
+  const gateway = known.filter(isGateway);
+  const hosted = known.filter(isPlatformHost);
+  const hostRegions = [...new Set(hosted.flatMap((m) => m.operator?.region ?? []))];
   return (
     <dl className="data-handling-subprocessors">
       <div>
         <dt>{t('about.dhMicrosoft')}</dt>
-        <dd>{t('about.dhMicrosoftText')}</dd>
+        <dd>
+          {hosted.length && hostRegions.length
+            ? t('about.dhMicrosoftRuns', {
+                models: names(hosted),
+                regions: hostRegions.join(', '),
+              })
+            : t('about.dhMicrosoftText')}
+        </dd>
       </div>
       {gateway.length ? (
         <div>
           <dt>{t('about.dhGateway')}</dt>
-          <dd>{t('about.dhGatewayText', { models: gateway.join(', ') })}</dd>
+          <dd>{t('about.dhGatewayText', { models: names(gateway) })}</dd>
         </div>
       ) : null}
     </dl>

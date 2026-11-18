@@ -3,7 +3,7 @@ import { useFormat } from '@genai/i18n/react';
 import { useState } from 'react';
 import type { ApiClient } from '../../api';
 import { ApiError } from '../../api/error';
-import { runExtras } from '../../data/log';
+import { BackLink } from '../../components/BackLink';
 import { formatKroner, isTrialService, serviceLabel, statusOf } from '../../format';
 import { useAsync } from '../../hooks';
 import { useT, type PlainKey } from '../../i18n';
@@ -12,7 +12,7 @@ import type { Residency, TaskTimeline, TimelineBlock, TimelineStep } from '../..
 import { dayText } from './DateRange';
 import { hasRunFilters, periodDays, trialRuns, type RunFilters } from './filters';
 import { actorText, dateKey, formatDuration, relativeTime, whole } from './format';
-import { ErasedNotice, RunDetail } from './RunDetail';
+import { ErasedNotice } from './RunDetail';
 import { logHash, trialLabel, useServiceNames } from './RunsTab';
 import { Steps } from './Steps';
 
@@ -64,13 +64,14 @@ const Crumb = ({ filters, names }: { filters: RunFilters; names: Record<string, 
               : dayText(days.from),
   ].filter(Boolean);
   return (
-    <nav aria-label={t('logRun.breadcrumbs')} className="log-crumb">
-      <a href={logHash(filters)}>
-        {hasRunFilters(filters)
+    <BackLink
+      href={logHash(filters)}
+      label={
+        hasRunFilters(filters)
           ? t('logRun.crumbFiltered', { filters: parts.join(', ') })
-          : t('logRun.crumbRuns')}
-      </a>
-    </nav>
+          : t('logRun.crumbRuns')
+      }
+    />
   );
 };
 
@@ -110,17 +111,13 @@ export const RunPage = ({
   api,
   tenant,
   runId,
-  itemIndex,
   filters,
-  canReveal,
   live = false,
 }: {
   api: ApiClient;
   tenant: string;
   runId: string;
-  itemIndex: number | undefined;
   filters: RunFilters;
-  canReveal: boolean;
   live?: boolean;
 }) => {
   const t = useT();
@@ -141,25 +138,6 @@ export const RunPage = ({
   const [open, setOpen] = useState<Record<number, boolean>>({});
   const [copy, setCopy] = useState<'' | 'ok' | 'fail'>('');
   const crumb = <Crumb filters={filters} names={names} />;
-
-  if (!live && runExtras[runId]?.batch)
-    return (
-      <div className="stack log-run-page">
-        {crumb}
-        <Heading level={1} data-size="lg">
-          {t('logRun.run')}
-        </Heading>
-        <RunDetail
-          api={api}
-          tenant={tenant}
-          runId={runId}
-          itemIndex={itemIndex}
-          canReveal={canReveal}
-          onStatus={() => undefined}
-          onChange={() => undefined}
-        />
-      </div>
-    );
 
   if (state.status === 'loading')
     return (
@@ -293,7 +271,7 @@ export const RunPage = ({
           </div>
           <div className="tag-row">
             <Button variant="secondary" data-size="sm" onClick={copyId}>
-              {run.trace ? t('logRun.copyTraceId') : t('logRun.copyId')}
+              {t('logRun.copyTraceId')}
             </Button>
             {!trial ? (
               <Button asChild variant="primary" data-size="sm">

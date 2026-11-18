@@ -1,8 +1,6 @@
 import {
   BarChartIcon,
-  Buildings3Icon,
   BulletListIcon,
-  ChevronDownIcon,
   CodeIcon,
   CogIcon,
   ComponentIcon,
@@ -208,11 +206,14 @@ const userMenuLinks: readonly (readonly [string, PlainKey])[] = [
   ['#/profile', 'shell.menuProfile'],
   ['#/onboarding', 'shell.menuOnboarding'],
   ['#/data-handling', 'shell.menuDataHandling'],
-  ['#/contact', 'shell.contact'],
 ];
 
 const moveFocus = (event: KeyboardEvent<HTMLElement>) => {
-  const items = [...event.currentTarget.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+  const items = [
+    ...event.currentTarget.querySelectorAll<HTMLElement>(
+      '[role="menuitem"], [role="menuitemradio"]',
+    ),
+  ];
   const at = items.indexOf(document.activeElement as HTMLElement);
   const target =
     event.key === 'ArrowDown'
@@ -351,18 +352,17 @@ export const Shell = ({
 }: ShellProps) => {
   const t = useT();
   const narrow = useNarrow();
-  const [open, setOpen] = useState<'org' | 'user' | 'menu' | undefined>();
+  const [open, setOpen] = useState<'user' | 'menu' | undefined>();
   const [collapsed, setCollapsed] = useState(readCollapsed);
   const closeAll = useCallback(() => setOpen(undefined), []);
   const userButton = useRef<HTMLButtonElement>(null);
-  const orgButton = useRef<HTMLButtonElement>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
   const openNow = useRef(open);
   openNow.current = open;
   const closeToButton = useCallback(() => {
     const was = openNow.current;
     setOpen(undefined);
-    (was === 'user' ? userButton : was === 'org' ? orgButton : undefined)?.current?.focus();
+    if (was === 'user') userButton.current?.focus();
   }, []);
   const toggleCollapsed = () =>
     setCollapsed((c) => {
@@ -394,7 +394,7 @@ export const Shell = ({
     if (!restoringScroll()) window.scrollTo(0, 0);
   }, [area]);
   useEffect(() => {
-    if (open !== 'org' && open !== 'user') return;
+    if (open !== 'user') return;
     const onPointer = (event: MouseEvent) => {
       if (!(event.target instanceof Element) || !event.target.closest('.popover-anchor'))
         closeAll();
@@ -420,7 +420,7 @@ export const Shell = ({
   const orgMeta = t(unregistered ? 'shell.orgMetaUnregistered' : 'shell.orgMeta', { orgNr });
   const [above, setAbove] = useState<CSSProperties>();
   // In the sidebar a menu opens above its button, placed from where the button is now.
-  const toggle = (which: 'org' | 'user' | 'menu', from?: HTMLElement) => {
+  const toggle = (which: 'user' | 'menu', from?: HTMLElement) => {
     if (from) {
       const box = from.getBoundingClientRect();
       setAbove({ left: box.left, bottom: window.innerHeight - box.top + 8 });
@@ -490,12 +490,51 @@ export const Shell = ({
             {session.email && session.email !== session.name ? (
               <span className="meta">{session.email}</span>
             ) : null}
-            <span className="user-menu-org">
-              {hasOwnName(organisation)
-                ? t('shell.actingFor', { name: orgName })
-                : t('shell.actingForNumber', { orgNr })}
-            </span>
+            {multi ? null : (
+              <span className="user-menu-org">
+                {hasOwnName(organisation)
+                  ? t('shell.actingFor', { name: orgName })
+                  : t('shell.actingForNumber', { orgNr })}
+              </span>
+            )}
           </div>
+          {multi ? (
+            <fieldset className="org-options" role="group">
+              <legend className="org-options-legend">{t('shell.actingForLabel')}</legend>
+              {session.organisations.map((org) => {
+                const checked = org.orgNumber === organisation.orgNumber;
+                const nr = formatOrgNumber(org.orgNumber);
+                return (
+                  <label
+                    key={org.orgNumber}
+                    className={checked ? 'org-option checked' : 'org-option'}
+                  >
+                    <input
+                      className="ds-input"
+                      type="radio"
+                      role="menuitemradio"
+                      name="org"
+                      tabIndex={-1}
+                      checked={checked}
+                      aria-checked={checked}
+                      onChange={() => {
+                        onSwitch(org);
+                        closeToButton();
+                      }}
+                    />
+                    <span className="org-option-text">
+                      <span className="org-option-name">{organisationName(org, t)}</span>
+                      <span className="meta">
+                        {checked && unregistered
+                          ? t('shell.orgOptionUnregistered', { orgNr: nr })
+                          : t('shell.orgOptionMeta', { orgNr: nr })}
+                      </span>
+                    </span>
+                  </label>
+                );
+              })}
+            </fieldset>
+          ) : null}
           <ul className="user-menu-list" role="presentation">
             {userMenuLinks.map(([href, label]) => (
               <li key={href} role="presentation">
@@ -520,98 +559,13 @@ export const Shell = ({
     </div>
   );
 
-  const orgCompact = userInSidebar && collapsed;
-  const orgChooser = (
-    <div className={userInSidebar ? 'popover-anchor sidebar-org' : 'popover-anchor'}>
-      {multi ? (
-        <Button
-          ref={orgButton}
-          variant="secondary"
-          data-size="sm"
-          aria-expanded={open === 'org'}
-          aria-haspopup="true"
-          aria-label={t(unregistered ? 'shell.orgButtonUnregistered' : 'shell.orgButton', {
-            name: orgName,
-            orgNr,
-          })}
-          onClick={(e) => toggle('org', e.currentTarget)}
-          title={orgCompact ? orgName : undefined}
-        >
-          {orgCompact ? (
-            <Icon icon={Buildings3Icon} />
-          ) : (
-            <>
-              <span className="org-button">
-                <span className="org-name">{orgName}</span>
-                {narrow ? null : <span className="meta">{orgMeta}</span>}
-              </span>
-              <Icon icon={ChevronDownIcon} size={16} />
-            </>
-          )}
-        </Button>
-      ) : userInSidebar ? null : (
-        <div className="org-static">
-          <span className="visually-hidden">{t('shell.actingForLabel')} </span>
-          <span className="org-button">
-            <span className="org-name">{orgName}</span>
-            {narrow ? null : <span className="meta">{orgMeta}</span>}
-          </span>
-        </div>
-      )}
-      {open === 'org' && multi ? (
-        <div
-          role="dialog"
-          aria-label={t('shell.chooseOrg')}
-          className="popover"
-          style={userInSidebar ? above : undefined}
-        >
-          <div className="popover-head">
-            <span className="popover-title">{t('shell.chooseOrg')}</span>
-            <span className="meta">{t('shell.chooseOrgHelp')}</span>
-          </div>
-          <fieldset className="org-options">
-            <legend className="visually-hidden">{t('shell.organisations')}</legend>
-            {session.organisations.map((org) => {
-              const p = profileFor(org.orgNumber, org.name);
-              const checked = org.orgNumber === organisation.orgNumber;
-              return (
-                <label
-                  key={org.orgNumber}
-                  className={checked ? 'org-option checked' : 'org-option'}
-                >
-                  <input
-                    className="ds-input"
-                    type="radio"
-                    name="org"
-                    checked={checked}
-                    onChange={() => {
-                      onSwitch(org);
-                      closeAll();
-                    }}
-                  />
-                  <span className="org-option-text">
-                    <span className="org-option-name">{organisationName(org, t)}</span>
-                    <span className="meta">
-                      {checked && unregistered
-                        ? t('shell.orgOptionUnregistered', {
-                            orgNr: formatOrgNumber(org.orgNumber),
-                          })
-                        : p.role
-                          ? t('shell.orgOptionRole', {
-                              orgNr: formatOrgNumber(org.orgNumber),
-                              role: p.role,
-                            })
-                          : t('shell.orgOptionMeta', {
-                              orgNr: formatOrgNumber(org.orgNumber),
-                            })}
-                    </span>
-                  </span>
-                </label>
-              );
-            })}
-          </fieldset>
-        </div>
-      ) : null}
+  const orgStatic = (
+    <div className="org-static">
+      <span className="visually-hidden">{t('shell.actingForLabel')} </span>
+      <span className="org-button">
+        <span className="org-name">{orgName}</span>
+        {narrow ? null : <span className="meta">{orgMeta}</span>}
+      </span>
     </div>
   );
 
@@ -635,7 +589,7 @@ export const Shell = ({
             ) : null}
             {brand}
             <div className="header-spacer" />
-            {orgChooser}
+            {orgStatic}
             {userMenu}
           </div>
           {narrow && open === 'menu' && !unregistered ? (
@@ -664,10 +618,7 @@ export const Shell = ({
               </Button>
             </div>
             <NavLinks path={path} badges={badges} onNavigate={closeAll} compact={collapsed} />
-            <div className="sidebar-account">
-              {userMenu}
-              {orgChooser}
-            </div>
+            <div className="sidebar-account">{userMenu}</div>
           </nav>
         )}
         <main id="hovedinnhold" className="main" tabIndex={-1}>
@@ -680,7 +631,7 @@ export const Shell = ({
                 contactName={session.name}
                 onLogout={onLogout}
                 registeredElsewhere={registeredElsewhere}
-                {...(multi ? { onSwitch: () => setOpen('org') } : {})}
+                {...(multi ? { onSwitch: () => setOpen('user') } : {})}
               />
             ) : (
               <UserNameContext.Provider value={session.name}>

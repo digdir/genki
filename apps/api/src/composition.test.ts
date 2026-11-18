@@ -1123,6 +1123,19 @@ describe('the composed platform', () => {
     expect((await app.request('/models')).status).toBe(401);
   });
 
+  it('names who made each model and who runs it where, from the model list', async () => {
+    const { app } = await boot();
+
+    const res = await app.request('/models', { headers: { authorization: 'Bearer kari' } });
+    const { data } = (await res.json()) as { data: { id: string }[] };
+
+    for (const id of ['foundry-openai/gpt-6-luna', 'foundry-openai/gpt-5-mini'])
+      expect(data.find((m) => m.id === id)).toMatchObject({
+        maker: 'OpenAI',
+        operator: { name: 'Microsoft Azure', region: 'Sverige' },
+      });
+  });
+
   it('shows the price per 1,000 tokens next to each model, or null when it has none', async () => {
     const price = { inputPerThousand: 0.0238, outputPerThousand: 0.0952 };
     const list = async (prices?: Record<string, typeof price>) => {

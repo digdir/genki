@@ -27,17 +27,25 @@ param knowledgePostgresGeoRedundantBackup = 'Disabled'
 param knowledgePostgresHighAvailability = 'Disabled'
 param knowledgeAddressPrefix = '10.43.0.0/24'
 
-param keyVaultSecretNames = [
-  'content-master-key'
-  'altinn-pdp-maskinporten-key'
-  'altinn-subscription-key'
-  'foundry-openai-key'
-  'foundry-claude-key'
-  'typesense-key'
-  'colbert-api-key'
-  'langfuse-public-key'
-  'langfuse-secret-key'
-]
+// The people source's secrets join only once its variables are set, so a deploy never names a secret not yet in Key Vault.
+var altinnPeople = readEnvironmentVariable('ALTINN_PEOPLE_URL', '')
+var altinnPeopleClient = readEnvironmentVariable('ALTINN_PEOPLE_MASKINPORTEN_CLIENT_ID', '')
+
+param keyVaultSecretNames = concat(
+  [
+    'content-master-key'
+    'altinn-pdp-maskinporten-key'
+    'altinn-subscription-key'
+    'foundry-openai-key'
+    'foundry-claude-key'
+    'typesense-key'
+    'colbert-api-key'
+    'langfuse-public-key'
+    'langfuse-secret-key'
+  ],
+  empty(altinnPeople) ? [] : ['access-person-key-secret'],
+  empty(altinnPeople) || empty(altinnPeopleClient) ? [] : ['altinn-people-maskinporten-key']
+)
 
 // An unset variable comes as an empty value here too.
 var langfuseContent = readEnvironmentVariable('LANGFUSE_INSTANCE_RECEIVES_CONTENT', '')
@@ -72,6 +80,9 @@ param altinnPdpUrl = readEnvironmentVariable('ALTINN_PDP_URL', '')
 param altinnPdpMaskinportenClientId = readEnvironmentVariable('ALTINN_PDP_MASKINPORTEN_CLIENT_ID', '')
 param maskinportenIssuer = readEnvironmentVariable('MASKINPORTEN_ISSUER', '')
 param maskinportenTokenUrl = readEnvironmentVariable('MASKINPORTEN_TOKEN_URL', '')
+param altinnPeopleUrl = altinnPeople
+param altinnPeopleMaskinportenClientId = altinnPeopleClient
+param altinnPeopleMaskinportenScope = readEnvironmentVariable('ALTINN_PEOPLE_MASKINPORTEN_SCOPE', '')
 param operatorSubjects = readEnvironmentVariable('OPERATOR_SUBJECTS', '')
 param platformTenant = readEnvironmentVariable('PLATFORM_TENANT', '')
 param portalClientId = readEnvironmentVariable('PORTAL_CLIENT_ID', '')

@@ -2,6 +2,7 @@ endpoints:
   foundry:
     baseURL: ${FOUNDRY_OPENAI_BASE_URL}
     auth: { kind: api-key, secret: secret://env/foundry-openai-key }
+    operator: { name: Microsoft Azure, region: Sverige }
     families:
       openai: ''
       anthropic: ${FOUNDRY_CLAUDE_BASE_URL}
@@ -10,11 +11,13 @@ endpoints:
         idPrefix: foundry-openai
         exclude: ['claude-*', 'text-embedding-*', '*-codex*', 'gpt-4.5-preview']
         capabilities: [stream, tools, json-schema]
+        maker: OpenAI
         apis: { chat: openai/chat-completions@1 }
       - source: azure-deployments
         idPrefix: foundry-claude
         include: ['claude-*']
         capabilities: [stream, tools, json-schema, reasoning]
+        maker: Anthropic
         apis: { chat: anthropic/messages@1 }
   colbert:
     baseURL: ${COLBERT_API_URL}
@@ -38,6 +41,7 @@ models:
   - id: foundry-openai/gpt-6-luna
     endpoint: foundry
     deployment: gpt-6-luna
+    maker: OpenAI
     residency: eu
     capabilities: [stream, tools, json-schema]
     apis: { chat: openai/chat-completions@1, decide: openai/decide@1 }

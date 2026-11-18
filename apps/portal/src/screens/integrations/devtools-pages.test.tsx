@@ -8,6 +8,8 @@ import { exampleTracing } from '../../mock/devtools';
 import { renderAt, renderLive } from '../../test-utils';
 import { serviceOptionLabel } from './CallFromCode';
 import { DevStatus } from './DevStatus';
+import { runProblemText } from './Triggers';
+import { codeInput } from '../../data/integrations';
 import { sharedRules, whenItFires } from './Guardrails';
 
 beforeAll(() => {
@@ -27,8 +29,6 @@ afterEach(() => {
 });
 
 document.getAnimations ??= () => [];
-
-const [digdir] = exampleTracing;
 
 const rule = (id: string, mandatory: boolean, spec: Record<string, unknown> = {}): ConfigEntry =>
   ({ id, scope: '999888777', version: 1, mandatory, builtin: false, spec }) as ConfigEntry;
@@ -95,7 +95,35 @@ describe('Sporing og evaluering', () => {
     expect(screen.queryByRole('heading', { name: 'Hva som spores' })).toBeNull();
   });
 
-  it('offers the share of runs to trace only when the API reports a sample rate', async () => {
+  const sampleSetting = {
+    key: 'tracing.sampleRate',
+    description: 'Andel kjøringer som spores.',
+    category: 'tracing',
+    axis: 'service',
+    sensitivity: 'normal',
+    default: 1,
+    settableAt: ['platform', 'tenant'],
+  };
+  const withRate = (initial: number) => {
+    const state = { value: initial, puts: [] as { body: unknown; reason: string | null }[] };
+    const override = (url: string, method: string) => {
+      if (method === 'GET' && /\/settings\/effective$/.test(url))
+        return Response.json({
+          'tracing.sampleRate': {
+            key: 'tracing.sampleRate',
+            value: state.value,
+            source: 'tenant',
+            defaultVersion: 1,
+            overridden: [],
+            rejected: [],
+          },
+        });
+      return undefined;
+    };
+    return { state, override };
+  };
+
+  it('offers the share of runs to trace only when the settings catalogue holds tracing.sampleRate', async () => {
     await renderLive('#/developer/tracing', {
       features: { devtools: { tracing: exampleTracing } },
     });
@@ -103,17 +131,42 @@ describe('Sporing og evaluering', () => {
     expect(screen.queryByRole('radio', { name: /Hver fjerde/ })).toBeNull();
 
     cleanup();
-    await renderLive('#/developer/tracing', {
-      features: { devtools: { tracing: [{ ...digdir, sampleRate: 25 } as never] } },
-    });
+    const { override } = withRate(0.25);
+    await renderLive(
+      '#/developer/tracing',
+      {
+        features: {
+          devtools: { tracing: exampleTracing },
+          settings: { extras: [sampleSetting as never] },
+        },
+      },
+      override,
+    );
     const quarter = await screen.findByRole('radio', { name: /Hver fjerde/ });
     expect((quarter as HTMLInputElement).checked).toBe(true);
   });
 
-  it('saves a sample rate only with a reason, and keeps it after the page reloads it', async () => {
-    const urls = await renderLive('#/developer/tracing', {
-      features: { devtools: { tracing: [{ ...digdir, sampleRate: 100 } as never] } },
-    });
+  it('saves the share as the tenant setting with a reason, not on the Langfuse connection', async () => {
+    const { state, override } = withRate(1);
+    const calls: { url: string; method: string; body?: string; reason?: string }[] = [];
+    await renderLive(
+      '#/developer/tracing',
+      {
+        features: {
+          devtools: { tracing: exampleTracing },
+          settings: { extras: [sampleSetting as never] },
+        },
+      },
+      (url, method) => {
+        if (method === 'PUT' && url.endsWith('/settings/tracing.sampleRate')) {
+          calls.push({ url, method });
+          state.value = 0.1;
+          return Response.json({ ok: true });
+        }
+        if (method === 'PUT') calls.push({ url, method });
+        return override(url, method);
+      },
+    );
     fireEvent.click(await screen.findByRole('radio', { name: /Hver tiende/ }));
     const bar = screen.getByRole('region', { name: 'Du har endringer som ikke er lagret' });
     fireEvent.click(within(bar).getByRole('button', { name: 'Lagre endringene' }));
@@ -122,13 +175,14 @@ describe('Sporing og evaluering', () => {
       target: { value: 'Sparer plass i Langfuse' },
     });
     fireEvent.click(within(bar).getByRole('button', { name: 'Lagre endringene' }));
-    expect(await screen.findByText(/Endringen står i Logg, Endringer\./)).toBeTruthy();
-    expect(urls.some((u) => u.endsWith('/tracing/connections/digdir-langfuse'))).toBe(true);
     await waitFor(() =>
       expect((screen.getByRole('radio', { name: /Hver tiende/ }) as HTMLInputElement).checked).toBe(
         true,
       ),
     );
+    expect(calls.map((c) => c.url.replace(/.*\/tenants\/[^/]+/, ''))).toEqual([
+      '/settings/tracing.sampleRate',
+    ]);
   });
 });
 
@@ -145,7 +199,7 @@ describe('Kall fra kode', () => {
 describe('Kroker', () => {
   it('names the own hooks without bending the organisation name', async () => {
     await renderAt('#/developer/hooks');
-    expect(await screen.findByRole('heading', { name: 'Egne kroker' })).toBeTruthy();
+    expect(await screen.findByRole('list', { name: 'Egne kroker' })).toBeTruthy();
   });
 });
 
@@ -192,10 +246,10 @@ const statusApi = (
 });
 
 describe('Driftsstatus: designet', () => {
-  it('names the environment the tenant status reports', async () => {
+  it('reads the environment from /health, not from the tenant status', async () => {
     render(<DevStatus api={statusApi({ environment: 'genki-test' })} tenant="999888777" />);
-    expect(await screen.findByText('Miljø')).toBeTruthy();
-    expect(screen.getByText('genki-test')).toBeTruthy();
+    expect(await screen.findByText('Versjon')).toBeTruthy();
+    expect(screen.queryByText('genki-test')).toBeNull();
   });
 
   it('says how each component is checked when the API says so', async () => {
@@ -251,5 +305,26 @@ describe('Driftsstatus: designet', () => {
     expect(await screen.findByText(/Vi sjekker automatisk hvert minutt\./)).toBeTruthy();
     await vi.advanceTimersByTimeAsync(60_000);
     await waitFor(() => expect(calls.health).toBe(2));
+  });
+});
+
+describe('Utløsere: run problems', () => {
+  it('falls back to a plain text for an error it does not know, never the raw message', () => {
+    const t = translator('nb');
+    expect(runProblemText('ECONNRESET socket hang up', t)).toBe(
+      'Kjøringen feilet. Åpne kjøringen for å se hva som skjedde.',
+    );
+  });
+});
+
+describe('Kall fra kode: the example body', () => {
+  it('sends only what /api/tools/call takes: query, conversation_id or flat form fields', () => {
+    for (const body of Object.values(codeInput) as Record<string, unknown>[]) {
+      for (const key of ['vent', 'input', 'filter']) expect(body).not.toHaveProperty(key);
+      for (const value of Object.values(body)) expect(typeof value).not.toBe('object');
+    }
+    const t = translator('nb');
+    expect(t('integCode.apiStep2Wait')).not.toMatch(/vent/);
+    expect(t('integCode.apiStep2Approval')).not.toMatch(/vent/);
   });
 });

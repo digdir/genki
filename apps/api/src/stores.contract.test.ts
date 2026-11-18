@@ -315,6 +315,32 @@ describe.each([['memory'], ['postgres']])('%s admin stores', (name) => {
     expect(await reopened.list(ORG_B)).toEqual([]);
   });
 
+  it('changes a tool connection in one step, and changes nothing for a connection that does not exist', async () => {
+    const { connections } = backend().stores();
+    const connection = await connections.register({
+      id: 'arkiv',
+      tenant: ORG_A,
+      name: 'Arkiv',
+      endpoint: 'https://mcp.example.no/mcp',
+      version: '1.0',
+      allow: [{ host: 'mcp.example.no' }],
+    });
+
+    const changed = await connections.update(ORG_A, 'arkiv', (state) => ({
+      ...state,
+      revoked: ['search'],
+    }));
+    const missing = await connections.update(ORG_B, 'arkiv', (state) => state);
+    const refused = connections.update(ORG_A, 'arkiv', () => {
+      throw new Error('nei');
+    });
+
+    await expect(refused).rejects.toThrow('nei');
+    expect(changed).toEqual({ connection, tools: [], pending: [], revoked: ['search'] });
+    expect(missing).toBeUndefined();
+    expect(await (await backend().reopen()).connections.get(ORG_A, 'arkiv')).toEqual(changed);
+  });
+
   it('versions test sets immutably and lists the latest per id', async () => {
     const { testSets } = backend().stores();
     await testSets.put(testSet(ORG_A, 'klarsprak', 1, 'svar'));

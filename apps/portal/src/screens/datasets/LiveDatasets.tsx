@@ -5,46 +5,12 @@ import { useT } from '../../i18n';
 import type { ScreenProps } from '../../screen';
 import { needsRight, useRights } from '../../Shell';
 import { EmptyState, ErrorState, Loading } from '../../states';
-import type { DatasetView } from '../../api/datasets';
 import { DatasetList } from './DatasetList';
 import { failureText, listItemOf } from './live-model';
 import { ApiError } from '../../api/error';
 import { LiveDatasetDetail } from './LiveDatasetDetail';
 import { LiveNewDataset } from './LiveNewDataset';
 import { datasetHref, detailTabOf } from './model';
-
-/** Documents the API counts for datasets whose list entry has no count, such as shared ones. */
-const useFoundCounts = (
-  api: ScreenProps['api'],
-  tenant: string,
-  views: DatasetView[] | undefined,
-) => {
-  const missing = (views ?? [])
-    .filter((v) => v.documents === null && v.state !== 'external')
-    .map((v) => v.id);
-  const [found] = useAsync(
-    async (signal) =>
-      new Map(
-        await Promise.all(
-          missing.map(async (id): Promise<[string, number | undefined]> => {
-            try {
-              const page = await api.datasets.documents(
-                tenant,
-                id,
-                { limit: 1, offset: 0 },
-                signal,
-              );
-              return [id, page.found];
-            } catch {
-              return [id, undefined];
-            }
-          }),
-        ),
-      ),
-    [api, tenant, missing.join(',')],
-  );
-  return found.status === 'ready' ? found.data : undefined;
-};
 
 const List = ({ api, tenant }: ScreenProps) => {
   const t = useT();
@@ -53,11 +19,6 @@ const List = ({ api, tenant }: ScreenProps) => {
     keepPreviousFor: tenant,
   });
   const canCreate = useRights().has('manage-datasets');
-  const found = useFoundCounts(api, tenant, state.status === 'ready' ? state.data : undefined);
-  const withFound = (d: DatasetView): DatasetView => {
-    const n = found?.get(d.id);
-    return d.documents === null && n !== undefined ? { ...d, documents: n } : d;
-  };
   const onRetry = async (fullId: string) => {
     const view = state.status === 'ready' ? state.data.find((d) => d.fullId === fullId) : undefined;
     if (!view) return;
@@ -104,7 +65,7 @@ const List = ({ api, tenant }: ScreenProps) => {
   return (
     <div className="stack">
       <DatasetList
-        datasets={state.data.map((d) => listItemOf(t, f, withFound(d)))}
+        datasets={state.data.map((d) => listItemOf(t, f, d))}
         canCreate={canCreate}
         {...(canCreate ? { onRetry } : {})}
       />

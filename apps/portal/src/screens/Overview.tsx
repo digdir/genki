@@ -17,9 +17,10 @@ import {
 import { useFormat } from '@genai/i18n/react';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { ApiClient } from '../api';
-import type { DatasetView } from '../api/datasets';
+import { isOpen, type DatasetView } from '../api/datasets';
 import { Icon } from '../components/Icon';
 import { isTrialService } from '../format';
+import { listedServiceCount } from '../listed-services';
 import { useT, type Format, type T } from '../i18n';
 import { useAsync, type AsyncState } from '../hooks';
 import type { ScreenProps } from '../screen';
@@ -27,12 +28,13 @@ import { useRights } from '../Shell';
 import { failureText } from './datasets/live-model';
 import { datasetTabPath } from './datasets/model';
 import { ErrorState, limitOf, refusalOf } from '../states';
-import type { Overview as OverviewData, TaskRow, UsageReport } from '../types';
+import type { ModelOption, Overview as OverviewData, TaskRow, UsageReport } from '../types';
 import { LiveChanges } from './changes/LiveChanges';
 import { allDone, doneCount, ownDataset, startProgress, StartSteps } from './start-progress';
+import { modelLabel } from '../models';
 import {
-  costOf,
-  money,
+  costText,
+  isLowerBound,
   monthStatus,
   monthUsage,
   quotaOf,
@@ -53,28 +55,32 @@ const failedRecently = (d: DatasetView) =>
   d.lastExecution?.status === 'failed' ||
   d.lastExecution?.status === 'cancelled';
 
-const isRunning = (d: DatasetView) =>
-  d.state === 'running' || d.lastExecution?.status === 'running';
+const isRunning = (d: DatasetView) => d.state === 'running' || isOpen(d.lastExecution);
 
-export const monthLabel = (f: Format, date: Date) => {
-  const name = f.month(date, { year: true });
-  return name.charAt(0).toUpperCase() + name.slice(1);
-};
+export const monthLabel = (f: Format, date: Date) => f.month(date, { year: true });
 
 export const startOfDay = (now: Date) => new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
 const localDate = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
+export interface FailedToday {
+  id: string;
+  name: string;
+  count: number;
+  reason?: string;
+}
+
 export interface FailedRuns {
-  today: { id: string; name: string; count: number }[];
+  today: FailedToday[];
   week: Map<string, number>;
   complete: boolean;
 }
 
 export const countFailedRuns = (rows: TaskRow[], total: number, now: Date): FailedRuns => {
   const since = startOfDay(now).getTime();
-  const today = new Map<string, { id: string; name: string; count: number }>();
+  const today = new Map<string, FailedToday>();
+  const reasons = new Map<string, Map<string, number>>();
   const week = new Map<string, number>();
   for (const row of rows) {
     if (isTrialService(row.service)) continue;
@@ -87,6 +93,16 @@ export const countFailedRuns = (rows: TaskRow[], total: number, now: Date): Fail
     };
     entry.count += 1;
     today.set(row.service, entry);
+    const reason = row.failure?.reason;
+    if (!reason) continue;
+    const counts = reasons.get(row.service) ?? new Map<string, number>();
+    counts.set(reason, (counts.get(reason) ?? 0) + 1);
+    reasons.set(row.service, counts);
+  }
+  for (const [service, counts] of reasons) {
+    const entry = today.get(service);
+    const [reason] = [...counts].sort((a, b) => b[1] - a[1])[0] ?? [];
+    if (entry && reason) entry.reason = reason;
   }
   return {
     today: [...today.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name)),
@@ -103,7 +119,7 @@ const partlyRead = (d: DatasetView) =>
   !failedRecently(d) &&
   !isRunning(d) &&
   d.lastExecution.status !== 'cancelled' &&
-  d.lastExecution.skipped > 0;
+  (d.lastExecution.skipped ?? 0) > 0;
 
 type Started = Record<string, 'starting' | 'started' | { error: string }>;
 
@@ -147,11 +163,13 @@ const UsageCard = ({
   retry,
   quota,
   month,
+  models,
 }: {
   state: AsyncState<UsageReport>;
   retry: () => void;
   quota: number | null;
   month: string;
+  models: ModelOption[];
 }) => {
   const t = useT();
   return (
@@ -177,15 +195,26 @@ const UsageCard = ({
           </Button>
         </Alert>
       ) : null}
-      {state.status === 'ready' ? <UsageFigures report={state.data} quota={quota} /> : null}
+      {state.status === 'ready' ? (
+        <UsageFigures report={state.data} quota={quota} models={models} />
+      ) : null}
     </section>
   );
 };
 
-const UsageFigures = ({ report, quota }: { report: UsageReport; quota: number | null }) => {
+const UsageFigures = ({
+  report,
+  quota,
+  models,
+}: {
+  report: UsageReport;
+  quota: number | null;
+  models: ModelOption[];
+}) => {
   const t = useT();
   const f = useFormat();
   const usage = monthUsage(report);
+  const missing = report.totals.unpricedModels ?? [];
   const used = tokensOf(usage.total);
   const pct = quota === null ? 0 : Math.round((used / quota) * 100);
   const parts = [
@@ -235,13 +264,23 @@ const UsageFigures = ({ report, quota }: { report: UsageReport; quota: number | 
       <dl className="usage-facts">
         <div>
           <dt>{t('overview.cost')}</dt>
-          <dd className="numeric">{money(f, t, costOf(usage.total))}</dd>
+          <dd className="numeric">{costText(f, t, usage.total)}</dd>
         </div>
         <div>
           <dt>{t('overview.runs')}</dt>
           <dd className="numeric">{f.number(usage.runs)}</dd>
         </div>
       </dl>
+      {isLowerBound(usage.total) ? (
+        <p className="meta">
+          {missing.length > 0
+            ? t('overview.priceMissing', {
+                count: missing.length,
+                models: f.list(missing.map((id) => modelLabel(id, models))),
+              })
+            : t('overview.priceMissingUnnamed')}
+        </p>
+      ) : null}
       <a href="#/statistics">{t('overview.seeUsagePerService')}</a>
     </>
   );
@@ -326,9 +365,11 @@ const AttentionList = ({
 const TopServices = ({
   services,
   failed,
+  listed,
 }: {
   services: OverviewData['services'];
   failed: FailedRuns | undefined;
+  listed: number | undefined;
 }) => {
   const t = useT();
   const f = useFormat();
@@ -348,7 +389,11 @@ const TopServices = ({
         <Heading level={2} data-size="sm" id="top-h">
           {t('overview.topServices')}
         </Heading>
-        <a href="#/services">{t('overview.allServices', { count: services.length })}</a>
+        <a href="#/services">
+          {listed === undefined
+            ? t('overview.allServicesPlain')
+            : t('overview.allServices', { count: listed })}
+        </a>
       </div>
       <div className="overview-table-wrap">
         <Table className="overview-table">
@@ -423,6 +468,12 @@ export const Overview = ({
     (signal) => api.tenantEffectiveSettings(tenant, signal),
     [api, tenant],
   );
+  const unpricedModels =
+    usage.status === 'ready' ? (usage.data.totals.unpricedModels?.length ?? 0) > 0 : false;
+  const [models] = useAsync(
+    async (signal) => (unpricedModels ? api.listModels({}, signal) : []),
+    [api, unpricedModels],
+  );
   const [datasets, retryDatasets] = useAsync(
     (signal) => api.datasets.list(tenant, signal),
     [api, tenant],
@@ -439,6 +490,16 @@ export const Overview = ({
     [api, tenant, now, hasServices],
   );
   const failed = failedRuns.status === 'ready' ? failedRuns.data : undefined;
+  const [listed] = useAsync(
+    async (signal) => {
+      const [all, drafts] = await Promise.all([
+        api.services(tenant, signal),
+        api.quality.drafts(tenant, signal),
+      ]);
+      return listedServiceCount(all.data, drafts);
+    },
+    [api, tenant],
+  );
   const quota = settings.status === 'ready' ? quotaOf(settings.data) : null;
 
   const own = datasets.status === 'ready' ? datasets.data.filter(ownDataset(tenant)) : [];
@@ -601,6 +662,7 @@ export const Overview = ({
         <>
           <a href={`#/services/${encodeURIComponent(run.id)}`}>{name}</a>
           {t('overview.failedToday', { count: run.count })}
+          {run.reason ? ` ${run.reason}` : null}
         </>
       ),
       action: (
@@ -624,9 +686,9 @@ export const Overview = ({
         <>
           <a href={`#/datasets/${encodeURIComponent(d.id)}`}>{d.name}</a>
           {t('overview.partialText', {
-            count: last.stored,
-            skipped: f.number(last.skipped),
-            total: f.number(last.stored + last.skipped),
+            count: last.stored ?? 0,
+            skipped: f.number(last.skipped ?? 0),
+            total: f.number((last.stored ?? 0) + (last.skipped ?? 0)),
           })}
         </>
       ),
@@ -742,12 +804,22 @@ export const Overview = ({
 
       {services.length > 0 ? (
         <div className="overview-grid">
-          <TopServices services={services} failed={failed} />
+          <TopServices
+            services={services}
+            failed={failed}
+            listed={listed.status === 'ready' ? listed.data : undefined}
+          />
           <aside
             className="stack overview-aside"
             aria-label={t('overview.usageHeading', { month })}
           >
-            <UsageCard state={usage} retry={retryUsage} quota={quota} month={f.month(now)} />
+            <UsageCard
+              state={usage}
+              retry={retryUsage}
+              quota={quota}
+              month={f.month(now)}
+              models={models.status === 'ready' ? models.data : []}
+            />
             <section aria-labelledby="changes-h" className="stack-sm overview-changes">
               <Heading level={2} data-size="xs" id="changes-h">
                 {t('overview.changes')}

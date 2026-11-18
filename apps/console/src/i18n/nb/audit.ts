@@ -47,6 +47,7 @@ export const audit = defineNamespace({
   actionTaskCancel: 'Avbrøt kjøring',
   actionTestsetSave: 'Lagret testsett',
   actionToolsApprove: 'Godkjente verktøy',
+  actionToolsRevoke: 'Trakk tilbake godkjent verktøy',
   actionToolsRegister: 'Registrerte verktøy',
   actionToolsSync: 'Oppdaterte verktøy',
   actionDatasetEnrichmentApply: 'Tok i bruk berikelse av datasett',

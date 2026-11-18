@@ -1,4 +1,5 @@
 import { sourceLinkRules, type Principal } from '@genai/contracts';
+import type { ActorNames } from './actor-names.js';
 import { testCase, testSet, type TestSet, type TestSetStore } from '@genai/eval';
 import { guardrailSchemas, ruleKinds } from '@genai/guardrails';
 import type { DatabaseConnection } from '@genai/ingest';
@@ -81,6 +82,7 @@ export interface ConfigDeps {
   usedBy?: (dataset: string) => Promise<DatasetReader[]>;
   usedByCounts?: (tenant: string) => Promise<Map<string, number>>;
   endpointSources?: EndpointSourceDeps;
+  names?: Pick<ActorNames, 'namesOf'>;
 }
 
 export const ingestionTarget = (item: CatalogItem): IngestionTarget => ({
@@ -544,7 +546,7 @@ const indexBody = z.strictObject({
 export const datasetFields = z.strictObject({
   id: z.string().optional(),
   name: z.string().min(1),
-  description: z.string().min(1).optional(),
+  description: z.string().min(1).nullable().optional().describe('null clears it'),
   aliases: z.array(z.string().min(1)).default([]),
   residency: z.enum(residencies),
   index: indexBody.optional(),
@@ -1093,6 +1095,8 @@ export const registerConfigRoutes = <E extends Env, S extends Schema, B extends 
       return typeof found?.spec.engine === 'string' ? found.spec.engine : undefined;
     },
   };
+  const namesOf = async (actors: string[]) =>
+    (await deps.names?.namesOf(actors)) ?? new Map<string, string>();
   const withStatus = async (
     item: CatalogItem,
     tenant: string,
@@ -1116,13 +1120,24 @@ export const registerConfigRoutes = <E extends Env, S extends Schema, B extends 
       item,
     );
     const owned = item.scope === tenant || item.scope === platformScope;
+    const own = item.scope === tenant;
+    const starter = own ? status.lastExecution?.startedBy : undefined;
+    const starterName = starter ? (await namesOf([starter])).get(starter) : undefined;
+    const lastExecution =
+      status.lastExecution && !own
+        ? (({ startedBy: _hidden, ...rest }) => rest)(status.lastExecution)
+        : undefined;
     return {
       ...datasetView(item),
       effectiveResidency: effectiveResidency(location),
       ...(location.embedding ? { embeddingResidency: location.embedding.residency ?? null } : {}),
       editable: item.scope === tenant,
       ...status,
+      ...(lastExecution ? { lastExecution } : {}),
       ...(owned ? {} : { source: 'none' as const, lastExecution: null, nextRunAt: null }),
+      ...(starterName && status.lastExecution
+        ? { lastExecution: { ...status.lastExecution, startedByName: starterName } }
+        : {}),
       ...(detail
         ? {
             skipped: owned ? skipped : [],
@@ -1347,8 +1362,12 @@ export const registerConfigRoutes = <E extends Env, S extends Schema, B extends 
       const refusedKey = keyRefused(c, guard.principal, item);
       if (refusedKey) return refusedKey;
       const pipeline = await deps.ingestion.get(guard.scope, item.id, param(c, 'id'));
-      const executions = (await deps.ingestion.executions(item.id, param(c, 'id'))).map((run) =>
+      const runs = (await deps.ingestion.executions(item.id, param(c, 'id'))).map((run) =>
         deps.ingestion.admission(run),
+      );
+      const names = await namesOf(runs.map((run) => run.startedBy));
+      const executions = runs.map((run) =>
+        names.has(run.startedBy) ? { ...run, startedByName: names.get(run.startedBy) } : run,
       );
       return c.json({
         data: seesUsage(guard.principal, guard.scope)
