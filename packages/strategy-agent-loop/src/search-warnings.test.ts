@@ -228,6 +228,21 @@ describe('a search strategy that fails', () => {
     ]);
   });
 
+  it("keeps a search's engine message for the audit log only when it fails completely", async () => {
+    const r: AgentRetrieval = {
+      ...retrieval().impl,
+      search: async () => {
+        throw new Error('connect ECONNREFUSED 10.0.0.4:5432');
+      },
+    };
+    const out = await searchOnce(r);
+
+    expect(out.audit.filter((e) => e.type === 'x.search.error')).toMatchObject([
+      { audience: 'audit', data: { error: 'connect ECONNREFUSED 10.0.0.4:5432' } },
+    ]);
+    expect(JSON.stringify(out.events)).not.toContain('ECONNREFUSED');
+  });
+
   it("a search that fails completely tells the agent why without the engine's message", async () => {
     const r: AgentRetrieval = {
       ...retrieval().impl,

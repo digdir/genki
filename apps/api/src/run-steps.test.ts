@@ -212,6 +212,28 @@ describe('the run mapper', () => {
     expect(run.stats().warnings).toEqual(['Alle søkene tok for lang tid.']);
   });
 
+  it("shows a whole search failure's engine message only to people with details rights", () => {
+    const events = () => {
+      seq = 0;
+      return [
+        at(0, 'kernel.task.status', { status: 'running' }),
+        notice(420, { stage: 'tool', tool: 'search', iteration: 0 }),
+        notice(900, {
+          kind: 'retrieval',
+          queries: ['ventetid'],
+          hits: [],
+          failedCompletely: 'error',
+        }),
+        at(900, 'x.search.error', { error: 'connect ECONNREFUSED 10.0.0.4:5432' }, 'audit'),
+      ];
+    };
+
+    const shown = mapRun(events(), { details: true }).steps.find((s) => s.type === 'search');
+    expect(shown?.raw).toMatchObject({ searchError: 'connect ECONNREFUSED 10.0.0.4:5432' });
+    const hidden = mapRun(events()).steps;
+    expect(JSON.stringify(hidden)).not.toContain('ECONNREFUSED');
+  });
+
   it('a search with no failed strategy is not marked as a warning', () => {
     seq = 0;
     const search = mapRun([

@@ -160,6 +160,8 @@ export interface ToolOutcome {
   search?: SearchMade;
   read?: { chunks: RetrievalHit[]; auto?: boolean };
   planned?: { queries: string[]; userIntent?: string };
+  /** The engine's message when the whole search threw: for the audit log only, never the model. */
+  searchError?: string;
 }
 
 export const retrievalHits = (chunks: ChunkSummary[]): RetrievalHit[] =>
@@ -484,6 +486,7 @@ const thrown = (
     content: `${lead}every search ${failureText[reason]}. Try again later, or say that search is failing.`,
     retrieved: [],
     search: { queries, ...(filters?.length ? { filters } : {}), failedCompletely: reason },
+    searchError: (error instanceof Error ? error.message : String(error)).slice(0, 500),
   };
 };
 

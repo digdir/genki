@@ -447,6 +447,9 @@ export class RunMapper {
       case 'kernel.notice':
         this.notice(e, ts, prev, data);
         break;
+      case 'x.search.error':
+        this.searchError(data);
+        break;
       case 'kernel.part.delta':
         if (typeof data.text === 'string' && data.text)
           this.out.push({ kind: 'delta', text: data.text, channel: this.channel });
@@ -835,6 +838,14 @@ export class RunMapper {
     if (this.details) step.raw = { ...record(step.raw), retrieval: data };
     if (open) this.emit(open);
     else this.add(step);
+  }
+
+  /** The engine's message of a search that failed completely, for people with details rights. */
+  private searchError(data: Data) {
+    const step = this.openOf('search') ?? this.steps.findLast((s) => s.type === 'search');
+    if (!this.details || !step || typeof data.error !== 'string') return;
+    step.raw = { ...record(step.raw), searchError: data.error };
+    this.emit(step);
   }
 
   private read(e: Event, ts: number, prev: number, data: Data) {
