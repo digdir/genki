@@ -29,6 +29,7 @@ import { useRights } from '../../Shell';
 import { Icon } from '../../components/Icon';
 import { PlaygroundPanel } from '../../components/playground/PlaygroundPanel';
 import { ErrorState, Loading } from '../../states';
+import { HeadingSkeleton } from '../../components/Skeleton';
 import { BackLink } from '../../components/BackLink';
 import { LinkTabs } from '../../components/LinkTabs';
 import { askMessage, failureNotice, intentFor, readTurn } from './assistant';
@@ -98,7 +99,16 @@ export const SkillBlockPage = (props: ScreenProps & { id: string; tab: string | 
     [api, tenant, id, owner],
   );
   if (state.status === 'loading')
-    return <Loading label={t('skills.editorLoading')} shape="detail" onRetry={retry} />;
+    return (
+      <div className="stack skills skill-page">
+        <header className="skill-header">
+          <BackLink label={t('skills.crumbBlocks')} href={blocksBackHref} />
+          <span className="skill-kicker">{t('skills.pageKind')}</span>
+          <HeadingSkeleton label={t('skills.editorLoading')} size="lg" />
+        </header>
+        <Loading label={t('skills.editorLoading')} shape="detail" onRetry={retry} />
+      </div>
+    );
   if (state.status === 'error')
     return (
       <div className="stack skills skill-page">

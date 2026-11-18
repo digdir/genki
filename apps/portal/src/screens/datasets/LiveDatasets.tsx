@@ -42,25 +42,22 @@ const List = ({ api, tenant }: ScreenProps) => {
   };
   if (state.status === 'loading')
     return (
-      <div className="stack dataset-page">
-        <div className="page-head">
-          <div className="page-head-text">
-            <Heading level={1} data-size="lg">
-              {t('datasets.title')}
-            </Heading>
-            <p className="lead">{t('datasets.lead')}</p>
-          </div>
-        </div>
-        <Loading
-          label={t('datasets.loading')}
-          shape="table"
-          columns={[
-            t('datasets.columnDataset'),
-            t('datasets.columnStatus'),
-            t('datasets.factDocuments'),
-            t('datasets.columnLastStarted'),
-          ]}
-          onRetry={retry}
+      <div className="stack">
+        <DatasetList
+          canCreate={canCreate}
+          placeholder={
+            <Loading
+              label={t('datasets.loading')}
+              shape="table"
+              columns={[
+                t('datasets.columnDataset'),
+                t('datasets.columnStatus'),
+                t('datasets.factDocuments'),
+                t('datasets.columnLastStarted'),
+              ]}
+              onRetry={retry}
+            />
+          }
         />
       </div>
     );

@@ -6,13 +6,13 @@ import {
   Label,
   Paragraph,
   Select,
-  Spinner,
   Tag,
   Textfield,
 } from '@digdir/designsystemet-react';
 import { useId, useRef, useState } from 'react';
 import { ApiError, type ApiClient } from '../../api';
 import type { CatalogProposal, ConnectionCheckFailure, HostReach } from '../../api/building-blocks';
+import { BusyButton } from '../../components/BusyButton';
 import { ReasonField, reasonProblem } from '../../components/ReasonField';
 import { useT, type T } from '../../i18n';
 import { rightLabels } from '../../Shell';
@@ -96,7 +96,7 @@ export const ConnectorApproval = ({
   const [form, setForm] = useState<ConnectionForm>(() => blankConnection(proposal.source));
   const [reason, setReason] = useState('');
   const [tried, setTried] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<false | 'approve' | 'reject'>(false);
   const [reach, setReach] = useState<HostReach>();
   const [failure, setFailure] = useState<Failure>();
   const service = proposal.forService.name;
@@ -124,7 +124,7 @@ export const ConnectorApproval = ({
   };
 
   const decide = async (action: 'approve' | 'reject', text: string) => {
-    setBusy(true);
+    setBusy(action);
     setFailure(undefined);
     try {
       const t = tRef.current;
@@ -335,22 +335,30 @@ export const ConnectorApproval = ({
           description={t('connectorApproval.reasonHelp', { service })}
         />
       </div>
-      {busy ? (
-        <div role="status" className="bb-connect-testing">
-          <Spinner aria-hidden="true" data-size="sm" />
-          {table ? t('connectorApproval.testingTable', { table }) : t('connectorApproval.testing')}
-        </div>
-      ) : null}
       <div className="actions">
-        <Button variant="primary" onClick={approve} aria-disabled={busy || undefined}>
+        <BusyButton
+          variant="primary"
+          onClick={approve}
+          busy={busy === 'approve'}
+          busyLabel={
+            table ? t('connectorApproval.testingTable', { table }) : t('connectorApproval.testing')
+          }
+          aria-disabled={busy === 'reject' || undefined}
+        >
           {t('connectorApproval.approveAction')}
-        </Button>
+        </BusyButton>
         <Button variant="secondary" onClick={() => setOpen(false)}>
           {t('connectorApproval.cancel')}
         </Button>
-        <Button variant="tertiary" onClick={reject} aria-disabled={busy || undefined}>
+        <BusyButton
+          variant="tertiary"
+          onClick={reject}
+          busy={busy === 'reject'}
+          busyLabel={t('connectorApproval.rejecting')}
+          aria-disabled={busy === 'approve' || undefined}
+        >
           {t('connectorApproval.reject')}
-        </Button>
+        </BusyButton>
         <ApiCallButton call={call} />
       </div>
     </section>

@@ -155,6 +155,7 @@ export const connectorApproval = {
   testing: 'Testing the connection …',
   cancel: 'Cancel',
   reject: 'Reject the proposal',
+  rejecting: 'Rejecting …',
 } satisfies Translation<typeof approvalSource>;
 
 export const connectorsLane = { connectors, connectorApproval };

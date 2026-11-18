@@ -9,15 +9,17 @@ export const StrategyCatalogue = ({
   api,
   tenant,
   children,
+  fallback,
 }: {
   api: ApiClient;
   tenant: string;
   children: ReactNode;
+  fallback?: ReactNode;
 }) => {
   const t = useT();
   const [state] = useAsync((signal) => api.listStrategies(tenant, signal), [api, tenant]);
   if (state.status === 'loading')
-    return <Loading label={t('app.loadingStrategies')} shape="service" />;
+    return fallback ?? <Loading label={t('app.loadingStrategies')} shape="service" />;
   registerStrategies(state.status === 'ready' ? state.data : []);
   return children;
 };

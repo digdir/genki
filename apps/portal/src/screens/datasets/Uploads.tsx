@@ -1,4 +1,4 @@
-import { Alert, Button, Heading, Paragraph, Spinner, Tag } from '@digdir/designsystemet-react';
+import { Alert, Button, Heading, Paragraph, Tag } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
 import { useRef, useState } from 'react';
 import type { ApiClient } from '../../api';
@@ -153,9 +153,6 @@ export const Uploads = ({
                 <span className="meta">{sizeText(t, f, i.size)}</span>
               </span>
               <Tag data-size="sm" data-color={progressTag[i.progress.state].color}>
-                {i.progress.state === 'uploading' ? (
-                  <Spinner aria-hidden="true" data-size="2xs" />
-                ) : null}
                 {t(progressTag[i.progress.state].text)}
               </Tag>
               {'why' in i.progress ? <span className="meta wrap">{i.progress.why}</span> : null}

@@ -8,7 +8,7 @@ import {
   Tag,
   Textfield,
 } from '@digdir/designsystemet-react';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Icon } from '../../components/Icon';
 import { statusColor, type JobId, type ServiceRow, type ServiceStatus } from '../../data/services';
 import { useT, type PlainKey } from '../../i18n';
@@ -78,10 +78,12 @@ export const ServiceList = ({
   rows,
   tenantName,
   listed,
+  placeholder,
 }: {
-  rows: ServiceRow[];
+  rows?: ServiceRow[] | undefined;
   tenantName: string;
   listed?: number;
+  placeholder?: ReactNode;
 }) => {
   const t = useT();
   const canCreate = useRights().has('manage-services');
@@ -101,7 +103,7 @@ export const ServiceList = ({
           </Button>
         ) : null}
       </div>
-      {rows.length === 0 ? (
+      {rows?.length === 0 ? (
         <EmptyState title={t('serviceList.emptyTitle')}>
           <Paragraph>{t('serviceList.emptyBody', { tenant: tenantName })}</Paragraph>
           {canCreate ? (
@@ -113,13 +115,25 @@ export const ServiceList = ({
           )}
         </EmptyState>
       ) : (
-        <ServiceRows rows={rows} {...(listed === undefined ? {} : { listed })} />
+        <ServiceRows
+          rows={rows}
+          placeholder={placeholder}
+          {...(listed === undefined ? {} : { listed })}
+        />
       )}
     </div>
   );
 };
 
-const ServiceRows = ({ rows, listed }: { rows: ServiceRow[]; listed?: number }) => {
+const ServiceRows = ({
+  rows,
+  listed,
+  placeholder,
+}: {
+  rows: ServiceRow[] | undefined;
+  listed?: number;
+  placeholder: ReactNode;
+}) => {
   const t = useT();
   const [query, setQueryState] = useState(() => fromAddress().query);
   const [filter, setFilterState] = useState<Filter>(() => fromAddress().filter);
@@ -132,10 +146,11 @@ const ServiceRows = ({ rows, listed }: { rows: ServiceRow[]; listed?: number }) 
     keepInAddress(query, next);
   };
   const q = query.trim().toLowerCase();
-  const scope = rows.filter((r) => inFilter(r, filter));
+  const scope = (rows ?? []).filter((r) => inFilter(r, filter));
   const shown = scope.filter((r) => !q || `${r.name} ${r.purpose}`.toLowerCase().includes(q));
+  const scopeOf = (f: Filter) => (rows ?? []).filter((r) => inFilter(r, f));
   const countOf = (f: Filter) =>
-    f === 'alle' && listed !== undefined ? listed : rows.filter((r) => inFilter(r, f)).length;
+    f === 'alle' && listed !== undefined ? listed : scopeOf(f).length;
   const offered = filters.filter((f) => f === 'alle' || f === filter || countOf(f) > 0);
   return (
     <>
@@ -148,27 +163,33 @@ const ServiceRows = ({ rows, listed }: { rows: ServiceRow[]; listed?: number }) 
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
-        <fieldset className="chip-fieldset">
-          <legend className="ds-label">{t('serviceList.statusLegend')}</legend>
-          <div className="tag-row">
-            {offered.map((f) => (
-              <Chip.Radio
-                key={f}
-                name="statusfilter"
-                checked={filter === f}
-                onChange={() => setFilter(f)}
-              >
-                {f === 'alle' ? t('serviceList.filterAll') : t(statusKey[f])}{' '}
-                <span className="numeric">{countOf(f)}</span>
-              </Chip.Radio>
-            ))}
-          </div>
-        </fieldset>
+        {rows ? (
+          <fieldset className="chip-fieldset">
+            <legend className="ds-label">{t('serviceList.statusLegend')}</legend>
+            <div className="tag-row">
+              {offered.map((f) => (
+                <Chip.Radio
+                  key={f}
+                  name="statusfilter"
+                  checked={filter === f}
+                  onChange={() => setFilter(f)}
+                >
+                  {f === 'alle' ? t('serviceList.filterAll') : t(statusKey[f])}{' '}
+                  <span className="numeric">{countOf(f)}</span>
+                </Chip.Radio>
+              ))}
+            </div>
+          </fieldset>
+        ) : null}
       </div>
-      <p aria-live="polite" className="meta services-count">
-        {t('serviceList.showing', { shown: shown.length, total: scope.length })}
-      </p>
-      {shown.length > 0 ? (
+      {rows ? (
+        <p aria-live="polite" className="meta services-count">
+          {t('serviceList.showing', { shown: shown.length, total: scope.length })}
+        </p>
+      ) : null}
+      {!rows ? (
+        placeholder
+      ) : shown.length > 0 ? (
         <ul className="plain-list services-rows">
           {shown.map((r) => (
             <li key={r.id}>

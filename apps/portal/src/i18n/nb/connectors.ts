@@ -152,6 +152,7 @@ export const connectorApproval = defineNamespace({
   testing: 'Tester tilkoblingen …',
   cancel: 'Avbryt',
   reject: 'Avvis forslaget',
+  rejecting: 'Avviser …',
 });
 
 export const connectorsLane = { connectors, connectorApproval } as const;

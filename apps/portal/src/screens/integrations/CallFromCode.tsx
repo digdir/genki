@@ -1,16 +1,7 @@
-import {
-  Button,
-  Chip,
-  Field,
-  Fieldset,
-  Heading,
-  Label,
-  Select,
-  Spinner,
-  Tag,
-} from '@digdir/designsystemet-react';
+import { Chip, Field, Fieldset, Heading, Label, Select, Tag } from '@digdir/designsystemet-react';
 import { useEffect, useRef, useState } from 'react';
 import type { ApiClient } from '../../api';
+import { BusyButton } from '../../components/BusyButton';
 import { CopyButton } from '../../components/CopyButton';
 import {
   API_BASE,
@@ -105,7 +96,19 @@ export const LiveCallFromCode = ({
     [api, tenant],
   );
   if (state.status === 'loading')
-    return <Loading label={t('integCode.loadingServices')} shape="detail" onRetry={retry} />;
+    return (
+      <div className="stack int">
+        <Heading level={3} data-size="xs">
+          {t('integrations.callFromCode')}
+        </Heading>
+        <Loading
+          label={t('integCode.loadingServices')}
+          shape="detail"
+          headingLevel={4}
+          onRetry={retry}
+        />
+      </div>
+    );
   if (state.status === 'error') return <ErrorState error={state.error} onRetry={retry} />;
   if (!state.data.length)
     return (
@@ -376,12 +379,16 @@ export const CallFromCode = ({
             </div>
             {ch !== 'mcp' && !live ? (
               <div className="actions">
-                <Button variant="primary" aria-disabled={trying || undefined} onClick={tryIt}>
+                <BusyButton
+                  variant="primary"
+                  busy={trying}
+                  busyLabel={t('integCode.fetching')}
+                  onClick={tryIt}
+                >
                   {t('integCode.showExample')}
-                </Button>
+                </BusyButton>
                 <span role="status" className="row-wrap">
-                  {trying ? <Spinner aria-hidden data-size="xs" /> : null}
-                  {tryMsg}
+                  {trying ? null : tryMsg}
                 </span>
               </div>
             ) : null}

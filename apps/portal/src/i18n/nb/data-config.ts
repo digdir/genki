@@ -151,6 +151,7 @@ export const sharedServices = defineNamespace({
   charCount: '{count} av {max} tegn',
   orUploadFile: 'eller last opp en fil:',
   run: 'Kjør',
+  runBusy: 'Kjører …',
   reset: 'Tilbakestill',
   result: 'Resultat',
   resultPlaceholder: 'Resultatet vises her når du trykker «Kjør».',

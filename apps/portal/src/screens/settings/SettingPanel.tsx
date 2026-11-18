@@ -10,7 +10,6 @@ import {
   Label,
   Paragraph,
   Select,
-  Spinner,
   Tag,
   Textarea,
   ValidationMessage,
@@ -22,6 +21,7 @@ import { actorLabel, formatDateTime } from '../../format';
 import { useT, type Format, type T } from '../../i18n';
 import { useAsync } from '../../hooks';
 import { needsRight, useRights } from '../../Shell';
+import { Loading } from '../../states';
 import { ApiCallLink, type ApiCallPreview } from '../../components/ApiCall';
 import { NotDecided } from '../../components/NotDecided';
 import { SidePanel } from '../../components/SidePanel';
@@ -714,10 +714,7 @@ export const SettingPanel = ({
         ) : null}
       </section>
       {loadingPreview ? (
-        <div role="status" className="row-wrap">
-          <Spinner aria-hidden data-size="sm" />
-          {t('settings.panelLoadingImpact')}
-        </div>
+        <Loading label={t('settings.panelLoadingImpact')} shape="list" rows={2} headingLevel={3} />
       ) : null}
       {preview && !loadingPreview ? (
         <section className="panel-preview stack-sm" aria-label={t('settings.panelPreview')}>

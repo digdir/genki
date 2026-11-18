@@ -1,4 +1,5 @@
-import { Alert, Button, Paragraph, Spinner, Tag } from '@digdir/designsystemet-react';
+import { Alert, Button, Paragraph, Tag } from '@digdir/designsystemet-react';
+import { BusyButton } from '../../../components/BusyButton';
 import { useId } from 'react';
 import { useT } from '../../../i18n';
 import type { TestDecision, TestSuggestions } from './useAssistant';
@@ -19,20 +20,16 @@ export const SuggestedTests = ({
   if (state.status !== 'open')
     return (
       <div className="ax-row">
-        <Button
+        <BusyButton
           variant="secondary"
           data-size="sm"
-          aria-disabled={off || state.status === 'busy' || undefined}
+          busy={state.status === 'busy'}
+          busyLabel={t('assistant.suggestTestsBusy')}
+          aria-disabled={off || undefined}
           onClick={() => !off && state.status === 'idle' && onSuggest()}
         >
           {t('assistant.suggestTests')}
-        </Button>
-        {state.status === 'busy' ? (
-          <span role="status" className="ax-spinner-line">
-            <Spinner aria-hidden data-size="xs" />
-            {t('assistant.suggestTestsBusy')}
-          </span>
-        ) : null}
+        </BusyButton>
       </div>
     );
   const values = Object.values(state.decisions);
@@ -63,7 +60,6 @@ export const SuggestedTests = ({
               </span>
               {decision === 'sending' ? (
                 <span role="status" className="ax-spinner-line">
-                  <Spinner aria-hidden data-size="xs" />
                   {t('assistant.sending')}
                 </span>
               ) : decision === 'sent' ? (

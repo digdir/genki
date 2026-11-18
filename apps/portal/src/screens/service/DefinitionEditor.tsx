@@ -187,6 +187,7 @@ export const DefinitionEditor = ({ api, tenant, serviceId, onPublished }: Props)
   const [state, retry] = useAsync(
     (signal) => api.getDefinition(tenant, 'Service', serviceId, signal),
     [api, tenant, serviceId, round],
+    { keepPreviousFor: `${tenant}/${serviceId}` },
   );
   if (state.status === 'loading')
     return <Loading label={t('serviceEditor.loading')} shape="form" onRetry={retry} />;

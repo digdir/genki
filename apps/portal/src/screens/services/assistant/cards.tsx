@@ -5,7 +5,6 @@ import {
   Heading,
   Link,
   Paragraph,
-  Spinner,
   Table,
   TableBody,
   TableCell,
@@ -244,7 +243,6 @@ export const RejectedCard = ({
       </dl>
       {retrying ? (
         <span role="status" className="ax-spinner-line">
-          <Spinner aria-hidden data-size="xs" />
           {t('assistant.rejectedRetrying')}
         </span>
       ) : null}

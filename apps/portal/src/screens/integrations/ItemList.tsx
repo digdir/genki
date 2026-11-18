@@ -75,11 +75,13 @@ export const ItemList = ({
   open,
   onToggle,
   empty,
+  busy = false,
 }: {
   items: ItemRowData[];
   open: string | undefined;
   onToggle: (id: string) => void;
   empty: { title: string; text: string };
+  busy?: boolean;
 }) => {
   const t = useT();
   const statusText = (status: string) =>
@@ -92,7 +94,7 @@ export const ItemList = ({
       </div>
     );
   return (
-    <ul className="int-list">
+    <ul className="int-list" aria-busy={busy || undefined}>
       {items.map((it) => {
         const isOpen = open === it.id;
         return (
