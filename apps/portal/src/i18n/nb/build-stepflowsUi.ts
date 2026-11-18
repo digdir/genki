@@ -384,7 +384,9 @@ export const stepflowsUi = {
     colVersion: 'Gjeldende versjon',
     colUsedBy: 'Brukes av',
     fromPublisher: 'Fra {publisher}',
-    steps: { one: '{count} steg', other: '{count} steg' },
+    steps: { one: 'ett steg', other: '{count} steg' },
+    numberWords: 'ett,to,tre,fire,fem,seks,sju,åtte,ni,ti',
+    stepsWords: '{words} steg',
     version: 'v{version}',
     versionDate: 'v{version} · {date}',
     olderVersion: 'v{version}, ny versjon finnes',
@@ -395,9 +397,8 @@ export const stepflowsUi = {
     emptyBody: 'En stegflyt er en fast oppskrift i flere steg. Lag en ny for å komme i gang.',
     elsewhereHeading: 'Andre steder som viser stegflyter',
     elsewhereBlocks: 'Byggeklosser viser Stegflyter som en type og lenker hit.',
-    elsewhereBlocksLink: 'Gå til Byggeklosser',
     elsewhereService:
-      'En tjeneste som bruker en stegflyt, lenker hit til flyten og fester en versjon av den.',
+      'I en tjeneste: Utviklerverktøy, Stegflyt. Der velger du flyt og versjon, og «Rediger stegflyten» åpner den her med «Tilbake til tjenesten».',
     elsewhereStepTypes:
       'Stegtyper, som «Kall en operasjon», er deler av en flyt og står i redigeringen, ikke i denne listen.',
     back: 'Stegflyter',
@@ -408,6 +409,10 @@ export const stepflowsUi = {
     tabsLabel: 'Visninger av {name}',
     tabDiagram: 'Diagram',
     tabYaml: 'YAML',
+    tabVersions: 'Versjoner',
+    versionsHeading: 'Versjoner av {name}',
+    noVersions: 'Ingen publiserte versjoner ennå.',
+    versionsFailed: 'Vi fikk ikke hentet versjonene.',
     notShown: 'Utgiveren deler ikke stegene i denne flyten, så den kan ikke vises her.',
   }),
 } as const;

@@ -169,6 +169,11 @@ export const ListRow = ({
           <a className="bb-card-name" href={href}>
             {item.name}
           </a>
+          {item.required ? (
+            <Tag data-size="sm" data-color="info">
+              {t('blockTypes.required')}
+            </Tag>
+          ) : null}
           {item.dataLocation ? <DataLocationTag location={item.dataLocation} /> : null}
           {pending ? (
             <Tag data-size="sm" data-color="warning">

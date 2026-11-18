@@ -13,7 +13,7 @@ import {
   Textarea,
   ValidationMessage,
 } from '@digdir/designsystemet-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ApiError, type ApiClient } from '../../api';
 import { ApiCallLink } from '../../components/ApiCall';
 import { needsRight, useRights } from '../../Shell';
@@ -77,6 +77,7 @@ interface Props {
   showPicker: boolean;
   initialTab: 'diagram' | 'yaml';
   initialOverlay: boolean;
+  versions?: ReactNode;
   onPickFlow: (id: string) => void;
   onChange: (flow: Flow, previousId?: string) => void;
   onFlash: (flash: Flash) => void;
@@ -92,6 +93,7 @@ export const FlowEditor = ({
   showPicker,
   initialTab,
   initialOverlay,
+  versions,
   onPickFlow,
   onChange,
   onFlash,
@@ -99,7 +101,7 @@ export const FlowEditor = ({
   const t = useT();
   const tRef = useRef(t);
   tRef.current = t;
-  const [tab, setTab] = useState(initialTab);
+  const [tab, setTab] = useState<'diagram' | 'yaml' | 'versions'>(initialTab);
   const [overlay, setOverlay] = useState(initialOverlay);
   const [running, setRunning] = useState(false);
   const [subOpen, setSubOpen] = useState<Record<string, boolean>>({});
@@ -328,13 +330,13 @@ export const FlowEditor = ({
           </span>
         </div>
       ) : (
-        <p className="flow-picker-text">
+        <p className="flow-picker-text flow-lead">
           {versionLabel(flow, t)} · {flow.desc || t('stepflows.newFlowDesc')}
           <span className="meta block">{shared}</span>
         </p>
       )}
 
-      <Tabs value={tab} onChange={(v) => setTab(v as 'diagram' | 'yaml')}>
+      <Tabs value={tab} onChange={(v) => setTab(v as 'diagram' | 'yaml' | 'versions')}>
         <div className="flow-toolbar">
           <Tabs.List aria-label={t('stepflows.flowLabel')}>
             <Tabs.Tab value="diagram">
@@ -348,6 +350,9 @@ export const FlowEditor = ({
               ) : null}
             </Tabs.Tab>
             <Tabs.Tab value="yaml">{t('stepflows.tabYaml')}</Tabs.Tab>
+            {versions ? (
+              <Tabs.Tab value="versions">{t('stepFlowHome.tabVersions')}</Tabs.Tab>
+            ) : null}
           </Tabs.List>
           <div className="actions">
             <Switch
@@ -469,6 +474,7 @@ export const FlowEditor = ({
             </div>
           </div>
         </Tabs.Panel>
+        {versions ? <Tabs.Panel value="versions">{versions}</Tabs.Panel> : null}
       </Tabs>
 
       {dirty ? (

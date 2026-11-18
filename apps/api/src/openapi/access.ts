@@ -1920,6 +1920,14 @@ export const accessRoutes: RouteConfig[] = [
             .string()
             .optional()
             .describe('The name of the person who took it into use, when genki knows it'),
+          connection: z
+            .string()
+            .optional()
+            .describe('A model only: the id of the model connection it is reached through'),
+          maker: z
+            .string()
+            .optional()
+            .describe('A model only: who made it, such as OpenAI, when the model list says'),
           operations: z
             .array(
               z.object({

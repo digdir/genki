@@ -12,6 +12,7 @@ import { useRights } from '../Shell';
 import { Loading } from '../states';
 import { stepFlowHref } from './buildingblocks/block-types';
 import { StepFlowView } from './buildingblocks/StepFlowView';
+import { FlowVersions } from './stepflows/FlowVersions';
 import { LiveWorkspace } from './stepflows/LiveWorkspace';
 import { UseInService } from './stepflows/UseInService';
 
@@ -38,7 +39,7 @@ const PublishedFlow = ({
 }: Pick<ScreenProps, 'api' | 'tenant'> & {
   item: CatalogItem;
   service: Service | undefined;
-  view: 'diagram' | 'yaml';
+  view: 'diagram' | 'yaml' | 'versions';
 }) => {
   const t = useT();
   const canUse = useRights().has('manage-services');
@@ -82,17 +83,26 @@ const PublishedFlow = ({
                 label: t('stepFlowHome.tabYaml'),
                 href: `${stepFlowHref(item.id, '/yaml')}${suffix}`,
               },
+              {
+                key: 'versions',
+                label: t('stepFlowHome.tabVersions'),
+                href: `${stepFlowHref(item.id, '/versions')}${suffix}`,
+              },
             ]}
             current={view}
           />
-          <StepFlowView
-            api={api}
-            tenant={tenant}
-            id={item.id}
-            own={false}
-            view={view}
-            onMissing={() => setMissing(true)}
-          />
+          {view === 'versions' ? (
+            <FlowVersions api={api} tenant={tenant} id={item.id} name={item.name} />
+          ) : (
+            <StepFlowView
+              api={api}
+              tenant={tenant}
+              id={item.id}
+              own={false}
+              view={view}
+              onMissing={() => setMissing(true)}
+            />
+          )}
         </>
       )}
       {using ? (
@@ -153,7 +163,11 @@ export const StepFlows = ({ api, tenant, route, live }: ScreenProps) => {
         tenant={tenant}
         item={item}
         service={service}
-        view={route.segments[3] === 'yaml' ? 'yaml' : 'diagram'}
+        view={
+          route.segments[3] === 'yaml' || route.segments[3] === 'versions'
+            ? route.segments[3]
+            : 'diagram'
+        }
       />
     );
   return (

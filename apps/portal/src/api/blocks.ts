@@ -54,12 +54,26 @@ export interface ModelOperator {
   region?: string;
 }
 
+export interface ModelCallType {
+  operation: string;
+  api: string;
+  builtIn?: true;
+  maturity?: 'test' | 'production';
+}
+
+export type ProcessorFact =
+  | { recorded: true; subProcessors: { name: string; location: string }[]; retentionDays: number }
+  | { recorded: false };
+
 export interface BlockFacts {
   maker?: string;
   operator?: ModelOperator;
   adoptedAt?: string;
   adoptedBy?: string;
   adoptedByName?: string;
+  connection?: string;
+  operations?: ModelCallType[];
+  processor?: ProcessorFact;
 }
 
 export interface FlowDefinition {

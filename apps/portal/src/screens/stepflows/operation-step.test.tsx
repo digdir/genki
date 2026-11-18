@@ -39,7 +39,7 @@ const recording = (base: typeof globalThis.fetch = mockFetch()) => {
 const newFlow = async (fetch?: typeof globalThis.fetch) => {
   await renderAt('#/developer/step-flows', fetch);
   fireEvent.click(await screen.findByRole('link', { name: 'Ny stegflyt' }));
-  await screen.findByRole('heading', { level: 1, name: 'Arbeidsmåte' });
+  await screen.findByRole('heading', { level: 1, name: 'Ny stegflyt' });
 };
 
 const addStep = (name: RegExp) => {

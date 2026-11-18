@@ -9,7 +9,7 @@ export const skillsRedirect = (route: Route) => {
   const id = route.query.get('id');
   return id
     ? skillHref(id, 'setup', route.query.get('owner') ?? undefined)
-    : '#/building-blocks/in-use?type=skill';
+    : '#/building-blocks/skill';
 };
 
 export const Skills = ({ route }: ScreenProps) => {

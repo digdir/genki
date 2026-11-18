@@ -61,7 +61,7 @@ export const skillTabOf = (segment: string | undefined): SkillTab =>
 export const skillHref = (id: string, tab: SkillTab = 'setup', owner?: string) =>
   `#/building-blocks/skill/${encodeURIComponent(id)}${tabPaths[tab]}${owner ? `?owner=${encodeURIComponent(owner)}` : ''}`;
 
-export const blocksBackHref = '#/building-blocks/in-use';
+export const blocksBackHref = '#/building-blocks';
 
 type Flash = { text: string; color: 'success' | 'danger' };
 

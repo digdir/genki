@@ -418,13 +418,13 @@ describe('empty lists and deep links', () => {
     expect(screen.queryByRole('button', { name: 'Nullstill søk og filter' })).toBeNull();
   });
 
-  it('sends the old Ferdigheter address to skills under Byggeklosser', async () => {
+  it('sends the old Ferdigheter address straight to the skills type page', async () => {
     await renderAs(
       '#/skills',
       answering(/\/skills(\?|$)/, () => Response.json({ data: [] })),
     );
 
-    await waitFor(() => expect(window.location.hash).toBe('#/building-blocks/in-use?type=skill'));
+    await waitFor(() => expect(window.location.hash).toBe('#/building-blocks/skill'));
   });
 
   it('opens a dataset from a link with its full id', async () => {

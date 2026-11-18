@@ -1,18 +1,16 @@
 import { useFormat } from '@genai/i18n/react';
 import { SchemaFormProvider } from '@genai/schema-forms';
-import { Heading } from '@digdir/designsystemet-react';
 import { useEffect, useState } from 'react';
 import type { ApiClient } from '../../api';
 import type { CatalogItem } from '../../api/building-blocks';
 import { BackLink } from '../../components/BackLink';
+import { HeadingSkeleton } from '../../components/Skeleton';
 import {
   exampleFlows,
   flowQueryIds,
   registerBlocks,
   serviceOfFlow,
-  strategies,
   type Flow,
-  type Strategy,
 } from '../../data/stepflows';
 import { blockDefFromSchema } from '../../data/step-blocks';
 import { formatDate } from '../../format';
@@ -77,8 +75,6 @@ export const withCatalogText = (
   };
 };
 
-const strategyIds = strategies.map((s) => s.id);
-
 export interface LiveWorkspaceProps {
   api: ApiClient;
   tenant: string;
@@ -121,7 +117,6 @@ export const LiveWorkspace = ({
     (flowId && (flowQueryIds[flowId] ?? flowId)) ||
     byService ||
     'svar-med-kilder';
-  const strategi = query.get('strategi') ?? '';
   const visning = query.get('visning');
 
   useEffect(() => {
@@ -133,9 +128,7 @@ export const LiveWorkspace = ({
     return (
       <div className="stack-md stepflows">
         <BackLink label={t('stepflows.crumbFlows')} href="#/developer/step-flows" />
-        <Heading level={1} data-size="md">
-          {t('stepflows.strategyTitle')}
-        </Heading>
+        <HeadingSkeleton label={t('stepflows.loading')} />
         <Loading label={t('stepflows.loading')} shape="detail" onRetry={retry} />
       </div>
     );
@@ -149,13 +142,7 @@ export const LiveWorkspace = ({
         setFlows={setFlows}
         liveError={state.status === 'error' ? { error: state.error, retry } : undefined}
         service={service}
-        live={live}
         initialFlow={initialFlow}
-        initialStrategy={
-          strategyIds.includes(strategi as Strategy['id'])
-            ? (strategi as Strategy['id'])
-            : 'stegflyt'
-        }
         initialTab={visning === 'yaml' ? 'yaml' : 'diagram'}
         initialOverlay={query.get('testkjoring') === 'true' || query.get('testkjoring') === '1'}
       />
