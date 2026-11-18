@@ -128,6 +128,8 @@ export const profile = defineNamespace({
   actingFor: 'Handler for',
   organisation: '{name} (org.nr. {orgNr})',
   noRights: 'Du har ingen rettigheter i {name} ennå.',
+  howToAsk: 'Slik ber du om tilgang',
+  rightsLead: 'Gitt i Altinn for {name}. Det er tilgangsstyreren deres som endrer dem.',
   useServicesLine: 'Stille spørsmål og få svar i tjenestene virksomheten har tatt i bruk.',
   manageServicesLine: 'Lage, endre og publisere tjenester, og se hva som er endret.',
   manageDatasetsLine: 'Legge til kilder, laste opp filer og lese inn på nytt.',

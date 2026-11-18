@@ -7,6 +7,14 @@ export const usageArea = {
     thousands: '{value}k',
     notPriced: 'Not priced',
     money: 'NOK {value}',
+    atLeast: 'at least {value}',
+    priceMissing: {
+      one: 'The price is missing for the model {models}. The cost is therefore at least what is shown here, and becomes right once the price is added.',
+      other:
+        'The prices are missing for the models {models}. The cost is therefore at least what is shown here, and becomes right once the prices are added.',
+    },
+    priceMissingUnnamed:
+      'The price is missing for at least one model. The cost is therefore at least what is shown here, and becomes right once the price is added.',
     via: 'Via {via}',
     residencyNorway: 'In Norway',
     residencyEu: 'In the EU/EEA',
@@ -52,8 +60,6 @@ export const usageArea = {
     meterText: '{used} of {quota} tokens used. Expected {forecast} by the end of the month.',
     usedSoFar: 'Used so far',
     forecast: 'Expected at month end: {value} ({percent})',
-    quotaUsedUp:
-      'When the quota is used up, new runs stop until next month. Digdir can raise the quota. <link>Contact Digdir</link>.',
     costIn: 'Estimated cost in {month}',
     someUnpriced: 'At least one model is not priced',
     forecastCost: 'Expected {value} for the whole month',

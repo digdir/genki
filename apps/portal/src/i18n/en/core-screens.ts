@@ -96,6 +96,11 @@ export const getStarted = {
   stepTitle: '{n}. {title}',
   done: '(done)',
   notDone: '(not done)',
+  doneAt: 'Done {when}.',
+  doneAtBy: 'Done {when} by {by}.',
+  doneAtWhat: 'Done {when}: {what}.',
+  doneAtByWhat: 'Done {when} by {by}: {what}.',
+  publishedWhat: '{service} was published',
   datasetTitle: 'Add a source',
   datasetBody:
     'A dataset is the documents the service answers from: web pages, files you upload, or a shared dataset such as Kudos.',

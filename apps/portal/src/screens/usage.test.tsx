@@ -137,13 +137,11 @@ describe('Forbruk', () => {
     expectAccessible();
   });
 
-  it('points to the Kontakt Digdir page for a higher quota', async () => {
+  it('has no Kontakt Digdir note under the quota, since more quota is asked for in the portal', async () => {
     await renderAt('#/statistics');
-    await screen.findByText(/Digdir kan øke kvoten/);
-    const links = screen.getAllByRole('link', { name: 'Kontakt Digdir' });
-    expect(links.length).toBeGreaterThan(0);
-    for (const link of links) expect(link.getAttribute('href')).toBe('#/contact');
-    expect(screen.queryByText('kundeservice')).toBeNull();
+    await table();
+    expect(screen.queryByText(/Digdir kan øke kvoten/)).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Kontakt Digdir' })).toBeNull();
   });
 
   it('says what is counted: tests are not shown but count toward the quota', async () => {
@@ -221,6 +219,103 @@ describe('Forbruk', () => {
     expect(within(models_).getByText('I Norge')).toBeTruthy();
     expect(within(models_).getByText('Globalt, også utenfor EU/EØS')).toBeTruthy();
     expect(within(models_).getAllByText('Ikke priset').length).toBeGreaterThan(0);
+  });
+
+  it('shows minst X kr and names the model without a price when only part of the usage is priced', async () => {
+    const priced = {
+      inputTokens: 800_000,
+      outputTokens: 200_000,
+      requests: 10,
+      costMicroNok: 12_000_000,
+    };
+    const missing = {
+      inputTokens: 400_000,
+      outputTokens: 100_000,
+      requests: 5,
+      costMicroNok: null,
+      priced: false,
+    };
+    const total = {
+      inputTokens: 1_200_000,
+      outputTokens: 300_000,
+      requests: 15,
+      costMicroNok: 12_000_000,
+      priced: false,
+      unpricedModels: ['tenant/norsk-7b'],
+    };
+    const report: UsageReport = {
+      ...emptyReport,
+      priced: false,
+      totals: total,
+      daily: [
+        {
+          date: '2026-10-05',
+          usage: total,
+          byService: { rapportassistenten: priced, postsortering: missing },
+          byModel: { 'foundry-openai/gpt-4.1-mini': priced, 'tenant/norsk-7b': missing },
+        },
+      ],
+      byService: [
+        { service: 'rapportassistenten', usage: priced },
+        { service: 'postsortering', usage: missing },
+      ],
+      byModel: [
+        { model: 'foundry-openai/gpt-4.1-mini', usage: priced },
+        { model: 'tenant/norsk-7b', usage: missing },
+      ],
+    };
+    await renderAt(
+      '#/statistics',
+      mockFetch(undefined, undefined, undefined, undefined, { usage: report }),
+    );
+
+    const region = await table();
+    expect(
+      screen.getByText(
+        'Prisen mangler for modellen norsk-7b. Kostnaden er derfor minst det som står her, og blir riktig når prisen er lagt inn.',
+      ),
+    ).toBeTruthy();
+    const cost = screen.getByText('Beregnet kostnad i oktober').parentElement as HTMLElement;
+    expect(cost.textContent).toContain('minst 12 kr');
+    const sum = within(region).getByRole('rowheader', { name: 'Sum' }).parentElement;
+    expect(sum?.textContent).toContain('minst 12 kr');
+    const row = (name: RegExp) => within(region).getByRole('rowheader', { name }).parentElement;
+    expect(row(/Postsortering/)?.textContent).toContain('Ikke priset');
+  });
+
+  it("shows each row's share of the tokens, with 100 % on the sum row", async () => {
+    const usage = (tokens: number) => ({
+      inputTokens: tokens,
+      outputTokens: 0,
+      requests: 1,
+      costMicroNok: 1_000_000,
+    });
+    const report: UsageReport = {
+      ...emptyReport,
+      totals: usage(4_000),
+      daily: [
+        {
+          date: '2026-10-05',
+          usage: usage(4_000),
+          byService: { rapportassistenten: usage(3_000), postsortering: usage(1_000) },
+        },
+      ],
+      byService: [
+        { service: 'rapportassistenten', usage: usage(3_000) },
+        { service: 'postsortering', usage: usage(1_000) },
+      ],
+    };
+    await renderAt(
+      '#/statistics',
+      mockFetch(undefined, undefined, undefined, undefined, { usage: report }),
+    );
+
+    const region = await table();
+    expect(within(region).getByRole('columnheader', { name: 'Andel' })).toBeTruthy();
+    const row = (name: RegExp) => within(region).getByRole('rowheader', { name }).parentElement;
+    expect(row(/Rapportassistenten/)?.textContent).toContain('75 %');
+    expect(row(/Postsortering/)?.textContent).toContain('25 %');
+    expect(row(/^Sum$/)?.textContent).toContain('100 %');
   });
 
   it('shows the price per 1 000 tokens of each model from the model list', async () => {

@@ -11,7 +11,7 @@ import {
 import { useFormat } from '@genai/i18n/react';
 import { useT } from '../../i18n';
 import type { UsageReport, UsageSourceId } from '../../types';
-import { costOf, money, nb, percentText, tokensOf } from './model';
+import { costText, nb, percentText, tokensOf } from './model';
 
 export const UsageSources = ({ report }: { report: UsageReport }) => {
   const t = useT();
@@ -47,7 +47,7 @@ export const UsageSources = ({ report }: { report: UsageReport }) => {
               <TableRow key={s.source}>
                 <TableHeaderCell scope="row">{name(s.source)}</TableHeaderCell>
                 <TableCell className="num">{nb(f, tokensOf(s.usage))}</TableCell>
-                <TableCell className="num">{money(f, t, costOf(s.usage))}</TableCell>
+                <TableCell className="num">{costText(f, t, s.usage)}</TableCell>
                 <TableCell className="num">
                   {percentText(f, total > 0 ? tokensOf(s.usage) / total : 0)}
                 </TableCell>
@@ -83,7 +83,7 @@ export const UsageSources = ({ report }: { report: UsageReport }) => {
                   </Tag>
                 </TableCell>
                 <TableCell className="num">{nb(f, tokensOf(m.usage))}</TableCell>
-                <TableCell className="num">{money(f, t, costOf(m.usage))}</TableCell>
+                <TableCell className="num">{costText(f, t, m.usage)}</TableCell>
               </TableRow>
             ))}
           </TableBody>

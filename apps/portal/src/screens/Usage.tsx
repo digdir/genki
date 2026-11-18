@@ -30,11 +30,16 @@ import { needsRight, useRights } from '../Shell';
 import { ErrorState, limitOf, refusalOf } from '../states';
 import type { ScreenProps } from '../screen';
 import type { ModelOption, UsageReport, UsageTotals } from '../types';
+import { zeroUsage } from '../data/usage';
+import { modelLabel } from '../models';
 import {
+  add,
   aggregate,
   categories,
-  costOf,
+  costText,
   decimalText,
+  isLowerBound,
+  knownCostOf,
   money,
   monthStatus,
   monthUsage,
@@ -116,6 +121,7 @@ const UsageView = ({
   const [level, setLevel] = useState<'rows' | 'sum'>('rows');
 
   const labels = periodLabels(report, f, t);
+  const missing = report.totals.unpricedModels ?? [];
   const status = useMemo(
     () => monthStatus(report, quota, models, f, t),
     [report, quota, models, f, t],
@@ -168,7 +174,13 @@ const UsageView = ({
         requests: 0,
         costMicroNok: 0,
       };
-      return { ...c, u, tok: tokensOf(u), cost: costOf(u) };
+      return {
+        ...c,
+        u,
+        tok: tokensOf(u),
+        cost: knownCostOf(u),
+        costAtLeast: isLowerBound(u),
+      };
     })
     .sort((a, b) =>
       a.extra !== b.extra
@@ -179,15 +191,14 @@ const UsageView = ({
           ? a.label.localeCompare(b.label, f.locale) * sort.dir
           : (sort.key === 'tok' ? a.tok - b.tok : (a.cost ?? -1) - (b.cost ?? -1)) * sort.dir,
     );
-  const sum = rows.reduce<{ tin: number; tout: number; runs: number; cost: number | null }>(
-    (a, r) => ({
-      tin: a.tin + r.u.inputTokens,
-      tout: a.tout + r.u.outputTokens,
-      runs: a.runs + (group === 'model' ? r.u.requests : runsOf(r.u)),
-      cost: a.cost === null || r.cost === null ? null : a.cost + r.cost,
-    }),
-    { tin: 0, tout: 0, runs: 0, cost: 0 },
-  );
+  const sumUsage = rows.reduce((a, r) => add(a, r.u), zeroUsage());
+  const sum = {
+    tin: sumUsage.inputTokens,
+    tout: sumUsage.outputTokens,
+    runs: rows.reduce((n, r) => n + (group === 'model' ? r.u.requests : runsOf(r.u)), 0),
+    cost: knownCostOf(sumUsage),
+    costAtLeast: isLowerBound(sumUsage),
+  };
   const ariaSort = (key: SortKey) =>
     sort.key === key ? (sort.dir === 1 ? 'ascending' : 'descending') : 'none';
   const arrow = (key: SortKey) => (sort.key === key ? (sort.dir === 1 ? '↑' : '↓') : '');
@@ -261,6 +272,17 @@ const UsageView = ({
         ) : null}
       </div>
 
+      {status.costAtLeast ? (
+        <Alert data-color="info" data-size="sm" role="status">
+          {missing.length > 0
+            ? t('usage.priceMissing', {
+                count: missing.length,
+                models: f.list(missing.map((id) => modelLabel(id, models ?? []))),
+              })
+            : t('usage.priceMissingUnnamed')}
+        </Alert>
+      ) : null}
+
       <section aria-labelledby="kvote-h" className="usage-quota-grid">
         <div className="usage-quota" hidden={scoped}>
           <div className="row-between">
@@ -320,18 +342,17 @@ const UsageView = ({
             </>
           )}
           <p className="usage-note">{t('usage.counted')}</p>
-          <p className="usage-note">
-            {t.rich('usage.quotaUsedUp', { link: (c) => <a href="#/contact">{c}</a> })}
-          </p>
         </div>
         {[
           {
             l: t('usage.costIn', { month }),
-            v: money(f, t, status.cost),
+            v: money(f, t, status.cost, status.costAtLeast),
             sub:
               forecastCost === null
                 ? t('usage.someUnpriced')
-                : t('usage.forecastCost', { value: money(f, t, forecastCost) }),
+                : t('usage.forecastCost', {
+                    value: money(f, t, forecastCost, status.costAtLeast),
+                  }),
           },
           {
             l: t('usage.runsIn', { month }),
@@ -456,6 +477,9 @@ const UsageView = ({
                   {t('usage.estimatedCost')}
                   <span aria-hidden="true">{arrow('cost')}</span>
                 </TableHeaderCell>
+                <TableHeaderCell scope="col" className="num">
+                  {t('usage.share')}
+                </TableHeaderCell>
                 {group === 'model' ? (
                   <>
                     <TableHeaderCell scope="col">{t('usage.pricePerThousand')}</TableHeaderCell>
@@ -482,7 +506,10 @@ const UsageView = ({
                   <TableCell className="num">
                     {nb(f, group === 'model' ? r.u.requests : runsOf(r.u))}
                   </TableCell>
-                  <TableCell className="num">{money(f, t, r.cost)}</TableCell>
+                  <TableCell className="num">{money(f, t, r.cost, r.costAtLeast)}</TableCell>
+                  <TableCell className="num">
+                    {percentText(f, sum.tin + sum.tout ? r.tok / (sum.tin + sum.tout) : 0)}
+                  </TableCell>
                   {group === 'model' ? (
                     <TableCell className="small">
                       {r.price === undefined
@@ -516,7 +543,8 @@ const UsageView = ({
                 <TableCell className="num">{nb(f, sum.tout)}</TableCell>
                 <TableCell className="num">{nb(f, sum.tin + sum.tout)}</TableCell>
                 <TableCell className="num">{nb(f, sum.runs)}</TableCell>
-                <TableCell className="num">{money(f, t, sum.cost)}</TableCell>
+                <TableCell className="num">{money(f, t, sum.cost, sum.costAtLeast)}</TableCell>
+                <TableCell className="num">{percentText(f, 1)}</TableCell>
                 {group === 'model' ? (
                   <>
                     <TableCell />
@@ -573,7 +601,7 @@ const UsageView = ({
                     <TableCell className="num">{nb(f, p.usage.outputTokens)}</TableCell>
                     <TableCell className="num strong">{nb(f, tokensOf(p.usage))}</TableCell>
                     <TableCell className="num">{nb(f, runsOf(p.usage))}</TableCell>
-                    <TableCell className="num">{money(f, t, costOf(p.usage))}</TableCell>
+                    <TableCell className="num">{costText(f, t, p.usage)}</TableCell>
                     <TableCell>
                       <button
                         type="button"

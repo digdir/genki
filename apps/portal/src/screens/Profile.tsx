@@ -1,4 +1,4 @@
-import { Fieldset, Heading, Link, Radio } from '@digdir/designsystemet-react';
+import { Fieldset, Heading, Radio } from '@digdir/designsystemet-react';
 import { LanguageChoice } from '@genai/i18n/react';
 import { useEffect, useId, useState } from 'react';
 import type { ApiClient } from '../api';
@@ -8,6 +8,7 @@ import { useT, type PlainKey } from '../i18n';
 import { rightLabel, useRights, useUserName } from '../Shell';
 import { saveTheme, storedTheme, type Theme } from '../theme';
 import type { PortalRight } from '../types';
+import './profile.css';
 
 const rightLines: Record<PortalRight, PlainKey> = {
   'use-services': 'profile.useServicesLine',
@@ -70,29 +71,33 @@ export const Profile = ({
         ) : null}
         <div>
           <dt>{t('profile.actingFor')}</dt>
-          <dd>{t('profile.organisation', { name: tenantName, orgNr: formatOrgNumber(tenant) })}</dd>
+          <dd>
+            {tenantName === t('shell.orgNumberOnly', { orgNr: formatOrgNumber(tenant) })
+              ? tenantName
+              : t('profile.organisation', { name: tenantName, orgNr: formatOrgNumber(tenant) })}
+          </dd>
         </div>
       </dl>
       <section aria-labelledby="rights-h" className="stack-sm">
         <Heading level={2} data-size="xs" id="rights-h">
           {t('shell.yourRights')}
         </Heading>
-        <p className="meta">{t('shell.rightsGivenBy')}</p>
+        <p className="meta">{t('profile.rightsLead', { name: tenantName })}</p>
         {rights.length > 0 ? (
           <ul className="profile-rights">
             {rights.map((r) => (
               <li key={r}>
-                <span className="profile-right">{rightLabel(t, r)}</span>
-                <span className="meta">{t(rightLines[r])}</span>
+                <span className="profile-right">{rightLabel(t, r)}</span>{' '}
+                <span className="profile-right-line">{t(rightLines[r])}</span>
               </li>
             ))}
           </ul>
         ) : (
-          <p>{t('profile.noRights', { name: tenantName })}</p>
+          <p>
+            {t('profile.noRights', { name: tenantName })}{' '}
+            <a href="#/access">{t('profile.howToAsk')}</a>
+          </p>
         )}
-        <Link href="https://www.altinn.no" target="_blank" rel="noopener">
-          {t('shell.seeInAltinn')}
-        </Link>
       </section>
       <section aria-labelledby="language-h" className="stack-sm">
         <Heading level={2} data-size="xs" id="language-h">
@@ -125,7 +130,7 @@ export const Profile = ({
             />
           ))}
         </Fieldset>
-        <span role="status" className="profile-saved">
+        <span role="status" className={themeFailed ? 'profile-saved failed' : 'profile-saved'}>
           {themeFailed ? t('profile.notStored') : themeSaved ? t('profile.savedHere') : ''}
         </span>
       </section>

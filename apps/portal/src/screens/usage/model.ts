@@ -52,10 +52,11 @@ const nbPlain = (n: number) =>
   new Intl.NumberFormat('nb-NO', { maximumFractionDigits: 0 })
     .format(Math.round(n))
     .replace(/\u00a0/g, ' ');
-export const money = (f: Format, t: T, n: number | null) =>
-  n === null
-    ? t('usage.notPriced')
-    : t('usage.money', { value: n < 10 ? f.decimal(n, 2) : nb(f, n) });
+export const money = (f: Format, t: T, n: number | null, atLeast = false) => {
+  if (n === null) return t('usage.notPriced');
+  const value = t('usage.money', { value: n < 10 ? f.decimal(n, 2) : nb(f, n) });
+  return atLeast ? t('usage.atLeast', { value }) : value;
+};
 export const percentText = (f: Format, value: number) =>
   f.percent(value).replace(/[\u00a0\u202f]/g, ' ');
 export const decimalText = (f: Format, n: number) =>
@@ -69,9 +70,26 @@ export const tokensIn = (values: Record<string, UsageTotals>, id: string) => {
 };
 export const isPriced = (u: UsageTotals) => u.costMicroNok !== null && u.priced !== false;
 export const costOf = (u: UsageTotals) => (isPriced(u) ? (u.costMicroNok ?? 0) / 1e6 : null);
+/** The priced part of the cost, null only when nothing in it has a price. */
+export const knownCostOf = (u: UsageTotals) =>
+  u.costMicroNok === null ? null : u.costMicroNok / 1e6;
+export const isLowerBound = (u: UsageTotals) => u.costMicroNok !== null && u.priced === false;
+export const costText = (f: Format, t: T, u: UsageTotals) =>
+  money(f, t, knownCostOf(u), isLowerBound(u));
+const nothing = (u: UsageTotals) => tokensOf(u) === 0 && !u.costMicroNok;
+const partCost = (
+  a: UsageTotals,
+  b: UsageTotals,
+  combine: (x: number, y: number) => number,
+): number | null => {
+  if (nothing(b)) return a.costMicroNok;
+  if (nothing(a) || a.costMicroNok === null)
+    return b.costMicroNok === null ? null : combine(0, b.costMicroNok);
+  return combine(a.costMicroNok, b.costMicroNok ?? 0);
+};
 export const runsOf = (u: UsageTotals) => u.runs ?? u.requests;
 export const add = (a: UsageTotals, b: UsageTotals): UsageTotals => {
-  const priced = isPriced(a) && isPriced(b);
+  const priced = (nothing(a) || isPriced(a)) && (nothing(b) || isPriced(b));
   return {
     inputTokens: a.inputTokens + b.inputTokens,
     outputTokens: a.outputTokens + b.outputTokens,
@@ -79,24 +97,24 @@ export const add = (a: UsageTotals, b: UsageTotals): UsageTotals => {
     ...(a.runs !== undefined || b.runs !== undefined
       ? { runs: (a.runs ?? 0) + (b.runs ?? 0) }
       : {}),
-    costMicroNok: priced ? (a.costMicroNok ?? 0) + (b.costMicroNok ?? 0) : null,
+    costMicroNok: partCost(a, b, (x, y) => x + y),
     ...(priced ? {} : { priced: false }),
   };
 };
 
-const unpriced = (u: UsageTotals): UsageTotals => ({ ...u, costMicroNok: null, priced: false });
+const unpriced = (u: UsageTotals): UsageTotals => (u.priced === true ? u : { ...u, priced: false });
 
 export const trialRow = 'trial-runs';
 export const gatewayRow = 'gateway';
 export const ingestionRow = 'ingestion';
 
 const less = (a: UsageTotals, b: UsageTotals): UsageTotals => {
-  const priced = isPriced(a) && isPriced(b);
+  const priced = (nothing(a) || isPriced(a)) && (nothing(b) || isPriced(b));
   return {
     inputTokens: Math.max(0, a.inputTokens - b.inputTokens),
     outputTokens: Math.max(0, a.outputTokens - b.outputTokens),
     requests: Math.max(0, a.requests - b.requests),
-    costMicroNok: priced ? Math.max(0, (a.costMicroNok ?? 0) - (b.costMicroNok ?? 0)) : null,
+    costMicroNok: a.costMicroNok === null ? null : partCost(a, b, (x, y) => Math.max(0, x - y)),
     ...(priced ? {} : { priced: false }),
   };
 };
@@ -225,6 +243,7 @@ export interface Bar {
   values: Record<string, UsageTotals>;
   total: number;
   cost: number | null;
+  costAtLeast: boolean;
 }
 
 export const today = (report: UsageReport) => {
@@ -329,7 +348,7 @@ const breakdown = (
           inputTokens: entry.usage.inputTokens * share,
           outputTokens: entry.usage.outputTokens * share,
           requests: entry.usage.requests * share,
-          costMicroNok: isPriced(entry.usage) ? (entry.usage.costMicroNok ?? 0) * share : null,
+          costMicroNok: entry.usage.costMicroNok === null ? null : entry.usage.costMicroNok * share,
           ...(isPriced(entry.usage) ? {} : { priced: false }),
         },
       ];
@@ -356,7 +375,8 @@ const toBar = (
     future: values === null,
     values: values ?? {},
     total: tokensOf(total),
-    cost: costOf(total),
+    cost: knownCostOf(total),
+    costAtLeast: isLowerBound(total),
   };
 };
 
@@ -478,10 +498,9 @@ export const monthStatus = (
     (_, i) => days.get(isoDate(now.year, now.month, i + 1))?.usage ?? zeroUsage(),
   );
   const used = dayTotals.reduce((n, u) => n + tokensOf(u), 0);
-  const cost = dayTotals.reduce<number | null>((n, u) => {
-    const c = costOf(u);
-    return n === null || c === null ? null : n + c;
-  }, 0);
+  const spent = dayTotals.reduce((a, u) => add(a, u), zeroUsage());
+  const cost = knownCostOf(spent);
+  const costAtLeast = isLowerBound(spent);
   const full = dayTotals.slice(0, -1);
   const average = full.length ? full.reduce((n, u) => n + tokensOf(u), 0) / full.length : used;
   const remaining = daysIn(now.year, now.month) - now.day;
@@ -495,6 +514,7 @@ export const monthStatus = (
   return {
     used,
     cost,
+    costAtLeast,
     forecast,
     runs,
     norwayShare: models && used ? norway / used : null,
