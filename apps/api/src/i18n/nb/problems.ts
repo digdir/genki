@@ -113,6 +113,10 @@ export const problems = defineNamespace({
   datasetDocumentsPeopleOnly: 'Bare personer kan liste dokumentene i et datasett',
   datasetDocumentsUnsupported: 'Søkemotoren bak datasettet kan ikke liste dokumentene',
   datasetDocumentsFailed: 'Klarte ikke å hente dokumentene fra søkemotoren',
+  evalCompareInvalid: 'Ugyldig sammenligning',
+  evalRunNotFound: 'Fant ikke testkjøringen for denne tjenesten',
+  evalBaselineMissing: 'Versjonen i bruk har ingen fullført kjøring av testsettet',
+  evalRunsNotComparable: 'Kjøringene er av ulike testsett',
   draftNotFound: 'Tjenesten har ikke noe utkast',
   draftOtherService:
     'Utkastet gjelder en annen virksomhet eller tjeneste enn den det er lagret for',

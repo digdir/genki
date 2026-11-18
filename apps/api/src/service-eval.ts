@@ -220,12 +220,12 @@ export const summarize = (results: CaseResult[]): Outcome => {
 const verdictMetrics = ['judge.criteria', 'exact-text', 'refusal'];
 
 /** A case passes on its case type's own metric: the criteria judge, the exact text or the refusal. */
-const verdictOf = (scores: Score[]) =>
+export const verdictOf = (scores: Score[]) =>
   verdictMetrics
     .map((m) => scores.find((s) => s.metric === m && s.state !== 'not-applicable'))
     .find((s) => s !== undefined);
 
-const passes = (scores: Score[]) => {
+export const passes = (scores: Score[]) => {
   const verdict = verdictOf(scores);
   return verdict?.state === 'scored' && verdict.value === 1;
 };
@@ -759,6 +759,30 @@ export const serviceEval = (
         !s.run.tested?.selected &&
         (testSet === undefined || s.run.testSet.id === testSet),
     );
+
+  const publishedBaseline = async (
+    tenant: string,
+    service: string,
+    testSet: string,
+    except: string,
+  ) => {
+    const found = await subjectOf(tenant, service, undefined);
+    if (!found || typeof found.version !== 'number') return undefined;
+    const validated = validateDefinition(found.definition, deps.plugins);
+    const subject = definitionSubject(
+      validated.ok ? validated.definition.spec : found.definition.spec,
+    );
+    return (await runsOf(tenant, service)).find(
+      (s) =>
+        s.run.id !== except &&
+        s.run.testSet.id === testSet &&
+        runState(s.run) === 'completed' &&
+        !s.run.tested?.selected &&
+        !s.run.tested?.split &&
+        !s.run.tested?.variant &&
+        (s.subject === subject || s.run.tested?.version === found.version),
+    );
+  };
 
   /** What each case answered, read from its task; empty once the task's content is erased. */
   const answersOf = async (run: EvalRun) => {
@@ -1471,6 +1495,7 @@ export const serviceEval = (
     runOf,
     runsOf,
     latestCompleted,
+    publishedBaseline,
     answersOf,
     judgeReasonsOf,
     sendingOf,

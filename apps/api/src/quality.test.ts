@@ -4235,3 +4235,258 @@ describe('a test run as the portal shows it', () => {
     expect(both.results.map((r) => r.case)).toEqual(['o1', 'o2']);
   });
 });
+
+describe('comparing two test runs case by case', () => {
+  const compare = `${services}/eval-runs/compare`;
+
+  const runDraft = async (env: Awaited<ReturnType<typeof boot>>) => {
+    const draft = structuredClone(service);
+    draft.spec.strategy.config.instructions = better;
+    const started = await env.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+      version: 'draft',
+      definition: draft,
+    });
+    await env.settled();
+    return String(started.body.id);
+  };
+
+  const copyRun = async (
+    env: Awaited<ReturnType<typeof boot>>,
+    from: string,
+    id: string,
+    change: (run: EvalRun) => EvalRun = (run) => run,
+    where: { tenant?: string; service?: string } = {},
+  ) => {
+    const stored = await env.platform.evalStores.runs.get(from);
+    if (!stored) throw new Error('no run');
+    await env.platform.evalStores.runs.save({
+      ...stored,
+      ...where,
+      run: change({ ...stored.run, id }),
+    });
+  };
+
+  it('compares a draft run with the run of the published version by default, with counts per change', async () => {
+    const env = await boot();
+    const published = await runPublished(env);
+    const draft = await runDraft(env);
+
+    const compared = await env.send('GET', `${compare}?candidate=${draft}`);
+
+    expect(compared.status).toBe(200);
+    expect(compared.body).toMatchObject({
+      testSet: 'svar-frister',
+      baseline: { id: published, version: 1, published: true, passed: 1, cases: 3 },
+      candidate: { id: draft, version: 'draft', passed: 3, cases: 3, score: 1 },
+      counts: { better: 2, worse: 0, same: 1, new: 0, missing: 0, pending: 0 },
+      total: 3,
+      offset: 0,
+      limit: 50,
+    });
+    const data = compared.body.data as { case: string; change: string }[];
+    expect(data.map((c) => [c.case, c.change])).toEqual([
+      ['o1', 'better'],
+      ['l1', 'better'],
+      ['o2', 'same'],
+    ]);
+    expect(data[0]).toMatchObject({
+      input: 'Når er fristen for søknad?',
+      type: 'criteria',
+      split: 'open',
+      baseline: { pass: false, score: 0, reason: 'Vurdert.' },
+      candidate: { pass: true, score: 1 },
+    });
+  });
+
+  it('marks a case worse when the candidate fails what the baseline passed, against a named baseline run', async () => {
+    const env = await boot();
+    const published = await runPublished(env);
+    const draft = await runDraft(env);
+
+    const compared = await env.send('GET', `${compare}?candidate=${published}&baseline=${draft}`);
+
+    expect(compared.body.baseline).toMatchObject({ id: draft, published: false });
+    expect(compared.body.counts).toMatchObject({ worse: 2, better: 0, same: 1 });
+  });
+
+  it('names a case only one run has as new or missing, and as pending while the other run still runs', async () => {
+    const env = await boot(undefined, { leases: { staleAfterMs: Number.MAX_SAFE_INTEGER } });
+    const published = await runPublished(env);
+    const shifted = (run: EvalRun): EvalRun => ({
+      ...run,
+      results: run.results
+        .filter((r) => r.case !== 'o2')
+        .concat(run.results.filter((r) => r.case === 'o1').map((r) => ({ ...r, case: 'n1' }))),
+    });
+    await copyRun(env, published, 'ny', shifted);
+    await copyRun(env, published, 'pagar', (run) => ({
+      ...shifted(run),
+      status: 'running',
+      progress: { done: 3, total: 4 },
+      owner: 'en-annen-instans',
+      heartbeatAt: '2026-10-12T10:00:00Z',
+    }));
+
+    const done = await env.send('GET', `${compare}?candidate=ny&baseline=${published}`);
+    const running = await env.send('GET', `${compare}?candidate=pagar&baseline=${published}`);
+
+    expect(done.body.counts).toMatchObject({ new: 1, missing: 1, same: 2, pending: 0 });
+    expect(running.body.counts).toMatchObject({ new: 1, missing: 0, same: 2, pending: 1 });
+    expect(running.body.candidate).toMatchObject({ status: 'running', score: null, endedAt: null });
+  });
+
+  it('the default baseline skips a newer run of only one split', async () => {
+    const env = await boot();
+    const published = await runPublished(env);
+    await copyRun(env, published, 'bare-apne', (run) => ({
+      ...run,
+      endedAt: '2999-01-01T00:00:00Z',
+      tested: { ...run.tested, version: 1, split: 'open' },
+      results: run.results.filter((r) => r.split !== 'holdout'),
+    }));
+    const draft = await runDraft(env);
+
+    const compared = await env.send('GET', `${compare}?candidate=${draft}`);
+
+    expect(compared.body.baseline).toMatchObject({ id: published });
+    expect(compared.body.counts).toMatchObject({ new: 0 });
+  });
+
+  it('leaves out a case outside the split of the run that lacks it, instead of calling it new or missing', async () => {
+    const env = await boot();
+    const published = await runPublished(env);
+    await copyRun(env, published, 'bare-apne', (run) => ({
+      ...run,
+      tested: { ...run.tested, version: 1, split: 'open' },
+      results: run.results.filter((r) => r.split !== 'holdout'),
+    }));
+
+    const asCandidate = await env.send(
+      'GET',
+      `${compare}?candidate=bare-apne&baseline=${published}`,
+    );
+    const asBaseline = await env.send(
+      'GET',
+      `${compare}?candidate=${published}&baseline=bare-apne`,
+    );
+
+    for (const res of [asCandidate, asBaseline]) {
+      expect((res.body.data as { case: string }[]).map((c) => c.case)).not.toContain('l1');
+      expect(res.body.counts).toMatchObject({ new: 0, missing: 0, same: 2 });
+    }
+  });
+
+  it('pages the cases and filters them by change, while the counts cover every case', async () => {
+    const env = await boot();
+    await runPublished(env);
+    const draft = await runDraft(env);
+
+    const first = await env.send('GET', `${compare}?candidate=${draft}&change=better&limit=1`);
+    const second = await env.send(
+      'GET',
+      `${compare}?candidate=${draft}&change=better&limit=1&offset=1`,
+    );
+
+    expect(first.body).toMatchObject({ total: 2, limit: 1, offset: 0 });
+    expect((first.body.data as { case: string }[]).map((c) => c.case)).toEqual(['o1']);
+    expect((second.body.data as { case: string }[]).map((c) => c.case)).toEqual(['l1']);
+    expect(first.body.counts).toMatchObject({ better: 2, same: 1 });
+  });
+
+  it('refuses a missing candidate, an unknown change and a page out of range', async () => {
+    const env = await boot();
+    const published = await runPublished(env);
+
+    const missing = await env.send('GET', compare);
+    const change = await env.send('GET', `${compare}?candidate=${published}&change=kanskje`);
+    const limit = await env.send('GET', `${compare}?candidate=${published}&limit=201`);
+    const offset = await env.send('GET', `${compare}?candidate=${published}&offset=-1`);
+
+    for (const res of [missing, change, limit, offset]) {
+      expect(res.status).toBe(400);
+      expect(res.body.type).toBe('urn:genai:problem:eval-compare-invalid');
+    }
+  });
+
+  it('answers 404 when the published version has no completed run of the test set', async () => {
+    const env = await boot();
+    const draft = await runDraft(env);
+    await copyRun(env, draft, 'utvalgt', (run) => ({
+      ...run,
+      tested: { ...run.tested, version: 1, selected: ['o1'] },
+    }));
+
+    const compared = await env.send('GET', `${compare}?candidate=${draft}`);
+
+    expect(compared.status).toBe(404);
+    expect(compared.body.title).toBe('Versjonen i bruk har ingen fullført kjøring av testsettet');
+  });
+
+  it('has the problem title in English too', async () => {
+    const env = await boot();
+    const draft = await runDraft(env);
+
+    const compared = await env.send('GET', `${compare}?candidate=${draft}`);
+
+    expect(translateMessage(String(compared.body.title), 'en')).toBe(
+      'The version in use has no completed run of the test set',
+    );
+  });
+
+  it('refuses to compare runs of different test sets', async () => {
+    const env = await boot();
+    const published = await runPublished(env);
+    await copyRun(env, published, 'annet-sett', (run) => ({
+      ...run,
+      testSet: { ...run.testSet, id: 'svar-andre' },
+    }));
+
+    const compared = await env.send('GET', `${compare}?candidate=annet-sett&baseline=${published}`);
+
+    expect(compared.status).toBe(400);
+    expect(compared.body.type).toBe('urn:genai:problem:eval-runs-not-comparable');
+  });
+
+  it('never compares with a run of another service in the tenant', async () => {
+    const env = await boot();
+    const published = await runPublished(env);
+    await copyRun(env, published, 'annen-tjeneste', undefined, { service: 'annen' });
+
+    const asBaseline = await env.send(
+      'GET',
+      `${compare}?candidate=${published}&baseline=annen-tjeneste`,
+    );
+    const asCandidate = await env.send('GET', `${compare}?candidate=annen-tjeneste`);
+
+    expect(asBaseline.status).toBe(404);
+    expect(asCandidate.status).toBe(404);
+  });
+
+  it('never compares with or shows a run of another tenant', async () => {
+    const env = await boot(undefined, { otherTenant: true });
+    const published = await runPublished(env);
+    await copyRun(env, published, 'deres', undefined, { tenant: other, service: 'svar' });
+
+    const theirBaseline = await env.send('GET', `${compare}?candidate=${published}&baseline=deres`);
+    const ours = await env.send(
+      'GET',
+      `/tenants/${other}/services/svar/eval-runs/compare?candidate=${published}`,
+      'ola',
+    );
+    const notMember = await env.send('GET', `${compare}?candidate=${published}`, 'ola');
+
+    expect(theirBaseline.status).toBe(404);
+    expect(ours.status).toBe(404);
+    expect([403, 404]).toContain(notMember.status);
+  });
+
+  it('lets any member of the tenant compare, and nobody who is not logged in', async () => {
+    const env = await boot();
+    await runPublished(env);
+    const draft = await runDraft(env);
+
+    expect((await env.send('GET', `${compare}?candidate=${draft}`, 'erik')).status).toBe(200);
+    expect((await env.send('GET', `${compare}?candidate=${draft}`, 'ingen')).status).toBe(401);
+  });
+});

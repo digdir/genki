@@ -63,6 +63,10 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ## API changes
 
+### 2026-11-18: comparing two test runs case by case
+
+- New `GET /tenants/{tenant}/services/{id}/eval-runs/compare?candidate={runId}`: two test-set runs of a service, case by case, with each verdict, a `change` per case (`better`, `worse`, `same`, `new`, `missing`, `pending`) and `counts`; the baseline is a named run or, by default, the run of the published version. Paged with `limit` and `offset` (see [work.md](work.md#two-kinds-of-evaluation-run)).
+
 ### 2026-11-18: who saved a draft, the draft a test run tested, dataset owners and file limits
 
 - `GET` and `PUT /tenants/{tenant}/services/{id}/draft` (and the draft in a rebase answer) add `by`, who saved the draft last, and `byName`, that person's name, or `null` when genki does not know it.
