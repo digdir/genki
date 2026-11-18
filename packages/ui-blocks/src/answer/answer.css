@@ -5,6 +5,7 @@
 @layer genai.components {
   /* An answer is read, not pressed: nothing in the card should feel clickable. */
   .uib-answer {
+    --dsc-card-border-radius: var(--genai-answer-border-radius, var(--ds-border-radius-xl));
     container: uib-answer / inline-size;
     cursor: auto;
     font-family: var(--genai-answer-font-family, var(--ds-font-family)), sans-serif;
@@ -38,7 +39,7 @@
   }
   .uib-answer-text pre {
     padding: var(--genai-answer-code-padding, var(--ds-size-3));
-    border-radius: var(--genai-answer-code-border-radius, var(--ds-border-radius-md));
+    border-radius: var(--genai-answer-code-border-radius, var(--ds-border-radius-xl));
     background: var(--genai-answer-code-background, var(--ds-color-surface-tinted));
     color: var(--genai-answer-code-color, var(--ds-color-text-default));
   }
@@ -176,6 +177,7 @@
      frame and the colours; only the spacing is the block's, wider where there is room. Private
      defaults, so the container query changes a default and never a host's value. */
   .uib-answer-sources-used-card {
+    --dsc-card-border-radius: var(--genai-answer-sources-used-radius, var(--ds-border-radius-xl));
     --_sources-used-padding: var(--ds-size-2);
     --_sources-used-padding-end: var(--ds-size-3);
     margin-block: var(--genai-answer-sources-used-spacing, var(--ds-size-8));

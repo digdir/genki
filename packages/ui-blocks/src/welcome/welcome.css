@@ -50,6 +50,7 @@
   /* A tertiary button holding a whole question, so it wraps and reads as a row, one step quieter
      than the field's text. */
   .uib-welcome-suggestion {
+    --dsc-button-border-radius: var(--genai-welcome-suggestion-radius, var(--ds-border-radius-xl));
     inline-size: 100%;
     justify-content: start;
     align-items: start;

@@ -452,7 +452,7 @@
   .uib-filter-read-value {
     padding: var(--genai-filter-chip-padding-block, var(--ds-size-1))
       var(--genai-filter-chip-padding-inline, var(--ds-size-2));
-    border-radius: var(--genai-filter-chip-radius, var(--ds-border-radius-md));
+    border-radius: var(--genai-filter-chip-radius, var(--ds-border-radius-xl));
     background: var(--genai-filter-chip-background, var(--ds-color-neutral-surface-tinted));
     color: var(--genai-filter-chip-color, var(--ds-color-neutral-text-default));
     font-size: var(--genai-filter-chip-font-size, var(--ds-font-size-1));

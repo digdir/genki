@@ -323,4 +323,17 @@
   .uib-settings-shared-title {
     font-weight: var(--genai-settings-row-title-font-weight, var(--ds-font-weight-medium));
   }
+
+  /* The toggle groups and the notice in the assistant's one corner (kunnskapsassistenten#266). */
+  .uib-settings-color-scheme,
+  .uib-settings-choice {
+    --dsc-togglegroup-border-radius: var(
+      --genai-settings-toggle-radius,
+      var(--ds-border-radius-xl)
+    );
+  }
+
+  .uib-settings-page-notice {
+    --dsc-alert-border-radius: var(--genai-settings-notice-radius, var(--ds-border-radius-xl));
+  }
 }

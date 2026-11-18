@@ -191,7 +191,7 @@ describe('the Shell styles', () => {
       ".uib-shell[data-frame='cards']:not([data-compact]) > .uib-shell-side[data-side='primary'] { margin-inline-end: var(--genai-shell-gap, var(--ds-size-3)); }",
     );
     expect(css).toContain(
-      ".uib-shell[data-frame='cards'] .uib-shell-toggle { --dsc-button-size: var(--genai-shell-rail-button-size, var(--ds-size-11)); }",
+      ".uib-shell[data-frame='cards'] .uib-shell-toggle { --dsc-button-border-radius: var(--genai-shell-toggle-radius, var(--ds-border-radius-xl)); --dsc-button-size: var(--genai-shell-rail-button-size, var(--ds-size-11)); }",
     );
     expect(css).toContain(
       'border-radius: var(--genai-shell-card-radius, var(--ds-border-radius-xl));',

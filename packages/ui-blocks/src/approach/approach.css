@@ -4,6 +4,7 @@
 @layer genai.components {
   /* The Details inside the Card holds the padding. */
   .uib-approach-card {
+    --dsc-card-border-radius: var(--genai-approach-card-radius, var(--ds-border-radius-xl));
     padding: var(--genai-approach-card-padding, 0);
     overflow: hidden;
   }

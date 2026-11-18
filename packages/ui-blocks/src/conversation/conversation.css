@@ -32,6 +32,10 @@
     align-items: end;
   }
   .uib-conversation-question {
+    --dsc-card-border-radius: var(
+      --genai-conversation-question-border-radius,
+      var(--ds-border-radius-xl)
+    );
     --dsc-card-padding: var(--genai-conversation-question-padding-block, var(--ds-size-3))
       var(--genai-conversation-question-padding-inline, var(--ds-size-4));
     /* No border: the ground alone marks the question. */

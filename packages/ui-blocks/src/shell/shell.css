@@ -350,6 +350,7 @@
 
   /* The panel's button is the design's 44, so a rail is 16 + 44 + 16. */
   .uib-shell[data-frame='cards'] .uib-shell-toggle {
+    --dsc-button-border-radius: var(--genai-shell-toggle-radius, var(--ds-border-radius-xl));
     --dsc-button-size: var(--genai-shell-rail-button-size, var(--ds-size-11));
   }
 
@@ -538,7 +539,7 @@
     display: flex;
     gap: var(--genai-shell-tools-tabs-gap, var(--ds-size-1));
     padding: var(--genai-shell-tools-tabs-padding, var(--ds-size-1));
-    border-radius: var(--genai-shell-tools-tabs-radius, var(--ds-border-radius-lg));
+    border-radius: var(--genai-shell-tools-tabs-radius, var(--ds-border-radius-xl));
     background: var(--genai-shell-tools-tabs-background, var(--ds-color-neutral-surface-tinted));
   }
 
@@ -548,7 +549,7 @@
     min-block-size: var(--genai-shell-tools-tab-min-height, var(--ds-size-9));
     padding-inline: var(--genai-shell-tools-tab-padding-inline, var(--ds-size-2));
     border: 0;
-    border-radius: var(--genai-shell-tools-tab-radius, var(--ds-border-radius-md));
+    border-radius: var(--genai-shell-tools-tab-radius, var(--ds-border-radius-xl));
     background: none;
     color: var(--genai-shell-tools-tab-color, var(--ds-color-neutral-text-default));
     font: inherit;
@@ -586,7 +587,7 @@
     gap: 0;
     padding: 0;
     overflow-x: auto;
-    border-radius: var(--genai-shell-tools-tinted-radius, var(--ds-border-radius-default));
+    border-radius: var(--genai-shell-tools-tinted-radius, var(--ds-border-radius-xl));
     background: var(--genai-shell-tools-tinted-background, var(--ds-color-surface-tinted));
   }
 
@@ -656,7 +657,7 @@
     gap: var(--genai-shell-tools-tinted-gap, var(--ds-size-2));
     inline-size: 100%;
     min-block-size: var(--genai-shell-tools-tinted-height, var(--ds-size-12));
-    border-radius: var(--genai-shell-tools-tinted-radius, var(--ds-border-radius-default));
+    border-radius: var(--genai-shell-tools-tinted-radius, var(--ds-border-radius-xl));
     font-size: var(--genai-shell-tools-tinted-font-size, var(--ds-font-size-4));
     font-weight: var(--genai-shell-tools-tinted-font-weight, var(--ds-font-weight-medium));
   }
