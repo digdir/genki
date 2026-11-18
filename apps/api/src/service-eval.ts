@@ -1407,7 +1407,7 @@ export const serviceEval = (
   /** Takes up a run another instance left: only its unfinished cases, as the person who started it. */
   const resume = async (stored: StoredRun): Promise<StoredRun | undefined> => {
     const { tenant, run } = stored;
-    if (runState(run) !== 'running' || !stored.service) return undefined;
+    if (finished(run)) return undefined;
     if (await cancelMarked(tenant, run.id)) {
       const stopped: StoredRun = { ...stored, run: cancelledRun(run) };
       const won = await deps.evalStores.runs
@@ -1416,6 +1416,7 @@ export const serviceEval = (
       await forget(tenant, run.id);
       return won ? stopped : ((await deps.evalStores.runs.get(run.id)) ?? stored);
     }
+    if (runState(run) !== 'running' || !stored.service) return undefined;
     const resumable = await resumableOf(tenant, run.id);
     if (!resumable) return undefined;
     if ((run.resumes ?? 0) >= maxResumes) {

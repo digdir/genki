@@ -2621,6 +2621,37 @@ describe('Langfuse judges on a run', () => {
     expect(await summaryFor('erik')).not.toHaveProperty('sinkOthers');
   });
 
+  it('ends a run cancelled while it waits for scores as cancelled, with no error', async () => {
+    const { env, langfuse, adopt } = await judged();
+    expect((await adopt(judgeRule)).status).toBe(200);
+    langfuse.hooks.firstItem = () => {
+      langfuse.hooks.paused = { 'dommer-1': 'Evaluator paused.' };
+    };
+    const started = await env.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+      trace: true,
+    });
+    const id = String(started.body.id);
+    const read = async () => (await env.platform.evalStores.runs.get(id))?.run;
+    await vi.waitFor(async () => expect((await read())?.status).toBe('waiting-for-scores'), {
+      timeout: 10_000,
+    });
+
+    const cancelled = await env.send(
+      'POST',
+      `${services}/eval-runs/${id}/cancel`,
+      'kari',
+      {},
+      { 'change-reason': encodeURIComponent('Feil testsett valgt') },
+    );
+    await env.settled();
+    const run = await read();
+
+    expect([200, 202]).toContain(cancelled.status);
+    expect(run?.status).toBe('cancelled');
+    expect(run).not.toHaveProperty('error');
+  });
+
   it("refuses a Langfuse judge's metric in Kvalitetskrav, naming the rule", async () => {
     const env = await boot();
     const save = (metric: string) =>
@@ -3700,6 +3731,46 @@ describe('a test-set run across a deploy', () => {
     expect(await stores.store.history(serviceEvalResumeKind, tenant, id)).toContainEqual(
       expect.objectContaining({ deleted: true }),
     );
+  });
+
+  it('ends an abandoned run that was cancelled while waiting for scores as cancelled, with no error', async () => {
+    const stores = shared();
+    const before = await boot(prices, {
+      ...stores,
+      holdLocked: true,
+      leases: { instance: 'before', now: () => t0 },
+    });
+    const id = await start(before);
+    await vi.waitFor(async () => expect((await read(before, id)).finished).toBe(2), {
+      timeout: 5000,
+    });
+    const stored = await stores.evalStores.runs.get(id);
+    if (!stored) throw new Error('the run was not stored');
+    await stores.evalStores.runs.save({
+      ...stored,
+      run: { ...stored.run, status: 'waiting-for-scores' },
+    });
+    await stores.store.append({
+      kind: serviceEvalCancelKind,
+      scope: tenant,
+      id,
+      version: 1,
+      spec: { run: id },
+      deleted: false,
+      by: 'employee:test:kari',
+      at: t0.toISOString(),
+      reason: 'Feil testsett valgt',
+    });
+    const after = await boot(prices, {
+      ...stores,
+      leases: { instance: 'after', now: () => new Date(t0.getTime() + 10 * 60_000) },
+    });
+
+    const run = await read(after, id);
+    await after.settled();
+
+    expect(run).toMatchObject({ status: 'cancelled', finished: 2, total: 3 });
+    expect(run).not.toHaveProperty('error');
   });
 
   it('hands a run over when the instance stops: lets the case in flight finish, starts no new one, and the next instance takes it up', async () => {
