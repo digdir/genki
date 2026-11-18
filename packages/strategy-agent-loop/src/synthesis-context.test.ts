@@ -13,6 +13,17 @@ import {
 const unsure = () => readSignal('gap-remaining', { scope_assessment: 'ambiguous' });
 const promptFrom = (out: Awaited<ReturnType<typeof run>>) =>
   out.seen.find((s) => s.kind === 'synth')?.request.messages[1]?.content ?? '';
+// Each numbered source in the synthesis prompt as `[N] text`, without its untrusted-data frame.
+const sourcesIn = (out: Awaited<ReturnType<typeof run>>) =>
+  promptFrom(out)
+    .split('\n</untrusted_data>')
+    .flatMap((part) => {
+      const open = part.lastIndexOf('<untrusted_data ');
+      const number = part.slice(0, open).match(/\[(\d+)\] $/)?.[1];
+      return open < 0 || !number
+        ? []
+        : [`[${number}] ${part.slice(part.indexOf('>\n', open) + 2)}`];
+    });
 const attached = {
   mime: 'text/plain',
   body: { kind: 'text' as const, text: 'Attached instructions.' },
@@ -80,13 +91,14 @@ describe('synthesis context selection', () => {
       },
     });
 
-    const prompt = promptFrom(out);
-    expect(prompt.indexOf('[1] Attached instructions.')).toBeGreaterThanOrEqual(0);
     // Read results carry no scores: use search summaries, where c3 ranks above c4.
-    expect(prompt).toContain('[2] Innhold i chunk 3.');
-    expect(prompt).toContain('[3] Innhold i chunk 4.');
-    expect(prompt).toContain('[4] Innhold i chunk 1.');
-    expect(prompt).toContain('[5] Innhold i chunk 2.');
+    expect(sourcesIn(out)).toEqual([
+      '[1] Attached instructions.',
+      '[2] Innhold i chunk 3.',
+      '[3] Innhold i chunk 4.',
+      '[4] Innhold i chunk 1.',
+      '[5] Innhold i chunk 2.',
+    ]);
     expect(out.meta).toEqual({
       citations: [
         { index: 1, chunkId: 'attached:abc:0' },
@@ -119,9 +131,11 @@ describe('synthesis context selection', () => {
     });
 
     expect(out.loops).toHaveLength(5);
-    expect(promptFrom(out)).toContain('[1] Attached instructions.');
-    expect(promptFrom(out)).toContain('[2] Innhold i chunk 3.');
-    expect(promptFrom(out)).toContain('[3] Innhold i chunk 1.');
+    expect(sourcesIn(out)).toEqual([
+      '[1] Attached instructions.',
+      '[2] Innhold i chunk 3.',
+      '[3] Innhold i chunk 1.',
+    ]);
     expect(promptFrom(out)).not.toContain(chunk(2).content);
     expect(promptFrom(out)).not.toContain(chunk(4).content);
     expect(out.meta).toEqual({
@@ -156,7 +170,7 @@ describe('synthesis context selection', () => {
       },
     });
 
-    expect(promptFrom(out)).toContain(`[1] ${decisive.content}`);
+    expect(sourcesIn(out)).toEqual([`[1] ${decisive.content}`]);
     expect(promptFrom(out)).not.toContain(earlier[0]?.content);
     // All read sources remain available in output; only synthesis is budgeted.
     expect(out.sources.map((s) => s.chunkId)).toEqual(['c2', 'c1']);
@@ -204,7 +218,7 @@ describe('synthesis context selection', () => {
     });
 
     expect(out.task.status).toBe('completed');
-    expect(promptFrom(out)).toContain(`[1] ${chunks[1]?.content}`);
+    expect(sourcesIn(out)).toEqual([`[1] ${chunks[1]?.content}`]);
     expect(promptFrom(out)).not.toContain(chunks[0]?.content);
     expect(promptFrom(out)).not.toContain(chunks[2]?.content);
     expect(out.meta).toEqual({ citations: [{ index: 1, chunkId: 'c2' }] });
