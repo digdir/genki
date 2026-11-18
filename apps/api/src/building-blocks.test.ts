@@ -305,6 +305,28 @@ describe('building blocks API', () => {
     expect((await acting.send(`${base}/secrets`, 'erik')).status).toBe(200);
   });
 
+  it('a model block page builds only model blocks, without listing tool connections or trace judges', async () => {
+    const { send, connections, runs } = await setup();
+    let asked = 0;
+    const list = connections.list.bind(connections);
+    connections.list = async (...args: Parameters<typeof list>) => {
+      asked += 1;
+      return list(...args);
+    };
+    const listRuns = runs.list.bind(runs);
+    let runLists = 0;
+    runs.list = async (...args: Parameters<typeof listRuns>) => {
+      runLists += 1;
+      return listRuns(...args);
+    };
+
+    const res = await send(`${base}/model/${enc('azure/gpt-41')}`, 'kari');
+
+    expect(res.status).toBe(200);
+    expect(asked).toBe(0);
+    expect(runLists).toBe(1);
+  });
+
   it('a model outside the tenant residencies is not_allowed with the policy text', async () => {
     const { send } = await setup();
 

@@ -20,6 +20,28 @@ describe('api', () => {
     });
   });
 
+  it('health says degraded while model discovery has not succeeded, and ok once it has', async () => {
+    let discovery = {
+      state: 'retrying' as 'ok' | 'retrying',
+      attempts: 2,
+      lastError: 'foundry: 408',
+      since: '2026-11-18T09:00:00.000Z',
+    };
+    const watched = createApp('abc', { modelDiscovery: () => discovery });
+
+    const retrying = await watched.request('/health');
+    expect(retrying.status).toBe(200);
+    expect(await retrying.json()).toMatchObject({
+      status: 'degraded',
+      modelDiscovery: { state: 'retrying', attempts: 2, lastError: 'foundry: 408' },
+    });
+    discovery = { state: 'ok', attempts: 3 } as typeof discovery;
+    expect(await (await watched.request('/health')).json()).toMatchObject({
+      status: 'ok',
+      modelDiscovery: { state: 'ok', attempts: 3 },
+    });
+  });
+
   it('reads the build time from the commit time in seconds and ignores anything else', () => {
     expect(buildTimeOf('1763366400')).toBe('2025-11-17T08:00:00.000Z');
     expect(buildTimeOf('')).toBeUndefined();

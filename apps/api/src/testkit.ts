@@ -159,6 +159,7 @@ export const setup = (
     tenantQuota?: PlatformOptions['tenantQuota'];
     lifecycle?: PlatformOptions['lifecycle'];
     organisationName?: PlatformOptions['organisationName'];
+    registeredName?: PlatformOptions['registeredName'];
     settings?: SettingDefinition[];
   } = {},
 ) => {
@@ -190,6 +191,7 @@ export const setup = (
       ...(options.tenantQuota ? { tenantQuota: options.tenantQuota } : {}),
       ...(options.lifecycle ? { lifecycle: options.lifecycle } : {}),
       ...(options.organisationName ? { organisationName: options.organisationName } : {}),
+      ...(options.registeredName ? { registeredName: options.registeredName } : {}),
     },
   });
   const send = (path: string, who: string | undefined, init: SendInit = {}) =>

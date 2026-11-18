@@ -3,6 +3,7 @@ import { defineNamespace } from '@genai/i18n';
 export const runs = defineNamespace({
   taskStatusOneOf: 'status er en av {values}',
   failModel: 'Vi fikk ikke svar fra modellen.',
+  failModelUnavailable: 'Modellen tjenesten bruker, er ikke tilgjengelig nå.',
   failStrategy: 'Tjenesten feilet underveis.',
   originBuilder: 'Byggeren (utkast)',
   originPlayground: 'Prøveområdet (utkast)',

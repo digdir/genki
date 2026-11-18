@@ -784,6 +784,25 @@ describe('model discovery', () => {
     expect([...router.models().keys()]).toEqual(['a/pinned']);
   });
 
+  it('keeps the models it found before when a later listing fails', async () => {
+    let down = false;
+    const source = {
+      kind: 'stub-listing',
+      async list() {
+        if (down) throw new Error('listing timed out');
+        return [{ deployment: 'gpt-5-mini', model: 'gpt-5-mini' }];
+      },
+    };
+    const { router } = setup(source as ReturnType<typeof listing>);
+    await router.refresh();
+
+    down = true;
+    const result = await router.refresh();
+
+    expect(result.failed.map((f) => f.endpoint)).toEqual(['one', 'two']);
+    expect(router.models().has('one/gpt-5-mini')).toBe(true);
+  });
+
   it('refuses a discovery source nobody registered and a listing endpoint that does not exist', () => {
     const result = parseCatalog(
       {

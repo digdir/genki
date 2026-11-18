@@ -1,4 +1,10 @@
 import { publishRefusals } from './internal-services.js';
+import {
+  isArchived,
+  serviceArchived,
+  serviceArchivedType,
+  type LifecycleOf,
+} from './archived-services.js';
 import { createRoute, z, type OpenAPIHono } from '@hono/zod-openapi';
 import type { Context } from 'hono';
 import {
@@ -42,6 +48,7 @@ export interface DefinitionsApiOptions {
   names?: ActorNames;
   now?: () => Date;
   registered?: (tenant: string) => Promise<boolean>;
+  lifecycle?: LifecycleOf;
 }
 
 const kinds = { services: 'Service', 'step-flows': 'StepFlow', skills: 'Skill' } as const;
@@ -170,7 +177,7 @@ const routes = {
       },
       409: {
         content: problemContent,
-        description: `${draftOutdatedType}: the body's draftRevision names a draft started from an older version, and publishing it would undo newer published changes; rebase the draft first`,
+        description: `${draftOutdatedType}: the body's draftRevision names a draft started from an older version, and publishing it would undo newer published changes; rebase the draft first. ${serviceArchivedType}: the service is archived; restore it first`,
       },
       422: { content: problemContent, description: 'The definition is invalid' },
     },
@@ -403,6 +410,8 @@ export const registerDefinitionRoutes = (app: OpenAPIHono, options: DefinitionsA
       return problem(c, 422, 'Invalid definition', { errors: unconfirmed });
 
     const service = validated.definition.kind === 'Service' ? validated.definition.metadata.id : '';
+    if (service && (await isArchived(options.lifecycle, tenant, service)))
+      return serviceArchived(c);
     const fromDraft = service !== '' && (await draftRevisionOf(c)) !== undefined;
     const behind = fromDraft ? await options.drafts?.outdated(tenant, service) : undefined;
     if (behind)
