@@ -94,6 +94,7 @@ export const steps = defineNamespace({
   searchByMetadata: 'metadatasøket',
   searchByPhrase: 'frasesøket',
   searchByDocTitle: 'tittelsøket',
+  searchByAll: 'alle søkene',
   searchByOther: 'søket «{name}»',
   searchTimedOut: '{search} tok for lang tid',
   searchQueryTooLong: '{search} fikk en for lang spørring',

@@ -91,6 +91,7 @@ describe('a search strategy that fails', () => {
     const text = toolMessages(out.loops[1])[0] ?? '';
     expect(text).toContain('Search warning: content search timed out.');
     expect(text).not.toContain('these organisations have no documents');
+    expect(text).not.toContain('These hits');
     expect(retrievalNotice(out.notices)?.failed).toEqual([
       { strategy: 'content', reason: 'timeout' },
     ]);
@@ -107,6 +108,8 @@ describe('a search strategy that fails', () => {
           'metadata search: the query is too long',
           'innhold-søk search: canceling statement\ndue to statement timeout',
           'content.v2 search: connect ECONNREFUSED 10.0.0.4:5432',
+          'full text search: canceling statement due to statement timeout',
+          'content search: value too long for type character varying(64)',
         ],
       }),
     ).toEqual([
@@ -117,6 +120,8 @@ describe('a search strategy that fails', () => {
       { strategy: 'metadata', reason: 'query-too-long' },
       { strategy: 'innhold-søk', reason: 'timeout' },
       { strategy: 'content.v2', reason: 'error' },
+      { strategy: 'full text', reason: 'timeout' },
+      { strategy: 'content', reason: 'error' },
     ]);
   });
 
@@ -141,6 +146,72 @@ describe('a search strategy that fails', () => {
     expect(retrievalNotice(out.notices)?.failed).toEqual([
       { strategy: 'content', reason: 'timeout' },
     ]);
+  });
+
+  /** A knowledge fake whose first search finds nothing and whose retry finds hits, each with a failed strategy. */
+  const failsOnRetry = (): AgentRetrieval => {
+    const base = retrieval().impl;
+    let calls = 0;
+    return {
+      ...base,
+      search: async (queries, options, signal) => {
+        calls += 1;
+        const outcome = await base.search(queries, options, signal);
+        return calls === 1
+          ? { chunks: [], attribution: { warnings: ['metadata search: connect ECONNREFUSED'] } }
+          : { ...outcome, attribution: { warnings: [`content search: ${timeout}`] } };
+      },
+    };
+  };
+
+  it('keeps the failure of the search retried with only the org-number filter', async () => {
+    const out = await searchOnce(failsOnRetry(), {
+      filter_by: {
+        fields: [
+          { field: 'owner_orgnr', selected_options: ['991825827'] },
+          { field: 'orgs_short', selected_options: ['DIGDIR'] },
+        ],
+      },
+    });
+
+    expect(toolMessages(out.loops[1])[0]).toContain(
+      'Search warning: metadata search failed; content search timed out.',
+    );
+    expect(retrievalNotice(out.notices)?.failed).toEqual([
+      { strategy: 'metadata', reason: 'error' },
+      { strategy: 'content', reason: 'timeout' },
+    ]);
+  });
+
+  it('keeps the failure of the search retried without filters', async () => {
+    const out = await searchOnce(failsOnRetry(), {
+      filter_by: { fields: [{ field: 'orgs_short', selected_options: ['DIGDIR'] }] },
+    });
+
+    expect(toolMessages(out.loops[1])[0]).toContain(
+      'Search warning: metadata search failed; content search timed out.',
+    );
+    expect(retrievalNotice(out.notices)?.failed).toEqual([
+      { strategy: 'metadata', reason: 'error' },
+      { strategy: 'content', reason: 'timeout' },
+    ]);
+  });
+
+  it('a search that fails completely shows on the search step as every search failing', async () => {
+    const r: AgentRetrieval = {
+      ...retrieval().impl,
+      search: async () => {
+        throw new Error('canceling statement due to statement timeout');
+      },
+    };
+    const out = await searchOnce(r);
+
+    expect(retrievalNotice(out.notices)).toMatchObject({
+      hits: [],
+      queries: ['tildelingsbrev', 'digdir 2025'],
+      failed: [{ strategy: 'all', reason: 'timeout' }],
+    });
+    expect(JSON.stringify(out.notices)).not.toContain('canceling');
   });
 
   it("a search that fails completely tells the agent why without the engine's message", async () => {

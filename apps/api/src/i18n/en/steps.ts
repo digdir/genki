@@ -96,6 +96,7 @@ export const steps = {
   searchByMetadata: 'the metadata search',
   searchByPhrase: 'the phrase search',
   searchByDocTitle: 'the title search',
+  searchByAll: 'every search',
   searchByOther: 'the "{name}" search',
   searchTimedOut: '{search} timed out',
   searchQueryTooLong: '{search} got a query that was too long',

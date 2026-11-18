@@ -40,6 +40,7 @@ describe('answer cleanup on adversarial input', () => {
   it('reads which search strategy failed in linear time', () => {
     const long = (warning: string) => () => searchFailures({ warnings: [warning] });
     expect(quickly(long(`${'a-'.repeat(50_000)} search`))).toBeLessThan(1000);
+    expect(quickly(long(`${'a search'.repeat(50_000)}:`))).toBeLessThan(1000);
     expect(quickly(long(`content search: ${' search: '.repeat(20_000)}`))).toBeLessThan(1000);
     expect(quickly(long(`content search: ${'took longer '.repeat(20_000)}`))).toBeLessThan(1000);
   });

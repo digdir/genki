@@ -150,7 +150,7 @@ describe('the run mapper', () => {
     const failed = 'innholdssøket tok for lang tid, metadatasøket feilet';
     expect(search).toMatchObject({ warning: true, state: 'partial', durationSeconds: 15.6 });
     expect(search?.summary).toBe(
-      `«ventetid» · 1 treff · ${failed} · leste 1 tekstbit fra 1 dokument`,
+      `${failed} · «ventetid» · 1 treff · leste 1 tekstbit fra 1 dokument`,
     );
     expect(search?.blocks).toContainEqual({
       kind: 'note',
@@ -182,6 +182,33 @@ describe('the run mapper', () => {
     expect(run.stats().warnings).toEqual([
       'Tittelsøket fikk en for lang spørring, frasesøket fikk ikke søkt på ord, bare på betydning, metadatasøket fikk ikke søkt på betydning, søket «__proto__» tok for lang tid, søket «toString» feilet.',
     ]);
+  });
+
+  it('a search where every strategy failed shows as a failed search step', () => {
+    seq = 0;
+    const run = mapRun([
+      at(0, 'kernel.task.status', { status: 'running' }),
+      notice(420, { stage: 'tool', tool: 'search', iteration: 0 }),
+      notice(16_000, {
+        kind: 'retrieval',
+        queries: ['ventetid'],
+        hits: [],
+        failed: [{ strategy: 'all', reason: 'timeout' }],
+      }),
+      notice(16_200, {
+        event: 'agent/turn-completed',
+        iteration: 0,
+        'tool-calls': [
+          { tool: 'search', args: { queries: ['ventetid'] }, 'ok?': true, 'duration-ms': 15_600 },
+        ],
+      }),
+    ]);
+
+    const search = run.steps.find((s) => s.type === 'search');
+    expect(search).toMatchObject({ warning: true, state: 'failed', durationSeconds: 15.6 });
+    expect(search?.summary).toBe('alle søkene tok for lang tid · «ventetid» · 0 treff');
+    expect(search?.blocks).toContainEqual({ kind: 'note', text: 'Alle søkene tok for lang tid.' });
+    expect(run.stats().warnings).toEqual(['Alle søkene tok for lang tid.']);
   });
 
   it('a search with no failed strategy is not marked as a warning', () => {

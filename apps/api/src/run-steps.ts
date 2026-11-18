@@ -187,6 +187,7 @@ const searchStrategies: Record<string, () => string> = {
   metadata: () => t('steps.searchByMetadata'),
   phrase: () => t('steps.searchByPhrase'),
   'doc-title': () => t('steps.searchByDocTitle'),
+  all: () => t('steps.searchByAll'),
 };
 
 const searchFailures: Record<string, (search: string) => string> = {
@@ -385,7 +386,7 @@ export class RunMapper {
   private readonly documents = new Set<string>();
   private readonly warnings: string[] = [];
   /** Open steps that turn partial when they close, so they keep their duration and their reads. */
-  private readonly partialOnClose = new Set<TimelineStep>();
+  private readonly stateOnClose = new Map<TimelineStep, StepState>();
   private readonly byModel = new Map<string, ModelTokens>();
   private errorStep: TimelineStep | undefined;
   private unreadableStep: TimelineStep | undefined;
@@ -538,7 +539,9 @@ export class RunMapper {
   }
 
   private settle(step: TimelineStep) {
-    if (this.partialOnClose.delete(step)) step.state = 'partial';
+    const state = this.stateOnClose.get(step);
+    this.stateOnClose.delete(step);
+    if (state) step.state = state;
     else delete step.state;
   }
 
@@ -814,13 +817,17 @@ export class RunMapper {
     }
     const failed = failedSearchText(data.failed);
     if (failed) {
-      if (open) this.partialOnClose.add(open);
-      else step.state = 'partial';
+      const everyFailed = (Array.isArray(data.failed) ? data.failed : []).some(
+        (f) => record(f).strategy === 'all',
+      );
+      const state = everyFailed ? 'failed' : 'partial';
+      if (open) this.stateOnClose.set(open, state);
+      else step.state = state;
       step.warning = true;
-      step.summary = `${step.summary} · ${failed}`;
+      step.summary = step.summary ? `${failed} · ${step.summary}` : failed;
       step.blocks.push({
         kind: 'note',
-        text: `${sentence(failed)} ${t('steps.searchOthersOnly')}`,
+        text: everyFailed ? sentence(failed) : `${sentence(failed)} ${t('steps.searchOthersOnly')}`,
       });
       this.warn(sentence(failed));
     }
