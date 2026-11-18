@@ -120,11 +120,13 @@ export const BatchSection = ({
   const [runs, retryRuns] = useAsync(
     (signal) => api.batchRuns.list(tenant, id, signal),
     [api, tenant, id, round],
+    { keepPreviousFor: `${tenant}/${id}` },
   );
   const [detail] = useAsync(
     async (signal): Promise<BatchRunDetail | undefined> =>
       runId ? api.batchRuns.run(tenant, id, runId, signal) : undefined,
     [api, tenant, id, runId, round],
+    { keepPreviousFor: `${tenant}/${id}/${runId}` },
   );
   const seenRuns = useRef<BatchRun[]>(undefined);
   if (runs.status === 'ready') seenRuns.current = runs.data;

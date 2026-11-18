@@ -326,6 +326,44 @@ const View = ({
   );
 };
 
+const TenantSettingsLoading = ({
+  tenantName,
+  tab,
+  onRetry,
+}: {
+  tenantName: string;
+  tab: 'common' | 'all';
+  onRetry: () => void;
+}) => {
+  const t = useT();
+  return (
+    <div className="settings-page stack">
+      <div className="settings-header">
+        <div className="settings-title">
+          <Heading level={1} data-size="md">
+            {t('settings.heading')}
+          </Heading>
+          <p className="lead">{t('settings.introOrganisation', { name: tenantName })}</p>
+        </div>
+      </div>
+      <Tabs
+        value={tab}
+        onChange={(v) => {
+          if (v !== tab) navigate(v === 'all' ? '/settings/all' : '/settings');
+        }}
+      >
+        <TabsList aria-label={t('settings.tenantTabsLabel')}>
+          <TabsTab value="common">{t('settings.tabCommon')}</TabsTab>
+          <TabsTab value="all">{t('settings.tabAll')}</TabsTab>
+        </TabsList>
+        <TabsPanel value={tab}>
+          <Loading label={t('settings.loading')} shape="form" onRetry={onRetry} />
+        </TabsPanel>
+      </Tabs>
+    </div>
+  );
+};
+
 export const Settings = (props: ScreenProps & { context: SettingsContext }) => {
   const { api, tenant, context, live } = props;
   const t = useT();
@@ -390,7 +428,15 @@ export const Settings = (props: ScreenProps & { context: SettingsContext }) => {
     [api, tenant, context.kind, id, live],
   );
   if (state.status === 'loading')
-    return <Loading label={t('settings.loading')} shape="form" onRetry={retry} />;
+    return context.kind === 'tenant' ? (
+      <TenantSettingsLoading
+        tenantName={props.tenantName}
+        tab={props.route.segments[1] === 'all' ? 'all' : 'common'}
+        onRetry={retry}
+      />
+    ) : (
+      <Loading label={t('settings.loading')} shape="form" onRetry={retry} />
+    );
   if (state.status === 'error')
     return (
       <div className="stack">

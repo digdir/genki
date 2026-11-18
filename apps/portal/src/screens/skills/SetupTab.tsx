@@ -1,12 +1,4 @@
-import {
-  Button,
-  Field,
-  Heading,
-  Label,
-  Select,
-  Spinner,
-  Textfield,
-} from '@digdir/designsystemet-react';
+import { Button, Field, Heading, Label, Select, Textfield } from '@digdir/designsystemet-react';
 import { useState, type ReactNode } from 'react';
 import type { SkillDefinition, SkillSpec, SkillToolOption } from '../../api/skills';
 import { useFormat } from '@genai/i18n/react';
@@ -70,7 +62,6 @@ const Ask = ({
           <span className="skill-suggestion-from">{t('skills.suggestionFrom')}</span>
           {busy === section ? (
             <span role="status" className="busy-note">
-              <Spinner aria-hidden data-size="xs" />
               {t('skills.assistantWriting')}
             </span>
           ) : null}

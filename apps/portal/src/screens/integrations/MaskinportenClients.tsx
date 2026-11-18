@@ -55,6 +55,7 @@ export interface MaskinportenParts {
   button: ReactNode;
   rows: ReactNode[] | null;
   after: ReactNode;
+  busy?: boolean;
 }
 
 export const MaskinportenClients = ({
@@ -73,7 +74,7 @@ export const MaskinportenClients = ({
   const rights = useRights();
   const canManage = rights.has('manage-services');
   const [tick, setTick] = useState(0);
-  const [state, retry] = useAsync(
+  const [state, retry, pending] = useAsync(
     async (signal) => {
       if (!canManage) return { clients: [], services: [] };
       const [clients, overview] = await Promise.all([
@@ -83,6 +84,7 @@ export const MaskinportenClients = ({
       return { clients, services: overview?.services ?? [] };
     },
     [api, tenant, tick, canManage],
+    { keepPreviousFor: tenant },
   );
   const [open, setOpen] = useState<string>();
   const [form, setForm] = useState<Form>();
@@ -93,7 +95,11 @@ export const MaskinportenClients = ({
 
   if (state.status === 'loading')
     return children({
-      button: null,
+      button: canManage ? (
+        <Button variant="secondary" aria-disabled>
+          {t('integMaskinporten.register')}
+        </Button>
+      ) : null,
       rows: null,
       after: (
         <Loading
@@ -385,5 +391,5 @@ export const MaskinportenClients = ({
     </>
   );
 
-  return children({ button, rows, after });
+  return children({ button, rows, after, busy: pending });
 };

@@ -96,6 +96,7 @@ export const Connections = ({
   initialOpen,
   moreButton,
   moreRows,
+  moreBusy = false,
   after,
 }: {
   api: ApiClient;
@@ -103,6 +104,7 @@ export const Connections = ({
   initialOpen?: string;
   moreButton?: ReactNode;
   moreRows?: ReactNode[] | null;
+  moreBusy?: boolean;
   after?: ReactNode;
 }) => {
   const t = useT();
@@ -299,7 +301,7 @@ export const Connections = ({
             ) : null}
           </PageEmpty>
         ) : (
-          <ul className="plain-list dev-rows">
+          <ul className="plain-list dev-rows" aria-busy={moreBusy || undefined}>
             {state.data.connections.map((c) => {
               const sync = lastSyncs.get(c.id);
               const failed = sync?.ok === false;

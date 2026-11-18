@@ -1,4 +1,5 @@
-import { Button, Spinner, Tag } from '@digdir/designsystemet-react';
+import { Button, Tag } from '@digdir/designsystemet-react';
+import { BusyButton } from '../../../components/BusyButton';
 import { useT } from '../../../i18n';
 import type { ImproveState } from './useAssistant';
 
@@ -21,22 +22,18 @@ export const ImproveInstructions = ({
   const open = state.status === 'open' || state.status === 'applied';
   return (
     <div className="stack-xs">
-      <Button
+      <BusyButton
         variant="secondary"
         data-size="sm"
         className="align-start"
         aria-expanded={open}
-        aria-disabled={off || state.status === 'busy' || undefined}
-        onClick={() => !off && state.status !== 'busy' && onToggle()}
+        busy={state.status === 'busy'}
+        busyLabel={t('assistant.improveBusy')}
+        aria-disabled={off || undefined}
+        onClick={() => !off && onToggle()}
       >
         {t('assistant.improve')}
-      </Button>
-      {state.status === 'busy' ? (
-        <span role="status" className="ax-spinner-line">
-          <Spinner aria-hidden data-size="xs" />
-          {t('assistant.improveBusy')}
-        </span>
-      ) : null}
+      </BusyButton>
       {open ? (
         <div className="ax-suggestion-panel">
           <Tag data-size="sm" data-color="info">

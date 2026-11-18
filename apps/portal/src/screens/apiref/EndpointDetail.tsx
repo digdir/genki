@@ -1,15 +1,8 @@
-import {
-  Button,
-  Heading,
-  Paragraph,
-  Spinner,
-  Table,
-  Tag,
-  Textfield,
-} from '@digdir/designsystemet-react';
+import { Heading, Paragraph, Table, Tag, Textfield } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
 import { useEffect, useRef, useState } from 'react';
 import { ApiError, type ApiClient } from '../../api';
+import { BusyButton } from '../../components/BusyButton';
 import { CopyButton } from '../../components/CopyButton';
 import { useT, type PlainKey, type T } from '../../i18n';
 import { rightLabel, useRights, useUserName } from '../../Shell';
@@ -190,17 +183,14 @@ const TryPanel = ({
         />
       ))}
       <div className="actions">
-        <Button data-size="sm" aria-disabled={sending || undefined} onClick={() => void send()}>
+        <BusyButton
+          data-size="sm"
+          busy={sending}
+          busyLabel={t('apiref.sending')}
+          onClick={() => void send()}
+        >
           {t('apiref.send')}
-        </Button>
-        <span role="status" className="row-wrap">
-          {sending ? (
-            <>
-              <Spinner aria-hidden data-size="xs" />
-              {t('apiref.sending')}
-            </>
-          ) : null}
-        </span>
+        </BusyButton>
       </div>
       {result ? (
         <div className="stack-sm">

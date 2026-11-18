@@ -7,6 +7,7 @@ import type { ScreenProps } from '../screen';
 import { ErrorState, Loading } from '../states';
 import {
   BlockDetail,
+  BlockDetailLoading,
   blockTabs,
   type BlockTab,
   type ServiceRuns,
@@ -70,7 +71,7 @@ const ListPage = ({
   version: number;
 }) => {
   const t = useT();
-  const [state, retry] = useAsync(
+  const [state, retry, pending] = useAsync(
     async (signal) => {
       const [list, proposals, connectors] = await Promise.all([
         api.buildingBlocks.list(tenant, {}, signal),
@@ -113,6 +114,7 @@ const ListPage = ({
       tenant={tenant}
       tenantName={tenantName}
       items={state.data.data}
+      refreshing={pending}
       proposals={proposals.ok ? proposals.data : []}
       connectors={connectors.ok ? connectors.data : []}
       partialError={failed === undefined ? undefined : { error: failed, retry }}
@@ -176,7 +178,14 @@ const DetailPage = ({
     [tenant],
   );
   if (state.status === 'loading')
-    return <Loading label={t('blocks.loadingOne')} shape="detail" onRetry={retry} />;
+    return (
+      <BlockDetailLoading
+        block={{ kind, id }}
+        tab={tab}
+        label={t('blocks.loadingOne')}
+        onRetry={retry}
+      />
+    );
   if (state.status === 'error')
     return (
       <div className="stack">

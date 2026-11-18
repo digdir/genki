@@ -224,6 +224,7 @@ export const TracingPage = ({ api, tenant }: { api: ApiClient; tenant: string })
       return typeof value === 'number' ? value : 1;
     },
     [api, tenant, round],
+    { keepPreviousFor: tenant },
   );
   const rate: SampleRate | undefined =
     setting.status === 'ready' && setting.data !== undefined

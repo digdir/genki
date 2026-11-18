@@ -92,7 +92,7 @@ export const Keys = ({
   const canManage = useRights().has('manage-services');
   const hintId = useId();
   const locked = canManage ? {} : { 'aria-disabled': true as const, 'aria-describedby': hintId };
-  const [state, retry] = useAsync(
+  const [state, retry, pending] = useAsync(
     async (signal) => {
       const [access, datasets] = await Promise.all([
         api.access(tenant, signal),
@@ -116,9 +116,22 @@ export const Keys = ({
   const [saveError, setSaveError] = useState('');
   const summary = useRef<ComponentRef<typeof ErrorSummary>>(null);
 
-  if (state.status === 'loading')
-    return <Loading label={t('integKeys.loading')} shape="list" onRetry={retry} />;
-  if (state.status === 'error') return <ErrorState error={state.error} onRetry={retry} />;
+  if (state.status !== 'ready')
+    return (
+      <div className="stack-md">
+        <div className="int-intro">
+          <Paragraph className="meta int-intro-text">{t('integKeys.intro')}</Paragraph>
+          <Button variant="primary" aria-disabled>
+            {t('integKeys.create')}
+          </Button>
+        </div>
+        {state.status === 'loading' ? (
+          <Loading label={t('integKeys.loading')} shape="list" onRetry={retry} />
+        ) : (
+          <ErrorState error={state.error} onRetry={retry} />
+        )}
+      </div>
+    );
 
   const serviceChoices = merge(
     live ? [] : keyServiceChoices,
@@ -472,7 +485,11 @@ export const Keys = ({
             <Heading level={3} data-size="2xs" id="keys-active-h">
               {t('integKeys.inUse', { count: active.length })}
             </Heading>
-            <ul className="int-keys" aria-label={t('integKeys.listLabel')}>
+            <ul
+              className="int-keys"
+              aria-label={t('integKeys.listLabel')}
+              aria-busy={pending || undefined}
+            >
               {active.map(keyRow)}
             </ul>
           </section>

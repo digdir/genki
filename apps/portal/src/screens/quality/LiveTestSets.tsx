@@ -289,12 +289,14 @@ export const LiveTestSets = ({
   const [sets, retrySets] = useAsync(
     (signal) => api.quality.testSets(tenant, serviceId, signal),
     [api, tenant, serviceId, setsRound],
+    { keepPreviousFor: `${tenant}/${serviceId}` },
   );
   const list: ServiceTestSet[] = sets.status === 'ready' ? sets.data : [];
   const current = list.find((s) => s.id === chosen) ?? list[0];
   const [cases, retryCases] = useAsync(
     async (signal) => (current ? api.quality.cases(tenant, current.id, signal) : []),
     [api, tenant, current?.id, casesRound],
+    { keepPreviousFor: `${tenant}/${current?.id}` },
   );
 
   const changed = () => setCasesRound((r) => r + 1);

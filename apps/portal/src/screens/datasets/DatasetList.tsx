@@ -15,7 +15,7 @@ import {
   Tag,
   Textfield,
 } from '@digdir/designsystemet-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { parseRoute } from '../../hooks';
 import { Icon } from '../../components/Icon';
 import { statusColors, statusKeys, type DatasetStatus } from '../../data/datasets';
@@ -96,11 +96,13 @@ export const DatasetList = ({
   canCreate = true,
   onRetry,
   pending = false,
+  placeholder,
 }: {
-  datasets: DatasetListItem[];
+  datasets?: DatasetListItem[] | undefined;
   canCreate?: boolean;
   onRetry?: (id: string) => Promise<void>;
   pending?: boolean;
+  placeholder?: ReactNode;
 }) => {
   const t = useT();
   const [{ query, filter }, setView] = useState(fromAddress);
@@ -118,13 +120,14 @@ export const DatasetList = ({
     keepInAddress(next.query, next.filter);
   };
   const q = query.trim().toLowerCase();
-  const rows = datasets.filter(
+  const all = datasets ?? [];
+  const rows = all.filter(
     (d) =>
       matchesFilter(filter, d) &&
       (!q || `${d.name} ${d.description} ${d.sourceText}`.toLowerCase().includes(q)),
   );
-  const attention = datasets.filter(needsAttention).length;
-  const showUse = datasets.some((d) => d.usedByText !== undefined);
+  const attention = all.filter(needsAttention).length;
+  const showUse = all.some((d) => d.usedByText !== undefined);
   const filtered = q !== '' || filter !== 'all';
 
   const retry = async (d: DatasetListItem) => {
@@ -169,35 +172,41 @@ export const DatasetList = ({
           value={query}
           onChange={(e) => show({ query: e.target.value, filter })}
         />
-        <Fieldset>
-          <Fieldset.Legend>{t('datasets.showLegend')}</Fieldset.Legend>
-          <div className="tag-row">
-            {filters.map((f) => (
-              <Chip.Radio
-                key={f}
-                name="datasetfilter"
-                checked={filter === f}
-                onChange={() => show({ query, filter: f })}
-              >
-                {f === 'attention'
-                  ? t('datasets.filterAttentionCount', { count: attention })
-                  : t(filterKeys[f])}
-              </Chip.Radio>
-            ))}
-          </div>
-        </Fieldset>
+        {datasets ? (
+          <Fieldset>
+            <Fieldset.Legend>{t('datasets.showLegend')}</Fieldset.Legend>
+            <div className="tag-row">
+              {filters.map((f) => (
+                <Chip.Radio
+                  key={f}
+                  name="datasetfilter"
+                  checked={filter === f}
+                  onChange={() => show({ query, filter: f })}
+                >
+                  {f === 'attention'
+                    ? t('datasets.filterAttentionCount', { count: attention })
+                    : t(filterKeys[f])}
+                </Chip.Radio>
+              ))}
+            </div>
+          </Fieldset>
+        ) : null}
       </form>
-      <p role="status" className="meta count">
-        {filtered
-          ? t('datasets.showing', { shown: rows.length, total: datasets.length })
-          : t('datasets.countAll', { count: datasets.length })}
-      </p>
+      {datasets ? (
+        <p role="status" className="meta count">
+          {filtered
+            ? t('datasets.showing', { shown: rows.length, total: datasets.length })
+            : t('datasets.countAll', { count: datasets.length })}
+        </p>
+      ) : null}
       {retryFailure ? (
         <Alert data-color="danger" data-size="sm" role="alert">
           {retryFailure}
         </Alert>
       ) : null}
-      {rows.length > 0 ? (
+      {!datasets ? (
+        placeholder
+      ) : rows.length > 0 ? (
         <div className="table-scroll" role="region" aria-label={t('datasets.title')} tabIndex={0}>
           <Table
             className="dataset-table"
@@ -271,9 +280,7 @@ export const DatasetList = ({
           <Heading level={2} data-size="xs">
             {t('datasets.noMatch')}
           </Heading>
-          <Paragraph data-size="sm">
-            {noMatchText(t, datasets.length, query.trim(), filter)}
-          </Paragraph>
+          <Paragraph data-size="sm">{noMatchText(t, all.length, query.trim(), filter)}</Paragraph>
           <Button
             variant="secondary"
             data-size="sm"

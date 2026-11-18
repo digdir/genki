@@ -18,7 +18,9 @@ import { useT, type PlainKey } from '../i18n';
 import type { ScreenProps } from '../screen';
 import { rightLabel, useRights } from '../Shell';
 import { EmptyState, ErrorState, Loading } from '../states';
-import { listedServiceCount } from '../listed-services';
+import { listedServiceCount, rememberServiceNames } from '../listed-services';
+import { StrategyCatalogue } from '../strategy-catalogue';
+import { ServiceLoading } from './service/ServiceLoading';
 import { availableSections, locate } from './service/sections';
 import { Builder, newDraftId, newServiceInit, type BuilderInit } from './services/Builder';
 import { LiveNewService } from './services/LiveNewService';
@@ -114,9 +116,22 @@ const ListScreen = ({ api, tenant, tenantName, live }: ScreenProps) => {
     },
     [api, tenant, live],
   );
-  if (state.status === 'loading')
-    return <Loading label={t('servicesScreen.loadingServices')} shape="list" onRetry={retry} />;
-  if (state.status === 'error') return <ErrorState error={state.error} onRetry={retry} />;
+  useEffect(() => {
+    if (state.status === 'ready') rememberServiceNames(tenant, state.data.rows);
+  }, [state, tenant]);
+  if (state.status !== 'ready')
+    return (
+      <ServiceList
+        tenantName={tenantName}
+        placeholder={
+          state.status === 'loading' ? (
+            <Loading label={t('servicesScreen.loadingServices')} shape="list" onRetry={retry} />
+          ) : (
+            <ErrorState error={state.error} onRetry={retry} />
+          )
+        }
+      />
+    );
   return (
     <ServiceList
       rows={state.data.rows}
@@ -167,7 +182,15 @@ const BuilderScreen = (
     [api, tenant, id, props.live, canManage],
   );
   if (state.status === 'loading')
-    return <Loading label={t('servicesScreen.loadingService')} shape="service" onRetry={retry} />;
+    return (
+      <ServiceLoading
+        tenant={tenant}
+        id={id}
+        section={location.section}
+        label={t('servicesScreen.loadingService')}
+        onRetry={retry}
+      />
+    );
   if (state.status === 'error') return <ErrorState error={state.error} onRetry={retry} />;
   if (state.data && 'unpublished' in state.data) {
     const { unpublished } = state.data;
@@ -267,6 +290,34 @@ const BuilderScreen = (
 
 export const Services = (props: ScreenProps) => {
   const t = useT();
+  const { route } = props;
+  const [, id] = route.segments;
+  const tweak = route.query.get('visning');
+  useEffect(() => {
+    const target = tweak ? tweaks[tweak] : undefined;
+    if (target) navigate(target);
+  }, [tweak]);
+  if (!id) return <ListScreen {...props} />;
+  const fallback =
+    id === 'new' ? undefined : (
+      <ServiceLoading
+        tenant={props.tenant}
+        id={id}
+        section={
+          locate(id, route.segments, route.query, availableSections({ isNew: false })).section
+        }
+        label={t('servicesScreen.loadingService')}
+      />
+    );
+  return (
+    <StrategyCatalogue api={props.api} tenant={props.tenant} fallback={fallback}>
+      <ServiceScreens {...props} />
+    </StrategyCatalogue>
+  );
+};
+
+const ServiceScreens = (props: ScreenProps) => {
+  const t = useT();
   const canCreate = useRights().has('manage-services');
   const { route } = props;
   const [, id] = route.segments;
@@ -274,12 +325,6 @@ export const Services = (props: ScreenProps) => {
   const [starting, setStarting] = useState<{ error?: unknown }>();
   const building = id === 'new' || (!!draft && id === draft.id);
   const location = useLocation(id ?? '', route, building);
-  const tweak = route.query.get('visning');
-
-  useEffect(() => {
-    const target = tweak ? tweaks[tweak] : undefined;
-    if (target) navigate(target);
-  }, [tweak]);
   useEffect(() => {
     if (!building) {
       setDraft(undefined);
