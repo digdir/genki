@@ -273,20 +273,25 @@ describe('a smooth portal', () => {
   });
 
   it('coming back to the overview within the hour shows what needs you without checking again', async () => {
-    const api = recording();
-    await renderLiveAt('#/overview', api.fetch);
-    await screen.findByRole('region', { name: 'Mest brukt siste 7 dager' });
-    await settle();
-    await go('#/log');
-    await screen.findByRole('heading', { level: 1, name: 'Logg' });
-    await settle();
-    vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 1_000);
+    vi.useFakeTimers({ now: new Date('2026-11-18T10:00:00Z'), toFake: ['Date'] });
+    try {
+      const api = recording();
+      await renderLiveAt('#/overview', api.fetch);
+      await screen.findByRole('region', { name: 'Mest brukt siste 7 dager' });
+      await settle();
+      await go('#/log');
+      await screen.findByRole('heading', { level: 1, name: 'Logg' });
+      await settle();
+      vi.setSystemTime(new Date('2026-11-18T10:00:01Z'));
 
-    await go('#/overview');
+      await go('#/overview');
 
-    const attention = screen.getByRole('region', { name: 'Trenger deg nå' });
-    expect(within(attention).queryByLabelText('Sjekker hva som trenger deg')).toBeNull();
-    expect(api.gets(/\/tasks\?status=failed/)).toBe(1);
+      const attention = screen.getByRole('region', { name: 'Trenger deg nå' });
+      expect(within(attention).queryByLabelText('Sjekker hva som trenger deg')).toBeNull();
+      expect(api.gets(/\/tasks\?status=failed/)).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it.each(['2026-11-17T23:04:00Z', '2026-11-30T23:30:00Z'])(
