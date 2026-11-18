@@ -4,7 +4,6 @@ import {
   Dialog,
   Heading,
   Paragraph,
-  Spinner,
   Tag,
   Textfield,
 } from '@digdir/designsystemet-react';
@@ -13,6 +12,7 @@ import { ApiError, type ApiClient } from '../../api';
 import type { SkillPublishCheck, SkillUse } from '../../api/skills';
 import { reasonProblem } from '../../components/ReasonField';
 import { gateLabel, gateWhy } from '../../data/skills';
+import { Loading } from '../../states';
 import { useT } from '../../i18n';
 
 interface Props {
@@ -122,10 +122,7 @@ export const PublishDialog = ({
         </Heading>
         <Paragraph>{lead}</Paragraph>
         {check === 'loading' ? (
-          <span role="status" className="busy-note">
-            <Spinner aria-hidden data-size="xs" />
-            {t('skills.publishChecking')}
-          </span>
+          <Loading label={t('skills.publishChecking')} shape="list" rows={1} headingLevel={3} />
         ) : null}
         {check === 'error' ? (
           <Alert data-color="danger" data-size="sm">

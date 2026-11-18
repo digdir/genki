@@ -948,7 +948,7 @@ export const Access = ({ api, tenant, tenantName, route, live }: ScreenProps) =>
     [api, tenant],
     { keepPreviousFor: tenant },
   );
-  const [restState, retryRest] = useAsync(
+  const [restState, retryRest, restPending] = useAsync(
     async (signal) => {
       const [limits, services] = await Promise.all([
         api.accessPeople.services(tenant, signal),
@@ -1018,19 +1018,21 @@ export const Access = ({ api, tenant, tenantName, route, live }: ScreenProps) =>
     }
     if (tab === 'services')
       return (
-        <ServicesTab
-          api={api}
-          tenant={tenant}
-          data={restState.data}
-          people={people?.people}
-          notConnected={notConnected}
-          openFirst={route.query.get('open') ?? undefined}
-          onDirty={setDirty}
-          leaveAsk={leaveAsk}
-          onStay={() => setLeaveAsk(false)}
-          onBlocked={() => setLeaveAsk(true)}
-          onSaved={retryRest}
-        />
+        <div className="refreshing" aria-busy={restPending || undefined}>
+          <ServicesTab
+            api={api}
+            tenant={tenant}
+            data={restState.data}
+            people={people?.people}
+            notConnected={notConnected}
+            openFirst={route.query.get('open') ?? undefined}
+            onDirty={setDirty}
+            leaveAsk={leaveAsk}
+            onStay={() => setLeaveAsk(false)}
+            onBlocked={() => setLeaveAsk(true)}
+            onSaved={retryRest}
+          />
+        </div>
       );
     if (peopleState.status === 'loading')
       return <Loading label={t('access.loadingPeople')} shape="list" onRetry={retryPeople} />;
@@ -1057,11 +1059,13 @@ export const Access = ({ api, tenant, tenantName, route, live }: ScreenProps) =>
       return null;
     }
     return (
-      <PeopleTab
-        data={{ people: peopleState.data, ...restState.data }}
-        tenantName={tenantName}
-        onGrant={() => guarded(() => setGranting(true))}
-      />
+      <div className="refreshing" aria-busy={peoplePending || restPending || undefined}>
+        <PeopleTab
+          data={{ people: peopleState.data, ...restState.data }}
+          tenantName={tenantName}
+          onGrant={() => guarded(() => setGranting(true))}
+        />
+      </div>
     );
   };
 

@@ -643,37 +643,6 @@
   justify-content: space-between;
 }
 
-.dataset-page .content-layout {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--ds-size-8);
-  align-items: flex-start;
-}
-
-.dataset-page .content-facets {
-  flex: 0 0 15rem;
-}
-
-.dataset-page .content-results {
-  flex: 1 1 30rem;
-  min-width: 0;
-}
-
-.dataset-page .content-search {
-  max-width: 40rem;
-}
-
-.dataset-page .content-facet-option {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: var(--ds-size-3);
-}
-
-.dataset-page .content-row.open {
-  background: var(--ds-color-accent-surface-tinted);
-}
-
 .dataset-page .link-button {
   font: inherit;
   font-weight: 500;
@@ -686,42 +655,146 @@
   text-decoration: underline;
 }
 
-.dataset-page .content-drawer {
-  position: fixed;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 20;
-  width: min(28rem, 100vw);
-  overflow-y: auto;
-  padding: var(--ds-size-8) var(--ds-size-6);
-  background: var(--ds-color-neutral-background-default);
-  border-left: 1px solid var(--ds-color-neutral-border-default);
-  box-shadow: var(--ds-shadow-lg);
+.dataset-page .docs-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ds-size-3) var(--ds-size-4);
+  align-items: flex-end;
 }
 
-.dataset-page .content-drawer-head {
+.dataset-page .docs-search {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-size-1);
+  flex: 1 1 18rem;
+  max-width: 32rem;
+}
+
+.dataset-page .docs-select {
+  flex: 0 1 auto;
+  max-width: 16rem;
+}
+
+.dataset-page .docs-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ds-size-2);
+  align-items: center;
+  min-height: 2rem;
+}
+
+.dataset-page .docs-summary p {
+  margin: 0;
+}
+
+.dataset-page .docs-table.busy tbody {
+  opacity: 0.55;
+  transition: opacity 0.15s;
+}
+
+.dataset-page .docs-table .numeric {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.dataset-page .docs-row.open {
+  background: var(--ds-color-accent-surface-tinted);
+}
+
+.dataset-page .docs-sub {
+  display: block;
+}
+
+.dataset-page .docs-pager {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ds-size-3) var(--ds-size-6);
+  align-items: center;
   justify-content: space-between;
-  align-items: flex-start;
 }
 
-.dataset-page .content-drawer .facts {
+.dataset-page .docs-pager-size,
+.dataset-page .docs-pager-jump {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ds-size-2);
+  align-items: center;
+}
+
+.dataset-page .docs-pager-jump input {
+  width: 5rem;
+}
+
+.dataset-page .docs-none {
+  padding: var(--ds-size-6);
+  border: 1px dashed var(--ds-color-neutral-border-default);
+  border-radius: var(--ds-border-radius-md);
+}
+
+.doc-panel .doc-excerpt {
+  margin: 0;
+  padding: var(--ds-size-2) var(--ds-size-3);
+  background: var(--ds-color-neutral-background-tinted);
+  border-radius: var(--ds-border-radius-md);
+}
+
+.doc-panel .doc-chunks-head {
+  justify-content: space-between;
+}
+
+.doc-panel .doc-chunks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-size-2);
+}
+
+.doc-panel .doc-chunks li {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-size-1);
+  padding: var(--ds-size-2) var(--ds-size-3);
+  border: 1px solid var(--ds-color-neutral-border-subtle);
+  border-radius: var(--ds-border-radius-md);
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+
+.doc-panel .facts {
   display: grid;
   grid-template-columns: max-content 1fr;
   gap: var(--ds-size-2) var(--ds-size-5);
   margin: 0;
-  padding-bottom: var(--ds-size-5);
-  border-bottom: 1px solid var(--ds-color-neutral-border-subtle);
+  padding-top: var(--ds-size-3);
+  border-top: 1px solid var(--ds-color-neutral-border-subtle);
 }
 
-.dataset-page .content-drawer .facts > div {
+.doc-panel .facts > div {
   display: contents;
 }
 
-.dataset-page .content-drawer .facts dt {
+.doc-panel .facts dt {
   color: var(--ds-color-neutral-text-subtle);
 }
 
-.dataset-page .content-drawer .facts dd {
+.doc-panel .facts dd {
   margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.dataset-page .docs-selection {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ds-size-2) var(--ds-size-4);
+  align-items: center;
+  padding: var(--ds-size-2) var(--ds-size-4);
+  background: var(--ds-color-accent-surface-tinted);
+  border: 1px solid var(--ds-color-accent-border-default);
+  border-radius: var(--ds-border-radius-md);
+}
+
+.dataset-page .docs-check {
+  width: 2.75rem;
 }

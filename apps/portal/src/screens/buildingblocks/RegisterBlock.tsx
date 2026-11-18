@@ -9,10 +9,10 @@ import {
   Label,
   Paragraph,
   Select,
-  Spinner,
   Tag,
   ValidationMessage,
 } from '@digdir/designsystemet-react';
+import { BusyButton } from '../../components/BusyButton';
 import { useEffect, useId, useState } from 'react';
 import { ApiError, type ApiClient } from '../../api';
 import type {
@@ -732,21 +732,14 @@ export const RegisterBlock = ({
             </Field>
           )}
           <div className="actions">
-            <Button
+            <BusyButton
               variant="secondary"
-              aria-disabled={testing || undefined}
+              busy={testing}
+              busyLabel={t('blocks.runningContract')}
               onClick={() => void runTest()}
             >
               {result ? t('blocks.runContractAgain') : t('blocks.runContract')}
-            </Button>
-            <span role="status" className="bb-status">
-              {testing ? (
-                <>
-                  <Spinner aria-hidden="true" data-size="xs" />
-                  {t('blocks.runningContract')}
-                </>
-              ) : null}
-            </span>
+            </BusyButton>
           </div>
           {result && !testing ? (
             <div className={`bb-result ${passed ? 'passed' : 'failed'}`}>

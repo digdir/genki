@@ -46,6 +46,7 @@ export const playgroundUi = {
       'The proposal has been added to "{name}". It becomes a test case when the owner of the test set accepts it. <link>Go to the test set</link>',
     runningBoth: 'Running both setups',
     running: 'Running',
+    sending: 'Sending …',
     newConversation: 'New conversation',
     document: 'Document',
     fileChosen: 'Chosen: {name}',

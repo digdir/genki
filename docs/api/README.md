@@ -68,6 +68,10 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 - `GET /operator/secrets` lists the platform secrets for operators: each name, whether a value is stored, when it last changed (from the audit log) and the platform catalog entries that name it, such as a connection. Never a value.
 - `PUT /operator/secrets/{name}` now refuses a name longer than 63 characters, an empty value, a value over 16 384 characters (`400`) and a body over 64 KiB (`413`). The console's Platform secrets screen sets and replaces values with it.
 
+### 2026-11-18: an outdated published version is named in the playground
+
+- `POST /tenants/{tenant}/playground/runs` (and `/stream`) answers a published version that no longer fits the platform with `422` `urn:genai:problem:definition-outdated`, adding `service`, `version` and `latestVersion`. It was `about:blank` with the raw validation errors, which are still in `errors`.
+
 ### 2026-11-18: what the portal rework reads
 
 - `GET /tenants/{tenant}/datasets/{id}/documents` always answers `total` and `totalExact`, and adds `status` (`indexed`, `failed`, `pending`), `statusCounts`, `listing` (whether the engine can search titles and which sort keys it has), `query`, `sort` and `order`; each document adds `status`, and `chunkCount` when the engine keeps it. `GET .../documents/{doc}?chunks=from-to` adds the chunks at those positions (see [datasets.md](datasets.md#listing-a-datasets-documents)).

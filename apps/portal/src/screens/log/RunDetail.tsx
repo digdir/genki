@@ -1,4 +1,4 @@
-import { Alert, Button, Heading, Paragraph, Spinner, Tag } from '@digdir/designsystemet-react';
+import { Alert, Button, Heading, Paragraph, Tag } from '@digdir/designsystemet-react';
 import { useState } from 'react';
 import type { ApiClient } from '../../api';
 import { useFormat } from '@genai/i18n/react';
@@ -147,10 +147,7 @@ export const RunDetail = ({
             <Heading level={2} data-size="xs" id="detalj-h">
               {name}
             </Heading>
-            <Tag data-color={display.color}>
-              {display.running ? <Spinner aria-hidden="true" data-size="2xs" /> : null}
-              {display.text}
-            </Tag>
+            <Tag data-color={display.color}>{display.text}</Tag>
           </div>
           <div className="tag-row">
             {steps.length > 0 ? (

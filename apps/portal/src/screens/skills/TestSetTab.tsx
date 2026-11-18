@@ -6,7 +6,6 @@ import {
   Label,
   Paragraph,
   Select,
-  Spinner,
   Tag,
   Textfield,
   ValidationMessage,
@@ -14,6 +13,7 @@ import {
 import { useFormat } from '@genai/i18n/react';
 import { useEffect, useRef, useState } from 'react';
 import type { SkillCase, SkillCaseType, SkillFix, SkillTestRun } from '../../api/skills';
+import { BusyButton } from '../../components/BusyButton';
 import { useT } from '../../i18n';
 import { caseTypeLabels, caseTypeOptions } from '../../data/skills';
 import { FixCard } from './FixCard';
@@ -146,21 +146,19 @@ export const TestSetTab = ({
               </span>
             </div>
             {canEdit ? (
-              <Button
+              <BusyButton
                 variant="secondary"
-                aria-busy={running || undefined}
-                onClick={() => !running && onRun()}
+                busy={running}
+                busyLabel={t('skills.testsetRunning')}
+                onClick={() => onRun()}
               >
-                {running ? t('skills.testsetRunning') : t('skills.testRun')}
-              </Button>
+                {t('skills.testRun')}
+              </BusyButton>
             ) : null}
           </div>
           <div aria-live="polite">
             {running ? (
-              <span className="busy-note">
-                <Spinner aria-hidden data-size="xs" />
-                {t('skills.testsetRunningNote', { count: n })}
-              </span>
+              <span className="busy-note">{t('skills.testsetRunningNote', { count: n })}</span>
             ) : null}
             {ranHere && result ? (
               <p className={failures ? 'skill-run-done failed' : 'skill-run-done'}>

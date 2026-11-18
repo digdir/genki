@@ -28,6 +28,7 @@ export const ConnectorsPage = ({
       return { proposals: proposals.filter((p) => p.level === 2), connectors };
     },
     [tenant, version],
+    { keepPreviousFor: tenant },
   );
   return (
     <div className="stack">

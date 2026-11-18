@@ -79,6 +79,11 @@ export const parts = {
     () => import('./nb/data-datasets'),
     () => import('./en/data-datasets'),
   ),
+  modelsLane: lane(
+    'modelsLane',
+    () => import('./nb/data-models'),
+    () => import('./en/data-models'),
+  ),
   integrationsArea: lane(
     'integrationsArea',
     () => import('./nb/operate-integrations'),
@@ -133,6 +138,7 @@ export const areas = {
     'blocksLane',
     'skillsLane',
     'connectorsLane',
+    'modelsLane',
     'qualityArea',
   ],
   contact: [],
@@ -153,6 +159,7 @@ export const areas = {
     'blocksUi',
     'blocksLane',
     'skillsLane',
+    'modelsLane',
     'configLane',
     'integrationsArea',
     'settingsArea',
@@ -160,7 +167,7 @@ export const areas = {
   ],
   settings: ['batchUi', 'playgroundUi', 'skillsLane', 'settingsArea'],
   sharedServices: ['blocksLane', 'configLane'],
-  skills: ['serviceUi', 'playgroundUi', 'skillsLane', 'qualityArea'],
+  skills: ['serviceUi', 'playgroundUi', 'skillsLane', 'modelsLane', 'qualityArea'],
   stepFlows: ['stepflowsUi', 'playgroundUi'],
   usage: [],
 } satisfies Record<string, readonly Part[]>;

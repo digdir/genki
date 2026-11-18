@@ -228,10 +228,12 @@ export const BlockList = ({
   onFilters,
   onFlash,
   onAdopted,
+  refreshing = false,
 }: {
   api: ApiClient;
   tenant: string;
   tenantName: string;
+  refreshing?: boolean;
   items: CatalogItem[];
   proposals: CatalogProposal[];
   connectors?: ConnectorView[];
@@ -388,6 +390,9 @@ export const BlockList = ({
               {g.kind === 'skill' && !catalogue ? (
                 <SkillCreateActions api={api} tenant={tenant} />
               ) : null}
+              {g.kind === 'model' ? (
+                <a href="#/building-blocks/models">{t('modelCatalog.openCatalog')}</a>
+              ) : null}
             </div>
             <ul className="bb-rows">
               {g.items.map((b) => (
@@ -422,7 +427,7 @@ export const BlockList = ({
   return (
     <div className="stack">
       <ListHeader tab={filters.tab} tenantName={tenantName} />
-      <div className="stack" role="tabpanel">
+      <div className="stack refreshing" role="tabpanel" aria-busy={refreshing || undefined}>
         {partialError ? (
           <ErrorState error={partialError.error} onRetry={partialError.retry} />
         ) : null}

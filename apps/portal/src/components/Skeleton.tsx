@@ -1,4 +1,4 @@
-import { Skeleton, Table } from '@digdir/designsystemet-react';
+import { Heading, Skeleton, Table } from '@digdir/designsystemet-react';
 
 export type SkeletonShape = 'list' | 'detail' | 'table' | 'service' | 'form';
 
@@ -137,4 +137,19 @@ export const ShapeSkeleton = ({
       <DetailSkeleton />
     )}
   </div>
+);
+
+export const HeadingSkeleton = ({
+  label,
+  level = 1,
+  size = 'md',
+}: {
+  label: string;
+  level?: 1 | 2;
+  size?: 'lg' | 'md' | 'sm';
+}) => (
+  <Heading level={level} data-size={size} className="heading-skeleton">
+    <span className="visually-hidden">{label}</span>
+    <Skeleton variant="text" width={240} aria-hidden="true" />
+  </Heading>
 );

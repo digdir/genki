@@ -58,6 +58,7 @@ const TriggersPage = ({ api, tenant }: { api: ApiClient; tenant: string }) => {
   const [state, retry] = useAsync(
     (signal) => api.triggers.list(tenant, signal),
     [api, tenant, tick],
+    { keepPreviousFor: tenant },
   );
   return (
     <>
@@ -120,6 +121,7 @@ const Overview = ({ api, tenant, tenantName, route, live }: ScreenProps) => {
                   {...(openParam ? { initialOpen: openParam } : {})}
                   moreButton={mp.button}
                   moreRows={mp.rows}
+                  moreBusy={mp.busy ?? false}
                   after={mp.after}
                 />
               )}

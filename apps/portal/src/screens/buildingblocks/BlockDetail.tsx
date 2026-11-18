@@ -26,7 +26,8 @@ import {
 import { useAsync } from '../../hooks';
 import { useT, type T } from '../../i18n';
 import { rightLabel } from '../../Shell';
-import { ErrorState, refusalOf } from '../../states';
+import { HeadingSkeleton } from '../../components/Skeleton';
+import { ErrorState, Loading, refusalOf } from '../../states';
 import {
   ApiCallButton,
   approverName,
@@ -138,6 +139,41 @@ const versionRows = (t: T, versions: BlockVersion[]) =>
             text: v.reason ?? '',
           },
     );
+
+export const BlockDetailLoading = ({
+  block,
+  tab,
+  label,
+  onRetry,
+}: {
+  block: Pick<CatalogItem, 'kind' | 'id'>;
+  tab: BlockTab;
+  label: string;
+  onRetry?: () => void;
+}) => {
+  const t = useT();
+  const tabs = tabsFor(block);
+  const current = tabs.includes(tab) ? tab : (tabs[0] ?? 'about');
+  return (
+    <div className="stack">
+      <div className="stack-sm">
+        <BackLink label={t('blocks.title')} href="#/building-blocks" />
+        <span className="bb-meta">{kindLabel(t, block.kind)}</span>
+        <HeadingSkeleton label={label} />
+      </div>
+      <LinkTabs
+        label={label}
+        tabs={tabs.map((k) => ({
+          key: k,
+          label: t(tabLabels[k]),
+          href: `${blockHref(block)}${k === tabs[0] ? '' : `/${k}`}`,
+        }))}
+        current={current}
+      />
+      <Loading label={label} shape="detail" {...(onRetry ? { onRetry } : {})} />
+    </div>
+  );
+};
 
 export const BlockDetail = ({
   api,

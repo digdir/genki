@@ -804,7 +804,10 @@ describe('live dataset detail', () => {
     expect(screen.queryByRole('button', { name: 'Les inn på nytt' })).toBeNull();
     expect(screen.getByText(/^Kudos, delt med dere · /)).toBeTruthy();
     expect(screen.queryByRole('switch', { name: 'Kan brukes som filter' })).toBeNull();
-    expect(await screen.findByRole('checkbox', { name: 'Årsrapport' })).toBeTruthy();
+    const type = await screen.findByRole('combobox', { name: 'Dokumenttype' });
+    await waitFor(() =>
+      expect(within(type).getByRole('option', { name: /^Årsrapport \(/ })).toBeTruthy(),
+    );
   });
 });
 

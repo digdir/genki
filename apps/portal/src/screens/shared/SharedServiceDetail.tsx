@@ -5,7 +5,6 @@ import {
   Heading,
   Label,
   Paragraph,
-  Spinner,
   Tabs,
   Tag,
   Textarea,
@@ -17,6 +16,7 @@ import type { ApiClient } from '../../api';
 import type { ChatPart, InputLimits } from '../../api/blocks';
 import type { CatalogItem } from '../../api/building-blocks';
 import { CopyButton } from '../../components/CopyButton';
+import { BusyButton } from '../../components/BusyButton';
 import { BackLink } from '../../components/BackLink';
 import type { SharedCapability } from '../../data/shared-services';
 import { useAsync } from '../../hooks';
@@ -296,13 +296,14 @@ export const SharedServiceDetail = ({
                   <ValidationMessage>{inputError}</ValidationMessage>
                 ) : null}
                 <div className="actions">
-                  <Button
+                  <BusyButton
                     variant="primary"
-                    aria-disabled={status === 'running' || undefined}
+                    busy={status === 'running'}
+                    busyLabel={t('sharedServices.runBusy')}
                     onClick={() => void run()}
                   >
                     {t('sharedServices.run')}
-                  </Button>
+                  </BusyButton>
                   <Button variant="tertiary" onClick={reset}>
                     {t('sharedServices.reset')}
                   </Button>
@@ -314,8 +315,7 @@ export const SharedServiceDetail = ({
                   <p className="meta">{t('sharedServices.resultPlaceholder')}</p>
                 ) : null}
                 {status === 'running' ? (
-                  <span role="status" className="row-wrap">
-                    <Spinner aria-hidden="true" data-size="sm" />
+                  <span className="meta">
                     {audio
                       ? t('sharedServices.transcribing')
                       : t('sharedServices.running', { name: c.name.toLowerCase() })}

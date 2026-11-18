@@ -152,6 +152,7 @@ export const sharedServices = {
   charCount: '{count} of {max} characters',
   orUploadFile: 'or upload a file:',
   run: 'Run',
+  runBusy: 'Running …',
   reset: 'Reset',
   result: 'Result',
   resultPlaceholder: 'The result appears here when you press "Run".',
