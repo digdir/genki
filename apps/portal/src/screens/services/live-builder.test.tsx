@@ -444,8 +444,8 @@ describe('the live builder and the server draft', () => {
       window.location.hash = `#/services/rapportassistenten/${section}`;
       await waitFor(() =>
         expect(
-          within(screen.getByRole('navigation', { name: 'Tjenesten' })).getByRole('link', {
-            current: 'page',
+          within(screen.getByRole('tablist', { name: /^Faner for/ })).getByRole('tab', {
+            selected: true,
           }).textContent,
         ).toBe(tab),
       );
@@ -455,6 +455,27 @@ describe('the live builder and the server draft', () => {
     expect(
       calls.filter((c) => c.url.endsWith('/rapportassistenten/draft?rebase=clean')),
     ).toHaveLength(1);
+  });
+
+  it('switching tabs while the definition is fresh sends no request for it again', async () => {
+    const { calls } = await openService('#/services/rapportassistenten/setup');
+    await screen.findByText(/^Versjon 7 i bruk · publisert/);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const definitionReads = () =>
+      calls.filter(
+        (c) => c.method === 'GET' && c.url.endsWith('/definitions/services/rapportassistenten'),
+      ).length;
+    const before = definitionReads();
+
+    for (const section of ['interface', 'quality', 'settings', 'setup']) {
+      window.location.hash = `#/services/rapportassistenten/${section}`;
+      await waitFor(() =>
+        expect(window.location.hash).toBe(`#/services/rapportassistenten/${section}`),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+
+    expect(definitionReads()).toBe(before);
   });
 
   it('offers Prøv tjenesten in the header of a draft too', async () => {
@@ -789,6 +810,16 @@ describe('a new service saved as a draft on the server', () => {
     expect(revisions(calls).at(-1)).toBe(saved);
   });
 
+  it('tells on the setup of a draft that Oversikt and Kvalitet arrive once it is published', async () => {
+    const { fetch, id } = await startNamed('Permisjonssvar');
+
+    await elsewhere(fetch, `#/services/${id}/setup`);
+
+    expect(
+      await screen.findByText('Oversikt og Kvalitet kommer når tjenesten er publisert.'),
+    ).toBeTruthy();
+  });
+
   it('opens a draft-only service at its setup when the address names a section it does not have', async () => {
     const { fetch, id } = await startNamed('Permisjonssvar');
 
@@ -797,10 +828,10 @@ describe('a new service saved as a draft on the server', () => {
     expect(((await screen.findByLabelText('Navn')) as HTMLInputElement).value).toBe(
       'Permisjonssvar',
     );
-    expect(screen.getByRole('link', { name: 'Oppsett', current: 'page' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'Oppsett', selected: true })).toBeTruthy();
   });
 
-  it.each(['settings', 'quality', 'log'])(
+  it.each(['settings', 'quality', 'log', 'bogus'])(
     'moves the address of a draft-only service from /%s to Oppsett, the section it shows',
     async (section) => {
       const { fetch, id } = await startNamed('Permisjonssvar');

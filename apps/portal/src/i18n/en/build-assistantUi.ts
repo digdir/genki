@@ -197,6 +197,8 @@ export const assistantUi = {
     jobSorts: 'Sorts',
     jobPrepares: 'Prepares cases',
     jobTranscribes: 'Transcribes',
+    noStart: 'Not chosen yet',
+    noRunsYet: 'No runs yet',
     perWeek: '{unit} this week',
     changed: 'Changed {when} by {by}',
     noMatch: 'No services match the search',

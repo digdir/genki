@@ -29,7 +29,7 @@ export const blocksMock = (options: BlocksMockOptions = {}): MockHandler => {
     if (!match || req.method !== 'POST') return undefined;
     const id = decodeURIComponent(match[1] ?? '');
     const found = connections.find((c) => c.id === id);
-    if (!found) return undefined;
+    if (!found || (!found.toolDetails && match[2] !== 'sync')) return undefined;
     if (!req.reason) return req.reasonMissing();
     if (match[2] === 'sync') {
       if (options.failSync)

@@ -64,6 +64,9 @@ const platform = (
     failedReason?: string;
     usage?: Record<string, unknown>;
     lastExecution?: unknown;
+    limits?: unknown[];
+    operator?: { name: string; region?: string };
+    failure?: Record<string, unknown>;
   } = {},
 ) => {
   const calls: Call[] = [];
@@ -84,6 +87,7 @@ const platform = (
         status: 200,
         headers: { 'content-type': 'application/json' },
       });
+    if (path.endsWith('/access/services')) return reply({ services: overrides.limits ?? [] });
     if (path.endsWith('/lifecycle')) {
       if (method === 'PUT') lifecycle = JSON.parse(String(init?.body)) as unknown;
       return reply(lifecycle);
@@ -118,6 +122,7 @@ const platform = (
                 ...(overrides.failedReason
                   ? { failure: { code: 'deadline_exceeded', reason: overrides.failedReason } }
                   : {}),
+                ...(overrides.failure ? { failure: overrides.failure } : {}),
               },
             ]
           : [];
@@ -136,7 +141,14 @@ const platform = (
       });
     if (path === '/models')
       return reply({
-        data: [{ id: 'foundry-openai/gpt-5.6-terra', name: 'gpt-5.6-terra', residency: 'eu' }],
+        data: [
+          {
+            id: 'foundry-openai/gpt-5.6-terra',
+            name: 'gpt-5.6-terra',
+            residency: 'eu',
+            ...(overrides.operator ? { operator: overrides.operator } : {}),
+          },
+        ],
       });
     return new Response(JSON.stringify({ title: 'Not found', status: 404 }), { status: 404 });
   };
@@ -166,6 +178,20 @@ describe('the Oversikt tab of a published service', () => {
     expect(
       screen.getByRole('link', { name: 'Se bruk og kostnad i Statistikk' }).getAttribute('href'),
     ).toBe('#/statistics');
+  });
+
+  it('takes the share with errors from the same usage report as Kjøringer once it counts failures', async () => {
+    const { api } = platform({
+      usage: { requests: 10_680, runs: 10_680, failedRequests: 32 },
+      totals: (q) => (thirtyDays(q) ? (q.get('status') === 'failed' ? 0 : 220) : 0),
+    });
+    render(
+      <OverviewSection api={api} tenant={tenant} id="rapport" definition={definition} now={now} />,
+    );
+
+    const share = screen.getByText('Andel med feil');
+    await waitFor(() => expect(text(share.nextElementSibling)).toBe('0,3 %'));
+    expect(text(screen.getByText('Kjøringer').nextElementSibling)).toBe('10 680');
   });
 
   it('counts the runs of the last 30 days from the usage report, as Oversikt and Statistikk do', async () => {
@@ -253,9 +279,59 @@ describe('the Oversikt tab of a published service', () => {
       />,
     );
 
-    expect(text(screen.getByText('Hvem kan bruke den').nextElementSibling)).toBe(
-      'Alle i Testetaten med «Bruke tjenester»',
+    const who = screen.getByText('Hvem kan bruke den');
+    await waitFor(() =>
+      expect(text(who.nextElementSibling)).toBe('Alle i Testetaten med «Bruke tjenester»'),
     );
+  });
+
+  it('names only the selected people as users of a service limited to them, with a link to Tilgang', async () => {
+    const { api } = platform({
+      limits: [
+        {
+          id: 'rapport',
+          mode: 'selected',
+          members: [
+            { id: 'p-kari', name: 'Kari Nordmann' },
+            { id: 'p-ola', name: 'Ola Nordmann' },
+            { id: 'p-per', name: 'Per Hansen' },
+          ],
+        },
+      ],
+    });
+    render(
+      <OverviewSection
+        api={api}
+        tenant={tenant}
+        tenantName="Testetaten"
+        id="rapport"
+        definition={definition}
+        now={now}
+      />,
+    );
+
+    const who = screen.getByText('Hvem kan bruke den').nextElementSibling;
+    const link = await within(who as HTMLElement).findByRole('link', {
+      name: 'Bare utvalgte: 3 personer',
+    });
+    expect(link.getAttribute('href')).toBe('#/access/services?open=rapport');
+    expect(text(who)).not.toMatch(/Alle i/);
+  });
+
+  it('never claims everyone can use the service before the access list has answered', async () => {
+    const { api } = platform();
+    render(
+      <OverviewSection
+        api={api}
+        tenant={tenant}
+        tenantName="Testetaten"
+        id="rapport"
+        definition={definition}
+        now={now}
+      />,
+    );
+
+    expect(text(screen.getByText('Hvem kan bruke den').nextElementSibling)).not.toMatch(/Alle i/);
   });
 
   it('shows the cost as at least the priced part when a model in the period has no price', async () => {
@@ -282,9 +358,32 @@ describe('the Oversikt tab of a published service', () => {
     );
 
     const offer = screen.getByRole('region', { name: 'Kjør på mange dokumenter' });
-    expect(
-      within(offer).getByRole('link', { name: 'Kjør på mange dokumenter' }).getAttribute('href'),
-    ).toBe('#/services/rapport/batch');
+    expect(within(offer).getByRole('button', { name: 'Kjør på mange dokumenter' })).toBeTruthy();
+  });
+
+  it('opens Kjør på mange dokumenter as a dialog on the page, not as a page of its own', async () => {
+    const { api, calls } = platform();
+    render(
+      asManager(
+        <OverviewSection
+          api={api}
+          tenant={tenant}
+          id="rapport"
+          definition={definition}
+          now={now}
+          canBatch
+        />,
+      ),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Kjør på mange dokumenter' }));
+
+    const dialog = await screen.findByRole('dialog', { name: 'Kjør på mange dokumenter' });
+    expect(dialog).toBeTruthy();
+    await waitFor(() =>
+      expect(calls.some((c) => c.url.pathname.endsWith('/batch-runs/sources'))).toBe(true),
+    );
+    expect(window.location.hash).not.toMatch(/\/batch/);
   });
 
   it('links each question in Siste kjøringer to its run in Logg', async () => {
@@ -330,6 +429,79 @@ describe('the Oversikt tab of a published service', () => {
     expect(calls.some((c) => c.url.pathname.endsWith('/timeline'))).toBe(false);
   });
 
+  it('prefers the specific cause from the run timeline over the generic reason of a strategy error', async () => {
+    const since = new Date('2026-11-17T00:00:00+01:00').toISOString();
+    const { api } = platform({
+      failure: { code: 'strategy_error', reason: 'Tjenesten feilet underveis.' },
+      totals: (q) => (q.get('from') === since ? (q.get('status') === 'failed' ? 3 : 248) : 0),
+    });
+    render(
+      <OverviewSection api={api} tenant={tenant} id="rapport" definition={definition} now={now} />,
+    );
+
+    const section = await screen.findByRole('region', { name: 'Trenger deg nå' });
+    expect(
+      await within(section).findByText(
+        '3 kjøringer feilet i dag: modellen svarte ikke innen 30 sekunder. De andre 245 kjøringene i dag gikk bra.',
+      ),
+    ).toBeTruthy();
+  });
+
+  it('takes the specific detail of a failure when the run list sends it, without opening the run', async () => {
+    const since = new Date('2026-11-17T00:00:00+01:00').toISOString();
+    const { api, calls } = platform({
+      failure: {
+        code: 'strategy_error',
+        reason: 'Tjenesten feilet underveis.',
+        detail: 'Søket i datasettet Kudos svarte ikke.',
+      },
+      totals: (q) => (q.get('from') === since ? (q.get('status') === 'failed' ? 3 : 248) : 0),
+    });
+    render(
+      <OverviewSection api={api} tenant={tenant} id="rapport" definition={definition} now={now} />,
+    );
+
+    const section = await screen.findByRole('region', { name: 'Trenger deg nå' });
+    expect(
+      await within(section).findByText(
+        '3 kjøringer feilet i dag: søket i datasettet Kudos svarte ikke. De andre 245 kjøringene i dag gikk bra.',
+      ),
+    ).toBeTruthy();
+    expect(calls.some((c) => c.url.pathname.endsWith('/timeline'))).toBe(false);
+  });
+
+  it('shows Trenger deg nå and Siste kjøringer together, so the runs never move down when the cause arrives', async () => {
+    const since = new Date('2026-11-17T00:00:00+01:00').toISOString();
+    let releaseTimeline = () => {};
+    const timelineGate = new Promise<void>((r) => (releaseTimeline = r));
+    const slow = platform({
+      failure: { code: 'strategy_error', reason: 'Tjenesten feilet underveis.' },
+      totals: (q) => (q.get('from') === since ? (q.get('status') === 'failed' ? 3 : 248) : 0),
+      recent: [run('r1', 'completed', '2026-11-17T13:21:00Z', 'Hvilke tilsyn ble gjort?')],
+    });
+    const api = slow.api;
+    const original = api.getTaskTimeline.bind(api);
+    api.getTaskTimeline = async (...args: Parameters<typeof original>) => {
+      await timelineGate;
+      return original(...args);
+    };
+    render(
+      <OverviewSection api={api} tenant={tenant} id="rapport" definition={definition} now={now} />,
+    );
+
+    await waitFor(() =>
+      expect(slow.calls.some((c) => c.url.searchParams.get('limit') === '5')).toBe(true),
+    );
+    await new Promise((r) => setTimeout(r, 20));
+    expect(screen.queryByRole('table')).toBeNull();
+    releaseTimeline();
+    const table = await screen.findByRole('table');
+    const attention = screen.getByRole('heading', { name: 'Trenger deg nå' });
+    expect(
+      attention.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
   it('shows the failures of today with the cause from the latest failed run', async () => {
     const since = new Date('2026-11-17T00:00:00+01:00').toISOString();
     const { api } = platform({
@@ -363,6 +535,18 @@ describe('the Oversikt tab of a published service', () => {
       `#/building-blocks/model/${encodeURIComponent('foundry-openai/gpt-5.6-terra')}`,
     );
     expect(model.parentElement?.textContent).toBe('gpt-5.6-terra, data behandles i EU/EØS');
+  });
+
+  it('names where the model runs, with the operator and region, when the model list says', async () => {
+    const { api } = platform({ operator: { name: 'Microsoft Azure', region: 'Sverige' } });
+    render(
+      <OverviewSection api={api} tenant={tenant} id="rapport" definition={definition} now={now} />,
+    );
+
+    const model = await screen.findByRole('link', { name: 'gpt-5.6-terra' });
+    expect(model.parentElement?.textContent).toBe(
+      'gpt-5.6-terra, data behandles i EU/EØS (Azure Sverige)',
+    );
   });
 
   it('shows who paused the service, when and why, in a banner', async () => {

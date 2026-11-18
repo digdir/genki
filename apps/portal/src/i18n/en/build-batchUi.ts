@@ -6,6 +6,7 @@ export const batchUi = {
     heading: 'Batch job',
     intro:
       'Run the service on many documents, for example all the annual reports for one year. You see the cost before you start.',
+    dialogTitle: 'Run on many documents',
     newJob: 'New batch job',
     loadingSources: 'Loading datasets',
     loadingJob: 'Loading the job',

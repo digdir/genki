@@ -5,6 +5,7 @@ export const batchUi = {
     heading: 'Samlet jobb',
     intro:
       'Kjør tjenesten på mange dokumenter, for eksempel alle årsrapportene for ett år. Du ser kostnaden før du starter.',
+    dialogTitle: 'Kjør på mange dokumenter',
     newJob: 'Ny samlet jobb',
     loadingSources: 'Henter datasett',
     loadingJob: 'Henter jobben',

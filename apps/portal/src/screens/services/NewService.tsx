@@ -2,7 +2,6 @@ import {
   AlignLeftIcon,
   ArrowRightLeftIcon,
   ChatIcon,
-  ChevronLeftIcon,
   FileTextIcon,
   FunnelIcon,
   MicrophoneIcon,
@@ -15,6 +14,7 @@ import { Icon, type IconComponent } from '../../components/Icon';
 import { useT } from '../../i18n';
 import { jobKeys, templateKeys } from '../../data/service-labels';
 import { jobs, templates, type JobId } from '../../data/services';
+import { BackLink } from '../../components/BackLink';
 
 const jobIcon: Record<JobId, IconComponent> = {
   answers: ChatIcon,
@@ -52,10 +52,7 @@ export const NewService = ({
   return (
     <div className="new-service">
       <div className="stack-sm">
-        <a href="#/services" className="back-link">
-          <Icon icon={ChevronLeftIcon} size={18} />
-          {t('services.back')}
-        </a>
+        <BackLink label={t('services.back')} href="#/services" />
         <Heading level={1} data-size="lg">
           {t('services.newTitle')}
         </Heading>

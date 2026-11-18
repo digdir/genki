@@ -1,5 +1,5 @@
 import type { ApiContext } from '../api';
-import type { ModelOption } from '../types';
+import type { IntegrationsView, ModelOption } from '../types';
 
 export interface ToolDetail {
   name: string;
@@ -8,7 +8,7 @@ export interface ToolDetail {
   since?: string;
   approvedBy?: string;
   approvedByName?: string;
-  changes?: boolean;
+  changes: boolean;
 }
 
 export interface ToolConnectionDetail {
@@ -18,8 +18,36 @@ export interface ToolConnectionDetail {
   version?: string;
   tools?: string[];
   toolDetails?: ToolDetail[];
-  lastSync?: { at: string; ok: boolean; code?: string; message?: string };
+  connectedAt?: string;
+  connectedByName?: string;
+  lastSync?: {
+    at: string;
+    ok: boolean;
+    code?: string;
+    message?: string;
+    attempts?: number;
+    failingSince?: string;
+  };
 }
+
+export type ToolConnectionView = ToolConnectionDetail & { canRevoke: boolean };
+
+const fromIntegration = (
+  connection: ToolConnectionDetail,
+  integrations: IntegrationsView | undefined,
+): ToolConnectionView => {
+  if (connection.toolDetails) return { ...connection, canRevoke: true };
+  const found = integrations?.connections.find((c) => c.id === connection.id);
+  if (!found) return { ...connection, canRevoke: false };
+  return {
+    ...connection,
+    canRevoke: false,
+    toolDetails: [
+      ...found.tools.map((tool) => ({ ...tool, state: 'approved' as const, changes: false })),
+      ...found.pending.map((tool) => ({ ...tool, state: 'pending' as const, changes: false })),
+    ],
+  };
+};
 
 export interface ModelOperator {
   name: string;
@@ -35,11 +63,30 @@ export interface BlockFacts {
 }
 
 export interface FlowDefinition {
+  id: string;
   owner: string;
   version: number;
   publishedAt: string;
+  yaml: string;
   definition: unknown;
 }
+
+export interface InputLimits {
+  accepts: string[];
+  max_bytes: number;
+  max_count: number;
+}
+
+export interface ServiceInputs {
+  id: string;
+  _files?: InputLimits;
+  _media?: InputLimits;
+}
+
+export type ChatPart =
+  | { type: 'text'; text: string }
+  | { type: 'file'; file: { filename: string; file_data: string } }
+  | { type: 'input_audio'; input_audio: { data: string; format: string } };
 
 export type ModelWithFacts = ModelOption & Pick<BlockFacts, 'maker' | 'operator'>;
 
@@ -49,15 +96,33 @@ export const blocksApi = (ctx: ApiContext) => {
   const connection = (tenant: string, id: string, rest: string) =>
     `${ctx.tenantPath(tenant)}/tool-connections/${encodeURIComponent(id)}${rest}`;
   return {
-    toolConnections: async (tenant: string, signal?: AbortSignal) =>
-      (
-        await ctx.get<{ data?: ToolConnectionDetail[] }>(
-          `${ctx.tenantPath(tenant)}/tool-connections`,
-          signal,
-        )
-      ).data ?? [],
+    toolConnections: async (tenant: string, signal?: AbortSignal) => {
+      const connections =
+        (
+          await ctx.get<{ data?: ToolConnectionDetail[] }>(
+            `${ctx.tenantPath(tenant)}/tool-connections`,
+            signal,
+          )
+        ).data ?? [];
+      const integrations = connections.every((c) => c.toolDetails)
+        ? undefined
+        : await ctx
+            .get<IntegrationsView>(`${ctx.tenantPath(tenant)}/integrations`, signal)
+            .catch(() => undefined);
+      return connections.map((c) => fromIntegration(c, integrations));
+    },
     models: async (signal?: AbortSignal) =>
       (await ctx.get<{ data?: ModelWithFacts[] }>('/models?all=true', signal)).data ?? [],
+    serviceInputs: async (signal?: AbortSignal) =>
+      (await ctx.get<{ data?: ServiceInputs[] }>('/v1/models', signal)).data ?? [],
+    runShared: async (publicName: string, content: string | ChatPart[]) => {
+      const reply = await ctx.request<{ choices: { message: { content: string } }[] }>(
+        'POST',
+        '/v1/chat/completions',
+        { model: publicName, messages: [{ role: 'user', content }] },
+      );
+      return reply.choices[0]?.message.content ?? '';
+    },
     flowDefinition: (tenant: string, id: string, signal?: AbortSignal) =>
       ctx.get<FlowDefinition>(
         `${ctx.tenantPath(tenant)}/building-blocks/step_flow/${encodeURIComponent(id)}/definition`,

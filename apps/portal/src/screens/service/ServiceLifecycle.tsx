@@ -16,7 +16,7 @@ import { useT, type PlainKey } from '../../i18n';
 import type { ServiceLifecycleView } from '../../types';
 import { lifecycleChanged, useServiceLifecycle, type LifecycleView } from './lifecycle';
 import { actorLabel } from '../../format';
-import { servicePath } from './sections';
+import { BatchDialog } from '../batch/BatchDialog';
 
 export type Change = 'pause' | 'resume' | 'archive' | 'restore';
 
@@ -229,6 +229,7 @@ export const ServiceLifecycle = ({
   const t = useT();
   const view = useServiceLifecycle(api, tenant, id);
   const [change, setChange] = useState<Change>();
+  const [batchOpen, setBatchOpen] = useState(false);
   if (!view) return null;
   const current = view.state;
   const dialog = change ? (
@@ -266,8 +267,8 @@ export const ServiceLifecycle = ({
         >
           <Dropdown.List>
             <Dropdown.Item>
-              <Dropdown.Button asChild>
-                <a href={`#${servicePath(id, 'batch')}`}>{t('serviceLifecycle.batch')}</a>
+              <Dropdown.Button onClick={() => setBatchOpen(true)}>
+                {t('serviceLifecycle.batch')}
               </Dropdown.Button>
             </Dropdown.Item>
             {onCopy ? (
@@ -287,6 +288,9 @@ export const ServiceLifecycle = ({
         </Dropdown>
       </Dropdown.TriggerContext>
       {dialog}
+      {batchOpen ? (
+        <BatchDialog api={api} tenant={tenant} id={id} onClose={() => setBatchOpen(false)} />
+      ) : null}
     </>
   );
 };

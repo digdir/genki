@@ -22,6 +22,7 @@ export const skillsLane = {
     importFailed: 'We could not import {file}. Check that it is an Agent Skills package.',
     lead: 'A skill is instructions, examples and tools for one specific task. Services fetch it when the description fits. Skills are stored in the Agent Skills format, so they can be moved and shared.',
     importPackage: 'Import package',
+    caseDeleteReason: 'Deleted a test case',
     loadingList: 'Loading the skills',
     emptyTitle: 'No skills yet',
     emptyManage: 'Create a new skill, or import a package in the Agent Skills format.',

@@ -55,10 +55,10 @@ const openBuilder = async (hash: string, name: string, fetch?: typeof globalThis
 };
 
 const navLink = (name: string) =>
-  within(screen.getByRole('navigation', { name: 'Tjenesten' })).getByRole('link', { name });
+  within(screen.getByRole('tablist', { name: /^Faner for/ })).getByRole('tab', { name });
 
 const subLink = (tab: string, name: string) =>
-  within(screen.getByRole('navigation', { name: tab })).getByRole('link', { name });
+  within(screen.getByRole('tablist', { name: tab })).getByRole('tab', { name });
 
 const yamlField = () => screen.getByLabelText('Tjenestedefinisjon (YAML)') as HTMLTextAreaElement;
 
@@ -74,7 +74,7 @@ describe('service list', () => {
     expect(screen.getByRole('link', { name: 'Postsortering' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Ny tjeneste' })).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('radio', { name: 'I test' }));
+    fireEvent.click(screen.getByRole('radio', { name: /^I test/ }));
     expect(screen.queryByRole('link', { name: 'Rapportassistenten' })).toBeNull();
     expect(screen.getByRole('link', { name: 'Søknadsuttrekk' })).toBeTruthy();
 
@@ -88,6 +88,16 @@ describe('service list', () => {
   it('shows an error with retry when the list cannot be loaded', async () => {
     await renderAt('#/services', failingFetch(/\/definitions$/));
     expect(await screen.findByRole('button', { name: /Prøv igjen/ })).toBeTruthy();
+  });
+});
+
+describe('the service page against the mock', () => {
+  it('offers Mer with pause and archive, as users see it on the platform', async () => {
+    await openBuilder('#/services/rapportassistenten', 'Rapportassistenten');
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Mer' }));
+    expect(screen.getByRole('button', { name: 'Sett på pause', hidden: true })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Arkiver', hidden: true })).toBeTruthy();
   });
 });
 
@@ -124,8 +134,8 @@ describe('builder', () => {
     expect(calls.some((c) => c.url.endsWith('/definitions/services/rapportassistenten'))).toBe(
       true,
     );
-    const nav = screen.getByRole('navigation', { name: 'Tjenesten' });
-    const links = within(nav).getAllByRole('link');
+    const nav = screen.getByRole('tablist', { name: /^Faner for/ });
+    const links = within(nav).getAllByRole('tab');
     expect(links.map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
       ['Oversikt', '#/services/rapportassistenten'],
       ['Oppsett', '#/services/rapportassistenten/setup'],
@@ -134,7 +144,7 @@ describe('builder', () => {
       ['Kvalitet', '#/services/rapportassistenten/quality'],
       ['Utviklerverktøy', '#/services/rapportassistenten/versions'],
     ]);
-    expect(navLink('Oversikt').getAttribute('aria-current')).toBe('page');
+    expect(navLink('Oversikt').getAttribute('aria-selected')).toBe('true');
     expect(screen.getByRole('heading', { level: 2, name: 'Hva tjenesten gjør' })).toBeTruthy();
     expect(screen.getByText('Utkast basert på versjon 7 · lagres automatisk')).toBeTruthy();
     expect(screen.queryByRole('complementary', { name: 'Byggeassistent' })).toBeNull();
@@ -143,8 +153,8 @@ describe('builder', () => {
 
     go('#/services/rapportassistenten/versions');
     expect(await screen.findByText('Versjon 7')).toBeTruthy();
-    expect(navLink('Utviklerverktøy').getAttribute('aria-current')).toBe('page');
-    expect(subLink('Utviklerverktøy', 'Versjoner').getAttribute('aria-current')).toBe('page');
+    expect(navLink('Utviklerverktøy').getAttribute('aria-selected')).toBe('true');
+    expect(subLink('Utviklerverktøy', 'Versjoner').getAttribute('aria-selected')).toBe('true');
     expect(screen.getByText('Versjon 6')).toBeTruthy();
     expect(screen.getByText('Begrunnelse: Strammere krav til kilder')).toBeTruthy();
     expectAccessible();
@@ -158,8 +168,8 @@ describe('builder', () => {
     ['/channels', 'Avanserte innstillinger', 'Kanaler og frontend', /Start og kanaler/],
   ])('deep-links %s inside the same page', async (path, label, sub, content) => {
     await openBuilder(`#/services/rapportassistenten${path}`, 'Rapportassistenten');
-    expect(navLink(label).getAttribute('aria-current')).toBe('page');
-    if (sub) expect(subLink(label, sub).getAttribute('aria-current')).toBe('page');
+    expect(navLink(label).getAttribute('aria-selected')).toBe('true');
+    if (sub) expect(subLink(label, sub).getAttribute('aria-selected')).toBe('true');
     expect((await screen.findAllByText(content)).length).toBeGreaterThan(0);
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
   });
@@ -179,7 +189,7 @@ describe('builder', () => {
   it('opens the shared playground for the conversation service tweak', async () => {
     await renderAt('#/services?visning=samtaletjeneste');
     await screen.findByRole('heading', { level: 1, name: 'Rapportassistenten' });
-    await waitFor(() => expect(navLink('Oppsett').getAttribute('aria-current')).toBe('page'));
+    await waitFor(() => expect(navLink('Oppsett').getAttribute('aria-selected')).toBe('true'));
     expect(await screen.findByRole('region', { name: 'Prøv et oppsett' })).toBeTruthy();
     expect(await screen.findByText(/Tjeneste: Rapportassistenten, utkast/)).toBeTruthy();
     expectAccessible();
@@ -193,7 +203,7 @@ describe('builder', () => {
   ])('reaches the %s tweak', async (tweak, tab) => {
     await renderAt(`#/services?visning=${tweak}`);
     await screen.findByRole('heading', { level: 1, name: 'Søknadsuttrekk' });
-    await waitFor(() => expect(navLink(tab).getAttribute('aria-current')).toBe('page'));
+    await waitFor(() => expect(navLink(tab).getAttribute('aria-selected')).toBe('true'));
     expectAccessible();
   });
 

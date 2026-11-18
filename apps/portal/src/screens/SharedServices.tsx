@@ -10,7 +10,7 @@ import { EmptyState, ErrorState, Loading } from '../states';
 import type { ModelOption, Residency, SharedService } from '../types';
 import { SharedServiceDetail } from './shared/SharedServiceDetail';
 import { UsageTag } from './shared/UsageTag';
-import { priceText } from './shared/price';
+import { priceText, type SharedServiceFacts } from './shared/price';
 import './shared.css';
 
 interface Entry {
@@ -18,33 +18,31 @@ interface Entry {
   publicName: string;
   residency: Residency | undefined;
   block: CatalogItem | undefined;
-  service: SharedService;
+  service: SharedServiceFacts;
 }
 
-const residencyLabel = (t: T, r: Residency | undefined, models: AsyncState<ModelOption[]>) =>
+const residencyLabel = (t: T, r: Residency | undefined) =>
   r === 'norway'
     ? t('sharedServices.residencyNorway')
     : r === 'eu'
       ? t('sharedServices.residencyEu')
       : r === 'global'
         ? t('sharedServices.residencyOutside')
-        : models.status === 'error'
-          ? t('sharedServices.residencyUnavailable')
-          : t('sharedServices.notGiven');
+        : t('sharedServices.notGiven');
 
-const processedLabel = (t: T, r: Residency | undefined, models: AsyncState<ModelOption[]>) =>
+const processedLabel = (t: T, r: Residency | undefined) =>
   r === 'norway'
     ? t('sharedServices.processesNorway')
     : r === 'eu'
       ? t('sharedServices.processesEu')
       : r === 'global'
         ? t('sharedServices.processesOutside')
-        : models.status === 'error'
-          ? t('sharedServices.residencyUnavailable')
-          : t('sharedServices.processesUnknown');
+        : t('sharedServices.processesUnknown');
 
-export const modelResidency = (model: string | null | undefined, models: ModelOption[]) =>
-  model ? models.find((m) => m.id === model)?.residency : undefined;
+const residencies: readonly string[] = ['norway', 'eu', 'global'];
+
+export const serviceResidency = (s: Pick<SharedService, 'residency'>) =>
+  s.residency && residencies.includes(s.residency) ? (s.residency as Residency) : undefined;
 
 export const sharedBlockId = (s: Pick<SharedService, 'tenant' | 'id'>) => `${s.tenant}/${s.id}`;
 
@@ -80,14 +78,14 @@ const fromApi = (
 
 const merge = (
   t: T,
-  services: SharedService[],
+  services: SharedServiceFacts[],
   models: AsyncState<ModelOption[]>,
   blocks: CatalogItem[],
   live: boolean,
 ): Entry[] =>
   services.map((s) => {
-    const residency = modelResidency(s.model, models.status === 'ready' ? models.data : []);
-    const location = residencyLabel(t, residency, models);
+    const residency = serviceResidency(s);
+    const location = residencyLabel(t, residency);
     const design = live ? undefined : findCapability(s.id);
     const api = fromApi(t, s, location, models.status === 'ready' ? models.data : []);
     return {
@@ -179,7 +177,8 @@ export const SharedServices = ({ api, tenant, route, live }: ScreenProps) => {
         block={entry.block}
         blockId={sharedBlockId(entry.service)}
         owner={entry.service.tenant}
-        price={priceText(t, f, entry.service.model, models)}
+        price={priceText(t, f, entry.service, models)}
+        service={entry.service}
       />
     );
   }
@@ -204,7 +203,7 @@ export const SharedServices = ({ api, tenant, route, live }: ScreenProps) => {
               <Card
                 key={e.capability.id}
                 entry={e}
-                meta={`${processedLabel(t, e.residency, models)} · ${priceText(t, f, e.service.model, models, true)}`}
+                meta={`${processedLabel(t, e.residency)} · ${priceText(t, f, e.service, models, true)}`}
               />
             ))}
           </ul>

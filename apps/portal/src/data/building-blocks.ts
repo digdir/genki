@@ -1,4 +1,3 @@
-import type { BlockFacts } from '../api/blocks';
 import type {
   BlockKind,
   BlockScore,
@@ -328,19 +327,10 @@ const block = ({ versions: _v, usedBy, scores, ...b }: Example): CatalogItem => 
   usedBy: (usedBy ?? []).map(userOf),
 });
 
-export const borealisFacts: BlockFacts = {
-  maker: 'AIVAR',
-  operator: { name: 'AIVAR', region: 'Norge' },
-  adoptedAt: '2026-09-02T10:00:00Z',
-  adoptedBy: 'kari',
-  adoptedByName: 'Kari Nordmann',
-};
-
 const examples: Example[] = [
   {
     id: 'aivar/borealis-27b',
     kind: 'model',
-    ...borealisFacts,
     name: 'Borealis-27B',
     description: 'Norsk språkmodell fra AIVAR, driftet i Norge.',
     publisher: publishers.digdir,

@@ -88,6 +88,6 @@ describe('shared services in English', () => {
     expect(screen.getByText(/of 20,000 characters/)).toBeTruthy();
     fireEvent.change(screen.getByRole('textbox'), { target: { value: '' } });
     fireEvent.click(screen.getByRole('button', { name: 'Run' }));
-    expect(screen.getByText('Paste text or upload a file.')).toBeTruthy();
+    expect(screen.getByText('Write or paste a text first.')).toBeTruthy();
   });
 });

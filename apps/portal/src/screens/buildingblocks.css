@@ -881,30 +881,6 @@
   font-size: 14px;
 }
 
-.bb-tablist {
-  display: flex;
-  gap: 0 20px;
-}
-
-.bb-tablist a {
-  display: block;
-  padding: 10px 4px;
-  white-space: nowrap;
-  color: var(--ds-color-neutral-text-default);
-  text-decoration: none;
-  border-bottom: 3px solid transparent;
-}
-
-.bb-tablist a[aria-selected='true'] {
-  color: var(--ds-color-accent-text-default);
-  font-weight: 600;
-  border-bottom-color: var(--ds-color-accent-base-default);
-}
-
-.bb-back {
-  align-self: flex-start;
-}
-
 .bb-rows {
   margin: 0;
   padding: 0;

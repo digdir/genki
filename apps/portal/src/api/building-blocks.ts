@@ -102,6 +102,7 @@ export interface CatalogItem {
   latestVersion?: string;
   update?: BlockUpdate;
   dataLocation: DataLocation | null;
+  residency?: Residency;
   status: BlockStatus;
   policyBlock?: { rule: string; ownedBy: string; text: string };
   approver?: string;
@@ -198,6 +199,7 @@ export interface RegistrationInput {
   documentUrl?: string;
   operations?: string[];
   writes?: boolean;
+  residency?: Residency;
 }
 
 export interface TenantSecretName {

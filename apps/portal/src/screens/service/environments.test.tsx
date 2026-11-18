@@ -319,16 +319,7 @@ describe('service environments in the portal', () => {
           ? { data: [run('t2', 'test')], total: 1 }
           : { data: [run('t1', 'prod'), run('t2', 'test')], total: 2 },
     });
-    render(
-      <LogSection
-        api={api}
-        tenant={tenant}
-        tenantName="Testetaten"
-        id="klarsprak"
-        runId={undefined}
-        live
-      />,
-    );
+    render(<LogSection api={api} tenant={tenant} id="klarsprak" runId={undefined} live />);
 
     expect(await screen.findByText('Kjøring t1')).toBeTruthy();
     fireEvent.change(await screen.findByLabelText('Miljø'), { target: { value: 'test' } });
@@ -441,7 +432,7 @@ describe('service environments in the portal', () => {
     fireEvent.change(await screen.findByLabelText('Miljø'), { target: { value: 'test' } });
 
     expect(
-      await screen.findByText(/Viser bare forbruket fra kjøringene i miljøet test\./),
+      await screen.findByText(/Viser bare bruken fra kjøringene i miljøet test\./),
     ).toBeTruthy();
     expect(calls.some((c) => /\/usage\?days=190&environment=test$/.test(c))).toBe(true);
     expect((screen.getByLabelText('Miljø') as HTMLSelectElement).value).toBe('test');

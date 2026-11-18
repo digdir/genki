@@ -3,8 +3,9 @@ import { defineNamespace } from '@genai/i18n';
 export const serviceUi = {
   service: defineNamespace({
     back: 'Tjenester',
-    navLabel: 'Tjenesten',
+    navLabel: 'Faner for {name}',
     sectionOverview: 'Oversikt',
+    draftNote: 'Oversikt og Kvalitet kommer når tjenesten er publisert.',
     sectionSetup: 'Oppsett',
     sectionInterface: 'Grensesnitt',
     sectionTest: 'Test',
@@ -58,6 +59,7 @@ export const serviceUi = {
     noDatasets: 'Ingen datasett',
     model: 'Modell',
     modelWhere: ', data behandles i {where}',
+    modelWhereAt: ', data behandles i {where} ({at})',
     residencyNorway: 'Norge',
     residencyEu: 'EU/EØS',
     residencyGlobal: 'global region, kan være utenfor EU/EØS',
@@ -88,6 +90,10 @@ export const serviceUi = {
     },
     whoCanUse: 'Hvem kan bruke den',
     costAtLeast: 'minst {cost}',
+    selectedOnly: {
+      one: 'Bare utvalgte: {count} person',
+      other: 'Bare utvalgte: {count} personer',
+    },
     everyoneWith: 'Alle i {org} med «{right}»',
     batchTitle: 'Kjør på mange dokumenter',
     batchLead:

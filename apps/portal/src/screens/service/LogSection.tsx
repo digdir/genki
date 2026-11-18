@@ -10,6 +10,7 @@ import { RunDetail } from '../log/RunDetail';
 import { actorText } from '../log/format';
 import { servicePath } from './sections';
 import '../log.css';
+import { BackLink } from '../../components/BackLink';
 
 export const LogSection = ({
   api,
@@ -20,7 +21,6 @@ export const LogSection = ({
 }: {
   api: ApiClient;
   tenant: string;
-  tenantName: string;
   id: string;
   runId: string | undefined;
   live: boolean;
@@ -56,9 +56,7 @@ export const LogSection = ({
   if (runId)
     return (
       <div className="stack log">
-        <Link href={`#${servicePath(id, 'log')}`} className="back-link">
-          {t('serviceLog.all')}
-        </Link>
+        <BackLink label={t('serviceLog.all')} href={`#${servicePath(id, 'log')}`} />
         <RunDetail key={runId} api={api} tenant={tenant} runId={runId} live={live} />
       </div>
     );
