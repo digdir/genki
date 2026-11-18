@@ -8,7 +8,9 @@ export const ruleTemplate = {
   pattern: '',
   stage: 'input',
   action: 'refuse',
-  message: translator('nb')('serviceGuardrails.defaultMessage'),
+  get message() {
+    return translator('nb')('serviceGuardrails.defaultMessage');
+  },
 };
 
 const kindLabel: Record<string, PlainKey> = {

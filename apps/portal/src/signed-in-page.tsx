@@ -1,6 +1,8 @@
 import { Heading, Paragraph } from '@digdir/designsystemet-react';
 import { lazy, useEffect } from 'react';
 import { translator, useT } from './i18n';
+import { withTexts } from './i18n/areas';
+import './i18n/page-texts';
 import type { ScreenProps } from './screen';
 import { priceSegment } from './screens/about/public-pages';
 import { apiReferenceHashFor, developerHashFor } from './screens/developer-routes';
@@ -43,40 +45,76 @@ export const guessArea = (area: string) => {
   );
 };
 
-const Access = lazy(() => import('./screens/Access').then((m) => ({ default: m.Access })));
-const BuildingBlocks = lazy(() =>
-  import('./screens/BuildingBlocks').then((m) => ({ default: m.BuildingBlocks })),
+const Access = lazy(
+  withTexts('access', () => import('./screens/Access').then((m) => ({ default: m.Access }))),
 );
-const DataHandling = lazy(() =>
-  import('./screens/DataHandling').then((m) => ({ default: m.DataHandling })),
+const BuildingBlocks = lazy(
+  withTexts('buildingBlocks', () =>
+    import('./screens/BuildingBlocks').then((m) => ({ default: m.BuildingBlocks })),
+  ),
 );
-const PricePage = lazy(() =>
-  import('./screens/about/PricePage').then((m) => ({ default: m.PricePage })),
+const DataHandling = lazy(
+  withTexts('dataHandling', () =>
+    import('./screens/DataHandling').then((m) => ({ default: m.DataHandling })),
+  ),
 );
-const Contact = lazy(() => import('./screens/FooterPages').then((m) => ({ default: m.Contact })));
-const Datasets = lazy(() => import('./screens/Datasets').then((m) => ({ default: m.Datasets })));
-const DeveloperTools = lazy(() =>
-  import('./screens/DeveloperTools').then((m) => ({ default: m.DeveloperTools })),
+const PricePage = lazy(
+  withTexts('pricePage', () =>
+    import('./screens/about/PricePage').then((m) => ({ default: m.PricePage })),
+  ),
 );
-const Integrations = lazy(() =>
-  import('./screens/Integrations').then((m) => ({ default: m.Integrations })),
+const Contact = lazy(
+  withTexts('contact', () => import('./screens/FooterPages').then((m) => ({ default: m.Contact }))),
 );
-const Log = lazy(() => import('./screens/Log').then((m) => ({ default: m.Log })));
-const Profile = lazy(() => import('./screens/Profile').then((m) => ({ default: m.Profile })));
-const Onboarding = lazy(() =>
-  import('./screens/Onboarding').then((m) => ({ default: m.Onboarding })),
+const Datasets = lazy(
+  withTexts('datasets', () => import('./screens/Datasets').then((m) => ({ default: m.Datasets }))),
 );
-const Playground = lazy(() =>
-  import('./screens/Playground').then((m) => ({ default: m.Playground })),
+const DeveloperTools = lazy(
+  withTexts('developerTools', () =>
+    import('./screens/DeveloperTools').then((m) => ({ default: m.DeveloperTools })),
+  ),
 );
-const Services = lazy(() => import('./screens/Services').then((m) => ({ default: m.Services })));
-const Settings = lazy(() => import('./screens/Settings').then((m) => ({ default: m.Settings })));
-const SharedServices = lazy(() =>
-  import('./screens/SharedServices').then((m) => ({ default: m.SharedServices })),
+const Integrations = lazy(
+  withTexts('integrations', () =>
+    import('./screens/Integrations').then((m) => ({ default: m.Integrations })),
+  ),
 );
-const Skills = lazy(() => import('./screens/Skills').then((m) => ({ default: m.Skills })));
-const StepFlows = lazy(() => import('./screens/StepFlows').then((m) => ({ default: m.StepFlows })));
-const Usage = lazy(() => import('./screens/Usage').then((m) => ({ default: m.Usage })));
+const Log = lazy(withTexts('log', () => import('./screens/Log').then((m) => ({ default: m.Log }))));
+const Profile = lazy(
+  withTexts('profile', () => import('./screens/Profile').then((m) => ({ default: m.Profile }))),
+);
+const Onboarding = lazy(
+  withTexts('onboarding', () =>
+    import('./screens/Onboarding').then((m) => ({ default: m.Onboarding })),
+  ),
+);
+const Playground = lazy(
+  withTexts('playground', () =>
+    import('./screens/Playground').then((m) => ({ default: m.Playground })),
+  ),
+);
+const Services = lazy(
+  withTexts('services', () => import('./screens/Services').then((m) => ({ default: m.Services }))),
+);
+const Settings = lazy(
+  withTexts('settings', () => import('./screens/Settings').then((m) => ({ default: m.Settings }))),
+);
+const SharedServices = lazy(
+  withTexts('sharedServices', () =>
+    import('./screens/SharedServices').then((m) => ({ default: m.SharedServices })),
+  ),
+);
+const Skills = lazy(
+  withTexts('skills', () => import('./screens/Skills').then((m) => ({ default: m.Skills }))),
+);
+const StepFlows = lazy(
+  withTexts('stepFlows', () =>
+    import('./screens/StepFlows').then((m) => ({ default: m.StepFlows })),
+  ),
+);
+const Usage = lazy(
+  withTexts('usage', () => import('./screens/Usage').then((m) => ({ default: m.Usage }))),
+);
 
 /** Sends an old address on to where the page lives now, keeping the rest of the route. */
 const MovedTo = ({ hash }: { hash: string }) => {
