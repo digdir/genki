@@ -168,6 +168,9 @@ export const modelPicker = defineNamespace({
   close: 'Lukk',
   facts: '{by} · {price} per 1M tokens',
   notInList: 'Modellen {model} er ikke blant modellene dere kan bruke nå. Velg en annen.',
+  heldForApproval:
+    'Modellen {model} venter på godkjenning for dere. Velg en annen, eller be om tilgang.',
+  notAllowedNow: 'Modellen {model} er ikke tillatt for dere. Velg en annen.',
   operationUses: '{kind} bruker {model}.',
   operationSame: '{kind} bruker samme som chat.',
   operationLink: 'Modell per type kall',

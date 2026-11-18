@@ -168,6 +168,8 @@ export const modelsLane = {
     close: 'Close',
     facts: '{by} · {price} per 1M tokens',
     notInList: 'The model {model} is not among the models you can use now. Choose another.',
+    heldForApproval: 'The model {model} needs approval for you. Choose another, or ask for access.',
+    notAllowedNow: 'The model {model} is not allowed for you. Choose another.',
     operationUses: '{kind} uses {model}.',
     operationSame: '{kind} uses the same as chat.',
     operationLink: 'Model per type of call',

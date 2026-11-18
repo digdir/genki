@@ -73,6 +73,20 @@ const Harness = ({
   );
 };
 
+describe('current model held back', () => {
+  it('warns when the current model is held back by the policy, with the reason', () => {
+    const { unmount } = render(<Harness initial="held" />);
+    expect(screen.getByText(/Modellen held venter på godkjenning/)).toBeTruthy();
+    expect(screen.getByText('Krever godkjenning')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Be om tilgang' })).toBeTruthy();
+    unmount();
+    render(<Harness initial="refused" />);
+    expect(screen.getByText(/Modellen refused er ikke tillatt for dere/)).toBeTruthy();
+    expect(screen.getByText('Ikke tillatt for dere')).toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'Be om tilgang' })).toBeNull();
+  });
+});
+
 const open = () => {
   fireEvent.click(screen.getByRole('button', { name: 'Bytt modell' }));
   return screen.getByRole('dialog', { name: 'Velg modell' });

@@ -58,6 +58,11 @@ const Chosen = ({
             {text.dataIn(model.residency)}
           </Tag>
         ) : null}
+        {model && !usable(model) ? (
+          <Tag data-size="sm" data-color="warning">
+            {text.reason(model)}
+          </Tag>
+        ) : null}
       </div>
       {model ? (
         <span className="mp-facts">
@@ -178,6 +183,19 @@ export const ModelPicker = ({
       {value && !chosen ? (
         <Alert data-color="warning" data-size="sm">
           {t('modelPicker.notInList', { model: value })}
+        </Alert>
+      ) : null}
+      {chosen && !usable(chosen) ? (
+        <Alert data-color="warning" data-size="sm">
+          {chosen.reason === 'not_allowed'
+            ? t('modelPicker.notAllowedNow', { model: text.name(chosen) })
+            : t('modelPicker.heldForApproval', { model: text.name(chosen) })}
+          {chosen.reason === 'requires_approval' ? (
+            <>
+              {' '}
+              <Link href={modelBlockHref(chosen.id)}>{t('modelWords.requestAccessShort')}</Link>
+            </>
+          ) : null}
         </Alert>
       ) : null}
       <Chosen
