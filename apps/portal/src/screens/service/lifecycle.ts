@@ -3,6 +3,8 @@ import type { ApiClient } from '../../api';
 import { useAsync } from '../../hooks';
 import type { ServiceLifecycleView } from '../../types';
 
+export type LifecycleView = ServiceLifecycleView & { byName?: string };
+
 const listeners = new Map<string, Set<() => void>>();
 const keyOf = (tenant: string, id: string) => `${tenant}\u0000${id}`;
 
@@ -24,7 +26,7 @@ export const useServiceLifecycle = (api: ApiClient, tenant: string, id: string, 
     };
   }, [tenant, id]);
   const [state] = useAsync(
-    async (signal): Promise<ServiceLifecycleView | undefined> =>
+    async (signal): Promise<LifecycleView | undefined> =>
       enabled ? api.serviceLifecycle(tenant, id, signal) : undefined,
     [api, tenant, id, enabled, version],
     { keepPreviousFor: keyOf(tenant, id) },

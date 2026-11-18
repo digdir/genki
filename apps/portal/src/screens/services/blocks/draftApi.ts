@@ -192,6 +192,8 @@ export interface DraftApiOptions {
 }
 
 /** An `AssistantApi` for a draft: each question a playground run, the threads this visit's. */
+const facetsKeptMs = 60_000;
+
 export const createDraftApi = ({
   api,
   tenant,
@@ -245,6 +247,23 @@ export const createDraftApi = ({
     const found = await Promise.all(ids.map(filtersOnce));
     const byId = new Map(ids.map((id, at) => [id, found[at]]));
     return modelRowsFromDefinition(definition, (id) => byId.get(id));
+  };
+
+  type FacetAnswer = {
+    fields?: { field: string; options: { value: string | number; count: number }[] }[];
+  };
+  const facetAnswers = new Map<string, { at: number; answer: Promise<FacetAnswer> }>();
+  const facetsOnce = (query: string) => {
+    const kept = facetAnswers.get(query);
+    if (kept && now() - kept.at < facetsKeptMs) return kept.answer;
+    const answer = (api.getJson(`/api/facets?${query}`) as Promise<FacetAnswer>).catch(
+      (error: unknown) => {
+        facetAnswers.delete(query);
+        throw error;
+      },
+    );
+    facetAnswers.set(query, { at: now(), answer });
+    return answer;
   };
 
   const threads = new Map<string, Kept>();
@@ -325,9 +344,7 @@ export const createDraftApi = ({
             fields: field.id,
             ...(filter ? { filter: JSON.stringify(filter) } : {}),
           });
-          const body = (await api.getJson(`/api/facets?${query.toString()}`)) as {
-            fields?: { field: string; options: { value: string | number; count: number }[] }[];
-          };
+          const body = await facetsOnce(query.toString());
           const options = (body.fields?.find((f) => f.field === field.id)?.options ?? []).map(
             (o) => ({ value: String(o.value), count: o.count }),
           );

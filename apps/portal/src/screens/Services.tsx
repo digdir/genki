@@ -19,7 +19,7 @@ import type { ScreenProps } from '../screen';
 import { rightLabel, useRights } from '../Shell';
 import { EmptyState, ErrorState, Loading } from '../states';
 import { availableSections, locate } from './service/sections';
-import { Builder, newServiceInit, type BuilderInit } from './services/Builder';
+import { Builder, newDraftId, newServiceInit, type BuilderInit } from './services/Builder';
 import { LiveNewService } from './services/LiveNewService';
 import { NewService } from './services/NewService';
 import { ServiceList } from './services/ServiceList';
@@ -125,8 +125,6 @@ const useLocation = (id: string, route: ScreenProps['route'], isNew: boolean) =>
   }, [redirect]);
   return location;
 };
-
-const newDraftId = () => `utkast-${crypto.randomUUID().slice(0, 8)}`;
 
 const paneOf = (query: URLSearchParams) => {
   const p = query.get('pane');

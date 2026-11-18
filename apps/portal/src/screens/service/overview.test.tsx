@@ -7,7 +7,7 @@ import type { ServiceDefinition } from '../../data/service-definition';
 import { RightsProvider } from '../../Shell';
 import type { TaskRow } from '../../types';
 import { OverviewSection } from './OverviewSection';
-import { LifecycleDialog } from './ServiceLifecycle';
+import { ArchivedBanner, LifecycleDialog } from './ServiceLifecycle';
 
 document.getAnimations ??= () => [];
 beforeAll(() => {
@@ -60,9 +60,14 @@ const platform = (
     lifecycle?: unknown;
     totals?: (q: URLSearchParams) => number;
     recent?: TaskRow[];
+    usageRuns?: number;
+    failedReason?: string;
+    usage?: Record<string, unknown>;
+    lastExecution?: unknown;
   } = {},
 ) => {
   const calls: Call[] = [];
+  let lifecycle: unknown = overrides.lifecycle ?? { state: 'active' };
   const fetch: typeof globalThis.fetch = async (input, init) => {
     const raw = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     const url = new URL(raw.replace(/^\/api/, ''), 'http://portal');
@@ -79,12 +84,24 @@ const platform = (
         status: 200,
         headers: { 'content-type': 'application/json' },
       });
-    if (path.endsWith('/lifecycle'))
-      return reply(
-        method === 'PUT' ? { state: 'active' } : (overrides.lifecycle ?? { state: 'active' }),
-      );
+    if (path.endsWith('/lifecycle')) {
+      if (method === 'PUT') lifecycle = JSON.parse(String(init?.body)) as unknown;
+      return reply(lifecycle);
+    }
     if (path.endsWith('/usage'))
-      return reply({ byService: [{ service: 'rapport', usage: { costMicroNok: 237_000_000 } }] });
+      return reply({
+        byService: [
+          {
+            service: 'rapport',
+            usage: {
+              costMicroNok: 237_000_000,
+              requests: overrides.usageRuns ?? 10_680,
+              runs: overrides.usageRuns ?? 10_680,
+              ...overrides.usage,
+            },
+          },
+        ],
+      });
     if (path.endsWith('/timeline'))
       return reply({
         steps: [{ id: 'e1', type: 'error', summary: 'modellen svarte ikke innen 30 sekunder.' }],
@@ -94,12 +111,28 @@ const platform = (
       if (q.get('limit') === '5') return reply({ data: overrides.recent ?? [], total: 0 });
       const total = overrides.totals?.(q) ?? 0;
       const data =
-        q.get('status') === 'failed' && total ? [run('f1', 'failed', '2026-11-17T13:57:00Z')] : [];
+        q.get('status') === 'failed' && total
+          ? [
+              {
+                ...run('f1', 'failed', '2026-11-17T13:57:00Z'),
+                ...(overrides.failedReason
+                  ? { failure: { code: 'deadline_exceeded', reason: overrides.failedReason } }
+                  : {}),
+              },
+            ]
+          : [];
       return reply({ data, total });
     }
     if (path.endsWith('/datasets'))
       return reply({
-        data: [{ id: 'tilsyn', fullId: `${tenant}/tilsyn`, name: 'Tilsynsrapporter 2025' }],
+        data: [
+          {
+            id: 'tilsyn',
+            fullId: `${tenant}/tilsyn`,
+            name: 'Tilsynsrapporter 2025',
+            lastExecution: overrides.lastExecution ?? null,
+          },
+        ],
       });
     if (path === '/models')
       return reply({
@@ -135,6 +168,125 @@ describe('the Oversikt tab of a published service', () => {
     ).toBe('#/statistics');
   });
 
+  it('counts the runs of the last 30 days from the usage report, as Oversikt and Statistikk do', async () => {
+    const { api } = platform({ usageRuns: 285, totals: (q) => (thirtyDays(q) ? 220 : 0) });
+    render(
+      <OverviewSection api={api} tenant={tenant} id="rapport" definition={definition} now={now} />,
+    );
+
+    const runs = screen.getByText('Kjøringer');
+    await waitFor(() => expect(text(runs.nextElementSibling)).toBe('285'));
+  });
+
+  it('keeps the place of every number while it loads, so nothing below moves when they arrive', async () => {
+    const { api } = platform({
+      totals: (q) => (q.get('status') === 'failed' ? 3 : 248),
+      recent: [run('r1', 'completed', '2026-11-17T13:21:00Z', 'Hvilke tilsyn ble gjort i Bergen?')],
+    });
+    render(
+      <OverviewSection api={api} tenant={tenant} id="rapport" definition={definition} now={now} />,
+    );
+
+    expect(screen.getByText('Kjøringer')).toBeTruthy();
+    expect(screen.getByText('Andel med feil')).toBeTruthy();
+    expect(screen.getByText('Anslått kostnad')).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Siste kjøringer' })).toBeTruthy();
+    expect(screen.queryByRole('table')).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Trenger deg nå' })).toBeNull();
+
+    const table = await screen.findByRole('table');
+    const attention = screen.getByRole('heading', { name: 'Trenger deg nå' });
+    expect(
+      attention.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it('names the model and where it runs only once the model list has answered, never the raw id first', async () => {
+    const { api } = platform();
+    render(
+      <OverviewSection api={api} tenant={tenant} id="rapport" definition={definition} now={now} />,
+    );
+
+    expect(screen.queryByText(/foundry-openai\/gpt-5.6-terra/)).toBeNull();
+    expect(screen.queryByText(/global region/)).toBeNull();
+    expect(screen.queryByText(`${tenant}/tilsyn`)).toBeNull();
+    expect(await screen.findByRole('link', { name: 'gpt-5.6-terra' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Tilsynsrapporter 2025' })).toBeTruthy();
+    expect(screen.queryByText(/global region/)).toBeNull();
+  });
+
+  it('asks for the last 30 days from the start of the hour, so a second visit within the hour is served from the cache', async () => {
+    const { calls, api } = platform();
+    const later = () => new Date('2026-11-17T15:20:31.123+01:00');
+    render(
+      <OverviewSection
+        api={api}
+        tenant={tenant}
+        id="rapport"
+        definition={definition}
+        now={later}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(
+        calls.some((c) => c.url.pathname.endsWith('/tasks') && c.url.searchParams.get('from')),
+      ).toBe(true),
+    );
+    const windows = calls
+      .filter((c) => c.url.pathname.endsWith('/tasks'))
+      .map((c) => c.url.searchParams.get('from'))
+      .filter((from) => from && !from.endsWith('T23:00:00.000Z'));
+    expect(new Set(windows)).toEqual(new Set(['2026-10-18T14:00:00.000Z']));
+  });
+
+  it('says who can use the service: everyone in the organisation with Bruke tjenester', async () => {
+    const { api } = platform();
+    render(
+      <OverviewSection
+        api={api}
+        tenant={tenant}
+        tenantName="Testetaten"
+        id="rapport"
+        definition={definition}
+        now={now}
+      />,
+    );
+
+    expect(text(screen.getByText('Hvem kan bruke den').nextElementSibling)).toBe(
+      'Alle i Testetaten med «Bruke tjenester»',
+    );
+  });
+
+  it('shows the cost as at least the priced part when a model in the period has no price', async () => {
+    const { api } = platform({ usage: { costMicroNok: 63_450_000, priced: false } });
+    render(
+      <OverviewSection api={api} tenant={tenant} id="rapport" definition={definition} now={now} />,
+    );
+
+    const cost = screen.getByText('Anslått kostnad');
+    await waitFor(() => expect(text(cost.nextElementSibling)).toMatch(/^minst 63,45/));
+  });
+
+  it('offers Kjør på mange dokumenter at the end to someone who may run it', async () => {
+    const { api } = platform();
+    render(
+      <OverviewSection
+        api={api}
+        tenant={tenant}
+        id="rapport"
+        definition={definition}
+        now={now}
+        canBatch
+      />,
+    );
+
+    const offer = screen.getByRole('region', { name: 'Kjør på mange dokumenter' });
+    expect(
+      within(offer).getByRole('link', { name: 'Kjør på mange dokumenter' }).getAttribute('href'),
+    ).toBe('#/services/rapport/batch');
+  });
+
   it('links each question in Siste kjøringer to its run in Logg', async () => {
     const { api } = platform({
       recent: [
@@ -159,6 +311,25 @@ describe('the Oversikt tab of a published service', () => {
     expect(within(table).getByText('4,2 s')).toBeTruthy();
   });
 
+  it('takes the cause from the reason the run list gives, without opening the run', async () => {
+    const since = new Date('2026-11-17T00:00:00+01:00').toISOString();
+    const { api, calls } = platform({
+      failedReason: 'Kjøringen tok for lang tid.',
+      totals: (q) => (q.get('from') === since ? (q.get('status') === 'failed' ? 3 : 248) : 0),
+    });
+    render(
+      <OverviewSection api={api} tenant={tenant} id="rapport" definition={definition} now={now} />,
+    );
+
+    const section = await screen.findByRole('region', { name: 'Trenger deg nå' });
+    expect(
+      await within(section).findByText(
+        '3 kjøringer feilet i dag: kjøringen tok for lang tid. De andre 245 kjøringene i dag gikk bra.',
+      ),
+    ).toBeTruthy();
+    expect(calls.some((c) => c.url.pathname.endsWith('/timeline'))).toBe(false);
+  });
+
   it('shows the failures of today with the cause from the latest failed run', async () => {
     const since = new Date('2026-11-17T00:00:00+01:00').toISOString();
     const { api } = platform({
@@ -175,10 +346,8 @@ describe('the Oversikt tab of a published service', () => {
       ),
     ).toBeTruthy();
     expect(
-      within(section)
-        .getByRole('link', { name: 'Se de feilede kjøringene i Logg' })
-        .getAttribute('href'),
-    ).toBe('#/log?service=rapport&status=failed');
+      within(section).getByRole('link', { name: 'Se de 3 kjøringene' }).getAttribute('href'),
+    ).toBe('#/log?service=rapport&status=failed&period=today');
   });
 
   it('names the sources and the model and links them to their dataset and building block', async () => {
@@ -264,6 +433,109 @@ describe('the Oversikt tab of a published service', () => {
 
     await waitFor(() =>
       expect(calls.find((c) => c.method === 'PUT')?.body).toEqual({ state: 'active' }),
+    );
+  });
+});
+
+describe('the pause banner', () => {
+  const paused = {
+    state: 'paused',
+    by: 'employee:ansattporten:ola',
+    at: '2026-11-02T09:00:00Z',
+    reason: 'Venter på data',
+  };
+
+  it('names who paused from the lifecycle when the API sends the name', async () => {
+    const { api } = platform({ lifecycle: { ...paused, byName: 'Ola Nordmann' } });
+    render(
+      <OverviewSection api={api} tenant={tenant} id="rapport" definition={definition} now={now} />,
+    );
+
+    const banner = await screen.findByText('Tjenesten er på pause.');
+    expect(text(banner.parentElement)).toMatch(/Ola Nordmann satte den på pause 2\. november/);
+  });
+
+  it('points to the dataset whose ingest failed, with the time it failed', async () => {
+    const { api } = platform({
+      lifecycle: paused,
+      lastExecution: {
+        status: 'failed',
+        startedAt: '2026-11-17T05:00:00Z',
+        endedAt: '2026-11-17T05:00:00Z',
+        stored: 0,
+        skipped: 0,
+      },
+    });
+    render(
+      <OverviewSection api={api} tenant={tenant} id="rapport" definition={definition} now={now} />,
+    );
+
+    const line = (await screen.findByText(/^Innlesingen av/)).closest('p') as HTMLElement;
+    expect(text(line)).toMatch(/^Innlesingen av Tilsynsrapporter 2025 feilet .*06[.:]00\.$/);
+    expect(
+      within(line).getByRole('link', { name: 'Tilsynsrapporter 2025' }).getAttribute('href'),
+    ).toBe('#/datasets/tilsyn');
+  });
+
+  it('can undo starting the service again, which pauses it again with the old reason', async () => {
+    const { api, calls } = platform({ lifecycle: paused });
+    render(
+      asManager(
+        <OverviewSection
+          api={api}
+          tenant={tenant}
+          id="rapport"
+          definition={definition}
+          now={now}
+        />,
+      ),
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Start igjen' }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.change(within(dialog).getByRole('textbox'), {
+      target: { value: 'Innlesingen virker igjen' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Start igjen' }));
+
+    expect(await screen.findByText('Rapportassistenten er i bruk igjen.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /^Angre \(\d+ s\)$/ }));
+    await waitFor(() =>
+      expect(calls.filter((c) => c.method === 'PUT').map((c) => c.body)).toEqual([
+        { state: 'active' },
+        { state: 'paused' },
+      ]),
+    );
+    expect(
+      calls
+        .filter((c) => c.method === 'PUT')
+        .map((c) => decodeURIComponent(c.headers.get('change-reason') ?? '')),
+    ).toEqual(['Innlesingen virker igjen', 'Venter på data']);
+  });
+});
+
+describe('the archived banner', () => {
+  it('says who archived the service, when and why, when the API sends the name', () => {
+    const { api } = platform();
+    render(
+      <ArchivedBanner
+        api={api}
+        tenant={tenant}
+        id="rapport"
+        name="Rapportassistenten"
+        canRestore={false}
+        lifecycle={{
+          state: 'archived',
+          by: 'employee:ansattporten:kari',
+          byName: 'Kari Nordmann',
+          at: '2026-10-03T09:00:00Z',
+          reason: 'Erstattet av Rapportassistenten',
+        }}
+      />,
+    );
+
+    expect(text(screen.getByText(/^Kari Nordmann arkiverte/))).toBe(
+      'Kari Nordmann arkiverte den 3. oktober 2026: «Erstattet av Rapportassistenten». Den svarer ikke, og ingen kan endre den.',
     );
   });
 });

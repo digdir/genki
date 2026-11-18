@@ -94,11 +94,19 @@ import { LogSection } from '../service/LogSection';
 import { OverviewSection } from '../service/OverviewSection';
 import { QualitySection } from '../service/QualitySection';
 import { BatchSection } from '../batch/BatchSection';
-import { availableSections, servicePath, type ServiceSection } from '../service/sections';
+import {
+  availableSections,
+  sectionLabels,
+  servicePath,
+  subSections,
+  tabOf,
+  type ServiceSection,
+} from '../service/sections';
 import { ServiceHeader } from '../service/ServiceHeader';
 import { ArchivedBanner, ServiceLifecycle } from '../service/ServiceLifecycle';
 import { lifecycleChanged, useServiceLifecycle } from '../service/lifecycle';
-import { ServiceNav } from '../service/ServiceNav';
+import { useDraftChanges } from '../service/draft-events';
+import { ServiceNav, ServiceSubNav } from '../service/ServiceNav';
 import { SettingsSection } from '../service/SettingsSection';
 import { StrategyPanel } from '../service/StrategyPanel';
 import { Versions } from '../service/Versions';
@@ -154,6 +162,8 @@ interface AssistedChange {
 }
 
 const draftDelayMs = 600;
+
+export const newDraftId = () => `utkast-${crypto.randomUUID().slice(0, 8)}`;
 
 const isAssistantState = (v: string | null): v is AssistantState =>
   !!v && (assistantStates as readonly string[]).includes(v);
@@ -426,6 +436,12 @@ export const Builder = ({
     if (!detail) window.scrollTo?.(0, 0);
   }, [section, detail]);
 
+  const addressed = route.segments[2];
+  useEffect(() => {
+    if (addressed && addressed in sectionLabels && addressed !== section)
+      window.location.replace(`#${servicePath(routeId, section)}`);
+  }, [addressed, section, routeId]);
+
   useEffect(() => {
     const target: SectionId | undefined =
       section === 'channels'
@@ -564,44 +580,47 @@ export const Builder = ({
     }, 700);
   };
 
-  const firstOpen = useRef({ section, draft: init.opened });
+  const draftChanges = useDraftChanges(tenant, id);
+  const firstOpen = useRef({ changes: draftChanges, draft: init.opened });
   const [remote] = useAsync(
     async (signal) => {
       if (!serverDraft || isNew) return undefined;
-      const keep = unsaved.current;
-      if (firstOpen.current.section !== section) firstOpen.current.draft = undefined;
+      const reload = unsaved.current || firstOpen.current.changes !== draftChanges;
       const reused = firstOpen.current.draft;
-      const [draft, opened, definition] = await Promise.all([
-        keep ? api.quality.draft(tenant, id, signal) : undefined,
-        keep || reused === null
+      const [draft, opened] = await Promise.all([
+        reload ? api.quality.draft(tenant, id, signal) : undefined,
+        reload || reused === null
           ? undefined
           : (reused ?? api.quality.openDraft(tenant, id, tRef.current('services.rebaseReason'))),
-        api.getDefinition(tenant, 'Service', id, signal),
       ]);
       if (opened?.behind && readOnlyRef.current)
-        return { draft: undefined, latest: definition.latest, conflicts: [] as DraftConflict[] };
+        return { draft: undefined, conflicts: [] as DraftConflict[] };
       if (opened?.rebasedFrom !== undefined)
         return {
           draft: opened,
-          latest: definition.latest,
           conflicts: [] as DraftConflict[],
-          rebasedTo: opened.latestVersion ?? definition.latest.version,
+          rebasedTo: opened.latestVersion ?? undefined,
         };
-      return {
-        draft: draft ?? opened,
-        latest: definition.latest,
-        conflicts: opened?.conflicts ?? [],
-      };
+      return { draft: draft ?? opened, conflicts: opened?.conflicts ?? [] };
     },
+    [api, tenant, id, serverDraft, draftChanges],
+    { keepPreviousFor: id },
+  );
+  const [publishedLatest] = useAsync(
+    async (signal) =>
+      serverDraft && !isNew
+        ? (await api.getDefinition(tenant, 'Service', id, signal)).latest
+        : undefined,
     [api, tenant, id, serverDraft, section],
+    { keepPreviousFor: id },
   );
   const remoteDraft = remote.status === 'ready' ? remote.data?.draft : undefined;
-  const remoteLatest = remote.status === 'ready' ? remote.data?.latest : undefined;
+  const remoteLatest = publishedLatest.status === 'ready' ? publishedLatest.data : undefined;
   const openConflicts = remote.status === 'ready' ? remote.data?.conflicts : undefined;
   const [rebasedNotice, setRebasedNotice] = useState(init.rebasedTo);
   const rebasedTo =
     remote.status === 'ready' && remote.data && 'rebasedTo' in remote.data
-      ? remote.data.rebasedTo
+      ? (remote.data.rebasedTo ?? remoteLatest?.version)
       : undefined;
   useEffect(() => {
     if (rebasedTo !== undefined) setRebasedNotice(rebasedTo);
@@ -1075,6 +1094,37 @@ export const Builder = ({
     if (isNew && serverDraft) window.location.replace(`#${servicePath(result.id)}`);
   };
 
+  const copyService = async () => {
+    const source = service.metadata.name || id;
+    const copyName = tRef.current('serviceLifecycle.copyName', { name: source });
+    const copyId = newDraftId();
+    const copy = applySpec(renamed(service, copyName), (d) =>
+      withPublicName(d.spec, autoPublicName(copyName)),
+    );
+    setFlash(tRef.current('serviceLifecycle.copying'));
+    try {
+      await api.quality.saveDraft(
+        tenant,
+        copyId,
+        {
+          definition: forTenant(copy, {
+            tenant,
+            id: slug(copyName),
+            version: 1,
+          }) as unknown as Record<string, unknown>,
+          files,
+          revision: 0,
+        },
+        tRef.current('serviceLifecycle.copyReason', { name: source }),
+      );
+    } catch {
+      setFlash(tRef.current('serviceLifecycle.copyFailed'));
+      return;
+    }
+    setFlash('');
+    navigate(servicePath(copyId, 'setup'));
+  };
+
   const deleteDraft = async () => {
     setDeleting('busy');
     draftBlocked.current = true;
@@ -1243,6 +1293,8 @@ export const Builder = ({
           id={id}
           definition={service}
           versions={versions}
+          tenantName={tenantName}
+          canBatch={canPublish && !archived}
           {...(remoteLatest ? { published: remoteLatest } : {})}
         />
       );
@@ -1375,7 +1427,19 @@ export const Builder = ({
     return <div className="stack-sm">{setup(setupSections)}</div>;
   })();
 
-  const content = <div className={`service-body service-${section}`}>{body}</div>;
+  const subNav = <ServiceSubNav id={routeId} sections={sections} current={section} />;
+  const content = (
+    <div className={`service-body service-${section}`}>
+      {subSections(tabOf(section), sections).length > 1 ? (
+        <div className="service-sub">
+          {subNav}
+          <div className="service-sub-body">{body}</div>
+        </div>
+      ) : (
+        body
+      )}
+    </div>
+  );
 
   const page = (
     <ServicePageContext.Provider value>
@@ -1397,7 +1461,15 @@ export const Builder = ({
                     reloadLifecycle();
                     onPublished?.();
                   }}
+                  onCopy={() => void copyService()}
                 />
+              ) : null}
+              {!archived ? (
+                <Button asChild variant="secondary" data-size="sm">
+                  <a href={`#${servicePath(routeId, 'test')}`}>
+                    {t('serviceLifecycle.tryService')}
+                  </a>
+                </Button>
               ) : null}
               {live || !canPublish ? null : (
                 <Button variant="secondary" data-size="sm" onClick={() => setPublish('test')}>

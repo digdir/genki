@@ -38,7 +38,42 @@ const order: ServiceSection[] = [
   'log',
 ];
 
-const forNew: ServiceSection[] = ['setup', 'interface', 'test', 'versions'];
+const forNew: ServiceSection[] = ['setup', 'interface', 'test', 'channels', 'versions'];
+
+export type ServiceTab = 'overview' | 'setup' | 'interface' | 'advanced' | 'quality' | 'developer';
+
+const tabSections: Record<ServiceTab, ServiceSection[]> = {
+  overview: ['overview', 'batch'],
+  setup: ['setup', 'test'],
+  interface: ['interface'],
+  advanced: ['settings', 'channels'],
+  quality: ['quality'],
+  developer: ['versions', 'log'],
+};
+
+export const tabLabels: Record<ServiceTab, PlainKey> = {
+  overview: 'service.sectionOverview',
+  setup: 'service.sectionSetup',
+  interface: 'service.sectionInterface',
+  advanced: 'service.tabAdvanced',
+  quality: 'service.sectionQuality',
+  developer: 'service.tabDeveloper',
+};
+
+const notListed: ServiceSection[] = ['batch', 'test'];
+
+export const tabOf = (section: ServiceSection): ServiceTab =>
+  (Object.keys(tabSections) as ServiceTab[]).find((tab) => tabSections[tab].includes(section)) ??
+  'overview';
+
+export const serviceTabs = (sections: ServiceSection[]) =>
+  (Object.keys(tabSections) as ServiceTab[]).flatMap((tab) => {
+    const target = tabSections[tab].find((s) => sections.includes(s));
+    return target ? [{ tab, target }] : [];
+  });
+
+export const subSections = (tab: ServiceTab, sections: ServiceSection[]) =>
+  tabSections[tab].filter((s) => sections.includes(s) && !notListed.includes(s));
 
 export const availableSections = ({ isNew }: { isNew: boolean }) =>
   isNew ? order.filter((s) => forNew.includes(s)) : order;

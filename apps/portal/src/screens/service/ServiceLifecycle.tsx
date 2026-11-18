@@ -14,7 +14,8 @@ import { reasonProblem } from '../../components/ReasonField';
 import { useAsync } from '../../hooks';
 import { useT, type PlainKey } from '../../i18n';
 import type { ServiceLifecycleView } from '../../types';
-import { lifecycleChanged, useServiceLifecycle } from './lifecycle';
+import { lifecycleChanged, useServiceLifecycle, type LifecycleView } from './lifecycle';
+import { actorLabel } from '../../format';
 import { servicePath } from './sections';
 
 export type Change = 'pause' | 'resume' | 'archive' | 'restore';
@@ -216,12 +217,14 @@ export const ServiceLifecycle = ({
   id,
   name,
   onChanged,
+  onCopy,
 }: {
   api: ApiClient;
   tenant: string;
   id: string;
   name: string;
   onChanged?: () => void;
+  onCopy?: () => void;
 }) => {
   const t = useT();
   const view = useServiceLifecycle(api, tenant, id);
@@ -267,6 +270,11 @@ export const ServiceLifecycle = ({
                 <a href={`#${servicePath(id, 'batch')}`}>{t('serviceLifecycle.batch')}</a>
               </Dropdown.Button>
             </Dropdown.Item>
+            {onCopy ? (
+              <Dropdown.Item>
+                <Dropdown.Button onClick={onCopy}>{t('serviceLifecycle.copy')}</Dropdown.Button>
+              </Dropdown.Item>
+            ) : null}
             {(current === 'paused'
               ? (['resume', 'archive'] as const)
               : (['pause', 'archive'] as const)
@@ -278,9 +286,6 @@ export const ServiceLifecycle = ({
           </Dropdown.List>
         </Dropdown>
       </Dropdown.TriggerContext>
-      <Button asChild variant="secondary" data-size="sm">
-        <a href={`#${servicePath(id, 'test')}`}>{t('serviceLifecycle.tryService')}</a>
-      </Button>
       {dialog}
     </>
   );
@@ -295,20 +300,24 @@ export const ArchivedBanner = ({
   tenant: string;
   id: string;
   name: string;
-  lifecycle: ServiceLifecycleView;
+  lifecycle: LifecycleView;
   canRestore: boolean;
   onChanged?: () => void;
 }) => {
   const t = useT();
   const f = useFormat();
-  const { at, reason } = lifecycle;
+  const { at, reason, by, byName } = lifecycle;
+  const who = by ? actorLabel(by, t, byName) : undefined;
+  const when = at ? f.date(at, 'long') : undefined;
+  const why = reason?.trim();
   return (
     <div role="status" className="archived-banner">
       <div className="archived-banner-text">
         <strong>{t('serviceLifecycle.archivedTitle')}</strong>
         <span>
-          {at ? `${t('serviceLifecycle.archivedAt', { date: f.date(at, 'medium') })} ` : ''}
-          {reason ? `«${reason}». ` : ''}
+          {who && when
+            ? `${t(why ? 'serviceLifecycle.archivedByWhy' : 'serviceLifecycle.archivedBy', { who, when, why: why ?? '' })} `
+            : `${when ? `${t('serviceLifecycle.archivedAt', { date: when })} ` : ''}${why ? `«${why}». ` : ''}`}
           {t('serviceLifecycle.archivedText')}
         </span>
       </div>
