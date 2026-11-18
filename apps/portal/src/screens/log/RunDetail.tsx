@@ -36,7 +36,7 @@ import { notPricedLabel, serviceLabel, statusOf } from '../../format';
 import { BatchView } from './BatchView';
 import { Steps } from './Steps';
 
-const ErasedNotice = ({ erasure }: { erasure: RunErasure }) => {
+export const ErasedNotice = ({ erasure }: { erasure: RunErasure }) => {
   const t = useT();
   const f = useFormat();
   const when = erasure.at ? f.dateTime(erasure.at) : undefined;

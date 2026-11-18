@@ -15,7 +15,8 @@ import { needsRight, useRights } from '../../Shell';
 import { EmptyState, ErrorState, Loading } from '../../states';
 import { TenantCatalog } from '../config/TenantCatalog';
 import { DatasetList } from './DatasetList';
-import { listItemOf } from './live-model';
+import { failureText, listItemOf } from './live-model';
+import { ApiError } from '../../api/error';
 import { LiveDatasetDetail } from './LiveDatasetDetail';
 import { LiveNewDataset } from './LiveNewDataset';
 import { datasetHref, detailTabOf } from './model';
@@ -40,6 +41,23 @@ const List = ({ api, tenant }: ScreenProps) => {
     keepPreviousFor: tenant,
   });
   const canCreate = useRights().has('manage-datasets');
+  const onRetry = async (fullId: string) => {
+    const view = state.status === 'ready' ? state.data.find((d) => d.fullId === fullId) : undefined;
+    if (!view) return;
+    try {
+      const [pipeline] = await api.datasets.pipelines(tenant, view.id);
+      if (!pipeline) throw new Error(t('datasets.sourceNone'));
+      await api.datasets.execute(tenant, view.id, pipeline.id, t('datasets.runReason'));
+    } catch (error) {
+      throw new Error(
+        error instanceof ApiError ? failureText(t, error) : t('datasets.somethingWrong'),
+        {
+          cause: error,
+        },
+      );
+    }
+    retry();
+  };
   if (state.status === 'loading') return <Loading label={t('datasets.loading')} />;
   if (state.status === 'error')
     return (
@@ -69,7 +87,11 @@ const List = ({ api, tenant }: ScreenProps) => {
     );
   return (
     <div className="stack">
-      <DatasetList datasets={state.data.map((d) => listItemOf(t, f, d))} canCreate={canCreate} />
+      <DatasetList
+        datasets={state.data.map((d) => listItemOf(t, f, d))}
+        canCreate={canCreate}
+        {...(canCreate ? { onRetry } : {})}
+      />
       <Technical api={api} tenant={tenant} />
     </div>
   );

@@ -124,6 +124,7 @@ export interface TaskTimeline {
   costMicroNok?: number | null;
   erasure?: RunErasure;
   steps: TimelineStep[];
+  stats?: { byModel?: { model: string }[] };
 }
 
 export type Residency = 'norway' | 'eu' | 'global';
@@ -302,6 +303,7 @@ export interface TaskRow {
   erasure?: RunErasure;
   actor?: TaskActor;
   capability: string;
+  version?: number | null;
   environment?: string | null;
   createdAt: string;
   endedAt: string | null;

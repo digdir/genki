@@ -63,18 +63,19 @@ describe('building blocks in English', () => {
             item={borealis}
             services={[]}
             versions={{ ok: true, data: [] }}
+            tab="about"
             onRetry={() => undefined}
             onChanged={() => undefined}
           />
         </RightsProvider>,
       ),
     );
-    expect(screen.getByRole('heading', { name: 'What it can do' })).toBeTruthy();
-    expect(screen.getByRole('heading', { name: 'What it can access' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'What it is good at' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Where data is processed' })).toBeTruthy();
     expect(
       screen.getByRole('heading', { name: /^Version 2\.2, available from \d+ Oct$/ }),
     ).toBeTruthy();
-    expect(screen.getByText('No versions or changes have been recorded yet.')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Versions' })).toBeTruthy();
   });
 
   it('shows a read-only notice naming the right in English', () => {
@@ -88,6 +89,7 @@ describe('building blocks in English', () => {
             item={borealis}
             services={[]}
             versions={{ ok: true, data: [] }}
+            tab="about"
             onRetry={() => undefined}
             onChanged={() => undefined}
           />

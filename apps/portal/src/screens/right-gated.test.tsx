@@ -85,7 +85,7 @@ describe('buttons the person has no right for', () => {
   });
 
   it('test set and run buttons are disabled with the reason, and nothing is sent', async () => {
-    const calls = await renderAs('#/services/rapportassistenten/quality', useOnly);
+    const calls = await renderAs('#/services/rapportassistenten/quality?view=testsets', useOnly);
     await screen.findByText('Hvor mange tilsyn hadde vi i 2025?');
     expectLockedWithReason(screen.getByRole('button', { name: 'Nytt testtilfelle' }));
     const run = screen.getByRole('button', { name: 'Kjør testsettet' });
@@ -100,7 +100,7 @@ describe('buttons the person has no right for', () => {
   });
 
   it('candidate review buttons are disabled with the reason, and nothing is sent', async () => {
-    const calls = await renderAs('#/services/rapportassistenten/quality', useOnly);
+    const calls = await renderAs('#/services/rapportassistenten/quality?view=testsets', useOnly);
     const section = await screen.findByRole('region', { name: 'Forslag til testtilfeller' });
     const item = (await within(section).findByText('Hva var ventetiden på telefon i fjor?'))
       .parentElement as HTMLElement;
@@ -175,7 +175,7 @@ describe('cost estimate before a paid test set run', () => {
       features: { quality: {} },
     });
     const calls = await renderAs(
-      '#/services/rapportassistenten/quality',
+      '#/services/rapportassistenten/quality?view=testsets',
       manager,
       async (input, init) =>
         urlOf(input).split('?')[0]?.endsWith('/usage')

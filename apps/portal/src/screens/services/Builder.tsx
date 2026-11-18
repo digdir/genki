@@ -97,6 +97,7 @@ import { BatchSection } from '../batch/BatchSection';
 import { availableSections, servicePath, type ServiceSection } from '../service/sections';
 import { ServiceHeader } from '../service/ServiceHeader';
 import { ArchivedBanner, ServiceLifecycle } from '../service/ServiceLifecycle';
+import { lifecycleChanged, useServiceLifecycle } from '../service/lifecycle';
 import { ServiceNav } from '../service/ServiceNav';
 import { SettingsSection } from '../service/SettingsSection';
 import { StrategyPanel } from '../service/StrategyPanel';
@@ -322,11 +323,8 @@ export const Builder = ({
   const [adding, setAdding] = useState<{ key: string; blocks: readonly string[] }>();
   const clearAdding = useCallback(() => setAdding(undefined), []);
   const rights = useRights();
-  const [lifecycleState, reloadLifecycle] = useAsync(
-    async (signal) => (live && !isNew ? api.serviceLifecycle(tenant, id, signal) : undefined),
-    [api, tenant, id, live, isNew],
-  );
-  const lifecycle = lifecycleState.status === 'ready' ? lifecycleState.data : undefined;
+  const lifecycle = useServiceLifecycle(api, tenant, id, live && !isNew);
+  const reloadLifecycle = () => lifecycleChanged(tenant, id);
   const archived = lifecycle?.state === 'archived';
   const section = archived && !archivedSections.includes(routeSection) ? 'overview' : routeSection;
   const readOnly = !rights.has('manage-services') || archived;
@@ -1133,12 +1131,30 @@ export const Builder = ({
           when: remoteLatest.publishedAt ? formatDateTime(remoteLatest.publishedAt, f) : '',
         }
       : latest;
+  const publishedBy =
+    shown && remoteLatest?.version === shown.n ? remoteLatest.publishedByName : undefined;
+  const status: ServiceStatus = archived
+    ? 'Arkivert'
+    : lifecycle?.state === 'paused'
+      ? 'Satt på pause'
+      : init.status === 'Utkast' && versions.some((v) => v.state === 'I bruk')
+        ? 'I bruk'
+        : init.status === 'Utkast' && versions.some((v) => v.state === 'I test')
+          ? 'I test'
+          : init.status;
   const meta = live
     ? shown
       ? [
-          shown.when
-            ? t('services.metaPublishedAt', { n: shown.n, when: shown.when })
+          status === 'I bruk'
+            ? t('services.metaInUse', { n: shown.n })
             : t('services.metaVersion', { n: shown.n }),
+          ...(shown.when
+            ? [
+                publishedBy
+                  ? t('services.metaPublishedBy', { when: shown.when, name: publishedBy })
+                  : t('services.metaPublished', { when: shown.when }),
+              ]
+            : []),
           ...(draftRevision > 0 ? [t('services.metaUnpublishedDraft')] : []),
         ].join(' · ')
       : t(serverDraft ? 'services.metaNotPublishedAuto' : 'services.metaNotPublished')
@@ -1366,17 +1382,7 @@ export const Builder = ({
       <div className="service-page">
         <ServiceHeader
           name={name}
-          status={
-            archived
-              ? 'Arkivert'
-              : lifecycle?.state === 'paused'
-                ? 'Satt på pause'
-                : init.status === 'Utkast' && versions.some((v) => v.state === 'I bruk')
-                  ? 'I bruk'
-                  : init.status === 'Utkast' && versions.some((v) => v.state === 'I test')
-                    ? 'I test'
-                    : init.status
-          }
+          status={status}
           meta={meta}
           flash={flash}
           actions={
@@ -1387,7 +1393,6 @@ export const Builder = ({
                   tenant={tenant}
                   id={id}
                   name={service.metadata.name || id}
-                  lifecycle={lifecycle}
                   onChanged={() => {
                     reloadLifecycle();
                     onPublished?.();
