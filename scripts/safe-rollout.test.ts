@@ -181,7 +181,7 @@ describe('a deploy that takes minutes, not half an hour', () => {
     path: '.github/workflows/ci.yml',
   };
 
-  it.skipIf(!posix)('counts only a successful push run on main of ci.yml as passed', () => {
+  it.skipIf(!posix)('counts a push run on main of ci.yml as passed only when it succeeded', () => {
     expect(verdict([])).toBe('none');
     expect(verdict([{ ...push, status: 'in_progress', conclusion: null }])).toBe('running');
     expect(verdict([{ ...push, status: 'completed', conclusion: 'cancelled' }])).toBe('failure');
