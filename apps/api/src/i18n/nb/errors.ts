@@ -642,6 +642,10 @@ export const routeErrors = defineNamespace({
   quotaRequestPending: 'en forespørsel om kvote venter allerede på en avgjørelse',
   quotaRequestApproved: 'forespørselen om kvote er allerede godkjent',
   quotaRequestRejected: 'forespørselen om kvote er allerede avslått',
+  onlyTenantLimitsServiceAccess: 'bare virksomheten begrenser hvem som kan bruke tjenestene sine',
+  serviceAccessModeValues: 'modus må være all eller selected',
+  chooseAtLeastOnePerson: 'velg minst én person',
+  onlyPeopleInOrganisation: 'bare personer i virksomheten kan velges',
 });
 
 export const demoErrors = defineNamespace({

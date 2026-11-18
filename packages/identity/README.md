@@ -41,6 +41,10 @@ Real Ansattporten lists the parties where the person has access to the resource,
 
 Local test data lives in `apps/api/config/local/identity.yaml`.
 
+## People with platform rights (`altinn-people.ts`)
+
+`httpAltinnPeople` lists who in an organisation holds the five rights, through Altinn 3 access management as the organisation's system user (ADR 0060): `enduser/authorizedparties` for the organisation's party, `enduser/connections?party=&from=` for the persons, and `enduser/connections/resources/rights` for each person's direct and indirect actions on the resource. `createMockAltinnAccessManagement` serves the same three reads from the test data, and `peopleFromTestData` reads the test data directly. A person is identified by `personKeys(secret)`, a keyed hash of the identity number. `altinnDirectory` keeps each organisation's list for two minutes and serves the last good list, marked stale, when Altinn fails. `serviceAccessPolicy` (`service-access.ts`) limits invoking a service to the people its tenant selected; machine principals and operators pass through.
+
 ## Platform rights (`platform-rights.ts`)
 
 The platform's Altinn resource (`urn:altinn:resource:digdir-genai-platform`) has five actions, one per right (ADR 0027):

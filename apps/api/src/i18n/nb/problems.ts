@@ -160,4 +160,6 @@ export const problems = defineNamespace({
   status502: 'En tjeneste bak plattformen svarte ikke',
   status503: 'Tjenesten er ikke tilgjengelig',
   status504: 'En tjeneste bak plattformen svarte ikke i tide',
+  altinnNotConnected: 'Altinn er ikke koblet til',
+  altinnUnavailable: 'Altinn svarte ikke',
 });

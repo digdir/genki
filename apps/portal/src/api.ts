@@ -19,6 +19,7 @@ import { recipesApi } from './api/recipes';
 import { batchRunsApi } from './api/batch-runs';
 import { platformStatusApi } from './api/platform-status';
 import { quotaRequestsApi } from './api/quota-requests';
+import { accessApi } from './api/access';
 import { searchEnginesApi } from './api/search-engines';
 import { skillsApi } from './api/skills';
 import type {
@@ -188,6 +189,7 @@ const featureClients = (ctx: ApiContext) => ({
   recipes: recipesApi(ctx),
   platformStatus: platformStatusApi(ctx),
   quotaRequests: quotaRequestsApi(ctx),
+  accessPeople: accessApi(ctx),
 });
 
 const kindPaths: Record<PublishedDefinition['kind'], string> = {

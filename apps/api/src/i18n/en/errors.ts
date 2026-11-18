@@ -638,6 +638,10 @@ export const routeErrors = {
   quotaRequestPending: 'a quota request is already waiting for a decision',
   quotaRequestApproved: 'the quota request is already approved',
   quotaRequestRejected: 'the quota request is already rejected',
+  onlyTenantLimitsServiceAccess: 'only the tenant limits who may use its services',
+  serviceAccessModeValues: 'mode must be all or selected',
+  chooseAtLeastOnePerson: 'choose at least one person',
+  onlyPeopleInOrganisation: 'only people in the organisation can be chosen',
 } satisfies Translation<typeof source.routeErrors>;
 
 export const demoErrors = {

@@ -27,10 +27,15 @@ import type { ProcessorRecordCheck } from '@genai/port-model';
 import type { TriggerRunStore } from '@genai/jobs';
 import type { EgressOptions } from '@genai/providers-mcp-client';
 import type { DescriptorRegistry } from '@genai/operations';
-import { envSecrets, type EventLog, type MediaOutputConfig } from '@genai/kernel';
+import {
+  envSecrets,
+  type EventLog,
+  type MediaOutputConfig,
+  type PolicyDecisionPoint,
+} from '@genai/kernel';
 import { callerFrom, createPlatform, platformModules, serviceRequirement } from './composition.js';
 import { actorNames } from './actor-names.js';
-import { InMemoryConfigEntryStore } from './config-store.js';
+import { InMemoryConfigEntryStore, type ConfigEntryStore } from './config-store.js';
 import {
   admitMaskinportenClients,
   maskinportenClientRegistry,
@@ -264,6 +269,7 @@ export interface BootOptions {
   blobStore?: BlobStore;
   fakeKey?: string;
   demoRecorderKeyDigest?: string;
+  policy?: (inner: PolicyDecisionPoint, configEntries: ConfigEntryStore) => PolicyDecisionPoint;
 }
 
 export const bootPlatform = async (options: BootOptions = {}) => {
@@ -300,11 +306,14 @@ export const bootPlatform = async (options: BootOptions = {}) => {
       ? { demoRecorderKeyDigest: options.demoRecorderKeyDigest }
       : {}),
     modules: options.modules ?? [...platformModules, onboardingModule, maskinportenClientsModule],
-    policy: altinnPolicy({
-      altinn: createMockAltinnPdp({}).authorization,
-      identities: new InMemoryIdentities(),
-      requirementFor: () => serviceRequirement(resource),
-    }),
+    policy: (options.policy ?? ((inner) => inner))(
+      altinnPolicy({
+        altinn: createMockAltinnPdp({}).authorization,
+        identities: new InMemoryIdentities(),
+        requirementFor: () => serviceRequirement(resource),
+      }),
+      configEntries,
+    ),
     authenticate: async (request) => {
       const person = people[request.headers.get('authorization')?.slice(7) ?? ''];
       if (person) return { principal: person };

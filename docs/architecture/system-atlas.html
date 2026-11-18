@@ -6460,6 +6460,8 @@
               'Legacy API-key bridge',
               'Altinn authorization (mocked today)',
               'Altinn actions for parties the token lists without actions',
+              "The organisation's people and their rights from Altinn access management",
+              'Limits on who may use a service (ADR 0060)',
             ],
             files: [
               'packages/identity/src/verify.ts',
@@ -6469,6 +6471,8 @@
               'packages/identity/src/policy.ts',
               'packages/identity/src/mock-ansattporten.ts',
               'packages/identity/src/api-keys.ts',
+              'packages/identity/src/altinn-people.ts',
+              'packages/identity/src/service-access.ts',
             ],
             input: 'Bearer token or API key',
             output: 'Principal + policy decision',
@@ -6524,6 +6528,16 @@
                 witness: {
                   file: 'packages/identity/src/altinn.ts',
                   contains: 'createMockAltinnPdp',
+                },
+              },
+              {
+                to: 'altinn',
+                label: 'People and rights in an organisation (mock until live)',
+                kind: 'mock',
+                target: 'http',
+                witness: {
+                  file: 'packages/identity/src/altinn-people.ts',
+                  contains: 'createMockAltinnAccessManagement',
                 },
               },
             ],

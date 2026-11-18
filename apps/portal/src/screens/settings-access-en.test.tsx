@@ -60,11 +60,13 @@ describe('access in English', () => {
   it('shows rights and people in English', async () => {
     await renderEnglish('#/access');
     expect(await screen.findByRole('heading', { level: 1, name: 'Access' })).toBeTruthy();
-    expect(await screen.findByText('Showing 10 of 10 people')).toBeTruthy();
-    expect(screen.getAllByText('Use services').length).toBeGreaterThan(0);
+    expect(await screen.findByText('Showing 4 of 10')).toBeTruthy();
+    expect(screen.getAllByText(/Use the services/).length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: 'Give a colleague access' })).toBeTruthy();
-    fireEvent.click(screen.getByRole('radio', { name: 'No rights' }));
-    expect(screen.getByText('Showing 1 of 10 people')).toBeTruthy();
-    expect(screen.getByRole('tab', { name: 'Services' })).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Show those who can'), {
+      target: { value: 'manage-datasets' },
+    });
+    expect(screen.getByText('Showing 2 of 10')).toBeTruthy();
+    expect(within(screen.getByRole('tablist')).getByRole('tab', { name: 'Services' })).toBeTruthy();
   });
 });
