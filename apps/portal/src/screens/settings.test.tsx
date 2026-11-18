@@ -118,7 +118,7 @@ describe('Innstillinger for virksomheten', () => {
     fireEvent.change(search, { target: { value: 'personopplysninger' } });
     expect(screen.getByText(/^Viser 2 av \d+ innstillinger$/)).toBeTruthy();
 
-    fireEvent.change(search, { target: { value: 'retrieval.topK' } });
+    fireEvent.change(search, { target: { value: 'rag.topK' } });
     expect(screen.getByText(/^Viser 1 av \d+ innstillinger$/)).toBeTruthy();
 
     fireEvent.change(search, { target: { value: '' } });
@@ -161,7 +161,7 @@ describe('Innstillinger for virksomheten', () => {
     fireEvent.change(input, { target: { value: '15' } });
     fireEvent.click(within(side).getByRole('button', { name: 'Forhåndsvis endring' }));
     const preview = await within(side).findByRole('region', { name: 'Forhåndsvisning' });
-    const dry = calls.find((c) => c.url.endsWith('/settings/retrieval.topK?dryRun=true'));
+    const dry = calls.find((c) => c.url.endsWith('/settings/rag.topK?dryRun=true'));
     expect(dry).toMatchObject({ method: 'PUT', body: { value: 15 } });
     expect(within(preview).getByText('klarsprak (v2)')).toBeTruthy();
     expect(within(preview).getByText('rapportassistenten (v6): 20')).toBeTruthy();
@@ -177,9 +177,7 @@ describe('Innstillinger for virksomheten', () => {
     expect(
       await screen.findByText('Antall treff som leses er lagret (15 treff). Endringen er logget.'),
     ).toBeTruthy();
-    const saved = calls.filter(
-      (c) => c.url.endsWith('/settings/retrieval.topK') && c.method === 'PUT',
-    );
+    const saved = calls.filter((c) => c.url.endsWith('/settings/rag.topK') && c.method === 'PUT');
     expect(saved).toHaveLength(1);
     expect(saved[0]).toMatchObject({ reason: 'Flere treff gir bedre svar', body: { value: 15 } });
     const log = within(panel()).getByRole('region', { name: 'Endringer her' });
@@ -190,7 +188,7 @@ describe('Innstillinger for virksomheten', () => {
   it('the mock answers a real save like the API, and a dry run with the preview', async () => {
     const fetch = mockFetch();
     const put = (query: string) =>
-      fetch(`/tenants/999888777/settings/retrieval.topK${query}`, {
+      fetch(`/tenants/999888777/settings/rag.topK${query}`, {
         method: 'PUT',
         headers: {
           'content-type': 'application/json',
@@ -211,7 +209,7 @@ describe('Innstillinger for virksomheten', () => {
     await within(side).findByRole('region', { name: 'Forhåndsvisning' });
     fireEvent.click(within(side).getByRole('button', { name: /Vis API-kall/ }));
     const api = await screen.findByRole('dialog', { name: 'Endre «Antall treff som leses»' });
-    expect(within(api).getByText('/tenants/999888777/settings/retrieval.topK')).toBeTruthy();
+    expect(within(api).getByText('/tenants/999888777/settings/rag.topK')).toBeTruthy();
     expect(within(api).getByText('PUT')).toBeTruthy();
   });
 

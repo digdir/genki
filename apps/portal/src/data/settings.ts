@@ -79,7 +79,7 @@ const row = (r: Omit<SettingRow, 'svc' | 'ds'> & Partial<Pick<SettingRow, 'svc' 
 export const exampleSettings: SettingRow[] = [
   row({
     id: 'search.top_k',
-    apiKey: 'retrieval.topK',
+    apiKey: 'rag.topK',
     cat: 'Søk',
     label: 'Antall treff som leses',
     desc: 'Hvor mange tekstbiter tjenesten leser før den svarer. Flere treff gir mer grunnlag, men koster mer og tar lengre tid.',
