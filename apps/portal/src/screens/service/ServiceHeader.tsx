@@ -34,7 +34,6 @@ export const ServiceHeader = ({
           <Tag data-size="sm" data-color={statusColor[status]}>
             {t(statusKeys[status])}
           </Tag>
-          <span className="meta">{meta}</span>
         </div>
         <div className="service-actions">
           <span aria-live="polite" className="service-flash">
@@ -43,6 +42,7 @@ export const ServiceHeader = ({
           {actions}
         </div>
       </div>
+      <p className="meta service-meta">{meta}</p>
     </header>
   );
 };

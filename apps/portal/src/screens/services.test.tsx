@@ -57,6 +57,9 @@ const openBuilder = async (hash: string, name: string, fetch?: typeof globalThis
 const navLink = (name: string) =>
   within(screen.getByRole('navigation', { name: 'Tjenesten' })).getByRole('link', { name });
 
+const subLink = (tab: string, name: string) =>
+  within(screen.getByRole('navigation', { name: tab })).getByRole('link', { name });
+
 const yamlField = () => screen.getByLabelText('Tjenestedefinisjon (YAML)') as HTMLTextAreaElement;
 
 describe('service list', () => {
@@ -127,13 +130,9 @@ describe('builder', () => {
       ['Oversikt', '#/services/rapportassistenten'],
       ['Oppsett', '#/services/rapportassistenten/setup'],
       ['Grensesnitt', '#/services/rapportassistenten/interface'],
-      ['Test', '#/services/rapportassistenten/test'],
-      ['Kanaler og frontend', '#/services/rapportassistenten/channels'],
-      ['Innstillinger', '#/services/rapportassistenten/settings'],
+      ['Avanserte innstillinger', '#/services/rapportassistenten/settings'],
       ['Kvalitet', '#/services/rapportassistenten/quality'],
-      ['Samlet jobb', '#/services/rapportassistenten/batch'],
-      ['Versjoner', '#/services/rapportassistenten/versions'],
-      ['Logg', '#/services/rapportassistenten/log'],
+      ['Utviklerverktøy', '#/services/rapportassistenten/versions'],
     ]);
     expect(navLink('Oversikt').getAttribute('aria-current')).toBe('page');
     expect(screen.getByRole('heading', { level: 2, name: 'Hva tjenesten gjør' })).toBeTruthy();
@@ -144,21 +143,23 @@ describe('builder', () => {
 
     go('#/services/rapportassistenten/versions');
     expect(await screen.findByText('Versjon 7')).toBeTruthy();
-    expect(navLink('Versjoner').getAttribute('aria-current')).toBe('page');
+    expect(navLink('Utviklerverktøy').getAttribute('aria-current')).toBe('page');
+    expect(subLink('Utviklerverktøy', 'Versjoner').getAttribute('aria-current')).toBe('page');
     expect(screen.getByText('Versjon 6')).toBeTruthy();
     expect(screen.getByText('Begrunnelse: Strammere krav til kilder')).toBeTruthy();
     expectAccessible();
   });
 
   it.each([
-    ['/setup', 'Oppsett', /^Formål og målgruppe/],
-    ['/settings', 'Innstillinger', /Eksporter og importer/],
-    ['/quality', 'Kvalitet', /Testsett/],
-    ['/log', 'Logg', /Kjøringer/],
-    ['/channels', 'Kanaler og frontend', /Start og kanaler/],
-  ])('deep-links %s inside the same page', async (path, label, content) => {
+    ['/setup', 'Oppsett', undefined, /^Formål og målgruppe/],
+    ['/settings', 'Avanserte innstillinger', 'Innstillinger', /Eksporter og importer/],
+    ['/quality', 'Kvalitet', undefined, /Testsett/],
+    ['/log', 'Utviklerverktøy', 'Logg', /Kjøringer/],
+    ['/channels', 'Avanserte innstillinger', 'Kanaler og frontend', /Start og kanaler/],
+  ])('deep-links %s inside the same page', async (path, label, sub, content) => {
     await openBuilder(`#/services/rapportassistenten${path}`, 'Rapportassistenten');
     expect(navLink(label).getAttribute('aria-current')).toBe('page');
+    if (sub) expect(subLink(label, sub).getAttribute('aria-current')).toBe('page');
     expect((await screen.findAllByText(content)).length).toBeGreaterThan(0);
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
   });
@@ -178,7 +179,7 @@ describe('builder', () => {
   it('opens the shared playground for the conversation service tweak', async () => {
     await renderAt('#/services?visning=samtaletjeneste');
     await screen.findByRole('heading', { level: 1, name: 'Rapportassistenten' });
-    await waitFor(() => expect(navLink('Test').getAttribute('aria-current')).toBe('page'));
+    await waitFor(() => expect(navLink('Oppsett').getAttribute('aria-current')).toBe('page'));
     expect(await screen.findByRole('region', { name: 'Prøv et oppsett' })).toBeTruthy();
     expect(await screen.findByText(/Tjeneste: Rapportassistenten, utkast/)).toBeTruthy();
     expectAccessible();
@@ -187,8 +188,8 @@ describe('builder', () => {
   it.each([
     ['uttrekk-samtale', 'Oppsett'],
     ['uttrekk-inn-og-ut', 'Oppsett'],
-    ['uttrekk-prove', 'Test'],
-    ['uttrekk-yaml', 'Versjoner'],
+    ['uttrekk-prove', 'Oppsett'],
+    ['uttrekk-yaml', 'Utviklerverktøy'],
   ])('reaches the %s tweak', async (tweak, tab) => {
     await renderAt(`#/services?visning=${tweak}`);
     await screen.findByRole('heading', { level: 1, name: 'Søknadsuttrekk' });
