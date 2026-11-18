@@ -20,7 +20,9 @@ export const recorderActor = 'recorder';
 
 export const demoApps = ['portal', 'console', 'workspace'] as const;
 export const demoAudiences = ['municipality', 'state-agency', 'internal'] as const;
-export const recordingStatuses = ['running', 'recorded', 'failed'] as const;
+export const recordingStatuses = ['queued', 'running', 'recorded', 'failed', 'cancelled'] as const;
+export const settingsKind = 'demo-settings';
+export const settingsId = 'default';
 
 export const browserCommands = [
   'find',
@@ -107,7 +109,37 @@ export const recordingFailure = z.strictObject({
 export const recordingStart = z.strictObject({
   genkiVersion: z.string().trim().min(1).max(100),
   narrated: z.boolean(),
+  recording: z.uuid().optional(),
 });
+
+export const recordingRequest = z.strictObject({
+  upTo: z.number().int().min(1).max(50).optional(),
+});
+
+export const demoSettings = z.strictObject({
+  voice: z
+    .string()
+    .regex(/^[A-Za-z0-9-]+$/, 'voice must be a voice name like nb-NO-PernilleNeural'),
+  viewport: z.tuple([z.number().int().min(320).max(3840), z.number().int().min(320).max(3840)]),
+  tenant: z
+    .string()
+    .regex(/^\d{9}$/, 'the test organisation is a nine-digit org number')
+    .nullable(),
+  login: z.string().trim().min(1).max(200),
+  retentionDays: z.number().int().min(7).max(365),
+  writerDailyTokens: z.number().int().min(0).max(2_000_000),
+});
+
+export type DemoSettings = z.infer<typeof demoSettings>;
+
+export const defaultDemoSettings: DemoSettings = {
+  voice: 'nb-NO-PernilleNeural',
+  viewport: [1280, 720],
+  tenant: null,
+  login: 'recorder',
+  retentionDays: 90,
+  writerDailyTokens: 100_000,
+};
 
 export const recordingFinish = z.strictObject({
   status: z.enum(['recorded', 'failed']),
@@ -134,19 +166,35 @@ export interface RecordingSpec {
   seconds?: number;
   files: RecordingFile[];
   failure?: z.infer<typeof recordingFailure>;
+  requestedBy?: string;
+  upTo?: number;
+  cancelledBy?: string;
 }
 
 export const recordingFileTypes: Record<string, { contentType: string; maxBytes: number }> = {
   'demo.mp4': { contentType: 'video/mp4', maxBytes: 100 * 1024 * 1024 },
   'demo.srt': { contentType: 'application/x-subrip', maxBytes: 256 * 1024 },
   'poster.jpg': { contentType: 'image/jpeg', maxBytes: 2 * 1024 * 1024 },
+  'sample.mp3': { contentType: 'audio/mpeg', maxBytes: 1024 * 1024 },
 };
 
-const failedStepFile = /^failed-step-(\d{1,2})\.png$/;
+const screenshotFile = /^(failed-)?step-(\d{1,2})\.png$/;
 
 export const recordingFileType = (name: string) =>
   recordingFileTypes[name] ??
-  (failedStepFile.test(name) ? { contentType: 'image/png', maxBytes: 5 * 1024 * 1024 } : undefined);
+  (screenshotFile.test(name) ? { contentType: 'image/png', maxBytes: 5 * 1024 * 1024 } : undefined);
+
+export const stepsDone = (spec: Pick<RecordingSpec, 'files'>) =>
+  Math.max(
+    0,
+    ...spec.files.flatMap((f) => {
+      const found = /^step-(\d{1,2})\.png$/.exec(f.name);
+      return found ? [Number(found[1])] : [];
+    }),
+  );
+
+export const isOpen = (spec: Pick<RecordingSpec, 'status'>) =>
+  spec.status === 'queued' || spec.status === 'running';
 
 export const recordingBlobPath = (recording: string, name: string) =>
   `demos/recordings/${recording}/${name}`;
@@ -304,6 +352,17 @@ export const latestRecordings = async (store: ConfigEntryStore) =>
     kind: recordingKind,
     scope: platformScope,
   })) as ConfigEntry<RecordingSpec>[];
+
+export const latestSettings = async (store: ConfigEntryStore) => {
+  const found = (await store.history(settingsKind, platformScope, settingsId)).at(-1) as
+    ConfigEntry<DemoSettings> | undefined;
+  return found && !found.deleted ? found : undefined;
+};
+
+export const settingsOf = async (store: ConfigEntryStore): Promise<DemoSettings> => ({
+  ...defaultDemoSettings,
+  ...(await latestSettings(store))?.spec,
+});
 
 export const latestRecording = async (store: ConfigEntryStore, id: string) =>
   (await store.history(recordingKind, platformScope, id)).at(-1) as

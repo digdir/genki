@@ -93,6 +93,8 @@ jobs:
           path: demos/out/.voice
       - env:
           DEMO_API_KEY: ${{ secrets.SMOKE_API_KEY }}
+          DEMO_RECORDER_KEY: ${{ secrets.DEMO_RECORDER_KEY }}
+          DEMO_API_URL: ${{ vars.SMOKE_API_URL }}
           DEMO_PORTAL_URL: ${{ vars.SMOKE_PORTAL_URL }}
           DEMO_CONSOLE_URL: ${{ vars.SMOKE_CONSOLE_URL }}
           DEMO_ONLY: ${{ inputs.demo }}

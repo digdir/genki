@@ -20,6 +20,7 @@ import {
 } from './example-data';
 import { fixtureSchemaFetch } from '@genai/schema-forms/fixtures';
 import { exampleDescriptors, operationsMock } from './screens/models/operations-mock';
+import type { demosMock } from './screens/demos/mock';
 import { queueMock } from './screens/queue/mock';
 import { searchEnginesMock } from './screens/search-engines/mock';
 import { translator } from './i18n';
@@ -370,6 +371,7 @@ export const mockFetch = (
   const grid = structuredClone(exampleSettingsGrid);
   const history = structuredClone(exampleSettingHistory);
   const searchEngines = searchEnginesMock();
+  let demos: Promise<ReturnType<typeof demosMock>> | undefined;
   const schemaFixtures = fixtureSchemaFetch();
   const secrets = new Set<string>(['foundry-key', 'local-model-key']);
 
@@ -949,6 +951,11 @@ export const mockFetch = (
     if (queueReply) return queueReply;
     const modelReply = modelRoute(path, method, reason, body);
     if (modelReply) return modelReply;
+    if (/^\/operator\/(demos(\/|$)|recordings\/|demo-settings$)/.test(path)) {
+      demos ??= import('./screens/demos/mock').then((m) => m.demosMock());
+      const demoReply = await (await demos)(path, method, reason, body);
+      if (demoReply) return demoReply;
+    }
     const engineReply = searchEngines(path, method, reason, body);
     if (engineReply) return engineReply;
     const configReply = configRoute(path, url.search, method, reason, body);
