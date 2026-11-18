@@ -179,4 +179,8 @@ export const problems = defineNamespace({
   status504: 'En tjeneste bak plattformen svarte ikke i tide',
   altinnNotConnected: 'Altinn er ikke koblet til',
   altinnUnavailable: 'Altinn svarte ikke',
+  definitionOutdated:
+    'Versjon {version} av {service} passer ikke lenger med plattformen: {problem}. Bruk den nyeste versjonen, {latest}.',
+  definitionOutdatedNewest:
+    'Versjon {version} av {service} passer ikke lenger med plattformen: {problem}. Det er den nyeste versjonen, så rett definisjonen og publiser en ny versjon.',
 });

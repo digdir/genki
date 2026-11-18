@@ -146,6 +146,7 @@ export interface PlaygroundRefusal {
 }
 
 export const playgroundUnavailableType = 'urn:genai:problem:playground-unavailable';
+export const definitionOutdatedType = 'urn:genai:problem:definition-outdated';
 
 export interface PlaygroundUnavailable {
   type: typeof playgroundUnavailableType;
@@ -1054,16 +1055,58 @@ export const playgroundModule: PlatformModuleFactory = () => ({
         ...(onEvent ? { onEvent } : {}),
       });
 
+    const modelPath = /^spec\.(model($|\.)|variants\[\d+\]\.(model|strategy)$)/;
+
+    const outdatedOf = async (
+      g: Guarded,
+      outcome: DraftRunFailure,
+      name: PlaygroundSetupName,
+      setup: PlaygroundSetup | undefined,
+    ) => {
+      const chosen = setup?.service;
+      if (outcome.status !== 422 || !chosen || chosen.version === 'draft') return undefined;
+      if (outcome.errors.some((e) => e.path === 'variant' || e.path.startsWith('parts')))
+        return undefined;
+      if (setup?.model && outcome.errors.some((e) => modelPath.test(e.path))) return undefined;
+      const version = chosen.version;
+      const latest =
+        (await deps.definitions.versions('Service', g.tenant, chosen.id)).at(-1)?.version ??
+        version;
+      const first = outcome.errors[0];
+      const params = {
+        service: chosen.id,
+        version,
+        latest,
+        problem: first ? (first.path ? `${first.path}: ${first.message}` : first.message) : '',
+      };
+      return {
+        type: definitionOutdatedType,
+        title:
+          latest > version
+            ? t('problems.definitionOutdated', params)
+            : t('problems.definitionOutdatedNewest', params),
+        status: 422 as const,
+        setup: name,
+        service: chosen.id,
+        version,
+        latestVersion: latest,
+        errors: outcome.errors.map((e) => ({ ...e, path: `${name}.${e.path}` })),
+      };
+    };
+
     const failureOf = async (
       g: Guarded,
       outcome: DraftRunFailure,
       name: PlaygroundSetupName,
+      setup?: PlaygroundSetup,
     ): Promise<{
       status: DraftRunFailure['status'];
       body: unknown;
       headers: Record<string, string>;
     }> => {
       const headers: Record<string, string> = { 'content-type': 'application/problem+json' };
+      const outdated = await outdatedOf(g, outcome, name, setup);
+      if (outdated) return { status: 422, body: outdated, headers };
       if (outcome.status === 400)
         return { status: 400, body: invalidInputProblem(outcome.errors), headers };
       if (outcome.quota) {
@@ -1125,7 +1168,12 @@ export const playgroundModule: PlatformModuleFactory = () => ({
         await deps.blobs.delete({ tenant: g.tenant, path: uploaded });
       for (const [i, outcome] of outcomes.entries()) {
         if (outcome.ok) continue;
-        const failed = await failureOf(g, outcome, definitions[i]?.name ?? 'setup');
+        const failed = await failureOf(
+          g,
+          outcome,
+          definitions[i]?.name ?? 'setup',
+          definitions[i]?.setup,
+        );
         return c.json(failed.body, failed.status, failed.headers);
       }
       const results = await Promise.all(
@@ -1198,7 +1246,7 @@ export const playgroundModule: PlatformModuleFactory = () => ({
                     result: await resultOf(outcome, d.setup.output, details, mapper),
                   });
                 else {
-                  const failed = await failureOf(g, outcome, d.name);
+                  const failed = await failureOf(g, outcome, d.name, d.setup);
                   if (failed.status === 429) refusal ??= failed;
                   send('failed', { setup: d.name, problem: failed.body });
                 }
