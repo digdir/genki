@@ -11,7 +11,7 @@ import {
   Textfield,
 } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { ApiError, type ApiClient } from '../../api';
 import { useAsync } from '../../hooks';
 import { useT, type PlainKey, type T } from '../../i18n';
@@ -94,10 +94,16 @@ export const Connections = ({
   api,
   tenant,
   initialOpen,
+  moreButton,
+  moreRows,
+  after,
 }: {
   api: ApiClient;
   tenant: string;
   initialOpen?: string;
+  moreButton?: ReactNode;
+  moreRows?: ReactNode[] | null;
+  after?: ReactNode;
 }) => {
   const t = useT();
   const f = useFormat();
@@ -254,6 +260,7 @@ export const Connections = ({
     <section aria-label={t('devTools.systems')} className="stack-md">
       <PageLead text={t('devSystems.lead')}>
         {canManage ? <Button onClick={openForm}>{t('devSystems.connect')}</Button> : null}
+        {moreButton}
       </PageLead>
       <div aria-live="polite">
         {message ? (
@@ -281,7 +288,7 @@ export const Connections = ({
         />
       ) : null}
       {state.status === 'ready' ? (
-        state.data.connections.length === 0 ? (
+        state.data.connections.length === 0 && !moreRows?.length ? (
           <PageEmpty title={t('devSystems.emptyTitle')} text={t('devSystems.emptyText')}>
             {canManage ? (
               <div>
@@ -447,9 +454,11 @@ export const Connections = ({
                 </li>
               );
             })}
+            {moreRows}
           </ul>
         )
       ) : null}
+      {after}
       {pending ? (
         <Dialog
           open

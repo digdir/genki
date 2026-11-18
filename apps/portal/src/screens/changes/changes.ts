@@ -223,22 +223,28 @@ export interface ChangeTarget {
 
 export type CatalogName = (kind: string, id: string) => string | undefined;
 
+export type DatasetRoute = (id: string) => string | undefined;
+
 const targetOf = (
   entry: AuditRow,
   t: T,
   serviceName: (id: string) => string | undefined,
   catalogName: CatalogName,
+  datasetRoute: DatasetRoute,
 ): ChangeTarget | undefined => {
   const target = entry.target;
   if (!target || target === entry.action) return undefined;
   const catalog = catalogTarget(target);
   if (catalog) {
     const name = catalogName(catalog.kind, catalog.id) ?? catalog.id;
+    const dataset = catalog.kind === 'dataset' ? datasetRoute(catalog.id) : undefined;
     return {
       text: catalog.version ? t('changes.targetVersion', { name, version: catalog.version }) : name,
       ...(catalog.kind === 'model'
         ? { href: `#/building-blocks/model/${encodeURIComponent(catalog.id)}` }
-        : {}),
+        : dataset
+          ? { href: `#/datasets/${encodeURIComponent(dataset)}` }
+          : {}),
     };
   }
   const typed = /^([A-Za-z-]+):(.+)$/.exec(target);
@@ -268,9 +274,10 @@ export const changeParts = (
   t: T = nbT,
   serviceName: (id: string) => string | undefined = () => undefined,
   catalogName: CatalogName = () => undefined,
+  datasetRoute: DatasetRoute = () => undefined,
 ) => {
   const key = actionKeys[entry.action];
-  const target = targetOf(entry, t, serviceName, catalogName);
+  const target = targetOf(entry, t, serviceName, catalogName, datasetRoute);
   const version = /^Service:[^@]+@(\d+)$/.exec(entry.target)?.[1];
   const publishedVersion =
     entry.action === 'platform.service.publish' && target?.service ? version : undefined;

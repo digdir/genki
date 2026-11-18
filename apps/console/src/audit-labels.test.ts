@@ -83,4 +83,14 @@ describe('audit labels', () => {
       'Publiserte i katalogen',
     );
   });
+
+  it.each(['nb', 'en'] as const)(
+    'Revisjon names revoking an approved tool, apart from approving one, in %s',
+    (locale) => {
+      const t = translator(locale);
+      const revoke = labelOf(entry('platform.tools.revoke', 'tool-connection:arkiv'), t);
+      expect(revoke).not.toBe(t('audit.otherAction'));
+      expect(revoke).not.toBe(labelOf(entry('platform.tools.approve'), t));
+    },
+  );
 });

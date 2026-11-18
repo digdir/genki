@@ -752,3 +752,45 @@
 .dev-table {
   width: 100%;
 }
+
+.int-hook-row {
+  cursor: default;
+}
+
+.int-hook-row:hover {
+  background: none;
+}
+
+.int-hook-where {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 900px) {
+  .dev-tools {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dev-tools-nav {
+    border-bottom: 1px solid var(--ds-color-neutral-border-subtle);
+  }
+
+  .dev-tools-nav .nav-list {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: var(--ds-size-2);
+    overflow-x: auto;
+    padding-bottom: var(--ds-size-2);
+  }
+
+  .dev-tools-nav a {
+    white-space: nowrap;
+  }
+}
+
+.int-hook-row {
+  box-sizing: border-box;
+}
+
+.int-scroll {
+  position: relative;
+}

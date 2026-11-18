@@ -33,6 +33,13 @@ const rows: AuditRow[] = [
     target: 'catalog:dataset/kudos@2',
     at: '2026-11-15T03:00:00Z',
   }),
+  entry({
+    task: 'own-dataset',
+    action: 'platform.catalog.publish',
+    actorName: 'Ola Nordmann',
+    target: 'catalog:dataset/999888777/tilsyn@1',
+    at: '2026-11-14T10:00:00Z',
+  }),
 ];
 
 const open = (auditDays = 730) =>
@@ -46,6 +53,21 @@ const open = (auditDays = 730) =>
             name: 'Nimbrel Cortex',
             residency: 'eu',
             capabilities: [],
+          },
+        ],
+      });
+    if (/\/datasets$/.test(url))
+      return Response.json({
+        data: [
+          {
+            id: 'tilsyn',
+            fullId: '999888777/tilsyn',
+            name: 'Tilsynsrapporter 2025',
+            source: 'upload',
+            documents: 12,
+            chunks: 40,
+            lastExecution: null,
+            nextRunAt: null,
           },
         ],
       });
@@ -73,11 +95,11 @@ afterEach(cleanup);
 describe('Logg, Endringer: Digdir catalogue changes', () => {
   it('hides Digdir catalogue changes until "Vis endringer fra Digdir" is on', async () => {
     await open();
-    expect(within(await list()).getAllByRole('listitem')).toHaveLength(1);
+    expect(within(await list()).getAllByRole('listitem')).toHaveLength(2);
 
     fireEvent.click(screen.getByRole('switch', { name: /Vis endringer fra Digdir/ }));
 
-    expect(within(await list()).getAllByRole('listitem')).toHaveLength(3);
+    expect(within(await list()).getAllByRole('listitem')).toHaveLength(4);
   });
 
   it('names a catalogue model and links its building block instead of the raw catalogue id', async () => {
@@ -95,8 +117,18 @@ describe('Logg, Endringer: Digdir catalogue changes', () => {
     fireEvent.click(screen.getByRole('radio', { name: 'Datasett' }));
 
     const items = within(await list()).getAllByRole('listitem');
-    expect(items).toHaveLength(1);
+    expect(items).toHaveLength(2);
     expect(items[0]?.textContent).toContain('kudos, versjon 2');
+  });
+
+  it('names a dataset of the organisation and links it instead of its raw catalogue id', async () => {
+    await open();
+
+    const link = within(await list()).getByRole('link', {
+      name: 'Tilsynsrapporter 2025, versjon 1',
+    });
+    expect(link.getAttribute('href')).toBe('#/datasets/999888777%2Ftilsyn');
+    expect(screen.queryByText(/999888777\/tilsyn/)).toBeNull();
   });
 });
 

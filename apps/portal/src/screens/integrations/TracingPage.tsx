@@ -22,9 +22,16 @@ import { useRights } from '../../Shell';
 import { LiveTracing } from './LiveTracing';
 import { PageError, PageLead } from './PageStates';
 
-export const sampleRates = [100, 25, 10] as const;
+export const sampleRateKey = 'tracing.sampleRate';
 
-type TraceConnection = Listed & { sampleRate?: number };
+export const sampleRates = [1, 0.25, 0.1] as const;
+
+type TraceConnection = Listed;
+
+export interface SampleRate {
+  value: number;
+  save: (value: number, reason: string) => Promise<unknown>;
+}
 
 const problemText = (t: T, error: unknown) =>
   error instanceof ApiError && error.problem?.errors?.length
@@ -46,6 +53,7 @@ const Connection = ({
   connection: c,
   instance,
   many,
+  rate,
   onSaved,
 }: {
   api: ApiClient;
@@ -53,6 +61,7 @@ const Connection = ({
   connection: TraceConnection;
   instance: TraceInstance | undefined;
   many: boolean;
+  rate: SampleRate | undefined;
   onSaved: () => void;
 }) => {
   const t = useT();
@@ -60,7 +69,7 @@ const Connection = ({
   const canManage = useRights().has('manage-services');
   const saved: Draft = {
     content: c.content,
-    ...(c.sampleRate === undefined ? {} : { sampleRate: c.sampleRate }),
+    ...(rate ? { sampleRate: rate.value } : {}),
   };
   const [draft, setDraft] = useState<Draft>(saved);
   const [reason, setReason] = useState('');
@@ -68,8 +77,8 @@ const Connection = ({
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState<string>();
   const [savedAt, setSavedAt] = useState<Date>();
-  const dirty =
-    draft.content !== saved.content || (draft.sampleRate ?? 100) !== (saved.sampleRate ?? 100);
+  const rateChanged = rate !== undefined && draft.sampleRate !== saved.sampleRate;
+  const dirty = draft.content !== saved.content || rateChanged;
   const reasonError = tried ? reasonProblem(reason, t) : undefined;
   const headingId = `trace-${c.id}`;
 
@@ -79,18 +88,21 @@ const Connection = ({
     setBusy(true);
     setFailed(undefined);
     try {
-      const input: TraceConnectionInput & { sampleRate?: number } = {
-        host: c.host,
-        publicKey: c.publicKey,
-        secretKey: c.secretKey,
-        services: c.services,
-        ...(c.residencySetBy === 'tenant' ? { residency: c.residency } : {}),
-        content: draft.content,
-        erasureDeclared: c.erasureDeclared,
-        labels: c.labels === true,
-        ...(draft.sampleRate === undefined ? {} : { sampleRate: draft.sampleRate }),
-      };
-      await api.tracing.save(tenant, c.id, input, reason.trim());
+      if (draft.content !== saved.content) {
+        const input: TraceConnectionInput = {
+          host: c.host,
+          publicKey: c.publicKey,
+          secretKey: c.secretKey,
+          services: c.services,
+          ...(c.residencySetBy === 'tenant' ? { residency: c.residency } : {}),
+          content: draft.content,
+          erasureDeclared: c.erasureDeclared,
+          labels: c.labels === true,
+        };
+        await api.tracing.save(tenant, c.id, input, reason.trim());
+      }
+      if (rate && rateChanged && draft.sampleRate !== undefined)
+        await rate.save(draft.sampleRate, reason.trim());
       setSavedAt(new Date());
       setReason('');
       setTried(false);
@@ -119,21 +131,21 @@ const Connection = ({
           <Fieldset>
             <Fieldset.Legend>{t('devTracing.share')}</Fieldset.Legend>
             <Fieldset.Description>{t('devTracing.failedAlways')}</Fieldset.Description>
-            {sampleRates.map((rate) => (
+            {sampleRates.map((share) => (
               <Radio
-                key={rate}
+                key={share}
                 name={`${headingId}-rate`}
                 label={t(
-                  rate === 100
+                  share === 1
                     ? 'devTracing.rateAll'
-                    : rate === 25
+                    : share === 0.25
                       ? 'devTracing.rateQuarter'
                       : 'devTracing.rateTenth',
                 )}
-                value={String(rate)}
-                checked={draft.sampleRate === rate}
+                value={String(share)}
+                checked={draft.sampleRate === share}
                 disabled={!canManage}
-                onChange={() => setDraft({ ...draft, sampleRate: rate })}
+                onChange={() => setDraft({ ...draft, sampleRate: share })}
               />
             ))}
           </Fieldset>
@@ -203,6 +215,23 @@ export const TracingPage = ({ api, tenant }: { api: ApiClient; tenant: string })
     [api, tenant, round],
     { keepPreviousFor: tenant },
   );
+  const [setting] = useAsync(
+    async (signal) => {
+      const catalog = await api.settingsCatalog(signal).catch(() => []);
+      if (!catalog.some((s) => s.key === sampleRateKey)) return undefined;
+      const effective = await api.tenantEffectiveSettings(tenant, signal).catch(() => undefined);
+      const value = effective?.[sampleRateKey]?.value;
+      return typeof value === 'number' ? value : 1;
+    },
+    [api, tenant, round],
+  );
+  const rate: SampleRate | undefined =
+    setting.status === 'ready' && setting.data !== undefined
+      ? {
+          value: setting.data,
+          save: (value, reason) => api.setTenantSetting(tenant, sampleRateKey, value, reason),
+        }
+      : undefined;
   return (
     <>
       <PageLead text={t('devTracing.lead')} />
@@ -234,9 +263,10 @@ export const TracingPage = ({ api, tenant }: { api: ApiClient; tenant: string })
       {state.status === 'ready'
         ? state.data.data
             .filter((c) => !c.removing)
-            .map((c) => (
+            .map((c, i) => (
               <Connection
-                key={c.id}
+                key={`${c.id}-${rate?.value ?? ''}`}
+                rate={i === 0 ? rate : undefined}
                 api={api}
                 tenant={tenant}
                 connection={c}

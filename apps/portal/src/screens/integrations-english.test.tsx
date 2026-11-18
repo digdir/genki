@@ -82,7 +82,7 @@ describe('integrations in English', () => {
     expect(await screen.findByRole('button', { name: 'New API key' })).toBeTruthy();
     cleanup();
     overview('#/integrations?tab=hooks');
-    expect(await screen.findByRole('heading', { name: 'From the platform' })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: 'New hook' })).toBeTruthy();
     cleanup();
     const withTracing = createApiClient({
       baseUrl: '/api',

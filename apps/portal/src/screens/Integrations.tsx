@@ -111,14 +111,26 @@ const Overview = ({ api, tenant, tenantName, route, live }: ScreenProps) => {
       </div>
       <div className="stack-md">
         {tab === 'systems' ? (
-          <>
+          live ? (
+            <MaskinportenClients api={api} tenant={tenant} onFlash={say}>
+              {(mp) => (
+                <Connections
+                  api={api}
+                  tenant={tenant}
+                  {...(openParam ? { initialOpen: openParam } : {})}
+                  moreButton={mp.button}
+                  moreRows={mp.rows}
+                  after={mp.after}
+                />
+              )}
+            </MaskinportenClients>
+          ) : (
             <Connections
               api={api}
               tenant={tenant}
               {...(openParam ? { initialOpen: openParam } : {})}
             />
-            {live ? <MaskinportenClients api={api} tenant={tenant} onFlash={say} /> : null}
-          </>
+          )
         ) : null}
         {tab === 'frontends' ? <Frontends api={api} tenant={tenant} onFlash={say} /> : null}
         {tab === 'triggers' ? <TriggersPage api={api} tenant={tenant} /> : null}

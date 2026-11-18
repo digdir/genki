@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, screen } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { renderLive } from '../../test-utils';
 import { mergePages } from './audit-pages';
@@ -14,6 +14,12 @@ describe('Logg, Endringer: sider', () => {
     const urls = await renderLive('#/log/changes');
     expect(await screen.findByText('Viser 50 av 64 endringer')).toBeTruthy();
     expect(urls.some((u) => /\/audit\?limit=50&offset=0$/.test(u))).toBe(true);
+  });
+
+  it('the short list on Oversikt asks for one page of the audit log', async () => {
+    const urls = await renderLive('#/overview');
+    await screen.findByRole('heading', { name: 'Siste endringer' });
+    await waitFor(() => expect(urls.some((u) => /\/audit\?limit=50&offset=0$/.test(u))).toBe(true));
   });
 
   it('loads the next page after the rows already shown', async () => {

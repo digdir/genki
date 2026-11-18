@@ -179,16 +179,11 @@ export const integrationsArea = {
     heading: 'Kroker',
     intro:
       'Kaller deres egne systemer på faste punkter i en kjøring: før modellen får spørsmålet, eller etter at svaret er klart.',
-    fromPlatform: 'Fra plattformen',
+    fromPlatformCount: 'Kroker fra plattformen: {count}',
     platformIntro: 'Gjelder alle tjenestene til {tenant}. Kan bare endres av Digdir.',
-    colHook: 'Krok',
-    colWhen: 'Når',
     colEffect: 'Virkning',
-    colOnFailure: 'Ved feil',
     colOrder: 'Rekkefølge',
-    colServices: 'Tjenester',
     colOn: 'På',
-    noPlatformHooks: 'Digdir har ingen kroker som gjelder for dere nå.',
     ownHeading: 'Egne kroker',
     addHook: 'Ny krok',
     typeTimeout: '{type} · tidsavbrudd {duration}',
@@ -319,6 +314,8 @@ export const integrationsArea = {
     rotateKey: 'Roter nøkkelen',
   }),
   integMaskinporten: defineNamespace({
+    kind: 'Maskinporten-klient som kaller tjenestene',
+    registeredOn: 'Registrert {date}',
     alreadyRegistered: 'Klienten er allerede registrert.',
     loading: 'Henter Maskinporten-klienter',
     allServices: 'Alle tjenester',
@@ -326,16 +323,11 @@ export const integrationsArea = {
     registered: '{name} er registrert. Systemet kan nå kalle plattformen.',
     removed: '{name} er fjernet. Kall fra systemet blir avvist fra nå.',
     canCallSub: 'Kan kalle: {reach}',
-    registeredLabel: 'Registrert',
     canCall: 'Kan kalle',
     scope: 'Tillatelse',
-    heading: 'Maskinporten-klienter',
     intro:
       'Lag klienten i Samarbeidsportalen og gi den tillatelsen (scope) {scope}. Registrer klient-ID-en her og velg hvilke tjenester systemet kan kalle. Kall fra klienter som ikke er registrert, blir avvist.',
     register: 'Registrer Maskinporten-klient',
-    none: 'Ingen Maskinporten-klienter er registrert',
-    noneText:
-      'Registrer en klient når et fagsystem skal kalle tjenestene uten en innlogget person.',
     removeWarning:
       '{name} får avvist alle kall med en gang. Klienten i Samarbeidsportalen endres ikke.',
     removeClient: 'Fjern klienten',
@@ -408,9 +400,9 @@ export const integrationsArea = {
     moreLimits: 'Testmiljø og grenser: forbruk og kvote i Statistikk',
     moreIdporten: 'Ansattporten og ID-porten for brukerflater (åpnes i ny fane)',
     apiStep2Approval:
-      'Tjenesten har et godkjenningssteg, så «vent» er satt til false. Dere får en kjørings-ID tilbake med en gang, og kan hente status eller få beskjed når saksbehandleren har godkjent.',
+      'Tjenesten har et godkjenningssteg. Følg kjøringen i Logg til saksbehandleren har godkjent utkastet.',
     apiStep2Wait:
-      'Med «vent: true» venter kallet til tjenesten er ferdig, opptil 60 sekunder. For lengre kjøringer setter dere «vent: false» og henter resultatet med kjørings-ID-en.',
+      'Send spørsmålet i «query». En tjeneste med skjema tar i stedet feltene sine, med navnene fra skjemaet. Med «conversation_id» fortsetter dere en samtale.',
     apiStep3Answer:
       'Svaret har kildene som ble brukt, hva kallet kostet, og en lenke til tidslinjen for kjøringen.',
     apiStep3Fields:
@@ -698,6 +690,13 @@ export const integrationsArea = {
     loginOptional: 'Innlogging mot systemet (valgfritt)',
   }),
   devTriggers: defineNamespace({
+    tableLabel: 'Utløsere',
+    problemNotPublished: 'Tjenesten er ikke publisert, så utløseren fikk ikke startet den.',
+    problemTimeout: 'Kjøringen brukte for lang tid og ble stoppet.',
+    problemQuota: 'Kvoten var brukt opp da utløseren skulle kjøre.',
+    problemAccess: 'Utløseren fikk ikke tilgang til det den skulle bruke.',
+    problemMissing: 'Noe utløseren skulle bruke, finnes ikke lenger.',
+    problemOther: 'Kjøringen feilet. Åpne kjøringen for å se hva som skjedde.',
     lead: 'Starter en tjeneste eller en innlesing uten at noen trykker: på faste tider eller når noe skjer i et annet system.',
     new: 'Ny utløser',
     errorTitle: 'Vi fikk ikke hentet utløserne',

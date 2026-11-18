@@ -1,10 +1,6 @@
 import { defineNamespace } from '@genai/i18n';
 
 const settings = defineNamespace({
-  crumbOverview: 'Oversikt',
-  crumbServices: 'Tjenester',
-  crumbDatasets: 'Datasett',
-  crumbSettings: 'Innstillinger',
   titleTenant: 'Innstillinger for {name}',
   introTenant:
     'Det dere setter her, gjelder alle tjenester og datasett i {name} som ikke har satt noe selv.',
@@ -253,6 +249,7 @@ const settings = defineNamespace({
   panelSensitivity: 'Sensitivitet: {value}',
   panelEditing: 'Redigerer: {layer}',
   panelGoesToDraft: 'Legges i utkastet til v{version}',
+  panelTechnical: 'Tekniske detaljer',
   panelType: 'Type',
   panelAllowed: 'Tillatt',
   panelScope: 'Kan settes på',
