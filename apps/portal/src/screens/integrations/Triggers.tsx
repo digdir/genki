@@ -74,6 +74,17 @@ export const problemOf = (tr: TriggerView, t: T = nbT, f: Format = nbFormat) =>
 const timelineHref = (run: TriggerRunView) =>
   run.task ? `#/log/${encodeURIComponent(run.task)}` : undefined;
 
+const runProblems: [RegExp, PlainKey][] = [
+  [/is not published|not published|unpublished/i, 'devTriggers.problemNotPublished'],
+  [/time(d)? ?out|deadline/i, 'devTriggers.problemTimeout'],
+  [/quota|budget|limit reached|429/i, 'devTriggers.problemQuota'],
+  [/forbidden|unauthori[sz]ed|\b40[13]\b|not allowed/i, 'devTriggers.problemAccess'],
+  [/not found|\b404\b|no such/i, 'devTriggers.problemMissing'],
+];
+
+export const runProblemText = (error: string, t: T) =>
+  t(runProblems.find(([pattern]) => pattern.test(error))?.[1] ?? 'devTriggers.problemOther');
+
 const lastRunTag = (tr: TriggerView): { key: PlainKey; color: 'danger' | 'success' | 'warning' } =>
   tr.status === 'failing'
     ? { key: 'devTriggers.lastFailed', color: 'danger' }
@@ -134,80 +145,87 @@ export const Triggers = ({
           </span>
         </Alert>
       ))}
-      <Table className="dev-table" data-size="sm">
-        <Table.Head>
-          <Table.Row>
-            <Table.HeaderCell scope="col">{t('devTriggers.when')}</Table.HeaderCell>
-            <Table.HeaderCell scope="col">{t('devTriggers.starts')}</Table.HeaderCell>
-            <Table.HeaderCell scope="col">{t('devTriggers.lastRun')}</Table.HeaderCell>
-            <Table.HeaderCell scope="col">{t('devTriggers.active')}</Table.HeaderCell>
-          </Table.Row>
-        </Table.Head>
-        <Table.Body>
-          {triggers.map((tr) => {
-            const last = tr.lastRun;
-            const tag = lastRunTag(tr);
-            const href = last ? timelineHref(last) : undefined;
-            const paused = tr.status === 'paused';
-            return (
-              <Table.Row key={tr.id}>
-                <Table.Cell>
-                  <span className="stack-xs">
-                    <strong>{triggerName(tr, t, f)}</strong>
-                    <span className="meta">{sourceOf(tr, t)}</span>
-                  </span>
-                </Table.Cell>
-                <Table.Cell>
-                  <a href={`#/services/${encodeURIComponent(tr.service)}`}>{tr.serviceName}</a>
-                </Table.Cell>
-                <Table.Cell>
-                  {last ? (
+      <div
+        className="table-scroll int-scroll"
+        tabIndex={0}
+        role="region"
+        aria-label={t('devTriggers.tableLabel')}
+      >
+        <Table className="dev-table" data-size="sm">
+          <Table.Head>
+            <Table.Row>
+              <Table.HeaderCell scope="col">{t('devTriggers.when')}</Table.HeaderCell>
+              <Table.HeaderCell scope="col">{t('devTriggers.starts')}</Table.HeaderCell>
+              <Table.HeaderCell scope="col">{t('devTriggers.lastRun')}</Table.HeaderCell>
+              <Table.HeaderCell scope="col">{t('devTriggers.active')}</Table.HeaderCell>
+            </Table.Row>
+          </Table.Head>
+          <Table.Body>
+            {triggers.map((tr) => {
+              const last = tr.lastRun;
+              const tag = lastRunTag(tr);
+              const href = last ? timelineHref(last) : undefined;
+              const paused = tr.status === 'paused';
+              return (
+                <Table.Row key={tr.id}>
+                  <Table.Cell>
                     <span className="stack-xs">
-                      <Tag data-size="sm" data-color={tag.color}>
-                        {t(tag.key)}
-                      </Tag>
-                      {href ? (
-                        <a href={href}>{f.dateTime(last.at, 'medium')}</a>
-                      ) : (
-                        <span className="meta">{f.dateTime(last.at, 'medium')}</span>
-                      )}
-                      {last.outcome === 'failed' && last.error ? (
-                        <span className="meta">{last.error}</span>
-                      ) : null}
+                      <strong>{triggerName(tr, t, f)}</strong>
+                      <span className="meta">{sourceOf(tr, t)}</span>
                     </span>
-                  ) : (
-                    <span className="meta">{t('devTriggers.notRunYet')}</span>
-                  )}
-                </Table.Cell>
-                <Table.Cell>
-                  <Switch
-                    data-size="sm"
-                    label={
-                      <>
-                        {t(paused ? 'devTriggers.paused' : 'devTriggers.on')}
-                        <span className="visually-hidden">
-                          {' '}
-                          {t('devTriggers.activeFor', { name: triggerName(tr, t, f) })}
-                        </span>
-                      </>
-                    }
-                    checked={!paused}
-                    disabled={!canManage}
-                    onChange={() => {
-                      setPausing(tr);
-                      setReason('');
-                      setReasonError('');
-                    }}
-                  />
-                  <span role="status" className="dev-msg-ok">
-                    {saved[tr.id]}
-                  </span>
-                </Table.Cell>
-              </Table.Row>
-            );
-          })}
-        </Table.Body>
-      </Table>
+                  </Table.Cell>
+                  <Table.Cell>
+                    <a href={`#/services/${encodeURIComponent(tr.service)}`}>{tr.serviceName}</a>
+                  </Table.Cell>
+                  <Table.Cell>
+                    {last ? (
+                      <span className="stack-xs">
+                        <Tag data-size="sm" data-color={tag.color}>
+                          {t(tag.key)}
+                        </Tag>
+                        {href ? (
+                          <a href={href}>{f.dateTime(last.at, 'medium')}</a>
+                        ) : (
+                          <span className="meta">{f.dateTime(last.at, 'medium')}</span>
+                        )}
+                        {last.outcome === 'failed' && last.error ? (
+                          <span className="meta">{runProblemText(last.error, t)}</span>
+                        ) : null}
+                      </span>
+                    ) : (
+                      <span className="meta">{t('devTriggers.notRunYet')}</span>
+                    )}
+                  </Table.Cell>
+                  <Table.Cell>
+                    <Switch
+                      data-size="sm"
+                      label={
+                        <>
+                          {t(paused ? 'devTriggers.paused' : 'devTriggers.on')}
+                          <span className="visually-hidden">
+                            {' '}
+                            {t('devTriggers.activeFor', { name: triggerName(tr, t, f) })}
+                          </span>
+                        </>
+                      }
+                      checked={!paused}
+                      disabled={!canManage}
+                      onChange={() => {
+                        setPausing(tr);
+                        setReason('');
+                        setReasonError('');
+                      }}
+                    />
+                    <span role="status" className="dev-msg-ok">
+                      {saved[tr.id]}
+                    </span>
+                  </Table.Cell>
+                </Table.Row>
+              );
+            })}
+          </Table.Body>
+        </Table>
+      </div>
       {pausing ? (
         <Alert data-color="warning" data-size="sm">
           <Paragraph data-size="sm">

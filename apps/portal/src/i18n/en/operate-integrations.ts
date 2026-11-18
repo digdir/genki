@@ -181,16 +181,11 @@ export const integrationsArea = {
     heading: 'Hooks',
     intro:
       'Calls your own systems at fixed points in a run: before the model gets the question, or after the answer is ready.',
-    fromPlatform: 'From the platform',
+    fromPlatformCount: 'Hooks from the platform: {count}',
     platformIntro: 'Applies to all the services of {tenant}. Can only be changed by Digdir.',
-    colHook: 'Hook',
-    colWhen: 'When',
     colEffect: 'Effect',
-    colOnFailure: 'On failure',
     colOrder: 'Order',
-    colServices: 'Services',
     colOn: 'On',
-    noPlatformHooks: 'Digdir has no hooks that apply to you right now.',
     ownHeading: 'Your own hooks',
     addHook: 'New hook',
     typeTimeout: '{type} · timeout {duration}',
@@ -320,6 +315,8 @@ export const integrationsArea = {
     rotateKey: 'Rotate the key',
   },
   integMaskinporten: {
+    kind: 'Maskinporten client calling the services',
+    registeredOn: 'Registered {date}',
     alreadyRegistered: 'The client is already registered.',
     loading: 'Loading Maskinporten clients',
     allServices: 'All services',
@@ -327,16 +324,11 @@ export const integrationsArea = {
     registered: '{name} is registered. The system can now call the platform.',
     removed: '{name} is removed. Calls from the system are rejected from now on.',
     canCallSub: 'Can call: {reach}',
-    registeredLabel: 'Registered',
     canCall: 'Can call',
     scope: 'Permission',
-    heading: 'Maskinporten clients',
     intro:
       'Create the client in Samarbeidsportalen and give it the permission (scope) {scope}. Register the client ID here and choose which services the system can call. Calls from clients that are not registered are rejected.',
     register: 'Register Maskinporten client',
-    none: 'No Maskinporten clients are registered',
-    noneText:
-      'Register a client when a business system is to call the services without a signed-in person.',
     removeWarning:
       '{name} has all calls rejected immediately. The client in Samarbeidsportalen is not changed.',
     removeClient: 'Remove the client',
@@ -409,9 +401,9 @@ export const integrationsArea = {
     moreLimits: 'Test environment and limits: usage and quota in Statistics',
     moreIdporten: 'Ansattporten and ID-porten for frontends (opens in a new tab)',
     apiStep2Approval:
-      'The service has an approval step, so "vent" is set to false. You get a run ID back immediately, and can fetch the status or be notified when the caseworker has approved.',
+      'The service has an approval step. Follow the run in the Log until the caseworker has approved the draft.',
     apiStep2Wait:
-      'With "vent: true" the call waits until the service is finished, up to 60 seconds. For longer runs, set "vent: false" and fetch the result with the run ID.',
+      'Send the question in "query". A service with a form takes its fields instead, named as in the form. With "conversation_id" you continue a conversation.',
     apiStep3Answer:
       'The response has the sources that were used, what the call cost, and a link to the timeline of the run.',
     apiStep3Fields:
@@ -698,6 +690,13 @@ export const integrationsArea = {
     loginOptional: 'Sign-in to the system (optional)',
   },
   devTriggers: {
+    tableLabel: 'Triggers',
+    problemNotPublished: 'The service is not published, so the trigger could not start it.',
+    problemTimeout: 'The run took too long and was stopped.',
+    problemQuota: 'The quota was used up when the trigger was due to run.',
+    problemAccess: 'The trigger was refused access to what it needed.',
+    problemMissing: 'Something the trigger needs no longer exists.',
+    problemOther: 'The run failed. Open the run to see what happened.',
     lead: 'Starts a service or an ingestion without anyone pressing a button: at set times or when something happens in another system.',
     new: 'New trigger',
     errorTitle: 'We could not fetch the triggers',

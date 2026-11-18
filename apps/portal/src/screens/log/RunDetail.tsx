@@ -1,39 +1,13 @@
-import { ChevronLeftIcon, VitalsIcon } from '@navikt/aksel-icons';
-import {
-  Alert,
-  Button,
-  Field,
-  Heading,
-  Label,
-  Paragraph,
-  Select,
-  Spinner,
-  Tag,
-  ValidationMessage,
-} from '@digdir/designsystemet-react';
-import { useEffect, useState } from 'react';
+import { Alert, Button, Heading, Paragraph, Spinner, Tag } from '@digdir/designsystemet-react';
+import { useState } from 'react';
 import type { ApiClient } from '../../api';
-import { Icon } from '../../components/Icon';
 import { useFormat } from '@genai/i18n/react';
-import {
-  approver,
-  BATCH_TOTAL,
-  batchItems,
-  batchItemSteps,
-  batchStatusColors,
-  batchStatusKeys,
-  revealReasonKeys,
-  revealReasons,
-  runExtras,
-  type ChangeEntry,
-} from '../../data/log';
 import { useT } from '../../i18n';
 import { useAsync } from '../../hooks';
 import { ErrorState, Loading } from '../../states';
 import type { RunErasure, TaskStatus, TaskTimeline, TimelineStep } from '../../types';
 import { actorText, formatDuration, relativeTime, whole } from './format';
 import { notPricedLabel, serviceLabel, statusOf } from '../../format';
-import { BatchView } from './BatchView';
 import { Steps } from './Steps';
 
 export const ErasedNotice = ({ erasure }: { erasure: RunErasure }) => {
@@ -64,25 +38,20 @@ export const ErasedNotice = ({ erasure }: { erasure: RunErasure }) => {
   );
 };
 
-const pseudonymOf = (caller: string) => /\((A-[A-Z0-9]{4})\)/.exec(caller)?.[1];
-
 export const RunDetail = ({
   api,
   tenant,
   runId,
-  itemIndex,
-  canReveal,
   live = false,
-  onChange,
 }: {
   api: ApiClient;
   tenant: string;
   runId: string;
-  itemIndex: number | undefined;
-  canReveal: boolean;
+  itemIndex?: number | undefined;
+  canReveal?: boolean;
   live?: boolean;
-  onStatus: (runId: string, status: TaskStatus) => void;
-  onChange: (entry: ChangeEntry) => void;
+  onStatus?: unknown;
+  onChange?: unknown;
 }) => {
   const t = useT();
   const f = useFormat();
@@ -97,210 +66,84 @@ export const RunDetail = ({
       live ? await api.task(tenant, runId, signal).catch(() => undefined) : undefined,
     [api, tenant, runId, live],
   );
-  const extras = live ? undefined : runExtras[runId];
   const [open, setOpen] = useState<Record<string, boolean>>({});
-  const [done, setDone] = useState(138);
-  const cancelled = false;
-  const [reveal, setReveal] = useState<{
-    open: boolean;
-    reason: string;
-    error: string;
-    shown?: string;
-  }>({ open: false, reason: '', error: '' });
-
-  const batchRunning = Boolean(extras?.batch) && !cancelled && done < BATCH_TOTAL;
-  useEffect(() => {
-    if (!batchRunning) return;
-    const timer = setInterval(() => setDone((d) => Math.min(BATCH_TOTAL, d + 1)), 1200);
-    return () => clearInterval(timer);
-  }, [batchRunning]);
 
   if (state.status === 'loading') return <Loading label={t('logRun.loading')} />;
   if (state.status === 'error') return <ErrorState error={state.error} onRetry={retry} />;
   const run: TaskTimeline = state.data;
-  const isBatch = Boolean(extras?.batch);
-  const items = isBatch ? batchItems(done, cancelled) : [];
-  const child = itemIndex !== undefined && isBatch ? items[itemIndex - 1] : undefined;
-  const pseudonym = pseudonymOf(run.caller);
   const started = relativeTime(run.startedAt, t, f);
+  const status: TaskStatus = run.status;
 
-  const status: TaskStatus = isBatch
-    ? cancelled
-      ? 'cancelled'
-      : done >= BATCH_TOTAL
-        ? 'completed'
-        : 'running'
-    : run.status;
-
-  const steps = child ? batchItemSteps(child) : isBatch ? [] : run.steps;
-  const key = (i: number) => `${child ? child.i : 'run'}:${i}`;
+  const steps = run.steps;
+  const key = (i: number) => `run:${i}`;
   const isOpen = (step: TimelineStep, i: number) =>
     open[key(i)] ?? (step.type === 'approval' && step.state === 'waiting');
   const allOpen = steps.length > 0 && steps.every((s, i) => isOpen(s, i));
 
   const usageShown = run.inputTokens !== undefined && run.outputTokens !== undefined;
   const tokens = (run.inputTokens ?? 0) + (run.outputTokens ?? 0);
-  const finished = items.filter((i) => i.status === 'Fullført');
-  const batchTokens = finished.reduce((a, i) => a + i.tokens, 0);
-  const facts: { l: string; v: string; sub?: string }[] = child
-    ? [
-        {
-          l: t('logRun.totalTime'),
-          v:
-            child.status === 'Fullført'
-              ? `${f.decimal(2.1)} s`
-              : child.status === 'Kjører'
-                ? t('logRun.inProgress')
-                : '–',
-        },
-        child.tokens
-          ? {
-              l: t('logRun.tokens'),
-              v: whole(child.tokens, f),
-              sub: t('logRun.tokensSplit', {
-                input: whole(child.tokens - 180, f),
-                output: whole(180, f),
-              }),
-            }
-          : { l: t('logRun.tokens'), v: '–' },
-        { l: t('logRun.cost'), v: child.tokens ? t('common.ore', { value: f.decimal(1.4) }) : '–' },
-        { l: t('logRun.steps'), v: String(steps.length) },
-      ]
-    : isBatch
+  const facts: { l: string; v: string; sub?: string }[] = [
+    {
+      l: t('logRun.totalTime'),
+      v:
+        run.status === 'running' || run.status === 'interrupted'
+          ? t('logRun.soFar', { value: formatDuration(run.durationSeconds, f, t) })
+          : formatDuration(run.durationSeconds, f, t),
+    },
+    ...(usageShown
       ? [
           {
-            l: t('logRun.totalTime'),
-            v:
-              status === 'running'
-                ? t('logRun.soFar', { value: formatDuration(run.durationSeconds, f, t) })
-                : t('logRun.batchDuration', { hours: 1, minutes: 58 }),
-          },
-          {
             l: t('logRun.tokens'),
-            v: whole(batchTokens, f),
-            sub: t('logRun.average', {
-              value: whole(finished.length ? batchTokens / finished.length : 0, f),
+            v: whole(tokens, f),
+            sub: t('logRun.tokensSplit', {
+              input: whole(run.inputTokens ?? 0, f),
+              output: whole(run.outputTokens ?? 0, f),
             }),
           },
           {
-            l: t('logRun.costSoFar'),
-            v: t('common.ore', { value: whole((batchTokens / 1000) * 0.52, f) }),
+            l: t('logRun.cost'),
+            v: ore(
+              live && header.status === 'ready' && header.data?.usage
+                ? header.data.usage.costMicroNok === null ||
+                  header.data.usage.costMicroNok === undefined
+                  ? null
+                  : header.data.usage.costMicroNok / 10_000
+                : run.costMicroNok !== undefined
+                  ? run.costMicroNok === null
+                    ? null
+                    : run.costMicroNok / 10_000
+                  : (run.costOre ?? null),
+            ),
           },
-          { l: t('logRun.items'), v: String(BATCH_TOTAL) },
         ]
-      : [
-          {
-            l: t('logRun.totalTime'),
-            v:
-              run.status === 'running' || run.status === 'interrupted'
-                ? t('logRun.soFar', { value: formatDuration(run.durationSeconds, f, t) })
-                : formatDuration(run.durationSeconds, f, t),
-          },
-          ...(usageShown
-            ? [
-                {
-                  l: t('logRun.tokens'),
-                  v: whole(tokens, f),
-                  sub: t('logRun.tokensSplit', {
-                    input: whole(run.inputTokens ?? 0, f),
-                    output: whole(run.outputTokens ?? 0, f),
-                  }),
-                },
-                {
-                  l: t('logRun.cost'),
-                  v: ore(
-                    live && header.status === 'ready' && header.data?.usage
-                      ? header.data.usage.costMicroNok === null ||
-                        header.data.usage.costMicroNok === undefined
-                        ? null
-                        : header.data.usage.costMicroNok / 10_000
-                      : run.costMicroNok !== undefined
-                        ? run.costMicroNok === null
-                          ? null
-                          : run.costMicroNok / 10_000
-                        : (run.costOre ?? null),
-                  ),
-                },
-              ]
-            : []),
-          { l: t('logRun.steps'), v: String(steps.length) },
-        ];
+      : []),
+    { l: t('logRun.steps'), v: String(steps.length) },
+  ];
 
-  const detail = extras?.triggerDetail ?? `${run.trigger} · ${run.caller}`;
-  const meta = child
-    ? t('logRun.metaItem', {
-        index: child.i,
-        total: BATCH_TOTAL,
-        service: run.service,
-        org: child.org,
-      })
-    : isBatch
-      ? t('logRun.metaBatch', { caller: run.caller, started: started.toLowerCase(), detail })
-      : live
-        ? header.status === 'ready' && header.data
-          ? t('logRun.metaLive', { actor: actorText(header.data.actor, t), started })
-          : started
-        : `${detail} · ${started}`;
+  const meta = live
+    ? header.status === 'ready' && header.data
+      ? t('logRun.metaLive', { actor: actorText(header.data.actor, t), started })
+      : started
+    : `${run.trigger} · ${run.caller} · ${started}`;
   const excerpt = header.status === 'ready' ? header.data?.excerpt : undefined;
-  const name = child
-    ? child.name
-    : live
-      ? ((header.status === 'ready' ? header.data?.serviceName : undefined) ??
-        (state.status === 'ready' ? state.data.serviceName : undefined) ??
-        serviceLabel(run.service))
-      : run.service;
+  const name = live
+    ? ((header.status === 'ready' ? header.data?.serviceName : undefined) ??
+      run.serviceName ??
+      serviceLabel(run.service))
+    : run.service;
   const skippedSteps = steps.filter((s) => s.state === 'skipped').length;
-  const display = child
-    ? {
-        text: t(batchStatusKeys[child.status]),
-        color: batchStatusColors[child.status],
-        running: child.status === 'Kjører',
-      }
-    : status === 'completed' && skippedSteps > 0
+  const display =
+    status === 'completed' && skippedSteps > 0
       ? {
           text: t('logRun.completedSkipped', { count: skippedSteps }),
           color: 'warning' as const,
           running: false,
         }
       : { ...statusOf(status, t), running: status === 'running' };
-  const traces = extras?.traces ?? [{ note: t('logRun.defaultTrace') }];
   const hasApproval = run.steps.some((s) => s.type === 'approval');
-  const revealable = canReveal && Boolean(pseudonym) && Boolean(extras?.revealedName) && !child;
-
-  const confirmReveal = () => {
-    if (!reveal.reason) {
-      setReveal((r) => ({ ...r, error: t('logRun.reasonProblem') }));
-      return;
-    }
-    const person = extras?.revealedName ?? '';
-    const reason = t(revealReasonKeys[reveal.reason as (typeof revealReasons)[number]]);
-    setReveal({
-      open: false,
-      reason: '',
-      error: '',
-      shown: t('logRun.revealed', { pseudonym: pseudonym ?? '', person, reason }),
-    });
-    onChange({
-      when: relativeTime(new Date().toISOString(), t, f),
-      type: 'Tilgang',
-      what: t('logRun.revealedChange', { pseudonym: pseudonym ?? '', runId, service: run.service }),
-      who: approver,
-      why: reason,
-    });
-  };
 
   return (
     <>
-      {child ? (
-        <nav aria-label={t('logRun.breadcrumbs')} className="crumbs">
-          <a href={`#/log/${runId}`} className="log-back">
-            <Icon icon={ChevronLeftIcon} size={16} />
-            {run.service}
-          </a>
-          <span aria-hidden="true">/</span>
-          <span aria-current="page">{child.name}</span>
-        </nav>
-      ) : null}
       <div className="log-run-head">
         <div className="log-run-title">
           <div className="row-wrap">
@@ -333,70 +176,7 @@ export const RunDetail = ({
         <span className="log-meta">{meta}</span>
         {run.erasure ? <ErasedNotice erasure={run.erasure} /> : null}
         {excerpt && !run.erasure ? <p className="meta">{excerpt}</p> : null}
-        <ul aria-label={t('logRun.tracing')} className="plain-list log-traces">
-          {traces.map((t) => (
-            <li key={t.note}>
-              <Icon icon={VitalsIcon} size={16} />
-              <span>{t.note}</span>
-              {t.link ? <a href="#/developer/runs">{t.link}</a> : null}
-            </li>
-          ))}
-        </ul>
-        <div className="stack-sm">
-          {revealable && !reveal.shown && !reveal.open ? (
-            <Button
-              variant="tertiary"
-              data-size="sm"
-              aria-expanded={false}
-              className="log-self-start"
-              onClick={() => setReveal((r) => ({ ...r, open: true }))}
-            >
-              {t('logRun.reveal')}
-            </Button>
-          ) : null}
-          {revealable && reveal.open && !reveal.shown ? (
-            <div className="log-reveal">
-              <p>{t('logRun.revealIntro')}</p>
-              <Field>
-                <Label htmlFor="rv-grunn">{t('logRun.reason')}</Label>
-                <Select
-                  id="rv-grunn"
-                  value={reveal.reason}
-                  aria-invalid={reveal.error ? true : undefined}
-                  onChange={(e) => setReveal((r) => ({ ...r, reason: e.target.value, error: '' }))}
-                >
-                  <Select.Option value="">{t('logRun.choose')}</Select.Option>
-                  {revealReasons.map((r) => (
-                    <Select.Option key={r} value={r}>
-                      {t(revealReasonKeys[r])}
-                    </Select.Option>
-                  ))}
-                </Select>
-                {reveal.error ? <ValidationMessage>{reveal.error}</ValidationMessage> : null}
-              </Field>
-              <div className="tag-row">
-                <Button variant="primary" data-size="sm" onClick={confirmReveal}>
-                  {t('logRun.reveal')}
-                </Button>
-                <Button
-                  variant="secondary"
-                  data-size="sm"
-                  onClick={() => setReveal({ open: false, reason: '', error: '' })}
-                >
-                  {t('common.cancel')}
-                </Button>
-              </div>
-            </div>
-          ) : null}
-          {reveal.shown ? (
-            <Alert data-color="warning" data-size="sm">
-              {reveal.shown}
-            </Alert>
-          ) : null}
-          {hasApproval && !child ? (
-            <p className="meta log-approval-note">{t('logRun.approvalNote')}</p>
-          ) : null}
-        </div>
+        {hasApproval ? <p className="meta log-approval-note">{t('logRun.approvalNote')}</p> : null}
         <dl className="log-facts">
           {facts.map((f) => (
             <div key={f.l}>
@@ -407,9 +187,6 @@ export const RunDetail = ({
           ))}
         </dl>
       </div>
-      {isBatch && !child ? (
-        <BatchView items={items} status={status} cancelled={cancelled} runId={runId} />
-      ) : null}
       {steps.length > 0 ? (
         <Steps
           steps={steps}

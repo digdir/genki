@@ -14,8 +14,7 @@ type Component = TenantStatus['components'][number] & {
 
 type Status = TenantStatus & {
   components: Component[];
-  environment?: string;
-  pastIncidents?: { title: string; text: string; startedAt: string; resolvedAt: string }[];
+  pastIncidents?: { date: string; title: string; text: string }[];
 };
 
 export const pollMs = 60_000;
@@ -102,7 +101,8 @@ export const DevStatus = ({
   const [health, retry] = useAsync(
     async (signal) => {
       const started = performance.now();
-      const result = await api.getHealth(signal);
+      const result: { environment?: string } & Awaited<ReturnType<ApiClient['getHealth']>> =
+        await api.getHealth(signal);
       return { ...result, ms: Math.round(performance.now() - started), at: now() };
     },
     [api],
@@ -292,10 +292,10 @@ export const DevStatus = ({
               ) : null}
               <code>{shortVersion(health.data.version)}</code>
             </dd>
-            {status.status === 'ready' && status.data.environment ? (
+            {health.data.environment ? (
               <>
                 <dt>{t('devStatus.environment')}</dt>
-                <dd>{status.data.environment}</dd>
+                <dd>{health.data.environment}</dd>
               </>
             ) : null}
             {health.data.lockdown === undefined ? null : (
@@ -316,11 +316,8 @@ export const DevStatus = ({
               </Heading>
               <ul className="plain-list stack-sm">
                 {status.data.pastIncidents.map((incident) => (
-                  <li
-                    key={`${incident.startedAt}-${incident.title}`}
-                    className="dev-status-incident"
-                  >
-                    <strong>{f.date(incident.startedAt)}</strong>
+                  <li key={`${incident.date}-${incident.title}`} className="dev-status-incident">
+                    <strong>{f.date(incident.date)}</strong>
                     <span>
                       {incident.title}. {incident.text}
                     </span>

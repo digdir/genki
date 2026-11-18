@@ -2,10 +2,6 @@ import type { Translation } from '@genai/i18n';
 import type { settingsArea as source } from '../nb/operate-settings';
 
 const settings = {
-  crumbOverview: 'Overview',
-  crumbServices: 'Services',
-  crumbDatasets: 'Datasets',
-  crumbSettings: 'Settings',
   titleTenant: 'Settings for {name}',
   introTenant:
     'What you set here applies to all services and datasets in {name} that have not set anything themselves.',
@@ -253,6 +249,7 @@ const settings = {
   panelSensitivity: 'Sensitivity: {value}',
   panelEditing: 'Editing: {layer}',
   panelGoesToDraft: 'Added to the draft of v{version}',
+  panelTechnical: 'Technical details',
   panelType: 'Type',
   panelAllowed: 'Allowed',
   panelScope: 'Can be set on',

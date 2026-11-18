@@ -91,18 +91,64 @@ describe('Slik behandles data', () => {
 
     const table = await screen.findByRole('table');
     expect(bodyRows(table)).toEqual([
-      ['Borealisai-gateway/aivar-borealis', 'Norge', 'EU/EØS', '90 dager (standard)'],
+      [
+        'Borealisai-gateway/aivar-borealis',
+        'Norge',
+        'Ikke oppgitt',
+        'Azure, Nederland',
+        '90 dager (standard)',
+      ],
       [
         'GPT-4.1 minifoundry-openai/gpt-4.1-mini',
         'Global behandling, kan være utenfor EU/EØS',
-        'EU/EØS',
+        'Ikke oppgitt',
+        'Azure, Nederland',
         '90 dager (standard)',
       ],
-      ['GPT-6 lunafoundry-openai/gpt-6-luna', 'EU/EØS', 'EU/EØS', '90 dager (standard)'],
+      [
+        'GPT-6 lunafoundry-openai/gpt-6-luna',
+        'EU/EØS',
+        'Ikke oppgitt',
+        'Azure, Nederland',
+        '90 dager (standard)',
+      ],
     ]);
     expect(
       screen.getByText('1 av de 3 modellene dere kan bruke, har global behandling.'),
     ).toBeTruthy();
+  });
+
+  it('names who runs each model and its region from the model facts, and the Azure models as a sub-processor', async () => {
+    const withOperators = [
+      {
+        id: 'foundry-openai/gpt-6-luna',
+        name: 'GPT-6 luna',
+        residency: 'eu' as const,
+        capabilities: ['stream'],
+        operator: { name: 'Microsoft Azure', region: 'Sverige' },
+      },
+      {
+        id: 'ai-gateway/aivar-borealis',
+        name: 'Borealis',
+        residency: 'norway' as const,
+        capabilities: ['stream'],
+        operator: { name: 'KI-gatewayen', region: 'Norge' },
+      },
+    ];
+    render(
+      <App auth={await signedIn()} fetch={mockFetch(undefined, undefined, withOperators)} live />,
+    );
+    const table = await screen.findByRole('table');
+    expect(bodyRows(table).map((r) => r.slice(1, 3))).toEqual([
+      ['Norge (Norge)', 'KI-gatewayen'],
+      ['EU/EØS (Sverige)', 'Microsoft Azure'],
+    ]);
+    expect(
+      screen.getByText(
+        'Kjører GPT-6 luna i Sverige. Lagrer spørsmål, svar og datasett i Nederland.',
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText('Kjører Borealis. Data forlater ikke Norge.')).toBeTruthy();
   });
 
   it('sorts the model table by a column and turns the order when the column is chosen again', async () => {

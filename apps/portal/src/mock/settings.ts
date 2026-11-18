@@ -1,18 +1,7 @@
 import type { MockHandler } from '../mock';
 import type { SettingInfo } from '../types';
 
-export const sourcesSettingKey = 'answers.showSources';
-
 export const exampleSettingExtras: SettingInfo[] = [
-  {
-    key: sourcesSettingKey,
-    description: 'Vis alltid hvilke dokumenter svaret bygger på.',
-    category: 'answers',
-    axis: 'service',
-    sensitivity: 'normal',
-    default: true,
-    settableAt: ['platform', 'tenant', 'service'],
-  },
   {
     key: 'retention.class',
     description: 'Hvor lenge spørsmål og svar lagres.',

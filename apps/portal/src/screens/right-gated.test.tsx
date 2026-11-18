@@ -141,7 +141,7 @@ describe('buttons the person has no right for', () => {
     expect(await screen.findByText(reason)).toBeTruthy();
     cleanup();
     calls.push(...(await renderAs('#/integrations?tab=systems', useOnly)));
-    await screen.findByRole('heading', { name: /Maskinporten/ });
+    await screen.findByRole('region', { name: 'Systemer' });
     cleanup();
     calls.push(...(await renderAs('#/settings/all', useOnly)));
     await screen.findAllByText(reason);

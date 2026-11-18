@@ -71,6 +71,7 @@ export const actionKey: Record<string, PlainKey> = {
   'platform.task.cancel': 'audit.actionTaskCancel',
   'platform.testset.save': 'audit.actionTestsetSave',
   'platform.tools.approve': 'audit.actionToolsApprove',
+  'platform.tools.revoke': 'audit.actionToolsRevoke',
   'platform.tools.register': 'audit.actionToolsRegister',
   'platform.tools.sync': 'audit.actionToolsSync',
   'platform.dataset.enrichment.apply': 'audit.actionDatasetEnrichmentApply',

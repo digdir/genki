@@ -459,14 +459,22 @@ describe('Integrasjoner: Maskinporten-klienter', () => {
     await auth.login();
     window.location.hash = '#/developer/systems';
     render(<App auth={auth} fetch={fetch} live />);
-    return screen.findByRole('region', { name: 'Maskinporten-klienter' });
+    return screen.findByRole('region', { name: 'Systemer' });
   };
+
+  it('shows the clients as rows in the one list of systems, with no second section', async () => {
+    const section = await renderLive(mockFetch());
+
+    expect(await within(section).findByRole('button', { name: /Tilskuddssystemet/ })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Maskinporten-klienter' })).toBeNull();
+    expect(section.querySelectorAll('ul.dev-rows').length).toBe(1);
+  });
 
   it('lists registered clients with the services they may call and the scope they need', async () => {
     const section = await renderLive(mockFetch());
 
-    expect(within(section).getAllByText(/digdir:ki\.tjenester\.kall/).length).toBeGreaterThan(0);
     const row = await within(section).findByRole('button', { name: /Tilskuddssystemet/ });
+    expect(within(section).getAllByText(/digdir:ki\.tjenester\.kall/).length).toBeGreaterThan(0);
     expect(within(row).getByText('Kan kalle: Rapportassistenten')).toBeTruthy();
   });
 
@@ -571,21 +579,27 @@ describe('Integrasjoner: kroker', () => {
     expect(screen.getAllByRole('heading', { name: 'Kroker' })).toHaveLength(1);
   });
 
-  it('lists own hooks in a table with when they run, what they do and a switch', async () => {
+  it('lists own hooks as the design list: name, address or type, when, services and a switch', async () => {
     const section = await renderHooks(mockFetch());
     const link = await within(section).findByRole('link', {
       name: 'Stopp fødselsnummer før modellen',
     });
-    const row = link.closest('tr') as HTMLElement;
+    const row = link.closest('li') as HTMLElement;
 
     expect(within(row).getByText('Før modellkall')).toBeTruthy();
-    expect(within(row).getByText('Stopper')).toBeTruthy();
     expect(within(row).getByText('Alle')).toBeTruthy();
     expect(within(row).getByText(/Innebygd: stopp ord og uttrykk · tidsavbrudd 2 s/)).toBeTruthy();
     expect((within(row).getByRole('switch', { name: /er på/ }) as HTMLInputElement).checked).toBe(
       true,
     );
     expect(link.getAttribute('href')).toBe('#/developer/hooks/fodselsnummer');
+  });
+
+  it('keeps order, effect and failure off the list and shows no table', async () => {
+    const section = await renderHooks(mockFetch());
+    await within(section).findByRole('link', { name: 'Stopp fødselsnummer før modellen' });
+    expect(within(section).queryByRole('table')).toBeNull();
+    expect(within(section).queryByRole('heading', { name: 'Fra plattformen' })).toBeNull();
   });
 
   it('turns a hook off from the list with a logged reason', async () => {

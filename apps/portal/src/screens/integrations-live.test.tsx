@@ -140,9 +140,17 @@ describe('Integrasjoner: utløsere fra API-et', () => {
     expect(within(failing).getByText('Plattformens fillagring · teams-opptak')).toBeTruthy();
     expect(within(failing).getByRole('link', { name: 'Møtereferat' })).toBeTruthy();
     expect(within(failing).getByText('Feilet')).toBeTruthy();
-    expect(within(failing).getByText(/the capability motereferat is not published/)).toBeTruthy();
+    expect(
+      within(failing).getByText('Tjenesten er ikke publisert, så utløseren fikk ikke startet den.'),
+    ).toBeTruthy();
     expect(await rowOf(/Hver natt kl\. 02\.00/)).toBeTruthy();
     expect(await rowOf('Køen «post-inn»')).toBeTruthy();
+  });
+
+  it('never shows the raw API error of a failed trigger run', async () => {
+    await live('#/integrations?tab=triggers');
+    const failing = await rowOf('Mappen «teams-opptak»');
+    expect(within(failing).queryByText(/the capability motereferat is not published/)).toBeNull();
   });
 
   it('links the last run of a trigger to its run timeline', async () => {

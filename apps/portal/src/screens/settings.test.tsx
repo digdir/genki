@@ -73,6 +73,31 @@ describe('Innstillinger for virksomheten', () => {
     expectAccessible();
   });
 
+  it('keeps the open setting in the address, and opens it again from the address', async () => {
+    await renderAt('#/settings/all');
+    const region = await allTable();
+    fireEvent.click(within(region).getByRole('button', { name: 'Antall treff som leses' }));
+    expect(window.location.hash).toBe('#/settings/all?setting=search.top_k');
+
+    cleanup();
+    await renderAt('#/settings/all?setting=search.top_k');
+    const again = await allTable();
+    expect(
+      within(again)
+        .getByRole('button', { name: 'Antall treff som leses' })
+        .getAttribute('aria-expanded'),
+    ).toBe('true');
+  });
+
+  it('keeps sensitivity, type, allowed values and the layers behind Tekniske detaljer in the panel', async () => {
+    await renderAt('#/settings/all');
+    const region = await allTable();
+    fireEvent.click(within(region).getByRole('button', { name: 'Antall treff som leses' }));
+    const details = (await screen.findByText('Tekniske detaljer')).closest('details');
+    expect(details?.open).toBe(false);
+    expect(details?.textContent).toMatch(/Sensitivitet/);
+  });
+
   it('marks the setting whose panel is open as expanded', async () => {
     await renderAt('#/settings/all');
     const region = await allTable();
@@ -315,6 +340,14 @@ describe('Innstillinger for en tjeneste', () => {
     const legend = document.querySelector('.settings-legend') as HTMLElement;
     expect(legend.textContent).toContain('arvet: verdien kommer fra laget til venstre');
     expect(legend.querySelector('em')?.textContent).toBe('arvet');
+  });
+
+  it('keeps the wide grid inside its own scroll box, so a phone page does not scroll sideways', async () => {
+    await renderAt('#/services/vedtaksutkast/settings');
+    await grid();
+    const table = document.querySelector('.settings-table') as HTMLElement;
+    expect(table.parentElement?.className).toContain('settings-grid-scroll');
+    expect(table.parentElement?.className).toContain('table-scroll');
   });
 
   it('blocks turning off human approval for a high-risk service', async () => {

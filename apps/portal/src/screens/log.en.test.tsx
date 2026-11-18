@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { App } from '../App';
 import { mockAnsattporten } from '../auth';
@@ -25,9 +25,9 @@ describe('Log in English', () => {
   it('shows the runs tab with English chrome and statuses', async () => {
     await open('#/log');
     expect(await screen.findByRole('heading', { level: 1, name: 'Log' })).toBeTruthy();
-    const tabs = screen.getByRole('navigation', { name: 'Log' });
-    expect(within(tabs).getByRole('link', { name: 'Runs' })).toBeTruthy();
-    expect(within(tabs).getByRole('link', { name: 'Changes' })).toBeTruthy();
+    const tabs = screen.getByRole('tablist', { name: 'Log' });
+    expect(within(tabs).getByRole('tab', { name: 'Runs' })).toBeTruthy();
+    expect(within(tabs).getByRole('tab', { name: 'Changes' })).toBeTruthy();
     const table = await screen.findByRole('table', { name: 'Runs' });
     expect(
       within(table)
@@ -60,9 +60,9 @@ describe('Log in English', () => {
 
   it('shows the changes tab in English', async () => {
     await open('#/log?tab=changes');
-    expect(await screen.findByText('Type of change')).toBeTruthy();
-    fireEvent.click(screen.getByRole('radio', { name: 'Publishing' }));
-    expect(screen.getByRole('list', { name: 'Changes' })).toBeTruthy();
+    expect(await screen.findByRole('list', { name: 'Changes' })).toBeTruthy();
+    expect(screen.getByRole('radio', { name: 'All' })).toBeTruthy();
+    expect(screen.getByRole('switch', { name: /Show changes from Digdir/ })).toBeTruthy();
   });
 
   it('formats times, offsets and durations for English', () => {

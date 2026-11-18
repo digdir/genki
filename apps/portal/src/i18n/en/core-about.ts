@@ -93,17 +93,20 @@ export const about = {
   },
   dhColumnModel: 'Model',
   dhColumnWhere: 'Where data is processed',
+  dhColumnOperator: 'Run by',
+  dhOperatorUnknown: 'Not stated',
+  dhWhereRegion: '{where} ({region})',
   dhColumnStored: 'Stored in',
   dhColumnHowLong: 'How long',
   dhWhereNorway: 'Norway',
   dhWhereEu: 'EU/EEA',
   dhWhereGlobal: 'Global processing, can be outside the EU/EEA',
-  dhStoredEu: 'EU/EEA',
+  dhStoredWhere: 'Azure, the Netherlands',
   dhHowLongStandard: '90 days (standard)',
   dhHowLongDataset: 'Until the dataset is deleted',
   dhStoredHeading: 'What is stored, and for how long',
   dhStoredLede:
-    'Questions, answers and the sources an answer is based on are stored in the EU/EEA, so the organisation can see what its services answered and correct mistakes.',
+    'Questions, answers and the sources an answer is based on are stored in Azure in the Netherlands, so the organisation can see what its services answered and correct mistakes.',
   dhStored1:
     'The standard is 90 days. The organisation can choose 7 days or 1 year under Settings.',
   dhStored2:
@@ -112,7 +115,9 @@ export const about = {
   dhSubprocessorsHeading: 'Sub-processors',
   dhMicrosoft: 'Microsoft (Azure)',
   dhMicrosoftText:
-    'Runs the platform and stores what genki stores, in the EU/EEA. Runs the models in Azure AI Foundry.',
+    'Runs the platform and the models in Azure AI Foundry. Stores questions, answers and datasets in the Netherlands.',
+  dhMicrosoftRuns:
+    'Runs {models} in {regions}. Stores questions, answers and datasets in the Netherlands.',
   dhGateway: 'The AI gateway in Norway',
   dhGatewayText: 'Runs {models}. Data does not leave Norway.',
   siteName: 'Genki',
