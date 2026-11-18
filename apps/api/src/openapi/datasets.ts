@@ -209,6 +209,25 @@ const DatasetWithStatus = Dataset.extend({
   chunks: z.number().int().nullable(),
   lastExecution: LastExecution.nullable(),
   nextRunAt: z.string().nullable(),
+  updatedAt: z
+    .string()
+    .nullable()
+    .describe(
+      "When an ingestion run last succeeded; null for a dataset filled outside genki's pipelines, one never read in, and another organisation's dataset",
+    ),
+  owner: z
+    .object({
+      tenant: z
+        .string()
+        .describe(
+          'The organisation that owns the dataset; the platform tenant for platform datasets',
+        ),
+      name: z
+        .string()
+        .nullable()
+        .describe("The organisation's name; null when genki does not know it"),
+    })
+    .describe('Who owns the dataset, for datasets the caller may see'),
 }).openapi('DatasetWithStatus');
 
 const DatasetReader = z

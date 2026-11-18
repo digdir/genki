@@ -203,6 +203,8 @@ export const createQualityModule =
           latestVersion: (await evals.drafts.latestVersion(tenant, service)) ?? null,
           at: draft.at,
           reason: draft.reason,
+          by: draft.by,
+          byName: (await actorNames(deps.configEntries).nameOf(draft.by)) ?? null,
         });
 
         const openedDraft = async (

@@ -99,6 +99,7 @@ export const boot = async (
     jobRuns?: JobRuns;
     answer?: string;
     searchOnlyClusters?: string[];
+    tenants?: { orgNumber: string; name: string }[];
   } = {},
 ) => {
   const model = await fakeHttp((body) =>
@@ -159,6 +160,7 @@ export const boot = async (
     plugins: platform.plugins,
     settings: new SettingsRegistry([]),
     extensions: platform.extensions,
+    ...(options.tenants ? { tenants: async () => options.tenants ?? [] } : {}),
   });
   const app = new Hono();
   platform.mount(app, admin);
@@ -499,6 +501,63 @@ describe('who may search an organisation dataset', () => {
       source: 'none',
       lastExecution: null,
       nextRunAt: null,
+      updatedAt: null,
+    });
+  });
+
+  it('names the organisation that owns each dataset the caller may see', async () => {
+    const { call } = await boot({
+      tenants: [
+        { orgNumber: digdir, name: 'Digitaliseringsdirektoratet' },
+        { orgNumber: other, name: 'Annen etat' },
+      ],
+    });
+    await ownDataset(call, 'all');
+
+    const listed = await json<{ data: Record<string, unknown>[] }>(
+      await call(`/tenants/${other}/datasets`, 'ola'),
+    );
+    const detail = await json<Record<string, unknown>>(
+      await call(
+        `/tenants/${other}/datasets/${encodeURIComponent(`${digdir}/interne-sider`)}`,
+        'ola',
+      ),
+    );
+
+    const owner = { tenant: digdir, name: 'Digitaliseringsdirektoratet' };
+    expect(listed.data.find((d) => d.fullId === `${digdir}/interne-sider`)?.owner).toEqual(owner);
+    expect(detail.owner).toEqual(owner);
+  });
+
+  it("gives no owner of another organisation's dataset that is not opened to all, since it is not shown", async () => {
+    const { call } = await boot({
+      tenants: [{ orgNumber: digdir, name: 'Digitaliseringsdirektoratet' }],
+    });
+    await ownDataset(call);
+
+    const listed = await json<{ data: Record<string, unknown>[] }>(
+      await call(`/tenants/${other}/datasets`, 'ola'),
+    );
+    const detail = await call(
+      `/tenants/${other}/datasets/${encodeURIComponent(`${digdir}/interne-sider`)}`,
+      'ola',
+    );
+
+    expect(listed.data.map((d) => d.fullId)).not.toContain(`${digdir}/interne-sider`);
+    expect(detail.status).toBe(404);
+  });
+
+  it('gives a null owner name when genki does not know the organisation', async () => {
+    const { call } = await boot();
+    await ownDataset(call);
+
+    const listed = await json<{ data: Record<string, unknown>[] }>(
+      await call(`/tenants/${digdir}/datasets`, 'kari'),
+    );
+
+    expect(listed.data.find((d) => d.fullId === `${digdir}/interne-sider`)?.owner).toEqual({
+      tenant: digdir,
+      name: null,
     });
   });
 

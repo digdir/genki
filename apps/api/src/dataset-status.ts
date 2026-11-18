@@ -36,6 +36,7 @@ export interface DatasetStatus {
   chunks: number | null;
   lastExecution: LastExecution | null;
   nextRunAt: string | null;
+  updatedAt: string | null;
 }
 
 export interface DatasetStatusDeps {
@@ -133,6 +134,7 @@ export const datasetStatus = async (
       chunks: null,
       lastExecution: null,
       nextRunAt: null,
+      updatedAt: null,
       skipped: [],
     };
   }
@@ -145,9 +147,16 @@ export const datasetStatus = async (
     chunks: counts?.chunks ?? null,
     lastExecution: last ? lastOf(last) : null,
     nextRunAt: next.sort()[0] ?? null,
+    updatedAt: lastSucceededAt(perPipeline.flat()) ?? null,
     skipped: last?.report?.skippedDocuments ?? [],
   };
 };
+
+const lastSucceededAt = (runs: Execution[]) =>
+  runs
+    .flatMap((run) => (run.status === 'succeeded' && run.endedAt ? [run.endedAt] : []))
+    .sort()
+    .at(-1);
 
 export const lastImportAt = async (
   ingestion: Pick<IngestionService, 'list' | 'executions'>,
@@ -156,9 +165,5 @@ export const lastImportAt = async (
   const runs = await Promise.all(
     (await ingestion.list(item.scope, item.id)).map((p) => ingestion.executions(item.id, p.id)),
   );
-  return runs
-    .flat()
-    .flatMap((run) => (run.status === 'succeeded' && run.endedAt ? [run.endedAt] : []))
-    .sort()
-    .at(-1);
+  return lastSucceededAt(runs.flat());
 };

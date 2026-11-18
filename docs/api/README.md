@@ -63,6 +63,13 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ## API changes
 
+### 2026-11-18: who saved a draft, the draft a test run tested, dataset owners and file limits
+
+- `GET` and `PUT /tenants/{tenant}/services/{id}/draft` (and the draft in a rebase answer) add `by`, who saved the draft last, and `byName`, that person's name, or `null` when genki does not know it.
+- An eval run of the saved draft records its revision: `GET /tenants/{tenant}/services/{id}/eval-runs` and `GET /tenants/{tenant}/eval-runs/{runId}` add `draftRevision`. A run of a published version or of a definition sent in the request has none, nor has a run started before this change.
+- `GET /tenants/{tenant}/datasets` and `GET /tenants/{tenant}/datasets/{id}` add `owner` (`tenant`, and `name` or `null`) and `updatedAt`, when an ingestion run last succeeded. `updatedAt` is `null` for another organisation's dataset, one never read in and one filled outside genki's pipelines.
+- `POST /tenants/{tenant}/definitions/input-fields` adds `files`: the `documents` and `media` the definition takes, each with `accepts`, `maxBytes` and `maxCount` as `/v1` enforces them, or `null`, and `maxRequestBytes`.
+
 ### 2026-11-18: platform secrets on their own console screen
 
 - `GET /operator/secrets` lists the platform secrets for operators: each name, whether a value is stored, when it last changed (from the audit log) and the platform catalog entries that name it, such as a connection. Never a value.
