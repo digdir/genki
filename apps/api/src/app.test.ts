@@ -50,6 +50,19 @@ describe('api', () => {
     });
   });
 
+  it('health stays degraded and says failed once model discovery has given up', async () => {
+    const gaveUp = createApp('abc', {
+      modelDiscovery: () => ({ state: 'failed', attempts: 12, lastError: 'foundry: 408' }),
+    });
+
+    const health = await gaveUp.request('/health');
+    expect(health.status).toBe(200);
+    expect(await health.json()).toMatchObject({
+      status: 'degraded',
+      modelDiscovery: { state: 'failed', attempts: 12 },
+    });
+  });
+
   it('reads the build time from the commit time in seconds and ignores anything else', () => {
     expect(buildTimeOf('1763366400')).toBe('2025-11-17T08:00:00.000Z');
     expect(buildTimeOf('')).toBeUndefined();
