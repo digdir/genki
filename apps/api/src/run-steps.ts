@@ -1522,3 +1522,17 @@ export const mapRun = (events: Event[], options: RunMapperOptions = {}) => {
   for (const e of events) mapper.push(e);
   return mapper;
 };
+
+export const failureDetail = (events: Event[]) => {
+  for (const event of [...events].sort((a, b) => a.seq - b.seq)) {
+    if (event.type !== 'kernel.notice') continue;
+    const data = record(event.data);
+    if (data.kind !== 'retrieval') continue;
+    const failed =
+      data.failedCompletely !== undefined
+        ? searchFailureText(t('steps.searchByAll'), data.failedCompletely)
+        : failedSearchText(data.failed);
+    if (failed) return sentence(failed);
+  }
+  return undefined;
+};

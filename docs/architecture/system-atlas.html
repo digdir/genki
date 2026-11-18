@@ -7059,6 +7059,7 @@
                                     pattern: '^[a-z0-9][a-z0-9-]*\\/[a-z0-9][a-z0-9-]*@[1-9]\\d*$',
                                   },
                                 },
+                                maker: { type: 'string', minLength: 1, maxLength: 100 },
                               },
                               required: ['source'],
                               additionalProperties: false,
@@ -7090,6 +7091,15 @@
                             },
                           },
                           gateway: { type: 'boolean' },
+                          operator: {
+                            type: 'object',
+                            properties: {
+                              name: { type: 'string', minLength: 1, maxLength: 100 },
+                              region: { type: 'string', minLength: 1, maxLength: 100 },
+                            },
+                            required: ['name'],
+                            additionalProperties: false,
+                          },
                         },
                         required: ['baseURL', 'auth', 'families'],
                         additionalProperties: false,
@@ -7105,6 +7115,7 @@
                           endpoint: { type: 'string', pattern: '^[a-z0-9][a-z0-9._/-]*$' },
                           deployment: { type: 'string', minLength: 1 },
                           family: { type: 'string', minLength: 1 },
+                          maker: { type: 'string', minLength: 1, maxLength: 100 },
                           residency: { type: 'string', enum: ['norway', 'eu', 'global'] },
                           capabilities: {
                             default: [],

@@ -22,6 +22,7 @@ export type PipelineState = 'disabled' | 'failed' | 'running' | 'ready' | 'confi
 
 export interface LastExecution {
   status: ExecutionStatus;
+  startedBy?: string;
   startedAt: string;
   endedAt: string | null;
   stored: number | null;
@@ -47,6 +48,7 @@ export interface DatasetStatusDeps {
 
 const lastOf = (execution: Execution): LastExecution => ({
   status: execution.status,
+  startedBy: execution.startedBy,
   startedAt: execution.startedAt,
   endedAt: execution.endedAt ?? null,
   stored: execution.report?.stored ?? null,
@@ -132,10 +134,11 @@ export const datasetStatus = async (
     };
   }
   const counts = await countsOf(deps, item.id);
+  const found = counts ? undefined : await deps.documentCount?.(item).catch(() => undefined);
   return {
     state: datasetState(pipelines.map((p, i) => pipelineState(p, latestOf(perPipeline[i] ?? [])))),
     source: main?.spec.source.kind ?? 'none',
-    documents: counts?.documents ?? null,
+    documents: counts?.documents ?? found ?? null,
     chunks: counts?.chunks ?? null,
     lastExecution: last ? lastOf(last) : null,
     nextRunAt: next.sort()[0] ?? null,

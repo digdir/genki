@@ -15,6 +15,7 @@ import {
   observedEventLog,
   traceIdFor,
   type ExporterConfigInput,
+  type ExporterDeps,
   type OtlpSpan,
 } from './index.js';
 
@@ -103,6 +104,7 @@ const run = async (
   url: string,
   fail = false,
   beforeSend?: (traces: { trace: string; task: string }[]) => Promise<boolean>,
+  sampleRateFor?: ExporterDeps['sampleRateFor'],
 ) => {
   const tasks = new InMemoryTaskStore();
   const exporter = createTraceExporter(
@@ -111,6 +113,7 @@ const run = async (
       secrets: envSecrets({ LANGFUSE_SECRET: 'sk-lf-test', PSEUDONYM_KEY: 'pepper' }),
       tasks: async (id) => (await tasks.get(id))?.task,
       ...(beforeSend ? { beforeSend } : {}),
+      ...(sampleRateFor ? { sampleRateFor } : {}),
     },
   );
   const capabilities: Capability[] = [
@@ -302,6 +305,28 @@ describe('trace exporter', () => {
 
     expect(received).toHaveLength(0);
     expect(exporter.stats().sampledOut).toBe(2);
+  });
+
+  it("samples a tenant's runs at the tenant's own rate when it is lower than the platform's", async () => {
+    const { url, received } = await collector();
+    const asked: string[] = [];
+
+    await run({}, url, false, undefined, (tenant) => {
+      asked.push(tenant);
+      return 0;
+    });
+
+    expect(received).toHaveLength(0);
+    expect(asked).toContain('999888777');
+  });
+
+  it('always traces a failed run, whatever the sample rate', async () => {
+    const { url, received } = await collector();
+
+    await run({ sampleRate: 0 }, url, true, undefined, () => 0);
+
+    const root = received.flatMap((r) => r.spans).find((s) => s.name === 'kunnskapsassistenten');
+    expect(root?.status).toMatchObject({ code: 2 });
   });
 });
 

@@ -26,7 +26,7 @@ Running work and measuring it: service runs (tasks) and their timelines, table r
 5. `GET /eval-runs/compare`: compare with the run of the published version.
 6. `GET /tenants/{tenant}/gates`: the gates publishing must pass; then publish (see [Services](services.md)).
 
-To follow one run: `GET /tenants/{tenant}/tasks/{task}` and `GET /tenants/{tenant}/tasks/{task}/timeline`. Both also read a playground run, and `GET /tenants/{tenant}/tasks?origin=playground` lists the tenant's playground runs instead of its service runs.
+To follow one run: `GET /tenants/{tenant}/tasks/{task}` and `GET /tenants/{tenant}/tasks/{task}/timeline`. Both also read a playground run, and `GET /tenants/{tenant}/tasks?origin=playground` lists the tenant's trial runs instead of its service runs: playground runs and the runs the builder starts with `POST /tenants/{tenant}/definitions/test-run` (origin `trial`), never test case runs. A failed run in the list and on its own carries `failure`: the error `code`, a fixed `reason` for it, the failed `step` in a step flow, and `detail` when the timeline names a specific cause, such as the search that failed ("Innholdssøket tok for lang tid."). These are fixed translated sentences, never engine, provider or model text.
 
 A run whose content was erased on purpose carries `erasure: { reason, at }` on the run, in the run list and on its timeline. `reason` is `conversation-deleted` (the conversation was deleted), `retention` (removed after the retention period) or `erased` (erased before the platform recorded why); `at` is when, if known. Such a run has no `excerpt`, and its timeline keeps only what the envelopes hold: start, status, duration, model calls with tokens and cost, and a result step that says the answer was erased.
 

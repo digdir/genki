@@ -109,6 +109,7 @@ export const adminActionRights: Readonly<
   'platform.tools.register': toolRegistration,
   'platform.tools.sync': toolRegistration,
   'platform.tools.approve': 'manage-services',
+  'platform.tools.revoke': 'manage-services',
   'platform.secrets.set': (input) =>
     input.hostsChange === true
       ? 'manage-services'

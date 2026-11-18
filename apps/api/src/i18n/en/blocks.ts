@@ -62,4 +62,29 @@ export const blocks = {
   sinkFieldOutput: 'the answer',
   sinkFieldExpected: 'the criteria',
   skillRequirementsUnmet: 'The skill does not meet the requirements for publishing',
+  guardPiiBeforeModel: 'Personal data before the model',
+  guardPiiBeforeModelText:
+    'Finds national identity numbers, account numbers and other personal data in the question and stops or masks them before the model sees them.',
+  guardPiiOutOfLog: 'Personal data out of the log',
+  guardPiiOutOfLogText: 'Masks personal data before questions and answers are stored in the log.',
+  guardRequireSources: 'Requires sources',
+  guardRequireSourcesText:
+    'Does not answer when the search found no sources that support an answer.',
+  guardLanguage: 'Language and written standard',
+  guardLanguageText: 'Answers in bokmål, nynorsk or the language of the question, as set.',
+  guardRefuseTopics: 'Refuses topics',
+  guardRefuseTopicsText: 'Refuses questions about topics the service should not answer.',
+  guardHumanApproval: 'Approval by a person',
+  guardHumanApprovalText: 'Holds the answer back until a person has approved it.',
+  guardPurposeCheck: 'Purpose check',
+  guardPurposeCheckText:
+    'Checks that the question is within the purpose of the service, and refuses it or sends it to a person otherwise.',
+  judgeAnswerQuality: 'Answer quality',
+  judgeAnswerQualityText:
+    'Judges whether the answer is correct, based on the sources and answers the question.',
+  judgePairwisePreference: 'Comparing two answers',
+  judgePairwisePreferenceText:
+    'Compares two answers to the same question and picks the better one.',
+  judgeCriteria: 'Criteria from the test set',
+  judgeCriteriaText: 'Judges the answer against the criteria written in each test case.',
 } satisfies Translation<typeof source>;

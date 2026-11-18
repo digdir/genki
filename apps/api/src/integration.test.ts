@@ -462,7 +462,7 @@ describe('the integrated platform', () => {
     expect(headers.at(-1)).toBe('Bearer tool-token');
   });
 
-  it('keeps the last failed sync of a tool connection, with its error, until a sync succeeds', async () => {
+  it('keeps the last failed sync of a tool connection, with its error and how long it has failed, until a sync succeeds', async () => {
     const { platform, app } = await boot();
     let failing = true;
     const server = createServer((req, res) => {
@@ -510,19 +510,235 @@ describe('the integrated platform', () => {
       (
         (await (
           await app.request(`/tenants/${tenant}/tool-connections`, { headers: as('kari') })
-        ).json()) as { data: { lastSync?: { ok: boolean; code?: string } }[] }
+        ).json()) as { data: { lastSync?: { at: string; ok: boolean; code?: string } }[] }
       ).data[0]?.lastSync;
 
     expect((await sync()).status).toBe(400);
-    expect(await lastSync()).toEqual({
+    const first = await lastSync();
+    expect(first).toEqual({
       at: expect.any(String),
       ok: false,
       code: 'protocol_error',
       message: 'verktøytjeneren svarte på en måte plattformen ikke forstår',
+      attempts: 1,
+      failingSince: first?.at,
     });
+    expect((await sync()).status).toBe(400);
+    expect(await lastSync()).toMatchObject({ ok: false, attempts: 2, failingSince: first?.at });
     failing = false;
     expect((await sync()).status).toBe(200);
     expect(await lastSync()).toEqual({ at: expect.any(String), ok: true });
+  });
+
+  describe('approving and revoking the tools of a connection', () => {
+    const toolServer = async (tools: () => { name: string; description: string }[]) => {
+      const server = createServer((req, res) => {
+        let raw = '';
+        req.on('data', (c: Buffer) => (raw += c.toString()));
+        req.on('end', () => {
+          const body = JSON.parse(raw || '{}') as Record<string, unknown>;
+          const reply = (result: unknown) => {
+            res.writeHead(200, { 'content-type': 'application/json', 'mcp-session-id': 's1' });
+            res.end(JSON.stringify({ jsonrpc: '2.0', id: body.id, result }));
+          };
+          if (body.method === 'initialize')
+            return reply({ protocolVersion: '2025-06-18', capabilities: { tools: {} } });
+          if (body.method === 'tools/list')
+            return reply({
+              tools: tools().map((t) => ({ ...t, inputSchema: { type: 'object' } })),
+            });
+          res.writeHead(202);
+          res.end();
+        });
+      });
+      await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+      servers.push(server);
+      return (server.address() as AddressInfo).port;
+    };
+    const toolCtx: PortContext = {
+      tenant,
+      principal: { kind: 'employee', issuer: 'test', subject: 'kari', tenant },
+      task: 't1',
+      signal: new AbortController().signal,
+      meter: async () => undefined,
+    };
+    const connected = async () => {
+      const booted = await boot();
+      let tools = [{ name: 'search_cases', description: 'Søk i saker' }];
+      const port = await toolServer(() => tools);
+      await booted.platform.connections.save({
+        connection: {
+          id: 'saker',
+          tenant,
+          name: 'Saksarkiv',
+          endpoint: `http://127.0.0.1:${port}/mcp`,
+          version: '1',
+          allow: [{ host: '127.0.0.1', port }],
+        },
+        tools: [],
+        pending: [],
+      } as Parameters<typeof booted.platform.connections.save>[0]);
+      const post = (path: string, who = 'kari', body: unknown = {}) =>
+        booted.app.request(`/tenants/${tenant}/tool-connections/saker${path}`, {
+          method: 'POST',
+          headers: as(who, { 'change-reason': 'test av endringen' }),
+          body: JSON.stringify(body),
+        });
+      const details = async (who = 'kari') =>
+        (
+          (await (
+            await booted.app.request(`/tenants/${tenant}/tool-connections`, { headers: as(who) })
+          ).json()) as { data: { toolDetails: Record<string, unknown>[] }[] }
+        ).data[0]?.toolDetails;
+      await post('/sync');
+      return {
+        ...booted,
+        post,
+        details,
+        offer: (next: typeof tools) => {
+          tools = next;
+        },
+      };
+    };
+
+    it('lists every tool with its approval, and a new tool as pending since the sync found it', async () => {
+      const { post, details, offer } = await connected();
+      offer([
+        { name: 'search_cases', description: 'Søk i saker' },
+        { name: 'get_case', description: 'Hent en sak' },
+      ]);
+      await post('/sync');
+
+      expect(await details()).toEqual([
+        {
+          name: 'saker.search_cases',
+          description: 'Søk i saker',
+          state: 'approved',
+          since: expect.any(String),
+          changes: false,
+        },
+        {
+          name: 'saker.get_case',
+          description: 'Hent en sak',
+          state: 'pending',
+          since: expect.any(String),
+          changes: false,
+        },
+      ]);
+    });
+
+    it('records when a connection was registered', async () => {
+      const { app } = await boot();
+
+      const registered = await app.request(`/tenants/${tenant}/tool-connections`, {
+        method: 'POST',
+        headers: as('kari', { 'change-reason': 'test av endringen' }),
+        body: JSON.stringify({
+          id: 'arkiv',
+          name: 'Arkiv',
+          endpoint: 'https://arkiv.example.no/mcp',
+          version: '1',
+          allow: [{ host: 'arkiv.example.no' }],
+        }),
+      });
+      const listed = (await (
+        await app.request(`/tenants/${tenant}/tool-connections`, { headers: as('per') })
+      ).json()) as { data: { id: string; connectedAt?: string; toolDetails: unknown[] }[] };
+
+      expect(registered.status).toBe(200);
+      expect(listed.data.find((c) => c.id === 'arkiv')).toMatchObject({
+        connectedAt: expect.any(String),
+        toolDetails: [],
+      });
+    });
+
+    it('records who approved a tool and when', async () => {
+      const { post, details, offer } = await connected();
+      offer([
+        { name: 'search_cases', description: 'Søk i saker' },
+        { name: 'get_case', description: 'Hent en sak' },
+      ]);
+      await post('/sync');
+
+      const approved = await post('/approve', 'kari', { tool: 'saker.get_case' });
+
+      expect(approved.status).toBe(200);
+      expect((await details())?.find((d) => d.name === 'saker.get_case')).toMatchObject({
+        state: 'approved',
+        since: expect.any(String),
+        approvedBy: 'employee:test:kari',
+      });
+    });
+
+    it('revokes an approved tool so services can no longer call it until it is approved again', async () => {
+      const { post, details, platform, admin } = await connected();
+
+      const revoked = await post('/revoke', 'kari', { tool: 'saker.search_cases' });
+
+      expect(revoked.status).toBe(200);
+      expect(await revoked.json()).toEqual({ revoked: 'saker.search_cases' });
+      expect(platform.mcp.resolve('saker.search_cases', '1', toolCtx, tenant)).toBeUndefined();
+      expect(await details()).toEqual([
+        expect.objectContaining({ name: 'saker.search_cases', state: 'pending' }),
+      ]);
+      expect(await admin.audit(tenant)).toContainEqual(
+        expect.objectContaining({ action: 'platform.tools.revoke', reason: 'test av endringen' }),
+      );
+      await post('/sync');
+      expect(await details()).toEqual([
+        expect.objectContaining({ name: 'saker.search_cases', state: 'pending' }),
+      ]);
+      expect((await post('/approve', 'kari', { tool: 'saker.search_cases' })).status).toBe(200);
+      expect(platform.mcp.resolve('saker.search_cases', '1', toolCtx, tenant)).toBeDefined();
+    });
+
+    it('keeps a tool revoked when the revoke lands while a sync records how it went', async () => {
+      const { post, details, platform } = await connected();
+      const connections = platform.connections;
+      const update = connections.update.bind(connections);
+      let writes = 0;
+      connections.update = async (...args) => {
+        writes += 1;
+        if (writes === 2) await post('/revoke', 'kari', { tool: 'saker.search_cases' });
+        return update(...args);
+      };
+
+      await post('/sync');
+
+      expect(await details()).toEqual([
+        expect.objectContaining({ name: 'saker.search_cases', state: 'pending' }),
+      ]);
+      expect((await connections.get(tenant, 'saker'))?.lastSync).toMatchObject({ ok: true });
+    });
+
+    it('answers tool-not-found for a tool the connection has not approved or does not offer', async () => {
+      const { post } = await connected();
+
+      const unknown = await post('/revoke', 'kari', { tool: 'saker.slett_alt' });
+      const notPending = await post('/approve', 'kari', { tool: 'saker.search_cases' });
+
+      for (const res of [unknown, notPending]) {
+        expect(res.status).toBe(404);
+        expect(await res.json()).toMatchObject({ type: 'urn:genai:problem:tool-not-found' });
+      }
+    });
+
+    it('lets only people with manage-services in the organisation revoke a tool, with a reason', async () => {
+      const { post, platform, app } = await connected();
+
+      const user = await post('/revoke', 'per', { tool: 'saker.search_cases' });
+      const outsider = await post('/revoke', 'ola', { tool: 'saker.search_cases' });
+      const noReason = await app.request(`/tenants/${tenant}/tool-connections/saker/revoke`, {
+        method: 'POST',
+        headers: as('kari'),
+        body: JSON.stringify({ tool: 'saker.search_cases' }),
+      });
+
+      expect(user.status).toBe(403);
+      expect(outsider.status).toBe(404);
+      expect(noReason.status).toBe(400);
+      expect(platform.mcp.resolve('saker.search_cases', '1', toolCtx, tenant)).toBeDefined();
+    });
   });
 
   it('keeps no trace of a tool server error that echoes the secret, plain, base64-encoded or split, and gives every member only the code', async () => {

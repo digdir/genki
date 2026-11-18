@@ -85,4 +85,5 @@ export const services = {
     'The service has only prod. Publish an earlier version again instead of promoting or rolling back.',
   environmentPinNotAllowed:
     'Version {version} does not run in any environment this key or frontend may use.',
+  costBasisRecentRuns: "the average of the owner's runs in the last 30 days, rounded",
 } satisfies Translation<typeof source>;

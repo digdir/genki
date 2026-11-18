@@ -348,7 +348,15 @@ const traces = process.env.TRACES_ENDPOINT
         content: tracesContent(process.env),
         ...(process.env.TRACES_ENVIRONMENT ? { environment: process.env.TRACES_ENVIRONMENT } : {}),
       },
-      { secrets, tasks: async (id) => (await tasks.get(id))?.task, serviceName: 'genai-api' },
+      {
+        secrets,
+        tasks: async (id) => (await tasks.get(id))?.task,
+        serviceName: 'genai-api',
+        sampleRateFor: (tenant) => {
+          const rate = settings.effective(tenant)['tracing.sampleRate']?.value;
+          return typeof rate === 'number' ? rate : undefined;
+        },
+      },
     )
   : undefined;
 const traceResidency = residencies.includes(process.env.TRACES_RESIDENCY as Residency)
@@ -636,6 +644,7 @@ const admin = createAdmin({
 const builtAt = buildTimeOf(process.env.APP_BUILT_AT);
 const app = createApp(version, {
   ...(builtAt ? { builtAt } : {}),
+  ...(process.env.GENAI_ENV ? { environment: process.env.GENAI_ENV } : {}),
   modelDiscovery: platform.modelDiscovery.state,
   requestTiming: {
     write: (entry) => log('request', { ...entry }),

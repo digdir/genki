@@ -387,6 +387,7 @@ describe('the list of service drafts', () => {
         revision: 1,
         at: '2026-11-03T11:00:00.000Z',
         by: 'employee:test:kari',
+        trialRuns7d: 0,
       },
       expect.objectContaining({ id: 'svar', name: 'Svar', latestVersion: 1 }),
     ]);
