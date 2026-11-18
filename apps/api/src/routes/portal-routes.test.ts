@@ -1751,3 +1751,179 @@ describe('one price source for every cost figure', () => {
     expect(body.priced).toBe(body.totals.priced);
   });
 });
+
+describe('service tabs: latency, failure causes and run search', () => {
+  const ended = (
+    id: string,
+    at: string,
+    ms: number,
+    status: Task['status'] = 'completed',
+  ): Task => ({
+    ...task(id, digdir, at, status),
+    endedAt: new Date(Date.parse(at) + ms).toISOString(),
+  });
+  const error = (id: string, code: string): Event =>
+    ({
+      task: id,
+      seq: 4,
+      type: 'kernel.error',
+      v: 1,
+      ts: '2026-10-06T08:00:02Z',
+      actor: { kind: 'kernel', id: 'kernel' },
+      audience: 'audit',
+      data: { code, message: 'hemmelig detalj' },
+    }) as Event;
+  const question = (id: string, text: string): Event =>
+    ({
+      task: id,
+      seq: 1,
+      type: 'kernel.task.input',
+      v: 1,
+      ts: '2026-10-06T08:00:00Z',
+      actor: { kind: 'kernel', id: 'kernel' },
+      data: { input: { data: { query: text } } },
+    }) as Event;
+  const withTasks = (tasks: Task[], events: Event[] = []) =>
+    setup({
+      tasks: () =>
+        tasks.map((t) => ({ task: t.id, tenant: t.tenant, status: t.status, at: t.createdAt })),
+      task: async (id: string) => tasks.find((t) => t.id === id),
+      events: async function* (id): AsyncIterable<Event> {
+        for (const e of events) if (e.task === id) yield e;
+      },
+    });
+
+  it('gives each service the p50 and p95 time of the runs that ended in the period', async () => {
+    const { send } = await withTasks([
+      ended('a', '2026-10-06T08:00:00Z', 1000),
+      ended('b', '2026-10-06T08:01:00Z', 4000),
+      ended('c', '2026-10-06T08:02:00Z', 2000),
+      ended('d', '2026-10-06T08:03:00Z', 3000, 'failed'),
+      task('e', digdir, '2026-10-06T08:04:00Z', 'running'),
+    ]);
+
+    const body = await json<{ byService: { service: string; latency: unknown }[] }>(
+      await send(`/tenants/${digdir}/usage?days=3`, 'kari'),
+    );
+
+    expect(body.byService[0]?.latency).toEqual({ p50Ms: 2000, p95Ms: 4000, runs: 4 });
+  });
+
+  it("groups today's failed runs per service by failure code, the most common first", async () => {
+    const { send } = await withTasks(
+      [
+        ended('a', '2026-10-06T08:00:00Z', 10, 'failed'),
+        ended('b', '2026-10-06T09:00:00Z', 10, 'failed'),
+        ended('c', '2026-10-06T10:00:00Z', 10, 'failed'),
+        ended('old', '2026-10-05T09:00:00Z', 10, 'failed'),
+      ],
+      [error('a', 'model_error'), error('b', 'deadline_exceeded'), error('c', 'model_error')],
+    );
+
+    const response = await send(`/tenants/${digdir}/service-failures`, 'kari');
+    const body = await json<{
+      from: string;
+      data: { service: string; failed: number; causes: { code: string; count: number }[] }[];
+    }>(response);
+
+    expect(body.from).toBe('2026-10-05T22:00:00.000Z');
+    expect(body.data).toEqual([
+      {
+        service: 'klarsprak',
+        failed: 3,
+        causes: [
+          { code: 'model_error', reason: expect.any(String), count: 2 },
+          { code: 'deadline_exceeded', reason: expect.any(String), count: 1 },
+        ],
+      },
+    ]);
+    expect(JSON.stringify(body)).not.toContain('hemmelig');
+  });
+
+  it("never counts another organisation's failed runs", async () => {
+    const { send } = await withTasks(
+      [{ ...ended('x', '2026-10-06T08:00:00Z', 10, 'failed'), tenant: other, owner: other }],
+      [error('x', 'model_error')],
+    );
+
+    const body = await json<{ data: unknown[] }>(
+      await send(`/tenants/${digdir}/service-failures`, 'kari'),
+    );
+
+    expect(body.data).toEqual([]);
+    expect((await send(`/tenants/${digdir}/service-failures`, 'ola')).status).toBe(404);
+  });
+
+  it('pages through the run list with offset and keeps the total', async () => {
+    const { send } = await withTasks([
+      ended('a', '2026-10-06T08:00:00Z', 10),
+      ended('b', '2026-10-06T09:00:00Z', 10),
+      ended('c', '2026-10-06T10:00:00Z', 10),
+    ]);
+
+    const body = await json<{ data: { id: string }[]; total: number; offset: number }>(
+      await send(`/tenants/${digdir}/tasks?limit=2&offset=2`, 'kari'),
+    );
+
+    expect(body.data.map((r) => r.id)).toEqual(['a']);
+    expect(body).toMatchObject({ total: 3, offset: 2, limit: 2 });
+  });
+
+  it('finds runs by run id or by the question, but only searches questions for people who manage services', async () => {
+    const tasks = [
+      ended('run-tilskudd', '2026-10-06T08:00:00Z', 10),
+      ended('run-2', '2026-10-06T09:00:00Z', 10),
+      ended('run-3', '2026-10-06T10:00:00Z', 10),
+    ];
+    const { send } = await withTasks(tasks, [
+      question('run-2', 'Hva er reglene for tilskudd?'),
+      question('run-3', 'Noe annet'),
+    ]);
+    const reader: Principal = {
+      kind: 'employee',
+      issuer: 'test',
+      subject: 'soker',
+      tenant: digdir,
+      authorizedFor: [{ org: digdir, actions: ['read'] }],
+    };
+    Object.assign(principals, { soker: reader });
+
+    const manager = await json<{ data: { id: string }[]; total: number }>(
+      await send(`/tenants/${digdir}/tasks?q=Tilskudd`, 'kari'),
+    );
+    const member = await json<{ data: { id: string }[] }>(
+      await send(`/tenants/${digdir}/tasks?q=tilskudd`, 'soker'),
+    );
+
+    expect(manager.data.map((r) => r.id)).toEqual(['run-2', 'run-tilskudd']);
+    expect(manager.total).toBe(2);
+    expect(member.data.map((r) => r.id)).toEqual(['run-tilskudd']);
+  });
+
+  it('never finds a run by the question of an erased run', async () => {
+    const { send } = await setup({
+      tasks: () => [
+        { task: 't9', tenant: digdir, status: 'completed', at: '2026-10-06T08:00:00Z' },
+      ],
+      task: async () => ended('t9', '2026-10-06T08:00:00Z', 10),
+      events: async function* (): AsyncIterable<Event> {
+        yield question('t9', 'Personnummer 12345678901');
+      },
+      erasures: async () => [
+        {
+          task: 't9',
+          tenant: digdir,
+          at: '2026-10-06T09:00:00Z',
+          by: 'kari',
+          reason: 'Innsyn',
+        } as never,
+      ],
+    });
+
+    const body = await json<{ data: unknown[] }>(
+      await send(`/tenants/${digdir}/tasks?q=12345678901`, 'kari'),
+    );
+
+    expect(body.data).toEqual([]);
+  });
+});

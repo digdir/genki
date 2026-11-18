@@ -940,10 +940,66 @@ const taskRoutes: RouteConfig[] = [
         from: z.string().optional().describe('ISO time, inclusive'),
         to: z.string().optional().describe('ISO time, inclusive'),
         limit: z.string().optional().describe('1 to 500, default 100'),
+        offset: z.string().optional().describe('Runs to skip, 0 to 100000, default 0'),
+        q: z
+          .string()
+          .optional()
+          .describe(
+            'Text in the run id, or in the question for callers with manage-services, at most 200 characters; searches the newest 2000 runs that match the other filters, and never the question of an erased run',
+          ),
       }),
     },
     responses: {
-      200: json(z.object({ data: z.array(TaskRow), total: z.number().int() }), 'Runs'),
+      200: json(
+        z.object({
+          data: z.array(TaskRow),
+          total: z.number().int().describe('Runs that match, before offset and limit'),
+          offset: z.number().int(),
+          limit: z.number().int(),
+          q: z.string().optional().describe('The search as applied, in lower case'),
+          searched: z
+            .number()
+            .int()
+            .optional()
+            .describe('With q: how many of the newest runs were searched'),
+        }),
+        'Runs',
+      ),
+      ...memberRead,
+    },
+  }),
+  createRoute({
+    method: 'get',
+    path: '/tenants/{tenant}/service-failures',
+    summary:
+      "Each service's failed runs since a time, grouped by failure code, the most common first",
+    description: described(member, notAudited),
+    request: {
+      params: z.object({ tenant }),
+      headers: readHeaders,
+      query: z.object({
+        from: z
+          .string()
+          .optional()
+          .describe('ISO time, inclusive; default the start of today in Norway (Europe/Oslo)'),
+      }),
+    },
+    responses: {
+      200: json(
+        z.object({
+          from: z.string(),
+          data: z.array(
+            z.object({
+              service: z.string(),
+              failed: z.number().int(),
+              causes: z
+                .array(z.object({ code: z.string(), reason: z.string(), count: z.number().int() }))
+                .describe('By count, the most common cause first; unknown when a run left no code'),
+            }),
+          ),
+        }),
+        'Failure causes per service',
+      ),
       ...memberRead,
     },
   }),
@@ -2724,7 +2780,21 @@ const TenantUsage = z
     totals: PeriodTotals.describe('The sum of genki and the AI gateway, when one is configured'),
     daily: z.array(Day),
     byService: z.array(
-      z.object({ service: z.string(), usage: UsageWithRuns, title: z.string().optional() }),
+      z.object({
+        service: z.string(),
+        usage: UsageWithRuns,
+        latency: z
+          .object({
+            p50Ms: z.number().int(),
+            p95Ms: z.number().int(),
+            runs: z.number().int().describe('Ended runs the percentiles are taken over'),
+          })
+          .nullable()
+          .describe(
+            "Milliseconds from a run's start to its end in the period, by nearest rank; null when no run ended",
+          ),
+        title: z.string().optional(),
+      }),
     ),
     byModel: z.array(
       z.object({

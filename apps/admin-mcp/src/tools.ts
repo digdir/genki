@@ -186,6 +186,8 @@ interface CatalogModel {
   capabilities: string[];
   operations?: string[];
   price: { inputPerThousand: number; outputPerThousand: number } | null;
+  available?: boolean;
+  reason?: string;
 }
 
 const minimumReason = 10;
@@ -521,7 +523,7 @@ const listModels = tool({
         `${tenantPath(client.tenant)}/playground/options`,
       ),
       client
-        .request<{ data: CatalogModel[] }>('GET', '/models')
+        .request<{ data: CatalogModel[] }>('GET', '/models?all=true')
         .then((r) => r.data)
         .catch(() => [] as CatalogModel[]),
     ]);
@@ -535,13 +537,15 @@ const listModels = tool({
         price: known?.price ?? null,
         capabilities: known?.capabilities ?? [],
         operations: known?.operations ?? ['chat'],
+        available: known?.available ?? true,
+        ...(known?.reason ? { reason: known.reason } : {}),
       };
     });
     return {
       text: models
         .map(
           (m) =>
-            `- ${m.id}: ${m.status.replace('_', ' ')}, data in ${m.dataLocation ?? 'unknown'}, serves ${m.operations.join(', ')}, ${m.price ? `${m.price.inputPerThousand} kr in / ${m.price.outputPerThousand} kr out per 1,000 tokens` : 'not priced'}`,
+            `- ${m.id}: ${m.status.replace('_', ' ')}${m.available ? '' : ` (not available: ${(m.reason ?? 'unknown').replace('_', ' ')})`}, data in ${m.dataLocation ?? 'unknown'}, serves ${m.operations.join(', ')}, ${m.price ? `${m.price.inputPerThousand} kr in / ${m.price.outputPerThousand} kr out per 1,000 tokens` : 'not priced'}`,
         )
         .join('\n'),
       data: { models },

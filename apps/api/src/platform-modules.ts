@@ -104,6 +104,7 @@ export interface ModuleDeps extends Omit<SearchModuleExtras, 'now'> {
   enrichmentTask?: TrackedWork;
   /** Runs a direct dataset search as a kernel task, so its embedding counts like a run's (#678). */
   datasetSearchTask?: TrackedWork;
+  publishCheck?(definition: unknown, publisher: string): Promise<ValidationError[]>;
   tasks: TaskIndex;
   task(id: string): Promise<Task | undefined>;
   events(task: string): AsyncIterable<Event>;

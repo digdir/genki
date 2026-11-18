@@ -2,6 +2,8 @@
 
 Datasets and what fills and serves them: ingestion pipelines and their runs, file uploads, enrichment with hypothetical questions, the search engine behind a dataset and switches between engines, knowledge endpoints, the tenant catalogue, and the models a caller may use (`GET /models`).
 
+`GET /models` lists the enabled models the caller may use, with `price`, `contextWindow` and `releaseDate` when the model list has them, and `recommended` (the setting `models.recommended`, else `services.defaultModel`). A model the tenant's building block policy refuses or holds for approval is left out; `?all=true` lists it with `available: false` and `reason` (`not_allowed` or `requires_approval`).
+
 ## Rights
 
 - Reading needs membership in the tenant. That includes the list of uploaded files (`GET /tenants/{tenant}/datasets/{id}/uploads`), like reading the dataset itself; uploading and removing files need `manage-datasets`. Downloading one (`GET /tenants/{tenant}/datasets/{id}/uploads/{name}`) is for people only: an API key or system gets `403` (`urn:genai:problem:upload-people-only`). The file comes back as it was sent, with its type from the extension, `content-disposition: attachment`, `x-content-type-options: nosniff` and a sandbox content security policy, so a browser saves it and never runs it; a name it does not keep answers `404` (`urn:genai:problem:original-not-kept`). Only the organisation that owns the dataset reaches its files.
@@ -66,6 +68,12 @@ The console shows a search panel under each dataset in Katalog, Datasett; genki-
 `filters` narrows the list across all documents, not only the page: a URL-encoded JSON object in the shape a search takes, on the fields the dataset declares as filters, such as `{"type":"veileder"}`; `found` then counts the matching documents, and a field the dataset does not declare, or filters that are not a JSON object, answer `422`. Documents come in a fixed order, the same for every page: by document id on the knowledge database, and in the collection's own order on Typesense. A document read from an uploaded file of the organisation's own dataset carries `original` (`name`, `size`, `type`) to download it from `.../uploads/{name}`.
 
 `GET /tenants/{tenant}/datasets/{id}/documents/{doc}` reads one document the same way, with `excerpt`, the start of its text (at most 500 characters) when the engine reads passages in order. A document the dataset does not have answers `404` (`urn:genai:problem:dataset-document-not-found`).
+
+The answer always carries `total`: `found` when the engine counts, else the dataset's document count when nothing narrows the list, else an estimate from the pages read; `totalExact` is `false` for an estimate. `statusCounts` gives the documents per status in the whole dataset: `indexed`, `failed` (the documents the dataset's latest run skipped or failed, with the skip reason in `reason`) and `pending` (uploaded files with no document in the index yet, not counting failed ones). `failed` and `pending` are counted only for the organisation's own datasets; a shared dataset's runs stay with its owner. `status=failed` or `status=pending` lists those instead of the index, and takes only `query`, `limit` and `offset` (`422` for `filters` or `sort`). Each document has `status`, and `chunkCount` when the engine keeps a chunk count (Typesense's `total_chunks`).
+
+`listing` says what the engine can do with the list: `query` (search document titles) and `sort` (the keys it sorts by: `title`, `year`, `updated`). `query=` searches titles, at most 200 characters, and `sort=` with `order=asc|desc` sorts; a query or sort the engine cannot do answers `422`, so a screen hides what `listing` leaves out. Typesense searches the title field, and sorts by a key only when the dataset names a sortable field for it in `options.sortFields` (`{ title?, year?, updated? }`; the field must be sortable in the collection, genki changes no schema). The knowledge database cannot search or sort documents yet.
+
+`GET .../documents/{doc}?chunks=from-to`, such as `0-9`, adds `chunks`, the document's chunks at those positions in order (`id`, `position`, `page`, `pageEnd`, `text`), at most 50; a range that is not `from-to` or is wider answers `422`, and so does an engine that cannot read passages in order. `excerpt` stays.
 
 ## Who may search a dataset
 

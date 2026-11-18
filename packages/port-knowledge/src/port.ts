@@ -80,11 +80,29 @@ export interface SearchResult {
   warning?: string;
 }
 
+export const documentSortKeys = ['title', 'year', 'updated'] as const;
+export type DocumentSortKey = (typeof documentSortKeys)[number];
+export type SortDirection = 'asc' | 'desc';
+
+export interface DocumentSort {
+  key: DocumentSortKey;
+  direction: SortDirection;
+}
+
+export interface DocumentListing {
+  query: boolean;
+  sort: DocumentSortKey[];
+}
+
+export const maxDocumentQueryLength = 200;
+
 export interface DocumentsRequest {
   ids?: string[];
   filters?: Record<string, FilterValue>;
   limit?: number;
   offset?: number;
+  query?: string;
+  sort?: DocumentSort;
 }
 
 export interface DocumentSummary {
@@ -124,6 +142,7 @@ export interface DatasetInfo {
   profiles: string[];
   engine?: string;
   capabilities?: KnowledgeCapability[];
+  documentListing?: DocumentListing;
 }
 
 /** A port that declares no capabilities keeps everything it offered before capabilities existed. */

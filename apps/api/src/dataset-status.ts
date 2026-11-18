@@ -55,7 +55,10 @@ const lastOf = (execution: Execution): LastExecution => ({
   skipped: execution.report?.skipped ?? null,
 });
 
-const countsOf = async (deps: DatasetStatusDeps, dataset: string) => {
+export const writerCounts = async (
+  deps: Pick<DatasetStatusDeps, 'writers' | 'countable'>,
+  dataset: string,
+) => {
   if (!deps.writers?.supports(dataset)) return undefined;
   try {
     const route = deps.writers.open(dataset, { signal: AbortSignal.timeout(5000) });
@@ -86,7 +89,7 @@ export const datasetState = (pipelines: PipelineState[]): DatasetState => {
 };
 
 /** A pipeline's latest run; a replacement run converts in the background and is not one. */
-const latestOf = (executions: Execution[]) =>
+export const latestOf = (executions: Execution[]) =>
   executions.filter((r) => !r.replaces).sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
 
 export const publicDatasetState = async (
@@ -133,7 +136,7 @@ export const datasetStatus = async (
       skipped: [],
     };
   }
-  const counts = await countsOf(deps, item.id);
+  const counts = await writerCounts(deps, item.id);
   const found = counts ? undefined : await deps.documentCount?.(item).catch(() => undefined);
   return {
     state: datasetState(pipelines.map((p, i) => pipelineState(p, latestOf(perPipeline[i] ?? [])))),

@@ -15,7 +15,7 @@ import {
 import type { Context, Env, Hono, Schema } from 'hono';
 import { enterTenant } from './access.js';
 import { actorNames } from './actor-names.js';
-import { AdminRefused, refusedBy, routeOnly } from './admin.js';
+import { actorOf, AdminRefused, refusedBy, routeOnly } from './admin.js';
 import type { LeaseOptions } from './background-lease.js';
 import { VersionConflict, type ConfigEntry } from './config-store.js';
 import { changeReasonOf } from './http.js';
@@ -319,6 +319,36 @@ export const createQualityModule =
           } catch (error) {
             return draftFailed(c, error);
           }
+        });
+
+        app.get('/tenants/:tenant/services/:id/draft/checks', async (c) => {
+          const guard = await member(c);
+          if (guard.response) return guard.response;
+          const service = param(c, 'id');
+          const draft = await evals.draftOf(guard.tenant, service);
+          if (!draft) return problem(c, 404, t('problems.draftNotFound'));
+          if (!deps.publishCheck) return problem(c, 404, t('problems.draftNotFound'));
+          const definition = draft.spec.definition;
+          const metadata =
+            isRecord(definition) && isRecord(definition.metadata) ? definition.metadata : {};
+          const problems =
+            metadata.tenant !== guard.tenant || metadata.id !== service
+              ? [{ path: 'metadata', message: t('problems.draftOtherService') }]
+              : await deps.publishCheck(
+                  definition,
+                  actorOf(guard.principal.actor ?? guard.principal),
+                );
+          const hooks = deps.hookRuntime
+            ? await deps.hookRuntime.directory.forTenant(guard.tenant)
+            : [];
+          const hooksSkipped = hooks.some((h) => h.point === 'on_publish' && h.enabled);
+          return c.json({
+            service,
+            revision: draft.version,
+            ready: problems.length === 0,
+            problems,
+            ...(hooksSkipped ? { hooksSkipped: true } : {}),
+          });
         });
 
         app.put('/tenants/:tenant/services/:id/draft', async (c) => {

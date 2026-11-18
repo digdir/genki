@@ -426,10 +426,15 @@ export const createApiClient = ({
         )
       ).data,
     listModels: async (
-      filter: { residency?: Residency | undefined; strategy?: string | undefined },
+      filter: {
+        residency?: Residency | undefined;
+        strategy?: string | undefined;
+        all?: boolean | undefined;
+      },
       signal?: AbortSignal,
     ) => {
       const query = new URLSearchParams();
+      if (filter.all) query.set('all', 'true');
       if (filter.residency) query.set('residency', filter.residency);
       if (filter.strategy) query.set('strategy', filter.strategy);
       const suffix = query.size > 0 ? `?${query.toString()}` : '';

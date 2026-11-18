@@ -1195,6 +1195,51 @@ export const accessRoutes: RouteConfig[] = [
     },
   }),
   createRoute({
+    method: 'get',
+    path: '/tenants/{tenant}/services/{service}/shared-with',
+    summary:
+      'Who can call one service: its frontends, the API keys that reach it and the other organisations it is shared with (any member; not audited)',
+    request: { params: z.object({ tenant, service: pathParam('service', 'klarsprak') }) },
+    responses: {
+      200: json(
+        z.object({
+          service: z.string(),
+          frontends: z
+            .array(
+              z.object({
+                id: z.string(),
+                name: z.string().optional(),
+                kind: z.enum(['server', 'browser']),
+                channels: z.array(z.string()),
+              }),
+            )
+            .describe('Registered clients of the service'),
+          apiKeys: z
+            .array(
+              z.object({
+                id: z.string(),
+                name: z.string(),
+                prefix: z.string().optional(),
+                bound: z.boolean().describe('Bound to this service alone'),
+                client: z.string().optional(),
+              }),
+            )
+            .describe(
+              'Keys that are not revoked or expired and are bound to the service, or whose grants name it or every service',
+            ),
+          tenants: z
+            .union([z.literal('*'), z.array(z.string())])
+            .describe(
+              'The other organisations the service is shared with (spec.availableTo); * is all',
+            ),
+        }),
+        'Who can call the service',
+      ),
+      401: unauthorized,
+      404: problem('No such service, or not a member of this tenant'),
+    },
+  }),
+  createRoute({
     method: 'post',
     path: '/tenants/{tenant}/services/{service}/api-keys',
     summary:

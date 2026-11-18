@@ -2,7 +2,8 @@
 import { inEnglish } from '@genai/i18n/react';
 import { cleanup, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { ApiClient } from '../../api';
+import type { ApiClient, ApiContext } from '../../api';
+import { blocksApi } from '../../api/blocks';
 import type { CatalogItem } from '../../api/building-blocks';
 import { exampleBlocks, exampleProposal } from '../../data/building-blocks';
 import { RightsProvider } from '../../Shell';
@@ -90,6 +91,46 @@ describe('building blocks in English', () => {
       screen.getByRole('heading', { name: /^Version 2\.2, available from \d+ Oct$/ }),
     ).toBeTruthy();
     expect(screen.getByRole('tab', { name: 'Versions' })).toBeTruthy();
+  });
+
+  it('shows the price and the request for approval of a model the organisation must ask for', async () => {
+    const gpt41 = exampleBlocks.find((b) => b.id === 'gpt41') as CatalogItem;
+    const ctx = {
+      tenantPath: (tenant: string) => `/tenants/${tenant}`,
+      get: async (path: string) =>
+        path === '/models?all=true'
+          ? {
+              data: [
+                {
+                  id: 'gpt41',
+                  price: { inputPerThousand: 0.02, outputPerThousand: 0.08 },
+                  available: false,
+                  reason: 'requires_approval',
+                },
+              ],
+            }
+          : { data: [] },
+    } as unknown as ApiContext;
+    render(
+      inEnglish(
+        <RightsProvider value={['manage-services']}>
+          <BlockDetail
+            api={{ ...api, blocks: blocksApi(ctx) } as unknown as ApiClient}
+            tenant="t"
+            tenantName="Testetaten"
+            item={gpt41}
+            services={[]}
+            versions={{ ok: true, data: [] }}
+            tab="about"
+            onRetry={() => undefined}
+            onChanged={() => undefined}
+          />
+        </RightsProvider>,
+      ),
+    );
+
+    expect(await screen.findByText('NOK 0.02 per 1,000 tokens')).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: 'Request approval' }).length).toBeGreaterThan(0);
   });
 
   it('shows a read-only notice naming the right in English', () => {

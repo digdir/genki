@@ -112,7 +112,7 @@ export const blocksApi = (ctx: ApiContext) => {
       return connections.map((c) => fromIntegration(c, integrations));
     },
     models: async (signal?: AbortSignal) =>
-      (await ctx.get<{ data?: ModelWithFacts[] }>('/models', signal)).data ?? [],
+      (await ctx.get<{ data?: ModelWithFacts[] }>('/models?all=true', signal)).data ?? [],
     serviceInputs: async (signal?: AbortSignal) =>
       (await ctx.get<{ data?: ServiceInputs[] }>('/v1/models', signal)).data ?? [],
     runShared: async (publicName: string, content: string | ChatPart[]) => {

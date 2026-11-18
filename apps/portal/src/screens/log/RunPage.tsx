@@ -132,7 +132,7 @@ export const RunPage = ({
     [api, tenant, runId],
   );
   const [catalogue] = useAsync(
-    async (signal) => await api.listModels({}, signal).catch(() => []),
+    async (signal) => await api.listModels({ all: true }, signal).catch(() => []),
     [api],
   );
   const [open, setOpen] = useState<Record<number, boolean>>({});

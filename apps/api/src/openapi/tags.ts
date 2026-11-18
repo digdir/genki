@@ -56,7 +56,7 @@ const rules: [RegExp, ApiTag][] = [
     'Access and extensions',
   ],
   [
-    /^\/tenants\/\{tenant\}\/(projects|tasks|test-sets|eval-runs|feedback|testcase-candidates|gates|guardrail-rules|diagnostics|usage|quota-requests|status|audit|overview|triggers)(\/|$)/,
+    /^\/tenants\/\{tenant\}\/(projects|tasks|service-failures|test-sets|eval-runs|feedback|testcase-candidates|gates|guardrail-rules|diagnostics|usage|quota-requests|status|audit|overview|triggers)(\/|$)/,
     'Work and quality',
   ],
   [

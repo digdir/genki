@@ -574,3 +574,46 @@ describe('source links from the catalog', () => {
     expect(parsed.ok).toBe(false);
   });
 });
+
+describe('listing documents through the router', () => {
+  const engine = (listing?: { query: boolean; sort: ('title' | 'year' | 'updated')[] }) => {
+    const listed: unknown[] = [];
+    const { adapter } = stub();
+    const connect = adapter.connect.bind(adapter);
+    const listingAdapter: typeof adapter = {
+      ...adapter,
+      connect: (endpoint) => ({
+        ...connect(endpoint),
+        documents: async (_d, request) => {
+          listed.push(request);
+          return { documents: [], found: 0 };
+        },
+        ...(listing ? { documentListing: () => listing } : {}),
+      }),
+    };
+    const port = router(listingAdapter).open({ kind: 'dataset', id: 'digdir/kudos' }, context());
+    return { port, listed };
+  };
+
+  it('refuses a title search or a sort the engine does not declare, before the engine sees it', async () => {
+    const { port, listed } = engine();
+
+    await expect(port.documents?.({ query: 'brev' })).rejects.toMatchObject({
+      code: 'unsupported',
+    });
+    await expect(
+      port.documents?.({ sort: { key: 'year', direction: 'asc' } }),
+    ).rejects.toMatchObject({ code: 'unsupported' });
+    expect(port.info().documentListing).toBeUndefined();
+    expect(listed).toEqual([]);
+  });
+
+  it('passes a declared title search on trimmed, and a declared sort as asked', async () => {
+    const { port, listed } = engine({ query: true, sort: ['year'] });
+
+    await port.documents?.({ query: '  brev  ', sort: { key: 'year', direction: 'desc' } });
+
+    expect(port.info().documentListing).toEqual({ query: true, sort: ['year'] });
+    expect(listed[0]).toMatchObject({ query: 'brev', sort: { key: 'year', direction: 'desc' } });
+  });
+});

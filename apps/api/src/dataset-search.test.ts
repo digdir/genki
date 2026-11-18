@@ -27,6 +27,7 @@ import {
   type DatasetDocumentDetail,
   type DatasetDocumentsPage,
   type DatasetSearchAnswer,
+  type DatasetSearchDeps,
 } from './dataset-search.js';
 import { modelRunRoutes } from './lockdown.js';
 import { bootPlatform } from './testkit.js';
@@ -93,6 +94,8 @@ const boot = async (
     pages?: Record<string, Record<string, number>>;
     refuse?: Error;
     blobs?: InMemoryBlobStore;
+    ingestion?: DatasetSearchDeps['ingestion'];
+    documentCount?: DatasetSearchDeps['documentCount'];
   } = {},
 ) => {
   const engine = memoryEngine();
@@ -212,6 +215,8 @@ const boot = async (
     logger: (message, fields) => logged.push({ message, fields }),
     ...(options.clock ? { clock: options.clock } : {}),
     ...(options.blobs ? { blobs: options.blobs } : {}),
+    ...(options.ingestion ? { ingestion: options.ingestion } : {}),
+    ...(options.documentCount ? { documentCount: options.documentCount } : {}),
   });
   const search = (path: string, as: string, body: unknown) =>
     app.request(path, {
@@ -824,5 +829,237 @@ describe("listing a dataset's documents", () => {
     expect(JSON.parse(text)).toMatchObject({ type: datasetDocumentsFailedType });
     expect(text).not.toContain('hemmelig');
     expect(text).not.toContain('10.0.0.7');
+  });
+
+  const lastRun = (report: Record<string, unknown>): DatasetSearchDeps['ingestion'] => ({
+    list: async () => [{ id: 'filer-pipeline' }] as never,
+    executions: async () =>
+      [
+        {
+          id: 'run-1',
+          status: 'succeeded',
+          startedAt: '2026-11-18T08:00:00Z',
+          report: { stored: 3, skipped: 1, failed: [], ...report },
+        },
+      ] as never,
+  });
+
+  const page = async (app: Hono, path: string, as = 'kari') =>
+    (await (await get(app, path, as)).json()) as DatasetDocumentsPage;
+
+  it("always answers a total, from the dataset's document count when the engine does not count", async () => {
+    const { app, knowledge } = await boot({ documentCount: async () => 7 });
+    const open = knowledge.open.bind(knowledge);
+    knowledge.open = (ref, ctx) => ({
+      ...open(ref, ctx),
+      documents: async () => ({ documents: [{ id: 'dok-1', fields: {} }] }),
+    });
+
+    const answer = await page(app, documentsPath('filer'));
+
+    expect(answer).toMatchObject({ total: 7, totalExact: true });
+    expect(answer.found).toBeUndefined();
+  });
+
+  it('estimates the total from the pages read when nothing counts, and says it is an estimate', async () => {
+    const { app, knowledge } = await boot();
+    const open = knowledge.open.bind(knowledge);
+    knowledge.open = (ref, ctx) => ({
+      ...open(ref, ctx),
+      documents: async () => ({ documents: [{ id: 'dok-1', fields: {} }] }),
+    });
+
+    const answer = await page(app, documentsPath('filer', digdir, '?limit=25&offset=25'));
+
+    expect(answer).toMatchObject({ total: 26, totalExact: false });
+  });
+
+  it('refuses a title search or a sort the engine cannot do, so a screen can hide them', async () => {
+    const { app } = await boot();
+
+    const listing = await page(app, documentsPath('filer'));
+    const query = await get(app, documentsPath('filer', digdir, '?query=tilskudd'), 'kari');
+    const sort = await get(app, documentsPath('filer', digdir, '?sort=title'), 'kari');
+
+    expect(listing.listing).toEqual({ query: false, sort: [] });
+    expect([query.status, sort.status]).toEqual([422, 422]);
+    expect(await query.json()).toMatchObject({ errors: [{ path: 'query' }] });
+    expect(await sort.json()).toMatchObject({ errors: [{ path: 'sort' }] });
+  });
+
+  it('passes a title search and a sort the engine offers on to it', async () => {
+    const { app, knowledge } = await boot();
+    const asked: unknown[] = [];
+    const open = knowledge.open.bind(knowledge);
+    knowledge.open = (ref, ctx) => {
+      const port = open(ref, ctx);
+      return {
+        ...port,
+        info: () => ({ ...port.info(), documentListing: { query: true, sort: ['title'] } }),
+        documents: async (request) => {
+          asked.push(request);
+          return { documents: [], found: 0 };
+        },
+      };
+    };
+
+    const answer = await page(
+      app,
+      documentsPath('filer', digdir, '?query=tilskudd&sort=title&order=desc'),
+    );
+
+    expect(asked[0]).toMatchObject({
+      query: 'tilskudd',
+      sort: { key: 'title', direction: 'desc' },
+    });
+    expect(answer).toMatchObject({
+      query: 'tilskudd',
+      sort: { key: 'title', order: 'desc' },
+      listing: { query: true, sort: ['title'] },
+    });
+  });
+
+  it("lists the documents the organisation's own dataset failed or skipped in its latest run", async () => {
+    const { app } = await boot({
+      ingestion: lastRun({
+        failed: ['brev-7'],
+        skippedDocuments: [{ document: 'skann-3', reason: 'no_text' }],
+      }),
+    });
+
+    const answer = await page(app, documentsPath('filer', digdir, '?status=failed'));
+
+    expect(answer.status).toBe('failed');
+    expect(answer.documents).toEqual([
+      { id: 'skann-3', fields: {}, status: 'failed', reason: 'no_text' },
+      { id: 'brev-7', fields: {}, status: 'failed', reason: 'failed' },
+    ]);
+    expect(answer).toMatchObject({ total: 2, totalExact: true });
+  });
+
+  it('lists the failures of every pipeline, also when another pipeline ran later', async () => {
+    const run = (id: string, startedAt: string, failed: string[]) => ({
+      id,
+      status: 'succeeded',
+      startedAt,
+      report: { stored: 1, skipped: 0, failed },
+    });
+    const { app } = await boot({
+      ingestion: {
+        list: async () => [{ id: 'opplasting' }, { id: 'nettsted' }] as never,
+        executions: async (_dataset: string, pipeline: string) =>
+          (pipeline === 'opplasting'
+            ? [run('run-1', '2026-11-18T08:00:00Z', ['brev-7'])]
+            : [run('run-2', '2026-11-18T09:00:00Z', [])]) as never,
+      },
+    });
+
+    const answer = await page(app, documentsPath('filer', digdir, '?status=failed'));
+
+    expect(answer.documents.map((d) => d.id)).toEqual(['brev-7']);
+    expect(answer.statusCounts.failed).toBe(1);
+  });
+
+  it("never shows another owner's failed or pending documents, such as a shared platform dataset's", async () => {
+    const { app } = await boot({
+      ingestion: lastRun({ failed: ['hemmelig-1'] }),
+    });
+
+    const answer = await page(app, documentsPath('digdir/felles', digdir, '?status=failed'));
+
+    expect(answer.documents).toEqual([]);
+    expect(answer.statusCounts).toMatchObject({ failed: 0, pending: 0 });
+  });
+
+  it('lists an uploaded file that is not indexed yet as pending', async () => {
+    const blobs = new InMemoryBlobStore();
+    const prefix = uploadPrefix(`${digdir}/filer`, digdir);
+    await blobs.put(
+      { tenant: digdir, path: `${prefix}ny-veileder.pdf` },
+      new Uint8Array(4),
+      'application/pdf',
+    );
+    const { app } = await boot({ blobs });
+
+    const answer = await page(app, documentsPath('filer', digdir, '?status=pending'));
+
+    expect(answer.documents).toEqual([
+      {
+        id: uploadDocumentId(digdir, `${prefix}ny-veileder.pdf`),
+        title: 'ny-veileder.pdf',
+        fields: {},
+        original: { name: 'ny-veileder.pdf', size: 4, type: 'application/pdf' },
+        status: 'pending',
+      },
+    ]);
+  });
+
+  it('counts each status over the whole dataset, whatever page or status is listed', async () => {
+    const { app } = await boot({
+      ingestion: lastRun({ failed: ['brev-7'] }),
+      documentCount: async () => 5,
+    });
+
+    const answer = await page(app, documentsPath('filer', digdir, '?status=failed'));
+
+    expect(answer.statusCounts).toEqual({ indexed: 5, failed: 1, pending: 0 });
+  });
+
+  it('refuses filters or a sort on failed and pending documents', async () => {
+    const { app } = await boot();
+    const filters = encodeURIComponent(JSON.stringify({ kategori: 'Veiledning' }));
+
+    const response = await get(
+      app,
+      documentsPath('filer', digdir, `?status=pending&filters=${filters}`),
+      'kari',
+    );
+
+    expect(response.status).toBe(422);
+    expect(await response.json()).toMatchObject({ errors: [{ path: 'filters' }] });
+  });
+
+  it('gives each listed document its chunk count when the engine keeps it', async () => {
+    const { app } = await boot();
+
+    const answer = await page(app, documentsPath('filer'));
+
+    expect(answer.documents[0]?.chunkCount).toBeGreaterThan(0);
+    expect(answer.documents.every((d) => d.status === 'indexed')).toBe(true);
+  });
+
+  it('reads the chunks asked for by position and keeps the excerpt', async () => {
+    const { app } = await boot();
+
+    const response = await get(app, `${documentsPath('filer')}/dok-1?chunks=0-1`, 'kari');
+    const doc = (await response.json()) as DatasetDocumentDetail;
+
+    expect(response.status).toBe(200);
+    expect(doc.chunks?.map((c) => c.position)).toEqual([0, 1]);
+    expect(doc.chunks?.every((c) => c.text.length > 0)).toBe(true);
+    expect(doc.excerpt?.length).toBeGreaterThan(0);
+  });
+
+  it('refuses a chunks range that is not from-to or spans more than 50 positions', async () => {
+    const { app } = await boot();
+
+    const wide = await get(app, `${documentsPath('filer')}/dok-1?chunks=0-50`, 'kari');
+    const garbled = await get(app, `${documentsPath('filer')}/dok-1?chunks=alle`, 'kari');
+
+    expect([wide.status, garbled.status]).toEqual([422, 422]);
+    expect(await wide.json()).toMatchObject({ errors: [{ path: 'chunks' }] });
+  });
+
+  it("never reads chunks of another tenant's dataset", async () => {
+    const { app } = await boot();
+
+    const response = await get(
+      app,
+      `${documentsPath(`${other}/hemmelig`)}/dok-1?chunks=0-1`,
+      'kari',
+    );
+
+    expect(response.status).toBe(404);
+    expect(await response.text()).not.toContain('Tilskudd');
   });
 });

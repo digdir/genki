@@ -1308,6 +1308,34 @@ export const serviceRoutes: RouteConfig[] = [
     },
   }),
   createRoute({
+    method: 'get',
+    path: '/tenants/{tenant}/services/{id}/draft/checks',
+    summary:
+      "Run the checks a publish runs on the service's saved draft, without publishing it (any member; not audited)",
+    description:
+      'The same checks as publishing the draft: the definition schema, an archived service, the platform modules (building block policy, risk confirmation, models and the rest), step flows, datasets and the evaluation gates against test runs already recorded. on_publish hooks are not run, so `ready` cannot promise they let the publish through. No model is called and nothing is stored.',
+    request: { params: z.object({ tenant, id: service }) },
+    responses: {
+      200: json(
+        z.object({
+          service: z.string(),
+          revision: z.number().int().describe('The draft revision checked'),
+          ready: z.boolean().describe('True when publishing the draft now would pass the checks'),
+          problems: z.array(z.object({ path: z.string(), message: z.string() })),
+          hooksSkipped: z
+            .literal(true)
+            .optional()
+            .describe(
+              'Present when the organisation has enabled on_publish hooks: they are not run here and can still refuse the publish',
+            ),
+        }),
+        'The checks',
+      ),
+      ...tenantErrors,
+      404: problem('No draft, or the tenant is not reachable'),
+    },
+  }),
+  createRoute({
     method: 'post',
     path: '/tenants/{tenant}/services/{id}/draft/rebase',
     summary:

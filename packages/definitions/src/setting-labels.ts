@@ -146,6 +146,10 @@ export const settingSchemaLabels: SchemaLabels = {
       label: 'Modell nye tjenester starter med',
       help: 'Modellen nye tjenester starter med. Tomt velger den billigste prisede modellen virksomheten kan bruke.',
     },
+    'models.recommended': {
+      label: 'Anbefalte modeller',
+      help: 'Modellene som merkes som anbefalt der man velger modell. Tomt anbefaler modellen nye tjenester starter med.',
+    },
     'answers.writtenStandard': {
       label: 'Målform i svar',
       help: 'Svar på samme målform som spørsmålet, eller alltid bokmål eller nynorsk.',
@@ -351,6 +355,10 @@ export const settingSchemaLabels: SchemaLabels = {
     'services.defaultModel': {
       label: 'Model new services start with',
       help: 'The model new services start with. Empty picks the cheapest priced model the organisation may use.',
+    },
+    'models.recommended': {
+      label: 'Recommended models',
+      help: 'The models marked as recommended where people pick a model. Empty recommends the model new services start with.',
     },
     'answers.writtenStandard': {
       label: 'Written standard in answers',
@@ -625,6 +633,12 @@ export const settingSchemaLabels: SchemaLabels = {
       },
     },
     'services.defaultModel': {
+      'x-group': {
+        nb: 'Modeller',
+        en: 'Models',
+      },
+    },
+    'models.recommended': {
       'x-group': {
         nb: 'Modeller',
         en: 'Models',

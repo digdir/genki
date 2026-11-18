@@ -594,3 +594,87 @@ describe('a login confined to a client', () => {
     expect(await at('GET', `/tenants/${digdir}/overview`)).toBe(false);
   });
 });
+
+describe('who a service is shared with', () => {
+  type SharedWith = {
+    frontends: { id: string }[];
+    apiKeys: { name: string; bound: boolean }[];
+    tenants: string[] | '*';
+  };
+  const createKey = async (
+    call: Awaited<ReturnType<typeof boot>>['call'],
+    path: string,
+    name: string,
+  ) => {
+    const created = await call(path, { method: 'POST', as: 'kari', body: { name } });
+    expect(created.status).toBe(201);
+    return (await json<{ apiKey: { id: string } }>(created)).apiKey.id;
+  };
+
+  it('names the frontends and the API keys that reach a service, and no key bound to another service', async () => {
+    const { call } = await boot();
+    await call(`/tenants/${digdir}/clients/klarsprak-web`, {
+      method: 'PUT',
+      as: 'kari',
+      body: ka(),
+    });
+    await createKey(call, `/tenants/${digdir}/services/klarsprak/api-keys`, 'Backend');
+    await createKey(call, `/tenants/${digdir}/services/nynorsk/api-keys`, 'Nynorsk-backend');
+    await createKey(call, `/tenants/${digdir}/api-keys`, 'Alle tjenester');
+
+    const shared = await json<SharedWith>(
+      await call(`/tenants/${digdir}/services/klarsprak/shared-with`, { as: 'kari' }),
+    );
+
+    expect(shared.frontends.map((f) => f.id)).toEqual(['klarsprak-web']);
+    expect(shared.apiKeys).toEqual([
+      expect.objectContaining({ name: 'Alle tjenester', bound: false }),
+      expect.objectContaining({ name: 'Backend', bound: true }),
+    ]);
+    expect(shared.tenants).toEqual([]);
+  });
+
+  it('leaves out a revoked key', async () => {
+    const { call } = await boot();
+    const id = await createKey(call, `/tenants/${digdir}/services/klarsprak/api-keys`, 'Backend');
+    await call(`/tenants/${digdir}/api-keys/${id}/revoke`, { method: 'POST', as: 'kari' });
+
+    const shared = await json<SharedWith>(
+      await call(`/tenants/${digdir}/services/klarsprak/shared-with`, { as: 'kari' }),
+    );
+
+    expect(shared.apiKeys).toEqual([]);
+  });
+
+  it('lists the other organisations a service is shared with', async () => {
+    const { call, platform } = await boot();
+    const delt = klarsprak({ id: 'delt' });
+    expect(
+      (
+        await platform.definitions.publish(
+          { ...delt, spec: { ...delt.spec, availableTo: [other, digdir] } },
+          'test',
+          'test',
+          files,
+        )
+      ).ok,
+    ).toBe(true);
+
+    const shared = await json<SharedWith>(
+      await call(`/tenants/${digdir}/services/delt/shared-with`, { as: 'kari' }),
+    );
+
+    expect(shared.tenants).toEqual([other]);
+  });
+
+  it("never answers for another organisation's service, nor for one that does not exist", async () => {
+    const { call } = await boot();
+
+    const outsider = await call(`/tenants/${digdir}/services/klarsprak/shared-with`, { as: 'ola' });
+    const missing = await call(`/tenants/${digdir}/services/finnes-ikke/shared-with`, {
+      as: 'kari',
+    });
+
+    expect([outsider.status, missing.status]).toEqual([404, 404]);
+  });
+});

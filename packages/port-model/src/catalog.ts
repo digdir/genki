@@ -43,6 +43,7 @@ const discoveryRule = z.strictObject({
   capabilities: z.array(z.enum(capabilities)).default(['stream']),
   apis: bindings.optional(),
   maker: z.string().min(1).max(100).optional(),
+  releaseDates: z.record(z.string().min(1).max(200), z.iso.date()).optional(),
 });
 
 export const connectionSettingValue = /^[\x21-\x7e](?:[\x20-\x7e]{0,254}[\x21-\x7e])?$/;
@@ -116,6 +117,7 @@ const model = z.strictObject({
   capabilities: z.array(z.enum(capabilities)).default([]),
   apis: bindings.optional(),
   contextWindow: z.number().int().positive().optional(),
+  releaseDate: z.iso.date().optional(),
   maxOutputTokens: z.number().int().positive().optional(),
   parameters: parameterRules.optional(),
   tenants: z.array(z.string().regex(/^\d{9}$/)).optional(),

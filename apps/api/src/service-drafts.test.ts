@@ -452,3 +452,37 @@ describe('three-way merge of a draft', () => {
     expect(conflicts).toEqual([]);
   });
 });
+
+describe('checking a draft before it is published', () => {
+  it('runs the publish checks on the saved draft and says it is ready, without publishing it', async () => {
+    const env = await boot();
+    await env.saveDraft({ purpose: 'Svarer grundig' });
+
+    const checked = await env.send('GET', `${env.draftPath}/checks`);
+
+    expect(checked.status).toBe(200);
+    expect(checked.body).toMatchObject({ service: 'svar', ready: true, problems: [] });
+    expect((await env.latest()).purpose).toBe('Svarer kort på spørsmål');
+  });
+
+  it('lists what would stop the draft from publishing', async () => {
+    const env = await boot();
+    await env.saveDraft({ riskClass: 'high' as never });
+
+    const checked = await env.send('GET', `${env.draftPath}/checks`);
+
+    expect(checked.body.ready).toBe(false);
+    expect((checked.body.problems as { path: string }[]).length).toBeGreaterThan(0);
+    expect((await env.latest()).riskClass).toBe('minimal');
+  });
+
+  it('answers 404 without a draft, and never checks the draft of another organisation', async () => {
+    const env = await boot();
+    await env.saveDraft({ purpose: 'Svarer grundig' });
+
+    const none = await env.send('GET', `/tenants/${digdir}/services/finnes-ikke/draft/checks`);
+    const outsider = await env.send('GET', `${env.draftPath}/checks`, undefined, 'ola');
+
+    expect([none.status, outsider.status]).toEqual([404, 404]);
+  });
+});

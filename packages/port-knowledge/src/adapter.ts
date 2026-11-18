@@ -2,6 +2,7 @@ import { secretRefPattern, type Credential } from '@genai/kernel';
 import { z } from 'zod';
 import type {
   CitationResolution,
+  DocumentListing,
   DocumentPage,
   DocumentsRequest,
   ExportedDocument,
@@ -80,6 +81,7 @@ export interface KnowledgeConnection<D = unknown> {
     request: DocumentsRequest,
     signal: AbortSignal,
   ): Promise<DocumentPage>;
+  documentListing?(dataset: DatasetConfig<D>): DocumentListing;
   resolveCitations?(
     dataset: DatasetConfig<D>,
     ids: string[],
