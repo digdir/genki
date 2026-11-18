@@ -133,6 +133,7 @@ export const SourceSettings = ({
   const source = pipeline?.spec.source;
   const dirty = JSON.stringify(form) !== JSON.stringify(saved);
   const nameMissing = !form.name.trim();
+  const descriptionCleared = !form.description.trim() && !!view.description;
 
   useEffect(() => onDirty(dirty), [dirty, onDirty]);
   useEffect(() => {
@@ -152,7 +153,7 @@ export const SourceSettings = ({
   const save = async () => {
     if (busy) return;
     setTried(true);
-    if (reasonProblem(reason, t) || nameMissing) return;
+    if (reasonProblem(reason, t) || nameMissing || descriptionCleared) return;
     setBusy(true);
     setFailure('');
     const why = reason.trim();
@@ -168,7 +169,7 @@ export const SourceSettings = ({
           view.id,
           {
             name: form.name.trim(),
-            description: form.description.trim(),
+            ...(form.description.trim() ? { description: form.description.trim() } : {}),
             ...(scopeChanged ? { searchScope: form.searchScope } : {}),
           },
           why,
@@ -212,6 +213,7 @@ export const SourceSettings = ({
           multiline
           rows={2}
           value={form.description}
+          error={descriptionCleared ? t('datasets.descriptionCleared') : undefined}
           onChange={(e) => set({ description: e.target.value })}
         />
         <dl className="source-dl">
@@ -480,7 +482,13 @@ export const DeleteDataset = ({
         {t('datasets.deleteDataset')}
       </Button>
       {confirming ? (
-        <Dialog open modal onClose={close} aria-labelledby="slett-dialog-h">
+        <Dialog
+          open
+          modal
+          onClose={close}
+          aria-labelledby="slett-dialog-h"
+          closeButton={t('common.close')}
+        >
           <div className="stack-sm">
             <Heading level={2} data-size="xs" id="slett-dialog-h">
               {t('datasets.deleteQuestion', { name: view.name })}
@@ -527,7 +535,7 @@ export const DeleteDataset = ({
 export const LeaveDialog = ({ onLeave, onStay }: { onLeave: () => void; onStay: () => void }) => {
   const t = useT();
   return (
-    <Dialog open modal onClose={onStay} aria-labelledby="leave-h">
+    <Dialog open modal onClose={onStay} aria-labelledby="leave-h" closeButton={t('common.close')}>
       <div className="stack-sm">
         <Heading level={2} data-size="xs" id="leave-h">
           {t('datasets.leaveQuestion')}

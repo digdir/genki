@@ -1,4 +1,3 @@
-import { ChevronLeftIcon } from '@navikt/aksel-icons';
 import {
   Alert,
   Button,
@@ -21,7 +20,7 @@ import { useFormat } from '@genai/i18n/react';
 import { useRef, useState, type ComponentRef } from 'react';
 import type { ApiClient } from '../../api';
 import type { EndpointAuth, PipelineSource, Schedule, SearchScope } from '../../api/datasets';
-import { Icon } from '../../components/Icon';
+import { BackLink } from '../../components/BackLink';
 import { reasonProblem, ReasonField } from '../../components/ReasonField';
 import { kudosDocumentTypes } from '../../data/datasets';
 import { useAsync } from '../../hooks';
@@ -352,17 +351,7 @@ export const LiveNewDataset = ({
 
   return (
     <div className="stack dataset-page new-dataset">
-      <a
-        href="#/datasets"
-        className="back-link"
-        onClick={(e) => {
-          e.preventDefault();
-          onCancel();
-        }}
-      >
-        <Icon icon={ChevronLeftIcon} size={18} />
-        {t('datasets.title')}
-      </a>
+      <BackLink label={t('datasets.title')} href="#/datasets" />
       <div className="stack-xs">
         <Heading level={1} data-size="md">
           {t('datasets.newTitle')}

@@ -360,7 +360,7 @@ describe('dataset ingestions', () => {
     await renderLive(`${veiledere}/ingestions`, fetch);
     fireEvent.click(await screen.findByRole('button', { name: /18\. november 2026/ }));
     expect(
-      screen.getByText('Skannet PDF uten tekst. Tekstgjenkjenning er ikke slått på.'),
+      screen.getByText('Filen har ikke tekst vi kan lese, for eksempel et skannet dokument.'),
     ).toBeTruthy();
     expect(screen.queryByRole('button', { name: /tekstgjenkjenning/i })).toBeNull();
   });

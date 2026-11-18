@@ -20,12 +20,20 @@ export interface SkippedDocument {
   reason: SkipReason;
 }
 
+export type ExecutionStatus =
+  'queued' | 'running' | 'waiting' | 'succeeded' | 'failed' | 'cancelled';
+
+export const openStatuses: readonly ExecutionStatus[] = ['queued', 'running', 'waiting'];
+
+export const isOpen = (run: { status: ExecutionStatus } | null | undefined) =>
+  !!run && openStatuses.includes(run.status);
+
 export interface LastExecution {
-  status: string;
+  status: ExecutionStatus;
   startedAt: string;
-  endedAt?: string | null;
-  stored: number;
-  skipped: number;
+  endedAt: string | null;
+  stored: number | null;
+  skipped: number | null;
 }
 
 export interface DatasetView {
@@ -102,10 +110,11 @@ export interface PipelineView {
 
 export interface ExecutionView {
   id: string;
-  status: 'running' | 'succeeded' | 'failed' | 'cancelled' | (string & {});
+  status: ExecutionStatus;
   startedAt: string;
   endedAt?: string;
   startedBy?: string;
+  startedByName?: string;
   error?: string;
   /** In lockdown, on a queued or running run not being cancelled: when its admission runs out. */
   admissionRunsOutAt?: string;

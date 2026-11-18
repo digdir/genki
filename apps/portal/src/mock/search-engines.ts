@@ -202,8 +202,8 @@ interface DatasetState {
   count: number;
 }
 
-const usedByOf = (dataset: string) =>
-  dataset === 'digdir/kudos'
+const usedByOf = (dataset: string, target: string) =>
+  dataset === target
     ? [{ tenant: '991825827', id: 'rapportassistenten', name: 'Rapportassistenten' }]
     : [];
 
@@ -316,7 +316,7 @@ export const searchEnginesMock = (options: SearchEnginesMockOptions = {}): MockH
       embedding,
       capabilities: e.capabilities,
       latencyMs: latency[e.id] ?? 150,
-      usedBy: usedByOf(dataset),
+      usedBy: usedByOf(dataset, target),
       canSwitch: !/^\d{9}\//.test(dataset) || dataset.startsWith(`${tenant}/`),
       retentionDays,
       ...(s.switch ? { activeSwitch: s.switch } : {}),

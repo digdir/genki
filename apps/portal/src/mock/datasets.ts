@@ -12,6 +12,7 @@ import type {
   UploadedFile,
   UploadResult,
 } from '../api/datasets';
+import { isOpen } from '../api/datasets';
 import type { MockHandler } from '../mock';
 
 export interface DatasetsMockOptions {
@@ -151,6 +152,8 @@ const exampleExecutions: Record<string, ExecutionView[]> = {
     {
       id: 'ex-veiledere-1',
       status: 'succeeded',
+      startedBy: 'kari.nordmann@testetaten.example.no',
+      startedByName: 'Kari Nordmann',
       startedAt: '2026-10-07T09:12:00Z',
       endedAt: '2026-10-07T09:13:10Z',
       report: {
@@ -168,6 +171,8 @@ const exampleExecutions: Record<string, ExecutionView[]> = {
     {
       id: 'ex-nettsider-2',
       status: 'failed',
+      startedBy: 'kari.nordmann@testetaten.example.no',
+      startedByName: 'Kari Nordmann',
       startedAt: '2026-10-08T02:00:00Z',
       endedAt: '2026-10-08T02:03:00Z',
       error: 'sitemap returned 503',
@@ -444,6 +449,7 @@ export const datasetsMock = (options: DatasetsMockOptions = {}): MockHandler => 
           .map((d) => seenBy(decodeURIComponent(list[1] ?? ''), d))
           .map(({ skipped: _, usedBy, ...d }) => ({
             ...d,
+            documents: d.documents ?? (d.state === 'external' ? null : (found[d.fullId] ?? null)),
             usedByCount: usedBy?.length ?? 0,
           })),
       });
@@ -559,6 +565,19 @@ export const datasetsMock = (options: DatasetsMockOptions = {}): MockHandler => 
       if (method === 'GET') return json(seenBy(tenant, dataset));
       if (method === 'PUT') {
         const change = request.body<DatasetChange>();
+        const empty = (['name', 'description'] as const).filter((k) => change[k] === '');
+        if (empty.length)
+          return json(
+            {
+              title: 'Invalid request',
+              status: 400,
+              errors: empty.map((path) => ({
+                path,
+                message: 'Too small: expected string to have >=1 characters',
+              })),
+            },
+            400,
+          );
         if (change.name) dataset.name = change.name;
         if (change.description !== undefined) dataset.description = change.description;
         if (change.searchScope) dataset.searchScope = change.searchScope;
@@ -728,7 +747,7 @@ export const datasetsMock = (options: DatasetsMockOptions = {}): MockHandler => 
     if (action === 'executions' && cancelling && method === 'POST') {
       const key = `${dataset.fullId}/${pipeline.id}`;
       const found = (executions.get(key) ?? []).find((e) => e.id === cancelling);
-      if (!found || found.status !== 'running')
+      if (!found || !isOpen(found))
         return json({ title: 'Conflict', status: 409, errors: [] }, 409);
       const cancelled: ExecutionView = {
         ...found,

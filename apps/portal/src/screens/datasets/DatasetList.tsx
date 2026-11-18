@@ -18,16 +18,10 @@ import {
 import { useEffect, useState } from 'react';
 import { parseRoute } from '../../hooks';
 import { Icon } from '../../components/Icon';
-import {
-  sourceKeys,
-  statusColors,
-  statusKeys,
-  type DatasetDetails,
-  type DatasetStatus,
-} from '../../data/datasets';
+import { statusColors, statusKeys, type DatasetStatus } from '../../data/datasets';
 import { navigate } from '../../hooks';
-import { useT, type Format, type T } from '../../i18n';
-import { count, datasetHref } from './model';
+import { useT, type T } from '../../i18n';
+import { datasetHref } from './model';
 
 const filters = ['all', 'own', 'shared', 'attention'] as const;
 type ListFilter = (typeof filters)[number];
@@ -73,11 +67,6 @@ const keepInAddress = (query: string, filter: ListFilter) => {
   );
 };
 
-export const sourceOf = (t: T, d: DatasetDetails) =>
-  d.source === 'shared' && d.owner
-    ? t('datasets.sharedBy', { owner: d.owner })
-    : t(sourceKeys[d.source]);
-
 export interface DatasetListItem {
   id: string;
   name: string;
@@ -93,24 +82,6 @@ export interface DatasetListItem {
   canRetry?: boolean;
   usedByText?: string | undefined;
 }
-
-export const listItemFor = (t: T, f: Format, d: DatasetDetails): DatasetListItem => ({
-  id: d.id,
-  name: d.name,
-  description: d.description,
-  status: d.status,
-  shared: d.source === 'shared',
-  sourceText: sourceOf(t, d),
-  subText:
-    d.source === 'shared'
-      ? sourceOf(t, d)
-      : t('datasets.subLine', { source: sourceOf(t, d), owner: t('datasets.filterOwn') }),
-  docsText: count(f, d.docs),
-  lastText:
-    d.status === 'Feilet'
-      ? t('datasets.lastFailed', { last: d.last, lastOk: d.lastOk.toLowerCase() })
-      : d.last,
-});
 
 const noMatchText = (t: T, total: number, query: string, filter: ListFilter) => {
   const label = t(filterKeys[filter]);
