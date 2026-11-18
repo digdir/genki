@@ -24,6 +24,7 @@ A playground run whose model or step fails answers `502` as `application/problem
 2. `GET /tenants/{tenant}/definitions/services/{id}`: the latest published version (`latest`) and every version (`versions`). For a new service, start from `GET /tenants/{tenant}/definitions/template`.
 3. `PUT /tenants/{tenant}/services/{id}/draft` with `{ definition, files?, baseVersion, revision? }`. Send the `revision` you read; `409` means someone else saved in between.
 4. `POST /tenants/{tenant}/definitions/test-run` with `{ definition, files?, query }`: one run of the unpublished definition, nothing saved.
+   `GET /tenants/{tenant}/services/{id}/draft/checks`: the checks a publish runs (schema, policies, risk confirmation, step flows, datasets and evaluation gates against recorded test runs) on the saved draft, without publishing it or calling a model; `ready` is `true` when publishing it now would pass, else `problems` lists why. on_publish hooks are not run here: when the organisation has enabled one, the answer has `hooksSkipped: true`, and the hook can still refuse the publish.
 5. `POST /definitions` with `change-reason` and `{ definition, files, draftRevision }`: publishes the draft as the next version (`201`). `409 draft-outdated` means a newer version was published; call `POST .../draft/rebase` first. `422` lists what is invalid.
 6. `GET /tenants/{tenant}/definitions/services/{id}/versions/{version}`: read one version.
 7. `GET /tenants/{tenant}/audit`: the change log, with who published and why.

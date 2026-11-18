@@ -113,6 +113,16 @@ export const problems = defineNamespace({
   datasetDocumentsPeopleOnly: 'Bare personer kan liste dokumentene i et datasett',
   datasetDocumentsUnsupported: 'Søkemotoren bak datasettet kan ikke liste dokumentene',
   datasetDocumentsFailed: 'Klarte ikke å hente dokumentene fra søkemotoren',
+  draftNotFound: 'Tjenesten har ikke noe utkast',
+  draftOtherService:
+    'Utkastet gjelder en annen virksomhet eller tjeneste enn den det er lagret for',
+  datasetDocumentsQueryUnsupported: 'Søkemotoren bak datasettet kan ikke søke i dokumenttitler',
+  datasetDocumentsSortUnsupported:
+    'Søkemotoren bak datasettet kan ikke sortere dokumentene etter {sort}',
+  datasetDocumentsStatusOnlyQuery: 'Feilede og ventende dokumenter tar bare query, limit og offset',
+  datasetDocumentsChunksInvalid: 'chunks er et intervall som 0-9, høyst 50 posisjoner',
+  datasetDocumentsChunksUnsupported:
+    'Søkemotoren bak datasettet kan ikke lese avsnittene i et dokument i rekkefølge',
   datasetSearchPeopleOnly: 'Bare personer kan søke direkte i et datasett',
   datasetSearchUndeclaredFilter: 'Datasettet {dataset} har ikke feltet «{field}» som filter',
   datasetSearchBlocked: '{dataset} kan ikke brukes hos virksomheten',

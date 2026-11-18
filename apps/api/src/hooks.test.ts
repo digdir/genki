@@ -149,6 +149,53 @@ describe('hooks API', () => {
   });
 });
 
+describe('checking a draft against the publish checks', () => {
+  it("never calls the organisation's on_publish hooks, so a check has no side effects", async () => {
+    const { send, admin } = await bootPlatform({ people });
+    await send(`/tenants/${digdir}/hooks/publisering`, 'kari', {
+      method: 'PUT',
+      body: blockTerms(['ny-tjeneste'], { point: 'on_publish', name: 'Navnesjekk' }),
+      reason: 'Ingen tjenester med det navnet',
+    });
+    const saved = await send(`/tenants/${digdir}/services/ny-tjeneste/draft`, 'kari', {
+      method: 'PUT',
+      body: { definition: testService('ny-tjeneste'), files },
+      reason: 'Utkast i testen',
+    });
+    expect(saved.status).toBe(200);
+
+    const checked = await json<{ ready: boolean; problems: { path: string }[] }>(
+      await send(`/tenants/${digdir}/services/ny-tjeneste/draft/checks`, 'kari'),
+    );
+
+    expect(checked.problems.map((p) => p.path)).not.toContain('hooks');
+    expect(
+      (await admin.audit(digdir)).filter((e) => e.action === 'platform.hook.publish-check'),
+    ).toEqual([]);
+  });
+
+  it('says the hooks were skipped when the organisation has an enabled on_publish hook', async () => {
+    const { send } = await bootPlatform({ people });
+    const draft = `/tenants/${digdir}/services/ny-tjeneste/draft`;
+    await send(draft, 'kari', {
+      method: 'PUT',
+      body: { definition: testService('ny-tjeneste'), files },
+      reason: 'Utkast i testen',
+    });
+    const before = await json<Record<string, unknown>>(await send(`${draft}/checks`, 'kari'));
+    await send(`/tenants/${digdir}/hooks/publisering`, 'kari', {
+      method: 'PUT',
+      body: blockTerms(['ny-tjeneste'], { point: 'on_publish', name: 'Navnesjekk' }),
+      reason: 'Ingen tjenester med det navnet',
+    });
+
+    const after = await json<Record<string, unknown>>(await send(`${draft}/checks`, 'kari'));
+
+    expect(before.hooksSkipped).toBeUndefined();
+    expect(after).toMatchObject({ hooksSkipped: true });
+  });
+});
+
 describe('webhook hooks', () => {
   it('sign the call and read the verdict, and treat other answers as failures', async () => {
     const sent: { url: string; headers: Record<string, string>; body: string }[] = [];

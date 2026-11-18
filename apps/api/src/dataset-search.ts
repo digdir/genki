@@ -5,8 +5,13 @@ import { uploadDocumentId, uploadPrefix } from '@genai/ingest';
 import type { BlobStore } from '@genai/port-blob';
 import {
   capabilitiesOf,
+  documentSortKeys,
   KnowledgeError,
+  maxDocumentQueryLength,
+  type DocumentListing,
+  type DocumentSortKey,
   type Hit,
+  type KnowledgePort,
   type KnowledgeRouter,
 } from '@genai/port-knowledge';
 import type { Context, Env, Hono, Schema } from 'hono';
@@ -14,6 +19,8 @@ import { z } from 'zod';
 import { enterTenant, type Access } from './access.js';
 import { readBlockPolicy } from './building-blocks.js';
 import type { CatalogRegistry } from './catalog-registry.js';
+import { latestOf, writerCounts } from './dataset-status.js';
+import type { IngestionService } from './ingestion.js';
 import { platformScope, type ConfigEntryStore } from './config-store.js';
 import type { MountDeps, PlatformModuleFactory } from './platform-modules.js';
 import type { TrackedWork } from './tracked-work.js';
@@ -58,6 +65,8 @@ export interface DatasetSearchDeps {
   searchTask: TrackedWork;
   logger?: (message: string, fields: Record<string, unknown>) => void;
   blobs?: Pick<BlobStore, 'list'>;
+  ingestion?: Pick<IngestionService, 'list' | 'executions'>;
+  documentCount?(dataset: string): Promise<number | undefined>;
   /** Milliseconds for `tookMs`; tests pass a fixed one. */
   clock?: () => number;
 }
@@ -332,10 +341,17 @@ const filtersParam = z
     return z.NEVER;
   });
 
+export const documentStatuses = ['indexed', 'failed', 'pending'] as const;
+export type DocumentStatus = (typeof documentStatuses)[number];
+
 export const datasetDocumentsQuery = z.object({
   limit: z.coerce.number().int().min(1).max(maxDocumentsLimit).default(50),
   offset: z.coerce.number().int().min(0).max(100_000).default(0),
   filters: filtersParam,
+  query: z.string().trim().max(maxDocumentQueryLength).optional(),
+  sort: z.enum(documentSortKeys).optional(),
+  order: z.enum(['asc', 'desc']).default('asc'),
+  status: z.enum(documentStatuses).default('indexed'),
 });
 
 export interface OriginalFile {
@@ -350,6 +366,15 @@ interface DocumentView {
   url?: string;
   fields: Record<string, unknown>;
   original?: OriginalFile;
+  status: DocumentStatus;
+  chunkCount?: number;
+  reason?: string;
+}
+
+export interface DocumentStatusCounts {
+  indexed: number | null;
+  failed: number;
+  pending: number;
 }
 
 export interface DatasetDocumentsPage {
@@ -357,12 +382,28 @@ export interface DatasetDocumentsPage {
   limit: number;
   offset: number;
   found?: number;
+  total: number;
+  totalExact: boolean;
+  status: DocumentStatus;
+  statusCounts: DocumentStatusCounts;
+  listing: DocumentListing;
+  query?: string;
+  sort?: { key: DocumentSortKey; order: 'asc' | 'desc' };
   filters?: Record<string, unknown>;
   documents: DocumentView[];
 }
 
+export interface DocumentChunk {
+  id: string;
+  position?: number;
+  page?: number;
+  pageEnd?: number;
+  text: string;
+}
+
 export interface DatasetDocumentDetail extends DocumentView {
   excerpt?: string;
+  chunks?: DocumentChunk[];
 }
 
 const typed = (c: Context, type: string, status: 403 | 404 | 422 | 502, title: string) =>
@@ -374,7 +415,38 @@ const invalid = (c: Context, errors: { path: string; message: string }[]) =>
 type DocumentDeps = Pick<
   DatasetSearchDeps,
   'knowledge' | 'catalog' | 'authenticate' | 'access' | 'logger'
-> & { blobs?: Pick<BlobStore, 'list'> };
+> & {
+  blobs?: Pick<BlobStore, 'list'>;
+  ingestion?: Pick<IngestionService, 'list' | 'executions'>;
+  documentCount?(dataset: string): Promise<number | undefined>;
+};
+
+const chunkRange = /^(\d{1,5})-(\d{1,5})$/;
+
+const parseChunks = (text: string | undefined) => {
+  if (text === undefined) return undefined;
+  const found = chunkRange.exec(text);
+  const from = Number(found?.[1]);
+  const to = Number(found?.[2]);
+  if (!found || to < from || to - from >= 50) return null;
+  return { from, to };
+};
+
+const chunkCountOf = (fields: Record<string, unknown>) => {
+  const count = fields.total_chunks;
+  return typeof count === 'number' && Number.isInteger(count) && count >= 0 ? count : undefined;
+};
+
+const noListing: DocumentListing = { query: false, sort: [] };
+
+const idBatch = 100;
+
+interface NotIndexed {
+  id: string;
+  title?: string;
+  reason?: string;
+  original?: OriginalFile;
+}
 
 export const mountDatasetDocuments = <E extends Env, S extends Schema, B extends string>(
   app: Hono<E, S, B>,
@@ -425,19 +497,86 @@ export const mountDatasetDocuments = <E extends Env, S extends Schema, B extends
     );
   };
 
+  const failedOf = async (tenant: string, item: { id: string; scope: string }) => {
+    if (item.scope !== tenant || !deps.ingestion) return [];
+    const ingestion = deps.ingestion;
+    const pipelines = await ingestion.list(item.scope, item.id);
+    const runs = await Promise.all(
+      pipelines.map(async (p) => latestOf(await ingestion.executions(item.id, p.id))),
+    );
+    const seen = new Map<string, string>();
+    for (const report of runs.map((run) => run?.report)) {
+      if (!report) continue;
+      for (const skipped of report.skippedDocuments ?? [])
+        if (!seen.has(skipped.document)) seen.set(skipped.document, skipped.reason);
+      for (const key of report.failed) if (!seen.has(key)) seen.set(key, 'failed');
+    }
+    return [...seen].map(([id, reason]): NotIndexed => ({ id, reason }));
+  };
+
+  const indexedAmong = async (port: KnowledgePort, ids: string[]) => {
+    const found = new Set<string>();
+    if (!port.documents) return found;
+    const batches: string[][] = [];
+    for (let at = 0; at < ids.length; at += idBatch) batches.push(ids.slice(at, at + idBatch));
+    for (const batch of batches) {
+      const page = await port.documents({ ids: batch, limit: batch.length });
+      for (const d of page.documents) found.add(d.id);
+    }
+    return found;
+  };
+
+  const notIndexed = async (
+    port: KnowledgePort,
+    tenant: string,
+    item: { id: string; scope: string },
+    kept: Map<string, OriginalFile>,
+  ) => {
+    const failed = (await failedOf(tenant, item)).map((f) => {
+      const original = kept.get(f.id);
+      return original ? { ...f, title: original.name, original } : f;
+    });
+    const failedIds = new Set(failed.map((f) => f.id));
+    const failedNames = new Set(failed.map((f) => f.id.slice(f.id.lastIndexOf('/') + 1)));
+    const candidates = [...kept].filter(
+      ([id, original]) => !failedIds.has(id) && !failedNames.has(original.name),
+    );
+    const indexed = await indexedAmong(
+      port,
+      candidates.map(([id]) => id),
+    );
+    const pending = candidates
+      .filter(([id]) => !indexed.has(id))
+      .map(([id, original]): NotIndexed => ({ id, title: original.name, original }))
+      .sort((a, b) => a.id.localeCompare(b.id));
+    return { failed, pending };
+  };
+
   const view = (
     d: { id: string; title?: string; url?: string; fields: Record<string, unknown> },
     kept: Map<string, OriginalFile>,
   ): DocumentView => {
     const original = kept.get(d.id);
+    const chunkCount = chunkCountOf(d.fields);
     return {
       id: d.id,
       ...(d.title === undefined ? {} : { title: d.title }),
       ...(d.url === undefined ? {} : { url: d.url }),
       fields: d.fields,
       ...(original ? { original } : {}),
+      status: 'indexed',
+      ...(chunkCount === undefined ? {} : { chunkCount }),
     };
   };
+
+  const notIndexedView = (d: NotIndexed, status: DocumentStatus): DocumentView => ({
+    id: d.id,
+    ...(d.title === undefined ? {} : { title: d.title }),
+    fields: {},
+    ...(d.original ? { original: d.original } : {}),
+    status,
+    ...(d.reason === undefined ? {} : { reason: d.reason }),
+  });
 
   const failed = (c: Context, error: unknown, dataset: string, tenant: string) => {
     const code = codeOf(error);
@@ -459,9 +598,17 @@ export const mountDatasetDocuments = <E extends Env, S extends Schema, B extends
         c,
         parsed.error.issues.map((i) => ({ path: i.path.join('.') || 'query', message: i.message })),
       );
-    const { limit, offset, filters } = parsed.data;
+    const { limit, offset, filters, sort, order, status } = parsed.data;
+    const query = parsed.data.query || undefined;
     if (offset % limit !== 0)
       return invalid(c, [{ path: 'offset', message: t('problems.datasetDocumentsOffsetNotPage') }]);
+    if (status !== 'indexed' && (filters || sort))
+      return invalid(c, [
+        {
+          path: filters ? 'filters' : 'sort',
+          message: t('problems.datasetDocumentsStatusOnlyQuery'),
+        },
+      ]);
     try {
       if (!port.documents)
         return typed(
@@ -470,9 +617,18 @@ export const mountDatasetDocuments = <E extends Env, S extends Schema, B extends
           422,
           t('problems.datasetDocumentsUnsupported'),
         );
+      const info = port.info();
+      const listing = info.documentListing ?? noListing;
+      if (query && !listing.query && status === 'indexed')
+        return invalid(c, [
+          { path: 'query', message: t('problems.datasetDocumentsQueryUnsupported') },
+        ]);
+      if (sort && !listing.sort.includes(sort))
+        return invalid(c, [
+          { path: 'sort', message: t('problems.datasetDocumentsSortUnsupported', { sort }) },
+        ]);
       if (filters) {
-        const declared = port.info().filters;
-        const undeclared = Object.keys(filters).filter((f) => !(f in declared));
+        const undeclared = Object.keys(filters).filter((f) => !(f in info.filters));
         if (undeclared.length)
           return invalid(
             c,
@@ -482,21 +638,76 @@ export const mountDatasetDocuments = <E extends Env, S extends Schema, B extends
             })),
           );
       }
-      const [page, kept] = await Promise.all([
-        port.documents({
+      const narrowed = Boolean(filters || query);
+      const kept = await originals(tenant, item);
+      const [page, rest, datasetCount] = await Promise.all([
+        status === 'indexed'
+          ? port.documents({
+              limit,
+              offset,
+              ...(filters ? { filters: filters as Record<string, never> } : {}),
+              ...(query ? { query } : {}),
+              ...(sort ? { sort: { key: sort, direction: order } } : {}),
+            })
+          : undefined,
+        notIndexed(port, tenant, item, kept),
+        deps.documentCount?.(item.id).catch(() => undefined),
+      ]);
+      const indexedCount =
+        !narrowed && status === 'indexed' && page?.found !== undefined
+          ? page.found
+          : datasetCount !== undefined
+            ? datasetCount
+            : ((await port.documents({ limit: 1 }).catch(() => undefined))?.found ?? null);
+      const statusCounts: DocumentStatusCounts = {
+        indexed: indexedCount,
+        failed: rest.failed.length,
+        pending: rest.pending.length,
+      };
+      const sortView = sort ? { sort: { key: sort, order } } : {};
+      if (status !== 'indexed') {
+        const needle = query?.toLowerCase();
+        const all = rest[status].filter(
+          (d) =>
+            !needle ||
+            d.id.toLowerCase().includes(needle) ||
+            (d.title?.toLowerCase().includes(needle) ?? false),
+        );
+        const answer: DatasetDocumentsPage = {
+          dataset: item.id,
           limit,
           offset,
-          ...(filters ? { filters: filters as Record<string, never> } : {}),
-        }),
-        originals(tenant, item),
-      ]);
+          found: all.length,
+          total: all.length,
+          totalExact: true,
+          status,
+          statusCounts,
+          listing,
+          ...(query ? { query } : {}),
+          documents: all.slice(offset, offset + limit).map((d) => notIndexedView(d, status)),
+        };
+        return c.json(answer);
+      }
+      const documents = (page?.documents ?? []).map((d) => view(d, kept));
+      const fallback = narrowed ? undefined : (datasetCount ?? undefined);
+      const total =
+        page?.found ??
+        fallback ??
+        offset + documents.length + (documents.length === limit ? limit : 0);
       const answer: DatasetDocumentsPage = {
         dataset: item.id,
         limit,
         offset,
-        ...(page.found === undefined ? {} : { found: page.found }),
+        ...(page?.found === undefined ? {} : { found: page.found }),
+        total,
+        totalExact: page?.found !== undefined || fallback !== undefined,
+        status,
+        statusCounts,
+        listing,
+        ...(query ? { query } : {}),
+        ...sortView,
         ...(filters ? { filters } : {}),
-        documents: page.documents.map((d) => view(d, kept)),
+        documents,
       };
       return c.json(answer);
     } catch (error) {
@@ -509,6 +720,9 @@ export const mountDatasetDocuments = <E extends Env, S extends Schema, B extends
     if ('response' in opened) return opened.response;
     const { tenant, item, port } = opened;
     const doc = c.req.param('doc') ?? '';
+    const range = parseChunks(c.req.query('chunks'));
+    if (range === null)
+      return invalid(c, [{ path: 'chunks', message: t('problems.datasetDocumentsChunksInvalid') }]);
     try {
       if (!port.documents)
         return typed(
@@ -525,20 +739,41 @@ export const mountDatasetDocuments = <E extends Env, S extends Schema, B extends
       if (!found)
         return typed(c, datasetDocumentNotFoundType, 404, t('problems.datasetDocumentNotFound'));
       const readsPassages = capabilitiesOf(port.info()).includes('range');
+      if (range && !readsPassages)
+        return typed(
+          c,
+          datasetDocumentsUnsupportedType,
+          422,
+          t('problems.datasetDocumentsChunksUnsupported'),
+        );
       const passages = readsPassages ? await port.range(doc, 0, 2).catch(() => []) : [];
       const text = passages
         .map((p) => p.text)
         .join('\n\n')
         .trim();
+      const chunks = range ? (await port.range(doc, range.from, range.to)).map(chunkView) : [];
       const answer: DatasetDocumentDetail = {
         ...view(found, kept),
         ...(text ? { excerpt: text.slice(0, documentExcerptLength) } : {}),
+        ...(range ? { chunks } : {}),
       };
       return c.json(answer);
     } catch (error) {
       return failed(c, error, item.id, tenant);
     }
   });
+};
+
+const chunkView = (hit: Hit): DocumentChunk => {
+  const page = pageOf(hit.fields.page);
+  const pageEnd = pageOf(hit.fields.pageEnd);
+  return {
+    id: hit.id,
+    ...(hit.position === undefined ? {} : { position: hit.position }),
+    ...(page === undefined ? {} : { page }),
+    ...(pageEnd === undefined ? {} : { pageEnd }),
+    text: hit.text,
+  };
 };
 
 const missingSearchTask: TrackedWork = async () => {
@@ -550,6 +785,17 @@ export const datasetSearchModule: PlatformModuleFactory = () => ({
   mount: <E extends Env, S extends Schema, B extends string>(app: Hono<E, S, B>, deps: MountDeps) =>
     mountDatasetSearch(app, {
       blobs: deps.blobs,
+      ingestion: deps.ingestion,
+      documentCount: async (dataset) =>
+        (
+          await writerCounts(
+            {
+              writers: deps.writers,
+              countable: (engine) => deps.engines().some((e) => e.engine === engine && e.builtin),
+            },
+            dataset,
+          )
+        )?.documents,
       knowledge: deps.knowledge,
       catalog: deps.catalog,
       configEntries: deps.configEntries,

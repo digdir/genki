@@ -278,8 +278,10 @@ import { blockUsageModule } from './block-usage.js';
 import {
   buildingBlocksModule,
   createBuildingBlocksModule,
+  readBlockPolicy,
   withBlockSettings,
 } from './building-blocks.js';
+import { recommendedModels, unavailableReason } from './public-models.js';
 import { engineSwitchesModule } from './engine-switches.js';
 import { definitionSubject } from './definition-subject.js';
 import { runJudges } from './eval-judges.js';
@@ -1601,11 +1603,17 @@ export const createPlatform = async (input: PlatformInput) => {
     return uses;
   };
 
-  const checkBeforePublish = async (definition: unknown, publisher: string) => {
+  const sideEffectModules: ReadonlySet<string> = new Set(['hooks']);
+  const checkBeforePublish = async (
+    definition: unknown,
+    publisher: string,
+    skipped: ReadonlySet<string> = new Set(),
+  ) => {
     const validated = validateDefinition(definition, plugins);
     if (!validated.ok) return undefined;
     const d = validated.definition;
     for (const module of modules) {
+      if (skipped.has(module.id)) continue;
       const problems = (await module.checkPublish?.(d, publisher)) ?? [];
       if (problems.length > 0) return problems;
     }
@@ -2164,6 +2172,13 @@ export const createPlatform = async (input: PlatformInput) => {
     },
     enrichmentTask: enrichmentWork.run(() => kernel),
     datasetSearchTask: datasetSearchWork.run(() => kernel),
+    publishCheck: async (definition, publisher) => {
+      const validated = validateDefinition(definition, plugins);
+      if (!validated.ok) return validated.errors;
+      const archived = await archivedPublishRefusal(definition, serviceLifecycle);
+      if (archived) return archived.errors;
+      return (await checkBeforePublish(definition, publisher, sideEffectModules)) ?? [];
+    },
     tasks: taskIndex,
     task: hidingInternalTasks(definitions, async (id) => (await taskStore.get(id))?.task),
     events: (task) => log.read(task, 0, () => false),
@@ -2388,6 +2403,7 @@ export const createPlatform = async (input: PlatformInput) => {
       if (!principal) return problem(c, 401, 'Invalid or missing API key');
       const residency = c.req.query('residency') as Residency | undefined;
       const strategy = c.req.query('strategy');
+      const all = c.req.query('all') === 'true';
       const wanted = [
         ...((c.req.queries('capability') ?? []) as Capability[]),
         ...(strategy ? (strategyModelNeeds.get(strategy) ?? []) : []),
@@ -2403,22 +2419,30 @@ export const createPlatform = async (input: PlatformInput) => {
           (m) => !principal.tenant || !ownedElsewhere(config.catalog, m.id, principal.tenant),
         );
       const displayNames = modelDisplayNames(visible);
-      const data = models
-        .describe()
-        .filter((m) => m.enabled && servesModelPort(m))
-        .filter((m) => !principal.tenant || !ownedElsewhere(config.catalog, m.id, principal.tenant))
+      const policy = principal.tenant
+        ? await readBlockPolicy(configEntries, principal.tenant)
+        : undefined;
+      const recommended = recommendedModels(settings, principal.tenant ?? platformTenant);
+      const data = visible
         .filter((m) => !residency || residencyAllows(residency, m.residency))
         .filter((m) => wanted.every((w) => m.capabilities.includes(w)))
+        .map((m) => ({ model: m, reason: unavailableReason(policy, m) }))
+        .filter(({ reason }) => all || reason === undefined)
         .map(
           ({
-            id,
-            family,
-            maker,
-            operator,
-            residency: r,
-            capabilities,
-            operations,
-            parameters,
+            model: {
+              id,
+              family,
+              maker,
+              operator,
+              residency: r,
+              capabilities,
+              operations,
+              parameters,
+              contextWindow,
+              releaseDate,
+            },
+            reason,
           }) => ({
             id,
             name: displayNames.get(id) ?? id,
@@ -2430,6 +2454,11 @@ export const createPlatform = async (input: PlatformInput) => {
             operations,
             parameters,
             price: prices[id] ?? null,
+            ...(contextWindow === undefined ? {} : { contextWindow }),
+            ...(releaseDate === undefined ? {} : { releaseDate }),
+            recommended: recommended.has(id),
+            available: reason === undefined,
+            ...(reason ? { reason } : {}),
           }),
         );
       return c.json({ data });

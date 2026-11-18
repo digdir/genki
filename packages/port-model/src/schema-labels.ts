@@ -70,6 +70,7 @@ const nb = {
     help: 'Hvilket API utrullingen bruker for hver operasjon, for eksempel samtale. Uten verdi samtale med tilkoblingens standard-API.',
   },
   contextWindow: { label: 'Kontekstvindu (tokens)' },
+  releaseDate: { label: 'Lansert', help: 'Datoen modellen ble lansert, som 2026-08-07.' },
   maxOutputTokens: { label: 'Mest svar modellen kan gi (tokens)' },
   parameters: { label: 'Regler for parametere' },
   'parameters.temperature': { label: 'Temperatur' },
@@ -131,6 +132,10 @@ const nb = {
   },
   maker: { label: 'Laget av', help: 'Hvem som har laget modellen, for eksempel OpenAI.' },
   'discovery.maker': { label: 'Laget av', help: 'Hvem som har laget modellene som finnes.' },
+  'discovery.releaseDates': {
+    label: 'Lansert',
+    help: 'Datoen hver utrulling som finnes ble lansert, etter navnet på utrullingen.',
+  },
   operator: {
     label: 'Drives av',
     help: 'Hvem som kjører modellene for genki, og hvor.',
@@ -181,6 +186,7 @@ const en: Record<keyof typeof nb, LabelText> = {
     help: "Which API the deployment uses for each operation, such as chat. Without a value, chat with the connection's default API.",
   },
   contextWindow: { label: 'Context window (tokens)' },
+  releaseDate: { label: 'Released', help: 'The date the model was released, such as 2026-08-07.' },
   maxOutputTokens: { label: 'Most output the model can give (tokens)' },
   parameters: { label: 'Parameter rules' },
   'parameters.temperature': { label: 'Temperature' },
@@ -239,6 +245,10 @@ const en: Record<keyof typeof nb, LabelText> = {
   },
   maker: { label: 'Made by', help: 'Who made the model, such as OpenAI.' },
   'discovery.maker': { label: 'Made by', help: 'Who made the models it finds.' },
+  'discovery.releaseDates': {
+    label: 'Released',
+    help: 'The date each deployment it finds was released, by deployment name.',
+  },
   operator: { label: 'Run by', help: 'Who runs the models for genki, and where.' },
   'operator.name': { label: 'Name' },
   'operator.region': { label: 'Region', help: 'Where the models run, such as Sweden.' },

@@ -31,6 +31,7 @@ import { createApp } from './app.js';
 import { appendVersion, InMemoryConfigEntryStore, platformScope } from '@genai/composition';
 import { callerFrom, createPlatform, serviceRequirement } from './composition.js';
 import { kernelTaskReader, toTimeline } from './timeline.js';
+import { policyKind } from './building-blocks.js';
 
 const servers: FakeServer[] = [];
 afterEach(async () => {
@@ -290,6 +291,7 @@ const boot = async (
   access?: Partial<Pick<Parameters<typeof createPlatform>[0], 'policy' | 'authenticate'>>,
   extra: {
     knowledge?: unknown;
+    models?: unknown;
     settings?: SettingsRegistry;
     prices?: Parameters<typeof createPlatform>[0]['prices'];
     log?: InMemoryEventLog;
@@ -314,7 +316,7 @@ const boot = async (
   };
   const platform = await createPlatform({
     catalogs: {
-      models: resolveCatalog(yaml('models.yaml'), 'models', env).catalog,
+      models: resolveCatalog(extra.models ?? yaml('models.yaml'), 'models', env).catalog,
       knowledge: resolveCatalog(extra.knowledge ?? yaml('knowledge.yaml'), 'datasets', env).catalog,
       rerank: resolveCatalog(yaml('rerank.yaml'), 'rerankers', env).catalog,
     },
@@ -1121,6 +1123,101 @@ describe('the composed platform', () => {
     expect(classified.status).toBe(200);
     expect(await ids('?residency=norway')).toEqual(['foundry-openai/gpt-4o-2m-tps']);
     expect((await app.request('/models')).status).toBe(401);
+  });
+
+  it('names the context window and release date of a model where the catalog has them', async () => {
+    const catalog = yaml('models.yaml') as { models: Record<string, unknown>[] };
+    const { app } = await boot(undefined, {
+      models: {
+        ...catalog,
+        models: catalog.models.map((m) =>
+          m.id === 'foundry-openai/gpt-6-luna'
+            ? { ...m, contextWindow: 400_000, releaseDate: '2026-09-01' }
+            : m,
+        ),
+      },
+    });
+
+    const res = await app.request('/models', { headers: { authorization: 'Bearer kari' } });
+    const { data } = (await res.json()) as { data: Record<string, unknown>[] };
+
+    expect(data.find((m) => m.id === 'foundry-openai/gpt-6-luna')).toMatchObject({
+      contextWindow: 400_000,
+      releaseDate: '2026-09-01',
+    });
+    expect(data.find((m) => m.id === 'foundry-openai/gpt-5-mini')).not.toHaveProperty(
+      'contextWindow',
+    );
+  });
+
+  it('marks the recommended models from the setting, else the model new services start with', async () => {
+    const recommendedOf = async (values: Record<string, unknown>) => {
+      const settings = new SettingsRegistry(platformSettings);
+      for (const [key, value] of Object.entries(values))
+        expect(settings.setDefault(key, value, 'drift', 'Test').ok).toBe(true);
+      const { app } = await boot(undefined, { settings });
+      const res = await app.request('/models', { headers: { authorization: 'Bearer kari' } });
+      return ((await res.json()) as { data: { id: string; recommended: boolean }[] }).data
+        .filter((m) => m.recommended)
+        .map((m) => m.id);
+    };
+
+    expect(
+      await recommendedOf({
+        'models.recommended': ['foundry-openai/gpt-5-mini', 'foundry-openai/gpt-6-luna'],
+        'services.defaultModel': 'foundry-openai/gpt-4o-2m-tps',
+      }),
+    ).toEqual(['foundry-openai/gpt-5-mini', 'foundry-openai/gpt-6-luna']);
+    expect(
+      await recommendedOf({ 'services.defaultModel': 'foundry-openai/gpt-4o-2m-tps' }),
+    ).toEqual(['foundry-openai/gpt-4o-2m-tps']);
+    expect(await recommendedOf({})).toEqual([]);
+  });
+
+  it("leaves out models the tenant's policy holds back, and lists them with a reason only with all=true", async () => {
+    const configEntries = new InMemoryConfigEntryStore();
+    await configEntries.append({
+      kind: policyKind,
+      scope: '991825827',
+      id: 'default',
+      version: 1,
+      spec: {
+        rules: [
+          { match: { kind: 'model', id: 'foundry-openai/gpt-5-mini' }, effect: 'not_allowed' },
+          {
+            match: { kind: 'model', id: 'foundry-openai/gpt-6-luna' },
+            effect: 'requires_approval',
+            approver: 'tenant',
+          },
+        ],
+      },
+      deleted: false,
+      by: 'kari',
+      at: '2026-11-18T08:00:00Z',
+      reason: 'Regler i testen',
+    });
+    const { app } = await boot(undefined, { configEntries });
+    const list = async (query = '') =>
+      (
+        (await (
+          await app.request(`/models${query}`, { headers: { authorization: 'Bearer kari' } })
+        ).json()) as { data: { id: string; available: boolean; reason?: string }[] }
+      ).data;
+
+    const usable = await list();
+    const all = await list('?all=true');
+
+    expect(usable.map((m) => m.id)).not.toContain('foundry-openai/gpt-5-mini');
+    expect(usable.map((m) => m.id)).not.toContain('foundry-openai/gpt-6-luna');
+    expect(usable.every((m) => m.available)).toBe(true);
+    expect(all.find((m) => m.id === 'foundry-openai/gpt-5-mini')).toMatchObject({
+      available: false,
+      reason: 'not_allowed',
+    });
+    expect(all.find((m) => m.id === 'foundry-openai/gpt-6-luna')).toMatchObject({
+      available: false,
+      reason: 'requires_approval',
+    });
   });
 
   it('names who made each model and who runs it where, from the model list', async () => {

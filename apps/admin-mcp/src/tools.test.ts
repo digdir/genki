@@ -175,7 +175,7 @@ describe('listing models', () => {
     const client: GenkiClient = {
       tenant,
       request: async <T>(_method: string, path: string) =>
-        (path === '/models'
+        (path === '/models?all=true'
           ? {
               data: [
                 {
@@ -208,6 +208,46 @@ describe('listing models', () => {
     expect(listed.data).toMatchObject({
       models: [{ operations: ['chat', 'decide'] }, { operations: ['chat'] }],
     });
+  });
+  it('lists a model the organisation must ask for, with available false and the reason', async () => {
+    const asked: string[] = [];
+    const client: GenkiClient = {
+      tenant,
+      request: async <T>(_method: string, path: string) => {
+        asked.push(path);
+        return (
+          path.startsWith('/models')
+            ? {
+                data: path.includes('all=true')
+                  ? [
+                      {
+                        id: 'foundry/ny',
+                        residency: 'eu',
+                        capabilities: [],
+                        price: null,
+                        available: false,
+                        reason: 'requires_approval',
+                      },
+                    ]
+                  : [],
+              }
+            : { models: [{ id: 'foundry/ny', status: 'requires_approval', dataLocation: 'eu' }] }
+        ) as T;
+      },
+    };
+
+    const listed = await runTool(
+      adminTools,
+      'list_models',
+      {},
+      { client, spend: { budgetNok: 5, spentNok: 0 } },
+    );
+
+    expect(asked).toContain('/models?all=true');
+    expect(listed.data).toMatchObject({
+      models: [{ id: 'foundry/ny', available: false, reason: 'requires_approval' }],
+    });
+    expect(listed.text).toContain('not available: requires approval');
   });
 });
 

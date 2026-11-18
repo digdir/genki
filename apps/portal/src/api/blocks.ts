@@ -57,7 +57,7 @@ export const blocksApi = (ctx: ApiContext) => {
         )
       ).data ?? [],
     models: async (signal?: AbortSignal) =>
-      (await ctx.get<{ data?: ModelWithFacts[] }>('/models', signal)).data ?? [],
+      (await ctx.get<{ data?: ModelWithFacts[] }>('/models?all=true', signal)).data ?? [],
     flowDefinition: (tenant: string, id: string, signal?: AbortSignal) =>
       ctx.get<FlowDefinition>(
         `${ctx.tenantPath(tenant)}/building-blocks/step_flow/${encodeURIComponent(id)}/definition`,

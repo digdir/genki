@@ -110,6 +110,13 @@ export const nativeSettings: PlatformSetting[] = [
     'models',
     'Catalog model new services start with; empty picks the cheapest priced model the tenant may use.',
   ),
+  setting(
+    'models.recommended',
+    z.array(z.string().min(1).max(200)).max(20),
+    [],
+    'models',
+    'Catalog models marked as recommended where people pick a model; empty recommends the model new services start with.',
+  ),
   {
     ...setting(
       'answers.writtenStandard',

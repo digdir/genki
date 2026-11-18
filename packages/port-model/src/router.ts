@@ -128,6 +128,8 @@ export interface ModelDescription {
   operator?: { name: string; region?: string };
   residency: Residency;
   capabilities: Capability[];
+  contextWindow?: number;
+  releaseDate?: string;
   apis: ApiBindings;
   operations: Operation[];
   enabled: boolean;
@@ -416,6 +418,9 @@ export class ModelRouter implements PortProvider<ModelPort> {
                 capabilities: rule.capabilities,
                 apis,
                 ...(rule.maker ? { maker: rule.maker } : {}),
+                ...(rule.releaseDates?.[found.deployment]
+                  ? { releaseDate: rule.releaseDates[found.deployment] }
+                  : {}),
                 options: {},
               },
               ...(found.model ? { family: found.model } : {}),
@@ -499,6 +504,8 @@ export class ModelRouter implements PortProvider<ModelPort> {
         : {}),
       residency: model.residency,
       capabilities: model.capabilities,
+      ...(model.contextWindow === undefined ? {} : { contextWindow: model.contextWindow }),
+      ...(model.releaseDate === undefined ? {} : { releaseDate: model.releaseDate }),
       apis: model.apis,
       operations: Object.keys(model.apis),
       enabled: model.enabled,

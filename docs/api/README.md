@@ -63,6 +63,16 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ## API changes
 
+### 2026-11-18: what the portal rework reads
+
+- `GET /tenants/{tenant}/datasets/{id}/documents` always answers `total` and `totalExact`, and adds `status` (`indexed`, `failed`, `pending`), `statusCounts`, `listing` (whether the engine can search titles and which sort keys it has), `query`, `sort` and `order`; each document adds `status`, and `chunkCount` when the engine keeps it. `GET .../documents/{doc}?chunks=from-to` adds the chunks at those positions (see [datasets.md](datasets.md#listing-a-datasets-documents)).
+- `GET /models` leaves out a model the tenant's building block policy refuses or holds for approval; `?all=true` lists it with `available: false` and `reason` (`not_allowed`, `requires_approval`). Each model adds `available`, `recommended`, and `contextWindow` and `releaseDate` when the model list has them. New setting `models.recommended` (platform, tenant): the model ids marked recommended; empty marks the model `services.defaultModel` names. A catalogue model takes `releaseDate`, and a discovery rule `releaseDates` by deployment name.
+- The usage report gives each service in `byService` a `latency`: `p50Ms`, `p95Ms` and `runs`, from start to end of the runs that ended in the period, or `null`.
+- `GET /tenants/{tenant}/service-failures?from=` groups each service's failed runs since `from` (default the start of today in Norway) by failure code, the most common first: `{ from, data: [{ service, failed, causes: [{ code, reason, count }] }] }`. Any member; never the error text.
+- `GET /tenants/{tenant}/tasks` takes `offset` and `q` (the run id, or the question for callers with `manage-services`, among the newest 2000 matching runs; never an erased run's question), and answers `offset` and `limit` beside `total`.
+- `GET /tenants/{tenant}/services/{service}/shared-with` lists who can call a service: `frontends`, `apiKeys` (bound to it, or granted it or every service, not revoked or expired) and `tenants` (`spec.availableTo` without the owner).
+- `GET /tenants/{tenant}/services/{id}/draft/checks` runs the checks a publish runs on the saved draft without publishing it: `{ service, revision, ready, problems }`, with `hooksSkipped: true` when enabled on_publish hooks were not run. No model is called.
+
 ### 2026-11-18: names, causes and facts the portal shows
 
 - Tool connection state now changes in one step (`ConnectionRegistry.update`; in Postgres a row lock in one transaction), so a revoke can no longer be undone by a sync or by the sync bookkeeping that ran at the same time.

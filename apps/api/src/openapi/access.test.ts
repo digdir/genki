@@ -210,6 +210,12 @@ describe('access and extensions API reference', () => {
       201,
     );
     await conforms(
+      await send(`${t}/services/klarsprak/shared-with`, 'kari'),
+      'get',
+      '/tenants/{tenant}/services/{service}/shared-with',
+      200,
+    );
+    await conforms(
       await send(`${t}/maskinporten-clients`, 'kari', {
         body: { clientId: 'fagsystem-mp', name: 'Fagsystem', services: ['klarsprak'] },
         reason,

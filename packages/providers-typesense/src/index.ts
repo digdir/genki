@@ -1,11 +1,13 @@
 import {
   clauseFits,
+  documentSortKeys,
   filterKinds,
   KnowledgeError,
   kindsOf,
   knowledgeProfiles,
   type DatasetConfig,
   type DatasetDraft,
+  type DocumentListing,
   type FacetValue,
   type FieldFilter,
   type FilterClause,
@@ -83,6 +85,13 @@ const datasetOptions = z
         'metadata',
       ]),
     docFields: z.array(fieldName).default(['url', 'title', 'total_chunks']),
+    sortFields: z
+      .strictObject({
+        title: fieldName.optional(),
+        year: fieldName.optional(),
+        updated: fieldName.optional(),
+      })
+      .optional(),
     facetQueryBy: fieldName.default('title'),
     maxFacetValues: z.number().int().positive().max(1000).default(500),
     profiles: z
@@ -138,6 +147,11 @@ const capabilitiesOf = (dataset: Dataset): KnowledgeCapability[] => [
   'facets',
   ...filterKinds.map((k) => `filter.${k}` as const),
 ];
+
+const documentListingOf = (dataset: Dataset): DocumentListing => ({
+  query: true,
+  sort: documentSortKeys.filter((key) => dataset.options.sortFields?.[key] !== undefined),
+});
 
 const defaultsFor = (draft: DatasetDraft): Record<string, unknown> => {
   const collections = draft.options.collections as Record<string, unknown> | undefined;
@@ -450,6 +464,8 @@ export const typesense: KnowledgeAdapter<Record<string, never>, Options> = {
         return (result.hits ?? []).map((h) => toHit(dataset, h, fields.text, 'text', 'chunks'));
       },
 
+      documentListing: documentListingOf,
+
       documents: async (dataset: Dataset, request, signal) => {
         const { fields } = dataset.options;
         const filters = [
@@ -460,14 +476,23 @@ export const typesense: KnowledgeAdapter<Record<string, never>, Options> = {
         ];
         const limit = request.limit ?? 100;
         const offset = request.offset ?? 0;
+        const sortField = request.sort ? dataset.options.sortFields?.[request.sort.key] : undefined;
+        if (request.sort && !sortField)
+          throw new KnowledgeError(
+            'unsupported',
+            `dataset ${dataset.id} cannot sort documents by ${request.sort.key}`,
+          );
         const result = await single(
           {
             collection: docsOf(dataset),
-            q: '*',
-            query_by: dataset.options.facetQueryBy,
+            q: request.query || '*',
+            query_by: request.query ? fields.title : dataset.options.facetQueryBy,
             per_page: limit,
             page: Math.floor(offset / limit) + 1,
             ...(filters.length ? { filter_by: filters.join(' && ') } : {}),
+            ...(sortField && request.sort
+              ? { sort_by: `${sortField}:${request.sort.direction}` }
+              : {}),
           },
           signal,
         );

@@ -23,6 +23,8 @@ Who and what may call the platform, and what the platform may call: the caller's
 
 The key lists (`GET /tenants/{tenant}/access` and `GET /tenants/{tenant}/services/{service}/api-keys`) give each key's `createdAt`. For a caller with `manage-services` they also give `createdBy`, the actor who created or last rotated the key as the audit log names it, with `createdByName` when the platform knows the person's name; keys from before this was recorded have `createdBy: null`. In a locked environment each key also has `modelsInLockdown`, which is `false` for a key that was created or rotated by a login that may not use models there (ADR 0033).
 
+`GET /tenants/{tenant}/services/{service}/shared-with` shows any member who can call a service: its registered `frontends`, the `apiKeys` that reach it (bound to it, or whose grants name it or every service; revoked and expired keys are left out) and the other organisations it is shared with in `tenants` (`*` for all).
+
 A client's webhook test (`POST /tenants/{tenant}/clients/{id}/webhook/test`) sends a request out, so it needs `change-reason` and is audited. Removing an unknown client answers 404.
 
 ## Test-runner keys

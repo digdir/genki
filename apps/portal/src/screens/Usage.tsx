@@ -712,7 +712,7 @@ export const Usage = ({ api, tenant, tenantName, route }: ScreenProps) => {
     (signal) => api.tenantEffectiveSettings(tenant, signal),
     [api, tenant],
   );
-  const [models] = useAsync((signal) => api.listModels({}, signal), [api]);
+  const [models] = useAsync((signal) => api.listModels({ all: true }, signal), [api]);
   const [dialog, setDialog] = useState<DialogState>();
   const state =
     usage.status === 'ready' && (settings.status === 'loading' || models.status === 'loading')

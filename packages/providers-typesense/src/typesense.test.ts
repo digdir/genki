@@ -576,3 +576,45 @@ describe('typesense capabilities and defaults', () => {
     );
   });
 });
+
+describe('listing documents on typesense', () => {
+  const sortable = (url: string, sortFields?: Record<string, string>): KnowledgePort => {
+    const [dataset] = example.datasets as { options: Record<string, unknown> }[];
+    return new KnowledgeRouter({
+      catalog: {
+        endpoints: { 'kudos-typesense': { ...example.endpoints['kudos-typesense'], baseURL: url } },
+        datasets: [
+          { ...dataset, options: { ...dataset?.options, ...(sortFields ? { sortFields } : {}) } },
+        ],
+      },
+      adapters: [typesense],
+      secrets: envSecrets({ TYPESENSE_KEY: 'test-key' }),
+    }).open({ kind: 'dataset', id: 'digdir/kudos' }, context());
+  };
+
+  it('searches document titles and sorts only by a field the dataset declares sortable', async () => {
+    const { url, seen } = await fake(() => ({ status: 200, json: { results: [{ found: 0 }] } }));
+    const port = sortable(url, { year: 'publish_year' });
+
+    await port.documents?.({ query: 'tildelingsbrev', sort: { key: 'year', direction: 'desc' } });
+
+    expect(port.info().documentListing).toEqual({ query: true, sort: ['year'] });
+    expect(searches(seen[0]?.body ?? {})[0]).toMatchObject({
+      collection: DOCS,
+      q: 'tildelingsbrev',
+      query_by: 'title',
+      sort_by: 'publish_year:desc',
+    });
+  });
+
+  it('refuses a sort by a key the dataset declares no field for, without asking the engine', async () => {
+    const { url, seen } = await fake(() => ({ status: 200, json: { results: [{ found: 0 }] } }));
+    const port = sortable(url);
+
+    await expect(
+      port.documents?.({ sort: { key: 'title', direction: 'asc' } }),
+    ).rejects.toMatchObject({ code: 'unsupported' });
+    expect(port.info().documentListing).toEqual({ query: true, sort: [] });
+    expect(seen).toHaveLength(0);
+  });
+});

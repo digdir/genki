@@ -1,7 +1,12 @@
 import { createRoute, z, type RouteConfig } from '@hono/zod-openapi';
 import { fieldFills } from '@genai/jobs';
 import { priceUnits, sourceLinkRules, unitNamePattern } from '@genai/contracts';
-import { filterKinds, filterValueTypes } from '@genai/port-knowledge';
+import {
+  documentSortKeys,
+  filterKinds,
+  filterValueTypes,
+  maxDocumentQueryLength,
+} from '@genai/port-knowledge';
 import {
   apiIdPattern,
   capabilities,
@@ -823,6 +828,22 @@ const PublicModel = z
     operations: z.array(z.string().regex(operationKindPattern)),
     parameters: parameterRules,
     price: Price.nullable(),
+    contextWindow: z.number().int().optional().describe('Tokens the model reads at most'),
+    releaseDate: z.iso.date().optional().describe('The day the model was released'),
+    recommended: z
+      .boolean()
+      .describe(
+        'Listed in the setting models.recommended, or, when that is empty, the model new services start with (services.defaultModel)',
+      ),
+    available: z
+      .boolean()
+      .describe(
+        "False only with all=true, for a model the tenant's building block policy holds back",
+      ),
+    reason: z
+      .enum(['not_allowed', 'requires_approval'])
+      .optional()
+      .describe('Why a model is not available: refused by the policy, or waiting for an approval'),
   })
   .openapi('AvailableModel');
 
@@ -1821,8 +1842,14 @@ const publicModelRoutes: RouteConfig[] = [
     path: '/models',
     summary:
       'Enabled models the caller may use, with price, filtered by residency, capabilities or the needs of a strategy (any signed-in caller or API key)',
+    description:
+      "A model the tenant's building block policy refuses or holds for approval is left out, unless all=true, which lists it with available false and a reason. Models another tenant owns are never listed.",
     request: {
       query: z.object({
+        all: z
+          .enum(['true', 'false'])
+          .optional()
+          .openapi({ description: 'true also lists models the tenant may not use yet' }),
         residency: Residency.optional(),
         strategy: z.string().optional(),
         capability: z
@@ -1966,8 +1993,32 @@ const DatasetDocument = z
     original: OriginalFile.optional().describe(
       "The uploaded file the document was read from, for the organisation's own datasets while the file is kept",
     ),
+    status: z
+      .enum(['indexed', 'failed', 'pending'])
+      .describe(
+        "indexed: in the search engine; failed: skipped or failed in the dataset's latest run; pending: an uploaded file not indexed yet",
+      ),
+    chunkCount: z
+      .number()
+      .int()
+      .optional()
+      .describe("The document's chunks, when the engine keeps the count (total_chunks)"),
+    reason: z
+      .string()
+      .optional()
+      .describe('A failed document: the skip reason, such as no_text, or failed'),
   })
   .openapi('DatasetDocument');
+
+const DocumentChunk = z
+  .object({
+    id: z.string(),
+    position: z.number().int().optional(),
+    page: z.number().int().optional(),
+    pageEnd: z.number().int().optional(),
+    text: z.string(),
+  })
+  .openapi('DatasetDocumentChunk');
 
 const DatasetDocumentDetail = DatasetDocument.extend({
   excerpt: z
@@ -1976,6 +2027,10 @@ const DatasetDocumentDetail = DatasetDocument.extend({
     .describe(
       `The start of the document, at most ${documentExcerptLength} characters, when the engine reads passages in order`,
     ),
+  chunks: z
+    .array(DocumentChunk)
+    .optional()
+    .describe('The chunks at the positions asked for with chunks=from-to, in order'),
 }).openapi('DatasetDocumentDetail');
 
 const documentsOrder =
@@ -2007,6 +2062,23 @@ const documentRoutes: RouteConfig[] = [
           .describe(
             'A JSON object in the shape a search takes, on the fields the dataset declares as filters, such as {"type":"veileder","year":{"gte":2020}}; found counts the matching documents',
           ),
+        query: z
+          .string()
+          .optional()
+          .describe(
+            `Searches document titles, at most ${maxDocumentQueryLength} characters, when listing.query is true; for failed and pending documents it matches the id or file name`,
+          ),
+        sort: z
+          .enum(documentSortKeys)
+          .optional()
+          .describe('Sorts indexed documents by a key listing.sort names; others answer 422'),
+        order: z.enum(['asc', 'desc']).optional().describe('The sort order, asc by default'),
+        status: z
+          .enum(['indexed', 'failed', 'pending'])
+          .optional()
+          .describe(
+            'Which documents to list, indexed by default; failed and pending take only query, limit and offset',
+          ),
       }),
     },
     responses: {
@@ -2021,6 +2093,33 @@ const documentRoutes: RouteConfig[] = [
               .int()
               .optional()
               .describe('All documents that match the filters, when the engine counts'),
+            total: z
+              .number()
+              .int()
+              .describe(
+                "All documents that match: found, else the dataset's document count when nothing narrows the list, else an estimate from the pages read",
+              ),
+            totalExact: z.boolean().describe('False when total is an estimate'),
+            status: z.enum(['indexed', 'failed', 'pending']),
+            statusCounts: z
+              .object({
+                indexed: z.number().int().nullable(),
+                failed: z.number().int(),
+                pending: z.number().int(),
+              })
+              .describe(
+                "Documents per status in the whole dataset; failed and pending count only in the organisation's own datasets",
+              ),
+            listing: z
+              .object({
+                query: z.boolean(),
+                sort: z.array(z.enum(documentSortKeys)),
+              })
+              .describe('What the engine can do with the list: search titles, and the sort keys'),
+            query: z.string().optional(),
+            sort: z
+              .object({ key: z.enum(documentSortKeys), order: z.enum(['asc', 'desc']) })
+              .optional(),
             filters: z
               .record(z.string(), z.unknown())
               .optional()
@@ -2035,7 +2134,7 @@ const documentRoutes: RouteConfig[] = [
       404: either("No such tenant for you, or no such dataset in the tenant's catalogue"),
       422: {
         description:
-          'A limit or offset out of range, filters that are not a JSON object or name a field the dataset does not declare, or an engine that cannot list documents',
+          'A limit or offset out of range, filters that are not a JSON object or name a field the dataset does not declare, a query or sort the engine cannot do, or an engine that cannot list documents',
         content: {
           'application/problem+json': {
             schema: z.union([
@@ -2058,7 +2157,15 @@ const documentRoutes: RouteConfig[] = [
       "One document in a dataset in the tenant's catalogue, with the start of its text (any person in the tenant; not audited)",
     description:
       "The same datasets as the list: the tenant's own, the platform datasets shared with it and those other organisations opened to all. Read through the dataset's knowledge port by the document's id. No model is called.",
-    request: { params: z.object({ tenant, id: param('digdir/kudos'), doc: param('dok-2') }) },
+    request: {
+      params: z.object({ tenant, id: param('digdir/kudos'), doc: param('dok-2') }),
+      query: z.object({
+        chunks: z
+          .string()
+          .optional()
+          .describe('Positions to read as from-to, such as 0-9, at most 50; adds chunks'),
+      }),
+    },
     responses: {
       200: json(DatasetDocumentDetail, 'The document'),
       401: either('Not signed in'),
@@ -2067,10 +2174,10 @@ const documentRoutes: RouteConfig[] = [
         description: `No such tenant for you or no such dataset in the tenant's catalogue; or ${datasetDocumentNotFoundType}: the dataset has no document with that id`,
         content: problemContent,
       },
-      422: typedProblem(
-        datasetDocumentsUnsupportedType,
-        'The engine behind the dataset cannot list documents',
-      ),
+      422: {
+        description: `A chunks range that is not from-to with at most 50 positions, or ${datasetDocumentsUnsupportedType}: the engine cannot list documents or read passages in order`,
+        content: problemContent,
+      },
       502: typedProblem(
         datasetDocumentsFailedType,
         'The search engine failed; its error text is never passed on',

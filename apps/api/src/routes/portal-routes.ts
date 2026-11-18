@@ -596,6 +596,48 @@ export const usageView = (t: Tally) => {
 
 const day = (iso: string) => iso.slice(0, 10);
 
+export const taskSearchWindow = 2000;
+
+export const osloMidnight = (at: Date) => {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Europe/Oslo',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hourCycle: 'h23',
+    })
+      .formatToParts(at)
+      .map((p) => [p.type, Number(p.value)]),
+  ) as Record<string, number>;
+  const wall = Date.UTC(
+    parts.year ?? 0,
+    (parts.month ?? 1) - 1,
+    parts.day ?? 1,
+    parts.hour ?? 0,
+    parts.minute ?? 0,
+    parts.second ?? 0,
+  );
+  const offset = wall - Math.floor(at.getTime() / 1000) * 1000;
+  return new Date(Date.UTC(parts.year ?? 0, (parts.month ?? 1) - 1, parts.day ?? 1) - offset);
+};
+
+const percentile = (sorted: number[], share: number) =>
+  sorted[Math.max(0, Math.ceil(share * sorted.length) - 1)] ?? 0;
+
+export const latencyOf = (durations: number[]) => {
+  if (durations.length === 0) return null;
+  const sorted = [...durations].sort((a, b) => a - b);
+  return {
+    p50Ms: percentile(sorted, 0.5),
+    p95Ms: percentile(sorted, 0.95),
+    runs: sorted.length,
+  };
+};
+
 const windowLimit = 50_000;
 const defaultEnvelopeLimit = 1000;
 
@@ -972,6 +1014,33 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
     });
   };
 
+  const searchTasks = async (
+    tenant: string,
+    candidates: Task[],
+    needle: string,
+    withInput: boolean,
+  ) => {
+    const byRun = candidates.filter((t) => t.id.toLowerCase().includes(needle));
+    const rest = candidates.filter((t) => !t.id.toLowerCase().includes(needle));
+    const [inputs, erased] = withInput
+      ? await Promise.all([
+          inputTexts(rest.map((t) => t.id)),
+          deps.erasures?.(
+            tenant,
+            rest.map((t) => t.id),
+          ) ?? [],
+        ])
+      : [new Map<string, string>(), []];
+    const gone = new Set(erased.map((e) => e.task));
+    const byQuestion = new Set(
+      rest
+        .filter((t) => !gone.has(t.id) && (inputs.get(t.id) ?? '').toLowerCase().includes(needle))
+        .map((t) => t.id),
+    );
+    const found = new Set([...byRun.map((t) => t.id), ...byQuestion]);
+    return candidates.filter((t) => found.has(t.id)).map((t) => ({ id: t.id }));
+  };
+
   const failuresOf = async (tasks: string[]) => {
     const errors = new Map<string, Event[]>();
     const keep = (event: Event) =>
@@ -1078,6 +1147,7 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       nested.set(date, inner);
       bump(inner, key, tally);
     };
+    const durations = new Map<string, number[]>();
     const failedRuns = new Map<string, number>();
     const count = (key: string, failed = false) => {
       runs.set(key, (runs.get(key) ?? 0) + 1);
@@ -1109,6 +1179,9 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       const title = found?.serviceName ?? found?.capability.descriptor.title;
       if (title && !titles.has(service)) titles.set(service, title);
       bump(byService, service, tally);
+      const took = t.endedAt ? Date.parse(t.endedAt) - Date.parse(t.createdAt) : Number.NaN;
+      if (Number.isFinite(took) && took >= 0)
+        durations.set(service, [...(durations.get(service) ?? []), took]);
       const ranIn = environmentOf(t);
       if (ranIn !== null) {
         bump(byEnvironment, ranIn, tally);
@@ -1255,6 +1328,7 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       byService: rows(byService, 'service').map((r) => ({
         ...r,
         usage: { ...r.usage, ...tallied(`service|${r.service}`) },
+        latency: latencyOf(durations.get(r.service) ?? []),
         ...(titles.has(r.service) ? { title: titles.get(r.service) } : {}),
       })),
       byModel: withGateway
@@ -1660,6 +1734,11 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
     const from = c.req.query('from');
     const to = c.req.query('to');
     const limit = Math.min(Math.max(Number(c.req.query('limit') ?? 100) || 100, 1), 500);
+    const offset = Math.min(
+      Math.max(Math.trunc(Number(c.req.query('offset') ?? 0)) || 0, 0),
+      100_000,
+    );
+    const needle = c.req.query('q')?.trim().toLowerCase().slice(0, 200) || undefined;
     const keep = (row: PortalTaskRow) =>
       (!status || row.status === status) && (!from || row.at >= from);
     const tasks =
@@ -1675,7 +1754,15 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       .filter((r) => !from || r.createdAt >= from)
       .filter((r) => !to || r.createdAt <= to)
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-    const shown = rows.slice(0, limit).map((r) => byId.get(r.id) as Task);
+    const matching = needle
+      ? await searchTasks(
+          g.tenant,
+          rows.slice(0, taskSearchWindow).map((r) => byId.get(r.id) as Task),
+          needle,
+          requireRight(g.principal, g.tenant, 'manage-services').ok,
+        )
+      : rows;
+    const shown = matching.slice(offset, offset + limit).map((r) => byId.get(r.id) as Task);
     const [views, failures] = await Promise.all([
       taskViews(
         g.tenant,
@@ -1690,7 +1777,51 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       const failure = failures.get(view.id);
       return failure ? { ...view, failure } : view;
     });
-    return c.json({ data, total: rows.length });
+    return c.json({
+      data,
+      total: matching.length,
+      offset,
+      limit,
+      ...(needle ? { q: needle, searched: Math.min(rows.length, taskSearchWindow) } : {}),
+    });
+  });
+
+  app.get('/tenants/:tenant/service-failures', async (c) => {
+    const g = await guard(c);
+    if (g instanceof Response) return g;
+    const asked = c.req.query('from');
+    const from = asked && !Number.isNaN(Date.parse(asked)) ? new Date(asked) : osloMidnight(now());
+    const since = from.toISOString();
+    const caps = await capabilitiesOf(g.tenant);
+    const failedTasks = (
+      await tenantTasks(g.tenant, (row) => row.status === 'failed' && row.at >= since)
+    ).filter((t) => t.status === 'failed' && t.createdAt >= since);
+    const failures = await failuresOf(failedTasks.map((t) => t.id));
+    const byService = new Map<string, Map<string, { reason: string; count: number }>>();
+    const failedBy = new Map<string, number>();
+    for (const t of failedTasks) {
+      const service = serviceOf(caps, t.service.capability.id);
+      failedBy.set(service, (failedBy.get(service) ?? 0) + 1);
+      const failure = failures.get(t.id);
+      const code = failure?.code ?? 'unknown';
+      const causes = byService.get(service) ?? new Map<string, { reason: string; count: number }>();
+      const known = causes.get(code);
+      causes.set(code, {
+        reason: known?.reason ?? failure?.reason ?? '',
+        count: (known?.count ?? 0) + 1,
+      });
+      byService.set(service, causes);
+    }
+    const data = [...byService]
+      .map(([service, causes]) => ({
+        service,
+        failed: failedBy.get(service) ?? 0,
+        causes: [...causes]
+          .map(([code, cause]) => ({ code, reason: cause.reason, count: cause.count }))
+          .sort((a, b) => b.count - a.count || a.code.localeCompare(b.code)),
+      }))
+      .sort((a, b) => b.failed - a.failed || a.service.localeCompare(b.service));
+    return c.json({ from: since, data });
   });
 
   app.get('/tenants/:tenant/tasks/mine', async (c) => {
