@@ -11,7 +11,7 @@ import { Loading } from '../../states';
 import type { Residency, TaskTimeline, TimelineBlock, TimelineStep } from '../../types';
 import { dayText } from './DateRange';
 import { hasRunFilters, periodDays, trialRuns, type RunFilters } from './filters';
-import { actorText, formatDuration, relativeTime, whole } from './format';
+import { actorText, dateKey, formatDuration, relativeTime, whole } from './format';
 import { ErasedNotice, RunDetail } from './RunDetail';
 import { logHash, trialLabel, useServiceNames } from './RunsTab';
 import { Steps } from './Steps';
@@ -21,6 +21,9 @@ const residencyKeys: Record<Residency, PlainKey> = {
   eu: 'logRun.residencyEu',
   global: 'logRun.residencyGlobal',
 };
+
+/** The Langfuse trace of a run, once the timeline names it. */
+export type TracedTimeline = TaskTimeline & { trace?: { id: string; url?: string } };
 
 const short = (text: string) => {
   const plain = text.replace(/\s+/g, ' ').trim();
@@ -54,7 +57,11 @@ const Crumb = ({ filters, names }: { filters: RunFilters; names: Record<string, 
         ? t('logRun.crumb7')
         : filters.period === '30'
           ? t('logRun.crumb30')
-          : t('logRun.crumbRange', { from: dayText(days.from), to: dayText(days.to) }),
+          : days.from !== days.to
+            ? t('logRun.crumbRange', { from: dayText(days.from), to: dayText(days.to) })
+            : days.from === dateKey(new Date())
+              ? t('logRun.crumbToday')
+              : dayText(days.from),
   ].filter(Boolean);
   return (
     <nav aria-label={t('logRun.breadcrumbs')} className="log-crumb">
@@ -193,7 +200,7 @@ export const RunPage = ({
     );
   }
 
-  const run: TaskTimeline = state.data;
+  const run: TracedTimeline = state.data;
   const row = header.status === 'ready' ? header.data : undefined;
   const trial = isTrialService(row?.service ?? run.service);
   const service = row?.service ?? run.service;
@@ -247,7 +254,7 @@ export const RunPage = ({
     const fail = () => setCopy('fail');
     try {
       if (!navigator.clipboard) return fail();
-      navigator.clipboard.writeText(run.id).then(() => setCopy('ok'), fail);
+      navigator.clipboard.writeText(run.trace?.id ?? run.id).then(() => setCopy('ok'), fail);
     } catch {
       fail();
     }
@@ -286,7 +293,7 @@ export const RunPage = ({
           </div>
           <div className="tag-row">
             <Button variant="secondary" data-size="sm" onClick={copyId}>
-              {t('logRun.copyId')}
+              {run.trace ? t('logRun.copyTraceId') : t('logRun.copyId')}
             </Button>
             {!trial ? (
               <Button asChild variant="primary" data-size="sm">
@@ -297,7 +304,11 @@ export const RunPage = ({
         </div>
         {copy ? (
           <p role="status" className={copy === 'ok' ? 'log-copy-ok' : 'log-copy-fail'}>
-            {copy === 'ok' ? t('logRun.copied') : t('logRun.copyFailed')}
+            {copy === 'fail'
+              ? t('logRun.copyFailed')
+              : run.trace
+                ? t('logRun.copiedTrace')
+                : t('logRun.copied')}
           </p>
         ) : null}
         {run.erasure ? <ErasedNotice erasure={run.erasure} /> : null}
@@ -367,6 +378,12 @@ export const RunPage = ({
       <details className="log-technical">
         <summary>{t('logRun.technical')}</summary>
         <dl>
+          {run.trace ? (
+            <>
+              <dt>{t('logRun.traceId')}</dt>
+              <dd className="log-mono">{run.trace.id}</dd>
+            </>
+          ) : null}
           <dt>{t('logRun.runId')}</dt>
           <dd className="log-mono">{run.id}</dd>
           {run.inputTokens !== undefined && run.outputTokens !== undefined ? (
@@ -384,6 +401,16 @@ export const RunPage = ({
             <>
               <dt>{t('logRun.model')}</dt>
               <dd>{models.map(modelText).join('; ')}</dd>
+            </>
+          ) : null}
+          {run.trace?.url ? (
+            <>
+              <dt>{t('logRun.traceTool')}</dt>
+              <dd>
+                <a href={run.trace.url} target="_blank" rel="noreferrer">
+                  {t('logRun.openInLangfuse')}
+                </a>
+              </dd>
             </>
           ) : null}
         </dl>

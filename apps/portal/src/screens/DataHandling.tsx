@@ -1,4 +1,6 @@
 import {
+  Alert,
+  Button,
   Heading,
   List,
   Paragraph,
@@ -10,39 +12,104 @@ import {
   TableHeaderCell,
   TableRow,
 } from '@digdir/designsystemet-react';
+import { useState } from 'react';
 import type { ApiClient } from '../api';
-import { NotDecided } from '../components/NotDecided';
-import { access, logged, stored, undecided } from '../data/data-handling';
+import { access } from '../data/data-handling';
 import { useAsync, type AsyncState } from '../hooks';
 import { useT, type PlainKey } from '../i18n';
 import { modelLabel } from '../models';
-import { ErrorState } from '../states';
 import type { ModelOption, Residency } from '../types';
-import './startside.css';
+import './data-handling.css';
 
 export const residencyKeys: Record<Residency, PlainKey> = {
-  norway: 'dataHandling.residencyNorway',
-  eu: 'dataHandling.residencyEu',
-  global: 'dataHandling.residencyGlobal',
+  norway: 'about.dhWhereNorway',
+  eu: 'about.dhWhereEu',
+  global: 'about.dhWhereGlobal',
 };
 
-const Section = ({ id, title, items }: { id: string; title: PlainKey; items: PlainKey[] }) => {
+const gatewayPrefix = 'ai-gateway/';
+
+type Column = 'model' | 'where' | 'stored' | 'howLong';
+
+const columns: readonly (readonly [Column, PlainKey])[] = [
+  ['model', 'about.dhColumnModel'],
+  ['where', 'about.dhColumnWhere'],
+  ['stored', 'about.dhColumnStored'],
+  ['howLong', 'about.dhColumnHowLong'],
+];
+
+interface Row {
+  id: string;
+  model: string;
+  where: string;
+  stored: string;
+  howLong: string;
+}
+
+const ModelTable = ({ models }: { models: ModelOption[] }) => {
   const t = useT();
+  const [sort, setSort] = useState<{ key: Column; dir: 1 | -1 }>({ key: 'model', dir: 1 });
+  const rows: Row[] = models.map((m) => ({
+    id: m.id,
+    model: modelLabel(m.id, models),
+    where: t(residencyKeys[m.residency]),
+    stored: t('about.dhStoredEu'),
+    howLong: t('about.dhHowLongStandard'),
+  }));
+  rows.sort(
+    (a, b) => a[sort.key].localeCompare(b[sort.key], 'nb') * sort.dir || a.id.localeCompare(b.id),
+  );
+  const global = models.filter((m) => m.residency === 'global').length;
   return (
-    <section aria-labelledby={id} className="stack-sm">
-      <Heading level={2} data-size="sm" id={id}>
-        {t(title)}
-      </Heading>
-      <List.Unordered>
-        {items.map((item) => (
-          <List.Item key={item}>{t(item)}</List.Item>
-        ))}
-      </List.Unordered>
-    </section>
+    <>
+      {global > 0 ? (
+        <Paragraph>{t('about.dhGlobalCount', { count: global, total: models.length })}</Paragraph>
+      ) : null}
+      <div
+        className="table-scroll"
+        tabIndex={0}
+        role="region"
+        aria-label={t('about.dhModelsLabel')}
+      >
+        <Table border>
+          <TableHead>
+            <TableRow>
+              {columns.map(([key, label]) => (
+                <TableHeaderCell
+                  key={key}
+                  scope="col"
+                  sort={sort.key === key ? (sort.dir === 1 ? 'ascending' : 'descending') : 'none'}
+                  onClick={() =>
+                    setSort({ key, dir: sort.key === key ? (sort.dir === 1 ? -1 : 1) : 1 })
+                  }
+                >
+                  {t(label)}
+                </TableHeaderCell>
+              ))}
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {rows.map((r) => (
+              <TableRow key={r.id}>
+                <TableCell>
+                  <span className="stack-xs">
+                    <span>{r.model}</span>
+                    <code className="meta">{r.id}</code>
+                  </span>
+                </TableCell>
+                <TableCell>{r.where}</TableCell>
+                <TableCell>{r.stored}</TableCell>
+                <TableCell>{r.howLong}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </>
   );
 };
 
-const Processing = ({
+const Models = ({
   models,
   onRetry,
 }: {
@@ -50,54 +117,54 @@ const Processing = ({
   onRetry?: () => void;
 }) => {
   const t = useT();
-  if (models?.status === 'loading')
+  if (!models) return <Paragraph>{t('about.dhModelsSignIn')}</Paragraph>;
+  if (models.status === 'loading')
     return (
       <span role="status" className="row-wrap">
         <Spinner aria-hidden="true" data-size="xs" />
-        {t('dataHandling.loadingModels')}
+        {t('about.dhModelsLoading')}
       </span>
     );
-  if (models?.status === 'error')
-    return <ErrorState error={models.error} headingLevel={3} {...(onRetry ? { onRetry } : {})} />;
-  if (models?.status !== 'ready') return <Paragraph>{t('dataHandling.processingToday')}</Paragraph>;
-  if (models.data.length === 0) return <Paragraph>{t('dataHandling.noModels')}</Paragraph>;
-  const outside = models.data.filter((m) => m.residency === 'global').length;
+  if (models.status === 'error')
+    return (
+      <Alert data-color="danger">
+        <Heading level={3} data-size="2xs">
+          {t('about.dhModelsError')}
+        </Heading>
+        <Paragraph>{t('about.dhModelsErrorText')}</Paragraph>
+        {onRetry ? (
+          <Button variant="secondary" data-size="sm" onClick={onRetry}>
+            {t('common.tryAgain')}
+          </Button>
+        ) : null}
+      </Alert>
+    );
+  if (models.status !== 'ready') return null;
+  if (models.data.length === 0) return <Paragraph>{t('about.dhNoModels')}</Paragraph>;
+  return <ModelTable models={models.data} />;
+};
+
+const Subprocessors = ({ models }: { models?: AsyncState<ModelOption[]> }) => {
+  const t = useT();
+  const gateway =
+    models?.status === 'ready'
+      ? models.data
+          .filter((m) => m.id.startsWith(gatewayPrefix))
+          .map((m) => modelLabel(m.id, models.data))
+      : [];
   return (
-    <>
-      <Paragraph>
-        {outside === 0
-          ? t('dataHandling.allInside')
-          : t('dataHandling.someOutside', { count: outside, total: models.data.length })}
-      </Paragraph>
-      <div
-        className="table-scroll"
-        tabIndex={0}
-        role="region"
-        aria-label={t('dataHandling.modelsLabel')}
-      >
-        <Table border>
-          <TableHead>
-            <TableRow>
-              <TableHeaderCell scope="col">{t('dataHandling.columnModel')}</TableHeaderCell>
-              <TableHeaderCell scope="col">{t('dataHandling.columnWhere')}</TableHeaderCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {models.data.map((m) => (
-              <TableRow key={m.id}>
-                <TableCell>
-                  <span className="stack-xs">
-                    <span>{modelLabel(m.id, models.data)}</span>
-                    <code className="meta">{m.id}</code>
-                  </span>
-                </TableCell>
-                <TableCell>{t(residencyKeys[m.residency])}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+    <dl className="data-handling-subprocessors">
+      <div>
+        <dt>{t('about.dhMicrosoft')}</dt>
+        <dd>{t('about.dhMicrosoftText')}</dd>
       </div>
-    </>
+      {gateway.length ? (
+        <div>
+          <dt>{t('about.dhGateway')}</dt>
+          <dd>{t('about.dhGatewayText', { models: gateway.join(', ') })}</dd>
+        </div>
+      ) : null}
+    </dl>
   );
 };
 
@@ -110,43 +177,54 @@ export const DataHandlingContent = ({
 }) => {
   const t = useT();
   return (
-    <div className="stack">
-      <Heading level={1} data-size="lg">
-        {t('dataHandling.title')}
-      </Heading>
-      <Section id="lagres-h" title="dataHandling.storedHeading" items={stored} />
-      <Section id="tilgang-h" title="dataHandling.accessHeading" items={access} />
-      <section aria-labelledby="behandles-h" className="stack-sm">
-        <Heading level={2} data-size="sm" id="behandles-h">
-          {t('dataHandling.processingHeading')}
+    <div className="stack data-handling">
+      <div className="stack-sm">
+        <Heading level={1} data-size="lg">
+          {t('dataHandling.title')}
         </Heading>
-        <Processing {...(models ? { models } : {})} {...(onRetry ? { onRetry } : {})} />
+        <Paragraph className="lede">{t('about.residencyStatement')}</Paragraph>
+        <Paragraph data-size="sm" className="meta">
+          {t('about.dhUpdated')}
+        </Paragraph>
+        <div className="row-wrap data-handling-pdf">
+          <Button variant="secondary" data-size="sm" onClick={() => window.print()}>
+            {t('about.dhPdf')}
+          </Button>
+          <span className="meta">{t('about.dhPdfHelp')}</span>
+        </div>
+      </div>
+      <section aria-labelledby="dh-models-h" className="stack-sm">
+        <Heading level={2} data-size="sm" id="dh-models-h">
+          {t('about.dhModelsHeading')}
+        </Heading>
+        <Models {...(models ? { models } : {})} {...(onRetry ? { onRetry } : {})} />
       </section>
-      <Section id="logges-h" title="dataHandling.loggedHeading" items={logged} />
-      <section aria-labelledby="merking-h" className="stack-sm">
-        <Heading level={2} data-size="sm" id="merking-h">
-          {t('dataHandling.markingHeading')}
+      <section aria-labelledby="dh-stored-h" className="stack-sm">
+        <Heading level={2} data-size="sm" id="dh-stored-h">
+          {t('about.dhStoredHeading')}
+        </Heading>
+        <Paragraph>{t('about.dhStoredLede')}</Paragraph>
+        <List.Unordered>
+          <List.Item>{t('about.dhStored1')}</List.Item>
+          <List.Item>{t('about.dhStored2')}</List.Item>
+          <List.Item>{t('about.dhStored3')}</List.Item>
+        </List.Unordered>
+      </section>
+      <section aria-labelledby="dh-access-h" className="stack-sm">
+        <Heading level={2} data-size="sm" id="dh-access-h">
+          {t('dataHandling.accessHeading')}
         </Heading>
         <List.Unordered>
-          <List.Item>{t('dataHandling.marking1')}</List.Item>
-          <List.Item>
-            {t.rich('dataHandling.marking2', { code: (c) => <code>{c}</code> })}
-          </List.Item>
-        </List.Unordered>
-      </section>
-      <section aria-labelledby="ikke-bestemt-h" className="stack-sm">
-        <Heading level={2} data-size="sm" id="ikke-bestemt-h">
-          {t('dataHandling.undecidedHeading')}
-        </Heading>
-        <List.Unordered aria-labelledby="ikke-bestemt-h">
-          {undecided.map((term) => (
-            <List.Item key={term}>
-              <span className="row-wrap">
-                {t(term)} <NotDecided />
-              </span>
-            </List.Item>
+          {access.map((item) => (
+            <List.Item key={item}>{t(item)}</List.Item>
           ))}
         </List.Unordered>
+      </section>
+      <section aria-labelledby="dh-sub-h" className="stack-sm">
+        <Heading level={2} data-size="sm" id="dh-sub-h">
+          {t('about.dhSubprocessorsHeading')}
+        </Heading>
+        <Subprocessors {...(models ? { models } : {})} />
       </section>
     </div>
   );

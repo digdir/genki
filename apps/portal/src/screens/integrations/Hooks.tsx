@@ -321,10 +321,7 @@ export const Hooks = ({
       <section aria-labelledby="hooks-own-h" className="stack-xs">
         <div className="int-intro">
           <Heading level={3} data-size="2xs" id="hooks-own-h">
-            {t('integHooks.ownHeading', {
-              name: tenantName,
-              suffix: t(/s$/i.test(tenantName) ? 'integHooks.suffixAfterS' : 'integHooks.suffix'),
-            })}
+            {t('integHooks.ownHeading')}
           </Heading>
           {canManage ? (
             <Button variant="primary" data-size="sm" onClick={() => navigate(hookHref())}>

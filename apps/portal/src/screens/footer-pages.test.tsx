@@ -31,6 +31,12 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('footer pages', () => {
+  it('shows Pris og vilkår to someone who is signed in, not a missing page', async () => {
+    await open('#/about/price-and-terms');
+    expect(await screen.findByRole('heading', { level: 1, name: 'Pris og vilkår' })).toBeTruthy();
+    expect(screen.queryByText('Fant ikke siden')).toBeNull();
+  });
+
   it('Kom i gang promises no way to limit access under Tilgang, which cannot restrict anyone', async () => {
     await open('#/onboarding');
     await screen.findByRole('heading', { level: 1, name: 'Kom i gang' });

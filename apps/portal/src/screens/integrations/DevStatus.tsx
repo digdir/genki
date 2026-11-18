@@ -1,10 +1,24 @@
 import { Alert, Button, Heading, Paragraph, Tag } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
+import { useEffect, useRef, useState } from 'react';
 import type { ApiClient } from '../../api';
 import type { ComponentStatus, TenantStatus } from '../../api/platform-status';
 import { useAsync } from '../../hooks';
 import { useT, type PlainKey } from '../../i18n';
 import { Loading } from '../../states';
+
+type Component = TenantStatus['components'][number] & {
+  how?: string;
+  degradedBy?: 'latency' | 'errors';
+};
+
+type Status = TenantStatus & {
+  components: Component[];
+  environment?: string;
+  pastIncidents?: { title: string; text: string; startedAt: string; resolvedAt: string }[];
+};
+
+export const pollMs = 60_000;
 
 export const shortVersion = (version: string) =>
   /^[0-9a-f]{8,40}$/i.test(version) ? version.slice(0, 7) : version;
@@ -27,19 +41,28 @@ const queueLabels: Record<TenantStatus['queue'][number]['status'], PlainKey> = {
   failed: 'platformStatus.queueFailed',
 };
 
-const serverComponents = (status: TenantStatus) =>
+const serverComponents = (status: Status): Component[] =>
   status.components.filter((c) => c.name !== 'API');
 
-export const overallStatus = (status: TenantStatus): ComponentStatus => {
+export const overallStatus = (status: Status): ComponentStatus => {
   const states = serverComponents(status).map((c) => c.status);
   if (states.includes('down')) return 'down';
   if (states.includes('degraded') || status.incidents.length > 0) return 'degraded';
   return 'normal';
 };
 
-const Summary = ({ status }: { status: TenantStatus }) => {
+const statusLabel = (c: Component): PlainKey =>
+  c.status === 'degraded' && c.degradedBy === 'latency' ? 'devStatus.slow' : statusLabels[c.status];
+
+const Summary = ({ status }: { status: Status }) => {
   const t = useT();
   const overall = overallStatus(status);
+  const slowOnly =
+    overall === 'degraded' &&
+    status.incidents.length === 0 &&
+    serverComponents(status)
+      .filter((c) => c.status !== 'normal')
+      .every((c) => c.degradedBy === 'latency');
   const affected = serverComponents(status)
     .filter((c) => c.status !== 'normal')
     .map((c) => c.name);
@@ -50,7 +73,9 @@ const Summary = ({ status }: { status: TenantStatus }) => {
           ? t('platformStatus.allWorks')
           : overall === 'down'
             ? t('platformStatus.somethingDown')
-            : t('platformStatus.somethingDegraded')}
+            : slowOnly
+              ? t('devStatus.somethingSlow')
+              : t('platformStatus.somethingDegraded')}
       </strong>
       <span>
         {overall === 'normal'
@@ -81,23 +106,36 @@ export const DevStatus = ({
       return { ...result, ms: Math.round(performance.now() - started), at: now() };
     },
     [api],
+    { keepPreviousFor: tenant },
   );
   const [status, retryStatus] = useAsync(
-    (signal) => api.platformStatus.tenant(tenant, signal),
+    async (signal): Promise<Status> => api.platformStatus.tenant(tenant, signal),
     [api, tenant],
+    { keepPreviousFor: tenant },
   );
+  const [lastKnown, setLastKnown] = useState<{ ok: boolean; at: Date }>();
+  useEffect(() => {
+    if (status.status === 'ready' && health.status === 'ready')
+      setLastKnown({ ok: overallStatus(status.data) === 'normal', at: health.data.at });
+  }, [status, health]);
   const loading = health.status === 'loading' || status.status === 'loading';
   const checkNow = () => {
     api.cache.invalidate();
     retry();
     retryStatus();
   };
+  const checkRef = useRef(checkNow);
+  checkRef.current = checkNow;
+  useEffect(() => {
+    const timer = setInterval(() => checkRef.current(), pollMs);
+    return () => clearInterval(timer);
+  }, []);
   return (
     <div className="stack-md">
       <div className="int-intro">
         <Paragraph className="meta int-intro-text">
           {health.status === 'ready'
-            ? t('devTools.statusChecked', { time: f.time(health.data.at) })
+            ? t('devStatus.checked', { time: f.time(health.data.at) })
             : t('app.statusIntro')}
         </Paragraph>
         <Button
@@ -105,7 +143,7 @@ export const DevStatus = ({
           aria-disabled={loading || undefined}
           onClick={() => !loading && checkNow()}
         >
-          {t('devTools.statusCheckNow')}
+          {loading ? t('devStatus.checking') : t('devTools.statusCheckNow')}
         </Button>
       </div>
       {loading ? (
@@ -127,7 +165,14 @@ export const DevStatus = ({
               <Heading level={3} data-size="xs">
                 {t('platformStatus.noContact')}
               </Heading>
-              <Paragraph>{t('platformStatus.noContactText')}</Paragraph>
+              <Paragraph>
+                {t('platformStatus.noContactText')}
+                {lastKnown
+                  ? ` ${t(lastKnown.ok ? 'devStatus.lastKnownOk' : 'devStatus.lastKnownNotOk', {
+                      time: f.time(lastKnown.at),
+                    })}`
+                  : null}
+              </Paragraph>
               <Button variant="secondary" data-size="sm" onClick={checkNow}>
                 {t('common.tryAgain')}
               </Button>
@@ -158,7 +203,7 @@ export const DevStatus = ({
               <li>
                 <span className="stack-xs">
                   <strong>{t('devTools.statusApiCheck')}</strong>
-                  <span className="meta">{t('devTools.statusApiHow')}</span>
+                  <span className="meta">{t('devStatus.apiHow')}</span>
                 </span>
                 <Tag data-size="sm" data-color="success">
                   {t('platformStatus.statusNormal')}
@@ -172,9 +217,10 @@ export const DevStatus = ({
                     <li key={c.name}>
                       <span className="stack-xs">
                         <strong>{c.name}</strong>
+                        {c.how ? <span className="meta">{c.how}</span> : null}
                       </span>
                       <Tag data-size="sm" data-color={statusColors[c.status]}>
-                        {t(statusLabels[c.status])}
+                        {t(statusLabel(c))}
                       </Tag>
                       <span className="meta">
                         {c.note ??
@@ -246,6 +292,12 @@ export const DevStatus = ({
               ) : null}
               <code>{shortVersion(health.data.version)}</code>
             </dd>
+            {status.status === 'ready' && status.data.environment ? (
+              <>
+                <dt>{t('devStatus.environment')}</dt>
+                <dd>{status.data.environment}</dd>
+              </>
+            ) : null}
             {health.data.lockdown === undefined ? null : (
               <>
                 <dt>{t('devTools.statusLockdown')}</dt>
@@ -257,6 +309,26 @@ export const DevStatus = ({
               </>
             )}
           </dl>
+          {status.status === 'ready' && status.data.pastIncidents?.length ? (
+            <section aria-labelledby="ds-past" className="stack-sm">
+              <Heading level={3} data-size="2xs" id="ds-past">
+                {t('devStatus.pastIncidents')}
+              </Heading>
+              <ul className="plain-list stack-sm">
+                {status.data.pastIncidents.map((incident) => (
+                  <li
+                    key={`${incident.startedAt}-${incident.title}`}
+                    className="dev-status-incident"
+                  >
+                    <strong>{f.date(incident.startedAt)}</strong>
+                    <span>
+                      {incident.title}. {incident.text}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
         </>
       ) : null}
     </div>

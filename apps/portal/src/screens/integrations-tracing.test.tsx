@@ -176,7 +176,7 @@ describe('Integrasjoner: Langfuse', () => {
     const { section } = await renderTracing();
     await within(section).findByText('https://langfuse.digdir.cloud');
 
-    fireEvent.click(within(section).getByRole('button', { name: 'Sjekk koblingen' }));
+    fireEvent.click(within(section).getByRole('button', { name: 'Sjekk tilkoblingen' }));
 
     expect(
       await within(section).findByText(
@@ -404,7 +404,7 @@ describe('Integrasjoner: Langfuse, the guide', () => {
 
   it('shows the Langfuse guide open while the organisation has no connection', async () => {
     const { section } = await renderTracing({ connections: [] });
-    await within(section).findByText('Ingen tjenester er koblet til Langfuse.');
+    await within(section).findByText('Sporing er ikke koblet til');
 
     const guide = guideOf(section);
     expect(guide.open).toBe(true);
@@ -451,7 +451,7 @@ describe('Integrasjoner: Langfuse, the guide', () => {
     expect((await guideNow()).open).toBe(false);
     const removing = await edit('Prosjektet er lagt ned');
     fireEvent.click(within(removing).getByRole('button', { name: 'Fjern koblingen' }));
-    await screen.findByText('Ingen tjenester er koblet til Langfuse.');
+    await screen.findByText('Sporing er ikke koblet til');
     expect((await guideNow()).open).toBe(false);
   });
 

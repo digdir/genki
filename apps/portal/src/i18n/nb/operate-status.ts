@@ -84,4 +84,15 @@ export const statusArea = {
   account: defineNamespace({
     email: 'E-post',
   }),
+  devStatus: defineNamespace({
+    checked: 'Sist sjekket kl. {time}. Vi sjekker automatisk hvert minutt.',
+    checking: 'Sjekker ...',
+    apiHow: 'Kaller /health hvert minutt mens siden er åpen',
+    slow: 'Treg',
+    somethingSlow: 'Noe går tregt',
+    lastKnownOk: 'Siste kjente status var «Alt virker» kl. {time}.',
+    lastKnownNotOk: 'Siste kjente status kl. {time} var at noe ikke virket som vanlig.',
+    environment: 'Miljø',
+    pastIncidents: 'Tidligere hendelser',
+  }),
 } as const;

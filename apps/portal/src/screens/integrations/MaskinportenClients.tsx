@@ -183,7 +183,7 @@ export const MaskinportenClients = ({
     <section aria-labelledby="mp-h" className="stack-md">
       <div className="int-intro">
         <div className="stack-xs int-intro-text">
-          <Heading level={2} data-size="xs" id="mp-h">
+          <Heading level={3} data-size="xs" id="mp-h">
             {t('integMaskinporten.heading')}
           </Heading>
           <Paragraph data-size="sm" className="meta">

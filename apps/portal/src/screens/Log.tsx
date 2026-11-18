@@ -1,7 +1,6 @@
-import { Heading, Tabs } from '@digdir/designsystemet-react';
-import { useState } from 'react';
+import { Heading } from '@digdir/designsystemet-react';
+import { useState, type KeyboardEvent } from 'react';
 import { exampleChanges, type ChangeEntry } from '../data/log';
-import { navigate } from '../hooks';
 import { useT } from '../i18n';
 import type { ScreenProps } from '../screen';
 import { useRights } from '../Shell';
@@ -11,6 +10,22 @@ import { RunPage } from './log/RunPage';
 import { RunsTab } from './log/RunsTab';
 import { LiveChanges } from './changes/LiveChanges';
 import './log.css';
+
+const tabKeys: Record<string, (at: number, count: number) => number> = {
+  ArrowRight: (at, count) => (at + 1) % count,
+  ArrowLeft: (at, count) => (at - 1 + count) % count,
+  Home: () => 0,
+  End: (_at, count) => count - 1,
+};
+
+const moveBetweenTabs = (event: KeyboardEvent<HTMLElement>) => {
+  const move = tabKeys[event.key];
+  const links = [...event.currentTarget.querySelectorAll('a')];
+  const at = links.findIndex((link) => link === document.activeElement);
+  if (!move || at < 0) return;
+  event.preventDefault();
+  links[move(at, links.length)]?.focus();
+};
 
 export const Log = ({ api, tenant, route, live }: ScreenProps) => {
   const t = useT();
@@ -48,33 +63,30 @@ export const Log = ({ api, tenant, route, live }: ScreenProps) => {
         </Heading>
         <p className="lead">{t('log.lead')}</p>
       </div>
-      <Tabs
-        value={tab}
-        onChange={(value) =>
-          navigate(
-            value === 'changes'
-              ? `/log/changes${runQuery ? `?${runQuery}` : ''}`
-              : `/log${runQuery ? `?${runQuery}` : ''}`,
-          )
-        }
-      >
-        <Tabs.List aria-label={t('log.title')}>
-          <Tabs.Tab value="runs">{t('log.tabRuns')}</Tabs.Tab>
-          <Tabs.Tab value="changes">{t('log.tabChanges')}</Tabs.Tab>
-        </Tabs.List>
-        <Tabs.Panel value="runs">
-          {tab === 'runs' ? (
-            <RunsTab api={api} tenant={tenant} live={live} query={route.query} />
-          ) : null}
-        </Tabs.Panel>
-        <Tabs.Panel value="changes">
-          {tab === 'changes' && live ? (
-            <LiveChanges api={api} tenant={tenant} filters paged />
-          ) : tab === 'changes' ? (
-            <ChangesTab changes={changes} />
-          ) : null}
-        </Tabs.Panel>
-      </Tabs>
+      <nav aria-label={t('log.title')} className="log-tabs" onKeyDown={moveBetweenTabs}>
+        <ul>
+          {(
+            [
+              ['runs', `#/log${runQuery ? `?${runQuery}` : ''}`, t('log.tabRuns')],
+              ['changes', `#/log/changes${runQuery ? `?${runQuery}` : ''}`, t('log.tabChanges')],
+            ] as const
+          ).map(([id, href, label]) => (
+            <li key={id}>
+              <a href={href} aria-current={tab === id ? 'page' : undefined}>
+                {label}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </nav>
+      {tab === 'runs' ? (
+        <RunsTab api={api} tenant={tenant} live={live} query={route.query} />
+      ) : null}
+      {tab === 'changes' && live ? (
+        <LiveChanges api={api} tenant={tenant} filters paged />
+      ) : tab === 'changes' ? (
+        <ChangesTab changes={changes} />
+      ) : null}
     </div>
   );
 };
