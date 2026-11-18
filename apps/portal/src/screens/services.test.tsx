@@ -59,7 +59,7 @@ const navLink = (name: string) =>
 
 const subLink = (tab: string, name: string) =>
   within(screen.getByRole('tablist', { name: tab })).getByRole('tab', {
-    name: new RegExp(`^${name.replace(/[()]/g, '\\$&')}`),
+    name: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`),
   });
 
 const yamlField = () => screen.getByLabelText('Tjenestedefinisjon (YAML)') as HTMLTextAreaElement;
