@@ -52,15 +52,13 @@ const recording = () => {
 
 const openService = async (query = '', fetch?: typeof globalThis.fetch) => {
   await renderAt(`${base}${query}`, fetch);
-  await screen.findByRole('heading', { level: 1, name: 'Arbeidsmåte' });
+  await screen.findByRole('tab', { name: /^Diagram/ });
 };
 
 const openHome = async (fetch?: typeof globalThis.fetch) => {
   await renderAt('#/developer/step-flows', fetch);
   await screen.findByRole('heading', { level: 2, name: 'Stegflyter' });
 };
-
-const picker = () => screen.getByRole('combobox', { name: 'Stegflyt' }) as HTMLInputElement;
 
 const choose = (input: HTMLElement, value: string, label: string) => {
   const item = document.createElement('data');
@@ -104,8 +102,8 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe('Arbeidsmåte in the step flow editor', () => {
-  it('shows a back link to Stegflyter, the strategy chooser and the default flow diagram, with no library tab', async () => {
+describe('the step flow editor', () => {
+  it('opens on the flow itself with a back link to Stegflyter and its diagram, with no strategy chooser and no library tab', async () => {
     await openService();
     expect(screen.queryByRole('tab', { name: 'Bibliotek: Stegflyter' })).toBeNull();
     expect(
@@ -113,12 +111,9 @@ describe('Arbeidsmåte in the step flow editor', () => {
         .getByRole('link', { name: 'Stegflyter' })
         .getAttribute('href'),
     ).toBe('#/developer/step-flows');
-    const group = screen.getByRole('radiogroup', { name: 'Arbeidsmåte' });
-    expect(within(group).getAllByRole('radio')).toHaveLength(5);
-    expect(
-      (within(group).getByRole('radio', { name: 'Fast stegflyt' }) as HTMLInputElement).checked,
-    ).toBe(true);
-    expect(picker().value).toBe('Svar med kilder');
+    expect(screen.getByRole('heading', { level: 1, name: 'Svar med kilder' })).toBeTruthy();
+    expect(screen.queryByRole('radiogroup', { name: 'Arbeidsmåte' })).toBeNull();
+    expect(screen.queryByRole('combobox', { name: 'Stegflyt' })).toBeNull();
     expect(screen.getByText(/Brukes også av Spør veilederen, Intern spørsmålsbank/)).toBeTruthy();
     expect(screen.getByRole('list', { name: 'Stegene i flyten' })).toBeTruthy();
     expect(
@@ -129,63 +124,13 @@ describe('Arbeidsmåte in the step flow editor', () => {
   });
 
   it.each([
-    ['ett', 'Ett steg'],
-    ['agent', 'Agent (søker selv)'],
-    ['auto', 'La assistenten velge'],
-    ['debatt', 'Flere modeller drøfter'],
-  ])('renders the %s strategy from its schema', async (id, name) => {
-    await openService(`?strategi=${id}`);
-    expect(screen.getByRole('heading', { level: 2, name })).toBeTruthy();
-    expect(screen.getByRole('heading', { level: 2, name: 'Slik kjører den' })).toBeTruthy();
-    expect(screen.getByRole('heading', { level: 2, name: 'Innstillinger' })).toBeTruthy();
-    expect(screen.queryByRole('list', { name: 'Stegene i flyten' })).toBeNull();
-    expectAccessible();
-  });
-
-  it('shows agent tools with versioned references and validates numbers', async () => {
-    await openService('?strategi=agent');
-    expect(
-      screen.getByRole('checkbox', { name: /Klarspråk · digdir\.klarsprak@2\.3/ }),
-    ).toBeTruthy();
-    expect(screen.getByText(/Ny versjon @2\.4 er tilgjengelig/)).toBeTruthy();
-    expect(screen.getByRole('heading', { name: 'Siste testkjøring' })).toBeTruthy();
-    fireEvent.change(screen.getByLabelText(/Maks antall steg/), { target: { value: '999' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Lagre' }));
-    expect(await screen.findByText('Rett feilene i innstillingene før du lagrer.')).toBeTruthy();
-    expectAccessible();
-  });
-
-  it('switches strategy with the chooser', async () => {
-    await openService();
-    fireEvent.click(screen.getByRole('radio', { name: 'Ett steg' }));
-    expect(screen.getByRole('heading', { level: 2, name: 'Ett steg' })).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Lagre' }));
-    expect(await screen.findByText(/Ett steg er lagret/)).toBeTruthy();
-  });
-
-  it.each([
     ['svar', 'Svar med kilder'],
     ['sak', 'Saksforberedelse'],
     ['post', 'Sorter post'],
   ])('picks flyt=%s from the query', async (q, name) => {
     await openService(`?flyt=${q}`);
-    expect(picker().value).toBe(name);
+    expect(screen.getByRole('heading', { level: 1, name })).toBeTruthy();
     expectAccessible();
-  });
-
-  it('changes flow with the picker', async () => {
-    await openService();
-    choose(picker(), 'saksforberedelse', 'Saksforberedelse');
-    await waitFor(() => expect(picker().value).toBe('Saksforberedelse'));
-    expect(screen.queryByRole('button', { name: 'Endre steget Planlegg søk' })).toBeNull();
-  });
-
-  it('searches flows as the person types and never switches flow on a keystroke', async () => {
-    await openService();
-    expect(picker().tagName).toBe('INPUT');
-    fireEvent.change(picker(), { target: { value: 'Sa' } });
-    fireEvent.input(picker(), { target: { value: 'Sak' } });
-    expect(screen.getByRole('button', { name: 'Endre steget Planlegg søk' })).toBeTruthy();
   });
 
   it('shows Gjenta, For hver, Velg and Delflyt controls', async () => {
@@ -701,13 +646,24 @@ describe('Stegflyter in Utviklerverktøy', () => {
 
   it('opens the editor at #/developer/step-flows/:id', async () => {
     await renderAt('#/developer/step-flows/postruting');
-    expect(await screen.findByRole('heading', { level: 1, name: 'Arbeidsmåte' })).toBeTruthy();
-    expect(picker().value).toBe('Postruting');
+    expect(await screen.findByRole('heading', { level: 1, name: 'Postruting' })).toBeTruthy();
+  });
+
+  it('lists the published versions of a flow under Versjoner in the editor', async () => {
+    await renderAt('#/developer/step-flows/postruting');
+    expect(await screen.findByRole('tab', { name: 'Versjoner' })).toBeTruthy();
+    const versions = await screen.findByRole('region', {
+      name: 'Versjoner av Postruting',
+      hidden: true,
+    });
+    expect(await within(versions).findByText('v2')).toBeTruthy();
+    expect(within(versions).getByText('Klager går til klageenheten.')).toBeTruthy();
+    expect(within(versions).getByText('v1')).toBeTruthy();
   });
 
   it('offers to pin the flow to the service it was opened from, with a way back to that service', async () => {
     await renderAt(`${base}?service=rapportassistent`);
-    await screen.findByRole('heading', { level: 1, name: 'Arbeidsmåte' });
+    await screen.findByRole('tab', { name: /^Diagram/ });
     expect(
       within(screen.getByRole('main'))
         .getByRole('link', { name: /^Tilbake til/ })
@@ -719,7 +675,7 @@ describe('Stegflyter in Utviklerverktøy', () => {
   it('pins the current version of a flow to a chosen service through its draft', async () => {
     const { calls, fetch } = recording();
     await renderAt('#/developer/step-flows/saksforberedelse', fetch);
-    await screen.findByRole('heading', { level: 1, name: 'Arbeidsmåte' });
+    await screen.findByRole('heading', { level: 1, name: 'Saksforberedelse' });
     fireEvent.click(screen.getByRole('button', { name: 'Bruk i en tjeneste' }));
     const dialog = await screen.findByRole('dialog', {
       name: 'Bruk Saksforberedelse i en tjeneste',
@@ -835,7 +791,7 @@ describe('saving', () => {
   it('asks a new flow for a name before its first save and derives the id from it', async () => {
     const { calls, fetch } = recording();
     await renderAt('#/developer/step-flows/new', fetch);
-    await screen.findByRole('heading', { level: 1, name: 'Arbeidsmåte' });
+    await screen.findByRole('heading', { level: 1, name: 'Ny stegflyt' });
     fireEvent.click(screen.getByRole('button', { name: /Legg til (et )?steg/ }));
     pickBlock(/^Klassifiser/);
     fireEvent.click(screen.getByRole('button', { name: 'Slett steget' }));
@@ -866,7 +822,7 @@ describe('saving', () => {
 
   it('shows server validation errors for an empty new flow', async () => {
     await renderAt('#/developer/step-flows/new');
-    await screen.findByRole('heading', { level: 1, name: 'Arbeidsmåte' });
+    await screen.findByRole('heading', { level: 1, name: 'Ny stegflyt' });
     fireEvent.click(screen.getByRole('button', { name: /Legg til (et )?steg/ }));
     pickBlock(/^Klassifiser/);
     fireEvent.click(screen.getByRole('button', { name: 'Slett steget' }));
@@ -889,7 +845,6 @@ describe('saving', () => {
 
   it('reports a failed publish', async () => {
     await openService('', failingFetch(/\/definitions$/, 500));
-    await waitFor(() => expect(picker()).toBeTruthy());
     fireEvent.click(screen.getByRole('button', { name: 'Endre steget Planlegg søk' }));
     fireEvent.click(screen.getByRole('button', { name: 'Bruk' }));
     fireEvent.change(screen.getByLabelText(/Hva er endret, og hvorfor\?/), {

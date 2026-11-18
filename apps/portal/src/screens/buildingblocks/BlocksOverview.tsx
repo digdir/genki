@@ -1,7 +1,9 @@
 import { Button, Field, Heading, Input, Label, Paragraph, Tag } from '@digdir/designsystemet-react';
+import type { Format } from '@genai/i18n';
+import { useFormat } from '@genai/i18n/react';
 import { useId, type ReactNode } from 'react';
 import type { ApiClient } from '../../api';
-import type { CatalogItem, CatalogProposal } from '../../api/building-blocks';
+import type { BlockKind, CatalogItem, CatalogProposal } from '../../api/building-blocks';
 import { DataLocationTag } from '../../components/DataLocationTag';
 import { statusLabels } from '../../data/building-blocks';
 import { useT } from '../../i18n';
@@ -64,14 +66,27 @@ export const SearchAll = ({ q, onQuery }: { q: string; onQuery: (q: string) => v
   );
 };
 
-const countText = (t: ReturnType<typeof useT>, inUse: number, catalogue: number) =>
-  inUse && catalogue
+const countText = (t: ReturnType<typeof useT>, inUse: number, catalogue: number, required = 0) => {
+  if (required)
+    return catalogue
+      ? t('blockTypes.countBothRequired', { inUse, required, catalogue })
+      : t('blockTypes.countInUseRequired', { count: inUse, required });
+  return inUse && catalogue
     ? t('blockTypes.countBoth', { inUse, catalogue })
     : inUse
       ? t('blockTypes.countInUse', { count: inUse })
       : catalogue
         ? t('blockTypes.countCatalogue', { count: catalogue })
         : t('blockTypes.countNone');
+};
+
+const purposeOf = (t: ReturnType<typeof useT>, f: Format, key: TypeKey, ofType: CatalogItem[]) => {
+  if (key !== 'tool') return t(typePurposes[key]);
+  const names = ofType.filter((b) => b.status === 'in_use').map((b) => b.name);
+  return names.length
+    ? t('blockTypes.purposeToolNamed', { names: f.list(names.slice(0, 2)) })
+    : t(typePurposes[key]);
+};
 
 const TypeCard = ({
   href,
@@ -177,6 +192,7 @@ export const OverviewBody = ({
   api,
   tenant,
   items,
+  required = {},
   proposals,
   partialError,
   q,
@@ -186,6 +202,7 @@ export const OverviewBody = ({
   api: ApiClient;
   tenant: string;
   items: CatalogItem[];
+  required?: Partial<Record<BlockKind, number>>;
   proposals: CatalogProposal[];
   partialError?: { error: unknown; retry: () => void } | undefined;
   q: string;
@@ -193,14 +210,13 @@ export const OverviewBody = ({
   refreshing?: boolean;
 }) => {
   const t = useT();
+  const f = useFormat();
   const ids = { types: useId(), own: useId() };
   const open = openProposals(proposals);
   const waitingFor = (key: TypeKey) =>
     open.filter((p) => proposalType(p) === key).length +
     items.filter((b) => typeOf(b) === key && b.status === 'pending_approval').length;
-  const shownTypes = typeKeys.filter(
-    (key) => key !== 'extension_point' || items.some((b) => typeOf(b) === key),
-  );
+  const shownTypes = typeKeys.filter((key) => key !== 'extension_point');
 
   let body: ReactNode;
   if (q.trim()) body = <Results api={api} tenant={tenant} items={items} q={q} onQuery={onQuery} />;
@@ -220,8 +236,12 @@ export const OverviewBody = ({
                   key={key}
                   href={typeCardHref(key)}
                   name={t(typeNames[key])}
-                  purpose={t(typePurposes[key])}
-                  meta={countText(t, inUse, ofType.length - inUse)}
+                  purpose={purposeOf(t, f, key, ofType)}
+                  meta={
+                    key === 'step_type'
+                      ? t('blockTypes.fromDigdir')
+                      : countText(t, inUse, ofType.length - inUse, required[key as BlockKind] ?? 0)
+                  }
                   waiting={waitingFor(key)}
                 />
               );

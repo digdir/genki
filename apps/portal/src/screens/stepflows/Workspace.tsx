@@ -1,13 +1,14 @@
-import { Alert, Button, Chip, Heading, Tag } from '@digdir/designsystemet-react';
-import { useEffect, useMemo, useState } from 'react';
+import { Alert, Button, Heading } from '@digdir/designsystemet-react';
+import { useEffect, useState } from 'react';
 import type { ApiClient } from '../../api';
 import { BackLink } from '../../components/BackLink';
-import { strategies, type Flow, type Strategy } from '../../data/stepflows';
+import type { Flow } from '../../data/stepflows';
 import { NotAvailable } from '../../components/NotAvailable';
 import { useT } from '../../i18n';
 import { ErrorState } from '../../states';
 import { FlowEditor, type Flash } from './FlowEditor';
-import { StrategyView } from './StrategyView';
+import { FlowVersions } from './FlowVersions';
+import { flowName } from './model';
 import { UseInService } from './UseInService';
 
 export interface WorkspaceProps {
@@ -18,8 +19,6 @@ export interface WorkspaceProps {
   liveError?: { error: unknown; retry: () => void } | undefined;
   service?: { id: string; name: string } | undefined;
   initialFlow: string;
-  live?: boolean;
-  initialStrategy: Strategy['id'];
   initialTab: 'diagram' | 'yaml';
   initialOverlay: boolean;
 }
@@ -45,22 +44,15 @@ export const Workspace = ({
   liveError,
   service,
   initialFlow,
-  initialStrategy,
   initialTab,
   initialOverlay,
-  live = false,
 }: WorkspaceProps) => {
   const t = useT();
   const [fid, setFid] = useState(initialFlow);
-  const [strategy, setStrategy] = useState(initialStrategy);
   const [flash, setFlash] = useState<Flash>();
   const [using, setUsing] = useState(false);
   useEffect(() => setFid(initialFlow), [initialFlow]);
   const flow = flows[fid] ?? Object.values(flows)[0];
-  const current = useMemo(
-    () => strategies.find((s) => s.id === strategy) ?? strategies[0],
-    [strategy],
-  );
 
   const flashArea = (
     <div aria-live="polite" className="flash-area">
@@ -71,100 +63,68 @@ export const Workspace = ({
       ) : null}
     </div>
   );
-  const flowView = (
-    <>
-      {flow && current ? (
-        <div className="stack-md">
-          {service ? (
-            <BackLink
-              label={t('stepFlowHome.backToService', { service: service.name })}
-              href={`#/services/${encodeURIComponent(service.id)}`}
-            />
-          ) : (
-            <BackLink label={t('stepflows.crumbFlows')} href="#/developer/step-flows" />
-          )}
-          <div className="sf-home-head">
-            <Heading level={1} data-size="md" id="strategi-h">
-              {t('stepflows.strategyTitle')}
-            </Heading>
-            {!flow.unsaved ? (
-              <Button variant="secondary" onClick={() => setUsing(true)}>
-                {service ? t('stepFlowHome.pinHere') : t('stepFlowHome.useInService')}
-              </Button>
-            ) : null}
-          </div>
-          <div className="stack-xs">
-            <div role="radiogroup" aria-labelledby="strategi-h" className="tag-row">
-              {strategies
-                .filter((s) => !live || s.id === 'stegflyt')
-                .map((s) => (
-                  <Chip.Radio
-                    key={s.id}
-                    name="strategi"
-                    value={s.id}
-                    checked={strategy === s.id}
-                    onChange={() => {
-                      setStrategy(s.id);
-                      setFlash(undefined);
-                    }}
-                  >
-                    {s.name}
-                    {s.isNew ? ' ' : null}
-                    {s.isNew ? (
-                      <Tag data-size="sm" data-color="info" className="chip-tag">
-                        {t('stepflows.isNew')}
-                      </Tag>
-                    ) : null}
-                  </Chip.Radio>
-                ))}
-            </div>
-            <p className="meta">{t('stepflows.strategyNote')}</p>
-          </div>
-          {current.id === 'stegflyt' ? (
-            <FlowEditor
-              key={flow.id}
-              api={api}
-              tenant={tenant}
-              flows={flows}
-              flow={flow}
-              {...(service ? { serviceName: service.name, serviceId: service.id } : {})}
-              showPicker
-              initialTab={initialTab}
-              initialOverlay={initialOverlay}
-              onPickFlow={setFid}
-              onChange={(next, previousId) => {
-                const renamed = previousId && previousId !== next.id ? previousId : undefined;
-                setFlows((all) => ({
-                  ...Object.fromEntries(Object.entries(all).filter(([id]) => id !== renamed)),
-                  [next.id]: next,
-                }));
-                if (renamed) setFid(next.id);
-              }}
-              onFlash={setFlash}
-            />
-          ) : live ? null : (
-            <StrategyView
-              key={current.id}
-              strategy={current}
-              onFlash={setFlash}
-              onUse={(id) => setStrategy(id)}
-            />
-          )}
-        </div>
-      ) : null}
-      {!flow ? (
-        <div className="stack-md">
-          <Heading level={1} data-size="md">
-            {t('stepflows.strategyTitle')}
+  const back = service ? (
+    <BackLink
+      label={t('stepFlowHome.backToService', { service: service.name })}
+      href={`#/services/${encodeURIComponent(service.id)}`}
+    />
+  ) : (
+    <BackLink label={t('stepflows.crumbFlows')} href="#/developer/step-flows" />
+  );
+  const flowView = flow ? (
+    <div className="stack-md">
+      <div className="stack-sm">
+        {back}
+        <div className="sf-home-head">
+          <Heading level={1} data-size="lg">
+            {flow.unsaved ? t('stepFlowHome.newFlow') : flowName(flow, t)}
           </Heading>
-          <NotAvailable>
-            {service
-              ? t('stepflows.noFlowForService', { name: service.name })
-              : t('stepflows.noFlows')}
-          </NotAvailable>
+          {!flow.unsaved ? (
+            <Button onClick={() => setUsing(true)}>
+              {service ? t('stepFlowHome.pinHere') : t('stepFlowHome.useInService')}
+            </Button>
+          ) : null}
         </div>
-      ) : null}
-    </>
+      </div>
+      <FlowEditor
+        key={flow.id}
+        api={api}
+        tenant={tenant}
+        flows={flows}
+        flow={flow}
+        {...(service ? { serviceName: service.name, serviceId: service.id } : {})}
+        showPicker={false}
+        initialTab={initialTab}
+        initialOverlay={initialOverlay}
+        {...(flow.unsaved
+          ? {}
+          : {
+              versions: (
+                <FlowVersions api={api} tenant={tenant} id={flow.id} name={flowName(flow, t)} />
+              ),
+            })}
+        onPickFlow={setFid}
+        onChange={(next, previousId) => {
+          const renamed = previousId && previousId !== next.id ? previousId : undefined;
+          setFlows((all) => ({
+            ...Object.fromEntries(Object.entries(all).filter(([id]) => id !== renamed)),
+            [next.id]: next,
+          }));
+          if (renamed) setFid(next.id);
+        }}
+        onFlash={setFlash}
+      />
+    </div>
+  ) : (
+    <div className="stack-md">
+      {back}
+      <Heading level={1} data-size="lg">
+        {t('stepFlowHome.title')}
+      </Heading>
+      <NotAvailable>
+        {service ? t('stepflows.noFlowForService', { name: service.name }) : t('stepflows.noFlows')}
+      </NotAvailable>
+    </div>
   );
   const useDialog =
     using && flow ? (

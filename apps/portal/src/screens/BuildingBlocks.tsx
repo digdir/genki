@@ -96,6 +96,7 @@ const OverviewPage = ({
           api={api}
           tenant={tenant}
           items={state.data.data}
+          required={state.data.counts.required ?? {}}
           refreshing={pending}
           proposals={state.data.proposals.ok ? state.data.proposals.data : []}
           partialError={

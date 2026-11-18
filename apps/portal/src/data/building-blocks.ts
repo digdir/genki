@@ -1,3 +1,4 @@
+import type { BlockFacts } from '../api/blocks';
 import type {
   BlockKind,
   BlockScore,
@@ -301,6 +302,7 @@ type Example = Omit<
 > &
   Partial<Pick<CatalogItem, 'permissions' | 'settingsSchema' | 'tenantOverrides'>> & {
     usedBy?: string[];
+    pins?: Record<string, number>;
     scores?: { service: string; testSet: string; score: number }[];
     versions?: { version: string; publishedAt: string; notes: string; by?: string }[];
   };
@@ -312,7 +314,7 @@ const userOf = (id: string): BlockUser => ({
   name: exampleServices.find((s) => s.id === id)?.name ?? id,
 });
 
-const block = ({ versions: _v, usedBy, scores, ...b }: Example): CatalogItem => ({
+const block = ({ versions: _v, usedBy, pins, scores, ...b }: Example): CatalogItem => ({
   ...b,
   permissions: b.permissions ?? defaultPermissions,
   settingsSchema: b.settingsSchema ?? defaultSettingsSchema,
@@ -324,7 +326,10 @@ const block = ({ versions: _v, usedBy, scores, ...b }: Example): CatalogItem => 
     run: `run-${b.id}-${s.service}`,
     at: exampleRun,
   })),
-  usedBy: (usedBy ?? []).map(userOf),
+  usedBy: (usedBy ?? []).map((id) => {
+    const pinned = pins?.[id];
+    return pinned === undefined ? userOf(id) : { ...userOf(id), version: pinned };
+  }),
 });
 
 const examples: Example[] = [
@@ -746,6 +751,7 @@ const examples: Example[] = [
     version: '3.2',
     dataLocation: 'norway',
     status: 'in_use',
+    required: true,
     usedBy: allServices,
     capabilities: [
       'Finner fødselsnummer, D-nummer, navn og adresser',
@@ -798,10 +804,16 @@ const examples: Example[] = [
     description: 'Klassifiserer innkommende post og sender klager til klageenheten.',
     publisher: publishers.own,
     version: '2',
+    versionAt: '2026-11-11T08:00:00Z',
     dataLocation: 'norway',
     status: 'in_use',
     usedBy: ['vedtaksutkast'],
-    capabilities: ['3 steg', 'Klager går til klageenheten'],
+    pins: { vedtaksutkast: 2 },
+    versions: [
+      { version: '2', publishedAt: '2026-11-11', notes: 'Klager går til klageenheten.' },
+      { version: '1', publishedAt: '2026-10-20', notes: 'Første versjon.' },
+    ],
+    capabilities: ['Klassifiser', 'velg-mottaker', 'til-klage', 'til-arkiv'],
   },
   {
     id: 'sf-hoering',
@@ -809,10 +821,11 @@ const examples: Example[] = [
     name: 'Høringsoppsummering',
     description: 'Grupperer høringssvar etter tema og oppsummerer hvert tema.',
     publisher: publishers.eksempeldirektoratet,
-    version: '1.0',
+    version: '1',
+    versionAt: '2026-10-02T08:00:00Z',
     dataLocation: 'norway',
     status: 'available',
-    capabilities: ['4 steg', 'Viser hvilke høringssvar hvert tema bygger på'],
+    capabilities: ['Hent høringssvar', 'Grupper etter tema', 'Oppsummer hvert tema', 'Vis kildene'],
   },
   {
     id: '991825827/transkribering',
@@ -877,6 +890,35 @@ const examples: Example[] = [
 ];
 
 export const exampleBlocks: CatalogItem[] = examples.map(block);
+
+export const exampleModelFacts: Record<string, BlockFacts> = {
+  'aivar/borealis-27b': {
+    connection: 'aivar',
+    operations: [
+      {
+        operation: 'chat',
+        api: 'openai/chat-completions@1',
+        builtIn: true,
+        maturity: 'production',
+      },
+      { operation: 'generate-image', api: 'openai/images@1', maturity: 'test' },
+    ],
+    processor: {
+      recorded: true,
+      subProcessors: [{ name: 'AIVAR', location: 'Norge' }],
+      retentionDays: 0,
+    },
+  },
+  gpt41: {
+    connection: 'foundry',
+    maker: 'OpenAI',
+    operations: [
+      { operation: 'chat', api: 'openai/responses@1', builtIn: true, maturity: 'production' },
+      { operation: 'plain-language', api: 'openai/plain-language@1', maturity: 'production' },
+    ],
+    processor: { recorded: false },
+  },
+};
 
 export const exampleVersions: Record<string, BlockVersion[]> = Object.fromEntries(
   examples

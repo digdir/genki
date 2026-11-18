@@ -122,15 +122,15 @@ describe('Ferdighet under Byggeklosser', () => {
     expect(window.location.hash).toBe('#/building-blocks/skill/klarsprak-i-brev?owner=991825827');
   });
 
-  it('the old skill list address goes to Byggeklosser filtered on skills', async () => {
+  it('the old skill list address goes straight to the skills type page', async () => {
     await renderAt('#/skills', fetchWith());
-    await waitFor(() => expect(window.location.hash).toBe('#/building-blocks/in-use?type=skill'));
+    await waitFor(() => expect(window.location.hash).toBe('#/building-blocks/skill'));
   });
 
   it('shows the header from the design with one back link, maker, version and unpublished changes', async () => {
     await openSkill('skrive-vedtaksbrev', 'Skrive vedtaksbrev');
     const back = within(screen.getByRole('main')).getByRole('link', { name: 'Byggeklosser' });
-    expect(back.getAttribute('href')).toBe('#/building-blocks/in-use');
+    expect(back.getAttribute('href')).toBe('#/building-blocks');
     expect(screen.queryByRole('navigation', { name: /brødsmule|breadcrumb/i })).toBeNull();
     expect(screen.getByText('Ferdighet · laget av Per Hansen')).toBeTruthy();
     expect(screen.getByText('Publisert, versjon 3')).toBeTruthy();

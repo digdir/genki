@@ -90,6 +90,10 @@
   line-height: 1.5;
 }
 
+.flow-lead {
+  flex: none;
+}
+
 .flow-toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -687,6 +691,14 @@ button.flow-card-main {
   flex-direction: column;
 }
 
+.sf-cell-stack .meta {
+  font-weight: 400;
+}
+
+.sf-none {
+  color: var(--ds-color-neutral-text-subtle);
+}
+
 .sf-users {
   margin: 0;
   padding: 0;
@@ -704,6 +716,7 @@ button.flow-card-main {
 }
 
 .sf-elsewhere {
+  max-width: none;
   border-top: 1px solid var(--ds-color-neutral-border-subtle);
   padding-top: 18px;
   color: var(--ds-color-neutral-text-subtle);

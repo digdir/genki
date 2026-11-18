@@ -103,7 +103,7 @@ describe('Byggeklosser: oversikt etter type', () => {
     expect(screen.getByRole('heading', { level: 2, name: 'Typer' })).toBeTruthy();
     const tools = card('Verktøy');
     expect(tools.getAttribute('href')).toBe('#/building-blocks/tool');
-    expect(tools.textContent).toContain('Slår opp i eller sender til andre systemer.');
+    expect(tools.textContent).toContain('Slår opp i eller sender til andre systemer, som ');
     expect(tools.textContent).toContain('2 i bruk · 1 i katalogen');
     expect(card('Søkemotorer').textContent).toContain('2 i bruk · 1 i katalogen');
     expect(card('Dommere').textContent).toContain('2 i bruk');
@@ -823,23 +823,23 @@ describe('Byggeklosser: detalj', () => {
     expect(screen.queryByText('eu')).toBeNull();
   });
 
-  it('says in prose where a block processes data, with a link to how data is handled', async () => {
+  it('says in prose where a model processes data and which connection reaches it, with a link to how data is handled', async () => {
     await open('#/building-blocks/model/aivar%2Fborealis-27b');
     await screen.findByRole('heading', { level: 1, name: 'Borealis-27B' });
     const where = screen.getByRole('heading', { name: 'Hvor data behandles' }).closest('section');
-    expect(where?.textContent).toContain('I Norge. Det Borealis-27B får, behandles i Norge.');
+    expect(where?.textContent).toContain('I Norge. Modellen nås gjennom tilkoblingen aivar.');
     expect(
       within(where as HTMLElement)
-        .getByRole('link', { name: 'Slik behandles data' })
+        .getByRole('link', { name: 'Slik behandles data for alle modellene' })
         .getAttribute('href'),
     ).toBe('#/data-handling');
   });
 
-  it('says in the lead how many services use the block and who it is from', async () => {
+  it('says above the title who the block is from and counts its services under Fakta, not in the lead', async () => {
     await open('#/building-blocks/model/aivar%2Fborealis-27b');
     await screen.findByRole('heading', { level: 1, name: 'Borealis-27B' });
     expect(screen.getByText('Modell · fra Digdir')).toBeTruthy();
-    expect(screen.getByText(/Brukes i 5 tjenester\.$/)).toBeTruthy();
+    expect(screen.queryByText(/Brukes i 5 tjenester\.$/)).toBeNull();
   });
 
   it('lists each tool of a connected tool by name with its description, and shows its address', async () => {

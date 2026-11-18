@@ -63,6 +63,10 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ## API changes
 
+### 2026-11-19: the connection and maker of a model block
+
+- `GET /tenants/{tenant}/building-blocks/model/{id}` adds `connection`, the id of the model connection the model is reached through, so a page can name the connection its processor facts belong to, and `maker`, who made the model when the model list says (see [access.md](access.md)).
+
 ### 2026-11-18: facts and actions for the portal's building blocks and service tabs
 
 - `GET /tenants/{tenant}/services/{id}/environment-history`: who added, removed, promoted or rolled back each environment of a service, when and why, newest first (see [services.md](services.md#build-and-edit-a-service-from-your-own-admin-ui)). Changes from now on record their action; older ones are inferred.

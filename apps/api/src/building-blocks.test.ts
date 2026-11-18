@@ -221,7 +221,7 @@ const setup = async ({
     configEntries,
     models: {
       describe: () => [
-        model('foundry/gpt-4o', 'norway'),
+        { ...model('foundry/gpt-4o', 'norway'), maker: 'OpenAI' },
         model('azure/gpt-41', 'eu'),
         model('openai/gpt-5', 'global'),
       ],
@@ -1755,7 +1755,7 @@ describe('facts a building block page shows', () => {
     expect(list.data.filter((b) => b.required).map((b) => b.id)).toEqual(['custom-rules/fnr']);
   });
 
-  it('names the API and maturity of each call type of a model, and whether its connection has a processor record', async () => {
+  it('names the connection and maker of a model, the API and maturity of each call type, and whether the connection has a processor record', async () => {
     const { send, configEntries } = await setup({ governed: true });
     await configEntries.append(
       entry('operation-maturity', 'test', 'chat', { maturity: 'production' }),
@@ -1772,6 +1772,8 @@ describe('facts a building block page shows', () => {
       await send(`${base}/model/${enc('foundry/gpt-4o')}`, 'erik'),
     );
 
+    expect(block.connection).toBe('foundry');
+    expect(block.maker).toBe('OpenAI');
     expect(block.operations).toEqual([
       {
         operation: 'chat',
@@ -1800,6 +1802,7 @@ describe('facts a building block page shows', () => {
     );
 
     expect(recorded.processor).toEqual({ recorded: false });
+    expect(recorded.maker).toBeUndefined();
     expect(recorded.operations).toEqual([
       { operation: 'chat', api: 'openai/chat-completions@1', builtIn: true, maturity: 'test' },
     ]);

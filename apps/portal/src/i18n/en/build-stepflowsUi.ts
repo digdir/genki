@@ -385,7 +385,9 @@ export const stepflowsUi = {
     colVersion: 'Current version',
     colUsedBy: 'Used by',
     fromPublisher: 'From {publisher}',
-    steps: { one: '{count} step', other: '{count} steps' },
+    steps: { one: 'one step', other: '{count} steps' },
+    numberWords: 'one,two,three,four,five,six,seven,eight,nine,ten',
+    stepsWords: '{words} steps',
     version: 'v{version}',
     versionDate: 'v{version} · {date}',
     olderVersion: 'v{version}, newer version exists',
@@ -396,9 +398,8 @@ export const stepflowsUi = {
     emptyBody: 'A step flow is a fixed recipe in several steps. Make a new one to get started.',
     elsewhereHeading: 'Other places that show step flows',
     elsewhereBlocks: 'Building blocks shows Step flows as a type and links here.',
-    elsewhereBlocksLink: 'Go to Building blocks',
     elsewhereService:
-      'A service that uses a step flow links here to the flow and pins a version of it.',
+      'In a service: Developer tools, Step flow. There you choose the flow and the version, and "Edit the step flow" opens it here with "Back to the service".',
     elsewhereStepTypes:
       'Step types, such as "Call an operation", are parts of a flow and are shown in the editor, not in this list.',
     back: 'Step flows',
@@ -409,6 +410,10 @@ export const stepflowsUi = {
     tabsLabel: 'Views of {name}',
     tabDiagram: 'Diagram',
     tabYaml: 'YAML',
+    tabVersions: 'Versions',
+    versionsHeading: 'Versions of {name}',
+    noVersions: 'No published versions yet.',
+    versionsFailed: 'We could not load the versions.',
     notShown: 'The publisher does not share the steps of this flow, so it cannot be shown here.',
   },
 } satisfies Translation<typeof source>;

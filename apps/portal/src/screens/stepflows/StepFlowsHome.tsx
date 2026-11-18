@@ -8,6 +8,7 @@ import {
   Table,
   Tag,
 } from '@digdir/designsystemet-react';
+import { intlLocale, type Format } from '@genai/i18n';
 import { useFormat } from '@genai/i18n/react';
 import { useId, useState } from 'react';
 import type { ApiClient } from '../../api';
@@ -23,10 +24,28 @@ type From = 'all' | 'own' | 'digdir' | 'shared';
 
 const currentVersion = (flow: CatalogItem) => flow.latestVersion ?? flow.version;
 
+const currentVersionAt = (flow: CatalogItem) =>
+  flow.latestVersion ? flow.update?.availableFrom : flow.versionAt;
+
+const dayMonth = (f: Format, iso: string) =>
+  new Intl.DateTimeFormat(intlLocale(f.locale), {
+    timeZone: 'Europe/Oslo',
+    day: 'numeric',
+    month: 'long',
+  }).format(new Date(iso));
+
+export const stepCount = (t: ReturnType<typeof useT>, count: number) => {
+  const words = t('stepFlowHome.numberWords').split(',');
+  return count > 1 && count <= words.length
+    ? t('stepFlowHome.stepsWords', { words: words[count - 1] ?? String(count) })
+    : t('stepFlowHome.steps', { count });
+};
+
 const FlowRow = ({ flow }: { flow: CatalogItem }) => {
   const t = useT();
   const f = useFormat();
   const current = currentVersion(flow);
+  const at = currentVersionAt(flow);
   const steps = flow.capabilities.length;
   const from =
     flow.publisher.type === 'own'
@@ -37,17 +56,12 @@ const FlowRow = ({ flow }: { flow: CatalogItem }) => {
       <Table.HeaderCell scope="row">
         <span className="sf-cell-stack">
           <Link href={stepFlowHref(flow.id)}>{flow.name}</Link>
-          <span className="meta">
-            {steps ? `${from} · ${t('stepFlowHome.steps', { count: steps })}` : from}
-          </span>
+          <span className="meta">{steps ? `${from} · ${stepCount(t, steps)}` : from}</span>
         </span>
       </Table.HeaderCell>
       <Table.Cell>
-        {flow.update
-          ? t('stepFlowHome.versionDate', {
-              version: current,
-              date: f.date(flow.update.availableFrom),
-            })
+        {at
+          ? t('stepFlowHome.versionDate', { version: current, date: dayMonth(f, at) })
           : t('stepFlowHome.version', { version: current })}
       </Table.Cell>
       <Table.Cell>
@@ -69,7 +83,7 @@ const FlowRow = ({ flow }: { flow: CatalogItem }) => {
             ))}
           </ul>
         ) : (
-          <span className="meta">{t('stepFlowHome.noServices')}</span>
+          <span className="sf-none">{t('stepFlowHome.noServices')}</span>
         )}
       </Table.Cell>
     </Table.Row>
@@ -238,10 +252,7 @@ export const StepFlowsHome = ({ api, tenant }: { api: ApiClient; tenant: string 
           {t('stepFlowHome.elsewhereHeading')}
         </Heading>
         <ul>
-          <li>
-            {t('stepFlowHome.elsewhereBlocks')}{' '}
-            <a href="#/building-blocks">{t('stepFlowHome.elsewhereBlocksLink')}</a>
-          </li>
+          <li>{t('stepFlowHome.elsewhereBlocks')}</li>
           <li>{t('stepFlowHome.elsewhereService')}</li>
           <li>{t('stepFlowHome.elsewhereStepTypes')}</li>
         </ul>

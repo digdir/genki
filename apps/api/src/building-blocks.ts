@@ -2235,6 +2235,8 @@ export const createBuildingBlocksModule =
       );
       const record = governance ? await governance.processorRecord(model.endpoint) : undefined;
       return {
+        connection: model.endpoint,
+        ...(model.maker ? { maker: model.maker } : {}),
         operations,
         ...(governance
           ? {
@@ -2291,6 +2293,8 @@ export const createBuildingBlocksModule =
 const builtInKinds: readonly string[] = [...builtInOperations, 'embed', 'rerank'];
 
 interface ModelFacts {
+  connection?: string;
+  maker?: string;
   operations?: { operation: string; api: string; builtIn?: true; maturity?: Maturity }[];
   processor?:
     | { recorded: true; subProcessors: { name: string; location: string }[]; retentionDays: number }

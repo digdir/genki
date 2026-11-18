@@ -1,7 +1,12 @@
 import { Alert, Button, Dialog, Heading, Paragraph } from '@digdir/designsystemet-react';
 import { useState } from 'react';
 import { ApiError, type ApiClient } from '../../api';
-import { applySpec, asServiceDefinition, forTenant } from '../../data/service-definition';
+import {
+  applySpec,
+  asServiceDefinition,
+  forTenant,
+  type SpecEdit,
+} from '../../data/service-definition';
 import { withFlow } from '../../data/service-form';
 import type { Flow } from '../../data/stepflows';
 import { useAsync } from '../../hooks';
@@ -10,11 +15,11 @@ import { needsRight, useRights } from '../../Shell';
 import { SearchField } from './fields';
 import { flowName } from './model';
 
-export const pinFlowInService = async (
+export const writeServiceDraft = async (
   api: ApiClient,
   tenant: string,
   service: string,
-  ref: string,
+  edit: SpecEdit,
   reason: string,
 ) => {
   const [found, opened] = await Promise.all([
@@ -23,7 +28,7 @@ export const pinFlowInService = async (
   ]);
   const current = opened ?? found.latest;
   const definition = asServiceDefinition(current.definition);
-  const pinned = forTenant(applySpec(definition, withFlow(definition.spec, ref)), {
+  const changed = forTenant(applySpec(definition, edit), {
     tenant,
     id: service,
     version: found.latest.version + 1,
@@ -32,13 +37,21 @@ export const pinFlowInService = async (
     tenant,
     service,
     {
-      definition: pinned as unknown as Record<string, unknown>,
+      definition: changed as unknown as Record<string, unknown>,
       files: current.files ?? {},
       revision: opened?.revision ?? 0,
     },
     reason,
   );
 };
+
+export const pinFlowInService = (
+  api: ApiClient,
+  tenant: string,
+  service: string,
+  ref: string,
+  reason: string,
+) => writeServiceDraft(api, tenant, service, (d) => withFlow(d.spec, ref), reason);
 
 export const UseInService = ({
   api,

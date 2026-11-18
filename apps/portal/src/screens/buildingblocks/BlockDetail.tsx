@@ -1,7 +1,7 @@
 import { Alert, Button, Heading, Link, Paragraph, Tag } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
 import { useId, useState } from 'react';
-import type { BlockFacts, ToolConnectionView } from '../../api/blocks';
+import type { BlockFacts, ModelCallType, ToolConnectionView } from '../../api/blocks';
 import type { ApiClient } from '../../api';
 import type { CatalogModel } from '../../api/models';
 import {
@@ -44,6 +44,7 @@ import {
   type Settled,
 } from './common';
 import { SettingsForm } from './SettingsForm';
+import { UseModelInService } from './UseModelInService';
 import { useModelText } from '../../components/model-text';
 import { LinkTabs } from '../../components/LinkTabs';
 import { SyncButton, ToolConnectionSections } from './ToolConnection';
@@ -86,9 +87,12 @@ export const BlockCrumbs = ({ block }: { block: Pick<CatalogItem, 'kind' | 'id'>
 
 export const priceText = (
   t: T,
-  f: { decimal: (n: number, digits?: number) => string },
+  f: { number: (n: number, options?: Intl.NumberFormatOptions) => string },
   perThousand: number,
-) => t('blockModel.pricePerThousand', { price: f.decimal(perThousand, 2) });
+) =>
+  t('blockModel.pricePerThousand', {
+    price: f.number(perThousand, { minimumFractionDigits: 2, maximumFractionDigits: 4 }),
+  });
 
 const modelCapabilities: Record<
   string,
@@ -121,6 +125,13 @@ const processedText = {
 } as const;
 
 type Pending = 'adopt' | 'request' | null;
+
+const maturityLabels = {
+  production: 'blockTypes.maturityProduction',
+  test: 'blockTypes.maturityTest',
+} as const;
+
+const maturityOf = (op: ModelCallType) => op.maturity ?? (op.builtIn ? 'production' : undefined);
 
 const versionRows = (t: T, versions: BlockVersion[]) =>
   [...versions]
@@ -233,6 +244,7 @@ export const BlockDetail = ({
   const model = extra.status === 'ready' ? extra.data.model : undefined;
   const connection = extra.status === 'ready' ? extra.data.connection : undefined;
   const [syncMessage, setSyncMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const [usingModel, setUsingModel] = useState(false);
   const maker = facts2.maker ?? model?.maker;
   const operator = facts2.operator ?? model?.operator;
   const rights = useBlockRights();
@@ -306,9 +318,33 @@ export const BlockDetail = ({
     };
   };
 
+  const processor = facts2.processor;
   const facts = [
     { label: t('blocks.factType'), value: kindLabel(t, item.kind) },
     ...(maker ? [{ label: t('blockModel.maker'), value: maker }] : []),
+    ...(facts2.connection
+      ? [{ label: t('blockTypes.factConnection'), value: facts2.connection }]
+      : []),
+    ...(item.dataLocation
+      ? [{ label: t('blockTypes.factData'), value: t(storageLabels[item.dataLocation]) }]
+      : []),
+    ...(processor
+      ? [
+          {
+            label: t('blockTypes.factProcessor'),
+            value: processor.recorded
+              ? t('blockTypes.processorRecorded')
+              : t('blockTypes.processorNone'),
+          },
+        ]
+      : []),
+    { label: t('blockModel.publishedBy'), value: item.publisher.name },
+    {
+      label: t('blockTypes.factUsedIn'),
+      value: used.length
+        ? t('blockTypes.usedInServices', { count: used.length })
+        : t('blockTypes.usedInNone'),
+    },
     ...(operator
       ? [
           {
@@ -317,7 +353,6 @@ export const BlockDetail = ({
           },
         ]
       : []),
-    { label: t('blockModel.publishedBy'), value: item.publisher.name },
     ...(item.judge
       ? judgeFacts(t, item.judge)
       : [
@@ -326,9 +361,6 @@ export const BlockDetail = ({
             value: item.version,
           },
         ]),
-    ...(item.dataLocation
-      ? [{ label: t('blocks.factStorage'), value: t(storageLabels[item.dataLocation]) }]
-      : []),
     ...(item.extensionPoint
       ? [{ label: t('blocks.factRuns'), value: extensionPointLabel(item.extensionPoint, t) }]
       : []),
@@ -354,12 +386,6 @@ export const BlockDetail = ({
           },
         ]
       : []),
-    {
-      label: t('blockTypes.factUsedIn'),
-      value: used.length
-        ? t('blockTypes.usedInServices', { count: used.length })
-        : t('blockTypes.usedInNone'),
-    },
     { label: t('blocks.factChangedBy'), value: right },
     { label: t('blocks.factId'), value: item.id },
   ];
@@ -386,6 +412,7 @@ export const BlockDetail = ({
               {item.name}
             </Heading>
             <Tag data-color={status.color}>{t(status.label)}</Tag>
+            {item.required ? <Tag data-color="info">{t('blockTypes.required')}</Tag> : null}
             {(model as CatalogModel | undefined)?.recommended ? (
               <Tag data-color="success">{t('blockTypes.recommended')}</Tag>
             ) : null}
@@ -393,6 +420,11 @@ export const BlockDetail = ({
           </div>
           {canChange ? (
             <div className="actions">
+              {item.kind === 'model' && item.status === 'in_use' ? (
+                <Button variant="primary" onClick={() => setUsingModel(true)}>
+                  {t('blockTypes.useInService')}
+                </Button>
+              ) : null}
               {item.status === 'available' ? (
                 <Button variant="primary" onClick={() => open('adopt')}>
                   {t('blocks.adoptHere')}
@@ -418,11 +450,8 @@ export const BlockDetail = ({
             </div>
           ) : null}
         </div>
-        <p className="lead bb-desc">
-          {lead}
-          {lead && used.length ? ' ' : ''}
-          {used.length ? t('blocks.usedInSentence', { count: used.length }) : ''}
-        </p>
+        {lead ? <p className="lead bb-desc">{lead}</p> : null}
+        {item.required ? <p className="bb-meta">{t('blockTypes.requiredNote')}</p> : null}
       </div>
 
       {!canChange ? <ReadOnlyAlert right={right} /> : null}
@@ -666,16 +695,49 @@ export const BlockDetail = ({
                   })}
                 </ul>
               </section>
-            ) : item.kind === 'model' && model ? (
+            ) : item.kind === 'model' && (facts2.operations?.length || model) ? (
               <section aria-labelledby={ids.caps} className="stack-sm">
                 <Heading level={2} data-size="xs" id={ids.caps}>
                   {t('blockTypes.callTypes')}
                 </Heading>
-                <ul className="bb-list">
-                  {modelText.uses(model).map((op) => (
-                    <li key={op}>{modelText.use(op)}</li>
-                  ))}
-                </ul>
+                <div
+                  className="table-scroll"
+                  tabIndex={0}
+                  role="region"
+                  aria-label={t('blockTypes.callTypesTable', { name: item.name })}
+                >
+                  <table className="bb-calltypes">
+                    <thead>
+                      <tr>
+                        <th scope="col">{t('blockTypes.colCallType')}</th>
+                        <th scope="col">{t('blockTypes.colApi')}</th>
+                        <th scope="col">{t('blockTypes.colMaturity')}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(
+                        facts2.operations ??
+                        (model ? modelText.uses(model) : []).map((operation) => ({
+                          operation,
+                          api: '',
+                        }))
+                      ).map((op) => {
+                        const maturity = maturityOf(op);
+                        return (
+                          <tr key={op.operation}>
+                            <td>{modelText.use(op.operation)}</td>
+                            <td>{op.api ? <code>{op.api}</code> : '–'}</td>
+                            <td>
+                              {maturity
+                                ? t(maturityLabels[maturity])
+                                : t('blockTypes.maturityUnknown')}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </section>
             ) : item.capabilities.length ? (
               <section aria-labelledby={ids.caps} className="stack-sm">
@@ -697,9 +759,24 @@ export const BlockDetail = ({
                 </Heading>
                 <Paragraph className="bb-measure">
                   <strong>{t(processedText[item.dataLocation][0])}</strong>{' '}
-                  {t(processedText[item.dataLocation][1], { name: item.name })}
+                  {item.kind === 'model' && facts2.connection
+                    ? [
+                        t('blockTypes.reachedThrough', { connection: facts2.connection }),
+                        ...(processor
+                          ? [
+                              processor.recorded
+                                ? t('blockTypes.processorRecordedBody')
+                                : t('blockTypes.processorNoneBody'),
+                            ]
+                          : []),
+                      ].join(' ')
+                    : t(processedText[item.dataLocation][1], { name: item.name })}
                 </Paragraph>
-                <Link href="#/data-handling">{t('blocks.howDataIsHandled')}</Link>
+                <Link href="#/data-handling">
+                  {item.kind === 'model'
+                    ? t('blockTypes.howDataIsHandledAll')
+                    : t('blocks.howDataIsHandled')}
+                </Link>
               </section>
             ) : null}
 
@@ -846,6 +923,14 @@ export const BlockDetail = ({
             </section>
           </aside>
         </div>
+      ) : null}
+      {usingModel ? (
+        <UseModelInService
+          api={api}
+          tenant={tenant}
+          model={{ id: item.id, name: item.name }}
+          onClose={() => setUsingModel(false)}
+        />
       ) : null}
     </div>
   );

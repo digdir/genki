@@ -99,11 +99,13 @@ export interface CatalogItem {
   description: string;
   publisher: { type: 'digdir' | 'own' | 'shared'; name: string };
   version: string;
+  versionAt?: string;
   latestVersion?: string;
   update?: BlockUpdate;
   dataLocation: DataLocation | null;
   residency?: Residency;
   status: BlockStatus;
+  required?: true;
   policyBlock?: { rule: string; ownedBy: string; text: string };
   approver?: string;
   capabilities: string[];
@@ -133,7 +135,12 @@ export interface SinkJudgeInfo {
 
 export interface BuildingBlockList {
   data: CatalogItem[];
-  counts: { inUse: number; catalog: number; byKind: Record<BlockKind, number> };
+  counts: {
+    inUse: number;
+    catalog: number;
+    byKind: Record<BlockKind, number>;
+    required?: Partial<Record<BlockKind, number>>;
+  };
 }
 
 export type BlockEvent =

@@ -83,7 +83,7 @@ describe('Felles sikkerhetsfiltre', () => {
       await screen.findByRole('heading', { name: 'Ingen felles sikkerhetsfiltre ennå' }),
     ).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Se vern i Byggeklosser' }).getAttribute('href')).toBe(
-      '#/building-blocks/catalogue?type=guardrail',
+      '#/building-blocks/guardrail?show=catalogue',
     );
   });
 });

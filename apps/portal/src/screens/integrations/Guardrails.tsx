@@ -113,7 +113,7 @@ export const Guardrails = ({
       <>
         {lead}
         <PageEmpty title={t('devGuardrails.emptyTitle')} text={t('devGuardrails.emptyText')}>
-          <a href="#/building-blocks/catalogue?type=guardrail">{t('devGuardrails.seeBlocks')}</a>
+          <a href="#/building-blocks/guardrail?show=catalogue">{t('devGuardrails.seeBlocks')}</a>
         </PageEmpty>
       </>
     );
