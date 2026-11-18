@@ -15,6 +15,7 @@ import {
 } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
 import {
+  isOpen,
   skippedCount,
   skippedOf,
   type ExecutionView,
@@ -103,8 +104,9 @@ export const Run = ({
   const f = useFormat();
   const status = executionStatus(t, run);
   const skipped = skippedOf(run);
-  const running = run.status === 'running';
+  const running = isOpen(run);
   const stored = run.report?.stored ?? 0;
+  const pending = pendingText(t, run);
   return (
     <li id={`run-${run.id}`} className={open ? 'run open' : 'run'}>
       <button type="button" className="run-toggle" aria-expanded={open} onClick={onToggle}>
@@ -134,8 +136,10 @@ export const Run = ({
       {running ? (
         <div className="run-live">
           <progress aria-label={t('datasets.storedSoFarLabel')} />
-          <span className="meta">{t('datasets.storedSoFar', { amount: f.number(stored) })}</span>
-          {onCancel ? (
+          <span className="meta">
+            {pending ?? t('datasets.storedSoFar', { amount: f.number(stored) })}
+          </span>
+          {onCancel && !run.cancelRequestedAt ? (
             <Button variant="secondary" data-color="danger" data-size="sm" onClick={onCancel}>
               {t('datasets.cancelIngestion')}
             </Button>
@@ -193,13 +197,22 @@ export const Run = ({
   );
 };
 
+const pendingText = (t: T, run: ExecutionView) =>
+  run.status === 'queued'
+    ? t('datasets.runQueuedText')
+    : run.status === 'waiting'
+      ? t('datasets.runWaitingText')
+      : undefined;
+
 const startedByText = (t: T, run: ExecutionView) =>
   run.startedBy === scheduledActor
     ? t('datasets.startedBySchedule')
-    : (run.startedBy ?? t('datasets.notAvailable'));
+    : (run.startedByName ?? run.startedBy ?? t('datasets.notAvailable'));
 
 const whatHappened = (t: T, f: Format, run: ExecutionView) => {
   const stored = f.number(run.report?.stored ?? 0);
+  const pending = pendingText(t, run);
+  if (pending) return pending;
   if (run.status === 'running') return t('datasets.pagesSoFar', { amount: stored });
   if (run.status === 'failed')
     return [run.error, t('datasets.noPagesChanged')].filter(Boolean).join('. ');
@@ -233,7 +246,7 @@ export const RunTable = ({
         <TableBody>
           {runs.map((run) => {
             const status = executionStatus(t, run);
-            const running = run.status === 'running';
+            const running = isOpen(run);
             return (
               <TableRow key={run.id} id={`run-${run.id}`}>
                 <TableCell>{f.dateTime(run.startedAt)}</TableCell>
@@ -248,7 +261,7 @@ export const RunTable = ({
                   {running ? (
                     <span className="run-live">
                       <progress aria-label={t('datasets.storedSoFarLabel')} />
-                      {onCancel ? (
+                      {onCancel && !run.cancelRequestedAt ? (
                         <Button
                           variant="secondary"
                           data-color="danger"
@@ -283,7 +296,13 @@ export const CancelDialog = ({
   const t = useT();
   const f = useFormat();
   return (
-    <Dialog open modal onClose={onKeep} aria-labelledby="cancel-run-h">
+    <Dialog
+      open
+      modal
+      onClose={onKeep}
+      aria-labelledby="cancel-run-h"
+      closeButton={t('common.close')}
+    >
       <Heading level={2} data-size="xs" id="cancel-run-h">
         {t('datasets.cancelQuestion')}
       </Heading>

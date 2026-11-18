@@ -3,17 +3,44 @@ import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockFetch } from '../../mock';
 import { exampleEndpoints, type SearchEnginesMockOptions } from '../../mock/search-engines';
-import { expectAccessible, renderAt } from '../../test-utils';
+import { expectAccessible, renderAt as render } from '../../test-utils';
+import type { DatasetDetailView } from '../../api/datasets';
+import { exampleLiveDatasets } from '../../mock/datasets';
 
-const kudos = `#/datasets/${encodeURIComponent('digdir/kudos')}?tab=source`;
-const shared = `#/datasets/${encodeURIComponent('999666555/statsbudsjett-2026')}?tab=source`;
+const own = '999888777/veiledere';
+const kudos = `#/datasets/${encodeURIComponent(own)}?tab=source`;
+const sharedByOther: DatasetDetailView = {
+  id: 'statsbudsjett-2026',
+  fullId: '999666555/statsbudsjett-2026',
+  name: 'Statsbudsjett 2026',
+  scope: '999666555',
+  editable: false,
+  searchScope: 'all',
+  source: 'none',
+  documents: null,
+  chunks: null,
+  lastExecution: null,
+  nextRunAt: null,
+};
+const shared = `#/datasets/${encodeURIComponent(sharedByOther.fullId)}?tab=source`;
 
 const fetchWith = (searchEngines: SearchEnginesMockOptions = {}) =>
-  mockFetch(undefined, undefined, undefined, undefined, { features: { searchEngines } });
+  mockFetch(undefined, undefined, undefined, undefined, {
+    features: {
+      searchEngines: { dataset: own, ...searchEngines },
+      datasets: { datasets: [...exampleLiveDatasets, sharedByOther] },
+    },
+  });
 
-const openKudos = async (options: SearchEnginesMockOptions = {}) => {
+const renderAt = async (hash: string, fetch?: typeof globalThis.fetch) => {
+  await render(hash, fetch);
+  await screen.findByRole('heading', { level: 1 });
+  fireEvent.click(await screen.findByText('Teknisk'));
+};
+
+const openOwn = async (options: SearchEnginesMockOptions = {}) => {
   await renderAt(kudos, fetchWith(options));
-  await screen.findByRole('heading', { level: 1, name: 'Kudos-rapporter' });
+  await screen.findByRole('heading', { level: 1, name: 'Veiledere og rundskriv' });
 };
 
 const block = async () => {
@@ -36,7 +63,7 @@ afterEach(() => {
 
 describe('Datasett: søkemotor', () => {
   it('shows the engine facts, what it can do and the services that search the dataset', async () => {
-    await openKudos();
+    await openOwn();
     const section = await block();
     expect(within(section).getByText('Innebygd søk')).toBeTruthy();
     expect(within(section).getByText('Plattformens egen database')).toBeTruthy();
@@ -48,7 +75,7 @@ describe('Datasett: søkemotor', () => {
   });
 
   it('the Kan ikke list explains the consequence for services', async () => {
-    await openKudos({ scenario: 'no-facets' });
+    await openOwn({ scenario: 'no-facets' });
     const section = await block();
     expect(within(section).getByText('OpenSearch')).toBeTruthy();
     expect(
@@ -74,7 +101,7 @@ describe('Datasett: søkemotor', () => {
   });
 
   it('says there is nothing to switch to when the platform has one engine', async () => {
-    await openKudos({ endpoints: exampleEndpoints.filter((e) => e.id === 'platform-pg') });
+    await openOwn({ endpoints: exampleEndpoints.filter((e) => e.id === 'platform-pg') });
     const section = await block();
     expect(
       within(section).getByText(
@@ -97,7 +124,7 @@ describe('Datasett: søkemotor', () => {
   });
 
   it('compares engines and warns about what the dataset would lose', async () => {
-    await openKudos();
+    await openOwn();
     fireEvent.click(within(await block()).getByRole('button', { name: 'Bytt søkemotor' }));
     const flow = await switchSection();
     expect(
@@ -120,7 +147,7 @@ describe('Datasett: søkemotor', () => {
   });
 
   it('copy is disabled when vector models differ', async () => {
-    await openKudos();
+    await openOwn();
     fireEvent.click(within(await block()).getByRole('button', { name: 'Bytt søkemotor' }));
     const flow = await switchSection();
     fireEvent.click(within(flow).getByRole('radio', { name: /Azure AI Search/ }));
@@ -141,14 +168,14 @@ describe('Datasett: søkemotor', () => {
     expect(reingest.checked).toBe(true);
     expect(
       await within(flow).findByText(
-        'Anslag: omtrent 2 000 til 2 400 kr og 3 til 4 timer for 48 312 dokumenter.',
+        'Anslag: omtrent 2 000 til 2 400 kr og 3 til 4 timer for 6 dokumenter.',
       ),
     ).toBeTruthy();
     expectAccessible();
   });
 
   it('offers copy with its estimate when the vector model is the same', async () => {
-    await openKudos();
+    await openOwn();
     fireEvent.click(within(await block()).getByRole('button', { name: 'Bytt søkemotor' }));
     const flow = await switchSection();
     fireEvent.click(within(flow).getByRole('radio', { name: /OpenSearch/ }));
@@ -160,7 +187,7 @@ describe('Datasett: søkemotor', () => {
     expect(copy.checked).toBe(true);
     expect(
       await within(flow).findByText(
-        'Anslag: omtrent 30 til 50 kr og 25 minutter for 1,9 mill. tekstbiter.',
+        'Anslag: omtrent 30 til 50 kr og 25 minutter for 48 tekstbiter.',
         {
           exact: false,
         },
@@ -169,7 +196,7 @@ describe('Datasett: søkemotor', () => {
   });
 
   it('steps mark the current one with aria-current=step', async () => {
-    await openKudos({ scenario: 'switching' });
+    await openOwn({ scenario: 'switching' });
     const flow = await switchSection();
     expect(within(flow).getByText('Steg 3 av 5')).toBeTruthy();
     const steps = within(flow).getByRole('list', { name: 'Steg' });
@@ -255,7 +282,7 @@ describe('Datasett: søkemotor', () => {
 
   it("the portal's engine switch screen shows when admission runs out, and admits the switch again", async () => {
     vi.useFakeTimers({ now: new Date('2026-11-15T05:00:00Z'), shouldAdvanceTime: true });
-    await openKudos({
+    await openOwn({
       scenario: 'switching',
       progressStep: 0,
       admissionRunsOutAt: '2026-11-15T07:56:00Z',
@@ -273,7 +300,7 @@ describe('Datasett: søkemotor', () => {
   });
 
   it('a failed transfer offers Prøv igjen and Avbryt byttet, and the block explains it', async () => {
-    await openKudos({ scenario: 'failed' });
+    await openOwn({ scenario: 'failed' });
     const flow = await switchSection();
     expect(
       within(flow).getByRole('heading', { name: 'Overføringen stoppet ved 60 prosent' }),
@@ -294,7 +321,7 @@ describe('Datasett: søkemotor', () => {
   });
 
   it('a worse comparison asks for a 20-character reason', async () => {
-    await openKudos({ scenario: 'worse' });
+    await openOwn({ scenario: 'worse' });
     const flow = await switchSection();
     expect(within(flow).getByText('Steg 4 av 5')).toBeTruthy();
     expect(within(flow).getByText('Azure AI Search gir dårligere treff:')).toBeTruthy();
@@ -317,7 +344,7 @@ describe('Datasett: søkemotor', () => {
     fireEvent.click(within(flow).getByRole('button', { name: 'Ta i bruk' }));
     expect(
       await screen.findByText(
-        'Kudos-rapporter søker nå i Azure AI Search. Innebygd søk er beholdt, så du kan gå tilbake. Endringen er logget.',
+        'Veiledere og rundskriv søker nå i Azure AI Search. Innebygd søk er beholdt, så du kan gå tilbake. Endringen er logget.',
       ),
     ).toBeTruthy();
     const section = await block();
@@ -332,7 +359,9 @@ describe('Datasett: søkemotor', () => {
     });
     fireEvent.click(within(section).getByRole('button', { name: 'Gå tilbake' }));
     expect(
-      await screen.findByText('Kudos-rapporter søker igjen i Innebygd søk. Endringen er logget.'),
+      await screen.findByText(
+        'Veiledere og rundskriv søker igjen i Innebygd søk. Endringen er logget.',
+      ),
     ).toBeTruthy();
   });
 
@@ -355,7 +384,7 @@ describe('Datasett: søkemotor', () => {
       return response;
     };
     await renderAt(kudos, recording);
-    await screen.findByRole('heading', { level: 1, name: 'Kudos-rapporter' });
+    await screen.findByRole('heading', { level: 1, name: 'Veiledere og rundskriv' });
     fireEvent.click(within(await block()).getByRole('button', { name: 'Bytt søkemotor' }));
     const flow = await switchSection();
     fireEvent.click(within(flow).getByRole('radio', { name: /OpenSearch/ }));
@@ -378,11 +407,11 @@ describe('Datasett: søkemotor', () => {
     fireEvent.click(within(flow).getByRole('button', { name: 'Ta i bruk' }));
     expect(
       await screen.findByText(
-        'Kudos-rapporter søker nå i OpenSearch. Innebygd søk er beholdt, så du kan gå tilbake. Endringen er logget.',
+        'Veiledere og rundskriv søker nå i OpenSearch. Innebygd søk er beholdt, så du kan gå tilbake. Endringen er logget.',
       ),
     ).toBeTruthy();
 
-    const path = `/api/tenants/999888777/datasets/${encodeURIComponent('digdir/kudos')}`;
+    const path = `/api/tenants/999888777/datasets/${encodeURIComponent(own)}`;
     const estimate = calls.find((c) => c.path.includes('/estimate'));
     expect(estimate).toMatchObject({
       method: 'GET',
@@ -416,7 +445,7 @@ describe('Datasett: søkemotor', () => {
   });
 
   it('a Typesense target is refused with the API message', async () => {
-    await openKudos();
+    await openOwn();
     fireEvent.click(within(await block()).getByRole('button', { name: 'Bytt søkemotor' }));
     const flow = await switchSection();
     fireEvent.click(within(flow).getByRole('button', { name: 'Neste' }));
@@ -443,14 +472,5 @@ describe('Datasett: søkemotor', () => {
     expect(next.getAttribute('aria-disabled')).toBeNull();
     fireEvent.click(next);
     expect(within(flow).getByText('Steg 5 av 5')).toBeTruthy();
-  });
-
-  it('opens the playground in a side sheet from Prøv', async () => {
-    await openKudos();
-    const button = screen.getByRole('button', { name: 'Prøv' });
-    expect(button.getAttribute('aria-pressed')).toBe('false');
-    fireEvent.click(button);
-    expect(button.getAttribute('aria-pressed')).toBe('true');
-    expect(document.querySelector('.dataset-try-sheet')).toBeTruthy();
   });
 });

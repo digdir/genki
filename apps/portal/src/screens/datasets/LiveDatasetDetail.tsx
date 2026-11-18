@@ -1,4 +1,3 @@
-import { ChevronLeftIcon } from '@navikt/aksel-icons';
 import {
   Alert,
   Button,
@@ -12,6 +11,7 @@ import { useFormat } from '@genai/i18n/react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError, type ApiClient } from '../../api';
 import {
+  isOpen,
   skippedCount,
   skippedOf,
   type DatasetDeleteResult,
@@ -19,7 +19,7 @@ import {
   type ExecutionView,
   type ExecutionsView,
 } from '../../api/datasets';
-import { Icon } from '../../components/Icon';
+import { BackLink } from '../../components/BackLink';
 import { prefetchSignal } from '../../api/cache';
 import { statusColors, statusKeys, type DatasetStatus } from '../../data/datasets';
 import { navigate, useAsync } from '../../hooks';
@@ -35,6 +35,9 @@ import {
   refusalText,
   countText,
   datasetStatus,
+  isOwnEndpoint,
+  ownEndpointText,
+  runDatasetStatus,
   externalSourceText,
   scheduleText,
   isForeign,
@@ -70,10 +73,7 @@ const Deleted = ({ name, result }: { name: string; result: DatasetDeleteResult }
       : t('datasets.deletedNothingKept');
   return (
     <div className="stack dataset-page">
-      <a href="#/datasets" className="back-link">
-        <Icon icon={ChevronLeftIcon} size={18} />
-        {t('datasets.title')}
-      </a>
+      <BackLink label={t('datasets.title')} href="#/datasets" />
       <Heading level={1} data-size="md">
         {t('datasets.deletedTitle', { name })}
       </Heading>
@@ -179,7 +179,7 @@ const Loaded = ({
   const [leaving, setLeaving] = useState<string>();
   const [formKey, setFormKey] = useState(0);
   const onDirty = useCallback((next: boolean) => setDirty(next), []);
-  const watching = useRef(initial.lastExecution?.status === 'running');
+  const watching = useRef(isOpen(initial.lastExecution));
   const rights = useRights();
   const editable = view.editable !== false;
   const canEdit = editable && rights.has('manage-datasets');
@@ -188,6 +188,18 @@ const Loaded = ({
     [api, tenant, view.id, editable],
   );
   const pipeline = pipelines.status === 'ready' ? pipelines.data[0] : undefined;
+  const ownEndpoint = isOwnEndpoint(view);
+  const [engine] = useAsync(
+    (signal) =>
+      ownEndpoint
+        ? api.searchEngines.datasetEngine(tenant, view.fullId, signal)
+        : Promise.resolve(undefined),
+    [api, tenant, view.fullId, ownEndpoint],
+  );
+  const endpointHost =
+    engine.status === 'ready' && engine.data?.engine.engine === 'http-search'
+      ? engine.data.engine.runsAt
+      : undefined;
 
   useEffect(() => {
     if (initial.source === 'upload' && initial.editable !== false)
@@ -217,13 +229,13 @@ const Loaded = ({
     const next = await api.datasets.executions(tenant, view.id, pipeline.id);
     setRuns(next);
     const latest = next.data[0];
-    if (latest && latest.status !== 'running' && watching.current) {
+    if (latest && !isOpen(latest) && watching.current) {
       watching.current = false;
       setFinished(latest);
       setOpenRun(latest.id);
       setView(await api.datasets.get(tenant, view.id));
     }
-    if (latest?.status === 'running') watching.current = true;
+    if (isOpen(latest)) watching.current = true;
   }, [api, tenant, view.id, pipeline]);
 
   const load = useCallback(async () => {
@@ -241,7 +253,7 @@ const Loaded = ({
     void load();
   }, [load]);
 
-  const running = runs?.data[0]?.status === 'running';
+  const running = isOpen(runs?.data[0]);
   const polling = running || (runsError !== undefined && watching.current);
   useEffect(() => {
     if (!polling) return;
@@ -344,17 +356,9 @@ const Loaded = ({
 
   const latest = runs?.data[0];
   const status: DatasetStatus =
-    view.state === 'external'
-      ? datasetStatus(view)
-      : latest
-        ? latest.status === 'running'
-          ? 'Innlesing pågår'
-          : latest.status === 'failed'
-            ? 'Feilet'
-            : latest.status === 'cancelled' || skippedCount(latest) > 0
-              ? 'Delvis lest inn'
-              : 'Klar'
-        : datasetStatus(view);
+    view.state !== 'external' && latest
+      ? runDatasetStatus({ status: latest.status, skipped: skippedCount(latest) })
+      : datasetStatus(view);
   const nextRun = runs?.nextRunAt !== undefined ? runs.nextRunAt : view.nextRunAt;
   const failedRun = latest?.status === 'failed' ? latest : undefined;
   const skippedNow = finished
@@ -365,17 +369,19 @@ const Loaded = ({
   const lastStarted = latest?.startedAt ?? view.lastExecution?.startedAt;
   const lastOk = lastSucceeded(runs?.data ?? []);
   const meta = [
-    sharedSourceText(t, view),
+    sharedSourceText(t, view, endpointHost),
     ...(isForeign(view)
       ? []
       : [
-          view.state === 'external'
-            ? t('datasets.lastExternal')
-            : failedRun && lastOk
-              ? t('datasets.metaLastOk', { when: f.dateTime(lastOk.startedAt) })
-              : lastStarted
-                ? t('datasets.metaLast', { when: f.dateTime(lastStarted) })
-                : t('datasets.metaNotYet'),
+          ownEndpoint
+            ? t('datasets.lastEndpoint')
+            : view.state === 'external'
+              ? t('datasets.lastExternal')
+              : failedRun && lastOk
+                ? t('datasets.metaLastOk', { when: f.dateTime(lastOk.startedAt) })
+                : lastStarted
+                  ? t('datasets.metaLast', { when: f.dateTime(lastStarted) })
+                  : t('datasets.metaNotYet'),
         ]),
     ...(view.documents !== null ? [t('datasets.metaDocuments', { count: view.documents })] : []),
   ].join(' · ');
@@ -383,10 +389,7 @@ const Loaded = ({
   if (deleted) return <Deleted name={view.name} result={deleted} />;
   return (
     <div className="stack dataset-page">
-      <a href="#/datasets" className="back-link">
-        <Icon icon={ChevronLeftIcon} size={18} />
-        {t('datasets.title')}
-      </a>
+      <BackLink label={t('datasets.title')} href="#/datasets" />
       <div className="page-head">
         <div className="page-head-text">
           <div className="row-wrap">
@@ -461,10 +464,16 @@ const Loaded = ({
           </Alert>
         ) : null}
         {running ? (
-          <Alert data-color="info" data-size="sm">
+          <Alert data-color={latest?.status === 'waiting' ? 'warning' : 'info'} data-size="sm">
             <span role="status" className="row-wrap">
-              <Spinner aria-hidden="true" data-size="xs" />
-              {t('datasets.runningLeave')}
+              {latest?.status === 'waiting' ? null : <Spinner aria-hidden="true" data-size="xs" />}
+              {t(
+                latest?.status === 'queued'
+                  ? 'datasets.queuedLeave'
+                  : latest?.status === 'waiting'
+                    ? 'datasets.waitingLeave'
+                    : 'datasets.runningLeave',
+              )}
             </span>
           </Alert>
         ) : null}
@@ -540,7 +549,9 @@ const Loaded = ({
           ) : null}
         </Tabs.Panel>
         <Tabs.Panel value="ingestions">
-          {!editable ? (
+          {ownEndpoint ? (
+            <p className="meta">{t('datasets.endpointIngestions')}</p>
+          ) : !editable ? (
             <p className="meta">
               {view.state === 'external'
                 ? t('datasets.externalIngestions')
@@ -589,9 +600,7 @@ const Loaded = ({
                           run={r}
                           open={openRun === r.id}
                           onToggle={() => setOpenRun(openRun === r.id ? undefined : r.id)}
-                          {...(canEdit && r.status === 'running'
-                            ? { onCancel: () => setAskCancel(r) }
-                            : {})}
+                          {...(canEdit && isOpen(r) ? { onCancel: () => setAskCancel(r) } : {})}
                         />
                       ))}
                     </ol>
@@ -648,11 +657,13 @@ const Loaded = ({
                   <div>
                     <dt>{t('datasets.factSource')}</dt>
                     <dd>
-                      {view.state === 'external'
-                        ? externalSourceText(t, view)
-                        : isForeign(view)
-                          ? t('datasets.unknown')
-                          : t(sourceText[view.source])}
+                      {ownEndpoint
+                        ? ownEndpointText(t, endpointHost)
+                        : view.state === 'external'
+                          ? externalSourceText(t, view)
+                          : isForeign(view)
+                            ? t('datasets.unknown')
+                            : t(sourceText[view.source])}
                     </dd>
                   </div>
                   {pipeline ? (

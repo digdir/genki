@@ -160,7 +160,9 @@ describe('live new dataset', () => {
     const alert = result.closest('.ds-alert') as HTMLElement;
     expect(alert.textContent).toContain('6 dokumenter er lest inn. 1 ble hoppet over:');
     expect(
-      within(alert).getByText('Skannet PDF uten tekst. Tekstgjenkjenning er ikke slått på.'),
+      within(alert).getByText(
+        'Filen har ikke tekst vi kan lese, for eksempel et skannet dokument.',
+      ),
     ).toBeTruthy();
     expect(screen.getByText(/ · 6 dokumenter lest inn$/)).toBeTruthy();
   });
@@ -213,7 +215,7 @@ describe('live new dataset', () => {
             {
               title: 'Invalid pipeline',
               status: 422,
-              errors: [{ path: 'source', message: 'Kudos trenger dokumenttyper eller et år.' }],
+              errors: [{ path: 'spec.source', message: 'Kudos needs document types or a year.' }],
             },
             { status: 422 },
           )
@@ -230,7 +232,10 @@ describe('live new dataset', () => {
       target: { value: 'Evalueringene skal brukes i rapportassistenten' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Lag datasettet og les inn' }));
-    expect(await screen.findByText('Kudos trenger dokumenttyper eller et år.')).toBeTruthy();
+    expect(
+      await screen.findByText(/må avgrenses med dokumenttyper eller en startdato/),
+    ).toBeTruthy();
+    expect(screen.queryByText(/needs document types/)).toBeNull();
     refuse = false;
     fireEvent.click(screen.getByRole('button', { name: 'Lag datasettet og les inn' }));
     await screen.findByRole('heading', { level: 1, name: 'Evalueringer' });
@@ -373,7 +378,7 @@ describe('live dataset detail', () => {
     expect(within(runs).getByRole('heading', { name: '2 filer kunne ikke leses' })).toBeTruthy();
     expect(
       within(skipped).getByRole('row', {
-        name: 'Skannet vedtak 2019.pdf Skannet PDF uten tekst. Tekstgjenkjenning er ikke slått på.',
+        name: 'Skannet vedtak 2019.pdf Filen har ikke tekst vi kan lese, for eksempel et skannet dokument.',
       }),
     ).toBeTruthy();
     expect(calls.some((c) => c.url.includes('/api/datasets'))).toBe(false);
@@ -602,7 +607,7 @@ describe('live dataset detail', () => {
                 {
                   path: 'dataset',
                   message:
-                    'Datasettet veiledere leses allerede inn av kjøringen ex-1. Vent til den er ferdig, eller avbryt den.',
+                    'the dataset veiledere is already being ingested by run ex-1; wait for it to finish or cancel it',
                 },
               ],
             },
@@ -614,7 +619,8 @@ describe('live dataset detail', () => {
     await screen.findByRole('list', { name: 'Innlesinger' });
     fireEvent.click(screen.getByRole('button', { name: 'Les inn på nytt' }));
 
-    expect(await screen.findByText(/leses allerede inn av kjøringen ex-1/)).toBeTruthy();
+    expect(await screen.findByText(/Datasettet leses allerede inn/)).toBeTruthy();
+    expect(screen.queryByText(/already being ingested/)).toBeNull();
     expect(screen.queryByText(/skrivenøkkel/)).toBeNull();
   });
 
@@ -1109,15 +1115,13 @@ describe('live dataset list', () => {
     ).toBeNull();
   });
 
-  it('counts the documents of a shared dataset from the documents route when the list has none', async () => {
+  it('counts the documents of a shared dataset from the list, with no call per dataset', async () => {
     const { calls, fetch } = recorded();
     await renderLive('#/datasets', fetch);
     const table = await screen.findByRole('table', { name: 'Datasett' });
     const kudos = within(table).getByRole('link', { name: 'Kudos-rapporter' }).closest('tr');
     await waitFor(() => expect(kudos?.textContent).toMatch(/48\s312/));
-    expect(
-      calls.some((c) => /\/datasets\/digdir%2Fkudos\/documents\?limit=1&offset=0$/.test(c.url)),
-    ).toBe(true);
+    expect(calls.some((c) => c.url.includes('/documents'))).toBe(false);
   });
 });
 

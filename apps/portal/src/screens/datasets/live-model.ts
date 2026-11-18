@@ -2,6 +2,7 @@ import { usedByText } from './used-by-count';
 import type {
   DatasetSourceKind,
   DatasetView,
+  ExecutionStatus,
   ExecutionView,
   Schedule,
   SkipReason,
@@ -87,17 +88,31 @@ const foreignStatus: Partial<Record<NonNullable<DatasetView['state']>, DatasetSt
   ready: 'Klar',
 };
 
+export const isOwnEndpoint = (view: Pick<DatasetView, 'source' | 'editable'>) =>
+  view.source === 'endpoint' && view.editable !== false;
+
+const openRunStatus: Partial<Record<ExecutionStatus, DatasetStatus>> = {
+  queued: 'I kø',
+  running: 'Innlesing pågår',
+  waiting: 'Venter',
+  failed: 'Feilet',
+  cancelled: 'Delvis lest inn',
+};
+
+export const runDatasetStatus = (run: {
+  status: ExecutionStatus;
+  skipped: number | null;
+}): DatasetStatus =>
+  openRunStatus[run.status] ?? ((run.skipped ?? 0) > 0 ? 'Delvis lest inn' : 'Klar');
+
 export const datasetStatus = (
-  view: Pick<DatasetView, 'lastExecution' | 'state' | 'editable' | 'scope'>,
+  view: Pick<DatasetView, 'lastExecution' | 'state' | 'editable' | 'scope' | 'source'>,
 ): DatasetStatus => {
-  if (view.state === 'external') return 'Utenfor plattformen';
+  if (view.state === 'external')
+    return isOwnEndpoint(view) ? 'Eget endepunkt' : 'Utenfor plattformen';
   if (isForeign(view)) return (view.state && foreignStatus[view.state]) ?? 'Ikke lest inn';
   const last = view.lastExecution;
-  if (!last) return 'Ikke lest inn';
-  if (last.status === 'running') return 'Innlesing pågår';
-  if (last.status === 'failed') return 'Feilet';
-  if (last.status === 'cancelled') return 'Delvis lest inn';
-  return last.skipped > 0 ? 'Delvis lest inn' : 'Klar';
+  return last ? runDatasetStatus(last) : 'Ikke lest inn';
 };
 
 export const needsSource = (view: Pick<DatasetView, 'source' | 'state'>) =>
@@ -109,19 +124,29 @@ const noteOf = (t: T, view: DatasetView) => {
   if (view.state !== 'external' && !last && needsSource(view)) return t('datasets.sourceNone');
   if (last?.status === 'failed') return t('datasets.noteFailed');
   if (last?.status === 'cancelled') return t('datasets.noteCancelled');
-  if (last?.status === 'succeeded' && last.skipped > 0)
-    return t('datasets.noteSkipped', { count: last.skipped });
+  if (last?.status === 'queued') return t('datasets.noteQueued');
+  if (last?.status === 'waiting') return t('datasets.noteWaiting');
+  if (last?.status === 'succeeded' && (last.skipped ?? 0) > 0)
+    return t('datasets.noteSkipped', { count: last.skipped ?? 0 });
   return undefined;
+};
+
+const runStatusText: Partial<
+  Record<ExecutionStatus, { key: PlainKey; color: 'info' | 'warning' | 'danger' }>
+> = {
+  queued: { key: 'datasets.runQueued', color: 'info' },
+  running: { key: 'datasets.runRunning', color: 'info' },
+  waiting: { key: 'datasets.runWaiting', color: 'warning' },
+  failed: { key: 'datasets.statusFailed', color: 'danger' },
+  cancelled: { key: 'datasets.runCancelled', color: 'warning' },
 };
 
 export const executionStatus = (
   t: T,
   execution: ExecutionView,
 ): { text: string; color: 'info' | 'success' | 'warning' | 'danger' } => {
-  if (execution.status === 'running') return { text: t('datasets.runRunning'), color: 'info' };
-  if (execution.status === 'failed') return { text: t('datasets.statusFailed'), color: 'danger' };
-  if (execution.status === 'cancelled')
-    return { text: t('datasets.runCancelled'), color: 'warning' };
+  const known = runStatusText[execution.status];
+  if (known) return { text: t(known.key), color: known.color };
   return skippedCount(execution) > 0
     ? { text: t('datasets.runDoneNotes'), color: 'warning' }
     : { text: t('datasets.runDone'), color: 'success' };
@@ -141,23 +166,31 @@ export const externalSourceText = (t: T, view: Pick<DatasetView, 'index'>) =>
     collection: view.index?.collections?.docs ?? '',
   });
 
+export const ownEndpointText = (t: T, host?: string) =>
+  host ? t('datasets.sourceOwnEndpointAt', { host }) : t('datasets.sourceOwnEndpoint');
+
 export const sharedSourceText = (
   t: T,
   view: Pick<DatasetView, 'source' | 'editable' | 'state' | 'index'>,
+  host?: string,
 ) =>
-  view.state === 'external'
-    ? externalSourceText(t, view)
-    : isForeign(view)
-      ? t('datasets.sharedByOther')
-      : view.editable === false
-        ? t('datasets.sourceSharedWithYou', { source: t(sourceText[view.source]) })
-        : t(sourceText[view.source]);
+  isOwnEndpoint(view)
+    ? ownEndpointText(t, host)
+    : view.state === 'external'
+      ? externalSourceText(t, view)
+      : isForeign(view)
+        ? t('datasets.sharedByOther')
+        : view.editable === false
+          ? t('datasets.sourceSharedWithYou', { source: t(sourceText[view.source]) })
+          : t(sourceText[view.source]);
 
 export const listItemOf = (t: T, f: Format, view: DatasetView): DatasetListItem => {
   const shared = view.editable === false;
   const foreign = isForeign(view);
-  const source =
-    view.state === 'external'
+  const ownEndpoint = isOwnEndpoint(view);
+  const source = ownEndpoint
+    ? ownEndpointText(t)
+    : view.state === 'external'
       ? externalSourceText(t, view)
       : foreign
         ? t('datasets.unknown')
@@ -178,8 +211,9 @@ export const listItemOf = (t: T, f: Format, view: DatasetView): DatasetListItem 
           owner: t(shared ? 'datasets.filterShared' : 'datasets.filterOwn'),
         }),
     docsText: countText(t, f, view.documents),
-    lastText:
-      view.state === 'external'
+    lastText: ownEndpoint
+      ? t('datasets.lastEndpoint')
+      : view.state === 'external'
         ? t('datasets.lastExternal')
         : foreign
           ? t('datasets.unknown')
@@ -250,8 +284,50 @@ export const refusalText = (t: T, error: unknown) => {
   return listed || problem?.detail || problem?.title || t('datasets.somethingWrong');
 };
 
+const fieldKeys: Record<string, PlainKey> = {
+  name: 'datasets.name',
+  description: 'datasets.description',
+  searchScope: 'datasets.whoSearches',
+  schedule: 'datasets.howOften',
+  'source.sitemap': 'datasets.sitemapLabel',
+  'source.include': 'datasets.includeOnly',
+  'source.exclude': 'datasets.exclude',
+  'source.types': 'datasets.documentTypes',
+  'source.since': 'datasets.fromYear',
+  'endpointSource.url': 'datasets.endpointUrl',
+  'endpointSource.auth.apiKey': 'datasets.apiKey',
+  'endpointSource.auth.header': 'datasets.apiKeyHeader',
+};
+
+const statusKeys: Record<number, PlainKey> = {
+  403: 'datasets.refusedForbidden',
+  404: 'datasets.refusedNotFound',
+  409: 'datasets.refusedConflict',
+  413: 'datasets.skipTooLarge',
+  429: 'datasets.refusedBusy',
+  503: 'datasets.refusedBusy',
+};
+
+/** Our own words for a refusal; the API's validation messages are English and never shown. */
 export const failureText = (t: T, error: unknown) => {
-  const listed =
-    error instanceof ApiError ? error.problem?.errors?.map((e) => e.message).join(' ') : '';
-  return listed || t('datasets.somethingWrong');
+  if (!(error instanceof ApiError)) return t('datasets.somethingWrong');
+  const paths = (error.problem?.errors ?? []).map((e) => e.path);
+  if (error.status === 409 && paths.includes('dataset')) return t('datasets.alreadyRunning');
+  if (error.status === 422 && paths.some((p) => p === 'source' || p === 'spec.source'))
+    return t('datasets.kudosUnbounded');
+  if (error.status === 400 || error.status === 422) {
+    const fields = [
+      ...new Set(
+        (error.problem?.errors ?? []).flatMap((e) => {
+          const key = fieldKeys[e.path] ?? fieldKeys[e.path.split('.')[0] ?? ''];
+          return key ? [t(key)] : [];
+        }),
+      ),
+    ];
+    return fields.length
+      ? t('datasets.invalidFields', { fields: fields.join(', ') })
+      : t('datasets.invalidRequest');
+  }
+  const known = statusKeys[error.status];
+  return known ? t(known) : t('datasets.somethingWrong');
 };

@@ -17,7 +17,7 @@ import {
 import { useFormat } from '@genai/i18n/react';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { ApiClient } from '../api';
-import type { DatasetView } from '../api/datasets';
+import { isOpen, type DatasetView } from '../api/datasets';
 import { Icon } from '../components/Icon';
 import { isTrialService } from '../format';
 import { useT, type Format, type T } from '../i18n';
@@ -53,8 +53,7 @@ const failedRecently = (d: DatasetView) =>
   d.lastExecution?.status === 'failed' ||
   d.lastExecution?.status === 'cancelled';
 
-const isRunning = (d: DatasetView) =>
-  d.state === 'running' || d.lastExecution?.status === 'running';
+const isRunning = (d: DatasetView) => d.state === 'running' || isOpen(d.lastExecution);
 
 export const monthLabel = (f: Format, date: Date) => {
   const name = f.month(date, { year: true });
@@ -103,7 +102,7 @@ const partlyRead = (d: DatasetView) =>
   !failedRecently(d) &&
   !isRunning(d) &&
   d.lastExecution.status !== 'cancelled' &&
-  d.lastExecution.skipped > 0;
+  (d.lastExecution.skipped ?? 0) > 0;
 
 type Started = Record<string, 'starting' | 'started' | { error: string }>;
 
@@ -624,9 +623,9 @@ export const Overview = ({
         <>
           <a href={`#/datasets/${encodeURIComponent(d.id)}`}>{d.name}</a>
           {t('overview.partialText', {
-            count: last.stored,
-            skipped: f.number(last.skipped),
-            total: f.number(last.stored + last.skipped),
+            count: last.stored ?? 0,
+            skipped: f.number(last.skipped ?? 0),
+            total: f.number((last.stored ?? 0) + (last.skipped ?? 0)),
           })}
         </>
       ),
