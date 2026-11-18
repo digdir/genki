@@ -18,10 +18,10 @@ import type { ModelCatalog } from '@genai/port-model';
 import { fakeHttp, type FakeServer } from '@genai/port-model/testing';
 import { trustedEntraScope } from '@genai/identity';
 import { createAdmin } from './admin.js';
-import type { LeaseOptions } from './background-lease.js';
+import { restartMessage, type LeaseOptions } from './background-lease.js';
 import { resolveCatalog } from './catalogs.js';
 import { createPlatform, platformModules } from './composition.js';
-import { InMemoryConfigEntryStore, platformScope } from './config-store.js';
+import { appendVersion, InMemoryConfigEntryStore, platformScope } from './config-store.js';
 import type { EvalSlotLimits } from './eval-slots.js';
 import { candidateTrialScope, withCandidateTrial } from './model-access.js';
 import {
@@ -1027,5 +1027,69 @@ describe('a matrix run across a restart', () => {
         },
       ],
     });
+  });
+
+  const seeded = async (resumes: number) => {
+    const stores = shared();
+    await boot(false, true, false, 0, stores);
+    const run: MatrixRun = {
+      id: `seeded-${resumes}`,
+      model: candidate,
+      current,
+      status: 'running',
+      by: 'operator:test:digdir-drift',
+      startedAt: t0.toISOString(),
+      endedAt: null,
+      estimatedCostNok: 0,
+      cost: 0,
+      tokens: { input: 0, output: 0 },
+      rows: [
+        {
+          tenant,
+          service: 'svar',
+          name: 'Svar',
+          testSet: 'svar-frister',
+          testSetVersion: 1,
+          cases: 2,
+          current: null,
+          candidate: null,
+          version: 1,
+        },
+      ],
+      admitted: true,
+      resumes,
+      owner: 'gone',
+      heartbeatAt: t0.toISOString(),
+      released: true,
+    };
+    await appendVersion<MatrixRun>(stores.store, {
+      kind: matrixRunKind,
+      scope: platformScope,
+      id: run.id,
+      spec: run,
+      deleted: false,
+      by: run.by,
+      reason,
+    });
+    const after = await boot(false, true, false, 0, {
+      ...stores,
+      leases: { instance: 'after', now: () => t0 },
+    });
+    await after.settled();
+    return { after, run: await read(after, run.id) };
+  };
+
+  it('fails a matrix run that has already been taken up three times instead of taking it up again', async () => {
+    const { after, run } = await seeded(3);
+
+    expect(run).toMatchObject({ status: 'failed', error: restartMessage, resumed: 3 });
+    expect(after.deployments).not.toContain('kandidat');
+  });
+
+  it('still takes up a matrix run that has been taken up twice', async () => {
+    const { after, run } = await seeded(2);
+
+    expect(run).toMatchObject({ status: 'succeeded', resumed: 3, casesDone: 4 });
+    expect(after.deployments).toContain('kandidat');
   });
 });
