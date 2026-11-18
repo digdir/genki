@@ -11,7 +11,9 @@ import {
   costText,
   isLowerBound,
   knownCostOf,
+  monthOptions,
   monthStatus,
+  periodOf,
   runsOf,
   series,
 } from './model';
@@ -59,10 +61,10 @@ const report: UsageReport = {
 
 describe('usage model', () => {
   it('uses the cost the API gives per service and model each day instead of spreading the total by tokens', () => {
-    const services = aggregate(series(report, 'current', 'service', f, t));
+    const services = aggregate(series(report, 0, 'service', f, t));
     expect(services.dyr && costOf(services.dyr)).toBe(10);
     expect(services.billig && costOf(services.billig)).toBe(2);
-    const models = aggregate(series(report, 'current', 'model', f, t));
+    const models = aggregate(series(report, 0, 'model', f, t));
     expect(models.stor && costOf(models.stor)).toBe(10);
   });
 
@@ -116,5 +118,20 @@ describe('cost with a model that has no price', () => {
 
   it('a fully priced sum is shown as it is, without minst', () => {
     expect(costText(f, t, add(zeroUsage(), u(1000, 12, 1)))).toBe('12 kr');
+  });
+
+  it('reads the month in the address as months back, and falls back to this month outside the six shown', () => {
+    expect(periodOf(report, null)).toBe(0);
+    expect(periodOf({ ...report, to: '2026-11-18T10:00:00Z' }, '2026-10')).toBe(1);
+    expect(periodOf({ ...report, to: '2026-11-18T10:00:00Z' }, '2026-04')).toBe(0);
+    expect(periodOf({ ...report, to: '2026-11-18T10:00:00Z' }, 'tull')).toBe(0);
+    expect(monthOptions({ ...report, to: '2026-11-18T10:00:00Z' }, f).map((o) => o.value)).toEqual([
+      '2026-11',
+      '2026-10',
+      '2026-09',
+      '2026-08',
+      '2026-07',
+      '2026-06',
+    ]);
   });
 });

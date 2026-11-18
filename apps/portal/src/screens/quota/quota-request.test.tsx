@@ -213,7 +213,7 @@ describe('Be om mer kvote', () => {
     expect(await screen.findByRole('button', { name: 'Be om mer kvote' })).toBeTruthy();
   });
 
-  it('offers no request on Statistikk before the quota alert', async () => {
+  it('offers a request on Statistikk before the quota alert too', async () => {
     await renderAt(
       '#/statistics',
       portal(
@@ -228,6 +228,6 @@ describe('Be om mer kvote', () => {
     );
 
     expect(await screen.findByRole('heading', { name: /Kvote i/ })).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Be om mer kvote' })).toBeNull();
+    expect(await screen.findByRole('button', { name: 'Be om mer kvote' })).toBeTruthy();
   });
 });

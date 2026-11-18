@@ -61,10 +61,10 @@ describe('Innstillinger for virksomheten', () => {
     expect(heads).toEqual(['Innstilling', 'Verdi', 'Kommer fra']);
 
     const topK = within(region)
-      .getByRole('button', { name: 'Antall treff som leses' })
+      .getByRole('button', { name: 'Treff som hentes (top-k)' })
       .closest('tr') as HTMLElement;
-    expect(within(topK).getByText('retrieval.topK')).toBeTruthy();
-    expect(within(topK).getByText('10 treff')).toBeTruthy();
+    expect(within(topK).getByText('retrieval.retrieveTopK')).toBeTruthy();
+    expect(within(topK).getByText('100')).toBeTruthy();
     expect(within(topK).getByText('Standard')).toBeTruthy();
 
     expect(
@@ -284,7 +284,7 @@ describe('Innstillinger for en tjeneste', () => {
     ).toContain('VedtaksutkastTjeneste');
 
     const topK = within(region)
-      .getByRole('button', { name: 'Antall treff som leses' })
+      .getByRole('button', { name: 'Treff som hentes (top-k)' })
       .closest('tr') as HTMLElement;
     expect(within(topK).getByText('Satt på tjenesten')).toBeTruthy();
 

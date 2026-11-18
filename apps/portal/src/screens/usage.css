@@ -23,6 +23,20 @@
   gap: 28px;
 }
 
+.usage > section,
+.usage-table-details,
+.usage-table-details .table-scroll {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.usage-head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+}
+
 .usage-skeletons {
   display: flex;
   flex-direction: column;
@@ -286,10 +300,6 @@
   display: flex;
   align-items: flex-end;
   gap: 4px;
-}
-
-.usage-bars.monthly {
-  gap: 24px;
 }
 
 .usage-bars li {

@@ -64,6 +64,7 @@ export const overview = {
   seeUsagePerService: 'See usage per service',
   topServices: 'Most used in the last 7 days',
   allServices: { one: 'The {count} service', other: 'All {count} services' },
+  allServicesPlain: 'All services',
   colService: 'Service',
   colRuns: 'Runs',
   colFailed: 'Errors',
@@ -81,6 +82,11 @@ export const overview = {
   partTrial: 'Trial runs',
   partOutside: 'Outside genki',
   cost: 'Estimated cost',
+  priceMissing: {
+    one: 'The price is missing for the model {models}, so the cost is at least this.',
+    other: 'The price is missing for the models {models}, so the cost is at least this.',
+  },
+  priceMissingUnnamed: 'The price is missing for at least one model, so the cost is at least this.',
   runs: 'Runs',
   changes: 'Latest changes',
   seeLog: 'The whole log',
@@ -100,6 +106,8 @@ export const getStarted = {
   doneAtBy: 'Done {when} by {by}.',
   doneAtWhat: 'Done {when}: {what}.',
   doneAtByWhat: 'Done {when} by {by}: {what}.',
+  doneWhat: 'Done: {what}.',
+  trialRuns: { one: '{count} trial run', other: '{count} trial runs' },
   publishedWhat: '{service} was published',
   datasetTitle: 'Add a source',
   datasetBody:

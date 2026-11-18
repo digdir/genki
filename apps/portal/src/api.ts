@@ -327,10 +327,13 @@ export const createApiClient = ({
     cache,
     getJson: (path: string, signal?: AbortSignal) => get<unknown>(path, signal),
     getHealth: (signal?: AbortSignal) =>
-      get<{ status: 'ok'; version: string; lockdown?: boolean; builtAt?: string }>(
-        '/health',
-        signal,
-      ),
+      get<{
+        status: 'ok';
+        version: string;
+        lockdown?: boolean;
+        builtAt?: string;
+        environment?: string;
+      }>('/health', signal),
     isReadOnlyInLockdown: async (signal?: AbortSignal) =>
       (await get<{ lockdownReadOnly?: boolean }>('/me', signal)).lockdownReadOnly === true,
     me: (signal?: AbortSignal) => get<{ email?: string }>('/me', signal),

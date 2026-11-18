@@ -4,7 +4,14 @@ import { useT } from '../i18n';
 import { useAsync } from '../hooks';
 import type { ScreenProps } from '../screen';
 import { useRights } from '../Shell';
-import { allDone, startProgress, StartSteps, stepHistory } from './start-progress';
+import {
+  allDone,
+  fetchStepHistory,
+  startProgress,
+  StartSteps,
+  trialHistory,
+  type StepHistory,
+} from './start-progress';
 import { monthUsage, tokensOf, withTrialRows } from './usage/model';
 import './overview.css';
 
@@ -28,7 +35,15 @@ export const Onboarding = ({ api, tenant, tenantName }: ScreenProps) => {
   const progress = facts.status === 'ready' ? facts.data.progress : undefined;
   const canReadLog = useRights().has('manage-services');
   const [history] = useAsync(
-    async (signal) => (canReadLog ? stepHistory(await api.audit(tenant, signal)) : {}),
+    async (signal): Promise<StepHistory> => {
+      const [audited, trials] = await Promise.all([
+        canReadLog ? fetchStepHistory(api, tenant, signal).catch(() => ({})) : {},
+        api
+          .tasks(tenant, { origin: 'playground', limit: 500 }, signal)
+          .then(trialHistory, () => undefined),
+      ]);
+      return trials ? { ...audited, tried: trials } : audited;
+    },
     [api, tenant, canReadLog],
   );
   return (
