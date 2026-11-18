@@ -706,7 +706,7 @@ const examples: Example[] = [
     ],
   },
   {
-    id: 'sk-klar',
+    id: 'klarsprak-i-brev',
     kind: 'skill',
     name: 'Klarspråk i brev',
     description: 'Retningslinjer for klart språk i brev til innbyggere.',

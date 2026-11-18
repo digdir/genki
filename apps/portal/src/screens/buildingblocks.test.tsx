@@ -222,7 +222,7 @@ describe('Byggeklosser: liste', () => {
   it('shows the design error text with retry when the list cannot be loaded', async () => {
     await renderAt(
       '#/building-blocks/catalogue',
-      failingFetch(/\/building-blocks\?|\/building-blocks$/, 503, blocksFetch()),
+      failingFetch(/\/building-blocks(\?|$)/, 503, blocksFetch()),
     );
     expect(
       await screen.findByRole('heading', { name: 'Vi fikk ikke hentet katalogen' }),
@@ -1668,6 +1668,52 @@ describe('Byggeklosser: Langfuse-dommere', () => {
     expect(screen.queryByText(/could not be read/)).toBeNull();
     expect(screen.queryByRole('button', { name: 'Ta i bruk hos oss' })).toBeNull();
     expectAccessible();
+  });
+});
+
+describe('skills in Byggeklosser', () => {
+  it('opens a Digdir skill from the catalogue with its owner in the link', async () => {
+    await open('#/building-blocks/catalogue');
+    const link = await screen.findByRole('link', { name: 'Klarspråk i brev' });
+    await waitFor(() =>
+      expect(link.getAttribute('href')).toBe(
+        '#/building-blocks/skill/klarsprak-i-brev?owner=991825827',
+      ),
+    );
+    window.location.hash = link.getAttribute('href') ?? '';
+    expect(await screen.findByRole('heading', { level: 1, name: 'Klarspråk i brev' })).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('opens a Digdir skill from a link without its owner', async () => {
+    await open('#/building-blocks/skill/klarsprak-i-brev');
+    expect(await screen.findByRole('heading', { level: 1, name: 'Klarspråk i brev' })).toBeTruthy();
+  });
+
+  it('lists drafts and skills shared by others under Ferdigheter, and both open', async () => {
+    await open('#/building-blocks/in-use?type=skill');
+    const section = (
+      await screen.findByRole('heading', { level: 2, name: /^Utkast og andre ferdigheter/ })
+    ).closest('section') as HTMLElement;
+    const draft = within(section).getByRole('link', { name: 'Svare på innsynskrav' });
+    expect(within(draft.closest('li') as HTMLElement).getByText('Utkast')).toBeTruthy();
+    expect(
+      within(section).getByRole('link', { name: 'Sortere post etter saksområde' }),
+    ).toBeTruthy();
+    expect(within(section).queryByRole('link', { name: 'Skrive vedtaksbrev' })).toBeNull();
+    const shared = within(section).getByRole('link', { name: 'Skrive tilsynsrapport' });
+    expect(shared.getAttribute('href')).toBe(
+      '#/building-blocks/skill/skrive-tilsynsrapport?owner=999666555',
+    );
+
+    window.location.hash = draft.getAttribute('href') ?? '';
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Svare på innsynskrav' }),
+    ).toBeTruthy();
+    window.location.hash = shared.getAttribute('href') ?? '';
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Skrive tilsynsrapport' }),
+    ).toBeTruthy();
   });
 });
 

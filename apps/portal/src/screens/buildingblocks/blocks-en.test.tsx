@@ -15,6 +15,7 @@ afterEach(cleanup);
 const api = {
   buildingBlocks: { path: () => '/x', proposalsPath: () => '/y' },
   blocks: { models: async () => [], toolConnections: async () => [] },
+  skills: { list: async () => [] },
 } as unknown as ApiClient;
 
 const borealis = exampleBlocks.find((b) => b.id === 'aivar/borealis-27b') as CatalogItem;

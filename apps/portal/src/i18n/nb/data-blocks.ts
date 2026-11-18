@@ -431,6 +431,8 @@ export const blockPages = defineNamespace({
   errorCatalogueTitle: 'Vi fikk ikke hentet katalogen',
   errorCatalogueBody:
     'Katalogen hos Digdir svarte ikke. Byggeklossene dere allerede bruker, virker som før.',
+  otherSkills: 'Utkast og andre ferdigheter ({count})',
+  draftTag: 'Utkast',
   notUsed: 'Ikke i bruk',
   fromPublisher: 'Fra {publisher}',
   adopt: 'Ta i bruk',

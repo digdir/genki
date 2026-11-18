@@ -433,6 +433,8 @@ export const blocksLane = {
     errorCatalogueTitle: 'We could not load the catalogue',
     errorCatalogueBody:
       "Digdir's catalogue did not answer. The building blocks you already use work as before.",
+    otherSkills: 'Drafts and other skills ({count})',
+    draftTag: 'Draft',
     notUsed: 'Not in use',
     fromPublisher: 'From {publisher}',
     adopt: 'Take into use',

@@ -11,6 +11,7 @@ import {
 import { useFormat } from '@genai/i18n/react';
 import { useId, useState, type ReactNode } from 'react';
 import type { ApiClient } from '../../api';
+import type { SkillSummary } from '../../api/skills';
 import {
   blockHref,
   type BlockKind,
@@ -20,6 +21,8 @@ import {
 } from '../../api/building-blocks';
 import { DataLocationTag } from '../../components/DataLocationTag';
 import { blockKinds } from '../../data/building-blocks';
+import { publisherName } from '../../data/skills';
+import { useAsync } from '../../hooks';
 import { useT } from '../../i18n';
 import { ErrorState } from '../../states';
 import { AdoptDialog } from './AdoptDialog';
@@ -33,6 +36,7 @@ import {
 import { ConnectorsSummary } from './Connectors';
 import { LinkTabs, type LinkTab } from './LinkTabs';
 import { ProposalSection } from './ProposalSection';
+import { skillHref } from '../skills/SkillBlockPage';
 import { SkillCreateActions } from '../skills/SkillCreateActions';
 
 export type ListTab = 'in-use' | 'catalog';
@@ -77,13 +81,73 @@ export const ListHeader = ({ tab, tenantName }: { tab: ListTab; tenantName: stri
   );
 };
 
+const OtherSkills = ({
+  skills,
+  tenant,
+  tenantName,
+}: {
+  skills: SkillSummary[];
+  tenant: string;
+  tenantName: string;
+}) => {
+  const t = useT();
+  return (
+    <section aria-labelledby="bb-group-other-skills" className="stack-sm">
+      <Heading level={2} data-size="xs" id="bb-group-other-skills">
+        {t('blockPages.otherSkills', { count: skills.length })}
+      </Heading>
+      <ul className="bb-rows">
+        {skills.map((s) => {
+          const own = s.owner === tenant;
+          return (
+            <li key={`${s.owner}/${s.id}`} className="bb-row">
+              <div className="bb-row-main">
+                <div className="bb-row-head">
+                  <a
+                    className="bb-card-name"
+                    href={skillHref(s.id, 'setup', own ? undefined : s.owner)}
+                  >
+                    {s.name}
+                  </a>
+                  {s.status === 'draft' ? (
+                    <Tag data-size="sm" data-color="neutral">
+                      {t('blockPages.draftTag')}
+                    </Tag>
+                  ) : null}
+                </div>
+                <span className="bb-card-desc">{s.description}</span>
+                {own ? null : (
+                  <span className="bb-meta">
+                    {t('blockPages.fromPublisher', {
+                      publisher: publisherName(s.publisher, tenantName),
+                    })}
+                  </span>
+                )}
+              </div>
+              <div className="bb-row-side">
+                <span className="bb-meta">
+                  {s.usedBy.length
+                    ? t('blocks.usedInHeading', { count: s.usedBy.length })
+                    : t('blockPages.notUsed')}
+                </span>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+};
+
 const ListRow = ({
   item,
+  href,
   catalogue,
   canAdopt,
   onAdopt,
 }: {
   item: CatalogItem;
+  href: string;
   catalogue: boolean;
   canAdopt: boolean;
   onAdopt: (item: CatalogItem) => void;
@@ -96,7 +160,7 @@ const ListRow = ({
     <li className="bb-row">
       <div className="bb-row-main">
         <div className="bb-row-head">
-          <a className="bb-card-name" href={blockHref(item)}>
+          <a className="bb-card-name" href={href}>
             {item.name}
           </a>
           {item.dataLocation ? <DataLocationTag location={item.dataLocation} /> : null}
@@ -202,6 +266,26 @@ export const BlockList = ({
     })
     .filter((g) => g.all.length > 0);
   const kindsPresent = blockKinds.filter((k) => pool.some((b) => b.kind === k.kind));
+  const [skillList] = useAsync(
+    (signal) => api.skills.list(tenant, signal).catch(() => [] as SkillSummary[]),
+    [api, tenant],
+  );
+  const skills = skillList.status === 'ready' ? skillList.data : [];
+  const ownerOf = (b: CatalogItem) =>
+    skills.find((s) => s.id === b.id && s.owner !== tenant && b.publisher.type !== 'own')?.owner;
+  const hrefOf = (b: CatalogItem) =>
+    b.kind === 'skill' ? skillHref(b.id, 'setup', ownerOf(b)) : blockHref(b);
+  const inUseSkills = new Set(
+    pool.filter((b) => b.kind === 'skill').map((b) => `${ownerOf(b) ?? tenant}/${b.id}`),
+  );
+  const otherSkills =
+    catalogue || (filters.kind !== 'all' && filters.kind !== 'skill')
+      ? []
+      : skills.filter(
+          (s) =>
+            !inUseSkills.has(`${s.owner}/${s.id}`) &&
+            (!q || `${s.name} ${s.description}`.toLowerCase().includes(q)),
+        );
   const open = proposals.filter((p) => p.state === 'pending' || p.state === 'sent_for_approval');
   const pending = open.filter((p) => p.level !== 2);
   const pendingConnectors = open.length - pending.length;
@@ -301,6 +385,7 @@ export const BlockList = ({
                 <ListRow
                   key={`${b.kind}:${b.id}`}
                   item={b}
+                  href={hrefOf(b)}
                   catalogue={catalogue}
                   canAdopt={rights.canChange(b.kind)}
                   onAdopt={setAdopting}
@@ -341,6 +426,9 @@ export const BlockList = ({
           <ConnectorsSummary pending={pendingConnectors} connectors={connectors} />
         ) : null}
         {body}
+        {otherSkills.length ? (
+          <OtherSkills skills={otherSkills} tenant={tenant} tenantName={tenantName} />
+        ) : null}
       </div>
       {adopting ? (
         <AdoptDialog

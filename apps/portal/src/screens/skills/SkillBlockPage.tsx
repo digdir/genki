@@ -1,5 +1,13 @@
 import { DownloadIcon, MenuElipsisHorizontalIcon, PlayIcon } from '@navikt/aksel-icons';
-import { Alert, Button, Dropdown, Heading, Paragraph, Tag } from '@digdir/designsystemet-react';
+import {
+  Alert,
+  Button,
+  Dialog,
+  Dropdown,
+  Heading,
+  Paragraph,
+  Tag,
+} from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
 import { useEffect, useRef, useState } from 'react';
 import { ApiError } from '../../api';
@@ -64,12 +72,27 @@ export const SkillBlockPage = (props: ScreenProps & { id: string; tab: string | 
   const t = useT();
   const [state, retry] = useAsync(
     async (signal) => {
-      const [detail, tools, versions] = await Promise.all([
-        api.skills.get(tenant, id, owner, signal),
+      const [found, tools] = await Promise.all([
+        api.skills.get(tenant, id, owner, signal).then(
+          (detail) => ({ detail, owner }),
+          async (error: unknown) => {
+            if (owner || !(error instanceof ApiError && error.status === 404)) throw error;
+            const other = (await api.skills.list(tenant, signal)).find(
+              (s) => s.id === id && s.owner !== tenant,
+            );
+            if (!other) throw error;
+            return {
+              detail: await api.skills.get(tenant, id, other.owner, signal),
+              owner: other.owner,
+            };
+          },
+        ),
         api.skills.tools(tenant, signal).catch(() => [] as SkillToolOption[]),
-        api.skills.versions(tenant, id, owner, signal).catch(() => [] as SkillVersion[]),
       ]);
-      return { detail, tools, versions };
+      const versions = await api.skills
+        .versions(tenant, id, found.owner, signal)
+        .catch(() => [] as SkillVersion[]);
+      return { detail: found.detail, owner: found.owner, tools, versions };
     },
     [api, tenant, id, owner],
   );
@@ -99,7 +122,7 @@ export const SkillBlockPage = (props: ScreenProps & { id: string; tab: string | 
     <Editor
       key={`${state.data.detail.owner}/${state.data.detail.id}`}
       {...props}
-      owner={owner}
+      owner={state.data.owner}
       tab={skillTabOf(props.tab)}
       initial={state.data.detail}
       tools={state.data.tools}
@@ -157,6 +180,7 @@ const Editor = ({
   const [fix, setFix] = useState<SkillFix>();
   const [flash, setFlash] = useState<Flash>();
   const [tryOpen, setTryOpen] = useState(false);
+  const [leaving, setLeaving] = useState<string>();
 
   const latest = useRef(definition);
   const revisionRef = useRef(revision);
@@ -411,6 +435,27 @@ const Editor = ({
   useEffect(() => {
     setFlash(undefined);
   }, [tab]);
+
+  useEffect(() => {
+    if (!dirty) return;
+    const page = `#/building-blocks/skill/${encodeURIComponent(id)}`;
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    const guard = (event: MouseEvent) => {
+      const href = (event.target as Element | null)
+        ?.closest?.('a[href^="#"]')
+        ?.getAttribute('href');
+      if (!href || event.defaultPrevented) return;
+      if (href === page || href.startsWith(`${page}/`) || href.startsWith(`${page}?`)) return;
+      event.preventDefault();
+      setLeaving(href);
+    };
+    window.addEventListener('beforeunload', warn);
+    document.addEventListener('click', guard, true);
+    return () => {
+      window.removeEventListener('beforeunload', warn);
+      document.removeEventListener('click', guard, true);
+    };
+  }, [dirty, id]);
 
   const openPublish = () => {
     if (nothing && !dirty) {
@@ -690,6 +735,33 @@ const Editor = ({
         </p>
       ) : null}
 
+      {leaving ? (
+        <Dialog open modal onClose={() => setLeaving(undefined)} aria-labelledby="skill-leave-h">
+          <div className="stack-sm">
+            <Heading level={2} data-size="xs" id="skill-leave-h">
+              {t('skills.leaveQuestion')}
+            </Heading>
+            <Paragraph>{t('skills.leaveText')}</Paragraph>
+            <div className="actions">
+              <Button
+                variant="secondary"
+                data-color="danger"
+                onClick={() => {
+                  const target = leaving;
+                  setLeaving(undefined);
+                  discard();
+                  window.location.hash = target;
+                }}
+              >
+                {t('skills.leaveWithoutSaving')}
+              </Button>
+              <Button variant="primary" autoFocus onClick={() => setLeaving(undefined)}>
+                {t('skills.stay')}
+              </Button>
+            </div>
+          </div>
+        </Dialog>
+      ) : null}
       {publishing ? (
         <PublishDialog
           api={api}

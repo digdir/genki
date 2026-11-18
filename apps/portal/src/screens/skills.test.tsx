@@ -215,6 +215,36 @@ describe('Ferdighet under Byggeklosser', () => {
     expectAccessible();
   });
 
+  it('asks before leaving the skill with unsaved changes, and stays when asked to', async () => {
+    await openSkill('sortere-post', 'Sortere post etter saksområde');
+    fireEvent.change(screen.getByLabelText('Navn'), { target: { value: 'Sortere post' } });
+    const unload = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(unload);
+    expect(unload.defaultPrevented).toBe(true);
+    const menu = screen.getByRole('navigation', { name: 'Hovedmeny' });
+    const away = within(menu).getByRole('link', { name: 'Byggeklosser' });
+    fireEvent.click(away);
+    const dialog = await screen.findByRole('dialog', { name: 'Forlate ferdigheten uten å lagre?' });
+    expect(window.location.hash).toBe('#/building-blocks/skill/sortere-post');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Bli på siden' }));
+    expect((screen.getByLabelText('Navn') as HTMLInputElement).value).toBe('Sortere post');
+    fireEvent.click(away);
+    fireEvent.click(
+      within(await screen.findByRole('dialog')).getByRole('button', {
+        name: 'Forlat uten å lagre',
+      }),
+    );
+    await waitFor(() => expect(window.location.hash).toBe(away.getAttribute('href')));
+  });
+
+  it('moves between the tabs of the same skill without asking', async () => {
+    await openSkill('sortere-post', 'Sortere post etter saksområde');
+    fireEvent.change(screen.getByLabelText('Navn'), { target: { value: 'Sortere post' } });
+    await tab(/Versjoner/);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByRole('region', { name: 'Ulagrede endringer' })).toBeTruthy();
+  });
+
   it('Forkast puts back what was saved', async () => {
     await openSkill('sortere-post', 'Sortere post etter saksområde');
     const name = screen.getByLabelText('Navn') as HTMLInputElement;
