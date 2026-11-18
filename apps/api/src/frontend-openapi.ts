@@ -215,6 +215,14 @@ const Source = z
       .array(z.string())
       .optional()
       .describe('When the service cites excerpts: the markers that cite this document.'),
+    version: z.string().optional().describe('The document version, when known.'),
+    published_at: z.string().optional().describe('The publish date, when known.'),
+    publisher: z
+      .string()
+      .optional()
+      .describe(
+        "The organisation that published the document, several joined with a comma. Present only when the document's fields name one; on Kudos stored in the knowledge database, the publisher, or the owners when Kudos lists none; Kudos served from Typesense has none.",
+      ),
   })
   .passthrough()
   .openapi('Source');

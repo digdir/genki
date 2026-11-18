@@ -40,6 +40,9 @@ export interface MessageSource {
     markers?: string[];
   }[];
   markers?: string[];
+  version?: string;
+  published_at?: string;
+  publisher?: string;
 }
 
 export interface MessageMarker {

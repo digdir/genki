@@ -16,6 +16,7 @@ export interface SourceRecord {
   position?: number;
   version?: string;
   publishedAt?: string;
+  publisher?: string;
 }
 
 export interface Clarification {

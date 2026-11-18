@@ -1146,6 +1146,7 @@ const PlaygroundResult = z
         position: z.number().optional(),
         version: z.union([z.string(), z.number()]).optional(),
         publishedAt: z.string().optional(),
+        publisher: z.string().optional(),
         score: z.number().optional(),
       }),
     ),

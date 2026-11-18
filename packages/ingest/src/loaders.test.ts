@@ -123,6 +123,7 @@ describe('kudos documents', () => {
       doc_num: '7',
       title: 'Årsrapport',
       orgs_long: ['Digdir'],
+      publisher_names: ['Digdir'],
       files: [
         { url: 'u1', sha256: 'h' },
         { url: 'u2', sha256: 'h' },

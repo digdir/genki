@@ -63,6 +63,11 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ## API changes
 
+### 2026-11-18: a source names its publisher
+
+- A source on `/v1/chat/completions` (and on a stored conversation's messages) adds `publisher`, the organisation that published the document, several joined with a comma, when the document's fields name one. A step flow's answer sources and `sources` on `/api/tools/call/{tool}` add it too. The field is optional, so the shape is otherwise unchanged.
+- A stored conversation's message `sources` keep `version` and `published_at` as the answer sent them, so a reopened thread shows the year. Messages stored before this have neither.
+
 ### 2026-11-17: one residency and price source, failure causes, last use and dataset documents
 
 - `GET /tenants/{tenant}/services` gives each service `model: { id, residency }`: the primary model and where it processes data, from the platform's model list, the same source as `GET /models` and the building blocks. `residency` is `null` for a model the list does not know. `spec.model.residency` in the definition is the widest residency the service allows, not where its model runs.
