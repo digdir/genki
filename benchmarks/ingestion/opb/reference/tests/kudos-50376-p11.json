@@ -1,0 +1,188 @@
+{
+ "tests": [
+  {
+   "id": "kudos-50376-p11-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "caption",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Figur 2.2: Solhøyden gjennom året for forskjellige breddegrader.",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-50376-p11-t02",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "figure",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Dag i året",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-50376-p11-t03",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "caption",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Solhøyden gjennom året for forskjellige breddegrader",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "Norges beliggenhet gjør også at polare satellitter",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-50376-p11-t04",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "For breddegrad 60° vil det ta 5-6 dager mellom hver overflyvning med en satellitt.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-50376-p11-t05",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "planlegges det for at levetiden til CO2M-satellittene og tilhørende systemer skal være minst 12 år",
+     "max_diffs": 4
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-50376-p11-t06",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Et spesialnummer av Frontiers in Remote Sensing",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-50376-p11-t07",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Imaging spektrometer (CO2IS/NO2IS)",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-50376-p11-t08",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Kravene til presisjon for XCO2 er 0,7 ppm og nøyaktigheten må være bedre enn 0,5 ppm (ESA, 2019).",
+     "max_diffs": 4
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-50376-p11-t09",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "footnote",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "frontiersin.org/research-topics/20546/anthropogenic-emission-monitoring-with-the-copernicus",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-50376-p11-t10",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "footnote",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "av sporgass endres på en systematisk måte",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "frontiersin.org/research-topics/20546",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

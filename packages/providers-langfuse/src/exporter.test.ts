@@ -13,6 +13,7 @@ import {
 import {
   createTraceExporter,
   observedEventLog,
+  traceIdFor,
   type ExporterConfigInput,
   type OtlpSpan,
 } from './index.js';
@@ -97,13 +98,19 @@ const descriptor = (id: string) => ({
 
 const model = { kind: 'model', id: 'foundry/gpt-4o', tenant: '999888777' };
 
-const run = async (config: Omit<ExporterConfigInput, 'endpoint'>, url: string, fail = false) => {
+const run = async (
+  config: Omit<ExporterConfigInput, 'endpoint'>,
+  url: string,
+  fail = false,
+  beforeSend?: (traces: { trace: string; task: string }[]) => Promise<boolean>,
+) => {
   const tasks = new InMemoryTaskStore();
   const exporter = createTraceExporter(
     { endpoint: url, ...config },
     {
       secrets: envSecrets({ LANGFUSE_SECRET: 'sk-lf-test', PSEUDONYM_KEY: 'pepper' }),
       tasks: async (id) => (await tasks.get(id))?.task,
+      ...(beforeSend ? { beforeSend } : {}),
     },
   );
   const capabilities: Capability[] = [
@@ -224,6 +231,22 @@ describe('trace exporter', () => {
     );
     const child = spans.find((s) => s.name === 'oppslag');
     expect(child?.parentSpanId).toBe(root?.spanId);
+  });
+
+  it("hands each batch's traces and their root tasks to beforeSend first, and sends nothing it refuses", async () => {
+    const sent = await collector();
+    const refused = await collector();
+    const seen: { trace: string; task: string }[][] = [];
+
+    const { task } = await run({}, sent.url, false, async (traces) => {
+      seen.push(traces);
+      return sent.received.length === 0;
+    });
+    await run({}, refused.url, false, async () => false);
+
+    expect(seen[0]).toEqual([{ trace: traceIdFor(task), task }]);
+    expect(sent.received.length).toBeGreaterThan(0);
+    expect(refused.received).toEqual([]);
   });
 
   it('includes prompts and answers only when the connection opts in to content', async () => {

@@ -739,3 +739,26 @@ describe('agent card names', () => {
     );
   });
 });
+
+describe('A2A request size', () => {
+  it('answers 413 when a body streams in past the size limit', async () => {
+    const chunk = new Uint8Array(1024).fill(32);
+    const res = await setup({ maxBodyBytes: 4096 }).app.request(
+      'http://plattform.test/a2a/rapport__default',
+      {
+        method: 'POST',
+        headers: headers(),
+        body: new ReadableStream({
+          start(controller) {
+            for (let i = 0; i < 5; i += 1) controller.enqueue(chunk);
+            controller.close();
+          },
+        }),
+        duplex: 'half',
+      } as RequestInit,
+    );
+
+    expect(res.status).toBe(413);
+    expect(await res.json()).toMatchObject({ error: { code: -32600 } });
+  });
+});

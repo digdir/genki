@@ -15,14 +15,6 @@
   padding-top: 20px;
 }
 
-.int-head {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 16px;
-}
-
 .int-intro-text {
   max-width: 720px;
 }
@@ -546,4 +538,86 @@
 .int-error {
   color: var(--ds-color-danger-text-default);
   font-size: 14px;
+}
+
+.dev-tools-badge {
+  margin-left: auto;
+  min-width: 22px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--ds-color-warning-surface-tinted);
+  color: var(--ds-color-warning-text-default);
+  font-size: 14px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.dev-status-checks li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--ds-color-neutral-border-subtle);
+}
+
+.dev-status-checks li > :first-child {
+  flex: 1 1 260px;
+}
+
+.int-dialog-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.dev-status-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px 20px;
+  border-radius: var(--ds-border-radius-md);
+  border: 1px solid var(--ds-color-success-border-subtle);
+  background: var(--ds-color-success-background-tinted);
+  color: var(--ds-color-success-text-default);
+}
+
+.dev-status-summary.degraded {
+  border-color: var(--ds-color-warning-border-subtle);
+  background: var(--ds-color-warning-background-tinted);
+  color: var(--ds-color-warning-text-default);
+}
+
+.dev-status-summary.down {
+  border-color: var(--ds-color-danger-border-subtle);
+  background: var(--ds-color-danger-background-tinted);
+  color: var(--ds-color-danger-text-default);
+}
+
+.dev-status-incident {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 16px;
+  border-left: 4px solid var(--ds-color-warning-border-default);
+  background: var(--ds-color-warning-background-tinted);
+}
+
+.int-sync-failed {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--ds-color-danger-text-default);
+}
+
+.int-sync-attention {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.int-sync-badge {
+  font-weight: 600;
 }

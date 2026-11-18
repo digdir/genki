@@ -1,3 +1,4 @@
+import { DownloadIcon } from '@navikt/aksel-icons';
 import {
   Alert,
   Button,
@@ -6,7 +7,6 @@ import {
   Field,
   Fieldset,
   Heading,
-  Input,
   Label,
   Paragraph,
   Radio,
@@ -20,14 +20,13 @@ import {
   TableHeaderCell,
   TableRow,
   Tag,
-  ValidationMessage,
 } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
-import { useId, useMemo, useState } from 'react';
+import { useId, useMemo, useState, type ReactNode } from 'react';
 import { Icon } from '../components/Icon';
-import { usageServices } from '../data/usage';
-import { useAsync } from '../hooks';
+import { navigate, useAsync } from '../hooks';
 import { useT } from '../i18n';
+import { needsRight, useRights } from '../Shell';
 import { ErrorState, limitOf, refusalOf } from '../states';
 import type { ScreenProps } from '../screen';
 import type { ModelOption, UsageReport, UsageTotals } from '../types';
@@ -38,6 +37,7 @@ import {
   decimalText,
   money,
   monthStatus,
+  monthUsage,
   nb,
   percentText,
   periodLabels,
@@ -49,16 +49,22 @@ import {
   tokensIn,
   tokensOf,
   withPricing,
+  withTrialRows,
   type Group,
   type Period,
 } from './usage/model';
+import { quotaFacts } from './quota/model';
+import { QuotaRequestAction } from './quota/QuotaRequest';
 import { UsageChart } from './usage/UsageChart';
+import { UsageSources } from './usage/UsageSources';
 import './usage.css';
 
-const DOWNLOAD = 'M12 4v11M7 10l5 5 5-5M5 20h14';
-
 type SortKey = 'name' | 'tok' | 'cost';
-type DialogState = { kind: 'export' } | { kind: 'limit'; id: string } | undefined;
+type DialogState = { kind: 'export' } | undefined;
+type Sort = { key: SortKey; dir: 1 | -1 };
+
+const periods: readonly Period[] = ['current', 'previous', 'six'];
+const groups: readonly Group[] = ['service', 'model'];
 
 const slug = (s: string) =>
   s
@@ -75,38 +81,39 @@ const UsageView = ({
   tenantName,
   dialog,
   setDialog,
-  live,
   quota,
   models,
-  project,
+  scoped,
   onProject,
+  period,
+  group,
+  onView,
+  sort,
+  setSort,
+  quotaAction,
 }: {
-  project: string | undefined;
+  quotaAction?: ((forecast: number) => ReactNode) | undefined;
+  scoped: boolean;
   onProject: (id: string) => void;
   report: UsageReport;
   tenantName: string;
-  live: boolean;
   quota: number | null;
+  period: Period;
+  group: Group;
+  onView: (view: { period?: Period; group?: Group }) => void;
+  sort: Sort;
+  setSort: (update: (s: Sort) => Sort) => void;
   models: ModelOption[] | null;
   dialog: DialogState;
   setDialog: (d: DialogState) => void;
 }) => {
   const t = useT();
   const f = useFormat();
-  const ids = { period: useId(), limit: useId(), limitHelp: useId() };
-  const [period, setPeriod] = useState<Period>('current');
-  const [group, setGroup] = useState<Group>('service');
+  const ids = { period: useId() };
   const [selBar, setSelBar] = useState<number | null>(null);
-  const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: 'tok', dir: -1 });
-  const [limits, setLimits] = useState<Record<string, number | null>>(() =>
-    live ? {} : Object.fromEntries(usageServices.map((s) => [s.id, s.limit])),
-  );
   const [flash, setFlash] = useState('');
   const [format, setFormat] = useState<'csv' | 'json'>('csv');
   const [level, setLevel] = useState<'rows' | 'sum'>('rows');
-  const [limMode, setLimMode] = useState<'on' | 'off'>('on');
-  const [limVal, setLimVal] = useState('');
-  const [limErr, setLimErr] = useState('');
 
   const labels = periodLabels(report, f, t);
   const status = useMemo(
@@ -153,7 +160,6 @@ const UsageView = ({
       ];
 
   const totalsByCat = aggregate(bars);
-  const used = status.perService;
   const rows = cats
     .map((c) => {
       const u: UsageTotals = totalsByCat[c.id] ?? {
@@ -165,9 +171,13 @@ const UsageView = ({
       return { ...c, u, tok: tokensOf(u), cost: costOf(u) };
     })
     .sort((a, b) =>
-      sort.key === 'name'
-        ? a.label.localeCompare(b.label, f.locale) * sort.dir
-        : (sort.key === 'tok' ? a.tok - b.tok : (a.cost ?? -1) - (b.cost ?? -1)) * sort.dir,
+      a.extra !== b.extra
+        ? a.extra
+          ? 1
+          : -1
+        : sort.key === 'name'
+          ? a.label.localeCompare(b.label, f.locale) * sort.dir
+          : (sort.key === 'tok' ? a.tok - b.tok : (a.cost ?? -1) - (b.cost ?? -1)) * sort.dir,
     );
   const sum = rows.reduce<{ tin: number; tout: number; runs: number; cost: number | null }>(
     (a, r) => ({
@@ -178,7 +188,6 @@ const UsageView = ({
     }),
     { tin: 0, tout: 0, runs: 0, cost: 0 },
   );
-  const usedOf = (id: string) => (used[id] ? tokensOf(used[id]) : 0);
   const ariaSort = (key: SortKey) =>
     sort.key === key ? (sort.dir === 1 ? 'ascending' : 'descending') : 'none';
   const arrow = (key: SortKey) => (sort.key === key ? (sort.dir === 1 ? '↑' : '↓') : '');
@@ -188,57 +197,10 @@ const UsageView = ({
       dir: s.key === key ? (s.dir === 1 ? -1 : 1) : key === 'name' ? 1 : -1,
     }));
 
-  const near = usageServices
-    .filter((s) => {
-      const l = limits[s.id];
-      return l && usedOf(s.id) / l >= 0.8;
-    })
-    .sort((a, b) => usedOf(b.id) / (limits[b.id] ?? 1) - usedOf(a.id) / (limits[a.id] ?? 1))[0];
-
   const pct = quota === null ? 0 : Math.round((status.used / quota) * 100);
   const forecastPct = quota === null ? 0 : Math.round((status.forecast / quota) * 100);
-  const costPerToken = (id: string) => {
-    const u = used[id];
-    const cost = u ? costOf(u) : null;
-    return u && cost !== null && tokensOf(u) ? cost / tokensOf(u) : null;
-  };
   const forecastCost =
     status.cost === null ? null : status.used ? (status.cost * status.forecast) / status.used : 0;
-
-  const openLimit = (id: string) => {
-    const l = limits[id];
-    setLimMode(l ? 'on' : 'off');
-    setLimVal(l ? decimalText(f, l / 1e6) : '2');
-    setLimErr('');
-    setDialog({ kind: 'limit', id });
-  };
-  const dlgSvc =
-    dialog?.kind === 'limit' ? usageServices.find((s) => s.id === dialog.id) : undefined;
-  const parsedLimit = () => {
-    const v = parseFloat(limVal.replace(',', '.').replace(/\s/g, ''));
-    return Number.isNaN(v) ? null : v;
-  };
-  const saveLimit = () => {
-    if (!dlgSvc) return;
-    if (limMode === 'off') {
-      setLimits((l) => ({ ...l, [dlgSvc.id]: null }));
-      setFlash(t('usage.limitRemoved', { name: dlgSvc.name }));
-      setDialog(undefined);
-      return;
-    }
-    const v = parsedLimit();
-    if (v === null || v <= 0) {
-      setLimErr(t('usage.limitNumberProblem'));
-      return;
-    }
-    if (quota !== null && v > quota / 1e6) {
-      setLimErr(t('usage.limitAboveQuota', { tenant: tenantName, millions: quota / 1e6 }));
-      return;
-    }
-    setLimits((l) => ({ ...l, [dlgSvc.id]: v * 1e6 }));
-    setFlash(t('usage.limitSet', { name: dlgSvc.name, value: decimalText(f, v) }));
-    setDialog(undefined);
-  };
 
   const doExport = () => {
     const records: Record<string, string | number>[] =
@@ -268,7 +230,9 @@ const UsageView = ({
             Object.keys(records[0] ?? { [t('usage.colPeriod')]: '' }).join(';'),
             ...records.map((r) =>
               Object.values(r)
-                .map((v) => (typeof v === 'number' ? decimalText(f, v) : `"${v}"`))
+                .map((v) =>
+                  typeof v === 'number' ? decimalText(f, v) : `"${v.replace(/"/g, '""')}"`,
+                )
                 .join(';'),
             ),
           ].join('\n');
@@ -289,32 +253,6 @@ const UsageView = ({
 
   return (
     <div className="usage">
-      {near ? (
-        <Alert data-color="warning">
-          <Heading level={2} data-size="2xs">
-            {t('usage.nearTitle', {
-              name: near.name,
-              percent: percentText(f, usedOf(near.id) / (limits[near.id] ?? 1)),
-            })}
-          </Heading>
-          <Paragraph>
-            {t('usage.nearText', {
-              limit: short(f, t, limits[near.id] ?? 0),
-              month,
-              used: short(f, t, usedOf(near.id)),
-            })}
-            {near.limitNote ? ` ${near.limitNote}` : ''}
-          </Paragraph>
-          <div className="actions">
-            <Button data-size="sm" onClick={() => openLimit(near.id)}>
-              {t('usage.changeLimit')}
-            </Button>
-            <Button asChild variant="secondary" data-size="sm">
-              <a href="#/log">{t('usage.seeRunningJob')}</a>
-            </Button>
-          </div>
-        </Alert>
-      ) : null}
       <div aria-live="polite">
         {flash ? (
           <Alert data-color="success" data-size="sm">
@@ -324,13 +262,16 @@ const UsageView = ({
       </div>
 
       <section aria-labelledby="kvote-h" className="usage-quota-grid">
-        <div className="usage-quota" hidden={project !== undefined}>
+        <div className="usage-quota" hidden={scoped}>
           <div className="row-between">
             <h2 id="kvote-h" className="usage-h-small">
               {t('usage.quotaIn', { month })}
             </h2>
             <span className="meta">{t('usage.updated', { time: f.time(report.to) })}</span>
           </div>
+          {quotaAction ? (
+            <div className="usage-quota-action">{quotaAction(status.forecast)}</div>
+          ) : null}
           <div className="row-baseline">
             <span className="usage-big numeric">{short(f, t, status.used)}</span>
             <span className="usage-of">
@@ -426,7 +367,7 @@ const UsageView = ({
                 id={ids.period}
                 value={period}
                 onChange={(e) => {
-                  setPeriod(e.target.value as Period);
+                  onView({ period: e.target.value as Period });
                   setSelBar(null);
                 }}
               >
@@ -449,8 +390,8 @@ const UsageView = ({
                     name="fordeling"
                     checked={group === id}
                     onChange={() => {
-                      setGroup(id);
-                      setSort({ key: 'tok', dir: -1 });
+                      onView({ group: id });
+                      setSort(() => ({ key: 'tok', dir: -1 }));
                     }}
                   >
                     {label}
@@ -515,94 +456,58 @@ const UsageView = ({
                   {t('usage.estimatedCost')}
                   <span aria-hidden="true">{arrow('cost')}</span>
                 </TableHeaderCell>
-                <TableHeaderCell scope="col">
-                  {group === 'model' ? t('usage.processedIn') : t('usage.limitIn', { month })}
-                </TableHeaderCell>
+                {group === 'model' ? (
+                  <>
+                    <TableHeaderCell scope="col">{t('usage.pricePerThousand')}</TableHeaderCell>
+                    <TableHeaderCell scope="col">{t('usage.processedIn')}</TableHeaderCell>
+                  </>
+                ) : null}
               </TableRow>
             </TableHead>
             <TableBody>
-              {rows.map((r) => {
-                const lim = limits[r.id] ?? null;
-                const known = !live && usageServices.some((s) => s.id === r.id);
-                const p = lim ? usedOf(r.id) / lim : 0;
-                return (
-                  <TableRow key={r.id}>
-                    <TableHeaderCell scope="row" className="usage-name">
-                      <span className="row-name">
-                        <span
-                          aria-hidden="true"
-                          className="swatch"
-                          style={{ background: r.color }}
-                        />
-                        <span className="col">
-                          <span>{r.label}</span>
-                          {r.sub ? <span className="meta-xs">{r.sub}</span> : null}
-                        </span>
+              {rows.map((r) => (
+                <TableRow key={r.id}>
+                  <TableHeaderCell scope="row" className="usage-name">
+                    <span className="row-name">
+                      <span aria-hidden="true" className="swatch" style={{ background: r.color }} />
+                      <span className="col">
+                        <span>{r.label}</span>
+                        {r.sub ? <span className="meta-xs">{r.sub}</span> : null}
                       </span>
-                    </TableHeaderCell>
-                    <TableCell className="num">{nb(f, r.u.inputTokens)}</TableCell>
-                    <TableCell className="num">{nb(f, r.u.outputTokens)}</TableCell>
-                    <TableCell className="num strong">{nb(f, r.tok)}</TableCell>
-                    <TableCell className="num">
-                      {nb(f, group === 'model' ? r.u.requests : runsOf(r.u))}
+                    </span>
+                  </TableHeaderCell>
+                  <TableCell className="num">{nb(f, r.u.inputTokens)}</TableCell>
+                  <TableCell className="num">{nb(f, r.u.outputTokens)}</TableCell>
+                  <TableCell className="num strong">{nb(f, r.tok)}</TableCell>
+                  <TableCell className="num">
+                    {nb(f, group === 'model' ? r.u.requests : runsOf(r.u))}
+                  </TableCell>
+                  <TableCell className="num">{money(f, t, r.cost)}</TableCell>
+                  {group === 'model' ? (
+                    <TableCell className="small">
+                      {r.price === undefined
+                        ? t('usage.priceUnknown')
+                        : r.price === null
+                          ? t('usage.notPriced')
+                          : t('usage.modelPrice', {
+                              input: f.number(r.price.inputPerThousand, {
+                                maximumFractionDigits: 4,
+                              }),
+                              output: f.number(r.price.outputPerThousand, {
+                                maximumFractionDigits: 4,
+                              }),
+                            })}
                     </TableCell>
-                    <TableCell className="num">{money(f, t, r.cost)}</TableCell>
+                  ) : null}
+                  {group === 'model' ? (
                     <TableCell>
-                      {group === 'model' ? (
-                        <Tag data-size="sm" data-color={r.norway ? 'success' : 'info'}>
-                          {r.location}
-                        </Tag>
-                      ) : (
-                        <span className="usage-limit">
-                          <span className="row-wrap small">
-                            <span>
-                              {lim
-                                ? t('usage.limitUsed', {
-                                    used: short(f, t, usedOf(r.id)),
-                                    limit: short(f, t, lim),
-                                    percent: percentText(f, p),
-                                  })
-                                : live
-                                  ? t('usage.limitNotYet')
-                                  : t('usage.limitNone')}
-                            </span>
-                            {p >= 0.8 ? (
-                              <Tag data-size="sm" data-color="warning">
-                                {t('usage.nearLimit')}
-                              </Tag>
-                            ) : null}
-                          </span>
-                          {lim ? (
-                            <span aria-hidden="true" className="limit-bar">
-                              <span
-                                style={{
-                                  width: `${Math.min(100, p * 100)}%`,
-                                  background:
-                                    p >= 0.8
-                                      ? 'var(--ds-color-warning-base-default)'
-                                      : 'var(--ds-color-accent-base-default)',
-                                }}
-                              />
-                            </span>
-                          ) : null}
-                          {known ? (
-                            <button
-                              type="button"
-                              className="link-button"
-                              aria-label={t(lim ? 'usage.changeLimitFor' : 'usage.setLimitFor', {
-                                name: r.label,
-                              })}
-                              onClick={() => openLimit(r.id)}
-                            >
-                              {t(lim ? 'usage.changeLimitShort' : 'usage.setLimitShort')}
-                            </button>
-                          ) : null}
-                        </span>
-                      )}
+                      <Tag data-size="sm" data-color={r.norway ? 'success' : 'info'}>
+                        {r.location}
+                      </Tag>
                     </TableCell>
-                  </TableRow>
-                );
-              })}
+                  ) : null}
+                </TableRow>
+              ))}
             </TableBody>
             <TableFoot>
               <TableRow>
@@ -612,7 +517,12 @@ const UsageView = ({
                 <TableCell className="num">{nb(f, sum.tin + sum.tout)}</TableCell>
                 <TableCell className="num">{nb(f, sum.runs)}</TableCell>
                 <TableCell className="num">{money(f, t, sum.cost)}</TableCell>
-                <TableCell />
+                {group === 'model' ? (
+                  <>
+                    <TableCell />
+                    <TableCell />
+                  </>
+                ) : null}
               </TableRow>
             </TableFoot>
           </Table>
@@ -620,7 +530,9 @@ const UsageView = ({
         <p className="meta">{t('usage.costNote')}</p>
       </section>
 
-      {project === undefined && report.byProject?.length ? (
+      {!scoped ? <UsageSources report={report} /> : null}
+
+      {!scoped && report.byProject?.length ? (
         <section aria-labelledby="prosjekt-h" className="stack-sm">
           <div className="row-between">
             <Heading level={2} data-size="sm" id="prosjekt-h">
@@ -738,89 +650,48 @@ const UsageView = ({
             </div>
           </div>
         ) : null}
-        {dlgSvc ? (
-          <div className="stack-md">
-            <Heading level={2} data-size="xs" id="dlg-h">
-              {t('usage.limitFor', { name: dlgSvc.name })}
-            </Heading>
-            <Paragraph>
-              {t('usage.limitExplain', { month, used: short(f, t, usedOf(dlgSvc.id)) })}
-            </Paragraph>
-            <Fieldset>
-              <Fieldset.Legend>{t('usage.limitPerMonth')}</Fieldset.Legend>
-              <Radio
-                name="grensemodus"
-                label={t('usage.setLimit')}
-                checked={limMode === 'on'}
-                onChange={() => {
-                  setLimMode('on');
-                  setLimErr('');
-                }}
-              />
-              <Radio
-                name="grensemodus"
-                label={t('usage.noOwnLimit')}
-                checked={limMode === 'off'}
-                onChange={() => {
-                  setLimMode('off');
-                  setLimErr('');
-                }}
-              />
-            </Fieldset>
-            {limMode === 'on' ? (
-              <Field className="usage-limit-field">
-                <Label htmlFor={ids.limit}>{t('usage.millionsPerMonth')}</Label>
-                <Input
-                  id={ids.limit}
-                  inputMode="decimal"
-                  value={limVal}
-                  aria-invalid={limErr ? true : undefined}
-                  aria-describedby={ids.limitHelp}
-                  onChange={(e) => {
-                    setLimVal(e.target.value);
-                    setLimErr('');
-                  }}
-                />
-                <p id={ids.limitHelp} className="meta">
-                  {(() => {
-                    const perToken = costPerToken(dlgSvc.id);
-                    return perToken === null
-                      ? t('usage.cannotEstimate')
-                      : t('usage.aboutPerMonth', {
-                          value: money(f, t, perToken * (parsedLimit() ?? 0) * 1e6),
-                        });
-                  })()}
-                </p>
-                {limErr ? <ValidationMessage>{limErr}</ValidationMessage> : null}
-              </Field>
-            ) : null}
-            <div className="actions">
-              <Button onClick={saveLimit}>{t('usage.save')}</Button>
-              <Button variant="secondary" onClick={() => setDialog(undefined)}>
-                {t('usage.cancel')}
-              </Button>
-            </div>
-          </div>
-        ) : null}
       </Dialog>
     </div>
   );
 };
 
-export const Usage = ({ api, tenant, tenantName, live }: ScreenProps) => {
+export const Usage = ({ api, tenant, tenantName, route }: ScreenProps) => {
   const t = useT();
   const f = useFormat();
-  const ids = { project: useId() };
+  const rights = useRights();
+  const ids = { project: useId(), environment: useId() };
+  const period = periods.find((p) => p === route.query.get('period')) ?? 'current';
+  const group = groups.find((g) => g === route.query.get('by')) ?? 'service';
+  const [sort, setSort] = useState<Sort>({ key: 'tok', dir: -1 });
+  const onView = (view: { period?: Period; group?: Group }) => {
+    const query = new URLSearchParams(route.query);
+    const nextPeriod = view.period ?? period;
+    const nextGroup = view.group ?? group;
+    if (nextPeriod === 'current') query.delete('period');
+    else query.set('period', nextPeriod);
+    if (nextGroup === 'service') query.delete('by');
+    else query.set('by', nextGroup);
+    const search = query.toString();
+    navigate(`/statistics${search ? `?${search}` : ''}`);
+  };
   const [project, setProject] = useState<string>();
+  const [environment, setEnvironment] = useState<string>();
   const [projects, setProjects] = useState<{ project: string; name: string }[]>([]);
+  const [environments, setEnvironments] = useState<string[]>([]);
   const [usage, retry] = useAsync(
     async (signal) => {
-      const report = withPricing(await api.usage(tenant, 190, signal, project));
-      if (project === undefined) setProjects(report.byProject ?? []);
+      const report = withTrialRows(
+        withPricing(await api.usage(tenant, 190, signal, project, environment)),
+      );
+      if (project === undefined && environment === undefined) setProjects(report.byProject ?? []);
+      if (environment === undefined)
+        setEnvironments((report.byEnvironment ?? []).map((e) => e.environment));
       return report;
     },
-    [api, tenant, project],
+    [api, tenant, project, environment],
+    { keepPreviousFor: tenant },
   );
+  const scoped = project !== undefined || environment !== undefined;
   const projectName = projects.find((p) => p.project === project)?.name ?? project;
   const [settings] = useAsync(
     (signal) => api.tenantEffectiveSettings(tenant, signal),
@@ -832,7 +703,25 @@ export const Usage = ({ api, tenant, tenantName, live }: ScreenProps) => {
     usage.status === 'ready' && (settings.status === 'loading' || models.status === 'loading')
       ? ({ status: 'loading' } as const)
       : usage;
-  const quota = settings.status === 'ready' ? quotaOf(settings.data) : null;
+  const settingsQuota = settings.status === 'ready' ? quotaOf(settings.data) : null;
+  const report = state.status === 'ready' ? state.data : undefined;
+  const quota = report?.quota?.monthlyTokens ?? settingsQuota;
+  const facts = report
+    ? quotaFacts(report, settingsQuota, tokensOf(monthUsage(report).total))
+    : undefined;
+  const quotaAction =
+    facts?.alert && report
+      ? (forecast: number) => (
+          <QuotaRequestAction
+            api={api}
+            tenant={tenant}
+            facts={facts}
+            forecast={forecast}
+            month={periodLabels(report, f, t).month}
+            canRequest={rights.has('manage-services')}
+          />
+        )
+      : undefined;
   const hasData = state.status === 'ready' && !isEmptyReport(state.data);
   return (
     <>
@@ -845,11 +734,35 @@ export const Usage = ({ api, tenant, tenantName, live }: ScreenProps) => {
         </div>
         {hasData ? (
           <Button variant="secondary" onClick={() => setDialog({ kind: 'export' })}>
-            <Icon d={DOWNLOAD} />
+            <Icon icon={DownloadIcon} />
             {t('usage.export')}
           </Button>
         ) : null}
       </div>
+      {environments.length > 1 || environment !== undefined ? (
+        <div className="stack-sm">
+          <Field className="usage-period">
+            <Label htmlFor={ids.environment}>{t('usage.environment')}</Label>
+            <Select
+              id={ids.environment}
+              value={environment ?? ''}
+              onChange={(e) => setEnvironment(e.target.value || undefined)}
+            >
+              <option value="">{t('usage.allEnvironments')}</option>
+              {environments.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          {environment !== undefined ? (
+            <Alert data-color="info" data-size="sm">
+              {t('usage.environmentScope', { environment, tenant: tenantName })}
+            </Alert>
+          ) : null}
+        </div>
+      ) : null}
       {projects.length ? (
         <div className="stack-sm">
           <Field className="usage-period">
@@ -907,7 +820,18 @@ export const Usage = ({ api, tenant, tenantName, live }: ScreenProps) => {
           <Skeleton variant="rectangle" height={280} aria-hidden="true" />
         </>
       ) : null}
-      {state.status === 'ready' && !hasData && project !== undefined ? (
+      {state.status === 'ready' && !hasData && environment !== undefined ? (
+        <div className="usage-empty">
+          <Heading level={2} data-size="xs">
+            {t('usage.emptyEnvironmentTitle')}
+          </Heading>
+          <p className="usage-empty-text">{t('usage.emptyEnvironmentText')}</p>
+        </div>
+      ) : null}
+      {state.status === 'ready' &&
+      !hasData &&
+      environment === undefined &&
+      project !== undefined ? (
         <div className="usage-empty">
           <Heading level={2} data-size="xs">
             {t('usage.emptyProjectTitle')}
@@ -915,7 +839,7 @@ export const Usage = ({ api, tenant, tenantName, live }: ScreenProps) => {
           <p className="usage-empty-text">{t('usage.emptyProjectText')}</p>
         </div>
       ) : null}
-      {state.status === 'ready' && !hasData && project === undefined ? (
+      {state.status === 'ready' && !hasData && !scoped ? (
         <div className="usage-empty">
           <Heading level={2} data-size="xs">
             {t('usage.emptyTitle')}
@@ -926,22 +850,31 @@ export const Usage = ({ api, tenant, tenantName, live }: ScreenProps) => {
               ? t('usage.quotaUnknown')
               : t('usage.quotaIs', { tenant: tenantName, millions: nb(f, quota / 1e6) })}
           </p>
-          <Button asChild>
-            <a href="#/services/new">{t('usage.createService')}</a>
-          </Button>
+          {rights.has('manage-services') ? (
+            <Button asChild>
+              <a href="#/services/new">{t('usage.createService')}</a>
+            </Button>
+          ) : (
+            <p className="meta">{needsRight('manage-services', t)}</p>
+          )}
         </div>
       ) : null}
       {state.status === 'ready' && hasData ? (
         <UsageView
           report={state.data}
           tenantName={tenantName}
-          live={live}
+          period={period}
+          group={group}
+          onView={onView}
+          sort={sort}
+          setSort={setSort}
           dialog={dialog}
           setDialog={setDialog}
           quota={quota}
           models={models.status === 'ready' ? models.data : null}
-          project={project}
+          scoped={scoped}
           onProject={setProject}
+          quotaAction={quotaAction}
         />
       ) : null}
     </>

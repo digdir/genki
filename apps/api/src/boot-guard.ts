@@ -1,11 +1,19 @@
 import {
   databaseRequirement,
+  employeeClientIds,
   lockdownEntraProblems,
   platformTenantProblems,
+  traceContentRequirement,
   unmetOutsideDevMode,
 } from '@genai/composition';
+import { operatorSubjectProblems } from './operators.js';
 
-export { isDevMode, isProduction } from '@genai/composition';
+export {
+  isDevMode,
+  isProduction,
+  knowledgeServerProblems,
+  tracesContent,
+} from '@genai/composition';
 
 type Env = Record<string, string | undefined>;
 
@@ -16,17 +24,28 @@ export const hasIdentityProvider = (env: Env) =>
 export const bootProblems = (env: Env): string[] => [
   ...platformTenantProblems(env),
   ...lockdownEntraProblems(env),
+  ...operatorSubjectProblems(env),
   ...unmetOutsideDevMode(env, [
     {
       met: hasIdentityProvider(env),
       problem:
         'set ANSATTPORTEN_ISSUER, or MASKINPORTEN_ISSUER and MASKINPORTEN_JWKS_URI; the mock login runs only with GENAI_DEV_MODE=true',
     },
+    {
+      met: !env.ANSATTPORTEN_ISSUER || employeeClientIds(env).length > 0,
+      problem:
+        'set EMPLOYEE_CLIENT_IDS, the Ansattporten clients whose logins the API accepts besides registered ones',
+    },
     databaseRequirement(env),
     {
       met: Boolean(env.ALTINN_PDP_URL),
       problem:
         'set ALTINN_PDP_URL and its Altinn PDP settings; the mock Altinn rights run only with GENAI_DEV_MODE=true',
+    },
+    traceContentRequirement(env),
+    {
+      met: env.GENAI_MOCK_RIGHTS !== 'true',
+      problem: 'GENAI_MOCK_RIGHTS=true runs only with GENAI_DEV_MODE=true; remove it',
     },
   ]),
 ];

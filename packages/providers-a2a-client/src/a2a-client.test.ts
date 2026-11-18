@@ -136,6 +136,11 @@ const ctx = (): PortContext => ({
   meter: async () => undefined,
 });
 
+const boundTo = (value: string, port: number) => ({
+  resolve: async () => value,
+  hostsFor: async () => [`http://127.0.0.1:${port}`],
+});
+
 const connection = (port: number, extra: Partial<Connection> = {}): Connection => ({
   id: 'skatt',
   tenant: TENANT,
@@ -157,7 +162,7 @@ const setup = async (
   await registry.save({ connection: connection(agent.port, extra), tools: [], pending: [] });
   const source = new A2aToolSource({
     registry,
-    secrets: { resolve: async () => 'hemmelig' },
+    secrets: boundTo('hemmelig', agent.port),
     guard: new EgressGuard({ testOverride: { allowLoopback: true, allowHttp: true } }),
     pollMs: 5,
   });
@@ -265,7 +270,7 @@ describe('A2A agents as tools', () => {
     await registry.save({ connection: connection(agent.port), tools: [], pending: [] });
     const source = new A2aToolSource({
       registry,
-      secrets: { resolve: async () => 'x' },
+      secrets: boundTo('x', agent.port),
       guard: new EgressGuard({ testOverride: { allowHttp: true } }),
     });
 

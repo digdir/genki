@@ -1,9 +1,9 @@
-import { Button, Paragraph } from '@digdir/designsystemet-react';
+import { Paragraph } from '@digdir/designsystemet-react';
 import { ApiCallLink, type ApiCallPreview } from '../../components/ApiCall';
 import { useT } from '../../i18n';
 import { endpoints, fillPath, portalActions, rights } from '../../data/api-reference';
 
-export const Actions = ({ tenant, onDone }: { tenant: string; onDone: (text: string) => void }) => {
+export const Actions = ({ tenant }: { tenant: string }) => {
   const t = useT();
   return (
     <div className="stack">
@@ -26,12 +26,6 @@ export const Actions = ({ tenant, onDone }: { tenant: string; onDone: (text: str
               <span className="ar-act-title">{t(a.title)}</span>
               <span className="small">{t(a.desc)}</span>
               <div className="actions">
-                <Button
-                  data-size="sm"
-                  onClick={() => onDone(t('apiref.actionDone', { button: t(a.button) }))}
-                >
-                  {t(a.button)}
-                </Button>
                 <ApiCallLink call={call} />
               </div>
             </li>

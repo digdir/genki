@@ -1,3 +1,4 @@
+import { ChevronDownIcon, ChevronLeftIcon, PlayIcon } from '@navikt/aksel-icons';
 import {
   Alert,
   Button,
@@ -29,22 +30,17 @@ import {
 import { useT } from '../../i18n';
 import { useRights } from '../../Shell';
 import { sourceOf } from './DatasetList';
-import { count } from './model';
+import { count, type DetailTab } from './model';
 import { SearchEngine } from './SearchEngine';
 import './search-engine.css';
-
-const back = 'M15 6l-6 6 6 6';
-const chevron = 'M6 9l6 6 6-6';
-const play = 'M7 5l12 7-12 7z';
-
-export type DetailTab = 'ingestions' | 'filters' | 'source';
 
 interface Props {
   api: ApiClient;
   tenant: string;
   tenantName: string;
   dataset: DatasetDetails;
-  initialTab: DetailTab;
+  tab: DetailTab;
+  onTab: (tab: DetailTab) => void;
   initialRun?: string;
   flash: string;
   onRun: () => void;
@@ -95,7 +91,7 @@ const RunItem = ({
           </span>
         </span>
         <span className={open ? 'chevron up' : 'chevron'}>
-          <Icon d={chevron} size={18} />
+          <Icon icon={ChevronDownIcon} size={18} />
         </span>
       </button>
       {running ? (
@@ -247,7 +243,8 @@ export const DatasetDetail = ({
   tenant,
   tenantName,
   dataset: d,
-  initialTab,
+  tab: routeTab,
+  onTab,
   initialRun,
   flash,
   onRun,
@@ -257,7 +254,7 @@ export const DatasetDetail = ({
 }: Props) => {
   const t = useT();
   const f = useFormat();
-  const [tab, setTab] = useState<DetailTab>(initialTab);
+  const tab = routeTab === 'used-by' ? 'ingestions' : routeTab;
   const [openRun, setOpenRun] = useState<string | undefined>(initialRun);
   const [trying, setTrying] = useState(false);
   const rights = useRights();
@@ -268,8 +265,11 @@ export const DatasetDetail = ({
     pii: true,
     share: 'egen' as 'egen' | 'alle',
   });
-  useEffect(() => setTab(initialTab), [initialTab]);
-  useEffect(() => setOpenRun(initialRun), [initialRun]);
+  const [linkedRun, setLinkedRun] = useState(initialRun);
+  if (linkedRun !== initialRun) {
+    setLinkedRun(initialRun);
+    setOpenRun(initialRun);
+  }
   useEffect(() => {
     if (ocrSetting) setSettings((s) => ({ ...s, ocr: ocrSetting[1] === 'På' }));
   }, [ocrSetting?.[1]]);
@@ -316,7 +316,7 @@ export const DatasetDetail = ({
 
   const showLatest = () => {
     if (!latest) return;
-    setTab('ingestions');
+    onTab('ingestions');
     setOpenRun(latest.id);
     setTimeout(() => document.getElementById(`run-${latest.id}`)?.scrollIntoView?.(), 50);
   };
@@ -324,7 +324,7 @@ export const DatasetDetail = ({
   return (
     <div className="stack dataset-page">
       <a href="#/datasets" className="back-link">
-        <Icon d={back} size={18} />
+        <Icon icon={ChevronLeftIcon} size={18} />
         {t('datasets.title')}
       </a>
       <div className="page-head">
@@ -340,7 +340,7 @@ export const DatasetDetail = ({
         </div>
         <div className="actions">
           <Button variant="secondary" aria-pressed={trying} onClick={() => setTrying((x) => !x)}>
-            <Icon d={play} />
+            <Icon icon={PlayIcon} />
             {t('datasets.try')}
           </Button>
           {editable ? (
@@ -412,7 +412,7 @@ export const DatasetDetail = ({
         {d.usedBy.length === 0 ? <span>{t('datasets.noServicesYet')}</span> : null}
       </div>
 
-      <Tabs value={tab} onChange={(v) => setTab(v as DetailTab)}>
+      <Tabs value={tab} onChange={(v) => onTab(v as DetailTab)}>
         <Tabs.List aria-label={t('datasets.tabsLabel')}>
           <Tabs.Tab value="ingestions">{t('datasets.tabIngestions')}</Tabs.Tab>
           <Tabs.Tab value="filters">{t('datasets.tabFilters')}</Tabs.Tab>

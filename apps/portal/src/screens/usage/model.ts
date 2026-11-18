@@ -1,8 +1,14 @@
 import { usageModels, usageServices, zeroUsage } from '../../data/usage';
-import { notPriced, serviceLabel } from '../../format';
+import { isTrialService, notPriced, serviceLabel } from '../../format';
 import type { Format, T } from '../../i18n';
 import { modelLabel } from '../../models';
-import type { EffectiveSetting, ModelOption, UsageReport, UsageTotals } from '../../types';
+import type {
+  EffectiveSetting,
+  ModelOption,
+  ModelPrice,
+  UsageReport,
+  UsageTotals,
+} from '../../types';
 
 export const quotaSetting = 'usage.monthlyTokens';
 
@@ -17,13 +23,20 @@ export type Group = 'service' | 'model';
 const monthName = (f: Format, year: number, month: number) =>
   f.month(new Date(Date.UTC(year, month, 15)));
 
+const hues = [
+  'var(--ds-color-accent-border-default)',
+  'var(--ds-color-brand1-border-default)',
+  'var(--ds-color-success-border-default)',
+  'var(--ds-color-brand2-border-default)',
+  'var(--ds-color-neutral-border-default)',
+];
+
+const gap = 'var(--ds-color-neutral-background-default)';
+
 export const COLORS = [
-  'var(--ds-color-accent-base-default)',
-  'var(--ds-color-brand1-base-default)',
-  'var(--ds-color-brand2-base-default)',
-  'var(--ds-color-brand3-base-default)',
-  'var(--ds-color-success-base-default)',
-  'var(--ds-color-neutral-base-default)',
+  ...hues,
+  ...hues.map((c) => `repeating-linear-gradient(45deg, ${c} 0 5px, ${gap} 5px 7px)`),
+  ...hues.map((c) => `repeating-linear-gradient(0deg, ${c} 0 3px, ${gap} 3px 5px)`),
 ];
 
 export const nb = (f: Format, n: number) => f.number(Math.round(n)).replace(/[\u00a0\u202f]/g, ' ');
@@ -73,15 +86,103 @@ export const add = (a: UsageTotals, b: UsageTotals): UsageTotals => {
 
 const unpriced = (u: UsageTotals): UsageTotals => ({ ...u, costMicroNok: null, priced: false });
 
+export const trialRow = 'trial-runs';
+export const gatewayRow = 'gateway';
+export const ingestionRow = 'ingestion';
+
+const less = (a: UsageTotals, b: UsageTotals): UsageTotals => {
+  const priced = isPriced(a) && isPriced(b);
+  return {
+    inputTokens: Math.max(0, a.inputTokens - b.inputTokens),
+    outputTokens: Math.max(0, a.outputTokens - b.outputTokens),
+    requests: Math.max(0, a.requests - b.requests),
+    costMicroNok: priced ? Math.max(0, (a.costMicroNok ?? 0) - (b.costMicroNok ?? 0)) : null,
+    ...(priced ? {} : { priced: false }),
+  };
+};
+
+const gatewayOf = (u: UsageTotals) => u.bySource?.find((s) => s.source === 'gateway')?.usage;
+
+const nonEmpty = (u: UsageTotals) => tokensOf(u) > 0 || u.requests > 0;
+
+const folded = (
+  byService: Record<string, UsageTotals>,
+  total: UsageTotals,
+  ingestion?: UsageTotals,
+) => {
+  const out: Record<string, UsageTotals> = {};
+  let trial: UsageTotals | undefined;
+  for (const [id, u] of Object.entries(byService)) {
+    if (isTrialService(id)) trial = add(trial ?? zeroUsage(), u);
+    else out[id] = u;
+  }
+  const counted = Object.values(byService).reduce((a, u) => add(a, u), zeroUsage());
+  const gateway = gatewayOf(total);
+  const read = ingestion && nonEmpty(ingestion) ? ingestion : undefined;
+  const rest = less(less(less(total, counted), gateway ?? zeroUsage()), read ?? zeroUsage());
+  if (nonEmpty(rest)) trial = add(trial ?? zeroUsage(), { ...rest, runs: 0 });
+  if (trial) out[trialRow] = trial;
+  if (read) out[ingestionRow] = { ...read, runs: 0 };
+  if (gateway && nonEmpty(gateway)) out[gatewayRow] = { ...gateway, runs: 0 };
+  return out;
+};
+
+export const withTrialRows = (report: UsageReport): UsageReport => {
+  const daily = report.daily.map((d) =>
+    d.byService ? { ...d, byService: folded(d.byService, d.usage, d.ingestion) } : d,
+  );
+  const whole = folded(
+    Object.fromEntries(report.byService.map((s) => [s.service, s.usage])),
+    report.totals,
+    report.ingestion?.usage,
+  );
+  const titles = new Map(report.byService.map((s) => [s.service, s.title]));
+  return {
+    ...report,
+    daily,
+    byService: Object.entries(whole).map(([service, usage]) => {
+      const title = titles.get(service);
+      return { service, usage, ...(title ? { title } : {}) };
+    }),
+  };
+};
+
+export const monthUsage = (report: UsageReport) => {
+  const now = today(report);
+  const prefix = `${now.year}-${String(now.month + 1).padStart(2, '0')}-`;
+  const days = report.daily.filter((d) => d.date.startsWith(prefix));
+  const total = days.reduce((a, d) => add(a, d.usage), zeroUsage());
+  const parts: Record<string, UsageTotals> = {};
+  for (const d of days)
+    for (const [id, u] of Object.entries(d.byService ?? {}))
+      parts[id] = add(parts[id] ?? zeroUsage(), u);
+  const services = Object.entries(parts)
+    .filter(([id]) => id !== trialRow && id !== gatewayRow && id !== ingestionRow)
+    .reduce((a, [, u]) => add(a, u), zeroUsage());
+  return {
+    total,
+    services,
+    trial: parts[trialRow] ?? zeroUsage(),
+    ingestion: parts[ingestionRow] ?? zeroUsage(),
+    gateway: parts[gatewayRow] ?? zeroUsage(),
+    perService: parts,
+    runs: Object.values(parts).reduce((n, u) => n + runsOf(u), 0),
+  };
+};
+
 export const withPricing = (report: UsageReport): UsageReport =>
   report.priced
     ? report
     : {
         ...report,
         totals: unpriced(report.totals),
+        ...(report.ingestion
+          ? { ingestion: { ...report.ingestion, usage: unpriced(report.ingestion.usage) } }
+          : {}),
         daily: report.daily.map((d) => ({
           ...d,
           usage: unpriced(d.usage),
+          ...(d.ingestion ? { ingestion: unpriced(d.ingestion) } : {}),
           ...(d.byService
             ? {
                 byService: Object.fromEntries(
@@ -111,6 +212,8 @@ export interface Category {
   color: string;
   location?: string;
   norway?: boolean;
+  extra?: boolean;
+  price?: ModelPrice | null;
 }
 
 export interface Bar {
@@ -163,22 +266,44 @@ export const categories = (
           ? t(residencyKey[known.residency ?? 'unknown'])
           : (info?.location ?? t('usage.residencyUnknown')),
         ...(known?.residency === 'norway' || info?.location === 'Norge' ? { norway: true } : {}),
+        ...(known ? { price: known.price ?? null } : {}),
       };
     });
   }
   const ids = report.byService.map((s) => s.service);
+  const extra = [trialRow, ingestionRow, gatewayRow];
   const ordered = [
     ...usageServices.filter((s) => ids.includes(s.id)).map((s) => s.id),
-    ...ids.filter((id) => !usageServices.some((s) => s.id === id)),
+    ...ids.filter((id) => !usageServices.some((s) => s.id === id) && !extra.includes(id)),
+    ...extra.filter((id) => ids.includes(id)),
   ];
   return ordered.map((id, i) => {
+    const color = COLORS[i % COLORS.length] ?? '';
+    if (id === trialRow)
+      return { id, label: t('usage.trialRuns'), sub: t('usage.trialRunsSub'), color, extra: true };
+    if (id === ingestionRow)
+      return {
+        id,
+        label: t('usageParts.ingestion'),
+        sub: t('usageParts.ingestionSub'),
+        color,
+        extra: true,
+      };
+    if (id === gatewayRow)
+      return {
+        id,
+        label: t('usage.outsideGenki'),
+        sub: t('usage.outsideGenkiSub'),
+        color,
+        extra: true,
+      };
     const info = usageServices.find((s) => s.id === id);
     const model = usageModels.find((m) => m.id === info?.model);
     return {
       id,
       label: info?.name ?? serviceLabel(id, report.byService.find((s) => s.service === id)?.title),
       sub: info ? `${info.does} · ${model?.name ?? info.model}` : '',
-      color: COLORS[i % COLORS.length] ?? '',
+      color,
     };
   });
 };

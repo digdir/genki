@@ -1,7 +1,10 @@
+import { normaliseCitationMarkers, untrustedData } from '@genai/port-model';
 import { z } from 'zod';
 import {
   detectInsufficientContext,
   numberByDocument,
+  numberByExcerpt,
+  type CiteBy,
   parseCitations,
   sourcesFirst,
   stripSourceLists,
@@ -12,10 +15,12 @@ import {
   ambiguityInstruction,
   citationInstruction,
   defaultGenerationPrompt,
+  excerptCitationInstruction,
   sameLanguageRule,
 } from './prompts.js';
 import { buildEvidencePlan } from './read-signals.js';
 import { json } from './structured.js';
+import { skillsSection } from './skills.js';
 import {
   defaultSearchDisplayLimit,
   expandShortDocReads,
@@ -32,6 +37,7 @@ import {
   type FilterField,
   type ReadSource,
   type SearchAttribution,
+  type SearchDetection,
   type SearchType,
   type Workspace,
 } from './workspace.js';
@@ -63,6 +69,7 @@ export interface ToolEnvironment {
   signal: AbortSignal;
   systemPrompt: string;
   generationPrompt?: string;
+  citeBy?: CiteBy;
   search?: SearchSettings;
 }
 
@@ -78,6 +85,7 @@ export interface SearchMade {
   queries: string[];
   filters?: FilterField[];
   fellBack?: boolean;
+  detections?: SearchDetection[];
 }
 
 export interface ToolOutcome {
@@ -205,6 +213,25 @@ export const enforceStrategyQuota = <T extends ChunkSummary>(chunks: T[], quota:
 
 const fixed = (n: number, digits: number) => n.toFixed(digits);
 
+const detectionHint = (d: SearchDetection) => {
+  const names = d.values.map((v) => JSON.stringify(v)).join(', ');
+  const them = d.values.length > 1 ? 'them' : 'it';
+  const what =
+    d.kind === 'year'
+      ? `names the year${d.values.length > 1 ? 's' : ''} ${names}`
+      : d.kind === 'organisation'
+        ? `names ${names}`
+        : `suggests ${d.field} ${names}`;
+  return `The query ${what}; ${d.field} can filter on ${them}.`;
+};
+
+const searchHints = (attribution: SearchAttribution | undefined): string => {
+  const hints = (attribution?.detections ?? []).filter((d) => d.use === 'hint');
+  return hints.length
+    ? `\nHint, no filter applied: ${hints.map(detectionHint).join(' ')} Add filter_by only if the question asks for nothing else; a question about an organisation also needs other organisations' documents.`
+    : '';
+};
+
 export const formatSearchMetadataResults = (
   chunks: (ChunkSummary & { titleOverlapBonus?: number })[],
   newCount: number,
@@ -249,7 +276,8 @@ export const formatSearchMetadataResults = (
     (omitted > 0
       ? ` Showing top ${shown.length} by rank; ${omitted} lower-ranked chunks omitted. Refine the query or read from the visible set.`
       : '') +
-    `\n${lines.join('\n')}`
+    searchHints(attribution) +
+    `\n${untrustedData('search-results', lines.join('\n'))}`
   );
 };
 
@@ -268,7 +296,8 @@ export const formatReadResult = (
       ` ---\n${c.content}`,
   );
   return (
-    `Read ${chunks.length} chunks (${charsThisCall} chars this call, ${cumulative} cumulative):\n\n${blocks.join('\n\n')}` +
+    `Read ${chunks.length} chunks (${charsThisCall} chars this call, ${cumulative} cumulative):` +
+    (blocks.length ? `\n\n${untrustedData('documents', blocks.join('\n\n'))}` : '') +
     (skippedNote ? `\n\n${skippedNote}` : '') +
     (budgetNote ? `\n\n${budgetNote}` : '')
   );
@@ -374,6 +403,9 @@ const autoReadTopK = async (
   }
 };
 
+/** Org-number filters that find nothing are kept, or a search returns others' documents as theirs. */
+const keptWhenEmpty = new Set(['owner_orgnr', 'recipient_orgnr']);
+
 const search = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome> => {
   const { workspace, retrieval, signal } = env;
   const settings = env.search ?? defaultSearchSettings;
@@ -403,6 +435,29 @@ const search = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome> 
       content: `Search backend error: ${error instanceof Error ? error.message : String(error)}`,
     };
   }
+  const kept = (filters ?? []).filter((f) => keptWhenEmpty.has(f.field));
+  let narrowed = false;
+  if (kept.length > 0 && kept.length < (filters?.length ?? 0) && outcome.chunks.length === 0) {
+    try {
+      outcome = await retrieval.search(args.data.queries, { ...options, filters: kept }, signal);
+      narrowed = true;
+    } catch (error) {
+      if (signal.aborted) throw error;
+      return {
+        content: `Filtered retrieval returned 0 chunks; retry with only the org-number filter failed: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
+  }
+  if (kept.length > 0 && outcome.chunks.length === 0) {
+    workspace.recordSearch(args.data.queries, [], false, { filters: kept });
+    const named = kept.map((f) => `${f.field} ${f.selectedOptions.join(', ')}`).join(' and ');
+    return {
+      content: `Search found 0 chunks with ${named}${narrowed ? ', even without the other filters' : ''}. The filter was kept: these organisations have no documents that match. Search again with other words, or say that their documents do not cover this.`,
+      retrieved: [],
+      search: { queries: args.data.queries, filters: kept },
+    };
+  }
+  const searched = narrowed ? kept : filters;
   let fellBack = false;
   if (filters?.length && outcome.chunks.length === 0) {
     try {
@@ -422,7 +477,7 @@ const search = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome> 
   );
   const effective = enforceStrategyQuota(rescored, settings.strategyQuota);
   const fresh = workspace.recordSearch(args.data.queries, effective, fellBack, {
-    ...(!fellBack && filters?.length ? { filters } : {}),
+    ...(!fellBack && searched?.length ? { filters: searched } : {}),
     ...(outcome.attribution ? { attribution: outcome.attribution } : {}),
   });
   const autoRead = await autoReadTopK(env, effective, settings.autoReadTopK);
@@ -439,15 +494,20 @@ const search = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome> 
     content:
       (fellBack
         ? `Filtered retrieval returned 0 chunks; retried without filters. ${summary}`
-        : summary) +
+        : narrowed
+          ? `Filtered retrieval returned 0 chunks; retried with only ${kept.map((f) => f.field).join(' and ')}. ${summary}`
+          : summary) +
       (autoRead.length
         ? `\nAuto-read top ${autoRead.length} by rank into workspace: ${autoRead.map((c) => c.chunkId).join(', ')}. Do NOT re-read these via read_chunks.`
         : ''),
     retrieved: retrievalHits(effective),
     search: {
       queries: args.data.queries,
-      ...(!fellBack && filters?.length ? { filters } : {}),
+      ...(!fellBack && searched?.length ? { filters: searched } : {}),
       ...(fellBack ? { fellBack } : {}),
+      ...(outcome.attribution?.detections?.length
+        ? { detections: outcome.attribution.detections }
+        : {}),
     },
     ...(autoRead.length ? { read: { chunks: retrievalHits(autoRead), auto: true } } : {}),
   };
@@ -597,7 +657,9 @@ const rerank = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome> 
       .slice(0, 3)
       .map((c, i) => `${i + 1}. ${c.content.slice(0, 80)}`)
       .join('; ');
-    return { content: `Reranked to top ${reranked.length} chunks. Top results: ${top}` };
+    return {
+      content: `Reranked to top ${reranked.length} chunks. Top results:\n${untrustedData('excerpts', top)}`,
+    };
   } catch (error) {
     if (env.signal.aborted) throw error;
     return {
@@ -606,8 +668,13 @@ const rerank = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome> 
   }
 };
 
-export const generationPromptFor = (template: string, context: string, question: string) =>
-  `${template.replace('{context}', context).replace('{question}', question)}\n\n${ambiguityInstruction}\n\n${citationInstruction}\n\n${sameLanguageRule}`;
+export const generationPromptFor = (
+  template: string,
+  context: string,
+  question: string,
+  citeBy: CiteBy = 'document',
+) =>
+  `${template.replace('{context}', context).replace('{question}', question)}\n\n${ambiguityInstruction}\n\n${citeBy === 'excerpt' ? excerptCitationInstruction : citationInstruction}\n\n${sameLanguageRule}`;
 
 const generate = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome> => {
   const { workspace } = env;
@@ -624,16 +691,23 @@ const generate = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome
     workspace.attached,
     workspace.contextDocs.length ? workspace.contextDocs : workspace.chunksForSynthesis(),
   );
-  const { context, index, chunks: ordered } = numberByDocument(docs);
+  const {
+    context,
+    index,
+    chunks: ordered,
+  } = env.citeBy === 'excerpt' ? numberByExcerpt(docs) : numberByDocument(docs);
   let text: string;
   try {
     text = stripSourceLists(
-      await env.synthesize(
-        env.systemPrompt,
-        generationPromptFor(
-          env.generationPrompt ?? defaultGenerationPrompt,
-          context,
-          args.data.query,
+      normaliseCitationMarkers(
+        await env.synthesize(
+          env.systemPrompt + skillsSection([...workspace.loadedSkills.values()]),
+          generationPromptFor(
+            env.generationPrompt ?? defaultGenerationPrompt,
+            context,
+            args.data.query,
+            env.citeBy,
+          ),
         ),
       ),
     );

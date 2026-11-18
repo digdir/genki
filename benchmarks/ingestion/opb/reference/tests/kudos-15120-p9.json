@@ -1,0 +1,14 @@
+{"tests": [
+ {"id": "kudos-15120-p9-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "eng", "Latn"],
+  "args": {"content": {"text": "Concept development, floating bridge", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-15120-p9-t02", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "eng", "Latn"],
+  "args": {"content": {"text": "E39 Bjørnafjorden", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-15120-p9-t03", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "eng", "Latn"],
+  "args": {"content": {"text": "Appendix C – Enclosure 1", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-15120-p9-t04", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "eng", "Latn"],
+  "args": {"content": {"text": "10205546-07-NOT-195", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-15120-p9-t05", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "eng", "Latn"],
+  "args": {"content": {"text": "Architectural visualizations – K12", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-15120-p9-t06", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "eng", "Latn"],
+  "args": {"before": {"text": "E39 Bjørnafjorden", "max_diffs": 1}, "after": {"text": "Architectural visualizations", "max_diffs": 1}}, "settings": {}}
+]}

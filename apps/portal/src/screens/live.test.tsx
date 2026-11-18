@@ -33,6 +33,7 @@ const emptyPlatform: typeof fetch = async (input) => {
         byModel: [],
       };
     if (/^\/tenants\/[^/]+\/services$/.test(path)) return { data: [] };
+    if (/^\/tenants\/[^/]+\/service-drafts$/.test(path)) return { data: [] };
     if (path.endsWith('/definitions')) return { data: [] };
     if (path.endsWith('/audit')) return { data: [] };
     if (path.endsWith('/access')) return { services: [], keys: [] };
@@ -135,6 +136,11 @@ const kaPlatform: typeof fetch = async (input, init) => {
     };
     return json({ latest, versions: [latest] });
   }
+  if (url.endsWith('/services/kunnskapsassistenten/environments'))
+    return json({
+      latestVersion: 1,
+      environments: [{ name: 'prod', version: 1, followsPublishes: true, previousVersion: null }],
+    });
   return emptyPlatform(input, init);
 };
 
@@ -151,18 +157,13 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('live mode shows only platform data', () => {
-  it('keeps example ingestions and changes off Oversikt, and reads changes from the audit log', async () => {
+  it('keeps example ingestions and changes off Oversikt on a fresh platform', async () => {
     await renderLive('#/overview');
 
     await screen.findByRole('heading', { level: 1, name: 'Oversikt' });
+    expect(await screen.findByText('0 av 4 steg er gjort')).toBeTruthy();
     expect(screen.queryByText('Nettsidene til Testetaten')).toBeNull();
     expect(screen.queryByText('Ola Nordmann')).toBeNull();
-    expect(
-      screen.getByRole('heading', { name: 'Innlesinger som trenger oppfølging' }),
-    ).toBeTruthy();
-    expect(screen.queryByText('Ikke tilgjengelig ennå')).toBeNull();
-    expect(screen.getByText('Ingen datasett ennå')).toBeTruthy();
-    expect(await screen.findByText('Ingen endringer ennå')).toBeTruthy();
   });
 
   it('lists no example services on a fresh platform', async () => {
@@ -173,17 +174,14 @@ describe('live mode shows only platform data', () => {
     expect(screen.queryByText('Søknadsuttrekk')).toBeNull();
   });
 
-  it('shows no example people or groups under Tilgang', async () => {
+  it('shows no example people, groups or dataset access under Tilgang', async () => {
     await renderLive('#/access');
 
     await screen.findByRole('tab', { name: 'Tjenester' });
     for (const name of ['Mona Hauge', 'Per Hansen', 'Ahmed Ali'])
       expect(screen.queryByText(name)).toBeNull();
-    expect(screen.getByRole('heading', { name: 'Rettigheter fra Altinn' })).toBeTruthy();
-    expect(screen.getByText(/Plattformen henter ikke rettighetene fra Altinn ennå/)).toBeTruthy();
     expect(screen.queryByRole('tab', { name: 'Datasett' })).toBeNull();
-    fireEvent.click(screen.getByRole('tab', { name: 'Grupper' }));
-    expect(await screen.findByText('Grupper kan ikke lagres i plattformen ennå.')).toBeTruthy();
+    expect(screen.queryByRole('tab', { name: 'Grupper' })).toBeNull();
   });
 
   it('Tilgang shows no person count in live mode, since Altinn owns who has the right', async () => {
@@ -206,9 +204,10 @@ describe('live mode shows only platform data', () => {
           )
         : emptyPlatform(input, init);
     };
-    await renderLive('#/access', withService);
+    await renderLive('#/access/services', withService);
 
-    expect(await screen.findByText('Alle med «Bruke tjenester» i Altinn')).toBeTruthy();
+    expect(await screen.findByRole('link', { name: 'Svartjenesten' })).toBeTruthy();
+    expect(screen.getByText('Alle med «Bruke tjenester» kan bruke alle tjenestene.')).toBeTruthy();
     expect(screen.queryByText(/0 personer/)).toBeNull();
   });
 
@@ -254,16 +253,18 @@ describe('live mode shows only platform data', () => {
         });
       return emptyPlatform(input, init);
     };
-    await renderLive('#/access', fetch);
+    await renderLive('#/access/services', fetch);
 
-    const panel = await screen.findByRole('tabpanel');
-    await within(panel).findByText('Svartjenesten');
-    const titles = [...panel.querySelectorAll('.expand-title')].map((e) => e.textContent);
+    const list = await screen.findByRole('list', { name: 'Tjenester' });
+    await within(list).findByText('Svartjenesten');
+    const titles = within(list)
+      .getAllByRole('listitem')
+      .map((e) => e.textContent);
     expect(titles).toEqual(['Svartjenesten', 'Gammel agentArkivert']);
     expect(screen.queryByText(/faithful/)).toBeNull();
   });
 
-  it('says a service limit cannot be set yet in live mode', async () => {
+  it('shows no service limit column in live mode, since limits cannot be stored', async () => {
     const used = { inputTokens: 100, outputTokens: 50, requests: 2, costMicroNok: 1000 };
     const withUsage: typeof fetch = async (input, init) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
@@ -287,8 +288,8 @@ describe('live mode shows only platform data', () => {
     const row = (await screen.findByRole('rowheader', { name: /Svartjenesten/ })).closest(
       'tr',
     ) as HTMLElement;
-    expect(within(row).getByText('Kan ikke settes ennå')).toBeTruthy();
-    expect(within(row).queryByText('Ingen egen grense')).toBeNull();
+    expect(within(row).queryByText('Kan ikke settes ennå')).toBeNull();
+    expect(screen.queryByRole('columnheader', { name: /Grense/ })).toBeNull();
   });
 
   it('does not show the example no-access page in live mode', async () => {
@@ -299,11 +300,11 @@ describe('live mode shows only platform data', () => {
   });
 
   it('shows no example systems or frontends', async () => {
-    await renderLive('#/integrations');
+    await renderLive('#/developer/systems');
 
-    await screen.findByRole('heading', { level: 1, name: 'Integrasjoner' });
+    await screen.findByRole('heading', { level: 1, name: 'Utviklerverktøy' });
     expect(screen.queryByText('Saksbehandlingssystemet')).toBeNull();
-    go('#/integrations?tab=frontends');
+    go('#/developer/frontends');
     expect(await screen.findByText('Ingen brukerflater er registrert')).toBeTruthy();
   });
 
@@ -324,7 +325,7 @@ describe('live mode shows only platform data', () => {
   });
 
   it('exports from the platform and offers no example targets in settings', async () => {
-    await renderLive('#/settings?tab=transfer');
+    await renderLive('#/settings/all');
 
     expect(await screen.findByText('0 definisjoner, 0 innstillinger')).toBeTruthy();
     expect(screen.queryByRole('combobox', { name: 'Tjeneste' })).toBeNull();
@@ -452,7 +453,7 @@ describe('live service page', () => {
       { id: 'step-flow', version: 1, config: { flow: 'fact-checker@1' } },
       'Fast stegflyt',
       'Stegflyt',
-      'fact-checker@1',
+      'fact-checker@1 (ikke publisert hos virksomheten)',
     ],
     [
       {

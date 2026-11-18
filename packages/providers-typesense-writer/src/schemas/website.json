@@ -53,6 +53,14 @@
       {
         "facet": true,
         "index": true,
+        "name": "product",
+        "optional": true,
+        "sort": false,
+        "type": "string"
+      },
+      {
+        "facet": true,
+        "index": true,
         "name": "language",
         "optional": true,
         "sort": false,

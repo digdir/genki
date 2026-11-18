@@ -1,7 +1,8 @@
+import { CodeIcon } from '@navikt/aksel-icons';
 import { Button, Chip, Field, Label, Spinner, Tag, Textarea } from '@digdir/designsystemet-react';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { AssistantProposal, AssistantTurn, ProposalDecision } from '../../api/assistant';
-import { Icon, icons } from '../../components/Icon';
+import { Icon } from '../../components/Icon';
 import { useT } from '../../i18n';
 import type { ChangeCard, ChatMessage } from '../../data/services';
 import {
@@ -274,7 +275,7 @@ export const AssistantPanel = ({
                     })
                   }
                 >
-                  <Icon d={icons.code} size={16} />
+                  <Icon icon={CodeIcon} size={16} />
                   {t('assistant.showApiCall')}
                 </Button>
               ) : null}

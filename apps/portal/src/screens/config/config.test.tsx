@@ -191,6 +191,40 @@ describe('quality gates and test sets for a service', () => {
     });
   });
 
+  it("refuses a Langfuse judge's metric in Kvalitetskrav, naming the rule", async () => {
+    const refusal =
+      'kvalitetskravet kriterier-langfuse leser Langfuse-dommeren svar_oppfyller_kriteriene-eksperimenter på koblingen kudos, som er rådgivende og aldri stopper en publisering';
+    const { api } = platform({
+      [`GET /tenants/${tenant}/gates`]: () => [200, { data: [] }],
+      [`PUT /tenants/${tenant}/gates/kriterier-langfuse`]: () => [
+        400,
+        {
+          type: 'about:blank',
+          title: 'Ugyldig forespørsel',
+          status: 400,
+          errors: [{ path: 'metric', message: refusal }],
+        },
+      ],
+    });
+    render(<TenantGates api={api} tenant={tenant} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Ny' }));
+    fill('Id', 'kriterier-langfuse');
+    fill(
+      'Innhold (JSON)',
+      JSON.stringify({
+        metric: 'langfuse:kudos/svar_oppfyller_kriteriene-eksperimenter',
+        kind: 'threshold',
+        threshold: 0.8,
+      }),
+    );
+    fill(/Begrunnelse/, 'Krav til Langfuse-dommeren');
+    fireEvent.click(screen.getByRole('button', { name: 'Opprett' }));
+
+    expect(await screen.findByText(new RegExp(refusal))).toBeTruthy();
+    expect(screen.queryByText(/kriterier-langfuse er lagret/)).toBeNull();
+  });
+
   it('adds a case to a test set', async () => {
     const set = {
       metadata: { tenant, id: 'kudos', name: 'Kudos-spørsmål', version: 1 },
@@ -227,6 +261,101 @@ describe('quality gates and test sets for a service', () => {
       split: 'validation',
       input: 'Hvem eier Kudos?',
       expected: { referenceAnswer: 'DFØ' },
+    });
+  });
+
+  it('keeps what the form does not edit when it saves a case: the reference answer beside the criteria, its type and tags', async () => {
+    const stored = {
+      id: 'q1',
+      split: 'validation',
+      input: 'Hvem eier Kudos?',
+      type: 'criteria',
+      grounding: 'answer-only',
+      tags: ['eierskap'],
+      needsReview: false,
+      expected: {
+        referenceAnswer: 'DFØ eier Kudos.',
+        criteria: { criteria: 'Svaret nevner DFØ', supporting_quotes: 'Kudos driftes av DFØ' },
+      },
+    };
+    const set = {
+      metadata: { tenant, id: 'kudos', name: 'Kudos-spørsmål', version: 1 },
+      spec: { service: 'ka', cases: [stored] },
+    };
+    const { api, calls } = platform({
+      [`GET /tenants/${tenant}/test-sets?service=ka`]: () => [200, { data: [set] }],
+      [`PUT /tenants/${tenant}/test-sets/kudos/cases/q1`]: () => [200, set],
+    });
+    render(<TestSetEditor api={api} tenant={tenant} serviceId="ka" />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /Rediger/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Endre/ }));
+    expect((screen.getByLabelText('Kriterier') as HTMLTextAreaElement).value).toBe(
+      'Svaret nevner DFØ',
+    );
+    fill('Kriterier', 'Svaret nevner DFØ og Kudos');
+    fill('Begrunnelse', 'Skarpere kriterium');
+    fireEvent.click(screen.getByRole('button', { name: 'Lagre tilfellet' }));
+
+    expect(await screen.findByText('Tilfellet q1 er lagret i Kudos-spørsmål.')).toBeTruthy();
+    expect(calls.find((c) => c.method === 'PUT')?.body).toEqual({
+      split: 'validation',
+      input: 'Hvem eier Kudos?',
+      type: 'criteria',
+      grounding: 'answer-only',
+      tags: ['eierskap'],
+      needsReview: false,
+      expected: {
+        referenceAnswer: 'DFØ eier Kudos.',
+        criteria: {
+          criteria: 'Svaret nevner DFØ og Kudos',
+          supporting_quotes: 'Kudos driftes av DFØ',
+        },
+      },
+    });
+  });
+  it('saves an unchanged case as it is stored, and asks for criteria rather than saving a criteria case without them', async () => {
+    const stored = {
+      id: 'q1',
+      split: 'validation',
+      input: 'Hvem eier Kudos?',
+      type: 'criteria',
+      tags: [],
+      needsReview: false,
+      expected: {
+        sources: [],
+        referenceAnswer: 'DFØ eier Kudos.',
+        criteria: { criteria: 'Nevner DFØ' },
+      },
+    };
+    const set = {
+      metadata: { tenant, id: 'kudos', name: 'Kudos-spørsmål', version: 1 },
+      spec: { service: 'ka', cases: [stored] },
+    };
+    const { api, calls } = platform({
+      [`GET /tenants/${tenant}/test-sets?service=ka`]: () => [200, { data: [set] }],
+      [`PUT /tenants/${tenant}/test-sets/kudos/cases/q1`]: () => [200, set],
+    });
+    render(<TestSetEditor api={api} tenant={tenant} serviceId="ka" />);
+    fireEvent.click(await screen.findByRole('button', { name: /Rediger/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Endre/ }));
+    fill('Begrunnelse', 'Ingen endring i innholdet');
+
+    fill('Kriterier', '');
+    fireEvent.click(screen.getByRole('button', { name: 'Lagre tilfellet' }));
+    expect(await screen.findByText('Skriv kriteriene svaret skal oppfylle.')).toBeTruthy();
+    expect(calls.some((c) => c.method === 'PUT')).toBe(false);
+
+    fill('Kriterier', 'Nevner DFØ');
+    fireEvent.click(screen.getByRole('button', { name: 'Lagre tilfellet' }));
+    expect(await screen.findByText('Tilfellet q1 er lagret i Kudos-spørsmål.')).toBeTruthy();
+    expect(calls.find((c) => c.method === 'PUT')?.body).toEqual({
+      split: stored.split,
+      input: stored.input,
+      type: stored.type,
+      tags: stored.tags,
+      needsReview: stored.needsReview,
+      expected: stored.expected,
     });
   });
 });

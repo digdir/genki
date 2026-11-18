@@ -35,6 +35,7 @@ const RunList = ({
 }) => {
   const t = useT();
   const f = useFormat();
+  const costShown = runs.some((r) => r.tokens !== undefined);
   return (
     <div tabIndex={0} role="region" aria-labelledby="batch-history-h" className="table-scroll">
       <Table className="batch-jobs">
@@ -46,9 +47,11 @@ const RunList = ({
               {t('batch.colDocuments')}
             </Table.HeaderCell>
             <Table.HeaderCell scope="col">{t('batch.colStatus')}</Table.HeaderCell>
-            <Table.HeaderCell scope="col" className="numeric-cell">
-              {t('batch.colCost')}
-            </Table.HeaderCell>
+            {costShown ? (
+              <Table.HeaderCell scope="col" className="numeric-cell">
+                {t('batch.colCost')}
+              </Table.HeaderCell>
+            ) : null}
           </Table.Row>
         </Table.Head>
         <Table.Body>
@@ -76,11 +79,15 @@ const RunList = ({
                     {t(text)}
                   </Tag>
                 </Table.Cell>
-                <Table.Cell className="numeric-cell">
-                  {isActiveBatch(r)
-                    ? t('batch.costSoFarCell', { cost: kroner(t, f, r.costMicroNok) })
-                    : kroner(t, f, r.costMicroNok)}
-                </Table.Cell>
+                {costShown ? (
+                  <Table.Cell className="numeric-cell">
+                    {r.tokens === undefined
+                      ? ''
+                      : isActiveBatch(r)
+                        ? t('batch.costSoFarCell', { cost: kroner(t, f, r.costMicroNok) })
+                        : kroner(t, f, r.costMicroNok)}
+                  </Table.Cell>
+                ) : null}
               </Table.Row>
             );
           })}

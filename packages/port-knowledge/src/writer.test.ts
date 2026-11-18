@@ -180,6 +180,24 @@ describe('engine switch seams', () => {
     expect(await target.writer.active(target.dataset)).toBeUndefined();
   });
 
+  it('a forced drop removes the generations of a dataset the catalog has deleted', async () => {
+    const shared = memoryEngine();
+    const writers = new IndexWriterRouter({
+      catalog: {
+        endpoints: { local: { engine: 'memory' } },
+        datasets: [{ id: 'digdir/veiledere', endpoint: 'local', residency: 'norway' }],
+      },
+      adapters: [shared.writer],
+      knowledgeAdapters: [shared.adapter],
+      secrets: envSecrets({}),
+    });
+    const route = writers.open('digdir/veiledere', { signal });
+    await seedCorpus(route.writer, route.dataset, [first]);
+    writers.reload({ endpoints: { local: { engine: 'memory' } }, datasets: [] });
+    await route.writer.drop(route.dataset, 'g1', { force: true });
+    expect(await route.writer.active(route.dataset)).toBeUndefined();
+  });
+
   it('probe succeeds on a reachable endpoint and fails clearly otherwise', async () => {
     const { readers } = twoEngines();
     expect(await readers.probe('local')).toMatchObject({ ok: true, engine: 'memory' });

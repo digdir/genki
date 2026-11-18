@@ -57,6 +57,7 @@ export class A2aProtocolError extends Error {
   constructor(
     message: string,
     readonly code?: number,
+    readonly status?: number,
   ) {
     super(message);
     this.name = 'A2aProtocolError';
@@ -123,14 +124,24 @@ export class A2aClient {
         headers: {
           accept: 'application/json',
           'a2a-version': clientA2aVersion,
-          ...(await authHeaders(this.connection, this.guard, this.secrets, signal)),
+          ...(await authHeaders(
+            this.connection,
+            this.connection.endpoint,
+            this.guard,
+            this.secrets,
+            signal,
+          )),
         },
         ...this.#limits(),
       },
       signal,
     );
     if (response.status !== 200)
-      throw new A2aProtocolError(`the agent card answered HTTP ${response.status}`);
+      throw new A2aProtocolError(
+        `the agent card answered HTTP ${response.status}`,
+        undefined,
+        response.status,
+      );
     let raw: unknown;
     try {
       raw = JSON.parse(response.body);
@@ -157,7 +168,7 @@ export class A2aClient {
           'content-type': 'application/json',
           accept: 'application/json',
           'a2a-version': clientA2aVersion,
-          ...(await authHeaders(this.connection, this.guard, this.secrets, signal)),
+          ...(await authHeaders(this.connection, target.url, this.guard, this.secrets, signal)),
         },
         body: JSON.stringify({ jsonrpc: '2.0', id, method, params }),
         ...this.#limits(),
@@ -176,7 +187,11 @@ export class A2aClient {
         message.error.code,
       );
     if (response.status < 200 || response.status >= 300)
-      throw new A2aProtocolError(`the agent answered HTTP ${response.status}`);
+      throw new A2aProtocolError(
+        `the agent answered HTTP ${response.status}`,
+        undefined,
+        response.status,
+      );
     return message.result;
   }
 

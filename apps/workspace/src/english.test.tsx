@@ -76,6 +76,26 @@ describe('the workspace in English', () => {
     expect(document.documentElement.lang).toBe('en');
   });
 
+  it('shows the steps of an earlier answer in the language the person switches to', async () => {
+    const api: WorkspaceApi = {
+      ...mockWorkspaceApi(),
+      chat: async (_service, _history, _onDelta, _signal, _input, _conversation, _docs, onStep) => {
+        onStep?.({ tool: 'search' });
+        return { text: 'Ja.', sources: [] };
+      },
+    };
+    await renderApp('#/chat', { api });
+    const field = await screen.findByRole('textbox', { name: 'Still et spørsmål om rapportene' });
+    fireEvent.change(field, { target: { value: 'Gikk ventetida ned?' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await screen.findByText('Ja.');
+    fireEvent.click(screen.getByRole('button', { name: 'Per Hansen, åpne brukermeny' }));
+    const menu = screen.getByRole('dialog', { name: 'Brukermeny' });
+    fireEvent.click(within(menu).getByRole('radio', { name: 'English' }));
+    fireEvent.click(await screen.findByText('Approach'));
+    expect(screen.getByText('Looked for passages about the question')).toBeTruthy();
+  });
+
   it('uses the language the person saved earlier', async () => {
     const api: WorkspaceApi = { ...mockWorkspaceApi(), language: async () => 'en' };
     await renderApp('#/chat', { api });

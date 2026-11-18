@@ -1,6 +1,6 @@
 # 0006 Configuration layers and resolution
 
-Status: accepted, 2026-10-12 (built). Proposed 2026-10-06
+Status: accepted, 2026-10-12 (built; operator-only limits, 2026-11-12). Proposed 2026-10-06
 
 ## Decision
 
@@ -9,6 +9,8 @@ Every setting is defined once, with a schema, a default, a category, a sensitivi
 - **Dataset settings** (source, chunking, embedding, collection naming) are set only by the dataset's owner. A tenant that uses a shared dataset can never override them, and the owner's settings never override the consuming tenant's service.
 - **Service settings** resolve along the consumer path: platform default, then tenant, then service version, then call. The later layer wins.
 
+The resolver supports the dataset axis, but no registered setting uses it yet: source, chunking, embedding and collection naming live in the dataset's and pipeline's own definitions, owned by the dataset's tenant.
+
 Rules:
 
 - Platform locks and policy rules are ceilings that no lower layer can pass. A locked setting shows why it is locked.
@@ -16,6 +18,7 @@ Rules:
 - Lists replace, objects merge.
 - Resolution returns the value with its provenance: the winning layer, what it overrode, and any pinned version.
 - A tenant may pin a platform default to a version. Pins are visible to operators when a default changes.
+- A setting marked `operatorOnly` is a limit that protects Digdir's cost and capacity: `usage.monthlyTokens`, `usage.tenantCallsPerMinute`, `assistant.dailyTokens` and `batch.approvalLimitNok`. At the tenant layer only an operator in a support session sets, removes or pins it, on every path: the settings and pin routes and a tenant import, dry runs included. Everyone else gets 403 `urn:genai:problem:operator-only-setting`; the tenant still reads the effective value. `SettingsRegistry` holds the rule, so a new limit gets it by setting the flag.
 - A test fails if a defined setting is never read, or is read only on some entry points.
 
 ## Why

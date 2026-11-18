@@ -16,6 +16,7 @@ import { errors as enErrors } from './en/errors';
 import { failures as enFailures } from './en/failures';
 import { feedback as enFeedback } from './en/feedback';
 import { form as enForm } from './en/form';
+import { procedure as enProcedure } from './en/procedure';
 import { project as enProject } from './en/project';
 import { projects as enProjects } from './en/projects';
 import { shell as enShell } from './en/shell';
@@ -29,6 +30,7 @@ import { errors } from './nb/errors';
 import { failures } from './nb/failures';
 import { feedback } from './nb/feedback';
 import { form } from './nb/form';
+import { procedure } from './nb/procedure';
 import { project } from './nb/project';
 import { projects } from './nb/projects';
 import { shell } from './nb/shell';
@@ -48,6 +50,7 @@ export const nb = defineCatalogue({
   projects,
   project,
   api,
+  procedure,
 });
 
 export const en = {
@@ -64,6 +67,7 @@ export const en = {
   projects: enProjects,
   project: enProject,
   api: enApi,
+  procedure: enProcedure,
 } satisfies Translation<typeof nb>;
 
 export const { useT, translator } = defineTranslations({ nb, en });

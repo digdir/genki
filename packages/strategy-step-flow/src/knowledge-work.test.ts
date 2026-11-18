@@ -111,7 +111,9 @@ describe('step flows over a set of documents', () => {
     ]);
     expect(retrieval.reads).toEqual(['d-dfo:300', 'd-digdir:300']);
     const request = models.seen[0]?.request;
-    expect(request?.messages.at(-1)?.content).toContain('[1] \n```\nTitle: Dokument dfo-0');
+    expect(request?.messages.at(-1)?.content).toContain(
+      '[1] <untrusted_data kind="source" id="dfo-0">\n\n```\nTitle: Dokument dfo-0',
+    );
     expect(request?.jsonSchema?.schema).toMatchObject({
       properties: {
         goals: {

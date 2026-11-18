@@ -42,6 +42,16 @@ export const humanApprovalConfig = z.union([
   }),
 ]);
 
+const reviewRule = z.enum(['person', 'allow']);
+
+export const purposeCheckConfig = z.strictObject({
+  model: z.string().min(1),
+  threshold: z.number().gt(0.5).max(1).default(0.8),
+  uncertain: reviewRule.default('person'),
+  refusal: reviewRule.default('person'),
+  message: z.string().min(1).optional(),
+});
+
 export const guardrailSchemas = new Map<string, z.ZodType>([
   ['pii-before-model', piiBeforeModelConfig],
   ['pii-out-of-log', piiOutOfLogConfig],
@@ -50,6 +60,7 @@ export const guardrailSchemas = new Map<string, z.ZodType>([
   ['refuse-topics', refuseTopicsConfig],
   ['human-approval', humanApprovalConfig],
   ['custom-rules', customRulesConfig],
+  ['purpose-check', purposeCheckConfig],
 ]);
 
 export interface Guardrails {
@@ -60,6 +71,7 @@ export interface Guardrails {
   refuseTopics?: { topics: string[]; message: string; onError: 'refuse' | 'allow' };
   humanApproval?: { prompt: string; expiresInMinutes?: number; message: string };
   customRules?: unknown[];
+  purposeCheck?: z.output<typeof purposeCheckConfig> & { message: string };
 }
 
 export const platformMessages = {
@@ -72,6 +84,10 @@ export const platformMessages = {
     rule: 'Dette kan ikke besvares i denne tjenesten.',
     disclosure: 'Svaret er laget med kunstig intelligens.',
     unsupported: 'Denne tjenesten svarer ikke på språket i spørsmålet, så jeg svarer på bokmål.',
+    outsidePurpose: 'Dette ligger utenfor formålet til tjenesten.',
+    purposeReview:
+      'Vi er usikre på om dette er innenfor formålet til tjenesten, så en person ser på det før du får svar.',
+    purposeRejected: 'En person har vurdert at dette ligger utenfor formålet til tjenesten.',
   },
   nn: {
     pii: 'Spørsmålet inneheld personopplysningar som ikkje kan sendast vidare. Fjern dei og prøv igjen.',
@@ -82,6 +98,10 @@ export const platformMessages = {
     rule: 'Dette kan ikkje svarast på i denne tenesta.',
     disclosure: 'Svaret er laga med kunstig intelligens.',
     unsupported: 'Denne tenesta svarer ikkje på språket i spørsmålet, så eg svarer på nynorsk.',
+    outsidePurpose: 'Dette ligg utanfor formålet til tenesta.',
+    purposeReview:
+      'Vi er usikre på om dette er innanfor formålet til tenesta, så ein person ser på det før du får svar.',
+    purposeRejected: 'Ein person har vurdert at dette ligg utanfor formålet til tenesta.',
   },
   en: {
     pii: 'The question contains personal data that cannot be passed on. Remove it and try again.',
@@ -94,6 +114,10 @@ export const platformMessages = {
     disclosure: 'This answer was made with artificial intelligence.',
     unsupported:
       'This service does not answer in the language of the question, so I am answering in English.',
+    outsidePurpose: "This is outside the service's purpose.",
+    purposeReview:
+      "We are not sure this is within the service's purpose, so a person will look at it before you get an answer.",
+    purposeRejected: "A person has found that this is outside the service's purpose.",
   },
 } as const satisfies Record<Language, Record<string, string>>;
 
@@ -139,5 +163,9 @@ export const parseGuardrails = (block: unknown): Guardrails => {
   }
   if (raw['custom-rules'] !== undefined)
     out.customRules = customRulesConfig.parse(raw['custom-rules']);
+  if (raw['purpose-check'] !== undefined) {
+    const c = purposeCheckConfig.parse(raw['purpose-check']);
+    out.purposeCheck = { ...c, message: c.message ?? defaultMessages.outsidePurpose };
+  }
   return out;
 };

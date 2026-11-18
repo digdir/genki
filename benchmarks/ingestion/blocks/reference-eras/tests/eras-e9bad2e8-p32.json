@@ -1,0 +1,228 @@
+{
+ "tests": [
+  {
+   "id": "eras-e9bad2e8-p32-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "6. Important Factors influencing NPA’s Future",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-e9bad2e8-p32-t02",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "multi_column",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "6.1 Key challenges",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-e9bad2e8-p32-t03",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "list",
+    "multi_column",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Since the beginning of its operations in 1993, CMAC has focused virtually all its attention on the day to day demining operations.",
+     "max_diffs": 4
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-e9bad2e8-p32-t04",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "list",
+    "multi_column",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Technical advisors, from a wid range of countries rotate on short term schedules",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-e9bad2e8-p32-t05",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "list",
+    "multi_column",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "The important work of co-ordinating units could be a role for a roving TA",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-e9bad2e8-p32-t06",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "list",
+    "multi_column",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "could be a possible and influential position for NPA at CMAC HQ.",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "Terms of reference for TAs.",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-e9bad2e8-p32-t07",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "list",
+    "multi_column",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Hence, there is a need for management training and planning for considerable time to come.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-e9bad2e8-p32-t08",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "list",
+    "multi_column",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Good routines and procedures have been implemented in parts of CMAC, such as the Battambang region",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-e9bad2e8-p32-t09",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "list",
+    "multi_column",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "process and the type of people selected.",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "Regional autonomy.",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-e9bad2e8-p32-t10",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "multi_column",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "specific role of NPA in future work in Cambodia.",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "6.1 Key challenges",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-e9bad2e8-p32-t11",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "list",
+    "multi_column",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "It provides a challenge for NPA to obtain a position",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "A suggested standard form for reporting is contained",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

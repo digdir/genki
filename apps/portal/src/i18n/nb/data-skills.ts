@@ -64,7 +64,7 @@ export const skills = defineNamespace({
   gateMustReject: 'Alle tilfeller som skal avvises, er avvist',
   gateTools: 'Verktøyene peker på publiserte versjoner',
   whyNoCases: 'Ferdigheten har ingen testtilfeller.',
-  whyStale: 'Utkastet er endret etter siste kjøring.',
+  whyStale: 'Utkastet eller dommeren er endret etter siste kjøring.',
   whyNotRun: 'Testsettet er ikke kjørt.',
   whyPassed: '{passed} av {total} bestått ({percent} prosent).',
   whyUnpublished: 'Ikke publisert: {tools}.',
@@ -190,7 +190,8 @@ export const skills = defineNamespace({
   testRequirement: 'Krav for publisering: minst {percent} prosent',
   testRun: 'Kjør testsettet',
   testRunning: 'Kjører {count} testtilfeller',
-  testStale: 'Utkastet er endret siden siste kjøring. Kjør testsettet på nytt for å se resultatet.',
+  testStale:
+    'Utkastet eller dommeren er endret siden siste kjøring. Kjør testsettet på nytt for å se resultatet.',
   testFailedHeading: { one: '{count} testtilfelle feilet', other: '{count} testtilfeller feilet' },
   testFixAsk: 'Be assistenten rette instruksjonene',
   testEmptyTitle: 'Ingen testtilfeller ennå',

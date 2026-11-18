@@ -1,0 +1,196 @@
+{
+ "tests": [
+  {
+   "id": "kudos-19474-p4-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "list",
+    "multi_column",
+    "nno",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Gåande og syklande som i dag tek ferje over Langenuen og Bjørnafjorden kan sykle på bruene",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-19474-p4-t02",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nno",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Kystverket presiserte krav om seglingshøgde for bruer",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-19474-p4-t03",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nno",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "4,5 pst",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-19474-p4-t04",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nno",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Denne løysinga er 25 km kortare enn den indre linja via Fusa.",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-19474-p4-t05",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nno",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "number": "13 000"
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-19474-p4-t06",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nno",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "På grunn av vesentleg kortare strekning mellom Stord og Os",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "fekk det midtre alternativet ein høgare nytte",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-19474-p4-t07",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "multi_column",
+    "nno",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "3.2 Kommunedelplan (KDP)",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-19474-p4-t08",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "multi_column",
+    "nno",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "avgjorde regjeringa i desember 2013",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "Med utgangspunkt i regjeringa si avgjerd",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-19474-p4-t09",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "caption",
+    "multi_column",
+    "nno",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Ulike vegtrasear som vart vurderte i KDP-arbeidet",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-19474-p4-t10",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "figure",
+    "multi_column",
+    "nno",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Brukonsept K1, K2, K7, K8",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

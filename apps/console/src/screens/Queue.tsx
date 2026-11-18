@@ -605,7 +605,11 @@ const leadOf = (row: Row, mode: Mode, t: T) => {
 };
 
 const byOf = (row: Row, t: T) =>
-  row.assistant ? t('queue.assistant') : row.by || t('queue.unknown');
+  row.assistant
+    ? row.by
+      ? t('queue.assistantFor', { name: row.by })
+      : t('queue.assistant')
+    : row.by || t('queue.unknown');
 
 const DecisionDialog = ({
   row,

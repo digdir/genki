@@ -2,6 +2,8 @@ import { inputFieldsSchema, type CapabilityDescriptor } from '@genai/contracts';
 import type { Capability } from '@genai/kernel';
 import { resolvePrompts, type PromptFiles } from './prompts.js';
 import {
+  decisionModelOf,
+  operationModelsOf,
   publicNamesOf,
   toolRef,
   variantChatOf,
@@ -21,7 +23,13 @@ export interface CompiledCapability {
   publicName: string;
   aliases: string[];
   variantTitle?: { nb: string; en: string };
+  internal?: true;
 }
+
+export const isInternalService = (definition: unknown) =>
+  (definition as { kind?: unknown; spec?: { visibility?: unknown } } | undefined)?.kind ===
+    'Service' &&
+  (definition as { spec?: { visibility?: unknown } }).spec?.visibility === 'internal';
 
 export const capabilityId = (tenant: string, service: string, variant: string) =>
   `${tenant}/${service}/${variant}`;
@@ -43,6 +51,9 @@ const interaction = (spec: ServiceDefinition['spec']): CapabilityDescriptor['int
     : []),
   ...(spec.batch?.enabled || spec.triggers.length > 0 ? (['async'] as const) : []),
 ];
+
+const variantFilters = (variant: ServiceDefinition['spec']['variants'][number]) =>
+  typeof variant === 'string' ? undefined : variant.filters;
 
 export const toCapabilities = (
   definition: ServiceDefinition,
@@ -80,6 +91,17 @@ export const toCapabilities = (
         aiDisclosure: 'Svaret er laget med kunstig intelligens.',
       },
     };
+    const modelGrants = [
+      ...(model.primary ? [model.primary] : []),
+      ...(spec.model.fallback ? [spec.model.fallback] : []),
+      ...[...new Set(Object.values(spec.model.roles ?? {}))].filter(
+        (id): id is string =>
+          id !== undefined && id !== model.primary && id !== spec.model.fallback,
+      ),
+    ];
+    const operationGrants = [...new Set(operationModelsOf(spec.model))].filter(
+      (id) => !modelGrants.includes(id),
+    );
     const capability: Capability = {
       descriptor,
       strategy: { id: strategy.id, version: String(strategy.version) },
@@ -90,9 +112,14 @@ export const toCapabilities = (
         ...(spec.callOverrides ? { callOverrides: spec.callOverrides } : {}),
         output: spec.output,
         model: { ...model, tenant: metadata.tenant },
-        knowledge: spec.knowledge,
+        knowledge: variantFilters(variant)
+          ? { ...spec.knowledge, filters: variantFilters(variant) }
+          : spec.knowledge,
         tools: spec.tools.map(toolRef),
         guardrails: spec.guardrails,
+        ...(spec.riskConfirmation?.unmaskedInput?.length
+          ? { unmaskedMedia: spec.riskConfirmation.unmaskedInput.map((u) => u.mediaType) }
+          : {}),
       },
       grants: [
         ...spec.knowledge.datasets.map((k) => ({
@@ -103,14 +130,16 @@ export const toCapabilities = (
         ...(spec.knowledge.reranker
           ? [{ port: 'rerank', ref: ref('reranker', spec.knowledge.reranker) }]
           : []),
-        ...(model.primary ? [{ port: 'model', ref: ref('model', model.primary) }] : []),
-        ...(spec.model.fallback ? [{ port: 'model', ref: ref('model', spec.model.fallback) }] : []),
-        ...[...new Set(Object.values(spec.model.roles ?? {}))]
-          .filter(
-            (id): id is string =>
-              id !== undefined && id !== model.primary && id !== spec.model.fallback,
-          )
-          .map((id) => ({ port: 'model', ref: ref('model', id) })),
+        ...modelGrants.map((id) => ({ port: 'model', ref: ref('model', id) })),
+        ...(strategy.id === 'step-flow' || strategy.id === 'live-session'
+          ? [...modelGrants, ...operationGrants].map((id) => ({
+              port: 'described',
+              ref: ref('model', id),
+            }))
+          : []),
+        ...(decisionModelOf(spec)
+          ? [{ port: 'decision', ref: ref('model', decisionModelOf(spec) as string) }]
+          : []),
       ],
     };
     const names = publicNamesOf(definition, variant);
@@ -125,6 +154,7 @@ export const toCapabilities = (
       ...(variantTitleOf(variant)
         ? { variantTitle: variantTitleOf(variant) as { nb: string; en: string } }
         : {}),
+      ...(spec.visibility === 'internal' ? { internal: true as const } : {}),
     };
   });
 };

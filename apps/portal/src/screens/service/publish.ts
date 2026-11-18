@@ -2,6 +2,7 @@ import { ApiError, type ApiClient } from '../../api';
 import { residencyName } from '../../data/services';
 import { translator, type PlainKey, type T } from '../../i18n';
 import type { PublishedDefinition } from '../../types';
+import { mediaKind } from '../../data/unmasked-input';
 import { problemErrors } from './definition';
 
 export type PublishProblem = { path: string; message: string };
@@ -65,6 +66,10 @@ export const sectionOf = (path: string, t: T = translator('nb')) => {
 };
 
 const messages: [RegExp, (m: RegExpExecArray, t: T) => string][] = [
+  [
+    /^step \S+ in \S+: \S+ takes (\S+) input, which cannot be masked/,
+    (m, t) => t('unmaskedInput.refused', { kind: mediaKind(t, m[1] ?? ''), mediaType: m[1] ?? '' }),
+  ],
   [/no published step flow (\S+)/, (m, t) => t('service.flowNotPublished', { flow: m[1] ?? '' })],
   [
     /runs in (\w+), outside (\w+)/,
@@ -74,7 +79,10 @@ const messages: [RegExp, (m: RegExpExecArray, t: T) => string][] = [
         required: residencyName(m[2]),
       }),
   ],
-  [/^Required$|received undefined/, (_m, t) => t('service.required')],
+  [
+    /^Required$|received undefined|expected string to have >=1 characters/,
+    (_m, t) => t('service.required'),
+  ],
 ];
 
 export const describeProblem = (problem: PublishProblem, t: T = translator('nb')) => {

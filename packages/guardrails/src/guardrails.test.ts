@@ -8,11 +8,18 @@ import {
   type PortProvider,
   type Strategy,
 } from '@genai/kernel';
-import type { ChatChunk, ChatRequest, ChatResult, ModelPort } from '@genai/port-model';
+import {
+  gatedModel,
+  type ChatChunk,
+  type ChatRequest,
+  type ChatResult,
+  type ModelPort,
+} from '@genai/port-model';
+import { gatedFake } from '@genai/port-model/testing';
 import {
   createVault,
-  guardModel,
   guardStrategy,
+  modelGuard,
   guardrailSchemas,
   piiSafeEventLog,
   PROVENANCE_MIME,
@@ -50,7 +57,7 @@ const fakeModel = (reply: Reply) => {
       yield { kind: 'done', result: result(reply(request)) };
     },
   };
-  const provider: PortProvider<ModelPort> = { open: () => port };
+  const provider: PortProvider<ModelPort> = { open: (_ref, ctx) => gatedModel(port, ctx) };
   return { provider, seen };
 };
 
@@ -226,6 +233,60 @@ describe('pii-before-model and pii-out-of-log', () => {
     expect(textOf(parts)?.text).toBe(`Du spurte om ${fnr} [1]`);
     expect(JSON.stringify(events)).not.toContain(fnr);
     expect(JSON.stringify(events)).toContain('[REDACTED:national-id]');
+  });
+
+  it('the guard masks once even when a strategy also masks', async () => {
+    const model = fakeModel((request) => `Gjelder ${request.messages[0]?.content ?? ''}`);
+    const ownVault = createVault(['national-id']);
+    const masking: Strategy<unknown> = {
+      id: 'masking',
+      version: '1',
+      requires: { kernel: 1, ports: ['model'], features: [] },
+      run: async function* (ctx: InvocationContext, input: Input) {
+        const port = await ctx.use<ModelPort>(
+          'model',
+          { kind: 'model', id: 'm', tenant },
+          { guards: [modelGuard({ vault: ownVault })] },
+        );
+        const question = (input.data as { query: string }).query;
+        const reply = await port.chat({ messages: [{ role: 'user', content: question }] });
+        yield { type: 'kernel.result', data: [textPart(reply.content)] };
+      },
+    };
+    const kernel = createKernel({
+      strategies: [guardStrategy(masking)],
+      capabilities: [
+        {
+          descriptor: {
+            id: 'masking',
+            version: '1',
+            tenant,
+            title: 'masking',
+            description: 'masking',
+            input: {},
+            interaction: ['unary'],
+            accepts: ['text/plain'],
+            produces: ['text/plain'],
+            emits: [],
+            oversight: { interrupts: false, riskClass: 'minimal', aiDisclosure: 'KI' },
+          },
+          strategy: { id: 'masking', version: '1' },
+          config: {
+            model: { primary: 'm', tenant },
+            guardrails: { 'pii-before-model': { categories: ['national-id'] } },
+          },
+          grants: [{ port: 'model', ref: { kind: 'model', id: 'm', tenant } }],
+        },
+      ],
+      ports: { model: model.provider },
+      policy: { decide: async () => ({ allow: true }) },
+    });
+
+    const run = await kernel.invoke(kari, 'masking', { data: { query: fnr } });
+    const parts = await run.result;
+
+    expect(model.seen.map((r) => r.messages[0]?.content)).toEqual(['«NATIONAL_ID_1»']);
+    expect(textOf(parts)?.text).toBe(`Gjelder ${fnr}`);
   });
 
   it('refuses before calling the model when told to refuse', async () => {
@@ -482,7 +543,7 @@ describe('human-approval', () => {
   });
 });
 
-describe('model wrapper', () => {
+describe('payload guard', () => {
   it('restores a masked value even when the stream splits its token across chunks', async () => {
     const vault = createVault(['national-id']);
     vault.mask(`fnr ${fnr}`);
@@ -497,7 +558,8 @@ describe('model wrapper', () => {
       },
     };
     const chunks: ChatChunk[] = [];
-    for await (const c of guardModel(port, { vault }).chatStream({ messages: [] })) chunks.push(c);
+    const guarded = gatedFake(port, { guards: [modelGuard({ vault })] });
+    for await (const c of guarded.chatStream({ messages: [] })) chunks.push(c);
 
     expect(chunks.flatMap((c) => (c.kind === 'delta' ? [c.text] : [])).join('')).toBe(
       `Gjelder ${fnr} og ingen andre.`,

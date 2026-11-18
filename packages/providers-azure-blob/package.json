@@ -1,0 +1,25 @@
+{
+  "name": "@genai/providers-azure-blob",
+  "version": "0.0.0",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@azure/identity": "^4.14.1",
+    "@azure/storage-blob": "^12.34.0",
+    "@genai/port-blob": "0.0.0"
+  },
+  "devDependencies": {
+    "@genai/plugins": "0.0.0"
+  }
+}

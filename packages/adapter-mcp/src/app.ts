@@ -1,4 +1,5 @@
 import { Hono, type Context } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import {
   checkInputFields,
   fieldsQuery,
@@ -8,7 +9,7 @@ import {
   type Part,
   type Principal,
 } from '@genai/contracts';
-import { KernelError, type Kernel, type Run } from '@genai/kernel';
+import { KernelError, quotaExhaustedProblem, type Kernel, type Run } from '@genai/kernel';
 import { progressTracker } from './progress.js';
 import {
   discoverTtlMs,
@@ -53,11 +54,20 @@ export interface TurnChunk {
   contentMarkdown: string;
 }
 
+export interface TurnMarker {
+  marker: string;
+  chunk_id: string;
+  document: string;
+}
+
 export interface ConversationTurn {
   role: 'user' | 'assistant';
   text: string;
   chunks?: TurnChunk[];
+  markers?: TurnMarker[];
   diagnostics?: unknown;
+  /** The run that answers a user turn or wrote an assistant turn. */
+  task?: string;
 }
 
 export type OpenedConversation =
@@ -69,6 +79,7 @@ export interface McpConversations {
     input: { conversationId?: string; agentId: string },
   ): Promise<OpenedConversation>;
   append(request: Request, conversationId: string, turn: ConversationTurn): Promise<void>;
+  discard?(request: Request, conversationId: string): Promise<void>;
 }
 
 export interface McpAppOptions {
@@ -103,6 +114,8 @@ interface CallOutcome {
 }
 
 const versionHeader = 'genai-version';
+const environmentHeader = 'genai-environment';
+const quotaExhaustedCode = -32029;
 
 const readVersion = (value: string | undefined): { version?: number } | { error: string } => {
   if (value === undefined || value.trim() === '') return {};
@@ -112,10 +125,15 @@ const readVersion = (value: string | undefined): { version?: number } | { error:
     : { error: '`GenAI-Version` must be a positive whole number.' };
 };
 
-const generatedHeaders = (models: string[], version?: number): Record<string, string> => ({
+const generatedHeaders = (
+  models: string[],
+  version?: number,
+  environment?: string,
+): Record<string, string> => ({
   'genai-generated-by': 'ai',
   ...(models.length === 1 && models[0] ? { 'genai-model': models[0] } : {}),
   ...(version === undefined ? {} : { 'genai-service-version': String(version) }),
+  ...(environment === undefined ? {} : { [environmentHeader]: environment }),
 });
 
 const outcomeOf = (response: Response, status = 200, headers: Record<string, string> = {}) => ({
@@ -124,7 +142,13 @@ const outcomeOf = (response: Response, status = 200, headers: Record<string, str
   headers,
 });
 
-const resolveStatus: Record<string, number> = { service_paused: 503, version_not_found: 409 };
+const resolveStatus: Record<string, number> = {
+  service_paused: 503,
+  version_not_found: 409,
+  invalid_environment: 400,
+  environment_not_authorized: 403,
+  environment_not_found: 409,
+};
 
 const alphabet = 'useandom-26T198340PX75pxJACKVERYMINDBUSHWOLF_GQZbfghjklqvwyzrict';
 
@@ -166,13 +190,26 @@ const datasetScope = (args: Record<string, unknown>, entry: CapabilityEntry) => 
 
 const text = (v: unknown) => (typeof v === 'string' ? v : undefined);
 
-const assistantTurn = (output: ToolOutput): ConversationTurn => {
+const turnMarkers = (v: unknown): TurnMarker[] =>
+  (Array.isArray(v) ? v : []).flatMap((m) => {
+    if (!isRecord(m)) return [];
+    const marker = text(m.marker);
+    const chunkId = text(m.chunk_id);
+    const document = text(m.document);
+    return marker === undefined || chunkId === undefined || document === undefined
+      ? []
+      : [{ marker, chunk_id: chunkId, document }];
+  });
+
+const assistantTurn = (output: ToolOutput, task: string): ConversationTurn => {
   const s = output.structured;
   const chunks = Array.isArray(s.chunks) ? (s.chunks as Record<string, unknown>[]) : [];
+  const markers = turnMarkers(s.markers);
   const attribution = isRecord(s.search_attribution) ? [s.search_attribution] : [];
   return {
     role: 'assistant',
     text: output.text,
+    task,
     chunks: chunks.slice(0, 20).map((c) => {
       const docNum = text(c.doc_num);
       return {
@@ -182,6 +219,7 @@ const assistantTurn = (output: ToolOutput): ConversationTurn => {
         contentMarkdown: text(c.content_markdown) ?? '',
       };
     }),
+    ...(markers.length ? { markers } : {}),
     diagnostics: {
       ...(isRecord(s.execution_metadata) ? { 'execution-metadata': s.execution_metadata } : {}),
       'backend-issues': [],
@@ -240,16 +278,16 @@ export const createMcpApp = (options: McpAppOptions) => {
           }),
         );
       }
-      const resolved = await resolver.resolve(
-        principal,
-        name,
-        hooks.version === undefined ? {} : { version: hooks.version },
-      );
+      const environment = hooks.request.headers.get(environmentHeader) ?? undefined;
+      const resolved = await resolver.resolve(principal, name, {
+        ...(hooks.version === undefined ? {} : { version: hooks.version }),
+        ...(environment === undefined ? {} : { environment }),
+      });
       if (!resolved.ok) {
         const status = resolveStatus[resolved.code];
         if (status)
           return outcomeOf(
-            rpcError(id, status === 409 ? -32602 : -32603, resolved.message, {
+            rpcError(id, status === 503 ? -32603 : -32602, resolved.message, {
               code: resolved.code,
             }),
             status,
@@ -325,11 +363,13 @@ export const createMcpApp = (options: McpAppOptions) => {
         ...(entry.agentId === undefined ? {} : { agent_id: entry.agentId }),
       };
 
+      const discard = async () => {
+        if (!requested)
+          await options.conversations
+            ?.discard?.(hooks.request, conversationId)
+            .catch(() => undefined);
+      };
       let run: Run;
-      await options.conversations?.append(hooks.request, conversationId, {
-        role: 'user',
-        text: query ?? '',
-      });
       try {
         run = await kernel.invoke(
           principal,
@@ -338,11 +378,38 @@ export const createMcpApp = (options: McpAppOptions) => {
             mapInput(entry, { ...args, ...values }, query, history),
             !!entry.inputFields?.length,
           ),
-          { thread: conversationId, entryPoint: 'mcp' },
+          {
+            thread: conversationId,
+            entryPoint: 'mcp',
+            ...(entry.environment ? { environment: entry.environment } : {}),
+          },
         );
       } catch (error) {
+        await discard();
+        const spent = quotaExhaustedProblem(error);
+        if (spent)
+          return outcomeOf(
+            rpcError(id, quotaExhaustedCode, spent.title, {
+              type: spent.type,
+              status: spent.status,
+              detail: spent.detail,
+            }),
+            spent.status,
+            { 'Retry-After': String(spent.retryAfterSeconds) },
+          );
         if (error instanceof KernelError)
           return outcomeOf(result(id, toolError(error.message, error.code)));
+        throw error;
+      }
+      try {
+        await options.conversations?.append(hooks.request, conversationId, {
+          role: 'user',
+          text: query ?? '',
+          task: run.task,
+        });
+      } catch (error) {
+        await kernel.cancel(principal, run.task).catch(() => undefined);
+        await discard();
         throw error;
       }
       hooks.onRun?.(run);
@@ -378,7 +445,7 @@ export const createMcpApp = (options: McpAppOptions) => {
 
       const output = mapOutput(parts);
       await options.conversations
-        ?.append(hooks.request, conversationId, assistantTurn(output))
+        ?.append(hooks.request, conversationId, assistantTurn(output, run.task))
         .catch(() => undefined);
       const models = await modelsOf(run.task);
       return outcomeOf(
@@ -400,10 +467,11 @@ export const createMcpApp = (options: McpAppOptions) => {
             ai_generated: true,
             ...(models.length === 1 ? { model: models[0] } : {}),
             ...(entry.version === undefined ? {} : { service_version: entry.version }),
+            ...(entry.environment === undefined ? {} : { environment: entry.environment }),
           },
         }),
         200,
-        { ...generatedHeaders(models, entry.version), 'genai-task': run.task },
+        { ...generatedHeaders(models, entry.version, entry.environment), 'genai-task': run.task },
       );
     } catch (error) {
       return outcomeOf(
@@ -414,7 +482,7 @@ export const createMcpApp = (options: McpAppOptions) => {
     }
   };
 
-  const streamToolCall = (
+  const streamToolCall = async (
     c: Context,
     id: JsonRpcId,
     principal: Principal,
@@ -429,20 +497,38 @@ export const createMcpApp = (options: McpAppOptions) => {
     let open = true;
     let heartbeat: ReturnType<typeof setInterval> | undefined;
 
+    c.req.raw.signal.addEventListener('abort', () => abort.abort(), { once: true });
+    let started: () => void = () => undefined;
+    const startedOrSettled = new Promise<void>((resolve) => (started = resolve));
+    const frames: string[] = [];
+    let write = (text: string) => {
+      frames.push(text);
+    };
+    const call = callTool(id, principal, name, args, {
+      request: c.req.raw,
+      signal: abort.signal,
+      ...(version === undefined ? {} : { version }),
+      onEvent: (event) => {
+        started();
+        for (const frame of track(event)) write(`data: ${JSON.stringify(frame)}\n\n`);
+      },
+    });
+    let refused: CallOutcome | undefined;
+    void call.then((outcome) => {
+      if (outcome.status === 429) refused = outcome;
+      started();
+    });
+    await startedOrSettled;
+    if (refused) return json(c, refused.status, refused.response, refused.headers);
+
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
-        const write = (text: string) => {
+        write = (text: string) => {
           if (open) controller.enqueue(encoder.encode(text));
         };
+        for (const frame of frames.splice(0)) write(frame);
         heartbeat = setInterval(() => write(': ping\n\n'), heartbeatMs);
-        void callTool(id, principal, name, args, {
-          request: c.req.raw,
-          signal: abort.signal,
-          ...(version === undefined ? {} : { version }),
-          onEvent: (event) => {
-            for (const frame of track(event)) write(`data: ${JSON.stringify(frame)}\n\n`);
-          },
-        }).then(({ response }) => {
+        void call.then(({ response }) => {
           clearInterval(heartbeat);
           if (!open) return;
           write(`data: ${JSON.stringify(response)}\n\n`);
@@ -456,7 +542,6 @@ export const createMcpApp = (options: McpAppOptions) => {
         abort.abort();
       },
     });
-    c.req.raw.signal.addEventListener('abort', () => abort.abort(), { once: true });
     return new globalThis.Response(stream, {
       status: 200,
       headers: {
@@ -495,11 +580,16 @@ export const createMcpApp = (options: McpAppOptions) => {
   app.get(path, notAllowed);
   app.delete(path, notAllowed);
 
+  app.use(
+    path,
+    bodyLimit({
+      maxSize: maxBody,
+      onError: (c) => json(c, 413, parseError(`Request body exceeds ${maxBody} bytes`)),
+    }),
+  );
   app.post(path, async (c) => {
     const principal = c.get('principal' as never) as Principal;
     const text = await c.req.text();
-    if (Buffer.byteLength(text) > maxBody)
-      return json(c, 413, parseError(`Request body exceeds ${maxBody} bytes`));
     if (text.trim() === '') return json(c, 400, parseError('Empty request body'));
     let body: unknown;
     try {

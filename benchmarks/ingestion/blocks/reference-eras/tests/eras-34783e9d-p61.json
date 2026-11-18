@@ -1,0 +1,192 @@
+{
+ "tests": [
+  {
+   "id": "eras-34783e9d-p61-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Av kommunene som ikke har oppgitt tall, var det 10 kommuner som var enig i utsagnet",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-34783e9d-p61-t02",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "E: Tilskudd/refusjon/godtgjørelse fra stat, kommune eller private til veg eller trafikksikkerhetsformål.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-34783e9d-p61-t03",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "I bolk E var hensikten å undersøke kommunenes regnskapspraksis med hensyn til tilskudd/refusjon/godtgjørelse til veg eller trafikksikkerhetsformål.",
+     "max_diffs": 4
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-34783e9d-p61-t04",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Tilskudd/refusjon/godtgjørelse fra stat, kommune",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "I bolk E var hensikten",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-34783e9d-p61-t05",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "87 av 236 kommuner oppgav at de i 2005 eller 2006 hadde mottatt tilskudd til veg eller trafikksikkerhetstiltak (registrert i driftsregnskapet).",
+     "max_diffs": 4
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-34783e9d-p61-t06",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "regnskapspraksis med hensyn til",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "87 av 236 kommuner oppgav",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-34783e9d-p61-t07",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_review",
+   "tags": [
+    "figure",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "E1: Har kommunen i 2005 eller 2006 mottatt tilskudd til vei eller andre trafikksikkerhetsformål (som er registert i driftsregnskapet)?",
+     "max_diffs": 4
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-34783e9d-p61-t08",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "figure",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "E2: Har kommunen i 2005 eller 2006 mottatt tilskudd fra staten og/eller fylkeskommunen til trafikksikkerhetstiltak (ført i driftsregnskapet)?",
+     "max_diffs": 4
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-34783e9d-p61-t09",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "footnote",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "4-6 på skalaen",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-34783e9d-p61-t10",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "footnote",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "hadde mottatt tilskudd til veg eller",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "4-6 på skalaen",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

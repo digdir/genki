@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { createFormat } from '@genai/i18n';
 import { inEnglish } from '@genai/i18n/react';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { createApiClient } from '../api';
 import { parseRoute } from '../hooks';
@@ -48,12 +48,8 @@ describe('integrations in English', () => {
     expect(describeSchedule('*/5 * * * *', t, f)).toBe('Schedule "*/5 * * * *"');
   });
 
-  it('shows tabs, statuses and the follow-up warning in English', () => {
+  it('shows statuses and the follow-up warning in English', () => {
     overview('#/integrations');
-    expect(screen.getByRole('heading', { name: 'Integrations', level: 1 })).toBeTruthy();
-    const tabs = screen.getByRole('tablist', { name: 'Integrations' });
-    expect(within(tabs).getByText('Frontends')).toBeTruthy();
-    expect(within(tabs).getByText('Tracing and evaluation')).toBeTruthy();
     expect(screen.getByText('2 integrations need follow-up')).toBeTruthy();
     expect(screen.getAllByText('Failing').length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: 'Connect a system' })).toBeTruthy();

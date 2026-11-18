@@ -1,4 +1,4 @@
-import { Alert, Heading, Link, Paragraph, Tag } from '@digdir/designsystemet-react';
+import { Alert, Button, Heading, Link, Paragraph, Tag } from '@digdir/designsystemet-react';
 import { Fragment } from 'react';
 import type { ApiClient } from '../../api';
 import type { ServiceDefinition, SpecEdit } from '../../data/service-definition';
@@ -14,7 +14,7 @@ import { useAsync } from '../../hooks';
 import { useT, type T } from '../../i18n';
 import { useFormat } from '@genai/i18n/react';
 import type { Format } from '@genai/i18n';
-import { SelectField } from '../stepflows/fields';
+import { SearchField, SelectField } from '../stepflows/fields';
 import { SchemaForm, undescribedPaths, type Value, type WidgetRenderer } from '@genai/schema-forms';
 import { useMemo } from 'react';
 import { useStrategySchema } from './strategy-schema';
@@ -46,6 +46,11 @@ const shownElsewhere = new Set(['instructions', 'examples']);
 
 const flowId = (ref: unknown) => (typeof ref === 'string' ? ref.replace(/@[\d.]+$/, '') : '');
 
+const flowVersion = (ref: unknown) => {
+  const m = typeof ref === 'string' ? /@(\d+)$/.exec(ref) : null;
+  return m ? Number(m[1]) : undefined;
+};
+
 const FlowPicker = ({
   api,
   tenant,
@@ -61,30 +66,56 @@ const FlowPicker = ({
 }) => {
   const t = useT();
   const [state] = useAsync(
-    async (signal) =>
-      (await api.listDefinitions(tenant, signal))
-        .filter((d) => d.kind === 'StepFlow')
-        .map((d) => ({
-          value: `${d.id}@${d.latestVersion}`,
-          label: t('serviceStrategy.flowOption', { id: d.id, version: d.latestVersion }),
-        })),
+    async (signal) => {
+      const flows = (await api.listDefinitions(tenant, signal)).filter(
+        (d) => d.kind === 'StepFlow',
+      );
+      const histories = await Promise.all(
+        flows.map(async (d) => {
+          const versions = await api
+            .getDefinition(tenant, 'StepFlow', d.id, signal)
+            .then((h) => h.versions.map((v) => v.version))
+            .catch(() => [d.latestVersion]);
+          return { id: d.id, latest: d.latestVersion, versions };
+        }),
+      );
+      return histories.flatMap((h) =>
+        [...new Set([...h.versions, h.latest])]
+          .sort((a, b) => b - a)
+          .map((version) => ({
+            value: `${h.id}@${version}`,
+            label: t(
+              version === h.latest
+                ? 'serviceStrategy.flowVersionLatest'
+                : 'serviceStrategy.flowOption',
+              {
+                id: h.id,
+                version,
+              },
+            ),
+          })),
+      );
+    },
     [api, tenant],
   );
   const current = typeof value === 'string' ? value : '';
   const published = state.status === 'ready' ? state.data : [];
   const options =
-    current && !published.some((o) => o.value === current)
+    current && state.status === 'ready' && !published.some((o) => o.value === current)
       ? [
           { value: current, label: t('serviceStrategy.flowUnpublished', { flow: current }) },
           ...published,
         ]
-      : published;
+      : current && state.status !== 'ready'
+        ? [{ value: current, label: current }]
+        : published;
   const chosen = flowId(current);
   return (
     <div className="stack-xs">
-      <SelectField
+      <SearchField
         id={id}
         label={t('serviceStrategy.flow')}
+        clearLabel={t('stepflows.clearFlowSearch')}
         description={
           state.status === 'loading'
             ? t('serviceStrategy.flowsLoading')
@@ -93,7 +124,6 @@ const FlowPicker = ({
               : t('serviceStrategy.flowsPick')
         }
         value={current}
-        placeholder={t('serviceStrategy.flowPlaceholder')}
         options={options}
         {...(current ? {} : { error: t('serviceStrategy.flowRequired') })}
         onChange={(v) => onSet(v || undefined)}
@@ -130,19 +160,36 @@ const flowSteps = (t: T, raw: unknown): FlowStep[] =>
     return { id, name: typeof s.name === 'string' ? s.name : id, what };
   });
 
-const FlowSummary = ({ api, tenant, flow }: { api: ApiClient; tenant: string; flow: string }) => {
+const FlowSummary = ({
+  api,
+  tenant,
+  flow,
+  pinned,
+  onUpdate,
+}: {
+  api: ApiClient;
+  tenant: string;
+  flow: string;
+  pinned: number | undefined;
+  onUpdate: (version: number) => void;
+}) => {
   const t = useT();
   const [state] = useAsync(
     async (signal) => {
       const def = await api.getDefinition(tenant, 'StepFlow', flow, signal);
-      const spec = (def.latest.definition.spec ?? {}) as Raw;
+      const shown =
+        pinned === undefined || pinned === def.latest.version
+          ? def.latest
+          : await api.getVersion(tenant, 'StepFlow', flow, pinned, signal);
+      const spec = (shown.definition.spec ?? {}) as Raw;
       return {
-        version: def.latest.version,
+        version: shown.version,
+        latest: def.latest.version,
         purpose: typeof spec.purpose === 'string' ? spec.purpose : '',
         steps: flowSteps(t, spec.steps),
       };
     },
-    [api, tenant, flow],
+    [api, tenant, flow, pinned],
   );
   const link = (
     <Link href={`#/step-flows/${encodeURIComponent(flow)}`}>
@@ -156,11 +203,23 @@ const FlowSummary = ({ api, tenant, flow }: { api: ApiClient; tenant: string; fl
         {t('serviceStrategy.flowMissing', { flow })} {link}
       </p>
     );
+  const { version, latest } = state.data;
   return (
     <div className="stack-sm">
+      {latest > version ? (
+        <Alert data-color="info" data-size="sm">
+          <div className="row-wrap">
+            <span>{t('serviceStrategy.newVersionAvailable', { flow, version: latest })}</span>
+            <Button variant="secondary" data-size="sm" onClick={() => onUpdate(latest)}>
+              {t('serviceStrategy.updateFlow', { version: latest })}
+            </Button>
+          </div>
+        </Alert>
+      ) : null}
       <Heading level={3} data-size="2xs">
-        {t('serviceStrategy.stepsIn', { flow, version: state.data.version })}
+        {t('serviceStrategy.stepsIn', { flow, version })}
       </Heading>
+      <p className="meta">{t('serviceStrategy.flowPinned', { version })}</p>
       {state.data.purpose ? <p className="body-sm">{state.data.purpose}</p> : null}
       <ol className="strategy-steps" aria-label={t('serviceStrategy.stepsLabel', { flow })}>
         {state.data.steps.map((s) => (
@@ -336,7 +395,13 @@ export const WayOfWorkingEditor = ({
         </section>
       ) : null}
       {showSteps && sid === 'step-flow' && flow ? (
-        <FlowSummary api={api} tenant={tenant} flow={flow} />
+        <FlowSummary
+          api={api}
+          tenant={tenant}
+          flow={flow}
+          pinned={flowVersion(readPath(config, ['flow']))}
+          onUpdate={(version) => setValue(['flow'], `${flow}@${version}`)}
+        />
       ) : null}
     </div>
   );

@@ -1,0 +1,22 @@
+{"tests": [
+ {"id": "kudos-372383-p46-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"content": {"text": "Redusere konsulentbruken", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-372383-p46-t02", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["multi_column", "nob", "Latn"],
+  "args": {"content": {"text": "64,9 millioner kroner", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-372383-p46-t03", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["multi_column", "nob", "Latn"],
+  "args": {"before": {"text": "virksomhetsspesifikke forhold, og økningen skyldes", "max_diffs": 2}, "after": {"text": "i hovedsak bytte av IT-driftsleverandør", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-372383-p46-t04", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["multi_column", "nob", "Latn"],
+  "args": {"content": {"text": "Sjøfartsdirektoratet har ikke anskaffet konsulenttjenester fra kommunikasjonsbransjen", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-372383-p46-t05", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["multi_column", "nob", "Latn"],
+  "args": {"before": {"text": "for innleide konsulenter.", "max_diffs": 1}, "after": {"text": "Hovedmålet for vårt arbeid innen sikkerhet", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-372383-p46-t06", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["multi_column", "nob", "Latn"],
+  "args": {"content": {"text": "Arbeidet med samfunnssikkerhet og beredskap er en integrert del av direktoratets virksomhet", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-372383-p46-t07", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["multi_column", "nob", "Latn"],
+  "args": {"before": {"text": "samt understøtte totalforsvaret.", "max_diffs": 2}, "after": {"text": "Sjøfartsdirektoratet overvåker kontinuerlig det globale trusselbildet", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-372383-p46-t08", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["multi_column", "nob", "Latn"],
+  "args": {"content": {"text": "Direktoratet har i forbindelse med konflikten mellom Israel og Gaza hevet sikringsnivået.", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-372383-p46-t09", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["multi_column", "nob", "Latn"],
+  "args": {"content": {"text": "å øke antall LNO-er (liaisonoffiserer) og har derfor iverksatt rekruttering", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-372383-p46-t10", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["multi_column", "nob", "Latn"],
+  "args": {"content": {"text": "Den forverrede sikkerhetspolitiske situasjonen i 2024 har ført til et forhøyet risikobilde", "max_diffs": 3}}, "settings": {}}
+]}

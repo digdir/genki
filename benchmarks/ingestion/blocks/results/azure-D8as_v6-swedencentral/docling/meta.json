@@ -1,0 +1,39 @@
+{
+  "parser": "docling",
+  "version": "2.146.0",
+  "docling_core": "2.105.0",
+  "docling_ibm_models": "4.0.4",
+  "rapidocr": "3.10.0",
+  "settings": {
+    "pipeline": "default PdfPipelineOptions",
+    "do_ocr": true,
+    "ocr": "OcrAutoOptions",
+    "table_mode": "accurate",
+    "accelerator": {
+      "device": "cpu",
+      "num_threads": 8
+    }
+  },
+  "models": {
+    "layout": "docling-project/docling-layout-heron"
+  },
+  "native": "DoclingDocument.export_to_dict()",
+  "device_requested": "cpu",
+  "load_seconds": 0.2,
+  "warmup": {
+    "doc_num": "33245",
+    "seconds": 21.0
+  },
+  "torch": "2.15.0+cu132",
+  "cuda_available": false,
+  "machine": {
+    "host_label": "azure-D8as_v6-swedencentral",
+    "system": "Linux",
+    "machine": "x86_64",
+    "cpu": "AMD EPYC 9V74 80-Core Processor",
+    "cpus": 8,
+    "memory": "32856616 kB",
+    "gpus": [],
+    "python": "3.13.18"
+  }
+}

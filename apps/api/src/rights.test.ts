@@ -13,11 +13,13 @@ import {
   type IdentityTestDataInput,
 } from '@genai/identity';
 import { tenantAccess } from './access.js';
+import { appendVersion, InMemoryConfigEntryStore } from './config-store.js';
+import { connectorConnectionOf, connectorMappingKind } from './connectors.js';
 import { withPdpActions } from './altinn-pdp.js';
 import type { Admin } from './admin.js';
 import { platformCaller } from './composition.js';
 import { operatorDirectory, splitOperators } from './operators.js';
-import { requireRight, rightsByOrg, rightsOf, type Right } from './rights.js';
+import { refusedAction, requireRight, rightsByOrg, rightsOf, type Right } from './rights.js';
 
 const issuer = 'http://localhost:8080/mock/ansattporten';
 const resource = 'urn:altinn:resource:digdir-genai-platform';
@@ -36,7 +38,7 @@ const localPeople = async () => {
     key,
     testData: testData as IdentityTestDataInput,
   });
-  const operators = operatorDirectory(operatorPids);
+  const operators = operatorDirectory({ pids: operatorPids, mockIssuer: issuer });
   const verifier = operators.watch(
     withPdpActions(
       createTokenVerifier({
@@ -151,5 +153,127 @@ describe('platform rights in the API', () => {
     const kari: Principal = { kind: 'employee', issuer: 'test', subject: 'kari', tenant: digdir };
     expect(requireRight(kari, digdir, 'register-building-blocks')).toEqual({ ok: true });
     expect(requireRight(kari, '889640782', 'use-services').ok).toBe(false);
+  });
+});
+
+describe('database pipelines that name a tenant secret', () => {
+  const datasetAdmin: Principal = {
+    kind: 'employee',
+    issuer,
+    subject: 'ingrid',
+    scopes: [],
+    authorizedFor: [{ org: digdir, resource, actions: ['manage-datasets'] }],
+  };
+  const own = `secret://tenant/${digdir}/connector-arkiv`;
+  const connector = {
+    engine: 'postgres',
+    host: 'db.example.no',
+    port: 5432,
+    database: 'arkiv',
+    user: 'leser',
+    password: own,
+    tls: true,
+  };
+  const pipeline = (
+    password: string,
+    owned: Record<string, unknown> | undefined = connector,
+    changed: Record<string, unknown> = {},
+  ) => ({
+    dataset: `${digdir}/arkiv`,
+    id: 'kobling',
+    ...(owned ? { connector: owned } : {}),
+    spec: {
+      source: {
+        kind: 'database',
+        connection: { ...connector, password, ...changed },
+      },
+    },
+  });
+
+  it("need manage-services unless the secret is the connector's own", () => {
+    expect(
+      refusedAction(
+        datasetAdmin,
+        'platform.pipeline.save',
+        digdir,
+        pipeline(`secret://tenant/${digdir}/arkiv-token`),
+      ),
+    ).toMatchObject({ kind: 'right', right: 'manage-services' });
+    expect(
+      refusedAction(datasetAdmin, 'platform.pipeline.save', digdir, pipeline(own)),
+    ).toBeUndefined();
+  });
+
+  it.each([
+    ['host', { host: 'andre.example.no' }],
+    ['port', { port: 6543 }],
+    ['user', { user: 'eier' }],
+    ['database', { database: 'annen' }],
+    ['tls', { tls: false }],
+  ])(
+    "saving a database pipeline that changes the connector's %s needs manage-services",
+    (_field, changed) => {
+      expect(
+        refusedAction(
+          datasetAdmin,
+          'platform.pipeline.save',
+          digdir,
+          pipeline(own, connector, changed),
+        ),
+      ).toMatchObject({ kind: 'right', right: 'manage-services' });
+    },
+  );
+
+  it("a database pipeline that leaves out the default port and TLS keeps the connector's connection", () => {
+    const given = {
+      engine: connector.engine,
+      host: connector.host,
+      database: connector.database,
+      user: connector.user,
+      password: own,
+    };
+    expect(
+      refusedAction(datasetAdmin, 'platform.pipeline.save', digdir, {
+        ...pipeline(own),
+        spec: { source: { kind: 'database', connection: given } },
+      }),
+    ).toBeUndefined();
+  });
+
+  it("a pipeline cannot name another connector's secret", () => {
+    const another = `secret://tenant/${digdir}/connector-personal`;
+    expect(
+      refusedAction(datasetAdmin, 'platform.pipeline.save', digdir, pipeline(another)),
+    ).toMatchObject({ kind: 'right', right: 'manage-services' });
+    expect(
+      refusedAction(datasetAdmin, 'platform.pipeline.save', digdir, pipeline(another, undefined)),
+    ).toMatchObject({ kind: 'right', right: 'manage-services' });
+  });
+
+  it("knows a pipeline's own connector connection only from the connector that created it", async () => {
+    const store = new InMemoryConfigEntryStore();
+    await appendVersion(store, {
+      kind: connectorMappingKind,
+      scope: digdir,
+      id: 'saksinnsyn.forslag',
+      spec: {
+        service: 'saksinnsyn',
+        proposal: 'forslag',
+        name: 'Saker',
+        connector: {
+          dataset: `${digdir}/arkiv`,
+          pipeline: 'kobling',
+          connection: connector,
+        },
+      },
+      deleted: false,
+      by: 'employee:test:kari',
+      reason: 'Koblingen er godkjent',
+    });
+    const connectionOf = connectorConnectionOf(store);
+
+    expect(await connectionOf(digdir, `${digdir}/arkiv`, 'kobling')).toEqual(connector);
+    expect(await connectionOf(digdir, `${digdir}/annet`, 'kobling')).toBeUndefined();
+    expect(await connectionOf('889640782', `${digdir}/arkiv`, 'kobling')).toBeUndefined();
   });
 });

@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { envSecrets } from '@genai/kernel';
 import { ModelRouter, type ModelPort } from '@genai/port-model';
 import { fakeHttp, testContext, type FakeReply, type FakeServer } from '@genai/port-model/testing';
-import { azureDeployments, openAiChat } from './index.js';
+import { azureDeployments, openAiChat, openAiModels } from './index.js';
 
 const servers: FakeServer[] = [];
 const fake = async (reply: (body: Record<string, unknown>, attempt: number) => FakeReply) => {
@@ -40,7 +40,7 @@ const router = (
 ) =>
   new ModelRouter({
     catalog: {
-      endpoints: { foundry: { protocol: 'openai-chat', baseURL: `${url}/v1`, auth } },
+      endpoints: { foundry: { families: { openai: '' }, baseURL: `${url}/v1`, auth } },
       models: [
         {
           id: 'foundry/gpt-4o',
@@ -93,6 +93,231 @@ describe('openai-chat adapter', () => {
     expect(first.content).toBe('Hei');
     expect(second.content).toBe('Hei');
     expect(seen.map((s) => 'temperature' in s.body)).toEqual([true, false, false]);
+  });
+
+  it('switches to max_tokens for a deployment that refuses max_completion_tokens, and remembers it', async () => {
+    const { url, seen } = await fake((body) =>
+      'max_completion_tokens' in body
+        ? {
+            status: 422,
+            json: {
+              detail: [
+                {
+                  type: 'extra_forbidden',
+                  loc: ['body', 'max_completion_tokens'],
+                  msg: 'Extra inputs are not permitted',
+                  input: 4000,
+                },
+              ],
+            },
+          }
+        : { status: 200, json: completion('Hei') },
+    );
+    const port = open(router(url));
+
+    const first = await port.chat({ ...user('hei'), maxTokens: 4000 });
+    const second = await port.chat({ ...user('hei igjen'), maxTokens: 4000 });
+
+    expect([first.content, second.content]).toEqual(['Hei', 'Hei']);
+    expect(seen.map((s) => [s.body.max_completion_tokens, s.body.max_tokens])).toEqual([
+      [4000, undefined],
+      [undefined, 4000],
+      [undefined, 4000],
+    ]);
+  });
+
+  it('does not report a token parameter switch as a rejected parameter', async () => {
+    const { url } = await fake((body) =>
+      'max_completion_tokens' in body
+        ? {
+            status: 400,
+            json: { error: { message: "Unsupported parameter: 'max_completion_tokens'." } },
+          }
+        : { status: 200, json: completion('Hei') },
+    );
+    const r = router(url);
+
+    await open(r).chat({ ...user('hei'), maxTokens: 50 });
+
+    expect(r.describe().find((m) => m.id === 'foundry/gpt-4o')?.rejectedParameters).toEqual({});
+  });
+
+  it('does not retry a token refusal when no token limit was sent', async () => {
+    const { url, seen } = await fake(() => ({
+      status: 400,
+      json: {
+        error: {
+          message: "Unsupported parameter: 'max_completion_tokens' is not supported.",
+          type: 'invalid_request_error',
+        },
+      },
+    }));
+    const port = open(router(url, undefined, 0));
+
+    await expect(port.chat(user('hei'))).rejects.toThrow();
+    expect(seen).toHaveLength(1);
+  });
+
+  it('does not switch token parameters when a different validation error forbids an extra field', async () => {
+    const { url, seen } = await fake((_body, attempt) =>
+      attempt === 1
+        ? {
+            status: 422,
+            json: {
+              detail: [
+                {
+                  type: 'less_than_equal',
+                  loc: ['body', 'max_completion_tokens'],
+                  msg: 'Input should be less than or equal to 1000',
+                  input: 4000,
+                },
+                {
+                  type: 'extra_forbidden',
+                  loc: ['body', 'stream_options'],
+                  msg: 'Extra inputs are not permitted',
+                },
+              ],
+            },
+          }
+        : { status: 200, json: completion('ok') },
+    );
+    const port = open(router(url, undefined, 0));
+    const stream = port.chatStream({ ...user('hei'), maxTokens: 4000 });
+
+    await expect(stream[Symbol.asyncIterator]().next()).rejects.toMatchObject({
+      code: 'bad_request',
+    });
+    expect(seen).toHaveLength(1);
+    await port.chat({ ...user('hei'), maxTokens: 500 });
+    expect(seen[1]?.body).toMatchObject({ max_completion_tokens: 500 });
+    expect(seen[1]?.body).not.toHaveProperty('max_tokens');
+  });
+
+  it('does not switch token parameters when the error identifies another parameter', async () => {
+    const { url, seen } = await fake(() => ({
+      status: 400,
+      json: {
+        error: {
+          param: 'reasoning_effort',
+          message:
+            "Unsupported parameter: 'reasoning_effort'. Use 'max_completion_tokens' without reasoning_effort.",
+        },
+      },
+    }));
+
+    await expect(
+      open(router(url, undefined, 0)).chat({ ...user('hei'), maxTokens: 4000, reasoning: 'low' }),
+    ).rejects.toMatchObject({ code: 'bad_request' });
+    expect(seen).toHaveLength(1);
+  });
+
+  it('switches a configured max_tokens deployment only for the deployment that refused', async () => {
+    const { url, seen } = await fake((body) =>
+      body.model === 'borealis' && 'max_tokens' in body
+        ? {
+            status: 400,
+            json: { error: { message: "Unrecognized parameter: 'max_tokens'." } },
+          }
+        : { status: 200, json: completion('ok') },
+    );
+    const r = router(url, undefined, 0);
+    const port = open(r, 'aivar/borealis');
+
+    await port.chat({ ...user('hei'), maxTokens: 10 });
+    await port.chat({ ...user('hei igjen'), maxTokens: 20 });
+    await open(r).chat({ ...user('hei'), maxTokens: 30 });
+
+    expect(
+      seen.map((s) => [s.body.model, s.body.max_tokens, s.body.max_completion_tokens]),
+    ).toEqual([
+      ['borealis', 10, undefined],
+      ['borealis', undefined, 10],
+      ['borealis', undefined, 20],
+      ['gpt-4o-prod', undefined, 30],
+    ]);
+  });
+
+  it.each(['temperature', 'max_completion_tokens'])(
+    'streams after refusing %s first, then the other parameter, and shares the learned adjustments with chat',
+    async (first) => {
+      const { url, seen } = await fake((body) => {
+        const rejected = [
+          first,
+          first === 'temperature' ? 'max_completion_tokens' : 'temperature',
+        ].find((param) => param in body);
+        if (rejected)
+          return {
+            status: 400,
+            json: { error: { message: `Unsupported parameter: '${rejected}'.` } },
+          };
+        return body.stream
+          ? {
+              status: 200,
+              sse: [
+                {
+                  data: {
+                    id: 'c1',
+                    object: 'chat.completion.chunk',
+                    created: 0,
+                    model: 'gpt-4o-prod',
+                    choices: [{ index: 0, delta: { content: 'Hei' }, finish_reason: 'stop' }],
+                  },
+                },
+                { data: '[DONE]' },
+              ],
+            }
+          : { status: 200, json: completion('Hei') };
+      });
+      const r = router(url, undefined, 0);
+      const port = open(r);
+      const request = { ...user('hei'), temperature: 0, maxTokens: 50 };
+      const chunks = [];
+
+      for await (const c of port.chatStream(request)) chunks.push(c);
+      expect(chunks).toMatchObject([
+        { kind: 'delta', text: 'Hei' },
+        { kind: 'done', result: { content: 'Hei' } },
+      ]);
+      expect((await port.chat(request)).content).toBe('Hei');
+      expect(seen).toHaveLength(4);
+      expect(seen.slice(2).map((s) => s.body.max_tokens)).toEqual([50, 50]);
+      expect(seen.slice(2).every((s) => !('temperature' in s.body))).toBe(true);
+      expect(
+        Object.keys(r.describe().find((m) => m.id === 'foundry/gpt-4o')?.rejectedParameters ?? {}),
+      ).toEqual(['temperature']);
+    },
+  );
+
+  it('switches the token parameter once and gives up when the deployment refuses both', async () => {
+    const { url, seen } = await fake((body) => ({
+      status: 400,
+      json: {
+        error: {
+          message: `Unknown parameter: '${'max_tokens' in body ? 'max_tokens' : 'max_completion_tokens'}'.`,
+        },
+      },
+    }));
+
+    await expect(
+      open(router(url, undefined, 0)).chat({ ...user('hei'), maxTokens: 50 }),
+    ).rejects.toMatchObject({ code: 'bad_request' });
+    expect(seen.map((s) => [s.body.max_completion_tokens, s.body.max_tokens])).toEqual([
+      [50, undefined],
+      [undefined, 50],
+    ]);
+  });
+
+  it('never retries a deployment that accepts max_completion_tokens', async () => {
+    const { url, seen } = await fake(() => ({ status: 200, json: completion('Hei') }));
+    const port = open(router(url));
+
+    await port.chat({ ...user('hei'), maxTokens: 100 });
+    await port.chat({ ...user('hei igjen'), maxTokens: 200 });
+
+    expect(seen.map((s) => [s.body.max_completion_tokens, s.body.max_tokens])).toEqual([
+      [100, undefined],
+      [200, undefined],
+    ]);
   });
 
   it('reports the dropped temperature so the platform can suggest a rule', async () => {
@@ -286,9 +511,13 @@ describe('openai-chat adapter', () => {
     await expect(pending).rejects.toMatchObject({ code: 'cancelled' });
   });
 
-  it('refuses model options the adapter does not know', () => {
-    const result = openAiChat.modelOptions.safeParse({ tokenParam: 'max_tokens', temperature: 2 });
-    expect(result.success).toBe(false);
+  it('refuses model options the bound API does not know', () => {
+    const chatCompletions = openAiChat.apis.find((a) => a.id === 'openai/chat-completions@1');
+    const result = chatCompletions?.modelOptions.safeParse({
+      tokenParam: 'max_tokens',
+      temperature: 2,
+    });
+    expect(result?.success).toBe(false);
   });
 });
 
@@ -302,13 +531,15 @@ describe.skipIf(!live)('live openai-chat on Azure AI Foundry', () => {
       catalog: {
         endpoints: {
           foundry: {
-            protocol: 'openai-chat',
+            families: { openai: '' },
             baseURL: process.env.FOUNDRY_OPENAI_BASE_URL,
             auth: { kind: 'api-key', header: 'api-key', secret: 'secret://env/foundry-openai-key' },
-            discovery: {
-              source: 'azure-deployments',
-              capabilities: ['stream', 'tools', 'json-schema'],
-            },
+            discovery: [
+              {
+                source: 'azure-deployments',
+                capabilities: ['stream', 'tools', 'json-schema'],
+              },
+            ],
           },
         },
       },
@@ -367,5 +598,151 @@ describe('azure deployment discovery', () => {
         timeoutMs: 5000,
       }),
     ).rejects.toThrow(/HTTP 401/);
+  });
+});
+
+describe('OpenAI model list discovery', () => {
+  const gatewayModels = {
+    object: 'list',
+    data: [
+      { id: 'aivar:borealis', object: 'model', owned_by: 'aivar' },
+      { id: 'sigma2:Borealis2-preview', object: 'model', owned_by: 'sigma2' },
+      { id: 'sigma2:Qwen3.8-27B', object: 'model', owned_by: 'sigma2' },
+      { id: 'azure:gpt-6.1-sol', object: 'model', owned_by: 'azure' },
+    ],
+  };
+
+  const gateway = (
+    url: string,
+    rule: Record<string, unknown> = {},
+    models: Record<string, unknown>[] = [],
+    auth: Record<string, unknown> = { kind: 'bearer', secret: 'secret://env/test-key' },
+  ) =>
+    new ModelRouter({
+      catalog: {
+        endpoints: {
+          'ai-gateway': {
+            baseURL: `${url}/v1`,
+            auth,
+            families: { openai: '' },
+            discovery: [{ source: 'openai-models', ...rule }],
+          },
+        },
+        models,
+      },
+      adapters: [openAiChat],
+      sources: [azureDeployments, openAiModels],
+      secrets: envSecrets({ TEST_KEY: 'test-key' }),
+    });
+
+  it('an OpenAI-compatible connection lists its models from /models under its openai family base', async () => {
+    const { url, seen } = await fake(() => ({ status: 200, json: gatewayModels }));
+
+    const r = gateway(url);
+
+    expect(await r.refresh()).toEqual({ discovered: 4, failed: [] });
+    expect(seen.map((s) => s.path)).toEqual(['/v1/models']);
+    expect(r.describe().map((m) => [m.id, m.deployment, m.origin, m.classified])).toEqual([
+      ['ai-gateway/aivar-borealis', 'aivar:borealis', 'discovered', false],
+      ['ai-gateway/azure-gpt-6.1-sol', 'azure:gpt-6.1-sol', 'discovered', false],
+      ['ai-gateway/sigma2-borealis2-preview', 'sigma2:Borealis2-preview', 'discovered', false],
+      ['ai-gateway/sigma2-qwen3.8-27b', 'sigma2:Qwen3.8-27B', 'discovered', false],
+    ]);
+  });
+
+  it('include and exclude patterns apply to the listed model ids', async () => {
+    const { url } = await fake(() => ({ status: 200, json: gatewayModels }));
+
+    const r = gateway(url, { include: ['aivar:*', 'sigma2:*'], exclude: ['*-preview'] });
+    await r.refresh();
+
+    expect(r.describe().map((m) => m.deployment)).toEqual(['aivar:borealis', 'sigma2:Qwen3.8-27B']);
+  });
+
+  it('a listed id with a slash gets the same model id the console gives it when added by hand', async () => {
+    const { url } = await fake(() => ({
+      status: 200,
+      json: { object: 'list', data: [{ id: '/Meta-Llama/Llama-3.1-8B/', object: 'model' }] },
+    }));
+
+    const r = gateway(url);
+    await r.refresh();
+
+    expect(r.describe().map((m) => [m.id, m.deployment])).toEqual([
+      ['ai-gateway/meta-llama-llama-3.1-8b', '/Meta-Llama/Llama-3.1-8B/'],
+    ]);
+  });
+
+  it('a model added by hand is not listed again as a candidate', async () => {
+    const { url } = await fake(() => ({ status: 200, json: gatewayModels }));
+
+    const r = gateway(url, { include: ['aivar:*'] }, [
+      {
+        id: 'ai-gateway/aivar-borealis',
+        endpoint: 'ai-gateway',
+        deployment: 'aivar:borealis',
+        residency: 'norway',
+      },
+    ]);
+
+    expect(await r.refresh()).toEqual({ discovered: 0, failed: [] });
+    expect(r.describe().map((m) => [m.id, m.origin])).toEqual([
+      ['ai-gateway/aivar-borealis', 'catalog'],
+    ]);
+  });
+
+  it('a refused model listing is reported for its connection', async () => {
+    const { url } = await fake(() => ({ status: 400, json: { error: { message: 'bad' } } }));
+
+    const r = gateway(url);
+
+    expect(await r.refresh()).toEqual({
+      discovered: 0,
+      failed: [{ endpoint: 'ai-gateway', error: 'listing models failed with HTTP 400' }],
+    });
+  });
+
+  it('bearer auth is sent as Authorization when listing models', async () => {
+    const { url, seen } = await fake(() => ({ status: 200, json: gatewayModels }));
+
+    await gateway(url).refresh();
+
+    expect(seen[0]?.headers.authorization).toBe('Bearer test-key');
+    expect(seen[0]?.headers['api-key']).toBeUndefined();
+  });
+
+  it('an api-key with its own header is sent in that header when listing models', async () => {
+    const { url, seen } = await fake(() => ({ status: 200, json: gatewayModels }));
+
+    await gateway(url, {}, [], {
+      kind: 'api-key',
+      header: 'api-key',
+      secret: 'secret://env/test-key',
+    }).refresh();
+
+    expect(seen[0]?.headers['api-key']).toBe('test-key');
+    expect(seen[0]?.headers.authorization).toBeUndefined();
+  });
+
+  it('a connection without the openai family reports that it cannot list models', async () => {
+    const r = new ModelRouter({
+      catalog: {
+        endpoints: {
+          claude: {
+            baseURL: 'http://127.0.0.1:9',
+            auth: { kind: 'bearer', secret: 'secret://env/test-key' },
+            families: { anthropic: '/anthropic' },
+            discovery: [{ source: 'openai-models', apis: {} }],
+          },
+        },
+      },
+      adapters: [openAiChat],
+      sources: [openAiModels],
+      secrets: envSecrets({ TEST_KEY: 'test-key' }),
+    });
+
+    expect((await r.refresh()).failed).toEqual([
+      { endpoint: 'claude', error: 'claude does not offer the openai family to list through' },
+    ]);
   });
 });

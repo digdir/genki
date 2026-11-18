@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { inEnglish } from '@genai/i18n/react';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createApiClient } from '../../api';
 import { applySpec, type ServiceDefinition, type VariantSpec } from '../../data/service-definition';
@@ -91,9 +91,19 @@ describe('the way of working of a variant', () => {
     fireEvent.change(within(row).getByLabelText('Arbeidsmåte for Rask'), {
       target: { value: 'step-flow' },
     });
-    const flow = await within(row).findByRole('option', { name: 'postruting, versjon 2' });
-    fireEvent.change(flow.closest('select') as HTMLSelectElement, {
-      target: { value: 'postruting@2' },
+    const picker = await within(row).findByRole('combobox', { name: 'Stegflyt' });
+    await waitFor(() =>
+      expect(within(row).getByText('postruting, versjon 2 (nyeste)')).toBeTruthy(),
+    );
+    const item = document.createElement('data');
+    item.value = 'postruting@2';
+    item.textContent = 'postruting, versjon 2 (nyeste)';
+    act(() => {
+      picker
+        .closest('ds-suggestion')
+        ?.dispatchEvent(
+          new CustomEvent('comboboxbeforeselect', { detail: item, cancelable: true }),
+        );
     });
 
     expect(published(state.latest)[1]).toMatchObject({

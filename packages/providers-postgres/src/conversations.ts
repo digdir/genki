@@ -302,8 +302,10 @@ export class PostgresConversationStore implements ConversationStore {
       ...(input.filterValue === undefined ? {} : { filterValue: input.filterValue }),
       chunks: input.chunks ?? [],
       ...(input.sources?.length ? { sources: input.sources } : {}),
+      ...(input.markers?.length ? { markers: input.markers } : {}),
       ...(input.diagnostics === undefined ? {} : { diagnostics: input.diagnostics }),
       ...(input.task === undefined ? {} : { task: input.task }),
+      ...(input.stopped ? { stopped: true as const } : {}),
       ...(input.attachments?.length ? { attachments: input.attachments } : {}),
       ...(input.input ? { input: input.input } : {}),
     };

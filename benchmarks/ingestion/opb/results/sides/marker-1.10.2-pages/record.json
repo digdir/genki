@@ -1,0 +1,51 @@
+{
+  "benchmark": "ingestion/opb",
+  "code": "61a1f962226c5e748feb5e86c71d17fe49aadef674a159ce2a89f7beb5a260b7",
+  "git": {
+    "commit": "8cf61bdfc6a6d80b2d466304589ed441fa3f700c",
+    "dirty": true
+  },
+  "items": "2b161ec8ed4ddf8eee20fce45a43d201b13102e7794ab1ba1fb2e03e54a46264",
+  "packages": {
+    "markdown-it-py": "4.2.0",
+    "omni-parse-bench": "0.2.0",
+    "pymupdf": "2.0"
+  },
+  "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "python": "3.13.16",
+  "reference": "2deebfd82fe47040d8fc141c0c96c75d9ea189a75e540b9c6073f4c535f0ef63",
+  "schema": 1,
+  "settings": {
+    "markdown_to_html": "omni_parse_bench.markdown.to_html",
+    "outputs": "html; no layout tests",
+    "scorer": "omni-parse-bench 0.2.0"
+  },
+  "side": "marker-1.10.2-pages",
+  "side_settings": {
+    "conversions": "9d2dbda798a32834851e1015472e81bb06ae3d63ee42072c463efd59a893b473",
+    "converter_code": "4fbcc11b08c1b3ac2a590f8e7b7b34e8ebb36a73b9f8867a33e4e8fbde4c2a59",
+    "failed_pages": [],
+    "machine": {
+      "chip": "Apple M3 Pro",
+      "machine": "arm64",
+      "python": "3.13.16",
+      "system": "Darwin"
+    },
+    "pages": "each page converted on its own, as a one-page PDF",
+    "pages_note": "one page at a time",
+    "parser": "marker-pdf",
+    "seconds_per_page": {
+      "median": 2.391,
+      "p90": 8.971,
+      "pages": 221
+    },
+    "settings": {
+      "disable_image_extraction": true,
+      "languages": "no,en",
+      "output_format": "markdown"
+    },
+    "surya": "0.17.1",
+    "version": "1.10.2"
+  },
+  "time": "2026-11-04T14:36:13+00:00"
+}

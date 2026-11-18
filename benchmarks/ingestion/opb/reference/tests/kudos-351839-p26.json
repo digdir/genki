@@ -1,0 +1,22 @@
+{
+ "tests": [
+  {
+   "id": "kudos-351839-p26-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Del 2 Stortinget",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

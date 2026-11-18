@@ -36,6 +36,9 @@
       "path": "../kernel"
     },
     {
+      "path": "../operations"
+    },
+    {
       "path": "../port-blob"
     },
     {

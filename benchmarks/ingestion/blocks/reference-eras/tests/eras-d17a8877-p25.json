@@ -1,0 +1,316 @@
+{
+ "tests": [
+  {
+   "id": "eras-d17a8877-p25-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "4.3 – Oppfølging av tillitsreformen",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p25-t02",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "4.3 – Oppfølging av tillitsreformen",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "Tillitsreformen er viktig for regjeringen",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p25-t03",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "Tillitsreformen er viktig for regjeringen, og departementet ønsker å gjennomføre konkrete piloter i våre sektorer som en del av reformen. Kartverket skal legge til rette for dialog med tillitsvalgte og ev. brukerorganisasjoner om områder som kan være aktuelle for innovasjonsprosjekter/piloter. Målet med dialogen er at Kartverket skal foreslå og gjennomføre konkrete piloter innenfor reformens temaer. Departementet vil komme tilbake til et nærmere spesifisert opplegg for hvordan Kartverket skal følge opp denne føringen og det videre arbeidet med piloteringen i departementets sektorer i 2023 og fremover. Ambisjonen er å gjennomføre tre til fem piloter innenfor KDDs sektorer i reformperioden.",
+     "max_diffs": 5
+    },
+    "top_heading": {
+     "text": "Føring",
+     "max_diffs": 5
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p25-t04",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "I supplerende tildelingsbrev datert 13.06.2023 ble Kartverket bedt om å rapportere på konkrete planer for pilotprosjekter med oppstart i 2023. Kartverket sendte inn to piloter. Den ene dreide seg om ny tilpasningsavtale i Kartverket, og den andre tok for seg det å jobbe i autonome produktteam. Ny tilpasningsavtale skal sikre bedre samarbeid, mer effektiv ressursbruk og økt grad av medbestemmelsesrett, samt større involvering av tillitsvalgte og ansatte. Avtalen ble forhandlet og har vært gjeldende fra 01.10.2023. Kartverket har i dag flere godt fungerende autonome produktteam, hvor selve grunnmuren er tillit og samarbeid. Piloten som ble sendt inn tok for seg det da pågående KomReg-prosjektet, som var en hybrid blanding av produktteam og prosjekt. KomReg ble opprettet for å svare ut oppdraget om å være teknisk koordinator for statlige etater, samt å bistå kommunene med faglig støtte i forbindelse med kommune- og fylkesdelingene. Piloten tok for seg om man kunne se gevinster i form av effektivisering eller konkrete innsparinger, ved å sammenligne det å jobbe i produktteam kontra tradisjonelt prosjekt som ble benyttet ved kommune- og fylkessammenslåingen i 2019. Allerede før den endelige leveransen var klar kunne man se økte effekter i form av raskere gjennomføring, mindre overtidsarbeid og bedre oversikt. Når det kommer til en mulig økonomisk gevinst, er ikke tallene helt klare.",
+     "max_diffs": 5
+    },
+    "top_heading": {
+     "text": "Status",
+     "max_diffs": 5
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p25-t05",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "I supplerende tildelingsbrev datert 13.06.2023 ble Kartverket bedt om å rapportere på konkrete planer for pilotprosjekter med oppstart i 2023. Kartverket sendte inn to piloter. Den ene dreide seg om ny tilpasningsavtale i Kartverket, og den andre tok for seg det å jobbe i autonome produktteam. Ny tilpasningsavtale skal sikre bedre samarbeid, mer effektiv ressursbruk og økt grad av medbestemmelsesrett, samt større involvering av tillitsvalgte og ansatte. Avtalen ble forhandlet og har vært gjeldende fra 01.10.2023. Kartverket har i dag flere godt fungerende autonome produktteam, hvor selve grunnmuren er tillit og samarbeid. Piloten som ble sendt inn tok for seg det da pågående KomReg-prosjektet, som var en hybrid blanding av produktteam og prosjekt. KomReg ble opprettet for å svare ut oppdraget om å være teknisk koordinator for statlige etater, samt å bistå kommunene med faglig støtte i forbindelse med kommune- og fylkesdelingene. Piloten tok for seg om man kunne se gevinster i form av effektivisering eller konkrete innsparinger, ved å sammenligne det å jobbe i produktteam kontra tradisjonelt prosjekt som ble benyttet ved kommune- og fylkessammenslåingen i 2019. Allerede før den endelige leveransen var klar kunne man se økte effekter i form av raskere gjennomføring, mindre overtidsarbeid og bedre oversikt. Når det kommer til en mulig økonomisk gevinst, er ikke tallene helt klare.",
+     "max_diffs": 20
+    },
+    "left": {
+     "text": "Tillitsreformen er viktig for regjeringen, og departementet ønsker å gjennomføre konkrete piloter i våre sektorer som en del av reformen. Kartverket skal legge til rette for dialog med tillitsvalgte og ev. brukerorganisasjoner om områder som kan være aktuelle for innovasjonsprosjekter/piloter. Målet med dialogen er at Kartverket skal foreslå og gjennomføre konkrete piloter innenfor reformens temaer. Departementet vil komme tilbake til et nærmere spesifisert opplegg for hvordan Kartverket skal følge opp denne føringen og det videre arbeidet med piloteringen i departementets sektorer i 2023 og fremover. Ambisjonen er å gjennomføre tre til fem piloter innenfor KDDs sektorer i reformperioden.",
+     "max_diffs": 20
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p25-t06",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "13.06.2023",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p25-t07",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "01.10.2023",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p25-t08",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Ambisjonen er å gjennomføre tre til fem piloter innenfor KDDs sektorer i reformperioden.",
+     "max_diffs": 4
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p25-t09",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Piloten som ble sendt inn tok for seg det da pågående KomReg-prosjektet, som var en hybrid blanding av produktteam og prosjekt.",
+     "max_diffs": 5
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p25-t10",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Når det kommer til en mulig økonomisk gevinst, er ikke tallene helt klare.",
+     "max_diffs": 3
+    },
+    "after": {
+     "text": "Særlig bistand til KDD innen geodata, eiendom",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p25-t11",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "4.4 – Særlig bistand til KDD innen geodata, eiendom og planlegging etter plan- og bygningsloven",
+     "max_diffs": 4
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p25-t12",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Kartverket ble bedt av KDD om å utvikle system for standardiserte DOK-arealanalyser.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p25-t13",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "DOK gjenbruk følger opp tiltak 12 i handlingsplan til geodatastrategien",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p25-t14",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Kartverket etablerte i 2023 en pilot med mottaksløsning og validator.",
+     "max_diffs": 3
+    },
+    "after": {
+     "text": "4.5 – Særlig om sikkerhet",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p25-t15",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Sikkerhet og beredskap er omtalt i kapittel IV på side 29 og 30.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p25-t16",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "caption",
+    "tiny",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Foto: Kartverket - Triangulering på Hardangervidda",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

@@ -67,7 +67,7 @@ export interface Subscription {
   waiting: number;
   checkedAt?: string;
   error?: string;
-  spentThisMonth: { costMicroNok: number; tokens: number };
+  spentThisMonth?: { costMicroNok: number; tokens: number };
 }
 
 export interface ProjectDetail extends Project {
@@ -91,7 +91,7 @@ export interface ProjectRun {
   total: number;
   startedAt: string;
   endedAt: string | null;
-  costMicroNok: number | null;
+  costMicroNok?: number | null;
   counts: Record<string, number>;
   trigger: 'manual' | 'subscription';
   selection?: string;

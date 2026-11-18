@@ -1,0 +1,22 @@
+{"tests": [
+ {"id": "kudos-94541-p46-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["caption", "nno", "Latn"],
+  "args": {"content": {"text": "Tabell 10.2 Eksport av A- og B-materiell fordelt på varekategoriane i Liste I i prosent og heile kroner", "max_diffs": 4}}, "settings": {}},
+ {"id": "kudos-94541-p46-t02", "test_type": "table_cell", "output_type": "html", "derivation": "model_panel", "tags": ["table", "nno", "Latn"],
+  "args": {"cell": {"text": "28,97 %", "max_diffs": 0}, "left_heading": {"text": "ML4", "max_diffs": 0}, "top_heading": {"text": "A-materiell", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-94541-p46-t03", "test_type": "table_cell", "output_type": "html", "derivation": "model_panel", "tags": ["table", "nno", "Latn"],
+  "args": {"cell": {"text": "35,22 %", "max_diffs": 0}, "left_heading": {"text": "ML11", "max_diffs": 0}, "top_heading": {"text": "B-materiell", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-94541-p46-t04", "test_type": "table_cell", "output_type": "html", "derivation": "model_panel", "tags": ["table", "nno", "Latn"],
+  "args": {"cell": {"text": "18,72 %", "max_diffs": 0}, "left_heading": {"text": "ML15", "max_diffs": 0}, "left": {"text": "0,00 %", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-94541-p46-t05", "test_type": "table_cell", "output_type": "html", "derivation": "model_panel", "tags": ["table", "nno", "Latn"],
+  "args": {"cell": {"text": "149 141 945", "max_diffs": 0}, "left_heading": {"text": "ML1", "max_diffs": 0}, "top_heading": {"text": "A-materiell", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-94541-p46-t06", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["table", "nno", "Latn"],
+  "args": {"content": {"number": "8 555 141 512"}}, "settings": {}},
+ {"id": "kudos-94541-p46-t07", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["table", "nno", "Latn"],
+  "args": {"content": {"text": "25,60 %", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-94541-p46-t08", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nno", "Latn"],
+  "args": {"content": {"text": "Fordeling av eksport av forsvarsmateriell på land", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-94541-p46-t09", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["table", "heading", "nno", "Latn"],
+  "args": {"before": {"text": "1 470 427 204", "max_diffs": 1}, "after": {"text": "Fordeling av eksport av forsvarsmateriell", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-94541-p46-t10", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nno", "Latn"],
+  "args": {"content": {"text": "Tabell 10.3 viser korleis verdien av eksporten av forsvarsmateriell fordeler seg på mottakarland", "max_diffs": 3}}, "settings": {}}
+]}

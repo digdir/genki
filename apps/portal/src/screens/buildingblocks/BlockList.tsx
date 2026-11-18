@@ -1,3 +1,4 @@
+import { PlusIcon } from '@navikt/aksel-icons';
 import {
   Button,
   Chip,
@@ -22,9 +23,10 @@ import {
   type CatalogProposal,
   type ConnectorView,
 } from '../../api/building-blocks';
-import { Icon, icons } from '../../components/Icon';
+import { Icon } from '../../components/Icon';
 import { navigate } from '../../hooks';
 import { useT } from '../../i18n';
+import { ErrorState } from '../../states';
 import {
   blockKinds,
   emptyStateSuggestions,
@@ -49,6 +51,8 @@ export interface ListFilters {
 
 export const initialFilters: ListFilters = { tab: 'in-use', q: '', publisher: 'all', kind: 'all' };
 
+export const listKinds: readonly BlockKind[] = blockKinds.map((k) => k.kind);
+
 export const BlockList = ({
   api,
   tenant,
@@ -56,6 +60,7 @@ export const BlockList = ({
   items,
   proposals,
   connectors = [],
+  partialError,
   filters,
   onFilters,
   onFlash,
@@ -66,6 +71,7 @@ export const BlockList = ({
   items: CatalogItem[];
   proposals: CatalogProposal[];
   connectors?: ConnectorView[];
+  partialError?: { error: unknown; retry: () => void } | undefined;
   filters: ListFilters;
   onFilters: (filters: ListFilters) => void;
   onFlash: (flash: Flash) => void;
@@ -110,6 +116,7 @@ export const BlockList = ({
 
   const content: ReactNode = (
     <div className="stack">
+      {partialError ? <ErrorState error={partialError.error} onRetry={partialError.retry} /> : null}
       {pending.map((p) => (
         <ProposalSection key={p.id} api={api} tenant={tenant} proposal={p} onDone={onFlash} />
       ))}
@@ -208,6 +215,7 @@ export const BlockList = ({
             </Heading>
             <span className="bb-meta">{t(g.description)}</span>
             {g.kind === 'skill' ? <a href="#/skills">{t('blocks.goToSkills')}</a> : null}
+            {g.kind === 'step_flow' ? <a href="#/step-flows">{t('blocks.goToStepFlows')}</a> : null}
           </div>
           <ul className="bb-grid">
             {g.items.map((b) => (
@@ -245,7 +253,7 @@ export const BlockList = ({
           <ApiCallButton call={listCall} />
           {rights.canRegister ? (
             <Button variant="secondary" onClick={() => navigate('/building-blocks/new')}>
-              <Icon d={icons.plus} />
+              <Icon icon={PlusIcon} />
               {t('blocks.addOwn')}
             </Button>
           ) : null}

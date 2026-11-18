@@ -1,10 +1,13 @@
 import type { FacetValue, Hit } from '@genai/port-knowledge';
 import { selectedOptions, type FilterInput } from './filters.js';
 import {
-  containsWord,
+  containsFoldedWord,
+  foldCase,
+  foldNordic,
   intersect,
   metadataMap,
   numbersIn,
+  queryYearsIn,
   tokenize,
   yearsIn,
   javaBoundary,
@@ -88,7 +91,7 @@ export const isNumericFactQuery = (queries: string[]) =>
 
 export const queryYears = (queries: string[]) => {
   const years = new Set<string>();
-  for (const q of queries) for (const y of yearsIn(q)) years.add(y);
+  for (const q of queries) for (const y of queryYearsIn(q)) years.add(y);
   return years;
 };
 
@@ -99,11 +102,15 @@ export const prioritize = (
   orgFields: string[],
   weights: BoostWeights,
   useContent: boolean,
+  detectedOrgs: string[] = [],
 ): Chunk[] => {
   const queryTokens = new Set(queries.flatMap((q) => [...tokenize(q)]));
   const years = queryYears(queries);
   const numeric = isNumericFactQuery(queries);
-  const filterOrgs = new Set(orgFields.flatMap((f) => selectedOptions(filters, f)));
+  const filterOrgs = new Set([
+    ...orgFields.flatMap((f) => selectedOptions(filters, f)),
+    ...detectedOrgs,
+  ]);
   return chunks
     .map((chunk) => {
       const title = chunk.title ?? '';
@@ -215,29 +222,97 @@ export const suppressDuplicateFiles = (chunks: Chunk[]): Chunk[] => {
   });
 };
 
-export const detectOrgFilter = (
+export type DetectionUse = 'boost' | 'hint' | 'filter';
+
+export interface Detection {
+  kind: 'organisation' | 'year' | 'rule';
+  field: string;
+  values: string[];
+  queries: string[];
+  use: DetectionUse;
+}
+
+export type Detected = Pick<Detection, 'field' | 'values' | 'queries'>;
+
+export type AliasTable = Record<string, string[]>;
+
+interface MatchName {
+  plain: string;
+  nordic?: string;
+  reports: string[];
+}
+
+const matchNames = (
+  facetValues: FacetValue[],
+  minLength: number,
+  aliases: AliasTable,
+): MatchName[] => {
+  const indexed = new Map<string, string>();
+  for (const { value } of facetValues) {
+    const key = foldCase(value);
+    if (key !== '' && !indexed.has(key)) indexed.set(key, value);
+  }
+  const reportsByName = new Map<string, { name: string; reports: Set<string> }>();
+  const add = (name: string, report: string) => {
+    const key = foldCase(name);
+    const entry = reportsByName.get(key) ?? { name, reports: new Set<string>() };
+    entry.reports.add(report);
+    reportsByName.set(key, entry);
+  };
+  for (const [key, value] of indexed) if (key.length >= minLength) add(value, value);
+  for (const [head, rest] of Object.entries(aliases)) {
+    const group = [head, ...rest].map((n) => n.trim()).filter((n) => n !== '');
+    const reports = group.flatMap((n) => indexed.get(foldCase(n)) ?? []);
+    for (const name of group) for (const report of reports) add(name, report);
+  }
+  const entries = [...reportsByName.entries()].map(([plain, { reports }]) => ({
+    plain,
+    folded: foldNordic(plain),
+    reports: [...reports],
+  }));
+  const signatures = new Map<string, Set<string>>();
+  for (const e of entries) {
+    const seen = signatures.get(e.folded) ?? new Set<string>();
+    seen.add(e.reports.join('\u0000'));
+    signatures.set(e.folded, seen);
+  }
+  return entries.map(({ plain, folded, reports }) => ({
+    plain,
+    reports,
+    ...([...plain].length >= 3 && signatures.get(folded)?.size === 1 ? { nordic: folded } : {}),
+  }));
+};
+
+export const detectOrganisations = (
   queries: string[],
   facets: Record<string, FacetValue[]>,
   orgFields: string[],
   minLength: number,
-): { field: string; values: string[] } | undefined => {
-  if (queries.length === 0) return undefined;
-  const text = queries.join(' ');
-  for (const field of orgFields) {
-    const matches = [
-      ...new Set(
-        (facets[field] ?? [])
-          .filter((f) => f.value.length >= minLength && containsWord(text, f.value))
-          .map((f) => f.value),
-      ),
-    ];
-    if (matches.length > 0) return { field, values: matches };
-  }
-  return undefined;
+  aliases: AliasTable = {},
+): Detected[] => {
+  const plain = queries.map(foldCase);
+  const nordic = queries.map(foldNordic);
+  return orgFields.flatMap((field) => {
+    const values = new Set<string>();
+    const found = new Set<number>();
+    for (const name of matchNames(facets[field] ?? [], minLength, aliases)) {
+      const naming = queries.flatMap((_, i) =>
+        containsFoldedWord(plain[i] as string, name.plain) ||
+        (name.nordic !== undefined && containsFoldedWord(nordic[i] as string, name.nordic))
+          ? [i]
+          : [],
+      );
+      if (naming.length === 0) continue;
+      for (const value of name.reports) values.add(value);
+      for (const i of naming) found.add(i);
+    }
+    return values.size > 0
+      ? [{ field, values: [...values], queries: queries.filter((_, i) => found.has(i)) }]
+      : [];
+  });
 };
 
-export const detectYears = (queries: string[]): string[] =>
-  queries.length === 0 ? [] : [...yearsIn(queries.join(' '))];
+export const detectYears = (queries: string[]): string[] => [...queryYears(queries)];
 
 export const unionModes = ['cap', 'interleave', 'rrf'] as const;
 export type UnionMode = (typeof unionModes)[number];

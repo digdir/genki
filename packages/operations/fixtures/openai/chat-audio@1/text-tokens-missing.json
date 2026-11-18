@@ -1,0 +1,104 @@
+{
+  "source": "The same OpenAI API reference as audio-question; the usage details leave out text_tokens, as the API may, so the text tokens are the total minus the audio tokens",
+  "deployment": "gpt-audio-1.5",
+  "input": {
+    "instructions": "Svar kort p\u00e5 norsk.",
+    "audio": "UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA=",
+    "voice": "marin"
+  },
+  "request": {
+    "method": "POST",
+    "path": "/chat/completions",
+    "body": {
+      "model": "gpt-audio-1.5",
+      "modalities": ["text", "audio"],
+      "audio": {
+        "voice": "marin",
+        "format": "wav"
+      },
+      "messages": [
+        {
+          "role": "system",
+          "content": "Svar kort p\u00e5 norsk."
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "input_audio",
+              "input_audio": {
+                "data": "UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA=",
+                "format": "wav"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "id": "chatcmpl-123",
+      "object": "chat.completion",
+      "created": 1741570283,
+      "model": "gpt-audio-1.5",
+      "choices": [
+        {
+          "index": 0,
+          "message": {
+            "role": "assistant",
+            "content": null,
+            "refusal": null,
+            "audio": {
+              "id": "audio_abc123",
+              "expires_at": 1741573883,
+              "data": "UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA=",
+              "transcript": "Hei! Hva kan jeg hjelpe deg med?"
+            },
+            "annotations": []
+          },
+          "finish_reason": "stop",
+          "logprobs": null
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 40,
+        "completion_tokens": 60,
+        "total_tokens": 100,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "audio_tokens": 28
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "audio_tokens": 50
+        }
+      },
+      "service_tier": "default"
+    }
+  },
+  "result": {
+    "transcript": "Hei! Hva kan jeg hjelpe deg med?",
+    "audio": "UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA=",
+    "usage": {
+      "inputTokens": 12,
+      "units": {
+        "audio-input-token": 28,
+        "audio-output-token": 50
+      },
+      "outputTokens": 10,
+      "requests": 1
+    }
+  },
+  "usage": {
+    "inputTokens": 12,
+    "outputTokens": 10,
+    "requests": 1,
+    "units": {
+      "audio-input-token": 28,
+      "audio-output-token": 50
+    }
+  },
+  "dropped": 3
+}

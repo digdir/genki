@@ -1,0 +1,22 @@
+{"tests": [
+ {"id": "kudos-26624-p1-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"content": {"text": "INSTRUKS FOR ELDREOMBUDET FASTSATT AV", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-26624-p1-t02", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"content": {"text": "oktober 2020", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-26624-p1-t03", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"before": {"text": "oktober 2020", "max_diffs": 2}, "after": {"text": "Denne instruksen beskriver samfunnsoppdrag, myndighet og ansvar", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-26624-p1-t04", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Denne instruksen beskriver samfunnsoppdrag, myndighet og ansvar samt administrative krav til virksomheten Eldreombudet.", "max_diffs": 4}}, "settings": {}},
+ {"id": "kudos-26624-p1-t05", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Departementet kan ikke instruere Eldreombudet om dets faglige virksomhet.", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-26624-p1-t06", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"content": {"text": "Eldreombudet myndighet og ansvar", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-26624-p1-t07", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "19. juni 2020 nr. 80", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-26624-p1-t08", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["list", "nob", "Latn"],
+  "args": {"content": {"text": "virksomhetens øvrige rapporter i løpet av året", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-26624-p1-t09", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["list", "nob", "Latn"],
+  "args": {"before": {"text": "departementets referater fra møter med virksomheten", "max_diffs": 2}, "after": {"text": "Etatsstyringsmøtet er et formelt møte", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-26624-p1-t10", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Hvor mange etatsstyringsmøter som skal avholdes avhenger av opplevd risiko", "max_diffs": 3}}, "settings": {}}
+]}

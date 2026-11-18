@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Principal } from '@genai/contracts';
 import {
   createMockAltinnPdp,
+  LEGACY_KEY_ISSUER,
   PLATFORM_RESOURCE,
   PLATFORM_RIGHTS,
   platformRightsFromActions,
@@ -94,7 +95,7 @@ describe('platform rights', () => {
     expect(platformRightsOf(principal, FITNESS)).toEqual([]);
   });
 
-  it('keeps tenant-wide access for principals that carry no Altinn actions', () => {
+  it('keeps tenant-wide access for people and platform principals that carry no Altinn actions', () => {
     expect(platformRightsOf({ ...employee(undefined), tenant: DIGDIR }, DIGDIR)).toEqual([
       ...PLATFORM_RIGHTS,
     ]);
@@ -103,5 +104,48 @@ describe('platform rights', () => {
     expect(
       platformRightsOf({ kind: 'operator', issuer: 'test', subject: 'drift' }, DIGDIR),
     ).toEqual([...PLATFORM_RIGHTS]);
+    expect(
+      platformRightsOf(
+        { kind: 'agency-system', issuer: 'platform', subject: 'ingestion', tenant: DIGDIR },
+        DIGDIR,
+      ),
+    ).toEqual([...PLATFORM_RIGHTS]);
+  });
+
+  it('gives a Maskinporten client or system user no right in its own organisation', () => {
+    const client: Principal = {
+      kind: 'agency-system',
+      issuer: 'https://maskinporten.test/',
+      subject: 'sak-123',
+      tenant: DIGDIR,
+      client: 'sak-123',
+      scopes: ['legacy:admin', 'grant:client', 'grant:agent:*'],
+    };
+    const systemUser: Principal = {
+      kind: 'vendor-system',
+      issuer: 'https://maskinporten.test/',
+      subject: 'system-user',
+      tenant: DIGDIR,
+      systemUser: 'system-user',
+    };
+
+    expect(platformRightsOf(client, DIGDIR)).toEqual([]);
+    expect(platformRightsOf(systemUser, DIGDIR)).toEqual([]);
+  });
+
+  it('gives an API key only the rights its scopes grant, in its own organisation', () => {
+    const key = (scopes: string[]): Principal => ({
+      kind: 'agency-system',
+      issuer: LEGACY_KEY_ISSUER,
+      subject: 'key-1',
+      tenant: DIGDIR,
+      scopes,
+    });
+
+    expect(platformRightsOf(key(['legacy:query', 'grant:agent:*']), DIGDIR)).toEqual([]);
+    expect(platformRightsOf(key(['legacy:ingest']), DIGDIR)).toEqual(['manage-datasets']);
+    expect(platformRightsOf(key(['legacy:admin']), DIGDIR)).toEqual([...PLATFORM_RIGHTS]);
+    expect(platformRightsOf(key(['legacy:admin']), NAV)).toEqual([]);
+    expect(platformRightsOf(key(['legacy:constructor']), DIGDIR)).toEqual([]);
   });
 });

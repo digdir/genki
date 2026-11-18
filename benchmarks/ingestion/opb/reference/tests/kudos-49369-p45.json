@@ -1,0 +1,20 @@
+{"tests": [
+ {"id": "kudos-49369-p45-t01", "test_type": "table_cell", "output_type": "html", "derivation": "model_panel", "tags": ["table", "nob", "Latn"],
+  "args": {"cell": {"text": "Sommerfugler", "max_diffs": 1}, "left": {"text": "Argyresthia trifasciata", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-49369-p45-t02", "test_type": "table_cell", "output_type": "html", "derivation": "model_panel", "tags": ["table", "nob", "Latn"],
+  "args": {"cell": {"text": "11.05.2018", "max_diffs": 0}, "up": {"text": "18.07.2019", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-49369-p45-t03", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["caption", "nob", "Latn"],
+  "args": {"content": {"text": "Karplanteliste fra befaring i skjøtselsplanområdet 3. juli 2019 på Spornes, Kristine Sundsdal og Ellen Svalheim.", "max_diffs": 4}}, "settings": {}},
+ {"id": "kudos-49369-p45-t04", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["caption", "table", "nob", "Latn"],
+  "args": {"before": {"text": "Argyresthia trifasciata", "max_diffs": 1}, "after": {"text": "Karplanteliste fra befaring i skjøtselsplanområdet", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-49369-p45-t05", "test_type": "table_cell", "output_type": "html", "derivation": "model_panel", "tags": ["table", "nob", "Latn"],
+  "args": {"cell": {"text": "Luzula multiflora subsp. multiflora", "max_diffs": 1}, "left": {"text": "Engkjæreblom", "max_diffs": 1}, "top_heading": {"text": "Latinsk", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-49369-p45-t06", "test_type": "table_cell", "output_type": "html", "derivation": "model_panel", "tags": ["table", "nob", "Latn"],
+  "args": {"cell": {"text": "Hypericum maculatum", "max_diffs": 1}, "left": {"text": "Firkantperikum", "max_diffs": 1}, "top_heading": {"text": "Latinsk", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-49369-p45-t07", "test_type": "table_cell", "output_type": "html", "derivation": "model_panel", "tags": ["table", "nob", "Latn"],
+  "args": {"cell": {"text": "Engkvein", "max_diffs": 0}, "left": {"text": "Vanlige arter", "max_diffs": 0}, "top_heading": {"text": "Norsk navn", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-49369-p45-t08", "test_type": "table_cell", "output_type": "html", "derivation": "model_panel", "tags": ["table", "nob", "Latn"],
+  "args": {"cell": {"text": "Kveke", "max_diffs": 0}, "right": {"text": "Elytrigia repens", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-49369-p45-t09", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["table", "nob", "Latn"],
+  "args": {"content": {"text": "Alopecurus pratensis subsp. pratensis", "max_diffs": 1}}, "settings": {}}
+]}

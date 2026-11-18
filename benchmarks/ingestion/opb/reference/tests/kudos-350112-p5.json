@@ -1,0 +1,210 @@
+{
+ "tests": [
+  {
+   "id": "kudos-350112-p5-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Uttransporteringer hittil i år etter destinasjon",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-350112-p5-t02",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "14",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Storbritannia",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Bortvisning",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-350112-p5-t03",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "20",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Storbritannia",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Sum",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-350112-p5-t04",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "2",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Tyskland",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Innvilget internasjonal beskyttelse",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-350112-p5-t05",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "37",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Sum",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Dublin",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-350112-p5-t06",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "3",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Tyrkia",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Asyl",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-350112-p5-t07",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "164",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-350112-p5-t08",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Med destinasjon menes det landet som personen har blitt uttransportert til.",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-350112-p5-t09",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Østerrike",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "nødvendigvis personens hjemland",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

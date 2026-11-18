@@ -1,0 +1,251 @@
+{
+ "tests": [
+  {
+   "id": "eras-7ca7961d-p11-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Standarder, lover og regler for geografisk informasjon",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-7ca7961d-p11-t02",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Dette er et omfattende tema, men disse utdragene vil forhåpentligvis gjøre det mulig å forstå vurderingene i behovsanalysen og mulighetsstudien.",
+     "max_diffs": 4
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-7ca7961d-p11-t03",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_review",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "og mulighetsstudien.",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "For å hente ut ønskede gevinster",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-7ca7961d-p11-t04",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "For å hente ut ønskede gevinster må datasett etableres og vedlikeholdes kontinuerlig med basis i konkrete kvalitetskrav.",
+     "max_diffs": 4
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-7ca7961d-p11-t05",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "caption",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Tabell 1 - Kvalitetselementer fra Geodatastandarden",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-7ca7961d-p11-t06",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "Kvantitative egenskaper",
+     "max_diffs": 1
+    },
+    "left_heading": {
+     "text": "Egenskapsnøyaktighet",
+     "max_diffs": 1
+    },
+    "top_heading": {
+     "text": "Underkategorier",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-7ca7961d-p11-t07",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "Topologisk konsistens",
+     "max_diffs": 1
+    },
+    "left_heading": {
+     "text": "Logisk konsistens",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-7ca7961d-p11-t08",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "Overskytende objekter",
+     "max_diffs": 1
+    },
+    "left_heading": {
+     "text": "Fullstendighet",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-7ca7961d-p11-t09",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "Juridiske og økonomiske betingelser?",
+     "max_diffs": 1
+    },
+    "left_heading": {
+     "text": "Tilgjengelighet og leveringstid",
+     "max_diffs": 1
+    },
+    "top_heading": {
+     "text": "Underkategorier",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-7ca7961d-p11-t10",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Stedfestingspålitelighet – deformasjon",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-7ca7961d-p11-t11",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "footnote",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Geodatastandarden - Kvalitetssikring av oppmåling, kartlegging og geodata",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-7ca7961d-p11-t12",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "footnote",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Er data nedlastbare på riktig format?",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "Kvalitetssikring av oppmåling, kartlegging og geodata",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

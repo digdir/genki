@@ -4,6 +4,12 @@ import { defaultClientConditions, defineConfig } from 'vite';
 export default defineConfig({
   plugins: [react()],
   resolve: { conditions: ['source', ...defaultClientConditions] },
+  build: {
+    cssCodeSplit: false,
+    rolldownOptions: {
+      output: { codeSplitting: { groups: [{ name: 'styles', test: /\.css$/ }] } },
+    },
+  },
   server: {
     port: 5173,
     proxy: {

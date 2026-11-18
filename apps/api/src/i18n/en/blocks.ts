@@ -40,6 +40,11 @@ export const blocks = {
   operationsMissing: 'Not found in the file: {names}.',
   noOperations: 'No operations are selected. Select at least one.',
   operationsUndescribed: '{lacking} of {total} operations are missing a description: {names}.',
+  secretNotForHosts:
+    'The secret «{secret}» is not set up for {hosts}. Ask someone with the right «Manage services» to add the address to the secret.',
+  secretHostsRequired: 'Enter the addresses the secret is for, for example https://api.example.no.',
+  secretHostInvalid: '«{host}» is not a valid address. Enter for example https://api.example.no.',
+  secretNotFound: 'The secret «{name}» does not exist.',
   noTools: 'The server has no tools.',
   toolsLacking: '{lacking} of {total} tools are missing a description or inputSchema: {names}.',
   listNotAnswered: 'Not run because the server did not respond to tools/list.',
@@ -47,5 +52,14 @@ export const blocks = {
   dataExtensionPoint: 'What that point gives access to: {point}',
   dataCall: 'What the service sends in the call',
   none: 'None',
+  sinkJudgeCapability:
+    'Judges test runs sent to the connection {connection}. Advisory: never stops a publish.',
+  sinkJudgeNetwork: 'Where the test runs are sent',
+  sinkJudgeModel: 'Run by Langfuse, not by the platform',
+  sinkJudgeDefaultModel: "The project's default model",
+  sinkJudgesUnreadable: 'The judges in {source}',
+  sinkFieldInput: 'the question',
+  sinkFieldOutput: 'the answer',
+  sinkFieldExpected: 'the criteria',
   skillRequirementsUnmet: 'The skill does not meet the requirements for publishing',
 } satisfies Translation<typeof source>;

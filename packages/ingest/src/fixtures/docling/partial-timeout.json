@@ -1,0 +1,844 @@
+{
+  "status": 200,
+  "body": {
+    "document": {
+      "filename": "scan-40p.pdf",
+      "md_content": null,
+      "json_content": {
+        "_trimmed": "top-level keys kept; arrays cut to items of page 1 (max 5); pages cut to page 1",
+        "_keys": [
+          "schema_name",
+          "version",
+          "name",
+          "origin",
+          "furniture",
+          "body",
+          "groups",
+          "texts",
+          "pictures",
+          "tables",
+          "key_value_items",
+          "form_items",
+          "pages"
+        ],
+        "schema_name": "DoclingDocument",
+        "version": "1.10.0",
+        "name": "scan-40p",
+        "origin": {
+          "mimetype": "application/pdf",
+          "binary_hash": 17793484231961820000,
+          "filename": "scan-40p.pdf",
+          "uri": null
+        },
+        "furniture": {
+          "self_ref": "#/furniture",
+          "parent": null,
+          "children": [],
+          "content_layer": "furniture",
+          "meta": null,
+          "name": "_root_",
+          "label": "unspecified"
+        },
+        "body": {
+          "self_ref": "#/body",
+          "parent": null,
+          "children": [],
+          "content_layer": "body",
+          "meta": null,
+          "name": "_root_",
+          "label": "unspecified"
+        },
+        "groups": {
+          "_length": 0,
+          "items": []
+        },
+        "texts": {
+          "_length": 0,
+          "items": []
+        },
+        "pictures": {
+          "_length": 0,
+          "items": []
+        },
+        "tables": {
+          "_length": 0,
+          "items": []
+        },
+        "key_value_items": {
+          "_length": 0,
+          "items": []
+        },
+        "form_items": {
+          "_length": 0,
+          "items": []
+        },
+        "pages": {
+          "1": {
+            "size": {
+              "width": 595.2,
+              "height": 841.92
+            },
+            "image": null,
+            "page_no": 1
+          },
+          "_count": 40
+        }
+      },
+      "html_content": null,
+      "text_content": null,
+      "doctags_content": null,
+      "doclang_content": null
+    },
+    "status": "partial_success",
+    "errors": [
+      {
+        "component_type": "pipeline",
+        "module_name": "StandardPdfPipeline",
+        "error_message": "document timeout exceeded",
+        "category": "timeout",
+        "page_no": 1
+      },
+      {
+        "component_type": "pipeline",
+        "module_name": "StandardPdfPipeline",
+        "error_message": "document timeout exceeded",
+        "category": "timeout",
+        "page_no": 2
+      },
+      {
+        "component_type": "pipeline",
+        "module_name": "StandardPdfPipeline",
+        "error_message": "document timeout exceeded",
+        "category": "timeout",
+        "page_no": 3
+      },
+      {
+        "component_type": "pipeline",
+        "module_name": "StandardPdfPipeline",
+        "error_message": "document timeout exceeded",
+        "category": "timeout",
+        "page_no": 4
+      },
+      {
+        "component_type": "pipeline",
+        "module_name": "StandardPdfPipeline",
+        "error_message": "document timeout exceeded",
+        "category": "timeout",
+        "page_no": 5
+      },
+      {
+        "component_type": "pipeline",
+        "module_name": "StandardPdfPipeline",
+        "error_message": "document timeout exceeded",
+        "category": "timeout",
+        "page_no": 6
+      },
+      {
+        "component_type": "pipeline",
+        "module_name": "StandardPdfPipeline",
+        "error_message": "document timeout exceeded",
+        "category": "timeout",
+        "page_no": 7
+      },
+      {
+        "component_type": "pipeline",
+        "module_name": "StandardPdfPipeline",
+        "error_message": "document timeout exceeded",
+        "category": "timeout",
+        "page_no": 8
+      },
+      {
+        "component_type": "pipeline",
+        "module_name": "StandardPdfPipeline",
+        "error_message": "document timeout exceeded",
+        "category": "timeout",
+        "page_no": 9
+      },
+      {
+        "component_type": "pipeline",
+        "module_name": "StandardPdfPipeline",
+        "error_message": "document timeout exceeded",
+        "category": "timeout",
+        "page_no": 10
+      },
+      {
+        "component_type": "pipeline",
+        "module_name": "StandardPdfPipeline",
+        "error_message": "document timeout exceeded",
+        "category": "timeout",
+        "page_no": 11
+      },
+      {
+        "component_type": "pipeline",
+        "module_name": "StandardPdfPipeline",
+        "error_message": "document timeout exceeded",
+        "category": "timeout",
+        "page_no": 12
+      },
+      {
+        "component_type": "pipeline",
+        "module_name": "StandardPdfPipeline",
+        "error_message": "document timeout exceeded",
+        "category": "timeout",
+        "page_no": 13
+      },
+      {
+        "component_type": "pipeline",
+        "module_name": "StandardPdfPipeline",
+        "error_message": "document timeout exceeded",
+        "category": "timeout",
+        "page_no": 14
+      },
+      {
+        "component_type": "pipeline",
+        "module_name": "StandardPdfPipeline",
+        "error_message": "document timeout exceeded",
+        "category": "timeout",
+        "page_no": 15
+      },
+      {
+        "component_type": "pipeline",
+        "module_name": "StandardPdfPipeline",
+        "error_message": "document timeout exceeded",
+        "category": "timeout",
+        "page_no": 16
+      },
+      {
+        "component_type": "pipeline",
+        "module_name": "StandardPdfPipeline",
+        "error_message": "document timeout exceeded",
+        "category": "timeout",
+        "page_no": 17
+      },
+      {
+        "component_type": "pipeline",
+        "module_name": "StandardPdfPipeline",
+        "error_message": "document timeout exceeded",
+        "category": "timeout",
+        "page_no": 18
+      },
+      {
+        "component_type": "pipeline",
+        "module_name": "StandardPdfPipeline",
+        "error_message": "document timeout exceeded",
+        "category": "timeout",
+        "page_no": 19
+      },
+      {
+        "component_type": "pipeline",
+        "module_name": "StandardPdfPipeline",
+        "error_message": "document timeout exceeded",
+        "category": "timeout",
+        "page_no": 20
+      },
+      {
+        "component_type": "pipeline",
+        "module_name": "StandardPdfPipeline",
+        "error_message": "document timeout exceeded",
+        "category": "timeout",
+        "page_no": 21
+      },
+      {
+        "component_type": "pipeline",
+        "module_name": "StandardPdfPipeline",
+        "error_message": "document timeout exceeded",
+        "category": "timeout",
+        "page_no": 22
+      },
+      {
+        "component_type": "pipeline",
+        "module_name": "StandardPdfPipeline",
+        "error_message": "document timeout exceeded",
+        "category": "timeout",
+        "page_no": 23
+      },
+      {
+        "component_type": "pipeline",
+        "module_name": "StandardPdfPipeline",
+        "error_message": "document timeout exceeded",
+        "category": "timeout",
+        "page_no": 24
+      },
+      {
+        "component_type": "pipeline",
+        "module_name": "StandardPdfPipeline",
+        "error_message": "document timeout exceeded",
+        "category": "timeout",
+        "page_no": 25
+      },
+      {
+        "component_type": "pipeline",
+        "module_name": "StandardPdfPipeline",
+        "error_message": "document timeout exceeded",
+        "category": "timeout",
+        "page_no": 26
+      },
+      {
+        "component_type": "pipeline",
+        "module_name": "StandardPdfPipeline",
+        "error_message": "document timeout exceeded",
+        "category": "timeout",
+        "page_no": 27
+      },
+      {
+        "component_type": "pipeline",
+        "module_name": "StandardPdfPipeline",
+        "error_message": "document timeout exceeded",
+        "category": "timeout",
+        "page_no": 28
+      },
+      {
+        "component_type": "pipeline",
+        "module_name": "StandardPdfPipeline",
+        "error_message": "document timeout exceeded",
+        "category": "timeout",
+        "page_no": 29
+      },
+      {
+        "component_type": "pipeline",
+        "module_name": "StandardPdfPipeline",
+        "error_message": "document timeout exceeded",
+        "category": "timeout",
+        "page_no": 30
+      },
+      {
+        "component_type": "pipeline",
+        "module_name": "StandardPdfPipeline",
+        "error_message": "document timeout exceeded",
+        "category": "timeout",
+        "page_no": 31
+      },
+      {
+        "component_type": "pipeline",
+        "module_name": "StandardPdfPipeline",
+        "error_message": "document timeout exceeded",
+        "category": "timeout",
+        "page_no": 32
+      },
+      {
+        "component_type": "pipeline",
+        "module_name": "StandardPdfPipeline",
+        "error_message": "document timeout exceeded",
+        "category": "timeout",
+        "page_no": 33
+      },
+      {
+        "component_type": "pipeline",
+        "module_name": "StandardPdfPipeline",
+        "error_message": "document timeout exceeded",
+        "category": "timeout",
+        "page_no": 34
+      },
+      {
+        "component_type": "pipeline",
+        "module_name": "StandardPdfPipeline",
+        "error_message": "document timeout exceeded",
+        "category": "timeout",
+        "page_no": 35
+      },
+      {
+        "component_type": "pipeline",
+        "module_name": "StandardPdfPipeline",
+        "error_message": "document timeout exceeded",
+        "category": "timeout",
+        "page_no": 36
+      },
+      {
+        "component_type": "pipeline",
+        "module_name": "StandardPdfPipeline",
+        "error_message": "document timeout exceeded",
+        "category": "timeout",
+        "page_no": 37
+      },
+      {
+        "component_type": "pipeline",
+        "module_name": "StandardPdfPipeline",
+        "error_message": "document timeout exceeded",
+        "category": "timeout",
+        "page_no": 38
+      },
+      {
+        "component_type": "pipeline",
+        "module_name": "StandardPdfPipeline",
+        "error_message": "document timeout exceeded",
+        "category": "timeout",
+        "page_no": 39
+      },
+      {
+        "component_type": "pipeline",
+        "module_name": "StandardPdfPipeline",
+        "error_message": "document timeout exceeded",
+        "category": "timeout",
+        "page_no": 40
+      },
+      {
+        "component_type": "pipeline",
+        "module_name": "StandardPdfPipeline",
+        "error_message": "Pipeline stage timeout: processed 0/40 pages successfully, 40 pages failed or incomplete.",
+        "category": "timeout",
+        "page_no": null
+      },
+      {
+        "component_type": "doc_assembler",
+        "module_name": "ReadingOrderModel",
+        "error_message": "Document processing timeout: reading-order separator extraction exceeded its time budget. Pages processed after the budget ran out fall back to the pre-separator reading order.",
+        "category": "timeout",
+        "page_no": null
+      }
+    ],
+    "processing_time": 8.68311046999952,
+    "timings": {},
+    "confidence": {
+      "parse_score": null,
+      "layout_score": null,
+      "table_score": null,
+      "ocr_score": null,
+      "mean_score": 0.8695202810839973,
+      "low_score": 0.7914445255525525,
+      "mean_grade": "good",
+      "low_grade": "fair",
+      "pages": {
+        "1": {
+          "parse_score": null,
+          "layout_score": 0.7827694416046143,
+          "table_score": null,
+          "ocr_score": 0.9562711205633804,
+          "mean_score": 0.8695202810839973,
+          "low_score": 0.7914445255525525,
+          "mean_grade": "good",
+          "low_grade": "fair",
+          "pages": {}
+        },
+        "2": {
+          "parse_score": null,
+          "layout_score": null,
+          "table_score": null,
+          "ocr_score": null,
+          "mean_score": null,
+          "low_score": null,
+          "mean_grade": "unspecified",
+          "low_grade": "unspecified",
+          "pages": {}
+        },
+        "3": {
+          "parse_score": null,
+          "layout_score": null,
+          "table_score": null,
+          "ocr_score": null,
+          "mean_score": null,
+          "low_score": null,
+          "mean_grade": "unspecified",
+          "low_grade": "unspecified",
+          "pages": {}
+        },
+        "4": {
+          "parse_score": null,
+          "layout_score": null,
+          "table_score": null,
+          "ocr_score": null,
+          "mean_score": null,
+          "low_score": null,
+          "mean_grade": "unspecified",
+          "low_grade": "unspecified",
+          "pages": {}
+        },
+        "5": {
+          "parse_score": null,
+          "layout_score": null,
+          "table_score": null,
+          "ocr_score": null,
+          "mean_score": null,
+          "low_score": null,
+          "mean_grade": "unspecified",
+          "low_grade": "unspecified",
+          "pages": {}
+        },
+        "6": {
+          "parse_score": null,
+          "layout_score": null,
+          "table_score": null,
+          "ocr_score": null,
+          "mean_score": null,
+          "low_score": null,
+          "mean_grade": "unspecified",
+          "low_grade": "unspecified",
+          "pages": {}
+        },
+        "7": {
+          "parse_score": null,
+          "layout_score": null,
+          "table_score": null,
+          "ocr_score": null,
+          "mean_score": null,
+          "low_score": null,
+          "mean_grade": "unspecified",
+          "low_grade": "unspecified",
+          "pages": {}
+        },
+        "8": {
+          "parse_score": null,
+          "layout_score": null,
+          "table_score": null,
+          "ocr_score": null,
+          "mean_score": null,
+          "low_score": null,
+          "mean_grade": "unspecified",
+          "low_grade": "unspecified",
+          "pages": {}
+        },
+        "9": {
+          "parse_score": null,
+          "layout_score": null,
+          "table_score": null,
+          "ocr_score": null,
+          "mean_score": null,
+          "low_score": null,
+          "mean_grade": "unspecified",
+          "low_grade": "unspecified",
+          "pages": {}
+        },
+        "10": {
+          "parse_score": null,
+          "layout_score": null,
+          "table_score": null,
+          "ocr_score": null,
+          "mean_score": null,
+          "low_score": null,
+          "mean_grade": "unspecified",
+          "low_grade": "unspecified",
+          "pages": {}
+        },
+        "11": {
+          "parse_score": null,
+          "layout_score": null,
+          "table_score": null,
+          "ocr_score": null,
+          "mean_score": null,
+          "low_score": null,
+          "mean_grade": "unspecified",
+          "low_grade": "unspecified",
+          "pages": {}
+        },
+        "12": {
+          "parse_score": null,
+          "layout_score": null,
+          "table_score": null,
+          "ocr_score": null,
+          "mean_score": null,
+          "low_score": null,
+          "mean_grade": "unspecified",
+          "low_grade": "unspecified",
+          "pages": {}
+        },
+        "13": {
+          "parse_score": null,
+          "layout_score": null,
+          "table_score": null,
+          "ocr_score": null,
+          "mean_score": null,
+          "low_score": null,
+          "mean_grade": "unspecified",
+          "low_grade": "unspecified",
+          "pages": {}
+        },
+        "14": {
+          "parse_score": null,
+          "layout_score": null,
+          "table_score": null,
+          "ocr_score": null,
+          "mean_score": null,
+          "low_score": null,
+          "mean_grade": "unspecified",
+          "low_grade": "unspecified",
+          "pages": {}
+        },
+        "15": {
+          "parse_score": null,
+          "layout_score": null,
+          "table_score": null,
+          "ocr_score": null,
+          "mean_score": null,
+          "low_score": null,
+          "mean_grade": "unspecified",
+          "low_grade": "unspecified",
+          "pages": {}
+        },
+        "16": {
+          "parse_score": null,
+          "layout_score": null,
+          "table_score": null,
+          "ocr_score": null,
+          "mean_score": null,
+          "low_score": null,
+          "mean_grade": "unspecified",
+          "low_grade": "unspecified",
+          "pages": {}
+        },
+        "17": {
+          "parse_score": null,
+          "layout_score": null,
+          "table_score": null,
+          "ocr_score": null,
+          "mean_score": null,
+          "low_score": null,
+          "mean_grade": "unspecified",
+          "low_grade": "unspecified",
+          "pages": {}
+        },
+        "18": {
+          "parse_score": null,
+          "layout_score": null,
+          "table_score": null,
+          "ocr_score": null,
+          "mean_score": null,
+          "low_score": null,
+          "mean_grade": "unspecified",
+          "low_grade": "unspecified",
+          "pages": {}
+        },
+        "19": {
+          "parse_score": null,
+          "layout_score": null,
+          "table_score": null,
+          "ocr_score": null,
+          "mean_score": null,
+          "low_score": null,
+          "mean_grade": "unspecified",
+          "low_grade": "unspecified",
+          "pages": {}
+        },
+        "20": {
+          "parse_score": null,
+          "layout_score": null,
+          "table_score": null,
+          "ocr_score": null,
+          "mean_score": null,
+          "low_score": null,
+          "mean_grade": "unspecified",
+          "low_grade": "unspecified",
+          "pages": {}
+        },
+        "21": {
+          "parse_score": null,
+          "layout_score": null,
+          "table_score": null,
+          "ocr_score": null,
+          "mean_score": null,
+          "low_score": null,
+          "mean_grade": "unspecified",
+          "low_grade": "unspecified",
+          "pages": {}
+        },
+        "22": {
+          "parse_score": null,
+          "layout_score": null,
+          "table_score": null,
+          "ocr_score": null,
+          "mean_score": null,
+          "low_score": null,
+          "mean_grade": "unspecified",
+          "low_grade": "unspecified",
+          "pages": {}
+        },
+        "23": {
+          "parse_score": null,
+          "layout_score": null,
+          "table_score": null,
+          "ocr_score": null,
+          "mean_score": null,
+          "low_score": null,
+          "mean_grade": "unspecified",
+          "low_grade": "unspecified",
+          "pages": {}
+        },
+        "24": {
+          "parse_score": null,
+          "layout_score": null,
+          "table_score": null,
+          "ocr_score": null,
+          "mean_score": null,
+          "low_score": null,
+          "mean_grade": "unspecified",
+          "low_grade": "unspecified",
+          "pages": {}
+        },
+        "25": {
+          "parse_score": null,
+          "layout_score": null,
+          "table_score": null,
+          "ocr_score": null,
+          "mean_score": null,
+          "low_score": null,
+          "mean_grade": "unspecified",
+          "low_grade": "unspecified",
+          "pages": {}
+        },
+        "26": {
+          "parse_score": null,
+          "layout_score": null,
+          "table_score": null,
+          "ocr_score": null,
+          "mean_score": null,
+          "low_score": null,
+          "mean_grade": "unspecified",
+          "low_grade": "unspecified",
+          "pages": {}
+        },
+        "27": {
+          "parse_score": null,
+          "layout_score": null,
+          "table_score": null,
+          "ocr_score": null,
+          "mean_score": null,
+          "low_score": null,
+          "mean_grade": "unspecified",
+          "low_grade": "unspecified",
+          "pages": {}
+        },
+        "28": {
+          "parse_score": null,
+          "layout_score": null,
+          "table_score": null,
+          "ocr_score": null,
+          "mean_score": null,
+          "low_score": null,
+          "mean_grade": "unspecified",
+          "low_grade": "unspecified",
+          "pages": {}
+        },
+        "29": {
+          "parse_score": null,
+          "layout_score": null,
+          "table_score": null,
+          "ocr_score": null,
+          "mean_score": null,
+          "low_score": null,
+          "mean_grade": "unspecified",
+          "low_grade": "unspecified",
+          "pages": {}
+        },
+        "30": {
+          "parse_score": null,
+          "layout_score": null,
+          "table_score": null,
+          "ocr_score": null,
+          "mean_score": null,
+          "low_score": null,
+          "mean_grade": "unspecified",
+          "low_grade": "unspecified",
+          "pages": {}
+        },
+        "31": {
+          "parse_score": null,
+          "layout_score": null,
+          "table_score": null,
+          "ocr_score": null,
+          "mean_score": null,
+          "low_score": null,
+          "mean_grade": "unspecified",
+          "low_grade": "unspecified",
+          "pages": {}
+        },
+        "32": {
+          "parse_score": null,
+          "layout_score": null,
+          "table_score": null,
+          "ocr_score": null,
+          "mean_score": null,
+          "low_score": null,
+          "mean_grade": "unspecified",
+          "low_grade": "unspecified",
+          "pages": {}
+        },
+        "33": {
+          "parse_score": null,
+          "layout_score": null,
+          "table_score": null,
+          "ocr_score": null,
+          "mean_score": null,
+          "low_score": null,
+          "mean_grade": "unspecified",
+          "low_grade": "unspecified",
+          "pages": {}
+        },
+        "34": {
+          "parse_score": null,
+          "layout_score": null,
+          "table_score": null,
+          "ocr_score": null,
+          "mean_score": null,
+          "low_score": null,
+          "mean_grade": "unspecified",
+          "low_grade": "unspecified",
+          "pages": {}
+        },
+        "35": {
+          "parse_score": null,
+          "layout_score": null,
+          "table_score": null,
+          "ocr_score": null,
+          "mean_score": null,
+          "low_score": null,
+          "mean_grade": "unspecified",
+          "low_grade": "unspecified",
+          "pages": {}
+        },
+        "36": {
+          "parse_score": null,
+          "layout_score": null,
+          "table_score": null,
+          "ocr_score": null,
+          "mean_score": null,
+          "low_score": null,
+          "mean_grade": "unspecified",
+          "low_grade": "unspecified",
+          "pages": {}
+        },
+        "37": {
+          "parse_score": null,
+          "layout_score": null,
+          "table_score": null,
+          "ocr_score": null,
+          "mean_score": null,
+          "low_score": null,
+          "mean_grade": "unspecified",
+          "low_grade": "unspecified",
+          "pages": {}
+        },
+        "38": {
+          "parse_score": null,
+          "layout_score": null,
+          "table_score": null,
+          "ocr_score": null,
+          "mean_score": null,
+          "low_score": null,
+          "mean_grade": "unspecified",
+          "low_grade": "unspecified",
+          "pages": {}
+        },
+        "39": {
+          "parse_score": null,
+          "layout_score": null,
+          "table_score": null,
+          "ocr_score": null,
+          "mean_score": null,
+          "low_score": null,
+          "mean_grade": "unspecified",
+          "low_grade": "unspecified",
+          "pages": {}
+        },
+        "40": {
+          "parse_score": null,
+          "layout_score": null,
+          "table_score": null,
+          "ocr_score": null,
+          "mean_score": null,
+          "low_score": null,
+          "mean_grade": "unspecified",
+          "low_grade": "unspecified",
+          "pages": {}
+        }
+      }
+    }
+  }
+}

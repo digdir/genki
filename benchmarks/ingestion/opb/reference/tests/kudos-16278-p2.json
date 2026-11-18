@@ -1,0 +1,209 @@
+{
+ "tests": [
+  {
+   "id": "kudos-16278-p2-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Overføring av ubrukte midler fra 2020",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-16278-p2-t02",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Tabellen under viser ny bevilgning.",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-16278-p2-t03",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "5 268",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Driftsutgifter",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Overført beløp",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-16278-p2-t04",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "56 984",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Kunnskapsutvikling og informasjonsformidling",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Tildeling etter tillegg",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-16278-p2-t05",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "103 618",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Tildeling før tillegg",
+     "max_diffs": 0
+    },
+    "right": {
+     "text": "5 268",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-16278-p2-t06",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "108 886",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-16278-p2-t07",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "informasjonsformidling",
+     "max_diffs": 0
+    },
+    "after": {
+     "text": "Mulighetsstudie digitalisert kontroll",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-16278-p2-t08",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Vi finner det hensiktsmessig at DiBK viderefører arbeidet med å utvikle bygningsregelverket i et digitalt format",
+     "max_diffs": 4
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-16278-p2-t09",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "31.12.2021",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-16278-p2-t10",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Dokumentet er elektronisk signert og har derfor ikke håndskrevne signaturer",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

@@ -285,6 +285,7 @@ export interface SkillTestRun {
   passed: number;
   total: number;
   results: SkillCaseResult[];
+  stale?: boolean;
 }
 
 export interface SkillShareRequest {
@@ -430,7 +431,9 @@ export const toDetail = (d: SkillDetailResponse): SkillDetail => {
     draft: { definition, revision: d.draft?.revision ?? 0 },
     ...(published ? { published } : {}),
     passThreshold: d.threshold,
-    ...(d.lastTestRun ? { lastTestRun: toTestRun(d.lastTestRun) } : {}),
+    ...(d.lastTestRun
+      ? { lastTestRun: { ...toTestRun(d.lastTestRun), ...(d.stale ? { stale: true } : {}) } }
+      : {}),
     ...(d.shareRequest
       ? {
           shareRequest: {

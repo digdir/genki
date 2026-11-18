@@ -6,6 +6,7 @@ import type {
   PlaygroundRunRequest,
   TestCaseCandidateRequest,
 } from '../../api/playground';
+import { createApiClient } from '../../api';
 import { examplePlaygroundOptions } from '../../data/playground';
 import { mockFetch } from '../../mock';
 import type { PlaygroundMockOptions } from '../../mock/playground';
@@ -391,13 +392,12 @@ describe('Prøveområde', () => {
       input: { text: 'Hva sier evalueringene om digital veiledning?' },
     });
     const [first] = screen.getAllByRole('article');
-    expect(
-      within(first as HTMLElement)
-        .getByText(/^Evaluering av digital veiledning i Testetaten \(2023\)/)
-        .closest('li')?.textContent,
-    ).toBe(
-      'Evaluering av digital veiledning i Testetaten (2023) · Kudos-rapporter, side 12 [1] [2] [3]',
-    );
+    const sources = within(first as HTMLElement).getByRole('list', { name: 'Kilder' });
+    const sourceItem = within(sources)
+      .getByText('Evaluering av digital veiledning i Testetaten (2023)')
+      .closest('li');
+    expect(sourceItem?.textContent).toBe('Evaluering av digital veiledning i Testetaten (2023)');
+    expect(sourceItem?.value).toBe(1);
     expect(within(first as HTMLElement).getByText('Norge')).toBeTruthy();
 
     const [saveA] = screen.getAllByRole('button', { name: 'Lagre som testtilfelle' });
@@ -426,12 +426,165 @@ describe('Prøveområde', () => {
     ]);
   });
 
+  it('a variant of the service can be picked, and the run asks for it with its model', async () => {
+    const runs: PlaygroundRunRequest[] = [];
+    const options = structuredClone(examplePlaygroundOptions);
+    const chosen = options.services.find((s) => s.chat) ?? options.services[0];
+    const version = chosen?.versions[0];
+    if (!chosen || !version) throw new Error('example has no service');
+    const fast = options.models.find((m) => m.id !== version.setup.model)?.id ?? '';
+    version.variants = [{ id: 'default' }, { id: 'mini', title: 'Rask', model: fast }];
+    await openPage({ options, runs });
+
+    fireEvent.click(screen.getByRole('button', { name: /^Tjeneste: / }));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Variant' }), {
+      target: { value: 'mini' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Bruk oppsettet' }));
+    expect(
+      screen.getByRole('button', { name: new RegExp(`^Tjeneste: ${chosen.name} \\(Rask\\), `) }),
+    ).toBeTruthy();
+    askSample(chosen.exampleQuestions?.[0] ?? '');
+
+    await waitFor(() => expect(runs).toHaveLength(1));
+    expect(runs[0]?.setup).toMatchObject({
+      service: { id: chosen.id, variant: 'mini' },
+      model: fast,
+    });
+  });
+
   it('a used-up quota shows the message from the API', async () => {
     await openPage({ quotaExhausted: true });
     askSample('Hva sier evalueringene om digital veiledning?');
 
     expect(await screen.findByRole('heading', { name: 'Vi fikk ikke svar' })).toBeTruthy();
     expect(screen.getByText(/^Kvoten for måneden er brukt opp\./)).toBeTruthy();
+  });
+
+  it('The portal shows a 422 setup refusal as a refusal naming the part of the setup, not as a model that did not answer', async () => {
+    await openPage({
+      invalidSetup: {
+        title: 'Invalid setup',
+        errors: [
+          {
+            path: 'setup.spec.knowledge.datasets[0].dataset',
+            message: 'Datasettet digdir/kudos lagres utenfor EU/EØS.',
+          },
+        ],
+      },
+    });
+    askSample('Hva sier evalueringene om digital veiledning?');
+
+    expect(await screen.findByRole('heading', { name: 'Vi fikk ikke svar' })).toBeTruthy();
+    expect(
+      screen.getByText(
+        /^Kjøringen ble avvist: noe i delen «Kunnskap» passer ikke med dette oppsettet\./,
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/svarte ikke/)).toBeNull();
+  });
+
+  it('shows the reason the API gives for a 403 that is not a model policy, not the model text', async () => {
+    await openPage({
+      forbidden: {
+        type: 'urn:genai:problem:test-runner-scope',
+        title: 'En testkjørernøkkel kan ikke gjøre dette',
+        detail: 'En testkjørernøkkel prøver bare smoke-tjenester i prøveområdet.',
+      },
+    });
+    askSample('Hva sier evalueringene om digital veiledning?');
+
+    expect(
+      await screen.findByText(
+        /^Kjøringen ble avvist: En testkjørernøkkel prøver bare smoke-tjenester i prøveområdet\./,
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/kan ikke brukes i dette oppsettet/)).toBeNull();
+  });
+
+  it('never shows the English title of a 403 that has no detail', async () => {
+    await openPage({ forbidden: { type: 'about:blank', title: 'Forbidden' } });
+    askSample('Hva sier evalueringene om digital veiledning?');
+
+    expect(await screen.findByText(/kan ikke brukes i dette oppsettet/)).toBeTruthy();
+    expect(screen.queryByText(/Forbidden/)).toBeNull();
+  });
+
+  it('words a model residency refusal in the language of the screen', async () => {
+    await openPage({
+      invalidSetup: {
+        title: 'Invalid setup',
+        errors: [
+          { path: 'setup.spec.model.primary', message: 'model x runs in global, outside eu' },
+        ],
+      },
+    });
+    askSample('Hva sier evalueringene om digital veiledning?');
+
+    expect(await screen.findByText(/^Kjøringen ble avvist: /)).toBeTruthy();
+    expect(screen.queryByText(/runs in global/)).toBeNull();
+  });
+
+  it('never shows an English validation message on a bokmål screen', async () => {
+    await openPage({
+      invalidSetup: {
+        title: 'Invalid setup',
+        errors: [{ path: 'setup.spec.model.primary', message: 'model x cannot call tools' }],
+      },
+    });
+    askSample('Hva sier evalueringene om digital veiledning?');
+
+    expect(
+      await screen.findByText(
+        /^Kjøringen ble avvist: noe i delen «Modell» passer ikke med dette oppsettet\./,
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/cannot call tools/)).toBeNull();
+  });
+
+  it("compares against a model within the first model's data location", async () => {
+    const runs: PlaygroundRunRequest[] = [];
+    const options = structuredClone(examplePlaygroundOptions);
+    options.models = [
+      { id: 'openai/gpt-5', name: 'GPT-5', dataLocation: 'global', status: 'allowed' },
+      { id: 'eu/mistral', name: 'Mistral EU', dataLocation: 'eu', status: 'allowed' },
+    ];
+    for (const service of options.services)
+      for (const version of service.versions) version.setup.model = 'eu/mistral';
+    await openPage({ options, runs });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sammenlign' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Bruk oppsettet' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Spørsmål til begge oppsettene' }), {
+      target: { value: 'Hei' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    await waitFor(() => expect(runs).toHaveLength(1));
+    expect(runs[0]?.compareWith?.model).toBe('eu/mistral');
+  });
+
+  it('marks a candidate model as not released in the model list and leaves released models unmarked', async () => {
+    const options = structuredClone(examplePlaygroundOptions);
+    options.models = [
+      { id: 'eu/mistral', name: 'Mistral EU', dataLocation: 'eu', status: 'allowed' },
+      {
+        id: 'eu/mistral-next',
+        name: 'Mistral Next',
+        dataLocation: 'eu',
+        status: 'allowed',
+        candidate: true,
+      },
+    ];
+    for (const service of options.services)
+      for (const version of service.versions) version.setup.model = 'eu/mistral';
+    await openPage({ options });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Endre oppsett' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'Et eget oppsett' }));
+    expect(screen.getByRole('radio', { name: /^Mistral Next.*Ikke sluppet/ })).toBeTruthy();
+    expect(screen.getByRole('radio', { name: /^Mistral EU/ })).toBeTruthy();
+    expect(screen.queryByRole('radio', { name: /^Mistral EU.*Ikke sluppet/ })).toBeNull();
   });
 
   it('starts on the first service exposed for chat, not the first in the list', async () => {
@@ -508,6 +661,56 @@ describe('Prøveområde', () => {
         data: btoa(String.fromCharCode(...new TextEncoder().encode('Søker: Eksempel IL'))),
       },
     });
+  });
+
+  it('on the test page of a published service, the setup lists the draft and the published versions, and runs the chosen published one', async () => {
+    const runs: PlaygroundRunRequest[] = [];
+    const setup = examplePlaygroundOptions.services[0]?.versions[0]?.setup;
+    if (!setup) throw new Error('example has no service');
+    const published = (version: number) => ({ version, draft: false, inUse: version === 2, setup });
+    const options: PlaygroundOptions = {
+      ...examplePlaygroundOptions,
+      services: [
+        { id: 'smoke', name: 'Smoke', latestVersion: 2, versions: [published(2), published(1)] },
+      ],
+    };
+    const api = createApiClient({
+      baseUrl: '/api',
+      fetch: withPlayground({ options, runs }),
+      token: () => 'kari',
+    });
+    const definition = {
+      apiVersion: 'genai/v1',
+      kind: 'Service',
+      metadata: { tenant: '991825827', id: 'smoke', name: 'Smoke' },
+      spec: { output: { kind: 'answer' } },
+    };
+    const { container } = render(
+      <PlaygroundPanel
+        layout="full"
+        context="service"
+        name="smoke"
+        api={api}
+        tenant="991825827"
+        tenantName="Testetaten"
+        serviceDraft={{ definition }}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Endre oppsett' }));
+    const picker = container.querySelector<HTMLSelectElement>('select[id$="-ver"]');
+    if (!picker) throw new Error('the setup shows no version picker');
+    expect([...picker.options].map((o) => o.value)).toEqual(['draft', '2', '1']);
+    expect(picker.value).toBe('draft');
+    fireEvent.change(picker, { target: { value: '2' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Bruk oppsettet' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Spørsmål' }), {
+      target: { value: 'Hva er smoke?' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    await waitFor(() => expect(runs).toHaveLength(1));
+    expect(runs[0]?.setup.service).toEqual({ id: 'smoke', version: 2 });
   });
 
   it.each<PlaygroundState>(['empty', 'answer', 'compare', 'quota', 'not-allowed', 'error'])(

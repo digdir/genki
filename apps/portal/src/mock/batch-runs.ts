@@ -73,9 +73,9 @@ export const batchRunsMock = (options: BatchRunsMockOptions = {}): MockHandler =
     let cost = 0;
     for (const item of run.items) {
       counts[item.status] += 1;
-      input += item.tokens.input;
-      output += item.tokens.output;
-      cost += item.costMicroNok;
+      input += item.tokens?.input ?? 0;
+      output += item.tokens?.output ?? 0;
+      cost += item.costMicroNok ?? 0;
     }
     return { ...run, counts, tokens: { input, output }, costMicroNok: priced ? cost : null };
   };

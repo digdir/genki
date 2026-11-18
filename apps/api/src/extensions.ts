@@ -1,5 +1,14 @@
+import {
+  redactSecrets,
+  syncFailureMessage,
+  syncFailureOf,
+  type SyncFailureCode,
+} from './sync-errors.js';
+import type { ApiLog } from './failure-log.js';
+import { hidesInternalServices } from './internal-services.js';
 import { t } from './i18n/index.js';
-import type { Principal, TaskStatus } from '@genai/contracts';
+import { quotaRefused } from './rate-limit.js';
+import type { Event, Principal, Task, TaskStatus } from '@genai/contracts';
 import {
   anonymousFeedback,
   basicPiiRedactor,
@@ -18,7 +27,12 @@ import {
   type FeedbackStore,
   type TestSetStore,
 } from '@genai/eval';
-import { defaultPlatformTenant, TenantSecretVault } from '@genai/composition';
+import {
+  defaultPlatformTenant,
+  sameHosts,
+  secretHosts,
+  TenantSecretVault,
+} from '@genai/composition';
 
 export {
   InMemoryTenantSecrets,
@@ -28,8 +42,12 @@ export {
 import { KernelError, type EventLog, type Kernel } from '@genai/kernel';
 import {
   RegistrationError,
+  secretTargets,
+  validateConnection,
   type ConnectionRegistry,
   type ConnectionToolSource,
+  toolSyncDeadlineMs,
+  type TenantSecrets,
 } from '@genai/providers-mcp-client';
 import type { Context, Env, Hono, Schema } from 'hono';
 import { enterTenant, supportSessionHeader, tenantAccess } from './access.js';
@@ -42,7 +60,9 @@ import {
   type AdminHandler,
   type AdminOutcome,
 } from './admin.js';
-import { rightRefused, type Right } from './rights.js';
+import { rightRefused, seesUsage, type Right } from './rights.js';
+import { backgroundLeases } from './background-lease.js';
+import { interruptedIfAbandoned, shownRun } from './service-eval.js';
 import { changeReasonOf, isReasonLongEnough, reasonTooShort } from './http.js';
 
 export interface TrackedTask {
@@ -55,6 +75,10 @@ export interface TrackedTask {
 export interface TaskIndex {
   all(tenant?: string): Promise<TrackedTask[]>;
   running(): Promise<TrackedTask[]>;
+  tokensUsed?(tenant: string, since: string): Promise<number>;
+  envelopes?(tenant: string, query: { since?: string; limit?: number }): Promise<Task[]>;
+  usageEvents?(tasks: string[]): Promise<{ task: string; data: unknown }[]>;
+  eventsOfType?(tasks: string[], type: string): Promise<Event[]>;
 }
 
 const taskStatuses: readonly TaskStatus[] = [
@@ -148,8 +172,25 @@ export class TenantDirectory {
 export interface ToolAdminDeps {
   connections: ConnectionRegistry;
   source: ConnectionToolSource;
+  secrets: TenantSecrets;
   onToolsChanged: (tenant: string) => Promise<void>;
+  now?: () => Date;
+  log?: ApiLog;
 }
+
+const syncErrorLength = 500;
+
+const connectionSecrets = async (tools: ToolAdminDeps, tenant: string, id: string) => {
+  const connection = (await tools.connections.get(tenant, id))?.connection;
+  const auth = connection?.auth;
+  if (!auth) return [];
+  const targets =
+    auth.kind === 'oauth-client-credentials'
+      ? [connection.endpoint, auth.tokenUrl]
+      : [connection.endpoint];
+  const value = await tools.secrets.resolveFor(tenant, auth.secret, targets).catch(() => undefined);
+  return value ? [value] : [];
+};
 
 const forTenant = (principal: Principal, tenant: string) =>
   principal.kind === 'operator'
@@ -181,24 +222,40 @@ export const adminExtensions = (deps: {
         target,
       };
     const name = String(input.name ?? '').trim() || org;
-    await deps.directory.add(
-      { orgNumber: org, name, status: 'onboarding' },
-      `${principal.issuer}:${principal.subject}`,
-    );
-    return {
-      ok: true,
-      value: { orgNumber: org, name, status: 'onboarding' },
-      target,
-      audit: { scope: 'platform' },
-    };
+    const existing = (await deps.directory.list()).find((e) => e.orgNumber === org);
+    const entry = { orgNumber: org, name, status: existing?.status ?? 'onboarding' } as const;
+    await deps.directory.add(entry, `${principal.issuer}:${principal.subject}`);
+    return { ok: true, value: entry, target, audit: { scope: 'platform' } };
   },
   'platform.tools.register': async (input, principal) => {
     const tenant = input.tenant;
-    const connection = (input.connection ?? {}) as Record<string, unknown>;
+    const given = (input.connection ?? {}) as Record<string, unknown>;
+    const connection =
+      principal.kind === 'operator' || given.writes === undefined
+        ? given
+        : { ...given, writes: false };
     const target = `tool-connection:${tenant}/${String(connection.id ?? '')}`;
     if (!forTenant(principal, tenant))
       return refused(target, 'only the tenant or an operator registers tools');
     try {
+      const candidate = validateConnection({ ...connection, tenant });
+      const outside = candidate.auth
+        ? await deps.tools.secrets.outside(tenant, candidate.auth.secret, secretTargets(candidate))
+        : [];
+      if (outside.length > 0)
+        return {
+          ok: false,
+          errors: [
+            {
+              path: 'connection.auth.secret',
+              message: t('blocks.secretNotForHosts', {
+                secret: candidate.auth?.secret.split('/').pop() ?? '',
+                hosts: outside.join(', '),
+              }),
+            },
+          ],
+          target,
+        };
       const registered = await deps.tools.connections.register({ ...connection, tenant });
       await deps.tools.source.load(tenant);
       return {
@@ -228,16 +285,43 @@ export const adminExtensions = (deps: {
     const target = `tool-connection:${tenant}/${id}`;
     if (!forTenant(principal, tenant))
       return refused(target, 'only the tenant or an operator syncs tools');
+    const remember = async (code?: SyncFailureCode) => {
+      const state = await deps.tools.connections.get(tenant, id);
+      if (!state) return;
+      const at = (deps.tools.now?.() ?? new Date()).toISOString();
+      await deps.tools.connections.save({
+        ...state,
+        lastSync: code === undefined ? { at, ok: true } : { at, ok: false, code },
+      });
+    };
     try {
-      const result = await deps.tools.source.sync(tenant, id);
+      const result = await deps.tools.source.sync(
+        tenant,
+        id,
+        AbortSignal.timeout(toolSyncDeadlineMs),
+      );
+      await remember();
       await deps.tools.source.load(tenant);
       await deps.tools.onToolsChanged(tenant);
       return { ok: true, value: result, target, audit: { result } };
     } catch (error) {
+      const code = syncFailureOf(error);
+      if (deps.tools.log) {
+        const raw = error instanceof Error ? error.message : String(error);
+        const secrets = await connectionSecrets(deps.tools, tenant, id);
+        deps.tools.log('tool sync failed', {
+          tenant,
+          connection: id,
+          code,
+          error: redactSecrets(raw, secrets).slice(0, syncErrorLength),
+        });
+      }
+      await remember(code);
       return {
         ok: false,
-        errors: [{ path: 'id', message: error instanceof Error ? error.message : String(error) }],
+        errors: [{ path: 'id', message: syncFailureMessage(code) }],
         target,
+        audit: { code },
       };
     }
   },
@@ -282,11 +366,25 @@ export const adminExtensions = (deps: {
       return refused(target, 'only the tenant or an operator sets its secrets');
     if (!/^[a-z0-9][a-z0-9._-]*$/.test(name))
       return { ok: false, errors: [{ path: 'name', message: 'not a valid secret name' }], target };
+    const allowedHosts = Array.isArray(input.allowedHosts) ? input.allowedHosts : undefined;
     return {
       ok: true,
       value: { ref: TenantSecretVault.ref(input.tenant, name) },
       target,
-      audit: { name },
+      audit: { name, ...(allowedHosts ? { allowedHosts } : {}) },
+    };
+  },
+  'platform.secrets.hosts': async (input, principal) => {
+    const name = String(input.name ?? '');
+    const target = `secret:${input.tenant}/${name}`;
+    if (!forTenant(principal, input.tenant))
+      return refused(target, 'only the tenant or an operator sets its secrets');
+    const allowedHosts = Array.isArray(input.allowedHosts) ? input.allowedHosts : [];
+    return {
+      ok: true,
+      value: { ref: TenantSecretVault.ref(input.tenant, name), allowedHosts },
+      target,
+      audit: { name, before: input.before ?? null, after: allowedHosts },
     };
   },
   'platform.secrets.delete': async (input, principal) => {
@@ -305,7 +403,7 @@ export interface EvalDeps {
   runs: EvalRunStore;
   feedback: FeedbackStore;
   candidates: CandidateStore;
-  quotaExhausted?: (tenant: string) => Promise<boolean>;
+  runnable?: (principal: Principal, capability: string) => Promise<boolean>;
 }
 
 export interface ExtensionRouteDeps {
@@ -319,6 +417,7 @@ export interface ExtensionRouteDeps {
   catalogSkips: string[];
   eval: EvalDeps;
   platformTenant?: string;
+  hiddenService?: (tenant: string, service: string) => Promise<boolean>;
 }
 
 const param = (c: Context, name: string) => c.req.param(name) ?? '';
@@ -418,6 +517,16 @@ export const mountExtensions = <E extends Env, S extends Schema, B extends strin
     );
   };
 
+  const hostsProblem = (c: Context, invalid: string) =>
+    problem(c, 400, 'Invalid request', [
+      {
+        path: 'allowedHosts',
+        message: invalid
+          ? t('blocks.secretHostInvalid', { host: invalid })
+          : t('blocks.secretHostsRequired'),
+      },
+    ]);
+
   const applied = async (
     c: Context,
     principal: Principal,
@@ -446,6 +555,18 @@ export const mountExtensions = <E extends Env, S extends Schema, B extends strin
         endpoint: s.connection.endpoint,
         version: s.connection.version,
         tools: s.tools.map((t) => t.name),
+        ...(s.lastSync
+          ? {
+              lastSync: s.lastSync.ok
+                ? { at: s.lastSync.at, ok: true }
+                : {
+                    at: s.lastSync.at,
+                    ok: false,
+                    code: s.lastSync.code ?? 'unknown',
+                    message: syncFailureMessage(s.lastSync.code ?? 'unknown'),
+                  },
+            }
+          : {}),
       })),
     });
   });
@@ -481,21 +602,58 @@ export const mountExtensions = <E extends Env, S extends Schema, B extends strin
     if (!principal) return problem(c, 401, 'Unauthorized');
     const tenant = param(c, 'tenant');
     const name = param(c, 'name');
-    const body = (await c.req.json().catch(() => ({}))) as { value?: unknown };
+    const body = (await c.req.json().catch(() => ({}))) as {
+      value?: unknown;
+      allowedHosts?: unknown;
+    };
     if (typeof body.value !== 'string' || body.value.length === 0)
       return problem(c, 400, 'Invalid request', [
         { path: 'value', message: 'a value is required' },
       ]);
     const value = body.value;
-    return applied(
+    const entered = enterTenant(c, access, principal, tenant);
+    if ('response' in entered) return entered.response;
+    const exists = (await deps.vault.names(tenant)).includes(name);
+    const parsed = body.allowedHosts === undefined ? undefined : secretHosts(body.allowedHosts);
+    if (parsed && !parsed.ok) return hostsProblem(c, parsed.invalid);
+    if (!parsed && !exists) return hostsProblem(c, '');
+    const hosts = parsed?.ok ? parsed.hosts : undefined;
+    const hostsChange =
+      exists && hosts !== undefined && !sameHosts(hosts, await deps.vault.hosts(tenant, name));
+    return performed(
       c,
-      principal,
+      entered.principal,
       'platform.secrets.set',
-      { tenant, name },
+      { tenant, name, ...(hosts ? { allowedHosts: hosts } : {}), hostsChange },
       async () => {
-        await deps.vault.set(tenant, name, value);
+        await deps.vault.set(tenant, name, value, hosts);
       },
-      null,
+    );
+  });
+
+  app.put('/tenants/:tenant/secrets/:name/hosts', async (c) => {
+    const principal = await who(c);
+    if (!principal) return problem(c, 401, 'Unauthorized');
+    const tenant = param(c, 'tenant');
+    const name = param(c, 'name');
+    const entered = enterTenant(c, access, principal, tenant, 'manage-services');
+    if ('response' in entered) return entered.response;
+    const body = (await c.req.json().catch(() => ({}))) as { allowedHosts?: unknown };
+    const parsed = secretHosts(body.allowedHosts);
+    if (!parsed.ok) return hostsProblem(c, parsed.invalid);
+    if (!(await deps.vault.names(tenant)).includes(name))
+      return problem(c, 404, 'Not found', [
+        { path: 'name', message: t('blocks.secretNotFound', { name }) },
+      ]);
+    const before = await deps.vault.hosts(tenant, name);
+    return performed(
+      c,
+      entered.principal,
+      'platform.secrets.hosts',
+      { tenant, name, allowedHosts: parsed.hosts, before: before ?? null },
+      async () => {
+        await deps.vault.setHosts(tenant, name, parsed.hosts);
+      },
     );
   });
 
@@ -553,6 +711,21 @@ export const mountExtensions = <E extends Env, S extends Schema, B extends strin
     return c.json({ data: (await deps.allTasks()).filter((task) => task.status === status) });
   });
 
+  // Judges a run abandoned by staleness alone, which every instance reads the same.
+  const readLeases = backgroundLeases();
+  const hiddenService = (tenant: string, service: string | undefined) =>
+    service === undefined
+      ? Promise.resolve(false)
+      : (deps.hiddenService?.(tenant, service) ?? Promise.resolve(false));
+  const hiddenRun = async (id: string) => {
+    if (!hidesInternalServices()) return false;
+    const stored = await deps.eval.runs.get(id);
+    return stored !== undefined && hiddenService(stored.tenant, stored.service);
+  };
+  const shownOnly = async <T>(items: T[], hidden: (item: T) => Promise<boolean>) => {
+    const refused = await Promise.all(items.map(hidden));
+    return items.filter((_, i) => !refused[i]);
+  };
   const evalGuard = async (c: Context, tenant: string, right?: Right) => {
     const principal = await who(c);
     if (!principal) return { response: problem(c, 401, 'Unauthorized') };
@@ -562,7 +735,10 @@ export const mountExtensions = <E extends Env, S extends Schema, B extends strin
     const tenant = param(c, 'tenant');
     const guard = await evalGuard(c, tenant);
     if ('response' in guard) return guard.response;
-    return c.json({ data: await deps.eval.testSets.list(tenant, c.req.query('service')) });
+    const sets = await deps.eval.testSets.list(tenant, c.req.query('service'));
+    return c.json({
+      data: await shownOnly(sets, (set) => hiddenService(tenant, set.spec.service)),
+    });
   });
   app.get('/tenants/:tenant/eval-runs', async (c) => {
     const tenant = param(c, 'tenant');
@@ -570,17 +746,17 @@ export const mountExtensions = <E extends Env, S extends Schema, B extends strin
     if ('response' in guard) return guard.response;
     const service = c.req.query('service');
     const runs = await deps.eval.runs.list({ tenant, ...(service ? { service } : {}) });
-    return c.json({ data: runs.map((s) => s.run) });
+    const usage = seesUsage(guard.principal, tenant);
+    const shown = await shownOnly(runs, (s) => hiddenService(tenant, s.service));
+    return c.json({
+      data: shown.map((s) => shownRun(interruptedIfAbandoned(tenant, s.run, readLeases), usage)),
+    });
   });
   app.post('/tenants/:tenant/eval-runs', async (c) => {
     const tenant = param(c, 'tenant');
     const guard = await evalGuard(c, tenant, 'manage-services');
     if ('response' in guard) return guard.response;
     const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
-    if (await deps.eval.quotaExhausted?.(tenant))
-      return problem(c, 409, t('runs.quotaExhaustedTitle'), [
-        { path: 'quota', message: t('runs.quotaExhaustedDetail') },
-      ]);
     const missing = evalRunFields.filter(([field, valid]) => !valid(body[field]));
     if (missing.length > 0)
       return problem(
@@ -589,6 +765,8 @@ export const mountExtensions = <E extends Env, S extends Schema, B extends strin
         'Invalid request',
         missing.map(([field]) => ({ path: field, message: 'required' })),
       );
+    if (deps.eval.runnable && !(await deps.eval.runnable(guard.principal, String(body.capability))))
+      return problem(c, 404, 'Not found', [{ path: 'capability', message: 'no such service' }]);
     try {
       const status = await evalService.startRun(guard.principal, {
         ...(body as object),
@@ -611,6 +789,11 @@ export const mountExtensions = <E extends Env, S extends Schema, B extends strin
   app.get('/eval-runs/compare', async (c) => {
     const principal = await who(c);
     if (!principal) return problem(c, 401, 'Unauthorized');
+    if (
+      (await hiddenRun(c.req.query('baseline') ?? '')) ||
+      (await hiddenRun(c.req.query('candidate') ?? ''))
+    )
+      return problem(c, 404, 'Not found');
     try {
       return c.json(
         await evalService.compare(
@@ -627,8 +810,17 @@ export const mountExtensions = <E extends Env, S extends Schema, B extends strin
   app.get('/eval-runs/:id', async (c) => {
     const principal = await who(c);
     if (!principal) return problem(c, 401, 'Unauthorized');
+    if (await hiddenRun(param(c, 'id'))) return problem(c, 404, 'Not found');
     try {
-      return c.json(await evalService.getRun(actingFor(c, principal), param(c, 'id')));
+      const found = await evalService.getRun(actingFor(c, principal), param(c, 'id'));
+      const owner = found.run.testSet.tenant;
+      return c.json({
+        ...found,
+        run: shownRun(
+          interruptedIfAbandoned(owner, found.run, readLeases),
+          seesUsage(principal, owner),
+        ),
+      });
     } catch (error) {
       return evalProblem(c, error);
     }
@@ -638,7 +830,20 @@ export const mountExtensions = <E extends Env, S extends Schema, B extends strin
     const guard = await evalGuard(c, tenant);
     if ('response' in guard) return guard.response;
     const service = c.req.query('service');
-    const records = await deps.eval.feedback.list(tenant);
+    const records = await shownOnly(await deps.eval.feedback.list(tenant), async (record) => {
+      if (record.capability !== undefined) {
+        const [owner, id] = record.capability.split('/');
+        return owner !== undefined && hiddenService(owner, id);
+      }
+      if (!deps.hiddenService || !hidesInternalServices()) return false;
+      try {
+        const task = await deps.eval.kernel.task(guard.principal, record.task);
+        const [owner, id] = task.service.capability.id.split('/');
+        return owner !== undefined && hiddenService(owner, id);
+      } catch {
+        return true;
+      }
+    });
     if (!service) return c.json({ data: anonymousFeedback(records) });
     const prefix = `${tenant}/${service}/`;
     const kept = [];
@@ -819,7 +1024,11 @@ export const mountExtensions = <E extends Env, S extends Schema, B extends strin
     const guard = await evalGuard(c, tenant);
     if ('response' in guard) return guard.response;
     const service = c.req.query('service');
-    const data = (await deps.eval.candidates.list(tenant))
+    const data = (
+      await shownOnly(await deps.eval.candidates.list(tenant), (candidate) =>
+        hiddenService(tenant, candidate.service),
+      )
+    )
       .filter((candidate) => !service || candidate.service === service)
       .flatMap((candidate) => candidateView(candidate) ?? []);
     return c.json({ data });
@@ -892,6 +1101,8 @@ const evalRunFields: [string, (value: unknown) => boolean][] = [
 
 const evalProblem = (c: Context, error: unknown) => {
   if (error instanceof AdminRefused) return refusedBy(c, error);
+  const refused = quotaRefused(c, error);
+  if (refused) return refused;
   if (error instanceof Error && error.name === 'EvalAccessError')
     return problem(c, 404, 'Not found');
   if (error instanceof EvalError)

@@ -1,0 +1,90 @@
+{
+  "source": "hand-made for a token exchange bound as a secret, $concat, $join, $if, json input and the same-names check",
+  "deployment": "scorer",
+  "input": {
+    "text": "Kunden vil endre adressen",
+    "questions": [
+      {
+        "name": "urgent"
+      },
+      {
+        "name": "polite"
+      }
+    ],
+    "tags": ["adresse", "endring"],
+    "fast": true,
+    "context": {
+      "channel": "chat"
+    }
+  },
+  "steps": [
+    {
+      "step": "token",
+      "request": {
+        "method": "POST",
+        "path": "/oauth/token",
+        "body": {
+          "grant_type": "client_credentials"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "access_token": "[secret]",
+          "expires_in": 300
+        }
+      }
+    },
+    {
+      "step": "score",
+      "request": {
+        "method": "POST",
+        "path": "/scores",
+        "body": {
+          "prompt": "Vurder: Kunden vil endre adressen",
+          "questions": ["urgent", "polite"],
+          "tags": "adresse,endring",
+          "mode": "quick",
+          "context": {
+            "channel": "chat"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "answers": [
+            {
+              "name": "polite",
+              "score": 0.8
+            },
+            {
+              "name": "urgent",
+              "score": 0.2
+            }
+          ],
+          "usage": {
+            "tokens": 31
+          }
+        }
+      }
+    }
+  ],
+  "result": {
+    "scores": [
+      {
+        "name": "polite",
+        "score": 0.8
+      },
+      {
+        "name": "urgent",
+        "score": 0.2
+      }
+    ],
+    "summary": "polite, urgent"
+  },
+  "usage": {
+    "inputTokens": 31,
+    "requests": 1
+  }
+}

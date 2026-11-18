@@ -3,6 +3,7 @@ import type { Kernel } from '@genai/kernel';
 import { splitFor } from './drafting.js';
 import { EvalError } from './evaluators.js';
 import {
+  expectedFor,
   feedback as feedbackSchema,
   parseTestSet,
   type CaseType,
@@ -107,6 +108,17 @@ export const anonymousFeedback = (
   );
 };
 
+/** Keeps the latest record per task and credential; `records` must be newest first. */
+export const currentFeedback = (records: FeedbackRecord[]): FeedbackRecord[] => {
+  const seen = new Set<string>();
+  return records.filter((r) => {
+    const key = JSON.stringify([r.task, r.by.kind, r.by.id]);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+};
+
 export interface FeedbackStore {
   save(record: FeedbackRecord): Promise<void>;
   list(
@@ -123,14 +135,12 @@ export class InMemoryFeedbackStore implements FeedbackStore {
   }
 
   async list(tenant: string, filter: { task?: string; rating?: Feedback['rating'] } = {}) {
-    return this.#records
-      .filter(
-        (r) =>
-          r.tenant === tenant &&
-          (filter.task === undefined || r.task === filter.task) &&
-          (filter.rating === undefined || r.rating === filter.rating),
-      )
-      .sort((a, b) => b.at.localeCompare(a.at))
+    const newest = [...this.#records]
+      .reverse()
+      .filter((r) => r.tenant === tenant && (filter.task === undefined || r.task === filter.task))
+      .sort((a, b) => b.at.localeCompare(a.at));
+    return currentFeedback(newest)
+      .filter((r) => filter.rating === undefined || r.rating === filter.rating)
       .map((r) => structuredClone(r));
   }
 }
@@ -325,7 +335,11 @@ const withCase = (
           input: candidate.question,
           expected: {
             sources: candidate.sources,
-            ...(referenceAnswer ? { referenceAnswer } : {}),
+            ...(type
+              ? expectedFor(type, referenceAnswer)
+              : referenceAnswer
+                ? { referenceAnswer }
+                : {}),
           },
           grounding:
             type === 'must_reject'

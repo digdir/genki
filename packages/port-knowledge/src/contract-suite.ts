@@ -22,6 +22,9 @@ export interface KnowledgeContractEndpoint {
   baseURL?: string;
   auth?: EndpointAuth;
   datasetOptions: Record<string, unknown>;
+  endpointOptions?: Record<string, unknown>;
+  /** The generation the catalog names, for engines that read the generation the catalog names. */
+  generation?: string;
   secrets?: SecretResolver;
 }
 
@@ -36,7 +39,7 @@ export const knowledgeContractSubject = (
           engine: endpoint.adapter.engine,
           ...(endpoint.baseURL ? { baseURL: endpoint.baseURL } : {}),
           ...(endpoint.auth ? { auth: endpoint.auth } : {}),
-          options: {},
+          options: endpoint.endpointOptions ?? {},
         },
       },
       datasets: [
@@ -46,6 +49,7 @@ export const knowledgeContractSubject = (
           residency: 'norway',
           filters: fixtureFilters,
           options: endpoint.datasetOptions,
+          ...(endpoint.generation ? { generation: endpoint.generation } : {}),
         },
       ],
     },

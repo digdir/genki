@@ -1,0 +1,303 @@
+{
+ "tests": [
+  {
+   "id": "eras-36e2d1d0-p11-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Totalt har det vært 25 postdoktorstipendiater og 13 doktorgradsstipendiater i programperioden.",
+     "max_diffs": 4
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-36e2d1d0-p11-t02",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "I foregående programperioden var det kun 31 % kvinnelige prosjektledere.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-36e2d1d0-p11-t03",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Programmet har hatt prosjekter innenfor alle de prioriterte forskningstemaene",
+     "max_diffs": 3
+    },
+    "after": {
+     "text": "De fleste forskningsprosjektene dekker flere forskningstemaer.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-36e2d1d0-p11-t04",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "4",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Inneklima",
+     "max_diffs": 0
+    },
+    "left": {
+     "text": "20",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-36e2d1d0-p11-t05",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "1",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Stråling",
+     "max_diffs": 0
+    },
+    "right": {
+     "text": "25",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-36e2d1d0-p11-t06",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "25",
+     "max_diffs": 1
+    },
+    "top_heading": {
+     "text": "Kjemikalier/metaller",
+     "max_diffs": 1
+    },
+    "right": {
+     "text": "16",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-36e2d1d0-p11-t07",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "0",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Antibiotikaresistens",
+     "max_diffs": 0
+    },
+    "right": {
+     "text": "35",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-36e2d1d0-p11-t08",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "35",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Toksikologi",
+     "max_diffs": 0
+    },
+    "left": {
+     "text": "0",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-36e2d1d0-p11-t09",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "35",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-36e2d1d0-p11-t10",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Utfordringer framover",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-36e2d1d0-p11-t11",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Utfordringer framover",
+     "max_diffs": 3
+    },
+    "after": {
+     "text": "Forskning på miljøpåvirkning og helse, som grunnlag for politiske",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-36e2d1d0-p11-t12",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Det er en kjensgjerning at vi stadig utsettes for nye kjemiske og biologiske miljøkontaminanter",
+     "max_diffs": 4
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-36e2d1d0-p11-t13",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Fosterlivet og nyfødtperioden er en følsom periode for eksponering.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-36e2d1d0-p11-t14",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "grunnlag for forvaltningsrettede tiltak som kan redusere skadeomfanget",
+     "max_diffs": 3
+    },
+    "after": {
+     "text": "Det er spesielt skremmende at individer i livets første fase",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

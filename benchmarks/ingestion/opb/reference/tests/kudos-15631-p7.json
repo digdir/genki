@@ -1,0 +1,22 @@
+{"tests": [
+ {"id": "kudos-15631-p7-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Hovedvekt av rapporteringen skal være ut fra resultatmål (outcome-nivå).", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-15631-p7-t02", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["list", "nob", "Latn"],
+  "args": {"content": {"text": "Norad skal rapportere på oppfølging av risiko på porteføljenivå (inkludert risiko for manglende resultater)", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-15631-p7-t03", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"content": {"text": "Frister for rapportering i 2020", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-15631-p7-t04", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"before": {"text": "15. mai 2020", "max_diffs": 0}, "after": {"text": "Forbruksrapport", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-15631-p7-t05", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Årsrapporten skal publiseres på departementets og virksomhetens hjemmesider innen 1. mai.", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-15631-p7-t06", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"content": {"text": "MØTEPLAN", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-15631-p7-t07", "test_type": "table_cell", "output_type": "html", "derivation": "model_panel", "tags": ["table", "nob", "Latn"],
+  "args": {"cell": {"text": "Rapportering på årsrapport 2020", "max_diffs": 1}, "top_heading": {"text": "Punkter til dagsorden", "max_diffs": 1}, "left": {"text": "Etatsstyringsmøte 1/2020", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-15631-p7-t08", "test_type": "table_cell", "output_type": "html", "derivation": "model_panel", "tags": ["table", "nob", "Latn"],
+  "args": {"cell": {"text": "Etatsstyringsmøte 2/2020", "max_diffs": 1}, "top_heading": {"text": "Møtetype", "max_diffs": 1}, "left": {"text": "13. oktober kl. 9-11", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-15631-p7-t09", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["table", "nob", "Latn"],
+  "args": {"content": {"text": "13. oktober", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-15631-p7-t10", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["table", "list", "nob", "Latn"],
+  "args": {"before": {"text": "Foreløpig rapportering på tildelingsbrevet 2020 og orientering om budsjett 2021", "max_diffs": 3}, "after": {"text": "Norads avtaleportefølje for Klima- og skoginitiativet", "max_diffs": 3}}, "settings": {}}
+]}

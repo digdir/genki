@@ -1,3 +1,4 @@
+import { usedByText } from './used-by-count';
 import type {
   DatasetSourceKind,
   DatasetView,
@@ -24,6 +25,7 @@ export const skipReasonText: Record<string, PlainKey> = {
   conversion_failed: 'datasets.skipConversion',
   outside_access: 'datasets.skipOutsideAccess',
   too_large: 'datasets.skipTooLarge',
+  unreachable: 'datasets.skipUnreachable',
 };
 
 export const reasonText = (t: T, reason: SkipReason) =>
@@ -35,6 +37,7 @@ export const sourceText: Record<DatasetSourceKind, PlainKey> = {
   kudos: 'datasets.sourceKudos',
   folder: 'datasets.sourceFolder',
   database: 'datasets.sourceDatabase',
+  parquet: 'datasets.sourceParquet',
   none: 'datasets.sourceNone',
 };
 
@@ -83,7 +86,20 @@ export const datasetStatus = (
   if (last.status === 'running') return 'Innlesing pågår';
   if (last.status === 'failed') return 'Feilet';
   if (last.status === 'cancelled') return 'Delvis lest inn';
-  return 'Klar';
+  return last.skipped > 0 ? 'Delvis lest inn' : 'Klar';
+};
+
+export const needsSource = (view: Pick<DatasetView, 'source' | 'state'>) =>
+  view.state === 'needs-pipeline' || view.source === 'none';
+
+const noteOf = (t: T, view: DatasetView) => {
+  const last = view.lastExecution;
+  if (view.state !== 'external' && !last && needsSource(view)) return t('datasets.sourceNone');
+  if (last?.status === 'failed') return t('datasets.noteFailed');
+  if (last?.status === 'cancelled') return t('datasets.noteCancelled');
+  if (last?.status === 'succeeded' && last.skipped > 0)
+    return t('datasets.noteSkipped', { count: last.skipped });
+  return undefined;
 };
 
 export const executionStatus = (
@@ -121,20 +137,38 @@ export const sharedSourceText = (
       ? t('datasets.sourceSharedWithYou', { source: t(sourceText[view.source]) })
       : t(sourceText[view.source]);
 
-export const listItemOf = (t: T, f: Format, view: DatasetView): DatasetListItem => ({
-  id: view.fullId,
-  name: view.name,
-  description: view.description ?? '',
-  status: datasetStatus(view),
-  sourceText: sharedSourceText(t, view),
-  docsText: countText(t, f, view.documents),
-  lastText:
-    view.state === 'external'
-      ? t('datasets.lastExternal')
-      : view.lastExecution
-        ? f.dateTime(view.lastExecution.startedAt)
-        : t('datasets.notYet'),
-});
+export const listItemOf = (t: T, f: Format, view: DatasetView): DatasetListItem => {
+  const shared = view.editable === false;
+  const source =
+    view.state === 'external' ? externalSourceText(t, view) : t(sourceText[view.source]);
+  const note = noteOf(t, view);
+  const status = datasetStatus(view);
+  return {
+    id: view.fullId,
+    name: view.name,
+    description: view.description ?? '',
+    status,
+    shared,
+    sourceText: source,
+    subText: t('datasets.subLine', {
+      source,
+      owner: t(shared ? 'datasets.filterShared' : 'datasets.filterOwn'),
+    }),
+    docsText: countText(t, f, view.documents),
+    lastText:
+      view.state === 'external'
+        ? t('datasets.lastExternal')
+        : view.lastExecution
+          ? f.dateTime(view.lastExecution.startedAt)
+          : t('datasets.notYet'),
+    usedByText: usedByText(t, view.usedByCount),
+    ...(note ? { note } : {}),
+    ...(view.state !== 'external' && !view.lastExecution && needsSource(view)
+      ? { needsSource: true }
+      : {}),
+    ...(status === 'Feilet' && !shared ? { canRetry: true } : {}),
+  };
+};
 
 export const slugify = (name: string) =>
   name
@@ -183,6 +217,13 @@ export const sizeText = (t: T, f: Format, bytes: number) =>
   bytes >= 1024 * 1024
     ? t('datasets.sizeMb', { value: f.decimal(bytes / 1048576, 1) })
     : t('datasets.sizeKb', { value: f.number(Math.max(1, Math.round(bytes / 1024))) });
+
+/** A refusal's own words: its errors, else its detail, else its title. */
+export const refusalText = (t: T, error: unknown) => {
+  const problem = error instanceof ApiError ? error.problem : undefined;
+  const listed = problem?.errors?.map((e) => e.message).join(' ');
+  return listed || problem?.detail || problem?.title || t('datasets.somethingWrong');
+};
 
 export const failureText = (t: T, error: unknown) => {
   const listed =

@@ -1,0 +1,46 @@
+{
+  "parser": "docling-tess-noreng",
+  "version": "2.146.0",
+  "variant": "Tesseract languages Norwegian + English",
+  "docling_core": "2.105.0",
+  "docling_ibm_models": "4.0.4",
+  "rapidocr": "3.10.0",
+  "tesseract": "tesseract 5.5.0",
+  "settings": {
+    "pipeline": "default PdfPipelineOptions",
+    "do_ocr": true,
+    "ocr": "TesseractCliOcrOptions",
+    "ocr_engine": "Tesseract CLI",
+    "ocr_lang": ["nor", "eng"],
+    "replace_broken_text_layer": false,
+    "tessdata": "system (Debian tesseract-ocr-nor)",
+    "table_cell_matching": true,
+    "table_mode": "accurate",
+    "accelerator": {
+      "device": "cpu",
+      "num_threads": 32
+    }
+  },
+  "models": {
+    "layout": "docling-project/docling-layout-heron"
+  },
+  "native": "DoclingDocument.export_to_dict()",
+  "device_requested": "cpu",
+  "load_seconds": 0.2,
+  "warmup": {
+    "doc_num": "33245",
+    "seconds": 6.7
+  },
+  "torch": "2.15.0+cu132",
+  "cuda_available": false,
+  "machine": {
+    "host_label": "azure-D32as_v6-swedencentral-run2",
+    "system": "Linux",
+    "machine": "x86_64",
+    "cpu": "AMD EPYC 9V74 80-Core Processor",
+    "cpus": 32,
+    "memory": "131889460 kB",
+    "gpus": [],
+    "python": "3.13.18"
+  }
+}

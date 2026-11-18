@@ -19,6 +19,7 @@ responsibilities:
   - Model listing and name resolution with aliases
   - Chat completions, streamed or unary
   - Frontend extensions: conversations, filters, step events, per-document sources
+  - Stopping a /v1 run for the caller that started it, with its turn kept as stopped
   - OpenAPI tool endpoints
 files:
   - packages/adapter-openai/src/app.ts

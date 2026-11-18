@@ -22,14 +22,38 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('a locked environment', () => {
-  it('tells a TestID login that changes, models and ingestion need an Entra login', async () => {
-    await renderApp('', { api: { ...mockWorkspaceApi(), lockdown: async () => true } });
+  it('tells a read-only login that changes, models and ingestion need an Entra login', async () => {
+    await renderApp('', {
+      api: {
+        ...mockWorkspaceApi(),
+        lockdown: async () => true,
+        readOnlyInLockdown: async () => true,
+      },
+    });
 
     expect(
       await screen.findByText(
         'Låst testmiljø: du kan se deg rundt, men endringer, modeller og innlesing krever innlogging med Entra ID.',
       ),
     ).toBeTruthy();
+  });
+
+  it('shows no banner to an admitted Entra login', async () => {
+    let asked = false;
+    await renderApp('', {
+      api: {
+        ...mockWorkspaceApi(),
+        lockdown: async () => true,
+        readOnlyInLockdown: async () => {
+          asked = true;
+          return false;
+        },
+      },
+    });
+
+    expect(await screen.findByText('KI-arbeidsflaten')).toBeTruthy();
+    await waitFor(() => expect(asked).toBe(true));
+    expect(screen.queryByText(/Låst testmiljø/)).toBeNull();
   });
 
   it('shows no banner when the environment is not locked', async () => {

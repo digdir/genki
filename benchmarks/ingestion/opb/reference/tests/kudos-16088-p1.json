@@ -1,0 +1,209 @@
+{
+ "tests": [
+  {
+   "id": "kudos-16088-p1-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Supplerende tildelingsbrev til Norges forskningsråd for 2021",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-16088-p1-t02",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Det vises til tildelingsbrev av 20. desember 2020.",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-16088-p1-t03",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Vedtaket innebærer følgende endringer i tildelingen til Norges forskingsråd for 2021:",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-16088-p1-t04",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "7 246 000",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Endring",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Norges forskningsråd",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-16088-p1-t05",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "202 000 000",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Ny tildeling",
+     "max_diffs": 0
+    },
+    "left": {
+     "text": "10 000 000",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-16088-p1-t06",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "230 170 000",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Tidligere tildelt",
+     "max_diffs": 0
+    },
+    "up": {
+     "text": "192 000 000",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-16088-p1-t07",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Forskning og næriongsutvikling",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-16088-p1-t08",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "730 670 000",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-16088-p1-t09",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "ENERGIX – Stort program energi",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "Et nytt FME innen hydrogen og ammoniakk skal arbeide helhetlig",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-16088-p1-t10",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Det legges opp til en årlig støtte til FME innen hydrogen og ammoniakk på 30 mill. kroner fra og med 2022.",
+     "max_diffs": 4
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

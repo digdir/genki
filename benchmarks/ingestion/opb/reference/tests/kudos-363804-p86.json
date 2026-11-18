@@ -1,0 +1,134 @@
+{
+ "tests": [
+  {
+   "id": "kudos-363804-p86-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "caption",
+    "rotated",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Digi.no 4. desember 2024",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-363804-p86-t02",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "caption",
+    "rotated",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Aftenposten 8. november 2024",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-363804-p86-t03",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "caption",
+    "rotated",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Sunnmørsposten 13. desember 2024",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-363804-p86-t04",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "caption",
+    "rotated",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "TV2 11. august 2024",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-363804-p86-t05",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "caption",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Dagens Næringsliv 20. august 2024",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-363804-p86-t06",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "figure",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "En svært alvorlig kritikk mot fengselet",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-363804-p86-t07",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "figure",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Digital forvaltning og rettssikkerhet",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

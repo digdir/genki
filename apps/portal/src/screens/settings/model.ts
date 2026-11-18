@@ -8,6 +8,8 @@ import {
   type SettingRow,
   type SettingValue,
 } from '../../data/settings';
+import type { ApiClient, AuditRow } from '../../api';
+import { actorLabel, formatDateTime } from '../../format';
 import type { Format, PlainKey, T } from '../../i18n';
 import type { EffectiveSetting, SettingInfo } from '../../types';
 import { settingLabels } from './labels';
@@ -481,6 +483,7 @@ export const mergeRows = (
       found.apiKey = info.key;
       const scope = info.settableAt.flatMap((l) => scopeFromLayer[l] ?? []);
       if (scope.length) found.scope = scope;
+      if (info.operatorOnly) found.setByDigdir = true;
       const p = fromApiValue(found, info.default);
       if (isSet(p) && typeof p === typeof found.P) found.P = p;
       continue;
@@ -497,6 +500,7 @@ export const mergeRows = (
       ...shape,
       sens: info.sensitivity === 'secret' ? 'Hemmelig' : 'Lav',
       scope: info.settableAt.flatMap((l) => scopeFromLayer[l] ?? []),
+      ...(info.operatorOnly ? { setByDigdir: true } : {}),
       P:
         info.sensitivity === 'secret'
           ? null
@@ -570,3 +574,25 @@ export const settingErrorText = (message: string, t: T) =>
       return part;
     })
     .join(' ');
+
+export const lastSaveOf = async (
+  api: Pick<ApiClient, 'audit'>,
+  tenant: string,
+  key: string,
+): Promise<AuditRow | undefined> =>
+  (await api.audit(tenant).catch(() => []))
+    .filter((a) => a.outcome === 'applied' && a.target === `setting:${key}`)
+    .sort((a, b) => b.at.localeCompare(a.at))[0];
+
+export const savedByText = (row: AuditRow | undefined, t: T, f: Format) =>
+  row
+    ? t('settings.conflictBy', {
+        who: actorLabel(
+          row.actor,
+          t,
+          row.actor.startsWith('operator:') ? undefined : row.actorName,
+        ),
+        when: formatDateTime(row.at, f),
+        reason: row.reason,
+      })
+    : '';

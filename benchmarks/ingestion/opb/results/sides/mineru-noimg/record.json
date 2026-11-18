@@ -1,0 +1,59 @@
+{
+  "benchmark": "ingestion/opb",
+  "code": "7a0791d8a3fb8ab13899b5a06d3a6b7a7b8467847a3a705f427f7649b1451fc5",
+  "git": {
+    "commit": "8cf61bdfc6a6d80b2d466304589ed441fa3f700c",
+    "dirty": true
+  },
+  "items": "2b161ec8ed4ddf8eee20fce45a43d201b13102e7794ab1ba1fb2e03e54a46264",
+  "packages": {
+    "markdown-it-py": "4.2.0",
+    "omni-parse-bench": "0.2.0",
+    "pymupdf": "2.0"
+  },
+  "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+  "python": "3.13.16",
+  "reference": "2deebfd82fe47040d8fc141c0c96c75d9ea189a75e540b9c6073f4c535f0ef63",
+  "schema": 1,
+  "settings": {
+    "markdown_to_html": "omni_parse_bench.markdown.to_html",
+    "outputs": "html; no layout tests",
+    "scorer": "omni-parse-bench 0.2.0"
+  },
+  "side": "mineru-noimg",
+  "side_settings": {
+    "conversions": "42660b12483be40bfc77a277c1259c60dffd401ffbdcee518ea42b58f4fad6ab",
+    "converter_code": "437d08bd1eb58a75358392a8c5e975517d3d4fd7f6fc0fa4a62a9f9c6bc2cdc3",
+    "failed_pages": [],
+    "machine": {
+      "chip": "Apple M3 Pro",
+      "machine": "arm64",
+      "python": "3.13.16",
+      "system": "Darwin"
+    },
+    "mineru_vl_utils": "2.0.8",
+    "mlx_vlm": "0.7.11",
+    "models": {
+      "small": "MinerU-4_models_torch",
+      "vlm": "MinerU2.5-Pro-2605-1.2B"
+    },
+    "pages": "each page converted on its own, as a one-page PDF",
+    "parser": "mineru-noimg",
+    "seconds_per_page": {
+      "median": 1.234,
+      "p90": 8.566,
+      "pages": 221
+    },
+    "settings": {
+      "image_analysis": false,
+      "images": "data URIs removed from the Markdown",
+      "ocr_mode": "auto",
+      "telemetry": "off",
+      "tier": "standard",
+      "vlm_engine": "mlx"
+    },
+    "torch": "2.15.0",
+    "version": "4.1.6"
+  },
+  "time": "2026-11-11T12:02:44+00:00"
+}

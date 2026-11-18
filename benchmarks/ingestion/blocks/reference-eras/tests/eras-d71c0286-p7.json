@@ -1,0 +1,219 @@
+{
+ "tests": [
+  {
+   "id": "eras-d71c0286-p7-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "table",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Returnees so far this year by destination",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d71c0286-p7-t02",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "42",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "France",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Dublin",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d71c0286-p7-t03",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "41",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Lithuania",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Expulsion",
+     "max_diffs": 0
+    },
+    "right": {
+     "text": "56",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d71c0286-p7-t04",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "13",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Greece",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Asylum",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d71c0286-p7-t05",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "19",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "India",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Refused stay or entry",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d71c0286-p7-t06",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "26",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Croatia",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Dublin",
+     "max_diffs": 0
+    },
+    "right": {
+     "text": "2",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d71c0286-p7-t07",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "56",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d71c0286-p7-t08",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "North Macedonia",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d71c0286-p7-t09",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Montenegro",
+     "max_diffs": 0
+    },
+    "after": {
+     "text": "New Zealand",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

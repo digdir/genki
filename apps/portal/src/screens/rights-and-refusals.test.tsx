@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { App } from '../App';
 import { createApiClient } from '../api';
@@ -56,7 +56,7 @@ describe('refusals from the API', () => {
     );
     await renderAs('#/overview', fetch);
 
-    const tile = (await screen.findByRole('heading', { name: /^Forbruk i/ })).closest(
+    const tile = (await screen.findByRole('heading', { name: /^Bruk i/ })).closest(
       'section',
     ) as HTMLElement;
     expect(
@@ -93,7 +93,9 @@ describe('refusals from the API', () => {
       ),
     );
     expect(await screen.findByText('Månedskvoten for tokens er brukt opp')).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Se forbruket' }).getAttribute('href')).toBe('#/usage');
+    expect(screen.getByRole('link', { name: 'Se forbruket' }).getAttribute('href')).toBe(
+      '#/statistics',
+    );
     cleanup();
 
     await renderAs(
@@ -148,11 +150,13 @@ describe('rights in the UI', () => {
     );
     await renderAs('#/overview', empty, useOnly);
 
-    const start = await screen.findByRole('region', { name: 'Kom i gang' });
-    expect(within(start).queryByRole('link', { name: 'Legg til datasett' })).toBeNull();
-    expect(within(start).queryByRole('link', { name: 'Lag en tjeneste' })).toBeNull();
-    expect(within(start).getByText('Du trenger rettigheten «Administrere datasett».')).toBeTruthy();
-    expect(screen.queryByRole('link', { name: 'Lag en tjeneste' })).toBeNull();
+    const start = await screen.findByRole('region', { name: /^Kom i gang med/ });
+    expect(
+      await within(start).findByText('Du trenger rettigheten «Administrere datasett».'),
+    ).toBeTruthy();
+    expect(within(start).queryByRole('link', { name: 'Nytt datasett' })).toBeNull();
+    expect(within(start).queryByRole('link', { name: 'Ny tjeneste' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Ny tjeneste' })).toBeNull();
     cleanup();
 
     await renderAs('#/services', mockFetch(), useOnly);
@@ -161,9 +165,9 @@ describe('rights in the UI', () => {
     cleanup();
 
     await renderAs('#/datasets', mockFetch(), useOnly);
-    await screen.findByRole('heading', { name: 'Egne datasett og endepunkter' });
-    await screen.findByText(/oppføringer/);
-    expect(screen.queryByRole('button', { name: 'Ny' })).toBeNull();
+    await screen.findByRole('heading', { level: 1, name: 'Datasett' });
+    expect(screen.queryByRole('button', { name: 'Nytt datasett' })).toBeNull();
+    expect(screen.queryByText(/Teknisk: katalogoppføringer/)).toBeNull();
     cleanup();
 
     await renderAs('#/services/rapportassistenten', mockFetch(), useOnly);
@@ -309,7 +313,7 @@ describe('an organisation Digdir has not registered', () => {
     expect(await screen.findByRole('heading', { name: 'Godkjent: logg inn på nytt' })).toBeTruthy();
     expect(screen.getByText(/Digdir godkjente forespørselen 8\. oktober 2026\./)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Logg inn på nytt' }));
-    expect(await screen.findByRole('button', { name: 'Logg inn' })).toBeTruthy();
+    expect((await screen.findAllByRole('button', { name: 'Logg inn' })).length).toBeGreaterThan(0);
   });
 
   it('shows the reason when Digdir refuses and lets the requester try again', async () => {
@@ -387,6 +391,8 @@ describe('an organisation Digdir has not registered', () => {
   it('lets an unregistered organisation read the API reference', async () => {
     await renderAs('#/api-reference', unregistered());
 
+    await waitFor(() => expect(window.location.hash).toBe('#/developer/api/reference'));
+    expect(await screen.findByRole('navigation', { name: 'Endepunkter' })).toBeTruthy();
     await waitFor(() =>
       expect(
         screen.queryByRole('heading', { name: 'Virksomheten er ikke registrert ennå' }),
@@ -471,10 +477,19 @@ describe('the step flow picker', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Start med assistenten' }));
     fireEvent.click(await screen.findByRole('button', { name: /^Arbeidsmåte/ }));
 
-    const picker = (await screen.findByRole('combobox', { name: 'Stegflyt' })) as HTMLSelectElement;
-    expect(screen.queryByRole('textbox', { name: /Stegflyt/ })).toBeNull();
-    await screen.findByRole('option', { name: 'postruting, versjon 2' });
-    fireEvent.change(picker, { target: { value: 'postruting@2' } });
+    const picker = await screen.findByRole('combobox', { name: 'Stegflyt' });
+    expect(picker.tagName).toBe('INPUT');
+    await screen.findByText('postruting, versjon 2 (nyeste)');
+    const item = document.createElement('data');
+    item.value = 'postruting@2';
+    item.textContent = 'postruting, versjon 2 (nyeste)';
+    act(() => {
+      picker
+        .closest('ds-suggestion')
+        ?.dispatchEvent(
+          new CustomEvent('comboboxbeforeselect', { detail: item, cancelable: true }),
+        );
+    });
     expect(
       screen.getByRole('link', { name: 'Åpne i stegflyt-editoren' }).getAttribute('href'),
     ).toBe('#/step-flows/postruting');

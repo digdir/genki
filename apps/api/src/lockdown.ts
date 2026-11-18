@@ -1,7 +1,12 @@
 import {
   configuredCredentialScope,
+  employeeClientIds,
   isLockdown,
+  lockdownServiceScope,
+  lockdownUserScope,
+  mayInvokeServices,
   mayUseModels,
+  operatorClientIds,
   readOnlyInLockdown,
   trustedEntraFrom,
   trustedEntraScope,
@@ -19,8 +24,13 @@ export const entraNotTrustedType = 'urn:genai:problem:entra-not-trusted';
 
 export {
   configuredCredentialScope,
+  employeeClientIds,
   isLockdown,
+  lockdownServiceScope,
+  lockdownUserScope,
+  mayInvokeServices,
   mayUseModels,
+  operatorClientIds,
   readOnlyInLockdown,
   trustedEntraFrom,
   trustedEntraScope,
@@ -60,6 +70,7 @@ export const modelRunRoutes = new Set([
     .filter(([, kind]) => kind === 'run')
     .map(([route]) => route),
   'POST /operator/quality/matrix/runs',
+  'POST /operator/operations/:id{.+}/try',
   'POST /tenants/:tenant/projects/:project/runs',
   'POST /tenants/:tenant/projects/:project/runs/:run/retry',
   'POST /tenants/:tenant/services/:id/batch-runs',
@@ -67,14 +78,33 @@ export const modelRunRoutes = new Set([
   'POST /tenants/:tenant/skills/:id/fix',
 ]);
 
+export const serviceCallRoutes = new Set([
+  'POST /api/mcp',
+  'DELETE /api/mcp',
+  'POST /a2a/:agent',
+  'POST /v1/chat/completions',
+  'POST /v1/tasks/:task/cancel',
+  'POST /api/tools/call/:tool',
+]);
+
 export const ingestionRoutes = new Set([
   'POST /tenants/:tenant/datasets/:dataset/pipelines/:id/execute',
   'POST /operator/datasets/:dataset/pipelines/:id/execute',
+  'POST /tenants/:tenant/datasets/:dataset/pipelines/:id/executions/:execution/redrive',
+  'POST /operator/datasets/:dataset/pipelines/:id/executions/:execution/redrive',
+  // Admitting a run again lets its jobs fetch, convert and embed for another 24 hours (ADR 0033).
+  'POST /tenants/:tenant/datasets/:dataset/pipelines/:id/executions/:execution/readmit',
+  'POST /operator/datasets/:dataset/pipelines/:id/executions/:execution/readmit',
+  'POST /tenants/:tenant/datasets/:id/engine-switches/:sid/readmit',
+  'POST /operator/datasets/:id/engine-switches/:sid/readmit',
   'POST /tenants/:tenant/connectors/:id/sync',
   'POST /tenants/:tenant/datasets/:id/engine-switches',
   'POST /tenants/:tenant/datasets/:id/engine-switches/:sid/retry',
   'POST /operator/datasets/:id/engine-switches',
   'POST /operator/datasets/:id/engine-switches/:sid/retry',
+  // Activating a switch into the knowledge database runs its pipelines once more (ADR 0025).
+  'POST /tenants/:tenant/datasets/:id/engine-switches/:sid/activate',
+  'POST /operator/datasets/:id/engine-switches/:sid/activate',
   'POST /tenants/:tenant/datasets/:id/enrichment/hypothetical-questions/apply',
 ]);
 
@@ -99,7 +129,7 @@ const refusal = (title: string, detail: string) => ({
 
 const lockedProblem = (route: string, principal: Principal) => {
   if (modelRunRoutes.has(route))
-    return mayUseModels(principal)
+    return (serviceCallRoutes.has(route) ? mayInvokeServices : mayUseModels)(principal)
       ? undefined
       : refusal(t('problems.modelsLocked'), t('problems.modelsLockedDetail'));
   if (ingestionRoutes.has(route))

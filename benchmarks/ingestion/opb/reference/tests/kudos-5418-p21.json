@@ -1,0 +1,24 @@
+{
+ "tests": [
+  {
+   "id": "kudos-5418-p21-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "caption",
+    "rotated",
+    "tiny",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Photo: Ross Sneddon, Unsplash",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

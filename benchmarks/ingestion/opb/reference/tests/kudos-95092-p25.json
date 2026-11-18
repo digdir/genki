@@ -1,0 +1,217 @@
+{
+ "tests": [
+  {
+   "id": "kudos-95092-p25-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "caption",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Tegning 6 - Utsnitt fra vedlegg: A10-1 Situasjonskisse.pdf",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-95092-p25-t02",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Begge leilighetene har tre soverom og åpen løsning mellom stue og kjøkken.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-95092-p25-t03",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Fire fireromsleiligheter og en toromsleilighet.",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-95092-p25-t04",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Eksisterende vaskeromsentral beholdes som felles vaskerom.",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-95092-p25-t05",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Leilighetene i første etasje er universelt utformet med trinnfri adkomst som innfris med utvendig rampe med stigningsforhold 1:15.",
+     "max_diffs": 4
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-95092-p25-t06",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "krav til universell utforming innfris.",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "Andre etasje deles inn i tre leiligheter",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-95092-p25-t07",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Loftsetasjen",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-95092-p25-t08",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Loftet er ikke tegnet opp, men bør/kan bli fellesareal i form av boder.",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-95092-p25-t09",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "og inn i trappeoppgangen mot vest for å komme til loftsrommet.",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "Baderommene er minimalisert i areal og plassert",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-95092-p25-t10",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Badene kan med relativt enkle plangrep utvides til å kunne romme en vaskemaskin hvis det er ønskelig, men det vil øke kostnadene.",
+     "max_diffs": 4
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-95092-p25-t11",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "caption",
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Tegning 6 - Utsnitt fra vedlegg",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "Foreslått planalternativ vises i tegning på de neste tre sidene.",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

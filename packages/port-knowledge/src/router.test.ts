@@ -222,6 +222,58 @@ describe('knowledge router', () => {
     expect(served).toEqual([{ index: { dataset: 'digdir/kudos', engine: 'stub' } }]);
   });
 
+  it('the knowledge port refuses more citations than its cap', async () => {
+    const { adapter } = stub();
+    const looked: number[] = [];
+    const citing: typeof adapter = {
+      ...adapter,
+      connect: (endpoint) => ({
+        ...adapter.connect(endpoint),
+        resolveCitations: async (_dataset, ids) => {
+          looked.push(ids.length);
+          return ids.map((cited) => ({ cited, status: 'unknown' as const }));
+        },
+      }),
+    };
+    const port = kudos(router(citing, { maxLimit: 5 }));
+    const ids = (n: number) => Array.from({ length: n }, (_, i) => `d${i}`);
+    expect(await port.resolveCitations?.(ids(10))).toHaveLength(10);
+    await expect(port.resolveCitations?.(ids(11))).rejects.toThrow(
+      'too many ids in one citation lookup',
+    );
+    expect(looked).toEqual([10]);
+  });
+
+  it('provenance records the data version of the server that answered', async () => {
+    const { adapter } = stub();
+    const served: unknown[] = [];
+    const answered = new WeakMap<object, number>();
+    const versioned: typeof adapter = {
+      ...adapter,
+      connect: (endpoint) => {
+        const inner = adapter.connect(endpoint);
+        return {
+          ...inner,
+          search: async (dataset, requests, signal) => {
+            answered.set(dataset, 41);
+            return inner.search(dataset, requests, signal);
+          },
+          served: async (dataset) => {
+            const dataVersion = answered.get(dataset);
+            return { generation: 'g7', ...(dataVersion === undefined ? {} : { dataVersion }) };
+          },
+        };
+      },
+    };
+    const ctx = { ...context(), provenance: async (r: unknown) => void served.push(r) };
+
+    await kudos(router(versioned), ctx).search({ query: 'a' });
+
+    expect(served).toEqual([
+      { index: { dataset: 'digdir/kudos', engine: 'stub', generation: 'g7', dataVersion: 41 } },
+    ]);
+  });
+
   it('accepts filters of the declared kinds and refuses anything else before searching', async () => {
     const { adapter, searches } = stub();
     const port = kudos(router(adapter));
@@ -281,6 +333,38 @@ describe('knowledge router', () => {
       orgs_short: [{ value: 'Digdir', count: 3 }],
     });
     expect(other).toEqual(['fetch:c1,c2', 'range:d1:0-5', 'facets:orgs_short']);
+  });
+
+  it('a router that did not allow a dataset never sets it in `app.datasets`', async () => {
+    const allowed: (string[] | undefined)[] = [];
+    const base = stub().adapter;
+    const adapter: typeof base = {
+      ...base,
+      connect: (endpoint) => {
+        const inner = base.connect(endpoint);
+        return {
+          ...inner,
+          search: (dataset, requests, signal) => {
+            allowed.push(dataset.allowed);
+            return inner.search(dataset, requests, signal);
+          },
+          fetch: (dataset, ids, signal) => {
+            allowed.push(dataset.allowed);
+            return inner.fetch(dataset, ids, signal);
+          },
+        };
+      },
+    };
+    const r = router(adapter);
+    expect(() =>
+      r.open({ kind: 'dataset', id: 'nav/internal', tenant: '991825827' }, context()),
+    ).toThrow(/not shared/);
+    expect(allowed).toEqual([]);
+    const port = r.open({ kind: 'dataset', id: 'digdir/kudos' }, context());
+    await port.search({ query: 'x' });
+    await port.fetch(['c1']);
+    expect(allowed).toEqual([['digdir/kudos'], ['digdir/kudos']]);
+    expect(r.datasetConfigs().map((d) => d.config.allowed)).toEqual([undefined, undefined]);
   });
 
   it('keeps a dataset shared with named tenants away from everyone else', async () => {
@@ -388,16 +472,20 @@ describe('source links from the catalog', () => {
       search: async (_d, requests) =>
         requests.map(() => ({
           hits: [
-            hit('330296'),
-            hit('330297', 'digdir://doc/330297'),
+            hit('88642'),
+            hit('10', 'digdir://doc/10'),
+            hit('364', 'https://kudos.dfo.no/dokument/364'),
             hit('4711', 'https://a.no/4711'),
           ],
         })),
-      fetch: async () => [hit('330296')],
-      range: async () => [hit('330296')],
+      fetch: async () => [hit('88642'), hit('364')],
+      range: async () => [hit('10')],
       facets: async () => ({}),
       documents: async () => ({
-        documents: [{ id: '330296', title: 'Tildelingsbrev 2021', fields: {} }],
+        documents: [
+          { id: '88642', title: 'Tildelingsbrev 2021', fields: {} },
+          { id: '364', title: 'Tildelingsbrev 2021', fields: {} },
+        ],
       }),
     }),
   };
@@ -419,23 +507,34 @@ describe('source links from the catalog', () => {
     secrets: envSecrets({}),
   });
   const search = 'https://kudos.dfo.no/dokumenter?query=Tildelingsbrev%202021';
+  const redirected = 'https://kudos.dfo.no/dokument/9c5070e4-d227-4228-9c3d-9dce48c625ae';
+  const heldByFile = 'https://kudos.dfo.no/dokument/2216a4b9-b486-4c41-a496-c0f8fa372488';
 
-  it('links retired numeric ids to a Kudos title search only for a dataset marked kudos-legacy', async () => {
+  it('links old Kudos numbers to their document by UUID, and the rest to a title search, only for a dataset marked kudos-legacy', async () => {
     const kudosPort = linked.open({ kind: 'dataset', id: 'digdir/kudos' }, context());
     const other = linked.open({ kind: 'dataset', id: 'arkiv/saker' }, context());
 
-    const [plain, pinned, own] = (await kudosPort.search({ query: 'x' })).hits;
-    expect(plain?.url).toBe(search);
-    expect(pinned?.url).toBe(search);
+    const [plain, pinned, unresolved, own] = (await kudosPort.search({ query: 'x' })).hits;
+    expect(plain?.url).toBe(redirected);
+    expect(pinned?.url).toBe(heldByFile);
+    expect(unresolved?.url).toBe(search);
     expect(own?.url).toBe('https://a.no/4711');
-    expect((await kudosPort.fetch(['330296-0']))[0]?.url).toBe(search);
-    expect((await kudosPort.range('330296', 0, 1))[0]?.url).toBe(search);
-    expect((await kudosPort.documents?.({}))?.documents[0]?.url).toBe(search);
+    const [batched] = await kudosPort.searchMany([{ query: 'x' }]);
+    expect(batched?.hits.map((h) => h.url)).toEqual([redirected, heldByFile, search, own?.url]);
+    expect((await kudosPort.fetch(['88642-0', '364-0'])).map((h) => h.url)).toEqual([
+      redirected,
+      search,
+    ]);
+    expect((await kudosPort.range('10', 0, 1))[0]?.url).toBe(heldByFile);
+    expect((await kudosPort.documents?.({}))?.documents.map((d) => d.url)).toEqual([
+      redirected,
+      search,
+    ]);
 
     const [bare, internal, kept] = (await other.search({ query: 'x' })).hits;
     expect(bare).not.toHaveProperty('url');
-    expect(internal?.url).toBe('digdir://doc/330297');
-    expect(kept?.url).toBe('https://a.no/4711');
+    expect(internal?.url).toBe('digdir://doc/10');
+    expect(kept?.url).toBe('https://kudos.dfo.no/dokument/364');
     expect((await other.documents?.({}))?.documents[0]).not.toHaveProperty('url');
   });
 

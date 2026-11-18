@@ -3,8 +3,6 @@ import type { runs as source } from '../nb/runs.js';
 
 export const runs = {
   taskStatusOneOf: 'status is one of {values}',
-  quotaExhaustedTitle: 'The monthly token quota is used up',
-  quotaExhaustedDetail: 'The run can start again next month, or when the quota is raised.',
   failModel: 'We did not get a response from the model.',
   failStrategy: 'The service failed along the way.',
   originBuilder: 'The builder (draft)',
@@ -50,6 +48,7 @@ export const runs = {
   stepTitle: 'Step "{step}"{block}',
   doneWithSkipped: { one: 'Done, {count} item skipped', other: 'Done, {count} items skipped' },
   runFailed: 'The run failed',
+  providerAnswered: 'The provider answered {status}',
   started: 'Started',
   received: 'The task was received',
   message: 'Message',

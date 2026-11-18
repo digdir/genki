@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { builtinBlocks } from './builtins.js';
 import {
   collect,
+  flowFrom,
   loadFlow,
   fakeModels,
   kari,
@@ -12,6 +13,7 @@ import {
   run,
   setup,
   steps,
+  tenant,
   unavailable,
 } from './harness.test-utils.js';
 
@@ -124,6 +126,35 @@ describe('step-flow runtime', () => {
         mime: 'application/json',
         body: { kind: 'json', json: [{ text: 'Hei, Kari (0)' }, { text: 'Hei, Ola (1)' }] },
       },
+    ]);
+  });
+
+  it('a flow with one declared input gets the question in it when the caller leaves it out', async () => {
+    const flow = flowFrom({
+      metadata: { tenant, id: 'one-input' },
+      spec: {
+        purpose: 'Test',
+        input: { sporsmal: 'tekst' },
+        steps: [
+          { id: 'echo', block: 'template@1', input: { text: 'Du spurte: {{input.sporsmal}}' } },
+        ],
+      },
+    });
+
+    const asked = await run(
+      { flows: [flow], entry: 'one-input@1' },
+      { data: { query: 'Hva nå?' } },
+    );
+    const given = await run(
+      { flows: [flow], entry: 'one-input@1' },
+      { data: { query: 'Hva nå?', sporsmal: 'Noe annet' } },
+    );
+
+    expect(asked.result).toEqual([
+      { mime: 'application/json', body: { kind: 'json', json: { text: 'Du spurte: Hva nå?' } } },
+    ]);
+    expect(given.result).toEqual([
+      { mime: 'application/json', body: { kind: 'json', json: { text: 'Du spurte: Noe annet' } } },
     ]);
   });
 

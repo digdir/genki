@@ -21,6 +21,60 @@ const settings = {
   savedFlash: '{label} has been saved ({what}). The change is logged.',
   loading: 'Loading the settings',
   heading: 'Settings',
+  tenantTabsLabel: 'Settings',
+  tabCommon: 'Common',
+  loadFailedNoDefaults:
+    'The services still use what you have saved. We do not show the defaults instead, because they would look like yours.',
+  tabAll: 'All settings',
+  allIntro:
+    'Every setting with its key and where the value comes from. Owners change the most common ones under Common.',
+  transferHeading: 'Export and import',
+  leaveAsk: 'You have unsaved changes. Leave the page without saving?',
+  leaveGo: 'Leave without saving',
+  leaveStay: 'Stay here',
+  commonAnswers: 'Language and answers',
+  commonLanguage: 'Written standard in answers',
+  commonLanguageHelp:
+    'Answer in the written standard of the question, or always bokmål or nynorsk.',
+  commonData: 'Data and storage',
+  commonRetention: 'How long questions and answers are kept',
+  commonRetentionHelp:
+    'Applies to questions, answers and documents after a run ends. High-risk services keep them at least 183 days, limited-risk at least 30.',
+  commonRetentionTransient: '7 days',
+  commonRetentionStandard: '90 days (default)',
+  commonRetentionCase: '1 year',
+  commonDataHandling: 'How data is handled',
+  commonQuota: 'Quota',
+  commonQuotaValue: '{tokens} tokens per month. Digdir sets the quota.',
+  commonSeeUsage: 'See usage in Statistics',
+  commonSetByDigdir: 'Digdir sets this for every organisation.',
+  commonAllLink:
+    'Every setting as a table with keys and inheritance is under <all>All settings</all>.',
+  commonReadOnly: 'You can see the settings, but not change them.',
+  commonSaved: 'Saved at {time}.',
+  commonSeeLog: 'See the change in Log',
+  commonUnsaved: 'You have unsaved changes',
+  commonReason: 'Why are you changing this?',
+  commonReasonHelp: 'Shown in the log with the change.',
+  commonSave: 'Save the changes',
+  commonDiscard: 'Discard',
+  commonRefused: 'The changes were not saved: you lack "{right}". What you chose is still here.',
+  commonFailed: 'Try again in a moment.',
+  commonFailedWith: 'The changes were not saved. {why} What you chose is still here.',
+  commonConflict:
+    'Someone else saved a change after you opened the page. What you chose is still here.',
+  commonConflictValue: '{label} is now "{value}".',
+  commonSaveMineAnyway: 'Save my changes anyway',
+  commonUseTheirs: 'Use the saved value',
+  panelValueHere: 'The value here',
+  panelSecretNotHere:
+    'Secret values cannot be set here yet. The API does not take a secret the organisation stores itself in a setting, so we do not let you think it is saved.',
+  panelNoRight: 'You can see the value, but not change it. {need}',
+  panelRefused: 'The change was not saved: you lack "{right}".',
+  panelConflict:
+    'Someone else saved this setting after you opened it. Saved now: {value}. What you typed is still here.',
+  panelSaveMineAnyway: 'Save my value anyway',
+  conflictBy: 'Saved by {who} {when}: "{reason}".',
 
   layerP: 'Platform default',
   layerV: 'Organisation',
@@ -142,7 +196,6 @@ const settings = {
 
   panelToday: 'Today, {time}',
   panelPreviewReason: 'Preview',
-  panelStale: 'The settings were changed elsewhere. Reload and try again.',
   panelPreviewFailed: 'Could not show what the change does. Try again in a moment.',
   panelSaveFailed: 'The change was not saved. Try again in a moment.',
   panelNewVersion: 'New version of the service ({version})',
@@ -178,6 +231,9 @@ const settings = {
   panelPinnedLayer: 'Pinned',
   panelNewValue: 'New value here',
   panelCannotHere: 'Cannot be set on this layer',
+  panelSetByDigdir: 'Digdir sets this limit',
+  panelSetByDigdirHelp:
+    'The limit protects the cost and capacity of the platform. Contact Digdir if you need a different value.',
   panelSecretStored: 'Stored in Key Vault. Last replaced 2 October by Jonas Lie.',
   panelSecretNotSet: 'Not set',
   panelNewSecret: 'New value',
@@ -192,7 +248,6 @@ const settings = {
   panelBefore: 'Before',
   panelAfter: 'After',
   panelReasonHelp: 'Stored in the audit log.',
-  panelReload: 'Reload',
   panelSaveDraft: 'Add to the draft',
   panelNoDatasetApi: 'Settings per dataset cannot be saved through the API yet.',
   panelDraftHint: 'Added to the draft of v{version}. Takes effect when you publish.',
@@ -435,8 +490,11 @@ const settingDefs = {
   retrieval_queryAwareBoost_label: 'Boost hits that resemble the question',
   retrieval_autoFilter_enabled_label: 'Automatic filter',
   retrieval_autoFilter_enabled_desc:
-    'Add filters based on organisation and year names in the question.',
+    'Finds organisations and years the search names. An agent gets them as a hint and chooses whether to filter. Other services rank hits from them higher without leaving anything out.',
   retrieval_autoFilter_rules_label: 'Rules for the automatic filter',
+  retrieval_autoFilter_aliases_label: 'Other names for values',
+  retrieval_autoFilter_aliases_desc:
+    'Names that mean the same as a value in the dataset, such as an abbreviation. Each entry is a group of names. When the search names one of them, it counts as the value as stored in the dataset.',
   retrieval_docTitle_fanout_label: 'Text chunks per title hit',
   retrieval_merge_mode_label: 'Way of merging the searches',
   retrieval_merge_rrfK_label: 'Smoothing when merging (RRF k)',
@@ -463,6 +521,8 @@ const settingDefs = {
   synthesis_instructions_label: 'System prompt for the answer',
   synthesis_temperature_label: 'Temperature for the answer',
   synthesis_temperature_desc: 'Empty uses the default of the workflow.',
+  knowledge_nightWindow_label: 'Night window for heavy work',
+  knowledge_heavyThreshold_label: 'Heavy work threshold (chunks)',
   knowledge_switchRetentionDays_label: 'Days the previous search engine is kept',
   assistant_enabled_label: 'The build assistant is on',
   assistant_dailyTokens_label: 'Tokens per day for the assistant',
@@ -492,7 +552,8 @@ const settingDefs = {
   batch_approvalLimitNok_label: 'Limit per batch job before approval (kr)',
   planner_prompt_desc: 'Replacement planner prompt. Empty uses the built-in prompt.',
   retrieval_queryAwareBoost_desc: 'Boost results that share words with the question.',
-  retrieval_autoFilter_rules_desc: 'The automatic filter rules, in the order they are tried.',
+  retrieval_autoFilter_rules_desc:
+    'The automatic filter rules, in the order they are tried. Without an agent they filter the search; an agent gets them as a hint.',
   retrieval_docTitle_fanout_desc: 'Chunks read from each document that matches on title.',
   retrieval_merge_mode_desc: 'How results from the different search methods are merged.',
   retrieval_merge_rrfK_desc: 'Constant that smooths the ranking when results are fused (RRF).',
@@ -511,6 +572,10 @@ const settingDefs = {
     'Replacement prompt for writing the answer. Empty uses the built-in prompt.',
   synthesis_instructions_desc:
     'Replacement system prompt for the answering model. Empty uses the built-in prompt.',
+  knowledge_nightWindow_desc:
+    'Hours (Norwegian time) in which index builds, large fills and VACUUM run, written as 01:00-06:00, or "always" to let them run at any hour, as before a launch.',
+  knowledge_heavyThreshold_desc:
+    'Chunks an index build, a fill or a VACUUM must go over to wait for the night window.',
   knowledge_switchRetentionDays_desc:
     'Days the previous search engine copy is kept after a dataset switches engine.',
   assistant_enabled_desc: 'Offer the builder assistant in the service builder.',

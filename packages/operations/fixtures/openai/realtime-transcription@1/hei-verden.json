@@ -1,0 +1,58 @@
+{
+  "source": "The OpenAI Realtime API reference (openai/openai-openapi and platform.openai.com/docs/guides/realtime-transcription): connect with intent=transcription and the openai-beta realtime=v1 header, transcription_session.update, input_audio_buffer.append with base64 pcm16, and the conversation.item.input_audio_transcription delta and completed events with usage; ids and audio bytes are made up",
+  "deployment": "gpt-4o-transcribe",
+  "input": { "language": "no" },
+  "session": {
+    "request": {
+      "path": "/realtime",
+      "query": { "intent": "transcription" },
+      "headers": { "openai-beta": "realtime=v1" }
+    },
+    "messages": [
+      {
+        "from": "server",
+        "message": { "type": "transcription_session.created", "session": { "id": "sess_1" } }
+      },
+      {
+        "from": "client",
+        "message": {
+          "type": "transcription_session.update",
+          "session": {
+            "input_audio_format": "pcm16",
+            "input_audio_transcription": { "model": "gpt-4o-transcribe", "language": "no" },
+            "turn_detection": { "type": "server_vad" }
+          }
+        }
+      },
+      {
+        "from": "client",
+        "binary": "AQIDBA==",
+        "message": { "type": "input_audio_buffer.append", "audio": "AQIDBA==" }
+      },
+      {
+        "from": "server",
+        "message": {
+          "type": "conversation.item.input_audio_transcription.delta",
+          "delta": "Hei "
+        }
+      },
+      {
+        "from": "server",
+        "message": {
+          "type": "conversation.item.input_audio_transcription.delta",
+          "delta": "verden"
+        }
+      },
+      {
+        "from": "server",
+        "message": {
+          "type": "conversation.item.input_audio_transcription.completed",
+          "transcript": "Hei verden",
+          "usage": { "type": "tokens", "input_tokens": 14, "output_tokens": 6, "total_tokens": 20 }
+        }
+      }
+    ]
+  },
+  "result": { "transcript": "Hei verden" },
+  "usage": { "inputTokens": 14, "outputTokens": 6, "requests": 1 }
+}

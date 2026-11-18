@@ -40,4 +40,4 @@ Running foreign code inside the platform process was the alternative. It would n
 - `step-flow` now declares the `tools` port, so a flow can call a tool, and so a flow can use the agent block's tools.
 - The remote strategy ignores the service model. The definition still names one, because the schema needs it, and the model's residency does not constrain a remote service.
 - Remote agents are not part of contract tests at registration. A service with one is evaluated like any other, through its test sets and gates.
-- A flow that uses the `tool` block gets a publish-time check of the block parameters, but not that the tool is granted; the check happens when the flow runs. A service that lists the tool and the flow that calls it are published separately.
+- A flow that uses the `tool` block gets a publish-time check of the block parameters only. Publishing a service checks that every tool step in its flows uses a tool the service lists, and the grant is checked again when the flow runs.

@@ -1,0 +1,217 @@
+{
+ "tests": [
+  {
+   "id": "eras-c083beda-p10-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Environment",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-c083beda-p10-t02",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "The environment is one of the highest priorities in development cooperation.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-c083beda-p10-t03",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Most water resource consultancy work is associated with multilateral processes and regional initiatives.",
+     "max_diffs": 4
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-c083beda-p10-t04",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "plays a major part in advising partners on pollution",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "Partner countries themselves decide which environmental issues",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-c083beda-p10-t05",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "figure",
+    "caption",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Proportion of land area covered by forests, 1990 and 2005 (%)",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-c083beda-p10-t06",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_review",
+   "tags": [
+    "caption",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Almost 13 million hectars of forest disappear every year.",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-c083beda-p10-t07",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "caption",
+    "multi_column",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "The transition of forests to agricultural land is the primary reason.",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "Norway wants to strengthen the ability of countries",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-c083beda-p10-t08",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Environmental managment in Tanzania",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-c083beda-p10-t09",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "caption",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Tree planting in Tanzania.",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-c083beda-p10-t10",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "multi_column",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Environmental managment in Tanzania",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "The Natural Resource Management Programme, designed to improve national",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-c083beda-p10-t11",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "has led to expanded local participation and ownership in natural resource management.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

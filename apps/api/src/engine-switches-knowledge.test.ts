@@ -1,0 +1,1525 @@
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
+import { Hono } from 'hono';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type { Principal } from '@genai/contracts';
+import { InMemoryDefinitionStore, SettingsRegistry } from '@genai/definitions';
+import { testSet } from '@genai/eval';
+import { envSecrets } from '@genai/kernel';
+import { fakeEmbeddingAdapter } from '@genai/port-embedding/testing';
+import type { IndexDocument, KnowledgePort } from '@genai/port-knowledge';
+import { createPool } from '@genai/providers-postgres';
+import { stopPostgres } from '@genai/providers-postgres/testing';
+import { PLATFORM_RIGHTS, trustedEntraScope } from '@genai/identity';
+import { createAdmin } from './admin.js';
+import { createPlatform } from './composition.js';
+import { InMemoryConfigEntryStore } from './config-store.js';
+import {
+  createEngineSwitchesModule,
+  type DatasetEngineView,
+  type EngineSwitchesModule,
+  type EngineSwitchView,
+  type SwitchEstimate,
+} from './engine-switches.js';
+import {
+  InMemoryExecutionStore,
+  type Execution,
+  type IngestionReport,
+  type JobRunStore,
+} from './ingestion.js';
+import { translateMessage } from './i18n/index.js';
+import { knowledgeEndpointsModule, type KnowledgeEndpointView } from './knowledge-endpoints.js';
+
+const digdir = '991825827';
+const principals: Record<string, Principal> = {
+  kari: { kind: 'employee', issuer: 'test', subject: 'kari', tenant: digdir },
+  drift: { kind: 'operator', issuer: 'test', subject: 'drift' },
+  // A Digdir login with Entra ID, which may use models in lockdown.
+  entra: {
+    kind: 'employee',
+    issuer: 'test',
+    subject: 'entra',
+    tenant: digdir,
+    authorizedFor: [{ org: digdir, actions: [...PLATFORM_RIGHTS] }],
+    scopes: [trustedEntraScope],
+  },
+};
+const embedding = { model: 'fake/embed', dimensions: 8 };
+
+let container: StartedPostgreSqlContainer;
+let pool: ReturnType<typeof createPool>;
+let folder: string;
+
+beforeAll(async () => {
+  container = await new PostgreSqlContainer('pgvector/pgvector:0.8.2-pg17').start();
+  pool = createPool({ connectionString: container.getConnectionUri() });
+  folder = await mkdtemp(join(tmpdir(), 'genai-switch-'));
+}, 120_000);
+
+afterAll(async () => {
+  await pool?.end();
+  await stopPostgres(container);
+  if (folder) await rm(folder, { recursive: true, force: true });
+});
+
+/** The worker's side, faked: run records the test ends, and the drop jobs the API sends. */
+const fakeWorker = () => {
+  const executions = new InMemoryExecutionStore();
+  const started: Execution[] = [];
+  const drops: { tenant: string; dataset: string; generation: string }[] = [];
+  const hooks: { onStart?: (run: Execution) => Promise<void> } = {};
+  const runs: JobRunStore = {
+    start: async (input) => {
+      const run: Execution = { ...input, status: 'running', runsAsJobs: true };
+      await executions.save(run);
+      started.push(run);
+      const onStart = hooks.onStart;
+      delete hooks.onStart;
+      await onStart?.(run);
+      return { ok: true, value: run };
+    },
+    cancel: async (input) => {
+      const run = await executions.get(input.execution);
+      if (!run || run.status !== 'running') return undefined;
+      const marked = { ...run, cancelRequestedAt: input.at, cancelledBy: input.by };
+      await executions.save(marked);
+      return marked;
+    },
+    // As the store does: an ended run that ran as jobs is reopened, whatever its dataset's engine.
+    redrive: async (input) => {
+      const run = await executions.get(input.execution);
+      if (
+        !run ||
+        run.dataset !== input.dataset ||
+        run.pipeline !== input.pipeline ||
+        !run.runsAsJobs ||
+        !['succeeded', 'failed'].includes(run.status)
+      )
+        return { ok: false, message: 'only an ended run that runs as jobs can be sent back' };
+      const reopened: Execution = { ...run, status: 'running', admittedAt: input.at };
+      delete reopened.endedAt;
+      await executions.save(reopened);
+      return { ok: true, value: reopened };
+    },
+    readmit: async (input) => {
+      const run = await executions.get(input.execution);
+      if (
+        !run ||
+        run.dataset !== input.dataset ||
+        !['queued', 'running'].includes(run.status) ||
+        run.cancelRequestedAt
+      )
+        return { ok: false, message: 'only an open run can be admitted again' };
+      const admitted = { ...run, admittedAt: input.at };
+      await executions.save(admitted);
+      return { ok: true, value: admitted };
+    },
+  };
+  const end = async (
+    run: Execution | undefined,
+    status: 'succeeded' | 'failed' | 'cancelled',
+    report: Partial<IngestionReport> = {},
+    error?: string,
+  ) => {
+    if (!run) throw new Error('no run');
+    const found = (await executions.get(run.id)) as Execution;
+    await executions.save({
+      ...found,
+      status,
+      endedAt: new Date().toISOString(),
+      report: { stored: 0, skipped: 0, failed: [], ...report },
+      ...(error ? { error } : {}),
+    });
+  };
+  return {
+    executions,
+    started,
+    drops,
+    end,
+    hooks,
+    jobRuns: {
+      runsAsJobs: () => false,
+      runs,
+      drop: async (input: { tenant: string; dataset: string; generation: string }) => {
+        drops.push(input);
+      },
+    },
+  };
+};
+
+type Worker = ReturnType<typeof fakeWorker>;
+
+/** Documents of datasets whose current engine can hand them over, by dataset id. */
+const exports = new Map<string, IndexDocument[]>();
+
+const boot = async (
+  shared: {
+    entries?: InMemoryConfigEntryStore;
+    worker?: Worker;
+    clock?: { now: Date };
+    /** A comparison whose searches never answer, as on an instance that stopped. */
+    hang?: boolean;
+    lockdown?: boolean;
+    as?: string;
+    /** Only models outside Norway, so a Norway dataset has none to be embedded with. */
+    globalModelsOnly?: boolean;
+  } = {},
+) => {
+  const entries = shared.entries ?? new InMemoryConfigEntryStore();
+  const worker = shared.worker ?? fakeWorker();
+  const secrets = envSecrets({ EMBED_KEY: 'k' });
+  const late: { platform?: Awaited<ReturnType<typeof createPlatform>> } = {};
+  const platform = await createPlatform({
+    catalogs: {
+      models: { endpoints: {}, models: [] },
+      knowledge: {
+        endpoints: {
+          'platform-pg': {
+            engine: 'pgvector',
+            options: { connection: 'platform' },
+            sharing: { tenants: '*' },
+          },
+          'knowledge-pg': {
+            engine: 'pgvector',
+            options: { connection: 'knowledge' },
+            sharing: { tenants: '*' },
+          },
+        },
+        datasets: [],
+      },
+      rerank: { endpoints: {}, rerankers: [] },
+      embeddings: {
+        endpoints: {
+          fake: {
+            protocol: 'fake',
+            baseURL: 'https://embed.invalid',
+            auth: { kind: 'api-key', secret: 'secret://env/embed-key' },
+          },
+        },
+        models: [
+          ...(shared.globalModelsOnly
+            ? []
+            : [
+                {
+                  id: 'fake/embed',
+                  endpoint: 'fake',
+                  deployment: 'e',
+                  residency: 'norway' as const,
+                  dimensions: 8,
+                },
+              ]),
+          // A model outside Norway, which a Norway dataset may not be embedded with.
+          {
+            id: 'fake/global',
+            endpoint: 'fake',
+            deployment: 'g',
+            residency: 'global',
+            dimensions: 8,
+          },
+        ],
+      },
+    },
+    secrets,
+    definitions: (plugins) => new InMemoryDefinitionStore(plugins),
+    policy: { decide: async () => ({ allow: true }) },
+    authenticate: async (request) => {
+      const principal = principals[request.headers.get('authorization')?.slice(7) ?? ''];
+      return principal ? { principal } : undefined;
+    },
+    knowledgePool: pool,
+    knowledgeServer: { reader: pool },
+    ingestFolderRoot: folder,
+    ...(shared.lockdown ? { lockdown: { configuredKeys: new Set<string>() } } : {}),
+    embeddingAdapters: [fakeEmbeddingAdapter()],
+    ingestionExecutions: worker.executions,
+    configurables: { store: entries, jobRuns: worker.jobRuns },
+    modules: [
+      knowledgeEndpointsModule,
+      createEngineSwitchesModule({
+        embedders: {
+          has: (model) => Boolean(late.platform?.embedders.describe().some((e) => e.id === model)),
+          open: (...args) =>
+            (late.platform as NonNullable<typeof late.platform>).embedders.open(...args),
+          models: () =>
+            (late.platform?.embedders.describe() ?? []).map((e) => ({
+              model: e.id,
+              dimensions: e.dimensions,
+              residency: e.residency,
+            })),
+        },
+        sweepIntervalMs: 0,
+        ...(shared.clock ? { now: () => (shared.clock as { now: Date }).now } : {}),
+      }),
+    ],
+  });
+  late.platform = platform;
+  // A dataset's current engine, faked for copies: documents an export lists and reads one by one.
+  const open = platform.knowledge.open.bind(platform.knowledge);
+  platform.knowledge.open = ((ref, ctx) => {
+    const docs = exports.get(ref.id);
+    const port = open(ref, ctx);
+    if (!docs) return port;
+    return Object.assign(Object.create(port) as KnowledgePort, {
+      export: {
+        vectors: false,
+        documents: async function* () {
+          yield* docs;
+        },
+        count: async (cap: number) => Math.min(cap, docs.length),
+        list: async function* () {
+          for (const { chunks, phrases, ...rest } of docs) {
+            void chunks;
+            void phrases;
+            yield rest;
+          }
+        },
+        document: async (id: string) => docs.find((d) => d.id === id),
+      },
+    });
+  }) as typeof platform.knowledge.open;
+  // The knowledge server's read functions, faked: what the comparison asked for, and hits.
+  const reads: { endpoint: string; generation?: string }[] = [];
+  const openAt = platform.knowledge.openAt.bind(platform.knowledge);
+  platform.knowledge.openAt = ((ref, endpoint, ctx, overrides) => {
+    if (endpoint !== 'knowledge-pg') return openAt(ref, endpoint, ctx, overrides);
+    return {
+      search: async () => {
+        reads.push({
+          endpoint,
+          ...(overrides?.generation ? { generation: overrides.generation } : {}),
+        });
+        if (shared.hang) return new Promise(() => undefined);
+        return {
+          hits: [{ id: 'veileder#0', document: 'veileder', position: 0, text: 'x', score: 1 }],
+        };
+      },
+    } as unknown as KnowledgePort;
+  }) as typeof platform.knowledge.openAt;
+  const admin = createAdmin({
+    store: platform.definitions,
+    plugins: platform.plugins,
+    settings: new SettingsRegistry([]),
+    extensions: platform.extensions,
+  });
+  const app = new Hono();
+  platform.mount(app, admin);
+  const call = (
+    path: string,
+    init: { method?: string; body?: unknown; as?: string; session?: string; reason?: string } = {},
+  ) =>
+    app.request(path, {
+      method: init.method ?? (init.body === undefined ? 'GET' : 'POST'),
+      headers: {
+        authorization: `Bearer ${init.as ?? shared.as ?? 'kari'}`,
+        'content-type': 'application/json',
+        ...(init.reason === ''
+          ? {}
+          : {
+              'change-reason': encodeURIComponent(init.reason ?? 'Flytter til kunnskapsdatabasen'),
+            }),
+        ...(init.session ? { 'support-session': init.session } : {}),
+      },
+      ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
+    });
+  const module = platform.modules.find(
+    (m) => m.id === 'engine-switches',
+  ) as unknown as EngineSwitchesModule;
+  return { platform, call, admin, worker, entries, reads, module };
+};
+
+type Booted = Awaited<ReturnType<typeof boot>>;
+const json = async <T>(response: Response) => (await response.json()) as T;
+const base = (dataset: string) => `/tenants/${digdir}/datasets/${dataset}`;
+
+const folderDataset = async (
+  { call, platform }: Booted,
+  id: string,
+  pipeline: Record<string, unknown> = {},
+) => {
+  const created = await call(`/tenants/${digdir}/datasets`, {
+    body: {
+      id,
+      name: 'Veiledning',
+      residency: 'norway',
+      index: { endpoint: 'platform-pg' },
+      embedding,
+    },
+  });
+  expect(created.status).toBe(201);
+  const saved = await call(`${base(id)}/pipelines`, {
+    body: {
+      id: 'filer',
+      name: 'Filer',
+      source: { kind: 'folder', path: 'veiledning' },
+      ...pipeline,
+    },
+  });
+  expect(saved.status).toBe(201);
+  await platform.evalStores.testSets.put(
+    testSet.parse({
+      apiVersion: 'genai/v1',
+      kind: 'TestSet',
+      metadata: { tenant: digdir, id: `${id}-sporsmal`, name: 'Spørsmål', version: 1 },
+      spec: {
+        corpus: id,
+        cases: [
+          {
+            id: 'veileder',
+            split: 'validation',
+            input: 'Hva sier veilederen?',
+            expected: { sources: [{ document: 'veileder' }] },
+          },
+        ],
+      },
+    }),
+  );
+};
+
+const startSwitch = async (booted: Booted, dataset: string, method = 'reingest') =>
+  booted.call(`${base(dataset)}/engine-switches`, {
+    body: { to: 'knowledge-pg', method, embedding },
+  });
+
+const started = async (booted: Booted, dataset: string) => {
+  const response = await startSwitch(booted, dataset);
+  expect(response.status).toBe(202);
+  return json<EngineSwitchView>(response);
+};
+
+const view = async (booted: Booted, dataset: string, sid: string) =>
+  json<EngineSwitchView & { generation?: string; failedDocuments?: number }>(
+    await booted.call(`${base(dataset)}/engine-switches/${sid}`),
+  );
+
+/** Follows until the switch leaves `comparing`, as the minute timer would. */
+const followed = async (booted: Booted, dataset: string, sid: string) => {
+  await booted.module.follow();
+  let seen = await view(booted, dataset, sid);
+  for (let i = 0; i < 200 && seen.state === 'comparing'; i++) {
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    seen = await view(booted, dataset, sid);
+  }
+  return seen;
+};
+
+const engineView = async (booted: Booted, dataset: string) =>
+  json<DatasetEngineView>(await booted.call(`${base(dataset)}/engine`));
+
+const runOf = (worker: Worker, engineSwitch: string, n = 0) =>
+  worker.started.filter((r) => r.engineSwitch === engineSwitch)[n];
+
+const toReady = async (booted: Booted, dataset: string) => {
+  const opened = await started(booted, dataset);
+  await booted.worker.end(runOf(booted.worker, opened.id), 'succeeded', { stored: 3 });
+  const ready = await followed(booted, dataset, opened.sid);
+  expect(ready.state).toBe('ready');
+  return opened;
+};
+
+describe('switching a dataset into the knowledge database', () => {
+  it('a switch into the knowledge database fills its generation through ingestion runs', async () => {
+    const booted = await boot();
+    await folderDataset(booted, 'veiledning');
+    const opened = await started(booted, 'veiledning');
+    expect(opened.state).toBe('running');
+    const run = runOf(booted.worker, opened.id);
+    expect(run).toMatchObject({
+      dataset: `${digdir}/veiledning`,
+      pipeline: 'filer',
+      engineSwitch: opened.id,
+      generation: expect.stringMatching(/^g-\d{8}-[0-9a-f]{6}$/),
+      admittedAt: expect.any(String),
+    });
+    expect((await view(booted, 'veiledning', opened.sid)).generation).toBe(run?.generation);
+  });
+
+  it('a switch into the knowledge database is refused for a dataset with a second pipeline or search phrases', async () => {
+    const booted = await boot();
+    await folderDataset(booted, 'to-kilder');
+    const second = await booted.call(`${base('to-kilder')}/pipelines`, {
+      body: { id: 'flere', name: 'Flere', source: { kind: 'folder', path: 'flere' } },
+    });
+    expect(second.status).toBe(201);
+    const twice = await startSwitch(booted, 'to-kilder');
+    expect(twice.status).toBe(409);
+    expect(JSON.stringify(await json(twice))).toContain('én innlesing');
+
+    await folderDataset(booted, 'fraser', {
+      phrases: { model: 'fake/chat', perChunk: 2 },
+    });
+    const estimate = await json<SwitchEstimate>(
+      await booted.call(`${base('fraser')}/engine-switches/estimate?to=knowledge-pg`),
+    );
+    expect(estimate.reingest).toMatchObject({
+      available: false,
+      reason: expect.stringContaining('Søkefraser'),
+    });
+    expect((await startSwitch(booted, 'fraser')).status).toBe(409);
+    expect(booted.worker.started).toEqual([]);
+  });
+
+  it('two datasets switched onto the knowledge database get different generations', async () => {
+    const booted = await boot();
+    await folderDataset(booted, 'forste');
+    await folderDataset(booted, 'andre');
+    const first = await started(booted, 'forste');
+    const second = await started(booted, 'andre');
+    const generations = [runOf(booted.worker, first.id), runOf(booted.worker, second.id)].map(
+      (r) => r?.generation,
+    );
+    expect(generations[0]).not.toBe(generations[1]);
+    for (const g of generations) expect(g).toMatch(/^g-\d{8}-[0-9a-f]{6}$/);
+  });
+
+  it('a switch into the knowledge database survives an API restart', async () => {
+    const worker = fakeWorker();
+    const entries = new InMemoryConfigEntryStore();
+    const first = await boot({ worker, entries });
+    await folderDataset(first, 'omstart');
+    const opened = await started(first, 'omstart');
+    // Another instance takes over; the one that started the switch is never asked again.
+    const second = await boot({ worker, entries });
+    await second.platform.evalStores.testSets.put(
+      (await first.platform.evalStores.testSets.list(digdir))[0] as never,
+    );
+    await worker.end(runOf(worker, opened.id), 'succeeded', { stored: 2, new: 2 });
+    const ready = await followed(second, 'omstart', opened.sid);
+    expect(ready).toMatchObject({ state: 'ready' });
+    expect(second.reads.length).toBeGreaterThan(0);
+  });
+
+  it('a failed or cancelled run fails its switch', async () => {
+    const booted = await boot();
+    await folderDataset(booted, 'feil');
+    const failing = await started(booted, 'feil');
+    await booted.worker.end(
+      runOf(booted.worker, failing.id),
+      'failed',
+      {},
+      'the generation g-20261104-aa11bb was not built: its build job ended without attaching it; retry the switch',
+    );
+    await booted.module.follow();
+    expect(await view(booted, 'feil', failing.sid)).toMatchObject({
+      state: 'failed',
+      // The switch keeps its messages in bokmål, as it does when it stalls.
+      error: {
+        message:
+          'generasjonen g-20261104-aa11bb ble ikke bygget: byggejobben sluttet uten å koble den til; prøv byttet på nytt',
+      },
+    });
+
+    await folderDataset(booted, 'avbrutt');
+    const cancelled = await started(booted, 'avbrutt');
+    await booted.worker.end(runOf(booted.worker, cancelled.id), 'cancelled');
+    await booted.module.follow();
+    expect((await view(booted, 'avbrutt', cancelled.sid)).state).toBe('failed');
+  });
+
+  it("a switch's generation is built and attached before it is compared", async () => {
+    const booted = await boot();
+    await folderDataset(booted, 'bygget');
+    const opened = await started(booted, 'bygget');
+    const run = runOf(booted.worker, opened.id);
+    // The worker ends a run on a standalone generation only once its build has attached it.
+    await booted.module.follow();
+    expect((await view(booted, 'bygget', opened.sid)).state).toBe('running');
+    expect(booted.reads).toEqual([]);
+    await booted.worker.end(run, 'succeeded', { stored: 1, buildSent: 1 });
+    expect((await followed(booted, 'bygget', opened.sid)).state).toBe('ready');
+    expect(booted.reads.length).toBeGreaterThan(0);
+    expect(booted.reads.every((r) => r.generation === run?.generation)).toBe(true);
+  });
+
+  it('a fill with failed documents goes on to comparing and shows the count', async () => {
+    const booted = await boot();
+    await folderDataset(booted, 'delvis');
+    const opened = await started(booted, 'delvis');
+    await booted.worker.end(runOf(booted.worker, opened.id), 'succeeded', {
+      stored: 8,
+      failedDocuments: 2,
+    });
+    expect(await followed(booted, 'delvis', opened.sid)).toMatchObject({
+      state: 'ready',
+      failedDocuments: 2,
+    });
+  });
+
+  it('services read the previous engine until the switch is activated', async () => {
+    const booted = await boot();
+    await folderDataset(booted, 'tjenester');
+    const opened = await toReady(booted, 'tjenester');
+    expect((await engineView(booted, 'tjenester')).endpoint).toBe('platform-pg');
+    const activating = await booted.call(
+      `${base('tjenester')}/engine-switches/${opened.sid}/activate`,
+      {
+        body: {},
+      },
+    );
+    expect(activating.status).toBe(202);
+    expect((await json<EngineSwitchView>(activating)).state).toBe('activating');
+    expect((await engineView(booted, 'tjenester')).endpoint).toBe('platform-pg');
+    await booted.worker.end(runOf(booted.worker, opened.id, 1), 'succeeded');
+    await booted.module.follow();
+    expect((await engineView(booted, 'tjenester')).endpoint).toBe('knowledge-pg');
+  });
+
+  it('activating a switch names its generation as active in the catalog', async () => {
+    const booted = await boot();
+    await folderDataset(booted, 'aktiv');
+    const opened = await toReady(booted, 'aktiv');
+    const generation = runOf(booted.worker, opened.id)?.generation;
+    await booted.call(`${base('aktiv')}/engine-switches/${opened.sid}/activate`, { body: {} });
+    await booted.worker.end(runOf(booted.worker, opened.id, 1), 'succeeded');
+    await booted.module.follow();
+    expect(booted.platform.catalog.get('dataset', `${digdir}/aktiv`)?.spec).toMatchObject({
+      endpoint: 'knowledge-pg',
+      generation,
+      embedding,
+    });
+    expect((await view(booted, 'aktiv', opened.sid)).state).toBe('active');
+    // From then on the dataset's runs write in place: they run as jobs and name no generation.
+    const ran = await booted.call(`${base('aktiv')}/pipelines/filer/execute`, { body: {} });
+    expect(ran.status).toBe(202);
+    expect(booted.worker.started.at(-1)).toMatchObject({ dataset: `${digdir}/aktiv` });
+    expect(booted.worker.started.at(-1)?.generation).toBeUndefined();
+    expect(booted.worker.started.at(-1)?.engineSwitch).toBeUndefined();
+  });
+
+  it('activating a switch first applies what changed in the source since its fill', async () => {
+    const booted = await boot();
+    await folderDataset(booted, 'oppfrisket');
+    const opened = await toReady(booted, 'oppfrisket');
+    const fill = runOf(booted.worker, opened.id);
+    await booted.call(`${base('oppfrisket')}/engine-switches/${opened.sid}/activate`, { body: {} });
+    const refresh = runOf(booted.worker, opened.id, 1);
+    expect(refresh).toMatchObject({ generation: fill?.generation, engineSwitch: opened.id });
+    await booted.module.follow();
+    expect((await view(booted, 'oppfrisket', opened.sid)).state).toBe('activating');
+    expect((await engineView(booted, 'oppfrisket')).endpoint).toBe('platform-pg');
+    await booted.worker.end(refresh, 'succeeded', { changed: 1, stored: 1 });
+    await booted.module.follow();
+    expect((await view(booted, 'oppfrisket', opened.sid)).state).toBe('active');
+  });
+
+  it('a refresh run that fails puts the switch back to ready with its error', async () => {
+    const booted = await boot();
+    await folderDataset(booted, 'tilbake');
+    const opened = await toReady(booted, 'tilbake');
+    await booted.call(`${base('tilbake')}/engine-switches/${opened.sid}/activate`, { body: {} });
+    await booted.worker.end(runOf(booted.worker, opened.id, 1), 'failed', {}, 'the source is down');
+    await booted.module.follow();
+    expect(await view(booted, 'tilbake', opened.sid)).toMatchObject({
+      state: 'ready',
+      error: { message: 'the source is down' },
+    });
+    expect((await engineView(booted, 'tilbake')).endpoint).toBe('platform-pg');
+  });
+
+  it('a retry after a failed comparison does not fill again', async () => {
+    const worker = fakeWorker();
+    const entries = new InMemoryConfigEntryStore();
+    const clock = { now: new Date() };
+    // The instance that compares stops answering mid-way, as one that went away would.
+    const first = await boot({ worker, entries, clock, hang: true });
+    await folderDataset(first, 'sammenlign');
+    const opened = await started(first, 'sammenlign');
+    await worker.end(runOf(worker, opened.id), 'succeeded', { stored: 1 });
+    await first.module.follow();
+    expect((await view(first, 'sammenlign', opened.sid)).state).toBe('comparing');
+    clock.now = new Date(clock.now.getTime() + 3 * 60_000);
+    const second = await boot({ worker, entries, clock });
+    await second.module.follow();
+    expect((await view(second, 'sammenlign', opened.sid)).state).toBe('failed');
+    await second.platform.evalStores.testSets.put(
+      (await first.platform.evalStores.testSets.list(digdir))[0] as never,
+    );
+    const retried = await second.call(`${base('sammenlign')}/engine-switches/${opened.sid}/retry`, {
+      body: {},
+    });
+    expect(retried.status).toBe(202);
+    expect((await followed(second, 'sammenlign', opened.sid)).state).toBe('ready');
+    expect(worker.started.filter((r) => r.engineSwitch === opened.id)).toHaveLength(1);
+  });
+
+  it('a retry after a failed fill writes on into the same generation', async () => {
+    const booted = await boot();
+    await folderDataset(booted, 'videre');
+    const opened = await started(booted, 'videre');
+    const fill = runOf(booted.worker, opened.id);
+    await booted.worker.end(fill, 'failed', {}, 'the source is down');
+    await booted.module.follow();
+    const retried = await booted.call(`${base('videre')}/engine-switches/${opened.sid}/retry`, {
+      body: {},
+    });
+    expect(retried.status).toBe(202);
+    expect(runOf(booted.worker, opened.id, 1)).toMatchObject({ generation: fill?.generation });
+    await booted.module.sweep();
+    expect(booted.worker.drops).toEqual([]);
+  });
+
+  it("a cancelled switch's generation is dropped by a drop job", async () => {
+    const booted = await boot();
+    await folderDataset(booted, 'avlyst');
+    const opened = await started(booted, 'avlyst');
+    const run = runOf(booted.worker, opened.id);
+    const cancelled = await booted.call(`${base('avlyst')}/engine-switches/${opened.sid}/cancel`, {
+      body: {},
+    });
+    expect(cancelled.status).toBe(200);
+    expect((await booted.worker.executions.get(run?.id ?? ''))?.cancelRequestedAt).toEqual(
+      expect.any(String),
+    );
+    await booted.module.sweep();
+    expect(booted.worker.drops).toEqual([
+      { tenant: digdir, dataset: `${digdir}/avlyst`, generation: run?.generation },
+    ]);
+    await booted.module.sweep();
+    expect(booted.worker.drops).toHaveLength(1);
+  });
+
+  it('an engine switch holds every pipeline of its dataset while its runs are open', async () => {
+    const booted = await boot();
+    await folderDataset(booted, 'holdt');
+    const execute = () => booted.call(`${base('holdt')}/pipelines/filer/execute`, { body: {} });
+    const opened = await started(booted, 'holdt');
+    const held = await execute();
+    expect(held.status).toBe(409);
+    const { errors } = await json<{ errors: { message: string }[] }>(held);
+    expect(errors[0]?.message).toContain(opened.id);
+    expect(translateMessage(errors[0]?.message ?? '', 'nb')).toContain(
+      'byttes til en annen søkemotor',
+    );
+    await booted.worker.end(runOf(booted.worker, opened.id), 'succeeded', { stored: 1 });
+    await followed(booted, 'holdt', opened.sid);
+    // Ready waits for a person: runs go on into the current engine.
+    expect((await execute()).status).toBe(202);
+    await booted.call(`${base('holdt')}/engine-switches/${opened.sid}/activate`, { body: {} });
+    expect((await execute()).status).toBe(409);
+  });
+
+  it("a switch's own runs are not held by it", async () => {
+    const booted = await boot();
+    await folderDataset(booted, 'egne');
+    const opened = await toReady(booted, 'egne');
+    const activating = await booted.call(`${base('egne')}/engine-switches/${opened.sid}/activate`, {
+      body: {},
+    });
+    expect(activating.status).toBe(202);
+    expect(runOf(booted.worker, opened.id, 1)).toMatchObject({ engineSwitch: opened.id });
+  });
+
+  it('an instance that loses the publish to another finishes the activation', async () => {
+    const worker = fakeWorker();
+    const entries = new InMemoryConfigEntryStore();
+    const first = await boot({ worker, entries });
+    await folderDataset(first, 'to-instanser');
+    const opened = await toReady(first, 'to-instanser');
+    const generation = runOf(worker, opened.id)?.generation;
+    // The second instance has not seen the catalog change the first is about to make.
+    const second = await boot({ worker, entries });
+    await first.call(`${base('to-instanser')}/engine-switches/${opened.sid}/activate`, {
+      body: {},
+    });
+    await worker.end(runOf(worker, opened.id, 1), 'succeeded');
+    const before = first.platform.catalog.get('dataset', `${digdir}/to-instanser`);
+    await first.platform.catalog.publish({
+      kind: 'dataset',
+      scope: digdir,
+      id: 'to-instanser',
+      spec: { ...before?.spec, endpoint: 'knowledge-pg', generation },
+      by: 'workload:platform:engine-switch',
+      reason: 'Flytter til kunnskapsdatabasen',
+      ifVersion: before?.version ?? 0,
+      movedBySwitch: true,
+    });
+    await second.module.follow();
+    expect(await view(second, 'to-instanser', opened.sid)).toMatchObject({ state: 'active' });
+  });
+
+  it('an activation another instance published is finished by the next follow', async () => {
+    const booted = await boot();
+    await folderDataset(booted, 'halvveis');
+    const opened = await toReady(booted, 'halvveis');
+    const generation = runOf(booted.worker, opened.id)?.generation;
+    await booted.call(`${base('halvveis')}/engine-switches/${opened.sid}/activate`, { body: {} });
+    await booted.worker.end(runOf(booted.worker, opened.id, 1), 'succeeded');
+    // The instance that published stopped before it saved the switch.
+    const before = booted.platform.catalog.get('dataset', `${digdir}/halvveis`);
+    await booted.platform.catalog.publish({
+      kind: 'dataset',
+      scope: digdir,
+      id: 'halvveis',
+      spec: { ...before?.spec, endpoint: 'knowledge-pg', generation },
+      by: 'workload:platform:engine-switch',
+      reason: 'Flytter til kunnskapsdatabasen',
+      movedBySwitch: true,
+    });
+    await booted.module.follow();
+    expect(await view(booted, 'halvveis', opened.sid)).toMatchObject({ state: 'active' });
+  });
+
+  it('runs a switch started while it was cancelled are cancelled too', async () => {
+    const booted = await boot();
+    await folderDataset(booted, 'avlyst-tidlig');
+    let sid = '';
+    booted.worker.hooks.onStart = async () => {
+      const [entry] = await booted.entries.latest({ kind: 'engine-switch' });
+      sid = String(entry?.id.split(':').pop());
+      await booted.call(`${base('avlyst-tidlig')}/engine-switches/${sid}/cancel`, { body: {} });
+    };
+    await startSwitch(booted, 'avlyst-tidlig');
+    const run = booted.worker.started.at(-1);
+    expect((await booted.worker.executions.get(run?.id ?? ''))?.cancelRequestedAt).toEqual(
+      expect.any(String),
+    );
+    expect((await view(booted, 'avlyst-tidlig', sid)).state).toBe('cancelled');
+  });
+
+  it('a switch shows the documents its fill wrote, even when it ends between two ticks', async () => {
+    const booted = await boot();
+    await folderDataset(booted, 'telling');
+    const opened = await started(booted, 'telling');
+    await booted.worker.end(runOf(booted.worker, opened.id), 'succeeded', {
+      new: 3,
+      stored: 2,
+      skipped: 1,
+    });
+    const ready = await followed(booted, 'telling', opened.sid);
+    expect(ready.progress).toMatchObject({ percent: 100, documents: 3, total: 3 });
+  });
+
+  it("an admitted login in lockdown starts a switch's runs", async () => {
+    const booted = await boot({ lockdown: true, as: 'entra' });
+    await folderDataset(booted, 'laast');
+    const opened = await started(booted, 'laast');
+    expect(opened.state).toBe('running');
+    expect(runOf(booted.worker, opened.id)).toMatchObject({ engineSwitch: opened.id });
+  });
+});
+
+describe("sending a switch's fill run back", () => {
+  /** A switch into the knowledge database whose fill ended with dead letters, ready to activate. */
+  const readyWithFailures = async (dataset: string) => {
+    const booted = await boot();
+    await folderDataset(booted, dataset);
+    const opened = await started(booted, dataset);
+    const run = runOf(booted.worker, opened.id) as Execution;
+    await booted.worker.end(run, 'succeeded', { stored: 8, failedDocuments: 2 });
+    expect(await followed(booted, dataset, opened.sid)).toMatchObject({ state: 'ready' });
+    return { booted, opened, run };
+  };
+  const sendBack = (booted: Booted, dataset: string, run: Execution) =>
+    booted.call(`${base(dataset)}/pipelines/filer/executions/${run.id}/redrive`, {
+      body: {},
+      reason: 'Sender døde jobber tilbake',
+    });
+
+  it("a switch's fill run can be sent back before the switch is activated", async () => {
+    const { booted, opened, run } = await readyWithFailures('tilbake');
+
+    const response = await sendBack(booted, 'tilbake', run);
+
+    expect(response.status).toBe(202);
+    expect(await json(response)).toMatchObject({ id: run.id, status: 'running' });
+    const { data } = await json<{ data: Execution[] }>(
+      await booted.call(`${base('tilbake')}/pipelines/filer/executions`),
+    );
+    expect(data.find((r) => r.id === run.id)).toMatchObject({ status: 'running' });
+    expect((await view(booted, 'tilbake', opened.sid)).state).toBe('ready');
+  });
+
+  it('a switch whose fill run is sent back counts what the run then stores', async () => {
+    const { booted, opened, run } = await readyWithFailures('teller');
+    expect(await view(booted, 'teller', opened.sid)).toMatchObject({ failedDocuments: 2 });
+    expect((await sendBack(booted, 'teller', run)).status).toBe(202);
+
+    await booted.worker.end(run, 'succeeded', { stored: 10 });
+    await booted.module.follow();
+
+    const seen = await view(booted, 'teller', opened.sid);
+    expect(seen.state).toBe('ready');
+    expect(seen.progress.documents).toBe(10);
+    expect(seen).not.toHaveProperty('failedDocuments');
+  });
+
+  it('a switch whose sent-back run is still running cannot be activated', async () => {
+    const { booted, opened, run } = await readyWithFailures('venter');
+    expect((await sendBack(booted, 'venter', run)).status).toBe(202);
+    const activate = () =>
+      booted.call(`${base('venter')}/engine-switches/${opened.sid}/activate`, { body: {} });
+
+    const refused = await activate();
+
+    expect(refused.status).toBe(409);
+    const { title } = await json<{ title: string }>(refused);
+    expect(translateMessage(title, 'nb')).toBe('En kjøring i byttet går fortsatt.');
+    expect(translateMessage(title, 'en')).toBe('A run of the switch is still running.');
+    expect(booted.worker.started.filter((r) => r.engineSwitch === opened.id)).toHaveLength(1);
+
+    await booted.worker.end(run, 'succeeded', { stored: 10 });
+    await booted.module.follow();
+    expect((await activate()).status).not.toBe(409);
+  });
+});
+
+describe("following a ready switch's runs", () => {
+  it('a ready switch whose refresh never started stays ready', async () => {
+    const clock = { now: new Date('2026-10-07T10:00:00Z') };
+    const booted = await boot({ clock });
+    await folderDataset(booted, 'stille');
+    const opened = await toReady(booted, 'stille');
+    booted.worker.jobRuns.runs.start = async () => {
+      throw new Error('the instance stopped before the refresh run started');
+    };
+    await booted.call(`${base('stille')}/engine-switches/${opened.sid}/activate`, { body: {} });
+    for (let i = 0; i < 3; i++) {
+      clock.now = new Date(clock.now.getTime() + 3 * 60_000);
+      await booted.module.follow();
+    }
+
+    expect((await view(booted, 'stille', opened.sid)).state).toBe('ready');
+  });
+
+  it("a ready switch after a failed activation keeps its fill's counts", async () => {
+    const booted = await boot();
+    await folderDataset(booted, 'publisering');
+    const opened = await toReady(booted, 'publisering');
+    await booted.call(`${base('publisering')}/engine-switches/${opened.sid}/activate`, {
+      body: {},
+    });
+    // The refresh run ends, and the switch goes back to ready with its refresh run as it would
+    // after a publish that failed.
+    const refresh = runOf(booted.worker, opened.id, 1);
+    await booted.worker.end(refresh, 'succeeded', { stored: 1 });
+    const entry = (await booted.entries.latest({ kind: 'engine-switch' })).find(
+      (e) => e.id === opened.id,
+    );
+    if (!entry) throw new Error('no switch entry');
+    await booted.entries.append({
+      ...entry,
+      spec: { ...(entry.spec as object), state: 'ready', runs: [refresh?.id] },
+      version: entry.version + 1,
+    } as never);
+
+    await booted.module.follow();
+
+    expect((await view(booted, 'publisering', opened.sid)).progress.documents).toBe(3);
+  });
+
+  it('a copy whose run is sent back counts what it copied then', async () => {
+    const booted = await boot();
+    await copyDataset(booted, 'kopi-tilbake');
+    const ready = await copiedToReady(
+      booted,
+      'kopi-tilbake',
+      {},
+      { stored: 3, failedDocuments: 2 },
+    );
+    expect(ready.copy).toMatchObject({ copied: 3, failed: 2 });
+    const run = runOf(booted.worker, ready.id) as Execution;
+    await booted.worker.executions.save({ ...run, status: 'running' });
+    await booted.worker.end(run, 'succeeded', { stored: 5 });
+
+    await booted.module.follow();
+
+    expect((await view(booted, 'kopi-tilbake', ready.sid)).copy).toMatchObject({
+      copied: 5,
+      failed: 0,
+    });
+  });
+
+  it('a ready copy is not counted again while its counts stay the same', async () => {
+    /** Hands specs back with their keys reordered, as PostgreSQL's jsonb does. */
+    const sorted = (value: unknown): unknown =>
+      Array.isArray(value)
+        ? value.map(sorted)
+        : value && typeof value === 'object'
+          ? Object.fromEntries(
+              Object.entries(value)
+                .sort(([a], [b]) => a.length - b.length || a.localeCompare(b))
+                .map(([k, v]) => [k, sorted(v)]),
+            )
+          : value;
+    class JsonbOrder extends InMemoryConfigEntryStore {
+      override async latest(filter?: Parameters<InMemoryConfigEntryStore['latest']>[0]) {
+        return (await super.latest(filter)).map((e) => ({ ...e, spec: sorted(e.spec) }));
+      }
+      override async history(kind: string, scope: string, id: string) {
+        return (await super.history(kind, scope, id)).map((e) => ({ ...e, spec: sorted(e.spec) }));
+      }
+    }
+    const entries = new JsonbOrder();
+    const booted = await boot({ entries });
+    await copyDataset(booted, 'kopi-rolig');
+    const ready = await copiedToReady(
+      booted,
+      'kopi-rolig',
+      {},
+      { stored: 3, failedDocuments: 2, 'skipped.no_uuid': 1 },
+    );
+    const versions = async () => (await entries.history('engine-switch', digdir, ready.id)).length;
+    const before = await versions();
+
+    for (let i = 0; i < 3; i++) await booted.module.follow();
+
+    expect(await versions()).toBe(before);
+  });
+
+  it('a run of a cancelled switch cannot be sent back', async () => {
+    const booted = await boot();
+    await folderDataset(booted, 'forkastet');
+    const opened = await started(booted, 'forkastet');
+    const run = runOf(booted.worker, opened.id) as Execution;
+    await booted.worker.end(run, 'failed', {}, 'the listing failed');
+    await booted.module.follow();
+    expect(
+      (
+        await booted.call(`${base('forkastet')}/engine-switches/${opened.sid}/cancel`, {
+          body: {},
+        })
+      ).status,
+    ).toBe(200);
+
+    const response = await booted.call(
+      `${base('forkastet')}/pipelines/filer/executions/${run.id}/redrive`,
+      { body: {}, reason: 'Sender døde jobber tilbake' },
+    );
+
+    expect(response.status).toBe(409);
+    expect((await booted.worker.executions.get(run.id))?.status).toBe('failed');
+  });
+});
+
+describe('admitting a switch into the knowledge database again', () => {
+  const hours = (n: number) => n * 3_600_000;
+  /** A running switch in lockdown whose run was admitted 20 hours ago. */
+  const admittedLongAgo = async (lockdown = true) => {
+    const booted = await boot({ lockdown, as: 'entra' });
+    await folderDataset(booted, 'lang');
+    const opened = await started(booted, 'lang');
+    const run = runOf(booted.worker, opened.id) as Execution;
+    const admittedAt = new Date(Date.now() - hours(20)).toISOString();
+    await booted.worker.executions.save({ ...run, admittedAt });
+    return { booted, opened, run: { ...run, admittedAt } };
+  };
+  const admittedAtOf = async (booted: Booted, id: string) =>
+    (await booted.worker.executions.get(id))?.admittedAt;
+
+  it('admitting a switch again admits each of its open runs', async () => {
+    const { booted, opened, run } = await admittedLongAgo();
+
+    const response = await booted.call(`${base('lang')}/engine-switches/${opened.sid}/readmit`, {
+      body: {},
+    });
+
+    expect(response.status).toBe(200);
+    const admittedAt = await admittedAtOf(booted, run.id);
+    expect(Date.parse(admittedAt ?? '')).toBeGreaterThan(Date.now() - 60_000);
+    expect(await json(response)).toMatchObject({
+      sid: opened.sid,
+      state: 'running',
+      admissionRunsOutAt: new Date(Date.parse(admittedAt ?? '') + hours(24)).toISOString(),
+    });
+    expect(
+      (await booted.admin.audit(digdir)).filter(
+        (e) => e.action === 'platform.engine-switch.readmit',
+      ),
+    ).toEqual([expect.objectContaining({ reason: 'Flytter til kunnskapsdatabasen' })]);
+  });
+
+  it('a switch with no open runs cannot be admitted again, and says so in both languages', async () => {
+    const { booted, opened, run } = await admittedLongAgo();
+    await booted.worker.end(run, 'succeeded', { stored: 1 });
+
+    const response = await booted.call(`${base('lang')}/engine-switches/${opened.sid}/readmit`, {
+      body: {},
+    });
+
+    expect(response.status).toBe(409);
+    const { title } = await json<{ title: string }>(response);
+    expect(translateMessage(title, 'nb')).toBe('Byttet har ingen åpne kjøringer.');
+    expect(translateMessage(title, 'en')).toBe('The switch has no open runs.');
+  });
+
+  it('a run being cancelled says nothing about its admission, and neither does its switch', async () => {
+    const { booted, opened, run } = await admittedLongAgo();
+    await booted.worker.executions.save({
+      ...run,
+      cancelRequestedAt: new Date().toISOString(),
+      cancelledBy: 'employee:test:entra',
+    });
+
+    expect(await view(booted, 'lang', opened.sid)).not.toHaveProperty('admissionRunsOutAt');
+    const { data } = await json<{ data: Execution[] }>(
+      await booted.call(`${base('lang')}/pipelines/filer/executions`),
+    );
+    expect(data[0]).not.toHaveProperty('admissionRunsOutAt');
+  });
+
+  it('a switch whose only run is being cancelled cannot be admitted again', async () => {
+    const { booted, opened, run } = await admittedLongAgo();
+    await booted.worker.executions.save({
+      ...run,
+      cancelRequestedAt: new Date().toISOString(),
+      cancelledBy: 'employee:test:entra',
+    });
+
+    const response = await booted.call(`${base('lang')}/engine-switches/${opened.sid}/readmit`, {
+      body: {},
+    });
+
+    expect(response.status).toBe(409);
+    expect(translateMessage((await json<{ title: string }>(response)).title, 'nb')).toBe(
+      'Byttet har ingen åpne kjøringer.',
+    );
+  });
+
+  it('admitting a switch again needs a reason', async () => {
+    const { booted, opened, run } = await admittedLongAgo();
+
+    const response = await booted.call(`${base('lang')}/engine-switches/${opened.sid}/readmit`, {
+      body: {},
+      reason: '',
+    });
+
+    expect(response.status).toBe(400);
+    expect(await admittedAtOf(booted, run.id)).toBe(run.admittedAt);
+  });
+
+  it('a caller who may not run ingestion in lockdown cannot admit a run again', async () => {
+    const { booted, opened, run } = await admittedLongAgo();
+    const kari = principals.kari as Principal;
+
+    const bySwitch = await booted.call(`${base('lang')}/engine-switches/${opened.sid}/readmit`, {
+      body: {},
+      as: 'kari',
+    });
+    const byRun = await booted.call(
+      `${base('lang')}/pipelines/filer/executions/${run.id}/readmit`,
+      { body: {}, as: 'kari' },
+    );
+    const inService = await booted.platform.ingestion.readmit({
+      dataset: run.dataset,
+      execution: run.id,
+      by: 'kari',
+      principal: kari,
+    });
+
+    expect(bySwitch.status).toBe(403);
+    expect(byRun.status).toBe(403);
+    expect(inService).toMatchObject({ ok: false, errors: [{ path: 'principal' }] });
+    expect(await admittedAtOf(booted, run.id)).toBe(run.admittedAt);
+  });
+
+  it('in lockdown, an open run and a running switch say when their admission runs out, and outside lockdown they do not', async () => {
+    const runsOut = (admittedAt: string) =>
+      new Date(Date.parse(admittedAt) + hours(24)).toISOString();
+    const runs = async (booted: Booted) =>
+      (
+        await json<{ data: Execution[] }>(
+          await booted.call(`${base('lang')}/pipelines/filer/executions`),
+        )
+      ).data;
+
+    const locked = await admittedLongAgo(true);
+    expect(await view(locked.booted, 'lang', locked.opened.sid)).toMatchObject({
+      admissionRunsOutAt: runsOut(locked.run.admittedAt),
+    });
+    expect((await runs(locked.booted))[0]).toMatchObject({
+      id: locked.run.id,
+      admissionRunsOutAt: runsOut(locked.run.admittedAt),
+    });
+
+    const open = await admittedLongAgo(false);
+    expect(await view(open.booted, 'lang', open.opened.sid)).not.toHaveProperty(
+      'admissionRunsOutAt',
+    );
+    expect((await runs(open.booted))[0]).not.toHaveProperty('admissionRunsOutAt');
+  });
+});
+
+describe('operators switching a platform dataset into the knowledge database', () => {
+  const id = 'digdir/genki-docs';
+  const operatorBase = `/operator/datasets/${encodeURIComponent(id)}`;
+  const platformFolderDataset = async ({ call }: Booted) => {
+    const created = await call('/operator/datasets', {
+      body: {
+        id,
+        name: 'GenKI-dokumentasjonen',
+        residency: 'norway',
+        index: { endpoint: 'platform-pg' },
+        embedding,
+      },
+    });
+    expect(created.status).toBe(201);
+    const saved = await call(`${operatorBase}/pipelines`, {
+      body: { id: 'genki-docs', name: 'Dokumentasjonen', source: { kind: 'folder', path: '.' } },
+    });
+    expect(saved.status).toBe(201);
+  };
+  const operatorStart = async (booted: Booted) => {
+    const response = await booted.call(`${operatorBase}/engine-switches`, {
+      body: { to: 'knowledge-pg', method: 'reingest', embedding },
+    });
+    expect(response.status).toBe(202);
+    return json<EngineSwitchView>(response);
+  };
+  const operatorView = async (booted: Booted, sid: string) =>
+    json<EngineSwitchView>(await booted.call(`${operatorBase}/engine-switches/${sid}`));
+
+  it('an operator switches a platform dataset into the knowledge database through ingestion runs', async () => {
+    const booted = await boot({ as: 'drift' });
+    await platformFolderDataset(booted);
+    const opened = await operatorStart(booted);
+    const run = runOf(booted.worker, opened.id);
+    expect(run).toMatchObject({
+      dataset: id,
+      pipeline: 'genki-docs',
+      engineSwitch: opened.id,
+      generation: opened.generation,
+    });
+    await booted.worker.end(run, 'succeeded', { stored: 3 });
+    await booted.module.follow();
+    let seen = await operatorView(booted, opened.sid);
+    for (let i = 0; i < 200 && seen.state === 'comparing'; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      seen = await operatorView(booted, opened.sid);
+    }
+    expect(seen.state).toBe('ready');
+    const activated = await booted.call(`${operatorBase}/engine-switches/${opened.sid}/activate`, {
+      body: {},
+    });
+    expect(activated.status).toBe(202);
+    await booted.worker.end(runOf(booted.worker, opened.id, 1), 'succeeded', { stored: 0 });
+    await booted.module.follow();
+    expect((await operatorView(booted, opened.sid)).state).toBe('active');
+    expect(
+      await json<DatasetEngineView>(await booted.call(`${operatorBase}/engine`)),
+    ).toMatchObject({ endpoint: 'knowledge-pg' });
+    expect(booted.platform.catalog.get('dataset', id)).toMatchObject({
+      by: 'operator:platform:engine-switch',
+      spec: { endpoint: 'knowledge-pg', generation: opened.generation },
+    });
+  });
+
+  it("an endpoint's view lists the datasets on it with their owner and pipeline count", async () => {
+    const booted = await boot({ as: 'drift' });
+    await platformFolderDataset(booted);
+    const asKari: Booted['call'] = (path, init = {}) => booted.call(path, { ...init, as: 'kari' });
+    await folderDataset({ ...booted, call: asKari }, 'veiledning');
+    const { data } = await json<{ data: KnowledgeEndpointView[] }>(
+      await booted.call('/operator/knowledge/endpoints'),
+    );
+    expect(data.find((e) => e.id === 'platform-pg')?.datasets).toEqual([
+      { id: `${digdir}/veiledning`, scope: digdir, name: 'Veiledning', pipelines: 1 },
+      { id, scope: 'platform', name: 'GenKI-dokumentasjonen', pipelines: 1 },
+    ]);
+    expect(data.find((e) => e.id === 'knowledge-pg')?.datasets).toEqual([]);
+  });
+
+  it("an operator under a support session switches an agency's dataset into the knowledge database", async () => {
+    const booted = await boot({ as: 'drift' });
+    const asKari: Booted['call'] = (path, init = {}) => booted.call(path, { ...init, as: 'kari' });
+    await folderDataset({ ...booted, call: asKari }, 'byraets');
+    const refused = await booted.call(`${base('byraets')}/engine-switches`, {
+      body: { to: 'knowledge-pg', method: 'reingest', embedding },
+    });
+    expect(refused.status).toBe(404);
+    const opened = await booted.admin.openSupportSession(
+      principals.drift as Principal,
+      digdir,
+      'Flytter testdata til kunnskapsdatabasen',
+      30,
+    );
+    if (!opened.ok) throw new Error('no support session');
+    const started = await booted.call(`${base('byraets')}/engine-switches`, {
+      body: { to: 'knowledge-pg', method: 'reingest', embedding },
+      session: opened.value.id,
+    });
+    expect(started.status).toBe(202);
+    const view = await json<EngineSwitchView>(started);
+    expect(runOf(booted.worker, view.id)).toMatchObject({ dataset: `${digdir}/byraets` });
+  });
+
+  it("a cancelled platform switch's generation is dropped", async () => {
+    const booted = await boot({ as: 'drift' });
+    await platformFolderDataset(booted);
+    const opened = await operatorStart(booted);
+    const cancelled = await booted.call(`${operatorBase}/engine-switches/${opened.sid}/cancel`, {
+      body: {},
+    });
+    expect(cancelled.status).toBe(200);
+    await booted.module.sweep();
+    expect(booted.worker.drops).toEqual([
+      { tenant: 'platform', dataset: id, generation: opened.generation },
+    ]);
+  });
+});
+
+const typesenseDocs = (n: number, chunks = 1, chars = 10): IndexDocument[] =>
+  Array.from({ length: n }, (_, i) => ({
+    id: String(377252 + i),
+    title: `Rapport ${i}`,
+    fields: {},
+    chunks: Array.from({ length: chunks }, (_c, position) => ({
+      id: `c${position}`,
+      position,
+      text: 'x'.repeat(chars),
+    })),
+    phrases: [],
+  }));
+
+/** A dataset on another engine with no pipeline, whose engine can hand over its documents. */
+const copyDataset = async (
+  booted: Booted,
+  id: string,
+  docs: IndexDocument[] = typesenseDocs(3),
+) => {
+  const created = await booted.call(`/tenants/${digdir}/datasets`, {
+    body: { id, name: 'Rapporter', residency: 'norway', index: { endpoint: 'platform-pg' } },
+  });
+  expect(created.status).toBe(201);
+  exports.set(`${digdir}/${id}`, docs);
+  await booted.platform.evalStores.testSets.put(
+    testSet.parse({
+      apiVersion: 'genai/v1',
+      kind: 'TestSet',
+      metadata: { tenant: digdir, id: `${id}-sporsmal`, name: 'Spørsmål', version: 1 },
+      spec: {
+        corpus: id,
+        cases: [
+          {
+            id: 'veileder',
+            split: 'validation',
+            input: 'Hva sier rapporten?',
+            expected: { sources: [{ document: 'veileder' }] },
+          },
+        ],
+      },
+    }),
+  );
+};
+
+const startCopy = (booted: Booted, dataset: string, extra: Record<string, unknown> = {}) =>
+  booted.call(`${base(dataset)}/engine-switches`, {
+    body: { to: 'knowledge-pg', method: 'copy', embedding, ...extra },
+  });
+
+const copiedToReady = async (
+  booted: Booted,
+  dataset: string,
+  extra: Record<string, unknown> = {},
+  report: Record<string, number> = { stored: 3 },
+) => {
+  const response = await startCopy(booted, dataset, extra);
+  expect(response.status).toBe(202);
+  const opened = await json<EngineSwitchView>(response);
+  await booted.worker.end(
+    runOf(booted.worker, opened.id),
+    'succeeded',
+    report as Partial<IngestionReport>,
+  );
+  const ready = await followed(booted, dataset, opened.sid);
+  expect(ready.state).toBe('ready');
+  return ready;
+};
+
+describe('copying a dataset into the knowledge database', () => {
+  it('a copy into the knowledge database starts one run of its own', async () => {
+    const booted = await boot();
+    await copyDataset(booted, 'kopi');
+    const estimate = await json<SwitchEstimate>(
+      await booted.call(`${base('kopi')}/engine-switches/estimate?to=knowledge-pg`),
+    );
+    expect(estimate.copy.available).toBe(true);
+    const response = await startCopy(booted, 'kopi');
+    expect(response.status).toBe(202);
+    const opened = await json<EngineSwitchView>(response);
+    expect(booted.worker.started).toEqual([
+      expect.objectContaining({
+        dataset: `${digdir}/kopi`,
+        pipeline: '_copy',
+        engineSwitch: opened.id,
+        generation: expect.stringMatching(/^g-\d{8}-[0-9a-f]{6}$/),
+      }),
+    ]);
+  });
+
+  it("a copy names documents as the dataset's Kudos pipeline would, even turned off", async () => {
+    const booted = await boot();
+    await copyDataset(booted, 'kudos-kopi');
+    const saved = await booted.call(`${base('kudos-kopi')}/pipelines`, {
+      body: {
+        id: 'kudos',
+        name: 'Kudos',
+        source: { kind: 'kudos', since: '2020-01-01' },
+        enabled: false,
+      },
+    });
+    expect(saved.status).toBe(201);
+    await copyDataset(booted, 'nettsider');
+    for (const dataset of ['kudos-kopi', 'nettsider'])
+      expect((await startCopy(booted, dataset)).status).toBe(202);
+    const specs = (await booted.entries.latest({ kind: 'engine-switch', scope: digdir })).map(
+      (e) => e.spec as { dataset: string; copy?: unknown },
+    );
+    expect(specs.find((s) => s.dataset.endsWith('/kudos-kopi'))?.copy).toEqual({ ids: 'kudos' });
+    expect(specs.find((s) => s.dataset.endsWith('/nettsider'))?.copy).toEqual({});
+  });
+
+  it('copy into the knowledge database is refused for a dataset whose engine cannot be exported', async () => {
+    const booted = await boot();
+    await folderDataset(booted, 'mappe');
+    const estimate = await json<SwitchEstimate>(
+      await booted.call(`${base('mappe')}/engine-switches/estimate?to=knowledge-pg`),
+    );
+    expect(estimate.copy).toMatchObject({
+      available: false,
+      reason: expect.stringContaining('kan ikke gi fra seg'),
+    });
+    const refused = await startCopy(booted, 'mappe');
+    expect(refused.status).toBe(409);
+    expect(booted.worker.started).toEqual([]);
+  });
+
+  it('activating a copy switch copies again before it publishes', async () => {
+    const booted = await boot();
+    await copyDataset(booted, 'kopi-aktiv');
+    const ready = await copiedToReady(booted, 'kopi-aktiv');
+    const activated = await booted.call(
+      `${base('kopi-aktiv')}/engine-switches/${ready.sid}/activate`,
+      { body: {} },
+    );
+    expect(activated.status).toBe(202);
+    const refresh = runOf(booted.worker, ready.id, 1);
+    expect(refresh).toMatchObject({ pipeline: '_copy', generation: ready.generation });
+    await booted.worker.end(refresh, 'succeeded', { unchanged: 3 });
+    await booted.module.follow();
+    expect((await view(booted, 'kopi-aktiv', ready.sid)).state).toBe('active');
+    expect(booted.platform.catalog.get('dataset', `${digdir}/kopi-aktiv`)?.spec).toMatchObject({
+      endpoint: 'knowledge-pg',
+      generation: ready.generation,
+    });
+  });
+
+  it('a copy of named documents compares but cannot be activated', async () => {
+    const booted = await boot();
+    await copyDataset(booted, 'utvalg');
+    const ready = await copiedToReady(booted, 'utvalg', { documents: ['377252'] }, { stored: 1 });
+    expect(ready.comparison).toBeDefined();
+    const refused = await booted.call(`${base('utvalg')}/engine-switches/${ready.sid}/activate`, {
+      body: {},
+    });
+    expect(refused.status).toBe(409);
+    expect(JSON.stringify(await json(refused))).toContain('utvalg');
+    expect(booted.worker.started).toHaveLength(1);
+    const tooMany = await startCopy(booted, 'utvalg', {
+      documents: Array.from({ length: 1001 }, (_, i) => String(i)),
+    });
+    expect(tooMany.status).toBe(400);
+  });
+
+  it('the switch counts copied, skipped by reason and failed documents', async () => {
+    const booted = await boot();
+    await copyDataset(booted, 'tellinger');
+    const ready = await copiedToReady(
+      booted,
+      'tellinger',
+      {},
+      {
+        new: 9,
+        stored: 7,
+        skipped: 1,
+        'skipped.no_uuid': 218,
+        'skipped.same_uuid': 89,
+        failedDocuments: 1,
+      },
+    );
+    expect(ready.copy).toEqual({
+      copied: 7,
+      skipped: { no_text: 1, no_uuid: 218, same_uuid: 89 },
+      failed: 1,
+    });
+  });
+
+  it("the copy estimate scales the first documents' chunks and characters to the whole dataset", async () => {
+    const booted = await boot();
+    // 250 documents of 10 chunks of 3,500 characters: 2,500 chunks, about 2.5 M tokens.
+    await copyDataset(booted, 'anslag', typesenseDocs(250, 10, 3500));
+    const estimate = await json<SwitchEstimate>(
+      await booted.call(
+        `${base('anslag')}/engine-switches/estimate?to=knowledge-pg&model=fake/embed`,
+      ),
+    );
+    expect(estimate.basis).toMatchObject({ documents: 250, chunks: 2500, tokens: 2_500_000 });
+    // fake/embed has no price: 0.0013 NOK per 1,000 tokens, so 3.25 NOK.
+    expect(estimate.copy.costNok).toEqual({ min: 3, max: 5 });
+    // About 80 chunks a minute, as a local copy of digdir/public-docs ran: 2 + 2,500 / 80 minutes.
+    expect(estimate.copy.durationMinutes).toEqual({ min: 27, max: 44 });
+  });
+
+  it('a copy into the knowledge database is refused without an embedding model', async () => {
+    const booted = await boot();
+    await copyDataset(booted, 'uten-modell');
+    const refused = await booted.call(`${base('uten-modell')}/engine-switches`, {
+      body: { to: 'knowledge-pg', method: 'copy' },
+    });
+    expect(refused.status).toBe(409);
+    expect(JSON.stringify(await json(refused))).toContain('embeddingmodell');
+    expect(booted.worker.started).toEqual([]);
+  });
+
+  it("a copy is refused with a model the dataset's residency does not allow, which the estimate leaves out", async () => {
+    const booted = await boot();
+    await copyDataset(booted, 'norge');
+    const estimate = await json<SwitchEstimate>(
+      await booted.call(`${base('norge')}/engine-switches/estimate?to=knowledge-pg`),
+    );
+    expect(estimate.embeddings?.map((e) => e.model)).toEqual(['fake/embed']);
+    const refused = await startCopy(booted, 'norge', {
+      embedding: { model: 'fake/global', dimensions: 8 },
+    });
+    expect(refused.status).toBe(409);
+    expect(booted.worker.started).toEqual([]);
+  });
+
+  it("a copy's counts after a retried fill include what the first run copied", async () => {
+    const booted = await boot();
+    await copyDataset(booted, 'igjen');
+    const opened = await json<EngineSwitchView>(await startCopy(booted, 'igjen'));
+    await booted.worker.end(
+      runOf(booted.worker, opened.id),
+      'failed',
+      { new: 4, stored: 3, skipped: 1, 'skipped.no_uuid': 1 } as Partial<IngestionReport>,
+      'the engine went away',
+    );
+    await booted.module.follow();
+    expect(
+      (await booted.call(`${base('igjen')}/engine-switches/${opened.sid}/retry`, { body: {} }))
+        .status,
+    ).toBe(202);
+    await booted.worker.end(runOf(booted.worker, opened.id, 1), 'succeeded', {
+      unchanged: 3,
+      new: 1,
+      stored: 1,
+      'skipped.no_uuid': 1,
+    } as Partial<IngestionReport>);
+    const ready = await followed(booted, 'igjen', opened.sid);
+    expect(ready.copy).toEqual({ copied: 4, skipped: { no_text: 1, no_uuid: 1 }, failed: 0 });
+  });
+
+  it('a copy is refused when no model may embed the dataset, with that reason', async () => {
+    const booted = await boot({ globalModelsOnly: true });
+    await copyDataset(booted, 'ingen-modell');
+    const estimate = await json<SwitchEstimate>(
+      await booted.call(`${base('ingen-modell')}/engine-switches/estimate?to=knowledge-pg`),
+    );
+    expect(estimate.embeddings).toEqual([]);
+    expect(estimate.copy).toMatchObject({
+      available: false,
+      reason: expect.stringContaining('Ingen embeddingmodell'),
+    });
+  });
+});

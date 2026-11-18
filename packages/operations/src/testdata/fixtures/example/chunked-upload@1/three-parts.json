@@ -1,0 +1,128 @@
+{
+  "source": "hand-made for an S3-style upload in parts: start, three parts with their ETags, complete",
+  "deployment": "uploader",
+  "input": {
+    "document": "JVBERi0xLjcgaGk="
+  },
+  "steps": [
+    {
+      "step": "start",
+      "request": {
+        "method": "POST",
+        "path": "/documents"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "upload_id": "up_7f3a"
+        }
+      }
+    },
+    {
+      "step": "send",
+      "request": {
+        "method": "PUT",
+        "path": "/documents/up_7f3a/parts",
+        "query": {
+          "partNumber": "1",
+          "offset": "0"
+        },
+        "body": {
+          "mediaType": "application/pdf",
+          "bytes": 4,
+          "sha256": "315d429b7714cedb6ad04ac31240145257692630457f3c88253c5beceac76027"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "etag": "\"0a1b2c3d\""
+        },
+        "body": ""
+      }
+    },
+    {
+      "step": "send",
+      "request": {
+        "method": "PUT",
+        "path": "/documents/up_7f3a/parts",
+        "query": {
+          "partNumber": "2",
+          "offset": "4"
+        },
+        "body": {
+          "mediaType": "application/pdf",
+          "bytes": 4,
+          "sha256": "380fb37117fdcc7e63428b2737ecf3fb9ff78362e4253a3edf1d8028fbcabcf6"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "etag": "\"1b2c3d4e\""
+        },
+        "body": ""
+      }
+    },
+    {
+      "step": "send",
+      "request": {
+        "method": "PUT",
+        "path": "/documents/up_7f3a/parts",
+        "query": {
+          "partNumber": "3",
+          "offset": "8"
+        },
+        "body": {
+          "mediaType": "application/pdf",
+          "bytes": 3,
+          "sha256": "8d5da43da04499c6c7711e2eca363660315f42b95cf7bca5f3747e9ab823e3d9"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "etag": "\"2c3d4e5f\""
+        },
+        "body": ""
+      }
+    },
+    {
+      "step": "complete",
+      "request": {
+        "method": "POST",
+        "path": "/documents/up_7f3a/complete",
+        "body": {
+          "parts": [
+            {
+              "number": 1,
+              "etag": "\"0a1b2c3d\""
+            },
+            {
+              "number": 2,
+              "etag": "\"1b2c3d4e\""
+            },
+            {
+              "number": 3,
+              "etag": "\"2c3d4e5f\""
+            }
+          ]
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "bytes": 11
+        }
+      }
+    }
+  ],
+  "result": {
+    "bytes": 11
+  },
+  "usage": {
+    "units": {
+      "upload": 1
+    }
+  }
+}

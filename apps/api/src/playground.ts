@@ -28,6 +28,7 @@ import {
   type DraftRunOutcome,
   type DraftRunSuccess,
 } from './draft-runner.js';
+import type { QuotaProblem } from './rate-limit.js';
 import {
   mapRun,
   RunMapper,
@@ -36,9 +37,16 @@ import {
   type RunStats,
   type TimelineStep,
 } from './run-steps.js';
-import { modelDisplayNames, modelsForTenant } from './model-access.js';
+import {
+  candidatesIn,
+  isCandidate,
+  modelDisplayNames,
+  modelsForTenant,
+  withCandidateTrial,
+} from './model-access.js';
 import type { PlatformModuleFactory } from './platform-modules.js';
 import { requireRight, rightLabels, type Right } from './rights.js';
+import { environmentsOf, environmentViews, productionEnvironment } from './service-environments.js';
 
 export type PlaygroundOutput = 'text' | 'fields';
 export type PlaygroundSetupName = 'setup' | 'compareWith';
@@ -151,9 +159,10 @@ export interface PlaygroundUnavailable {
 }
 
 export interface PlaygroundQuotaExhausted {
-  type: 'about:blank';
+  type: QuotaProblem['type'];
   title: string;
   status: 429;
+  detail: string;
   quota: PlaygroundQuota;
 }
 
@@ -165,11 +174,19 @@ export interface PlaygroundVersionSetup {
   output: PlaygroundOutput;
 }
 
+export interface PlaygroundVariant {
+  id: string;
+  title?: string;
+  model?: string;
+}
+
 export interface PlaygroundServiceVersion {
   version: number;
   draft: boolean;
   inUse: boolean;
+  environments?: string[];
   setup: PlaygroundVersionSetup;
+  variants?: PlaygroundVariant[];
   inputFields?: InputField[];
 }
 
@@ -195,6 +212,7 @@ export interface PlaygroundOptions {
     dataLocation: Residency;
     status: ModelStatus;
     policy?: PlaygroundPolicy;
+    candidate?: true;
   }[];
   datasets: { id: string; name: string; dataLocation: Residency; status: ModelStatus }[];
   skills: { id: string; name: string; version: number; ref: string }[];
@@ -369,6 +387,19 @@ export const questionsIn = (value: unknown, locale: 'nb' | 'en') =>
     return typeof text === 'string' && text ? [text] : [];
   });
 
+const variantsIn = (definition: unknown, locale: 'nb' | 'en'): PlaygroundVariant[] => {
+  const spec = record(record(definition).spec);
+  const list = (Array.isArray(spec.variants) ? spec.variants : []).flatMap((v) => {
+    const entry = typeof v === 'string' ? { id: v } : record(v);
+    const id = text(entry.id);
+    if (!id) return [];
+    const title = text(record(entry.title)[locale]);
+    const model = text(entry.model);
+    return [{ id, ...(title ? { title } : {}), ...(model ? { model } : {}) }];
+  });
+  return list.length > 1 ? list : [];
+};
+
 const toolIds = (value: unknown) =>
   (Array.isArray(value) ? value : []).flatMap((t) => {
     const id = typeof t === 'string' ? t : text(record(t).use);
@@ -409,7 +440,7 @@ const policyFrom = (
   link: rule?.match.residency ? '#/settings' : link,
 });
 
-const verdict = (
+export const verdict = (
   policy: BlockPolicy,
   kind: BlockKind,
   id: string,
@@ -486,7 +517,7 @@ export const playgroundModule: PlatformModuleFactory = () => ({
 
     const guard = async (
       c: Context,
-    ): Promise<{ principal: Principal; tenant: string } | Response> => {
+    ): Promise<{ principal: Principal; tenant: string; operator: boolean } | Response> => {
       const principal = await deps.authenticate(c.req.raw);
       if (!principal) return problem(c, 401, 'Unauthorized');
       const tenant = c.req.param('tenant') ?? '';
@@ -504,7 +535,7 @@ export const playgroundModule: PlatformModuleFactory = () => ({
           { 'content-type': 'application/problem+json' },
         );
       if (!enabled(tenant)) return problem(c, 409, disabledTitle);
-      return { principal: scoped, tenant };
+      return { principal: scoped, tenant, operator: principal.kind === 'operator' };
     };
 
     const modelResidency = (id: string) => deps.models.models().get(id)?.residency;
@@ -513,9 +544,15 @@ export const playgroundModule: PlatformModuleFactory = () => ({
     const refusalOf = (policy: BlockPolicy, definition: unknown) => {
       const spec = record(record(definition).spec);
       const model = record(spec.model);
-      const models = [model.primary, model.fallback, ...Object.values(record(model.roles))].filter(
-        (m): m is string => typeof m === 'string',
+      const variantModels = (Array.isArray(spec.variants) ? spec.variants : []).map(
+        (v) => record(v).model,
       );
+      const models = [
+        model.primary,
+        model.fallback,
+        ...Object.values(record(model.roles)),
+        ...variantModels,
+      ].filter((m): m is string => typeof m === 'string');
       const checks = [
         ...models.map((m) => verdict(policy, 'model', m, modelResidency(m) ?? null)),
         ...datasetIds(spec).map((d) => verdict(policy, 'dataset', d, datasetResidency(d) ?? null)),
@@ -542,11 +579,22 @@ export const playgroundModule: PlatformModuleFactory = () => ({
     const withModel = (definition: Record<string, unknown>, model: string | undefined) => {
       if (!model) return definition;
       const spec = record(definition.spec);
+      const declared = { ...record(spec.model) };
+      delete declared.fallback;
+      const roles = Object.entries(record(declared.roles)).map(([role, id]) => [
+        role,
+        id === declared.primary ? model : id,
+      ]);
       return {
         ...definition,
         spec: {
           ...spec,
-          model: { primary: model, residency: modelResidency(model) ?? 'global' },
+          model: {
+            ...declared,
+            primary: model,
+            residency: declared.residency ?? modelResidency(model) ?? 'global',
+            ...(roles.length ? { roles: Object.fromEntries(roles) } : {}),
+          },
         },
       };
     };
@@ -564,7 +612,13 @@ export const playgroundModule: PlatformModuleFactory = () => ({
           const raw = setup.service.definition;
           if (raw === undefined)
             return { ok: false, path: 'service.definition', message: 'send the draft definition' };
-          const parsed = typeof raw === 'string' ? (parseYaml(raw) as unknown) : raw;
+          let parsed: unknown = raw;
+          if (typeof raw === 'string')
+            try {
+              parsed = parseYaml(raw);
+            } catch (error) {
+              return { ok: false, path: 'service.definition', message: (error as Error).message };
+            }
           return {
             ok: true,
             definition: withModel(record(parsed), setup.model),
@@ -678,7 +732,18 @@ export const playgroundModule: PlatformModuleFactory = () => ({
       };
     };
 
-    const quotaOf = async (tenant: string): Promise<PlaygroundQuota & { exhausted: boolean }> => {
+    const quotaOf = async (
+      tenant: string,
+      fresh = false,
+    ): Promise<PlaygroundQuota & { exhausted: boolean }> => {
+      if (deps.quota) {
+        const used = await deps.quota(tenant, { fresh });
+        return {
+          usedPercent: Math.round((used.usedTokens / used.monthlyTokens) * 1000) / 10,
+          monthlyTokens: used.monthlyTokens,
+          exhausted: used.exhausted,
+        };
+      }
       const now = new Date();
       const month = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
       let used = 0;
@@ -753,8 +818,12 @@ export const playgroundModule: PlatformModuleFactory = () => ({
     app.get('/tenants/:tenant/playground/options', async (c) => {
       const g = await guard(c);
       if (g instanceof Response) return g;
-      const policy = await readBlockPolicy(deps.configEntries, g.tenant);
-      const listed = await deps.definitions.list(g.tenant);
+      const [policy, listed, sets, quota] = await Promise.all([
+        readBlockPolicy(deps.configEntries, g.tenant),
+        deps.definitions.list(g.tenant),
+        deps.evalStores.testSets.list(g.tenant),
+        quotaOf(g.tenant),
+      ]);
       const unordered = await Promise.all(
         listed
           .filter((d) => d.kind === 'Service')
@@ -762,6 +831,10 @@ export const playgroundModule: PlatformModuleFactory = () => ({
             const versions = await deps.definitions.versions('Service', g.tenant, id);
             const latest = versions.at(-1);
             const latestSpec = record(record(latest?.definition).spec);
+            const pointers = environmentViews(
+              await environmentsOf(deps.configEntries, g.tenant, id),
+              latest?.version,
+            );
             return {
               id,
               name: text(record(latest?.definition.metadata).name) ?? id,
@@ -775,11 +848,17 @@ export const playgroundModule: PlatformModuleFactory = () => ({
                       g.tenant,
                       v.definition,
                     );
+                    const variants = variantsIn(v.definition, requestLocale());
+                    const environments = pointers
+                      .filter((p) => p.version === v.version)
+                      .map((p) => p.name);
                     return {
                       version: v.version,
                       draft: false,
-                      inUse: v.version === latest?.version,
+                      inUse: environments.includes(productionEnvironment),
+                      ...(environments.length ? { environments } : {}),
                       setup: versionSetup(v.definition),
+                      ...(variants.length ? { variants } : {}),
                       ...(fields.length ? { inputFields: fields } : {}),
                     };
                   }),
@@ -792,13 +871,12 @@ export const playgroundModule: PlatformModuleFactory = () => ({
       const services = unordered.sort(
         (a, b) => Number(b.chat) - Number(a.chat) || a.name.localeCompare(b.name, 'nb'),
       );
-      const testSets = (await deps.evalStores.testSets.list(g.tenant)).map((set) => ({
+      const testSets = sets.map((set) => ({
         id: set.metadata.id,
         name: set.metadata.name,
         cases: set.spec.cases.length,
         ...(set.spec.service ? { service: set.spec.service } : {}),
       }));
-      const quota = await quotaOf(g.tenant);
       const skills = (
         await Promise.all(
           listed
@@ -818,7 +896,7 @@ export const playgroundModule: PlatformModuleFactory = () => ({
             }),
         )
       ).flat();
-      const tenantModels = modelsForTenant(deps, g.tenant);
+      const tenantModels = modelsForTenant(deps, g.tenant, g.operator);
       const modelNames = modelDisplayNames(tenantModels);
       const options: PlaygroundOptions = {
         services,
@@ -830,6 +908,7 @@ export const playgroundModule: PlatformModuleFactory = () => ({
             dataLocation: m.residency,
             status: v.status,
             ...(v.policy ? { policy: v.policy } : {}),
+            ...(isCandidate(deps.catalog, m.id) ? { candidate: true } : {}),
           };
         }),
         datasets: [...deps.knowledge.datasets()]
@@ -854,7 +933,7 @@ export const playgroundModule: PlatformModuleFactory = () => ({
       return c.json(options);
     });
 
-    type Guarded = { principal: Principal; tenant: string };
+    type Guarded = { principal: Principal; tenant: string; operator: boolean };
     interface Prepared {
       request: PlaygroundRunRequest;
       definitions: {
@@ -923,16 +1002,6 @@ export const playgroundModule: PlatformModuleFactory = () => ({
           files: definition.files,
         });
       }
-      const quota = await quotaOf(g.tenant);
-      if (quota.exhausted) {
-        const exhausted: PlaygroundQuotaExhausted = {
-          type: 'about:blank',
-          title: quotaTitle,
-          status: 429,
-          quota: quotaView(quota),
-        };
-        return c.json(exhausted, 429, { 'content-type': 'application/problem+json' });
-      }
       if ('fields' in request.input)
         return {
           request,
@@ -970,7 +1039,10 @@ export const playgroundModule: PlatformModuleFactory = () => ({
       onEvent?: (event: Event) => void,
     ) =>
       deps.drafts.run({
-        principal: g.principal,
+        principal:
+          g.operator && candidatesIn(deps.catalog, d.definition).length > 0
+            ? withCandidateTrial(g.principal)
+            : g.principal,
         tenant: g.tenant,
         definition: withAnswerLanguage(d.definition, prepared.request.answerLanguage),
         files: d.files,
@@ -982,12 +1054,32 @@ export const playgroundModule: PlatformModuleFactory = () => ({
         ...(onEvent ? { onEvent } : {}),
       });
 
-    const failureOf = (
+    const failureOf = async (
       g: Guarded,
       outcome: DraftRunFailure,
       name: PlaygroundSetupName,
-    ): { status: 400 | 403 | 422 | 502; body: unknown } => {
-      if (outcome.status === 400) return { status: 400, body: invalidInputProblem(outcome.errors) };
+    ): Promise<{
+      status: DraftRunFailure['status'];
+      body: unknown;
+      headers: Record<string, string>;
+    }> => {
+      const headers: Record<string, string> = { 'content-type': 'application/problem+json' };
+      if (outcome.status === 400)
+        return { status: 400, body: invalidInputProblem(outcome.errors), headers };
+      if (outcome.quota) {
+        const exhausted: PlaygroundQuotaExhausted = {
+          type: outcome.quota.type,
+          title: quotaTitle,
+          status: 429,
+          detail: outcome.quota.detail,
+          quota: quotaView(await quotaOf(g.tenant, true)),
+        };
+        return {
+          status: 429,
+          body: exhausted,
+          headers: { ...headers, 'retry-after': String(outcome.quota.retryAfterSeconds) },
+        };
+      }
       if (outcome.status === 502) {
         const code = outcome.code ?? 'model_error';
         const detailed = requireRight(g.principal, g.tenant, 'manage-services').ok;
@@ -1004,7 +1096,7 @@ export const playgroundModule: PlatformModuleFactory = () => ({
           ...(detailed && outcome.errors[0]?.message ? { detail: outcome.errors[0].message } : {}),
           ...(outcome.task ? { runId: outcome.task } : {}),
         };
-        return { status: 502, body: unavailable };
+        return { status: 502, body: unavailable, headers };
       }
       return {
         status: outcome.status,
@@ -1014,6 +1106,7 @@ export const playgroundModule: PlatformModuleFactory = () => ({
           status: outcome.status,
           errors: outcome.errors.map((e) => ({ ...e, path: `${name}.${e.path}` })),
         },
+        headers,
       };
     };
 
@@ -1032,10 +1125,8 @@ export const playgroundModule: PlatformModuleFactory = () => ({
         await deps.blobs.delete({ tenant: g.tenant, path: uploaded });
       for (const [i, outcome] of outcomes.entries()) {
         if (outcome.ok) continue;
-        const failed = failureOf(g, outcome, definitions[i]?.name ?? 'setup');
-        return c.json(failed.body, failed.status, {
-          'content-type': 'application/problem+json',
-        });
+        const failed = await failureOf(g, outcome, definitions[i]?.name ?? 'setup');
+        return c.json(failed.body, failed.status, failed.headers);
       }
       const results = await Promise.all(
         outcomes.map((o, i) =>
@@ -1046,7 +1137,7 @@ export const playgroundModule: PlatformModuleFactory = () => ({
       const response: PlaygroundRunResponse = {
         ...first,
         ...(compare ? { compare } : {}),
-        quota: quotaView(await quotaOf(g.tenant)),
+        quota: quotaView(await quotaOf(g.tenant, true)),
       };
       return c.json(response);
     });
@@ -1059,6 +1150,10 @@ export const playgroundModule: PlatformModuleFactory = () => ({
       const details = mayDetail(g);
       const encoder = new TextEncoder();
       let open = true;
+      let begun = false;
+      let started: () => void = () => undefined;
+      const startedOrSettled = new Promise<void>((resolve) => (started = resolve));
+      let refusal: Awaited<ReturnType<typeof failureOf>> | undefined;
       const body = new ReadableStream<Uint8Array>({
         start: (controller) => {
           const send = (event: string, data: unknown) => {
@@ -1087,10 +1182,12 @@ export const playgroundModule: PlatformModuleFactory = () => ({
             const outcomes = await Promise.all(
               prepared.definitions.map(async (d) => {
                 const mapper = new RunMapper({ details });
-                let started = false;
+                let running = false;
                 const outcome = await runOne(g, prepared, d, (event) => {
-                  if (!started) {
-                    started = true;
+                  if (!running) {
+                    running = true;
+                    begun = true;
+                    started();
                     send('started', { setup: d.name, runId: event.task, startedAt: event.ts });
                   }
                   forward(d.name, mapper, mapper.push(event));
@@ -1100,13 +1197,18 @@ export const playgroundModule: PlatformModuleFactory = () => ({
                     setup: d.name,
                     result: await resultOf(outcome, d.setup.output, details, mapper),
                   });
-                else send('failed', { setup: d.name, problem: failureOf(g, outcome, d.name).body });
+                else {
+                  const failed = await failureOf(g, outcome, d.name);
+                  if (failed.status === 429) refusal ??= failed;
+                  send('failed', { setup: d.name, problem: failed.body });
+                }
                 return outcome;
               }),
             );
+            started();
             if (prepared.uploaded && outcomes.some((o) => !o.ok))
               await deps.blobs.delete({ tenant: g.tenant, path: prepared.uploaded });
-            send('done', { quota: quotaView(await quotaOf(g.tenant)) });
+            send('done', { quota: quotaView(await quotaOf(g.tenant, true)) });
           };
           work()
             .catch((error: unknown) =>
@@ -1123,6 +1225,7 @@ export const playgroundModule: PlatformModuleFactory = () => ({
               }),
             )
             .finally(() => {
+              started();
               if (!open) return;
               open = false;
               controller.close();
@@ -1132,6 +1235,11 @@ export const playgroundModule: PlatformModuleFactory = () => ({
           open = false;
         },
       });
+      await startedOrSettled;
+      if (refusal && !begun) {
+        open = false;
+        return c.json(refusal.body, 429, refusal.headers);
+      }
       return new Response(body, {
         status: 200,
         headers: {

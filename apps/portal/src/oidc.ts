@@ -1,5 +1,6 @@
 import { resolveLocale } from '@genai/i18n';
 import { translator } from './i18n';
+import type { SilentAuthorize } from './silent-frame';
 import type { Organisation, Session } from './types';
 
 export interface OidcAuthClient {
@@ -35,6 +36,7 @@ export interface AnsattportenOptions {
   now?: () => number;
   uiLocales?: () => string;
   organisations?: (token: string) => Promise<Organisation[]>;
+  silent?: SilentAuthorize;
 }
 
 interface Discovery {
@@ -42,6 +44,7 @@ interface Discovery {
   authorization_endpoint: string;
   token_endpoint: string;
   end_session_endpoint?: string;
+  prompt_values_supported?: string[];
 }
 
 interface PendingLogin {
@@ -113,14 +116,6 @@ export const organisationsFrom = (claims: Record<string, unknown>, resource: str
   return [...found.values()];
 };
 
-export const isEntraLogin = (token: string) => {
-  try {
-    return decodeJwt(token).acr === 'entraid';
-  } catch {
-    return false;
-  }
-};
-
 interface MyOrganisations {
   organisations?: { orgNumber: string; name: string; rights: string[] }[];
   title?: string;
@@ -145,6 +140,17 @@ export const organisationsFromApi =
 
 const textClaim = (...values: unknown[]) =>
   values.find((v) => typeof v === 'string' && v) as string | undefined;
+
+const fullName = (claims: Record<string, unknown>) =>
+  [textClaim(claims.given_name), textClaim(claims.family_name)].filter(Boolean).join(' ') ||
+  undefined;
+
+const publicSession = (session: StoredSession): Session => ({
+  name: session.name,
+  organisations: session.organisations,
+  token: session.token,
+  ...(session.email ? { email: session.email } : {}),
+});
 
 export const ansattporten = (options: AnsattportenOptions): OidcAuthClient => {
   const sessionKey = `${options.clientId}.session`;
@@ -183,6 +189,11 @@ export const ansattporten = (options: AnsattportenOptions): OidcAuthClient => {
     const pending = read<PendingLogin>(loginKey);
     options.storage.removeItem(loginKey);
     options.replace(`/${pending?.returnTo ?? ''}`);
+    const { tokens, id } = await exchange(url, pending, await discover());
+    return keep(tokens, id);
+  };
+
+  const exchange = async (url: URL, pending: PendingLogin | undefined, discovery: Discovery) => {
     const params = url.searchParams;
     if (params.get('error'))
       throw new LoginError(params.get('error_description') ?? params.get('error') ?? 'login');
@@ -190,7 +201,6 @@ export const ansattporten = (options: AnsattportenOptions): OidcAuthClient => {
       throw new LoginError('state does not match');
     const iss = params.get('iss');
     if (iss && iss !== options.issuer) throw new LoginError('unexpected issuer');
-    const discovery = await discover();
     const response = await options.fetch(endpoint(discovery.token_endpoint), {
       method: 'POST',
       headers: {
@@ -209,7 +219,7 @@ export const ansattporten = (options: AnsattportenOptions): OidcAuthClient => {
     const tokens = (await response.json()) as TokenResponse;
     const id = tokens.id_token ? decodeJwt(tokens.id_token) : {};
     if (tokens.id_token && id.nonce !== pending.nonce) throw new LoginError('nonce does not match');
-    return keep(tokens, id);
+    return { tokens, id };
   };
 
   const keep = async (
@@ -218,7 +228,16 @@ export const ansattporten = (options: AnsattportenOptions): OidcAuthClient => {
     previous?: StoredSession,
   ) => {
     const access = decodeJwt(tokens.access_token);
-    const name = textClaim(id.name, access.name, previous?.name, id.email, access.email) ?? '';
+    const email = textClaim(id.email, access.email, previous?.email);
+    const name =
+      textClaim(
+        id.name,
+        access.name,
+        fullName(id),
+        fullName(access),
+        previous?.name === previous?.email ? undefined : previous?.name,
+        email,
+      ) ?? '';
     const listed = organisationsFrom(access, options.altinnResource);
     const organisations =
       listed.length === 0 && options.organisations
@@ -230,12 +249,13 @@ export const ansattporten = (options: AnsattportenOptions): OidcAuthClient => {
       name: name || translator(resolveLocale(options.uiLocales?.()))('app.unknownUser'),
       organisations,
       token: tokens.access_token,
+      ...(email ? { email } : {}),
       ...(typeof access.exp === 'number' ? { expiresAt: access.exp * 1000 } : {}),
       ...(refreshToken ? { refreshToken } : {}),
       ...(idToken ? { idToken } : {}),
     };
     options.storage.setItem(sessionKey, JSON.stringify(session));
-    return { name: session.name, organisations: session.organisations, token: session.token };
+    return publicSession(session);
   };
 
   const stored = () => {
@@ -245,7 +265,7 @@ export const ansattporten = (options: AnsattportenOptions): OidcAuthClient => {
       options.storage.removeItem(sessionKey);
       return undefined;
     }
-    return { name: session.name, organisations: session.organisations, token: session.token };
+    return publicSession(session);
   };
 
   const redirect = async (): Promise<Session> => {
@@ -267,6 +287,11 @@ export const ansattporten = (options: AnsattportenOptions): OidcAuthClient => {
       loginKey,
       JSON.stringify(hash && hash !== '#' ? { ...pending, returnTo: hash } : pending),
     );
+    options.navigate((await authorizeUrl(discovery, pending)).toString());
+    return new Promise<Session>(() => undefined);
+  };
+
+  const authorizeUrl = async (discovery: Discovery, pending: PendingLogin) => {
     const authorize = new URL(discovery.authorization_endpoint);
     const query = authorize.searchParams;
     query.set('response_type', 'code');
@@ -283,8 +308,27 @@ export const ansattporten = (options: AnsattportenOptions): OidcAuthClient => {
       'authorization_details',
       JSON.stringify([{ type: ALTINN_RESOURCE_DETAIL, resource: options.altinnResource }]),
     );
-    options.navigate(authorize.toString());
-    return new Promise<Session>(() => undefined);
+    return authorize;
+  };
+
+  const silently = async (previous: StoredSession) => {
+    if (!options.silent) return undefined;
+    const discovery = await discover();
+    const prompts = discovery.prompt_values_supported;
+    if (Array.isArray(prompts) && !prompts.includes('none')) return undefined;
+    const pending: PendingLogin = {
+      state: randomString(),
+      verifier: randomString(),
+      nonce: randomString(),
+    };
+    const authorize = await authorizeUrl(discovery, pending);
+    authorize.searchParams.set('prompt', 'none');
+    const back = await options.silent(authorize.toString());
+    if (!back) return undefined;
+    const { tokens, id } = await exchange(back, pending, discovery);
+    const before = decodeJwt(previous.token).sub;
+    if (before !== undefined && decodeJwt(tokens.access_token).sub !== before) return undefined;
+    return keep(tokens, id, previous);
   };
 
   return {
@@ -293,7 +337,8 @@ export const ansattporten = (options: AnsattportenOptions): OidcAuthClient => {
     expiresAt: () => (stored() ? read<StoredSession>(sessionKey)?.expiresAt : undefined),
     refresh: async () => {
       const previous = read<StoredSession>(sessionKey);
-      if (!previous?.refreshToken || stored() === undefined) return undefined;
+      if (!previous || stored() === undefined) return undefined;
+      if (!previous.refreshToken) return silently(previous).catch(() => undefined);
       try {
         const discovery = await discover();
         const response = await options.fetch(endpoint(discovery.token_endpoint), {
@@ -309,11 +354,9 @@ export const ansattporten = (options: AnsattportenOptions): OidcAuthClient => {
           }).toString(),
         });
         if (!response.ok) {
-          options.storage.setItem(
-            sessionKey,
-            JSON.stringify({ ...previous, refreshToken: undefined }),
-          );
-          return undefined;
+          delete previous.refreshToken;
+          options.storage.setItem(sessionKey, JSON.stringify(previous));
+          return await silently(previous);
         }
         const tokens = (await response.json()) as TokenResponse;
         return keep(tokens, tokens.id_token ? decodeJwt(tokens.id_token) : {}, previous);

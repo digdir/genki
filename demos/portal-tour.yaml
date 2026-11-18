@@ -1,0 +1,19 @@
+title: En rask tur i GenKI-portalen
+language: nb-NO
+voice: nb-NO-PernilleNeural
+viewport: [1280, 720]
+start: https://portal.genki-test.digdir.cloud
+steps:
+  - say: Dette er GenKI, Digdirs fellesløsning for generativ KI for offentlige virksomheter.
+  - say: Plattformen lar dere lage egne tjenester, med vern bygd inn fra starten.
+  - say: Fellestjenestene er klare fra første dag. Klarspråk, bokmål til nynorsk, oppsummering, anonymisering, transkribering og uthenting av opplysninger.
+    do:
+      - [find, role, link, click, --name, Fellestjenester]
+    hold: 1
+  - say: Her er tre eksempler på hva virksomheter kan bygge, som å spørre rapportene sine.
+    do:
+      - [find, role, link, click, --name, Eksempler]
+  - say: Og her står det hvordan data behandles. Hvor de behandles, hva som lagres og logges, og hvem som har tilgang.
+    do:
+      - [find, role, link, click, --name, Data]
+    hold: 1.5

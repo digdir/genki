@@ -20,7 +20,7 @@
     "build": "tsc -b"
   },
   "dependencies": {
-    "@azure/identity": "^4.13.3",
+    "@azure/identity": "^4.14.1",
     "@genai/contracts": "0.0.0",
     "@genai/conversations": "0.0.0",
     "@genai/definitions": "0.0.0",
@@ -28,6 +28,7 @@
     "@genai/identity": "0.0.0",
     "@genai/jobs": "0.0.0",
     "@genai/kernel": "0.0.0",
+    "@genai/port-usage": "0.0.0",
     "@genai/providers-mcp-client": "0.0.0",
     "pg": "^8.23.1"
   }

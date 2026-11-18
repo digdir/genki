@@ -13,7 +13,14 @@ export type EngineCapability =
 export type SwitchMethod = 'copy' | 'reingest';
 
 export type SwitchState =
-  'running' | 'failed' | 'comparing' | 'ready' | 'active' | 'rolled_back' | 'cancelled';
+  | 'running'
+  | 'failed'
+  | 'comparing'
+  | 'ready'
+  | 'activating'
+  | 'active'
+  | 'rolled_back'
+  | 'cancelled';
 
 export type Verdict = 'same' | 'better' | 'worse';
 
@@ -91,10 +98,13 @@ export interface EngineSwitchView {
   error?: { message: string; percent: number };
   comparison?: RetrievalComparison;
   comparisonNote?: string;
+  /** Into the knowledge database: documents of the fill that could not be read in. */
+  failedDocuments?: number;
   minimumReasonLength: number;
   previousKeptUntil?: string;
   canRollback: boolean;
   decision?: SwitchDecision;
+  admissionRunsOutAt?: string;
 }
 
 export interface DatasetEngineView {
@@ -173,9 +183,12 @@ export interface EngineSwitch {
   failure?: { message: string };
   comparison?: SwitchComparison;
   comparisonNote?: string;
+  failedDocuments?: number;
   minimumReasonLength: number;
   previousKeptUntil?: string;
   decision?: SwitchDecision;
+  /** In lockdown, while the switch has open runs: the earliest time one of their admissions runs out. */
+  admissionRunsOutAt?: string;
 }
 
 export interface DatasetEngine {
@@ -248,9 +261,11 @@ export const toSwitch = (view: EngineSwitchView): EngineSwitch => ({
   ...(view.error ? { failure: { message: view.error.message } } : {}),
   ...(view.comparison ? { comparison: toComparison(view.comparison) } : {}),
   ...(view.comparisonNote ? { comparisonNote: view.comparisonNote } : {}),
+  ...(view.failedDocuments ? { failedDocuments: view.failedDocuments } : {}),
   minimumReasonLength: view.minimumReasonLength,
   ...(view.previousKeptUntil ? { previousKeptUntil: view.previousKeptUntil } : {}),
   ...(view.decision ? { decision: view.decision } : {}),
+  ...(view.admissionRunsOutAt ? { admissionRunsOutAt: view.admissionRunsOutAt } : {}),
 });
 
 export const toDatasetEngine = (view: DatasetEngineView): DatasetEngine => {
@@ -369,6 +384,15 @@ export const searchEnginesApi = (ctx: ApiContext) => {
         await ctx.request<EngineSwitchView>(
           'POST',
           `${switchPath(tenant, id, switchId)}/retry`,
+          {},
+          { 'change-reason': reason },
+        ),
+      ),
+    readmitSwitch: async (tenant: string, id: string, switchId: string, reason: string) =>
+      toSwitch(
+        await ctx.request<EngineSwitchView>(
+          'POST',
+          `${switchPath(tenant, id, switchId)}/readmit`,
           {},
           { 'change-reason': reason },
         ),

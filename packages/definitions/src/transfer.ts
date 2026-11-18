@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { SettingsRegistry, TenantSettings } from './config.js';
+import type { SettingsRegistry, SettingWriter, TenantSettings } from './config.js';
 import type { PromptFiles } from './prompts.js';
 import { definitionKinds, type Definition } from './schema.js';
 import type { DefinitionStore } from './store.js';
@@ -39,12 +39,17 @@ export interface ImportOptions {
   onConflict: 'skip' | 'overwrite';
   actor: string;
   reason: string;
-  check?: (definition: unknown, files: PromptFiles) => ValidationError[];
+  check?: (
+    definition: unknown,
+    files: PromptFiles,
+  ) => ValidationError[] | Promise<ValidationError[]>;
+  prepare?: (definition: unknown) => unknown;
+  writer?: SettingWriter;
 }
 
 export type ImportResult =
   | { ok: true; dryRun: boolean; plan: ImportPlanItem[] }
-  | { ok: false; errors: ValidationError[]; plan: ImportPlanItem[] };
+  | { ok: false; errors: ValidationError[]; plan: ImportPlanItem[]; operatorOnly?: true };
 
 const dropVersion = (metadata: object): Record<string, unknown> =>
   Object.fromEntries(Object.entries(metadata).filter(([k]) => k !== 'version'));
@@ -173,22 +178,41 @@ export const importTenant = async (
     const action = plan.find((p) => p.target === target)?.action;
     if (options.check && (action === 'create' || action === 'update'))
       errors.push(
-        ...options.check(definition, files).map((e) => ({ ...e, path: `${target}.${e.path}` })),
+        ...(await options.check(definition, files)).map((e) => ({
+          ...e,
+          path: `${target}.${e.path}`,
+        })),
       );
   }
+  const writer = options.writer ?? 'tenant';
+  const writes = (target: string) => {
+    const action = plan.find((p) => p.target === target)?.action;
+    return action === 'create' || action === 'update';
+  };
+  let operatorOnly = false;
   for (const [key, version] of Object.entries(bundle.settings.pins)) {
     if (!settings.defaultOf(key, version))
       errors.push({
         path: `settings.pins.${key}`,
         message: `no platform default version ${version}`,
       });
+    else if (writes(`pin:${key}`) && !settings.writableBy(key, writer)) {
+      operatorOnly = true;
+      errors.push({
+        path: `settings.pins.${key}`,
+        message: 'only an operator changes this for an organisation',
+      });
+    }
   }
   for (const [key, value] of Object.entries(bundle.settings.values)) {
-    const preview = settings.previewTenant(options.tenant, key, value, []);
-    if (!preview.ok)
-      errors.push(...preview.errors.map((e) => ({ ...e, path: `settings.values.${e.path}` })));
+    if (!writes(`setting:${key}`)) continue;
+    const preview = settings.previewTenant(options.tenant, key, value, [], writer);
+    if (preview.ok) continue;
+    if (preview.operatorOnly) operatorOnly = true;
+    errors.push(...preview.errors.map((e) => ({ ...e, path: `settings.values.${e.path}` })));
   }
-  if (errors.length > 0) return { ok: false, errors, plan };
+  if (errors.length > 0)
+    return { ok: false, errors, plan, ...(operatorOnly ? { operatorOnly: true as const } : {}) };
   if (options.dryRun) return { ok: true, dryRun: true, plan };
 
   const before: TenantSettings = settings.tenant(options.tenant);
@@ -197,7 +221,8 @@ export const importTenant = async (
     const target = `${String(definition.kind)}:${String((definition.metadata as { id?: unknown }).id)}`;
     const action = applies(target);
     if (action !== 'create' && action !== 'update') continue;
-    const result = await store.publish(definition, options.actor, options.reason, files);
+    const prepared = options.prepare ? options.prepare(definition) : definition;
+    const result = await store.publish(prepared, options.actor, options.reason, files);
     if (!result.ok) {
       settings.restoreTenant(options.tenant, before);
       return {
@@ -209,12 +234,13 @@ export const importTenant = async (
   }
   for (const [key, value] of Object.entries(bundle.settings.values)) {
     const action = applies(`setting:${key}`);
-    if (action === 'create' || action === 'update') settings.setTenant(options.tenant, key, value);
+    if (action === 'create' || action === 'update')
+      settings.setTenant(options.tenant, key, value, writer);
   }
   for (const [key, version] of Object.entries(bundle.settings.pins)) {
     const action = applies(`pin:${key}`);
     if (action === 'create' || action === 'update') {
-      const pinned = settings.pin(options.tenant, key, version);
+      const pinned = settings.pin(options.tenant, key, version, writer);
       if (!pinned.ok)
         errors.push(...pinned.errors.map((e) => ({ ...e, path: `settings.pins.${e.path}` })));
     }

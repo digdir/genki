@@ -1,0 +1,124 @@
+{
+  "source": "The OpenAI API reference (openai/openai-openapi, openapi.yaml): Upload file with purpose batch, Create batch with input_file_id, endpoint and completion_window, Retrieve batch with its status and output_file_id, Retrieve file content, Delete file; the batch input line follows the Batch API guide; the ids are made up",
+  "deployment": "gpt-4o-mini",
+  "input": {
+    "requests": {
+      "mediaType": "text/plain",
+      "data": "eyJjdXN0b21faWQiOiJyZXEtMSIsIm1ldGhvZCI6IlBPU1QiLCJ1cmwiOiIvdjEvY2hhdC9jb21wbGV0aW9ucyIsImJvZHkiOnsibW9kZWwiOiJncHQtNG8tbWluaSIsIm1lc3NhZ2VzIjpbeyJyb2xlIjoidXNlciIsImNvbnRlbnQiOiJIZWkifV19fQo="
+    }
+  },
+  "steps": [
+    {
+      "step": "upload",
+      "request": {
+        "method": "POST",
+        "path": "/files",
+        "body": {
+          "purpose": "batch",
+          "file": {
+            "mediaType": "text/plain",
+            "bytes": 143,
+            "sha256": "5cbb2afff33926a1cf14c8f24b7b481a26a8ea84dd792f22461f8956484fa53d"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "id": "file-in1"
+        }
+      }
+    },
+    {
+      "step": "create",
+      "request": {
+        "method": "POST",
+        "path": "/batches",
+        "body": {
+          "input_file_id": "file-in1",
+          "endpoint": "/v1/chat/completions",
+          "completion_window": "24h"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "id": "batch_abc123",
+          "status": "validating"
+        }
+      }
+    },
+    {
+      "step": "poll",
+      "request": {
+        "method": "GET",
+        "path": "/batches/batch_abc123"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "id": "batch_abc123",
+          "status": "in_progress"
+        }
+      }
+    },
+    {
+      "step": "poll",
+      "request": {
+        "method": "GET",
+        "path": "/batches/batch_abc123"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "id": "batch_abc123",
+          "status": "completed",
+          "output_file_id": "file-out1"
+        }
+      }
+    },
+    {
+      "step": "read",
+      "request": {
+        "method": "GET",
+        "path": "/files/file-out1/content"
+      },
+      "response": {
+        "status": 200,
+        "body": "{\"id\":\"batch_req_1\",\"custom_id\":\"req-1\",\"response\":{\"status_code\":200,\"request_id\":\"req_1\",\"body\":{\"id\":\"chatcmpl-1\",\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"Hei!\"}}]}},\"error\":null}\n"
+      }
+    },
+    {
+      "step": "remove_input",
+      "request": {
+        "method": "DELETE",
+        "path": "/files/file-in1"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "deleted": true
+        }
+      }
+    },
+    {
+      "step": "remove_output",
+      "request": {
+        "method": "DELETE",
+        "path": "/files/file-out1"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "deleted": true
+        }
+      }
+    }
+  ],
+  "result": {
+    "results": "{\"id\":\"batch_req_1\",\"custom_id\":\"req-1\",\"response\":{\"status_code\":200,\"request_id\":\"req_1\",\"body\":{\"id\":\"chatcmpl-1\",\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"Hei!\"}}]}},\"error\":null}\n"
+  },
+  "usage": {
+    "requests": 1
+  }
+}

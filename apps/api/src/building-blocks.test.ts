@@ -8,7 +8,7 @@ import {
 } from '@genai/definitions';
 import type { Emitted, InvocationContext, Strategy } from '@genai/kernel';
 import type { ToolPort } from '@genai/port-tools';
-import { InMemoryEvalRunStore } from '@genai/eval';
+import { InMemoryEvalRunStore, type EvalRun } from '@genai/eval';
 import type { ModelDescription } from '@genai/port-model';
 import { A2aToolSource } from '@genai/providers-a2a-client';
 import { OpenApiToolSource } from '@genai/providers-openapi-tools';
@@ -16,6 +16,7 @@ import {
   ConnectionToolSources,
   InMemoryConnections,
   McpToolSource,
+  TenantSecrets,
   type EgressRequest,
   type EgressResponse,
   type RemoteTool,
@@ -56,6 +57,8 @@ const model = (id: string, residency: ModelDescription['residency']): ModelDescr
   deployment: id.split('/')[1] ?? id,
   residency,
   capabilities: ['stream'],
+  apis: { chat: 'openai/chat-completions@1' },
+  operations: ['chat'],
   enabled: true,
   origin: 'discovered',
   classified: true,
@@ -152,6 +155,7 @@ const setup = async ({
   catalog = undefined as unknown as CatalogRegistry | undefined,
   access = undefined as Access | undefined,
 } = {}) => {
+  const runs = new InMemoryEvalRunStore();
   const blockSet = new Set(blockRefs);
   const store = new InMemoryDefinitionStore({
     ...plugins,
@@ -163,10 +167,19 @@ const setup = async ({
   if (residencyRule) await configEntries.append(residencyPolicy(platformScope));
   const connections = new InMemoryConnections();
   let served: RemoteTool[] = [{ name: 'lookup', description: 'Slår opp' }];
-  const guard = fakeMcp(() => served);
+  const fake = fakeMcp(() => served);
+  const sent: { target: string; headers: Record<string, string> }[] = [];
+  const guard = {
+    request: async (allow: unknown, target: string, init: EgressRequest) => {
+      sent.push({ target, headers: init.headers ?? {} });
+      return fake.request(allow, target, init);
+    },
+  };
+  const vault = new TenantSecretVault();
+  const secrets = vault.resolver({ resolve: async () => 'secret' });
   const sourceOptions = {
     registry: connections,
-    secrets: { resolve: async () => 'secret' },
+    secrets,
     guard: guard as never,
   };
   const source = new ConnectionToolSources(connections, [
@@ -196,13 +209,13 @@ const setup = async ({
     },
     knowledge: { resolve: () => undefined },
     engines: () => [],
-    evalStores: { runs: new InMemoryEvalRunStore() },
+    evalStores: { runs },
     connections,
   } as unknown as ModuleDeps;
   let ids = 0;
-  const vault = new TenantSecretVault();
   const blocks = createBuildingBlocksModule({
-    guard,
+    guard: guard as never,
+    secrets,
     secretNames: (tenant) => vault.names(tenant),
     newId: () => `req-${++ids}`,
     now: () => new Date('2026-10-07T10:00:00Z'),
@@ -215,7 +228,12 @@ const setup = async ({
     tenants: async () => [{ orgNumber: digdir, name: 'Digitaliseringsdirektoratet' }],
     extensions: {
       ...adminExtensions({
-        tools: { connections, source, onToolsChanged: async () => undefined },
+        tools: {
+          connections,
+          source,
+          secrets: new TenantSecrets(secrets),
+          onToolsChanged: async () => undefined,
+        },
         directory: new TenantDirectory(),
       }),
       ...blocks.handlers,
@@ -257,7 +275,7 @@ const setup = async ({
   const serve = (tools: RemoteTool[]) => {
     served = tools;
   };
-  return { send, admin, configEntries, connections, serve, vault, blocks, store };
+  return { send, admin, configEntries, connections, serve, vault, blocks, store, sent, runs };
 };
 
 const json = async <T>(res: Response) => (await res.json()) as T;
@@ -307,6 +325,100 @@ describe('building blocks API', () => {
       usedBy: [{ id: 'klarsprak', name: 'Klarspråk' }],
     });
     expect(adopt.status).toBe(409);
+  });
+
+  it("scores a block by the services' latest completed runs, never a newer run still running or failed", async () => {
+    const { send, runs } = await setup();
+    const evalRun = (id: string, endedAt: string, extra: Partial<EvalRun>): EvalRun => ({
+      id,
+      testSet: { tenant: digdir, id: 'klarsprak-sett', version: 1 },
+      capability: `${digdir}/klarsprak/default`,
+      splits: ['validation'],
+      repeats: 1,
+      startedAt: endedAt,
+      endedAt,
+      provenance: {
+        commit: 'abc',
+        data: 'd',
+        servedModels: ['foundry/gpt-4o'],
+        judges: [],
+        services: [],
+      },
+      results: [],
+      metrics: { 'exact-text': { mean: 0.9, ci: [0.8, 1], n: 10 } },
+      byTag: {},
+      incomplete: [],
+      ...extra,
+    });
+    await runs.save({
+      run: evalRun('ferdig', '2026-10-01T10:00:00Z', { status: 'completed' }),
+      tenant: digdir,
+      task: 't1',
+      service: 'klarsprak',
+    });
+    await runs.save({
+      run: evalRun('feilet', '2026-10-02T10:00:00Z', { status: 'failed', metrics: {} }),
+      tenant: digdir,
+      task: 't2',
+      service: 'klarsprak',
+    });
+
+    const list = await json<{ data: { id: string; scores: { run: string; score: number }[] }[] }>(
+      await send(base, 'kari'),
+    );
+
+    expect(list.data.find((b) => b.id === 'foundry/gpt-4o')?.scores).toEqual([
+      expect.objectContaining({ run: 'ferdig', score: 90 }),
+    ]);
+  });
+
+  it('never scores a block by a run limited to marked cases', async () => {
+    const { send, runs } = await setup();
+    const evalRun = (id: string, endedAt: string, extra: Partial<EvalRun>): EvalRun => ({
+      id,
+      testSet: { tenant: digdir, id: 'klarsprak-sett', version: 1 },
+      capability: `${digdir}/klarsprak/default`,
+      splits: ['validation'],
+      repeats: 1,
+      startedAt: endedAt,
+      endedAt,
+      provenance: {
+        commit: 'abc',
+        data: 'd',
+        servedModels: ['foundry/gpt-4o'],
+        judges: [],
+        services: [],
+      },
+      results: [],
+      metrics: { 'exact-text': { mean: 0.9, ci: [0.8, 1], n: 10 } },
+      byTag: {},
+      incomplete: [],
+      status: 'completed',
+      ...extra,
+    });
+    await runs.save({
+      run: evalRun('hele', '2026-10-01T10:00:00Z', {}),
+      tenant: digdir,
+      task: 't1',
+      service: 'klarsprak',
+    });
+    await runs.save({
+      run: evalRun('merket', '2026-10-02T10:00:00Z', {
+        metrics: { 'exact-text': { mean: 0.2, ci: [0.2, 0.2], n: 1 } },
+        tested: { version: 1, selected: ['c1'] },
+      }),
+      tenant: digdir,
+      task: 't2',
+      service: 'klarsprak',
+    });
+
+    const list = await json<{ data: { id: string; scores: { run: string; score: number }[] }[] }>(
+      await send(base, 'kari'),
+    );
+
+    expect(list.data.find((b) => b.id === 'foundry/gpt-4o')?.scores).toEqual([
+      expect.objectContaining({ run: 'hele', score: 90 }),
+    ]);
   });
 
   it('adopting needs a reason and records Endret av', async () => {
@@ -424,7 +536,7 @@ describe('building blocks API', () => {
 
   it('the secrets route lists names from the secret store and never values', async () => {
     const { send, admin, vault } = await setup();
-    await vault.set(digdir, 'arkiv-nokkel', 'hemmelig-verdi');
+    await vault.set(digdir, 'arkiv-nokkel', 'hemmelig-verdi', ['https://arkiv.example.no']);
     await vault.set('999888777', 'annen-nokkel', 'hemmelig-verdi');
     await admin.perform(people.kari as Principal, 'platform.secrets.set', {
       tenant: digdir,
@@ -438,10 +550,109 @@ describe('building blocks API', () => {
 
     expect(listed.status).toBe(200);
     expect(JSON.parse(body)).toEqual({
-      data: [{ name: 'arkiv-nokkel', ref: `secret://tenant/${digdir}/arkiv-nokkel` }],
+      data: [
+        {
+          name: 'arkiv-nokkel',
+          ref: `secret://tenant/${digdir}/arkiv-nokkel`,
+          allowedHosts: ['https://arkiv.example.no'],
+        },
+      ],
     });
     expect(body).not.toContain('hemmelig-verdi');
     expect(refused.status).toBe(403);
+  });
+
+  it('a connection cannot use a tenant secret bound to another host', async () => {
+    const { send, connections, vault, sent, admin } = await setup();
+    await vault.set(digdir, 'arkiv-nokkel', 'hemmelig-verdi', ['https://arkiv.example.no']);
+    const input = {
+      type: 'mcp',
+      name: 'Annen tjener',
+      endpoint: 'https://annen.example.com/mcp',
+      auth: { kind: 'bearer', secret: 'arkiv-nokkel' },
+    };
+
+    const tested = await json<ContractTestReport>(
+      await send(`${base}/contract-tests`, 'kari', { body: input }),
+    );
+    const registered = await send(base, 'kari', { body: input, reason: 'Ny MCP-tjener' });
+    const direct = await admin.perform(people.kari as Principal, 'platform.tools.register', {
+      tenant: digdir,
+      reason: 'Ny MCP-tjener rett i API-et',
+      connection: {
+        id: 'annen',
+        name: 'Annen tjener',
+        endpoint: 'https://annen.example.com/mcp',
+        version: '1',
+        allow: [{ host: 'annen.example.com' }],
+        auth: { kind: 'bearer', secret: `secret://tenant/${digdir}/arkiv-nokkel` },
+      },
+    });
+    const message =
+      'Hemmeligheten «arkiv-nokkel» er ikke satt opp for https://annen.example.com. Be noen med retten «Administrere tjenester» om å legge til adressen på hemmeligheten.';
+
+    expect(tested).toMatchObject({
+      passed: false,
+      results: [{ name: 'Oppsettet er gyldig', passed: false, reason: message }],
+    });
+    expect(registered.status).toBe(400);
+    expect(await registered.json()).toMatchObject({
+      errors: [{ path: 'auth.secret', message }],
+    });
+    expect(direct).toMatchObject({ ok: false, errors: [{ message }] });
+    expect(await connections.list(digdir)).toEqual([]);
+    expect(sent.filter((r) => JSON.stringify(r.headers).includes('hemmelig-verdi'))).toEqual([]);
+    expect(sent.filter((r) => new URL(r.target).origin === 'https://annen.example.com')).toEqual(
+      [],
+    );
+  });
+
+  it('the refusal of a secret bound to another host is in English when asked for', async () => {
+    const { send, vault } = await setup();
+    await vault.set(digdir, 'arkiv-nokkel', 'hemmelig-verdi', ['https://arkiv.example.no']);
+
+    const registered = await send(base, 'kari', {
+      body: {
+        type: 'mcp',
+        name: 'Annen tjener',
+        endpoint: 'https://annen.example.com/mcp',
+        auth: { kind: 'bearer', secret: 'arkiv-nokkel' },
+      },
+      reason: 'Ny MCP-tjener',
+      language: 'en',
+    });
+
+    expect(await registered.json()).toMatchObject({
+      errors: [
+        {
+          message:
+            'The secret «arkiv-nokkel» is not set up for https://annen.example.com. Ask someone with the right «Manage services» to add the address to the secret.',
+        },
+      ],
+    });
+  });
+
+  it('a connection to the host a secret is set for registers and syncs with the secret', async () => {
+    const { send, connections, vault, sent, serve } = await setup();
+    await vault.set(digdir, 'arkiv-nokkel', 'hemmelig-verdi', ['https://arkiv.example.no']);
+    serve([{ name: 'lookup', description: 'Slår opp en sak', inputSchema: { type: 'object' } }]);
+
+    const registered = await send(base, 'kari', {
+      body: {
+        type: 'mcp',
+        name: 'Arkiv',
+        endpoint: 'https://arkiv.example.no/mcp',
+        auth: { kind: 'bearer', secret: 'arkiv-nokkel' },
+      },
+      reason: 'Arkivet med nøkkel',
+    });
+
+    expect(registered.status).toBe(201);
+    expect((await connections.get(digdir, 'arkiv'))?.tools).toHaveLength(1);
+    expect(sent.at(-1)).toMatchObject({
+      target: 'https://arkiv.example.no/mcp',
+      headers: { authorization: 'Bearer hemmelig-verdi' },
+    });
   });
 
   it('the MCP contract test refuses Maskinporten and secrets of others with a reason', async () => {
@@ -480,7 +691,8 @@ describe('building blocks API', () => {
   });
 
   it('registers an OpenAPI document with read operations only, and lists every operation for picking', async () => {
-    const { send, connections } = await setup();
+    const { send, connections, vault } = await setup();
+    await vault.set(digdir, 'saks-api', 'verdi', ['https://api.example.no']);
     const input = {
       type: 'openapi',
       name: 'Saks-API',
@@ -511,7 +723,8 @@ describe('building blocks API', () => {
   });
 
   it('write operations from OpenAPI stay off until Digdir approves them, while read operations work at once', async () => {
-    const { send, connections } = await setup();
+    const { send, connections, vault } = await setup();
+    await vault.set(digdir, 'saks-api', 'verdi', ['https://api.example.no']);
     const input = {
       type: 'openapi',
       name: 'Saks-API',
@@ -549,8 +762,43 @@ describe('building blocks API', () => {
     expect(after?.tools.map((t) => t.name)).toEqual(['saks-api.hentsak', 'saks-api.slettsak']);
   });
 
+  it('registering a tool connection directly keeps OpenAPI writes off unless an operator registers it', async () => {
+    const { send, connections, admin, vault } = await setup();
+    await vault.set(digdir, 'saks-api', 'verdi', ['https://api.example.no']);
+    await send(base, 'kari', {
+      body: {
+        type: 'openapi',
+        name: 'Saks-API',
+        endpoint: 'https://api.example.no/v1',
+        document: JSON.stringify(openApiDocument),
+        auth: { kind: 'api-key', secret: 'saks-api' },
+        operations: ['hentSak', 'slettSak'],
+      },
+      reason: 'Saks-API uten sletting',
+    });
+    const stored = (await connections.get(digdir, 'saks-api'))?.connection;
+    const register = (principal: Principal, id: string) =>
+      admin.perform(principal, 'platform.tools.register', {
+        tenant: digdir,
+        reason: 'Saks-API med sletting',
+        connection: { ...stored, id, writes: true },
+      });
+
+    const byTenant = await register(people.kari as Principal, 'saks-tenant');
+    const byOperator = await register(
+      { ...(people.operator as Principal), actor: people.operator as Principal },
+      'saks-operator',
+    );
+
+    expect(byTenant.ok).toBe(true);
+    expect((await connections.get(digdir, 'saks-tenant'))?.connection.writes).toBe(false);
+    expect(byOperator.ok).toBe(true);
+    expect((await connections.get(digdir, 'saks-operator'))?.connection.writes).toBe(true);
+  });
+
   it('a write grant is saved inside the decision task that approves it', async () => {
-    const { send, connections, admin } = await setup();
+    const { send, connections, admin, vault } = await setup();
+    await vault.set(digdir, 'saks-api', 'verdi', ['https://api.example.no']);
     const registered = await json<RegistrationResult>(
       await send(base, 'kari', {
         body: {
@@ -1163,6 +1411,49 @@ describe('building-block settings at run time', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('lists one judge:criteria block at its prompt version for runs judged by two models', async () => {
+    const { send, runs } = await setup();
+    for (const [id, model] of [
+      ['r1', 'foundry/claude'],
+      ['r2', 'foundry/gpt-4o'],
+    ] as const)
+      await runs.save({
+        tenant: digdir,
+        task: `task-${id}`,
+        service: 'svar',
+        run: {
+          id,
+          testSet: { tenant: digdir, id: 'svar-sett', version: 1 },
+          capability: `${digdir}/svar`,
+          splits: ['validation'],
+          repeats: 1,
+          startedAt: '2026-11-12T10:00:00.000Z',
+          endedAt: '2026-11-12T10:01:00.000Z',
+          provenance: {
+            commit: 'abc',
+            data: 'd1',
+            servedModels: ['m'],
+            judges: [`judge:criteria@2+${model}`],
+            services: [],
+          },
+          results: [],
+          metrics: { 'judge.criteria': { mean: 1, ci: [1, 1], n: 1 } },
+          byTag: {},
+          incomplete: [],
+        },
+      });
+
+    const listed = await json<{ data: BuildingBlock[] }>(await send(`${base}?kind=judge`, 'kari'));
+    const block = await json<BuildingBlock>(
+      await send(`${base}/judge/${encodeURIComponent('judge:criteria')}`, 'kari'),
+    );
+
+    expect(listed.data.map((b) => b.id).filter((id) => id.startsWith('judge:criteria'))).toEqual([
+      'judge:criteria',
+    ]);
+    expect(block.version).toBe('2');
   });
 
   it('every block setting has an effect: judges have none and a tool gets at most its own timeout', async () => {

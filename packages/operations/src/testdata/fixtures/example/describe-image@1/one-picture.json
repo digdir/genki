@@ -1,0 +1,33 @@
+{
+  "source": "Made up for this test",
+  "deployment": "model-1",
+  "input": {
+    "picture": {
+      "mediaType": "image/png",
+      "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+    },
+    "question": "What is it?"
+  },
+  "request": {
+    "method": "POST",
+    "path": "/describe",
+    "body": {
+      "model": "model-1",
+      "question": "What is it?",
+      "image": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "answer": "A pixel."
+    }
+  },
+  "result": {
+    "answer": "A pixel."
+  },
+  "usage": {
+    "requests": 1
+  },
+  "dropped": 0
+}

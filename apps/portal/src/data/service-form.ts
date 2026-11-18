@@ -263,6 +263,14 @@ export const flowOf = (spec: ServiceSpec) => {
   return typeof flow === 'string' ? flow : undefined;
 };
 
+export const withFlow = (spec: ServiceSpec, ref: string): SpecPatch => {
+  const strategy =
+    spec.strategy.id === 'step-flow'
+      ? spec.strategy
+      : (withStrategy(spec, 'step-flow').strategy ?? { id: 'step-flow', version: 1, config: {} });
+  return { strategy: { ...strategy, config: { ...strategy.config, flow: ref } } };
+};
+
 export const withModel = (spec: ServiceSpec, id: string, residency?: string): SpecPatch => ({
   model: {
     ...without(spec.model, 'residency'),
@@ -274,6 +282,16 @@ export const withModel = (spec: ServiceSpec, id: string, residency?: string): Sp
 export const withFallback = (spec: ServiceSpec, id: string): SpecPatch => ({
   model: id ? { ...spec.model, fallback: id } : without(spec.model, 'fallback'),
 });
+
+export const withOperationModel = (spec: ServiceSpec, kind: string, id: string): SpecPatch => {
+  const rest = without(spec.model.operations, kind);
+  const operations = id ? { ...rest, [kind]: id } : rest;
+  return {
+    model: Object.keys(operations).length
+      ? { ...spec.model, operations }
+      : without(spec.model, 'operations'),
+  };
+};
 
 export const datasetsOf = (spec: ServiceSpec): DatasetRef[] => spec.knowledge?.datasets ?? [];
 

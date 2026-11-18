@@ -8,6 +8,7 @@ export type PlaygroundModelStatus = 'allowed' | 'requires_approval' | 'not_allow
 export interface PlaygroundServiceRef {
   id: string;
   version: number | 'draft';
+  variant?: string;
   definition?: unknown;
   files?: Record<string, string>;
 }
@@ -21,11 +22,18 @@ export interface PlaygroundSetup {
   output: PlaygroundOutput;
 }
 
+export interface PlaygroundVariant {
+  id: string;
+  title?: string;
+  model?: string;
+}
+
 export interface PlaygroundServiceVersion {
   version: number;
   draft: boolean;
   inUse: boolean;
   setup: Omit<PlaygroundSetup, 'service'>;
+  variants?: PlaygroundVariant[];
   inputFields?: PlaygroundInputField[];
 }
 
@@ -51,6 +59,7 @@ export interface PlaygroundModelOption {
   dataLocation: Residency;
   status: PlaygroundModelStatus;
   policy?: PlaygroundPolicy;
+  candidate?: true;
 }
 
 export interface PlaygroundNamed {
@@ -134,6 +143,10 @@ export interface PlaygroundSource {
   url?: string;
   text?: string;
   headers?: string[];
+  /** The page the chunk starts on, the page it ends on when another, and its PDF's address. */
+  page?: number;
+  pageEnd?: number;
+  fileUrl?: string;
   document?: string;
   position?: number;
   excerpt?: string;

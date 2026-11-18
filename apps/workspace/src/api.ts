@@ -7,6 +7,7 @@ import {
 } from './failures';
 import { translator } from './i18n';
 import { detectLang } from './language';
+import type { StreamStep } from './procedure';
 import { tableFrom, type ResultTable } from './ResultTable';
 import { withPlausibleYears } from './years';
 import type {
@@ -16,6 +17,7 @@ import type {
   DocumentRules,
   FeedbackInput,
   InputField,
+  MediaAttachment,
   ServiceOption,
   Source,
   FailedRun,
@@ -89,11 +91,26 @@ const documentRulesOf = (m: ModelEntry): DocumentRules | undefined => {
 interface OwuiSource {
   source?: { name?: string; id?: string; url?: string };
   metadata?: { name?: string }[];
+  title?: string;
+  url?: string;
   excerpt?: string;
-  excerpts?: { chunk_id?: string; text?: string }[];
+  excerpts?: {
+    chunk_id?: string;
+    text?: string;
+    page?: number;
+    page_end?: number;
+    url?: string;
+  }[];
+  markers?: string[];
   index?: number;
   version?: string | number;
   published_at?: string;
+}
+
+interface Marker {
+  marker: string;
+  chunk_id: string;
+  document: string;
 }
 
 interface Chunk {
@@ -102,12 +119,15 @@ interface Chunk {
     finish_reason?: string | null;
   }[];
   sources?: OwuiSource[];
+  markers?: unknown;
   citations?: string[];
   retract?: boolean;
   no_answer?: boolean;
   error?: RunError;
   table?: unknown;
   csv?: string;
+  attachments?: unknown;
+  genai_step?: StreamStep;
 }
 
 const linkable = (url: string | undefined) =>
@@ -115,9 +135,9 @@ const linkable = (url: string | undefined) =>
 
 const passageLength = 1200;
 
-const passageOf = (s: OwuiSource) => {
-  const cited = s.excerpts?.find((e) => e.chunk_id === s.source?.id && e.text?.trim());
-  const text = (cited?.text ?? s.excerpt ?? '')
+const passageOf = (s: OwuiSource, chunkId = s.source?.id) => {
+  const cited = s.excerpts?.find((e) => e.chunk_id === chunkId && e.text?.trim());
+  const text = (cited?.text ?? (chunkId === s.source?.id ? s.excerpt : undefined) ?? '')
     .replace(/^#+\s*/gm, '')
     .replace(/\s+/g, ' ')
     .trim();
@@ -125,18 +145,139 @@ const passageOf = (s: OwuiSource) => {
   return text.length > passageLength ? `${text.slice(0, passageLength).trimEnd()}…` : text;
 };
 
-export const sourcesFrom = (chunk: Chunk, locale: Locale = 'nb'): Source[] => {
-  if (chunk.sources?.length)
-    return chunk.sources.map((s) => ({
-      title: s.metadata?.[0]?.name ?? s.source?.name ?? translator(locale)('api.untitledSource'),
-      ...linkable(s.source?.url),
-      ...(passageOf(s) ? { excerpt: passageOf(s) as string } : {}),
+const wholePage = (value: unknown) =>
+  typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : undefined;
+
+/** The page of the excerpt a source shows, where it ends when later, and its PDF at that page. */
+const pageOf = (s: OwuiSource, chunkId: string | undefined) => {
+  const e = s.excerpts?.find((x) => x.chunk_id === chunkId);
+  const page = wholePage(e?.page);
+  if (!e || page === undefined) return {};
+  const end = wholePage(e.page_end);
+  return {
+    page,
+    ...(end !== undefined && end > page ? { pageEnd: end } : {}),
+    ...(e.url && /^https?:\/\//i.test(e.url) ? { pageUrl: e.url } : {}),
+  };
+};
+
+const provenanceOf = (s: OwuiSource) => ({
+  ...(s.version !== undefined && s.version !== '' ? { version: String(s.version) } : {}),
+  ...(s.published_at ? { publishedAt: s.published_at } : {}),
+});
+
+const markersIn = (value: unknown): Marker[] =>
+  Array.isArray(value)
+    ? value.filter(
+        (m): m is Marker =>
+          typeof m === 'object' &&
+          m !== null &&
+          typeof m.marker === 'string' &&
+          /^\d+$/.test(m.marker) &&
+          typeof m.chunk_id === 'string' &&
+          typeof m.document === 'string',
+      )
+    : [];
+
+const sourcesIn = (value: unknown): OwuiSource[] =>
+  Array.isArray(value)
+    ? value.filter((s): s is OwuiSource => typeof s === 'object' && s !== null)
+    : [];
+
+const chunkSource = (c: Record<string, unknown>): OwuiSource => ({
+  ...(typeof c.docTitle === 'string' && c.docTitle ? { title: c.docTitle } : {}),
+  excerpts:
+    typeof c.chunkId === 'string' && typeof c.contentMarkdown === 'string'
+      ? [{ chunk_id: c.chunkId, text: c.contentMarkdown }]
+      : [],
+});
+
+// One numbered source per marker, showing the excerpt that marker names.
+const markedSources = (markers: Marker[], sources: OwuiSource[], untitled: string): Source[] =>
+  markers.flatMap((m) => {
+    const s = sources.find(
+      (c) => c.markers?.includes(m.marker) || c.excerpts?.some((e) => e.chunk_id === m.chunk_id),
+    );
+    if (!s) return [];
+    const excerpt = passageOf(s, m.chunk_id);
+    return [
+      {
+        title:
+          (m.chunk_id === s.source?.id ? s.metadata?.[0]?.name : undefined) ??
+          s.title ??
+          s.source?.name ??
+          untitled,
+        index: Number(m.marker),
+        document: m.document,
+        ...linkable(s.source?.url ?? s.url),
+        ...(excerpt ? { excerpt } : {}),
+        ...pageOf(s, m.chunk_id),
+        ...provenanceOf(s),
+      },
+    ];
+  });
+
+// Each source under the `index` its answer gave it, as streamed or as stored.
+const indexedSources = (sources: OwuiSource[], untitled: string): Source[] =>
+  sources.map((s) => {
+    const shown = s.source?.id ?? s.excerpts?.[0]?.chunk_id;
+    const excerpt = passageOf(s, shown);
+    return {
+      title: s.metadata?.[0]?.name ?? s.source?.name ?? s.title ?? untitled,
+      ...linkable(s.source?.url ?? s.url),
+      ...(excerpt ? { excerpt } : {}),
+      ...pageOf(s, shown),
       ...(typeof s.index === 'number' ? { index: s.index } : {}),
-      ...(s.version !== undefined && s.version !== '' ? { version: String(s.version) } : {}),
-      ...(s.published_at ? { publishedAt: s.published_at } : {}),
-    }));
+      ...provenanceOf(s),
+    };
+  });
+
+// A turn with only chunks cites by document: `[n]` is the n-th document its chunks name.
+const chunkDocuments = (chunks: Record<string, unknown>[], untitled: string): Source[] => {
+  const documents = new Map<unknown, Source>();
+  for (const c of chunks) {
+    const key = typeof c.docNum === 'string' && c.docNum ? c.docNum : c.chunkId;
+    if (documents.has(key)) continue;
+    documents.set(key, {
+      title: typeof c.docTitle === 'string' && c.docTitle ? c.docTitle : untitled,
+      index: documents.size + 1,
+      ...(typeof c.contentMarkdown === 'string' && c.contentMarkdown.trim()
+        ? { excerpt: c.contentMarkdown.replace(/\s+/g, ' ').trim().slice(0, passageLength) }
+        : {}),
+    });
+  }
+  return [...documents.values()];
+};
+
+export const sourcesFrom = (chunk: Chunk, locale: Locale = 'nb'): Source[] => {
+  const markers = markersIn(chunk.markers);
+  if (markers.length && chunk.sources?.length)
+    return markedSources(markers, chunk.sources, translator(locale)('api.untitledSource'));
+  if (chunk.sources?.length)
+    return indexedSources(chunk.sources, translator(locale)('api.untitledSource'));
   return (chunk.citations ?? []).map((url, i) => ({ title: url, index: i + 1, ...linkable(url) }));
 };
+
+export const mediaFrom = (value: unknown): MediaAttachment[] =>
+  Array.isArray(value)
+    ? value.flatMap((a) => {
+        const m = (a ?? {}) as Record<string, unknown>;
+        return typeof m.id === 'string' &&
+          typeof m.mediaType === 'string' &&
+          typeof m.url === 'string' &&
+          m.url.startsWith('/v1/tasks/')
+          ? [
+              {
+                id: m.id,
+                mediaType: m.mediaType,
+                bytes: typeof m.bytes === 'number' ? m.bytes : 0,
+                url: m.url,
+                ...(typeof m.step === 'string' ? { step: m.step } : {}),
+              },
+            ]
+          : [];
+      })
+    : [];
 
 export const serviceName = (id: string) => {
   const bare = id.slice(id.lastIndexOf('/') + 1).replace(/__default$/, '');
@@ -213,6 +354,14 @@ export const createWorkspaceApi = ({
       });
       const body = (await readJson(response)) as { lockdown?: unknown } | undefined;
       return response.ok && body?.lockdown === true;
+    },
+    readOnlyInLockdown: async (signal) => {
+      const response = await send(`${baseUrl}/me`, {
+        headers: headers(),
+        ...(signal ? { signal } : {}),
+      });
+      const body = (await readJson(response)) as { lockdownReadOnly?: unknown } | undefined;
+      return response.ok && body?.lockdownReadOnly === true;
     },
     rights: async (tenant, signal) => {
       try {
@@ -354,22 +503,20 @@ export const createWorkspaceApi = ({
                 : {}),
             };
           const chunks = Array.isArray(m.chunks) ? (m.chunks as Record<string, unknown>[]) : [];
+          const markers = markersIn(m.markers);
+          const stored = sourcesIn(m.sources);
+          const untitled = translator(locale())('api.untitledSource');
           return {
             id: `saved-${i}`,
             role: 'assistant',
             text,
             lang: detectLang(text),
             ...(typeof m.task === 'string' && m.task ? { task: m.task } : {}),
-            sources: chunks.map((c, n) => ({
-              title:
-                typeof c.docTitle === 'string' && c.docTitle
-                  ? c.docTitle
-                  : translator(locale())('api.untitledSource'),
-              index: n + 1,
-              ...(typeof c.contentMarkdown === 'string' && c.contentMarkdown.trim()
-                ? { excerpt: c.contentMarkdown.replace(/\s+/g, ' ').trim().slice(0, 1200) }
-                : {}),
-            })),
+            sources: markers.length
+              ? markedSources(markers, [...stored, ...chunks.map(chunkSource)], untitled)
+              : stored.length
+                ? indexedSources(stored, untitled)
+                : chunkDocuments(chunks, untitled),
           };
         });
       },
@@ -391,6 +538,7 @@ export const createWorkspaceApi = ({
       input,
       conversation,
       documents,
+      onStep,
     ): Promise<ChatReply> => {
       let response: Response;
       try {
@@ -402,6 +550,7 @@ export const createWorkspaceApi = ({
             messages: history,
             stream: true,
             genai_stream: 'live',
+            ...(onStep ? { genai_steps: true } : {}),
             ...(input ? { input } : {}),
             ...(documents?.length
               ? {
@@ -441,6 +590,7 @@ export const createWorkspaceApi = ({
       let table: ResultTable | undefined;
       let csv: string | undefined;
       let runError: RunError | undefined;
+      let media: MediaAttachment[] = [];
       for await (const data of sseEvents(response.body)) {
         if (data === '[DONE]') break;
         let chunk: Chunk;
@@ -454,7 +604,9 @@ export const createWorkspaceApi = ({
           text = '';
           onDelta(text);
         }
+        if (chunk.genai_step) onStep?.(chunk.genai_step);
         if (chunk.no_answer) noAnswer = true;
+        if (chunk.attachments) media = mediaFrom(chunk.attachments);
         if (chunk.error) runError = chunk.error;
         if (chunk.table) {
           table = tableFrom(chunk.table);
@@ -494,8 +646,18 @@ export const createWorkspaceApi = ({
         sources,
         ...(noAnswer ? { noAnswer } : {}),
         ...(table ? { table, ...(csv ? { csv } : {}) } : {}),
+        ...(media.length ? { media } : {}),
         ...withTask,
       };
+    },
+
+    media: async (url, signal) => {
+      const response = await send(`${baseUrl}${url}`, {
+        headers: headers({ accept: '*/*' }),
+        ...(signal ? { signal } : {}),
+      });
+      if (!response.ok) throw new ApiError(response.status, await readJson(response));
+      return response.blob();
     },
 
     sendFeedback: async ({ task, rating, reasons, comment }: FeedbackInput) => {

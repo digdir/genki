@@ -1,0 +1,678 @@
+{
+ "tests": [
+  {
+   "id": "eras-d17a8877-p57-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Innkrevingsvirksomhet og andre overføringer til staten",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p57-t02",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "2 272",
+     "max_diffs": 1
+    },
+    "left_heading": {
+     "text": "Renter dokumentavgift",
+     "max_diffs": 1
+    },
+    "top_heading": {
+     "text": "31.12.2023",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p57-t03",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "0",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Renteinntekter til statskassen",
+     "max_diffs": 0
+    },
+    "left": {
+     "text": "800",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p57-t04",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "12 122 334",
+     "max_diffs": 2
+    },
+    "left_heading": {
+     "text": "Sum avgifter og gebyrer direkte til statskassen",
+     "max_diffs": 2
+    },
+    "top_heading": {
+     "text": "31.12.2022",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p57-t05",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "11 621 916",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Dokumentavgift",
+     "max_diffs": 0
+    },
+    "right": {
+     "text": "12 121 034",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p57-t06",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "348 019",
+     "max_diffs": 3
+    },
+    "left_heading": {
+     "text": "Fordringer til pålydende (Kartverkets kundefordringer tinglysingsgebyr)",
+     "max_diffs": 3
+    },
+    "top_heading": {
+     "text": "31.12.2023",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p57-t07",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "16 373",
+     "max_diffs": 2
+    },
+    "left_heading": {
+     "text": "Sum fordringer vedrørende innkrevningsvirksomhet og andre overføringer til staten",
+     "max_diffs": 2
+    },
+    "left": {
+     "text": "348 019",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p57-t08",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "0",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Avsatt til forventet tap (-)",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "31.12.2022",
+     "max_diffs": 0
+    },
+    "up": {
+     "text": "16 373",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p57-t09",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "11 624 988",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p57-t10",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_review",
+   "tags": [
+    "table",
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Sum fordringer vedrørende innkrevningsvirksomhet og andre overføringer til staten",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "har tidligere blitt presentert etter",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p57-t11",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Dersom dette hadde blitt gjort etter samme prinsippet også i 2022, ville beløpet vært 440 998.",
+     "max_diffs": 4
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p57-t12",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Innkrevning av dokumentavgift",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p57-t13",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Når det gjelder selve innkrevingen eller innfordringen, ble det sendt 677 (833 i 2022) fakturaer til Statens innkrevingssentral i 2023.",
+     "max_diffs": 5
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p57-t14",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "som tilsvarer 43 264 færre rettsstiftelser",
+     "max_diffs": 3
+    },
+    "after": {
+     "text": "Gjeld vedrørende tilskuddsforvaltning og andre overføringer fra staten",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p57-t15",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "1 736",
+     "max_diffs": 1
+    },
+    "left_heading": {
+     "text": "Utbetaling av tilskudd til andre",
+     "max_diffs": 1
+    },
+    "top_heading": {
+     "text": "31.12.2022",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p57-t16",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "1 595",
+     "max_diffs": 1
+    },
+    "left_heading": {
+     "text": "Sum tilskudd til andre",
+     "max_diffs": 1
+    },
+    "right": {
+     "text": "1 736",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p57-t17",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "1 595",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "31.12.2023",
+     "max_diffs": 0
+    },
+    "down": {
+     "text": "1 595",
+     "max_diffs": 0
+    },
+    "right": {
+     "text": "1 736",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p57-t18",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Pr. 31.12.23 har Kartverket gjeld i forbindelse med tilskudd på 50 000 kroner.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p57-t19",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Midlene skal bidra til tiltak for universell utforming",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "I 2023, som i 2021 og 2022",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p57-t20",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Kartverkets tilskudd til andre er tidligere presentert i henhold til kontantprinsippet.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p57-t21",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "prinsipp som det bokføres etter.",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "Investeringer i aksjer og andeler",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p57-t22",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Investeringer i aksjer og andeler",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p57-t23",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "11,48 %",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Eierandel",
+     "max_diffs": 0
+    },
+    "left": {
+     "text": "14",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p57-t24",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "-1 138",
+     "max_diffs": 1
+    },
+    "top_heading": {
+     "text": "Årets resultat i selskapet (2022)",
+     "max_diffs": 1
+    },
+    "right": {
+     "text": "2 759",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p57-t25",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "2 759",
+     "max_diffs": 1
+    },
+    "top_heading": {
+     "text": "Balanseført egenkapital i selskapet",
+     "max_diffs": 1
+    },
+    "left_heading": {
+     "text": "Framsenteret Drift AS",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p57-t26",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "1999",
+     "max_diffs": 1
+    },
+    "top_heading": {
+     "text": "Ervervsdato",
+     "max_diffs": 1
+    },
+    "left": {
+     "text": "Framsenteret Drift AS",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p57-t27",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "149",
+     "max_diffs": 1
+    },
+    "left_heading": {
+     "text": "Balanseført verdi 31.12.2023",
+     "max_diffs": 1
+    },
+    "top_heading": {
+     "text": "Balanseført verdi virksomhetsregnskapet",
+     "max_diffs": 1
+    },
+    "left": {
+     "text": "14",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p57-t28",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "11,48 %",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

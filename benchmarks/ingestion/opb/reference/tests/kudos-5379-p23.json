@@ -1,0 +1,22 @@
+{"tests": [
+ {"id": "kudos-5379-p23-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Tilskudd skal utbetales i henhold til avtaler med Det grønne klimafondet", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-5379-p23-t02", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["caption", "nob", "Latn"],
+  "args": {"content": {"text": "Fordeling på kap. 163, post 70 i 2020", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-5379-p23-t03", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["caption", "nob", "Latn"],
+  "args": {"before": {"text": "Matsikkerhet, fisk og landbruk/Bærekraftige matsystemer.", "max_diffs": 2}, "after": {"text": "Fordeling på kap. 163, post 70 i 2020", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-5379-p23-t04", "test_type": "table_cell", "output_type": "html", "derivation": "model_panel", "tags": ["table", "nob", "Latn"],
+  "args": {"cell": {"text": "700 000", "max_diffs": 0}, "left_heading": {"text": "Det grønne klimafondet", "max_diffs": 0}, "top_heading": {"text": "(i 1000 kroner)", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-5379-p23-t05", "test_type": "table_cell", "output_type": "html", "derivation": "model_panel", "tags": ["table", "nob", "Latn"],
+  "args": {"cell": {"text": "1 209 150", "max_diffs": 0}, "left_heading": {"text": "SUM", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-5379-p23-t06", "test_type": "table_cell", "output_type": "html", "derivation": "model_panel", "tags": ["table", "nob", "Latn"],
+  "args": {"cell": {"text": "119 830", "max_diffs": 0}, "left_heading": {"text": "Klimatilpasning", "max_diffs": 0}, "down": {"text": "39 830", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-5379-p23-t07", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["table", "nob", "Latn"],
+  "args": {"content": {"text": "1 209 150", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-5379-p23-t08", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["table", "heading", "nob", "Latn"],
+  "args": {"before": {"text": "Utslippsreduksjoner og øvrige klimatiltak", "max_diffs": 1}, "after": {"text": "Kapittel 163 Klima, miljø og hav", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-5379-p23-t09", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Norad tildeles 336,566 mill. kroner til bærekraftige hav og tiltak mot marin forsøpling.", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-5379-p23-t10", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Direktoratet skal holde tilbake midler for å kunne støtte opp om de politiske anbefalingene", "max_diffs": 3}}, "settings": {}}
+]}

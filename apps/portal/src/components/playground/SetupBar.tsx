@@ -1,6 +1,7 @@
+import { CodeIcon } from '@navikt/aksel-icons';
 import { Button, Chip } from '@digdir/designsystemet-react';
 import { useT } from '../../i18n';
-import { Icon, icons } from '../Icon';
+import { Icon } from '../Icon';
 
 export interface SetupRow {
   key: 'a' | 'b';
@@ -61,7 +62,7 @@ export const SetupBar = ({
           {comparing ? t('playground.endCompare') : t('playground.compare')}
         </Button>
         <Button variant="tertiary" data-size="sm" onClick={onShowCall}>
-          <Icon d={icons.code} size={18} />
+          <Icon icon={CodeIcon} size={18} />
           {t('common.apiCall')}
         </Button>
       </div>

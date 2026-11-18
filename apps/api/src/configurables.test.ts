@@ -1,3 +1,4 @@
+import { LEGACY_KEY_ISSUER } from '@genai/identity';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Hono } from 'hono';
 import { textPart, type Principal } from '@genai/contracts';
@@ -7,7 +8,13 @@ import { fakeHttp, type FakeServer } from '@genai/port-model/testing';
 import { createAdmin } from './admin.js';
 import { createPlatform } from './composition.js';
 import { InMemoryConfigEntryStore, type ConfigEntryStore } from './config-store.js';
-import { InMemoryIngestionBackend, type IngestionBackend } from './ingestion.js';
+import {
+  InMemoryIngestionBackend,
+  type Execution,
+  type IngestionBackend,
+  type JobRunStore,
+  type JobRuns,
+} from './ingestion.js';
 
 const digdir = '991825827';
 const other = '999888777';
@@ -16,6 +23,28 @@ const principals: Record<string, Principal> = {
   kari: { kind: 'employee', issuer: 'test', subject: 'kari', tenant: digdir },
   ola: { kind: 'employee', issuer: 'test', subject: 'ola', tenant: other },
   drift: { kind: 'operator', issuer: 'test', subject: 'drift' },
+  erik: {
+    kind: 'employee',
+    issuer: 'test',
+    subject: 'erik',
+    tenant: digdir,
+    authorizedFor: [{ org: digdir, actions: ['use-services', 'manage-datasets'] }],
+  },
+  siri: {
+    kind: 'employee',
+    issuer: 'test',
+    subject: 'siri',
+    tenant: digdir,
+    authorizedFor: [{ org: digdir, actions: ['use-services'] }],
+  },
+  // An ingest key granted another dataset only.
+  nokkel: {
+    kind: 'agency-system',
+    issuer: LEGACY_KEY_ISSUER,
+    subject: 'key-annet',
+    tenant: digdir,
+    scopes: ['legacy:ingest', 'grant:dataset:annet'],
+  },
 };
 
 const servers: FakeServer[] = [];
@@ -67,6 +96,7 @@ export const boot = async (
   options: {
     store?: ConfigEntryStore;
     ingestion?: IngestionBackend;
+    jobRuns?: JobRuns;
     answer?: string;
     searchOnlyClusters?: string[];
   } = {},
@@ -80,7 +110,7 @@ export const boot = async (
       models: {
         endpoints: {
           fake: {
-            protocol: 'openai-chat',
+            families: { openai: '' },
             baseURL: `${model.url}/v1`,
             auth: { kind: 'api-key', secret: 'secret://env/fake-key' },
           },
@@ -117,6 +147,7 @@ export const boot = async (
     configurables: {
       ...(options.store ? { store: options.store } : {}),
       ...(options.ingestion ? { ingestion: options.ingestion } : {}),
+      ...(options.jobRuns ? { jobRuns: options.jobRuns } : {}),
     },
     authenticate: async (request) => {
       const principal = principals[request.headers.get('authorization')?.slice(7) ?? ''];
@@ -191,7 +222,7 @@ describe('model, price and endpoint catalog over the API', () => {
   it('lets an operator add a model endpoint and model, versions and audits it, and refuses others', async () => {
     const { call, platform, admin } = await boot();
     const endpoint = {
-      protocol: 'openai-chat',
+      families: { openai: '' },
       baseURL: 'https://modeller.example.no/v1',
       auth: { kind: 'api-key', secret: 'secret://env/other-key' },
     };
@@ -314,7 +345,7 @@ describe('model, price and endpoint catalog over the API', () => {
     await first.call('/operator/catalog/model-endpoint/norsk', 'drift', {
       method: 'PUT',
       body: {
-        protocol: 'openai-chat',
+        families: { openai: '' },
         baseURL: 'https://modeller.example.no/v1',
         auth: { kind: 'api-key', secret: 'secret://env/other-key' },
       },
@@ -482,7 +513,7 @@ describe('tenant catalog entries', () => {
     await call(`/tenants/${digdir}/catalog/model-endpoint/egen`, 'kari', {
       method: 'PUT',
       body: {
-        protocol: 'openai-chat',
+        families: { openai: '' },
         baseURL: 'https://llm.testetaten.example.no/v1',
         auth: { kind: 'api-key', secret: `secret://tenant/${digdir}/llm-key` },
       },
@@ -513,6 +544,31 @@ describe('tenant catalog entries', () => {
     });
     expect(removed.status).toBe(400);
     expect(JSON.stringify(await json(removed))).toContain('used by a published service');
+  });
+});
+
+describe('the dataset list', () => {
+  it("counts only the tenant's own services that read each dataset", async () => {
+    const { platform, call } = await boot();
+    const reading = (tenant: string, id: string) =>
+      service({ tenant, id, spec: { knowledge: { datasets: [{ dataset: 'digdir/kudos' }] } } });
+    for (const [tenant, id] of [
+      [digdir, 'svar'],
+      [digdir, 'svar-to'],
+      [other, 'svar-annen'],
+    ] as const)
+      expect(
+        (await platform.definitions.publish(reading(tenant, id), 'test', 'test', files)).ok,
+      ).toBe(true);
+    const countOf = async (tenant: string, who: string) =>
+      (
+        await json<{ data: { id: string; usedByCount: number }[] }>(
+          await call(`/tenants/${tenant}/datasets`, who),
+        )
+      ).data.find((d) => d.id === 'digdir/kudos')?.usedByCount;
+
+    expect(await countOf(digdir, 'kari')).toBe(2);
+    expect(await countOf(other, 'ola')).toBe(1);
   });
 });
 
@@ -672,6 +728,213 @@ describe('ingestion pipelines', () => {
     ).toBe(400);
   });
 
+  it('shows the token usage of a pipeline execution only with view-usage', async () => {
+    const memory = new InMemoryIngestionBackend(() => [
+      { key: 'a', text: 'Digdir har ansvar for felles løsninger.' },
+    ]);
+    const backend: IngestionBackend = {
+      name: memory.name,
+      available: memory.available,
+      run: async (job, signal) => ({
+        ...(await memory.run(job, signal)),
+        usage: { embedding: { inputTokens: 40, costMicroNok: 2 } },
+      }),
+    };
+    const { call } = await boot({ ingestion: backend });
+    await call(`/tenants/${digdir}/catalog/knowledge-endpoint/sok`, 'kari', {
+      method: 'PUT',
+      body: { ...tenantEndpoint, engine: 'typesense' },
+    });
+    await call(`/tenants/${digdir}/datasets`, 'kari', {
+      body: {
+        id: 'sider',
+        name: 'Sider',
+        residency: 'norway',
+        collection: {
+          endpoint: 'sok',
+          collections: { docs: 'sider_docs', chunks: 'sider_chunks' },
+        },
+      },
+    });
+    const base = `/tenants/${digdir}/datasets/sider/pipelines`;
+    await call(base, 'kari', { body: pipeline });
+    await call(`${base}/nettsider/execute`, 'kari', { body: {} });
+    await new Promise((r) => setTimeout(r, 10));
+
+    const reportFor = async (who: string) =>
+      (
+        await json<{ data: { report?: Record<string, unknown> }[] }>(
+          await call(`${base}/nettsider/executions`, who),
+        )
+      ).data[0]?.report;
+
+    expect(await reportFor('erik')).toMatchObject({ stored: 1 });
+    expect(await reportFor('erik')).not.toHaveProperty('usage');
+    expect(await reportFor('kari')).toHaveProperty('usage');
+  });
+
+  it('sending back is audited and needs the dataset right', async () => {
+    const runs = new Map<string, Execution>();
+    const sentBack: { execution: string; by: string; reason: string }[] = [];
+    const store: JobRunStore = {
+      start: async (input) => {
+        const run: Execution = { ...input, status: 'running', runsAsJobs: true };
+        runs.set(run.id, run);
+        return { ok: true, value: run };
+      },
+      cancel: async () => undefined,
+      redrive: async (input) => {
+        const run = runs.get(input.execution);
+        if (!run || run.status !== 'failed')
+          return { ok: false, message: 'only an ended run that runs as jobs can be sent back' };
+        sentBack.push({ execution: input.execution, by: input.by, reason: input.reason });
+        const reopened: Execution = { ...run, status: 'running', admittedAt: input.at };
+        runs.set(run.id, reopened);
+        return { ok: true, value: reopened };
+      },
+      readmit: async () => ({ ok: false, message: 'not here' }),
+    };
+    const { call, admin } = await boot({
+      ingestion: new InMemoryIngestionBackend(),
+      jobRuns: { runsAsJobs: (dataset) => dataset === `${digdir}/sider`, runs: store },
+    });
+    await call(`/tenants/${digdir}/catalog/knowledge-endpoint/sok`, 'kari', {
+      method: 'PUT',
+      body: { ...tenantEndpoint, engine: 'typesense' },
+    });
+    await call(`/tenants/${digdir}/datasets`, 'kari', {
+      body: {
+        id: 'sider',
+        name: 'Sider',
+        residency: 'norway',
+        collection: {
+          endpoint: 'sok',
+          collections: { docs: 'sider_docs', chunks: 'sider_chunks' },
+        },
+      },
+    });
+    const base = `/tenants/${digdir}/datasets/sider/pipelines`;
+    await call(base, 'kari', { body: pipeline });
+    const started = await json<{ id: string }>(
+      await call(`${base}/nettsider/execute`, 'erik', { body: {} }),
+    );
+    const run = runs.get(started.id);
+    if (!run) throw new Error('the run was not started as jobs');
+    runs.set(run.id, { ...run, status: 'failed', error: 'listing failed' });
+    const redrive = `${base}/nettsider/executions/${run.id}/redrive`;
+
+    expect((await call(redrive, 'siri', { body: {}, reason: 'Kudos svarer igjen' })).status).toBe(
+      403,
+    );
+    expect((await call(redrive, 'erik', { body: {}, reason: null })).status).toBe(400);
+    expect(sentBack).toEqual([]);
+
+    const sent = await call(redrive, 'erik', { body: {}, reason: 'Kudos svarer igjen' });
+    expect(sent.status).toBe(202);
+    expect(await json(sent)).toMatchObject({ id: run.id, status: 'running' });
+    expect(sentBack).toEqual([
+      { execution: run.id, by: expect.stringContaining('erik'), reason: 'Kudos svarer igjen' },
+    ]);
+    expect(
+      (await admin.audit(digdir)).filter((entry) => entry.action === 'platform.jobs.redrive'),
+    ).toEqual([expect.objectContaining({ reason: 'Kudos svarer igjen' })]);
+
+    expect((await call(redrive, 'erik', { body: {}, reason: 'Igjen' })).status).toBe(400);
+  });
+
+  /** A dataset whose run runs as jobs, started by a dataset manager, and its readmit route. */
+  const readmitSetup = async () => {
+    const runs = new Map<string, Execution>();
+    const admitted: { execution: string; at: string }[] = [];
+    const store: JobRunStore = {
+      start: async (input) => {
+        const run: Execution = { ...input, status: 'running', runsAsJobs: true };
+        runs.set(run.id, run);
+        return { ok: true, value: run };
+      },
+      cancel: async () => undefined,
+      redrive: async () => ({ ok: false, message: 'not here' }),
+      readmit: async (input) => {
+        const run = runs.get(input.execution);
+        if (!run) return { ok: false, message: 'no such run' };
+        admitted.push({ execution: input.execution, at: input.at });
+        const again: Execution = { ...run, admittedAt: input.at };
+        runs.set(run.id, again);
+        return { ok: true, value: again };
+      },
+    };
+    const { call, admin } = await boot({
+      ingestion: new InMemoryIngestionBackend(),
+      jobRuns: { runsAsJobs: (dataset) => dataset === `${digdir}/sider`, runs: store },
+    });
+    await call(`/tenants/${digdir}/catalog/knowledge-endpoint/sok`, 'kari', {
+      method: 'PUT',
+      body: { ...tenantEndpoint, engine: 'typesense' },
+    });
+    await call(`/tenants/${digdir}/datasets`, 'kari', {
+      body: {
+        id: 'sider',
+        name: 'Sider',
+        residency: 'norway',
+        collection: {
+          endpoint: 'sok',
+          collections: { docs: 'sider_docs', chunks: 'sider_chunks' },
+        },
+      },
+    });
+    const base = `/tenants/${digdir}/datasets/sider/pipelines`;
+    await call(base, 'kari', { body: pipeline });
+    const started = await json<{ id: string }>(
+      await call(`${base}/nettsider/execute`, 'erik', { body: {} }),
+    );
+    const readmit = `${base}/nettsider/executions/${started.id}/readmit`;
+    return { call, admin, admitted, started, readmit };
+  };
+
+  it('admitting a run again is audited with who and why', async () => {
+    const { call, admin, admitted, started, readmit } = await readmitSetup();
+
+    expect(
+      (await call(readmit, 'siri', { body: {}, reason: 'Fyllingen tar lenger tid' })).status,
+    ).toBe(403);
+    expect((await call(readmit, 'erik', { body: {}, reason: null })).status).toBe(400);
+    expect(admitted).toEqual([]);
+
+    const again = await call(readmit, 'erik', { body: {}, reason: 'Fyllingen tar lenger tid' });
+    expect(again.status).toBe(200);
+    expect(await json(again)).toMatchObject({ id: started.id, status: 'running' });
+    expect(admitted).toEqual([{ execution: started.id, at: expect.any(String) }]);
+    expect(
+      (await admin.audit(digdir)).filter((entry) => entry.action === 'platform.jobs.readmit'),
+    ).toEqual([
+      expect.objectContaining({
+        reason: 'Fyllingen tar lenger tid',
+        actor: expect.stringContaining('erik'),
+      }),
+    ]);
+  });
+
+  it('a key not granted the dataset cannot cancel its run or send it back', async () => {
+    const { call, started } = await readmitSetup();
+    const run = `/tenants/${digdir}/datasets/sider/pipelines/nettsider/executions/${started.id}`;
+
+    for (const action of ['cancel', 'redrive'])
+      expect(
+        (await call(`${run}/${action}`, 'nokkel', { body: {}, reason: 'Fyllingen tar lenger tid' }))
+          .status,
+        action,
+      ).toBe(403);
+  });
+
+  it('a key not granted the dataset cannot admit its run again', async () => {
+    const { call, admitted, readmit } = await readmitSetup();
+
+    expect(
+      (await call(readmit, 'nokkel', { body: {}, reason: 'Fyllingen tar lenger tid' })).status,
+    ).toBe(403);
+    expect(admitted).toEqual([]);
+  });
+
   it('runs a pipeline on the pluggable backend and records the execution', async () => {
     const backend = new InMemoryIngestionBackend(() => [
       { key: 'a', text: 'Digdir har ansvar for felles løsninger.' },
@@ -715,6 +978,203 @@ describe('ingestion pipelines', () => {
     });
     expect(platform.ingestion.backend.available).toBe(true);
     expect((await call(`/tenants/${other}/datasets/sider/pipelines`, 'ola')).status).toBe(404);
+  });
+
+  it('refuses a tenant pipeline whose phrase models are unreleased', async () => {
+    const { call, platform } = await boot();
+    await platform.catalog.publish({
+      kind: 'model',
+      scope: 'platform',
+      id: 'fake/ny',
+      spec: { endpoint: 'fake', deployment: 'ny', residency: 'norway', release: 'candidate' },
+      by: 'operator:test:drift',
+      reason: 'ny modell',
+    });
+    await call(`/tenants/${digdir}/catalog/knowledge-endpoint/sok`, 'kari', {
+      method: 'PUT',
+      body: { ...tenantEndpoint, engine: 'typesense' },
+    });
+    await call(`/tenants/${digdir}/datasets`, 'kari', {
+      body: {
+        id: 'sider',
+        name: 'Sider',
+        residency: 'norway',
+        collection: {
+          endpoint: 'sok',
+          collections: { docs: 'sider_docs', chunks: 'sider_chunks' },
+        },
+      },
+    });
+    const base = `/tenants/${digdir}/datasets/sider/pipelines`;
+
+    const refused = await call(base, 'kari', {
+      body: { ...pipeline, phrases: { model: 'fake/gpt', fallbackModel: 'fake/ny' } },
+    });
+    const saved = await call(base, 'kari', {
+      body: { ...pipeline, phrases: { model: 'fake/gpt' } },
+    });
+
+    expect(refused.status).toBe(400);
+    expect(await refused.json()).toMatchObject({
+      errors: [{ path: 'spec.phrases.fallbackModel' }],
+    });
+    expect(saved.status).toBe(201);
+  });
+});
+
+describe("refreshing a dataset's fields", () => {
+  it('lets only an operator start a backfill and audits who started it', async () => {
+    const sent: { tenant: string; dataset: string; fill: string }[] = [];
+    const { call, admin } = await boot({
+      jobRuns: {
+        runsAsJobs: () => false,
+        runs: {} as unknown as JobRunStore,
+        refreshFields: async (input) => {
+          sent.push(input);
+        },
+      },
+    });
+    const fields = `/operator/datasets/${encodeURIComponent('digdir/kudos')}/fields`;
+    const body = { fill: 'kudos-org-numbers' };
+
+    const byEmployee = await call(fields, 'erik', { body, reason: 'Fyll organisasjonsnumre' });
+    const withoutReason = await call(fields, 'drift', { body, reason: null });
+    const unknownFill = await call(fields, 'drift', {
+      body: { fill: 'alt' },
+      reason: 'Fyll organisasjonsnumre',
+    });
+    const started = await call(fields, 'drift', { body, reason: 'Fyll organisasjonsnumre' });
+
+    expect(byEmployee.status).toBe(403);
+    expect(withoutReason.status).toBe(400);
+    expect(unknownFill.status).toBe(400);
+    expect(started.status).toBe(202);
+    expect(sent).toEqual([
+      { tenant: 'platform', dataset: 'digdir/kudos', fill: 'kudos-org-numbers' },
+    ]);
+    expect((await admin.audit()).filter((e) => e.action === 'platform.knowledge.fields')).toEqual([
+      expect.objectContaining({
+        outcome: 'rejected',
+        target: 'dataset:digdir/kudos',
+        actor: expect.stringContaining('drift'),
+      }),
+      expect.objectContaining({
+        outcome: 'applied',
+        target: 'dataset:digdir/kudos',
+        reason: 'Fyll organisasjonsnumre',
+        actor: expect.stringContaining('drift'),
+      }),
+    ]);
+  });
+});
+
+describe('refusing a refresh of fields', () => {
+  const fields = (dataset: string) => `/operator/datasets/${encodeURIComponent(dataset)}/fields`;
+  const body = { fill: 'kudos-org-numbers' };
+  const reason = 'Fyll organisasjonsnumre';
+
+  it('refuses a backfill while a run of the dataset is open', async () => {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    class Holding extends InMemoryIngestionBackend {
+      override async run(...args: Parameters<InMemoryIngestionBackend['run']>) {
+        await held;
+        return super.run(...args);
+      }
+    }
+    const sent: unknown[] = [];
+    const { call } = await boot({
+      ingestion: new Holding(),
+      jobRuns: {
+        runsAsJobs: () => false,
+        runs: {} as unknown as JobRunStore,
+        refreshFields: async (input) => void sent.push(input),
+      },
+    });
+    const base = `/operator/datasets/${encodeURIComponent('digdir/kudos')}/pipelines`;
+    await call(base, 'drift', {
+      body: {
+        id: 'nettsider',
+        name: 'Nettsidene',
+        source: { kind: 'website', sitemap: 'https://www.digdir.no/sitemap.xml' },
+        chunking: { minimumLength: 10, maximumLength: 20 },
+      },
+    });
+    await call(`${base}/nettsider/execute`, 'drift', { body: {} });
+
+    const whileOpen = await call(fields('digdir/kudos'), 'drift', { body, reason });
+    release();
+
+    expect(whileOpen.status).toBe(409);
+    expect(sent).toEqual([]);
+  });
+
+  it('refuses a backfill while the run of a deleted pipeline is open', async () => {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    class Holding extends InMemoryIngestionBackend {
+      override async run(...args: Parameters<InMemoryIngestionBackend['run']>) {
+        await held;
+        return super.run(...args);
+      }
+    }
+    const sent: unknown[] = [];
+    const { call } = await boot({
+      ingestion: new Holding(),
+      jobRuns: {
+        runsAsJobs: () => false,
+        runs: {} as unknown as JobRunStore,
+        refreshFields: async (input) => void sent.push(input),
+      },
+    });
+    const base = `/operator/datasets/${encodeURIComponent('digdir/kudos')}/pipelines`;
+    await call(base, 'drift', {
+      body: {
+        id: 'nettsider',
+        name: 'Nettsidene',
+        source: { kind: 'website', sitemap: 'https://www.digdir.no/sitemap.xml' },
+        chunking: { minimumLength: 10, maximumLength: 20 },
+      },
+    });
+    await call(`${base}/nettsider/execute`, 'drift', { body: {} });
+    await call(`${base}/nettsider`, 'drift', { method: 'DELETE', reason });
+
+    const whileOpen = await call(fields('digdir/kudos'), 'drift', { body, reason });
+    release();
+
+    expect(whileOpen.status).toBe(409);
+    expect(sent).toEqual([]);
+  });
+
+  it("refuses a backfill of a tenant's dataset", async () => {
+    const sent: unknown[] = [];
+    const { call } = await boot({
+      jobRuns: {
+        runsAsJobs: () => false,
+        runs: {} as unknown as JobRunStore,
+        refreshFields: async (input) => void sent.push(input),
+      },
+    });
+    await call(`/tenants/${digdir}/catalog/knowledge-endpoint/sok`, 'kari', {
+      method: 'PUT',
+      body: { ...tenantEndpoint, engine: 'typesense' },
+    });
+    await call(`/tenants/${digdir}/datasets`, 'kari', {
+      body: {
+        id: 'sider',
+        name: 'Sider',
+        residency: 'norway',
+        collection: {
+          endpoint: 'sok',
+          collections: { docs: 'sider_docs', chunks: 'sider_chunks' },
+        },
+      },
+    });
+
+    const refused = await call(fields(`${digdir}/sider`), 'drift', { body, reason });
+
+    expect(refused.status).toBe(404);
+    expect(sent).toEqual([]);
   });
 });
 

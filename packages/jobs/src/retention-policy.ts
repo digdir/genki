@@ -6,6 +6,12 @@ export const retentionClassSetting = 'retention.class';
 export const auditDaysSetting = 'retention.auditDays';
 export const defaultAuditDays = 730;
 
+const auditDaysOf = (value: unknown) =>
+  typeof value === 'number' && value > 0 ? value : defaultAuditDays;
+
+export const tenantAuditDays = (settings: SettingsRegistry, tenant: string): number =>
+  auditDaysOf(settings.effective(tenant)[auditDaysSetting]?.value);
+
 export const retentionFor = (
   settings: SettingsRegistry,
   tenant: string,
@@ -25,11 +31,10 @@ export const retentionFor = (
       : undefined,
   );
   const chosen = effective[retentionClassSetting]?.value;
-  const audit = effective[auditDaysSetting]?.value;
   const riskClass: RiskClass = descriptor?.oversight.riskClass ?? 'high';
   return retentionPolicy({
     retentionClass: retentionClasses.find((c) => c === chosen) ?? 'standard',
     riskClass,
-    auditDays: typeof audit === 'number' && audit > 0 ? audit : defaultAuditDays,
+    auditDays: auditDaysOf(effective[auditDaysSetting]?.value),
   });
 };

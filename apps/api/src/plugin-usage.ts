@@ -5,10 +5,16 @@ import { tenantServiceUses } from './block-usage.js';
 export interface PluginUsageSource {
   store: Pick<DefinitionStore, 'list' | 'get'>;
   tenants(): Promise<string[]> | string[];
-  modelEndpoint(model: string): string | undefined;
+  modelApis(model: string): Record<string, string> | undefined;
   datasetEndpoint(dataset: string): string | undefined;
   endpoint(kind: 'model-endpoint' | 'knowledge-endpoint', id: string): CatalogItem | undefined;
 }
+
+const chatPlugins: Readonly<Record<string, string>> = {
+  'openai/chat-completions@1': 'model.openai-chat',
+  'openai/responses@1': 'model.openai-chat',
+  'anthropic/messages@1': 'model.anthropic-messages',
+};
 
 export const pluginUsage = async (source: PluginUsageSource): Promise<Map<string, string[]>> => {
   const users = new Map<string, Set<string>>();
@@ -19,9 +25,8 @@ export const pluginUsage = async (source: PluginUsageSource): Promise<Map<string
       const service = `${tenant}/${use.service}`;
       for (const ref of use.references) {
         if (ref.kind === 'model') {
-          const endpoint = source.modelEndpoint(ref.id);
-          const protocol = endpoint && source.endpoint('model-endpoint', endpoint)?.spec.protocol;
-          if (typeof protocol === 'string') add(`model.${protocol}`, service);
+          const plugin = chatPlugins[source.modelApis(ref.id)?.chat ?? ''];
+          if (plugin) add(plugin, service);
         }
         if (ref.kind === 'dataset') {
           const endpoint = source.datasetEndpoint(ref.id);

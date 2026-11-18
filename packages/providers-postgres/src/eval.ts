@@ -1,19 +1,26 @@
 import {
+  currentFeedback,
   labelFile,
+  sinkLabel,
+  parseTestSet,
   type CandidateStatus,
   type CandidateStore,
   type EvalRunStore,
+  type RunReadAs,
   type Feedback,
   type FeedbackRecord,
   type FeedbackStore,
   type JudgeLabel,
   type LabelStore,
   type RunFilter,
+  type SinkLabel,
+  type SinkLabelStore,
   type StoredRun,
   type TestCaseCandidate,
   type TestSet,
   type TestSetStore,
 } from '@genai/eval';
+import { randomBytes } from 'node:crypto';
 import type { Pool } from 'pg';
 import { open, seal } from './crypto.js';
 import type { ContentKeys } from './keys.js';
@@ -45,7 +52,8 @@ export class PostgresTestSetStore implements TestSetStore {
           : 'select body from eval_test_sets where tenant = $1 and id = $2 and version = $3',
         version === undefined ? [tenant, id] : [tenant, id, version],
       );
-      return found.rows[0]?.body;
+      const body = found.rows[0]?.body;
+      return body && parseTestSet(body);
     });
   }
 
@@ -57,7 +65,7 @@ export class PostgresTestSetStore implements TestSetStore {
          where $2::text is null or service = $2 order by id collate "C"`,
         [tenant, service ?? null],
       );
-      return found.rows.map((r) => r.body);
+      return found.rows.map((r) => parseTestSet(r.body));
     });
   }
 }
@@ -102,6 +110,28 @@ export class PostgresEvalRunStore implements EvalRunStore {
         ],
       ),
     );
+  }
+
+  async replace(stored: StoredRun, readAs: RunReadAs): Promise<boolean> {
+    const { run } = stored;
+    const updated = await withTenant(this.pool, stored.tenant, (client) =>
+      client.query(
+        `update eval_runs set task = $3, ended_at = $4, body = $5
+         where id = $1 and tenant = $2
+           and body->>'status' is not distinct from $6
+           and body->>'heartbeatAt' is not distinct from $7`,
+        [
+          run.id,
+          stored.tenant,
+          stored.task,
+          run.endedAt,
+          JSON.stringify(run),
+          readAs.status ?? null,
+          readAs.heartbeatAt ?? null,
+        ],
+      ),
+    );
+    return (updated.rowCount ?? 0) > 0;
   }
 
   async get(id: string): Promise<StoredRun | undefined> {
@@ -153,15 +183,14 @@ export class PostgresFeedbackStore implements FeedbackStore {
       const found = await client.query<{ task: string; body: Buffer }>(
         `select task, body from eval_feedback where tenant = $1
            and ($2::text is null or task = $2)
-           and ($3::text is null or rating = $3)
-         order by at desc, seq`,
-        [tenant, filter.task ?? null, filter.rating ?? null],
+         order by at desc, seq desc`,
+        [tenant, filter.task ?? null],
       );
       return found.rows;
     });
     const key = await this.keys.get(tenant, FEEDBACK_SCOPE, false);
     if (!key) return [];
-    return rows.flatMap((row) => {
+    const records = rows.flatMap((row) => {
       try {
         return [
           JSON.parse(open(key, row.body, `feedback:${row.task}`).toString()) as FeedbackRecord,
@@ -170,6 +199,10 @@ export class PostgresFeedbackStore implements FeedbackStore {
         return [];
       }
     });
+    // The latest per task and credential counts, so filter by rating only after that.
+    return currentFeedback(records).filter(
+      (r) => filter.rating === undefined || r.rating === filter.rating,
+    );
   }
 }
 
@@ -258,5 +291,69 @@ export class PostgresLabelStore implements LabelStore {
       [judge ?? null],
     );
     return found.rows.map((r) => r.label);
+  }
+}
+
+export class PostgresSinkLabelStore implements SinkLabelStore {
+  constructor(private readonly pool: Pool) {}
+
+  async list(
+    tenant: string,
+    filter: { connection?: string; judge?: string } = {},
+  ): Promise<SinkLabel[]> {
+    return withTenant(this.pool, tenant, async (client) =>
+      (
+        await client.query<{ label: SinkLabel }>(
+          `select label from (
+             select distinct on (connection, id, revision) label, connection, judge, id, revision
+             from sink_labels where tenant = $1 order by connection, id, revision, seq desc
+           ) latest
+           where ($2::text is null or connection = $2) and ($3::text is null or judge = $3)
+           order by connection, id, revision`,
+          [tenant, filter.connection ?? null, filter.judge ?? null],
+        )
+      ).rows.map((r) => r.label),
+    );
+  }
+
+  async save(tenant: string, labels: SinkLabel[]): Promise<void> {
+    await withTenant(this.pool, tenant, async (client) => {
+      for (const label of labels.map((l) => sinkLabel.parse(l)))
+        await client.query(
+          `insert into sink_labels (tenant, id, revision, connection, judge, label)
+           values ($1, $2, $3, $4, $5, $6)`,
+          [tenant, label.id, label.revision, label.connection, label.judge, JSON.stringify(label)],
+        );
+    });
+  }
+
+  /** A transaction-free advisory lock, held on its own connection while the work runs. */
+  async exclusive<T>(tenant: string, connection: string, work: () => Promise<T>): Promise<T> {
+    const client = await this.pool.connect();
+    const key = `sink_labels:${tenant}:${connection}`;
+    try {
+      await client.query('select pg_advisory_lock(hashtext($1))', [key]);
+      try {
+        return await work();
+      } finally {
+        await client.query('select pg_advisory_unlock(hashtext($1))', [key]);
+      }
+    } finally {
+      client.release();
+    }
+  }
+
+  async pseudonymKey(tenant: string): Promise<string> {
+    return withTenant(this.pool, tenant, async (client) => {
+      await client.query(
+        'insert into sink_label_keys (tenant, key) values ($1, $2) on conflict do nothing',
+        [tenant, randomBytes(32).toString('hex')],
+      );
+      const found = await client.query<{ key: string }>(
+        'select key from sink_label_keys where tenant = $1',
+        [tenant],
+      );
+      return found.rows[0]?.key ?? '';
+    });
   }
 }

@@ -91,7 +91,11 @@ export const chunk = (id: string, extra: Partial<FlowChunk> = {}): FlowChunk => 
   ...extra,
 });
 
-export const stubRetrieval = (chunks: FlowChunk[], reranked?: FlowChunk[]) => {
+export const stubRetrieval = (
+  chunks: FlowChunk[],
+  reranked?: FlowChunk[],
+  attribution?: unknown,
+) => {
   const calls: { method: string; args: unknown[] }[] = [];
   const configs: unknown[] = [];
   const backend: FlowRetrieval = {
@@ -101,7 +105,7 @@ export const stubRetrieval = (chunks: FlowChunk[], reranked?: FlowChunk[]) => {
     },
     retrieve: async (queries, options) => {
       calls.push({ method: 'retrieve', args: [queries, options] });
-      return { chunks };
+      return attribution === undefined ? { chunks } : { chunks, attribution };
     },
     rerank: async (query, input) => {
       calls.push({ method: 'rerank', args: [query, input.map((c) => c.chunkId)] });

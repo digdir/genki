@@ -1,7 +1,17 @@
 import type { Task } from '@genai/contracts';
 import { describe, expect, it } from 'vitest';
 import { createApp } from './app.js';
-import { auth, digdir, files, klarsprak, other, plugins, setup } from './testkit.js';
+import {
+  auth,
+  bootPlatform,
+  digdir,
+  files,
+  klarsprak,
+  other,
+  plugins,
+  principals,
+  setup,
+} from './testkit.js';
 
 type Json = Record<string, unknown>;
 const body = async <T = Json>(res: Response) => (await res.json()) as T;
@@ -150,6 +160,34 @@ describe('audit of administrative changes', () => {
     expect(JSON.stringify(events.filter((e) => e.type.startsWith('x.')))).not.toContain(
       'sk-live-123',
     );
+  });
+
+  it('pages the audit log newest first with limit and offset, and says how many entries there are', async () => {
+    const { send } = setup();
+    for (const value of [11, 12, 13])
+      await send(`/tenants/${digdir}/settings/search.topK`, 'kari', {
+        method: 'PUT',
+        body: { value },
+        reason: `topK til ${value}`,
+      });
+
+    const page = await body<{ data: { reason: string }[]; total: number }>(
+      await send(`/tenants/${digdir}/audit?limit=2&offset=1`, 'kari'),
+    );
+    const whole = await body<{ data: { reason: string }[]; total: number }>(
+      await send(`/tenants/${digdir}/audit`, 'kari'),
+    );
+
+    expect(page).toMatchObject({ total: 3 });
+    expect(page.data.map((e) => e.reason)).toEqual(['topK til 12', 'topK til 11']);
+    expect(whole.data.map((e) => e.reason)).toEqual(['topK til 11', 'topK til 12', 'topK til 13']);
+  });
+
+  it('refuses an audit page size outside 1 to 500', async () => {
+    const { send } = setup();
+
+    for (const query of ['limit=0', 'limit=501', 'limit=ti', 'offset=-1'])
+      expect((await send(`/tenants/${digdir}/audit?${query}`, 'kari')).status).toBe(400);
   });
 
   it("keeps a tenant's audit log away from other tenants", async () => {
@@ -452,6 +490,60 @@ describe('export and import', () => {
     expect(audit.map((a) => a.action)).toEqual(['platform.tenant.import']);
   });
 
+  it('import applies the risk confirmation rule and records the importing person as confirmer', async () => {
+    const { send, publish, store } = setup();
+    await publish('kari', klarsprak());
+    const bundle = await body<{ definitions: { definition: Json; files: Json }[] }>(
+      await send(`/tenants/${digdir}/export`, 'kari'),
+    );
+    const withRisk = (riskConfirmation?: Json) => ({
+      ...bundle,
+      definitions: bundle.definitions.map((d) => ({
+        ...d,
+        definition: {
+          ...d.definition,
+          spec: {
+            ...(d.definition.spec as Json),
+            variants: [{ id: 'default', publicName: 'klarsprak-annen' }],
+            riskClass: 'limited',
+            ...(riskConfirmation ? { riskConfirmation } : {}),
+          },
+        },
+      })),
+    });
+    const reason = 'kloning av virksomheten';
+
+    const dryUnconfirmed = await send(`/tenants/${other}/import?dryRun=true`, 'ola', {
+      body: withRisk(),
+      reason,
+    });
+    const unconfirmed = await send(`/tenants/${other}/import`, 'ola', { body: withRisk(), reason });
+    const confirmed = await send(`/tenants/${other}/import`, 'ola', {
+      body: withRisk({
+        reasons: ['Svarer innbyggere'],
+        by: 'employee:test:someone-else',
+        at: '2020-01-01T00:00:00.000Z',
+      }),
+      reason,
+    });
+
+    expect(dryUnconfirmed.status).toBe(422);
+    expect(unconfirmed.status).toBe(422);
+    expect(await unconfirmed.json()).toMatchObject({
+      errors: [{ path: 'Service:klarsprak.spec.riskConfirmation' }],
+    });
+    expect(confirmed.status).toBe(200);
+    const stored = (await store.get('Service', other, 'klarsprak'))?.definition as {
+      spec: { riskConfirmation: Json };
+    };
+    expect(stored.spec.riskConfirmation).toMatchObject({
+      by: 'employee:test:ola',
+      riskClass: 'limited',
+      reasons: ['Svarer innbyggere'],
+    });
+    expect(stored.spec.riskConfirmation.at).not.toBe('2020-01-01T00:00:00.000Z');
+  });
+
   it('refuses a bundle with a plain secret and reports conflicts according to the choice', async () => {
     const { send, publish } = setup();
     await publish('kari', klarsprak());
@@ -493,7 +585,7 @@ describe('export and import', () => {
 });
 
 describe('task timeline and the operator tenant list', () => {
-  it("shows a task's status, numbers and steps to its own tenant, from client events only", async () => {
+  it("shows a task's status, numbers and steps to its own tenant, without its audit-only events", async () => {
     const { send, publish } = setup();
     const task = (await publish('kari', klarsprak())).headers.get('genai-task');
 
@@ -515,6 +607,34 @@ describe('task timeline and the operator tenant list', () => {
     expect((await send(`/tenants/${other}/tasks/${task}/timeline`, 'ola')).status).toBe(404);
     expect((await send(`/tenants/${digdir}/tasks/${task}/timeline`, 'ola')).status).toBe(404);
     expect((await send(`/tenants/${digdir}/tasks/finnes-ikke/timeline`, 'kari')).status).toBe(404);
+  });
+
+  it('shows tokens and cost on a timeline only with view-usage or to the person who started the task', async () => {
+    Object.assign(principals, {
+      tove: {
+        kind: 'employee',
+        issuer: 'test',
+        subject: 'tove',
+        tenant: digdir,
+        authorizedFor: [{ org: digdir, actions: ['use-services', 'manage-services'] }],
+      },
+    });
+    const { send, publish } = setup();
+    const byKari = (await publish('kari', klarsprak())).headers.get('genai-task');
+    const byTove = (await publish('tove', klarsprak({ id: 'klarsprak-to' }))).headers.get(
+      'genai-task',
+    );
+
+    const notOwn = await body<Json>(
+      await send(`/tenants/${digdir}/tasks/${byKari}/timeline`, 'tove'),
+    );
+    const own = await body<Json>(await send(`/tenants/${digdir}/tasks/${byTove}/timeline`, 'tove'));
+
+    for (const field of ['inputTokens', 'outputTokens', 'costOre'])
+      expect(notOwn).not.toHaveProperty(field);
+    expect(notOwn.stats).not.toHaveProperty('inputTokens');
+    expect(notOwn.stats).not.toHaveProperty('byModel');
+    expect(own).toMatchObject({ inputTokens: 0, costOre: 0 });
   });
 
   it('names the service on the timeline, a playground draft as Prøveområdet and a builder assistant run as Byggeassistenten, in the asked language', async () => {
@@ -704,5 +824,41 @@ describe("a tenant's change list", () => {
       await send(`/tenants/${digdir}/audit`, 'kari'),
     );
     expect(audit[0]).toMatchObject({ actor: 'employee:test:kari', actorName: 'Kari Nordmann' });
+  });
+
+  it('names the person from their login when the browser sends no name', async () => {
+    const { send } = setup();
+    await send('/definitions', 'kristin', {
+      body: { definition: klarsprak(), files },
+      reason: 'første versjon',
+    });
+
+    const audit = await listed<{ actor: string; actorName?: string }>(
+      await send(`/tenants/${digdir}/audit`, 'kari'),
+    );
+    expect(audit[0]).toMatchObject({
+      actor: 'employee:test:kristin@digdir.example',
+      actorName: 'Kristin Entra',
+    });
+  });
+});
+
+describe('the signed-in person', () => {
+  it('answers /me with the email the login carried, and without one when it carried none', async () => {
+    const { send } = await bootPlatform({
+      people: {
+        kari: {
+          kind: 'employee',
+          issuer: 'test',
+          subject: 'kari',
+          tenant: digdir,
+          email: 'kari@digdir.no',
+        },
+        ola: { kind: 'employee', issuer: 'test', subject: 'ola', tenant: digdir },
+      },
+    });
+
+    expect(await body(await send('/me', 'kari'))).toMatchObject({ email: 'kari@digdir.no' });
+    expect(await body(await send('/me', 'ola'))).not.toHaveProperty('email');
   });
 });

@@ -51,15 +51,14 @@ export const fakeEmbedder = (options: FakeEmbedderOptions = {}): FakeEmbedder =>
   };
 };
 
-export interface FakeEmbeddingAdapter extends EmbeddingAdapter<
-  Record<string, never>,
-  Record<string, never>
-> {
+export interface FakeEmbeddingAdapter extends EmbeddingAdapter<Record<string, never>> {
   calls: { deployment: string; texts: string[] }[];
 }
 
+export const fakeEmbeddingApi = 'fake/embeddings@1';
+
 export const fakeEmbeddingAdapter = (
-  protocol = 'fake',
+  api = fakeEmbeddingApi,
   respond: (model: EmbeddingModelConfig, texts: string[]) => EmbedResult = (model, texts) => ({
     vectors: texts.map((t) => fakeVector(t, model.dimensions)),
     usage: { inputTokens: texts.reduce((n, t) => n + tokens(t), 0) },
@@ -67,9 +66,8 @@ export const fakeEmbeddingAdapter = (
 ): FakeEmbeddingAdapter => {
   const calls: FakeEmbeddingAdapter['calls'] = [];
   return {
-    protocol,
+    api: { id: api, family: api.split('/')[0] as string },
     calls,
-    endpointOptions: z.strictObject({}),
     modelOptions: z.strictObject({}),
     connect: () => ({
       embed: async (model, texts) => {

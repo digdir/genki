@@ -2,8 +2,6 @@ import { defineNamespace } from '@genai/i18n';
 
 export const integrationsArea = {
   integrations: defineNamespace({
-    heading: 'Integrasjoner',
-    lead: 'Systemer og brukerflater som kaller plattformen, og kilder som starter tjenester automatisk.',
     callFromCode: 'Kall en tjeneste fra kode',
     tabSystems: 'Systemer',
     tabFrontends: 'Brukerflater',
@@ -17,7 +15,6 @@ export const integrationsArea = {
       one: '{count} integrasjon trenger oppfølging',
       other: '{count} integrasjoner trenger oppfølging',
     },
-    badgeFailing: '{count} med feil',
     systemRejected: '{name}: kallene blir avvist',
     systemSub: '{env} · Ansvarlig: {owner}',
     triggerSub: '{kind} · starter {service}',
@@ -73,7 +70,6 @@ export const integrationsArea = {
     addTrigger: 'Koble til mappe eller kø',
     triggerSetupInfo:
       'Utløsere settes opp i tjenesten. Hvordan mapper og køer kobles til her, er ikke bestemt.',
-    tracingNotAvailable: 'Sporing til eget verktøy kan ikke settes opp herfra ennå.',
     loadingTriggers: 'Henter utløsere',
     noSystems: 'Ingen systemer er koblet til',
     noSystemsText: 'Koble til et system når dere vil kalle tjenester fra egne fagsystemer.',
@@ -81,8 +77,6 @@ export const integrationsArea = {
     noFrontendsText: 'Registrer en brukerflate når dere vil tilby tjenester i egne løsninger.',
     noTriggers: 'Ingen utløsere',
     noTriggersText: 'Utløsere settes opp i tjenesten.',
-    downloadOpenApi: 'Last ned OpenAPI-fil',
-    openApiDownloaded: 'OpenAPI-filen er lastet ned.',
     statusActive: 'Aktiv',
     statusFailing: 'Feiler',
     statusUnused: 'Ikke i bruk',
@@ -99,22 +93,6 @@ export const integrationsArea = {
     scopeWriteDesc: 'Legge til og fjerne dokumenter.',
     scopeUsageLabel: 'Lese forbruk',
     scopeUsageDesc: 'Hente tall for tokens og kostnad.',
-    docCodeTitle: 'Kall en tjeneste fra kode',
-    docCodeDesc: 'Eksempler i curl, Python, JavaScript og C#, med svar.',
-    docApiTitle: 'API-referanse',
-    docApiDesc: 'Alle endepunkter, felter og feilkoder (OpenAPI 3.1).',
-    docMaskinportenTitle: 'Kom i gang med Maskinporten',
-    docMaskinportenDesc: 'Lag en klient i Samarbeidsportalen og hent token.',
-    docAnsattportenTitle: 'Ansattporten for brukerflater',
-    docAnsattportenDesc: 'Logg inn ansatte og kall plattformen på vegne av dem.',
-    docOpenaiTitle: 'OpenAI-kompatibelt endepunkt',
-    docOpenaiDesc: 'Bruk eksisterende kode og verktøy uten endringer.',
-    docMcpTitle: 'MCP',
-    docMcpDesc: 'Gjør tjenestene tilgjengelige som verktøy for KI-assistenter.',
-    docLimitsTitle: 'Testmiljø og grenser',
-    docLimitsDesc: 'Adresser, testdata, maks størrelse på filer og antall kall per minutt.',
-    docStatusTitle: 'Driftsstatus og endringer',
-    docStatusDesc: 'Planlagt vedlikehold og nye versjoner av API-et.',
     name: 'Navn',
     register: 'Registrer',
     connect: 'Koble til',
@@ -175,6 +153,10 @@ export const integrationsArea = {
       'Dere har ingen publiserte tjenester ennå. Publiser en tjeneste før du registrerer en brukerflate.',
   }),
   integTriggers: defineNamespace({
+    runsFailed: 'Vi fikk ikke hentet hendelsene',
+    runsFailedWhy:
+      'Hendelsene for utløseren svarte ikke. Det betyr ikke at det ikke har vært noen.',
+    runsUnknown: 'Fikk ikke hentet hendelsene',
     runQuota: 'Ikke startet fordi månedskvoten for tokens er brukt opp',
     runCost: ' · {cost}',
     kindDocument: 'Når et dokument kommer inn',
@@ -247,8 +229,15 @@ export const integrationsArea = {
     address: 'Adresse (https)',
     secretName: 'Navn på hemmeligheten (valgfritt)',
     secret: 'Hemmeligheten',
-    secretHelp: 'Lagres i Key Vault og kan ikke leses ut igjen, bare erstattes.',
+    secretHelp: 'Lagres i Key Vault for adressen over og kan ikke leses ut igjen, bare erstattes.',
     register: 'Registrer kobling',
+    syncButton: 'Hent verktøyene',
+  }),
+  secretHosts: defineNamespace({
+    setElsewhere:
+      'Hemmeligheten «{name}» er satt opp for andre adresser ({hosts}). Velg et annet navn på hemmeligheten.',
+    unchecked:
+      'Vi kunne ikke sjekke hvilke adresser hemmeligheten «{name}» er satt opp for, så ingenting er lagret.',
   }),
   integHooks: defineNamespace({
     pointBeforeModel: 'Før modellkall',
@@ -361,10 +350,13 @@ export const integrationsArea = {
   }),
   integKeys: defineNamespace({
     loading: 'Henter API-nøkler',
-    notUsedYet: 'ikke brukt ennå',
     createdToday: 'i dag av deg',
     rotatedToday: 'rotert i dag av deg',
     unknownDate: 'ukjent dato',
+    createdBy: '{date} av {who}',
+    modelsAllowed: 'Kan bruke modeller i det låste miljøet',
+    modelsRefused:
+      'Kan ikke bruke modeller i det låste miljøet: laget av en innlogging som ikke er sluppet inn. Roter den mens du er logget inn med Entra ID.',
     nameProblem: 'Gi nøkkelen et navn.',
     selectionProblem: 'Velg minst én tjeneste eller ett datasett, eller velg «Alle».',
     rateProblem: 'Skriv et helt tall fra 1 til 6 000.',
@@ -377,7 +369,6 @@ export const integrationsArea = {
     intro:
       'API-nøkler for systemer som ikke kan bruke Maskinporten. Hver nøkkel kan begrenses til utvalgte tjenester og datasett, og har sin egen grense for antall kall.',
     create: 'Lag API-nøkkel',
-    copyNow: 'Kopier nøkkelen nå',
     copyNowText:
       'Den vises bare denne ene gangen. Lagre den i et hemmelighetslager, for eksempel Key Vault.',
     newKeyLabel: 'Den nye nøkkelen',
@@ -394,12 +385,18 @@ export const integrationsArea = {
     datasets: 'Datasett',
     rate: 'Kall per minutt',
     rateHelp: 'Fra 1 til 6 000.',
+    testRunner: 'Testkjører for røyktester',
+    testRunnerHelp:
+      'Nøkkelen kan lese alt i virksomheten og plattformoppsettet i driftsoversiktene, prøve tjenester i prøveområdet når den gjelder alle tjenester, og opprette og arkivere definisjoner som begynner med smoke-. Den utløper etter 90 dager. Bare i dette låste testmiljøet.',
+    testRunnerTag: 'Testkjører',
     createKey: 'Lag nøkkel',
     none: 'Ingen API-nøkler ennå',
     noneText: 'Lag en nøkkel for systemer som ikke kan bruke Maskinporten.',
     listLabel: 'API-nøkler',
     revokedStatus: 'Trukket tilbake',
     prefixCreated: '{prefix}… · laget {created}',
+    rateNotUsed: '{rate} kall per minutt · ikke brukt ennå',
+    rateOnly: '{rate} kall per minutt',
     rateLastUsed: '{rate} kall per minutt · sist brukt {last}',
     editAccess: 'Endre tilgang',
     rotate: 'Roter',
@@ -407,6 +404,23 @@ export const integrationsArea = {
     revokeWarning:
       'Systemer som bruker {name}, får avvist alle kall med en gang. Dette kan ikke angres.',
     revokeKey: 'Trekk tilbake nøkkelen',
+    nameTaken: 'Det finnes allerede en nøkkel som heter «{name}». Velg et annet navn.',
+    inUse: 'I bruk ({count})',
+    revokedGroup: 'Trukket tilbake ({count})',
+    revokedListLabel: 'Nøkler som er trukket tilbake',
+    madeFor: 'Ny nøkkel for «{name}»',
+    discardAsk: 'Forkaste det du har skrevet?',
+    goBack: 'Gå tilbake',
+    discard: 'Forkast',
+    uncopiedAsk:
+      'Du har ikke kopiert nøkkelen. Lukker du nå, må du lage en ny nøkkel for å få en du kan bruke.',
+    backToCopy: 'Gå tilbake og kopier',
+    closeUncopied: 'Lukk uten å kopiere',
+    revokeTitle: 'Trekk tilbake «{name}»?',
+    rotateTitle: 'Roter «{name}»?',
+    rotateWarning:
+      'Du får en ny nøkkel med samme tilgang. Den gamle slutter å virke med en gang, så systemet som bruker {name}, må bytte til den nye.',
+    rotateKey: 'Roter nøkkelen',
   }),
   integMaskinporten: defineNamespace({
     alreadyRegistered: 'Klienten er allerede registrert.',
@@ -573,6 +587,11 @@ export const integrationsArea = {
   }),
   integCode: defineNamespace({
     callService: 'Kall tjenesten',
+    moreHeading: 'Videre',
+    moreReference: 'API-referanse: alle endepunktene, med «Prøv» som kjører som deg',
+    moreKeys: 'Nøkler: lag en API-nøkkel for systemer uten Maskinporten',
+    moreLimits: 'Testmiljø og grenser: forbruk og kvote i Statistikk',
+    moreIdporten: 'Ansattporten og ID-porten for brukerflater (åpnes i ny fane)',
     apiStep2Approval:
       'Tjenesten har et godkjenningssteg, så «vent» er satt til false. Dere får en kjørings-ID tilbake med en gang, og kan hente status eller få beskjed når saksbehandleren har godkjent.',
     apiStep2Wait:
@@ -653,5 +672,113 @@ export const integrationsArea = {
     outputValue: 'Svar med kilder',
     authNow: 'API-nøkkel nå. Maskinporten, scope',
     undecided: 'Ikke bestemt',
+  }),
+  integLangfuse: defineNamespace({
+    loading: 'Henter Langfuse-koblinger',
+    heading: 'Langfuse',
+    intro:
+      'Koble en tjeneste til virksomhetens Langfuse. Testkjøringer av tjenesten sendes dit som eksperimenter, og genki sletter det den sendte når den sletter sin egen kopi. Holdout-testtilfeller sendes aldri.',
+    none: 'Ingen tjenester er koblet til Langfuse.',
+    services: 'Tjenester: {services}',
+    residencyByDigdir: 'Lagringssted: {residency}, satt av Digdir',
+    residencyByYou: 'Lagringssted: {residency}, oppgitt av dere',
+    inNorway: 'i Norge',
+    inEu: 'i EU/EØS',
+    global: 'ikke avklart (global)',
+    contentOn: 'Får tekst',
+    contentOff: 'Får bare metadata',
+    labelsOn: 'Henter etiketter',
+    datasets: 'Datasett i Langfuse',
+    datasetsHelp:
+      'Ett datasett per testsett i tjenestene koblingen dekker. Hver testkjøring som sendes til Langfuse, knyttes til datasettet til sitt testsett. For å la en dommer vurdere ett testsett, velg datasettet i filteret til dommeren i Langfuse, sammen med isExperimentItemRootSpan = true.',
+    check: 'Sjekk koblingen',
+    checkedOk:
+      'Den hemmelige nøkkelen åpner prosjektet {project}. Langfuse sjekker ikke den offentlige nøkkelen, så se selv at den hører til samme prosjekt.',
+    edit: 'Endre',
+    add: 'Koble til Langfuse',
+    nameTaken: 'Det finnes allerede en kobling med id-en {id}. Velg en annen, eller endre den.',
+    addHeading: 'Ny Langfuse-kobling',
+    editHeading: 'Endre Langfuse-koblingen',
+    id: 'Id for koblingen',
+    idHelp: 'Små bokstaver, tall og bindestrek. Den kan ikke endres senere.',
+    idInvalid:
+      'Bruk bare små bokstaver, tall og bindestrek, og start med en bokstav eller et tall, for eksempel etaten-langfuse.',
+    host: 'Adresse',
+    hostHelp: 'For eksempel https://langfuse.etaten.no. Bare HTTPS.',
+    hostInvalid: 'Skriv hele adressen, for eksempel https://langfuse.etaten.no.',
+    publicKey: 'Offentlig nøkkel',
+    secret: 'Hemmelig nøkkel',
+    secretHelp:
+      'Lagres som en hemmelighet som bare kan sendes til denne Langfuse, og vises ikke igjen.',
+    secretKeepHelp:
+      'La feltet stå tomt for å beholde nøkkelen som er lagret. Den lagres bare for denne Langfuse.',
+    secretAgain:
+      'Skriv inn den hemmelige nøkkelen på nytt når adressen endres, så den bare sendes dit.',
+    which: 'Langfuse',
+    whichHelp: 'Digdirs Langfuse er {host}.',
+    instanceOption: 'Digdirs Langfuse',
+    ownOption: 'Egen Langfuse',
+    servicesLabel: 'Tjenester',
+    servicesHelp: 'Tjenestene som sender testkjøringer hit. En tjeneste kan bare ha én kobling.',
+    coveredBy: 'Koblet til {id}',
+    unknownService: '{id} (finnes ikke)',
+    noServices: 'Virksomheten har ingen tjenester ennå.',
+    servicesFailed: 'Fikk ikke hentet tjenestene.',
+    residency: 'Lagringssted',
+    residencyHelp: 'Hvor Langfuse lagrer det den får, og hvor dommernes modeller kjører.',
+    content: 'Send tekst',
+    contentHelp:
+      'Spørsmål, svar og det dommerne leser. Krever at Langfuse sletter det genki sletter og holder rådata i høyst 7 dager.',
+    labels: 'Hent etiketter fra Langfuse som kalibreringsetiketter',
+    labelsHelp:
+      'Det folk merker i prosjektet, kommer tilbake som ventende etiketter for dommerne. En operatør henter dem i driftskonsollen, og de teller først når operatøren godtar dem. Lag scoreoppsettet med navnet og typen til dommerens evaluator.',
+    declaration:
+      'Vi bekrefter at vår Langfuse sletter det genki sletter og holder rådata i høyst 7 dager.',
+    required: 'Fyll ut feltet',
+    save: 'Lagre',
+    remove: 'Fjern koblingen',
+    cancel: 'Avbryt',
+    saved: 'Koblingen {id} er lagret.',
+    removing: 'Fjernes: sletter det som er sendt',
+    removingFlash: 'Koblingen {id} fjernes når alt den har fått, er slettet i Langfuse.',
+    removed: 'Koblingen {id} er fjernet.',
+    failed: 'Koblingen ble ikke lagret.',
+    guide: 'Slik vurderer Langfuse-dommere testkjøringene',
+    guideIntro:
+      'En dommer i Langfuse kan vurdere testkjøringene til en tjeneste. genki viser vurderingene på kjøringen, ved siden av sine egne mål.',
+    guideSteps: 'Fire steg',
+    guideConnect:
+      'Den som administrerer tjenestene, kobler dem til et Langfuse-prosjekt med de to nøklene til prosjektet, med Koble til Langfuse under.',
+    guideJudge:
+      'Skriv en dommer i Langfuse, under Evaluation › Evaluators, for testsettet. Velg Experiments som mål og genki/<tjeneste-id>/<testsett-id> under Dataset. Langfuse legger selv til isExperimentItemRootSpan = true. Dommeren velger sin egen modell, ikke standardmodellen til prosjektet eller organisasjonen.',
+    guideMapping:
+      'Dommeren leser hele spørsmålet og svaret, eller en sti i dem med $, .nøkkel og [n]. Et spørsmål i tekst ligger på input $.parts[0].body.text, og svaret på output $[0].body.text.',
+    guideAdopt:
+      'Ta dommeren i bruk under Byggeklosser › Katalog › Dommere. Der står det også hvorfor genki ikke kan bruke en dommer.',
+    guideRun: 'Kjør testsettet med «Send kjøringen til Langfuse» krysset av.',
+    guideLive:
+      'En dommer for trafikken i drift i samme prosjekt stopper testkjøringen hvis den også treffer den. Hold testkjøringene utenfor med environment none of [genki-test-runs].',
+    guideCopy:
+      'Knappen ved hvert datasett under kopierer navnet, så du kan lime det inn i søket under Dataset.',
+    guideWhere: 'Hvor det vises',
+    guideInLangfuse: 'I Langfuse',
+    guideInGenki: 'I genki',
+    guideDatasetLangfuse:
+      'Ett datasett per testsett, genki/<tjeneste-id>/<testsett-id>, uten elementer',
+    guideDatasetGenki:
+      'Koblingen lister datasettene, og testsettet viser navnet på datasettet sitt',
+    guideJudgeLangfuse: 'Dommeren: en evalueringsregel dere skriver',
+    guideJudgeGenki:
+      'En byggekloss under Byggeklosser › Katalog › Dommere, med navnet til regelen, eller avvist med grunnen',
+    guideExperimentLangfuse:
+      'Hver sendte kjøring: et eksperiment på datasettet, med navnet til testsettet og versjonen, for eksempel rapport-kjerne v3',
+    guideExperimentGenki:
+      'Kjøringen, med boksen krysset av, og «Venter på vurderinger» mens dommerne jobber',
+    guideTraceLangfuse:
+      'Hvert testtilfelle: et spor i miljøet genki-test-runs, med vurderingene til dommerne',
+    guideTraceGenki:
+      'Langfuse-vurderingene på kjøringen, adskilt fra målene til genki, med kostnad, samsvar med etiketter og en lenke til eksperimentet',
+    copyName: 'Kopier navnet',
+    copyNameOf: 'Kopier navnet {dataset}',
   }),
 } as const;

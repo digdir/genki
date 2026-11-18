@@ -73,6 +73,19 @@ else
   failed=1
 fi
 
+asset=$(curl -fsS "$base/" | grep -o '/assets/[^"]*\.js' | head -n 1)
+encoding() { curl -sS -o /dev/null -w '%header{content-encoding}' "$@"; }
+if [ -n "$asset" ] &&
+  [ "$(encoding -H 'Accept-Encoding: gzip' "$base$asset")" = gzip ] &&
+  [ -z "$(encoding "$base$asset")" ] &&
+  [ "$(curl -sS -H 'Accept-Encoding: gzip' "$base$asset" | gunzip | cksum)" = "$(curl -sS "$base$asset" | cksum)" ] &&
+  [ -z "$(encoding -H 'Accept-Encoding: gzip' "$base/api/tenants/x/datasets")" ]; then
+  echo "ok: $asset goes out gzipped only to clients that accept it, and /api/ as the API sent it"
+else
+  echo "FAILED: precompressed assets" >&2
+  failed=1
+fi
+
 docker run -d --name "$name-console" --network "$name" -p 127.0.0.1::8080 \
   -e APP=console -e API_UPSTREAM=http://echo:9000 "$apps_image" >/dev/null
 console="http://$(docker port "$name-console" 8080 | head -n 1)"
@@ -91,6 +104,15 @@ if headers /system-atlas.html | grep -qi "^x-frame-options: SAMEORIGIN" &&
   echo "ok: the console frames its System Atlas from its own origin only, without inline script"
 else
   echo "FAILED: System Atlas headers or script file in the console" >&2
+  failed=1
+fi
+
+if headers /callback | grep -qi "^x-frame-options: SAMEORIGIN" &&
+  headers /callback | grep -qi "frame-ancestors 'self'" &&
+  headers /callback | grep -qi "frame-src 'self'"; then
+  echo "ok: the console's own origin may frame its login callback for silent renewal"
+else
+  echo "FAILED: login callback headers in the console" >&2
   failed=1
 fi
 

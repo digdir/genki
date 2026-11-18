@@ -22,6 +22,14 @@ const people: Record<string, Principal> = {
     authorizedFor: [{ org: outsiderTenant }],
   },
   drift: { kind: 'operator', issuer: 'test', subject: 'drift', tenant: digdir },
+  klient: {
+    kind: 'agency-system',
+    issuer: 'https://maskinporten.test/',
+    subject: 'sak-123',
+    tenant: digdir,
+    client: 'sak-123',
+    scopes: ['legacy:query', 'grant:client', 'grant:agent:*'],
+  },
 };
 
 const reason = 'Sjekker at API-et er konsistent';
@@ -130,6 +138,19 @@ describe('one consistent API', () => {
         if (res.status !== 404 && res.status !== 400)
           wrong.push(`${route} as ${who} -> ${res.status}`);
       }
+    }
+    expect(wrong).toEqual([]);
+  }, 120_000);
+
+  it('refuses every route of its own organisation to a Maskinporten client, which holds no right there', async () => {
+    const { app } = await boot();
+    const wrong: string[] = [];
+    for (const { route, method, template } of routesOf(app)) {
+      if (!template.startsWith('/tenants/:tenant')) continue;
+      const res = await send(app, method, concrete(template), 'klient', { reason });
+      const body = (await res.json().catch(() => ({}))) as { type?: string };
+      if (res.status !== 403 || body.type !== 'urn:genai:problem:client-scope')
+        wrong.push(`${route} -> ${res.status}`);
     }
     expect(wrong).toEqual([]);
   }, 120_000);

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { textPart, type CapabilityDescriptor, type Part, type Principal } from '@genai/contracts';
 import { createKernel, type Capability, type Emitted, type Strategy } from '@genai/kernel';
 import {
@@ -33,8 +33,20 @@ const chunks: SourceRecord[] = [
     position: 4,
   },
 ];
+let pool = chunks;
 
 const seen: { history?: unknown; overrides?: unknown } = {};
+
+const byDocument = {
+  answer: 'Svar [1] og [2].',
+  meta: {
+    citations: [
+      { index: 1, chunkId: 'c1' },
+      { index: 2, chunkId: 'c2' },
+    ],
+  } as Record<string, unknown>,
+};
+let reply = byDocument;
 
 const strategy: Strategy = {
   id: 'echo',
@@ -46,19 +58,10 @@ const strategy: Strategy = {
     seen.overrides = data.overrides;
     yield { type: 'kernel.notice', data: { event: 'agent/iteration-started', iteration: 1 } };
     yield { type: 'kernel.notice', data: { kind: 'retrieval', hits: 3 } };
-    const answer = 'Svar [1] og [2].';
-    yield { type: 'kernel.part.delta', data: { text: answer } };
+    yield { type: 'kernel.part.delta', data: { text: reply.answer } };
     const parts: Part[] = [
-      {
-        ...textPart(answer),
-        meta: {
-          citations: [
-            { index: 1, chunkId: 'c1' },
-            { index: 2, chunkId: 'c2' },
-          ],
-        },
-      },
-      { mime: SOURCES_MIME, body: { kind: 'json', json: { sources: chunks } } },
+      { ...textPart(reply.answer), meta: reply.meta },
+      { mime: SOURCES_MIME, body: { kind: 'json', json: { sources: pool } } },
     ];
     yield { type: 'kernel.result', data: parts };
   },
@@ -138,19 +141,23 @@ const filterIssues = async (
   );
 };
 
-const setup = () => {
+const setup = (
+  kernelOptions: Partial<Parameters<typeof createKernel>[0]> = {},
+  conversations?: (memory: AskConversations) => AskConversations,
+) => {
   const kernel = createKernel({
     strategies: [strategy],
     capabilities: [capability],
     ports: {},
     policy: { decide: async () => ({ allow: true }) },
+    ...kernelOptions,
   });
   const memory = fakeConversations();
   const app = createOpenAiAdapter({
     kernel,
     resolver,
     auth: { authenticate: async () => kari },
-    conversations: memory.conversations,
+    conversations: conversations ? conversations(memory.conversations) : memory.conversations,
     filterIssues,
     overridePolicy: { check: () => ({ ok: true }) },
     newId: () => 'fixed',
@@ -165,7 +172,7 @@ const setup = () => {
         ...body,
       }),
     });
-  return { ask, ...memory };
+  return { ask, kernel, ...memory };
 };
 
 type Source = {
@@ -173,7 +180,7 @@ type Source = {
   title: string;
   url?: string;
   document_id?: string;
-  excerpts: { chunk_id: string; text: string }[];
+  excerpts: { chunk_id: string; text: string; page?: number; url?: string }[];
 };
 
 describe('/v1 frontend contract: conversations', () => {
@@ -208,6 +215,52 @@ describe('/v1 frontend contract: conversations', () => {
       expect.objectContaining({ index: 2, title: 'Årsrapport', document_id: 'd2' }),
     ]);
     expect(stored.get('conv-1')?.[1]?.sources?.[1]).not.toHaveProperty('url');
+  });
+
+  it("stores a source's version and publish date with the turn, so a reopened thread keeps the year", async () => {
+    pool = chunks.map((c) =>
+      c.document === 'd1' ? { ...c, version: 3, publishedAt: '2025-01-15' } : c,
+    );
+    try {
+      const { ask, stored } = setup();
+
+      await ask({ genai_conversation: true });
+
+      expect(stored.get('conv-1')?.[1]?.sources?.map((s) => [s.version, s.published_at])).toEqual([
+        ['3', '2025-01-15'],
+        [undefined, undefined],
+      ]);
+      expect(stored.get('conv-1')?.[1]?.sources?.[1]).not.toHaveProperty('published_at');
+    } finally {
+      pool = chunks;
+    }
+  });
+
+  it('stores a turn that cites documents as before, with no markers on the turn, its sources or their excerpts', async () => {
+    const { ask, stored } = setup();
+
+    await ask({ genai_conversation: true });
+    const turn = stored.get('conv-1')?.[1];
+
+    expect(turn).not.toHaveProperty('markers');
+    expect(turn?.sources).toStrictEqual([
+      {
+        index: 1,
+        title: 'Tildelingsbrev',
+        url: 'https://x.no/d1',
+        document_id: 'd1',
+        excerpts: [
+          { chunk_id: 'c1', text: 'Første', position: 0 },
+          { chunk_id: 'c1b', text: 'Tredje', position: 4 },
+        ],
+      },
+      {
+        index: 2,
+        title: 'Årsrapport',
+        document_id: 'd2',
+        excerpts: [{ chunk_id: 'c2', text: 'Andre', position: 0 }],
+      },
+    ]);
   });
 
   it('creates no conversation when the request fails validation', async () => {
@@ -262,6 +315,75 @@ describe('/v1 frontend contract: conversations', () => {
     expect(response.headers.get('genai-conversation')).toBe('conv-1');
     expect(text.split('\n\n')[0]).toContain('"conversation_id":"conv-1"');
   });
+
+  it('stores the question with the id of the run that answers it', async () => {
+    const { ask, stored } = setup();
+
+    const response = await ask({ genai_conversation: true });
+
+    expect(stored.get('conv-1')?.[0]).toMatchObject({
+      role: 'user',
+      task: response.headers.get('genai-task'),
+    });
+  });
+
+  it('stores no question in a continued conversation when the run is refused', async () => {
+    let refuse = false;
+    const { ask, stored } = setup({
+      policy: {
+        decide: async (_principal, action) =>
+          refuse && action === 'invoke' ? { allow: false, reason: 'refused' } : { allow: true },
+      },
+    });
+    await ask({ genai_conversation: true });
+    refuse = true;
+
+    const refused = await ask({ conversation_id: 'conv-1' });
+
+    expect(refused.status).toBe(403);
+    expect(stored.get('conv-1')?.map((t) => t.role)).toEqual(['user', 'assistant']);
+  });
+
+  describe('when the question cannot be stored', () => {
+    const unstored = () => {
+      const waiting: Strategy = {
+        ...strategy,
+        run: async function* (ctx): AsyncIterable<Emitted> {
+          await new Promise((resolve) =>
+            ctx.signal.addEventListener('abort', resolve, { once: true }),
+          );
+          yield { type: 'kernel.result', data: [] };
+        },
+      };
+      return setup({ strategies: [waiting], newId: () => 'run-1' }, (memory) => ({
+        ...memory,
+        append: async (request, id, turn) => {
+          if (turn.role === 'user') throw new Error('store unavailable');
+          await memory.append(request, id, turn);
+        },
+      }));
+    };
+
+    it('cancels the run', async () => {
+      const { ask, kernel } = unstored();
+
+      await ask({ genai_conversation: true });
+
+      await vi.waitFor(async () =>
+        expect((await kernel.task(kari, 'run-1')).status).toBe('cancelled'),
+      );
+    });
+
+    it('answers 500 in the OpenAI error shape and leaves no new conversation behind', async () => {
+      const { ask, stored } = unstored();
+
+      const response = await ask({ genai_conversation: true });
+
+      expect(response.status).toBe(500);
+      expect(await response.json()).toMatchObject({ error: { code: 'internal_error' } });
+      expect(stored.has('conv-1')).toBe(false);
+    });
+  });
 });
 
 describe('/v1 frontend contract: filters', () => {
@@ -298,6 +420,52 @@ describe('/v1 frontend contract: filters', () => {
 });
 
 describe('/v1 frontend contract: sources', () => {
+  describe("an excerpt's page", () => {
+    const pdf = 'https://kudos.dfo.no/dokument/d1/filer/f1.pdf';
+    afterEach(() => {
+      pool = chunks;
+    });
+    const paged = (c1: Partial<SourceRecord>, c1b: Partial<SourceRecord> = {}) => {
+      pool = chunks.map((c) =>
+        c.chunkId === 'c1' ? { ...c, ...c1 } : c.chunkId === 'c1b' ? { ...c, ...c1b } : c,
+      );
+    };
+
+    it("a source's excerpt carries the page and heading of its chunk", async () => {
+      paged({ page: 12, pageEnd: 13, headers: ['3 Funn'] }, { page: 14 });
+      const { ask, stored } = setup();
+      const body = (await (await ask({ genai_conversation: true })).json()) as {
+        sources: Source[];
+      };
+
+      const excerpts = [
+        { chunk_id: 'c1', text: 'Første', position: 0, heading: '3 Funn', page: 12, page_end: 13 },
+        { chunk_id: 'c1b', text: 'Tredje', position: 4, page: 14 },
+      ];
+      expect(body.sources[0]?.excerpts).toStrictEqual(excerpts);
+      expect(stored.get('conv-1')?.[1]?.sources?.[0]?.excerpts).toStrictEqual(excerpts);
+    });
+
+    it("an excerpt links to its file's address at its page", async () => {
+      paged({ page: 12, pageEnd: 13, fileUrl: pdf });
+      const body = (await (await setup().ask({})).json()) as { sources: Source[] };
+
+      expect(body.sources[0]?.excerpts[0]).toMatchObject({ page: 12, url: `${pdf}#page=12` });
+      // The source's own link stays the document's page.
+      expect(body.sources[0]?.url).toBe('https://x.no/d1');
+    });
+
+    it("an excerpt whose file has no address in the document's record gets no page link", async () => {
+      paged({ page: 12 }, { page: 14, fileUrl: 'javascript:alert(1)' });
+      const body = (await (await setup().ask({})).json()) as { sources: Source[] };
+
+      expect(body.sources[0]?.excerpts.map((e) => [e.chunk_id, e.page, e.url])).toEqual([
+        ['c1', 12, undefined],
+        ['c1b', 14, undefined],
+      ]);
+    });
+  });
+
   it('gives one source per cited document, indexed by the [N] in the answer, with every chunk as an excerpt', async () => {
     const body = (await (await setup().ask({})).json()) as { sources: Source[] };
 
@@ -313,6 +481,263 @@ describe('/v1 frontend contract: sources', () => {
     });
     expect(body.sources[1]).toMatchObject({ title: 'Årsrapport', document_id: 'd2' });
     expect(body.sources[1]).not.toHaveProperty('url');
+    expect(body).not.toHaveProperty('markers');
+  });
+
+  describe('when the answer cites excerpts', () => {
+    afterEach(() => {
+      reply = byDocument;
+    });
+    const byExcerpt = {
+      answer: 'Første [1], tredje [2] og andre [3].',
+      meta: {
+        citations: [
+          { index: 1, chunkId: 'c1', document: 'd1' },
+          { index: 2, chunkId: 'c1b', document: 'd1' },
+          { index: 3, chunkId: 'c2', document: 'd2' },
+        ],
+        citeBy: 'excerpt',
+      },
+    };
+    const markers = [
+      { marker: '1', chunk_id: 'c1', document: 'd1' },
+      { marker: '2', chunk_id: 'c1b', document: 'd1' },
+      { marker: '3', chunk_id: 'c2', document: 'd2' },
+    ];
+
+    it('resolves every marker to one excerpt, and lists on each excerpt the markers that cite it', async () => {
+      reply = byExcerpt;
+      const body = (await (await setup().ask({})).json()) as {
+        sources: (Source & { markers?: string[] })[];
+        markers?: unknown;
+      };
+
+      expect(body.markers).toEqual(markers);
+      expect(body.sources.map((s) => [s.document_id, s.index, s.markers])).toEqual([
+        ['d1', 1, ['1', '2']],
+        ['d2', 3, ['3']],
+      ]);
+      expect(body.sources[0]?.excerpts).toEqual([
+        { chunk_id: 'c1', text: 'Første', position: 0, markers: ['1'] },
+        { chunk_id: 'c1b', text: 'Tredje', position: 4, markers: ['2'] },
+      ]);
+    });
+
+    it('sends the same markers when the answer is streamed', async () => {
+      reply = byExcerpt;
+      const text = await (await setup().ask({ stream: true })).text();
+
+      expect(text).toContain(`"markers":${JSON.stringify(markers)}`);
+    });
+
+    it('keeps the markers of an answer that cites excerpts when the turn is stored', async () => {
+      reply = byExcerpt;
+      const { ask, stored } = setup();
+
+      const body = (await (await ask({ genai_conversation: true })).json()) as {
+        markers?: unknown;
+      };
+      const turn = stored.get('conv-1')?.[1];
+
+      expect(turn?.markers).toEqual(markers);
+      expect(turn?.markers).toEqual(body.markers);
+      expect(turn?.sources?.map((s) => [s.document_id, s.index, s.markers])).toEqual([
+        ['d1', 1, ['1', '2']],
+        ['d2', 3, ['3']],
+      ]);
+      expect(turn?.sources?.[0]?.excerpts).toStrictEqual([
+        { chunk_id: 'c1', text: 'Første', position: 0, markers: ['1'] },
+        { chunk_id: 'c1b', text: 'Tredje', position: 4, markers: ['2'] },
+      ]);
+    });
+
+    it('stores each excerpt of a turn exactly as the answer gave it, every field kept', async () => {
+      reply = byExcerpt;
+      const { ask, stored } = setup();
+
+      const body = (await (await ask({ genai_conversation: true })).json()) as {
+        sources: Source[];
+      };
+
+      expect(stored.get('conv-1')?.[1]?.sources?.map((s) => s.excerpts)).toStrictEqual(
+        body.sources.map((s) => s.excerpts),
+      );
+    });
+
+    it('keeps the same markers on the stored turn when the answer is streamed', async () => {
+      reply = byExcerpt;
+      const { ask, stored } = setup();
+
+      await (await ask({ genai_conversation: true, stream: true })).text();
+      const turn = stored.get('conv-1')?.[1];
+
+      expect(turn?.markers).toEqual(markers);
+      expect(turn?.sources?.map((s) => s.markers)).toEqual([['1', '2'], ['3']]);
+      expect(turn?.sources?.[0]?.excerpts.map((e) => e.markers)).toEqual([['1'], ['2']]);
+    });
+  });
+
+  describe('when the chunks carry section headings', () => {
+    afterEach(() => {
+      pool = chunks;
+    });
+    const headed: SourceRecord[] = [
+      { ...chunks[0], chunkId: 'c1', headers: ['# **1 Innledning**'] },
+      { ...chunks[1], chunkId: 'c2' },
+      { ...chunks[2], chunkId: 'c1b', headers: ['## **3 Styringsparametere**', '3.2 Mål'] },
+    ];
+    type Headed = Omit<Source, 'excerpts'> & {
+      metadata: { name?: string }[];
+      excerpts: { chunk_id: string; text: string; heading?: string }[];
+    };
+    const answer = async () => {
+      pool = headed;
+      return ((await (await setup().ask({})).json()) as { sources: Headed[] }).sources;
+    };
+
+    it("gives each excerpt its own heading, not the first excerpt's", async () => {
+      const sources = await answer();
+
+      expect(sources[0]?.excerpts.map((e) => [e.chunk_id, e.heading])).toEqual([
+        ['c1', '1 Innledning'],
+        ['c1b', '3 Styringsparametere › 3.2 Mål'],
+      ]);
+    });
+
+    it('writes the heading as the document breadcrumb is written, plain levels joined by ›', async () => {
+      const [first] = await answer();
+
+      expect(first?.excerpts[1]?.heading).toBe('3 Styringsparametere › 3.2 Mål');
+      expect(first?.metadata[0]?.name).toBe(`Tildelingsbrev › ${first?.excerpts[0]?.heading}`);
+    });
+
+    it('leaves the heading out when the chunk has no headers', async () => {
+      const sources = await answer();
+
+      expect(sources[1]?.excerpts).toHaveLength(1);
+      expect(sources[1]?.excerpts[0]).not.toHaveProperty('heading');
+    });
+
+    it("keeps the document breadcrumb as it was, the first excerpt's under the title", async () => {
+      const sources = await answer();
+
+      expect(sources[0]?.metadata).toEqual([
+        { source: 'c1', chunk_id: 'c1', name: 'Tildelingsbrev › 1 Innledning' },
+      ]);
+      expect(sources[1]?.metadata).toEqual([{ source: 'c2', chunk_id: 'c2' }]);
+    });
+
+    it('sends each excerpt its heading when the answer is streamed', async () => {
+      pool = headed;
+      const text = await (await setup().ask({ stream: true })).text();
+
+      expect(text).toContain('"heading":"1 Innledning"');
+      expect(text).toContain('"heading":"3 Styringsparametere › 3.2 Mål"');
+    });
+  });
+
+  describe("when the headings carry Marker's page anchors", () => {
+    afterEach(() => {
+      pool = chunks;
+    });
+    const anchored: SourceRecord[] = [
+      { ...chunks[0], chunkId: 'c1', headers: ['<span id="page-2-0"></span>1. Innledning'] },
+      {
+        ...chunks[1],
+        chunkId: 'c2',
+        headers: ['[DEL 3 – Aktiviteter og](#page-12-0) [resultater i 2024](#page-12-0)'],
+      },
+      {
+        ...chunks[2],
+        chunkId: 'c1b',
+        headers: ['<span id="page-8-3"></span>', '5.2 Tildelingsbrev'],
+      },
+    ];
+    type Headed = Omit<Source, 'excerpts'> & {
+      metadata: { name?: string }[];
+      excerpts: { chunk_id: string; heading?: string }[];
+    };
+    const answer = async (records: SourceRecord[]) => {
+      pool = records;
+      return ((await (await setup().ask({})).json()) as { sources: Headed[] }).sources;
+    };
+
+    it("gives a heading without Marker's page anchors", async () => {
+      const [first] = await answer(anchored);
+
+      expect(first?.excerpts[0]?.heading).toBe('1. Innledning');
+    });
+
+    it("gives a heading without Marker's links to its page anchors", async () => {
+      const sources = await answer(anchored);
+
+      expect(sources[1]?.excerpts[0]?.heading).toBe('DEL 3 – Aktiviteter og resultater i 2024');
+    });
+
+    it("gives a heading without Marker's underline and superscript tags", async () => {
+      const [first] = await answer([
+        { ...chunks[0], chunkId: 'c1', headers: ['<u>Styrken til porteføljen</u>'] },
+        { ...chunks[2], chunkId: 'c1b', headers: ['Note <sup>a)</sup>'] },
+      ]);
+
+      expect(first?.excerpts.map((e) => e.heading)).toEqual(['Styrken til porteføljen', 'Note a)']);
+    });
+
+    it('raises a footnote number in a heading, written as a superscript or as a link to its page', async () => {
+      const [first] = await answer([
+        {
+          ...chunks[0],
+          chunkId: 'c1',
+          headers: ['Tilgang i året <sup>1</sup>', 'KOSTRA – Gruppering[[11]](#page-35-0)'],
+        },
+        {
+          ...chunks[2],
+          chunkId: 'c1b',
+          headers: ['Mål[\\[2\\]](#page-4-0) og tiltak[3](#page-5-1)'],
+        },
+      ]);
+
+      expect(first?.excerpts.map((e) => e.heading)).toEqual([
+        'Tilgang i året ¹ › KOSTRA – Gruppering¹¹',
+        'Mål² og tiltak³',
+      ]);
+    });
+
+    it('leaves out a heading level that is only markup', async () => {
+      const [first] = await answer(anchored);
+      const [bare] = await answer([
+        { ...chunks[0], chunkId: 'c1', headers: ['<span id="page-3-0"></span>'] },
+      ]);
+      const [untitled] = await answer([
+        {
+          chunkId: 'c9',
+          text: 'Niende',
+          document: 'd9',
+          headers: ['<span id="page-1-0"></span>', 'Mål'],
+        },
+      ]);
+
+      expect(first?.excerpts[1]?.heading).toBe('5.2 Tildelingsbrev');
+      expect(bare?.excerpts[0]).not.toHaveProperty('heading');
+      expect(bare?.metadata).toEqual([{ source: 'c1', chunk_id: 'c1' }]);
+      expect(untitled?.title).toBe('Mål');
+    });
+
+    it('keeps the breadcrumb plain text', async () => {
+      const [first] = await answer(anchored);
+      const [untitled] = await answer([
+        {
+          chunkId: 'c9',
+          text: 'Niende',
+          document: 'd9',
+          headers: ['<span id="page-2-0"></span>1. Innledning', '1.1 Mål'],
+        },
+      ]);
+
+      expect(first?.metadata[0]?.name).toBe('Tildelingsbrev › 1. Innledning');
+      expect(untitled?.title).toBe('1. Innledning');
+      expect(untitled?.metadata[0]?.name).toBe('1. Innledning › 1.1 Mål');
+    });
   });
 });
 
@@ -338,5 +763,31 @@ describe('/v1 frontend contract: steps', () => {
 
     expect(stepFrames(stepped)).toHaveLength(1);
     expect(stepped).not.toContain('"genai_step":{}');
+  });
+});
+
+describe("/v1 frontend contract: a source's publisher", () => {
+  afterEach(() => {
+    pool = chunks;
+  });
+
+  it("a reopened conversation's source keeps its publisher", async () => {
+    pool = chunks.map((c) =>
+      c.document === 'd1' ? { ...c, publisher: 'Justis- og beredskapsdepartementet' } : c,
+    );
+    const { ask, stored } = setup();
+
+    const body = (await (await ask({ genai_conversation: true })).json()) as {
+      sources: { publisher?: string }[];
+    };
+
+    expect(body.sources.map((s) => s.publisher)).toEqual([
+      'Justis- og beredskapsdepartementet',
+      undefined,
+    ]);
+    expect(stored.get('conv-1')?.[1]?.sources?.map((s) => s.publisher)).toEqual([
+      'Justis- og beredskapsdepartementet',
+      undefined,
+    ]);
   });
 });

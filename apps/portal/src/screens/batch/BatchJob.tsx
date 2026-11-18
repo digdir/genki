@@ -40,7 +40,7 @@ const filterText = (t: T, run: Pick<BatchRun, 'filters'>) =>
     .join(' · ') || t('batch.noFilters');
 
 const estimateText = (t: T, f: Format, run: BatchRun) => {
-  const per = run.perItem.costMicroNok;
+  const per = run.perItem?.costMicroNok;
   if (!per) return '';
   const low = kroner(t, f, per.low * run.total);
   const high = kroner(t, f, per.high * run.total);
@@ -133,9 +133,10 @@ export const BatchJob = ({
   const visible = list.slice(0, shown);
   const groups = failGroups(t, run.items);
   const failed = groups.flatMap((g) => g.indexes);
-  const perItem = run.perItem.costMicroNok;
+  const costShown = run.tokens !== undefined;
+  const perItem = run.perItem?.costMicroNok;
   const estimate = estimateText(t, f, run);
-  const capNok = run.cap.costMicroNok;
+  const capNok = run.cap?.costMicroNok;
   const left = counts.skipped + counts.queued;
 
   const act = async (work: () => Promise<void>) => {
@@ -162,7 +163,8 @@ export const BatchJob = ({
         ? { maxCostNok: Math.max(1, Math.ceil((perItem.high * failed.length) / 1_000_000)) }
         : {
             maxTokens:
-              (run.perItem.inputTokens.high + run.perItem.outputTokens.high) * failed.length,
+              ((run.perItem?.inputTokens.high ?? 0) + (run.perItem?.outputTokens.high ?? 0)) *
+              failed.length,
           };
       const result = await api.batchRuns.retry(
         tenant,
@@ -235,21 +237,35 @@ export const BatchJob = ({
       ? counts.failed > 0
         ? {
             color: 'warning' as const,
-            text: t(estimate ? 'batch.doneWithErrorsEstimate' : 'batch.doneWithErrors', {
-              done: counts.succeeded,
-              total,
-              failed: counts.failed,
-              cost,
-              estimate,
-            }),
+            text: t(
+              !costShown
+                ? 'batch.doneWithErrorsNoCost'
+                : estimate
+                  ? 'batch.doneWithErrorsEstimate'
+                  : 'batch.doneWithErrors',
+              {
+                done: counts.succeeded,
+                total,
+                failed: counts.failed,
+                cost,
+                estimate,
+              },
+            ),
           }
         : {
             color: 'success' as const,
-            text: t(estimate ? 'batch.doneAllEstimate' : 'batch.doneAll', {
-              total,
-              cost,
-              estimate,
-            }),
+            text: t(
+              !costShown
+                ? 'batch.doneAllNoCost'
+                : estimate
+                  ? 'batch.doneAllEstimate'
+                  : 'batch.doneAll',
+              {
+                total,
+                cost,
+                estimate,
+              },
+            ),
           }
       : undefined;
 
@@ -275,14 +291,21 @@ export const BatchJob = ({
             {t('batch.pausedHeading')}
           </Heading>
           <Paragraph>
-            {t(capNok ? 'batch.pausedBodyCap' : 'batch.pausedBody', {
-              spent: cost,
-              cap: kroner(t, f, capNok),
-              done: finished,
-              total,
-            })}
+            {t(
+              !costShown
+                ? 'batch.pausedBodyNoCost'
+                : capNok
+                  ? 'batch.pausedBodyCap'
+                  : 'batch.pausedBody',
+              {
+                spent: cost,
+                cap: kroner(t, f, capNok),
+                done: finished,
+                total,
+              },
+            )}
           </Paragraph>
-          {canManage ? (
+          {canManage && costShown ? (
             <div className="actions">
               <Button data-size="sm" onClick={openRaise}>
                 {t('batch.continueNewLimit')}
@@ -300,12 +323,19 @@ export const BatchJob = ({
       ) : null}
       {run.status === 'cancelled' ? (
         <Alert data-color="info">
-          {t(run.endedAt ? 'batch.cancelledAt' : 'batch.cancelledNoTime', {
-            when: run.endedAt ? f.dateTime(run.endedAt, 'medium') : '',
-            done: counts.succeeded,
-            total,
-            cost,
-          })}
+          {t(
+            !costShown
+              ? 'batch.cancelledNoCost'
+              : run.endedAt
+                ? 'batch.cancelledAt'
+                : 'batch.cancelledNoTime',
+            {
+              when: run.endedAt ? f.dateTime(run.endedAt, 'medium') : '',
+              done: counts.succeeded,
+              total,
+              cost,
+            },
+          )}
         </Alert>
       ) : null}
       {run.status === 'failed' ? (
@@ -364,7 +394,7 @@ export const BatchJob = ({
             {t('batch.tagQueued', { count: active ? counts.queued : left })}
           </Tag>
         </div>
-        <span>{costText}</span>
+        {costShown ? <span>{costText}</span> : null}
         {active && canManage ? (
           <div className="actions">
             <span className="small">{t('batch.leavePage')}</span>
@@ -396,7 +426,7 @@ export const BatchJob = ({
               </li>
             ))}
           </ul>
-          {canManage ? (
+          {canManage && costShown ? (
             <div className="actions">
               <Button
                 data-size="sm"
@@ -498,12 +528,16 @@ export const BatchJob = ({
                   <dd>
                     <ItemStatusCell item={i} />
                   </dd>
-                  <dt>{t('batch.colCost')}</dt>
-                  <dd>
-                    {i.status === 'succeeded' || i.status === 'notFound'
-                      ? kroner(t, f, run.priced ? i.costMicroNok : null)
-                      : '–'}
-                  </dd>
+                  {costShown ? (
+                    <>
+                      <dt>{t('batch.colCost')}</dt>
+                      <dd>
+                        {i.status === 'succeeded' || i.status === 'notFound'
+                          ? kroner(t, f, run.priced ? i.costMicroNok : null)
+                          : '–'}
+                      </dd>
+                    </>
+                  ) : null}
                 </dl>
                 {runLink(t, i)}
               </li>
@@ -516,12 +550,16 @@ export const BatchJob = ({
                 <Table.Row>
                   <Table.HeaderCell scope="col">{t('batch.colDocument')}</Table.HeaderCell>
                   <Table.HeaderCell scope="col">{t('batch.colStatus')}</Table.HeaderCell>
-                  <Table.HeaderCell scope="col" className="numeric-cell">
-                    {t('batch.colTokens')}
-                  </Table.HeaderCell>
-                  <Table.HeaderCell scope="col" className="numeric-cell">
-                    {t('batch.colCost')}
-                  </Table.HeaderCell>
+                  {costShown ? (
+                    <>
+                      <Table.HeaderCell scope="col" className="numeric-cell">
+                        {t('batch.colTokens')}
+                      </Table.HeaderCell>
+                      <Table.HeaderCell scope="col" className="numeric-cell">
+                        {t('batch.colCost')}
+                      </Table.HeaderCell>
+                    </>
+                  ) : null}
                   <Table.HeaderCell scope="col">
                     <span className="visually-hidden">{t('batch.colRun')}</span>
                   </Table.HeaderCell>
@@ -529,21 +567,25 @@ export const BatchJob = ({
               </Table.Head>
               <Table.Body>
                 {visible.map((i) => {
-                  const tokens = i.tokens.input + i.tokens.output;
+                  const tokens = (i.tokens?.input ?? 0) + (i.tokens?.output ?? 0);
                   return (
                     <Table.Row key={i.index}>
                       <Table.Cell>{i.document.title}</Table.Cell>
                       <Table.Cell>
                         <ItemStatusCell item={i} />
                       </Table.Cell>
-                      <Table.Cell className="numeric-cell">
-                        {tokens ? f.number(tokens) : '–'}
-                      </Table.Cell>
-                      <Table.Cell className="numeric-cell">
-                        {i.status === 'succeeded' || i.status === 'notFound'
-                          ? kroner(t, f, run.priced ? i.costMicroNok : null)
-                          : '–'}
-                      </Table.Cell>
+                      {costShown ? (
+                        <>
+                          <Table.Cell className="numeric-cell">
+                            {tokens ? f.number(tokens) : '–'}
+                          </Table.Cell>
+                          <Table.Cell className="numeric-cell">
+                            {i.status === 'succeeded' || i.status === 'notFound'
+                              ? kroner(t, f, run.priced ? i.costMicroNok : null)
+                              : '–'}
+                          </Table.Cell>
+                        </>
+                      ) : null}
                       <Table.Cell>{runLink(t, i)}</Table.Cell>
                     </Table.Row>
                   );

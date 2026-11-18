@@ -10,8 +10,12 @@ export interface FlowChunk {
   title?: string;
   url?: string;
   headers?: string[];
+  page?: number;
+  pageEnd?: number;
+  fileUrl?: string;
   version?: string;
   publishedAt?: string;
+  publisher?: string;
   score?: number;
   rerankScore?: number;
 }

@@ -47,6 +47,7 @@ resource postgresDnsLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@
   }
 }
 
+output vnetId string = vnet.id
 output appsSubnetId string = vnet.properties.subnets[0].id
 output postgresSubnetId string = vnet.properties.subnets[1].id
 output postgresDnsZoneId string = postgresDns.id

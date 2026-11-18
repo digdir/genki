@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import type { Principal } from '@genai/contracts';
 import type { JudgeModel } from '@genai/eval';
+import { servesModelPort } from '@genai/port-model';
 import { blockStatusFor, readBlockPolicy } from './building-blocks.js';
 import type { DraftOrigin, DraftRunOutcome, DraftRunSuccess } from './draft-runner.js';
 import { ownedElsewhere } from './model-access.js';
@@ -45,6 +46,7 @@ export const modelChoice = (deps: ModelChoiceDeps) => {
       .filter(
         (m) =>
           m.enabled &&
+          servesModelPort(m) &&
           !ownedElsewhere(deps.catalog, m.id, tenant) &&
           ['available', 'in_use'].includes(
             blockStatusFor(policy, { kind: 'model', id: m.id, dataLocation: m.residency }).status,

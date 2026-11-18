@@ -1,10 +1,17 @@
-import type { Emitted, InvocationContext, Strategy } from '@genai/kernel';
+import {
+  withUse,
+  type Emitted,
+  type GateCall,
+  type InvocationContext,
+  type PayloadGuard,
+  type Strategy,
+} from '@genai/kernel';
 import {
   ModelError,
-  type ChatChunk,
   type ChatRequest,
   type ChatResult,
-  type ModelPort,
+  type DecisionRequest,
+  type DecisionResult,
 } from '@genai/port-model';
 import {
   KnowledgeError,
@@ -32,16 +39,47 @@ export interface WithHooksOptions {
 
 const modelPayload = (id: string, request: ChatRequest) => ({
   model: id,
+  operation: 'chat',
   messages: request.messages.map((m) => ({ role: m.role, content: m.content })),
   tools: (request.tools ?? []).map((t) => t.name),
 });
 
 const resultPayload = (id: string, result: ChatResult) => ({
   model: id,
+  operation: 'chat',
   content: result.content,
   toolCalls: result.toolCalls.map((c) => ({ name: c.name, arguments: c.arguments })),
   finishReason: result.finishReason,
 });
+
+const decisionPayload = (id: string, request: DecisionRequest) => ({
+  model: id,
+  operation: 'decide',
+  input:
+    typeof request.input === 'string'
+      ? request.input
+      : request.input.map((m) => m.content).join('\n\n'),
+});
+
+const answersPayload = (id: string, result: DecisionResult) => ({
+  model: id,
+  operation: 'decide',
+  answers: result.answers,
+});
+
+const before = (call: GateCall, body: unknown) =>
+  call.port === 'model'
+    ? modelPayload(call.model, body as ChatRequest)
+    : call.port === 'decision'
+      ? decisionPayload(call.model, body as DecisionRequest)
+      : undefined;
+
+const after = (call: GateCall, body: unknown) =>
+  call.port === 'model'
+    ? resultPayload(call.model, body as ChatResult)
+    : call.port === 'decision'
+      ? answersPayload(call.model, body as DecisionResult)
+      : undefined;
 
 const searchPayload = (dataset: string, request: SearchRequest) => ({
   dataset,
@@ -90,41 +128,25 @@ export const withHooks = <C>(inner: Strategy<C>, options: WithHooksOptions): Str
       const has = (point: HookPoint, mode?: HookConfig['mode']) =>
         hooks.some((h) => h.enabled && h.point === point && (!mode || h.mode === mode));
 
-      const model = (port: ModelPort): ModelPort => {
-        const id = port.info().id;
-        const before = async (request: ChatRequest) => {
-          const refused =
-            has('before_model') && (await hooked('before_model', modelPayload(id, request)));
-          if (refused) throw new ModelError('refused', refusalText(refused));
-        };
-        const after = async (result: ChatResult) => {
-          const refused =
-            has('after_model') && (await hooked('after_model', resultPayload(id, result)));
-          if (refused) throw new ModelError('refused', refusalText(refused));
-        };
-        return {
-          info: () => port.info(),
-          chat: async (request) => {
-            await before(request);
-            const result = await port.chat(request);
-            await after(result);
-            return result;
-          },
-          chatStream: async function* (request): AsyncIterable<ChatChunk> {
-            await before(request);
-            const hold = has('after_model', 'enforce');
-            const held: ChatChunk[] = [];
-            for await (const chunk of port.chatStream(request)) {
-              if (chunk.kind === 'done') {
-                await after(chunk.result);
-                yield* held;
-                yield chunk;
-              } else if (hold) held.push(chunk);
-              else yield chunk;
+      const modelGuard: PayloadGuard | undefined =
+        has('before_model') || has('after_model')
+          ? {
+              holdsStream: has('after_model', 'enforce'),
+              request: async (call, body) => {
+                const payload = before(call, body);
+                if (!payload || !has('before_model')) return body;
+                const refused = await hooked('before_model', payload);
+                if (refused) throw new ModelError('refused', refusalText(refused));
+                return body;
+              },
+              result: async (call, body) => {
+                const payload = after(call, body);
+                if (!payload || !has('after_model')) return;
+                const refused = await hooked('after_model', payload);
+                if (refused) throw new ModelError('refused', refusalText(refused));
+              },
             }
-          },
-        };
-      };
+          : undefined;
 
       const tool = (port: ToolPort): ToolPort => ({
         definition: () => port.definition(),
@@ -186,9 +208,12 @@ export const withHooks = <C>(inner: Strategy<C>, options: WithHooksOptions): Str
 
       const scoped: InvocationContext = {
         ...ctx,
-        use: async <P>(port: string, ref: Parameters<InvocationContext['use']>[1]) => {
-          const opened = await ctx.use<P>(port, ref);
-          if (port === 'model') return model(opened as ModelPort) as P;
+        use: async <P>(...[port, ref, options]: Parameters<InvocationContext['use']>) => {
+          const opened = await ctx.use<P>(
+            port,
+            ref,
+            modelGuard ? withUse(options, { guards: [modelGuard] }) : options,
+          );
           if (port === 'tools') return tool(opened as ToolPort) as P;
           if (port === 'knowledge') return knowledge(opened as KnowledgePort) as P;
           return opened;

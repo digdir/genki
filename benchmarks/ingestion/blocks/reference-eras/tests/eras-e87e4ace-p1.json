@@ -1,0 +1,198 @@
+{
+ "tests": [
+  {
+   "id": "eras-e87e4ace-p1-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Om lov om endringer i lov av 14. desember 1973 nr. 57 om kompensasjon for merverdiavgift på matvarer",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-e87e4ace-p1-t02",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Tilråding fra Finans- og tolldepartementet av 6. mai 1994, godkjent i statsråd samme dag.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-e87e4ace-p1-t03",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "DEPARTEMENTETS MERKNADER OG FORSLAG",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-e87e4ace-p1-t04",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Endringsforslaget fremmes som en følge av at Regjeringen i Revidert nasjonalbudsjett for 1994 foreslår endringer i gjeldende kompensasjonsnivå.",
+     "max_diffs": 4
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-e87e4ace-p1-t05",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "I samsvar med tilrådingen fra det såkalte Christiansenutvalget, jf. NOU 1993:8, fant Regjeringen ikke å burde tilrå at det ble innført differensiert merverdiavgift ved slik omsetning.",
+     "max_diffs": 5
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-e87e4ace-p1-t06",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "2.2 Bakgrunnen for departementets forslag",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "Ved endringen av 18. juni 1993 fikk",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-e87e4ace-p1-t07",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "list",
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Det ytes delvis kompensasjon for merverdiavgift",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "Andre matvarer som Stortinget måtte bestemme.",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-e87e4ace-p1-t08",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Kongen kan avgjøre hva som skal anses som innenlandsk forbruk.",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-e87e4ace-p1-t09",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Reguleringen i lovs form bryter med det vanlige prinsipp om at merverdiavgiftssatsene og bevilgningene på statsbudsjettets utgiftsside bør fremgå av stortingsvedtakene alene.",
+     "max_diffs": 5
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-e87e4ace-p1-t10",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Kompensasjonen fastsettes slik at den tilsvarer forskjellen",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "Ordlyden i bestemmelsene er kategorisk",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

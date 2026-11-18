@@ -36,6 +36,117 @@ export interface Problem {
 export type Residency = 'norway' | 'eu' | 'global';
 
 export type Capability = 'stream' | 'tools' | 'json-schema' | 'reasoning';
+export type BuiltInOperation = 'chat' | 'decide';
+export type ModelOperation = string;
+
+export type Maturity = 'test' | 'production';
+export type DescriptorStatus = 'review' | 'described' | 'typed';
+
+export interface OperationKind {
+  kind: ModelOperation;
+  builtIn: boolean;
+  maturity: Maturity;
+  typed?: 'production';
+  by?: string;
+  at?: string;
+  descriptors: { id: string; status: string; family?: string }[];
+}
+
+export interface OperationKinds {
+  environment: Maturity;
+  data: OperationKind[];
+}
+
+export interface DescriptorContract {
+  suite: string;
+  checks: number;
+  passed: boolean;
+  failures: { check: string; problems: string[] }[];
+}
+
+export interface OperationDescriptor {
+  id: string;
+  operation: ModelOperation;
+  status: DescriptorStatus;
+  source: 'bundled' | 'uploaded';
+  summary: string;
+  family: string | null;
+  fixtures: number;
+  contract: DescriptorContract | null;
+  problems?: string[];
+  version?: number;
+  by?: string;
+  at?: string;
+  reason?: string;
+}
+
+export type InputShape =
+  | { kind: 'text' }
+  | { kind: 'plain'; min?: number }
+  | { kind: 'ref'; pattern?: string }
+  | { kind: 'enum'; values: string[] }
+  | { kind: 'number'; integer?: boolean; min?: number; max?: number }
+  | { kind: 'boolean' }
+  | { kind: 'null' }
+  | { kind: 'json' }
+  | { kind: 'media'; type: string }
+  | { kind: 'opaque' }
+  | { kind: 'optional'; shape: InputShape }
+  | { kind: 'object'; fields: Record<string, InputShape> }
+  | { kind: 'array'; item: InputShape; min?: number; max?: number }
+  | { kind: 'variant'; key: string; options: Record<string, InputShape> }
+  | { kind: 'either'; options: InputShape[] };
+
+export interface DescriptorFixture {
+  name: string;
+  source?: string;
+  input: unknown;
+  [field: string]: unknown;
+}
+
+export interface DescriptorDetail extends OperationDescriptor {
+  input?: InputShape;
+  usedBy: { tenant: string; service: string; version: number }[];
+  document?: Record<string, unknown>;
+  fixtureCases?: DescriptorFixture[];
+}
+
+export interface DescriptorUpload {
+  descriptor: string;
+  fixtures?: DescriptorFixture[];
+}
+
+export interface WireExchange {
+  deployment: string;
+  settings?: Record<string, string>;
+  input: unknown;
+  request: { method: string; path: string; query?: Record<string, string>; body: unknown };
+  response: { status: number; body: unknown };
+  result: unknown;
+  usage: Record<string, number>;
+  dropped: number;
+}
+
+export interface OperationTryResult {
+  task: string;
+  descriptor: string;
+  model: string;
+  result: unknown;
+  exchange?: WireExchange;
+}
+
+export interface ProcessorRecord {
+  agreement: string;
+  subProcessors: { name: string; location: string }[];
+  retention: { days: number; note?: string };
+}
+
+export interface EndpointProcessorRecord {
+  endpoint: string;
+  record: ProcessorRecord | null;
+  by?: string;
+  at?: string;
+}
 
 export interface ModelUsage {
   tenant: string;
@@ -50,6 +161,8 @@ export interface OperatorModel {
   family?: string;
   residency: Residency;
   capabilities: Capability[];
+  apis?: ApiBindings;
+  operations?: ModelOperation[];
   enabled: boolean;
   origin: 'catalog' | 'discovered';
   classified: boolean;
@@ -71,6 +184,7 @@ export interface ModelPrice {
 export interface ModelClassification {
   residency?: Residency;
   capabilities?: Capability[];
+  apis?: ApiBindings;
   enabled?: boolean;
   parameters?: ParameterRules;
 }
@@ -382,6 +496,33 @@ export interface QualityOverview {
 
 export type Verdict = 'Ja' | 'Delvis' | 'Nei';
 
+/** The pending labels of one trace connection and judge, brought back from Langfuse. */
+export interface SinkLabelBatch {
+  tenant: string;
+  connection: string;
+  judge: string;
+  name: string;
+  labels: {
+    id: string;
+    revision: string;
+    run: string;
+    case: string;
+    repeat: number;
+    humanLabel: string;
+    judgeLabel?: string;
+    labeller: string;
+  }[];
+  paired: number;
+  alike: number;
+  unpaired: number;
+  labellers: number;
+}
+
+export interface SinkLabels {
+  connections: { tenant: string; connection: string; labels: boolean }[];
+  batches: SinkLabelBatch[];
+}
+
 export interface LabelItem {
   item: string;
   judge: string;
@@ -616,6 +757,7 @@ export interface TenantDefinition {
   publishedBy: string | null;
   publishedByName?: string;
   state?: 'active' | 'paused' | 'archived';
+  internal?: boolean;
 }
 
 export interface VersionSummary {
@@ -730,9 +872,117 @@ export interface KnowledgeEndpoint {
   writeKeyRequired: boolean;
   capabilities: { supported: EngineCapability[]; missing: EngineCapability[] };
   datasetCount: number;
+  /** The datasets on the endpoint, with their owner and pipeline count. */
+  datasets?: EndpointDataset[];
   status: EndpointStatus;
   shared: boolean;
   version: number;
+}
+
+export interface EndpointDataset {
+  id: string;
+  /** `platform` or the organisation number that owns the dataset. */
+  scope: string;
+  name: string;
+  pipelines: number;
+}
+
+export type EngineSwitchState =
+  | 'running'
+  | 'failed'
+  | 'comparing'
+  | 'ready'
+  | 'activating'
+  | 'active'
+  | 'rolled_back'
+  | 'cancelled';
+
+/** An engine switch of a platform dataset, as the API shows it (ADR 0025). */
+export interface EngineSwitch {
+  id: string;
+  sid: string;
+  from: string;
+  to: string;
+  state: EngineSwitchState;
+  progress: { percent: number; documents: number; total?: number };
+  error?: { message: string; percent: number };
+  generation?: string;
+  failedDocuments?: number;
+  /** A copy into the knowledge database: copied, skipped by reason and failed documents (#366). */
+  copy?: { copied: number; skipped: Record<string, number>; failed: number };
+  /** A copy of named documents: how many; it can be compared but never activated. */
+  subset?: number;
+  method?: 'copy' | 'reingest';
+  minimumReasonLength: number;
+  canRollback: boolean;
+  comparison?: {
+    cases: number;
+    hitAt5: [number, number];
+    meanRank: [number | null, number | null];
+    verdict: 'same' | 'better' | 'worse';
+  };
+  comparisonNote?: string;
+  /** In lockdown, while the switch has open runs: the earliest time one of their admissions runs out. */
+  admissionRunsOutAt?: string;
+}
+
+export interface MethodEstimate {
+  available: boolean;
+  reason?: string;
+  costNok: { min: number; max: number };
+  durationMinutes: { min: number; max: number };
+}
+
+/** What a copy or a re-ingest into an endpoint would cost, or why it cannot run (ADR 0025). */
+export interface SwitchEstimate {
+  basis: { documents: number; counted: boolean; chunks?: number; tokens?: number };
+  copy?: MethodEstimate;
+  reingest: MethodEstimate;
+  /** The embedding models the platform serves, for a dataset that has none of its own. */
+  embeddings?: { model: string; dimensions: number }[];
+}
+
+/** One hit of a direct dataset search, in rank order. */
+export interface DatasetSearchHit {
+  id: string;
+  document?: string;
+  title?: string;
+  url?: string;
+  position?: number;
+  page?: number;
+  pageEnd?: number;
+  score: number;
+  text: string;
+  fields: Record<string, unknown>;
+}
+
+/** What a direct dataset search answers: the hits and what was searched. */
+export interface DatasetSearchAnswer {
+  dataset: string;
+  profile: string;
+  filters: Record<string, unknown>;
+  limit: number;
+  found?: number;
+  warning?: string;
+  tookMs: number;
+  hits: DatasetSearchHit[];
+}
+
+export interface DatasetSearchRequest {
+  query: string;
+  filters?: Record<string, unknown>;
+  profile?: string;
+  limit?: number;
+}
+
+/** The engine a platform dataset searches now, and the switch it is in, if any. */
+export interface DatasetEngine {
+  dataset: string;
+  endpoint: string;
+  embedding: { model: string; dimensions: number } | null;
+  canSwitch: boolean;
+  activeSwitch?: EngineSwitch;
+  previous?: { endpoint: string; title: string; keptUntil: string; switch: string };
 }
 
 export interface KnowledgeEndpointItem {
@@ -820,6 +1070,7 @@ export interface PlatformProposal {
   status: string;
   createdAt: string;
   createdBy?: string;
+  requestedByName?: string;
   caseId?: string;
   ask?: string;
   detail?: string;
@@ -862,13 +1113,38 @@ export interface QuarantinedDefinition {
   at: string;
 }
 
-export type ModelProtocol = 'openai-chat' | 'anthropic-messages';
+export type ApiBindings = Record<ModelOperation, string>;
+
+export interface ModelApi {
+  id: string;
+  kind: ModelOperation;
+  family: string;
+  source: 'built-in' | 'bundled' | 'uploaded';
+  status: string;
+  summary?: string;
+  models: string[];
+}
+
+export interface DiscoveryRule {
+  source?: string;
+  from?: string;
+  idPrefix?: string;
+  include?: string[];
+  exclude?: string[];
+  capabilities?: Capability[];
+  apis?: ApiBindings;
+}
 
 export interface ModelEndpointInput {
-  id: string;
-  protocol: ModelProtocol;
   baseURL: string;
-  auth: { kind: 'api-key' | 'bearer'; secret: string };
+  auth:
+    | { kind: 'api-key' | 'bearer'; secret: string; header?: string }
+    | { kind: 'federated-app'; clientId: string; tenant: string; scope: string };
+  families: Record<string, string>;
+  gateway?: boolean;
+  discovery?: DiscoveryRule[];
+  settings?: Record<string, string>;
+  keys?: Record<string, string>;
 }
 
 export interface ModelSettings {
@@ -877,6 +1153,7 @@ export interface ModelSettings {
   family?: string;
   residency: Residency;
   capabilities: Capability[];
+  apis?: ApiBindings;
   enabled: boolean;
 }
 

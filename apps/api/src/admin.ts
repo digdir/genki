@@ -1,3 +1,4 @@
+import { publishRefusals } from './internal-services.js';
 import type { Event, Part, Principal } from '@genai/contracts';
 import { defaultPlatformTenant } from '@genai/composition';
 import {
@@ -11,6 +12,7 @@ import {
   SettingsConflictError,
   type PublishedVersion,
   type SettingsRegistry,
+  type SettingWriter,
   type ValidationError,
 } from '@genai/definitions';
 import {
@@ -22,8 +24,11 @@ import {
   type Strategy,
   type TaskStore,
 } from '@genai/kernel';
+import { ModelError } from '@genai/port-model';
 import type { Context } from 'hono';
-import { refusedAction, type RightProblem } from './rights.js';
+import { t } from './i18n/index.js';
+import { isOperator, refusedAction, type RightProblem } from './rights.js';
+import { confirmedAs, riskConfirmationProblems } from './risk-confirmation.js';
 import { serviceHealth, type ServiceModels } from './service-health.js';
 
 export const platformActions = [
@@ -96,10 +101,13 @@ export interface ModelSummary {
   id: string;
   residency: string;
   capabilities: string[];
+  apis?: Record<string, string>;
+  operations?: string[];
   enabled: boolean;
   price?: { inputPerThousand: number; outputPerThousand: number } | null;
   parameters?: Record<string, unknown>;
   rejectedParameters?: Record<string, string>;
+  transport?: { api: string; source: 'configured' | 'learned' | 'default' };
   services?: Record<string, unknown>[];
 }
 
@@ -111,6 +119,7 @@ export interface ModelAdmin {
     classification: {
       residency?: string;
       capabilities?: string[];
+      apis?: Record<string, string>;
       enabled?: boolean;
       parameters?: Record<string, unknown>;
     },
@@ -125,6 +134,7 @@ export type AdminResult<T> =
       task: string;
       conflict?: true;
       problem?: RightProblem;
+      type?: string;
     };
 
 export const settingsConflictMessage =
@@ -144,6 +154,7 @@ export interface AdminOptions {
   extensions?: Record<string, AdminHandler>;
   records?: AdminRecordStore;
   tenants?: () => Promise<{ orgNumber: string; name: string }[]>;
+  names?: { remember(principal: Principal, name: string): Promise<void> };
 }
 
 export type AdminOutcome = Outcome;
@@ -158,6 +169,7 @@ type Outcome = (
       target: string;
       conflict?: true;
       problem?: RightProblem;
+      type?: string;
     }
 ) & { audit?: Record<string, unknown> };
 
@@ -178,6 +190,41 @@ export const platformActor = (subject: string, tenant: string): Principal => ({
   subject,
   tenant,
 });
+
+export const shareOperatorOnlyType = 'urn:genai:problem:share-operator-only';
+export const operatorOnlySettingType = 'urn:genai:problem:operator-only-setting';
+
+export const settingWriterOf = (principal: Principal): SettingWriter =>
+  isOperator(principal) ? 'operator' : 'tenant';
+
+const maySetSharing = (principal: Principal) =>
+  isOperator(principal) ||
+  (principal.kind === 'workload' &&
+    principal.issuer === 'platform' &&
+    principal.subject === 'seed');
+
+const sharingOf = (definition: unknown) => {
+  const value = (definition as { spec?: { availableTo?: unknown } } | undefined)?.spec?.availableTo;
+  if (value === '*') return '*';
+  return Array.isArray(value) ? [...new Set(value.map(String))].sort().join(',') : '';
+};
+
+const engineSwitchSubject = 'engine-switch';
+
+/**
+ * Who publishes an engine switch's activation once its refresh has run (ADR 0025): the platform,
+ * with the reason of the person who activated it. A platform dataset is an operator's to change.
+ */
+export const engineSwitchPublisher = (scope: string, tenant: string): Principal =>
+  scope === 'platform'
+    ? { kind: 'operator', issuer: 'platform', subject: engineSwitchSubject }
+    : platformActor(engineSwitchSubject, tenant);
+
+/** Only the engine switch itself, never a caller of the API, carries this principal. */
+export const isEngineSwitchPublisher = (principal: Principal) =>
+  principal.issuer === 'platform' &&
+  principal.subject === engineSwitchSubject &&
+  (principal.kind === 'workload' || principal.kind === 'operator');
 
 export type AdminWork<T> = () => Promise<{
   value: T;
@@ -220,6 +267,30 @@ export const refusedBy = (c: Context, error: AdminRefused) =>
     { 'content-type': 'application/problem+json' },
   );
 
+export const sharingRefused = (c: Context, errors: ValidationError[]) =>
+  c.json(
+    {
+      type: shareOperatorOnlyType,
+      title: t('problems.shareOperatorOnlyTitle'),
+      status: 403,
+      errors,
+    },
+    403,
+    { 'content-type': 'application/problem+json' },
+  );
+
+export const operatorOnlyRefused = (c: Context, errors: ValidationError[]) =>
+  c.json(
+    {
+      type: operatorOnlySettingType,
+      title: t('problems.operatorOnlySettingTitle'),
+      status: 403,
+      errors,
+    },
+    403,
+    { 'content-type': 'application/problem+json' },
+  );
+
 const asJson = (value: unknown): Part => ({
   mime: 'application/json',
   body: { kind: 'json', json: value },
@@ -247,6 +318,43 @@ export const createAdmin = (options: AdminOptions) => {
     return validated.ok ? checkPromptFiles(validated.definition, files) : validated.errors;
   };
 
+  const checkImport = (definition: unknown, files: PromptFiles): ValidationError[] => {
+    const validated = validateDefinition(definition, plugins);
+    return validated.ok
+      ? [
+          ...checkPromptFiles(validated.definition, files),
+          ...riskConfirmationProblems(validated.definition),
+        ]
+      : validated.errors;
+  };
+
+  const sharingProblems = async (
+    definition: unknown,
+    principal: Principal,
+  ): Promise<ValidationError[]> => {
+    const d = definition as { kind?: unknown; metadata?: { tenant?: unknown; id?: unknown } };
+    if (d?.kind !== 'Service' || maySetSharing(principal)) return [];
+    const current = await store.get('Service', String(d.metadata?.tenant), String(d.metadata?.id));
+    return sharingOf(definition) === sharingOf(current?.definition)
+      ? []
+      : [{ path: 'spec.availableTo', message: t('problems.shareOperatorOnly') }];
+  };
+
+  const importCheck =
+    (principal: Principal) =>
+    async (definition: unknown, files: PromptFiles): Promise<ValidationError[]> => [
+      ...checkImport(definition, files),
+      ...(await sharingProblems(definition, principal)),
+      ...(await publishRefusals(store, definition)),
+    ];
+
+  const confirmedOnImport = (principal: Principal) => (definition: unknown) => {
+    const validated = validateDefinition(definition, plugins);
+    return validated.ok
+      ? confirmedAs(validated.definition, actorOf(principal.actor ?? principal), now())
+      : definition;
+  };
+
   const platformWide = {
     scope: 'platform',
     supportSession: 'not required: models are platform-wide, not tenant data',
@@ -264,6 +372,16 @@ export const createAdmin = (options: AdminOptions) => {
     if (!options.models) throw new Error('model administration is not configured');
     return options.models;
   };
+
+  const settingRefused = (
+    result: { errors: ValidationError[]; operatorOnly?: true },
+    target: string,
+  ): Outcome => ({
+    ok: false,
+    errors: result.errors,
+    target,
+    ...(result.operatorOnly ? { type: operatorOnlySettingType } : {}),
+  });
 
   const flushTenant = async (target: string): Promise<Outcome | undefined> => {
     try {
@@ -286,6 +404,9 @@ export const createAdmin = (options: AdminOptions) => {
   > = {
     'platform.service.publish': async (input, principal) => {
       const files = (input.files ?? {}) as PromptFiles;
+      const sharing = await sharingProblems(input.definition, principal);
+      if (sharing.length > 0)
+        return { ok: false, errors: sharing, target: 'definition', type: shareOperatorOnlyType };
       const result = await store.publish(input.definition, actorOf(principal), input.reason, files);
       if (!result.ok) return { ok: false, errors: result.errors, target: 'definition' };
       const { kind, metadata } = result.version.definition;
@@ -295,23 +416,28 @@ export const createAdmin = (options: AdminOptions) => {
         target: `${kind}:${metadata.id}@${result.version.version}`,
       };
     },
-    'platform.setting.set': async (input) => {
+    'platform.setting.set': async (input, principal) => {
       const key = String(input.key);
-      const result = settings.setTenant(input.tenant, key, input.value);
+      const result = settings.setTenant(input.tenant, key, input.value, settingWriterOf(principal));
       const conflict = await flushTenant(`setting:${key}`);
       if (conflict) return conflict;
       return result.ok
         ? { ok: true, value: settings.tenant(input.tenant), target: `setting:${key}` }
-        : { ...result, target: `setting:${key}` };
+        : settingRefused(result, `setting:${key}`);
     },
-    'platform.setting.pin': async (input) => {
+    'platform.setting.pin': async (input, principal) => {
       const key = String(input.key);
-      const result = settings.pin(input.tenant, key, (input.version ?? null) as number | null);
+      const result = settings.pin(
+        input.tenant,
+        key,
+        (input.version ?? null) as number | null,
+        settingWriterOf(principal),
+      );
       const conflict = await flushTenant(`pin:${key}`);
       if (conflict) return conflict;
       return result.ok
         ? { ok: true, value: settings.tenant(input.tenant), target: `pin:${key}` }
-        : { ...result, target: `pin:${key}` };
+        : settingRefused(result, `pin:${key}`);
     },
     'platform.default.set': async (input, principal) => {
       const key = String(input.key);
@@ -322,19 +448,35 @@ export const createAdmin = (options: AdminOptions) => {
         : { ...result, target: `default:${key}` };
     },
     'platform.tenant.import': async (input, principal) => {
+      let sharingRefused = false;
       const result = await importTenant(input.bundle, store, settings, {
         tenant: input.tenant,
         dryRun: false,
         onConflict: input.onConflict === 'overwrite' ? 'overwrite' : 'skip',
         actor: actorOf(principal),
         reason: input.reason,
-        check,
+        writer: settingWriterOf(principal),
+        check: async (definition, files) => {
+          const sharing = await sharingProblems(definition, principal);
+          if (sharing.length > 0) sharingRefused = true;
+          return [...checkImport(definition, files), ...sharing];
+        },
+        prepare: confirmedOnImport(principal),
       });
       const conflict = await flushTenant(`tenant:${input.tenant}`);
       if (conflict) return conflict;
       return result.ok
         ? { ok: true, value: result.plan, target: `tenant:${input.tenant}` }
-        : { ok: false, errors: result.errors, target: `tenant:${input.tenant}` };
+        : {
+            ok: false,
+            errors: result.errors,
+            target: `tenant:${input.tenant}`,
+            ...(result.operatorOnly
+              ? { type: operatorOnlySettingType }
+              : sharingRefused
+                ? { type: shareOperatorOnlyType }
+                : {}),
+          };
     },
     'platform.support.open': async (input, principal) => {
       const minutes = Number(input.minutes);
@@ -392,15 +534,29 @@ export const createAdmin = (options: AdminOptions) => {
           target,
           audit: platformWide,
         };
-      const after = await models.classify(
-        id,
-        input.classification as Parameters<ModelAdmin['classify']>[1],
-      );
+      const after = await models
+        .classify(id, input.classification as Parameters<ModelAdmin['classify']>[1])
+        .catch((error: unknown) => {
+          if (error instanceof ModelError && error.code === 'bad_request') return error;
+          throw error;
+        });
+      if (after instanceof ModelError)
+        return {
+          ok: false,
+          errors: [{ path: 'apis', message: after.message }],
+          target,
+          audit: platformWide,
+        };
       const states = models.describe();
       const services = new Map<string, Record<string, unknown>>();
       for (const c of await store.capabilities()) {
         const model = (c.capability.config as { model?: ServiceModels } | undefined)?.model;
-        const uses = [model?.primary, model?.fallback, ...Object.values(model?.roles ?? {})];
+        const uses = [
+          model?.primary,
+          model?.fallback,
+          ...Object.values(model?.roles ?? {}),
+          ...Object.values(model?.operations ?? {}),
+        ];
         if (!uses.includes(id)) continue;
         const health = serviceHealth(model, states);
         services.set(`${c.service.tenant}/${c.service.id}`, {
@@ -446,6 +602,12 @@ export const createAdmin = (options: AdminOptions) => {
   ): Outcome | undefined => {
     const refusal = refusedAction(principal, action, data.tenant || (principal.tenant ?? ''), data);
     if (!refusal) return undefined;
+    if (refusal.kind === 'test-runner')
+      return {
+        ok: false,
+        errors: [{ path: 'principal', message: t('problems.testRunnerOnlySmoke') }],
+        target: action,
+      };
     if (refusal.kind === 'operator')
       return {
         ok: false,
@@ -532,6 +694,7 @@ export const createAdmin = (options: AdminOptions) => {
                   errors: outcome.errors,
                   ...(outcome.conflict ? { conflict: true } : {}),
                   ...(outcome.problem ? { problem: outcome.problem } : {}),
+                  ...(outcome.type ? { type: outcome.type } : {}),
                 },
           ),
         ],
@@ -592,6 +755,7 @@ export const createAdmin = (options: AdminOptions) => {
           errors: ValidationError[];
           conflict?: true;
           problem?: RightProblem;
+          type?: string;
           target?: string;
         };
     const actor = principal.actor ?? principal;
@@ -606,6 +770,7 @@ export const createAdmin = (options: AdminOptions) => {
       target: result.target || action,
       reason: data.reason,
     });
+    if (actor.name) await options.names?.remember(actor, actor.name).catch(() => undefined);
     return { ...result, task: started.task };
   };
 
@@ -768,6 +933,7 @@ export const createAdmin = (options: AdminOptions) => {
       return extended;
     },
     check,
+    importCheck,
     audit: (tenant?: string) => records.audit(tenant),
     events: async (task: string): Promise<Event[]> => {
       const events: Event[] = [];

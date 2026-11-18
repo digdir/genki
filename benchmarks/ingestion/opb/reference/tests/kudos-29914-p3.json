@@ -1,0 +1,10 @@
+{"tests": [
+ {"id": "kudos-29914-p3-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"content": {"text": "Skilleark – ny fil", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-29914-p3-t02", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "2021/2203-5", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-29914-p3-t03", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Årsrapport Klagenemndssekretariatet for 2021", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-29914-p3-t04", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"before": {"text": "2021/2203-5", "max_diffs": 0}, "after": {"text": "Årsrapport Klagenemndssekretariatet", "max_diffs": 0}}, "settings": {}}
+]}

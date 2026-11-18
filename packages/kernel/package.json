@@ -9,6 +9,11 @@
       "source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./gate-contract": {
+      "source": "./src/gate-contract.ts",
+      "types": "./dist/gate-contract.d.ts",
+      "default": "./dist/gate-contract.js"
     }
   },
   "scripts": {

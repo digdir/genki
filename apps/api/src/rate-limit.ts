@@ -1,3 +1,4 @@
+import { quotaExhaustedProblem } from '@genai/kernel';
 import type { Context } from 'hono';
 
 export type RateDecision = { ok: true } | { ok: false; retryAfterSeconds: number };
@@ -58,6 +59,16 @@ export const tooManyRequests = (
     'content-type': 'application/problem+json',
     'retry-after': String(retryAfterSeconds),
   });
+
+export type QuotaProblem = NonNullable<ReturnType<typeof quotaExhaustedProblem>>;
+
+export const quotaExhausted = (c: Context, spent: QuotaProblem) =>
+  tooManyRequests(c, spent.retryAfterSeconds, spent.type, spent.title, spent.detail);
+
+export const quotaRefused = (c: Context, error: unknown) => {
+  const spent = quotaExhaustedProblem(error);
+  return spent ? quotaExhausted(c, spent) : undefined;
+};
 
 export const rateLimitedBody = (limit: number) => ({
   error: { code: 'rate_limited', message: 'Too many requests', limit, window_ms: windowMs },

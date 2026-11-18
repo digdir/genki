@@ -1,3 +1,5 @@
+import { daysThisMonth } from '../../usage-window';
+import { CheckmarkIcon } from '@navikt/aksel-icons';
 import {
   Alert,
   Button,
@@ -23,6 +25,7 @@ import type {
   BatchFilterField,
   BatchSourceDataset,
 } from '../../api/batch-runs';
+import { Icon } from '../../components/Icon';
 import type { PlaygroundInputField } from '../../api/playground';
 import {
   filledValues,
@@ -199,10 +202,7 @@ export const BatchWizard = ({
     (signal) => api.tenantEffectiveSettings(tenant, signal),
     [api, tenant],
   );
-  const [usage] = useAsync(
-    (signal) => api.usage(tenant, Math.max(new Date().getDate(), 1), signal),
-    [api, tenant],
-  );
+  const [usage] = useAsync((signal) => api.usage(tenant, daysThisMonth(), signal), [api, tenant]);
 
   const known = pick.state === 'ready' ? pick.estimate : undefined;
   const allKnown = !!known && known.items <= known.preview.length;
@@ -369,7 +369,7 @@ export const BatchWizard = ({
                 className={n === step ? 'current' : n < step ? 'done' : undefined}
               >
                 <span aria-hidden="true" className="batch-step-dot">
-                  {n < step ? '✓' : n}
+                  {n < step ? <Icon icon={CheckmarkIcon} size={14} /> : n}
                 </span>
                 {t(labelKey)}
               </li>

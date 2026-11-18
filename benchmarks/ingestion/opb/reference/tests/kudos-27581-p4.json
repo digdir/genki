@@ -1,0 +1,22 @@
+{"tests": [
+ {"id": "kudos-27581-p4-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Trygderetten skal på eget initiativ vurdere hvorvidt det på saksområder med uklar praksis bør avsies prinsipielle kjennelser", "max_diffs": 4}}, "settings": {}},
+ {"id": "kudos-27581-p4-t02", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Trygderetten skal orientere ansvarlig departement om saker der Trygderetten ber om rådgivende uttalelse fra EFTA-domstolen.", "max_diffs": 4}}, "settings": {}},
+ {"id": "kudos-27581-p4-t03", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"content": {"text": "Budsjettinnspill og annen bistand til departementet", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-27581-p4-t04", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "I saker som Regjeringen eller departementet igangsetter innenfor sitt ansvars- og kompetanseområde", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-27581-p4-t05", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"before": {"text": "orientert om aktuelle mediesaker.", "max_diffs": 1}, "after": {"text": "Styring av Trygderetten", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-27581-p4-t06", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Mål- og resultatstyring er det overordnede styringsprinsippet for virksomheten.", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-27581-p4-t07", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"content": {"text": "3.1 Styringsdokumenter", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-27581-p4-t08", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["list", "nob", "Latn"],
+  "args": {"content": {"text": "Instruks om virksomhets- og økonomistyring for Trygderetten (dette dokumentet)", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-27581-p4-t09", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["list", "nob", "Latn"],
+  "args": {"before": {"text": "Supplerende tildelingsbrev i løpet av året", "max_diffs": 1}, "after": {"text": "Virksomhetsrapporter fra Trygderetten", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-27581-p4-t10", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "I det årlige tildelingsbrevet fastsetter AID mål og styringsparametere", "max_diffs": 3}}, "settings": {}}
+]}

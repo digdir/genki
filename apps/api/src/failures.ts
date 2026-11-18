@@ -1,10 +1,16 @@
-import { runErrorCode, type Event } from '@genai/contracts';
+import {
+  asProviderFailure,
+  runErrorCode,
+  type Event,
+  type ProviderFailure,
+} from '@genai/contracts';
 import { t, translate, type ApiKey } from './i18n/index.js';
 
 export interface RunFailure {
   code: string;
   message: string;
   step?: string;
+  provider?: ProviderFailure;
 }
 
 const reasons: Record<string, ApiKey> = {
@@ -30,10 +36,12 @@ export const failureReason = (failure: Pick<RunFailure, 'code' | 'step'>) => {
 };
 
 const errorData = (e: Event) => {
-  const data = (e.data ?? {}) as { code?: unknown; message?: unknown };
+  const data = (e.data ?? {}) as { code?: unknown; message?: unknown; provider?: unknown };
+  const provider = asProviderFailure(data.provider);
   return {
     code: typeof data.code === 'string' ? data.code : 'strategy_error',
     message: typeof data.message === 'string' ? data.message : '',
+    ...(provider ? { provider } : {}),
   };
 };
 
@@ -41,9 +49,9 @@ export const failureOf = (events: Event[]): RunFailure | undefined => {
   const errors = events.filter((e) => e.type === 'kernel.error');
   if (errors.length === 0) return undefined;
   const audit = errors.find((e) => e.audience === 'audit') ?? errors[0];
-  const { code, message } = errorData(audit as Event);
+  const { code, message, provider } = errorData(audit as Event);
   const step = failedStep(message);
-  return { code, message, ...(step ? { step } : {}) };
+  return { code, message, ...(step ? { step } : {}), ...(provider ? { provider } : {}) };
 };
 
 export const failureFromError = (error: unknown): RunFailure => {

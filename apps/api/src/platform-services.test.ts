@@ -176,7 +176,12 @@ const boot = async (
       ? replay(body)
       : {
           status: 200,
-          json: { data: [{ id: 'gpt-4o-2M-tps', model: 'gpt-4o', status: 'succeeded' }] },
+          json: {
+            data: [
+              { id: 'gpt-4o-2M-tps', model: 'gpt-4o', status: 'succeeded' },
+              { id: 'gpt-5.6-terra', model: 'gpt-5.6-terra', status: 'succeeded' },
+            ],
+          },
         },
   );
   const search = await fakeHttp(() => ({ status: 200, json: {} }));
@@ -232,7 +237,7 @@ describe('the platform services run their own test sets offline', () => {
 
     expect(failed).toEqual([]);
     expect(run.results).toHaveLength(testSet.spec.cases.length);
-    expect(run.provenance.servedModels).toEqual(['foundry-openai/gpt-4o-2m-tps']);
+    expect(run.provenance.servedModels).toEqual(['foundry-openai/gpt-5.6-terra']);
     expect(run.provenance.services[0]).toMatch(/^991825827\/builder-assistant\/default@1#/);
   });
 
@@ -241,7 +246,7 @@ describe('the platform services run their own test sets offline', () => {
 
     expect(failed).toEqual([]);
     expect(run.results).toHaveLength(testSet.spec.cases.length);
-    expect(run.provenance.servedModels).toEqual(['foundry-openai/gpt-4o-2m-tps']);
+    expect(run.provenance.servedModels).toEqual(['foundry-openai/gpt-5.6-terra']);
   });
 
   it('serves builder-assistant and optimiser after a restart with stored definitions', async () => {

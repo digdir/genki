@@ -7,23 +7,75 @@ export type Credential =
 export type EndpointAuth =
   | { kind: 'api-key'; secret: string; header?: string | undefined }
   | { kind: 'bearer'; secret: string }
-  | { kind: 'token-provider'; provider: string };
+  | { kind: 'token-provider'; provider: string }
+  | ({ kind: 'federated-app' } & FederatedApp);
 
 export type TokenProviders = Record<string, () => Promise<string>>;
+
+export interface FederatedApp {
+  clientId: string;
+  tenant: string;
+  scope: string;
+}
+
+export type FederatedTokens = (app: FederatedApp) => () => Promise<string>;
+
+export const guidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export const federatedScopePattern = /^[\x21-\x7e]{1,246}\/\.default$/;
+
+export class FederatedSignInError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'FederatedSignInError';
+  }
+}
+
+export class SecretHostError extends Error {
+  constructor(readonly origin: string) {
+    super(`the secret is not set for ${origin}`);
+    this.name = 'SecretHostError';
+  }
+}
+
+const boundSecret = async (secrets: SecretResolver, ref: string, target?: string) => {
+  const hosts = target ? await secrets.hostsFor?.(ref) : undefined;
+  if (hosts && target) {
+    const origin = new URL(target).origin;
+    if (!hosts.includes(origin)) throw new SecretHostError(origin);
+  }
+  return secrets.resolve(ref);
+};
 
 export const credentialFor = (
   auth: EndpointAuth,
   secrets: SecretResolver,
   tokenProviders: TokenProviders = {},
+  target?: string,
+  federatedTokens?: FederatedTokens,
 ): Credential => {
   if (auth.kind === 'api-key') {
     return {
       kind: 'api-key',
-      key: () => secrets.resolve(auth.secret),
+      key: () => boundSecret(secrets, auth.secret, target),
       ...(auth.header ? { header: auth.header } : {}),
     };
   }
-  if (auth.kind === 'bearer') return { kind: 'bearer', token: () => secrets.resolve(auth.secret) };
+  if (auth.kind === 'bearer')
+    return { kind: 'bearer', token: () => boundSecret(secrets, auth.secret, target) };
+  if (auth.kind === 'federated-app') {
+    const { clientId, tenant, scope } = auth;
+    const token = federatedTokens?.({ clientId, tenant, scope });
+    return {
+      kind: 'bearer',
+      token:
+        token ??
+        (() =>
+          Promise.reject(
+            new FederatedSignInError('federated app sign-in is not set up in this process'),
+          )),
+    };
+  }
   const provider = tokenProviders[auth.provider];
   if (!provider) throw new Error(`unknown token provider ${auth.provider}`);
   return { kind: 'bearer', token: provider };

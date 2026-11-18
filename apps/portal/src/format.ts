@@ -2,6 +2,7 @@ import { createFormat, type Format } from '@genai/i18n';
 import { useFormat } from '@genai/i18n/react';
 import { useMemo } from 'react';
 import { translator, useT, type PlainKey, type T } from './i18n';
+import type { ModelPrice } from './types';
 
 const nbFormat = createFormat('nb');
 const nbT = translator('nb');
@@ -17,6 +18,8 @@ export const formatSeconds = (s: number, f: Format = nbFormat, t: T = nbT) =>
 export const formatOre = (n: number, f: Format = nbFormat, t: T = nbT) =>
   t('common.ore', { value: oneDecimal(f, n) });
 export const formatDate = (iso: string, f: Format = nbFormat) => f.date(iso, 'medium');
+export const isTrialService = (id: string) => id.startsWith('platform/');
+
 export const serviceLabel = (id: string, title?: string) => {
   if (title) return title;
   const parts = id.split('/');
@@ -46,6 +49,18 @@ export const formatKroner = (
   microNok === null || microNok === undefined
     ? notPricedLabel(t)
     : f.currency(microNok / 1_000_000, { digits: 2 });
+
+export const formatModelPrice = (
+  price: ModelPrice | null | undefined,
+  f: Format = nbFormat,
+  t: T = nbT,
+) =>
+  price
+    ? t('setup.modelPrice', {
+        input: f.number(price.inputPerThousand, { maximumFractionDigits: 4 }),
+        output: f.number(price.outputPerThousand, { maximumFractionDigits: 4 }),
+      })
+    : t('setup.notPriced');
 
 type StatusColor = 'info' | 'warning' | 'success' | 'danger' | 'neutral';
 
@@ -91,4 +106,10 @@ export const usePortalFormat = () => {
     }),
     [f, t],
   );
+};
+
+/** " (HTTP 404)" from what a server answered, or nothing when it gave no status. */
+export const httpStatusOf = (message: string) => {
+  const status = /HTTP \d{3}/.exec(message)?.[0];
+  return status ? ` (${status})` : '';
 };

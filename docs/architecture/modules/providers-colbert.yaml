@@ -10,7 +10,7 @@ packages:
 summary: Rerank adapter for the ColBERT service.
 description: Posts query and candidates to the ColBERT endpoint, with a timeout (ADR 0017).
 responsibilities:
-  - ColBERT rerank call
+  - ColBERT rerank call, the built-in API colbert/rerank@1
 files:
   - packages/providers-colbert/src/index.ts
 input: Query + candidates

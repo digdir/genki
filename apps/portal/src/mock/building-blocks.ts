@@ -29,6 +29,7 @@ import {
   defaultSettingsSchema,
   emptyTenantBlocks,
   exampleBlocks,
+  exampleSecretHosts,
   exampleSecretNames,
   exampleVersions,
   extensionPointLabel,
@@ -592,6 +593,7 @@ export const buildingBlocksMock = (options: BuildingBlocksMockOptions = {}): Moc
         data: [...secretNames].sort().map((name) => ({
           name,
           ref: `secret://tenant/${tenant}/${name}`,
+          allowedHosts: exampleSecretHosts[name] ?? [],
         })),
       });
     if (first === 'manifest-preview' && !second && req.method === 'POST')

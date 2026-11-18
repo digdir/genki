@@ -1,0 +1,270 @@
+{
+ "about": "15 whole Kudos documents from the ingestion sample (sample.json), chosen for the block comparison: every Kudos type, documents with table pages, scans with a text layer and image-only scans. page_kinds and tested_pages come from opb/reference/pages.json, so the opb page tests cover pages of each one.",
+ "documents": [
+  {
+   "doc_num": "33245",
+   "uuid": "1eb4973a-8911-4a49-9fb7-eb073db248bf",
+   "type": "Tildelingsbrev",
+   "publish_year": "2022",
+   "pages": 2,
+   "sha256": "211df06476216d63e11c4aa8e0ef49b6169414e7ec6246ccdf8f8c47006b1253",
+   "size": 854544,
+   "pdf_url": "https://kudos.dfo.no/dokument/1eb4973a-8911-4a49-9fb7-eb073db248bf/filer/404c2b76-8e7c-4028-8e7e-d3455ac7bd18.pdf",
+   "page_kinds": [
+    "digital"
+   ],
+   "tested_pages": [
+    "random",
+    "table"
+   ]
+  },
+  {
+   "doc_num": "339679",
+   "uuid": "70b82324-70c3-4cea-9521-93335c3d9013",
+   "type": "Tildelingsbrev",
+   "publish_year": "2025",
+   "pages": 5,
+   "sha256": "3cbb663387fba1239c85e88b44af7c10fe5cd71c85820727a8d236d85a792fa1",
+   "size": 146946,
+   "pdf_url": "https://kudos.dfo.no/dokument/70b82324-70c3-4cea-9521-93335c3d9013/filer/da2864b4-8616-461e-b66c-126d11799d55.pdf",
+   "page_kinds": [
+    "digital"
+   ],
+   "tested_pages": [
+    "random",
+    "table"
+   ]
+  },
+  {
+   "doc_num": "8562",
+   "uuid": "b441a443-70c2-4bae-b5e7-73ed7d1d2187",
+   "type": "Instruks",
+   "publish_year": "2020",
+   "pages": 4,
+   "sha256": "3c5af39ca9e6ea4d5756c4dec18f11115b8b5d9ce1265616a8747c03f2fe4bdb",
+   "size": 2395031,
+   "pdf_url": "https://kudos.dfo.no/dokument/b441a443-70c2-4bae-b5e7-73ed7d1d2187/filer/0514821c-4b88-43d0-a7b5-2fe628866096.pdf",
+   "page_kinds": [
+    "image-only"
+   ],
+   "tested_pages": [
+    "random",
+    "scan"
+   ]
+  },
+  {
+   "doc_num": "5944",
+   "uuid": "d882ef0e-f687-49c5-a3b1-7689dd34ca93",
+   "type": "Instruks",
+   "publish_year": "2020",
+   "pages": 5,
+   "sha256": "da567c63fa2abe9f933a38e85986d2cfbd9fc1e2ecd45b83dc810b5905d1c952",
+   "size": 1517839,
+   "pdf_url": "https://kudos.dfo.no/dokument/d882ef0e-f687-49c5-a3b1-7689dd34ca93/filer/bbe24989-aaca-4c19-a326-08225a4a044f.pdf",
+   "page_kinds": [
+    "scan+text"
+   ],
+   "tested_pages": [
+    "random",
+    "scan"
+   ]
+  },
+  {
+   "doc_num": "330305",
+   "uuid": "24b980ad-bb4c-4595-bcd5-06cf518ff7a7",
+   "type": "Instruks",
+   "publish_year": "2025",
+   "pages": 15,
+   "sha256": "2d63618e97228aa3c349d15d70ae1abf8ea362f1ac106af905c7c708177116b0",
+   "size": 1015596,
+   "pdf_url": "https://kudos.dfo.no/dokument/24b980ad-bb4c-4595-bcd5-06cf518ff7a7/filer/53a029da-b64b-4f89-ae6d-94d5aea281c5.pdf",
+   "page_kinds": [
+    "digital",
+    "scan+text"
+   ],
+   "tested_pages": [
+    "random",
+    "scan",
+    "table"
+   ]
+  },
+  {
+   "doc_num": "372605",
+   "uuid": "bb463598-6e4c-4633-82f3-52d6fae3fd2b",
+   "type": "Statusrapport",
+   "publish_year": "2022",
+   "pages": 18,
+   "sha256": "664fb287f722827cb86cc44ec0e7f473e449c63f0bec96fef1368cd6eeda34b1",
+   "size": 3552608,
+   "pdf_url": "https://kudos.dfo.no/dokument/bb463598-6e4c-4633-82f3-52d6fae3fd2b/filer/cb631a25-096d-4962-9bb0-602d5812a29c.pdf",
+   "page_kinds": [
+    "digital",
+    "scan+text"
+   ],
+   "tested_pages": [
+    "random",
+    "scan"
+   ]
+  },
+  {
+   "doc_num": "51059",
+   "uuid": "21bc9ac7-9d32-451b-b3a4-14351cbe99c4",
+   "type": "Evaluering",
+   "publish_year": "2020",
+   "pages": 20,
+   "sha256": "ade64c4ccc164596fd08e2bfde4e5e1efaf51b1ec09572599dfad8b98ccea330",
+   "size": 3977888,
+   "pdf_url": "https://kudos.dfo.no/dokument/21bc9ac7-9d32-451b-b3a4-14351cbe99c4/filer/80e70e0a-b1a8-4650-80a1-a957131d200e.pdf",
+   "page_kinds": [
+    "digital"
+   ],
+   "tested_pages": [
+    "random",
+    "table"
+   ]
+  },
+  {
+   "doc_num": "5418",
+   "uuid": "a13af7dc-3936-46f0-8d48-e7159f305706",
+   "type": "Strategi/plan",
+   "publish_year": "2020",
+   "pages": 24,
+   "sha256": "2ca4477fa692e84d2d3d44e3d49b892db6994adc10627547a46c4e19448128d5",
+   "size": 780381,
+   "pdf_url": "https://kudos.dfo.no/dokument/a13af7dc-3936-46f0-8d48-e7159f305706/filer/20a4a8e5-6c21-4761-afa7-4e345a917734.pdf",
+   "page_kinds": [
+    "image-only",
+    "scan+text"
+   ],
+   "tested_pages": [
+    "random",
+    "scan"
+   ]
+  },
+  {
+   "doc_num": "355302",
+   "uuid": "e77e39fa-7e58-4c7b-b757-b6bd47fad771",
+   "type": "Årsrapport",
+   "publish_year": "2025",
+   "pages": 26,
+   "sha256": "c0720b086836d7282ce847e6dcbff9ef1e9c39ba0f87f4fe2428e6561684eb89",
+   "size": 3403806,
+   "pdf_url": "https://kudos.dfo.no/dokument/e77e39fa-7e58-4c7b-b757-b6bd47fad771/filer/846e4266-e49d-4cfe-9af7-2c4aa58553ae.pdf",
+   "page_kinds": [
+    "digital"
+   ],
+   "tested_pages": [
+    "random",
+    "table"
+   ]
+  },
+  {
+   "doc_num": "46870",
+   "uuid": "aa95f9e8-ed36-451b-a77a-7ff977957209",
+   "type": "Strategi/plan",
+   "publish_year": "2023",
+   "pages": 28,
+   "sha256": "5330c58b96975bc74959326555506ca1dcd2ecd5005459184d1aeaf1b7a5a3ee",
+   "size": 3146173,
+   "pdf_url": "https://kudos.dfo.no/dokument/aa95f9e8-ed36-451b-a77a-7ff977957209/filer/a1fc4a47-8ad1-4dc5-b4a1-fe8d1581b6be.pdf",
+   "page_kinds": [
+    "digital",
+    "image-only"
+   ],
+   "tested_pages": [
+    "random",
+    "scan",
+    "table"
+   ]
+  },
+  {
+   "doc_num": "19582",
+   "uuid": "794e6f9f-0b6e-411c-a802-343ba22b4625",
+   "type": "Proposisjon til Stortinget",
+   "publish_year": "2020",
+   "pages": 32,
+   "sha256": "bd0be8205dcefe0cce6380fc525dfb3f325a35ee55344d1215aa389f64febd53",
+   "size": 389777,
+   "pdf_url": "https://kudos.dfo.no/dokument/794e6f9f-0b6e-411c-a802-343ba22b4625/filer/f1dd3805-7dd8-4e8f-82fa-48b3d54db0e0.pdf",
+   "page_kinds": [
+    "digital"
+   ],
+   "tested_pages": [
+    "random",
+    "table"
+   ]
+  },
+  {
+   "doc_num": "75814",
+   "uuid": "73b8a416-7746-4816-b7bc-de228880168a",
+   "type": "Årsrapport",
+   "publish_year": "2021",
+   "pages": 34,
+   "sha256": "b4dee7c8fcfe37ace842449e97d9b204fa97d808ca2e10987e7863116f792233",
+   "size": 24721156,
+   "pdf_url": "https://kudos.dfo.no/dokument/73b8a416-7746-4816-b7bc-de228880168a/filer/b9e6d79a-a23d-4f4f-bf35-13c61735b173.pdf",
+   "page_kinds": [
+    "image-only"
+   ],
+   "tested_pages": [
+    "random",
+    "scan"
+   ]
+  },
+  {
+   "doc_num": "31196",
+   "uuid": "bd112b45-5282-4de2-ade8-01cdf151a2bc",
+   "type": "Evaluering",
+   "publish_year": "2022",
+   "pages": 37,
+   "sha256": "071afda02a4556d09c71b9e081c4554723a5be513d7b9329189a8a0c2a996edd",
+   "size": 788761,
+   "pdf_url": "https://kudos.dfo.no/dokument/bd112b45-5282-4de2-ade8-01cdf151a2bc/filer/f395eb02-8707-4662-a42e-b589bb8357cd.pdf",
+   "page_kinds": [
+    "digital",
+    "scan+text"
+   ],
+   "tested_pages": [
+    "random",
+    "scan",
+    "table"
+   ]
+  },
+  {
+   "doc_num": "19557",
+   "uuid": "4149b8d9-e12b-4bc1-b9d5-03e4e6bcb107",
+   "type": "Melding til Stortinget",
+   "publish_year": "2020",
+   "pages": 40,
+   "sha256": "2309f6756c049afebb6c14a59d47bab924dc87fd2ebad72942d3621eded37ff2",
+   "size": 12625393,
+   "pdf_url": "https://kudos.dfo.no/dokument/4149b8d9-e12b-4bc1-b9d5-03e4e6bcb107/filer/7b07ba13-e88a-4aa6-8c57-cc48b4e638e3.pdf",
+   "page_kinds": [
+    "digital"
+   ],
+   "tested_pages": [
+    "random",
+    "table"
+   ]
+  },
+  {
+   "doc_num": "102474",
+   "uuid": "08e6cfbd-c88c-4887-8110-717e0ed7dff4",
+   "type": "Årsrapport",
+   "publish_year": "2024",
+   "pages": 42,
+   "sha256": "6034912f215c8ffe66a27787e768f3f20b655f6e42b20864bc24a691ca6aad7b",
+   "size": 4347210,
+   "pdf_url": "https://kudos.dfo.no/dokument/08e6cfbd-c88c-4887-8110-717e0ed7dff4/filer/f8ce3673-48bc-4561-b76a-44ccb612de08.pdf",
+   "page_kinds": [
+    "digital",
+    "image-only"
+   ],
+   "tested_pages": [
+    "random",
+    "scan",
+    "table"
+   ]
+  }
+ ]
+}

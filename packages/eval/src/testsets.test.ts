@@ -303,13 +303,47 @@ describe('the checked-in test sets', () => {
 
     expect(set.spec.service).toBe('kunnskapsassistenten');
   });
+  it('states in every ka-hierarchy case the register date it was written from', () => {
+    const set = parseTestSetYaml(readFileSync(join(dir, 'ka-hierarchy.yaml'), 'utf8'));
+    const date = (set.spec.provenance as { registerDate?: string } | undefined)?.registerDate;
+
+    expect(date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(set.spec.service).toBe('kunnskapsassistenten');
+    expect(set.spec.cases.every((c) => c.tags.includes(`register-${date}`))).toBe(true);
+  });
+
+  it('keeps the source out of every ka-hierarchy correctness case and scores citing in separate cites-source cases', () => {
+    const set = parseTestSetYaml(readFileSync(join(dir, 'ka-hierarchy.yaml'), 'utf8'));
+    const criteriaOf = (c: (typeof set.spec.cases)[number]) => c.expected.criteria?.criteria ?? '';
+    const correctness = set.spec.cases.filter((c) => c.tags.includes('correctness'));
+    const citing = set.spec.cases.filter((c) => c.tags.includes('cites-source'));
+    const kinds = (tag: string) => correctness.filter((c) => c.tags.includes(tag)).length;
+
+    expect(set.spec.cases.every((c) => c.type === 'criteria')).toBe(true);
+    expect(correctness.length + citing.length).toBe(set.spec.cases.length);
+    expect(correctness.filter((c) => c.tags.includes('cites-source'))).toEqual([]);
+    expect([
+      kinds('ministry-to-agencies'),
+      kinds('agency-to-ministry'),
+      kinds('wrote-about'),
+    ]).toEqual([8, 8, 4]);
+    expect(
+      correctness.filter((c) => /enhetsregister|kilde|brønnøysund/i.test(criteriaOf(c))),
+    ).toEqual([]);
+    expect(citing).toHaveLength(3);
+    expect(
+      citing.every((c) => /Enhetsregisteret/.test(criteriaOf(c)) && /dato/.test(criteriaOf(c))),
+    ).toBe(true);
+  });
+
   it('has nynorsk criteria cases that judge the written standard', () => {
     const set = parseTestSetYaml(readFileSync(join(dir, 'nynorsk-sporsmal.yaml'), 'utf8'));
     const criteria = set.spec.cases.filter((c) => c.type === 'criteria');
 
     expect(criteria.length).toBeGreaterThanOrEqual(5);
     expect(set.spec.cases.every((c) => c.tags.includes('nynorsk'))).toBe(true);
-    expect(criteria.every((c) => c.expected.referenceAnswer?.includes('nynorsk'))).toBe(true);
+    expect(criteria.every((c) => c.expected.criteria?.criteria?.includes('nynorsk'))).toBe(true);
+    expect(criteria.every((c) => c.expected.referenceAnswer === undefined)).toBe(true);
     expect(set.spec.cases.some((c) => c.type === 'must_reject')).toBe(true);
   });
 });

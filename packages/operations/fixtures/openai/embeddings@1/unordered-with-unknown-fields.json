@@ -1,0 +1,36 @@
+{
+  "source": "the documented embeddings response for two inputs, answered out of order and with two fields the documentation does not list",
+  "deployment": "text-embedding-3-small",
+  "input": ["Første tekst", "Andre tekst"],
+  "request": {
+    "method": "POST",
+    "path": "/embeddings",
+    "body": {
+      "model": "text-embedding-3-small",
+      "input": ["Første tekst", "Andre tekst"],
+      "encoding_format": "float"
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "object": "list",
+      "data": [
+        { "object": "embedding", "embedding": [0.5, -0.5, 1], "index": 1 },
+        { "object": "embedding", "embedding": [0.25, 0.75, -1], "index": 0, "norm": 1 }
+      ],
+      "model": "text-embedding-3-small",
+      "usage": { "prompt_tokens": 9, "total_tokens": 9 },
+      "service_tier": "default"
+    }
+  },
+  "result": {
+    "vectors": [
+      [0.25, 0.75, -1],
+      [0.5, -0.5, 1]
+    ],
+    "usage": { "inputTokens": 9 }
+  },
+  "usage": { "inputTokens": 9, "requests": 1 },
+  "dropped": 2
+}

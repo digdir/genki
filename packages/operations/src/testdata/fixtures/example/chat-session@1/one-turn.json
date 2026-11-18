@@ -1,0 +1,16 @@
+{
+  "source": "Made up for this test",
+  "deployment": "model-1",
+  "input": { "topic": "hei" },
+  "session": {
+    "request": { "path": "/live" },
+    "messages": [
+      { "from": "client", "message": { "event": "say", "text": "Hei" } },
+      { "from": "server", "message": { "event": "reply", "text": "Hei der" } },
+      { "from": "server", "message": { "event": "stats", "input": 2, "output": 3 } },
+      { "from": "server", "message": { "event": "bye" } }
+    ]
+  },
+  "result": { "transcript": "Hei der" },
+  "usage": { "inputTokens": 2, "outputTokens": 3, "requests": 1 }
+}

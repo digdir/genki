@@ -1,6 +1,7 @@
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import {
+  byPath,
   checkKey,
   checkPath,
   checkTenant,
@@ -74,8 +75,10 @@ export class FileSystemBlobStore implements BlobStore {
       let entries;
       try {
         entries = await readdir(dir, { withFileTypes: true });
-      } catch {
-        return [];
+      } catch (error) {
+        // A folder that is not there holds nothing; one that cannot be read must not look empty.
+        if ((error as { code?: string }).code === 'ENOENT') return [];
+        throw error;
       }
       const nested = await Promise.all(
         entries.map((e) =>
@@ -90,9 +93,7 @@ export class FileSystemBlobStore implements BlobStore {
     const infos = await Promise.all(
       files.map(async (f) => JSON.parse(await readFile(f, 'utf8')) as BlobInfo),
     );
-    return infos
-      .filter((i) => i.path.startsWith(prefix))
-      .sort((a, b) => a.path.localeCompare(b.path));
+    return infos.filter((i) => i.path.startsWith(prefix)).sort(byPath);
   }
 
   async delete(key: BlobKey): Promise<boolean> {

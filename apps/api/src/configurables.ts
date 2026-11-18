@@ -12,6 +12,8 @@ import type { Residency } from '@genai/port-model';
 import type { Env, Hono, Schema } from 'hono';
 import type { Admin } from './admin.js';
 import { configAdminHandlers, ingestionTarget, registerConfigRoutes } from './config-routes.js';
+import { connectorConnectionOf } from './connectors.js';
+import type { DatasetReader } from './dataset-readers.js';
 import { platformScope, type ConfigEntryStore } from './config-store.js';
 import {
   InMemoryExecutionStore,
@@ -19,6 +21,7 @@ import {
   pendingIngestionBackend,
   type ExecutionStore,
   type IngestionBackend,
+  type JobRuns,
 } from './ingestion.js';
 import type { EngineDescription } from './knowledge-engines.js';
 import { createGateRegistry } from './scoped-registry.js';
@@ -35,7 +38,11 @@ export interface ConfigurablesInput {
   now?: () => Date;
   scheduleIntervalMs?: number;
   admitsIngestion?: (principal: Principal | undefined) => boolean;
+  /** Runs of these datasets are knowledge jobs (ADR 0042). */
+  jobRuns?: JobRuns;
   onWarning?: (message: string) => void;
+  /** Why a gate on this metric cannot be saved, when it cannot. */
+  gateProblem?: (gate: string, metric: string) => string | undefined;
 }
 
 const countTtlMs = 5 * 60_000;
@@ -94,6 +101,9 @@ export const createConfigurables = (
     adapters: { knowledge: KnowledgeAdapter[] };
     embeddingResidency?: (model: string) => Residency | undefined;
     testSets: TestSetStore;
+    testSetTaken?: (tenant: string, id: string) => Promise<boolean>;
+    usedBy?: (dataset: string) => Promise<DatasetReader[]>;
+    usedByCounts?: (tenant: string) => Promise<Map<string, number>>;
   }) => {
     const { catalog } = deps;
     const ingestion = new IngestionService({
@@ -102,19 +112,32 @@ export const createConfigurables = (
       backend: input.ingestion ?? deps.ingestion ?? pendingIngestionBackend(),
       ...(input.now ? { now: input.now } : {}),
       ...(input.admitsIngestion ? { admits: input.admitsIngestion } : {}),
-      ...(input.onWarning ? { onRefused: input.onWarning } : {}),
+      ...(input.jobRuns ? { jobs: input.jobRuns } : {}),
+      ...(input.onWarning ? { onRefused: input.onWarning, onError: input.onWarning } : {}),
     });
+    const closeStaleRuns = () =>
+      ingestion
+        .failStaleRuns()
+        .catch((error: unknown) =>
+          input.onWarning?.(`could not close stale ingestion runs: ${String(error)}`),
+        );
+    await closeStaleRuns();
     const configDeps = {
       catalog,
       gates,
       rules,
       ingestion,
       testSets: deps.testSets,
+      ...(deps.testSetTaken ? { testSetTaken: deps.testSetTaken } : {}),
       engines: deps.engines ?? (() => []),
       adapters: deps.adapters.knowledge,
       ...(deps.routers.writers ? { writers: deps.routers.writers } : {}),
       ...(deps.embeddingResidency ? { embeddingResidency: deps.embeddingResidency } : {}),
+      ...(deps.usedBy ? { usedBy: deps.usedBy } : {}),
+      ...(deps.usedByCounts ? { usedByCounts: deps.usedByCounts } : {}),
       documentCount: cachedDocumentCount(deps.routers.knowledge),
+      connectorConnection: connectorConnectionOf(store),
+      ...(input.gateProblem ? { gateProblem: input.gateProblem } : {}),
     };
 
     const publishProblems = async (definition: Definition) => {
@@ -187,6 +210,7 @@ export const createConfigurables = (
         if (interval > 0 && !ticking) {
           ticking = true;
           setInterval(() => void runSchedules().catch(() => undefined), interval).unref();
+          setInterval(() => void closeStaleRuns(), interval).unref();
         }
       },
     };

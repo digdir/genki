@@ -18,8 +18,24 @@ import {
 } from '@genai/port-knowledge';
 import type { Pool, PoolClient } from 'pg';
 import { z } from 'zod';
-import { ensureVectorIndexes, migrateKnowledge, transaction } from './schema.js';
-import { facetSql, hitColumns, searchSql, type Profile } from './sql.js';
+import {
+  ensureVectorIndexes,
+  holdWriteLock,
+  migrateKnowledge,
+  transaction,
+  vacuumKnowledge,
+} from './schema.js';
+import { facetSql, fieldsText, hitColumns, searchSql, type Profile } from './sql.js';
+import {
+  candidatesFor,
+  searchHybrid,
+  textSearchMs,
+  type SearchHalf,
+  type SearchOne,
+} from './hybrid.js';
+import { knowledgeWriterOf } from './knowledge-writer.js';
+import { knowledgeReads } from './knowledge-reads.js';
+import { migrateKnowledgeServer, syncFilterIndexes } from './partitions.js';
 
 const profile = z
   .strictObject({
@@ -46,12 +62,15 @@ export const pgvectorDatasetOptions = z.strictObject({
 
 export const pgvectorEndpointOptions = z.strictObject({
   connection: z
-    .literal('platform', {
-      error: 'pgvector runs in the platform database; external connections are not accepted',
+    .enum(['platform', 'knowledge'], {
+      error:
+        'pgvector runs in the platform database or on the knowledge server; external connections are not accepted',
     })
-    .meta({ enumTitles: ['Plattformens database'] })
+    .meta({ enumTitles: ['Plattformens database', 'Kunnskapsserveren'] })
     .default('platform'),
 });
+
+const noKnowledgeServer = 'no knowledge server configured';
 
 export type PgvectorDatasetOptions = z.infer<typeof pgvectorDatasetOptions>;
 export type PgvectorEndpointOptions = z.infer<typeof pgvectorEndpointOptions>;
@@ -61,15 +80,31 @@ export interface QueryEmbedder {
   embed(texts: string[]): Promise<number[][]>;
 }
 
+export interface KnowledgePools {
+  /** The read pool on `KNOWLEDGE_READ_PGHOST`, as the reader; reads fall back to `reader` on the primary. */
+  read?: Pool;
+  reader?: Pool;
+  writer?: Pool;
+  owner?: Pool;
+}
+
 export interface PgvectorEngineOptions {
   pool: Pool;
+  knowledge?: KnowledgePools;
+  knowledgeGuard?: () => void;
   embedder?: (dataset: DatasetConfig) => QueryEmbedder;
   maxQueryLength?: number;
+  /** How long a hybrid search's text half may run; `textSearchMs` unless a test shortens it. */
+  textSearchMs?: number;
+  /** A VACUUM after a run's end failed; the run has already committed, so it does not fail. */
+  onVacuumError?: (error: unknown) => void;
 }
 
 export interface PgvectorEngine {
   adapter: KnowledgeAdapter<PgvectorEndpointOptions, PgvectorDatasetOptions>;
   writer: IndexWriterAdapter<PgvectorEndpointOptions, PgvectorDatasetOptions>;
+  /** Brings the filter indexes of datasets on the knowledge server in line with the catalog. */
+  followCatalog(datasets: DatasetConfig[]): Promise<void>;
 }
 
 type Dataset = DatasetConfig<PgvectorDatasetOptions>;
@@ -148,12 +183,6 @@ const failIfAborted = (signal: AbortSignal) => {
 
 const configOf = (dataset: Dataset) => dataset.options.textSearchConfig ?? defaultConfig;
 
-const fieldsText = (fields: Record<string, unknown>) =>
-  Object.values(fields)
-    .flatMap((v) => (Array.isArray(v) ? v : [v]))
-    .filter((v) => typeof v === 'string' || typeof v === 'number')
-    .join(' ');
-
 export const pgvectorEngine = (options: PgvectorEngineOptions): PgvectorEngine => {
   const { pool } = options;
   let ready: Promise<void> | undefined;
@@ -164,6 +193,8 @@ export const pgvectorEngine = (options: PgvectorEngineOptions): PgvectorEngine =
     });
     return ready;
   };
+  const vacuum = () =>
+    vacuumKnowledge(pool).catch((error: unknown) => options.onVacuumError?.(error));
 
   const capabilities = (dataset: Dataset): KnowledgeCapability[] => [
     'search.text',
@@ -192,6 +223,74 @@ export const pgvectorEngine = (options: PgvectorEngineOptions): PgvectorEngine =
     return vectors;
   };
 
+  /** Embeds the queries that need a vector once, runs each search, and turns a failed one into a warning. */
+  const searchBatch = async (
+    dataset: Dataset,
+    requests: SearchRequest[],
+    signal: AbortSignal,
+    one: SearchOne,
+  ): Promise<SearchResult[]> => {
+    const profiles = new Map(profilesOf(dataset));
+    const planned = requests.map((request) => {
+      const p = profiles.get(request.profile ?? '');
+      if (!p)
+        throw new KnowledgeError(
+          'bad_request',
+          `dataset ${dataset.id} has no search profile ${request.profile}`,
+        );
+      const tooLong = request.query.length > (options.maxQueryLength ?? 2000);
+      return { request, p, tooLong, wantsVector: !tooLong && p.mode !== 'text' };
+    });
+    const wanting = planned.filter((x) => x.wantsVector);
+    let vectors: number[][] = [];
+    let embedWarning: string | undefined;
+    try {
+      vectors = await queryVectors(
+        dataset,
+        wanting.map((x) => x.request.query),
+      );
+    } catch (error) {
+      failIfAborted(signal);
+      embedWarning = `vector search is unavailable: ${error instanceof Error ? error.message : String(error)}`;
+    }
+    const vectorOf = new Map(wanting.map((x, i) => [x, vectors[i]]));
+    const settled = await Promise.allSettled(
+      planned.map(async (x): Promise<SearchResult> => {
+        if (x.tooLong) return { hits: [], warning: 'the query is too long' };
+        failIfAborted(signal);
+        const vector = vectorOf.get(x);
+        const warning = x.wantsVector ? embedWarning : undefined;
+        if (x.p.mode === 'vector' && vector === undefined)
+          return { hits: [], warning: warning ?? 'no query vector' };
+        const result =
+          x.p.mode !== 'hybrid'
+            ? await one(x.p, x.request, vector)
+            : vector === undefined
+              ? // Without its vector half, a hybrid profile searches text as a text profile does.
+                await one({ ...x.p, mode: 'text' }, x.request, undefined)
+              : await searchHybrid(
+                  one,
+                  x.p,
+                  x.request,
+                  vector,
+                  dataset.options.rrfK ?? defaultRrfK,
+                  options.textSearchMs ?? textSearchMs,
+                );
+        return warning === undefined ? result : { ...result, warning };
+      }),
+    );
+    failIfAborted(signal);
+    if (settled.every((s) => s.status === 'rejected')) throw settled[0]?.reason;
+    return settled.map((s) =>
+      s.status === 'fulfilled'
+        ? s.value
+        : {
+            hits: [],
+            warning: s.reason instanceof Error ? s.reason.message : String(s.reason),
+          },
+    );
+  };
+
   const run = async <T>(
     timeoutMs: number,
     vectors: boolean,
@@ -211,30 +310,26 @@ export const pgvectorEngine = (options: PgvectorEngineOptions): PgvectorEngine =
       p: Profile,
       request: SearchRequest,
       vector: number[] | undefined,
-      warning: string | undefined,
+      half?: SearchHalf,
     ): Promise<SearchResult> => {
-      if (p.mode === 'vector' && vector === undefined)
-        return { hits: [], warning: warning ?? 'no query vector' };
-      const limit = request.limit ?? 10;
+      const limit = half?.candidates ?? request.limit ?? 10;
       const built = searchSql({
         dataset,
         profile: p,
         query: request.query,
         filters: request.filters ?? {},
         limit,
-        candidates: Math.max(limit * 4, 50),
+        candidates: half?.candidates ?? candidatesFor(limit),
         config: configOf(dataset),
         rrfK: dataset.options.rrfK ?? defaultRrfK,
         vector,
       });
-      const { rows } = await run(timeoutMs, built.usesVectors, (c) =>
-        c.query<HitRow>(built.sql, built.values),
+      const { rows } = await run(
+        Math.min(timeoutMs, half?.timeoutMs ?? timeoutMs),
+        built.usesVectors,
+        (c) => c.query<HitRow>(built.sql, built.values),
       );
-      return {
-        hits: rows.map(hitOf),
-        found: rows[0]?.found ?? 0,
-        ...(warning === undefined ? {} : { warning }),
-      };
+      return { hits: rows.map(hitOf), found: rows[0]?.found ?? 0 };
     };
 
     return {
@@ -252,52 +347,8 @@ export const pgvectorEngine = (options: PgvectorEngineOptions): PgvectorEngine =
       search: async (dataset, requests, signal) => {
         failIfAborted(signal);
         await migrated();
-        const profiles = new Map(profilesOf(dataset));
-        const planned = requests.map((request) => {
-          const p = profiles.get(request.profile ?? '');
-          if (!p)
-            throw new KnowledgeError(
-              'bad_request',
-              `dataset ${dataset.id} has no search profile ${request.profile}`,
-            );
-          const tooLong = request.query.length > (options.maxQueryLength ?? 2000);
-          return { request, p, tooLong, wantsVector: !tooLong && p.mode !== 'text' };
-        });
-        const wanting = planned.filter((x) => x.wantsVector);
-        let vectors: number[][] = [];
-        let embedWarning: string | undefined;
-        try {
-          vectors = await queryVectors(
-            dataset,
-            wanting.map((x) => x.request.query),
-          );
-        } catch (error) {
-          failIfAborted(signal);
-          embedWarning = `vector search is unavailable: ${error instanceof Error ? error.message : String(error)}`;
-        }
-        const vectorOf = new Map(wanting.map((x, i) => [x, vectors[i]]));
-        const settled = await Promise.allSettled(
-          planned.map(async (x): Promise<SearchResult> => {
-            if (x.tooLong) return { hits: [], warning: 'the query is too long' };
-            failIfAborted(signal);
-            return searchOne(
-              dataset,
-              x.p,
-              x.request,
-              vectorOf.get(x),
-              x.wantsVector ? embedWarning : undefined,
-            );
-          }),
-        );
-        failIfAborted(signal);
-        if (settled.every((s) => s.status === 'rejected')) throw settled[0]?.reason;
-        return settled.map((s) =>
-          s.status === 'fulfilled'
-            ? s.value
-            : {
-                hits: [],
-                warning: s.reason instanceof Error ? s.reason.message : String(s.reason),
-              },
+        return searchBatch(dataset, requests, signal, (p, request, vector, half) =>
+          searchOne(dataset, p, request, vector, half),
         );
       },
       fetch: async (dataset, ids, signal) => {
@@ -345,19 +396,92 @@ export const pgvectorEngine = (options: PgvectorEngineOptions): PgvectorEngine =
     };
   };
 
+  const knowledgePool = (() => {
+    const { reader, writer, owner } = options.knowledge ?? {};
+    return reader ?? writer ?? owner;
+  })();
+  const endpointOptions = knowledgePool
+    ? pgvectorEndpointOptions
+    : pgvectorEndpointOptions.refine((o) => o.connection !== 'knowledge', {
+        message: noKnowledgeServer,
+        path: ['connection'],
+      });
+  const onKnowledgeServer = (endpoint: { options: PgvectorEndpointOptions }) => {
+    if (endpoint.options.connection !== 'knowledge') return false;
+    if (!knowledgePool) throw new KnowledgeError('unavailable', noKnowledgeServer);
+    return true;
+  };
+  const readerPool = options.knowledge?.reader ?? options.knowledge?.read;
+  const knowledgeConnection = (timeoutMs: number): KnowledgeConnection<PgvectorDatasetOptions> => {
+    const profiles = (dataset: Dataset) => profilesOf(dataset).map(([name]) => name);
+    if (!readerPool) {
+      // The worker has no reader login; a router there still connects every endpoint it loads.
+      const unread = async (): Promise<never> => {
+        throw new KnowledgeError('unavailable', 'knowledge data is read by the API, as the reader');
+      };
+      return { profiles, search: unread, fetch: unread, range: unread, facets: unread };
+    }
+    const reads = knowledgeReads<PgvectorDatasetOptions>({
+      read: options.knowledge?.read,
+      primary: readerPool,
+      timeoutMs,
+      profilesOf,
+      rrfK: (dataset) => dataset.options.rrfK ?? defaultRrfK,
+      searchBatch,
+    });
+    return { ...reads, profiles };
+  };
+  const owner = options.knowledge?.owner;
+  let serverReady: Promise<void> | undefined;
+  const knowledgeServerReady = () => {
+    if (!owner) return Promise.resolve();
+    serverReady ??= migrateKnowledgeServer(owner).catch((error: unknown) => {
+      serverReady = undefined;
+      throw error;
+    });
+    return serverReady;
+  };
+  const followedFilters = new Map<string, string>();
+  let following: Promise<void> = Promise.resolve();
+  const followCatalog = (datasets: DatasetConfig[]) => {
+    if (!owner) return Promise.resolve();
+    // One sync at a time; a dataset that failed is tried again on the next call.
+    following = following
+      .catch(() => undefined)
+      .then(async () => {
+        // A worker bound to another platform server changes nothing on the knowledge server.
+        options.knowledgeGuard?.();
+        await knowledgeServerReady();
+        for (const dataset of datasets) {
+          const filters = JSON.stringify([dataset.filters, dataset.valueTypes ?? {}]);
+          if (followedFilters.get(dataset.id) === filters) continue;
+          await syncFilterIndexes(owner, dataset);
+          followedFilters.set(dataset.id, filters);
+        }
+      });
+    return following;
+  };
+
   const adapter = localKnowledgeAdapter({
     engine: pgvectorEngineName,
     title: 'Innebygd søk',
     tech: 'Postgres med pgvector',
-    endpointOptions: pgvectorEndpointOptions,
+    endpointOptions,
     datasetOptions: pgvectorDatasetOptions,
     capabilities,
     defaults: (draft: DatasetDraft) =>
       draft.options['profiles']
         ? {}
         : { profiles: defaultPgvectorProfiles(draft.embedding !== undefined) },
-    connect: (endpoint) => connect(endpoint.timeoutMs),
+    connect: (endpoint) =>
+      onKnowledgeServer(endpoint)
+        ? knowledgeConnection(endpoint.timeoutMs)
+        : connect(endpoint.timeoutMs),
     probe: async (endpoint) => {
+      if (onKnowledgeServer(endpoint)) {
+        await knowledgePool?.query('select 1');
+        return;
+      }
       const { rowCount } = await run(endpoint.timeoutMs, false, (c) =>
         c.query(`select 1 from pg_available_extensions where name = 'vector'`),
       );
@@ -488,6 +612,7 @@ export const pgvectorEngine = (options: PgvectorEngineOptions): PgvectorEngine =
         }));
         const config = configOf(dataset);
         await transaction(pool, async (client) => {
+          await holdWriteLock(client);
           await prepared(client, dataset, generation);
           const key = [dataset.id, generation, doc.id];
           await client.query(
@@ -529,7 +654,7 @@ export const pgvectorEngine = (options: PgvectorEngineOptions): PgvectorEngine =
       },
       promote: async (dataset, generation) => {
         await begin();
-        return transaction(pool, async (client) => {
+        const previous = await transaction(pool, async (client) => {
           await client.query(`select pg_advisory_xact_lock(hashtext('kn_active:' || $1))`, [
             dataset.id,
           ]);
@@ -545,10 +670,13 @@ export const pgvectorEngine = (options: PgvectorEngineOptions): PgvectorEngine =
           );
           return rows[0]?.generation;
         });
+        await vacuum();
+        return previous;
       },
       drop: async (dataset, generation, options = {}) => {
         await begin();
         await transaction(pool, async (client) => {
+          await holdWriteLock(client);
           await client.query(`select pg_advisory_xact_lock(hashtext('kn_active:' || $1))`, [
             dataset.id,
           ]);
@@ -564,6 +692,7 @@ export const pgvectorEngine = (options: PgvectorEngineOptions): PgvectorEngine =
               generation,
             ]);
         });
+        await vacuum();
       },
       active: async (dataset) => {
         await begin();
@@ -598,10 +727,23 @@ export const pgvectorEngine = (options: PgvectorEngineOptions): PgvectorEngine =
   const writer: IndexWriterAdapter<PgvectorEndpointOptions, PgvectorDatasetOptions> = {
     engine: pgvectorEngineName,
     needs: { vectors: true },
-    endpointOptions: pgvectorEndpointOptions,
+    endpointOptions,
     datasetOptions: pgvectorDatasetOptions,
-    connect: (_endpoint, context) => writerOf(context.signal),
+    connect: (endpoint, context) => {
+      if (!onKnowledgeServer(endpoint)) return writerOf(context.signal);
+      try {
+        options.knowledgeGuard?.();
+      } catch (error) {
+        throw new KnowledgeError(
+          'unavailable',
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+      if (!owner)
+        throw new KnowledgeError('unavailable', 'knowledge data is written by the worker');
+      return knowledgeWriterOf<PgvectorDatasetOptions>(owner, knowledgeServerReady, context.signal);
+    },
   };
 
-  return { adapter, writer };
+  return { adapter, writer, followCatalog };
 };

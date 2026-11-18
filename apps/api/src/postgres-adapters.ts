@@ -1,4 +1,5 @@
-import type { TaskStatus } from '@genai/contracts';
+import type { Event, Task, TaskStatus } from '@genai/contracts';
+import { assistantCapabilityPrefix } from '@genai/jobs';
 import type { DirectoryEntry, TaskIndex, TenantDirectoryStore, TrackedTask } from './extensions.js';
 
 type TenantStatus = NonNullable<DirectoryEntry['status']>;
@@ -13,6 +14,17 @@ export interface TenantRows {
 
 export interface TaskRows {
   list(query: { tenant?: string; status?: TaskStatus[]; limit: number }): Promise<TaskRow[]>;
+  tokensUsed?(query: {
+    tenant: string;
+    since: string;
+    excludeCapabilityPrefix?: string;
+  }): Promise<number>;
+  envelopes?(query: { tenant: string; since?: string; limit?: number }): Promise<Task[]>;
+}
+
+export interface UsageRows {
+  usageOf(tasks: string[]): Promise<{ task: string; data: unknown }[]>;
+  ofType?(tasks: string[], type: string): Promise<Event[]>;
 }
 
 interface TaskRow {
@@ -46,7 +58,41 @@ const tracked = (row: TaskRow): TrackedTask => ({
   at: row.endedAt ?? row.createdAt,
 });
 
-export const postgresTaskIndex = (tasks: TaskRows, limit = 1000): TaskIndex => ({
-  all: async (tenant) => (await tasks.list({ ...(tenant ? { tenant } : {}), limit })).map(tracked),
-  running: async () => (await tasks.list({ status: ['queued', 'running'], limit })).map(tracked),
+export const postgresTaskIndex = (
+  tasks: TaskRows,
+  options: { limit?: number; events?: UsageRows } = {},
+): TaskIndex => ({
+  all: async (tenant) =>
+    (await tasks.list({ ...(tenant ? { tenant } : {}), limit: options.limit ?? 1000 })).map(
+      tracked,
+    ),
+  running: async () =>
+    (await tasks.list({ status: ['queued', 'running'], limit: options.limit ?? 1000 })).map(
+      tracked,
+    ),
+  ...(tasks.envelopes
+    ? {
+        envelopes: (tenant: string, query: { since?: string; limit?: number }) =>
+          tasks.envelopes?.({ tenant, ...query }) ?? Promise.resolve([]),
+      }
+    : {}),
+  ...(options.events
+    ? { usageEvents: (ids: string[]) => options.events?.usageOf(ids) ?? Promise.resolve([]) }
+    : {}),
+  ...(options.events?.ofType
+    ? {
+        eventsOfType: (ids: string[], type: string) =>
+          options.events?.ofType?.(ids, type) ?? Promise.resolve([]),
+      }
+    : {}),
+  ...(tasks.tokensUsed
+    ? {
+        tokensUsed: (tenant: string, since: string) =>
+          tasks.tokensUsed?.({
+            tenant,
+            since,
+            excludeCapabilityPrefix: assistantCapabilityPrefix,
+          }) ?? Promise.resolve(0),
+      }
+    : {}),
 });

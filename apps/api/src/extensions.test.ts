@@ -14,10 +14,12 @@ import { KernelError, type Kernel } from '@genai/kernel';
 import { InMemoryConnections } from '@genai/providers-mcp-client';
 import type { Admin } from './admin.js';
 import {
+  adminExtensions,
   InMemoryTenantSecrets,
   mountExtensions,
   TenantDirectory,
   TenantSecretVault,
+  type ToolAdminDeps,
 } from './extensions.js';
 import { digdir, other } from './testkit.js';
 
@@ -70,6 +72,11 @@ const boot = async (options: { quotaExhausted?: boolean } = {}) => {
       return { id, tenant: digdir, service: { capability: { id: `${digdir}/svar/default` } } };
     },
     annotate: async () => undefined,
+    invoke: async () => {
+      if (options.quotaExhausted)
+        throw new KernelError('quota_exhausted', 'the monthly token quota is used up');
+      throw new KernelError('misconfigured', 'no eval runs in this test');
+    },
   } as unknown as Kernel;
   mountExtensions(app, {
     admin: {
@@ -119,7 +126,6 @@ const boot = async (options: { quotaExhausted?: boolean } = {}) => {
       runs: new InMemoryEvalRunStore(),
       feedback,
       candidates,
-      quotaExhausted: async () => options.quotaExhausted ?? false,
     },
   });
   const call = async (
@@ -133,7 +139,11 @@ const boot = async (options: { quotaExhausted?: boolean } = {}) => {
       headers: { authorization: `Bearer ${who}`, 'content-type': 'application/json', ...headers },
       body: JSON.stringify(body),
     });
-    return { status: res.status, body: (await res.json()) as Record<string, unknown> };
+    return {
+      status: res.status,
+      headers: res.headers,
+      body: (await res.json()) as Record<string, unknown>,
+    };
   };
   const read = async (path: string, who = 'kari', headers: Record<string, string> = {}) => {
     const res = await app.request(path, {
@@ -529,13 +539,19 @@ describe('test-case candidates for review', () => {
 });
 
 describe('eval runs and the monthly token quota', () => {
-  it('refuses to start an eval run with 409 when the month is used up', async () => {
+  it('answers an eval run the kernel refuses at the monthly token quota with 429 and Retry-After', async () => {
     const { call } = await boot({ quotaExhausted: true });
 
-    const res = await call(`/tenants/${digdir}/eval-runs`, { service: 'svar' });
+    const res = await call(`/tenants/${digdir}/eval-runs`, {
+      capability: `${digdir}/svar/default`,
+      testSet: { id: 'svar-sporsmal', version: 1 },
+      evaluators: ['exact'],
+      provenance: { commit: 'abc', data: 'v1' },
+    });
 
-    expect(res.status).toBe(409);
-    expect(res.body.errors).toEqual([expect.objectContaining({ path: 'quota' })]);
+    expect(res.status).toBe(429);
+    expect(res.headers.get('retry-after')).toMatch(/^\d+$/);
+    expect(res.body).toMatchObject({ type: 'urn:genai:problem:quota-exhausted', status: 429 });
   });
 });
 
@@ -574,6 +590,27 @@ describe('lists and statuses', () => {
       'testSet',
       'evaluators',
       'provenance',
+    ]);
+  });
+});
+
+describe('adding an organisation', () => {
+  it('renames an organisation that is added again, and keeps its status', async () => {
+    const directory = new TenantDirectory();
+    await directory.add({ orgNumber: '312521172', name: '312521172', status: 'active' }, 'seed');
+    const operator: Principal = { kind: 'operator', issuer: 'test', subject: 'drift' };
+    const create = adminExtensions({ tools: {} as ToolAdminDeps, directory })[
+      'platform.tenant.create'
+    ];
+
+    const outcome = await create?.(
+      { tenant: '312521172', orgNumber: '312521172', name: 'Testetaten', reason: 'Navnet manglet' },
+      operator,
+    );
+
+    expect(outcome).toMatchObject({ ok: true });
+    expect(await directory.list()).toEqual([
+      { orgNumber: '312521172', name: 'Testetaten', status: 'active' },
     ]);
   });
 });

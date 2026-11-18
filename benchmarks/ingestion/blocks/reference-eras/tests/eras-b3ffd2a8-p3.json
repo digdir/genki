@@ -1,0 +1,208 @@
+{
+ "tests": [
+  {
+   "id": "eras-b3ffd2a8-p3-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Contents",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-b3ffd2a8-p3-t02",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "list",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Contents",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "Scientist migration in Europe",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-b3ffd2a8-p3-t03",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "list",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Exploring the Arctic seabed",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-b3ffd2a8-p3-t04",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "list",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Medical imaging",
+     "max_diffs": 0
+    },
+    "after": {
+     "text": "From gas to gold",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-b3ffd2a8-p3-t05",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "More mobility is needed inside, outside and across Europe to promote the quality of research and the quantity of researchers.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-b3ffd2a8-p3-t06",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "These organisms often have far better chemical defence systems than humans have.",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-b3ffd2a8-p3-t07",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "The magazine has been published sporadically since 1994.",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-b3ffd2a8-p3-t08",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Articles from this production may be reproduced, provided the source and publisher are acknowledged.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-b3ffd2a8-p3-t09",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Pulpit Rock at Lysefjorden in Norway",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "is a national strategic and funding agency for research activities",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-b3ffd2a8-p3-t10",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "It is the task of the Research Council to identify Norway’s research needs and recommend national priorities.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-b3ffd2a8-p3-t11",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "P.O. Box 2700 St.Hanshaugen",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

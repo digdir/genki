@@ -80,6 +80,30 @@ describe('Maskinporten token client', () => {
     });
     await expect(tokens.token()).rejects.toThrow('Maskinporten answered 400');
   });
+
+  it('asks Maskinporten once when many requests need a token at the same time, and again after a failure', async () => {
+    const client = await generateKeyPair('RS256', { extractable: true });
+    let calls = 0;
+    const tokens = maskinportenTokens({
+      issuer: MP,
+      clientId: 'genai-pdp',
+      scope: 'altinn:authorization/authorize',
+      privateKey: { ...(await exportJWK(client.privateKey)), alg: 'RS256' },
+      fetch: async () => {
+        calls++;
+        return calls === 1
+          ? new Response('{"error":"temporarily_unavailable"}', { status: 503 })
+          : Response.json({ access_token: 'mp-token', expires_in: 120 });
+      },
+    });
+
+    const failed = await Promise.allSettled([tokens.token(), tokens.token(), tokens.token()]);
+    const tokensAfter = await Promise.all([tokens.token(), tokens.token(), tokens.token()]);
+
+    expect(failed.map((r) => r.status)).toEqual(['rejected', 'rejected', 'rejected']);
+    expect(tokensAfter).toEqual(['mp-token', 'mp-token', 'mp-token']);
+    expect(calls).toBe(2);
+  });
 });
 
 describe('registered Maskinporten clients', () => {
@@ -181,5 +205,23 @@ describe('Altinn token exchange', () => {
     });
 
     await expect(tokens.token()).rejects.toThrow('Altinn token exchange answered 401');
+  });
+
+  it('exchanges once when many PDP calls need an Altinn token at the same time', async () => {
+    let exchanges = 0;
+    const tokens = altinnTokens({
+      baseURL: 'https://platform.tt02.altinn.test',
+      maskinporten: { token: async () => 'mp-token' },
+      fetch: async () => {
+        exchanges++;
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        return new Response(JSON.stringify(jwt(Date.now() / 1000 + 600)));
+      },
+    });
+
+    const all = await Promise.all(Array.from({ length: 7 }, () => tokens.token()));
+
+    expect(new Set(all).size).toBe(1);
+    expect(exchanges).toBe(1);
   });
 });

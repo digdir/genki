@@ -1,13 +1,22 @@
 import type { Principal } from '@genai/contracts';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { envSecrets } from '@genai/kernel';
-import { manifest, runContract } from '@genai/plugins';
+import {
+  createGate,
+  envSecrets,
+  InMemoryEventLog,
+  outsideRunTask,
+  type GateRecord,
+} from '@genai/kernel';
+import { mayUseModels } from '@genai/composition';
+import { manifest, runContract, type ContractSetup, type PluginManifest } from '@genai/plugins';
+import { modelContract, type ModelContractSubject } from '@genai/port-model/contract';
+import { openAiChat } from '@genai/providers-openai';
 import { fakeHttp, type FakeServer } from '@genai/port-model/testing';
 import { toolSourceContract } from '@genai/port-tools/contract';
 import { openAiChatFixture } from '@genai/providers-openai/contract';
 import { afterEach, describe, expect, it } from 'vitest';
-import { externalTarget } from './external-plugins.js';
+import { externalTarget, type ExternalPlugin } from './external-plugins.js';
 import { bootPlatform, digdir, readJson as json } from './testkit.js';
 
 const people: Record<string, Principal> = {
@@ -20,6 +29,8 @@ const people: Record<string, Principal> = {
   },
   drift: { kind: 'operator', issuer: 'test', subject: 'drift' },
 };
+
+const loopback = { testOverride: { allowLoopback: true, allowHttp: true }, timeoutMs: 2000 };
 
 interface PluginView {
   kind: string;
@@ -174,7 +185,7 @@ describe('external plug-ins', () => {
   });
 
   it('registers a model endpoint only with a reason of at least ten characters, lists it as external and runs the suite against it', async () => {
-    const { send } = await bootPlatform({ people });
+    const { send } = await bootPlatform({ people, egress: loopback });
     const url = await modelEndpoint();
     expect(
       (await send('/operator/plugins', 'drift', { body: external(url) })).status,
@@ -217,7 +228,7 @@ describe('external plug-ins', () => {
   });
 
   it('refuses kinds that need code with 422, bad manifests with 400 and built-in ids with 409', async () => {
-    const { send } = await bootPlatform({ people });
+    const { send } = await bootPlatform({ people, egress: loopback });
     const post = (body: unknown) =>
       send('/operator/plugins', 'drift', { body, reason: 'Prøver en ny byggekloss' });
     const block = await post({
@@ -274,7 +285,7 @@ describe('external plug-ins', () => {
   });
 
   it('stores a manifest without an endpoint, which cannot be run from the API', async () => {
-    const { send } = await bootPlatform({ people });
+    const { send } = await bootPlatform({ people, egress: loopback });
     await send('/operator/plugins', 'drift', {
       body: { manifest: { ...external('x').manifest, id: 'model.bare-manifest' } },
       reason: 'Bare manifestet foreløpig',
@@ -287,6 +298,63 @@ describe('external plug-ins', () => {
         })
       ).status,
     ).toBe(409);
+  });
+
+  it('plugin verification calls go through the runtime gate and are audited', async () => {
+    const log = new InMemoryEventLog();
+    const { send } = await bootPlatform({ people, egress: loopback, log });
+    const url = await modelEndpoint();
+    await send('/operator/plugins', 'drift', {
+      body: external(url),
+      reason: 'Ny modell fra en leverandør i Norge',
+    });
+    const ran = await send('/operator/plugins/model.ekstern/contract-tests', 'drift', {
+      method: 'POST',
+      reason: 'Kjører kontrakttestene',
+    });
+    expect(ran.status).toBe(200);
+    const events = [];
+    for await (const e of log.read(outsideRunTask(digdir, new Date()), 0, () => false))
+      events.push(e);
+    const calls = events.filter(
+      (e) =>
+        e.type === 'kernel.gate.call' &&
+        (e.data as { task?: string }).task === 'plugin-verification:model.ekstern',
+    );
+    expect(calls.length).toBeGreaterThan(2);
+    expect(calls[0]?.data).toMatchObject({ port: 'model', endpoint: 'external', outcome: 'ok' });
+  });
+
+  it('plugin verification is held to the lockdown admission of the runtime gate', async () => {
+    const url = await modelEndpoint();
+    const plugin = external(url);
+    const audit: GateRecord[] = [];
+    const verify = (admits: (principal: Principal) => boolean) =>
+      runContract(
+        modelContract,
+        externalTarget({
+          models: [openAiChat],
+          rerank: [],
+          secrets: envSecrets({ FAKE_KEY: 'k' }),
+          tenant: digdir,
+          egress: loopback,
+          gate: createGate({
+            admits,
+            outside: {
+              audit: async (_ctx, record) => {
+                audit.push(record);
+              },
+              meter: async () => undefined,
+            },
+          }),
+        })({
+          ...plugin,
+          manifest: manifest({ ...plugin.manifest, origin: 'external' } as PluginManifest),
+        } as ExternalPlugin) as ContractSetup<ModelContractSubject>,
+      );
+    expect((await verify(mayUseModels)).passed).toBe(true);
+    expect((await verify(() => false)).passed).toBe(false);
+    expect(audit.at(-1)).toMatchObject({ outcome: 'refused', refusal: 'admission' });
   });
 });
 
@@ -325,6 +393,7 @@ describe('external tool sources', () => {
       rerank: [],
       secrets: envSecrets({}),
       tenant: digdir,
+      gate: createGate(),
       egress: { testOverride: { allowLoopback: true, allowHttp: true }, timeoutMs: 2000 },
     })({
       manifest: manifest({

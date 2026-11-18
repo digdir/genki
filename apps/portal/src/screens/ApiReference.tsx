@@ -1,7 +1,5 @@
 import { Alert, Heading, Tabs } from '@digdir/designsystemet-react';
-import { useEffect, useState } from 'react';
 import { useFormat } from '@genai/i18n/react';
-import { Crumbs } from '../components/Crumbs';
 import { endpoints, missingAreas } from '../data/api-reference';
 import { navigate } from '../hooks';
 import { publicApiBase } from '../public-api';
@@ -23,28 +21,22 @@ const titleKeys = {
   actions: 'apiref.titleActions',
 } as const satisfies Record<View, PlainKey>;
 
+export const apiReferenceHash = '#/developer/api/reference';
+
 export const ApiReference = ({ api, tenant, tenantName, route }: ScreenProps) => {
   const t = useT();
   const f = useFormat();
   const view = viewFrom(route.query.get('view'));
   const wanted = route.query.get('endpoint');
   const ep = endpoints.find((e) => e.id === wanted) ?? endpoints.find((e) => e.id === 'tj-pub');
-  const [flash, setFlash] = useState('');
-  useEffect(() => setFlash(''), [view]);
 
   const go = (next: View, endpoint?: string) =>
-    navigate(`#/api-reference?view=${next}${endpoint ? `&endpoint=${endpoint}` : ''}`);
+    navigate(`${apiReferenceHash}?view=${next}${endpoint ? `&endpoint=${endpoint}` : ''}`);
 
   return (
     <div className="stack ar">
-      <Crumbs
-        items={[
-          { label: t('apiref.crumbIntegrations'), href: '#/integrations' },
-          { label: t(titleKeys[view]) },
-        ]}
-      />
       <div className="stack-xs ar-measure">
-        <Heading level={1} data-size="md">
+        <Heading level={3} data-size="xs">
           {t(titleKeys[view])}
         </Heading>
         <p className="lead">{t('apiref.lead')}</p>
@@ -60,13 +52,6 @@ export const ApiReference = ({ api, tenant, tenantName, route }: ScreenProps) =>
           <Tabs.Tab value="service">{t('apiref.tabService')}</Tabs.Tab>
           <Tabs.Tab value="actions">{t('apiref.tabActions')}</Tabs.Tab>
         </Tabs.List>
-        <div aria-live="polite">
-          {flash ? (
-            <Alert data-color="success" data-size="sm">
-              {flash}
-            </Alert>
-          ) : null}
-        </div>
         <Tabs.Panel value="ref">
           {view === 'ref' && ep ? (
             <div className="stack">
@@ -80,7 +65,7 @@ export const ApiReference = ({ api, tenant, tenantName, route }: ScreenProps) =>
               ) : null}
               <div className="ar-ref">
                 <EndpointNav selected={ep.id} onPick={(id) => go('ref', id)} />
-                <EndpointDetail ep={ep} tenant={tenant} tenantName={tenantName} />
+                <EndpointDetail ep={ep} api={api} tenant={tenant} tenantName={tenantName} />
               </div>
             </div>
           ) : null}
@@ -89,7 +74,7 @@ export const ApiReference = ({ api, tenant, tenantName, route }: ScreenProps) =>
           {view === 'service' ? <ServiceAsApi api={api} /> : null}
         </Tabs.Panel>
         <Tabs.Panel value="actions">
-          {view === 'actions' ? <Actions tenant={tenant} onDone={setFlash} /> : null}
+          {view === 'actions' ? <Actions tenant={tenant} /> : null}
         </Tabs.Panel>
       </Tabs>
     </div>

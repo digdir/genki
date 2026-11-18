@@ -64,7 +64,13 @@ export interface Change {
   value: unknown;
 }
 
-type Field = { key: string; label: string; description?: string } & (
+type Field = {
+  key: string;
+  label: string;
+  category: string;
+  description?: string;
+  locked?: string;
+} & (
   | { type: 'int' | 'float'; min?: number; max?: number }
   | { type: 'bool' }
   | { type: 'text' }
@@ -80,12 +86,19 @@ const show = (value: unknown, t: T) =>
         ? t('supportAccess.notSet')
         : String(value);
 
-const fieldOf = (info: SettingInfo, current: unknown, t: T): Field | undefined => {
+const fieldOf = (
+  info: SettingInfo,
+  current: unknown,
+  locked: string | undefined,
+  t: T,
+): Field | undefined => {
   const named = settingLabels[info.key];
   const base = {
     key: info.key,
     label: named ? t(named.label) : info.key,
+    category: named ? t(named.cat) : info.category,
     description: named?.desc ? t(named.desc) : info.description,
+    ...(locked === undefined ? {} : { locked }),
   };
   const shape = shapeFromSchema(info.schema, t);
   if (shape?.type === 'enum') return { ...base, type: 'enum', options: shape.options ?? [] };
@@ -132,14 +145,19 @@ const Frame = ({
   );
 };
 
+const matches = (f: Field, needle: string) =>
+  !needle || [f.key, f.label, f.description ?? ''].some((x) => x.toLowerCase().includes(needle));
+
 const SettingsTab = ({
   api,
   session,
+  focus,
   onPending,
   onSaved,
 }: {
   api: ApiClient;
   session: ActiveSupport;
+  focus?: string | undefined;
   onPending: (changes: Change[]) => void;
   onSaved: (text: string) => void;
 }) => {
@@ -159,6 +177,8 @@ const SettingsTab = ({
   const [stored, setSaved] = useState<EffectiveSettings | undefined>();
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [confirming, setConfirming] = useState(false);
+  const [query, setQuery] = useState('');
+  const focused = useRef(false);
   const saved = stored ?? (state.status === 'ready' ? state.data.effective : undefined);
 
   const fields =
@@ -166,13 +186,13 @@ const SettingsTab = ({
       ? state.data.catalog
           .filter((s) => s.sensitivity === 'normal' && s.settableAt.includes('tenant'))
           .flatMap((s) => {
-            const f = fieldOf(s, saved[s.key]?.value ?? s.default, t);
-            return f && !saved[s.key]?.locked ? [f] : [];
+            const f = fieldOf(s, saved[s.key]?.value ?? s.default, saved[s.key]?.locked, t);
+            return f ? [f] : [];
           })
       : [];
   const valueOf = (key: string) => saved?.[key]?.value;
   const changes: Change[] = fields.flatMap((f) => {
-    if (!(f.key in draft)) return [];
+    if (f.locked !== undefined || !(f.key in draft)) return [];
     const value = parse(f, draft[f.key] ?? '');
     if (show(value, t) === show(valueOf(f.key), t)) return [];
     return [
@@ -181,58 +201,107 @@ const SettingsTab = ({
   });
   const signature = JSON.stringify(changes);
   useEffect(() => onPending(changes), [signature]);
+  const ready = state.status === 'ready';
+  useEffect(() => {
+    if (!ready || !focus || focused.current) return;
+    const target = document.getElementById(`setting-${focus}`);
+    if (!target) return;
+    focused.current = true;
+    target.scrollIntoView?.({ block: 'center' });
+    target.querySelector<HTMLElement>('input, select, textarea')?.focus();
+  }, [ready, focus]);
 
   if (state.status === 'loading') return <Loading label={t('supportAccess.loadingSettings')} />;
   if (state.status === 'error') return <ErrorState error={state.error} onRetry={retry} />;
+  const renderField = (f: Field) => {
+    const current = f.key in draft ? (draft[f.key] ?? '') : show(valueOf(f.key), t);
+    const set = (v: string) => setDraft((d) => ({ ...d, [f.key]: v }));
+    if (f.locked !== undefined)
+      return (
+        <Textfield
+          className="narrow"
+          label={f.label}
+          description={t('supportAccess.lockedBy', { reason: f.locked })}
+          value={show(valueOf(f.key), t)}
+          readOnly
+        />
+      );
+    if (f.type === 'bool')
+      return (
+        <Switch
+          label={f.label}
+          description={f.description}
+          checked={(f.key in draft ? draft[f.key] : String(valueOf(f.key))) === 'true'}
+          onChange={(e) => set(String(e.target.checked))}
+        />
+      );
+    if (f.type === 'enum')
+      return (
+        <div className="field narrow">
+          <Label htmlFor={`s-${f.key}`}>{f.label}</Label>
+          <Select
+            id={`s-${f.key}`}
+            value={f.key in draft ? draft[f.key] : String(valueOf(f.key) ?? '')}
+            onChange={(e) => set(e.target.value)}
+          >
+            {f.options.map((o) => (
+              <Select.Option key={o.value} value={o.value}>
+                {o.label}
+              </Select.Option>
+            ))}
+          </Select>
+        </div>
+      );
+    return (
+      <Textfield
+        className="narrow"
+        label={f.label}
+        description={f.description}
+        inputMode={f.type === 'text' ? undefined : 'decimal'}
+        value={current === t('supportAccess.notSet') ? '' : current}
+        onChange={(e) => set(e.target.value)}
+      />
+    );
+  };
   const first = changes[0];
+  const needle = query.trim().toLowerCase();
+  const shown = fields.filter((f) => matches(f, needle));
+  const groups = [...new Set(shown.map((f) => f.category))].map((category) => ({
+    category,
+    items: shown.filter((f) => f.category === category),
+  }));
   return (
     <Frame path={t('supportAccess.settingsPath')} tenant={session.tenantName}>
       <Paragraph data-size="sm" className="meta">
         {t('supportAccess.tenantLevel', { tenant: session.tenantName })}
       </Paragraph>
-      {fields.length === 0 ? <Paragraph>{t('supportAccess.noneSettable')}</Paragraph> : null}
-      {fields.map((f) => {
-        const current = f.key in draft ? (draft[f.key] ?? '') : show(valueOf(f.key), t);
-        const set = (v: string) => setDraft((d) => ({ ...d, [f.key]: v }));
-        if (f.type === 'bool')
-          return (
-            <Switch
-              key={f.key}
-              label={f.label}
-              description={f.description}
-              checked={(f.key in draft ? draft[f.key] : String(valueOf(f.key))) === 'true'}
-              onChange={(e) => set(String(e.target.checked))}
-            />
-          );
-        if (f.type === 'enum')
-          return (
-            <div className="field narrow" key={f.key}>
-              <Label htmlFor={`s-${f.key}`}>{f.label}</Label>
-              <Select
-                id={`s-${f.key}`}
-                value={f.key in draft ? draft[f.key] : String(valueOf(f.key) ?? '')}
-                onChange={(e) => set(e.target.value)}
-              >
-                {f.options.map((o) => (
-                  <Select.Option key={o.value} value={o.value}>
-                    {o.label}
-                  </Select.Option>
-                ))}
-              </Select>
+      {fields.length === 0 ? (
+        <Paragraph>{t('supportAccess.noneSettable')}</Paragraph>
+      ) : (
+        <Textfield
+          className="search-field"
+          label={t('supportAccess.searchSettings')}
+          description={t('supportAccess.searchSettingsHelp')}
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+      )}
+      {fields.length > 0 && shown.length === 0 ? (
+        <Paragraph>{t('supportAccess.noSettingMatch')}</Paragraph>
+      ) : null}
+      {groups.map(({ category, items }, i) => (
+        <section key={category} className="stack-sm" aria-labelledby={`setting-group-${i}`}>
+          <Heading level={3} data-size="2xs" id={`setting-group-${i}`}>
+            {category}
+          </Heading>
+          {items.map((f) => (
+            <div key={f.key} id={`setting-${f.key}`}>
+              {renderField(f)}
             </div>
-          );
-        return (
-          <Textfield
-            key={f.key}
-            className="narrow"
-            label={f.label}
-            description={f.description}
-            inputMode={f.type === 'text' ? undefined : 'decimal'}
-            value={current === t('supportAccess.notSet') ? '' : current}
-            onChange={(e) => set(e.target.value)}
-          />
-        );
-      })}
+          ))}
+        </section>
+      ))}
       <div className="actions-row">
         <Button
           aria-disabled={changes.length === 0 || undefined}
@@ -623,21 +692,29 @@ const LogTab = ({
   );
 };
 
+const portalTabs = ['settings', 'drafts', 'keys', 'log'];
+
 const Portal = ({
   api,
   session,
   sessions,
+  initialTab,
+  focus,
   onPending,
   onSaved,
 }: {
   api: ApiClient;
   session: ActiveSupport;
   sessions: SupportSessionRow[];
+  initialTab?: string | undefined;
+  focus?: string | undefined;
   onPending: (changes: Change[]) => void;
   onSaved: (text: string) => void;
 }) => {
   const t = useT();
-  const [tab, setTab] = useState('settings');
+  const [tab, setTab] = useState(
+    initialTab && portalTabs.includes(initialTab) ? initialTab : 'settings',
+  );
   return (
     <section className="stack" aria-labelledby="portal-h">
       <Heading level={2} data-size="xs" id="portal-h">
@@ -651,7 +728,13 @@ const Portal = ({
           <TabsTab value="log">{t('supportAccess.tabLog')}</TabsTab>
         </TabsList>
         <TabsPanel value="settings">
-          <SettingsTab api={api} session={session} onPending={onPending} onSaved={onSaved} />
+          <SettingsTab
+            api={api}
+            session={session}
+            focus={focus}
+            onPending={onPending}
+            onSaved={onSaved}
+          />
         </TabsPanel>
         <TabsPanel value="drafts">
           {tab === 'drafts' ? <DraftsTab api={api} session={session} /> : null}
@@ -791,7 +874,17 @@ const StartForm = ({
   );
 };
 
-export const SupportAccess = ({ api, tenant }: { api: ApiClient; tenant?: string | undefined }) => {
+export const SupportAccess = ({
+  api,
+  tenant,
+  tab,
+  setting,
+}: {
+  api: ApiClient;
+  tenant?: string | undefined;
+  tab?: string | undefined;
+  setting?: string | undefined;
+}) => {
   const t = useT();
   const f = useFormat();
   const tRef = useRef(t);
@@ -856,6 +949,7 @@ export const SupportAccess = ({ api, tenant }: { api: ApiClient; tenant?: string
           api={api}
           session={support.session}
           sessions={state.data.sessions}
+          {...(support.session.tenant === tenant ? { initialTab: tab, focus: setting } : {})}
           onPending={(changes) => {
             pending.current = changes;
           }}

@@ -17,7 +17,7 @@ let admin: pg.Client;
 let connection: ResolvedConnection;
 
 beforeAll(async () => {
-  container = await new PostgreSqlContainer('pgvector/pgvector:pg17').start();
+  container = await new PostgreSqlContainer('pgvector/pgvector:0.8.2-pg17').start();
   admin = new pg.Client({ connectionString: container.getConnectionUri() });
   await admin.connect();
   await admin.query(`

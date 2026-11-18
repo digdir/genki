@@ -1,0 +1,712 @@
+import { Hono } from 'hono';
+import { describe, expect, it } from 'vitest';
+import type { Principal } from '@genai/contracts';
+import { InMemoryDefinitionStore, SettingsRegistry } from '@genai/definitions';
+import { envSecrets } from '@genai/kernel';
+import { createAdmin } from './admin.js';
+import { tracesContent } from './boot-guard.js';
+import { createPlatform } from './composition.js';
+import { connectionsCovering, deliveryGate, type TracingOptions } from './trace-connections.js';
+import { pinnedFetch } from '@genai/composition';
+import { InMemoryTraceDeliveries, type TraceDeliveryStore } from '@genai/jobs';
+import { fakeModels, files, testService } from './testkit.js';
+
+const tenant = '991825827';
+const other = '889640782';
+const instance = 'https://langfuse.digdir.example.no';
+const own = 'https://langfuse.etaten.example.no';
+
+const people: Record<string, Principal> = {
+  kari: {
+    kind: 'employee',
+    issuer: 'test',
+    subject: 'kari',
+    tenant,
+    authorizedFor: [{ org: tenant }],
+  },
+  erik: {
+    kind: 'employee',
+    issuer: 'test',
+    subject: 'erik',
+    tenant,
+    authorizedFor: [{ org: tenant, actions: ['use-services'] }],
+  },
+  ola: {
+    kind: 'employee',
+    issuer: 'test',
+    subject: 'ola',
+    tenant: other,
+    authorizedFor: [{ org: other }],
+  },
+  operator: { kind: 'operator', issuer: 'test', subject: 'digdir-drift' },
+  driftsmedlem: {
+    kind: 'operator',
+    issuer: 'test',
+    subject: 'digdir-drift-medlem',
+    authorizedFor: [{ org: tenant, actions: ['read'] }],
+  },
+};
+
+const addresses: Record<string, string> = {
+  'langfuse.digdir.example.no': '93.184.216.34',
+  'langfuse.etaten.example.no': '93.184.216.35',
+  'privat.example.no': '10.0.0.5',
+  'metadata.example.no': '169.254.169.254',
+};
+
+const boot = async (
+  tracing: TracingOptions = { instance },
+  traceDeliveries: TraceDeliveryStore = new InMemoryTraceDeliveries(),
+) => {
+  const platform = await createPlatform({
+    catalogs: {
+      models: fakeModels,
+      knowledge: { endpoints: {}, datasets: [] },
+      rerank: { endpoints: {}, rerankers: [] },
+    },
+    secrets: envSecrets({}),
+    definitions: (p) => new InMemoryDefinitionStore(p),
+    policy: { decide: async () => ({ allow: true }) },
+    authenticate: async (request) => {
+      const who = request.headers.get('authorization')?.replace('Bearer ', '') ?? '';
+      return people[who] ? { principal: people[who] } : undefined;
+    },
+    egress: {
+      lookup: async (host) => (addresses[host] ? [addresses[host]] : ['127.0.0.1']),
+      timeoutMs: 5000,
+    },
+    tracing,
+    traceDeliveries,
+  });
+  // The services the connections below cover, and one of another tenant's.
+  for (const [id, owner] of [
+    ['svar', tenant],
+    ['annen', tenant],
+    ['hos-andre', other],
+  ] as const)
+    await platform.definitions.publish(testService(id, owner), 'test', 'test', files);
+  const app = new Hono();
+  platform.mount(
+    app,
+    createAdmin({
+      store: platform.definitions,
+      plugins: platform.plugins,
+      settings: new SettingsRegistry([]),
+      extensions: platform.extensions,
+    }),
+  );
+  const send = async (method: string, path: string, who = 'kari', body?: unknown) => {
+    const res = await app.request(path, {
+      method,
+      headers: {
+        authorization: `Bearer ${who}`,
+        'change-reason': 'Kobler tjenesten til Langfuse',
+        ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+    return {
+      status: res.status,
+      task: res.headers.get('genai-task'),
+      body: (await res.json().catch(() => ({}))) as Record<string, unknown>,
+    };
+  };
+  const secret = (name: string, host: string, owner = tenant, who = 'kari') =>
+    send('PUT', `/tenants/${owner}/secrets/${name}`, who, {
+      value: 'sk-lf-hemmelig',
+      allowedHosts: [host],
+    });
+  const connect = (id: string, connection: Record<string, unknown>, who = 'kari') =>
+    send('PUT', `/tenants/${tenant}/tracing/connections/${id}`, who, connection);
+  return { platform, send, secret, connect };
+};
+
+const ownConnection = (patch: Record<string, unknown> = {}) => ({
+  host: own,
+  publicKey: 'pk-lf-etaten',
+  secretKey: `secret://tenant/${tenant}/langfuse-etaten`,
+  services: ['svar'],
+  residency: 'norway',
+  ...patch,
+});
+
+const errorsOf = (body: Record<string, unknown>) =>
+  (body.errors as { path: string; message: string }[]).map((e) => `${e.path}: ${e.message}`);
+
+describe("an agency's Langfuse connections", () => {
+  it('saves a connection with a secret reference and lists it without the secret', async () => {
+    const env = await boot();
+    await env.secret('langfuse-etaten', own);
+
+    const saved = await env.connect('etaten', ownConnection());
+    const listed = await env.send('GET', `/tenants/${tenant}/tracing/connections`);
+    const elsewhere = await env.send('GET', `/tenants/${tenant}/tracing/connections`, 'ola');
+
+    expect(saved.status).toBe(200);
+    expect(listed.body.data).toEqual([
+      {
+        id: 'etaten',
+        host: own,
+        publicKey: 'pk-lf-etaten',
+        secretKey: `secret://tenant/${tenant}/langfuse-etaten`,
+        services: ['svar'],
+        residency: 'norway',
+        content: false,
+        erasureDeclared: false,
+        labels: false,
+        instance: false,
+        residencySetBy: 'tenant',
+        datasets: [],
+      },
+    ]);
+    expect(JSON.stringify(listed.body)).not.toContain('sk-lf-hemmelig');
+    expect(elsewhere.status).toBe(404);
+  });
+
+  it("tells a tenant Digdir's Langfuse address and whether it may receive text, beside its connections", async () => {
+    const metadataOnly = await boot();
+    const withText = await boot({ instance: `${instance}/`, instanceReceivesContent: true });
+
+    const listed = await metadataOnly.send('GET', `/tenants/${tenant}/tracing/connections`);
+    const listedWithText = await withText.send('GET', `/tenants/${tenant}/tracing/connections`);
+
+    expect(listed.body).toEqual({ data: [], instance: { host: instance, content: false } });
+    expect(listedWithText.body.instance).toEqual({ host: instance, content: true });
+  });
+
+  it("says nothing of Digdir's Langfuse when LANGFUSE_BASE_URL is unset", async () => {
+    const env = await boot({});
+
+    const listed = await env.send('GET', `/tenants/${tenant}/tracing/connections`);
+
+    expect(listed.status).toBe(200);
+    expect(listed.body).toEqual({ data: [] });
+  });
+
+  it('refuses a connection naming a service the tenant does not have, naming the service', async () => {
+    const env = await boot();
+    await env.secret('langfuse-etaten', own);
+
+    const typo = await env.connect('etaten', ownConnection({ services: ['svar', 'fqa'] }));
+    const othersService = await env.connect('etaten', ownConnection({ services: ['hos-andre'] }));
+    const listed = await env.send('GET', `/tenants/${tenant}/tracing/connections`);
+
+    expect(typo.status).toBe(400);
+    expect(errorsOf(typo.body)).toEqual(['connection.services: no service fqa']);
+    expect(errorsOf(othersService.body)).toEqual(['connection.services: no service hos-andre']);
+    expect(listed.body.data).toEqual([]);
+  });
+
+  it('refuses a host that is not HTTPS, or resolves to a private or link-local address', async () => {
+    const env = await boot();
+    for (const host of [
+      'http://langfuse.etaten.example.no',
+      'https://privat.example.no',
+      'https://metadata.example.no',
+    ])
+      await env.secret(`s-${new URL(host).hostname.split('.')[0]}`, host);
+
+    const http = await env.connect(
+      'a',
+      ownConnection({
+        host: 'http://langfuse.etaten.example.no',
+        secretKey: `secret://tenant/${tenant}/s-langfuse`,
+      }),
+    );
+    const privat = await env.connect(
+      'b',
+      ownConnection({
+        host: 'https://privat.example.no',
+        secretKey: `secret://tenant/${tenant}/s-privat`,
+        services: [],
+      }),
+    );
+    const linkLocal = await env.connect(
+      'c',
+      ownConnection({
+        host: 'https://metadata.example.no',
+        secretKey: `secret://tenant/${tenant}/s-metadata`,
+        services: [],
+      }),
+    );
+
+    expect(errorsOf(http.body)).toContain('connection.host: the host must use HTTPS');
+    expect(errorsOf(privat.body)).toEqual([
+      'connection.host: privat.example.no resolves to a private address',
+    ]);
+    expect(errorsOf(linkLocal.body)[0]).toMatch(
+      /^connection\.host: metadata\.example\.no resolves to a/,
+    );
+  });
+
+  it("refuses another tenant's secret, a secret not set for the host, and a key typed in clear", async () => {
+    const env = await boot();
+    await env.secret('langfuse-annet', own, other, 'ola');
+    await env.secret('langfuse-feil-vert', 'https://annen.example.no');
+
+    const foreign = await env.connect(
+      'a',
+      ownConnection({ secretKey: `secret://tenant/${other}/langfuse-annet` }),
+    );
+    const wrongHost = await env.connect(
+      'b',
+      ownConnection({ secretKey: `secret://tenant/${tenant}/langfuse-feil-vert` }),
+    );
+    const clear = await env.connect('c', ownConnection({ secretKey: 'sk-lf-hemmelig' }));
+
+    expect(errorsOf(foreign.body)).toEqual([
+      'connection.secretKey: the secret belongs to another tenant',
+    ]);
+    expect(errorsOf(wrongHost.body)).toEqual([
+      `connection.secretKey: the secret is not set for ${own}`,
+    ]);
+    expect(errorsOf(clear.body)).toEqual([
+      'connection.secretKey: must be a secret://tenant/<tenant>/<name> reference',
+    ]);
+    // Refused before an admin task starts, so a key typed in clear, or typed as a secret's name,
+    // never reaches a task's input.
+    expect([clear.task, foreign.task, wrongHost.task]).toEqual([null, null, null]);
+  });
+
+  it('takes a host only as an address, without a path, credentials or a trailing dot', async () => {
+    const env = await boot();
+    await env.secret('langfuse-etaten', own);
+
+    const refusedFor = async (host: string) =>
+      errorsOf((await env.connect('a', ownConnection({ host }))).body);
+
+    expect(await refusedFor('https://bruker:passord@langfuse.etaten.example.no')).toEqual([
+      'connection.host: the host is an address like https://langfuse.example.no, without a path or credentials',
+    ]);
+    expect(await refusedFor('https://langfuse.etaten.example.no/api')).toEqual([
+      'connection.host: the host is an address like https://langfuse.example.no, without a path or credentials',
+    ]);
+    await env.secret('langfuse-punktum', 'https://langfuse.digdir.example.no.');
+    const dotted = await env.connect(
+      'b',
+      ownConnection({
+        host: 'https://langfuse.digdir.example.no.',
+        secretKey: `secret://tenant/${tenant}/langfuse-punktum`,
+      }),
+    );
+    expect(errorsOf(dotted.body)).toContain('connection.host: the host name ends with a dot');
+  });
+
+  it("refuses content outside development mode while Digdir's Langfuse is not configured", async () => {
+    const env = await boot({});
+    await env.secret('langfuse-etaten', own);
+
+    const refused = await env.connect(
+      'etaten',
+      ownConnection({ content: true, erasureDeclared: true }),
+    );
+
+    expect(errorsOf(refused.body)).toEqual([
+      "connection.content: content needs LANGFUSE_BASE_URL, so Digdir's Langfuse is never taken for an agency's own",
+    ]);
+  });
+
+  it('removes a connection, and answers 404 for one that does not exist', async () => {
+    const env = await boot();
+    await env.secret('langfuse-etaten', own);
+    await env.connect('etaten', ownConnection());
+
+    const removed = await env.send('DELETE', `/tenants/${tenant}/tracing/connections/etaten`);
+    const missing = await env.send('DELETE', `/tenants/${tenant}/tracing/connections/ukjent`);
+    const listed = await env.send('GET', `/tenants/${tenant}/tracing/connections`);
+
+    expect(removed.status).toBe(200);
+    expect(missing.status).toBe(404);
+    expect(listed.body.data).toEqual([]);
+  });
+
+  it('covers a service with at most one connection', async () => {
+    const env = await boot();
+    await env.secret('langfuse-etaten', own);
+    await env.connect('etaten', ownConnection());
+
+    const second = await env.connect('andre', ownConnection());
+
+    expect(errorsOf(second.body)).toEqual([
+      'connection.services: svar is already covered by the connection etaten',
+    ]);
+  });
+
+  it("starts a connection to Digdir's Langfuse as global, and only an operator sets its residency", async () => {
+    const env = await boot();
+    await env.secret('langfuse-digdir', instance);
+    const connection = {
+      host: instance,
+      publicKey: 'pk-lf-digdir',
+      secretKey: `secret://tenant/${tenant}/langfuse-digdir`,
+      services: ['svar'],
+    };
+
+    const saved = await env.connect('digdir', connection);
+    const tenantSays = await env.connect('digdir', { ...connection, residency: 'norway' });
+    const byTenant = await env.send(
+      'PUT',
+      `/operator/tracing/connections/${tenant}/digdir/residency`,
+      'kari',
+      {
+        residency: 'eu',
+      },
+    );
+    const byOperator = await env.send(
+      'PUT',
+      `/operator/tracing/connections/${tenant}/digdir/residency`,
+      'operator',
+      { residency: 'eu' },
+    );
+    const listed = await env.send('GET', `/tenants/${tenant}/tracing/connections`);
+    // Saved again without a residency, it keeps the one the operator set.
+    const resaved = await env.connect('digdir', { ...connection, services: ['svar', 'annen'] });
+
+    expect(resaved.body).toMatchObject({ residency: 'eu', services: ['svar', 'annen'] });
+    expect(saved.body).toMatchObject({ residency: 'global' });
+    expect(errorsOf(tenantSays.body)).toEqual([
+      "connection.residency: an operator sets the residency of a connection to Digdir's Langfuse",
+    ]);
+    expect(byTenant.status).toBe(403);
+    expect(byOperator.body).toMatchObject({ residency: 'eu' });
+    expect(listed.body.data).toEqual([
+      expect.objectContaining({ residency: 'eu', instance: true, residencySetBy: 'operator' }),
+    ]);
+  });
+
+  it("receives content only where erasure holds: Digdir's Langfuse once operators confirm it, an agency's own once it declares it", async () => {
+    const closed = await boot({ instance });
+    const open = await boot({ instance, instanceReceivesContent: true });
+    for (const env of [closed, open]) {
+      await env.secret('langfuse-digdir', instance);
+      await env.secret('langfuse-etaten', own);
+    }
+    const onInstance = {
+      host: instance,
+      publicKey: 'pk-lf-digdir',
+      secretKey: `secret://tenant/${tenant}/langfuse-digdir`,
+      content: true,
+    };
+
+    const instanceClosed = await closed.connect('digdir', onInstance);
+    const instanceOpen = await open.connect('digdir', onInstance);
+    const undeclared = await closed.connect('etaten', ownConnection({ content: true }));
+    const declared = await closed.connect(
+      'etaten',
+      ownConnection({ content: true, erasureDeclared: true }),
+    );
+
+    expect(errorsOf(instanceClosed.body)[0]).toMatch(
+      /^connection\.content: Digdir's Langfuse does not receive content/,
+    );
+    expect(instanceOpen.body).toMatchObject({ content: true });
+    expect(errorsOf(undeclared.body)[0]).toMatch(
+      /^connection\.content: content needs the declaration/,
+    );
+    expect(declared.body).toMatchObject({ content: true, erasureDeclared: true });
+  });
+
+  it('lets only a person with manage-services change connections, also an operator who is a member', async () => {
+    const env = await boot();
+    await env.secret('langfuse-etaten', own);
+
+    const refused = await env.connect('etaten', ownConnection(), 'erik');
+    const removed = await env.send(
+      'DELETE',
+      `/tenants/${tenant}/tracing/connections/etaten`,
+      'erik',
+    );
+    const operator = await env.connect('etaten', ownConnection(), 'driftsmedlem');
+
+    expect(refused.status).toBe(403);
+    expect(removed.status).toBe(403);
+    expect(operator.status).toBe(403);
+  });
+});
+
+describe('removing a connection', () => {
+  it('deletes every trace sent through it first, and the connection is gone only once every delete is confirmed', async () => {
+    const deliveries = new InMemoryTraceDeliveries();
+    const env = await boot({ instance }, deliveries);
+    await env.secret('langfuse-etaten', own);
+    await env.connect('etaten', ownConnection());
+    const at = new Date().toISOString();
+    await deliveries.record(
+      [
+        { tenant, sink: 'etaten', task: 't1', trace: 'case-1' },
+        { tenant, sink: 'etaten', task: 't2', trace: 'case-2' },
+      ],
+      at,
+    );
+
+    const removed = await env.send('DELETE', `/tenants/${tenant}/tracing/connections/etaten`);
+    const whileDeleting = await env.send('GET', `/tenants/${tenant}/tracing/connections`);
+    const edited = await env.connect('etaten', ownConnection());
+    const takeover = await env.connect('andre', ownConnection());
+    for (const pending of await deliveries.pending(10))
+      await deliveries.settle(pending, { deleted: true }, at);
+    const afterwards = await env.send('GET', `/tenants/${tenant}/tracing/connections`);
+
+    expect(removed.body).toEqual({ removing: 'etaten' });
+    expect((await deliveries.pending(10)).length).toBe(0);
+    expect(whileDeleting.body.data).toEqual([
+      expect.objectContaining({ id: 'etaten', removing: true }),
+    ]);
+    expect(errorsOf(edited.body)).toEqual([
+      'connection.id: the connection etaten is being removed',
+    ]);
+    expect(takeover.status).toBe(200);
+    expect((afterwards.body.data as { id: string }[]).map((c) => c.id)).toEqual(['andre']);
+  });
+
+  it('lists a connection being removed with no services', async () => {
+    const deliveries = new InMemoryTraceDeliveries();
+    const env = await boot({ instance }, deliveries);
+    await env.secret('langfuse-etaten', own);
+    await env.connect('etaten', ownConnection());
+    await deliveries.record(
+      [{ tenant, sink: 'etaten', task: 't1', trace: 'case-1' }],
+      new Date().toISOString(),
+    );
+
+    await env.send('DELETE', `/tenants/${tenant}/tracing/connections/etaten`);
+    const listed = await env.send('GET', `/tenants/${tenant}/tracing/connections`);
+
+    expect(listed.body.data).toEqual([
+      expect.objectContaining({ id: 'etaten', removing: true, services: [] }),
+    ]);
+  });
+
+  it('finishes a removal once when two reads find every delete confirmed at the same time', async () => {
+    const deliveries = new InMemoryTraceDeliveries();
+    const env = await boot({ instance }, deliveries);
+    await env.secret('langfuse-etaten', own);
+    await env.connect('etaten', ownConnection());
+    const at = new Date().toISOString();
+    await deliveries.record([{ tenant, sink: 'etaten', task: 't1', trace: 'case-1' }], at);
+    await env.send('DELETE', `/tenants/${tenant}/tracing/connections/etaten`);
+    for (const pending of await deliveries.pending(10))
+      await deliveries.settle(pending, { deleted: true }, at);
+
+    const reads = await Promise.all([
+      env.send('GET', `/tenants/${tenant}/tracing/connections`),
+      env.send('GET', `/tenants/${tenant}/tracing/connections`),
+    ]);
+
+    expect(reads.map((r) => r.status)).toEqual([200, 200]);
+    expect(reads.map((r) => r.body.data)).toEqual([[], []]);
+  });
+
+  it('keeps its host and project while it has traces to delete there, but takes a new secret for them', async () => {
+    const deliveries = new InMemoryTraceDeliveries();
+    const env = await boot({ instance }, deliveries);
+    await env.secret('langfuse-etaten', own);
+    await env.secret('langfuse-etaten-ny', own);
+    await env.connect('etaten', ownConnection());
+    await deliveries.record(
+      [{ tenant, sink: 'etaten', task: 't1', trace: 'case-1' }],
+      new Date().toISOString(),
+    );
+
+    const moved = await env.connect('etaten', ownConnection({ publicKey: 'pk-lf-annet-prosjekt' }));
+    const rotated = await env.connect(
+      'etaten',
+      ownConnection({ secretKey: `secret://tenant/${tenant}/langfuse-etaten-ny` }),
+    );
+
+    expect(errorsOf(moved.body)).toEqual([
+      'connection.host: the connection etaten still has traces to delete where it points now',
+    ]);
+    expect(rotated.status).toBe(200);
+  });
+
+  it('reads as being removed before it marks anything for deletion, so no batch slips through in between', async () => {
+    const seen: (boolean | undefined)[] = [];
+    let readRemoving = async (): Promise<boolean | undefined> => undefined;
+    const deliveries = new (class extends InMemoryTraceDeliveries {
+      override async markPending(...args: Parameters<InMemoryTraceDeliveries['markPending']>) {
+        seen.push(await readRemoving());
+        return super.markPending(...args);
+      }
+    })();
+    const env = await boot({ instance }, deliveries);
+    readRemoving = async () =>
+      (
+        (await env.platform.configEntries.latest({ kind: 'trace-connection', scope: tenant }))[0]
+          ?.spec as { removing?: boolean } | undefined
+      )?.removing;
+    await env.secret('langfuse-etaten', own);
+    await env.connect('etaten', ownConnection());
+    await deliveries.record(
+      [{ tenant, sink: 'etaten', task: 't1', trace: 'case-1' }],
+      new Date().toISOString(),
+    );
+
+    await env.send('DELETE', `/tenants/${tenant}/tracing/connections/etaten`);
+
+    expect(seen).toEqual([true]);
+  });
+
+  it('removes a connection that never received a trace at once', async () => {
+    const env = await boot();
+    await env.secret('langfuse-etaten', own);
+    await env.connect('etaten', ownConnection());
+
+    const removed = await env.send('DELETE', `/tenants/${tenant}/tracing/connections/etaten`);
+
+    expect(removed.body).toEqual({ removed: 'etaten' });
+    expect((await env.send('GET', `/tenants/${tenant}/tracing/connections`)).body.data).toEqual([]);
+  });
+});
+
+describe('configuration from the environment', () => {
+  it('honours TRACES_CONTENT only in development mode', () => {
+    expect(tracesContent({ TRACES_CONTENT: 'true' })).toBe(false);
+    expect(tracesContent({ TRACES_CONTENT: 'true', GENAI_DEV_MODE: 'true' })).toBe(true);
+    expect(tracesContent({ GENAI_DEV_MODE: 'true' })).toBe(false);
+  });
+});
+
+const localLangfuse = process.env.LANGFUSE_LOCAL_URL;
+
+describe.skipIf(!localLangfuse)('a local Langfuse 4.72.0 in development mode', () => {
+  it('checks a connection against its project through the egress path', async () => {
+    const host = localLangfuse as string;
+    const env = await boot({ devMode: true });
+    await env.send('PUT', `/tenants/${tenant}/secrets/langfuse-lokal`, 'kari', {
+      value: process.env.LANGFUSE_LOCAL_SECRET_KEY ?? 'sk-lf-genki-472',
+      allowedHosts: [host],
+    });
+    await env.connect('lokal', {
+      host,
+      publicKey: process.env.LANGFUSE_LOCAL_PUBLIC_KEY ?? 'pk-lf-genki-472',
+      secretKey: `secret://tenant/${tenant}/langfuse-lokal`,
+      services: ['svar'],
+      content: true,
+    });
+
+    const checked = await env.send('POST', `/tenants/${tenant}/tracing/connections/lokal/check`);
+
+    expect(checked.body).toMatchObject({ ok: true, project: { id: expect.any(String) } });
+  });
+});
+
+describe("an exporter's requests to a connection", () => {
+  it("go through the guard's pinned request, with the method, headers, body and signal", async () => {
+    const seen: unknown[][] = [];
+    const guard = {
+      request: async (...args: unknown[]) => {
+        seen.push(args);
+        return { status: seen.length === 1 ? 200 : 204, headers: {}, body: '{}' };
+      },
+    };
+    const allow = [{ host: 'langfuse.etaten.example.no', protocol: 'https' as const }];
+    const send = pinnedFetch(guard as never, allow as never);
+    const signal = new AbortController().signal;
+
+    const sent = await send('https://langfuse.etaten.example.no/api/public/otel/v1/traces', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{"resourceSpans":[]}',
+      signal,
+    });
+    const empty = await send('https://langfuse.etaten.example.no/api/public/health');
+
+    expect(seen[0]).toEqual([
+      allow,
+      'https://langfuse.etaten.example.no/api/public/otel/v1/traces',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '{"resourceSpans":[]}',
+      },
+      signal,
+    ]);
+    expect(sent.status).toBe(200);
+    expect(await sent.text()).toBe('{}');
+    expect(empty.status).toBe(204);
+  });
+});
+
+describe('recording what goes to a connection before it is sent', () => {
+  const at = '2026-10-29T12:00:00.000Z';
+  const saved = (states: ('live' | 'removing' | 'gone')[]) => {
+    let call = 0;
+    return {
+      latest: async () => {
+        const state = states[Math.min(call, states.length - 1)];
+        call += 1;
+        return state === 'gone'
+          ? []
+          : [
+              {
+                kind: 'trace-connection',
+                scope: tenant,
+                id: 'etaten',
+                version: 1,
+                spec: {
+                  id: 'etaten',
+                  services: ['svar'],
+                  ...(state === 'removing' ? { removing: true } : {}),
+                },
+              },
+            ];
+      },
+    } as never;
+  };
+  const gate = (states: ('live' | 'removing' | 'gone')[], deliveries: InMemoryTraceDeliveries) =>
+    deliveryGate({
+      configEntries: saved(states),
+      deliveries,
+      tenant,
+      sink: 'etaten',
+      now: () => at,
+    });
+  const batch = [{ trace: 'case-1', task: 't1' }];
+
+  it('records the traces first and lets the batch go to a live connection', async () => {
+    const deliveries = new InMemoryTraceDeliveries();
+
+    expect(await gate(['live'], deliveries)(batch)).toBe(true);
+    expect(await deliveries.outstanding(tenant, 'etaten')).toBe(1);
+  });
+
+  it('sends nothing to a connection being removed, and queues what removal started under for deletion', async () => {
+    const before = new InMemoryTraceDeliveries();
+    const during = new InMemoryTraceDeliveries();
+
+    expect(await gate(['removing'], before)(batch)).toBe(false);
+    expect(await before.outstanding(tenant, 'etaten')).toBe(0);
+    expect(await gate(['live', 'removing'], during)(batch)).toBe(false);
+    expect((await during.pending(10)).map((d) => d.trace)).toEqual(['case-1']);
+  });
+
+  it('lets a connection being removed cover no service', async () => {
+    const entries = saved(['removing']);
+
+    expect(await connectionsCovering(entries, tenant, 'svar')).toEqual([]);
+    expect(await connectionsCovering(saved(['live']), tenant, 'svar')).toHaveLength(1);
+  });
+
+  it('sends nothing for a run whose connection moved to another host or project since it opened', async () => {
+    const deliveries = new InMemoryTraceDeliveries();
+    const moved = deliveryGate({
+      configEntries: saved(['live']),
+      deliveries,
+      tenant,
+      sink: 'etaten',
+      opened: { host: 'https://gammel.example.no', publicKey: 'pk-gammel' },
+      now: () => at,
+    });
+
+    expect(await moved(batch)).toBe(false);
+    expect(await deliveries.outstanding(tenant, 'etaten')).toBe(0);
+  });
+
+  it('settles what it recorded when the connection was removed meanwhile, since nothing was sent', async () => {
+    const deliveries = new InMemoryTraceDeliveries();
+
+    expect(await gate(['live', 'gone'], deliveries)(batch)).toBe(false);
+    expect(await deliveries.outstanding(tenant, 'etaten')).toBe(0);
+  });
+});

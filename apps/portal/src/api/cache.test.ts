@@ -24,7 +24,7 @@ describe('the stale-while-revalidate cache for page loads', () => {
     const api = source('old', 'new');
 
     expect(await cache.load('k', 't', api.fetcher, page())).toBe('old');
-    time = 5000;
+    time = 60_000;
     expect(await cache.load('k', 't', api.fetcher, page())).toBe('old');
     await settle();
     expect(api.calls()).toBe(2);
@@ -61,7 +61,7 @@ describe('the stale-while-revalidate cache for page loads', () => {
 
     await cache.load('k', 't1', api.fetcher, page());
     cache.invalidate('t1');
-    time = 5000;
+    time = 60_000;
 
     expect(await cache.load('k', 't1', api.fetcher, page())).toBe('after');
   });
@@ -81,7 +81,7 @@ describe('the stale-while-revalidate cache for page loads', () => {
     const cache = createResponseCache({ now: () => time });
     let release: (value: string) => void = () => undefined;
     await cache.load('k', 't', async () => 'old', page());
-    time = 5000;
+    time = 60_000;
     await cache.load('k', 't', () => new Promise<string>((r) => (release = r)), page());
 
     cache.invalidate('t');
@@ -101,7 +101,7 @@ describe('the stale-while-revalidate cache for page loads', () => {
 
     await cache.load('k', 't', api.fetcher, signal);
     const first = told;
-    time = 5000;
+    time = 60_000;
     await cache.load('k', 't', api.fetcher, signal);
     await settle();
 
@@ -132,10 +132,90 @@ describe('the stale-while-revalidate cache for page loads', () => {
     let time = 0;
     const cache = createResponseCache({ now: () => time });
     await cache.load('k', 't', async () => 'old', page());
-    time = 5000;
+    time = 60_000;
 
     expect(await cache.load('k', 't', () => Promise.reject(new Error('down')), page())).toBe('old');
     await settle();
     expect(await cache.load('k', 't', async () => 'x', page())).toBe('old');
+  });
+
+  it('two parts asking for the same answer at once share one request', async () => {
+    const cache = createResponseCache();
+    const api = source('one');
+
+    const [a, b] = await Promise.all([
+      cache.load('k', 't', api.fetcher, page()),
+      cache.load('k', 't', api.fetcher, page()),
+    ]);
+
+    expect([a, b]).toEqual(['one', 'one']);
+    expect(api.calls()).toBe(1);
+  });
+
+  it('a part that leaves does not cancel the request another part still waits for', async () => {
+    const cache = createResponseCache();
+    let aborted = false;
+    const fetcher = (signal?: AbortSignal) =>
+      new Promise<string>((resolve) => {
+        signal?.addEventListener('abort', () => (aborted = true));
+        setTimeout(() => resolve('done'), 5);
+      });
+    const leaving = new AbortController();
+    markPageLoad(leaving.signal);
+
+    const first = cache.load('k', 't', fetcher, leaving.signal).catch(() => 'left');
+    const second = cache.load('k', 't', fetcher, page());
+    leaving.abort();
+
+    expect(await first).toBe('left');
+    expect(await second).toBe('done');
+    expect(aborted).toBe(false);
+  });
+
+  it('cancels the request when every part that asked for it has left', async () => {
+    const cache = createResponseCache();
+    let aborted = false;
+    const fetcher = (signal?: AbortSignal) =>
+      new Promise<string>((_resolve, reject) =>
+        signal?.addEventListener('abort', () => {
+          aborted = true;
+          reject(new Error('aborted'));
+        }),
+      );
+    const leaving = new AbortController();
+    markPageLoad(leaving.signal);
+
+    const load = cache.load('k', 't', fetcher, leaving.signal).catch(() => 'left');
+    leaving.abort();
+
+    expect(await load).toBe('left');
+    expect(aborted).toBe(true);
+  });
+
+  it('does not ask again for an answer younger than the freshness window', async () => {
+    let time = 0;
+    const cache = createResponseCache({ now: () => time, freshMs: 10_000 });
+    const api = source('a', 'b');
+
+    await cache.load('k', 't', api.fetcher, page());
+    time = 9_000;
+    await cache.load('k', 't', api.fetcher, page());
+    await settle();
+
+    expect(api.calls()).toBe(1);
+  });
+
+  it('a write while a request is under way starts a new request for the next reader', async () => {
+    const cache = createResponseCache();
+    let release: (value: string) => void = () => undefined;
+    const slow = () => new Promise<string>((resolve) => (release = resolve));
+    const before = cache.load('k', 't', slow, page());
+
+    cache.invalidate('t');
+    const after = cache.load('k', 't', async () => 'after', page());
+    release('before');
+
+    expect(await before).toBe('before');
+    expect(await after).toBe('after');
   });
 });

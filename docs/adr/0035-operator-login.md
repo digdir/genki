@@ -1,13 +1,15 @@
 # 0035 Operator login
 
-Status: proposed, 2026-10-16
+Status: proposed, 2026-10-16 (partly built, 2026-11-03: `OPERATOR_SUBJECTS` holds `issuer|subject` pairs that count only for Ansattporten employees logging in through `OPERATOR_CLIENT_IDS`; operator pids in `identity.yaml` count only with the dev-mode mock login)
+
+Not built yet: `OPERATOR_ENTRA_GROUPS`, `OPERATOR_EMAIL_DOMAIN`, `OPERATOR_BREAK_GLASS_UNTIL` and the break-glass audit, the two marks, logging the admitting group per login, and the `amr` check. Outside the mock login, startup ignores operator pids in `identity.yaml` with a log line instead of refusing them.
 
 ## Context
 
 Operators run the console: tenants, catalog, settings, support sessions and audit (ADR 0010). ADR 0008 says operators are Digdir staff with Entra ID, never a tenant principal. Today the API recognises an operator in three ways:
 
-- by token subject, listed in `OPERATOR_SUBJECTS`, for any trusted issuer, Maskinporten included (`apps/api/src/operators.ts`);
-- by the `pid` claim of an Ansattporten token, for persons marked `operator: true` in `apps/api/config/local/identity.yaml`;
+- by token subject, listed in `OPERATOR_SUBJECTS` as `issuer|subject` pairs, for Ansattporten employees who log in through one of `OPERATOR_CLIENT_IDS` (`apps/api/src/operators.ts`);
+- with the dev-mode mock login, by the `pid` claim, for persons marked `operator: true` in `apps/api/config/local/identity.yaml`;
 - in lockdown, by an Entra ID login through Ansattporten whose `groups` claim holds one of `LOCKDOWN_ENTRA_GROUPS` (ADR 0033). That rule also gives the person every right in `PLATFORM_TENANT`, so in genki-test an operator reaches the Digdir tenant's data without a support session.
 
 ## Decision
@@ -16,7 +18,7 @@ Operators run the console: tenants, catalog, settings, support sessions and audi
 - **Only the console's own client can make an operator.** The operator rule accepts only access tokens whose `client_id` is in `OPERATOR_CLIENT_IDS`. A token from any other client, registered tenant clients included, is never an operator.
 - **An operator is never a tenant principal.** Outside lockdown the rule gives the operator role and nothing else: no tenant, no `authorizedFor`. A tenant's content (conversations, documents, runs) is reached only through a support session with a reason and a time limit (ADR 0010). The lockdown grant of every right in `PLATFORM_TENANT` stays specific to genki-test.
 - **Two marks, not one.** The verifier sets the operator mark from `OPERATOR_ENTRA_GROUPS` and, in lockdown, the model-access mark from `LOCKDOWN_ENTRA_GROUPS`. genki-test may name the same group in both; the code never derives one from the other. Only the verifier sets either mark, never token scopes, key scopes or headers.
-- **Group membership decides, per token.** Adding or removing an operator happens in Entra and needs no deploy. Removal takes effect when the operator's current access token expires: Ansattporten TEST issues 5-minute access tokens, and the console gets no refresh token. The API logs which group admitted the operator.
+- **Group membership decides, per token.** Adding or removing an operator happens in Entra and needs no deploy. Removal takes effect when a new access token is issued without the group: Ansattporten TEST issues 5-minute access tokens, and the console renews them by a `prompt=none` authorisation (or a refresh token, if one is issued). Whether a removal from the group then takes effect at the next renewal or only when the Ansattporten session ends depends on whether Ansattporten reads the groups again on a silent authorisation; that is not yet checked. The API logs which group admitted the operator.
 - **MFA is required, and enforced in Entra.** Ansattporten's Entra tokens carry no `amr` (checked 2026-10-16), so the API cannot see how the person authenticated. Digdir Conditional Access must require MFA for the Ansattporten app; if Ansattporten later adds `amr`, the API requires `mfa`.
 - **No other way in, in production.** Operator pids in `identity.yaml` apply only to the mock issuer in dev mode, and startup refuses them otherwise. `OPERATOR_SUBJECTS` holds `issuer|subject` pairs for Ansattporten tokens only, for local development and break-glass: in production the API refuses to start with it set unless `OPERATOR_BREAK_GLASS_UNTIL` names a date at most seven days ahead, and every break-glass login is audited as such.
 

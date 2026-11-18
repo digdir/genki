@@ -18,7 +18,7 @@ spec:
     version: 1
     config:
       instructions: prompts/ka-system.nb.md
-      budget: { searches: 4, reads: 6, readChars: 12000 }
+      budget: { searches: 4, reads: 6, readChars: 24000 }
   knowledge:
     datasets:
       - dataset: digdir/kudos

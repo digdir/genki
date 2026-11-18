@@ -8,13 +8,17 @@ status: Port
 packages:
   - '@genai/port-blob'
 summary: Stores input and output files, with memory and filesystem implementations and folder watching.
-description: Used by batch jobs and the worker; Azure Blob comes later behind the same port.
+description: Used by batch jobs and the worker. Uploads are keyed by tenant; converters' native
+  output has a store of its own, keyed by file sha256 with no tenant (ADR 0042), on a folder locally
+  and on Azure Blob storage through providers-azure-blob.
 responsibilities:
   - Blob store interface
+  - Native output store keyed by file sha256, converter, version and settings hash
   - Folder watch for triggers
   - Zip export
 files:
   - packages/port-blob/src/port.ts
+  - packages/port-blob/src/native-output.ts
   - packages/port-blob/src/filesystem.ts
   - packages/port-blob/src/watch.ts
 input: Bytes + path

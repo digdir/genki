@@ -1,0 +1,35 @@
+{
+  "source": "the OpenAI API reference (openai/openai-openapi, openapi.yaml): Create transcription with response_format text (AudioResponseFormat), which answers the transcript as text/plain; the audio is a synthetic silent WAV",
+  "deployment": "gpt-transcribe",
+  "input": {
+    "audio": {
+      "mediaType": "audio/wav",
+      "data": "UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA="
+    },
+    "language": "en"
+  },
+  "request": {
+    "method": "POST",
+    "path": "/audio/transcriptions",
+    "body": {
+      "model": "gpt-transcribe",
+      "file": {
+        "mediaType": "audio/wav",
+        "bytes": 44,
+        "sha256": "4f8734c5e13ac599e168cf247a51c1dd0758537ce00bf16d7fed1a3d14d07041"
+      },
+      "language": "en",
+      "response_format": "text"
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": "Imagine the wildest idea that you have ever had."
+  },
+  "result": {
+    "text": "Imagine the wildest idea that you have ever had."
+  },
+  "usage": {
+    "requests": 1
+  }
+}

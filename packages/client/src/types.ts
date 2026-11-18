@@ -37,6 +37,13 @@ export interface Excerpt {
   chunkId: string;
   text: string;
   position?: number;
+  /** Its own section path, levels joined by ` › `, when the index gives one. */
+  heading?: string;
+  /** The page of its file it starts on, the page it ends on when later, and its PDF at `page`. */
+  page?: number;
+  pageEnd?: number;
+  url?: string;
+  markers?: string[];
 }
 
 export interface Source {
@@ -45,9 +52,16 @@ export interface Source {
   url?: string;
   documentId?: string;
   excerpts: Excerpt[];
+  markers?: string[];
   excerpt?: string;
   version?: string;
   publishedAt?: string;
+}
+
+export interface AnswerMarker {
+  marker: string;
+  chunkId: string;
+  documentId: string;
 }
 
 export interface Usage {
@@ -64,6 +78,7 @@ export interface Answer {
   serviceVersion?: number;
   sources: Source[];
   citations: string[];
+  markers?: AnswerMarker[];
   noAnswer: boolean;
   notice?: string;
   usage?: Usage;
@@ -94,12 +109,13 @@ export type Step = { event?: string; stage?: string; tool?: string; iteration?: 
 >;
 
 export type StreamEvent =
+  | { type: 'task'; taskId: string }
   | { type: 'conversation'; conversationId: string }
   | { type: 'text'; text: string }
   | { type: 'retract' }
   | { type: 'step'; step: Step }
   | { type: 'reasoning'; text: string }
-  | { type: 'sources'; sources: Source[]; citations: string[] }
+  | { type: 'sources'; sources: Source[]; citations: string[]; markers?: AnswerMarker[] }
   | { type: 'done'; answer: Answer };
 
 export interface StreamOptions {
@@ -112,7 +128,8 @@ export interface AskHandlers {
   onText?(text: string): void;
   onRetract?(): void;
   onStep?(step: Step): void;
-  onSources?(sources: Source[]): void;
+  /** `markers` when the service cites excerpts: each `[N]` and the excerpt it means. */
+  onSources?(sources: Source[], markers?: AnswerMarker[]): void;
   signal?: AbortSignal;
 }
 
@@ -140,6 +157,11 @@ export interface ConversationMessage {
   tags: string[];
   filterValue: unknown;
   chunks: ConversationChunk[];
+  sources?: Source[];
+  markers?: AnswerMarker[];
+  task?: string;
+  runState?: 'running' | 'failed' | 'cancelled';
+  stopped?: true;
 }
 
 export interface ConversationPage {
@@ -185,4 +207,9 @@ export interface FeedbackRequest {
   rating: 'up' | 'down';
   comment?: string;
   reasons?: string[];
+}
+
+export interface CancelledRun {
+  taskId: string;
+  status: string;
 }

@@ -198,17 +198,94 @@ describe('agent retrieval factory', () => {
     expect(s.calls).toEqual(['fetch:c3,c1', 'range:d1:0-1']);
   });
 
-  it('carries the Kudos publish date, an ingestion date and the document version into the chunks', async () => {
-    const s = stub([], { ...dated, c2: { ingested_at: '2026-10-01T08:00:00.000Z' } });
+  it('carries the Kudos publish date and the document version into the chunks', async () => {
+    const s = stub([], dated);
     const agent = createAgentRetrieval({ knowledge: s.knowledge });
 
     const read = await agent.read(['c1', 'c2', 'c3'], signal);
 
     expect(read.map((c) => [c.chunkId, c.publishedAt, c.version])).toEqual([
       ['c1', '2023-01-15', undefined],
-      ['c2', '2026-10-01T08:00:00.000Z', undefined],
+      ['c2', undefined, undefined],
       ['c3', '2025-01-01T00:00:00.000Z', 'v2'],
     ]);
+  });
+
+  it("a retrieved chunk carries its document's publisher, several joined with a comma", async () => {
+    const s = stub([], {
+      c1: {
+        publisher_names: [
+          'Arbeids- og inkluderingsdepartementet',
+          'Justis- og beredskapsdepartementet',
+        ],
+      },
+      c3: { docs: { publisher_names: ['Digitaliseringsdirektoratet'] } },
+    });
+    const fallback = stub([], {
+      c1: { publisher_names: [], publisher: 'Skatteetaten' },
+      c2: { publisher_names: ['  ', 'Statistisk sentralbyrå'] },
+      c3: { publisher: 'Brønnøysundregistrene' },
+    });
+    const agent = createAgentRetrieval({ knowledge: s.knowledge });
+
+    const read = await agent.read(['c1', 'c2', 'c3'], signal);
+    const found = await agent.search(['årsverk'], {}, signal);
+    const named = await createAgentRetrieval({ knowledge: fallback.knowledge }).read(
+      ['c1', 'c2', 'c3'],
+      signal,
+    );
+
+    expect(read.map((c) => [c.chunkId, c.publisher])).toEqual([
+      ['c1', 'Arbeids- og inkluderingsdepartementet, Justis- og beredskapsdepartementet'],
+      ['c2', undefined],
+      ['c3', 'Digitaliseringsdirektoratet'],
+    ]);
+    expect(named.map((c) => c.publisher)).toEqual([
+      'Skatteetaten',
+      'Statistisk sentralbyrå',
+      'Brønnøysundregistrene',
+    ]);
+    expect(read[1]).not.toHaveProperty('publisher');
+    expect(found.chunks.find((c) => c.chunkId === 'c1')?.publisher).toBe(
+      'Arbeids- og inkluderingsdepartementet, Justis- og beredskapsdepartementet',
+    );
+  });
+
+  it("carries a chunk's page, page range, PDF address and heading path into the chunks", async () => {
+    const pdf = 'https://kudos.dfo.no/dokument/d1/filer/f1.pdf';
+    const s = stub([], {
+      c1: { page: 12, pageEnd: 13, fileUrl: pdf, headingPath: ['3 Funn', '3.1 Kommunene'] },
+      c3: { page: 4, docs: { page: 99, fileUrl: 'https://example.org/annen.pdf' } },
+    });
+    const agent = createAgentRetrieval({ knowledge: s.knowledge, config: metadataOnly });
+
+    const read = await agent.read(['c1', 'c2', 'c3'], signal);
+    const found = await agent.search(['årsverk'], {}, signal);
+
+    expect(read.map((c) => [c.chunkId, c.page, c.pageEnd, c.fileUrl, c.headers])).toEqual([
+      ['c1', 12, 13, pdf, ['3 Funn', '3.1 Kommunene']],
+      // Without a heading path the headers still come from the metadata string.
+      ['c2', undefined, undefined, undefined, ['Ansatte', 'Årsverk']],
+      // Only the chunk's own fields count, never a page a nested document field holds.
+      ['c3', 4, undefined, undefined, ['Ansatte', 'Årsverk']],
+    ]);
+    expect(found.chunks.find((c) => c.chunkId === 'c1')).toMatchObject({
+      page: 12,
+      pageEnd: 13,
+      fileUrl: pdf,
+      headers: ['3 Funn', '3.1 Kommunene'],
+    });
+  });
+
+  it('never gives the ingestion date as the publish date of an undated chunk', async () => {
+    const s = stub([], { c1: { ingested_at: '2026-10-01T08:00:00.000Z' } });
+    const agent = createAgentRetrieval({ knowledge: s.knowledge, config: metadataOnly });
+
+    const [read] = await agent.read(['c1'], signal);
+    const found = await agent.search(['årsverk'], {}, signal);
+
+    expect(read).not.toHaveProperty('publishedAt');
+    expect(found.chunks.find((c) => c.chunkId === 'c1')).not.toHaveProperty('publishedAt');
   });
 
   it('lists filter fields with headless type names, and caps facet values', async () => {
@@ -230,6 +307,73 @@ describe('agent retrieval factory', () => {
       ],
     });
     expect(await agent.facets(['secret'], 2, signal)).toEqual({});
+  });
+
+  const counted = () => {
+    const rows = [
+      { orgs_short: 'Digdir', concerned_years: '2022' },
+      { orgs_short: 'Digdir', concerned_years: '2023' },
+      { orgs_short: 'NAV', concerned_years: '2022' },
+      { orgs_short: 'NAV', concerned_years: '2024' },
+      { orgs_short: 'NAV', concerned_years: '2024' },
+    ];
+    const port: KnowledgePort = {
+      info: () => ({
+        id: 'kudos',
+        residency: 'norway',
+        filters: { orgs_short: 'multiselect', concerned_years: 'multiselect' },
+        profiles: ['content'],
+      }),
+      search: async () => ({ hits: [] }),
+      searchMany: async (requests) => requests.map(() => ({ hits: [] })),
+      fetch: async () => [],
+      range: async () => [],
+      facets: async (fields, filters = {}) => {
+        const kept = rows.filter((row) =>
+          Object.entries(filters).every(
+            ([f, v]) => Array.isArray(v) && v.map(String).includes(row[f as keyof typeof row]),
+          ),
+        );
+        return Object.fromEntries(
+          fields.map((f) => {
+            const counts = new Map<string, number>();
+            for (const row of kept) {
+              const value = row[f as keyof typeof row];
+              counts.set(value, (counts.get(value) ?? 0) + 1);
+            }
+            return [f, [...counts].map(([value, count]) => ({ value, count }))];
+          }),
+        );
+      },
+    };
+    return port;
+  };
+
+  it('inspect_filters never counts or names values outside the service fixed filter', async () => {
+    const agent = createAgentRetrieval({
+      knowledge: counted(),
+      filters: { orgs_short: ['Digdir'] },
+    });
+
+    expect(await agent.facets(['orgs_short', 'concerned_years'], 10, signal)).toEqual({
+      orgs_short: [{ value: 'Digdir', count: 2 }],
+      concerned_years: [
+        { value: '2022', count: 1 },
+        { value: '2023', count: 1 },
+      ],
+    });
+  });
+
+  it('inspect_filters counts within every field of the service filter', async () => {
+    const agent = createAgentRetrieval({
+      knowledge: counted(),
+      filters: { orgs_short: ['NAV'], concerned_years: ['2024'] },
+    });
+
+    expect(await agent.facets(['orgs_short', 'concerned_years'], 10, signal)).toEqual({
+      orgs_short: [{ value: 'NAV', count: 2 }],
+      concerned_years: [{ value: '2024', count: 2 }],
+    });
   });
 
   it('reranks read chunks in the reranker order with headers it saw earlier, and leaves them alone without a reranker', async () => {
@@ -301,6 +445,15 @@ describe('agent retrieval factory', () => {
 });
 
 describe('rag retrieval factory', () => {
+  it('gives an undated chunk no publish date, even when it has an ingestion date', async () => {
+    const s = stub([], { c1: { ingested_at: '2026-10-01T08:00:00.000Z' } });
+    const rag = createRagRetrieval({ knowledge: s.knowledge, config: metadataOnly });
+
+    const result = await rag.retrieve(['årsverk'], {}, signal);
+
+    expect(result.chunks.find((c) => c.chunkId === 'c1')).not.toHaveProperty('publishedAt');
+  });
+
   it('retrieves full chunks, fetching content the metadata-only pipeline left out', async () => {
     const s = stub();
     const rag = createRagRetrieval({ knowledge: s.knowledge, config: metadataOnly });
@@ -506,6 +659,24 @@ describe('documents for step flows', () => {
       { limit: 250, offset: 0 },
       { limit: 150, offset: 250 },
     ]);
+  });
+
+  it('lists an undated document without a publish date, even when it has an ingestion date', async () => {
+    const undated = { ingested_at: '2026-10-01T08:00:00.000Z' };
+    const searched = port({
+      search: async () => ({
+        hits: [{ id: 'u-0', score: 0, text: '', document: 'u', fields: undated }],
+      }),
+    });
+    const listing = port({
+      documents: async () => ({ documents: [{ id: 'u', fields: undated }] }),
+    });
+
+    const fromSearch = await listDocuments(searched.knowledge, { limit: 5 }, undefined, signal);
+    const fromListing = await listDocuments(listing.knowledge, { limit: 5 }, undefined, signal);
+
+    expect(fromSearch[0]).not.toHaveProperty('publishedAt');
+    expect(fromListing[0]).not.toHaveProperty('publishedAt');
   });
 
   it('reads a whole document in windows the port accepts', async () => {

@@ -1,11 +1,19 @@
+import { throughGatewayConnections, type UsageReads } from '@genai/port-usage';
+import type { DescriptorRegistry } from '@genai/operations';
 import {
   type Catalogs,
+  type EnvironmentTier,
   createRuntime,
   defaultPlatformTenant,
+  defaultServiceLimits,
   InMemoryConfigEntryStore,
   strategyModelNeeds,
+  allowOf,
+  pinnedFetch,
+  traceConnectionKind,
+  tracingEgress,
 } from '@genai/composition';
-import { inputFieldsSchema, type Principal, type Usage } from '@genai/contracts';
+import { inputFieldsSchema, type PriceSpec, type Principal, type Usage } from '@genai/contracts';
 import { createA2aApp } from '@genai/adapter-a2a';
 import { createMcpApp } from '@genai/adapter-mcp';
 import { createRestAdapter, filterMapErrors } from '@genai/adapter-rest';
@@ -24,15 +32,20 @@ import {
   type ConversationStore,
 } from '@genai/conversations';
 import {
+  flowDatasetProblems,
   flowInputProblems,
   flowTableProblems,
   flowUsesOf,
+  missingDatasetProblems,
   platformSettings,
   SettingsRegistry,
   strategyKey,
   toCapabilities,
   validateDefinition,
+  variantId,
+  variantStrategyOf,
   type CompiledCapability,
+  type Definition,
   type DefinitionStore,
   type PluginSchemas,
   type ServiceDefinition,
@@ -46,6 +59,7 @@ import {
   InMemoryEvalRunStore,
   InMemoryFeedbackStore,
   InMemoryLabelStore,
+  InMemorySinkLabelStore,
   InMemoryTestSetStore,
   publishGate,
   retrievalRecall,
@@ -55,24 +69,46 @@ import {
   type FeedbackStore,
   type Gate,
   type LabelStore,
+  type SinkLabelStore,
   type TestSetStore,
+  type WaitOptions,
 } from '@genai/eval';
-import { type TriggerRunStore } from '@genai/jobs';
+import {
+  gateQuota,
+  InMemoryTraceDeliveries,
+  klarsprakChecklist,
+  nynorskReference,
+  type TraceDeliveryStore,
+  type TriggerRunStore,
+} from '@genai/jobs';
 import { type BlobStore } from '@genai/port-blob';
+import {
+  createExperimentRouter,
+  createTraceExporter,
+  datasetName,
+  langfuseDatasets,
+  langfuseJudges,
+  mappedContent,
+  observedEventLog,
+  traceIdFor,
+  type LangfuseJudge,
+} from '@genai/providers-langfuse';
 import {
   deleteConversationDocuments,
   runtimeDocumentStore,
   runtimeDocumentTypes,
+  runtimeFileTypes,
+  runtimeMediaTypes,
 } from './runtime-documents.js';
 import {
   EgressGuard,
+  TenantSecrets,
   type AllowedHost,
   type ConnectionRegistry,
   type EgressOptions,
 } from '@genai/providers-mcp-client';
 import type { RegisteredAgent } from '@genai/strategy-remote';
 import { checkFlow } from '@genai/strategy-step-flow';
-import { createHash } from 'node:crypto';
 import type { Admin } from './admin.js';
 import {
   capabilityModes,
@@ -81,6 +117,7 @@ import {
   grantsOf,
   InMemoryClients,
   isBoundToServices,
+  isTestRunnerKey,
   keyGrantPolicy,
   keyReaches,
   keyReachesMode,
@@ -110,28 +147,37 @@ import {
   type TenantSecretStore,
 } from './extensions.js';
 import type { DeclaredPhraseArchive, DocumentConverter } from '@genai/ingest';
-import { datasetEnrichmentModule } from './dataset-enrichment.js';
-import { publicDatasetState } from './dataset-status.js';
+import { datasetEnrichmentModule, enrichmentOutputTokens } from './dataset-enrichment.js';
+import { lastImportAt, publicDatasetState } from './dataset-status.js';
+import { datasetDeleteModule } from './dataset-delete.js';
+import { datasetSearchModule } from './dataset-search.js';
+import { datasetReaderCounts, datasetReaders } from './dataset-readers.js';
 import { datasetUploadsModule } from './dataset-uploads.js';
 import { type ApiLog } from './failure-log.js';
 import {
   indexIngestionBackend,
-  type IngestSourceOptions,
+  type IngestSourceConfig,
   type KudosAccess,
 } from './index-ingestion.js';
 import type { ExecutionStore } from './ingestion.js';
+import { logFailedIngestion } from './ingestion-failure-log.js';
 import { describeEngines } from './knowledge-engines.js';
 import {
   InMemoryEventLog,
   InMemoryTaskStore,
+  InMemoryThreadErasure,
   type Capability as KernelCapability,
   type EventLog,
   type Kernel,
+  type ProviderObjectStore,
+  type MediaOutputConfig,
   type PolicyDecisionPoint,
   type SecretResolver,
   type StateStore,
   type Strategy,
   type TaskStore,
+  type ThreadErasure,
+  type FederatedTokens,
   type TokenProviders,
 } from '@genai/kernel';
 import { type EmbeddingAdapter } from '@genai/port-embedding';
@@ -141,10 +187,13 @@ import {
   residencyAllows,
   type Capability,
   type ModelClassificationStore,
+  servesModelPort,
+  type ProcessorRecordCheck,
   type Residency,
 } from '@genai/port-model';
 import { colbert } from '@genai/providers-colbert';
-import { type PgvectorEngineOptions } from '@genai/providers-pgvector';
+import { type KnowledgePools, type PgvectorEngineOptions } from '@genai/providers-pgvector';
+import { parquetReader } from '@genai/providers-parquet';
 import { postgresRowReader } from '@genai/providers-postgres-source';
 import {
   builderStrategyId,
@@ -170,7 +219,14 @@ import {
 import { tenantAccess } from './access.js';
 import { actorNames } from './actor-names.js';
 import { platformScope } from './config-store.js';
-import { operationsOverview, type PipelineRuns } from './operations.js';
+import {
+  forTenant,
+  operationsOverview,
+  type OperationsDeps,
+  type PipelineRuns,
+} from './operations.js';
+import { openIncidentsFor, platformStatusModule } from './platform-status.js';
+import { quotaRequestsModule } from './quota-requests.js';
 import { organizationLookup } from './organizations.js';
 import { locationOf } from './residency.js';
 import { retiredModelMessage, serviceHealth, type ServiceModels } from './service-health.js';
@@ -188,11 +244,26 @@ import {
   tooManyRequests,
   type RateLimiter,
 } from './rate-limit.js';
+import { trackedWork } from './tracked-work.js';
 import { tenantGate } from './tenant-gate.js';
+import { testRunnerView } from './test-runner.js';
+import { compiledCapabilityCache } from './compiled-capabilities.js';
+import {
+  hidingInternalServices,
+  hidingInternalTasks,
+  hidingInternalTestSets,
+  isHiddenService,
+} from './internal-services.js';
 import { defaultMonthlyTokens, quotaSettingKey } from './playground.js';
-import { originOf } from './draft-runner.js';
+import { evalCapabilityId, originOf } from './draft-runner.js';
 import type { ChangeFeed } from './change-feed.js';
-import { createDraftRunner, type FieldOptionsLookup, type ModelPrice } from './draft-runner.js';
+import { evalSlots, type EvalSlotLimits } from './eval-slots.js';
+import {
+  createDraftRunner,
+  usageSummaryOf,
+  type FieldOptionsLookup,
+  type ModelPrice,
+} from './draft-runner.js';
 import { withFieldOptions, type FacetCount } from './input-options.js';
 import {
   decorateWith,
@@ -209,7 +280,12 @@ import {
   withBlockSettings,
 } from './building-blocks.js';
 import { engineSwitchesModule } from './engine-switches.js';
+import { definitionSubject } from './definition-subject.js';
+import { runJudges } from './eval-judges.js';
+import { sinkLabels } from './sink-labels.js';
 import { knowledgeEndpointsModule } from './knowledge-endpoints.js';
+import { stateRegisterModule } from './state-register.js';
+import { demosModule } from './demo-routes.js';
 import { playgroundModule } from './playground.js';
 import { proposalsModule } from './proposals.js';
 import { connectorsModule, privateNetworkRegistry } from './connectors.js';
@@ -218,12 +294,22 @@ import { qualityModule } from './quality.js';
 import { batchRunsModule } from './batch-run-routes.js';
 import { projectsModule } from './project-routes.js';
 import { resultReviewsModule } from './result-reviews.js';
+import { tenantRunCancelModule } from './tenant-run-cancel.js';
 import { userPreferencesModule } from './user-preferences.js';
 import { projectTasks } from './project-usage.js';
 import { governanceModule } from './governance.js';
 import { serviceTemplateModule } from './service-template.js';
+import {
+  connectionOf,
+  traceConnectionsModule,
+  type TraceConnection,
+  type TraceSinks,
+  type TracingOptions,
+} from './trace-connections.js';
+import { testRunEnvironment, traceDatasets, withTraceDatasets } from './trace-datasets.js';
 import { recipesModule } from './recipes.js';
 import { stepBlocksModule } from './step-blocks.js';
+import { stepOperationsModule } from './step-operations.js';
 import { strategyCatalogueModule } from './strategy-catalogue.js';
 import { definitionCompletionModule } from './definition-completion.js';
 import { skillsModule } from './skills.js';
@@ -231,10 +317,26 @@ import { createKeyPoliciesModule } from './key-policies.js';
 import { maskinportenClientsModule } from './maskinporten-clients.js';
 import { triggersModule } from './triggers.js';
 import { lifecycleOf, pausedMessage, serviceLifecycleModule } from './service-lifecycle.js';
+import {
+  allowedEnvironments,
+  chooseEnvironment,
+  serviceEnvironmentsModule,
+  type EnvironmentChoice,
+} from './service-environments.js';
 import { onboardingModule } from './onboarding.js';
 import { documentAccessRoutes } from './openapi/access.js';
+import { modelChoice } from './model-choice.js';
 import { modelMatrixModule, releaseGate } from './model-matrix.js';
 import { operatorModelsModule } from './operator-models.js';
+import { operatorOperationsModule } from './operator-operations.js';
+import {
+  describedStepProblems,
+  operationGovernanceModule,
+  stepMediaTypes,
+  unmaskedInputIn,
+  type UnmaskedInputUse,
+} from './operation-governance.js';
+import { operationDescriptorsModule } from './operation-descriptors.js';
 import { documentDatasetRoutes } from './openapi/datasets.js';
 import { declaredSecrets, PluginRegistry } from '@genai/plugins';
 import { anthropicPlugins } from '@genai/providers-anthropic/contract';
@@ -262,6 +364,7 @@ import { servicesOpenApiModule } from './openapi/services.js';
 import { workOpenApiModule } from './openapi/work.js';
 import { schemasModule } from './schemas.js';
 import {
+  mayInvokeServices,
   mayUseModels,
   readOnlyInLockdown,
   withCredentialOrigin,
@@ -275,27 +378,40 @@ export const platformModules: PlatformModuleFactory[] = [
   playgroundModule,
   engineSwitchesModule,
   knowledgeEndpointsModule,
+  stateRegisterModule,
+  demosModule,
   assistantModule,
   proposalsModule,
   connectorsModule,
   governanceModule,
   serviceTemplateModule,
   stepBlocksModule,
+  stepOperationsModule,
   recipesModule,
+  traceConnectionsModule,
   strategyCatalogueModule,
   definitionCompletionModule,
   datasetUploadsModule,
+  datasetDeleteModule,
+  datasetSearchModule,
   datasetEnrichmentModule,
   qualityModule,
   batchRunsModule,
   projectsModule,
   resultReviewsModule,
+  tenantRunCancelModule,
+  quotaRequestsModule,
+  platformStatusModule,
   userPreferencesModule,
   onboardingModule,
   maskinportenClientsModule,
   triggersModule,
   serviceLifecycleModule,
+  serviceEnvironmentsModule,
   operatorModelsModule,
+  operatorOperationsModule,
+  operationGovernanceModule,
+  operationDescriptorsModule,
   modelMatrixModule,
   hooksModule,
   pluginsModule,
@@ -358,6 +474,7 @@ export interface PlatformInput {
   catalogs: Catalogs;
   secrets: SecretResolver;
   tokenProviders?: TokenProviders;
+  federatedTokens?: FederatedTokens;
   definitions: (
     plugins: PluginSchemas,
     sharedSkill?: SkillFinder,
@@ -369,21 +486,33 @@ export interface PlatformInput {
   tasks?: TaskStore;
   state?: StateStore;
   conversations?: ConversationStore;
+  threadErasure?: ThreadErasure;
   modelClassifications?: ModelClassificationStore;
+  providerObjects?: ProviderObjectStore;
   onWarning?: (message: string) => void;
   observe?: (log: EventLog) => EventLog;
   blobStore?: BlobStore;
+  mediaOutput?: MediaOutputConfig;
   egress?: EgressOptions;
   catalogSkips?: string[];
   evaluators?: Map<string, Evaluator>;
   gates?: Map<string, Gate>;
   platformTenant?: string;
+  /** The platform's version (APP_VERSION), recorded as the commit of eval runs it starts. */
+  appVersion?: string;
+  demoRecorderKeyDigest?: string;
+  /** Tenants' Langfuse connections: Digdir's instance and whether it may receive content. */
+  tracing?: TracingOptions;
+  /** Every trace sent to a tenant's sink, until its delete is confirmed. */
+  traceDeliveries?: TraceDeliveryStore;
+  /** How an eval run waits for a sink's judges' scores; tests poll fast. */
+  evalWait?: WaitOptions;
   tenantDirectory?: TenantDirectoryStore;
   taskIndex?: TaskIndex;
   ingestionExecutions?: ExecutionStore;
   apiKeys?: TenantApiKeys;
   keyPolicies?: KeyPolicyStore;
-  prices?: Record<string, ModelPrice>;
+  prices?: Record<string, PriceSpec>;
   traces?: () => TraceStatus | undefined;
   databasePing?: () => Promise<unknown>;
   organizationRegistry?: { url: string; fetch?: typeof fetch };
@@ -392,6 +521,7 @@ export interface PlatformInput {
   reservedClientIds?: string[];
   webhookDeliveries?: WebhookDeliveryStore;
   triggerRuns?: TriggerRunStore;
+  gatewayUsage?: UsageReads;
   webhookSend?: WebhookSender;
   webhookEgress?: EgressOptions;
   endpoints?: PlatformEndpoints;
@@ -405,23 +535,34 @@ export interface PlatformInput {
     candidates: CandidateStore;
   };
   labels?: LabelStore;
+  /** Labels brought back from tenants' trace sinks, pending until an operator accepts them. */
+  sinkLabels?: SinkLabelStore;
   configurables?: ConfigurablesInput;
   knowledgePool?: PgvectorEngineOptions['pool'];
+  knowledgeServer?: KnowledgePools;
   embeddingAdapters?: EmbeddingAdapter[];
   searchOnlyClusters?: (string | undefined)[];
   ingestFolderRoot?: string;
+  ingestWorkingDirectory?: string;
+  ingestParquetMaxBytes?: number;
   changes?: ChangeFeed;
   modules?: PlatformModuleFactory[];
   hookSender?: HookSender;
   verifyPluginsOnBoot?: boolean;
   rateLimits?: { limiter?: RateLimiter };
   serviceLimits?: { deadlineMs?: number; budget?: Usage };
+  /** The clock a thread's last run is held against its deadline with; tests fix it. */
+  now?: () => number;
+  evalSlots?: Partial<EvalSlotLimits>;
   logger?: ApiLog;
   logFailureMessages?: boolean;
   documentConverter?: DocumentConverter;
   kudos?: KudosAccess;
   phraseArchive?: DeclaredPhraseArchive;
   lockdown?: Lockdown;
+  environmentTier?: EnvironmentTier;
+  processorRecords?: ProcessorRecordCheck;
+  descriptors?: DescriptorRegistry;
 }
 
 interface ServiceRequirementShape {
@@ -479,18 +620,7 @@ export const defaultGates = new Map<string, Gate>([
   ],
 ]);
 
-const stable = (value: unknown): string =>
-  Array.isArray(value)
-    ? `[${value.map(stable).join(',')}]`
-    : value && typeof value === 'object'
-      ? `{${Object.keys(value)
-          .sort()
-          .map((k) => `${JSON.stringify(k)}:${stable((value as Record<string, unknown>)[k])}`)
-          .join(',')}}`
-      : JSON.stringify(value);
-
-export const definitionSubject = (spec: unknown) =>
-  `spec:${createHash('sha256').update(stable(spec)).digest('hex').slice(0, 16)}`;
+export { definitionSubject } from './definition-subject.js';
 
 const retrievalInput = {
   type: 'object',
@@ -534,11 +664,18 @@ const entryOf = (compiled: CompiledCapability, name: string): ModelEntry => {
     variantTitle: variantDisplayName(compiled),
     ...(name === compiled.publicName ? {} : { aliasOf: compiled.publicName }),
     ...(compiled.chat === false ? { chat: false } : {}),
+    ...(strategy.id === 'live-session' ? { live: true } : {}),
   };
 };
 
 export interface ResolverHooks {
   pin?(compiled: CompiledCapability, version: number): Promise<CompiledCapability | undefined>;
+  environment?(
+    principal: Principal,
+    compiled: CompiledCapability,
+    requested: string | undefined,
+    version: number | undefined,
+  ): Promise<EnvironmentChoice>;
   fieldOptions?: FieldOptionsLookup;
   paused?(compiled: CompiledCapability): boolean | Promise<boolean>;
   pauseReason?(compiled: CompiledCapability): string | undefined | Promise<string | undefined>;
@@ -549,6 +686,8 @@ export interface ResolverHooks {
   chat?(compiled: CompiledCapability): Promise<boolean>;
   batch?(compiled: CompiledCapability): Promise<boolean>;
   documents?(compiled: CompiledCapability): Promise<string[]>;
+  media?(compiled: CompiledCapability): Promise<string[]>;
+  files?(compiled: CompiledCapability): Promise<string[]>;
 }
 
 const humanized = (id: string) => {
@@ -590,6 +729,10 @@ export const capabilityResolver = (
   ): Promise<ModelEntry> => {
     const documents = (await hooks.documents?.(compiled)) ?? [];
     if (documents.length) entry = { ...entry, documents };
+    const media = (await hooks.media?.(compiled)) ?? [];
+    if (media.length) entry = { ...entry, media };
+    const files = (await hooks.files?.(compiled)) ?? [];
+    if (files.length) entry = { ...entry, files };
     const searches = hooks.searches?.(principal, compiled) ?? [];
     if (searches.length) entry = { ...entry, searches };
     const fields = entry.inputFields;
@@ -716,7 +859,14 @@ export const capabilityResolver = (
           !keyReachesMode(principal, capabilityModes(compiled.capability.descriptor.id, [name]))
           ? { ok: false, code: 'mode_not_authorized', message: `API key cannot use mode: ${name}` }
           : { ok: false, code: 'agent_not_authorized', message: `not authorized for ${name}` };
-      const wanted = options.version;
+      const environment = await hooks.environment?.(
+        principal,
+        compiled,
+        options.environment,
+        options.version,
+      );
+      if (environment && !environment.ok) return environment;
+      const wanted = options.version ?? (environment?.ok ? environment.version : undefined);
       const chosen =
         wanted === undefined || wanted === compiled.service.version
           ? compiled
@@ -725,7 +875,7 @@ export const capabilityResolver = (
         return {
           ok: false,
           code: 'version_not_found',
-          message: `Tjenesten ${compiled.service.id} har ingen publisert versjon ${wanted}.`,
+          message: t('services.environmentNoVersion', { version: wanted ?? '' }),
         };
       if (await hooks.paused?.(chosen))
         return {
@@ -738,6 +888,7 @@ export const capabilityResolver = (
         entry: await withOptions(principal, chosen, {
           ...entryOf(chosen, name),
           version: chosen.service.version,
+          ...(environment?.ok && environment.name ? { environment: environment.name } : {}),
           ...(hooks.datasets ? { datasets: hooks.datasets(chosen) } : {}),
         }),
       };
@@ -745,33 +896,54 @@ export const capabilityResolver = (
   };
 };
 
-type OptionCache = Map<string, { at: number; options: FacetCount[] }>;
+export const resolvesTo = async (
+  resolver: CapabilityResolver,
+  principal: Principal,
+  capability: string,
+) => {
+  const at = capability.lastIndexOf('@');
+  const version = at > 0 ? Number(capability.slice(at + 1)) : NaN;
+  const pinned = Number.isInteger(version) && version > 0;
+  const name = pinned ? capability.slice(0, at) : capability;
+  const resolved = await resolver.resolve(principal, name, pinned ? { version } : {});
+  if (!resolved.ok) return false;
+  const served = resolved.entry.capability;
+  return served === name || served === `${name}@${resolved.entry.version}`;
+};
 
-const facetOptions = async (
+export type OptionCache = Map<string, { at: number; options: Promise<FacetCount[]> }>;
+
+export const facetOptions = (
   knowledge: KnowledgeRouter,
   cache: OptionCache,
   principal: Principal,
   tenant: string,
   from: { dataset: string; facet: string },
-) => {
+): Promise<FacetCount[]> => {
   const key = `${tenant}|${from.dataset}|${from.facet}`;
   const cached = cache.get(key);
   if (cached && Date.now() - cached.at < 5 * 60_000) return cached.options;
-  const port = knowledge.open(
-    { kind: 'dataset', id: from.dataset, tenant },
-    {
-      tenant,
-      principal,
-      task: `input-options-${crypto.randomUUID()}`,
-      signal: AbortSignal.timeout(5_000),
-      meter: async () => undefined,
-    },
-  );
-  const options = ((await port.facets([from.facet]))[from.facet] ?? []).map((v) => ({
-    value: String(v.value),
-    count: v.count,
-  }));
-  cache.set(key, { at: Date.now(), options });
+  const options = (async () => {
+    const port = knowledge.open(
+      { kind: 'dataset', id: from.dataset, tenant },
+      {
+        tenant,
+        principal,
+        task: `input-options-${crypto.randomUUID()}`,
+        signal: AbortSignal.timeout(5_000),
+        meter: async () => undefined,
+      },
+    );
+    return ((await port.facets([from.facet]))[from.facet] ?? []).map((v) => ({
+      value: String(v.value),
+      count: v.count,
+    }));
+  })();
+  const entry = { at: Date.now(), options };
+  cache.set(key, entry);
+  options.catch(() => {
+    if (cache.get(key) === entry) cache.delete(key);
+  });
   return options;
 };
 
@@ -871,10 +1043,127 @@ export const askFilterIssues = (
   );
 };
 
+/** A Langfuse judge is advisory (ADR 0040): no gate may read its metric. */
+const advisoryGate = (gate: string, metric: string | undefined) => {
+  const judge = /^langfuse:([^/]+)\/(.+)$/.exec(metric ?? '');
+  return judge
+    ? `the gate ${gate} reads the Langfuse judge ${judge[2]} on the connection ${judge[1]}, which is advisory and never blocks a publish`
+    : undefined;
+};
+
 export const createPlatform = async (input: PlatformInput) => {
   const platformTenant = input.platformTenant ?? defaultPlatformTenant;
   const configEntries = input.configurables?.store ?? new InMemoryConfigEntryStore();
   const vault = new TenantSecretVault(input.tenantSecrets);
+  const tenantSecrets = new TenantSecrets(vault.resolver(input.secrets));
+  const experiments = createExperimentRouter();
+  const sinkEgress = tracingEgress(input.egress ?? {}, input.tracing?.devMode);
+  const traceDeliveries = input.traceDeliveries ?? new InMemoryTraceDeliveries();
+  const langfuseOf = async (tenant: string, connection: TraceConnection) =>
+    langfuseJudges({
+      host: connection.host,
+      publicKey: connection.publicKey,
+      secretKey: await tenantSecrets.resolveFor(tenant, connection.secretKey, [connection.host]),
+      fetch: pinnedFetch(sinkEgress, allowOf(connection.host)),
+    });
+  const sinkJudgeOf = (j: LangfuseJudge, connection: TraceConnection) => ({
+    id: j.id,
+    name: j.rule.name,
+    source: `Langfuse (${connection.id})`,
+    ...(j.evaluator.model
+      ? { model: `${j.evaluator.model.provider}/${j.evaluator.model.model}` }
+      : {}),
+    version: String(j.evaluator.version),
+    dataType: j.evaluator.dataType,
+    fields: j.rule.mapping,
+    // A judge on a connection without answer text would be paid for and judge nothing.
+    ...(j.refused
+      ? { refused: j.refused }
+      : connection.content
+        ? {}
+        : {
+            refused: {
+              reason: 'no-content' as const,
+              connection: connection.id,
+              message: `${j.rule.name} has nothing to judge: the connection ${connection.id} gets no answer text`,
+            },
+          }),
+    snapshot: j,
+  });
+  const traceSinks: TraceSinks = {
+    traceIdOf: (task) => traceIdFor(task),
+    judges: async (tenant, connection) =>
+      (await (await langfuseOf(tenant, connection)).list(connection.id)).map((j) =>
+        sinkJudgeOf(j, connection),
+      ),
+    forRun: async (tenant, connection, run) => {
+      const found = await (
+        await langfuseOf(tenant, connection)
+      ).forRun(connection.id, {
+        tenant,
+        environment: testRunEnvironment,
+        experimentName: `${run.testSet} v${run.version}`,
+        ...(run.dataset ? { dataset: run.dataset } : {}),
+      });
+      return {
+        judges: found.judges.map((j) => sinkJudgeOf(j, connection)),
+        elsewhere: found.elsewhere.map((j) => sinkJudgeOf(j, connection)),
+        refusing: found.refusing,
+      };
+    },
+    sourceOf: (connection) => `Langfuse (${connection.id})`,
+    sharedScores: async (tenant, connection) => (await langfuseOf(tenant, connection)).shared(),
+    judgeOf: (connection, block) => block.startsWith(`langfuse:${connection}/`),
+    isSinkJudge: (judge) => judge.startsWith('langfuse:'),
+    annotations: async (tenant, connection) => (await langfuseOf(tenant, connection)).annotations(),
+    // langfuse:<connection>/<rule> calibrates langfuse:<tenant>/<connection>/<rule> (ADR 0040).
+    calibrationKey: (tenant, evaluator) => evaluator.replace(/^langfuse:/, `langfuse:${tenant}/`),
+    experimentUrl: async (tenant, connection, run) =>
+      (await langfuseOf(tenant, connection)).experimentUrl(run),
+    fieldsOf: (judges) => mappedContent(judges.map((j) => j.snapshot as LangfuseJudge)),
+    dataset: async (tenant, connection, service, testSet) =>
+      langfuseDatasets({
+        host: connection.host,
+        publicKey: connection.publicKey,
+        secretKey: await tenantSecrets.resolveFor(tenant, connection.secretKey, [connection.host]),
+        fetch: pinnedFetch(sinkEgress, allowOf(connection.host)),
+      }).ensure(datasetName(service, testSet)),
+    open: (run, tenant, connection, beforeSend, fields = [], dataset) =>
+      experiments.open(
+        run,
+        createTraceExporter(
+          {
+            endpoint: new URL('/api/public/otel', connection.host).toString(),
+            auth: {
+              kind: 'langfuse',
+              publicKey: connection.publicKey,
+              secretKey: 'secret://sink/key',
+            },
+            // Only what the run's judges map, and only to a connection that receives content.
+            content: connection.content && fields.length > 0,
+            fields: fields.filter(
+              (f) => f === 'input' || f === 'output' || f === 'expected_output',
+            ),
+            // Every agency's test runs land apart from its live traffic (ADR 0040).
+            environment: testRunEnvironment,
+          },
+          {
+            secrets: {
+              resolve: () =>
+                tenantSecrets.resolveFor(tenant, connection.secretKey, [connection.host]),
+            },
+            tasks: async (id) => (await taskStore.get(id))?.task,
+            fetch: pinnedFetch(sinkEgress, allowOf(connection.host)),
+            serviceName: 'genai-eval',
+            ...(beforeSend ? { beforeSend } : {}),
+            experiments: true,
+            ...(dataset ? { dataset } : {}),
+          },
+        ),
+        tenant,
+      ),
+    close: (run) => experiments.close(run),
+  };
   const settings = input.settings ?? new SettingsRegistry(platformSettings);
   const overridePolicy = {
     check: async (
@@ -903,7 +1192,13 @@ export const createPlatform = async (input: PlatformInput) => {
     send: input.webhookSend ?? egressSender(input.webhookEgress ?? input.egress ?? {}),
     ...(input.webhookDeliveries ? { deliveries: input.webhookDeliveries } : {}),
   });
-  const tracker = trackTasks(webhooks.observe(input.log ?? new InMemoryEventLog(), taskStore));
+  const eventLog = input.log ?? new InMemoryEventLog();
+  const threadErasure =
+    input.threadErasure ??
+    (eventLog instanceof InMemoryEventLog && taskStore instanceof InMemoryTaskStore
+      ? new InMemoryThreadErasure(eventLog, taskStore)
+      : undefined);
+  const tracker = trackTasks(webhooks.observe(eventLog, taskStore));
   const taskIndex = input.taskIndex ?? tracker;
   const baseEvalStores = input.evalStores ?? {
     testSets: new InMemoryTestSetStore(),
@@ -913,22 +1208,37 @@ export const createPlatform = async (input: PlatformInput) => {
   };
   const evalStores = {
     ...baseEvalStores,
+    testSets: hidingInternalTestSets(
+      withTraceDatasets(
+        baseEvalStores.testSets,
+        traceDatasets({
+          configEntries,
+          traceSinks,
+          testSets: baseEvalStores.testSets,
+          ...(input.logger ? { log: input.logger } : {}),
+        }),
+      ),
+      (tenant, id) => isHiddenService(definitions, tenant, id),
+    ),
     feedback: feedbackToModules(
       webhooks.feedback(baseEvalStores.feedback, taskStore),
       taskStore,
       () => modules,
     ),
   };
-  const prices: Record<string, ModelPrice> = { ...(input.prices ?? {}) };
+  // The runtime keeps this record as the per-1,000-token view of the catalogue's prices.
+  const prices = { ...(input.prices ?? {}) } as Record<string, ModelPrice>;
   const evaluators =
     input.evaluators ??
     new Map<string, Evaluator>([
       ['contract', contractAssertions()],
       ['retrieval', retrievalRecall(10)],
+      ['klarsprak-checklist', klarsprakChecklist()],
+      ['nynorsk-reference', nynorskReference()],
     ]);
   const evalCapability: KernelCapability = {
     descriptor: {
-      id: 'platform/eval',
+      id: evalCapabilityId,
       version: '1',
       tenant: platformTenant,
       availableTo: '*',
@@ -945,6 +1255,18 @@ export const createPlatform = async (input: PlatformInput) => {
     config: {},
     grants: [],
   };
+  const enrichmentWork = trackedWork({
+    id: 'platform/dataset-enrichment',
+    title: 'Berikelse av datasett',
+    platformTenant,
+    outputTokens: enrichmentOutputTokens,
+  });
+  const datasetSearchWork = trackedWork({
+    id: 'platform/dataset-search',
+    title: 'Søk i datasett',
+    platformTenant,
+    outputTokens: 1,
+  });
   let modules: PlatformModule[] = [];
   const decorate = decorateWith(() => modules);
   const sharedTools = new Map<string, string>();
@@ -952,7 +1274,60 @@ export const createPlatform = async (input: PlatformInput) => {
   const pluginHosts = new Map<string, AllowedHost[]>();
   const pluginEgress = new EgressGuard(input.egress ?? {});
 
+  const usageCache = new Map<string, { at: number; month: string; tokens: number }>();
+  const monthlyTokensUsed = async (tenant: string, fresh = false, at = new Date()) => {
+    const month = new Date(Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), 1)).toISOString();
+    const cached = usageCache.get(tenant);
+    if (!fresh && cached && cached.month === month && at.getTime() - cached.at < 15_000)
+      return cached.tokens;
+    let tokens = 0;
+    if (taskIndex.tokensUsed) tokens = await taskIndex.tokensUsed(tenant, month);
+    else
+      for (const tracked of await taskIndex.all(tenant)) {
+        const task = (await taskStore.get(tracked.task))?.task;
+        if (!task || task.tenant !== tenant || task.createdAt < month) continue;
+        if (originOf(task.service.capability.id) === 'assistant') continue;
+        tokens += (task.usage.inputTokens ?? 0) + (task.usage.outputTokens ?? 0);
+      }
+    usageCache.set(tenant, { at: at.getTime(), month, tokens });
+    return tokens;
+  };
+  const numberSetting = (tenant: string, key: string, fallback: number) => {
+    const value = settings.effective(tenant)[key]?.value;
+    return typeof value === 'number' && value > 0 ? value : fallback;
+  };
+  const quota = async (tenant: string, options: { fresh?: boolean } = {}) => {
+    const monthlyTokens = numberSetting(tenant, quotaSettingKey, defaultMonthlyTokens);
+    const usedTokens = await monthlyTokensUsed(tenant, options.fresh);
+    return {
+      usedTokens,
+      monthlyTokens,
+      usedPercent: Math.round((usedTokens / monthlyTokens) * 1000) / 10,
+      exhausted: usedTokens >= monthlyTokens,
+    };
+  };
+
+  const ended = new Set(['completed', 'failed', 'cancelled']);
+  const usageLog: EventLog = {
+    append: async (event, scope) => {
+      const stored = await tracker.log.append(event, scope);
+      if (
+        event.type === 'kernel.task.status' &&
+        ended.has(String((event.data as { status?: unknown }).status))
+      )
+        usageCache.delete(scope.tenant);
+      return stored;
+    },
+    read: (task, fromSeq, isLive) => tracker.log.read(task, fromSeq, isLive),
+    wake: (task) => tracker.log.wake(task),
+  };
+
   const runtime = await createRuntime({
+    lastImport: async (dataset) => {
+      const item = runtime.catalog.get('dataset', dataset);
+      return item ? lastImportAt(config.ingestion, item) : undefined;
+    },
+    modelQuota: gateQuota(async (tenant) => (await quota(tenant)).exhausted),
     platformTenant,
     catalogs: input.catalogs,
     secrets: input.secrets,
@@ -962,8 +1337,12 @@ export const createPlatform = async (input: PlatformInput) => {
     definitions: input.definitions,
     policy: ({ namesOf, catalog }) =>
       releaseGate(keyGrantPolicy(confinedPolicy(input.policy), namesOf), catalog),
-    ...(input.lockdown ? { admitsModelUse: mayUseModels } : {}),
-    log: tracker.log,
+    ...(input.lockdown ? { admitsModelUse: mayInvokeServices } : {}),
+    ...(input.environmentTier ? { environmentTier: input.environmentTier } : {}),
+    ...(input.processorRecords ? { processorRecords: input.processorRecords } : {}),
+    published: (capability) => originOf(capability) === 'service',
+    ...(input.descriptors ? { descriptors: input.descriptors } : {}),
+    log: usageLog,
     tasks: taskStore,
     prices,
     decorate: (capability, context) => decorate(capability, context),
@@ -972,24 +1351,62 @@ export const createPlatform = async (input: PlatformInput) => {
       evalRunStrategy({
         kernel,
         evaluators,
+        forRun: async (principal, run) => {
+          const own = runJudges(() => modelChoice(moduleDeps))(principal, run);
+          const tenant = principal.tenant;
+          if (!tenant || !run.sink || !run.sinkJudges?.length) return own;
+          const connection = await connectionOf(configEntries, tenant, run.sink);
+          if (!connection) return own;
+          const judges = await langfuseOf(tenant, connection);
+          // A run starts only when every judge that reaches it is in use, so those are the ones
+          // that judge, and bill, each case it sends.
+          judges.expectJudges((run.sinkJudges as LangfuseJudge[]).map((j) => j.rule.id));
+          for (const snapshot of run.sinkJudges as LangfuseJudge[])
+            own.set(
+              snapshot.id,
+              judges.evaluator(snapshot, { tenant, content: connection.content }),
+            );
+          return own;
+        },
+        ...(input.evalWait ? { wait: input.evalWait } : {}),
+        modelFamily: (model) => modelChoice(moduleDeps).familyOf(model),
+        meterAnswers: (events) => usageSummaryOf(events, prices),
         admit: async (tenant) => !(await quota(tenant, { fresh: true })).exhausted,
+        slots: (tenant, run, onQueue) => {
+          const session = caseSlots.session(run, tenant, onQueue);
+          return { perRun: caseSlots.limits.perRun, acquire: session.acquire, end: session.end };
+        },
       }) as Strategy,
       createBuilderAssistant({ plugins, knowledge }) as Strategy,
       createOptimiser() as Strategy,
+      enrichmentWork.strategy,
+      datasetSearchWork.strategy,
     ],
     extraStrategyConfigs: [builderStrategyId, optimiserStrategyId].map((id) => [
       strategyKey(id, 1),
       platformServiceConfig,
     ]),
-    platformCapabilities: [evalCapability],
+    platformCapabilities: [evalCapability, enrichmentWork.capability, datasetSearchWork.capability],
     ...(input.state ? { state: input.state } : {}),
-    ...(input.observe ? { observe: input.observe } : {}),
+    observe: (log: EventLog) =>
+      observedEventLog(input.observe ? input.observe(log) : log, experiments),
     ...(input.tokenProviders ? { tokenProviders: input.tokenProviders } : {}),
+    ...(input.federatedTokens ? { federatedTokens: input.federatedTokens } : {}),
     ...(input.egress ? { egress: input.egress } : {}),
     ...(input.blobStore ? { blobStore: input.blobStore } : {}),
+    ...(input.mediaOutput ? { mediaOutput: input.mediaOutput } : {}),
     ...(input.connections ? { connections: input.connections } : {}),
     ...(input.modelClassifications ? { modelClassifications: input.modelClassifications } : {}),
+    ...(input.providerObjects ? { providerObjects: input.providerObjects } : {}),
+    foreignFetch: (hosts) =>
+      pluginEgress.fetch(
+        hosts.map((h) => {
+          const [host = '', port] = h.split(':');
+          return { host, port: port ? Number(port) : 443 };
+        }),
+      ),
     ...(input.knowledgePool ? { knowledgePool: input.knowledgePool } : {}),
+    ...(input.knowledgeServer ? { knowledgeServer: input.knowledgeServer } : {}),
     ...(input.embeddingAdapters ? { embeddingAdapters: input.embeddingAdapters } : {}),
     ...(input.searchOnlyClusters ? { searchOnlyClusters: input.searchOnlyClusters } : {}),
     ...(input.configurables?.catalogPolicy
@@ -1042,8 +1459,19 @@ export const createPlatform = async (input: PlatformInput) => {
     sync,
     blobStore,
   } = runtime;
+  const jobRuns = input.configurables?.jobRuns;
   const configurables = createConfigurables({
     ...input.configurables,
+    // Runs of datasets on the knowledge database run as jobs (issue 139); others stay in the API.
+    ...(jobRuns
+      ? {
+          jobRuns: {
+            ...jobRuns,
+            runsAsJobs: (dataset: string) =>
+              runtime.catalog.datasetOnKnowledgeServer(dataset) || jobRuns.runsAsJobs(dataset),
+          },
+        }
+      : {}),
     ...(input.lockdown ? { admitsIngestion: mayUseModels } : {}),
     ...(input.onWarning ? { onWarning: input.onWarning } : {}),
     store: configEntries,
@@ -1051,9 +1479,10 @@ export const createPlatform = async (input: PlatformInput) => {
     ...(input.ingestionExecutions ? { executions: input.ingestionExecutions } : {}),
     builtinGates: new Map([...defaultGates, ...(input.gates ?? [])]),
     platformTenant,
+    gateProblem: advisoryGate,
   });
   const databaseGuard = new EgressGuard(input.egress ?? {});
-  const ingestSources: IngestSourceOptions = {
+  const ingestSources: IngestSourceConfig = {
     uploads: blobStore,
     phrases: {
       ...(blobStore ? { blobs: blobStore } : {}),
@@ -1062,6 +1491,11 @@ export const createPlatform = async (input: PlatformInput) => {
     ...(input.ingestFolderRoot ? { folderRoot: input.ingestFolderRoot } : {}),
     ...(input.documentConverter ? { converter: input.documentConverter } : {}),
     ...(input.kudos ? { kudos: input.kudos } : {}),
+    parquet: {
+      reader: parquetReader(),
+      ...(input.ingestWorkingDirectory ? { workingDirectory: input.ingestWorkingDirectory } : {}),
+      ...(input.ingestParquetMaxBytes ? { maxBytes: input.ingestParquetMaxBytes } : {}),
+    },
     database: {
       reader: postgresRowReader({
         resolveHost: (host, allowed) => databaseGuard.address(host, allowed),
@@ -1085,13 +1519,35 @@ export const createPlatform = async (input: PlatformInput) => {
         open: (...args) => embedders.open(...args),
       },
       models,
+      catalog: runtime.catalog,
       platformTenant,
       ...ingestSources,
     }),
     adapters: { knowledge: knowledgeAdapters },
     embeddingResidency,
     testSets: evalStores.testSets,
+    testSetTaken: async (tenant, id) =>
+      (await baseEvalStores.testSets.get(tenant, id)) !== undefined,
+    usedBy: (dataset) =>
+      datasetReaders(
+        {
+          definitions,
+          configEntries: configurables.store,
+          resolve: (id) => knowledge.resolve(id),
+        },
+        dataset,
+      ),
+    usedByCounts: (tenant) =>
+      datasetReaderCounts(
+        {
+          definitions,
+          configEntries: configurables.store,
+          resolve: (id) => knowledge.resolve(id),
+        },
+        tenant,
+      ),
   });
+  if (input.logger) logFailedIngestion(config.ingestion, input.logger);
   const locationDeps = {
     catalog: config.catalog,
     engines: () => describeEngines(knowledgeAdapters, writerAdapters),
@@ -1108,32 +1564,75 @@ export const createPlatform = async (input: PlatformInput) => {
       : undefined;
   };
 
-  const checkBeforePublish = async (definition: unknown) => {
+  const flowIn = async (tenant: string, flowRef: string) => {
+    const at = flowRef.lastIndexOf('@');
+    const id = flowRef.slice(0, at);
+    const version = Number(flowRef.slice(at + 1));
+    const flow =
+      (await store.get('StepFlow', tenant, id, version))?.definition ??
+      (await runtime.sharedRecipe(tenant, id, version));
+    return flow?.kind === 'StepFlow' ? flow : undefined;
+  };
+  const unmaskedInput = async (d: Definition): Promise<UnmaskedInputUse[]> => {
+    if (d.kind !== 'Service') return [];
+    const flowOf = (flowRef: string) => flowIn(d.metadata.tenant, flowRef);
+    const uses: UnmaskedInputUse[] = [];
+    for (const flowRef of new Set(flowUsesOf(d.spec).map((u) => u.flow))) {
+      const flow = await flowOf(flowRef);
+      if (flow)
+        uses.push(
+          ...(await unmaskedInputIn(d, flow, flowRef, {
+            descriptors: runtime.descriptors,
+            flow: flowOf,
+          })),
+        );
+    }
+    return uses;
+  };
+
+  const checkBeforePublish = async (definition: unknown, publisher: string) => {
     const validated = validateDefinition(definition, plugins);
     if (!validated.ok) return undefined;
     const d = validated.definition;
     for (const module of modules) {
-      const problems = (await module.checkPublish?.(d)) ?? [];
+      const problems = (await module.checkPublish?.(d, publisher)) ?? [];
       if (problems.length > 0) return problems;
     }
     if (d.kind === 'StepFlow') {
       const problems = checkFlow(d, blocks);
       return problems.length > 0 ? problems : undefined;
     }
-    if (d.kind === 'Service')
+    if (d.kind === 'Service') {
+      const unsearchable = missingDatasetProblems(
+        d,
+        (s) => plugins.datasetNeeds?.has(strategyKey(s.id, s.version)) ?? false,
+      );
+      if (unsearchable.length > 0) return unsearchable;
+      const flowOf = (flowRef: string) => flowIn(d.metadata.tenant, flowRef);
       for (const flowRef of new Set(flowUsesOf(d.spec).map((u) => u.flow))) {
-        const at = flowRef.lastIndexOf('@');
-        const id = flowRef.slice(0, at);
-        const version = Number(flowRef.slice(at + 1));
-        const flow =
-          (await store.get('StepFlow', d.metadata.tenant, id, version))?.definition ??
-          (await runtime.sharedRecipe(d.metadata.tenant, id, version));
-        const problems =
-          flow?.kind === 'StepFlow'
-            ? [...flowInputProblems(d, flow, flowRef), ...flowTableProblems(d, flow, flowRef)]
-            : [];
+        const flow = await flowOf(flowRef);
+        const problems = flow
+          ? [
+              ...flowInputProblems(d, flow, flowRef),
+              ...flowTableProblems(d, flow, flowRef),
+              ...(await flowDatasetProblems(
+                d,
+                flow,
+                flowRef,
+                (block) => blocks.get(block)?.needsDataset === true,
+                flowOf,
+              )),
+              ...(await describedStepProblems(d, flow, flowRef, {
+                descriptors: runtime.descriptors,
+                governance: runtime.governance,
+                models: () => models.describe(),
+                flow: flowOf,
+              })),
+            ]
+          : [];
         if (problems.length > 0) return problems;
       }
+    }
     const configProblems = await config.publishProblems(d);
     if (configProblems.length > 0) return configProblems;
     const evaluation = (d.spec as { evaluation?: { testSets?: string[]; gates?: string[] } })
@@ -1147,6 +1646,11 @@ export const createPlatform = async (input: PlatformInput) => {
     const unknown = listed.filter((g) => !gates.has(g));
     if (unknown.length > 0)
       return unknown.map((g) => ({ path: 'spec.evaluation.gates', message: `unknown gate ${g}` }));
+    const advisory = listed.flatMap((g) => {
+      const message = advisoryGate(g, gates.get(g)?.metric);
+      return message ? [{ path: 'spec.evaluation.gates', message }] : [];
+    });
+    if (advisory.length > 0) return advisory;
     const current = await store.get('Service', d.metadata.tenant, d.metadata.id);
     if (!current) return undefined;
     const candidate = definitionSubject(d.spec);
@@ -1160,6 +1664,7 @@ export const createPlatform = async (input: PlatformInput) => {
       evaluation: { testSets: evaluation?.testSets ?? [], gates: listed },
       runs: evalStores.runs,
       registry: gates,
+      advisoryJudge: (judge) => judge.startsWith('langfuse:'),
     });
     if (decision.allow) return undefined;
     return [
@@ -1170,20 +1675,31 @@ export const createPlatform = async (input: PlatformInput) => {
     ];
   };
 
-  const definitions: DefinitionStore = {
-    get: (...args) => store.get(...args),
-    versions: (...args) => store.versions(...args),
-    list: (...args) => store.list(...args),
-    resolve: (...args) => store.resolve(...args),
-    capabilities: () => store.capabilities(),
-    publish: async (...args) => {
-      const problems = await checkBeforePublish(args[0]);
-      if (problems) return { ok: false, errors: problems };
-      const result = await store.publish(...args);
-      if (result.ok) await sync();
-      return result;
-    },
+  const compiled = compiledCapabilityCache(() => store.capabilities());
+  const resync = async () => {
+    compiled.invalidate();
+    await sync();
   };
+  const definitions: DefinitionStore = hidingInternalServices(
+    {
+      get: (...args) => store.get(...args),
+      versions: (...args) => store.versions(...args),
+      list: (...args) => store.list(...args),
+      resolve: (...args) => store.resolve(...args),
+      capabilities: () => compiled.get(),
+      publish: async (...args) => {
+        const problems = await checkBeforePublish(args[0], args[1]);
+        if (problems) return { ok: false, errors: problems };
+        const result = await store.publish(...args);
+        if (result.ok) await resync();
+        return result;
+      },
+    },
+    {
+      draftDefinition: async (tenant, id) =>
+        (await serviceDrafts(configurables.store, store).draftOf(tenant, id))?.spec.definition,
+    },
+  );
 
   const pin = async (compiled: CompiledCapability, version: number) => {
     const found = await store.get('Service', compiled.service.tenant, compiled.service.id, version);
@@ -1194,14 +1710,19 @@ export const createPlatform = async (input: PlatformInput) => {
     );
     if (!variant) return undefined;
     const id = `${variant.capability.descriptor.id}@${version}`;
+    const shared = compiled.capability.descriptor.availableTo;
+    const descriptor = { ...variant.capability.descriptor, id };
+    if (shared === undefined) delete descriptor.availableTo;
+    else descriptor.availableTo = shared;
     const pinned: CompiledCapability = {
       ...variant,
-      capability: {
-        ...variant.capability,
-        descriptor: { ...variant.capability.descriptor, id },
-      },
+      capability: { ...variant.capability, descriptor },
     };
-    if (!registry.all().some((c) => c.descriptor.id === id)) {
+    const registered = registry.all().find((c) => c.descriptor.id === id);
+    if (
+      !registered ||
+      JSON.stringify(registered.descriptor.availableTo) !== JSON.stringify(shared)
+    ) {
       const decorated = limited(
         await decorate(pinned.capability, {
           compiled: pinned,
@@ -1241,6 +1762,14 @@ export const createPlatform = async (input: PlatformInput) => {
   };
   const resolver = capabilityResolver(definitions, kernel, {
     pin,
+    environment: async (principal, compiled, requested, version) =>
+      chooseEnvironment(
+        configEntries,
+        compiled.service,
+        requested,
+        await allowedEnvironments(principal, clients),
+        version === undefined ? undefined : { version, latest: compiled.service.version },
+      ),
     fieldOptions: (principal, tenant, from) =>
       facetOptions(knowledge, optionCache, principal, tenant, from),
     paused: async (compiled) =>
@@ -1266,6 +1795,30 @@ export const createPlatform = async (input: PlatformInput) => {
         (await definitions.get('Service', compiled.service.tenant, compiled.service.id))?.definition
           .spec,
       ),
+    media: async (compiled) =>
+      runtimeMediaTypes(
+        (await definitions.get('Service', compiled.service.tenant, compiled.service.id))?.definition
+          .spec,
+      ),
+    files: async (compiled) => {
+      const spec = (await definitions.get('Service', compiled.service.tenant, compiled.service.id))
+        ?.definition.spec;
+      if (!spec) return [];
+      const typed = spec as ServiceDefinition['spec'];
+      const variant = typed.variants?.find((v) => variantId(v) === compiled.variant);
+      const uses = flowUsesOf(typed);
+      const own = uses.filter((u) => u.variant === compiled.variant);
+      const runsService = !variant || variantStrategyOf(typed, variant) === typed.strategy;
+      const refs = (own.length ? own : runsService ? uses.filter((u) => !u.variant) : []).map(
+        (u) => u.flow,
+      );
+      if (refs.length === 0) return [];
+      const stepTypes = await stepMediaTypes(refs, {
+        descriptors: runtime.descriptors,
+        flow: (ref) => flowIn(compiled.service.tenant, ref),
+      });
+      return runtimeFileTypes(spec, stepTypes);
+    },
     batch: async (compiled) => {
       const found = await definitions.get('Service', compiled.service.tenant, compiled.service.id);
       return (
@@ -1303,6 +1856,7 @@ export const createPlatform = async (input: PlatformInput) => {
     }
     return [...used];
   };
+  const testRunnersAllowed = input.lockdown !== undefined && input.environmentTier === 'test';
   const callers = new WeakMap<Request, Promise<Caller | undefined>>();
   const callerOf = (request: Request) => {
     const known = callers.get(request);
@@ -1310,12 +1864,13 @@ export const createPlatform = async (input: PlatformInput) => {
     const found = (async () => {
       const authenticated = await input.authenticate(request);
       if (!authenticated) return undefined;
-      const caller = input.lockdown
-        ? {
-            ...authenticated,
-            principal: withCredentialOrigin(input.lockdown, request, authenticated.principal),
-          }
-        : authenticated;
+      const origin = input.lockdown
+        ? withCredentialOrigin(input.lockdown, request, authenticated.principal)
+        : authenticated.principal;
+      const caller = {
+        ...authenticated,
+        principal: testRunnerView(origin, request, testRunnersAllowed),
+      };
       return (await admitConfined(clients, request, caller.principal)) ? caller : undefined;
     })();
     callers.set(request, found);
@@ -1341,7 +1896,7 @@ export const createPlatform = async (input: PlatformInput) => {
   });
 
   const directory = new TenantDirectory(input.tenantDirectory, async () => [
-    ...new Set((await store.capabilities()).map((c) => c.service.tenant)),
+    ...new Set((await definitions.capabilities()).map((c) => c.service.tenant)),
   ]);
   const toolConnections = {
     reload: async () => {
@@ -1358,46 +1913,10 @@ export const createPlatform = async (input: PlatformInput) => {
   const registered = async (tenant: string) =>
     tenant === platformTenant || (await directory.list()).some((e) => e.orgNumber === tenant);
 
-  const usageCache = new Map<string, { at: number; month: string; tokens: number }>();
-  const monthlyTokensUsed = async (tenant: string, fresh = false, at = new Date()) => {
-    const month = new Date(Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), 1)).toISOString();
-    const cached = usageCache.get(tenant);
-    if (!fresh && cached && cached.month === month && at.getTime() - cached.at < 15_000)
-      return cached.tokens;
-    let tokens = 0;
-    for (const tracked of await taskIndex.all(tenant)) {
-      const task = (await taskStore.get(tracked.task))?.task;
-      if (!task || task.tenant !== tenant || task.createdAt < month) continue;
-      if (originOf(task.service.capability.id) === 'assistant') continue;
-      tokens += (task.usage.inputTokens ?? 0) + (task.usage.outputTokens ?? 0);
-    }
-    usageCache.set(tenant, { at: at.getTime(), month, tokens });
-    return tokens;
-  };
-  const numberSetting = (tenant: string, key: string, fallback: number) => {
-    const value = settings.effective(tenant)[key]?.value;
-    return typeof value === 'number' && value > 0 ? value : fallback;
-  };
-  const quota = async (tenant: string, options: { fresh?: boolean } = {}) => {
-    const monthlyTokens = numberSetting(tenant, quotaSettingKey, defaultMonthlyTokens);
-    const usedTokens = await monthlyTokensUsed(tenant, options.fresh);
-    return {
-      usedTokens,
-      monthlyTokens,
-      usedPercent: Math.round((usedTokens / monthlyTokens) * 1000) / 10,
-      exhausted: usedTokens >= monthlyTokens,
-    };
-  };
+  // Case slots shared by every test-set run on this instance.
+  const caseSlots = evalSlots(input.evalSlots);
 
   const limiter = input.rateLimits?.limiter ?? new SlidingWindowLimiter();
-  const invokes = (c: {
-    req: { method: string; path: string; header(name: string): string | undefined };
-  }) =>
-    c.req.method === 'POST' &&
-    (c.req.path.startsWith('/v1/') ||
-      c.req.path.startsWith('/api/tools/call/') ||
-      (c.req.path === '/api/mcp' && c.req.header('mcp-method') === 'tools/call') ||
-      c.req.path.startsWith('/a2a/'));
   const headlessRagLimited = (c: { req: { method: string; path: string } }) =>
     c.req.method === 'POST' &&
     (c.req.path === '/api/mcp' ||
@@ -1440,17 +1959,6 @@ export const createPlatform = async (input: PlatformInput) => {
             'Too many requests',
             `The organisation allows ${perMinute} calls per minute.`,
           );
-    if (invokes(c) && (await quota(tenant)).exhausted) {
-      const now = new Date();
-      const next = Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1);
-      return tooManyRequests(
-        c,
-        Math.ceil((next - now.getTime()) / 1000),
-        'urn:genai:problem:quota-exhausted',
-        'The monthly token quota is used up',
-        `The organisation has used its ${numberSetting(tenant, quotaSettingKey, defaultMonthlyTokens)} tokens for this month.`,
-      );
-    }
     return next();
   };
   const gate = tenantGate({
@@ -1458,8 +1966,54 @@ export const createPlatform = async (input: PlatformInput) => {
     registered,
   });
   const labels = input.labels ?? new InMemoryLabelStore();
+  const sinkLabelService = sinkLabels({
+    store: input.sinkLabels ?? new InMemorySinkLabelStore(),
+    runs: evalStores.runs,
+    connection: (tenant, id) => connectionOf(configEntries, tenant, id),
+    connections: async (tenant) =>
+      (await configEntries.latest({ kind: traceConnectionKind, scope: tenant }))
+        .filter((e) => !e.deleted)
+        .map((e) => e.spec as TraceConnection),
+    sinks: traceSinks,
+  });
   const apiKeys = input.apiKeys ?? new InMemoryTenantApiKeys();
   let adminRef: Admin | undefined;
+  const pipelineRuns = async (tenant?: string) => {
+    const runs: PipelineRuns[] = [];
+    for (const item of config.catalog.list({ kind: 'dataset' })) {
+      const owner = item.scope === platformScope ? platformTenant : item.scope;
+      if (tenant !== undefined && owner !== tenant) continue;
+      for (const pipeline of await config.ingestion.list(item.scope, item.id))
+        runs.push({
+          tenant: owner,
+          dataset: item.id,
+          pipeline: pipeline.spec.name,
+          scheduled: pipeline.spec.enabled && pipeline.spec.schedule !== 'none',
+          executions: await config.ingestion.executions(item.id, pipeline.id),
+        });
+    }
+    return runs;
+  };
+  const operationsDeps: OperationsDeps = {
+    now: () => new Date(),
+    models: () => models.describe(),
+    ingestion: () => config.ingestion.backend,
+    pipelines: () => pipelineRuns(),
+    tasks: () => taskIndex.all(),
+    tenantNames: async () => new Map((await directory.list()).map((t) => [t.orgNumber, t.name])),
+    ...(input.databasePing ? { database: input.databasePing } : {}),
+  };
+  const tenantOperations = (tenant: string) =>
+    operationsOverview(
+      forTenant(
+        {
+          ...operationsDeps,
+          pipelines: () => pipelineRuns(tenant),
+          tasks: () => taskIndex.all(tenant),
+        },
+        tenant,
+      ),
+    );
   const consoleOperator: Principal = { kind: 'operator', issuer: 'platform', subject: 'console' };
   const consoleDeps: ConsoleDeps = {
     names: actorNames(configEntries),
@@ -1469,7 +2023,7 @@ export const createPlatform = async (input: PlatformInput) => {
       pluginUsage({
         store: definitions,
         tenants: async () => (await directory.list()).map((t) => t.orgNumber),
-        modelEndpoint: (model) => models.describe().find((m) => m.id === model)?.endpoint,
+        modelApis: (model) => models.describe().find((m) => m.id === model)?.apis,
         datasetEndpoint: (dataset) =>
           config.catalog.get('dataset', knowledge.resolve(dataset) ?? dataset)?.spec.endpoint as
             string | undefined,
@@ -1480,6 +2034,7 @@ export const createPlatform = async (input: PlatformInput) => {
     tenants: async () => (await directory.list()).map((t) => t.orgNumber),
     runs: evalStores.runs,
     labels,
+    sinkLabels: sinkLabelService,
     traces: () => input.traces?.(),
     support: {
       list: () => adminRef?.supportSessions() ?? [],
@@ -1500,29 +2055,10 @@ export const createPlatform = async (input: PlatformInput) => {
         : undefined;
     },
     cancel: (task) => kernel.cancel(consoleOperator, task),
-    operations: () =>
-      operationsOverview({
-        now: () => new Date(),
-        models: () => models.describe(),
-        ingestion: () => config.ingestion.backend,
-        pipelines: async () => {
-          const runs: PipelineRuns[] = [];
-          for (const item of config.catalog.list({ kind: 'dataset' }))
-            for (const pipeline of await config.ingestion.list(item.scope, item.id))
-              runs.push({
-                tenant: item.scope === platformScope ? platformTenant : item.scope,
-                dataset: item.id,
-                pipeline: pipeline.spec.name,
-                scheduled: pipeline.spec.enabled && pipeline.spec.schedule !== 'none',
-                executions: await config.ingestion.executions(item.id, pipeline.id),
-              });
-          return runs;
-        },
-        tasks: () => taskIndex.all(),
-        tenantNames: async () =>
-          new Map((await directory.list()).map((t) => [t.orgNumber, t.name])),
-        ...(input.databasePing ? { database: input.databasePing } : {}),
-      }),
+    operations: async () => ({
+      ...(await operationsOverview(operationsDeps)),
+      incidents: await openIncidentsFor(configurables.store),
+    }),
     organization: organizationLookup({
       tenants: () => directory.list(),
       ...(input.organizationRegistry
@@ -1542,6 +2078,7 @@ export const createPlatform = async (input: PlatformInput) => {
     knowledge: knowledgeAdapters,
     secrets: catalogSecrets,
     tenant: platformTenant,
+    gate: runtime.gate,
     ...(input.egress ? { egress: input.egress } : {}),
   };
   for (const plugin of [
@@ -1568,13 +2105,29 @@ export const createPlatform = async (input: PlatformInput) => {
     writers,
     engines: () => describeEngines(knowledgeAdapters, writerAdapters),
     ingestion: config.ingestion,
-    ...(input.lockdown ? { modelAdmission: mayUseModels, readOnly: readOnlyInLockdown } : {}),
+    ...(input.lockdown
+      ? {
+          modelAdmission: mayUseModels,
+          readOnly: (p: Principal) => readOnlyInLockdown(p) || isTestRunnerKey(p),
+        }
+      : {}),
     evalStores,
+    evalCapability: evalCapability.descriptor.id,
+    ...(input.appVersion ? { appVersion: input.appVersion } : {}),
+    ...(input.demoRecorderKeyDigest ? { demoRecorderKeyDigest: input.demoRecorderKeyDigest } : {}),
+    tenantSecrets,
+    traceSinks,
+    sinkLabels: sinkLabelService,
+    traceDeliveries,
+    egressOptions: input.egress ?? {},
+    ...(input.tracing ? { tracing: input.tracing } : {}),
     connections,
     blobs: blobStore,
     prices,
     quota,
+    tenantOperations,
     drafts,
+    evalSlots: caseSlots,
     pinService: async (tenant, service, version) => {
       const compiled = (await definitions.capabilities()).find(
         (c) => c.service.tenant === tenant && c.service.id === service,
@@ -1584,11 +2137,20 @@ export const createPlatform = async (input: PlatformInput) => {
       return (await pin(compiled, version))?.capability.descriptor.id;
     },
     kernel,
+    operations: {
+      tier: runtime.environmentTier,
+      descriptors: runtime.descriptors,
+      governance: runtime.governance,
+      processorRecords: runtime.processorRecords,
+      try: runtime.tryOperation,
+    },
+    enrichmentTask: enrichmentWork.run(() => kernel),
+    datasetSearchTask: datasetSearchWork.run(() => kernel),
     tasks: taskIndex,
-    task: async (id) => (await taskStore.get(id))?.task,
+    task: hidingInternalTasks(definitions, async (id) => (await taskStore.get(id))?.task),
     events: (task) => log.read(task, 0, () => false),
     webhooks,
-    sync,
+    sync: resync,
     onChange: (topic, listener) => input.changes?.on(topic, listener) ?? (() => undefined),
     knowledgeAdapters,
     secrets: catalogSecrets,
@@ -1596,6 +2158,10 @@ export const createPlatform = async (input: PlatformInput) => {
     embedders: {
       has: (model) => embeddingModels.has(model),
       open: (...args) => embedders.open(...args),
+      models: () =>
+        embedders
+          .describe()
+          .map((e) => ({ model: e.id, dimensions: e.dimensions, residency: e.residency })),
     },
     ...(input.ingestFolderRoot ? { ingestFolderRoot: input.ingestFolderRoot } : {}),
     ingestSources,
@@ -1640,24 +2206,35 @@ export const createPlatform = async (input: PlatformInput) => {
         ? configuredDiagnostics
         : create)(moduleDeps),
   );
+  const keyPolicies =
+    input.keyPolicies ??
+    (apiKeys instanceof InMemoryTenantApiKeys ? apiKeys : new InMemoryTenantApiKeys());
   modules.push(
     createKeyPoliciesModule({
-      policies:
-        input.keyPolicies ??
-        (apiKeys instanceof InMemoryTenantApiKeys ? apiKeys : new InMemoryTenantApiKeys()),
+      policies: keyPolicies,
       keys: apiKeys,
     })(moduleDeps),
   );
   if (input.verifyPluginsOnBoot)
     void pluginRegistry.verifyUnverified('boot').catch(() => undefined);
-  if (modules.some((m) => m.decorateCapability)) await sync();
+  if (modules.some((m) => m.decorateCapability)) await resync();
 
   const extensions = {
     ...adminExtensions({
-      tools: { connections, source: mcp, onToolsChanged: refreshTools },
+      tools: {
+        connections,
+        source: mcp,
+        secrets: new TenantSecrets(vault.resolver(input.secrets)),
+        onToolsChanged: refreshTools,
+        ...(input.logger ? { log: input.logger } : {}),
+      },
       directory,
     }),
-    ...portalAdminHandlers({ apiKeys }),
+    ...portalAdminHandlers({
+      apiKeys,
+      policies: keyPolicies,
+      testRunnerKeys: testRunnersAllowed,
+    }),
     ...frontendAdminHandlers({
       clients,
       definitions,
@@ -1684,6 +2261,7 @@ export const createPlatform = async (input: PlatformInput) => {
       '/api/facets',
       '/api/conversations',
       '/api/conversations/*',
+      '/tenants/:tenant/datasets/:id/enrichment/hypothetical-questions/proposals',
     ])
       app.use(path, serviceLimitsGate);
     if (admin)
@@ -1697,11 +2275,12 @@ export const createPlatform = async (input: PlatformInput) => {
         tasks: () => taskIndex.running(),
         allTasks: () => taskIndex.all(),
         catalogSkips: input.catalogSkips ?? [],
+        hiddenService: (tenant, id) => isHiddenService(definitions, tenant, id),
         eval: {
           kernel,
           evalCapability: evalCapability.descriptor.id,
           ...evalStores,
-          quotaExhausted: async (tenant) => (await quota(tenant, { fresh: true })).exhausted,
+          runnable: (principal, capability) => resolvesTo(resolver, principal, capability),
         },
       });
     if (admin) {
@@ -1712,8 +2291,17 @@ export const createPlatform = async (input: PlatformInput) => {
         authenticate,
         definitions,
         tasks: (tenant) => taskIndex.all(tenant),
-        task: async (id) => (await taskStore.get(id))?.task,
+        task: hidingInternalTasks(definitions, async (id) => (await taskStore.get(id))?.task),
+        ...(taskIndex.envelopes ? { taskEnvelopes: taskIndex.envelopes } : {}),
         events: (id) => log.read(id, 0, () => false),
+        ...(taskIndex.usageEvents ? { usageEvents: taskIndex.usageEvents } : {}),
+        ...(taskIndex.eventsOfType ? { eventsOfType: taskIndex.eventsOfType } : {}),
+        ...(taskStore.erasures
+          ? {
+              erasures: (tenant: string, ids: string[]) =>
+                taskStore.erasures?.(tenant, ids) ?? Promise.resolve([]),
+            }
+          : {}),
         apiKeys,
         connections,
         requirementFor:
@@ -1723,8 +2311,19 @@ export const createPlatform = async (input: PlatformInput) => {
             action: 'use-services',
           })),
         prices,
+        modelResidency: (id) => models.describe().find((m) => m.id === id)?.residency,
         ingestionUsage,
+        ...(input.gatewayUsage ? { gatewayUsage: input.gatewayUsage } : {}),
+        countingRule: () => {
+          const { endpoints } = runtime.catalog.effective().models;
+          return throughGatewayConnections(
+            models.describe(),
+            (endpoint) =>
+              (endpoints[endpoint] as { gateway?: unknown } | undefined)?.gateway === true,
+          );
+        },
         projectTasks: (tenant) => projectTasks(configurables.store, tenant),
+        quota,
         serviceHealth: async (tenant, service) => {
           const found = await definitions.get('Service', tenant, service);
           const spec = (found?.definition as { spec?: { model?: ServiceModels } } | undefined)
@@ -1734,7 +2333,9 @@ export const createPlatform = async (input: PlatformInput) => {
         traces: { enabled: Boolean(input.traces?.()), content: Boolean(input.traces?.()?.content) },
         drafts,
         names: actorNames(configEntries),
+        ...(input.lockdown ? { lockdown: input.lockdown } : {}),
         lifecycle: (tenant, service) => lifecycleOf(configEntries, tenant, service),
+        testRunnerKeys: testRunnersAllowed,
       });
       registerConsoleRoutes(app, { ...consoleDeps, admin, authenticate });
       config.mount(app, admin, authenticate);
@@ -1745,6 +2346,8 @@ export const createPlatform = async (input: PlatformInput) => {
         definitions,
         apiKeys,
         webhooks,
+        names: actorNames(configEntries),
+        ...(input.lockdown ? { lockdown: input.lockdown } : {}),
         ...(input.endpoints ? { endpoints: input.endpoints } : {}),
       });
       const mountDeps = { ...moduleDeps, admin, authenticate, access: tenantAccess(admin) };
@@ -1775,23 +2378,24 @@ export const createPlatform = async (input: PlatformInput) => {
         });
       const visible = models
         .describe()
-        .filter((m) => m.enabled)
+        .filter((m) => m.enabled && servesModelPort(m))
         .filter(
           (m) => !principal.tenant || !ownedElsewhere(config.catalog, m.id, principal.tenant),
         );
       const displayNames = modelDisplayNames(visible);
       const data = models
         .describe()
-        .filter((m) => m.enabled)
+        .filter((m) => m.enabled && servesModelPort(m))
         .filter((m) => !principal.tenant || !ownedElsewhere(config.catalog, m.id, principal.tenant))
         .filter((m) => !residency || residencyAllows(residency, m.residency))
         .filter((m) => wanted.every((w) => m.capabilities.includes(w)))
-        .map(({ id, family, residency: r, capabilities, parameters }) => ({
+        .map(({ id, family, residency: r, capabilities, operations, parameters }) => ({
           id,
           name: displayNames.get(id) ?? id,
           ...(family ? { family } : {}),
           residency: r,
           capabilities,
+          operations,
           parameters,
           price: prices[id] ?? null,
         }));
@@ -1818,6 +2422,12 @@ export const createPlatform = async (input: PlatformInput) => {
         modelsOf,
         conversations: conversationTurns(conversations, callerOf, conversationId),
         ...(blobStore ? { documents: runtimeDocumentStore(blobStore) } : {}),
+        media: {
+          get: async (tenant, path) => {
+            const found = await blobStore.get({ tenant, path });
+            return found && { body: found.body, contentType: found.info.contentType };
+          },
+        },
         filterIssues: async (principal, entry, filters) =>
           askFilterIssues(knowledge, principal, entry, filters),
         serviceSchema: async (entry) => {
@@ -1934,13 +2544,23 @@ export const createPlatform = async (input: PlatformInput) => {
       conversationRoutes({
         store: conversations,
         auth: { authenticate: (request) => callerOf(request) },
-        ...(blobStore
-          ? {
-              onDeleted: async (owner, id) => {
-                await deleteConversationDocuments(blobStore, owner.tenant, id);
-              },
-            }
-          : {}),
+        runOf: async ({ principal }, task) => {
+          const run = await kernel.task(principal, task);
+          return {
+            status: run.status,
+            createdAt: Date.parse(run.createdAt),
+            deadlineMs:
+              registry.all().find((c) => c.descriptor.id === run.service.capability.id)
+                ?.deadlineMs ??
+              input.serviceLimits?.deadlineMs ??
+              defaultServiceLimits.deadlineMs,
+          };
+        },
+        ...(input.now ? { now: input.now } : {}),
+        onDeleted: async (owner, id) => {
+          await threadErasure?.erase(owner.tenant, id);
+          if (blobStore) await deleteConversationDocuments(blobStore, owner.tenant, id);
+        },
         selectAgent: async (caller, requested) => {
           const entries = await resolver.list(caller.principal);
           if (requested) {
@@ -2028,6 +2648,9 @@ export const createPlatform = async (input: PlatformInput) => {
     embedders,
     writers,
     catalog: config.catalog,
+    descriptors: runtime.descriptors,
+    unmaskedInput,
+    liveSessions: runtime.liveSessions,
     ingestion: config.ingestion,
     gates: configurables.gates,
     guardrailRules: configurables.rules,
@@ -2035,7 +2658,8 @@ export const createPlatform = async (input: PlatformInput) => {
     prices,
     drafts,
     modules,
-    sync,
+    evalSlots: caseSlots,
+    sync: resync,
     mount,
   };
 };

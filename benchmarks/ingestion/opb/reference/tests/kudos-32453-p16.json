@@ -1,0 +1,22 @@
+{"tests": [
+ {"id": "kudos-32453-p16-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "FN-konvensjonen CRPD sier at staten skal gjøre det den kan for at det blir likestilling.", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-32453-p16-t02", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"content": {"text": "Å bestemme over seg selv", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-32453-p16-t03", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"before": {"text": "Å bestemme over seg selv", "max_diffs": 1}, "after": {"text": "Alle har rett til å bestemme over sitt eget liv.", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-32453-p16-t04", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Derfor skal ingen miste retten til å bestemme selv på grunn av en sykdom eller skade.", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-32453-p16-t05", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"content": {"text": "Å bidra og være inkludert", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-32453-p16-t06", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Når alle er med i samfunnet, klarer flere å si ifra hvis de ikke får rettighetene sine.", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-32453-p16-t07", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Personer med utviklingshemming må få bo og jobbe på samme steder som andre.", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-32453-p16-t08", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"before": {"text": "steder som andre.", "max_diffs": 1}, "after": {"text": "Noen blir diskriminert av flere grunner", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-32453-p16-t09", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "For eksempel kan en person bli diskriminert på grunn av både en utviklingshemming og hudfarge.", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-32453-p16-t10", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Det er også viktig at andre grupper som jobber mot diskriminering også passer på at personer med utviklingshemming ikke blir diskriminert.", "max_diffs": 4}}, "settings": {}}
+]}

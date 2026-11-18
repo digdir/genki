@@ -28,7 +28,7 @@ const renderEnglish = async (path: string) => {
 
 describe('settings in English', () => {
   it('shows the grid, the panel and the preview in English', async () => {
-    await renderEnglish('#/settings');
+    await renderEnglish('#/settings/all');
     const region = await screen.findByRole('region', { name: 'Settings per layer' });
     expect(screen.getByRole('heading', { level: 1, name: 'Settings for Testetaten' })).toBeTruthy();
     expect(
@@ -48,7 +48,7 @@ describe('settings in English', () => {
   });
 
   it('offers export and import in English', async () => {
-    await renderEnglish('#/settings?tab=transfer');
+    await renderEnglish('#/settings/all');
     expect(await screen.findByText('What do you want to do?')).toBeTruthy();
     fireEvent.click(screen.getByRole('radio', { name: 'Import from file' }));
     expect(screen.getByText('Configuration file (YAML)')).toBeTruthy();
@@ -59,14 +59,12 @@ describe('settings in English', () => {
 describe('access in English', () => {
   it('shows rights and people in English', async () => {
     await renderEnglish('#/access');
-    expect(screen.getByRole('heading', { level: 1, name: 'Access' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { level: 1, name: 'Access' })).toBeTruthy();
     expect(await screen.findByText('Showing 10 of 10 people')).toBeTruthy();
     expect(screen.getAllByText('Use services').length).toBeGreaterThan(0);
-    expect(screen.getByRole('link', { name: /Change in Altinn/ }).textContent).toContain(
-      '(opens in a new tab)',
-    );
+    expect(screen.getByRole('button', { name: 'Give a colleague access' })).toBeTruthy();
     fireEvent.click(screen.getByRole('radio', { name: 'No rights' }));
     expect(screen.getByText('Showing 1 of 10 people')).toBeTruthy();
-    expect(screen.getByRole('tab', { name: 'Groups' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'Services' })).toBeTruthy();
   });
 });

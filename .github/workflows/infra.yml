@@ -47,13 +47,23 @@ jobs:
       FOUNDRY_CLAUDE_BASE_URL: ${{ vars.FOUNDRY_CLAUDE_BASE_URL }}
       TYPESENSE_URL: ${{ vars.TYPESENSE_URL }}
       COLBERT_API_URL: ${{ vars.COLBERT_API_URL }}
+      LANGFUSE_BASE_URL: ${{ vars.LANGFUSE_BASE_URL }}
+      LANGFUSE_INSTANCE_RECEIVES_CONTENT: ${{ vars.LANGFUSE_INSTANCE_RECEIVES_CONTENT }}
+      TRACES_ENDPOINT: ${{ vars.TRACES_ENDPOINT }}
+      TRACES_RESIDENCY: ${{ vars.TRACES_RESIDENCY }}
       PLATFORM_TENANT: ${{ vars.PLATFORM_TENANT }}
       ALTINN_RESOURCE: ${{ vars.ALTINN_RESOURCE }}
       LOCKDOWN_ENTRA_GROUPS: ${{ vars.LOCKDOWN_ENTRA_GROUPS }}
+      LOCKDOWN_USER_GROUPS: ${{ vars.LOCKDOWN_USER_GROUPS }}
+      LOCKDOWN_SERVICE_GROUPS: ${{ vars.LOCKDOWN_SERVICE_GROUPS }}
+      LOCKDOWN_SERVICE_CLIENT_IDS: ${{ vars.LOCKDOWN_SERVICE_CLIENT_IDS }}
       LOCKDOWN_ENTRA_EMAIL_DOMAIN: ${{ vars.LOCKDOWN_ENTRA_EMAIL_DOMAIN }}
+      OPERATOR_CLIENT_IDS: ${{ vars.OPERATOR_CLIENT_IDS }}
+      KNOWLEDGE_SERVER_STAGE: ${{ vars.KNOWLEDGE_SERVER_STAGE }}
+      ALERT_EMAILS: ${{ vars.ALERT_EMAILS }}
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-      - uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2.3.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
@@ -70,20 +80,37 @@ jobs:
               echo "$placeholder"
             fi
           }
+          worker=$(az containerapp list -g "$rg" --query "[?ends_with(name, '-worker')].name | [0]" -o tsv)
+          if [ -n "$worker" ]; then
+            echo "worker_version=$(az containerapp show -g "$rg" -n "$worker" --query "properties.template.containers[0].env[?name=='APP_VERSION'].value | [0]" -o tsv)" >> "$GITHUB_OUTPUT"
+          fi
           {
             echo "api=$(image_of api)"
             echo "worker=$(image_of worker)"
             echo "apps=$(image_of portal)"
+            echo "docling=$(image_of docling)"
           } >> "$GITHUB_OUTPUT"
           api=$(az containerapp list -g "$rg" --query "[?ends_with(name, '-api')].name | [0]" -o tsv)
           if [ -n "$api" ]; then
-            echo "version=$(az containerapp show -g "$rg" -n "$api" --query "properties.template.containers[0].env[?name=='APP_VERSION'].value | [0]" -o tsv)" >> "$GITHUB_OUTPUT"
+            live=$(az containerapp ingress traffic show -g "$rg" -n "$api" --query "[?weight==\`100\`].revisionName | [0]" -o tsv)
+            {
+              echo "version=$(az containerapp show -g "$rg" -n "$api" --query "properties.template.containers[0].env[?name=='APP_VERSION'].value | [0]" -o tsv)"
+              echo "suffix=$(az containerapp show -g "$rg" -n "$api" --query 'properties.template.revisionSuffix' -o tsv)"
+              echo "live=$live"
+              echo "previous=$(az containerapp ingress traffic show -g "$rg" -n "$api" --query "[?label=='previous'].revisionName | [0]" -o tsv)"
+            } >> "$GITHUB_OUTPUT"
           else
             echo "version=bootstrap" >> "$GITHUB_OUTPUT"
           fi
+      # Recorded in the deploy's outputs, so deploy.yml can tell whether the infrastructure changed since.
+      - id: fingerprint
+        env:
+          RG: ${{ vars.AZURE_RESOURCE_GROUP }}
+          ENVIRONMENT: ${{ inputs.environment }}
+        run: scripts/infra-state.sh "infra/env/$ENVIRONMENT.bicepparam" "$RG" true | grep '^fingerprint=' >> "$GITHUB_OUTPUT"
       - run: |
           az deployment group ${{ inputs.what-if && 'what-if' || 'create' }} \
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
-            --name "infra-${{ github.run_id }}" \
+            --name "infra-${{ github.run_id }}-${{ github.run_attempt }}" \
             --parameters infra/env/${{ inputs.environment }}.bicepparam \
-            --parameters apiImage="${{ steps.current.outputs.api }}" workerImage="${{ steps.current.outputs.worker }}" appsImage="${{ steps.current.outputs.apps }}" appVersion="${{ steps.current.outputs.version }}"
+            --parameters apiImage="${{ steps.current.outputs.api }}" workerImage="${{ steps.current.outputs.worker }}" appsImage="${{ steps.current.outputs.apps }}" doclingImage="${{ steps.current.outputs.docling }}" appVersion="${{ steps.current.outputs.version }}" workerVersion="${{ steps.current.outputs.worker_version }}" apiRevisionSuffix="${{ steps.current.outputs.suffix }}" apiLiveRevision="${{ steps.current.outputs.live }}" apiPreviousRevision="${{ steps.current.outputs.previous }}" infraFingerprint="${{ steps.fingerprint.outputs.fingerprint }}"

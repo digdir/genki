@@ -19,6 +19,7 @@ export interface SettingRow {
   opts?: [string, string][];
   sens: Sensitivity;
   scope: Scope[];
+  setByDigdir?: boolean;
   P: SettingValue | null;
   V: SettingValue | null;
   svc: Record<string, SettingValue>;

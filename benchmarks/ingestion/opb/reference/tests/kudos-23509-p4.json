@@ -1,0 +1,22 @@
+{"tests": [
+ {"id": "kudos-23509-p4-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"content": {"text": "Meteorologisk institutts internkontroll", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-23509-p4-t02", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Den interne kontrollen skal være tilpasset risiko, vesentlighet og egenart.", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-23509-p4-t03", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"before": {"text": "Andre varige føringer", "max_diffs": 1}, "after": {"text": "Offentlig støtte, bidrag- og oppdragsfinansiert aktivitet", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-23509-p4-t04", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "herunder Lov om offentlig støtte og Lov om merverdiavgift.", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-23509-p4-t05", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Kommersielle oppdrag skal bidra til å forbedre instituttets kjernevirksomhet.", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-23509-p4-t06", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Videre skal oppdragsfinansiert aktivitet regnskapsføres separat i instituttets økonomimodell.", "max_diffs": 4}}, "settings": {}},
+ {"id": "kudos-23509-p4-t07", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Meteorologisk institutt utfører mot betaling fra ekstern(e) oppdragsgiver(e)", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-23509-p4-t08", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Meteorologisk institutt skal være sertifisert etter ISO 27001-standarden", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-23509-p4-t09", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"before": {"text": "et krav om motytelse fra instituttet når avtale/kontrakt inngås", "max_diffs": 2}, "after": {"text": "skal følge nasjonale føringer og prinsipper for digital sikkerhet", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-23509-p4-t10", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"before": {"text": "(informasjonssikkerhet).", "max_diffs": 1}, "after": {"text": "er underlagt sikkerhetsloven og skal arbeide med forebyggende", "max_diffs": 1}}, "settings": {}}
+]}

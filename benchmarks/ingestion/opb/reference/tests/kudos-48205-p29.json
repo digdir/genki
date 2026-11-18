@@ -1,0 +1,22 @@
+{"tests": [
+ {"id": "kudos-48205-p29-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Kravene er rettferdige og bør ikke utelukke aktører fra å legge inn anbud.", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-48205-p29-t02", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"content": {"text": "Teknologi", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-48205-p29-t03", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "punkter for ca. 900+ elektriske anleggsmaskiner og biler over 8 tonn", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-48205-p29-t04", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Alle varebilene til Rental.one er elektrifisert innen 2027.", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-48205-p29-t05", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"before": {"text": "og produksjon av komponenter til bygging av anleggsmaskinen", "max_diffs": 2}, "after": {"text": "Ledelsen i R-gruppen og viktige samarbeidspartnere deltar på befaring", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-48205-p29-t06", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Dette er demonstrert gjennom solskinnshistorier fra pilottesting.", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-48205-p29-t07", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"content": {"text": "Nettverk", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-48205-p29-t08", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"before": {"text": "samt promotering av opplæringssenteret.", "max_diffs": 2}, "after": {"text": "Opplæringsleder har kompetanse på elektriske anleggsmaskiner", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-48205-p29-t09", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Rental.one har begynt i bunnen ved å samarbeide med Utdanningsforbundet", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-48205-p29-t10", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "De elektriske anleggsmaskinene blir også vist fram på skolebesøk.", "max_diffs": 2}}, "settings": {}}
+]}

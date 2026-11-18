@@ -79,41 +79,55 @@ const portWith = (filters: Record<string, FilterKind | FilterKind[]>) => {
 };
 
 describe('typed filters in the pipeline', () => {
-  it('sends a detected contains clause alongside an explicit multiselect on the same field', async () => {
-    const k = portWith({ title: ['text', 'multiselect'], orgs_short: 'multiselect' });
+  const typeRule = (mode: 'strict' | 'permissive') => ({
+    type: 'shape-pattern' as const,
+    field: 'type',
+    mode,
+    universe: ['Evaluering', 'Årsrapport', 'Brev'],
+    patterns: [{ value: 'Evaluering', regex: '(?i)evaluering' }],
+  });
+
+  it("sends a rule's detected clause alongside an explicit one of another type on the same field", async () => {
+    const k = portWith({ type: 'multiselect', title: 'text', orgs_short: 'multiselect' });
 
     const result = await retrieve({
       knowledge: k.port,
-      queries: ['årsrapport Digdir 2024'],
-      filters: { title: ['Årsrapport 2024'], orgs_short: ['NAV'] },
+      queries: ['evaluering Digdir 2024'],
+      filters: { type: ['Årsrapport'] },
       facetCache: new FacetCache(),
-      config: { strategies: [{ name: 'content', profiles: ['content'] }] },
+      config: {
+        strategies: [{ name: 'content', profiles: ['content'] }],
+        autoFilter: { rules: [typeRule('permissive')] },
+      },
     });
 
     expect(k.requests[0]?.filters).toEqual({
-      title: { all: [['Årsrapport 2024'], { contains: ['2024'] }] },
-      orgs_short: ['NAV'],
+      type: { all: [['Årsrapport'], { not: ['Årsrapport', 'Brev'] }] },
     });
     expect(result.trace.expansion.detectedFilter).toEqual({
-      orgs_short: ['Digdir'],
-      title: { contains: ['2024'] },
+      type: { not: ['Årsrapport', 'Brev'] },
     });
   });
 
-  it('collapses to one value per field when types do not collide, so the current port keeps working', async () => {
-    const k = portWith({ title: 'text', orgs_short: 'multiselect' });
+  it('without an agent, only a rule filters; detected organisations and years are marked as boosts', async () => {
+    const k = portWith({ type: 'multiselect', title: 'text', orgs_short: 'multiselect' });
 
-    await retrieve({
+    const result = await retrieve({
       knowledge: k.port,
-      queries: ['Digdir 2024'],
+      queries: ['evaluering Digdir 2024'],
       facetCache: new FacetCache(),
-      config: { strategies: [{ name: 'content', profiles: ['content'] }] },
+      config: {
+        strategies: [{ name: 'content', profiles: ['content'] }],
+        autoFilter: { rules: [typeRule('strict')] },
+      },
     });
 
-    expect(k.requests[0]?.filters).toEqual({
-      orgs_short: ['Digdir'],
-      title: { contains: ['2024'] },
-    });
+    expect(k.requests[0]?.filters).toEqual({ type: ['Evaluering'] });
+    expect(result.trace.expansion.detections?.map((d) => [d.kind, d.use])).toEqual([
+      ['organisation', 'boost'],
+      ['year', 'boost'],
+      ['rule', 'filter'],
+    ]);
   });
 });
 

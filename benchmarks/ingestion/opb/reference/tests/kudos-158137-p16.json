@@ -1,0 +1,22 @@
+{"tests": [
+ {"id": "kudos-158137-p16-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["multi_column", "nno", "Latn"],
+  "args": {"content": {"text": "82,5 prosent", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-158137-p16-t02", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["multi_column", "nno", "Latn"],
+  "args": {"content": {"text": "Kvinner fyller omlag 20 prosent av styreverva i aksjeselskap.", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-158137-p16-t03", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["multi_column", "nno", "Latn"],
+  "args": {"content": {"text": "auka frå 19 prosent i 2016 til 23 prosent i 2023", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-158137-p16-t04", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["multi_column", "nno", "Latn"],
+  "args": {"content": {"text": "Kvinner blir i større grad enn menn utsette for vald i nære relasjonar", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-158137-p16-t05", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["multi_column", "nno", "Latn"],
+  "args": {"content": {"text": "NOU 2024: 4 Voldtekt", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-158137-p16-t06", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["multi_column", "nno", "Latn"],
+  "args": {"before": {"text": "senterlova vart sendt på høyring i juni 2024.", "max_diffs": 2}, "after": {"text": "Regjeringa er imot søskenbarnekteskap", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-158137-p16-t07", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["multi_column", "nno", "Latn"],
+  "args": {"content": {"text": "Regjeringa arbeider med sikte på at forbodet skal kunne tre i kraft 1.1.2025.", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-158137-p16-t08", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["multi_column", "nno", "Latn"],
+  "args": {"content": {"text": "Konvensjonen vart vedtatt på ILOs arbeidskonferanse i 2019 og vart sett i kraft i juni 2021.", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-158137-p16-t09", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["multi_column", "nno", "Latn"],
+  "args": {"content": {"text": "Forsvaret arbeider systematisk med likestilling og mangfald og med å førebyggje seksuell trakassering.", "max_diffs": 4}}, "settings": {}},
+ {"id": "kudos-158137-p16-t10", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["multi_column", "nno", "Latn"],
+  "args": {"content": {"text": "Noregs gjennomføring av Tryggjingsrådsresolusjon 1325", "max_diffs": 2}}, "settings": {}}
+]}

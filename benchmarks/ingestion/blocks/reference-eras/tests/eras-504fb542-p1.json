@@ -1,0 +1,114 @@
+{
+ "tests": [
+  {
+   "id": "eras-504fb542-p1-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nno",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "St.prp. nr. 3",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-504fb542-p1-t02",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nno",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "(1999-200)",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-504fb542-p1-t03",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nno",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Om samtykke til å setje i kraft ein tilleggsavtale til skatteavtalen mellom Noreg og Frankrike",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-504fb542-p1-t04",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nno",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "underskriven i Oslo den 16. september 1999",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-504fb542-p1-t05",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nno",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Tilråding frå Finans- og tolldepartementet av 8. oktober 1999, godkjend i statsråd same dagen.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-504fb542-p1-t06",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nno",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "med tilleggsavtalar av 14. november 1984",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "Tilråding frå Finans- og tolldepartementet",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

@@ -4,3 +4,16 @@ useDefault = true
 [[allowlists]]
 description = "Azure built-in role definition ids: published by Microsoft, identical in every tenant"
 regexes = ['''4633458b-17de-408a-b874-0445c86b69e6''']
+
+[[allowlists]]
+description = "Benchmark model ids under a key field are names, not credentials"
+condition = "AND"
+paths = ['''^benchmarks/.+\.json$''']
+regexTarget = "line"
+regexes = ['''"key":\s*"[a-z0-9.-]+"''']
+
+[[allowlists]]
+description = "Recorded Docling answers name a document by its file's sha256 (key=<sha256>): a hash of a test PDF, not a credential"
+condition = "AND"
+paths = ['''(^|/)packages/ingest/src/fixtures/docling/[^/]+\.json$''']
+regexes = ['''^[0-9a-f]{64}$''']

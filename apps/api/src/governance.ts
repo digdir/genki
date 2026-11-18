@@ -6,6 +6,12 @@ import { actorOf, AdminRefused, refusedBy, routeOnlyActions } from './admin.js';
 import { appendVersion, type ConfigEntry } from './config-store.js';
 import type { ModuleDeps, MountDeps, PlatformModuleFactory } from './platform-modules.js';
 import { changeReasonOf } from './http.js';
+import {
+  confirmedAs,
+  confirmedClasses,
+  isService,
+  riskConfirmationProblems,
+} from './risk-confirmation.js';
 
 export const riskConfirmationKind = 'risk-confirmation';
 
@@ -16,55 +22,11 @@ export interface RiskConfirmationRecord {
   reasons: string[];
 }
 
-const confirmedClasses: readonly RiskClass[] = ['limited', 'high'];
-
-const isService = (definition: unknown): definition is ServiceDefinition =>
-  typeof definition === 'object' &&
-  definition !== null &&
-  (definition as { kind?: unknown }).kind === 'Service';
-
-export const needsRiskConfirmation = (definition: unknown): definition is ServiceDefinition =>
-  isService(definition) && confirmedClasses.includes(definition.spec.riskClass);
-
-export const riskConfirmationProblems = (definition: Definition): ValidationError[] => {
-  if (!needsRiskConfirmation(definition)) return [];
-  const { riskClass, riskConfirmation } = definition.spec;
-  if (!riskConfirmation)
-    return [
-      {
-        path: 'spec.riskConfirmation',
-        message: `risk class ${riskClass} must be confirmed by a person with the publish right before publishing`,
-      },
-    ];
-  if (riskConfirmation.riskClass !== undefined && riskConfirmation.riskClass !== riskClass)
-    return [
-      {
-        path: 'spec.riskConfirmation',
-        message: `the confirmation is for risk class ${riskConfirmation.riskClass}, but the service is ${riskClass}; confirm the risk class again`,
-      },
-    ];
-  return [];
-};
-
 export const confirmedBy = (
   definition: Definition,
   principal: Principal,
   now: Date = new Date(),
-): Definition => {
-  if (!needsRiskConfirmation(definition) || !definition.spec.riskConfirmation) return definition;
-  return {
-    ...definition,
-    spec: {
-      ...definition.spec,
-      riskConfirmation: {
-        reasons: definition.spec.riskConfirmation.reasons,
-        riskClass: definition.spec.riskClass,
-        by: actorOf(principal.actor ?? principal),
-        at: now.toISOString(),
-      },
-    },
-  };
-};
+): Definition => confirmedAs(definition, actorOf(principal.actor ?? principal), now);
 
 const twoConfirmers =
   'a high-risk service needs the risk class confirmed by two different people with the publish right; ask a colleague to confirm it before you publish';
@@ -79,14 +41,17 @@ export const governanceModule: PlatformModuleFactory = (deps: ModuleDeps) => {
       )) as ConfigEntry<RiskConfirmationRecord>[]
     ).filter((e) => !e.deleted);
 
-  const checkPublish = async (definition: unknown): Promise<ValidationError[]> => {
+  const checkPublish = async (
+    definition: unknown,
+    publisher: string,
+  ): Promise<ValidationError[]> => {
     if (!isService(definition) || definition.spec.riskClass !== 'high') return [];
     const problems = riskConfirmationProblems(definition);
     if (problems.length > 0) return problems;
     const { tenant, id } = definition.metadata;
     const since = (await deps.definitions.get('Service', tenant, id))?.publishedAt ?? '';
     const people = new Set([
-      definition.spec.riskConfirmation?.by,
+      publisher,
       ...(await confirmations(tenant, id))
         .filter((e) => e.spec.riskClass === 'high' && e.at > since)
         .map((e) => e.by),

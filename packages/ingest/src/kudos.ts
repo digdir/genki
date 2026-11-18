@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { processKudosLimiter, type KudosRateLimiter } from './kudos-rate.js';
 
 export interface KudosProfile {
   name: 'prod' | 'preprod';
@@ -13,7 +14,7 @@ const retryDelaysMs = [1000, 3000, 7000, 60000];
 export const kudosProd: KudosProfile = {
   name: 'prod',
   baseUrl: 'https://kudos.dfo.no',
-  listPath: '/api/v0/documents/search',
+  listPath: '/api/v0/documents',
   documentPath: '/api/v0/documents',
   retryDelaysMs,
 };
@@ -24,9 +25,12 @@ export interface KudosOrganisation {
 }
 
 export interface KudosFile {
-  url: string;
-  sha256?: string;
-  size?: number;
+  /** KUDOS's id for the file; a document's files are keyed by it. */
+  uuid?: string;
+  /** Missing on a file KUDOS lists only by its `source_file_url` on another site (issue 581). */
+  url?: string | null;
+  sha256?: string | null;
+  size?: number | null;
   mimetype?: string;
   pages?: number;
   path?: string;
@@ -56,15 +60,38 @@ export interface KudosPage {
   meta: { current_page: number; last_page: number; total?: number };
 }
 
-export interface KudosSearch {
-  type?: string;
-  query?: string;
+/** One page of `/api/v0/actors`: every organisation KUDOS knows, with its org number and names. */
+export interface KudosActorPage {
+  data: {
+    uuid?: string;
+    org_number?: number | string | null;
+    name?: string;
+    actor_type?: string;
+    alternative_names?: { name: string; type: string }[];
+  }[];
+  meta: { current_page: number; last_page: number; total?: number };
 }
 
+/** One listing of `/documents`: a type, an actor and publish years, in one order. */
+export interface KudosSearch {
+  type?: string;
+  /** Any registered name of an owner, recipient or publisher, case-insensitive. */
+  actorName?: string;
+  yearFrom?: number;
+  yearTo?: number;
+  sort?: 'newest' | 'oldest';
+}
+
+/** The most `/documents` returns a page. */
+export const kudosPageSize = 50;
+
 const searchParams = (n: number, search: KudosSearch) => {
-  const params = new URLSearchParams({ page: String(n) });
+  const params = new URLSearchParams({ page: String(n), per_page: String(kudosPageSize) });
   if (search.type) params.set('type', search.type);
-  if (search.query) params.set('query', search.query);
+  if (search.actorName) params.set('actor_name', search.actorName);
+  if (search.yearFrom !== undefined) params.set('published_year_from', String(search.yearFrom));
+  if (search.yearTo !== undefined) params.set('published_year_to', String(search.yearTo));
+  if (search.sort) params.set('sort', search.sort);
   return params.toString();
 };
 
@@ -86,25 +113,64 @@ export class KudosPageFailed extends Error {
   }
 }
 
+/** KUDOS has no document with this UUID (HTTP 404). */
+export class KudosNotFound extends Error {
+  override readonly name = 'KudosNotFound';
+}
+
 export interface KudosClientOptions {
   profile: KudosProfile;
   fetch?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
+  /** Every request waits its turn here; by default the one limiter of this process. */
+  limiter?: KudosRateLimiter;
+  now?: () => number;
 }
+
+/** A 429 waits this long when KUDOS gives no `Retry-After`. */
+const defaultRetryAfterMs = 60_000;
+/** 429s in a row before a request gives up. */
+const maxRateLimited = 10;
+
+/** `Retry-After` in seconds or as an HTTP date, in milliseconds from now. */
+export const retryAfterMs = (value: string | null, now = Date.now()) => {
+  if (!value) return defaultRetryAfterMs;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
+  const at = Date.parse(value);
+  return Number.isNaN(at) ? defaultRetryAfterMs : Math.max(0, at - now);
+};
 
 const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 export const kudosClient = (options: KudosClientOptions) => {
   const send = options.fetch ?? fetch;
   const sleep = options.sleep ?? pause;
+  const limiter = options.limiter ?? processKudosLimiter;
+  const now = options.now ?? Date.now;
+  /** One request under the limits; a 429 waits as `Retry-After` asks without using a retry. */
+  const send1 = async (url: string) => {
+    for (let limited = 0; ; limited++) {
+      await limiter.take();
+      const response = await send(url, { headers: { accept: 'application/json' } });
+      if (response.status !== 429 || limited >= maxRateLimited) return response;
+      await response.body?.cancel();
+      limiter.pause(retryAfterMs(response.headers.get('retry-after'), now()));
+    }
+  };
   const getJson = async <T>(url: string): Promise<T> => {
     let lastError: unknown;
     for (const delay of [...options.profile.retryDelaysMs, undefined]) {
       try {
-        const response = await send(url, { headers: { accept: 'application/json' } });
+        const response = await send1(url);
+        if (response.status === 404) {
+          await response.body?.cancel();
+          throw new KudosNotFound(`Kudos has no document at ${url}`);
+        }
         if (!response.ok) throw new Error(`Kudos answered HTTP ${response.status} for ${url}`);
         return (await response.json()) as T;
       } catch (error) {
+        if (error instanceof KudosNotFound) throw error;
         lastError = error;
         if (delay === undefined) break;
         await sleep(delay);
@@ -132,6 +198,35 @@ export const kudosClient = (options: KudosClientOptions) => {
       }
     },
 
+    /** One search, page by page; `total()` is its `meta.total` once a page has come back. */
+    listing(search: KudosSearch, startingPage = 1) {
+      let total: number | undefined;
+      const read = (n: number) => this.page(n, search);
+      const documents = async function* (): AsyncIterable<KudosDocument> {
+        for (let n = startingPage; ; n += 1) {
+          let page: KudosPage;
+          try {
+            page = await read(n);
+          } catch (error) {
+            throw new KudosPageFailed(options.profile.name, n, error);
+          }
+          total = page.meta.total === undefined ? undefined : Number(page.meta.total);
+          yield* page.data;
+          if (page.meta.last_page <= page.meta.current_page) return;
+        }
+      };
+      return { documents: documents(), total: () => total };
+    },
+
+    /** One page of KUDOS's actors, fifty to a page as `/documents`. */
+    actors: (n: number) =>
+      getJson<KudosActorPage>(
+        `${options.profile.baseUrl}/api/v0/actors?${new URLSearchParams({
+          page: String(n),
+          per_page: String(kudosPageSize),
+        }).toString()}`,
+      ),
+
     document: (id: number | string) =>
       getJson<KudosDocument>(`${options.profile.baseUrl}${options.profile.documentPath}/${id}`),
   };
@@ -150,10 +245,13 @@ export const concernedYears = (doc: KudosDocument): number[] => {
   return [];
 };
 
-export const kudosDocumentId = (doc: KudosDocument) => String(doc.id ?? doc.uuid);
+/** A document's id names its source and its id there (ADR 0042): `kudos:<uuid>`. */
+export const kudosDocumentId = (doc: KudosDocument) =>
+  doc.uuid ? `kudos:${doc.uuid}` : String(doc.id);
 
-export const kudosPublicUrl = (id: string | number, profile: KudosProfile = kudosProd) =>
-  `${profile.baseUrl}/dokument/${encodeURIComponent(String(id))}`;
+/** The document's page on Kudos, by its UUID. */
+export const kudosPublicUrl = (doc: KudosDocument, profile: KudosProfile = kudosProd) =>
+  `${profile.baseUrl}/dokument/${encodeURIComponent(String(doc.uuid ?? doc.id))}`;
 
 export const fillInKudosFields = (doc: KudosDocument) => ({
   ...doc,
@@ -162,11 +260,24 @@ export const fillInKudosFields = (doc: KudosDocument) => ({
   concerned_years: concernedYears(doc),
 });
 
-export const displayNames = (orgs: KudosOrganisation[]) =>
+const namesOfType = (orgs: KudosOrganisation[], type: string) =>
   orgs
     .flatMap((o) => o.alternative_names ?? [])
-    .filter((n) => n.type === 'display')
+    .filter((n) => n.type === type)
     .map((n) => n.name);
+
+export const displayNames = (orgs: KudosOrganisation[]) => namesOfType(orgs, 'display');
+
+/** The nine-digit org numbers of one role's organisations, each once (ADR 0058). */
+export const orgNumbers = (orgs: KudosOrganisation[]) => [
+  ...new Set(
+    orgs.flatMap((o) => {
+      const n = o.org_number;
+      const text = typeof n === 'number' || typeof n === 'string' ? String(n).trim() : '';
+      return /^\d{9}$/.test(text) ? [text] : [];
+    }),
+  ),
+];
 
 const kudosStoredFields = [
   'id',
@@ -174,6 +285,10 @@ const kudosStoredFields = [
   'title',
   'authors',
   'orgs_long',
+  'orgs_short',
+  'publisher_names',
+  'owner_orgnr',
+  'recipient_orgnr',
   'concerned_year',
   'concerned_year_from',
   'concerned_year_to',
@@ -191,11 +306,78 @@ const kudosStoredFields = [
   'retrieval_attempts',
 ];
 
+/** A KUDOS record's organisation fields, the same for an ingest and a fill. */
+export const kudosOrgFields = (record: Record<string, unknown>) => {
+  const role = (key: string) => (record[key] ?? []) as KudosOrganisation[];
+  const orgs = [...role('owners'), ...role('recipients'), ...role('publishers')];
+  const short = [...new Set(namesOfType(orgs, 'abbreviation'))];
+  // A document KUDOS lists no publisher for is published by its owners.
+  const publishers = role('publishers').length ? role('publishers') : role('owners');
+  const publisherNames = [...new Set(displayNames(publishers))];
+  const owners = orgNumbers(role('owners'));
+  const recipients = orgNumbers(role('recipients'));
+  return {
+    orgs_long: [...new Set(displayNames(orgs))],
+    ...(short.length ? { orgs_short: short } : {}),
+    ...(publisherNames.length ? { publisher_names: publisherNames } : {}),
+    ...(owners.length ? { owner_orgnr: owners } : {}),
+    ...(recipients.length ? { recipient_orgnr: recipients } : {}),
+  };
+};
+
+type StoredKudos = { id: string; record: Record<string, unknown>; fields: Record<string, unknown> };
+
+/** Stored fields with some replaced, in a fresh ingest's order (ADR 0042). */
+const refilled = (
+  stored: Record<string, unknown>,
+  replaced: readonly string[],
+  next: Record<string, unknown>,
+) => {
+  const fields: Record<string, unknown> = {
+    ...Object.fromEntries(Object.entries(stored).filter(([k]) => !replaced.includes(k))),
+    ...next,
+  };
+  const known = kudosStoredFields.filter((k) => k in fields);
+  return Object.fromEntries([
+    ...known.map((k) => [k, fields[k]]),
+    ...Object.entries(fields).filter(([k]) => !kudosStoredFields.includes(k)),
+  ]);
+};
+
+/** A stored document's fields with its org numbers, in a fresh ingest's order (ADR 0042). */
+export const kudosOrgNumberFields = (doc: StoredKudos): Record<string, unknown> => {
+  const { owner_orgnr, recipient_orgnr } = kudosOrgFields(doc.record);
+  return refilled(doc.fields, ['owner_orgnr', 'recipient_orgnr'], {
+    ...(owner_orgnr ? { owner_orgnr } : {}),
+    ...(recipient_orgnr ? { recipient_orgnr } : {}),
+  });
+};
+
+const orgFieldNames = [
+  'orgs_long',
+  'orgs_short',
+  'publisher_names',
+  'owner_orgnr',
+  'recipient_orgnr',
+] as const;
+
+const kudosRoles = ['owners', 'recipients', 'publishers'];
+
+/** `kudos-links-and-abbreviations`: org fields as an ingest writes them, and the prod Kudos page. */
+export const kudosLinkAndAbbreviationFields = (
+  doc: StoredKudos,
+): { fields: Record<string, unknown>; url?: string } => {
+  const record = doc.record as KudosDocument;
+  // A record from another source has no KUDOS organisations or page, so it stays as it is.
+  if (!kudosRoles.some((role) => Array.isArray(doc.record[role]))) return { fields: doc.fields };
+  const fields = refilled(doc.fields, orgFieldNames, kudosOrgFields(doc.record));
+  return record.uuid || record.id ? { fields, url: kudosPublicUrl(record) } : { fields };
+};
+
 export const prepareKudosDoc = (
   doc: ReturnType<typeof fillInKudosFields> & Record<string, unknown>,
   totalChunks: number,
 ) => {
-  const orgs = [...(doc.owners ?? []), ...(doc.recipients ?? []), ...(doc.publishers ?? [])];
   const files = (doc.files ?? []).map(
     (f) =>
       Object.fromEntries(Object.entries(f).filter(([k]) => k !== 'path')) as Omit<
@@ -205,7 +387,7 @@ export const prepareKudosDoc = (
   );
   const enriched: Record<string, unknown> = {
     ...doc,
-    orgs_long: [...new Set(displayNames(orgs))],
+    ...kudosOrgFields(doc),
     files,
     file_sha256: [...new Set(files.flatMap((f) => (f.sha256 ? [f.sha256] : [])))],
     total_chunks: totalChunks,
@@ -276,7 +458,10 @@ export const fetchKudosFile = async (
       throw error;
     }
   };
-  const body = await get(file.url);
+  // A file KUDOS lists only by its `source_file_url` has nothing here to fetch (issue 581).
+  if (!file.url) throw new FileUnreachable('Kudos lists the file with no url');
+  const url = file.url;
+  const body = await get(url);
   if (isPdf(body)) return verifyKudosFile(file, body, 'direct');
   const html = new TextDecoder().decode(body);
   const hop = citationPdfUrl(html);
@@ -289,7 +474,7 @@ export const fetchKudosFile = async (
       `The indexed url ${file.url} served a landing page with no citation_pdf_url`,
     );
   }
-  const hopped = await get(new URL(hop, file.url).toString());
+  const hopped = await get(new URL(hop, url).toString());
   if (!isPdf(hopped)) throw new Error(`citation_pdf_url ${hop} did not yield a PDF`);
   return verifyKudosFile(file, hopped, 'citation_pdf_url');
 };

@@ -14,16 +14,13 @@ import {
 } from './background-lease.js';
 import type { CatalogRegistry } from './catalog-registry.js';
 import { appendVersion, platformScope, type ConfigEntry } from './config-store.js';
+import { draftCapabilityPrefix, evalCapabilityId } from './draft-runner.js';
 import { changeReasonOf, isReasonLongEnough, reasonTooShort } from './http.js';
-import { candidateRelease, isCandidate } from './model-access.js';
+import { candidateRelease, isCandidate, modelsNamedIn, triesCandidates } from './model-access.js';
 import type { MountDeps, PlatformModuleFactory } from './platform-modules.js';
-import {
-  serviceEval,
-  serviceRunKind,
-  type Outcome,
-  type RunStatus,
-  type ServiceRun,
-} from './service-eval.js';
+import { serviceEval, type Outcome } from './service-eval.js';
+
+export type MatrixStatus = 'queued' | 'running' | 'succeeded' | 'failed';
 
 export const matrixRunKind = 'model-matrix-run';
 export const maxDropPoints = 3;
@@ -53,7 +50,7 @@ export interface MatrixRun extends Leased {
   id: string;
   model: string;
   current: string;
-  status: RunStatus;
+  status: MatrixStatus;
   by: string;
   startedAt: string;
   endedAt: string | null;
@@ -115,13 +112,6 @@ const modelSpec = (definition: Record<string, unknown>) =>
     roles?: Record<string, string>;
   };
 
-const modelsIn = (definition: Record<string, unknown>) => {
-  const model = modelSpec(definition);
-  return [model.primary, model.fallback, ...Object.values(model.roles ?? {})].filter(
-    (m): m is string => typeof m === 'string',
-  );
-};
-
 const withModel = (definition: Record<string, unknown>, current: string, model: string) => {
   const copy = structuredClone(definition);
   const spec = record(copy.spec);
@@ -151,6 +141,9 @@ export const isMatrixPrincipal = (principal: Principal) =>
   principal.issuer === 'platform' &&
   principal.subject === matrixSubject;
 
+const isTrialCapability = (id: string) =>
+  id.startsWith(draftCapabilityPrefix) || id === evalCapabilityId;
+
 export const releaseGate = (
   inner: PolicyDecisionPoint,
   catalog: () => Pick<CatalogRegistry, 'get'> | undefined,
@@ -160,8 +153,19 @@ export const releaseGate = (
       return action === 'invoke' && !resource.id.startsWith('platform/draft/')
         ? { allow: false, reason: 'the quality matrix only runs draft services' }
         : { allow: true };
+    const trial = triesCandidates(principal);
+    if (trial && action === 'invoke' && !isTrialCapability(resource.id))
+      return { allow: false, reason: 'a candidate model is tried only in draft runs' };
     const gate = catalog();
-    if (action === 'use:model' && gate && isCandidate(gate, resource.id))
+    if (
+      (action === 'use:model' ||
+        action === 'use:decision' ||
+        action === 'use:described' ||
+        action === 'use:rerank') &&
+      gate &&
+      isCandidate(gate, resource.id) &&
+      !trial
+    )
       return {
         allow: false,
         reason: `model ${resource.id} is not released yet; it is waiting for the quality matrix`,
@@ -279,14 +283,13 @@ export const createModelMatrixModule =
     };
 
     const tokensPerCase = async (tenant: string, service: string) => {
-      const last = (await deps.configEntries.latest({ kind: serviceRunKind, scope: tenant }))
-        .map((e) => e.spec as ServiceRun)
-        .filter((r) => r.service === service && r.status === 'succeeded' && r.total > 0)
-        .sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
-      return last
+      const last = await evals.latestCompleted(tenant, service);
+      const answers = last?.run.usage?.answers;
+      const cases = last?.run.results.length ?? 0;
+      return answers && cases > 0
         ? {
-            input: Math.ceil(last.tokens.input / last.total),
-            output: Math.ceil(last.tokens.output / last.total),
+            input: Math.ceil(answers.inputTokens / cases),
+            output: Math.ceil(answers.outputTokens / cases),
           }
         : answerTokens;
     };
@@ -491,6 +494,8 @@ export const createModelMatrixModule =
     };
 
     const affectedTestSets = async (model: string) => {
+      const apis = known(model)?.apis ?? {};
+      if (!('chat' in apis) && !('decide' in apis)) return 0;
       let count = 0;
       for (const used of await inUse())
         if (used.id !== model) count += (await plan(model, used.id)).length;
@@ -520,11 +525,11 @@ export const createModelMatrixModule =
     const checkPublish = async (definition: unknown) => {
       const d = record(definition);
       if (d.kind !== 'Service') return [];
-      return modelsIn(d)
-        .filter((m) => isCandidate(deps.catalog, m))
-        .map((m) => ({
-          path: 'spec.model',
-          message: `model ${m} is not released yet; it is waiting for the quality matrix`,
+      return modelsNamedIn(d)
+        .filter(({ model }) => isCandidate(deps.catalog, model))
+        .map(({ path, model }) => ({
+          path,
+          message: `model ${model} is not released yet; it is waiting for the quality matrix`,
         }));
     };
 

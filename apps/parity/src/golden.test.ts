@@ -294,6 +294,21 @@ describe('fixed-query retrieval', () => {
     expect(result).toMatchObject({ chunks: [{ chunkId: 'c2' }], rerank: 'reranked' });
   });
 
+  it('reads the values the platform detected from the trace, not the queries they came from', async () => {
+    const detections = [
+      { kind: 'year', field: 'title', values: ['2023'], queries: ['i 2024'], use: 'boost' },
+    ];
+    const url = await serve(() => ({
+      body: JSON.stringify({ chunks: [], trace: { expansion: { detections } } }),
+    }));
+    const result = await platformRetriever(
+      { baseUrl: url, token: 'op', supportSession: 's1', tenant: '991825827' },
+      { service: 'public-docs-retrieve-only' },
+    )({ queries: ['q'], autoFilter: true });
+
+    expect(result.detectedFilter).toEqual(['2023']);
+  });
+
   it('a refused diagnostics call fails the case instead of scoring it as a miss', async () => {
     const url = await serve(() => ({ status: 404, body: '{"title":"Not found"}' }));
     const score = await scoreRetrieval(

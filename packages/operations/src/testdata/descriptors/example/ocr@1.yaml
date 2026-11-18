@@ -1,0 +1,55 @@
+id: example/ocr@1
+operation: ocr
+status: described
+summary: A made-up OCR API that takes an image as the request body and answers one JSON line per page.
+api:
+  family: example
+  version: v2
+  query:
+    api-version: '2026-11-01'
+auth:
+  query: key
+input:
+  object:
+    image: { media: image/png }
+    language: { enum: [nb, en] }
+    hint?: text
+output:
+  object:
+    pages: [text]
+    pageCount: { number: { integer: true, min: 0 } }
+request:
+  method: POST
+  path: /read
+  encoding: binary
+  body: $input.image
+  query:
+    language: $input.language
+  headers:
+    x-hint: $input.hint
+response:
+  encoding: ndjson
+  headers:
+    x-pages: number
+wire:
+  request: { media: image/png }
+  query:
+    object:
+      language: { enum: [nb, en] }
+  headers:
+    object:
+      x-hint?: text
+  response:
+    array:
+      object:
+        page: { number: { integer: true, min: 1 } }
+        text: text
+checks:
+  - count: { of: $response, min: 1, max: 50 }
+usage:
+  page: $headers.x-pages
+  request: 1
+result:
+  pages: { $each: $response, $sort: page, $map: $item.text }
+  pageCount: $headers.x-pages
+stream: none

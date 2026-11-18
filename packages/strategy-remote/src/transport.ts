@@ -116,7 +116,7 @@ export const createRemoteTransport = (options: TransportOptions): RemoteTranspor
     const { endpoint, owner } = call;
     const host = new URL(endpoint.url).hostname;
     const auth = endpoint.auth
-      ? await authHeaders(connectionFor(call), options.guard, secrets, call.signal)
+      ? await authHeaders(connectionFor(call), endpoint.url, options.guard, secrets, call.signal)
       : {};
     const response = await options.guard.request(
       allowFor(endpoint.url),

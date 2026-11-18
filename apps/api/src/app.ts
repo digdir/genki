@@ -2,13 +2,13 @@ import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
 import type { MiddlewareHandler } from 'hono';
 import type { Principal } from '@genai/contracts';
 import type { DefinitionStore, PluginSchemas, SettingsRegistry } from '@genai/definitions';
-import { isApiKeyPrincipal } from '@genai/identity';
+import { isApiKeyPrincipal, isTestRunnerKey } from '@genai/identity';
 import { tenantAccess, type Access } from './access.js';
 import { requireChangeReason } from './change-reason.js';
 import { rememberActorNames, type ActorNames } from './actor-names.js';
 import { createAdmin, type Admin, type ModelAdmin } from './admin.js';
 import { acceptDecodedIds } from './decoded-ids.js';
-import { registerDefinitionRoutes } from './definitions.js';
+import { registerDefinitionRoutes, type DefinitionsApiOptions } from './definitions.js';
 import {
   apiNotFoundBody,
   gzipResponses,
@@ -22,12 +22,33 @@ import { problem, type Authenticator } from './http.js';
 import { withChangeReasons, withTags, withUndocumentedRoutes } from './openapi-routes.js';
 import { registerPlatformRoutes, type PlatformApiOptions } from './platform.js';
 import { registerReference } from './reference/index.js';
+import { refuseOutsideTestRunnerScope } from './test-runner.js';
+import { requestTiming, type RequestTimingOptions } from './request-timing.js';
 import type { ServiceDrafts } from './service-drafts.js';
 import { kernelTaskReader, type TaskReader } from './timeline.js';
+import {
+  hidingInternalServices,
+  hidingInternalTasks,
+  internalServiceViewer,
+  refuseHiddenServices,
+} from './internal-services.js';
 
 const Health = z
-  .object({ status: z.literal('ok'), version: z.string(), lockdown: z.boolean() })
+  .object({
+    status: z.literal('ok'),
+    version: z.string(),
+    lockdown: z.boolean(),
+    builtAt: z.string().optional().openapi({
+      description:
+        'When the running build was made, as the time of its commit; absent in local builds',
+    }),
+  })
   .openapi('Health');
+
+export const buildTimeOf = (epochSeconds: string | undefined) => {
+  if (!epochSeconds || !/^\d{1,12}$/.test(epochSeconds)) return undefined;
+  return new Date(Number(epochSeconds) * 1000).toISOString();
+};
 
 const healthRoute = createRoute({
   method: 'get',
@@ -56,6 +77,7 @@ export type PlatformOptions = Authentication & {
   lifecycle?: PlatformApiOptions['lifecycle'];
   models?: ModelAdmin;
   drafts?: Pick<ServiceDrafts, 'outdated' | 'followPublish'>;
+  unmaskedInput?: DefinitionsApiOptions['unmaskedInput'];
   names?: ActorNames;
   now?: () => Date;
   lockdown?: boolean;
@@ -65,12 +87,16 @@ export type PlatformOptions = Authentication & {
 const withoutApiKeys = (caller: Caller): Authenticator => ({
   authenticate: async (request) => {
     const principal = await caller(request);
-    return principal && !isApiKeyPrincipal(principal) ? principal : undefined;
+    return principal && (!isApiKeyPrincipal(principal) || isTestRunnerKey(principal))
+      ? principal
+      : undefined;
   },
 });
 
 export interface AppOptions {
+  builtAt?: string;
   platform?: PlatformOptions;
+  requestTiming?: RequestTimingOptions;
 }
 
 export const createApp = (version: string, options: AppOptions = {}) => {
@@ -85,6 +111,7 @@ export const createApp = (version: string, options: AppOptions = {}) => {
       });
     },
   });
+  if (options.requestTiming) app.use('*', requestTiming(options.requestTiming));
   acceptDecodedIds(app);
 
   app.use('*', securityHeaders);
@@ -92,7 +119,10 @@ export const createApp = (version: string, options: AppOptions = {}) => {
   app.use('*', localeMiddleware);
   app.use('*', problemResponses);
   const lockdown = options.platform?.lockdown ?? false;
-  app.openapi(healthRoute, (c) => c.json({ status: 'ok' as const, version, lockdown }, 200));
+  const builtAt = options.builtAt ? { builtAt: options.builtAt } : {};
+  app.openapi(healthRoute, (c) =>
+    c.json({ status: 'ok' as const, version, lockdown, ...builtAt }, 200),
+  );
   app.get('/up', (c) => c.text('ok'));
   app.notFound((c) => {
     if (!isHeadlessRagApiPath(c.req.path)) return problem(c, 404, 'Not found');
@@ -119,12 +149,16 @@ export const createApp = (version: string, options: AppOptions = {}) => {
     app.use('*', rememberActorNames(authentication.auth, options.platform.names));
 
   if (options.platform && authentication) {
-    const { store, plugins, settings } = options.platform;
+    const { plugins, settings } = options.platform;
+    const store = hidingInternalServices(options.platform.store);
     const { caller, auth } = authentication;
+    app.use('*', internalServiceViewer(caller));
     if (options.platform.loginRefusal)
       app.use('*', refuseUntrustedEntra(options.platform.loginRefusal));
     if (lockdown) app.use('*', refuseLockedRoutes(caller));
+    app.use('*', refuseOutsideTestRunnerScope(caller));
     app.use('*', requireChangeReason(caller));
+    app.use('/tenants/:tenant/*', refuseHiddenServices(store));
     const admin =
       options.platform.admin ??
       createAdmin({
@@ -133,15 +167,17 @@ export const createApp = (version: string, options: AppOptions = {}) => {
         settings,
         ...(options.platform.models ? { models: options.platform.models } : {}),
         ...(options.platform.now ? { now: options.platform.now } : {}),
+        ...(options.platform.names ? { names: options.platform.names } : {}),
       });
     const access = options.platform.access ?? tenantAccess(admin);
-    const tasks =
+    const reader =
       options.platform.tasks ??
       kernelTaskReader(admin.kernel, {
         kind: 'operator',
         issuer: 'platform',
         subject: 'task-reader',
       });
+    const tasks = { ...reader, task: hidingInternalTasks(store, (id) => reader.task(id)) };
     registerDefinitionRoutes(app, {
       store,
       plugins,
@@ -149,6 +185,7 @@ export const createApp = (version: string, options: AppOptions = {}) => {
       admin,
       access,
       ...(options.platform.drafts ? { drafts: options.platform.drafts } : {}),
+      ...(options.platform.unmaskedInput ? { unmaskedInput: options.platform.unmaskedInput } : {}),
       ...(options.platform.names ? { names: options.platform.names } : {}),
       ...(options.platform.registered ? { registered: options.platform.registered } : {}),
     });
@@ -170,6 +207,7 @@ export const createApp = (version: string, options: AppOptions = {}) => {
       ...(options.platform.lifecycle ? { lifecycle: options.platform.lifecycle } : {}),
       ...(options.platform.names ? { names: options.platform.names } : {}),
       ...(options.platform.now ? { now: options.platform.now } : {}),
+      lockdown,
     });
   }
 

@@ -1,0 +1,25 @@
+{
+  "source": "hand-made for the test of a new kind; not a recording",
+  "deployment": "sorter",
+  "input": { "text": "Jeg vil endre fakturaen", "labels": ["billing", "complaint", "other"] },
+  "request": {
+    "method": "POST",
+    "path": "/classifications",
+    "body": {
+      "model": "sorter",
+      "text": "Jeg vil endre fakturaen",
+      "labels": ["billing", "complaint", "other"]
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": { "label": "billing", "confidence": 0.93, "usage": { "input_tokens": 9 }, "id": "c1" }
+  },
+  "result": {
+    "label": "billing",
+    "confidence": 0.93,
+    "usage": { "inputTokens": 9, "requests": 1 }
+  },
+  "usage": { "inputTokens": 9, "requests": 1 },
+  "dropped": 1
+}

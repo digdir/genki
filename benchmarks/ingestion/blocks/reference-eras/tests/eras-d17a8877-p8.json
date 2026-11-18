@@ -1,0 +1,294 @@
+{
+ "tests": [
+  {
+   "id": "eras-d17a8877-p8-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Presentasjon av utvalgte hovedtall",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p8-t02",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Presentasjon av utvalgte hovedtall",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "Lønnskostnader pr. utførte årsverk",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p8-t03",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "caption",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Tall i kr 1 000",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p8-t04",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "737",
+     "max_diffs": 1
+    },
+    "left_heading": {
+     "text": "Antall utførte årsverk",
+     "max_diffs": 1
+    },
+    "top_heading": {
+     "text": "2022",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p8-t05",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "44,5 %",
+     "max_diffs": 1
+    },
+    "left_heading": {
+     "text": "Lønnsandel av driftskostnader",
+     "max_diffs": 1
+    },
+    "top_heading": {
+     "text": "2022",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p8-t06",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "1 247 795",
+     "max_diffs": 3
+    },
+    "left_heading": {
+     "text": "Årlig disponibel utgiftsbevilgning (samlet tildeling) (kap. 595, post 01 og 21)",
+     "max_diffs": 3
+    },
+    "top_heading": {
+     "text": "2022",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p8-t07",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "865 687",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "2021",
+     "max_diffs": 0
+    },
+    "left": {
+     "text": "846 227",
+     "max_diffs": 0
+    },
+    "down": {
+     "text": "99,6 %",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p8-t08",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "99,6 %",
+     "max_diffs": 2
+    },
+    "left_heading": {
+     "text": "Innfridd inntektskrav (kap. 3595, post 01, 02, 03 og 04)",
+     "max_diffs": 2
+    },
+    "top_heading": {
+     "text": "2021",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p8-t09",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "1 276 704",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p8-t10",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "96,9 %",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p8-t11",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "footnote",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Innfridd inntektskrav (kap. 3595, post 01, 02, 03 og 04)",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "Statistisk sentralbyrå (SSB) sin statistikk",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p8-t12",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "footnote",
+    "tiny",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Statistisk sentralbyrå (SSB) sin statistikk «12623: Ansatte i staten, etter enhet» er brukt som kilde, jf. PM-2019-13, og veiledning fra DFØ.",
+     "max_diffs": 6
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p8-t13",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "caption",
+    "tiny",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Foto: Kartverket - Deler av NGOs bilpark fra omkring 1970",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

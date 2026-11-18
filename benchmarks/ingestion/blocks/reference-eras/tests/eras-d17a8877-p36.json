@@ -1,0 +1,184 @@
+{
+ "tests": [
+  {
+   "id": "eras-d17a8877-p36-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Geovekstsamarbeidet sørger for koordinert planlegging, gjennomføring og betaling for innsamling av geodata.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p36-t02",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Utviklingen er ikke bærekraftig og begrenser evnen vår til å ivareta samfunnets behov for økte datamengder og brukertilpassede tjenester.",
+     "max_diffs": 4
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p36-t03",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Det er behov for nye finansierings- og styringsmodeller.",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p36-t04",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Datamengden går i taket!",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "Øverst på prioriteringslisten står derfor",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p36-t05",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Det er avgjørende for å opprettholde det nivået vi har i dag, slik at Norge kan fortsette å hente ut gevinster av gode geodata.",
+     "max_diffs": 4
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p36-t06",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "En utfordring er at samfunnet tar for gitt at «data finnes».",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p36-t07",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Presset på utnyttelse av kyst- og havområder, kampen om arealene, fordrer også bedre kunnskapsgrunnlag for bærekraftig forvaltning.",
+     "max_diffs": 4
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p36-t08",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "uteblir om ikke datafangsten også prioriteres.",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "Kartverket har en stolt historie, men veien fremover",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p36-t09",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Dette må vi løse gjennom samarbeid og koordinert innsats, kunnskapsbygging, kultur for innovasjon",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p36-t10",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "caption",
+    "tiny",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Foto: Kartverket / Gjermund Bakken - Rødøy mot sør",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

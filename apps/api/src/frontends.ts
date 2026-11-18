@@ -1,3 +1,4 @@
+import { isHiddenService } from './internal-services.js';
 import { randomBytes, randomUUID } from 'node:crypto';
 import type { Principal } from '@genai/contracts';
 import type { DefinitionStore } from '@genai/definitions';
@@ -13,6 +14,7 @@ import {
   type ClientRegistry,
   type ClientStore,
   type StoredClient,
+  environmentNamePattern,
 } from '@genai/identity';
 import type { Context, Env, Hono, MiddlewareHandler, Schema } from 'hono';
 import { enterTenant, tenantAccess } from './access.js';
@@ -25,10 +27,16 @@ import {
   type AdminHandler,
   type AdminOutcome,
 } from './admin.js';
-import { keyView, overridable, type TenantApiKeys } from './routes/portal-routes.js';
+import {
+  keyViews,
+  overridable,
+  type KeyViewContext,
+  type TenantApiKeys,
+} from './routes/portal-routes.js';
 import { rightRefused, type Right } from './rights.js';
 import type { Webhooks } from './webhooks.js';
 import { changeReasonOf, isReasonLongEnough, reasonTooShort } from './http.js';
+import { t } from './i18n/index.js';
 
 export interface ClientListener {
   saved?(client: ClientDefinition, before?: ClientDefinition): void | Promise<void>;
@@ -74,7 +82,9 @@ export const admitConfined = async (
 ): Promise<boolean> => {
   const confined = principal.confinedTo;
   if (!confined) return true;
-  const channel = channelOf(new URL(request.url).pathname);
+  const path = new URL(request.url).pathname;
+  if (path === '/me' && request.method === 'GET') return true;
+  const channel = channelOf(path);
   if (!channel) return false;
   if (!confined.client) return true;
   const client = await clients.get(confined.tenant, confined.client);
@@ -87,7 +97,7 @@ export const admitConfined = async (
 const corsHeaders = (origin: string) => ({
   'access-control-allow-origin': origin,
   'access-control-expose-headers':
-    'genai-task, genai-conversation, genai-service-version, genai-model, mcp-session-id',
+    'genai-task, genai-conversation, genai-service-version, genai-environment, genai-model, mcp-session-id',
   vary: 'Origin',
 });
 
@@ -101,7 +111,7 @@ export const clientCors =
       return c.body(null, 204, {
         ...corsHeaders(origin),
         'access-control-allow-methods': 'GET, POST, PUT, DELETE, OPTIONS',
-        'access-control-allow-headers': `authorization, content-type, accept, mcp-session-id, mcp-protocol-version, genai-version, ${actingForHeader}`,
+        'access-control-allow-headers': `authorization, content-type, accept, mcp-session-id, mcp-protocol-version, genai-version, genai-environment, ${actingForHeader}`,
         'access-control-max-age': '600',
       });
     await next();
@@ -206,6 +216,8 @@ export interface FrontendRouteDeps extends FrontendDeps {
   apiKeys: TenantApiKeys;
   webhooks: Webhooks;
   endpoints?: PlatformEndpoints;
+  names?: KeyViewContext['names'];
+  lockdown?: KeyViewContext['lockdown'];
   newKey?: () => string;
   newId?: () => string;
 }
@@ -222,7 +234,13 @@ const problem = (
 
 const channelPaths = {
   mcp: ['POST /api/mcp'],
-  openai: ['GET /v1/models', 'POST /v1/chat/completions'],
+  openai: [
+    'GET /v1/models',
+    'GET /v1/sessions',
+    'POST /v1/chat/completions',
+    'POST /v1/tasks/{task}/cancel',
+    'GET /v1/tasks/{task}/media/{id}',
+  ],
   rest: ['GET /api/tools/openapi.json', 'POST /api/tools/call/{tool}'],
   conversations: ['GET /api/conversations', 'POST /api/conversations'],
   feedback: ['POST /api/feedback'],
@@ -295,7 +313,16 @@ export const registerFrontendRoutes = <E extends Env, S extends Schema, B extend
     const g = await guard(c);
     if (g instanceof Response) return g;
     const service = c.req.query('service');
-    const clients = (await deps.clients.list(g.tenant))
+    const listed = await deps.clients.list(g.tenant);
+    const hidden = await Promise.all(
+      listed.map((x) =>
+        typeof x.definition.spec.service === 'string'
+          ? isHiddenService(deps.definitions, g.tenant, x.definition.spec.service)
+          : false,
+      ),
+    );
+    const clients = listed
+      .filter((_, i) => !hidden[i])
       .filter((x) => !service || x.definition.spec.service === service)
       .sort((a, b) => a.definition.metadata.id.localeCompare(b.definition.metadata.id));
     return c.json({
@@ -367,10 +394,15 @@ export const registerFrontendRoutes = <E extends Env, S extends Schema, B extend
     const g = await guard(c);
     if (g instanceof Response) return g;
     const service = c.req.param('service');
-    const keys = (await deps.apiKeys.list(g.tenant))
-      .filter((k) => boundService(k) === service)
-      .map(keyView)
-      .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''));
+    const keys = await keyViews(
+      (await deps.apiKeys.list(g.tenant)).filter((k) => boundService(k) === service),
+      {
+        principal: g.principal,
+        tenant: g.tenant,
+        ...(deps.names ? { names: deps.names } : {}),
+        ...(deps.lockdown ? { lockdown: deps.lockdown } : {}),
+      },
+    );
     return c.json({ keys });
   });
 
@@ -385,7 +417,17 @@ export const registerFrontendRoutes = <E extends Env, S extends Schema, B extend
       client?: unknown;
       expiresInDays?: unknown;
       allowedOverrides?: unknown;
+      environments?: unknown;
     };
+    const environments = body.environments ?? [];
+    if (
+      !Array.isArray(environments) ||
+      environments.length > 8 ||
+      !environments.every((e) => typeof e === 'string' && environmentNamePattern.test(e))
+    )
+      return problem(c, 400, 'Invalid request', [
+        { path: 'environments', message: t('services.environmentName') },
+      ]);
     const client = typeof body.client === 'string' && body.client ? body.client : undefined;
     if (client) {
       const found = await deps.clients.get(g.tenant, client);
@@ -406,6 +448,7 @@ export const registerFrontendRoutes = <E extends Env, S extends Schema, B extend
       name: typeof body.name === 'string' ? body.name : '',
       service,
       ...(client ? { clientId: client } : {}),
+      ...(environments.length ? { environments: [...new Set(environments as string[])] } : {}),
       datasets: [],
       agents: [],
       allowedOverrides: overridable(body.allowedOverrides),

@@ -1,0 +1,22 @@
+{"tests": [
+ {"id": "kudos-6386-p6-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"content": {"text": "Bakgrunn", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-6386-p6-t02", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Samfunnet digitaliseres og automatiseres i et høyt tempo.", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-6386-p6-t03", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Digitaliseringen vil påvirke veiforvalternes virksomhet innen flere områder.", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-6386-p6-t04", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Utviklingen man ser i transportsektoren kan sammenfattes i begrepet CCAM (Cooperative, Connected and Automated Mobility).", "max_diffs": 4}}, "settings": {}},
+ {"id": "kudos-6386-p6-t05", "test_type": "table_cell", "output_type": "html", "derivation": "model_panel", "tags": ["table", "nob", "Latn"],
+  "args": {"cell": {"text": "Automated", "max_diffs": 0}, "up": {"text": "Connected", "max_diffs": 0}, "down": {"text": "Mobility", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-6386-p6-t06", "test_type": "table_cell", "output_type": "html", "derivation": "model_panel", "tags": ["table", "nob", "Latn"],
+  "args": {"cell": {"text": "Førerens oppgaver vil i stadig større grad motta støtte fra automatiserte systemer. Systemenes geografiske virkeområde (operational design domain) og fordelingen av ansvar mellom kjøretøy og fører, må være tilpasset teknologiens modenhet.", "max_diffs": 5}, "left_heading": {"text": "Automated", "max_diffs": 5}}, "settings": {}},
+ {"id": "kudos-6386-p6-t07", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["table", "nob", "Latn"],
+  "args": {"content": {"text": "Avansert styring av trafikken vil kreve kontinuerlig datakommunikasjon mellom aktørene i transportsystemet.", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-6386-p6-t08", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["table", "nob", "Latn"],
+  "args": {"content": {"text": "Andre transportformer er i ferd med å få en mer fremtredende plass enn tidligere.", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-6386-p6-t09", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["table", "nob", "Latn"],
+  "args": {"before": {"text": "fremtredende plass enn tidligere.", "max_diffs": 2}, "after": {"text": "Det er viktig at denne utviklingen mot samvirkende, oppkoplet og automatisert mobilitet", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-6386-p6-t10", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Statens vegvesen ved Vegdirektoratet har et overordnet ansvar for å stille krav og sørge for et sikkert, effektivt og framkommelig transportsystem.", "max_diffs": 4}}, "settings": {}}
+]}

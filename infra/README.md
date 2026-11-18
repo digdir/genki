@@ -6,30 +6,37 @@ Bicep for genki's Azure environments: test (`env/test.bicepparam`, `genki-test.d
 
 ## What gets created (one resource group per environment)
 
-| Resource                                   | Notes                                                                                                       |
-| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
-| Virtual network                            | `apps` subnet (/23, delegated to Container Apps), `postgres` subnet (delegated to Postgres Flexible Server) |
-| Container Apps environment                 | The five container apps below, the shared `data` volume, managed certificates                               |
-| Container registry (Basic)                 | No admin user; the apps pull with their identity (AcrPull), the deploy identity pushes (AcrPush)            |
-| Key Vault                                  | RBAC only, purge protection; the apps read secrets with Key Vault Secrets User                              |
-| Postgres Flexible Server 17                | Private networking only, Entra ID auth only (no passwords), database `genai`                                |
-| Storage account with the file share `data` | Mounted at `/data` in the API and worker: uploads and other blobs (`BLOB_DIR=/data/blobs`)                  |
-| Log Analytics and Application Insights     | The environment's managed OpenTelemetry agent sends traces and logs to Application Insights                 |
-| DNS zone (optional, `createDnsZone`)       | `genki-test.digdir.cloud` or `genki.digdir.cloud` with a CNAME and a validation TXT record per host name    |
+| Resource                                   | Notes                                                                                                                                                             |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Virtual network                            | `apps` subnet (/23, delegated to Container Apps), `postgres` subnet (delegated to Postgres Flexible Server)                                                       |
+| Container Apps environment                 | The six container apps below, the shared `data` volume, managed certificates                                                                                      |
+| Container registry (Basic)                 | No admin user; the apps pull with their identity (AcrPull), the deploy identity pushes (AcrPush)                                                                  |
+| Key Vault                                  | RBAC only, purge protection; the apps read secrets with Key Vault Secrets User                                                                                    |
+| Postgres Flexible Server 17                | Private networking only, Entra ID auth only (no passwords), database `genai`                                                                                      |
+| Storage account with the file share `data` | Mounted at `/data` in the API and worker: uploads and other blobs (`BLOB_DIR=/data/blobs`)                                                                        |
+| Blob container `conversions`               | In the same account: converters' native output (ADR 0042), blob versioning, earlier versions deleted 30 days after they were written, the knowledge worker writes |
+| Log Analytics and Application Insights     | The environment's managed OpenTelemetry agent sends traces and logs to Application Insights                                                                       |
+| Alerts (`alertsEnabled`)                   | Action group `<name>-alerts`, an availability test on the API's `/health` and seven alert rules, see the [runbook](../docs/runbook.md#alerts)                     |
+| DNS zone (optional, `createDnsZone`)       | `genki-test.digdir.cloud` or `genki.digdir.cloud` with a CNAME and a validation TXT record per host name                                                          |
+
+From `KNOWLEDGE_SERVER_STAGE=server` on, also the environment's knowledge server in a network of its own, the knowledge identities and the principals job: see [Knowledge server](#knowledge-server).
 
 ## The containers
 
 One `Dockerfile`, three targets:
 
-| Container app          | Target   | Ingress | What it runs                                          |
-| ---------------------- | -------- | ------- | ----------------------------------------------------- |
-| `genai-test-api`       | `api`    | Public  | The API, on `api.genki-test.digdir.cloud`             |
-| `genai-test-worker`    | `worker` | None    | Triggers, ingestion and batch jobs. One replica       |
-| `genai-test-portal`    | `apps`   | Public  | The portal, on `portal.genki-test.digdir.cloud`       |
-| `genai-test-workspace` | `apps`   | Public  | The workspace, on `workspace.genki-test.digdir.cloud` |
-| `genai-test-console`   | `apps`   | Public  | The console, on `console.genki-test.digdir.cloud`     |
+| Container app          | Target   | Ingress            | What it runs                                           |
+| ---------------------- | -------- | ------------------ | ------------------------------------------------------ |
+| `genai-test-api`       | `api`    | Public             | The API, on `api.genki-test.digdir.cloud`              |
+| `genai-test-worker`    | `worker` | None               | Triggers, ingestion and batch jobs. One replica        |
+| `genai-test-portal`    | `apps`   | Public             | The portal, on `portal.genki-test.digdir.cloud`        |
+| `genai-test-workspace` | `apps`   | Public             | The workspace, on `workspace.genki-test.digdir.cloud`  |
+| `genai-test-console`   | `apps`   | Public             | The console, on `console.genki-test.digdir.cloud`      |
+| `genai-test-docling`   | (own)    | Internal TCP, 5001 | PDF conversions, see [Docling server](#docling-server) |
 
-In prod the names are `genai-prod-*` and the host names end in `genki.digdir.cloud`.
+The API and the worker are sized apart, the same in test and prod. The API has 0.5 vCPU and 1 GiB a replica (`cpu`, `memory` in `infra/main.bicep`). The worker has 2 vCPU and 4 GiB (`workerCpu`, `workerMemory`), and Node's heap gets three quarters of that memory through `NODE_OPTIONS=--max-old-space-size` (3072 MB), since an ingestion run holds its whole listing in memory and a Kudos listing ran out of 1 GiB. `workerMemory` is in whole Gi. A change to the worker by hand in the portal lasts until the next deploy.
+
+In prod the names are `genai-prod-*` and the host names end in `genki.digdir.cloud`. The Docling server has its own image, from `docker/docling/Dockerfile`.
 
 The `api` and `worker` images hold each package's `dist` and the folders in `docker/runtime-assets`: the files the code reads from disk next to itself, such as eval judges, test sets and the seeded services. A test (`scripts/runtime-assets.test.ts`) fails when the code reads such a folder that is not listed.
 
@@ -37,35 +44,172 @@ They also hold `/app/genki-docs`: the documentation the GenKI guide answers from
 
 The `apps` image holds all three app builds; `APP` picks which one a container serves. Settings are read at start, not at build: the container writes `/config.js` from its environment (`ANSATTPORTEN_ISSUER`, `OIDC_CLIENT_ID`, `API_AUDIENCE`, `ALTINN_RESOURCE`, `PUBLIC_API_BASE`, `PORTAL_URL`, and for the console `OIDC_ISSUER`, `OIDC_TOKEN_ENDPOINT`, `ENVIRONMENT`), so one image runs in every environment. It proxies `/api/` to the API (`API_UPSTREAM`), so the browser talks to one origin and the API needs no CORS. The proxy drops `/api` and forwards the rest of the request URI as the browser sent it, so encoded slashes in ids such as `digdir%2Fkudos` reach the API still encoded. The Azure ingress in front of the API decodes `%2F` anyway, so the API also accepts these ids with a plain slash (`/operator/datasets/digdir/kudos/pipelines`) and reads them as the encoded form (`apps/api/src/decoded-ids.ts`). It sends a Content Security Policy that allows connections to the login issuer only.
 
+The API writes one JSON line to its console log for each request slower than `SLOW_REQUEST_MS` (500 ms by default): `{"msg":"request","method":"GET","route":"/tenants/:tenant/overview","status":200,"ms":1234}`. It names the route pattern, never the ids in the path or the query string. `LOG_REQUESTS=true` logs every request the same way.
+
+## Docling server
+
+`genai-<env>-docling` converts PDFs for `knowledge.convert` (ADR 0042, issue 476; the worker calls it from issue 477 on). Test and prod alike:
+
+- **Image:** `docker/docling/Dockerfile`, Python 3.13 on Debian trixie (base pinned by digest) with the versions the parser benchmark's winner ran (`benchmarks/ingestion/blocks/results/run2.md`, `docling-tess`): Docling 2.146.0, docling-core 2.105.0, docling-ibm-models 4.0.4, CPU torch 2.15.0, Tesseract 5.5.0 and Debian's Norwegian data, served by docling-serve 1.38.2, with the layout and TableFormer models inside. The Debian packages are not pinned by version, since the mirrors keep only the newest build; the build stops if Tesseract is no longer 5.5.0 or the Norwegian data changes. Every Python package is installed at the version in `docker/docling/requirements.txt`, resolved from what PyPI offered when the benchmark run started, so a later rebuild installs the same code. Tesseract is the only OCR a request gets, with Norwegian when it names no OCR preset (`auto`); English data is there too. Unlike the platform's images, a rebuild need not give the same digest, since the Debian packages come from the live mirrors. `images.yml` builds it when the tree of `docker/docling` changes, and at least weekly so the Debian packages stay current; the deploy deploys it by digest, and prod gets the same digest.
+- **Size:** Consumption, 4 vCPU and 8 GiB a replica, one conversion at a time (one Docling worker, 4 threads), 0 to 8 replicas (`doclingMaxReplicas` in `infra/modules/containerapps.bicep`, the same in both environments). The parser benchmark's rate, 8 Docling processes on 32 vCPUs, was 5,413 pages an hour; 8 replicas are the same 32 vCPUs. Peak memory converting a four-page scan locally was 1.4 GiB. The server waits up to 6 h for one conversion (`DOCLING_SERVE_MAX_SYNC_WAIT` 21,600) and the worker asks Docling to stop after 5 h 50 min, since the server does not stop a conversion it gave up waiting on; the worker converts `doclingMaxReplicas` files at once (`KNOWLEDGE_CONVERT_CONCURRENCY`, issue 477).
+- **Reach:** internal TCP ingress on port 5001, so only apps in the environment reach it, and every request but the health routes needs `X-Api-Key`: the Key Vault secret `docling-api-key`, which only the worker (`DOCLING_API_KEY`) and the server are given; an app with the platform identity could still read it from Key Vault. The server can use the platform identity only to pull its image and read its key (`identitySettings` `lifecycle: 'None'`): its code, which parses untrusted PDFs, gets no token. The worker gets `DOCLING_URL`, `http://<internal address>:5001`. TCP, not HTTP, because HTTP ingress ends a request after 240 s and a conversion takes minutes: the worker holds one request open until Docling answers.
+- **Scale:** from zero, on open connections (`concurrentConnections` 1). Azure counts connections over the past 15 s and scales in after 300 s without them, picking replicas without regard to open connections. A stopped replica is given 600 s (`terminationGracePeriodSeconds`), and the server finishes the conversion it is running before it exits (locally, a conversion stopped 30 s in still returned 200). A conversion longer than that can be cut.
+- **Keeps:** no volume; uploads over 1 MB spooled to the replica's `/tmp`, each region Tesseract reads written there as an image and deleted when read, and results in memory, single-use and removed `DOCLING_SERVE_RESULT_REMOVAL_DELAY` (1 s) after they are fetched, while a result never fetched, such as one whose request was cut, stays until the replica stops; `DOCLING_SERVE_LOG_LEVEL=WARNING`. Docling's Tesseract stage logs OCR failures at ERROR with the uploaded file's name and the page; no text. All of it is gone when the replica stops. The API docs, version, capabilities and metrics routes are off; the status, result and clear routes stay, behind the key.
+
+**Before the first deploy with it,** create the Key Vault secret `docling-api-key` (`openssl rand -base64 32`). The worker and the server read it, and, as for the secrets above, a secret missing behind its name stops the revision from starting: the worker's included.
+
+**Check it** after a deploy, from the worker, with a PDF that takes more than five minutes (an image-only Kudos report of 30 pages or more), so the held connection is shown to last:
+
+```sh
+az containerapp exec -g <resource group> -n genai-<env>-worker \
+  --command "node scripts/docling-check.ts https://kudos.dfo.no/dokument/73b8a416-7746-4816-b7bc-de228880168a/filer/b9e6d79a-a23d-4f4f-bf35-13c61735b173.pdf"
+```
+
+It prints one line for the conversion (`http` 200, `status` `success`, `seconds`, `pages`, `characters`) and one for the same request without the key (`http` 401). A first request after the server was idle also waits for a replica to start. Then, after five minutes with no conversion, `az containerapp replica list -g <resource group> -n genai-<env>-docling` lists none.
+
+Not checked yet, and checked by that first run in test:
+
+- whether a TCP connection that sends nothing while Docling works is cut before Docling answers; the check and the worker's client (`packages/ingest/src/docling.ts`) send TCP keepalive probes every 30 s, seen locally against this image, not yet in Azure;
+- how long a replica takes to start in Azure, pulling the 5.8 GB image (unpacked) and loading the models (13 s from a cached image locally);
+- whether the environment's Consumption cores allow 8 Docling replicas (32 vCPUs) beside the other apps;
+- whether a connection that starts the first replica waits for it or is refused, and whether replicas follow the open connections, or scale-in stops one in the middle of a conversion: watch `az containerapp replica list` through two long conversions at once;
+- whether Azure keeps a stopped replica, and the worker's connection to it, for the 600 s it is given.
+
 ## Database
 
 The API and worker log in to Postgres with the app's managed identity and an Entra ID token as the password (`PGHOST`, `PGUSER`, `PGDATABASE`, `PGSSLMODE`, `AZURE_CLIENT_ID`). The token is fetched when a connection opens and reused until five minutes before it expires. `DATABASE_URL` still wins when set, which is how local development connects.
 
-The app identity owns the schema and runs migrations. Queries run as `genai_runtime` (no BYPASSRLS), switched per connection with the `role` option, so row-level security applies (ADR 0022).
+The app identity owns the schema and runs migrations. Queries run as `genai_runtime` (no BYPASSRLS), switched per connection with the `role` option, so row-level security applies (ADR 0022). The worker switches to `genai_worker` instead: a member of `genai_runtime` with the same row-level security, and of the roles the apps run queries as, the only one with rights on the `pgboss` job tables (ADR 0041). The migration creates both roles and lets the app identity switch to them.
 
 The server allows the `vector` extension through its `azure.extensions` setting (`VECTOR`, in `modules/postgres.bicep`, for test and prod alike). Azure Postgres refuses `create extension` for any extension not on that list, and the pgvector engine creates `vector` when it first migrates. To allow more extensions later, add them to the same comma-separated value.
+
+## Knowledge server
+
+Each environment has a knowledge server of its own (ADR 0042), set up as its platform server is: private access in a delegated subnet, its own private DNS zone, Entra ID auth only. Each holds only its own environment's data and is bound to its own platform server. Test's has run since 2026-11-04; prod's is in the template, switched on with the same steps when genki prod runs.
+
+| Resource                                           | Notes                                                                                                                                                                                                                     |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `genai-<env>-knowledge-vnet`                       | Test `10.43.0.0/24`, prod `10.42.0.0/24`: one delegated `postgres` subnet, peered both ways with `genai-<env>-vnet`. A server can never move network, so a network peered with it later reaches only the knowledge server |
+| `genai-<env>-knowledge-<suffix>`, PostgreSQL 17    | `Standard_D2ds_v5` (2 vCores, 8 GiB) and 64 GB in both to start, 7-day backups, not geo-redundant, no standby, all `knowledgePostgres*` parameters. Database `genai_knowledge`                                            |
+| Its private DNS zone                               | `genai-<env>-knowledge-<suffix>.private.postgres.database.azure.com`, linked to the knowledge network and the environment's own                                                                                           |
+| `genai-<env>-knowledge-api-id`, `-worker-id`       | The API's and the worker's own logins: the API's may act only as `genai_knowledge_reader`, the worker's as the writer and the owner                                                                                       |
+| `genai-<env>-knowledge-admin-id`                   | An Entra admin of the environment's knowledge server beside its admin group, held only by its principals job                                                                                                              |
+| `genai-<env>-knowledge-setup` (Container Apps job) | Started by hand: makes the two logins and sets up the database                                                                                                                                                            |
+
+- **Settings:** `azure.extensions` is `VECTOR,PG_PREWARM` and `shared_preload_libraries` is `pg_stat_statements,pg_prewarm` (PostgreSQL 17's default is `pg_stat_statements`). `shared_preload_libraries` is static: the server takes it only after a restart ([Azure: set a parameter](https://learn.microsoft.com/en-us/azure/postgresql/parameters/how-to-parameters-set-value)).
+- **Size:** start small and grow. Compute moves up or down with a restart, 10 to 30 seconds with Azure's near-zero downtime scaling ([Azure: scaling](https://learn.microsoft.com/en-us/azure/postgresql/scale/concepts-scaling-resources)); the disk only grows, and autogrow doubles it when it runs low ([Azure: autogrow](https://learn.microsoft.com/en-us/azure/postgresql/scale/how-to-auto-grow-storage)). After an autogrow, raise `knowledgePostgresStorageSizeGB` to the new size: Azure does not shrink a disk, so a smaller value in the template is refused. For Kudos, binary quantisation would keep the vector index at about 1.5 GB instead of 12.7 GB, by extrapolation from 0.47 GB at 1 million vectors (issue 265 measures it at about 3 million).
+- **Connections:** `max_connections` stays at Azure's default, 859 on `Standard_D2ds_v5` with 15 reserved ([Azure: limits](https://learn.microsoft.com/en-us/azure/postgresql/flexible-server/concepts-limits)). Prod's pools need at most 102: the API's reader pool takes 10 per replica (`pg`'s default), the worker's owner and writer pools 20, pg-boss uses those pools (ADR 0041), counted twice for a deploy, for 3 API replicas, plus 2 for the job. Test's need at most 82, for 2 replicas.
+- **pgvector:** Azure lists 0.8.2 for PostgreSQL 17 ([Azure: extension versions](https://learn.microsoft.com/en-us/azure/postgresql/extensions/concepts-extensions-versions)); the job's log shows the version the server runs (`extensions`). The VACUUM workaround of ADR 0042 holds until it is 0.8.4 or later.
+- **Only its own logins connect:** the setup revokes `CONNECT` from `PUBLIC` and grants it to the environment's two logins and `azure_pg_admin`, since roles are global to a server. It fails when a grant it cannot remove is left, or while another role holds one of the logins with inherit or set.
+
+### Disk tier
+
+`knowledgePostgresPerformanceTier` sets the disk's performance tier. Empty, the default, sends no tier, as the template did before it had one. What Azure then does to a tier raised by hand is not documented; in test, three deploys that sent no tier kept the hand-raised P30 (2026-11-14 17:00 and 17:21, 2026-11-15 06:53 UTC). Test sets `P30` (issue 599); prod sets none.
+
+A disk's size sets its lowest tier, and a 128 GB disk can go up to P50 ([Azure: performance tiers](https://learn.microsoft.com/en-us/azure/virtual-machines/disks-change-performance)). At 128 GB ([Azure: disk targets](https://learn.microsoft.com/en-us/azure/virtual-machines/disks-scalability-targets)):
+
+| Tier            | Base IOPS | Base MB/s |
+| --------------- | --------: | --------: |
+| P10 (the floor) |       500 |       100 |
+| P15             |     1,100 |       125 |
+| P20             |     2,300 |       150 |
+| P30             |     5,000 |       200 |
+
+The server's compute has limits of its own: `Standard_D2ds_v5` supports at most 3,750 IOPS and 85 MiB/s ([Azure: compute](https://learn.microsoft.com/en-us/azure/postgresql/compute-storage/concepts-compute)). The page does not say how they combine with the disk's, and the recall check below reads past both.
+
+Disks of the P20 size and smaller burst on credits, to 3,500 IOPS and 170 MB/s for up to 30 minutes ([Azure: disk bursting](https://learn.microsoft.com/en-us/azure/virtual-machines/disk-bursting)); whether a disk raised to a higher tier still bursts is not documented. In test, the Kudos fill ran out of burst credits on 2026-11-14, and at P30 on 2026-11-15 it read at hourly maxima of 3,600 to 4,200 IOPS.
+
+**For a full fill or a new embedding model,** raise the tier first and step it back afterwards:
+
+1. Set `knowledgePostgresPerformanceTier = 'P30'` in `infra/env/<env>.bicepparam` and run infra. Both `infra.yml` and `deploy.yml` deploy `main.bicep` with the environment's parameters, so merge the raise to main before the fill. A tier raised above the file's only by hand (`az postgres flexible-server update -g <resource group> -n <server> --performance-tier P30`) or from a branch makes every infra run and every deploy that applies the whole template fail for 12 hours (step 3), and the first such run after that lowers it, fill or not; a deploy that skips the infrastructure leaves the tier as it is.
+2. Run the fill. Watch `disk_iops_consumed_percentage` and `disk_bandwidth_consumed_percentage` on the server in Azure Monitor: at 100 % the disk is holding the fill back.
+3. After the fill, set the file back to the lower tier, and merge it no sooner than 12 hours after the raise. Azure lowers a tier only 12 hours after the last raise, and refuses an earlier change with `PerformanceTierCannotBeDowngradedBefore12HoursError`, so an earlier infra or deploy run fails ([Azure: scale storage performance](https://learn.microsoft.com/en-us/azure/postgresql/scale/how-to-scale-storage-performance)). Whether a tier change restarts a flexible server is not documented.
+
+Size the tier by the two `consumed_percentage` metrics, not by `read_iops` or `read_throughput`. The nightly recall check (`knowledge.check`, ADR 0042) runs from the window's start, one sequential scan per sample over the partition of each active generation on the knowledge server. On 2026-11-16 it took 63 minutes, for 160 samples at about 625,000 chunks, and takes longer above 2 million chunks, where its floor of 50 samples reads more than its budget, or when chunks are larger. From 00:00 to 01:03 UTC it read about 6,000 IOPS and 204 MB/s, while both consumed metrics stayed at 0 to 10 %.
+
+### Stages
+
+`KNOWLEDGE_SERVER_STAGE`, a GitHub variable read by `infra.yml` and `deploy.yml`, set on the environment or, without access to environment settings, as a repository variable (then prod's environment needs `none` set, since a repository variable reaches every environment and an environment's own value wins): `none` (the default, and what an unset variable means: nothing of the knowledge server), `server` (the network, the server, the identities, the job, and Storage Blob Data Contributor on the container `conversions` for the knowledge worker identity), `apps` (also the API and worker settings: `KNOWLEDGE_PGHOST`, `KNOWLEDGE_PGDATABASE`, `KNOWLEDGE_READ_PGHOST` on the same server, each app's own `KNOWLEDGE_PGUSER` and `KNOWLEDGE_AZURE_CLIENT_ID`, and the worker's `KNOWLEDGE_VCORES`, `CONVERSIONS_BLOB_URL` and its readiness probe on `/readyz`). The worker stops at start while it has no login, so `apps` waits until the job has set up the database.
+
+Per environment, test first. The steps infra cannot do run in the `knowledge-server` workflow (`.github/workflows/knowledge-server.yml`), as the deploy identity, so they need GitHub access only:
+
+0. **A release with the setup script:** run `deploy.yml` with this change, stage still `none`. The job runs `scripts/knowledge-server-setup.ts` from the worker image, and `infra.yml` reuses the image that runs.
+1. **`server`:** set `KNOWLEDGE_SERVER_STAGE=server`, run infra with what-if, read it, then without. Then run `knowledge-server` with `restart`, which restarts the server only while `shared_preload_libraries` waits for it.
+2. **The database:** run `knowledge-server` with `setup`. It starts the job `genai-<env>-knowledge-setup`, waits for it and prints its log (below), and fails when the job does.
+3. **`apps`:** set `KNOWLEDGE_SERVER_STAGE=apps` and run infra. Then run `knowledge-server` with `check`: the server, its settings and Entra admins, both sides of the peering, the last job run, the apps' revisions and the API's `/health`. It fails on a server that is not ready, a restart still waiting, a peering side that is not `Connected`, an unhealthy revision or a `/health` other than 200.
+4. **The peering through a redeploy:** run infra once more, then `check` again: both sides of the peering stay `Connected`. Infra redeploys `genai-<env>-vnet` without its peerings, and from `apps` on the apps reach the knowledge server only through them.
+
+A job run is safe to repeat: logins that exist are kept, and the setup changes nothing it already set.
+
+### What the job's log shows
+
+After setup the job prints the server's settings, extensions, logins, memberships and who may connect, so the checks need no way into the private network:
+
+- `settings.azure_extensions` lists `VECTOR` and `PG_PREWARM`, `settings.shared_preload_libraries` includes `pg_prewarm`, and `extensions` names the `vector` version.
+- `logins` holds no `genai-<env>-api-id`: the shared app identity has no role on the knowledge server.
+- `memberships` lists every role the two logins are members of: the API's login only `genai_knowledge_reader`, the worker's only `genai_knowledge_owner` and `genai_knowledge_writer`, all with `inherit_option` false. Any other role there needs a look.
+- `connect` lists only the two logins, `azure_pg_admin` and the database's owner, never `public`.
+- `members` lists the roles that hold one of the two logins: the role that created it, with `admin_option` only, and possibly the setup's own admin or an `azure_pg_admin` member with inherit or set. The setup fails on any other role that may inherit or set a login.
+
+### Restore drill
+
+A restore always creates a new server; the source is left as it is ([Azure: backup and restore](https://learn.microsoft.com/en-us/azure/postgresql/backup-restore/concepts-backup-restore)). Time one before a service depends on the server, and again with Kudos loaded (issue 148): run `knowledge-server` with `restore-drill`, which restores to `genai-<env>-knowledge-restore-drill` as of ten minutes earlier, prints the time and deletes the restored server, also when a step fails. It runs:
+
+```sh
+time az postgres flexible-server restore -g <resource group> -n genai-<env>-knowledge-restore-drill \
+  --source-server <server> --restore-time <a UTC time a few minutes ago, such as 2026-11-04T09:00:00Z> \
+  --vnet genai-<env>-knowledge-vnet --subnet postgres \
+  --private-dns-zone <server>.private.postgres.database.azure.com
+az postgres flexible-server show -g <resource group> -n genai-<env>-knowledge-restore-drill --query state
+az postgres flexible-server delete -g <resource group> -n genai-<env>-knowledge-restore-drill --yes
+```
+
+The restored server keeps neither the source's parameters nor its network rules, so a real restore sets `azure.extensions` and `shared_preload_libraries` again, and the template must then name the new server. Test's empty server took 615 s (10 min 15 s) to restore, on 2026-11-04.
+
+### Checked on test
+
+Test went through the stages on 2026-11-04. What the documentation left open:
+
+- **The peering survives an infra run:** after the second run at `apps`, `check` showed both sides `Connected`. The what-if lists changes under `virtualNetworkPeerings` that the deploy does not make ([arm-template-whatif #278](https://github.com/Azure/arm-template-whatif/issues/278)), so read `check`, not the what-if.
+- **The readiness probe reaches the worker without ingress:** the worker's revision with the probe is Healthy.
+- **The knowledge admin may revoke `CONNECT` on the database the template created:** the first `setup` left `connect` with only the two logins and `azure_pg_admin`.
+- **Two servers can share the delegated subnet and the private DNS zone:** the restore drill's server reached Ready in them.
+- **`setup` reads a finished job's log** from the job's log stream (`az containerapp job logs show`).
+
+### Open
+
+- Whether the peering drops for a moment during a run: `check` sees only the state after it. A `deploy.yml` run, which deploys the same template, has not been checked at `apps` yet.
+- The `setup` action's fallback to the `ContainerAppConsoleLogs` table in Log Analytics has not run, since the log stream answered.
 
 ## Settings and secrets
 
 Plain settings come from the GitHub environment's variables (Settings → Environments → test or prod → Variables), read by the parameter file with `readEnvironmentVariable`:
 
-| Variable                                                                                 | For                                                                                                                        |
-| ---------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `ANSATTPORTEN_ISSUER`                                                                    | Login for people, API and apps. Required: the API does not start without it                                                |
-| `PORTAL_CLIENT_ID`, `WORKSPACE_CLIENT_ID`                                                | Ansattporten client ids of the portal and workspace                                                                        |
-| `CONSOLE_CLIENT_ID`, `CONSOLE_TOKEN_ENDPOINT`                                            | The console's login (its issuer defaults to `ANSATTPORTEN_ISSUER`)                                                         |
-| `ALTINN_PDP_URL`                                                                         | The Altinn decision point. Required: the API does not start without it                                                     |
-| `ALTINN_PDP_MASKINPORTEN_CLIENT_ID`                                                      | The Maskinporten client that asks the decision point                                                                       |
-| `MASKINPORTEN_ISSUER`, `MASKINPORTEN_TOKEN_URL`                                          | Maskinporten, for the decision point and for systems calling the API                                                       |
-| `OPERATOR_SUBJECTS`                                                                      | People with the operator role, comma separated                                                                             |
-| `ALTINN_RESOURCE`                                                                        | Test only. The Altinn resource whose rights count in genki                                                                 |
-| `PLATFORM_TENANT`                                                                        | Test only. The organisation that plays Digdir, for test organisations. Empty means Digdir                                  |
-| `FOUNDRY_OPENAI_BASE_URL`, `FOUNDRY_CLAUDE_BASE_URL`, `TYPESENSE_URL`, `COLBERT_API_URL` | Models, search and reranking                                                                                               |
-| `CUSTOM_DOMAINS_STAGE`                                                                   | `none`, `hostnames` or `certificates`; see Host names below                                                                |
-| `LOCKDOWN_ENTRA_GROUPS`                                                                  | Test only. Entra group object ids, comma separated, whose members get the whole platform in lockdown                       |
-| `LOCKDOWN_ENTRA_EMAIL_DOMAIN`                                                            | Test only. Extra guard for those Entra logins: the email must be at this domain. Set it to `digdir.no`; empty turns it off |
+| Variable                                                                                 | For                                                                                                                                                                                                                                                                                                                                                                                   |
+| ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ANSATTPORTEN_ISSUER`                                                                    | Login for people, API and apps. Required: the API does not start without it                                                                                                                                                                                                                                                                                                           |
+| `PORTAL_CLIENT_ID`, `WORKSPACE_CLIENT_ID`                                                | Ansattporten client ids of the portal and workspace. With `CONSOLE_CLIENT_ID` they also make up the API's `EMPLOYEE_CLIENT_IDS`, the only clients besides tenant-registered ones whose Ansattporten logins the API accepts; `main.bicep` sets it, so it needs no variable of its own. The API refuses to start with it empty                                                          |
+| `CONSOLE_CLIENT_ID`, `CONSOLE_TOKEN_ENDPOINT`                                            | The console's login (its issuer defaults to `ANSATTPORTEN_ISSUER`)                                                                                                                                                                                                                                                                                                                    |
+| `ALTINN_PDP_URL`                                                                         | The Altinn decision point. Required: the API does not start without it                                                                                                                                                                                                                                                                                                                |
+| `ALTINN_PDP_MASKINPORTEN_CLIENT_ID`                                                      | The Maskinporten client that asks the decision point                                                                                                                                                                                                                                                                                                                                  |
+| `MASKINPORTEN_ISSUER`, `MASKINPORTEN_TOKEN_URL`                                          | Maskinporten, for the decision point and for systems calling the API                                                                                                                                                                                                                                                                                                                  |
+| `OPERATOR_SUBJECTS`                                                                      | People with the operator role: comma-separated `issuer\|subject` pairs of Ansattporten logins. The API refuses to start with a bare subject or without `OPERATOR_CLIENT_IDS`. A listed person is an operator only when logging in through one of those clients. Maskinporten clients never become operators                                                                           |
+| `ALTINN_RESOURCE`                                                                        | Test only. The Altinn resource whose rights count in genki                                                                                                                                                                                                                                                                                                                            |
+| `PLATFORM_TENANT`                                                                        | Test only. The organisation that plays Digdir, for test organisations. Empty means Digdir                                                                                                                                                                                                                                                                                             |
+| `FOUNDRY_OPENAI_BASE_URL`, `FOUNDRY_CLAUDE_BASE_URL`, `TYPESENSE_URL`, `COLBERT_API_URL` | Models, search and reranking                                                                                                                                                                                                                                                                                                                                                          |
+| `LANGFUSE_BASE_URL`, `LANGFUSE_INSTANCE_RECEIVES_CONTENT`                                | Digdir's Langfuse, offered in the portal's Langfuse connection form; `true` once it may receive text (ADR 0011). Unset: the form asks only for an agency's own Langfuse. Test sets the URL in `test.bicepparam`, and the content flag is `true` there unless the variable is set                                                                                                      |
+| `TRACES_ENDPOINT`, `TRACES_RESIDENCY`                                                    | Test only. Where genki sends its own traces (`https://<host>/api/public/otel`) and where that store is (`norway`, `eu` or `global`). Needs the two Langfuse keys in Key Vault                                                                                                                                                                                                         |
+| `CUSTOM_DOMAINS_STAGE`                                                                   | `none`, `hostnames` or `certificates`; see Host names below                                                                                                                                                                                                                                                                                                                           |
+| `KNOWLEDGE_SERVER_STAGE`                                                                 | `none`, `server` or `apps`; unset or empty means `none`. On the test environment, or a repository variable when environment settings are out of reach. See [Knowledge server](#knowledge-server)                                                                                                                                                                                      |
+| `LOCKDOWN_ENTRA_GROUPS`                                                                  | Test only. Entra group object ids, comma separated, whose members get the whole platform in lockdown                                                                                                                                                                                                                                                                                  |
+| `LOCKDOWN_USER_GROUPS`                                                                   | Test only. Entra group object ids, comma separated, whose members get every right in `PLATFORM_TENANT` in lockdown, as `LOCKDOWN_ENTRA_GROUPS` does, but never the operator role. Same client and email checks; `LOCKDOWN_ENTRA_GROUPS` wins for a login in both                                                                                                                      |
+| `LOCKDOWN_SERVICE_GROUPS`                                                                | Test only. Entra group object ids, comma separated, meant for Digdir's all-employees group. A member who logs in through a client in `LOCKDOWN_SERVICE_CLIENT_IDS` may invoke that client's service and use their own conversations and feedback, and nothing else: no platform rights, models only through that service. Same email check; the two groups above win where they apply |
+| `LOCKDOWN_SERVICE_CLIENT_IDS`                                                            | Test only. The Ansattporten client ids, comma separated, through which `LOCKDOWN_SERVICE_GROUPS` members may log in, such as Kunnskapsassistenten's. Each must be registered in `PLATFORM_TENANT` as a frontend of its service, and none may be a platform client. In lockdown the API refuses to start with `LOCKDOWN_SERVICE_GROUPS` and without it                                 |
+| `LOCKDOWN_ENTRA_EMAIL_DOMAIN`                                                            | Test only. Extra guard for those Entra logins: the email must be at this domain. Set it to `digdir.no`; empty turns it off                                                                                                                                                                                                                                                            |
+| `OPERATOR_CLIENT_IDS`                                                                    | Test only. The Ansattporten client ids, comma separated, whose Entra logins count for `LOCKDOWN_ENTRA_GROUPS` and `LOCKDOWN_USER_GROUPS`: the portal, workspace and console clients (each app's `OIDC_CLIENT_ID`). Set it before deploying: in lockdown the API refuses to start with either group setting and without it                                                             |
+| `ALERT_EMAILS`                                                                           | Email addresses that get the alerts, comma separated. Set it per environment, test and prod; never in the repository. Empty means the alerts fire in the portal without notifying anyone. See the [runbook](../docs/runbook.md#alerts)                                                                                                                                                |
 
-`test.bicepparam` also sets `GENAI_LOCKDOWN=true` in `appEnv`, not from a variable: genki-test is always locked. In lockdown only API keys from configuration and people who log in through Ansattporten with Entra ID and are in one of `LOCKDOWN_ENTRA_GROUPS` may use models or run ingestion. Those Entra logins get every right in `PLATFORM_TENANT` and the operator role. TestID logins and operators can only read and search; API keys and Maskinporten clients created by such an Entra login may use models and run ingestion within their own bindings; other keys made through the API can read, search and change configuration, but not run anything that reaches a model, fetches documents or writes new embeddings, and scheduled ingestion is skipped. `appEnv` reaches the worker too, which then runs no triggers. See [ADR 0033](../docs/adr/0033-locked-test-environment.md).
+`test.bicepparam` also sets `GENAI_LOCKDOWN=true` in `appEnv`, not from a variable: genki-test is always locked. In lockdown only API keys from configuration and people who log in through Ansattporten with Entra ID and are in one of `LOCKDOWN_ENTRA_GROUPS` may use models or run ingestion. Those Entra logins, only from the clients in `OPERATOR_CLIENT_IDS` and never through a client a tenant registered, get every right in `PLATFORM_TENANT` and the operator role. The `operator: true` persons in the image's `identity.yaml` count only for the dev-mode mock login and are ignored, with a log line, everywhere else. TestID logins and operators can only read and search; API keys and Maskinporten clients created by such an Entra login may use models and run ingestion within their own bindings; other keys made through the API can read, search and change configuration, but not run anything that reaches a model, fetches documents or writes new embeddings, and scheduled ingestion is skipped. `appEnv` reaches the worker too, which then runs no triggers. See [ADR 0033](../docs/adr/0033-locked-test-environment.md).
 
 The API audience (`digdir:genai`) has a default in `main.bicep`. genki-test reads the Altinn resource from `ALTINN_RESOURCE` and uses `urn:altinn:resource:digdir-genai-platform-test`. `prod.bicepparam` fixes the resource to `urn:altinn:resource:digdir-genai-platform` and the platform tenant to Digdir, and sets no `GENAI_LOCKDOWN`, so neither variable has any effect in prod.
 
@@ -80,6 +224,10 @@ Secrets live only in Key Vault. Each name in `keyVaultSecretNames` becomes an en
 | `foundry-claude-key`          | `FOUNDRY_CLAUDE_KEY`          |
 | `typesense-key`               | `TYPESENSE_KEY` (search only) |
 | `colbert-api-key`             | `COLBERT_API_KEY`             |
+| `langfuse-public-key`         | `LANGFUSE_PUBLIC_KEY` (test)  |
+| `langfuse-secret-key`         | `LANGFUSE_SECRET_KEY` (test)  |
+
+`docling-api-key` is not in `keyVaultSecretNames`: the template gives it only to the worker (`DOCLING_API_KEY`) and the Docling server (`DOCLING_SERVE_API_KEY`), see [Docling server](#docling-server). Create it like the others.
 
 Create every secret in Key Vault before the first deploy, or remove its name from the parameter file. A name listed without a secret behind it stops the revision from starting. `CONTENT_MASTER_KEY` is 32 random bytes, base64: `openssl rand -base64 32`.
 
@@ -127,12 +275,12 @@ The decision point needs, per environment, the Altinn resource, a Maskinporten c
 
 ## What the platform owner creates once
 
-1. **Resource group** for test, in `norwayeast`, e.g. `rg-genai-test`.
+1. **Resource group** for test, in `westeurope`, e.g. `rg-genki-test-weu`. Burstable Postgres is not available to the subscription in Sweden Central.
 2. **Deploy identity**: an Entra app registration (or user-assigned identity) with a federated credential for GitHub OIDC:
    - issuer `https://token.actions.githubusercontent.com`
    - subject `repo:digdir/genki:environment:test`, and the ID form `repo:digdir@51157288/genki@1411915404:environment:test` (the organisation uses ID-based OIDC subjects)
    - audience `api://AzureADTokenExchange`
-3. **Roles for the deploy identity** on the resource group: `Contributor`, plus `Role Based Access Control Administrator` limited to the roles AcrPull, AcrPush and Key Vault Secrets User (the template assigns those).
+3. **Roles for the deploy identity** on the resource group: `Contributor`, plus `Role Based Access Control Administrator` limited to the roles AcrPull, AcrPush, Key Vault Secrets User and Storage Blob Data Contributor (the template assigns those; the last on the container `conversions` for the knowledge worker identity, with stage `server` or `apps`). An environment set up before Storage Blob Data Contributor was added needs its condition widened with `ba92f5b4-2d11-453d-a403-e96b0029c9fe` in both of its role lists (`az role assignment update`) before the next `infra.yml` or `deploy.yml`, since both deploy `main.bicep`.
 4. **Entra group for database admins**, e.g. `genai-test-pg-admins`, with the people who may administer Postgres.
 5. **GitHub environment `test`** with these variables (none are secrets), plus the settings in the table above:
 
@@ -154,15 +302,51 @@ The decision point needs, per environment, the Altinn resource, a Maskinporten c
 
 1. Run the **infra** workflow with `what-if` on, read the plan, then run it again with `what-if` off. It deploys placeholder images and creates the registry, vault and DNS zone.
 2. Set `ACR_NAME` from the run's output `registryName`, add the Key Vault secrets, and ask for the DNS delegation.
-3. Run the **deploy** workflow on `main` (`gh workflow run deploy.yml`). It runs the checks, builds the `api`, `worker` and `apps` images, pushes them and deploys them by digest. While `ALTINN_PDP_URL` is not set, it deploys the worker and the apps only: the API keeps its current image, since it refuses to start without the real Altinn decision point, and the run summary says so. Once it is set, the deploy also waits until the API's `/health` reports the commit.
+3. Run the **deploy** workflow on `main` (`gh workflow run deploy.yml`). It deploys the `api`, `worker`, `apps` and `docling` images by digest, after the checks passed (see [How a deploy stays short](#how-a-deploy-stays-short)). While `ALTINN_PDP_URL` is not set, it deploys the worker and the apps only: the API keeps its current image, since it refuses to start without the real Altinn decision point, and the run summary says so. Once it is set, the deploy also waits until the API's `/health` reports the commit.
 4. When the delegation works, set `CUSTOM_DOMAINS_STAGE=hostnames` and run infra, then `certificates` and run it again.
 
 After that, run the deploy workflow whenever `main` should go to test; merges do not deploy on their own. Infra changes ride along with the next deploy, or run the infra workflow by hand.
+
+## How a deploy stays short
+
+A deploy to test took about 39 minutes (runs on 2026-11-17): it ran the checks again, built the four images, applied the whole template twice and ran the gate's model checks one at a time. The target is five minutes or less when the commit has been on `main` a few minutes and nothing under `infra/` or its settings changed; estimated from the measured steps, such a deploy takes about 7 to 9 minutes, and 10 to 12 right after a merge, while the push's `ci` run finishes; not yet measured on deploys. What it does now:
+
+- **Checks.** The `ci` job waits for the `ci` workflow's run on this commit's push to `main`, which runs the same checks in full, and takes its result. Only when that run did not succeed, is still running after 10 minutes, or is missing, as for a commit not on `main`, or GitHub does not answer, does the deploy run `ci.yml` itself.
+- **Images.** `images.yml` builds the API, worker and apps images once per commit when it lands on `main`, pushes them as `genai-<image>:<commit>` and signs a build attestation for each. The deploy calls the same workflow, which reuses an image only when its attestation verifies as built by `images.yml` on `main` from that commit, and builds it again otherwise, with a warning on the run. A deploy that starts while the push's run is still building builds the missing images itself, at the same time; both builds are attested, and the tag keeps the last one, so the Docling image can have two digests in a week. The Docling image is tagged by the tree of `docker/docling` and the week, so it is built when that tree changes and at least weekly. Every commit on `main` now leaves images in the test registry, not only the deployed ones.
+- **Template.** See [Deploys that skip the infrastructure](#deploys-that-skip-the-infrastructure). Applying the whole template took 7.5 minutes, nearly four of them re-applying the unchanged Postgres servers and their administrators; the container apps' own part of it took 44 seconds.
+- **Gate.** The smoke test runs its model checks three at a time ([docs/smoke-tests.md](../docs/smoke-tests.md)), and the health checks ask every five seconds.
+
+A deploy that applies the whole template still takes about 7.5 minutes more. One whose images are not built yet builds them: about 6.5 minutes when the Docling image is built too (about 4.5 of them), an estimated 2 when it is not. The run summary's Images table says for each image whether it was built in the run or reused; a second deploy of a commit that reuses nothing means the attestation check is failing.
+
+## Deploys that skip the infrastructure
+
+`main.bicep` takes `deployInfrastructure`. With `false` it deploys the identities and the container apps alone: the network, monitoring, registry, Key Vault, storage, both Postgres servers, the alerts and the DNS zone are left as they are, and the container apps read the registry's login server, the vault's address, the servers' host names and the storage endpoint from the resources that exist.
+
+`scripts/infra-state.sh` decides which. It hashes what a full deploy applies apart from the images and revisions: the compiled template and the environment's settings, as `az bicep build-params` resolves them, without the Bicep version. Every deploy to test and every infra run keeps that hash in its parameters and outputs (`infraFingerprint`, and `infrastructureDeployed`); a deploy to prod always applies the whole template and keeps no hash. A deploy skips the infrastructure only when the newest deploy that applied, or tried to apply, the whole template succeeded with the same hash. So a change under `infra/` or to a variable the parameter file reads applies the whole template once, in the candidate job; after a full deploy that failed, the next deploy applies it again, whatever its hash; and a deploy from before the hash counts as full with no hash, so the first deploy after this change is full. Each attempt of a run names its deployment apart (`genki-<run>-<attempt>`), so a re-run never replaces the record of a full deploy.
+
+The infra workflow's what-if now lists the alert rules as `Ignore`, not evaluated, where it listed them as `NoChange` before: it skips them since the monitoring module became conditional (checked on test on 2026-11-17; leaving their inputs out of monitoring's outputs did not change it). Everything else it lists as before. The alerts are still applied by a full deploy.
+
+To apply the whole template anyway, for example after a change by hand in the portal, run the deploy with `infrastructure` ticked (`gh workflow run deploy.yml -f infrastructure=true`), which applies it once, or run the infra workflow with `what-if` off (`gh workflow run infra.yml -f what-if=false`), which applies it and records the hash. What a change by hand in Azure did is not seen by the hash: it stays until the next full deploy. Values the workflows pass with `--parameters` (the images, revisions and versions) are not in the hash either, so a setting of the infrastructure belongs in the `.bicepparam` file. A new Bicep version that compiles the template differently changes the hash and applies the whole template once.
+
+## Deploys users do not notice
+
+The API runs several revisions at once (issue 465). Each revision is labelled in the API's traffic list: `live` gets all requests, `candidate` and `previous` none. A deploy runs in three jobs:
+
+1. `candidate` applies the whole template when the infrastructure changed ([Deploys that skip the infrastructure](#deploys-that-skip-the-infrastructure)), and starts a new API revision, `genai-test-api--r<run id>-<attempt>`, labelled `candidate` with no traffic, and waits until its `/health` at `https://genai-test-api---candidate.<environment domain>` reports the commit. The worker, the web apps and Docling keep their images, and the worker its `APP_VERSION`. It stops the API revisions that no label names any more.
+2. `gate` runs the smoke test (`scripts/smoke/run.ts`) against the candidate's address, without the model review and without a browser, since the web apps still run the old version. It ignores the daily cap on smoke runs, and passes only when no check failed and at least one model check ran. A failed check stops the deploy here: users keep the `live` revision, and the `discard` job stops the candidate, so code that failed runs no schedules on the shared data. It keeps its label until the next deploy.
+3. `deploy-test` moves all traffic to the candidate, labels it `live` and the old one `previous`, deploys the new worker, web apps and Docling, and waits until `/health` reports the commit. The `smoke` workflow then tests the whole platform as before.
+
+The old revision keeps its replicas, so requests and streams it was serving finish there; it stops at the next deploy. Until then it also runs the schedules, as a second replica of the live revision would. The worker and the database are shared by both revisions, and the candidate's API runs the schema migrations at start, so a migration must leave the old code working: add tables and nullable columns or columns with a default, and drop or rename only in a later release.
+
+**Roll back** with the `rollback` workflow (`gh workflow run rollback.yml`). It swaps the `live` and `previous` labels with their traffic, so users get the previous API revision within seconds; running it again moves them forward. It rolls back the API only: for the worker or the web apps, run the deploy workflow on the previous good commit.
+
+`infra.yml` keeps the labels, the API revision and the worker's `APP_VERSION` as they are; after a rollback the template still names the revision now labelled `previous`, and it keeps that label. After a failed gate the template names the stopped candidate: whether `infra.yml` starts it again is not checked in Azure, so run the deploy workflow first. A change to the API's settings reaches users only through the deploy workflow; whether Azure refuses such a change from `infra.yml`, since it reuses the revision's suffix, is not checked in Azure. Prod still runs one revision of each app: it deploys without revision parameters.
 
 ## Validate locally
 
 ```sh
 az bicep build --file infra/main.bicep --stdout > /dev/null
+az bicep lint --file infra/main.bicep
 PG_ADMIN_GROUP_OBJECT_ID=00000000-0000-0000-0000-000000000000 PG_ADMIN_GROUP_NAME=x \
   az bicep build-params --file infra/env/test.bicepparam --stdout > /dev/null
 PG_ADMIN_GROUP_OBJECT_ID=00000000-0000-0000-0000-000000000000 PG_ADMIN_GROUP_NAME=x \
@@ -171,20 +355,21 @@ docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:latest
 docker build --target api -t genai-api:local .
 docker build --target worker -t genai-worker:local .
 docker build --target apps -t genai-apps:local .
+docker build -t genai-docling:local docker/docling
 docker/smoke.sh genai-api:local genai-apps:local
 docker run --rm -p 127.0.0.1:18091:8080 -e APP=portal -e API_UPSTREAM=https://api.genki-test.digdir.cloud genai-apps:local
 ```
 
-None of these log in to Azure or deploy anything.
+None of these log in to Azure or deploy anything. Without the Azure CLI, run the `az` lines in `mcr.microsoft.com/azure-cli` (`docker run --rm -v "$PWD:/repo" -w /repo mcr.microsoft.com/azure-cli sh -c 'az bicep install && az bicep build --file infra/main.bicep --stdout > /dev/null'`). `docker run --rm genai-worker:local node scripts/knowledge-server-setup.ts` prints the setup script's usage from the image the principals job runs.
 
 ## Prod
 
-Prod runs the same template from `env/prod.bicepparam` in the resource group `rg-genai-prod` (`norwayeast`), in the same subscription as test, on `api`, `portal`, `workspace` and `console.genki.digdir.cloud`. It differs from test in:
+Prod runs the same template from `env/prod.bicepparam` in the resource group `rg-genki-prod-weu` (`westeurope`), in the same subscription as test, on `api`, `portal`, `workspace` and `console.genki.digdir.cloud`. It differs from test in:
 
 | Setting                     | Prod                                                                                            |
 | --------------------------- | ----------------------------------------------------------------------------------------------- |
 | Replicas                    | 1 to 3                                                                                          |
-| Postgres                    | General Purpose `Standard_D2ds_v5`, 64 GB, backups kept 30 days and copied to Norway West       |
+| Postgres                    | General Purpose `Standard_D2ds_v5`, 64 GB, backups kept 30 days and copied to North Europe      |
 | Address space               | `10.41.0.0/16` (test is `10.40.0.0/16`), so the two networks can be peered later                |
 | Altinn resource             | `urn:altinn:resource:digdir-genai-platform`, fixed in the parameter file                        |
 | Platform tenant             | Digdir, fixed in the parameter file                                                             |
@@ -196,40 +381,41 @@ Geo-redundant backup can only be chosen when Azure creates the server. Prod gets
 
 ### Images
 
-The deploy workflow builds the images once and pushes them to the test registry. `deploy-prod` copies the exact digests that went to test into prod's registry with `az acr import` (tagged with the commit), and deploys prod from there. Prod's app identity pulls only from its own registry, so prod keeps running if test or its registry is gone. The import needs the prod deploy identity to read the test registry; it signs in with its own identity, no registry passwords.
+`images.yml` builds the images once and pushes them to the test registry. `deploy-prod` copies the exact digests that went to test into prod's registry with `az acr import` (tagged with the commit), and deploys prod from there. Prod's app identity pulls only from its own registry, so prod keeps running if test or its registry is gone. The import needs the prod deploy identity to read the test registry; it signs in with its own identity, no registry passwords.
 
 `deploy-prod` needs `build` and `deploy-test`: prod only gets a commit that test took first, including test's health check.
 
 ### What the owner creates once for prod
 
-`rg-genai-prod` and the DNS zone `genki.digdir.cloud` in it already exist. The template manages the zone's records (`createDnsZone = true`); creating the zone again changes nothing.
+`rg-genki-prod-weu` and the DNS zone `genki.digdir.cloud` in it already exist. The template manages the zone's records (`createDnsZone = true`); creating the zone again changes nothing.
 
 1. **Deploy identity for prod**, separate from test's, with federated credentials for GitHub OIDC (issuer `https://token.actions.githubusercontent.com`, audience `api://AzureADTokenExchange`) for both subjects:
    - `repo:digdir/genki:environment:prod`
    - `repo:digdir@51157288/genki@1411915404:environment:prod` (the ID form the organisation uses)
 2. **Roles for the prod deploy identity**:
-   - on `rg-genai-prod`: `Contributor`, plus `Role Based Access Control Administrator` limited to AcrPull, AcrPush and Key Vault Secrets User
+   - on `rg-genki-prod-weu`: `Contributor`, plus `Role Based Access Control Administrator` limited to AcrPull, AcrPush, Key Vault Secrets User and Storage Blob Data Contributor
    - on the test registry: `Container Registry Data Importer and Data Reader` (the role Azure documents for `az acr import` between registries in one tenant; `AcrPull` is the older equivalent for registries without repository permissions)
 3. **Entra group** `genai-prod-pg-admins`, with the people who may administer prod's Postgres.
 4. **GitHub environment `prod`** with required reviewers, and these variables:
 
-   | Variable                                                                                 | Value                                                                         |
-   | ---------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-   | `AZURE_CLIENT_ID`, `DEPLOY_PRINCIPAL_ID`                                                 | Client id and service principal object id of the prod deploy identity         |
-   | `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`                                               | Same as test                                                                  |
-   | `AZURE_RESOURCE_GROUP`                                                                   | `rg-genai-prod`                                                               |
-   | `PG_ADMIN_GROUP_OBJECT_ID`, `PG_ADMIN_GROUP_NAME`                                        | The group from step 3                                                         |
-   | `ACR_NAME`                                                                               | Set after the first infra run (output `registryName`)                         |
-   | `ANSATTPORTEN_ISSUER`                                                                    | `https://ansattporten.no`                                                     |
-   | `PORTAL_CLIENT_ID`, `WORKSPACE_CLIENT_ID`, `CONSOLE_CLIENT_ID`                           | The production Ansattporten clients                                           |
-   | `CONSOLE_TOKEN_ENDPOINT`                                                                 | Production Ansattporten's token endpoint                                      |
-   | `ALTINN_PDP_URL`                                                                         | Altinn production's decision point, under `https://platform.altinn.no`        |
-   | `ALTINN_PDP_MASKINPORTEN_CLIENT_ID`                                                      | The production Maskinporten client                                            |
-   | `MASKINPORTEN_ISSUER`, `MASKINPORTEN_TOKEN_URL`                                          | `https://maskinporten.no/`, `https://maskinporten.no/token`                   |
-   | `OPERATOR_SUBJECTS`                                                                      | The prod operators. Personal data: only here, never in the repository         |
-   | `FOUNDRY_OPENAI_BASE_URL`, `FOUNDRY_CLAUDE_BASE_URL`, `TYPESENSE_URL`, `COLBERT_API_URL` | Models, search and reranking for prod                                         |
-   | `CUSTOM_DOMAINS_STAGE`                                                                   | `none`, then `hostnames`, then `certificates`                                 |
-   | `PROD_READY`                                                                             | `true` once everything above is in place; until then `deploy-prod` is skipped |
+   | Variable                                                                                 | Value                                                                                                           |
+   | ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+   | `AZURE_CLIENT_ID`, `DEPLOY_PRINCIPAL_ID`                                                 | Client id and service principal object id of the prod deploy identity                                           |
+   | `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`                                               | Same as test                                                                                                    |
+   | `AZURE_RESOURCE_GROUP`                                                                   | `rg-genki-prod-weu`                                                                                             |
+   | `PG_ADMIN_GROUP_OBJECT_ID`, `PG_ADMIN_GROUP_NAME`                                        | The group from step 3                                                                                           |
+   | `ACR_NAME`                                                                               | Set after the first infra run (output `registryName`)                                                           |
+   | `ANSATTPORTEN_ISSUER`                                                                    | `https://ansattporten.no`                                                                                       |
+   | `PORTAL_CLIENT_ID`, `WORKSPACE_CLIENT_ID`, `CONSOLE_CLIENT_ID`                           | The production Ansattporten clients                                                                             |
+   | `CONSOLE_TOKEN_ENDPOINT`                                                                 | Production Ansattporten's token endpoint                                                                        |
+   | `ALTINN_PDP_URL`                                                                         | Altinn production's decision point, under `https://platform.altinn.no`                                          |
+   | `ALTINN_PDP_MASKINPORTEN_CLIENT_ID`                                                      | The production Maskinporten client                                                                              |
+   | `MASKINPORTEN_ISSUER`, `MASKINPORTEN_TOKEN_URL`                                          | `https://maskinporten.no/`, `https://maskinporten.no/token`                                                     |
+   | `OPERATOR_SUBJECTS`                                                                      | The prod operators as `https://ansattporten.no\|<sub>` pairs. Personal data: only here, never in the repository |
+   | `FOUNDRY_OPENAI_BASE_URL`, `FOUNDRY_CLAUDE_BASE_URL`, `TYPESENSE_URL`, `COLBERT_API_URL` | Models, search and reranking for prod                                                                           |
+   | `CUSTOM_DOMAINS_STAGE`                                                                   | `none`, then `hostnames`, then `certificates`                                                                   |
+   | `KNOWLEDGE_SERVER_STAGE`                                                                 | `none` while test's value is a repository variable, otherwise unset; later `server`, then `apps`                |
+   | `PROD_READY`                                                                             | `true` once everything above is in place; until then `deploy-prod` is skipped                                   |
 
    `PLATFORM_TENANT` and `ALTINN_RESOURCE` stay unset; prod fixes both.
 
@@ -242,7 +428,7 @@ The deploy workflow builds the images once and pushes them to the test registry.
 2. Set `ACR_NAME` in the prod environment from the output `registryName`, and add the Key Vault secrets (output `keyVaultName`).
 3. Make sure `digdir.cloud` delegates `genki` to the zone's name servers (output `dnsNameServers`), as for test. Set `CUSTOM_DOMAINS_STAGE=hostnames` and run infra for prod, then `certificates` and run it again.
 4. Set `PROD_READY=true`.
-5. Run **deploy** with environment `prod` (`gh workflow run deploy.yml -f environment=prod`). It builds, deploys to test, waits for the required reviewers, copies the images into prod's registry, deploys prod, and waits until the API's `/health` reports the commit. It stops early if `ACR_NAME`, `ANSATTPORTEN_ISSUER` or `ALTINN_PDP_URL` is missing.
+5. Run **deploy** with environment `prod` (`gh workflow run deploy.yml -f environment=prod`). It takes the commit's images from the test registry (building any it cannot reuse), deploys to test, waits for the required reviewers, copies the images into prod's registry, deploys prod, and waits until the API's `/health` reports the commit. It stops early if `ACR_NAME`, `ANSATTPORTEN_ISSUER` or `ALTINN_PDP_URL` is missing.
 
 ## Before prod
 
@@ -256,6 +442,6 @@ Still open:
 
 - Postgres: set `appIdentityIsPostgresAdmin` to false, give the app identity its own role with `pgaadauth_create_principal`, run by a member of the admin group, and run migrations from a separate identity, so the running app cannot change the schema. Prod starts with the app identity as Postgres admin, as test does.
 - Key Vault: a private endpoint, then `keyVaultPublicNetworkAccess = 'Disabled'`. The template has no private endpoint yet, so prod keeps the vault public (RBAC only); disabling it now would cut the apps off from their secrets.
-- Storage: a private endpoint for the file share, or Azure Blob storage behind the blob port.
+- Storage: a private endpoint for the file share and the container `conversions`, and uploads on Blob storage behind the blob port. The file share mount needs the account key, so shared-key access stays on and the key also opens the container (ADR 0042, Open).
 - Ingress: Application Gateway with WAF in front.
 - Postgres high availability: `postgresHighAvailability` (`SameZone` or `ZoneRedundant`) exists but prod leaves it `Disabled` for now. It can be turned on later on a General Purpose server.

@@ -4,11 +4,14 @@ import { Hono } from 'hono';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Principal } from '@genai/contracts';
 import { InMemoryDefinitionStore, SettingsRegistry } from '@genai/definitions';
+import type { Evaluator, Score } from '@genai/eval';
 import { envSecrets, type PortContext } from '@genai/kernel';
 import { fakeHttp, type FakeServer } from '@genai/port-model/testing';
 import { openAiChatFixture } from '@genai/providers-openai/contract';
 import { createAdmin } from './admin.js';
 import { createPlatform } from './composition.js';
+import { appendVersion, platformScope } from './config-store.js';
+import { externalPluginKind } from './external-plugins.js';
 
 const other = '999888777';
 const third = '974760673';
@@ -502,7 +505,7 @@ describe('plug-in kinds that call out', () => {
         kind: 'evaluator',
         id: 'evaluator.dommer',
         version: '1',
-        contract: 'evaluator@1',
+        contract: 'evaluator@2',
         title: 'Ekstern dommer',
         capabilities: ['korrekthet'],
         hosts: ['127.0.0.1'],
@@ -510,7 +513,7 @@ describe('plug-in kinds that call out', () => {
       endpoint: { baseURL: url, protocol: 'http-judge' },
     });
     expect(saved.status).toBe(201);
-    expect(judged[0]).toMatchObject({ contract: 'evaluator@1', answer: expect.any(String) });
+    expect(judged[0]).toMatchObject({ contract: 'evaluator@2', answer: expect.any(String) });
     const evaluator = platform.evaluators.get('evaluator.dommer');
     expect(evaluator).toBeDefined();
     await send('/operator/plugins/evaluator.dommer', {
@@ -518,6 +521,102 @@ describe('plug-in kinds that call out', () => {
       reason: 'Dommeren er byttet ut',
     });
     expect(platform.evaluators.has('evaluator.dommer')).toBe(false);
+  });
+  it('collects what an evaluator plug-in answered pending, by its ticket', async () => {
+    const { platform, register } = await boot();
+    const asked: Record<string, unknown>[] = [];
+    let ready = false;
+    const url = await jsonServer((body) => {
+      asked.push(body);
+      if (!body.collect)
+        return { scores: [{ metric: 'korrekthet', state: 'pending' }], ticket: 'sak-1' };
+      const tickets = (body.collect as { tickets: string[] }).tickets;
+      const results = tickets.map((ticket) => ({
+        ticket,
+        scores: [
+          ready
+            ? { metric: 'korrekthet', value: 0.7, reason: 'Stemmer' }
+            : { metric: 'korrekthet', state: 'pending' },
+        ],
+      }));
+      ready = true;
+      return { results };
+    });
+    const saved = await register({
+      manifest: {
+        kind: 'evaluator',
+        id: 'evaluator.senere',
+        version: '1',
+        contract: 'evaluator@2',
+        title: 'Dommer som svarer senere',
+        capabilities: ['korrekthet'],
+        hosts: ['127.0.0.1'],
+      },
+      endpoint: { baseURL: url, protocol: 'http-judge' },
+    });
+    expect(saved.status).toBe(201);
+    const judge = platform.evaluators.get('evaluator.senere') as Evaluator;
+
+    const [answer] = await judge.evaluate(
+      {
+        id: 'sak',
+        split: 'validation',
+        input: 'Hvem utsteder tildelingsbrevet?',
+        expected: { sources: [] },
+        grounding: 'sources-and-answer',
+        tags: [],
+        needsReview: false,
+      },
+      { answer: 'Departementet.', retrieved: [], citations: [] },
+      { servedModels: [], modelFamily: () => undefined },
+    );
+    const item = { case: 'sak', repeat: 0, task: 't-sak', score: answer as Score };
+    ready = false;
+    const notYet = await judge.collect?.([item]);
+    const collected = await judge.collect?.([item]);
+
+    expect(answer).toMatchObject({ state: 'pending', value: null, details: { ticket: 'sak-1' } });
+    expect(asked.at(-1)).toEqual({ contract: 'evaluator@2', collect: { tickets: ['sak-1'] } });
+    expect(notYet).toEqual([]);
+    expect(collected).toEqual([
+      {
+        case: 'sak',
+        repeat: 0,
+        score: {
+          evaluator: 'evaluator.senere',
+          version: '1',
+          metric: 'korrekthet',
+          value: 0.7,
+          applicable: true,
+          state: 'scored',
+          reason: 'Stemmer',
+        },
+      },
+    ]);
+  });
+
+  it('refuses an evaluator plug-in that claims evaluator@1', async () => {
+    const { platform, register } = await boot();
+    const url = await jsonServer(() => ({ scores: [{ metric: 'korrekthet', value: 0.9 }] }));
+
+    const refused = await register({
+      manifest: {
+        kind: 'evaluator',
+        id: 'evaluator.gammel',
+        version: '1',
+        contract: 'evaluator@1',
+        title: 'Gammel dommer',
+        capabilities: ['korrekthet'],
+        hosts: ['127.0.0.1'],
+      },
+      endpoint: { baseURL: url, protocol: 'http-judge' },
+    });
+
+    expect(refused.status).toBe(400);
+    expect(JSON.stringify(await refused.json())).toContain(
+      'evaluator plug-ins meet evaluator@2; register evaluator.gammel again under evaluator@2',
+    );
+    expect(platform.evaluators.has('evaluator.gammel')).toBe(false);
   });
 });
 
@@ -629,15 +728,30 @@ describe('per-tenant adoption of operator plug-ins', () => {
 });
 
 describe('egress on plug-in calls', () => {
-  it('sends every call to a plug-in model through the egress guard, while the contract run does not', async () => {
-    const { platform, register, adopt } = await boot({ timeoutMs: 3000 });
+  it('sends the contract run of a plug-in model through the egress guard, so a refused host cannot be registered', async () => {
+    const { register } = await boot({ timeoutMs: 3000 });
     const model = await modelServer('Hei fra leverandøren');
-    expect((await register(modelPlugin(model.url))).status).toBe(201);
+    expect((await register(modelPlugin(model.url))).status).toBe(422);
+    expect(model.seen).toEqual([]);
+  });
+
+  it('sends every call to a plug-in model through the egress guard', async () => {
+    const { platform, adopt } = await boot({ timeoutMs: 3000 });
+    const model = await modelServer('Hei fra leverandøren');
+    await appendVersion(platform.configEntries, {
+      kind: externalPluginKind,
+      scope: platformScope,
+      id: 'model.leverandor',
+      spec: modelPlugin(model.url),
+      deleted: false,
+      by: 'operator:test:drift',
+      reason: 'Ny byggekloss fra en leverandør',
+    });
+    await platform.catalog.refresh();
     await adopt('kari', other, 'model', 'model.leverandor');
     const port = platform.models.open({ kind: 'model', id: 'model.leverandor' }, ctx);
-    const before = model.seen.length;
     await expect(port.chat({ messages: [{ role: 'user', content: 'Hei' }] })).rejects.toThrow();
-    expect(model.seen.length).toBe(before);
+    expect(model.seen).toEqual([]);
   });
 });
 
@@ -769,5 +883,62 @@ describe('agent plug-ins in services', () => {
     expect(refused.ok ? [] : refused.errors.map((e) => e.path)).toContain(
       'spec.strategy.config.agent',
     );
+  });
+});
+
+describe('an agent without a dataset', () => {
+  it('runs an agent-loop service with no dataset on its tools alone', async () => {
+    const { platform, register, adopt } = await boot();
+    const calls: unknown[] = [];
+    const url = await mcpServer((args) => {
+      calls.push(args);
+      return 'Sak 17 gjelder en tilskuddssøknad.';
+    });
+    const model = await fakeHttp((body) => {
+      const tools = (body.tools ?? []) as { function: { name: string } }[];
+      const answered = (body.messages as { role: string }[]).some((m) => m.role === 'tool');
+      const tool = tools[0]?.function.name;
+      return openAiChatFixture.reply(
+        tool && !answered
+          ? { kind: 'tool', id: 'call0', name: tool, arguments: JSON.stringify({ q: 'sak 17' }) }
+          : { kind: 'text', text: 'Saken gjelder en tilskuddssøknad.' },
+        body,
+        '',
+      );
+    });
+    fakes.push(model);
+    await register(modelPlugin(model.url, { capabilities: ['stream', 'tools', 'json-schema'] }));
+    await register({
+      manifest: {
+        kind: 'tool-source',
+        id: 'tool-source.saker',
+        version: '1',
+        contract: 'tool-source@1',
+        title: 'Saksarkiv',
+        hosts: ['127.0.0.1'],
+      },
+      endpoint: {
+        baseURL: `${url}/mcp`,
+        protocol: 'mcp',
+        example: { tool: 'finn-sak', input: { q: 'tilskudd' } },
+      },
+    });
+    await adopt('kari', other, 'model', 'model.leverandor');
+    await adopt('kari', other, 'tool', 'tool-source-saker');
+    const service = answerService('model.leverandor', {
+      strategy: { id: 'agent-loop', version: 1, config: {} },
+      knowledge: { datasets: [] },
+      tools: ['tool-source-saker.finn-sak@1'],
+    });
+    const published = await platform.definitions.publish(service, 'test', 'test');
+    expect(published.ok ? [] : published.errors).toEqual([]);
+    const before = calls.length;
+
+    const run = await platform.kernel.invoke(people.kari as Principal, `${other}/svar/default`, {
+      data: { query: 'Hva gjelder sak 17?' },
+    });
+
+    expect(textOf((await run.result) as never)).toBe('Saken gjelder en tilskuddssøknad.');
+    expect(calls.slice(before)).toEqual([{ q: 'sak 17' }]);
   });
 });

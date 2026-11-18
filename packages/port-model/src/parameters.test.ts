@@ -5,6 +5,7 @@ import {
   applyParameterRules,
   ModelRouter,
   parameterRuleProblems,
+  rejectedParameter,
   type ChatRequest,
   type ChatResult,
   type ModelAdapter,
@@ -18,9 +19,15 @@ const setup = (
 ) => {
   const seen: ChatRequest[] = [];
   const adapter: ModelAdapter = {
-    protocol: 'proto',
-    endpointOptions: z.strictObject({}),
-    modelOptions: z.strictObject({}),
+    apis: [
+      {
+        id: 'proto/chat@1',
+        kind: 'chat',
+        family: 'proto',
+        modelOptions: z.strictObject({}),
+        default: true,
+      },
+    ],
     connect: () => ({
       chat: async (_m, request) => {
         seen.push(request);
@@ -42,8 +49,8 @@ const setup = (
     catalog: {
       endpoints: {
         e: {
-          protocol: 'proto',
           baseURL: 'https://e.example',
+          families: { proto: '' },
           auth: { kind: 'api-key', secret: 'secret://env/key' },
         },
       },
@@ -165,5 +172,78 @@ describe('model parameter rules', () => {
   it('leaves the request alone without rules', () => {
     const request = { messages: [], temperature: 0.3 };
     expect(applyParameterRules(request, undefined)).toBe(request);
+  });
+});
+
+describe('rejected parameters', () => {
+  const mistral = (detail: object[]) => `422 ${JSON.stringify({ detail })}`;
+
+  it('reads a validation error that forbids max_completion_tokens as a refusal of that parameter', () => {
+    const message = mistral([
+      {
+        type: 'extra_forbidden',
+        loc: ['body', 'max_completion_tokens'],
+        msg: 'Extra inputs are not permitted',
+        input: 4000,
+      },
+    ]);
+    expect(rejectedParameter(422, message)).toBe('max_completion_tokens');
+  });
+
+  it('reads the parameter an unsupported-parameter error names first as the refused one', () => {
+    const message =
+      "400 Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.";
+    expect(rejectedParameter(400, message)).toBe('max_tokens');
+  });
+
+  it('does not read a token refusal from a value error on the token limit next to a forbidden other field', () => {
+    const message = mistral([
+      {
+        type: 'less_than_equal',
+        loc: ['body', 'max_completion_tokens'],
+        msg: 'Input should be less than or equal to 1000',
+        input: 4000,
+      },
+      {
+        type: 'extra_forbidden',
+        loc: ['body', 'stream_options'],
+        msg: 'Extra inputs are not permitted',
+      },
+    ]);
+    expect(rejectedParameter(422, message)).toBeUndefined();
+  });
+
+  it('does not read a token refusal when the error names another parameter', () => {
+    const message =
+      "400 Unsupported parameter: 'reasoning_effort'. Use 'max_completion_tokens' without it.";
+    expect(rejectedParameter(400, message, 'reasoning_effort')).toBeUndefined();
+  });
+
+  it('reads an extra-inputs error that names temperature as a temperature refusal', () => {
+    const message =
+      '400 {"type":"error","error":{"type":"invalid_request_error","message":"temperature: Extra inputs are not permitted"}}';
+    expect(rejectedParameter(400, message)).toBe('temperature');
+  });
+
+  it('does not read a temperature refusal from an extra-inputs error that names a token parameter', () => {
+    const message =
+      '400 {"type":"error","error":{"type":"invalid_request_error","message":"max_tokens: Extra inputs are not permitted (temperature was accepted)"}}';
+    expect(rejectedParameter(400, message)).toBe('max_tokens');
+  });
+
+  it('does not read a temperature refusal from an extra-inputs error that does not name temperature', () => {
+    const message =
+      '400 {"type":"error","error":{"type":"invalid_request_error","message":"top_k: Extra inputs are not permitted"}}';
+    expect(rejectedParameter(400, message)).toBeUndefined();
+  });
+
+  it('does not read a refusal from other statuses', () => {
+    expect(rejectedParameter(500, "Unsupported parameter: 'max_tokens'.")).toBeUndefined();
+  });
+
+  it('reads a long run of braces and refusal words in linear time', () => {
+    const started = performance.now();
+    rejectedParameter(422, `${'}unknown max_'.repeat(50_000)}max_tokens`);
+    expect(performance.now() - started).toBeLessThan(1000);
   });
 });

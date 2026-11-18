@@ -20,6 +20,7 @@ import {
   type DocumentConverter,
   type IndexSink,
   type IngestSource,
+  onePage,
 } from './index.js';
 
 const encoder = new TextEncoder();
@@ -62,11 +63,11 @@ const fakeConverter = (
   return {
     seen,
     extensions: ['.pdf', '.docx'],
-    toMarkdown: async (file) => {
+    convert: async (file) => {
       seen.push(file.name);
       const failure = Object.entries(failures).find(([name]) => file.name.endsWith(name));
       if (failure) throw failure[1];
-      return `# ${file.name}\n\n${new TextDecoder().decode(file.bytes)}`;
+      return onePage(`# ${file.name}\n\n${new TextDecoder().decode(file.bytes)}`);
     },
   };
 };
@@ -150,6 +151,39 @@ describe('web content', () => {
     );
 
     expect(docs[0]).toMatchObject({ title: 'Hei' });
+  });
+
+  it('a Markdown page is titled from its frontmatter, not from the URL', async () => {
+    const markdown = '---\ntitle: "Gi abonnenter tilgang"\n---\n\nTekst om tilgang.\n';
+    const { docs } = await ingest(
+      websiteSource({
+        entries: [{ loc: 'https://docs.example.test/nb/grant-subscriber-access/index.md' }],
+        fetchBody: async () => ({
+          bytes: new TextEncoder().encode(markdown),
+          contentType: 'text/markdown; charset=utf-8',
+        }),
+      }),
+    );
+
+    expect(docs[0]).toMatchObject({
+      title: 'Gi abonnenter tilgang',
+      frontmatter_title: 'Gi abonnenter tilgang',
+    });
+  });
+
+  it('a Markdown page keeps its frontmatter product and language as fields', async () => {
+    const markdown = '---\ntitle: Kom i gang\nproduct: Maskinporten\nlang: nb\n---\n\nTekst.\n';
+    const { docs } = await ingest(
+      websiteSource({
+        entries: [{ loc: 'https://docs.example.test/docs/Maskinporten/kom_i_gang.md' }],
+        fetchBody: async () => ({
+          bytes: new TextEncoder().encode(markdown),
+          contentType: 'text/markdown; charset=utf-8',
+        }),
+      }),
+    );
+
+    expect(docs[0]).toMatchObject({ product: 'Maskinporten', language: 'nb' });
   });
 });
 
@@ -326,17 +360,18 @@ describe('upload source', () => {
       { document: 'budsjett.xlsx', reason: 'unsupported_type' },
       { document: 'skannet.pdf', reason: 'no_text' },
     ]);
+    // In the listing's code-point order, as Azure Blob lists: an upper-case T before a lower-case n.
     expect(docs).toEqual([
+      expect.objectContaining({
+        id: uploadDocumentId(tenant, `${prefix}Tildelingsbrev_2025.pdf`),
+        title: 'Tildelingsbrev 2025',
+        path: 'Tildelingsbrev_2025.pdf',
+      }),
       expect.objectContaining({
         id: uploadDocumentId(tenant, `${prefix}notater/møte.md`),
         title: 'møte',
         path: 'notater/møte.md',
         type: 'upload',
-      }),
-      expect.objectContaining({
-        id: uploadDocumentId(tenant, `${prefix}Tildelingsbrev_2025.pdf`),
-        title: 'Tildelingsbrev 2025',
-        path: 'Tildelingsbrev_2025.pdf',
       }),
     ]);
     expect(chunks.join('\n')).not.toContain('Nei');

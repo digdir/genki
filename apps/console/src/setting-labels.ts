@@ -46,6 +46,11 @@ export const settingLabels: Record<string, { label: PlainKey; cat: PlainKey; des
     cat: 'settings.catSearch',
     desc: 'settings.descRetrievalAutoFilterRules',
   },
+  'retrieval.autoFilter.aliases': {
+    label: 'settings.labelRetrievalAutoFilterAliases',
+    cat: 'settings.catSearch',
+    desc: 'settings.descRetrievalAutoFilterAliases',
+  },
   'retrieval.docTitle.fanout': {
     label: 'settings.labelRetrievalDocTitleFanout',
     cat: 'settings.catSearch',
@@ -140,6 +145,16 @@ export const settingLabels: Record<string, { label: PlainKey; cat: PlainKey; des
     label: 'settings.labelSynthesisTemperature',
     cat: 'settings.catAnswer',
     desc: 'settings.descSynthesisTemperature',
+  },
+  'knowledge.nightWindow': {
+    label: 'settings.labelKnowledgeNightWindow',
+    cat: 'settings.catSearch',
+    desc: 'settings.descKnowledgeNightWindow',
+  },
+  'knowledge.heavyThreshold': {
+    label: 'settings.labelKnowledgeHeavyThreshold',
+    cat: 'settings.catSearch',
+    desc: 'settings.descKnowledgeHeavyThreshold',
   },
   'knowledge.switchRetentionDays': {
     label: 'settings.labelKnowledgeSwitchRetentionDays',

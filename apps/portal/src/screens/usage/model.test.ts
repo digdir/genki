@@ -2,7 +2,7 @@ import { createFormat } from '@genai/i18n';
 import { describe, expect, it } from 'vitest';
 import { translator } from '../../i18n';
 import type { UsageReport, UsageTotals } from '../../types';
-import { aggregate, costOf, monthStatus, runsOf, series } from './model';
+import { aggregate, COLORS, costOf, monthStatus, runsOf, series } from './model';
 
 const f = createFormat('nb');
 const t = translator('nb');
@@ -64,5 +64,19 @@ describe('usage model', () => {
     const status = monthStatus(report, null, null, f, t);
     expect(status.used).toBe(3000);
     expect(status.cost).toBe(12);
+  });
+});
+
+describe('chart colours', () => {
+  it('gives each of the first 15 series its own fill, so no two services share a colour', () => {
+    expect(new Set(COLORS).size).toBe(15);
+  });
+
+  it('builds every fill from Designsystemet tokens that read on both light and dark backgrounds', () => {
+    for (const fill of COLORS) {
+      expect(fill).not.toMatch(/#|rgb/);
+      expect(fill).not.toMatch(/-base-default/);
+      expect(fill).toMatch(/var\(--ds-color-[a-z0-9]+-border-default\)/);
+    }
   });
 });

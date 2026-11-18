@@ -3,7 +3,7 @@ kind: Service
 metadata: { tenant: '991825827', id: nynorsk, name: Bokmål til nynorsk }
 spec:
   purpose: Omset tekst frå bokmål til nynorsk med same meining og tone
-  riskClass: minimal
+  riskClass: limited
   input: { accepts: [text/plain] }
   output:
     kind: fields
@@ -13,7 +13,7 @@ spec:
     id: single-call
     version: 1
     config: { instructions: prompts/nynorsk.nn.md, temperature: 0 }
-  model: { primary: foundry-openai/gpt-4o-2m-tps, residency: global }
+  model: { primary: foundry-openai/gpt-5.6-terra, residency: global }
   exposure: { rest: true, mcp: true }
   triggers:
     - { kind: queue-message, queue: nynorsk }

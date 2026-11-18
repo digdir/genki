@@ -19,11 +19,23 @@ import {
 } from './phrases.js';
 
 export type SkipReason =
-  'no_text' | 'unsupported_type' | 'outside_access' | 'conversion_failed' | 'unreachable';
+  | 'no_text'
+  | 'unsupported_type'
+  | 'outside_access'
+  | 'conversion_failed'
+  | 'unreachable'
+  | 'too_large';
 
 export interface SkippedDocument {
   document: string;
   reason: SkipReason;
+}
+
+/** A converted file of a document, beside its text: its chunks name the file and their pages. */
+export interface SourceFile {
+  name: string;
+  sha256?: string;
+  pages: string[];
 }
 
 export interface SourceDocument {
@@ -32,6 +44,8 @@ export interface SourceDocument {
   name?: string;
   skip?: SkipReason;
   texts: string[];
+  /** The converted files behind `texts`, in the same order, when the source converted any. */
+  files?: SourceFile[];
   location?: Location;
   url?: string;
   prepare?(): Promise<SourceDocument>;
@@ -40,10 +54,12 @@ export interface SourceDocument {
 }
 
 export interface IngestSource {
-  kind: 'kudos' | 'website' | 'folder' | 'upload' | 'database' | 'episerver';
+  kind: 'kudos' | 'website' | 'folder' | 'upload' | 'database' | 'episerver' | 'parquet';
   phraseRows: 'legacy' | 'pipeline';
   documents(): AsyncIterable<SourceDocument>;
   skipped?: SkippedDocument[];
+  /** Source-specific facts for the run report, read after documents() is done. */
+  summary?(): Record<string, unknown>;
 }
 
 export interface IndexSink {
@@ -150,7 +166,7 @@ export const ingestDocuments = async (
   const result: IngestResult = { stored: 0, skipped: 0, failed: [] };
   const skip = (skipped: SkippedDocument) => {
     result.skipped += 1;
-    result.skippedDocuments = [...(result.skippedDocuments ?? []), skipped];
+    (result.skippedDocuments ??= []).push(skipped);
   };
   for (const skipped of options.source.skipped ?? []) skip(skipped);
   let stop: unknown;

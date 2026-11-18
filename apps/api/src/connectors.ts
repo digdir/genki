@@ -300,7 +300,7 @@ export const connectOnApproval = async <E extends Env, S extends Schema, B exten
     'platform.secrets.set',
     { tenant, name: secretName, reason },
     async () => {
-      await vault.set(tenant, secretName, given.password);
+      await vault.set(tenant, secretName, given.password, [connection.data.host]);
     },
   );
   if (!secret.ok)
@@ -382,6 +382,14 @@ export interface ConnectorEntrySpec {
   name: string;
   connector?: ConnectorLink;
 }
+
+export const connectorConnectionOf =
+  (entries: Pick<ConfigEntryStore, 'latest'>) =>
+  async (tenant: string, dataset: string, pipeline: string) =>
+    (await entries.latest({ kind: connectorMappingKind, scope: tenant }))
+      .filter((entry) => !entry.deleted)
+      .map((entry) => (entry.spec as ConnectorEntrySpec).connector)
+      .find((link) => link?.dataset === dataset && link.pipeline === pipeline)?.connection;
 
 const statusOf = (link: ConnectorLink | undefined, last: Execution | undefined): ConnectorStatus =>
   !link
@@ -641,7 +649,7 @@ const mountRoutes = <E extends Env, S extends Schema, B extends string>(
       'platform.secrets.set',
       { tenant: guard.tenant, name, reason },
       async () => {
-        await vault.set(guard.tenant, name, body.data.password);
+        await vault.set(guard.tenant, name, body.data.password, [link.connection.host]);
       },
     );
     c.header('genai-task', result.task);

@@ -11,12 +11,15 @@ import type { DatasetConfig, IndexDocument } from '@genai/port-knowledge';
 import { memoryEngine, openTarget, type MemoryDatasetOptions } from '@genai/port-knowledge/testing';
 import type { ChatResult, ModelPort } from '@genai/port-model';
 import {
+  embedIndexDocument,
+  maxEmbeddingRequestBytes,
   folderSource,
   kudosSource,
   memoryPhraseCache,
   runIndexIngest,
   toIndexDocument,
   type IndexTarget,
+  onePage,
 } from './index.js';
 
 const signal = new AbortController().signal;
@@ -105,7 +108,7 @@ describe('ingest through an index writer', () => {
         fetchFile: async () => new TextEncoder().encode('Tildelingsbrev med mål.'),
         converter: {
           extensions: ['.pdf'],
-          toMarkdown: async () => '# Brev\n\nTildelingsbrev med mål.',
+          convert: async () => onePage('# Brev\n\nTildelingsbrev med mål.'),
         },
       }),
       chunking,
@@ -153,9 +156,9 @@ describe('ingest through an index writer', () => {
       catalog: {
         endpoints: {
           foundry: {
-            protocol: 'fake',
             baseURL: 'https://foundry.example/openai/v1',
             auth: { kind: 'api-key', secret: 'secret://env/k' },
+            families: { fake: '' },
           },
         },
         models: [
@@ -164,7 +167,8 @@ describe('ingest through an index writer', () => {
             endpoint: 'foundry',
             deployment: 'text-embedding-3-small',
             residency: 'eu',
-            dimensions: 8,
+            apis: { embed: 'fake/embeddings@1' },
+            embed: { dimensions: 8 },
           },
         ],
       },
@@ -351,5 +355,75 @@ describe('index documents', () => {
       ],
       phrases: [{ id: 'p1', chunkId: 'c1', text: 'søknad om tilskudd' }],
     });
+  });
+});
+
+describe('embedding index documents', () => {
+  it('a chunk over 8,191 UTF-8 bytes is embedded by its start and stored whole', async () => {
+    const sent: string[] = [];
+    const embedder = {
+      info: () => ({ id: 'fake/large-1536', dimensions: 2 }),
+      embed: async (texts: string[]) => {
+        sent.push(...texts);
+        return { vectors: texts.map(() => [0.1, 0.2]) };
+      },
+    } as unknown as Parameters<typeof embedIndexDocument>[1];
+    // 'ø' is two bytes in UTF-8: 5,000 of them are 10,000 bytes.
+    const long = 'ø'.repeat(5000);
+    const doc: IndexDocument = {
+      id: 'kudos:a',
+      fields: {},
+      chunks: [
+        { id: 'c0', position: 0, text: long },
+        { id: 'c1', position: 1, text: 'kort' },
+      ],
+      phrases: [],
+    };
+    const embedded = await embedIndexDocument(doc, embedder);
+    expect(sent.map((t) => Buffer.byteLength(t, 'utf8'))).toEqual([8190, 4]);
+    expect(embedded.chunks.map((c) => c.text)).toEqual([long, 'kort']);
+    expect(embedded.chunks.every((c) => c.vector?.length === 2)).toBe(true);
+  });
+  const counting = (requests: string[][]) =>
+    ({
+      info: () => ({ id: 'fake/large-1536', dimensions: 2 }),
+      embed: async (texts: string[]) => {
+        requests.push(texts);
+        return { vectors: texts.map(() => [0.1, 0.2]) };
+      },
+    }) as unknown as Parameters<typeof embedIndexDocument>[1];
+  // Figure-heavy pages: 64 inputs cut to 8,191 bytes are about 524,000 bytes, and Azure counted
+  // more tokens than the 300,000 a request may hold (issue 581).
+  const figurePages = (n: number): IndexDocument => ({
+    id: 'kudos:f',
+    fields: {},
+    chunks: Array.from({ length: n }, (_, i) => ({
+      id: `c${i}`,
+      position: i,
+      text: `${String(i).padStart(4, '0')}|${'│ 1,2 │'.repeat(1000)}`,
+    })),
+    phrases: [],
+  });
+  const bytes = (texts: string[]) => texts.reduce((n, t) => n + Buffer.byteLength(t, 'utf8'), 0);
+
+  it('an embedding request never carries more bytes than the budget', async () => {
+    const requests: string[][] = [];
+    await embedIndexDocument(figurePages(64), counting(requests));
+
+    expect(requests.length).toBeGreaterThan(1);
+    for (const request of requests)
+      expect(bytes(request)).toBeLessThanOrEqual(maxEmbeddingRequestBytes);
+  });
+
+  it('texts over the budget are embedded in several requests, each text once', async () => {
+    const requests: string[][] = [];
+    // 40 texts are under the 64 a request takes, but their bytes are over the budget.
+    const embedded = await embedIndexDocument(figurePages(40), counting(requests));
+
+    expect(requests.length).toBe(2);
+    const sent = requests.flat();
+    expect(sent).toHaveLength(40);
+    expect(new Set(sent).size).toBe(40);
+    expect(embedded.chunks.every((c) => c.vector?.length === 2)).toBe(true);
   });
 });

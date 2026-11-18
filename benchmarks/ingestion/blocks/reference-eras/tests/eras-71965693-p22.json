@@ -1,0 +1,326 @@
+{
+ "tests": [
+  {
+   "id": "eras-71965693-p22-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Utslipp av PER til miljøet, fra forskjellige disponeringsmåter",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-71965693-p22-t02",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Tabellen nedenfor gir en kvalitativ oversikt over utslipp av PER, fra forskjellige disponeringsmåter.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-71965693-p22-t03",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "caption",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Tabell 10. Kvalitativ oversikt over utslipp av PER til miljøet, fra forskjellige disponeringsmåter.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-71965693-p22-t04",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "Som for korrekt deklarert.",
+     "max_diffs": 1
+    },
+    "left_heading": {
+     "text": "Mangelfullt deklarert",
+     "max_diffs": 1
+    },
+    "top_heading": {
+     "text": "Utslipp",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-71965693-p22-t05",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "Ingen, under forutsetning av at avfallet oppbevares i tett emballasje.",
+     "max_diffs": 2
+    },
+    "left_heading": {
+     "text": "Lagret i påvente av levering eller gjenvinning.",
+     "max_diffs": 2
+    },
+    "top_heading": {
+     "text": "Utslipp",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-71965693-p22-t06",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "Levert som restavfall",
+     "max_diffs": 2
+    },
+    "up": {
+     "text": "Lagret i påvente av levering eller gjenvinning.",
+     "max_diffs": 2
+    },
+    "down": {
+     "text": "Regenerering",
+     "max_diffs": 2
+    },
+    "top_heading": {
+     "text": "Disponeringsmåte",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-71965693-p22-t07",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "Her må det forventes utslipp til luft, avhengig av kvaliteten på destillasjonsapparatet.",
+     "max_diffs": 3
+    },
+    "left_heading": {
+     "text": "Regenerering",
+     "max_diffs": 3
+    },
+    "top_heading": {
+     "text": "Utslipp",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-71965693-p22-t08",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "All PER vil havne i miljøet, fordi det antas at det ikke skjer nedbryting av PER i avløpssystemet.",
+     "max_diffs": 3
+    },
+    "left_heading": {
+     "text": "Tømming i avløp",
+     "max_diffs": 3
+    },
+    "top_heading": {
+     "text": "Utslipp",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-71965693-p22-t09",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Avhenger av hva slags håndtering restavfallet får, i den kommunen der det er levert.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-71965693-p22-t10",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Tabellen nedenfor gir en kvalitativ oversikt",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "Ingen. Aktøren vil sørge for at",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-71965693-p22-t11",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "det ikke skjer nedbryting av PER i avløpssystemet",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "Det er en utbredt oppfatning i bransjen",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-71965693-p22-t12",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Substitusjon",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-71965693-p22-t13",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Med en antatt maskinlevetid på ca 15 år, må man anta at bruken av PER som rensemiddel vil ha opphørt omkring år 2020.",
+     "max_diffs": 4
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-71965693-p22-t14",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "rensemiddel vil ha opphørt omkring år 2020",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "Alternativet til PER er i første omgang hydrokarboner",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-71965693-p22-t15",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Imidlertid er det bare HC som oppfattes som et reelt alternativ til PER i dag.",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

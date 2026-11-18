@@ -1,5 +1,5 @@
 import type { Part } from '@genai/contracts';
-import { defaultMaxOutputTokens } from '@genai/port-model';
+import { defaultMaxOutputTokens, normaliseCitationMarkers, untrustedData } from '@genai/port-model';
 import { z } from 'zod';
 import type { Block, BlockContext } from '../blocks.js';
 import {
@@ -10,7 +10,7 @@ import {
 } from '../prompts.js';
 import type { FlowChunk, FlowRetrieval } from '../services.js';
 import { contextFromChunks } from './context.js';
-import { callModel } from './model.js';
+import { callModel, withUntrustedNote } from './model.js';
 
 export { contextFromChunks, formatHeaders } from './context.js';
 
@@ -87,6 +87,7 @@ const searchInOrder = async (
 export const retrieveBlock: Block<z.infer<typeof retrieveInput>, z.infer<typeof retrieveParams>> = {
   name: 'retrieve',
   version: '1',
+  needsDataset: true,
   description: 'Plan queries and retrieve chunks from the service dataset',
   input: retrieveInput,
   params: retrieveParams,
@@ -119,7 +120,16 @@ export const retrieveBlock: Block<z.infer<typeof retrieveInput>, z.infer<typeof 
     const found: { chunks: FlowChunk[]; attribution?: unknown } = params.inOrder?.values.length
       ? await searchInOrder(retrieval, queries, userIntent, params.inOrder, signal)
       : await retrieval.retrieve(queries, userIntent ? { userIntent } : {}, signal);
-    yield { type: 'kernel.notice', data: { kind: 'retrieval', hits: hits(found.chunks), queries } };
+    const detections = (found.attribution as { detections?: unknown[] } | undefined)?.detections;
+    yield {
+      type: 'kernel.notice',
+      data: {
+        kind: 'retrieval',
+        hits: hits(found.chunks),
+        queries,
+        ...(detections?.length ? { detections } : {}),
+      },
+    };
     return {
       queries,
       ...(userIntent ? { userIntent } : {}),
@@ -140,6 +150,7 @@ const rerankParams = z.strictObject({
 export const rerankBlock: Block<z.infer<typeof rerankInput>, z.infer<typeof rerankParams>> = {
   name: 'rerank',
   version: '1',
+  needsDataset: true,
   description: 'Rerank chunks and assemble the context the model reads',
   input: rerankInput,
   params: rerankParams,
@@ -246,13 +257,18 @@ export const synthesizeBlock: Block<
   run: async function* (ctx, input, params) {
     const docs = params.maxDocs ? input.contextDocs.slice(0, params.maxDocs) : input.contextDocs;
     const index: Record<number, string> = Object.fromEntries(docs.map((d, i) => [i + 1, d.source]));
-    const context = docs.map((d, i) => `[${i + 1}] ${d.content}`).join('\n\n');
+    const context = docs
+      .map((d, i) => `[${i + 1}] ${untrustedData('source', d.content, { id: d.source })}`)
+      .join('\n\n');
     const result = yield* callModel(ctx, {
       purpose: 'answer',
       messages: [
         {
           role: 'system',
-          content: params.systemPrompt ?? systemPromptWithDate(ctx.services.now()),
+          content: withUntrustedNote(
+            ctx,
+            params.systemPrompt ?? systemPromptWithDate(ctx.services.now()),
+          ),
         },
         {
           role: 'user',
@@ -264,11 +280,8 @@ export const synthesizeBlock: Block<
       temperature: params.temperature,
       maxTokens: params.maxTokens ?? defaultMaxOutputTokens,
     });
-    const renumbered = renumberCitations(
-      result.content,
-      parseCitations(result.content, index),
-      index,
-    );
+    const answer = normaliseCitationMarkers(result.content);
+    const renumbered = renumberCitations(answer, parseCitations(answer, index), index);
     const insufficiency = detectInsufficientContext(renumbered.text);
     return {
       response: renumbered.text,
@@ -426,8 +439,12 @@ export const sourceRecord = (c: FlowChunk) => ({
   ...(c.url === undefined ? {} : { url: c.url }),
   ...(c.content === undefined ? {} : { text: c.content }),
   ...(c.headers === undefined ? {} : { headers: c.headers }),
+  ...(c.page === undefined ? {} : { page: c.page }),
+  ...(c.pageEnd === undefined ? {} : { pageEnd: c.pageEnd }),
+  ...(c.fileUrl === undefined ? {} : { fileUrl: c.fileUrl }),
   ...(c.document === undefined ? {} : { document: c.document }),
   ...(c.position === undefined ? {} : { position: c.position }),
+  ...(c.publisher === undefined ? {} : { publisher: c.publisher }),
 });
 
 export const answerBlock: Block<z.infer<typeof answerInput>, Record<string, never>> = {

@@ -73,6 +73,36 @@ export const toIndexDocument = (
   };
 };
 
+/**
+ * The most an embedding input may hold, in UTF-8 bytes. text-embedding-3 reads at most 8,192 tokens
+ * and its byte-level tokens are at least one byte each, so no input this long can be refused.
+ */
+export const maxEmbeddingBytes = 8191;
+
+/**
+ * The most one embedding request may hold, in UTF-8 bytes. Azure refuses a text-embedding-3 request
+ * over 300,000 tokens, and every token is at least one byte, so this many bytes never pass it.
+ * Figures and tables can come to under 2 bytes a token, so 64 inputs can (issue 581).
+ */
+export const maxEmbeddingRequestBytes = 300_000;
+
+const encoder = new TextEncoder();
+const decoder = new TextDecoder('utf-8', { fatal: false });
+
+/** A text's start of at most `maxEmbeddingBytes` bytes, cut back to a whole character. */
+const embeddingInput = (text: string) => {
+  const bytes = encoder.encode(text);
+  if (bytes.length <= maxEmbeddingBytes) return text;
+  let end = maxEmbeddingBytes;
+  // Step back over continuation bytes (10xxxxxx), so no character is cut in half.
+  while (end > 0 && ((bytes[end] ?? 0) & 0xc0) === 0x80) end--;
+  return decoder.decode(bytes.subarray(0, end));
+};
+
+/**
+ * Embeds a document's chunks and phrases. A text longer than the model takes, such as a long table
+ * copied from another engine (#366), is embedded by its start and stored whole.
+ */
 export const embedIndexDocument = async (
   doc: IndexDocument,
   embedder: EmbeddingPort,
@@ -80,14 +110,26 @@ export const embedIndexDocument = async (
 ): Promise<IndexDocument> => {
   const texts = [...new Set([...doc.chunks, ...doc.phrases].map((t) => t.text))];
   const vectors = new Map<string, number[]>();
-  for (let at = 0; at < texts.length; at += batchSize) {
-    const batch = texts.slice(at, at + batchSize);
-    const result = await embedder.embed(batch);
+  // A request ends at `batchSize` inputs or before its bytes pass the budget; each input is under it.
+  for (let at = 0; at < texts.length;) {
+    const batch: string[] = [];
+    const inputs: string[] = [];
+    let size = 0;
+    for (const text of texts.slice(at, at + batchSize)) {
+      const input = embeddingInput(text);
+      const bytes = encoder.encode(input).length;
+      if (inputs.length > 0 && size + bytes > maxEmbeddingRequestBytes) break;
+      batch.push(text);
+      inputs.push(input);
+      size += bytes;
+    }
+    const result = await embedder.embed(inputs);
     batch.forEach((text, i) => {
       const vector = result.vectors[i];
       if (!vector) throw new Error(`the embedder returned no vector for text ${at + i}`);
       vectors.set(text, vector);
     });
+    at += batch.length;
   }
   const withVector = <T extends { text: string }>(item: T) => ({
     ...item,

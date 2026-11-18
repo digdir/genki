@@ -1,0 +1,228 @@
+{
+ "tests": [
+  {
+   "id": "eras-36e2d1d0-p9-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "figure",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Helsekategorier MILPAAHEL",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-36e2d1d0-p9-t02",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "figure",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Reproductive Health and Childbirth",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-36e2d1d0-p9-t03",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Høydepunkter og funn",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-36e2d1d0-p9-t04",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Høydepunkter og funn",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "Dødelig inneklima i Kina",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-36e2d1d0-p9-t05",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Dødelig inneklima i Kina",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-36e2d1d0-p9-t06",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "annen lungesykdom fører til at rundt 1,4 millioner kinesere dør for tidlig hvert år.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-36e2d1d0-p9-t07",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Allergivaksine i mors mage?",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-36e2d1d0-p9-t08",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "hjertekarsykdommer. (CICERO, Universitetet i Oslo)",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "Allergivaksine i mors mage?",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-36e2d1d0-p9-t09",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Når gravide mus blir vaksinert mot allergi, får det positive følger for ufødte museungene.",
+     "max_diffs": 4
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-36e2d1d0-p9-t10",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Kan tilsettingsstoffer i plast føre til utvikling av diabetes og astma?",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-36e2d1d0-p9-t11",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "En studie på mus viste at eksponering for bisfenol A fra 4 ukers alder førte til raskere utvikling av diabetes.",
+     "max_diffs": 4
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-36e2d1d0-p9-t12",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Ftalater og bisfenol A er tilsettingsstoffer i plast",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "Funnene kan på sikt bidra til å styrke grunnlaget for",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 210" width="360" height="210" role="img" aria-labelledby="title">
+  <title id="title">元気: 元 (gen), the source, flows into 気 (ki), energy. Gen + KI is Norwegian for generative AI.</title>
+  <style>
+    .glyph { font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", "Noto Sans JP", "Noto Sans CJK JP", sans-serif; font-size: 84px; font-weight: 600; }
+    .gen { fill: #0062BA; }
+    .ki { fill: #B86E00; }
+    .label { font-family: Inter, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 14px; fill: #59636e; }
+    .sum { font-family: Inter, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 15px; font-weight: 600; fill: #1f2328; }
+    .flow { fill: none; stroke: #B86E00; stroke-width: 2.5; stroke-linecap: round; stroke-dasharray: 1 9; animation: flow 1.8s linear infinite; }
+    .halo { fill: #B86E00; opacity: 0.14; transform-box: fill-box; transform-origin: center; animation: pulse 3.6s ease-in-out infinite; }
+    @keyframes flow { to { stroke-dashoffset: -20; } }
+    @keyframes pulse { 0%, 100% { transform: scale(0.88); opacity: 0.1; } 50% { transform: scale(1.06); opacity: 0.24; } }
+    @media (prefers-reduced-motion: reduce) { .flow, .halo { animation: none; } }
+  </style>
+  <circle class="halo" cx="268" cy="78" r="62"/>
+  <text class="glyph gen" x="92" y="108" text-anchor="middle">元</text>
+  <text class="glyph ki" x="268" y="108" text-anchor="middle">気</text>
+  <path class="flow" d="M140 70 C170 40 196 40 222 70"/>
+  <text class="label" x="92" y="146" text-anchor="middle"><tspan font-weight="700" fill="#1f2328">gen</tspan> · source</text>
+  <text class="label" x="268" y="146" text-anchor="middle"><tspan font-weight="700" fill="#1f2328">ki</tspan> · energy</text>
+  <text class="sum" x="180" y="190" text-anchor="middle">Gen + KI: generative AI</text>
+</svg>

@@ -61,4 +61,16 @@ describe('building blocks in English', () => {
     fireEvent.click(confirm);
     expect(await screen.findByText('Write a reason of at least 10 characters.')).toBeTruthy();
   });
+
+  it('keeps a preview opened the moment the screen appears', async () => {
+    const clickWhenShown = new MutationObserver(() => {
+      const button = screen.queryByRole('button', { name: 'Make 2.2 available' });
+      if (!button) return;
+      clickWhenShown.disconnect();
+      fireEvent.click(button);
+    });
+    clickWhenShown.observe(document.body, { childList: true, subtree: true });
+    render(inEnglish(<BuildingBlocks api={api()} initial="borealis" />));
+    expect(await screen.findByText(/No service switches version on its own/)).toBeTruthy();
+  });
 });

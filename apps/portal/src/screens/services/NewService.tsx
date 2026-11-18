@@ -1,9 +1,31 @@
+import {
+  AlignLeftIcon,
+  ArrowRightLeftIcon,
+  ChatIcon,
+  ChevronLeftIcon,
+  FileTextIcon,
+  FunnelIcon,
+  MicrophoneIcon,
+  TableIcon,
+  TasklistIcon,
+} from '@navikt/aksel-icons';
 import { Button, Chip, Field, Heading, Label, Tag, Textarea } from '@digdir/designsystemet-react';
 import { useState } from 'react';
-import { Icon } from '../../components/Icon';
+import { Icon, type IconComponent } from '../../components/Icon';
 import { useT } from '../../i18n';
 import { jobKeys, templateKeys } from '../../data/service-labels';
 import { jobs, templates, type JobId } from '../../data/services';
+
+const jobIcon: Record<JobId, IconComponent> = {
+  answers: ChatIcon,
+  drafts: FileTextIcon,
+  rewrites: ArrowRightLeftIcon,
+  summarises: AlignLeftIcon,
+  extracts: TableIcon,
+  sorts: FunnelIcon,
+  prepares: TasklistIcon,
+  transcribes: MicrophoneIcon,
+};
 
 export const guessJob = (text: string): JobId => {
   const lower = text.toLowerCase();
@@ -31,7 +53,7 @@ export const NewService = ({
     <div className="new-service">
       <div className="stack-sm">
         <a href="#/services" className="back-link">
-          <Icon d="M15 6l-6 6 6 6" size={18} />
+          <Icon icon={ChevronLeftIcon} size={18} />
           {t('services.back')}
         </a>
         <Heading level={1} data-size="lg">
@@ -102,7 +124,7 @@ export const NewService = ({
               }
             >
               <span aria-hidden="true" className="job-icon">
-                <Icon d={j.icon} size={26} />
+                <Icon icon={jobIcon[j.id]} size={26} />
               </span>
               <span className="job-label">{t(jobKeys[j.id].label)}</span>
               <span className="meta job-example">{t(jobKeys[j.id].example)}</span>

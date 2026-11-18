@@ -1,0 +1,211 @@
+{
+ "tests": [
+  {
+   "id": "eras-b3ffd2a8-p31-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "multi_column",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "The story of SIMLab",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-b3ffd2a8-p31-t02",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "multi_column",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Saving lives",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-b3ffd2a8-p31-t03",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "SIMLab can trace its roots back to the mid-1980s",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-b3ffd2a8-p31-t04",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Against this background, SIMLab was founded in 1999.",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-b3ffd2a8-p31-t05",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "multi_column",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Saving lives",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "better structural components can save lives",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-b3ffd2a8-p31-t06",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "left with a sort of bizarre beauty",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "In fact, a number of them were actually exhibited at the Museum of Decorative Arts and Design",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-b3ffd2a8-p31-t07",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "There is, quite simply, no way in which manufacturers who want to survive in this business can avoid performing simulations",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-b3ffd2a8-p31-t08",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "caption",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "When an auto collides at moderate speeds, only the crash box is deformed.",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-b3ffd2a8-p31-t09",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Structural Impact Laboratory (SIMLab)",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-b3ffd2a8-p31-t10",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "The main focus is on the ability of light structures to withstand impacts and collisions.",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-b3ffd2a8-p31-t11",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "MNOK 216 over eight years",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

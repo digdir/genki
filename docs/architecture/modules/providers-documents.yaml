@@ -7,16 +7,16 @@ color: '#8fa8b3'
 status: Provider
 packages:
   - '@genai/providers-documents'
-summary: Local converter that turns PDF, Word, text and HTML files into markdown for ingestion.
-description: Reads the PDF text layer page by page and Word files through mammoth, in the platform's own process. Scanned PDFs without text are refused with a typed error so ingestion can skip them with a reason.
+summary: The text layer - the local converter that turns PDF, Word, text and HTML files into markdown per page for ingestion.
+description: Reads the PDF text layer page by page and Word files through mammoth, in the platform's own process, and returns a conversion with one page per PDF page and one for other types, named text-layer version 1. A scanned PDF converts to empty pages, which ingestion skips as no_text and the knowledge database stores, so a scan is converted once (ADR 0042).
 responsibilities:
-  - PDF text layer to markdown
+  - PDF text layer to markdown, one page per PDF page
   - Word to markdown
   - Size limit and typed refusals
 files:
   - packages/providers-documents/src/index.ts
 input: File bytes
-output: Markdown
+output: Markdown per page
 edges:
   - to: ingest
     label: Implements the ingest document converter

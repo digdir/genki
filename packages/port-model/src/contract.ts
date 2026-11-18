@@ -25,7 +25,7 @@ export interface ModelContractFixture {
   adapter: ModelAdapter;
   capabilities?: Capability[];
   basePath?: string;
-  endpointOptions?: Record<string, unknown>;
+  api?: string;
   modelOptions?: Record<string, unknown>;
   reply(scenario: ModelScenario, body: Record<string, unknown>, path: string): FakeReply;
 }
@@ -52,14 +52,17 @@ export const modelContractTarget = async (
     },
     calls: () => server.seen.length,
     open: (capabilities, signal = new AbortController().signal) => {
+      const api =
+        fixture.adapter.apis.find((a) => a.id === fixture.api) ??
+        fixture.adapter.apis.find((a) => a.kind === 'chat') ??
+        fixture.adapter.apis[0];
       const router = new ModelRouter({
         catalog: {
           endpoints: {
             contract: {
-              protocol: fixture.adapter.protocol,
               baseURL: `${server.url}${fixture.basePath ?? ''}`,
               auth: { kind: 'bearer', secret: 'secret://env/contract-key' },
-              options: fixture.endpointOptions ?? {},
+              families: { [api?.family ?? '']: '' },
             },
           },
           models: [
@@ -69,6 +72,7 @@ export const modelContractTarget = async (
               deployment: 'contract-deployment',
               residency: 'norway',
               capabilities,
+              apis: { chat: api?.id ?? '' },
               options: fixture.modelOptions ?? {},
             },
           ],

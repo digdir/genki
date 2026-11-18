@@ -13,6 +13,14 @@ export interface PlatformSetting<T = unknown> extends SettingDefinition<T> {
 }
 
 const platformAndTenant: Layer[] = ['platform', 'tenant'];
+
+/** Heavy knowledge work runs only inside this window, Europe/Oslo time (ADR 0042, "Heavy work"). */
+export const defaultNightWindow = '01:00-06:00';
+export const nightWindowPattern = /^([01]\d|2[0-3]):[0-5]\d-([01]\d|2[0-3]):[0-5]\d$/;
+/** Lets heavy work run at any hour, set by an operator to fill datasets before go-live. */
+export const alwaysNightWindow = 'always';
+/** Work above this many chunks is heavy and waits for the night window (ADR 0042, "Heavy work"). */
+export const defaultHeavyThreshold = 100_000;
 export const maxLanguageInstructionChars = 4000;
 export const languageInstructionsSetting = (language: string) =>
   `answers.languageInstructions.${language}`;
@@ -35,6 +43,11 @@ const setting = <T>(
   settableAt: platformAndTenant,
 });
 
+const limit = <T>(...args: Parameters<typeof setting<T>>): PlatformSetting<T> => ({
+  ...setting(...args),
+  operatorOnly: true,
+});
+
 export const nativeSettings: PlatformSetting[] = [
   setting(
     'knowledge.switchRetentionDays',
@@ -43,6 +56,32 @@ export const nativeSettings: PlatformSetting[] = [
     'knowledge',
     'Days the previous search engine copy is kept after a dataset switches engine.',
   ),
+  {
+    ...setting(
+      'knowledge.nightWindow',
+      z.union([
+        z.literal(alwaysNightWindow),
+        z
+          .string()
+          .regex(nightWindowPattern, 'written as 01:00-06:00, or always')
+          .refine((window) => window.slice(0, 5) !== window.slice(6), 'starts when it ends'),
+      ]),
+      defaultNightWindow,
+      'knowledge',
+      'Hours (Europe/Oslo) in which heavy knowledge work runs: index builds, large fills and VACUUM. `always` lets it run at any hour, as before a go-live.',
+    ),
+    settableAt: ['platform'],
+  },
+  {
+    ...setting(
+      'knowledge.heavyThreshold',
+      z.number().int().min(1).max(1_000_000_000),
+      defaultHeavyThreshold,
+      'knowledge',
+      'Chunks above which an index build, a fill or a VACUUM is heavy work and waits for the night window.',
+    ),
+    settableAt: ['platform'],
+  },
   setting(
     'assistant.enabled',
     z.boolean(),
@@ -50,7 +89,7 @@ export const nativeSettings: PlatformSetting[] = [
     'assistant',
     'Offer the builder assistant in the service builder.',
   ),
-  setting(
+  limit(
     'assistant.dailyTokens',
     z.number().int().min(0).max(10_000_000),
     200_000,
@@ -137,14 +176,14 @@ export const nativeSettings: PlatformSetting[] = [
     'playground',
     'Offer the playground for trying services, skills and building blocks.',
   ),
-  setting(
+  limit(
     'usage.monthlyTokens',
     z.number().int().min(1),
     50_000_000,
     'usage',
     'Tokens a tenant may use per calendar month; the playground refuses runs once it is used up.',
   ),
-  setting(
+  limit(
     'batch.approvalLimitNok',
     z.number().min(0).max(1_000_000),
     150,
@@ -168,7 +207,7 @@ export const nativeSettings: PlatformSetting[] = [
     'retention',
     'Days the audit envelope of a task (ids, type, actor, usage, versions, times) is kept after it ends; never shorter than the content.',
   ),
-  setting(
+  limit(
     'usage.tenantCallsPerMinute',
     z.number().int().min(1),
     600,

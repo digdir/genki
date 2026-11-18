@@ -5,7 +5,7 @@ export const apirefArea = {
     titleRef: 'API-referanse',
     titleService: 'Tjenesten som API',
     titleActions: 'Vis API-kall',
-    crumbIntegrations: 'Integrasjoner',
+    crumbIntegrations: 'Utviklerverktøy',
     lead: 'Alt du gjør i portalen, går gjennom det samme offentlige API-et. Det du kan klikke deg til, kan systemene deres også gjøre.',
     platformReference: 'Hele plattformens API-referanse (alle endepunkter, på engelsk)',
     tabList: 'API',
@@ -59,16 +59,17 @@ export const apirefArea = {
     copy: 'Kopier {what}',
     tryHeading: 'Prøv',
     tryAs:
-      'Du kaller som <strong>{name}</strong> for {tenant}, med rettighetene dine fra Altinn: {held}. Svaret er et eksempel. Ingen kall sendes.',
+      'Du kaller som <strong>{name}</strong> for {tenant}, med rettighetene dine fra Altinn: {held}. Kallet sendes til API-et med din innlogging.',
     tryAnonymous:
-      'Du kaller for {tenant}, med rettighetene dine fra Altinn: {held}. Svaret er et eksempel. Ingen kall sendes.',
+      'Du kaller for {tenant}, med rettighetene dine fra Altinn: {held}. Kallet sendes til API-et med din innlogging.',
     heldNone: 'ingen',
-    invalidJson: 'Innholdet er ikke gyldig JSON.',
+    tryReadOnly:
+      'Her kan du bare prøve lesekall (GET), så ingenting endres ved et uhell. Bruk curl-eksempelet over for å sende dette kallet.',
+    tryRefused:
+      'API-et avviste kallet fordi du mangler rettigheten det krever. Det er rettighetene dine som gjelder, også her.',
+    tryNoAnswer: 'API-et svarte ikke',
     invalidRequest: '400 Ugyldig forespørsel',
     fillIn: 'Fyll ut «{name}».',
-    forbiddenNote:
-      'Kallet ble avvist fordi du ikke er Digdir-operatør. Det er rettighetene dine som gjelder, også her.',
-    bodyLabel: 'Innhold (JSON)',
     send: 'Send',
     sending: 'Sender',
     response: 'Svar',
@@ -81,8 +82,6 @@ export const apirefArea = {
     errors: 'Feilkoder',
     actionsIntro:
       'Slik ser «Vis API-kall» ut ved viktige handlinger i portalen. Lenken står rett ved knappen og åpner kallet knappen vil gjøre.',
-    actionDone:
-      '«{button}» er utført i prototypen. Det samme kallet kunne vært gjort fra et system.',
     schemaUnavailable: 'Skjemaet er ikke tilgjengelig i API-et ennå.',
     colField: 'Felt',
     colRequired: 'Påkrevd',

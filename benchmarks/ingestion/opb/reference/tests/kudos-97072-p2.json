@@ -1,0 +1,20 @@
+{"tests": [
+ {"id": "kudos-97072-p2-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"content": {"text": "Innhold", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-97072-p2-t02", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Bakgrunnen for det landsomfattende tilsynet", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-97072-p2-t03", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Hvorfor tilsyn med Nav-kontorenes ansvar for å ivareta barns behov?", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-97072-p2-t04", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Kartlegging av barnets behov ved søknad om økonomisk stønad", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-97072-p2-t05", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Mangelfull styring og ledelse av kartleggingsarbeidet", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-97072-p2-t06", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Manglende vurderinger og «skjulte avslag» i vedtakene", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-97072-p2-t07", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Prosjekter om helhetlig oppfølging overføres ikke alltid til daglig drift", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-97072-p2-t08", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"before": {"text": "Mange la automatisk stordriftsfordeler til grunn – men ikke alle", "max_diffs": 2}, "after": {"text": "Ofte manglet gode rutiner for vedtaksgodkjenning", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-97072-p2-t09", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"before": {"text": "Det varierte om Nav-kontorene samarbeidet med andre tjenester", "max_diffs": 1}, "after": {"text": "Helsetilsynets anbefalinger", "max_diffs": 1}}, "settings": {}}
+]}

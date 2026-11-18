@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parse as parseYaml } from 'yaml';
+import type { z } from '@hono/zod-openapi';
 import type { Principal } from '@genai/contracts';
 import { InMemoryDefinitionStore, platformSettings, SettingsRegistry } from '@genai/definitions';
 import { envSecrets } from '@genai/kernel';
@@ -11,6 +12,7 @@ import { createAdmin } from './admin.js';
 import type { AssistantTurn } from './assistant.js';
 import { resolveCatalog } from './catalogs.js';
 import { localeMiddleware } from './i18n/index.js';
+import { serviceRoutes } from './openapi/services.js';
 import { publishPlatformServices } from './platform-services.js';
 import { createPlatform } from './composition.js';
 import { proposalKind, type CatalogProposal } from './proposals.js';
@@ -147,7 +149,12 @@ const boot = async (replies: Reply[], { publish = true } = {}) => {
     if (!body.messages)
       return {
         status: 200,
-        json: { data: [{ id: 'gpt-4o-2M-tps', model: 'gpt-4o', status: 'succeeded' }] },
+        json: {
+          data: [
+            { id: 'gpt-4o-2M-tps', model: 'gpt-4o', status: 'succeeded' },
+            { id: 'gpt-5.6-terra', model: 'gpt-5.6-terra', status: 'succeeded' },
+          ],
+        },
       };
     requests.push(body.messages as { role: string; content: string }[]);
     const reply = replies[chats] ?? { text: 'Ferdig.' };
@@ -242,6 +249,17 @@ const lowerTemperature = {
 
 const json = async (res: Response) => (await res.json()) as AssistantTurn;
 
+const documentedTurn = () => {
+  const route = serviceRoutes.find(
+    (r) => r.method === 'post' && r.path === '/tenants/{tenant}/services/{id}/assistant/turns',
+  );
+  const responses = route?.responses as
+    Record<number, { content: Record<string, { schema: z.ZodType }> }> | undefined;
+  const schema = responses?.[200]?.content['application/json']?.schema;
+  if (!schema) throw new Error('no documented assistant turn schema');
+  return schema;
+};
+
 const sseEvents = (text: string) =>
   text
     .split('\n\n')
@@ -297,7 +315,9 @@ describe('the builder assistant API', () => {
 
   it('a turn stops at the rest of the daily budget, and later turns do not call the model', async () => {
     const { settings, turn, chatCount } = await boot([{ text: 'Hei.', tokens: [30, 10] }]);
-    expect(settings.setTenant(tenant, 'assistant.dailyTokens', 25)).toMatchObject({ ok: true });
+    expect(settings.setTenant(tenant, 'assistant.dailyTokens', 25, 'operator')).toMatchObject({
+      ok: true,
+    });
 
     const first = await json(await turn({ message: 'Hjelp meg' }));
     const calls = chatCount();
@@ -669,6 +689,59 @@ describe('the builder assistant API', () => {
         },
       },
     ]);
+  });
+
+  it('gives the model the interface blocks the portal sends, and returns the block it chose', async () => {
+    const { turn, requests } = await boot([
+      {
+        calls: [
+          {
+            name: 'choose_interface_blocks',
+            args: { title: 'Legg til Dokumentvisning', blocks: ['document-view'] },
+          },
+        ],
+      },
+      { text: 'Dokumentvisning gir tilgang til originaldokumentet.' },
+    ]);
+    const interfaceBlocks = [
+      {
+        id: 'document-view',
+        name: { nb: 'Dokumentvisning', en: 'Document view' },
+        covers: [
+          {
+            nb: 'Enkel tilgang til originaldokumentet',
+            en: 'Easy access to the original document',
+          },
+        ],
+      },
+    ];
+
+    const body = await json(
+      await turn({
+        message: 'Leserne må ha enkel tilgang til originaldokumentet',
+        interfaceBlocks,
+      }),
+    );
+
+    expect(requests[0]?.[0]?.content).toContain('Enkel tilgang til originaldokumentet');
+    expect(body.proposals).toMatchObject([
+      { level: 1, kind: 'interface', blocks: ['document-view'], appliedToDraft: false },
+    ]);
+    const documented = documentedTurn().safeParse(body);
+    expect(documented.error?.issues ?? []).toEqual([]);
+    expect(documented.data).toEqual(body);
+  });
+
+  it('refuses interface blocks with an id that is not a block id', async () => {
+    const { turn, chatCount } = await boot([]);
+
+    const res = await turn({
+      message: 'Hei',
+      interfaceBlocks: [{ id: 'Document View!', name: { nb: 'x', en: 'x' }, covers: [] }],
+    });
+
+    expect(res.status).toBe(400);
+    expect(chatCount()).toBe(0);
   });
 
   it('the step flow route proposes level 1 patches against the step flow draft', async () => {

@@ -1,0 +1,217 @@
+{
+ "tests": [
+  {
+   "id": "eras-810ca2af-p34-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "For eksempel hadde 22 prosent hobby/fritidsaktiviteter for eldre, det var omtrent samme prosentsats som i 1997",
+     "max_diffs": 4
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-810ca2af-p34-t02",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Spørsmålet som lå til grunn for denne tabellen skapte reaksjoner fra flere sentraler.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-810ca2af-p34-t03",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "En del sentraler sa derfor fra om at de hadde vanskelig for å gi presise tall her,",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-810ca2af-p34-t04",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Tiltak som har lokalbefolkningen som målgruppe – for eksempel en bydelsavis eller en festival",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-810ca2af-p34-t05",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Hvilket må bety at det også er andre oppgaver som ansees som svært viktige,",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-810ca2af-p34-t06",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "caption",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Tabell 9. Hvor viktige er disse målgruppene for din sentral? Prosentandel som oppgir «svært viktig»",
+     "max_diffs": 4
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-810ca2af-p34-t07",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "caption",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "og de kommer ikke fram blant målgruppe – kategoriene.",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "Tabell 9. Hvor viktige er disse målgruppene",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-810ca2af-p34-t08",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "45,1",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Innvandrere",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-810ca2af-p34-t09",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "24,4",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Funksjonshemmede",
+     "max_diffs": 0
+    },
+    "up": {
+     "text": "41,7",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-810ca2af-p34-t10",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "21,1",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Institusjonsboende eldre",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-810ca2af-p34-t11",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "22,6",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

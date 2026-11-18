@@ -1,5 +1,6 @@
+import { ArrowCirclepathIcon, ExclamationmarkTriangleIcon, PlusIcon } from '@navikt/aksel-icons';
 import { Button, Tag } from '@digdir/designsystemet-react';
-import { Icon, icons } from '../../components/Icon';
+import { Icon } from '../../components/Icon';
 import { useT, type PlainKey } from '../../i18n';
 import { blocks, type Flow, type RunState, type Step } from '../../data/stepflows';
 import { controlName, errorLabel, type Analysis, type Guide, type Row } from './model';
@@ -174,7 +175,7 @@ export const Diagram = ({
             {inputsText(s.in) ? <span className="meta">{inputsText(s.in)}</span> : null}
             {e ? (
               <span className="flow-error">
-                <Icon d={icons.warning} size={16} strokeWidth={2} />
+                <Icon icon={ExclamationmarkTriangleIcon} size={16} />
                 {e}
               </span>
             ) : null}
@@ -357,7 +358,7 @@ export const Diagram = ({
     }
     return (
       <span className="flow-end">
-        <Icon d="M4 12a8 8 0 1 0 3-6.2 M4 4v4h4" size={16} strokeWidth={1.8} />
+        <Icon icon={ArrowCirclepathIcon} size={16} />
         {r.label}
       </span>
     );
@@ -389,7 +390,7 @@ export const Diagram = ({
         </span>
         {readOnly ? null : (
           <Button variant="secondary" data-size="sm" onClick={onAdd}>
-            <Icon d={icons.plus} size={18} />
+            <Icon icon={PlusIcon} size={18} />
             {t('stepflows.addStep')}
           </Button>
         )}

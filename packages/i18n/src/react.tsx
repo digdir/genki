@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useId,
   useMemo,
   useState,
@@ -67,7 +68,7 @@ export const LocaleProvider = ({
     if (typeof document !== 'undefined') document.documentElement.lang = locale;
   }, [locale]);
   const documentTitle = title?.[locale];
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (documentTitle && typeof document !== 'undefined') document.title = documentTitle;
   }, [documentTitle]);
   const value = useMemo(

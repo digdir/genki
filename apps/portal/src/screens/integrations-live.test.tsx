@@ -28,7 +28,7 @@ interface Call {
   body: unknown;
 }
 
-const live = async (hash: string) => {
+const live = async (hash: string, { secretsFail = false, runsFail = false } = {}) => {
   const calls: Call[] = [];
   const base = mockFetch();
   const fetch: typeof globalThis.fetch = async (input, init) => {
@@ -39,6 +39,13 @@ const live = async (hash: string) => {
       reason: decodeURIComponent(new Headers(init?.headers).get('change-reason') ?? ''),
       body: init?.body ? JSON.parse(String(init.body)) : undefined,
     });
+    if (secretsFail && new URL(url, 'http://test').pathname.endsWith('/secrets'))
+      return new Response(JSON.stringify({ title: 'Forbidden', status: 403 }), { status: 403 });
+    if (runsFail && /\/triggers\/[^/]+\/runs/.test(url))
+      return new Response(JSON.stringify({ title: 'Unavailable', status: 503 }), {
+        status: 503,
+        headers: { 'content-type': 'application/problem+json' },
+      });
     return base(input, init);
   };
   const auth = mockAnsattporten(kari);
@@ -112,11 +119,12 @@ describe('Integrasjoner: brukerflater fra API-et', () => {
 });
 
 describe('Integrasjoner: utløsere fra API-et', () => {
-  it('counts a failing trigger on the tab and in the follow-up list', async () => {
+  it('counts a failing trigger in the follow-up list', async () => {
     await live('#/integrations?tab=triggers');
 
-    expect(await screen.findByLabelText('1 med feil')).toBeTruthy();
-    expect(screen.getByRole('heading', { name: '1 integrasjon trenger oppfølging' })).toBeTruthy();
+    expect(
+      await screen.findByRole('heading', { name: '1 integrasjon trenger oppfølging' }),
+    ).toBeTruthy();
     expect(screen.getByText('Mappen «teams-opptak»: får ikke startet tjenesten')).toBeTruthy();
     expectAccessible();
   });
@@ -142,6 +150,16 @@ describe('Integrasjoner: utløsere fra API-et', () => {
       '#/log/opg_post_118',
       '#/log/opg_post_117',
     ]);
+  });
+
+  it('shows an error, not zero events, when the runs of a trigger cannot be fetched', async () => {
+    await live('#/integrations?tab=triggers', { runsFail: true });
+    fireEvent.click(await row(/Køen «post-inn»/));
+
+    expect(await screen.findByText('Vi fikk ikke hentet hendelsene')).toBeTruthy();
+    expect(screen.getAllByText(/Fikk ikke hentet hendelsene/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Ingen ennå/)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Prøv igjen' })).toBeTruthy();
   });
 
   it('says the trigger works when the service run failed, and leads to the run', async () => {
@@ -172,6 +190,75 @@ describe('Integrasjoner: utløsere fra API-et', () => {
   });
 });
 
+describe('Integrasjoner: MCP-koblinger fra API-et', () => {
+  const registerServer = async (secretName: string, options?: { secretsFail: boolean }) => {
+    const calls = await live('#/integrations?tab=systems', options);
+    fireEvent.click(await screen.findByRole('button', { name: 'Registrer en MCP-server' }));
+    const form = screen.getByRole('form', { name: 'Ny MCP-kobling' });
+    fireEvent.change(within(form).getByLabelText('Begrunnelse'), {
+      target: { value: 'Saksbehandlerne skal søke i arkivet' },
+    });
+    const fill = (label: string, value: string) =>
+      fireEvent.change(within(form).getByLabelText(label), { target: { value } });
+    fill('Kort navn (små bokstaver og bindestrek)', 'sak');
+    fill('Adresse (https)', 'https://sak.testetaten.example.no/mcp');
+    fill('Navn på hemmeligheten (valgfritt)', secretName);
+    fill('Hemmeligheten', 'hemmelig-verdi-123');
+    fireEvent.click(within(form).getByRole('button', { name: 'Registrer kobling' }));
+    return calls;
+  };
+
+  it('stores a new secret for the server address before it registers the connection that refers to it', async () => {
+    const calls = await registerServer('sak-token');
+
+    expect(
+      await screen.findByText('Koblingen er registrert. Hent verktøyene for å ta dem i bruk.'),
+    ).toBeTruthy();
+    const writes = calls.filter((c) => c.method === 'PUT' || c.method === 'POST');
+    expect(writes.map((c) => c.method)).toEqual(['PUT', 'POST']);
+    expect(writes[0]?.url).toMatch(/\/secrets\/sak-token$/);
+    expect(writes[0]?.body).toEqual({
+      value: 'hemmelig-verdi-123',
+      allowedHosts: ['https://sak.testetaten.example.no'],
+    });
+    expect(writes[1]?.body).toMatchObject({
+      endpoint: 'https://sak.testetaten.example.no/mcp',
+      auth: { kind: 'bearer', secret: 'secret://tenant/999888777/sak-token' },
+    });
+  });
+
+  it('replaces an existing secret set for the server address and keeps its addresses', async () => {
+    const calls = await registerServer('saks-api');
+
+    expect(
+      await screen.findByText('Koblingen er registrert. Hent verktøyene for å ta dem i bruk.'),
+    ).toBeTruthy();
+    expect(calls.find((c) => c.method === 'PUT')?.body).toEqual({ value: 'hemmelig-verdi-123' });
+  });
+
+  it('refuses a secret name set for other addresses before anything is stored', async () => {
+    const calls = await registerServer('arkiv-nokkel');
+
+    expect(
+      await screen.findByText(
+        'Hemmeligheten «arkiv-nokkel» er satt opp for andre adresser (https://arkiv.testetaten.example.no). Velg et annet navn på hemmeligheten.',
+      ),
+    ).toBeTruthy();
+    expect(calls.some((c) => c.method === 'PUT' || c.method === 'POST')).toBe(false);
+  });
+
+  it('stores nothing when the addresses of the secret could not be checked', async () => {
+    const calls = await registerServer('saks-api', { secretsFail: true });
+
+    expect(
+      await screen.findByText(
+        'Vi kunne ikke sjekke hvilke adresser hemmeligheten «saks-api» er satt opp for, så ingenting er lagret.',
+      ),
+    ).toBeTruthy();
+    expect(calls.some((c) => c.method === 'PUT' || c.method === 'POST')).toBe(false);
+  });
+});
+
 describe('schedule names', () => {
   it('names common schedules in plain words and shows anything else as written', () => {
     expect(describeSchedule('0 2 * * *')).toBe('Hver natt kl. 02.00');
@@ -179,5 +266,61 @@ describe('schedule names', () => {
     expect(describeSchedule('0 7 * * 1')).toBe('Hver mandag kl. 07.00');
     expect(describeSchedule('0 * * * *')).toBe('Hver time');
     expect(describeSchedule('*/5 * * * *')).toBe('Tidsplan «*/5 * * * *»');
+  });
+});
+
+describe('Utviklerverktøy: oppfølging i menyen fra API-et', () => {
+  it('counts systems with tool changes waiting and failing triggers from the API', async () => {
+    await live('#/developer/status');
+    const menu = await screen.findByRole('navigation', { name: 'Utviklerverktøy' });
+    await waitFor(() =>
+      expect(
+        within(menu).getByRole('link', { name: 'Systemer 1 trenger oppfølging' }),
+      ).toBeTruthy(),
+    );
+    expect(within(menu).getByRole('link', { name: 'Utløsere 1 trenger oppfølging' })).toBeTruthy();
+  });
+});
+
+describe('Integrasjoner: koble til system i en dialog', () => {
+  it('asks before throwing away a half-filled connection', async () => {
+    const calls = await live('#/developer/systems');
+    fireEvent.click(await screen.findByRole('button', { name: 'Registrer en MCP-server' }));
+    const form = screen.getByRole('form', { name: 'Ny MCP-kobling' });
+    fireEvent.change(within(form).getByLabelText('Adresse (https)'), {
+      target: { value: 'https://sak.testetaten.example.no/mcp' },
+    });
+    fireEvent.click(within(form).getByRole('button', { name: 'Avbryt' }));
+    expect(within(form).getByText('Forkaste det du har skrevet?')).toBeTruthy();
+    fireEvent.click(within(form).getByRole('button', { name: 'Forkast' }));
+    expect(screen.queryByRole('form', { name: 'Ny MCP-kobling' })).toBeNull();
+    expect(calls.some((c) => c.method !== 'GET')).toBe(false);
+  });
+});
+
+describe('API-nøkler fra API-et', () => {
+  it('shows when a key was last used from the lastUsedAt the API lists', async () => {
+    await live('#/developer/keys');
+
+    const list = await screen.findByRole('list', { name: 'API-nøkler' });
+    expect(within(list).getByText(/sist brukt 7\. okt\. 2026/)).toBeTruthy();
+  });
+
+  it('says a key is not used yet only when the API lists lastUsedAt as null', async () => {
+    await live('#/developer/keys');
+
+    const list = await screen.findByRole('list', { name: 'API-nøkler' });
+    expect(within(list).getAllByText(/ikke brukt ennå/)).toHaveLength(1);
+  });
+});
+
+describe('Utløsere in live mode', () => {
+  it('opens no example trigger, so it never asks for the runs of a trigger that does not exist', async () => {
+    const calls = await live('#/integrations?tab=triggers');
+    await row(/Køen «post-inn»/);
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(calls.filter((c) => /\/triggers\/(okon|ko-post)\/runs/.test(c.url))).toEqual([]);
+    expect(calls.filter((c) => /\/triggers\/[^/]+\/runs/.test(c.url))).toEqual([]);
   });
 });

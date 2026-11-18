@@ -1,0 +1,1025 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Components for assistants</title>
+    <meta
+      name="description"
+      content="Working document: the components assistants in the shared solution are built from, with variants and what we have learned."
+    />
+    <!-- When a component changes, update its page, its badges here and the change log below. -->
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header>
+        <p class="eyebrow">Shared solution · Component library · Working document</p>
+        <h1>Components for assistants</h1>
+        <p class="lede">
+          A working document for the team building the component library that assistants in the
+          shared solution (fellesløsningen) are made from. It collects what each component does, its
+          variants, and what we learn as we build and test.
+        </p>
+        <p class="meta-line">
+          Last updated 11 November 2026 · Grows as we build · Not meant for service owners yet.
+        </p>
+      </header>
+
+      <!-- ============================================================ CHANGELOG -->
+      <section class="section" aria-labelledby="changelog">
+        <h2 id="changelog">Change log</h2>
+        <ul class="changelog">
+          <li>
+            <strong>16 November 2026:</strong> In a narrow window an open panel of the shell fills
+            the shell's own box, in place of the modal drawer and its dimmed backdrop. In a host's
+            preview, such as the builder's, the page around it is no longer dimmed or out of reach.
+            While the panel is open the main column and the other panel are out of reach; «Lukk …»
+            and Escape close it, and the focus goes back to what opened it.
+          </li>
+          <li>
+            <strong>16 November 2026:</strong> Dokumentvisning can show the whole document, in beta:
+            a PDF the host fetches, through the profile's <code>documentFile</code>, in the
+            browser's own viewer in place of the excerpts, or as «Åpne dokumentet (PDF)» on a phone
+            and where the browser has no viewer. Its option «Vis hele dokumentet (beta)» is on by
+            default; off, or without the host's function, the view shows the excerpts as before. The
+            template «Kunnskapsassistenten, ny utgave» holds Dokumentvisning after Kilder.
+          </li>
+          <li>
+            <strong>16 November 2026:</strong> The secondary panel's menu of three or more tools no
+            longer breaks the page when the panel turns into a drawer, or back, as the window is
+            made narrower or wider: the menu is drawn only once its place is in the page.
+          </li>
+          <li>
+            <strong>15 November 2026:</strong> The «Grensesnitt» tab's builder and its preview on
+            its own page use the whole column, without the service page's narrower, padded body. A
+            resize handle is easier to grab, 9 px past its line on each side. Dragging one selects
+            no text, keeps the pointer until it is let go wherever that happens, and stops when the
+            browser cancels the drag or the release is never seen.
+          </li>
+          <li>
+            <strong>14 November 2026:</strong> Smaller fixes in the «Grensesnitt» tab. A thread's
+            title shown over its row in the preview lands on the row, at the row's text size. After
+            «Fjern …» in «Oppsett», the focus goes to the next «Fjern», to the one before it after
+            the last, or to what the preview says when none is left. A block in two panels has a
+            «Fjern» in each, named by its panel, that takes it out of that panel only. Every
+            suggestion in «Tekster» stands over its remove button. A problem with no field errors
+            sets its title apart from its detail, with a colon when the title has no stop. A pasted
+            layout's broken limits name the field as «Tekster» does, for the texts «Tekster» edits,
+            instead of its path. The resize handles show the portal's focus ring.
+          </li>
+          <li>
+            <strong>14 November 2026:</strong> The «Grensesnitt» tab's try view keeps its assistant,
+            with its answers on their way, its threads and the thread on screen, while the preview
+            is drawn again: «Vis større» and «Vis mindre», «Oppsett» and back, across the narrow
+            breakpoint, and on another tab of the service page and back, where the thread stays
+            scrolled as it was. Before, each of these stopped its answers and started it again on
+            «Ny tråd». A draft changed on another tab is read again on return, and a refusal of the
+            draft as it was goes; why the thread's answer failed stays above the preview. «Start
+            samtalen på nytt» still starts it again, as does renaming a new service, whose id
+            follows its name.
+          </li>
+          <li>
+            <strong>14 November 2026:</strong> In the <a href="ui-assembly.html">UI assembly</a>, a
+            thread opened after a reload while its answer came says the answer may still be on its
+            way, with «Hent på nytt», which reads the thread again rather than asking again. Before,
+            it said the question got no answer, though genki went on and stored it. After five
+            minutes, genki's default deadline for a run, it says so as before. The
+            <a href="conversation.html">Conversation</a> block takes <code>onFetchAgain</code> for
+            it.
+          </li>
+          <li>
+            <strong>14 November 2026:</strong> In the <a href="ui-assembly.html">UI assembly</a>'s
+            next look, a page opened on a new thread, as after a reload, starts with no filter, as
+            «Ny tråd» does. Before, it took the filter last on screen, often another thread's.
+          </li>
+          <li>
+            <strong>14 November 2026:</strong> In <a href="settings.html">Innstillinger</a>,
+            «Generelt» promises only what it offers: its line in the menu and its lead are worded
+            from the rows the page draws, «Utseende» and «Hvordan tjenesten ser ut.» where the
+            colour scheme is all the host keeps, and say nothing where it draws none. Before, the
+            line named the answers' language and length, and the lead their language and where the
+            reader starts, which the UI assembly does not offer.
+          </li>
+          <li>
+            <strong>14 November 2026:</strong> In the <a href="ui-assembly.html">UI assembly</a>, a
+            stored thread that names no collection, such as one asked in another client, has its
+            documents linked by the profile's collection when the profile describes exactly one.
+            With several, no collection is guessed and the documents stay without a link.
+          </li>
+          <li>
+            <strong>14 November 2026:</strong> The «Grensesnitt» tab fits a narrow screen: the
+            switcher of «Maler», «Byggeklosser» and «Tekster» goes on to a second line rather than
+            past the screen's edge, and a preview wider than its space scrolls from its left edge,
+            where before its left part was out of reach.
+          </li>
+          <li>
+            <strong>14 November 2026:</strong> The «Grensesnitt» tab's try view keeps a question in
+            its thread once the playground takes the run, with its answer as it ended: stopped or
+            failed on its way too, with the text that had come. Before, such a question was gone
+            when the thread was opened again, and a new thread was left empty, as when the try view
+            was drawn again mid-answer («Vis større», «Oppsett»). A question asked again stands
+            once, as its latest attempt, as the <a href="ui-assembly.html">UI assembly</a> reads
+            genki's threads.
+          </li>
+          <li>
+            <strong>14 November 2026:</strong> The «Grensesnitt» tab's try view, with answers in
+            more than one thread, shows why an answer failed over that answer's thread only, until
+            the thread's next question goes. Why the playground refused the latest question is about
+            the draft, and shows over every thread until any question goes; a refusal of an older
+            question shows nowhere. A refused question is taken back, through the
+            <a href="ui-assembly.html">UI assembly</a>'s new <code>NotAsked</code>, instead of
+            starting the assistant again, so the answers in other threads go on.
+          </li>
+          <li>
+            <strong>14 November 2026:</strong> In the <a href="ui-assembly.html">UI assembly</a>, an
+            answer keeps coming while the reader is in another thread, and is there when they come
+            back: still on its way, finished or failed, though genki has not stored it yet. Leaving
+            a thread and «Ny tråd» no longer stop it, and the reader can ask in another thread
+            meanwhile; «Avbryt genereringen» stops the answer on screen, and «Logg ut» stops them
+            all.
+          </li>
+          <li>
+            <strong>14 November 2026:</strong> The «Grensesnitt» tab has a fourth panel, «Tekster»,
+            that edits the layout's <code>profile</code>: the assistant's name, its suggestions and
+            settings note, and per collection of the draft its name, description, filter fields
+            (label, heading, years), document type and links. Each limit the
+            <a href="builder.html">builder</a> checks is said under the field it concerns. With the
+            template «Kunnskapsassistenten, ny utgave», «Fyll inn som Kunnskapsassistenten» fills in
+            KA's words for Kudos.
+          </li>
+          <li>
+            <strong>14 November 2026:</strong> The portal's service page has a «Grensesnitt» tab
+            with the <a href="builder.html">builder</a> on the service's draft: templates, blocks
+            and their options, and «Prøv assistenten». It starts from «Kunnskapsassistenten, ny
+            utgave» and keeps the layout, with the blocks the draft cannot back yet, only in the
+            browser for the session; «Kopier oppsettet» and «Lim inn oppsett» carry it as JSON.
+          </li>
+          <li>
+            <strong>14 November 2026:</strong> A host can build on a draft. The
+            <a href="builder.html">builder</a> reads a draft's facts from its definition and has its
+            own entry, <code>@genai/ui-blocks/builder</code>. The
+            <a href="ui-assembly.html">UI assembly</a> and the <a href="shell.html">Shell</a> take
+            <code>frameWidth</code> to draw in a host's preview without its own
+            <code>&lt;main&gt;</code> or <code>h1</code>. <a href="chat.html">Chat</a>'s send button
+            is <code>aria-disabled</code> rather than disabled.
+          </li>
+          <li>
+            <strong>13 November 2026:</strong> The <a href="ui-assembly.html">UI assembly</a> always
+            draws years as periods and many chosen values as one chip: KA's trials «year-ranges» and
+            «compact-filter-chips» are now the standard. The <a href="filter.html">Filter</a>'s
+            panel row for a year field says «Alle år» with nothing chosen. A typed period stands for
+            the years in it that the field lists, not every calendar year, so «1800-2015» no longer
+            passes genki's 100 values per field; the list counts a period in years with documents
+            rather than a sum of documents that can pass the total.
+          </li>
+          <li>
+            <strong>13 November 2026:</strong> The <a href="ui-assembly.html">UI assembly</a>
+            leaves a filter field with every value chosen out of the facets, the question and
+            «Avgrenset til», so «Velg alle» in a field of hundreds of values, with nothing else
+            chosen, no longer stops the other fields from loading. A field with more than 100 chosen
+            goes as the values left out when they are 100 or fewer; otherwise the
+            <a href="filter.html">Filter</a> says so and nothing is sent. «Avgrenset til» names
+            years in a row as one period.
+          </li>
+          <li>
+            <strong>13 November 2026:</strong> The <a href="ui-assembly.html">UI assembly</a>'s next
+            look hides the <a href="welcome.html">Welcome</a> greeting and suggestions while the
+            question field holds text, and shows them again when it is emptied.
+          </li>
+          <li>
+            <strong>13 November 2026:</strong> <a href="answer-actions.html">Answer actions</a>
+            sends the rating on the click on «Ja» or «Nei». The reasons and comment are optional and
+            come after, sent with the rating again; the other thumb changes the rating.
+          </li>
+          <li>
+            <strong>13 November 2026:</strong> <a href="filter.html">Filter</a> shows one chip,
+            «Alle virksomheter», when the field lists two or more values and all are chosen, as
+            after «Velg alle», for every host. The panel variant's row says «Alle» then, instead of
+            every name.
+          </li>
+          <li>
+            <strong>13 November 2026:</strong> The <a href="variant-picker.html">Variant picker</a>
+            shows the service, then its variants: its list is headed by the service's name, as the
+            frontend contract asks.
+          </li>
+          <li>
+            <strong>13 November 2026:</strong> Three blocks have pages of their own,
+            <a href="welcome.html">Welcome</a>, <a href="corpus.html">Corpus choice</a> and
+            <a href="documents.html">Documents</a>, which only the Chat and Filter pages described
+            until now. <a href="states.html">States</a> records its side-by-side check with
+            Kunnskapsassistenten, and the error heading's level is no longer an open question.
+          </li>
+          <li>
+            <strong>13 November 2026:</strong> The UI assembly offers the trial
+            <code>compact-filter</code>: the next look's filter 230 px wide with its ticks in one
+            column, and the threads taking the rest of the card. Shell's companion can keep its
+            width (<code>keepWidth</code>), and Filter takes its columns of ticks from
+            <code>--genai-filter-checkboxes-columns</code>.
+          </li>
+          <li>
+            <strong>13 November 2026:</strong> Threads cuts a one-line title in the next look where
+            the row ends, not after its last whole word, so «Hva sier…» no longer leaves the row
+            half empty.
+          </li>
+          <li>
+            <strong>11 November 2026:</strong> A page for the UI assembly,
+            <a href="ui-assembly.html">UI assembly</a>: how <code>@genai/ui-assembly</code> puts the
+            blocks together from a layout, and the variables of its own sheet.
+          </li>
+          <li>
+            <strong>11 November 2026:</strong> The app builder's catalogue has a page:
+            <a href="builder.html">App builder catalogue</a>, with the blocks, the templates, the
+            layout rules and the service facts.
+          </li>
+          <li>
+            <strong>10 November 2026:</strong> Approach shows its step titles in the person's
+            language, keeps a tool called again in a row as one step, counts only cited sources as
+            used, and shows no link until the app has somewhere for it to lead. It follows the
+            package's rules (ADR 0053): every token its stylesheet reads can be changed through a
+            <code>--genai-approach-*</code> variable, its words are in a catalogue of its own, and a
+            host can keep it open or shut.
+          </li>
+          <li>
+            <strong>9 November 2026:</strong> Document view is in the Building phase, in
+            <code>@genai/ui-blocks</code>: one source document's excerpts in its own order, the
+            excerpt the reader came for marked, «Utdrag i svaret» to jump straight to each cited
+            excerpt, and a question for the thread. genki has no route for a document's whole text
+            yet.
+          </li>
+          <li>
+            <strong>6 November 2026:</strong> The conversation in Chat is in the Building phase, as
+            <code>Conversation</code> in <code>@genai/ui-blocks</code>, on a page of its own:
+            <a href="conversation.html">Conversation</a>. No app draws it yet.
+          </li>
+          <li>
+            <strong>6 November 2026:</strong> Footnotes is in the Building phase, as
+            <code>Answer</code> in <code>@genai/ui-blocks</code>: the answer with footnotes paired
+            both ways with Sources, and «Kilder brukt i svaret». No app draws it yet.
+          </li>
+          <li>
+            <strong>6 November 2026:</strong> Sources is in the Building phase, in
+            <code>@genai/ui-blocks</code>: only cited excerpts are numbered, each linked both ways
+            with its footnotes, and every token it uses can be changed through a
+            <code>--genai-sources-*</code> variable. No app draws it yet.
+          </li>
+          <li>
+            <strong>6 November 2026:</strong> Shell is in the Building phase: the three columns that
+            hold the other blocks, which fold, resize and become drawers.
+          </li>
+          <li>
+            <strong>6 November 2026:</strong> Two blocks that sit inside others are in the Building
+            phase, in <code>@genai/ui-blocks</code>: the variant picker for the question field, and
+            the empty, error and not-found states. No app draws them yet.
+          </li>
+          <li>
+            <strong>6 November 2026:</strong> Threads is in the Building phase, in
+            <code>@genai/ui-blocks</code>: grouped by period, with search, rename and delete as
+            events the app handles. No app draws it yet.
+          </li>
+          <li>
+            <strong>6 November 2026:</strong> Chat is in the Building phase: the question field, the
+            welcome and the suggestions are in <code>@genai/ui-blocks</code>, ported from
+            Kunnskapsassistenten, with every token behind a <code>--genai-composer-*</code> or
+            <code>--genai-welcome-*</code> variable. No app draws them yet.
+          </li>
+          <li>
+            <strong>6 November 2026:</strong> Filter is in the Building phase, in
+            <code>@genai/ui-blocks</code>, with the corpus choice and the documents: fields from the
+            dataset's facets, and every token behind a <code>--genai-*</code> variable.
+          </li>
+          <li>
+            <strong>6 November 2026:</strong> Settings is in the Building phase, in
+            <code>@genai/ui-blocks</code>, starting with the colour scheme. A new page,
+            <a href="branding.html">Branding</a>, shows how a service brands every block.
+          </li>
+          <li>
+            <strong>6 November 2026:</strong> Answer actions is in the Building phase, in
+            <code>@genai/ui-blocks</code>: copy the answer, copy the link, and feedback, as events
+            the app handles. No app draws it yet.
+          </li>
+          <li>
+            <strong>2 November 2026:</strong> Approach is in the Building phase: the card above the
+            answer is built in <code>@genai/ui-blocks</code> (ADR 0053) and shown in the workspace.
+          </li>
+          <li>
+            <strong>2 November 2026:</strong> The pages moved to genki, in
+            <code>docs/components/</code>, from kunnskapsassistenten. The components are built in
+            genki, used by the workspace and later by the builder's preview. Issue numbers still
+            point to kunnskapsassistenten. Approach notes that «Det jeg ikke fant» has no data yet.
+          </li>
+          <li>
+            <strong>19 October 2026:</strong> Each component has a page of its own. This page is the
+            landing page, and a working document for the team.
+          </li>
+          <li>
+            <strong>19 October 2026:</strong> First version. The nine components from
+            kunnskapsassistenten#167, all in the Draft phase, with what we have learned from the
+            canvas and issues kunnskapsassistenten#174 to #182.
+          </li>
+        </ul>
+      </section>
+
+      <!-- ============================================================ OVERVIEW -->
+      <section class="section" aria-labelledby="overview">
+        <h2 id="overview">Overview</h2>
+        <p class="section-lede">
+          The components are grouped by where they sit: the conversation in the main area, the
+          primary sidebar with threads, and the tools in the secondary sidebar.
+        </p>
+
+        <h3 class="group-title">The page <span>· holds the others</span></h3>
+        <ul class="stamps">
+          <li>
+            <a class="stamp-card" href="shell.html">
+              <svg class="stamp" viewBox="0 0 160 100" aria-hidden="true">
+                <rect class="s-panel" x="6" y="12" width="40" height="100" rx="8" />
+                <rect class="s-bar" x="14" y="22" width="24" height="6" rx="3" />
+                <rect class="s-soft" x="14" y="36" width="24" height="5" rx="2.5" />
+                <rect class="s-accent" x="47" y="12" width="2" height="100" rx="1" />
+                <rect class="s-bar" x="60" y="22" width="56" height="6" rx="3" />
+                <rect class="s-soft" x="60" y="36" width="56" height="5" rx="2.5" />
+                <rect class="s-soft" x="60" y="84" width="56" height="12" rx="6" />
+                <rect class="s-panel" x="126" y="12" width="28" height="100" rx="8" />
+              </svg>
+              <span class="stamp-name">Shell</span>
+              <span class="stamp-desc"
+                >Three columns that fold, resize and, open in a narrow window, fill the shell.</span
+              >
+              <span class="badges"><span class="badge phase">Building</span></span>
+            </a>
+          </li>
+        </ul>
+
+        <h3 class="group-title">Conversation <span>· main area</span></h3>
+        <ul class="stamps">
+          <li>
+            <a class="stamp-card" href="chat.html">
+              <svg class="stamp" viewBox="0 0 160 100" aria-hidden="true">
+                <rect class="s-panel" x="16" y="12" width="128" height="100" rx="10" />
+                <rect class="s-accent-soft" x="80" y="22" width="52" height="12" rx="6" />
+                <rect class="s-accent" x="28" y="42" width="18" height="6" rx="3" />
+                <rect class="s-bar" x="28" y="54" width="96" height="6" rx="3" />
+                <rect class="s-bar" x="28" y="64" width="72" height="6" rx="3" />
+                <rect class="s-soft" x="28" y="78" width="104" height="16" rx="8" />
+                <circle class="s-accent" cx="124" cy="86" r="4" />
+              </svg>
+              <span class="stamp-name">Chat</span>
+              <span class="stamp-desc">Question in, answer out, in one thread.</span>
+              <span class="badges"
+                ><span class="badge phase">Building</span
+                ><span class="badge">Always included?</span></span
+              >
+            </a>
+          </li>
+          <li>
+            <a class="stamp-card" href="welcome.html">
+              <svg class="stamp" viewBox="0 0 160 100" aria-hidden="true">
+                <rect class="s-panel" x="16" y="12" width="128" height="100" rx="10" />
+                <rect class="s-bar" x="28" y="22" width="44" height="7" rx="3.5" />
+                <rect class="s-bar" x="28" y="34" width="70" height="7" rx="3.5" />
+                <rect class="s-soft" x="28" y="48" width="104" height="14" rx="7" />
+                <rect class="s-accent" x="28" y="68" width="22" height="4" rx="2" />
+                <rect class="s-bar" x="28" y="77" width="6" height="7" rx="1.5" />
+                <rect class="s-bar" x="40" y="78.5" width="78" height="4" rx="2" />
+                <rect class="s-bar" x="28" y="90" width="6" height="7" rx="1.5" />
+                <rect class="s-bar" x="40" y="91.5" width="64" height="4" rx="2" />
+              </svg>
+              <span class="stamp-name">Welcome</span>
+              <span class="stamp-desc">A greeting, and questions to start from.</span>
+              <span class="badges"
+                ><span class="badge phase">Building</span
+                ><span class="badge">Inside Chat</span></span
+              >
+            </a>
+          </li>
+          <li>
+            <a class="stamp-card" href="approach.html">
+              <svg class="stamp" viewBox="0 0 160 100" aria-hidden="true">
+                <rect class="s-panel" x="16" y="12" width="128" height="100" rx="10" />
+                <rect class="s-soft" x="26" y="20" width="108" height="72" rx="10" />
+                <rect class="s-bar" x="39" y="34" width="2" height="36" rx="1" />
+                <circle class="s-accent" cx="40" cy="34" r="5" />
+                <circle class="s-accent" cx="40" cy="52" r="5" />
+                <circle class="s-bar" cx="40" cy="70" r="5" />
+                <rect class="s-bar" x="52" y="31" width="64" height="6" rx="3" />
+                <rect class="s-bar" x="52" y="49" width="50" height="6" rx="3" />
+                <rect class="s-bar" x="52" y="67" width="58" height="6" rx="3" />
+              </svg>
+              <span class="stamp-name">Approach</span>
+              <span class="stamp-desc">The steps the assistant takes to answer.</span>
+              <span class="badges"
+                ><span class="badge phase">Building</span><span class="badge">Optional</span></span
+              >
+            </a>
+          </li>
+          <li>
+            <a class="stamp-card" href="footnotes.html">
+              <svg class="stamp" viewBox="0 0 160 100" aria-hidden="true">
+                <rect class="s-panel" x="16" y="12" width="128" height="100" rx="10" />
+                <rect class="s-bar" x="28" y="24" width="78" height="6" rx="3" />
+                <rect class="s-accent" x="110" y="21" width="9" height="9" rx="3" />
+                <rect class="s-bar" x="28" y="36" width="96" height="6" rx="3" />
+                <rect class="s-bar" x="28" y="48" width="54" height="6" rx="3" />
+                <rect class="s-accent" x="86" y="45" width="9" height="9" rx="3" />
+                <rect class="s-soft" x="26" y="64" width="108" height="30" rx="8" />
+                <rect class="s-bar" x="34" y="71" width="7" height="6" rx="2" />
+                <rect class="s-bar" x="46" y="71" width="62" height="6" rx="3" />
+                <rect class="s-bar" x="34" y="82" width="7" height="6" rx="2" />
+                <rect class="s-bar" x="46" y="82" width="48" height="6" rx="3" />
+              </svg>
+              <span class="stamp-name">Footnotes</span>
+              <span class="stamp-desc">Numbers in the answer that point to the source.</span>
+              <span class="badges"
+                ><span class="badge phase">Building</span><span class="badge">Optional</span></span
+              >
+            </a>
+          </li>
+          <li>
+            <a class="stamp-card" href="answer-actions.html">
+              <svg class="stamp" viewBox="0 0 160 100" aria-hidden="true">
+                <rect class="s-panel" x="16" y="12" width="128" height="100" rx="10" />
+                <rect class="s-bar" x="28" y="24" width="96" height="6" rx="3" />
+                <rect class="s-bar" x="28" y="36" width="72" height="6" rx="3" />
+                <rect class="s-soft" x="26" y="52" width="40" height="12" rx="6" />
+                <rect class="s-accent" x="31" y="55" width="6" height="6" rx="1.5" />
+                <rect class="s-soft" x="70" y="52" width="40" height="12" rx="6" />
+                <rect class="s-accent" x="75" y="55" width="6" height="6" rx="1.5" />
+                <rect class="s-bar" x="118" y="55" width="16" height="6" rx="3" />
+                <rect class="s-bar" x="28" y="76" width="40" height="5" rx="2.5" />
+                <rect class="s-accent-soft" x="74" y="72" width="24" height="12" rx="6" />
+                <rect class="s-accent-soft" x="102" y="72" width="24" height="12" rx="6" />
+              </svg>
+              <span class="stamp-name">Answer actions</span>
+              <span class="stamp-desc">Copy the answer or its link, and say if it helped.</span>
+              <span class="badges"
+                ><span class="badge phase">Building</span><span class="badge">Optional</span></span
+              >
+            </a>
+          </li>
+        </ul>
+
+        <h3 class="group-title">Threads and filter <span>· primary sidebar</span></h3>
+        <ul class="stamps">
+          <li>
+            <a class="stamp-card" href="threads.html">
+              <svg class="stamp" viewBox="0 0 160 100" aria-hidden="true">
+                <rect
+                  class="s-panel"
+                  x="130"
+                  y="12"
+                  width="50"
+                  height="100"
+                  rx="10"
+                  opacity="0.55"
+                />
+                <rect class="s-panel" x="10" y="12" width="110" height="100" rx="10" />
+                <rect class="s-accent" x="18" y="20" width="50" height="12" rx="6" />
+                <rect class="s-check-fill" x="23" y="25" width="7" height="2" rx="1" />
+                <rect class="s-check-fill" x="25.5" y="22.5" width="2" height="7" rx="1" />
+                <rect class="s-check-fill" x="34" y="25" width="26" height="2" rx="1" />
+                <rect class="s-accent-soft" x="14" y="38" width="102" height="14" rx="6" />
+                <rect class="s-accent" x="19" y="41" width="9" height="7" rx="2" />
+                <path class="s-accent" d="M21 47l0 3.5 3.5-3.5z" />
+                <rect class="s-bar" x="33" y="42.5" width="66" height="5" rx="2.5" />
+                <rect class="s-bar" x="19" y="58" width="9" height="7" rx="2" />
+                <path class="s-bar" d="M21 64l0 3.5 3.5-3.5z" />
+                <rect class="s-bar" x="33" y="59.5" width="56" height="5" rx="2.5" />
+                <rect class="s-bar" x="19" y="73" width="9" height="7" rx="2" />
+                <path class="s-bar" d="M21 79l0 3.5 3.5-3.5z" />
+                <rect class="s-bar" x="33" y="74.5" width="62" height="5" rx="2.5" />
+                <rect class="s-bar" x="19" y="88" width="9" height="7" rx="2" />
+                <path class="s-bar" d="M21 94l0 3.5 3.5-3.5z" />
+                <rect class="s-bar" x="33" y="89.5" width="50" height="5" rx="2.5" />
+              </svg>
+              <span class="stamp-name">Threads</span>
+              <span class="stamp-desc">The conversations, and a new thread.</span>
+              <span class="badges"
+                ><span class="badge phase">Building</span><span class="badge">Optional</span></span
+              >
+            </a>
+          </li>
+          <li>
+            <a class="stamp-card" href="filter.html">
+              <svg class="stamp" viewBox="0 0 160 100" aria-hidden="true">
+                <rect
+                  class="s-panel"
+                  x="130"
+                  y="12"
+                  width="50"
+                  height="100"
+                  rx="10"
+                  opacity="0.55"
+                />
+                <rect class="s-panel" x="10" y="12" width="110" height="100" rx="10" />
+                <rect class="s-soft" x="16" y="20" width="98" height="18" rx="7" />
+                <rect class="s-accent" x="24" y="26" width="44" height="6" rx="3" />
+                <rect class="s-accent" x="20" y="46" width="11" height="11" rx="3" />
+                <path class="s-check" d="M23 51.5l2.2 2.2 3.8-4.4" />
+                <rect class="s-bar" x="40" y="49" width="60" height="6" rx="3" />
+                <rect class="s-bar" x="20" y="63" width="11" height="11" rx="3" />
+                <rect class="s-bar" x="40" y="66" width="48" height="6" rx="3" />
+                <rect class="s-accent" x="20" y="80" width="11" height="11" rx="3" />
+                <path class="s-check" d="M23 85.5l2.2 2.2 3.8-4.4" />
+                <rect class="s-bar" x="40" y="83" width="66" height="6" rx="3" />
+              </svg>
+              <span class="stamp-name">Filter</span>
+              <span class="stamp-desc">Choose which documents a thread reads from.</span>
+              <span class="badges"
+                ><span class="badge phase">Building</span><span class="badge">Optional</span></span
+              >
+            </a>
+          </li>
+          <li>
+            <a class="stamp-card" href="corpus.html">
+              <svg class="stamp" viewBox="0 0 160 100" aria-hidden="true">
+                <rect
+                  class="s-panel"
+                  x="130"
+                  y="12"
+                  width="50"
+                  height="100"
+                  rx="10"
+                  opacity="0.55"
+                />
+                <rect class="s-panel" x="10" y="12" width="110" height="100" rx="10" />
+                <rect class="s-bar" x="20" y="22" width="52" height="5" rx="2.5" />
+                <rect class="s-soft" x="20" y="31" width="90" height="16" rx="5" />
+                <rect class="s-bar" x="26" y="36.5" width="40" height="5" rx="2.5" />
+                <path class="s-accent" d="M99 37l3 3 3-3z" />
+                <rect class="s-bar" x="20" y="58" width="58" height="5" rx="2.5" />
+                <rect class="s-accent" x="82" y="58" width="22" height="5" rx="2.5" />
+                <rect class="s-bar" x="20" y="70" width="84" height="4" rx="2" />
+                <rect class="s-bar" x="20" y="80" width="62" height="4" rx="2" />
+              </svg>
+              <span class="stamp-name">Corpus choice</span>
+              <span class="stamp-desc">Which collection is searched, and a switch.</span>
+              <span class="badges"
+                ><span class="badge phase">Building</span><span class="badge">Optional</span></span
+              >
+            </a>
+          </li>
+          <li>
+            <a class="stamp-card" href="documents.html">
+              <svg class="stamp" viewBox="0 0 160 100" aria-hidden="true">
+                <rect
+                  class="s-panel"
+                  x="130"
+                  y="12"
+                  width="50"
+                  height="100"
+                  rx="10"
+                  opacity="0.55"
+                />
+                <rect class="s-panel" x="10" y="12" width="110" height="100" rx="10" />
+                <rect class="s-bar" x="20" y="21" width="40" height="6" rx="3" />
+                <rect class="s-accent" x="20" y="33" width="66" height="5" rx="2.5" />
+                <rect class="s-bar" x="20" y="41" width="44" height="4" rx="2" />
+                <rect class="s-accent" x="20" y="51" width="58" height="5" rx="2.5" />
+                <rect class="s-bar" x="20" y="59" width="38" height="4" rx="2" />
+                <rect class="s-soft" x="18" y="72" width="94" height="30" rx="6" />
+                <path class="s-accent" d="M60 82l5-5 5 5h-3v5h-4v-5z" />
+                <rect class="s-bar" x="44" y="92" width="42" height="4" rx="2" />
+              </svg>
+              <span class="stamp-name">Documents</span>
+              <span class="stamp-desc">The answer's documents, and the reader's own.</span>
+              <span class="badges"
+                ><span class="badge phase">Building</span><span class="badge">Optional</span></span
+              >
+            </a>
+          </li>
+          <li>
+            <a class="stamp-card" href="projects.html">
+              <svg class="stamp" viewBox="0 0 160 100" aria-hidden="true">
+                <rect
+                  class="s-panel"
+                  x="130"
+                  y="12"
+                  width="50"
+                  height="100"
+                  rx="10"
+                  opacity="0.55"
+                />
+                <rect class="s-panel" x="10" y="12" width="110" height="100" rx="10" />
+                <path
+                  class="s-accent"
+                  d="M18 22a2 2 0 0 1 2-2h7l3 3h12a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H20a2 2 0 0 1-2-2z"
+                />
+                <rect class="s-bar" x="50" y="25" width="48" height="6" rx="3" />
+                <rect class="s-soft" x="16" y="44" width="46" height="14" rx="6" />
+                <path
+                  class="s-bar"
+                  d="M21 47a1 1 0 0 1 1-1h4.5l3.5 3.5v6.5a1 1 0 0 1-1 1H22a1 1 0 0 1-1-1z"
+                />
+                <rect class="s-bar" x="34" y="48.5" width="22" height="5" rx="2.5" />
+                <rect class="s-soft" x="66" y="44" width="46" height="14" rx="6" />
+                <path
+                  class="s-bar"
+                  d="M71 47a1 1 0 0 1 1-1h4.5l3.5 3.5v6.5a1 1 0 0 1-1 1H72a1 1 0 0 1-1-1z"
+                />
+                <rect class="s-bar" x="84" y="48.5" width="22" height="5" rx="2.5" />
+                <rect class="s-bar" x="22" y="68" width="9" height="7" rx="2" />
+                <path class="s-bar" d="M24 74l0 3.5 3.5-3.5z" />
+                <rect class="s-bar" x="36" y="69.5" width="58" height="5" rx="2.5" />
+                <rect class="s-bar" x="22" y="84" width="9" height="7" rx="2" />
+                <path class="s-bar" d="M24 90l0 3.5 3.5-3.5z" />
+                <rect class="s-bar" x="36" y="85.5" width="48" height="5" rx="2.5" />
+              </svg>
+              <span class="stamp-name">Projects</span>
+              <span class="stamp-desc">Groups threads, documents and instructions.</span>
+              <span class="badges"
+                ><span class="badge phase">Draft</span><span class="badge">Optional</span></span
+              >
+            </a>
+          </li>
+        </ul>
+
+        <h3 class="group-title">Tools <span>· secondary sidebar</span></h3>
+        <ul class="stamps">
+          <li>
+            <a class="stamp-card" href="sources.html">
+              <svg class="stamp" viewBox="0 0 160 100" aria-hidden="true">
+                <rect
+                  class="s-panel"
+                  x="-20"
+                  y="12"
+                  width="50"
+                  height="100"
+                  rx="10"
+                  opacity="0.55"
+                />
+                <rect class="s-panel" x="40" y="12" width="110" height="100" rx="10" />
+                <rect class="s-soft" x="46" y="20" width="98" height="36" rx="8" />
+                <path
+                  class="s-accent"
+                  d="M52 27a1 1 0 0 1 1-1h4.5l3.5 3.5v6.5a1 1 0 0 1-1 1H53a1 1 0 0 1-1-1z"
+                />
+                <rect class="s-bar" x="65" y="27.5" width="40" height="5" rx="2.5" />
+                <circle class="s-accent" cx="126" cy="30" r="2.5" />
+                <circle class="s-accent" cx="132" cy="30" r="2.5" />
+                <circle class="s-accent" cx="138" cy="30" r="2.5" />
+                <rect class="s-bar" x="52" y="41" width="80" height="4" rx="2" />
+                <rect class="s-bar" x="52" y="48" width="58" height="4" rx="2" />
+                <rect class="s-soft" x="46" y="62" width="98" height="36" rx="8" />
+                <path
+                  class="s-accent"
+                  d="M52 69a1 1 0 0 1 1-1h4.5l3.5 3.5v6.5a1 1 0 0 1-1 1H53a1 1 0 0 1-1-1z"
+                />
+                <rect class="s-bar" x="65" y="69.5" width="32" height="5" rx="2.5" />
+                <circle class="s-accent" cx="126" cy="72" r="2.5" />
+                <circle class="s-accent" cx="132" cy="72" r="2.5" />
+                <circle class="s-bar" cx="138" cy="72" r="2.5" />
+                <rect class="s-bar" x="52" y="83" width="74" height="4" rx="2" />
+                <rect class="s-bar" x="52" y="90" width="50" height="4" rx="2" />
+              </svg>
+              <span class="stamp-name">Sources</span>
+              <span class="stamp-desc">The documents and excerpts behind the answer.</span>
+              <span class="badges"
+                ><span class="badge phase">Building</span><span class="badge">Optional</span></span
+              >
+            </a>
+          </li>
+          <li>
+            <a class="stamp-card" href="document-view.html">
+              <svg class="stamp" viewBox="0 0 160 100" aria-hidden="true">
+                <rect
+                  class="s-panel"
+                  x="-20"
+                  y="12"
+                  width="50"
+                  height="100"
+                  rx="10"
+                  opacity="0.55"
+                />
+                <rect class="s-panel" x="40" y="12" width="110" height="100" rx="10" />
+                <path class="s-soft" d="M48 23a3 3 0 0 1 3-3h77l14 14v78H48z" />
+                <path class="s-bar" d="M128 20v11a3 3 0 0 0 3 3h11z" />
+                <rect class="s-bar" x="56" y="29" width="44" height="6" rx="3" />
+                <rect class="s-bar" x="56" y="42" width="66" height="5" rx="2.5" />
+                <rect class="s-accent-soft" x="52" y="52" width="82" height="22" rx="5" />
+                <rect class="s-accent" x="58" y="57" width="64" height="5" rx="2.5" />
+                <rect class="s-accent" x="58" y="65" width="42" height="5" rx="2.5" />
+                <rect class="s-bar" x="56" y="81" width="70" height="5" rx="2.5" />
+                <rect class="s-bar" x="56" y="91" width="52" height="5" rx="2.5" />
+              </svg>
+              <span class="stamp-name">Document view</span>
+              <span class="stamp-desc">The whole document, with the excerpt marked.</span>
+              <span class="badges"
+                ><span class="badge phase">Building</span><span class="badge">Optional</span
+                ><span class="badge">Whole document: beta</span></span
+              >
+            </a>
+          </li>
+          <li>
+            <a class="stamp-card" href="notes.html">
+              <svg class="stamp" viewBox="0 0 160 100" aria-hidden="true">
+                <rect
+                  class="s-panel"
+                  x="-20"
+                  y="12"
+                  width="50"
+                  height="100"
+                  rx="10"
+                  opacity="0.55"
+                />
+                <rect class="s-panel" x="40" y="12" width="110" height="100" rx="10" />
+                <rect class="s-bar" x="48" y="22" width="44" height="6" rx="3" />
+                <g transform="rotate(-45 136 25)">
+                  <rect class="s-accent" x="128" y="22.5" width="13" height="5" rx="1.5" />
+                  <path class="s-accent" d="M142.5 22.5l4 2.5-4 2.5z" />
+                </g>
+                <rect class="s-soft" x="46" y="36" width="98" height="30" rx="8" />
+                <path
+                  class="s-accent"
+                  d="M52 43.5a2.5 2.5 0 1 1 3.2 2.4l-1.2 3.6h-1.6l0.8-3.4a2.5 2.5 0 0 1-1.2-2.6z"
+                />
+                <path
+                  class="s-accent"
+                  d="M58 43.5a2.5 2.5 0 1 1 3.2 2.4l-1.2 3.6h-1.6l0.8-3.4a2.5 2.5 0 0 1-1.2-2.6z"
+                />
+                <rect class="s-bar" x="66" y="43" width="62" height="4" rx="2" />
+                <rect class="s-bar" x="66" y="51" width="40" height="4" rx="2" />
+                <rect class="s-accent" x="110" y="49" width="7" height="7" rx="2" />
+                <rect class="s-bar" x="48" y="76" width="80" height="5" rx="2.5" />
+                <rect class="s-bar" x="48" y="87" width="58" height="5" rx="2.5" />
+                <rect class="s-accent" x="110" y="85" width="1.5" height="9" rx="0.75" />
+              </svg>
+              <span class="stamp-name">Notes</span>
+              <span class="stamp-desc">Collect excerpts, and keep the sources.</span>
+              <span class="badges"
+                ><span class="badge phase">Draft</span><span class="badge">Optional</span></span
+              >
+            </a>
+          </li>
+        </ul>
+
+        <h3 class="group-title">
+          Inside other blocks <span>· the question field and every panel</span>
+        </h3>
+        <ul class="stamps">
+          <li>
+            <a class="stamp-card" href="variant-picker.html">
+              <svg class="stamp" viewBox="0 0 160 100" aria-hidden="true">
+                <rect class="s-panel" x="16" y="12" width="128" height="100" rx="10" />
+                <rect class="s-soft" x="62" y="16" width="74" height="52" rx="8" />
+                <rect class="s-bar" x="70" y="23" width="34" height="5" rx="2.5" />
+                <rect class="s-accent-soft" x="66" y="33" width="66" height="14" rx="5" />
+                <rect class="s-bar" x="71" y="37.5" width="40" height="5" rx="2.5" />
+                <rect class="s-accent" x="117" y="34.5" width="11" height="11" rx="3" />
+                <path class="s-check" d="M120 40l2.2 2.2 3.8-4.4" />
+                <rect class="s-bar" x="71" y="54" width="46" height="5" rx="2.5" />
+                <rect class="s-soft" x="24" y="74" width="112" height="28" rx="10" />
+                <rect class="s-bar" x="32" y="80" width="56" height="5" rx="2.5" />
+                <rect class="s-accent" x="86" y="91" width="24" height="5" rx="2.5" />
+                <path class="s-accent" d="M113 91.5l3 3 3-3z" />
+                <circle class="s-accent" cx="128" cy="93" r="5" />
+              </svg>
+              <span class="stamp-name">Variant picker</span>
+              <span class="stamp-desc">Which variant of the service answers.</span>
+              <span class="badges"
+                ><span class="badge phase">Building</span><span class="badge">Optional</span></span
+              >
+            </a>
+          </li>
+          <li>
+            <a class="stamp-card" href="states.html">
+              <svg class="stamp" viewBox="0 0 160 100" aria-hidden="true">
+                <rect class="s-panel" x="16" y="12" width="128" height="100" rx="10" />
+                <rect class="s-bar" x="28" y="24" width="58" height="7" rx="3.5" />
+                <rect class="s-bar" x="28" y="37" width="96" height="5" rx="2.5" />
+                <rect class="s-bar" x="28" y="46" width="70" height="5" rx="2.5" />
+                <rect class="s-accent" x="28" y="56" width="40" height="5" rx="2.5" />
+                <rect class="s-soft" x="24" y="70" width="112" height="32" rx="8" />
+                <circle class="s-bar" cx="34" cy="80" r="4" />
+                <rect class="s-bar" x="44" y="77.5" width="60" height="5" rx="2.5" />
+                <rect class="s-accent-soft" x="44" y="88" width="34" height="9" rx="4.5" />
+              </svg>
+              <span class="stamp-name">States</span>
+              <span class="stamp-desc">Empty, error and not found.</span>
+              <span class="badges"
+                ><span class="badge phase">Building</span><span class="badge">Shared</span></span
+              >
+            </a>
+          </li>
+        </ul>
+
+        <h3 class="group-title">The reader's choices <span>· a page of its own</span></h3>
+        <ul class="stamps">
+          <li>
+            <a class="stamp-card" href="settings.html">
+              <svg class="stamp" viewBox="0 0 160 100" aria-hidden="true">
+                <rect class="s-panel" x="16" y="12" width="128" height="100" rx="10" />
+                <rect class="s-bar" x="28" y="22" width="60" height="8" rx="4" />
+                <rect class="s-bar" x="28" y="40" width="38" height="5" rx="2.5" />
+                <rect class="s-soft" x="28" y="51" width="96" height="16" rx="5" />
+                <rect class="s-accent-soft" x="94" y="53" width="28" height="12" rx="4" />
+                <circle class="s-bar" cx="38" cy="59" r="3" />
+                <rect class="s-bar" x="44" y="57" width="12" height="4" rx="2" />
+                <circle class="s-bar" cx="70" cy="59" r="3" />
+                <rect class="s-bar" x="76" y="57" width="12" height="4" rx="2" />
+                <circle class="s-accent" cx="102" cy="59" r="3" />
+                <rect class="s-accent" x="108" y="57" width="10" height="4" rx="2" />
+                <rect class="s-bar" x="28" y="77" width="30" height="5" rx="2.5" />
+                <rect class="s-soft" x="28" y="87" width="80" height="6" rx="3" />
+              </svg>
+              <span class="stamp-name">Settings</span>
+              <span class="stamp-desc">Light or dark, what answers show, trials.</span>
+              <span class="badges"
+                ><span class="badge phase">Building</span><span class="badge">Optional</span></span
+              >
+            </a>
+          </li>
+        </ul>
+
+        <h3 class="group-title">The builder <span>· arranges the others</span></h3>
+        <ul class="stamps">
+          <li>
+            <a class="stamp-card" href="builder.html">
+              <svg class="stamp" viewBox="0 0 160 100" aria-hidden="true">
+                <rect class="s-panel" x="6" y="12" width="44" height="100" rx="8" />
+                <rect class="s-accent-soft" x="12" y="20" width="32" height="8" rx="4" />
+                <rect class="s-soft" x="12" y="36" width="32" height="12" rx="4" />
+                <rect class="s-soft" x="12" y="54" width="32" height="12" rx="4" />
+                <rect class="s-accent" x="53" y="44" width="2" height="24" rx="1" />
+                <rect class="s-panel" x="58" y="12" width="96" height="100" rx="8" />
+                <rect class="s-soft" x="64" y="24" width="20" height="70" rx="4" />
+                <rect class="s-soft" x="88" y="24" width="40" height="70" rx="4" />
+                <rect class="s-soft" x="132" y="24" width="16" height="70" rx="4" />
+                <rect class="s-accent-soft" x="91" y="30" width="34" height="10" rx="3" />
+              </svg>
+              <span class="stamp-name">App builder catalogue</span>
+              <span class="stamp-desc">Which blocks go where, and what each needs.</span>
+              <span class="badges"
+                ><span class="badge phase">Building</span
+                ><span class="badge">Data, no UI</span></span
+              >
+            </a>
+          </li>
+        </ul>
+      </section>
+
+      <section class="section" aria-labelledby="about">
+        <h2 id="about">About these pages</h2>
+        <div class="intro-grid">
+          <section class="panel" aria-labelledby="how-to-read">
+            <h2 id="how-to-read">How the pages work</h2>
+            <p>
+              Select a component above to open its page. Every component page has the same parts, in
+              the same order:
+            </p>
+            <ol>
+              <li>What it does, and where it sits in the interface</li>
+              <li>Use it when, and don't use it when</li>
+              <li>Variants</li>
+              <li>Related components</li>
+              <li>What we have learned</li>
+              <li>Open questions</li>
+            </ol>
+            <p>Norwegian words in «quotes» are the text users see in the interface.</p>
+          </section>
+          <section class="panel" aria-labelledby="phases">
+            <h2 id="phases">Phases</h2>
+            <p>Each component is in one of four phases:</p>
+            <ul>
+              <li><strong>Draft:</strong> explored in the design canvas, not built yet.</li>
+              <li><strong>Building:</strong> work in progress in the code.</li>
+              <li><strong>Testing:</strong> built, and being tested with users.</li>
+              <li><strong>Ready:</strong> can be chosen when an assistant is set up.</li>
+            </ul>
+            <p>
+              Each component's badge shows its phase. The list of components follows
+              <a href="https://github.com/digdir/kunnskapsassistenten/issues/167"
+                >kunnskapsassistenten#167</a
+              >. What we have learned comes from the design canvas «Fellesløsningen», which is not
+              public.
+            </p>
+          </section>
+        </div>
+      </section>
+
+      <!-- ============================================================ COMPOSITION -->
+      <section class="section" aria-labelledby="composition">
+        <h2 id="composition">Putting an assistant together</h2>
+        <p class="section-lede">
+          Whoever sets up the assistant chooses which components it has. These rules hold for every
+          combination.
+        </p>
+        <div class="intro-grid">
+          <section class="panel" aria-labelledby="composition-rules">
+            <h2 id="composition-rules">Rules</h2>
+            <ol>
+              <li>
+                A component that is not included is <strong>not shown</strong>. No empty panels,
+                tabs or buttons that point to something that isn't there.
+              </li>
+              <li>
+                <strong>Without a filter</strong>, a thread reads from a fixed set of documents
+                chosen when the assistant is set up. There is no filter panel and no «Endre».
+              </li>
+              <li>
+                The tools panel follows the number of tools: <strong>one</strong> gives just a
+                heading, <strong>two</strong> give a tab selector, <strong>three or more</strong>
+                give a dropdown. See
+                <a href="https://github.com/digdir/kunnskapsassistenten/issues/168"
+                  >kunnskapsassistenten#168</a
+                >.
+              </li>
+            </ol>
+          </section>
+          <section class="panel" aria-labelledby="composition-ask">
+            <h2 id="composition-ask">Which component meets which need</h2>
+            <ul>
+              <li>“a way to choose documents” → <a href="filter.html">Filter</a></li>
+              <li>
+                “to see where the answer comes from” → <a href="footnotes.html">Footnotes</a> and
+                <a href="sources.html">Sources</a>
+              </li>
+              <li>“to see what the assistant did” → <a href="approach.html">Approach</a></li>
+              <li>“to read the whole document” → <a href="document-view.html">Document view</a></li>
+              <li>“to collect and reuse answers” → <a href="notes.html">Notes</a></li>
+              <li>“to work on a case over time” → <a href="projects.html">Projects</a></li>
+              <li>“to come back to earlier conversations” → <a href="threads.html">Threads</a></li>
+            </ul>
+          </section>
+        </div>
+      </section>
+
+      <!-- ============================================================ SHARED -->
+      <section class="section" aria-labelledby="shared">
+        <h2 id="shared">Shared across components</h2>
+        <p class="section-lede">What we have learned that applies to more than one component.</p>
+        <div class="intro-grid">
+          <section class="panel" aria-labelledby="shared-visual">
+            <h2 id="shared-visual">Visual language</h2>
+            <ul>
+              <li>
+                Floating white panels, round corners and plenty of space. Avoid sharp
+                white/grey/white stripes.
+              </li>
+              <li>Colours are chosen by their role in Designsystemet, not by how they look.</li>
+              <li>Tab selector: a grey rail with a white selected tab, not black and white.</li>
+              <li>
+                Designsystemet first. Flag deviations, and use the theme's levers before custom
+                styling.
+              </li>
+              <li>
+                A service brands every block with a theme: see <a href="branding.html">Branding</a>.
+              </li>
+              <li>
+                An app made from a layout puts the blocks together with
+                <a href="ui-assembly.html">UI assembly</a>.
+              </li>
+              <li>Use everyday words (<span lang="nb">klarspråk</span>).</li>
+            </ul>
+          </section>
+        </div>
+      </section>
+
+      <!-- ============================================================ UPKEEP -->
+      <section class="section" aria-labelledby="upkeep">
+        <h2 id="upkeep">Keeping the pages up to date</h2>
+        <div class="intro-grid">
+          <section class="panel" aria-labelledby="upkeep-change">
+            <h2 id="upkeep-change">When a component changes</h2>
+            <ul>
+              <li>
+                Update its page in the same PR that changes the component: phase, variants and what
+                we learned.
+              </li>
+              <li>Update its badges in the overview here, and add a line to the change log.</li>
+              <li>What is still a hypothesis is marked as one.</li>
+            </ul>
+          </section>
+          <section class="panel" aria-labelledby="upkeep-new">
+            <h2 id="upkeep-new">When a component is added</h2>
+            <ul>
+              <li>
+                Only components listed in
+                <a href="https://github.com/digdir/kunnskapsassistenten/issues/167"
+                  >kunnskapsassistenten#167</a
+                >. The canvas is a source of learnings, not the list.
+              </li>
+              <li>
+                A sketch in the overview, a page of its own with the same parts, and a line in the
+                change log.
+              </li>
+              <li>
+                Issue for these pages:
+                <a href="https://github.com/digdir/kunnskapsassistenten/issues/171"
+                  >kunnskapsassistenten#171</a
+                >.
+              </li>
+            </ul>
+          </section>
+        </div>
+      </section>
+
+      <footer>
+        <p>
+          Inspiration:
+          <a href="https://designsystemet.no/no/components">designsystemet.no/no/components</a>
+        </p>
+      </footer>
+    </main>
+  </body>
+</html>

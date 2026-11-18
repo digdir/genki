@@ -1,0 +1,14 @@
+{"tests": [
+ {"id": "kudos-49369-p8-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["caption", "nob", "Latn"],
+  "args": {"content": {"text": "Spornesstranda i mars 2020, sett fra Spornesodden og omlag fra samme sted som bildet fra 1900, se Figur 3.", "max_diffs": 4}}, "settings": {}},
+ {"id": "kudos-49369-p8-t02", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["caption", "nob", "Latn"],
+  "args": {"content": {"text": "I forgrunnen var det tidligere et steinbrudd som ble laga av tyskerne under 2.verdenskrig.", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-49369-p8-t03", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["caption", "nob", "Latn"],
+  "args": {"before": {"text": "fylt på masse som har hatt en naturlig revegetering etterpå.", "max_diffs": 2}, "after": {"text": "I 2020 er det gjengroing med tette kratt av selje", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-49369-p8-t04", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["caption", "nob", "Latn"],
+  "args": {"content": {"text": "I 2020 er det gjengroing med tette kratt av selje, vier og diverse busker som preger arealene på oppsiden av Tangveien.", "max_diffs": 4}}, "settings": {}},
+ {"id": "kudos-49369-p8-t05", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["caption", "nob", "Latn"],
+  "args": {"content": {"text": "Gras- og vegetasjonsdekke forekommer langs veien og inn mot kratt.", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-49369-p8-t06", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["caption", "nob", "Latn"],
+  "args": {"content": {"text": "Foto Kristine Sundsdal 24.02.2020.", "max_diffs": 1}}, "settings": {}}
+]}

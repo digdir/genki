@@ -8,8 +8,6 @@ export const shell = defineNamespace({
   navErrors: 'Feilmeldinger',
   navDocument: 'Dokumentutkast',
   skipLink: 'Hopp til hovedinnhold',
-  lockdown:
-    'Låst testmiljø: bare Entra ID-innlogging kan endre. Den og API-nøklene og klientene den lager kan bruke modeller og lese inn.',
   lockdownReadOnly:
     'Låst testmiljø: du kan se deg rundt, men endringer, modeller og innlesing krever innlogging med Entra ID.',
   productName: 'KI-arbeidsflaten',

@@ -17,7 +17,7 @@ import { actorNameOf, changeReasonOf } from './http.js';
 import type { MountDeps, PlatformModuleFactory } from './platform-modules.js';
 import { approvalOf, type Approval } from './project-approvals.js';
 import { requestLocale, t, type ApiKey } from './i18n/index.js';
-import type { Right } from './rights.js';
+import { seesUsage, type Right } from './rights.js';
 
 type Status = 400 | 401 | 403 | 404 | 409 | 422 | 503;
 
@@ -78,6 +78,15 @@ const runView = (run: BatchRun, totals: BatchTotals, viewer?: Viewer) => {
   return { ...shown, ...(ownName ? { startedByName: ownName } : {}), ...totals };
 };
 
+const costFields = new Set(['cap', 'perItem', 'costApproval', 'tokens', 'costMicroNok']);
+
+export const withoutCost = <T extends object>(view: T) =>
+  Object.fromEntries(Object.entries(view).filter(([key]) => !costFields.has(key))) as Partial<T>;
+
+export const costVisible = (principal: Principal, tenant: string, run: BatchRun) =>
+  seesUsage(principal, tenant) ||
+  (run.startedBy !== undefined && run.startedBy === actorOf(principal.actor ?? principal));
+
 const estimateView = (
   estimate: BatchEstimate,
   approval: { limitNok: number; required: boolean },
@@ -107,7 +116,7 @@ const approvalKeys = {
   rejected: 'runs.batchApprovalRejected',
 } as const satisfies Record<Approval['status'], ApiKey>;
 
-const csvOf = (run: BatchRun, items: BatchItem[], approval?: Approval) => {
+const csvOf = (run: BatchRun, items: BatchItem[], approval?: Approval, cost = true) => {
   const header = [
     t('runs.batchCsvNumber'),
     t('runs.batchCsvDocumentId'),
@@ -143,16 +152,16 @@ const csvOf = (run: BatchRun, items: BatchItem[], approval?: Approval) => {
     run.service,
     i.version ?? run.version,
     i.models.join(' ') || run.model,
-    i.tokens.input,
-    i.tokens.output,
-    run.priced ? String(i.costMicroNok / 1_000_000).replace('.', decimal) : '',
+    cost ? i.tokens.input : '',
+    cost ? i.tokens.output : '',
+    cost && run.priced ? String(i.costMicroNok / 1_000_000).replace('.', decimal) : '',
     i.task,
     ...(approval ? [t(approvalKeys[approval.status])] : []),
   ]);
   return `\uFEFF${[header, ...rows].map((r) => r.map(csvCell).join(';')).join('\r\n')}\r\n`;
 };
 
-const jsonOf = (run: BatchRun, items: BatchItem[], approval?: Approval) => ({
+const jsonOf = (run: BatchRun, items: BatchItem[], approval?: Approval, cost = true) => ({
   run: {
     id: run.id,
     service: run.service,
@@ -178,8 +187,7 @@ const jsonOf = (run: BatchRun, items: BatchItem[], approval?: Approval) => ({
     service: run.service,
     version: i.version ?? run.version,
     models: i.models.length ? i.models : run.model ? [run.model] : [],
-    tokens: i.tokens,
-    costMicroNok: run.priced ? i.costMicroNok : null,
+    ...(cost ? { tokens: i.tokens, costMicroNok: run.priced ? i.costMicroNok : null } : {}),
     task: i.task ?? null,
     attempts: i.attempts,
     ...(approval ? { approved: approval.status === 'approved' } : {}),
@@ -379,13 +387,14 @@ export const createBatchRunsModule =
           if (guard.response) return guard.response;
           const runs = await batches.runsOf(guard.tenant, param(c, 'id'));
           const data = await Promise.all(
-            runs.map(async (run) =>
-              runView(
+            runs.map(async (run) => {
+              const view = runView(
                 run,
                 (await batches.detail(guard.tenant, run)).totals,
                 viewerOf(c, guard.principal),
-              ),
-            ),
+              );
+              return costVisible(guard.principal, guard.tenant, run) ? view : withoutCost(view);
+            }),
           );
           return c.json({ data });
         });
@@ -401,10 +410,10 @@ export const createBatchRunsModule =
         app.get(`${base}/:runId`, async (c) => {
           const guard = await found(c);
           if (guard.response) return guard.response;
-          return c.json({
-            ...runView(guard.run, guard.detail.totals, viewerOf(c, guard.principal)),
-            items: guard.detail.items,
-          });
+          const view = runView(guard.run, guard.detail.totals, viewerOf(c, guard.principal));
+          return costVisible(guard.principal, guard.tenant, guard.run)
+            ? c.json({ ...view, items: guard.detail.items })
+            : c.json({ ...withoutCost(view), items: guard.detail.items.map(withoutCost) });
         });
 
         app.get(`${base}/:runId/export`, async (c) => {
@@ -414,12 +423,13 @@ export const createBatchRunsModule =
           const name = `kjoring-${guard.run.service}-${guard.run.id.slice(0, 8)}.${format}`;
           const disposition = { 'content-disposition': `attachment; filename="${name}"` };
           const approval = await approvalOf(mountDeps.configEntries, guard.tenant, guard.run.id);
+          const cost = costVisible(guard.principal, guard.tenant, guard.run);
           if (format === 'csv')
-            return c.body(csvOf(guard.run, guard.detail.items, approval), 200, {
+            return c.body(csvOf(guard.run, guard.detail.items, approval, cost), 200, {
               'content-type': 'text/csv; charset=utf-8',
               ...disposition,
             });
-          return c.json(jsonOf(guard.run, guard.detail.items, approval), 200, disposition);
+          return c.json(jsonOf(guard.run, guard.detail.items, approval, cost), 200, disposition);
         });
 
         app.post(`${base}/:runId/cancel`, async (c) => {

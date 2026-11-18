@@ -1,0 +1,25 @@
+{
+  "source": "https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/decisions#make-your-first-decision",
+  "request": {
+    "model": "gpt-6-luna",
+    "input": "I was charged twice for my order. Please return the extra charge.",
+    "questions": [
+      {
+        "type": "predicate",
+        "name": "refund_requested",
+        "instructions": "Does the customer ask for a refund?"
+      }
+    ]
+  },
+  "response": {
+    "model": "gpt-6-luna",
+    "answers": [{ "type": "predicate", "name": "refund_requested", "probability": 0.95 }],
+    "usage": {
+      "input_tokens": 162,
+      "input_tokens_details": { "cached_tokens": 0, "cache_write_tokens": 0 },
+      "output_tokens": 0,
+      "output_tokens_details": { "reasoning_tokens": 0 },
+      "total_tokens": 162
+    }
+  }
+}

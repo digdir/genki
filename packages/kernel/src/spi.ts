@@ -1,5 +1,6 @@
 import type {
   CapabilityDescriptor,
+  EvaluationContext,
   Event,
   EventAudience,
   Input,
@@ -11,6 +12,7 @@ import type {
   Task,
   Usage,
 } from '@genai/contracts';
+import type { GateRecord, PayloadGuard, Residency, UseOptions } from './gate.js';
 
 export const KERNEL_MAJOR = 1;
 
@@ -61,10 +63,15 @@ export interface PortContext {
   tenant: string;
   principal: Principal;
   task: string;
+  capability?: string;
   signal: AbortSignal;
   meter(usage: Usage, model?: Ref): Promise<void>;
   outputLimit?(): number | undefined;
   provenance?(resource: ResourceProvenance): Promise<void>;
+  guards?: readonly PayloadGuard[];
+  serviceResidency?: Residency;
+  unmaskedMedia?: readonly string[];
+  audit?(record: GateRecord): Promise<void>;
 }
 
 export interface PortProvider<P = unknown> {
@@ -81,7 +88,7 @@ export interface StateHandle {
 
 export interface Budget {
   remaining(): Usage | undefined;
-  charge(usage: Usage): Promise<void>;
+  charge(usage: Usage, model?: Ref): Promise<void>;
 }
 
 export interface InvocationContext {
@@ -96,9 +103,11 @@ export interface InvocationContext {
   signal: AbortSignal;
   budget: Budget;
   state: StateHandle;
-  use<P>(port: string, ref: Ref): Promise<P>;
-  invoke(capabilityId: string, input: Input): Promise<Run>;
+  use<P>(port: string, ref: Ref, options?: UseOptions): Promise<P>;
+  invoke(capabilityId: string, input: Input, options?: SubInvokeOptions): Promise<Run>;
 }
+
+export type SubInvokeOptions = Pick<InvokeOptions, 'evaluation'>;
 
 export interface Run {
   task: string;
@@ -112,6 +121,9 @@ export interface InvokeOptions {
   deadlineMs?: number;
   budget?: Usage;
   maxOutputTokens?: number;
+  /** Recorded for audit beside the input, never in it; the strategy does not receive it. */
+  evaluation?: EvaluationContext;
+  environment?: string;
 }
 
 export interface EventsOptions {
@@ -154,7 +166,8 @@ export type KernelErrorCode =
   | 'invalid_state'
   | 'interrupted'
   | 'cancelled'
-  | 'misconfigured';
+  | 'misconfigured'
+  | 'quota_exhausted';
 
 export class KernelError extends Error {
   constructor(
@@ -165,3 +178,17 @@ export class KernelError extends Error {
     this.name = 'KernelError';
   }
 }
+
+const secondsToNextMonth = (now: Date) =>
+  Math.ceil((Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1) - now.getTime()) / 1000);
+
+export const quotaExhaustedProblem = (error: unknown, now = new Date()) =>
+  error instanceof KernelError && error.code === 'quota_exhausted'
+    ? {
+        type: 'urn:genai:problem:quota-exhausted' as const,
+        title: 'The monthly token quota is used up',
+        status: 429 as const,
+        detail: 'The organisation has used its monthly token quota for this month.',
+        retryAfterSeconds: secondsToNextMonth(now),
+      }
+    : undefined;

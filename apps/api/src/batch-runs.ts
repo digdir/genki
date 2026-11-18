@@ -11,7 +11,6 @@ import {
 import type { DocumentSummary, FilterValue, KnowledgePort } from '@genai/port-knowledge';
 import type { PortContext } from '@genai/kernel';
 import { defaultMaxOutputTokens } from '@genai/port-model';
-import { soundsLikeRefusal } from '@genai/strategy-agent-loop';
 import { actorOf } from './admin.js';
 import {
   backgroundLeases,
@@ -20,8 +19,10 @@ import {
   type LeaseOptions,
 } from './background-lease.js';
 import { appendVersion, type ConfigEntry } from './config-store.js';
-import type { ServiceRunOutcome, ServiceRunSuccess } from './draft-runner.js';
+import type { ServiceRunOutcome } from './draft-runner.js';
+import { notFoundOf } from './not-found.js';
 import type { ModuleDeps } from './platform-modules.js';
+import { productionVersion } from './service-environments.js';
 import { lifecycleOf, runRefusal } from './service-lifecycle.js';
 
 export const batchEstimateKind = 'batch-estimate';
@@ -203,13 +204,6 @@ export class BatchProblem extends Error {
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
-
-const shortRefusalLength = 80;
-
-export const notFoundOf = (outcome: Pick<ServiceRunSuccess, 'noAnswer' | 'answer' | 'parts'>) =>
-  outcome.noAnswer ||
-  outcome.parts.some((p) => p.meta?.noAnswer === true) ||
-  (outcome.answer.trim().length <= shortRefusalLength && soundsLikeRefusal(outcome.answer));
 
 const messageOf = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
@@ -409,7 +403,8 @@ export const batchRuns = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) => 
     if (refusal) throw new BatchProblem(503, refusal.message, 'service', refusal.code);
   };
 
-  const published = async (tenant: string, service: string, version?: number) => {
+  const published = async (tenant: string, service: string, pinned?: number) => {
+    const version = pinned ?? (await productionVersion(deps.configEntries, tenant, service));
     const compiled = (await deps.definitions.capabilities()).find(
       (c) => c.service.tenant === tenant && c.service.id === service,
     );

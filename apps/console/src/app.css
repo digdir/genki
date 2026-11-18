@@ -27,6 +27,17 @@ body {
   z-index: 30;
 }
 
+:focus-visible {
+  outline: 3px solid var(--ds-color-focus-outer);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 3px var(--ds-color-focus-inner);
+}
+
+.header :focus-visible {
+  outline-color: var(--ds-color-neutral-base-contrast-default);
+  box-shadow: none;
+}
+
 .header {
   display: flex;
   align-items: center;
@@ -74,7 +85,7 @@ body {
 }
 
 .brand-name {
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 600;
 }
 
@@ -1479,4 +1490,86 @@ tr.digdir-row td {
   width: 100%;
   height: 100%;
   border: 0;
+}
+
+.tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.rule-box {
+  padding: var(--ds-size-3);
+  border: 1px solid var(--ds-color-neutral-border-subtle);
+  border-radius: var(--ds-border-radius-md);
+}
+
+.guide-steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.guide-steps li {
+  display: flex;
+}
+
+.guide-steps button {
+  width: 100%;
+  height: 100%;
+  align-items: flex-start;
+  justify-content: flex-start;
+  text-align: start;
+}
+
+.guide-steps button .meta {
+  color: inherit;
+  opacity: 0.85;
+}
+
+.models-table th,
+.models-table td {
+  vertical-align: top;
+}
+
+.models-table thead th {
+  white-space: nowrap;
+}
+
+.models-table tbody th {
+  min-width: 13rem;
+}
+
+.models-table .tag-row .ds-tag {
+  width: auto;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.models-table tbody th strong {
+  white-space: nowrap;
+}
+
+.models-table .model-id {
+  overflow-wrap: anywhere;
+}
+
+.models-table .nowrap {
+  white-space: nowrap;
+}
+
+.guide-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: var(--ds-size-4);
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .guide-cols {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

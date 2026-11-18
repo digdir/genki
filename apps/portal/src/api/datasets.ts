@@ -2,7 +2,8 @@ import type { ApiContext } from '../api';
 import { ApiError } from './error';
 import type { Problem, Residency } from '../types';
 
-export type DatasetSourceKind = 'website' | 'upload' | 'kudos' | 'folder' | 'database' | 'none';
+export type DatasetSourceKind =
+  'website' | 'upload' | 'kudos' | 'folder' | 'database' | 'parquet' | 'none';
 export type Schedule = 'none' | 'daily' | 'weekly';
 export type SkipReason =
   | 'unsupported_type'
@@ -10,6 +11,7 @@ export type SkipReason =
   | 'conversion_failed'
   | 'outside_access'
   | 'too_large'
+  | 'unreachable'
   | (string & {});
 
 export interface SkippedDocument {
@@ -42,10 +44,25 @@ export interface DatasetView {
   chunks: number | null;
   lastExecution: LastExecution | null;
   nextRunAt: string | null;
+  usedByCount?: number;
+}
+
+export interface DatasetReader {
+  kind: 'service' | 'adoption';
+  tenant: string;
+  id: string;
+  name: string;
 }
 
 export interface DatasetDetailView extends DatasetView {
   skipped?: SkippedDocument[];
+  usedBy?: DatasetReader[];
+}
+
+export interface DatasetDeleteResult {
+  deleted: string;
+  removed: { catalogEntry: true; pipelines: string[]; uploads: string[]; generations: string[] };
+  kept: { knowledgeRecords: boolean; generations: string[] };
 }
 
 export type PipelineSource =
@@ -72,6 +89,10 @@ export interface ExecutionView {
   endedAt?: string;
   startedBy?: string;
   error?: string;
+  /** In lockdown, on a queued or running run not being cancelled: when its admission runs out. */
+  admissionRunsOutAt?: string;
+  /** Set once someone asked to cancel the run; it ends with its jobs. */
+  cancelRequestedAt?: string;
   report?: {
     stored: number;
     skipped: number | SkippedDocument[];
@@ -148,6 +169,8 @@ export const datasetsApi = (ctx: ApiContext) => {
       change: { name: string; description?: string },
       reason: string,
     ) => ctx.request<DatasetView>('PUT', dataset(tenant, id), change, reasonHeader(reason)),
+    remove: (tenant: string, id: string, reason: string) =>
+      ctx.request<DatasetDeleteResult>('DELETE', dataset(tenant, id), {}, reasonHeader(reason)),
     pipelines: async (tenant: string, id: string, signal?: AbortSignal) =>
       (await ctx.get<{ data: PipelineView[] }>(`${dataset(tenant, id)}/pipelines`, signal)).data,
     createPipeline: (
@@ -192,6 +215,19 @@ export const datasetsApi = (ctx: ApiContext) => {
       ctx.request<ExecutionView>(
         'POST',
         `${pipeline(tenant, id, pipelineId)}/executions/${enc(execution)}/cancel`,
+        {},
+        reasonHeader(reason),
+      ),
+    readmitExecution: (
+      tenant: string,
+      id: string,
+      pipelineId: string,
+      execution: string,
+      reason: string,
+    ) =>
+      ctx.request<ExecutionView>(
+        'POST',
+        `${pipeline(tenant, id, pipelineId)}/executions/${enc(execution)}/readmit`,
         {},
         reasonHeader(reason),
       ),

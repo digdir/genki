@@ -57,6 +57,29 @@ describe('source passages', () => {
 
     expect(source?.excerpt).toContain('Kostnadsrammen er 3,8 mill. kroner.');
   });
+  it('a source carries the page of the excerpt it shows, and its PDF at that page', () => {
+    const pdf = 'https://kudos.dfo.no/dokument/d1/filer/f1.pdf';
+    const excerpts = [
+      { chunk_id: 'c1', text: 'Sammendrag.', page: 6, page_end: 7, url: `${pdf}#page=6` },
+      { chunk_id: 'c2', text: 'Risiko.', page: 9, url: 'javascript:alert(1)//#page=9' },
+    ];
+    const marked = sourcesFrom({
+      sources: [{ title: 'Sykepenger', excerpts, markers: ['1', '2'] }],
+      markers: [
+        { marker: '1', chunk_id: 'c1', document: 'd1' },
+        { marker: '2', chunk_id: 'c2', document: 'd1' },
+      ],
+    });
+    expect(marked.map((s) => [s.index, s.page, s.pageEnd, s.pageUrl])).toEqual([
+      [1, 6, 7, `${pdf}#page=6`],
+      // Only an http or https address is a link.
+      [2, 9, undefined, undefined],
+    ]);
+    const [indexed] = sourcesFrom({
+      sources: [{ title: 'Sykepenger', index: 1, source: { id: 'c1' }, excerpts }],
+    });
+    expect([indexed?.page, indexed?.pageEnd, indexed?.pageUrl]).toEqual([6, 7, `${pdf}#page=6`]);
+  });
 });
 
 describe('workspace api', () => {
@@ -253,6 +276,40 @@ describe('workspace api', () => {
     });
   });
 
+  it('keeps the attachments of an answer, and only those the platform serves from a task', async () => {
+    const { fetcher } = recorder(() =>
+      sse(
+        [
+          delta('Her er figuren.'),
+          {
+            attachments: [
+              {
+                id: 'm1',
+                mediaType: 'image/png',
+                bytes: 2048,
+                step: 'figur',
+                url: '/v1/tasks/task-9/media/m1',
+              },
+              { id: 'm2', mediaType: 'image/png', bytes: 1, url: 'https://example.com/x.png' },
+            ],
+          },
+          delta('', 'stop'),
+        ],
+        { 'genai-task': 'task-9' },
+      ),
+    );
+    const reply = await client(fetcher).chat('figur__default', [], () => {});
+    expect(reply.media).toEqual([
+      {
+        id: 'm1',
+        mediaType: 'image/png',
+        bytes: 2048,
+        step: 'figur',
+        url: '/v1/tasks/task-9/media/m1',
+      },
+    ]);
+  });
+
   it('streams chat deltas and returns sources and the task', async () => {
     const { calls, fetcher } = recorder(() =>
       sse(
@@ -311,6 +368,31 @@ describe('workspace api', () => {
       stream: true,
       genai_stream: 'live',
     });
+  });
+
+  it('asks for step frames only when the screen listens, and passes each one on', async () => {
+    const { calls, fetcher } = recorder(() =>
+      sse([
+        { choices: [{ index: 0, delta: {}, finish_reason: null }], genai_step: { tool: 'search' } },
+        delta('Ja.'),
+        delta('', 'stop'),
+      ]),
+    );
+    const steps: unknown[] = [];
+    await client(fetcher).chat(
+      'ka__default',
+      [],
+      () => {},
+      undefined,
+      undefined,
+      undefined,
+      [],
+      (s) => steps.push(s),
+    );
+    await client(fetcher).chat('ka__default', [], () => {});
+    expect(steps).toEqual([{ tool: 'search' }]);
+    expect(JSON.parse(String(calls[0]?.init?.body))).toMatchObject({ genai_steps: true });
+    expect(JSON.parse(String(calls[1]?.init?.body))).not.toHaveProperty('genai_steps');
   });
 
   it('drops a draft the server retracts and keeps only the answer that replaced it', async () => {
@@ -453,6 +535,15 @@ describe('the locked environment flag', () => {
 
     expect(await client(fetcher).lockdown?.()).toBe(true);
     expect(calls[0]?.url).toBe('/api/health');
+  });
+
+  it('reads from /me whether the login is read-only in lockdown', async () => {
+    const { calls, fetcher } = recorder(() =>
+      Response.json({ organisations: [], lockdownReadOnly: true }),
+    );
+
+    expect(await client(fetcher).readOnlyInLockdown?.()).toBe(true);
+    expect(calls[0]?.url).toBe('/api/me');
   });
 
   it('treats a missing flag as not locked', async () => {

@@ -4,7 +4,7 @@ import type { CatalogItem } from './catalog-registry.js';
 import type { Execution, ExecutionStatus, IngestionService, Pipeline } from './ingestion.js';
 
 export type DatasetSource =
-  'website' | 'upload' | 'kudos' | 'folder' | 'database' | 'episerver' | 'none';
+  'website' | 'upload' | 'kudos' | 'folder' | 'database' | 'parquet' | 'episerver' | 'none';
 
 export type DatasetState =
   'needs-pipeline' | 'configured' | 'running' | 'ready' | 'degraded' | 'external';
@@ -74,8 +74,9 @@ export const datasetState = (pipelines: PipelineState[]): DatasetState => {
   return 'configured';
 };
 
+/** A pipeline's latest run; a replacement run converts in the background and is not one. */
 const latestOf = (executions: Execution[]) =>
-  [...executions].sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
+  executions.filter((r) => !r.replaces).sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
 
 export const publicDatasetState = async (
   ingestion: Pick<IngestionService, 'list' | 'executions'>,
@@ -131,4 +132,18 @@ export const datasetStatus = async (
     nextRunAt: next.sort()[0] ?? null,
     skipped: last?.report?.skippedDocuments ?? [],
   };
+};
+
+export const lastImportAt = async (
+  ingestion: Pick<IngestionService, 'list' | 'executions'>,
+  item: Pick<CatalogItem, 'scope' | 'id'>,
+): Promise<string | undefined> => {
+  const runs = await Promise.all(
+    (await ingestion.list(item.scope, item.id)).map((p) => ingestion.executions(item.id, p.id)),
+  );
+  return runs
+    .flat()
+    .flatMap((run) => (run.status === 'succeeded' && run.endedAt ? [run.endedAt] : []))
+    .sort()
+    .at(-1);
 };

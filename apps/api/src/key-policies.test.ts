@@ -6,7 +6,7 @@ import { envSecrets } from '@genai/kernel';
 import { createAdmin } from './admin.js';
 import { createApp } from './app.js';
 import { callerFrom, createPlatform } from './composition.js';
-import { InMemoryTenantApiKeys } from './routes/portal-routes.js';
+import { InMemoryTenantApiKeys, portalAdminHandlers } from './routes/portal-routes.js';
 import { digdir, files, other, readJson as json, testService } from './testkit.js';
 
 const people: Record<string, Principal> = {
@@ -23,6 +23,13 @@ const people: Record<string, Principal> = {
     subject: 'bruker',
     tenant: digdir,
     authorizedFor: [{ org: digdir, actions: ['use-services'] }],
+  },
+  eier: {
+    kind: 'employee',
+    issuer: 'test',
+    subject: 'eier',
+    tenant: digdir,
+    authorizedFor: [{ org: digdir, actions: ['use-services', 'manage-services'] }],
   },
   ola: {
     kind: 'employee',
@@ -64,7 +71,7 @@ const boot = async () => {
       models: {
         endpoints: {
           fake: {
-            protocol: 'openai-chat',
+            families: { openai: '' },
             baseURL: 'https://modell.example.no/v1',
             auth: { kind: 'api-key', secret: 'secret://env/fake-key' },
           },
@@ -137,7 +144,7 @@ const boot = async () => {
   };
   const policies = `/tenants/${digdir}/api-key-policies`;
   const create = (body: unknown, as = 'kari') => send(policies, as, { body, reason });
-  return { send, create, tools, admin, policies };
+  return { send, create, tools, admin, policies, keys };
 };
 
 type View = {
@@ -340,6 +347,154 @@ describe('access policies for API keys', () => {
     expect(boundKey.status).toBe(400);
     expect(noKey.status).toBe(404);
     expect(noPolicy.status).toBe(400);
+  });
+
+  it('refuses a policy whose scopes imply a right the person shaping it lacks', async () => {
+    const { create } = await boot();
+
+    const admin = await create({ name: 'Alt', scopes: ['admin'] }, 'eier');
+    const ingest = await create({ name: 'Innlesing', scopes: ['ingest'] }, 'eier');
+    const query = await create({ name: 'Spørring', scopes: ['query'] }, 'eier');
+
+    expect(admin.status).toBe(403);
+    expect(await admin.json()).toMatchObject({ errors: [{ path: 'principal' }] });
+    expect(ingest.status).toBe(403);
+    expect(query.status).toBe(201);
+  });
+
+  it('refuses to attach a policy whose scopes imply a right the person attaching it lacks', async () => {
+    const { send, create } = await boot();
+    const made = await json<View>(await create({ name: 'Alt', scopes: ['admin'] }));
+
+    const res = await send(`/tenants/${digdir}/api-keys/gammel/policy`, 'eier', {
+      method: 'PUT',
+      body: { policyId: made.id },
+      reason,
+    });
+
+    expect(res.status).toBe(403);
+  });
+
+  it('a person with only manage-services cannot rotate a key whose policy grants admin', async () => {
+    const { send, create, keys } = await boot();
+    const made = await json<View>(await create({ name: 'Alt', scopes: ['admin'] }));
+    await send(`/tenants/${digdir}/api-keys/gammel/policy`, 'kari', {
+      method: 'PUT',
+      body: { policyId: made.id },
+      reason,
+    });
+
+    const res = await send(`/tenants/${digdir}/api-keys/gammel/rotate`, 'eier', {
+      body: {},
+      reason,
+    });
+
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({ errors: [{ path: 'principal' }] });
+    expect((await keys.list(digdir)).map((k) => [k.id, k.revokedAt])).toEqual([
+      ['gammel', undefined],
+      ['ny', undefined],
+    ]);
+  });
+
+  it('a person with only manage-services cannot rotate a key whose own scopes grant admin', async () => {
+    const { send, keys } = await boot();
+    await keys.add({
+      id: 'drift',
+      name: 'Driftsnøkkel',
+      tenant: digdir,
+      scopes: ['admin'],
+      datasets: [],
+      agents: [],
+      digest: apiKeyDigest('gp_drift'),
+    });
+
+    const res = await send(`/tenants/${digdir}/api-keys/drift/rotate`, 'eier', {
+      body: {},
+      reason,
+    });
+
+    expect(res.status).toBe(403);
+    expect((await keys.list(digdir)).find((k) => k.id === 'drift')?.revokedAt).toBeUndefined();
+  });
+
+  it('rotating a key within the rights of the person still works and keeps its policy', async () => {
+    const { send, create, keys } = await boot();
+    const made = await json<View>(await create({ name: 'Spørring', scopes: ['query'] }));
+    await send(`/tenants/${digdir}/api-keys/gammel/policy`, 'kari', {
+      method: 'PUT',
+      body: { policyId: made.id },
+      reason,
+    });
+
+    const res = await send(`/tenants/${digdir}/api-keys/gammel/rotate`, 'eier', {
+      body: {},
+      reason,
+    });
+    const rotated = await json<{ apiKey: { id: string } }>(res);
+
+    expect(res.status).toBe(201);
+    expect((await keys.list(digdir)).find((k) => k.id === rotated.apiKey.id)?.policy?.id).toBe(
+      made.id,
+    );
+  });
+
+  it('a person holding every right may rotate a key whose policy grants admin', async () => {
+    const { send, create } = await boot();
+    const made = await json<View>(await create({ name: 'Alt', scopes: ['admin'] }));
+    await send(`/tenants/${digdir}/api-keys/gammel/policy`, 'kari', {
+      method: 'PUT',
+      body: { policyId: made.id },
+      reason,
+    });
+
+    const res = await send(`/tenants/${digdir}/api-keys/gammel/rotate`, 'kari', {
+      body: {},
+      reason,
+    });
+
+    expect(res.status).toBe(201);
+  });
+
+  it('checks a rotated key against its policy as stored when the key list carries only the policy id', async () => {
+    const stored = new InMemoryTenantApiKeys();
+    await stored.savePolicy(digdir, {
+      id: 'alt',
+      name: 'Alt',
+      scopes: ['admin'],
+      createdAt: '2026-11-01T10:00:00Z',
+    });
+    const key = {
+      id: 'gammel',
+      name: 'Gammel nøkkel',
+      tenant: digdir,
+      scopes: ['query' as const],
+      datasets: [],
+      agents: [],
+      digest: apiKeyDigest('gp_gammel'),
+      policy: { id: 'alt' },
+    };
+    const apiKeys = {
+      list: async () => [key],
+      add: async () => undefined,
+      revoke: async () => undefined,
+    };
+
+    const outcome = await portalAdminHandlers({ apiKeys, policies: stored })[
+      'platform.apikeys.rotate'
+    ]?.(
+      {
+        tenant: digdir,
+        id: 'gammel',
+        newId: 'ny-gammel',
+        digest: apiKeyDigest('gp_ny-gammel'),
+        createdAt: '2026-11-16T10:00:00Z',
+        reason,
+      },
+      people.eier as Principal,
+    );
+
+    expect(outcome).toMatchObject({ ok: false, errors: [{ path: 'principal' }] });
   });
 
   it('refuses to delete a policy that keys still use and says how many', async () => {

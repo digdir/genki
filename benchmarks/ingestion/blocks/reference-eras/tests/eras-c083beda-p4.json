@@ -1,0 +1,199 @@
+{
+ "tests": [
+  {
+   "id": "eras-c083beda-p4-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Poverty, development cooperation and results",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-c083beda-p4-t02",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "it is increasingly acknowledged that no one donor can claim credit for results achieved.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-c083beda-p4-t03",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Trade, debt relief, investments, natural resources and migration are more important from an economic point of view",
+     "max_diffs": 4
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-c083beda-p4-t04",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Norway’s annual contribution of about NOK 20 billion amounts to less than a penny a day per person.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-c083beda-p4-t05",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "to achieve them may be development work",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "The Millennium Development Goals were adopted",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-c083beda-p4-t06",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "the total international effort involved",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "The most crucial part of the fight against poverty",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-c083beda-p4-t07",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "The Millennium Development Goals were adopted at the United Nations Millennium Summit in September 2000.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-c083beda-p4-t08",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "list",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "The percentage of women who die in childbirth shall be reduced by three-quarters from the 1990 level",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-c083beda-p4-t09",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "list",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Environmental sustainability shall be secured",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "Global partnerships for development shall be expanded",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-c083beda-p4-t10",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "list",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "The spread of HIV/AIDS, malaria and other lethal diseases stall be halted and reversed",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

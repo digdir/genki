@@ -2,6 +2,14 @@
 
 <!-- One or two sentences: what changes, and why. Link the issue if there is one. -->
 
+## Risk
+
+<!-- Low, or sensitive because it touches: auth, tenancy, the model gate, personal data, migrations, infra or workflows. -->
+
+## Undo
+
+<!-- Revert is enough, or it needs a data step or an infra step: say which. -->
+
 ## How it was tested
 
 <!-- Commands you ran and what you checked by hand. Name the tests that state any new rule. -->

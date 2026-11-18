@@ -31,6 +31,7 @@ export interface ChangeFollowers {
   settings: { reload(): Promise<void> };
   supportSessions: { reload(): Promise<void> };
   catalog: { refresh(): Promise<void> };
+  descriptors?: { refresh(): Promise<void> };
   definitions: { sync(): Promise<void> };
   models: { refresh(): Promise<unknown> };
   toolConnections: { reload(): Promise<void> };
@@ -40,7 +41,10 @@ export const followChanges = (feed: ChangeFeed, followers: ChangeFollowers): (()
   const actions: Record<ChangeTopic, () => Promise<void>> = {
     settings: () => followers.settings.reload(),
     'support-sessions': () => followers.supportSessions.reload(),
-    'config-entries': () => followers.catalog.refresh(),
+    'config-entries': async () => {
+      await followers.descriptors?.refresh();
+      await followers.catalog.refresh();
+    },
     definitions: () => followers.definitions.sync(),
     'model-classifications': async () => {
       await followers.models.refresh();

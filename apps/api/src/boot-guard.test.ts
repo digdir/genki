@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { bootProblems } from './boot-guard.js';
+import { bootProblems, knowledgeServerProblems } from './boot-guard.js';
 
 const real = {
   ANSATTPORTEN_ISSUER: 'https://ansattporten.no',
   DATABASE_URL: 'postgres://db/genai',
   ALTINN_PDP_URL: 'https://platform.altinn.no',
+  EMPLOYEE_CLIENT_IDS: 'genki-portal,genki-workspace,genki-console',
 };
 const dev = { GENAI_DEV_MODE: 'true' };
 
@@ -19,18 +20,40 @@ describe('booting the API', () => {
   });
 
   it('uses the mock Altinn rights only in dev mode', () => {
-    const rest = { ANSATTPORTEN_ISSUER: real.ANSATTPORTEN_ISSUER, DATABASE_URL: real.DATABASE_URL };
+    const rest = {
+      ANSATTPORTEN_ISSUER: real.ANSATTPORTEN_ISSUER,
+      EMPLOYEE_CLIENT_IDS: real.EMPLOYEE_CLIENT_IDS,
+      DATABASE_URL: real.DATABASE_URL,
+    };
     expect(bootProblems(rest)).toEqual([expect.stringContaining('ALTINN_PDP_URL')]);
     expect(bootProblems({ ...dev, ...rest })).toEqual([]);
+  });
+
+  it('startup refuses GENAI_MOCK_RIGHTS outside dev mode', () => {
+    expect(bootProblems({ ...real, GENAI_MOCK_RIGHTS: 'true' })).toEqual([
+      expect.stringContaining('GENAI_MOCK_RIGHTS'),
+    ]);
+    expect(bootProblems({ ...dev, ...real, GENAI_MOCK_RIGHTS: 'true' })).toEqual([]);
   });
 
   it('refuses to start without a database unless dev mode is on', () => {
     const rest = {
       ANSATTPORTEN_ISSUER: real.ANSATTPORTEN_ISSUER,
+      EMPLOYEE_CLIENT_IDS: real.EMPLOYEE_CLIENT_IDS,
       ALTINN_PDP_URL: real.ALTINN_PDP_URL,
     };
     expect(bootProblems(rest)).toEqual([expect.stringContaining('DATABASE_URL')]);
     expect(bootProblems({ ...dev, ...rest })).toEqual([]);
+  });
+
+  it('refuses to start outside dev mode with Ansattporten configured and no trusted employee clients', () => {
+    const untrusted = { ...real, EMPLOYEE_CLIENT_IDS: undefined };
+    expect(bootProblems(untrusted)).toEqual([expect.stringContaining('EMPLOYEE_CLIENT_IDS')]);
+    expect(bootProblems({ ...untrusted, EMPLOYEE_CLIENT_IDS: ' , ' })).toEqual([
+      expect.stringContaining('EMPLOYEE_CLIENT_IDS'),
+    ]);
+    expect(bootProblems(real)).toEqual([]);
+    expect(bootProblems(dev)).toEqual([]);
   });
 
   it('refuses to start with a malformed PLATFORM_TENANT, also in dev mode', () => {
@@ -55,6 +78,105 @@ describe('booting the API', () => {
     expect(bootProblems({ ...real, LOCKDOWN_ENTRA_EMAIL_DOMAIN: 'not a domain' })).toEqual([
       expect.stringContaining('LOCKDOWN_ENTRA_EMAIL_DOMAIN'),
     ]);
+  });
+
+  it('startup refuses lockdown Entra groups without a client allowlist', () => {
+    const locked = {
+      ...real,
+      GENAI_LOCKDOWN: 'true',
+      LOCKDOWN_ENTRA_GROUPS: '0f0e0d0c-0b0a-4908-8706-050403020100',
+    };
+
+    expect(bootProblems(locked)).toEqual([expect.stringContaining('OPERATOR_CLIENT_IDS')]);
+    expect(bootProblems({ ...locked, GENAI_DEV_MODE: 'true' })).toEqual([
+      expect.stringContaining('OPERATOR_CLIENT_IDS'),
+    ]);
+    expect(bootProblems({ ...locked, OPERATOR_CLIENT_IDS: 'console,portal' })).toEqual([]);
+  });
+
+  it('refuses to start when LOCKDOWN_USER_GROUPS lists something that is not a group id', () => {
+    const userGroup = '789b5488-39ec-47b3-9217-840e5cd957fd';
+
+    expect(
+      bootProblems({ ...real, LOCKDOWN_USER_GROUPS: `${userGroup}, genki-test-users` }),
+    ).toEqual([expect.stringContaining('genki-test-users')]);
+    expect(bootProblems({ ...real, LOCKDOWN_USER_GROUPS: userGroup })).toEqual([]);
+  });
+
+  it('startup refuses lockdown user groups without a client allowlist', () => {
+    const locked = {
+      ...real,
+      GENAI_LOCKDOWN: 'true',
+      LOCKDOWN_USER_GROUPS: '789b5488-39ec-47b3-9217-840e5cd957fd',
+    };
+
+    expect(bootProblems(locked)).toEqual([expect.stringContaining('OPERATOR_CLIENT_IDS')]);
+    expect(bootProblems({ ...locked, OPERATOR_CLIENT_IDS: 'console,portal' })).toEqual([]);
+  });
+
+  it('refuses to start when LOCKDOWN_SERVICE_GROUPS lists something that is not a group id', () => {
+    const serviceGroup = '2a2b2c2d-3e3f-4a4b-8c8d-9e9f0a0b0c0d';
+
+    expect(
+      bootProblems({ ...real, LOCKDOWN_SERVICE_GROUPS: `${serviceGroup}, alle-ansatte` }),
+    ).toEqual([expect.stringContaining('alle-ansatte')]);
+    expect(bootProblems({ ...real, LOCKDOWN_SERVICE_GROUPS: serviceGroup })).toEqual([]);
+  });
+
+  it('startup refuses lockdown service groups without a service client list', () => {
+    const locked = {
+      ...real,
+      GENAI_LOCKDOWN: 'true',
+      LOCKDOWN_SERVICE_GROUPS: '2a2b2c2d-3e3f-4a4b-8c8d-9e9f0a0b0c0d',
+    };
+
+    expect(bootProblems(locked)).toEqual([expect.stringContaining('LOCKDOWN_SERVICE_CLIENT_IDS')]);
+    expect(bootProblems({ ...locked, LOCKDOWN_SERVICE_CLIENT_IDS: 'ka-web' })).toEqual([]);
+  });
+
+  it('startup refuses a platform client in the service client list', () => {
+    expect(
+      bootProblems({
+        ...real,
+        OPERATOR_CLIENT_IDS: 'genki-console',
+        LOCKDOWN_SERVICE_CLIENT_IDS: 'ka-web,genki-portal,genki-console',
+      }),
+    ).toEqual([expect.stringContaining('genki-portal, genki-console')]);
+  });
+
+  it('startup refuses bare OPERATOR_SUBJECTS outside dev mode', () => {
+    const pair = 'https://test.ansattporten.no|subject-1';
+
+    expect(
+      bootProblems({
+        ...real,
+        OPERATOR_SUBJECTS: `${pair},subject-2`,
+        OPERATOR_CLIENT_IDS: 'genki-console',
+      }),
+    ).toEqual([expect.stringContaining('issuer|subject')]);
+    expect(
+      bootProblems({ ...real, OPERATOR_SUBJECTS: pair, OPERATOR_CLIENT_IDS: 'genki-console' }),
+    ).toEqual([]);
+    expect(bootProblems({ ...dev, OPERATOR_SUBJECTS: 'subject-2' })).toEqual([]);
+    expect(bootProblems({ ...dev, OPERATOR_SUBJECTS: '|subject-2' })).toEqual([
+      expect.stringContaining('OPERATOR_SUBJECTS'),
+    ]);
+  });
+
+  it('startup refuses OPERATOR_SUBJECTS without OPERATOR_CLIENT_IDS outside dev mode', () => {
+    const pair = 'https://test.ansattporten.no|subject-1';
+
+    expect(bootProblems({ ...real, OPERATOR_SUBJECTS: pair })).toEqual([
+      expect.stringContaining('OPERATOR_CLIENT_IDS'),
+    ]);
+  });
+
+  it('sends prompt content to the trace sink only in dev mode', () => {
+    expect(bootProblems({ ...real, TRACES_CONTENT: 'true' })).toEqual([
+      expect.stringContaining('TRACES_CONTENT'),
+    ]);
+    expect(bootProblems({ ...real, TRACES_CONTENT: 'false' })).toEqual([]);
+    expect(bootProblems({ ...dev, TRACES_CONTENT: 'true' })).toEqual([]);
   });
 
   it('names every missing setting when none is set', () => {
@@ -87,5 +209,19 @@ describe('booting the API', () => {
       expect(bootProblems({ ...flag, ...dev, ...real })).toEqual([
         expect.stringContaining('GENAI_DEV_MODE'),
       ]);
+  });
+
+  it('an endpoint set to `knowledge` without a knowledge server stops the API outside development mode', () => {
+    const catalog = {
+      endpoints: { 'knowledge-pg': { engine: 'pgvector', options: { connection: 'knowledge' } } },
+      datasets: [],
+    };
+    expect(knowledgeServerProblems(real, catalog)).toEqual([
+      expect.stringContaining('KNOWLEDGE_PGHOST'),
+    ]);
+    expect(
+      knowledgeServerProblems({ ...real, KNOWLEDGE_PGHOST: 'knowledge.example' }, catalog),
+    ).toEqual([]);
+    expect(knowledgeServerProblems(real, { endpoints: {}, datasets: [] })).toEqual([]);
   });
 });

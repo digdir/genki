@@ -1,0 +1,8 @@
+{"tests": [
+ {"id": "kudos-15631-p1-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"content": {"text": "TILDELINGSBREV 2020", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-15631-p1-t02", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"content": {"text": "NORAD", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-15631-p1-t03", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"before": {"text": "TILDELINGSBREV 2020", "max_diffs": 0}, "after": {"text": "NORAD", "max_diffs": 0}}, "settings": {}}
+]}

@@ -61,4 +61,5 @@ export const onboarding = {
   reminderSent: 'Reminder sent to {contact}, {name}.',
   contactFallback: 'the contact person',
   reminderFailed: 'Could not send the reminder. Try again shortly.',
+  reminderUnavailable: 'Reminder: not available yet.',
 } satisfies Translation<typeof source>;

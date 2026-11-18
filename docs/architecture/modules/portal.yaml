@@ -63,4 +63,32 @@ edges:
     witness:
       file: apps/portal/src/screens/service/StrategyPanel.tsx
       imports: '@genai/schema-forms'
+  - to: ui-blocks
+    label: The interface tab's block catalogue, layout rules, templates and a draft's facts
+    kind: call
+    target: call
+    witness:
+      file: apps/portal/src/screens/services/blocks/BlocksPanel.tsx
+      imports: '@genai/ui-blocks'
+  - to: ui-assembly
+    label: The assistant a layout describes, in the interface tab's try view
+    kind: call
+    target: call
+    witness:
+      file: apps/portal/src/screens/services/blocks/TryView.tsx
+      imports: '@genai/ui-assembly'
+  - to: docs-content
+    label: Links on the public pages
+    kind: call
+    target: call
+    witness:
+      file: apps/portal/src/screens/about/PublicSite.tsx
+      imports: '@genai/docs-content'
+  - to: docs-site
+    label: Public pages about the platform, signed out
+    kind: call
+    target: call
+    witness:
+      file: apps/portal/src/screens/about/PublicSite.tsx
+      imports: '@genai/docs-site'
 keywords: portal agency tenant builder publish api keys datasets

@@ -24,6 +24,8 @@ export const monthStart = (at: Date) =>
 
 export const quotaExhaustedMessage = 'the monthly token quota is used up';
 
+export const assistantCapabilityPrefix = 'platform/draft/assistant/';
+
 export const monthlyQuotaGate =
   (quota: MonthlyTokenQuota) =>
   async (tenant: string): Promise<Admission> => {
@@ -32,6 +34,28 @@ export const monthlyQuotaGate =
     if (left <= 0) return { ok: false, code: 'quota_exhausted', error: quotaExhaustedMessage };
     return { ok: true, budget: { inputTokens: left, outputTokens: left } };
   };
+
+/** The gate's quota check: calls in a run count, the builder assistant keeps its own daily budget. */
+export const gateQuota =
+  (exhausted: (tenant: string) => Promise<boolean>) =>
+  async (call: { tenant: string; capability?: string }) => {
+    if (!call.capability || call.capability.startsWith(assistantCapabilityPrefix)) return undefined;
+    return (await exhausted(call.tenant)) ? quotaExhaustedMessage : undefined;
+  };
+
+export const monthlyModelQuota = (quota: MonthlyTokenQuota, maxAgeMs = 15_000) => {
+  const used = new Map<string, { at: number; since: string; tokens: number }>();
+  return gateQuota(async (tenant) => {
+    const at = quota.now?.() ?? new Date();
+    const since = monthStart(at);
+    let cached = used.get(tenant);
+    if (!cached || cached.since !== since || at.getTime() - cached.at >= maxAgeMs) {
+      cached = { at: at.getTime(), since, tokens: await quota.usedTokens(tenant, since) };
+      used.set(tenant, cached);
+    }
+    return cached.tokens >= quota.monthlyTokens(tenant);
+  });
+};
 
 const record = (value: unknown): Record<string, unknown> =>
   typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};

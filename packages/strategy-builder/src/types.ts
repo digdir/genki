@@ -102,7 +102,8 @@ export interface PlatformChange {
 }
 
 export type ProposalLevel = 1 | 2 | 3 | 4;
-export type ProposalKind = 'change' | 'connector' | 'building_block' | 'platform_change';
+export type ProposalKind =
+  'change' | 'connector' | 'building_block' | 'platform_change' | 'interface';
 
 export interface AssistantProposal {
   id: string;
@@ -125,6 +126,7 @@ export interface AssistantProposal {
   platformChange?: PlatformChange;
   approval?: { right: string };
   flows?: Record<string, unknown>[];
+  blocks?: string[];
 }
 
 export interface ImprovedInstructions {
@@ -205,9 +207,16 @@ export interface RecipeInfo {
   settings: unknown;
 }
 
+export interface InterfaceBlock {
+  id: string;
+  name: { nb: string; en: string };
+  covers: { nb: string; en: string }[];
+}
+
 export interface BuilderContext {
   available: AvailableBlock[];
   recipes?: RecipeInfo[];
+  interfaceBlocks?: InterfaceBlock[];
   refused: RefusedBlock[];
   blockedResidencies: BlockedResidency[];
   tenantName?: string;

@@ -1,0 +1,71 @@
+{
+  "source": "Made up for this test",
+  "deployment": "model-1",
+  "input": {
+    "document": {
+      "mediaType": "text/plain",
+      "data": "SGVsbG8gdGhlcmU="
+    },
+    "filename": "notes.txt"
+  },
+  "steps": [
+    {
+      "step": "upload",
+      "request": {
+        "method": "POST",
+        "path": "/files",
+        "body": {
+          "purpose": "summaries",
+          "file": {
+            "mediaType": "text/plain",
+            "bytes": 11,
+            "sha256": "4e47826698bb4630fb4451010062fadbf85d61427cbdfaed7ad0f23f239bed89"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "id": "file-a1"
+        }
+      }
+    },
+    {
+      "step": "run",
+      "request": {
+        "method": "POST",
+        "path": "/summaries",
+        "body": {
+          "model": "model-1",
+          "file_id": "file-a1"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "text": "A greeting."
+        }
+      }
+    },
+    {
+      "step": "remove_file",
+      "request": {
+        "method": "DELETE",
+        "path": "/files/file-a1"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "deleted": true
+        }
+      }
+    }
+  ],
+  "result": {
+    "summary": "A greeting."
+  },
+  "usage": {
+    "requests": 1
+  },
+  "dropped": 0
+}

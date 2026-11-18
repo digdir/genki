@@ -15,8 +15,10 @@ import type { RerankPort } from '@genai/port-rerank';
 import { detectFromRules } from './rules.js';
 import {
   accepts,
+  clauseType,
   mergeTyped,
   portFilters,
+  selectedOptions,
   toInput,
   toSet,
   type FilterInput,
@@ -26,7 +28,7 @@ import { retrievalConfig, strategyWeights, type RetrievalConfig } from './config
 import { dedupeHits, mergeStrategyLists, type MergedHit, type StrategyHit } from './merge.js';
 import {
   capPerDocument,
-  detectOrgFilter,
+  detectOrganisations,
   detectYears,
   fileDigestsOf,
   orgsOf,
@@ -35,6 +37,8 @@ import {
   suppressDuplicateFiles,
   unionMerge,
   type Chunk,
+  type Detection,
+  type DetectionUse,
 } from './stages.js';
 import {
   bestContentWindows,
@@ -72,6 +76,7 @@ export interface RetrieveInput {
   facetCache?: FacetCache;
   model?: ModelPort;
   now?: () => number;
+  detectionUse?: 'boost' | 'hint';
 }
 
 export type SkipReason = 'no_text' | 'unsupported_type' | 'outside_access';
@@ -88,6 +93,7 @@ export interface PassTrace {
   hitsPerStrategy: Record<string, number>;
   merged: MergedHit[];
   detectedFilter?: Record<string, FilterInput>;
+  detections?: Detection[];
   effectiveFilter?: Record<string, FilterInput>;
   autoFilterFallback: boolean;
   autoFilterError?: string;
@@ -264,22 +270,46 @@ export const retrieve = async (input: RetrieveInput): Promise<RetrievalResult> =
     );
   };
 
+  const use = input.detectionUse ?? 'boost';
   const detect = async (
     queries: string[],
     note: Note,
-  ): Promise<{ filter?: FilterSet; error?: string }> => {
-    if (!config.autoFilter.enabled || queries.length === 0) return {};
+  ): Promise<{ filter?: FilterSet; detections: Detection[]; error?: string }> => {
+    const detections: Detection[] = [];
+    if (!config.autoFilter.enabled || queries.length === 0) return { detections };
     try {
-      const detected: FilterSet = {};
-      const add = (field: string, value: FilterClause) => {
+      const filter: FilterSet = {};
+      const offer = (
+        kind: Detection['kind'],
+        field: string,
+        value: FilterClause,
+        found: string[],
+      ) => {
+        const record = (as: DetectionUse) =>
+          detections.push({
+            kind,
+            field,
+            values: selectedOptions({ [field]: value }, field),
+            queries: found,
+            use: as,
+          });
+        if (use === 'boost' && kind !== 'rule') return record('boost');
+        if (
+          use === 'hint' &&
+          (clauseType(value) === 'not-in-set' || field in (input.filters ?? {}))
+        )
+          return;
         if (!filterable(field, value, note)) return;
+        if (use === 'hint') return record('hint');
+        record('filter');
         const normalised =
           info.filters[field] === 'select' && Array.isArray(value)
             ? (value[0] as FilterClause)
             : value;
-        detected[field] = [...(detected[field] ?? []), normalised];
+        filter[field] = [...(filter[field] ?? []), normalised];
       };
-      if (orgFields.length > 0 && capabilities.has('facets')) {
+      const orgsAndYears = use === 'hint' || config.queryAwareBoost;
+      if (orgsAndYears && orgFields.length > 0 && capabilities.has('facets')) {
         const facets = await unsupportedOr(
           () =>
             facetCache.get(
@@ -293,16 +323,28 @@ export const retrieve = async (input: RetrieveInput): Promise<RetrievalResult> =
             return {};
           },
         );
-        const org = detectOrgFilter(queries, facets, orgFields, config.autoFilter.minValueLength);
-        if (org) add(org.field, org.values);
+        const orgs = detectOrganisations(
+          queries,
+          facets,
+          orgFields,
+          config.autoFilter.minValueLength,
+          config.autoFilter.aliases,
+        );
+        for (const org of orgs) offer('organisation', org.field, org.values, org.queries);
       }
-      const years = detectYears(queries);
-      if (years.length > 0) add(config.autoFilter.yearTitleField, { contains: years });
+      const years = orgsAndYears ? detectYears(queries) : [];
+      if (years.length > 0)
+        offer(
+          'year',
+          config.autoFilter.yearTitleField,
+          { contains: years },
+          queries.filter((q) => detectYears([q]).length > 0),
+        );
       const ruled = await detectFromRules(config.autoFilter.rules, queries, input.model);
-      for (const [field, value] of Object.entries(ruled)) add(field, value);
-      return Object.keys(detected).length > 0 ? { filter: detected } : {};
+      for (const [field, value] of Object.entries(ruled)) offer('rule', field, value, queries);
+      return Object.keys(filter).length > 0 ? { filter, detections } : { detections };
     } catch (error) {
-      return { error: messageOf(error) };
+      return { detections, error: messageOf(error) };
     }
   };
 
@@ -600,6 +642,9 @@ export const retrieve = async (input: RetrieveInput): Promise<RetrievalResult> =
           config.autoFilter.orgFields,
           config.boostWeights,
           useContent,
+          detected.detections.flatMap((d) =>
+            d.kind === 'organisation' && d.use === 'boost' ? d.values : [],
+          ),
         )
       : chunks;
     const maxPerDocument =
@@ -622,6 +667,7 @@ export const retrieve = async (input: RetrieveInput): Promise<RetrievalResult> =
         hitsPerStrategy: result.hitsPerStrategy,
         merged: result.merged,
         ...(detected.filter ? { detectedFilter: toInput(detected.filter) ?? {} } : {}),
+        ...(detected.detections.length > 0 ? { detections: detected.detections } : {}),
         ...(effective ? { effectiveFilter: effective } : {}),
         autoFilterFallback: fallback,
         ...(detected.error ? { autoFilterError: detected.error } : {}),

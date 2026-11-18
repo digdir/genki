@@ -54,7 +54,7 @@
   <text class="t" x="451" y="520" text-anchor="middle">Application platform</text>
   <text class="s" x="451" y="544" text-anchor="middle">Postgres with row-level security per organisation · API and worker in containers</text>
   <rect x="300" y="556" width="302" height="16" rx="3" fill="none" stroke="#ffffff" stroke-width="1.2" stroke-dasharray="4 3"/>
-  <text class="s" x="451" y="568.5" text-anchor="middle" font-size="12">Runs locally today · Azure setup written, parked</text>
+  <text class="s" x="451" y="568.5" text-anchor="middle" font-size="12">Runs locally · Test environment in Azure</text>
 
   <!-- Model routing -->
   <rect x="902" y="20" width="92" height="560" rx="4" fill="#2e5f7f"/>

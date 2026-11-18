@@ -4,11 +4,13 @@ import type { ApiClient } from '../../api';
 import { Crumbs } from '../../components/Crumbs';
 import { serviceOfFlow, strategies, type Flow, type Strategy } from '../../data/stepflows';
 import { NotAvailable } from '../../components/NotAvailable';
+import { useAsync } from '../../hooks';
 import { useT } from '../../i18n';
 import { EmptyState, ErrorState } from '../../states';
 import { FlowEditor, type Flash } from './FlowEditor';
-import { analyse, countSteps, versionLabel } from './model';
+import { analyse, countSteps, flowName, versionLabel } from './model';
 import { StrategyView } from './StrategyView';
+import { UseInService } from './UseInService';
 
 export interface WorkspaceProps {
   api: ApiClient;
@@ -26,19 +28,24 @@ export interface WorkspaceProps {
 }
 
 const Library = ({
+  api,
+  tenant,
   flows,
   liveError,
   onOpen,
   onNew,
-  onFlash,
 }: {
+  api: ApiClient;
+  tenant: string;
   flows: Record<string, Flow>;
   liveError: WorkspaceProps['liveError'];
   onOpen: (id: string) => void;
   onNew: () => void;
-  onFlash: (flash: Flash) => void;
 }) => {
   const t = useT();
+  const [using, setUsing] = useState<Flow>();
+  const [operations] = useAsync((signal) => api.stepOperations(tenant, signal), [api, tenant]);
+  const ops = { operations: operations.status === 'ready' ? operations.data : undefined };
   return (
     <div className="stack-md">
       <div className="page-head">
@@ -58,12 +65,12 @@ const Library = ({
       ) : null}
       <ul className="flow-library">
         {Object.values(flows).map((f) => {
-          const errors = analyse(f, flows, {}, t).errors.size;
+          const errors = analyse(f, flows, {}, t, ops).errors.size;
           return (
             <li key={f.id}>
               <div className="row-wrap spread">
                 <Heading level={2} data-size="2xs">
-                  {f.name}
+                  {flowName(f, t)}
                 </Heading>
                 <span className="tag-row">
                   {f.sub ? (
@@ -76,7 +83,7 @@ const Library = ({
                   </Tag>
                 </span>
               </div>
-              <p className="small">{f.desc}</p>
+              <p className="small">{f.desc || t('stepflows.newFlowDesc')}</p>
               <dl className="kv small-kv">
                 <dt>{t('stepflows.dtVersion')}</dt>
                 <dd>
@@ -94,29 +101,29 @@ const Library = ({
                 <Button
                   variant="secondary"
                   data-size="sm"
-                  aria-label={t('stepflows.openLabel', { name: f.name })}
+                  aria-label={t('stepflows.openLabel', { name: flowName(f, t) })}
                   onClick={() => onOpen(f.id)}
                 >
                   {t('stepflows.open')}
                 </Button>
-                <Button
-                  variant="tertiary"
-                  data-size="sm"
-                  aria-label={t('stepflows.useLabel', { name: f.name })}
-                  onClick={() =>
-                    onFlash({
-                      text: t('stepflows.useFlash', { name: f.name, version: versionLabel(f, t) }),
-                      color: 'info',
-                    })
-                  }
-                >
-                  {t('stepflows.useInService')}
-                </Button>
+                {f.unsaved ? null : (
+                  <Button
+                    variant="tertiary"
+                    data-size="sm"
+                    aria-label={t('stepflows.useLabel', { name: flowName(f, t) })}
+                    onClick={() => setUsing(f)}
+                  >
+                    {t('stepflows.useInService')}
+                  </Button>
+                )}
               </div>
             </li>
           );
         })}
       </ul>
+      {using ? (
+        <UseInService api={api} tenant={tenant} flow={using} onClose={() => setUsing(undefined)} />
+      ) : null}
     </div>
   );
 };
@@ -179,20 +186,22 @@ export const Workspace = ({
         <Tabs.Panel value="lib">
           {view === 'lib' ? (
             <Library
+              api={api}
+              tenant={tenant}
               flows={flows}
               liveError={liveError}
               onOpen={openFlow}
-              onFlash={setFlash}
               onNew={() => {
                 const id = `ny-flyt-${Object.keys(flows).length}`;
                 setFlows((all) => ({
                   ...all,
                   [id]: {
                     id,
-                    name: t('stepflows.newFlow'),
-                    desc: t('stepflows.newFlowDesc'),
+                    name: '',
+                    desc: '',
                     version: 1,
                     draft: true,
+                    unsaved: true,
                     changed: t('stepflows.newFlowChanged'),
                     usedBy: [],
                     input: [['sporsmal', 'tekst']],
@@ -208,14 +217,23 @@ export const Workspace = ({
           {view === 'flow' && flow && current ? (
             <div className="stack-md">
               <Crumbs
-                items={[
-                  { label: t('stepflows.crumbServices'), href: '#/services' },
-                  {
-                    label: serviceName,
-                    href: service ? `#/services/${encodeURIComponent(service.id)}` : '#/services',
-                  },
-                  { label: t('stepflows.strategyTitle') },
-                ]}
+                items={
+                  service || serviceOfFlow[flow.id]
+                    ? [
+                        { label: t('stepflows.crumbServices'), href: '#/services' },
+                        {
+                          label: serviceName,
+                          href: service
+                            ? `#/services/${encodeURIComponent(service.id)}`
+                            : '#/services',
+                        },
+                        { label: t('stepflows.strategyTitle') },
+                      ]
+                    : [
+                        { label: t('stepflows.crumbFlows'), href: '#/step-flows' },
+                        { label: flowName(flow, t) },
+                      ]
+                }
               />
               <div className="stack-xs">
                 <Heading level={1} data-size="md" id="strategi-h">
@@ -254,12 +272,19 @@ export const Workspace = ({
                   tenant={tenant}
                   flows={flows}
                   flow={flow}
-                  {...(service ? { serviceName: service.name } : {})}
+                  {...(service ? { serviceName: service.name, serviceId: service.id } : {})}
                   showPicker
                   initialTab={initialTab}
                   initialOverlay={initialOverlay}
                   onPickFlow={setFid}
-                  onChange={(next) => setFlows((all) => ({ ...all, [next.id]: next }))}
+                  onChange={(next, previousId) => {
+                    const renamed = previousId && previousId !== next.id ? previousId : undefined;
+                    setFlows((all) => ({
+                      ...Object.fromEntries(Object.entries(all).filter(([id]) => id !== renamed)),
+                      [next.id]: next,
+                    }));
+                    if (renamed) setFid(next.id);
+                  }}
                   onFlash={setFlash}
                 />
               ) : live ? null : (

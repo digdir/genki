@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { inEnglish } from '@genai/i18n/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
 import { mockEntra, operatorRole } from './auth';
 import { mockFetch } from './mock';
@@ -24,10 +24,15 @@ const open = async (hash: string) => {
 beforeEach(() => {
   window.location.hash = '';
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 describe('support access and audit in English', () => {
   it('shows the audit log with English filters and action labels', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-07T12:00:00+02:00'));
     await open('#/audit');
     expect(await screen.findByRole('heading', { name: 'Audit' })).toBeTruthy();
     expect(screen.getByLabelText('Organisation')).toBeTruthy();

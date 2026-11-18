@@ -1,4 +1,5 @@
 import { Hono, type Context } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import {
   checkInputFields,
   fieldsQuery,
@@ -8,7 +9,7 @@ import {
   type Principal,
   type Task,
 } from '@genai/contracts';
-import { KernelError, type Kernel, type Run } from '@genai/kernel';
+import { KernelError, quotaExhaustedProblem, type Kernel, type Run } from '@genai/kernel';
 import {
   a2aVersion,
   acceptsOutput,
@@ -36,7 +37,11 @@ export type AgentResolution =
 
 export interface AgentResolver {
   list(principal: Principal): Promise<AgentEntry[]>;
-  resolve(principal: Principal, name: string): Promise<AgentResolution>;
+  resolve(
+    principal: Principal,
+    name: string,
+    options?: { environment?: string },
+  ): Promise<AgentResolution>;
 }
 
 export interface Authenticator {
@@ -160,8 +165,19 @@ export const createA2aApp = (options: A2aAppOptions) => {
     return out;
   };
 
-  const agentFor = async (principal: Principal, name: string) => {
-    const resolved = await resolver.resolve(principal, name);
+  const resolveStatus: Record<string, number> = {
+    service_paused: 503,
+    invalid_environment: 400,
+    environment_not_authorized: 403,
+    environment_not_found: 409,
+  };
+
+  const agentFor = async (principal: Principal, name: string, environment?: string) => {
+    const resolved = await resolver.resolve(
+      principal,
+      name,
+      environment === undefined ? {} : { environment },
+    );
     if (!resolved.ok) return resolved;
     if (!(await isExposed(resolved.entry)))
       return { ok: false as const, code: 'agent_not_found', message: `Agent not found: ${name}` };
@@ -177,6 +193,7 @@ export const createA2aApp = (options: A2aAppOptions) => {
         service: entry.id,
         ...(models.length === 1 ? { model: models[0] } : {}),
         ...(entry.version === undefined ? {} : { serviceVersion: entry.version }),
+        ...(entry.environment === undefined ? {} : { environment: entry.environment }),
       },
     };
   };
@@ -186,6 +203,7 @@ export const createA2aApp = (options: A2aAppOptions) => {
     'genai-task': task,
     ...(models.length === 1 && models[0] ? { 'genai-model': models[0] } : {}),
     ...(entry.version === undefined ? {} : { 'genai-service-version': String(entry.version) }),
+    ...(entry.environment === undefined ? {} : { 'genai-environment': entry.environment }),
   });
 
   const json = (c: Context, body: RpcBody, status = 200, headers: Record<string, string> = {}) =>
@@ -266,7 +284,8 @@ export const createA2aApp = (options: A2aAppOptions) => {
   };
 
   type Started =
-    { run: Run; contextId: string; read: ReadMessage } | { error: RpcBody; status?: number };
+    | { run: Run; contextId: string; read: ReadMessage }
+    | { error: RpcBody; status?: number; headers?: Record<string, string> };
 
   const start = async (
     id: JsonRpcId,
@@ -366,9 +385,21 @@ export const createA2aApp = (options: A2aAppOptions) => {
       const run = await kernel.invoke(principal, entry.capability, input, {
         thread: contextId,
         entryPoint: 'a2a',
+        ...(entry.environment ? { environment: entry.environment } : {}),
       });
       return { run, contextId, read };
     } catch (error) {
+      const spent = quotaExhaustedProblem(error);
+      if (spent)
+        return {
+          error: rpcError(id, errorCodes.quotaExhausted, spent.title, {
+            type: spent.type,
+            status: spent.status,
+            detail: spent.detail,
+          }),
+          status: spent.status,
+          headers: { 'Retry-After': String(spent.retryAfterSeconds) },
+        };
       if (error instanceof KernelError)
         return {
           error: rpcError(id, errorCodes.internal, error.message, { code: error.code }),
@@ -389,7 +420,7 @@ export const createA2aApp = (options: A2aAppOptions) => {
     params: Record<string, unknown>,
   ) => {
     const started = await start(id, principal, entry, params);
-    if ('error' in started) return json(c, started.error, started.status);
+    if ('error' in started) return json(c, started.error, started.status, started.headers);
     const { run, contextId, read } = started;
     const configuration = isRecord(params.configuration) ? params.configuration : {};
     const history = userHistory(read, run.task, contextId, configuration.historyLength);
@@ -524,7 +555,7 @@ export const createA2aApp = (options: A2aAppOptions) => {
     params: Record<string, unknown>,
   ) => {
     const started = await start(id, principal, entry, params);
-    if ('error' in started) return json(c, started.error, started.status);
+    if ('error' in started) return json(c, started.error, started.status, started.headers);
     const { run, contextId, read } = started;
     const configuration = isRecord(params.configuration) ? params.configuration : {};
     return sse(c, async (write) => {
@@ -719,15 +750,21 @@ export const createA2aApp = (options: A2aAppOptions) => {
   app.get(`${path}/:agent/.well-known/agent-card.json`, card);
   app.get(`${path}/:agent`, card);
 
+  app.use(
+    `${path}/:agent`,
+    bodyLimit({
+      maxSize: maxBody,
+      onError: (c) =>
+        json(
+          c,
+          rpcError(null, errorCodes.invalidRequest, `Request body exceeds ${maxBody} bytes`),
+          413,
+        ),
+    }),
+  );
   app.post(`${path}/:agent`, async (c) => {
     const principal = principalOf(c);
     const text = await c.req.text();
-    if (Buffer.byteLength(text) > maxBody)
-      return json(
-        c,
-        rpcError(null, errorCodes.invalidRequest, `Request body exceeds ${maxBody} bytes`),
-        413,
-      );
     let body: unknown;
     try {
       body = JSON.parse(text);
@@ -752,12 +789,16 @@ export const createA2aApp = (options: A2aAppOptions) => {
       version?.trim() === legacyVersion || (!version?.trim() && legacyMethod !== undefined);
     if (legacy) c.set(legacyDialect, true as never);
     const method = legacy ? (legacyMethod ?? '') : body.method;
-    const found = await agentFor(principal, c.req.param('agent') ?? '');
+    const found = await agentFor(
+      principal,
+      c.req.param('agent') ?? '',
+      c.req.header('genai-environment'),
+    );
     if (!found.ok)
       return json(
         c,
         rpcError(id, errorCodes.invalidParams, found.message, { code: found.code }),
-        found.code === 'service_paused' ? 503 : 404,
+        resolveStatus[found.code] ?? 404,
       );
     const entry = found.entry;
     const raw = isRecord(body.params) ? body.params : {};

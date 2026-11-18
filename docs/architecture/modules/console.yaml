@@ -14,6 +14,8 @@ description: Operators sign in with Entra ID and work across tenants only throug
 responsibilities:
   - Tenant and shared-service administration
   - Model classification by residency and capability
+  - New kinds of model API from descriptors (upload, try with made-up data, record fixtures from
+    tries, approve or withdraw), kind maturity and processor records (ADR 0047)
   - Operations and support sessions
 files:
   - apps/console/src/App.tsx

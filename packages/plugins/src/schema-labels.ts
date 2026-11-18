@@ -32,6 +32,7 @@ const nb = {
   searchPath: { label: 'Sti for søk' },
   sendDimensions: { label: 'Send antall dimensjoner' },
   defaultMaxTokens: { label: 'Lengste svar som standard (tokens)' },
+  api: { label: 'Modell-API' },
   tokenParam: { label: 'Parameter for lengste svar' },
   maxInputLength: { label: 'Lengste tekst inn (tegn)' },
 };
@@ -73,6 +74,7 @@ const en: Record<
   searchPath: { label: 'Search path' },
   sendDimensions: { label: 'Send the number of dimensions' },
   defaultMaxTokens: { label: 'Default longest answer (tokens)' },
+  api: { label: 'Model API' },
   tokenParam: { label: 'Parameter for the longest answer' },
   maxInputLength: { label: 'Longest input text (characters)' },
 };

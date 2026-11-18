@@ -1,0 +1,22 @@
+{"tests": [
+ {"id": "kudos-103411-p1-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Postboks 1010 Nordre Ål", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-103411-p1-t02", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "2605 LILLEHAMMER", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-103411-p1-t03", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "7. juli 2023", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-103411-p1-t04", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"before": {"text": "Vår ref", "max_diffs": 0}, "after": {"text": "22/2452-", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-103411-p1-t05", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"content": {"text": "Statsbudsjettet 2023 - Supplerende tildelingsbrev nr. 10 - delegering av fullmakter", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-103411-p1-t06", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "I dette supplerende tildelingsbrevet delegerer departementet fullmakter fra Stortinget", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-103411-p1-t07", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"before": {"text": "og Haugalandspakken i juni 2023", "max_diffs": 1}, "after": {"text": "Vi viser til Prop. 113 S (2022-2023)", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-103411-p1-t08", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "saken 9. juni 2023, jf. Innst. 481 S (2022-2023)", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-103411-p1-t09", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "bompenger for Miljøpakke Trondheim i Trøndelag ut 2033, og innføre miljødifferensierte takster", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-103411-p1-t10", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"before": {"text": "fastsetter nærmere regler for innkrevingsperioden", "max_diffs": 1}, "after": {"text": "om Revidert finansieringsopplegg på Haugalandet", "max_diffs": 1}}, "settings": {}}
+]}

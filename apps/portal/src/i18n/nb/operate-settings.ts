@@ -20,6 +20,60 @@ const settings = defineNamespace({
   savedFlash: '{label} er lagret ({what}). Endringen er logget.',
   loading: 'Henter innstillingene',
   heading: 'Innstillinger',
+  tenantTabsLabel: 'Innstillinger',
+  tabCommon: 'Vanlige',
+  loadFailedNoDefaults:
+    'Tjenestene bruker fortsatt det dere har lagret. Vi viser ikke standardverdiene i stedet, for de ville sett ut som deres.',
+  tabAll: 'Alle innstillinger',
+  allIntro:
+    'Hver innstilling med nøkkel og hvor verdien kommer fra. De vanligste endrer eierne under Vanlige.',
+  transferHeading: 'Eksporter og importer',
+  leaveAsk: 'Du har endringer som ikke er lagret. Vil du forlate siden uten å lagre?',
+  leaveGo: 'Forlat uten å lagre',
+  leaveStay: 'Bli her',
+  commonAnswers: 'Språk og svar',
+  commonLanguage: 'Målform i svar',
+  commonLanguageHelp: 'Svar på samme målform som spørsmålet, eller alltid bokmål eller nynorsk.',
+  commonData: 'Data og lagring',
+  commonRetention: 'Hvor lenge spørsmål og svar lagres',
+  commonRetentionHelp:
+    'Gjelder spørsmål, svar og dokumenter etter at en kjøring er ferdig. Tjenester med høy risiko beholder dem minst 183 dager, begrenset risiko minst 30.',
+  commonRetentionTransient: '7 dager',
+  commonRetentionStandard: '90 dager (standard)',
+  commonRetentionCase: '1 år',
+  commonDataHandling: 'Slik behandles data',
+  commonQuota: 'Kvote',
+  commonQuotaValue: '{tokens} tokens per måned. Digdir setter kvoten.',
+  commonSeeUsage: 'Se forbruket i Statistikk',
+  commonSetByDigdir: 'Digdir setter denne for alle virksomheter.',
+  commonAllLink:
+    'Alle innstillingene som tabell med nøkler og arv ligger under <all>Alle innstillinger</all>.',
+  commonReadOnly: 'Du kan se innstillingene, men ikke endre dem.',
+  commonSaved: 'Lagret kl. {time}.',
+  commonSeeLog: 'Se endringen i Logg',
+  commonUnsaved: 'Du har endringer som ikke er lagret',
+  commonReason: 'Hvorfor endrer du dette?',
+  commonReasonHelp: 'Vises i loggen sammen med endringen.',
+  commonSave: 'Lagre endringene',
+  commonDiscard: 'Forkast',
+  commonRefused:
+    'Endringene ble ikke lagret: du mangler «{right}». Det du har valgt, står fortsatt.',
+  commonFailed: 'Prøv igjen om litt.',
+  commonFailedWith: 'Endringene ble ikke lagret. {why} Det du har valgt, står fortsatt.',
+  commonConflict:
+    'Noen andre lagret en endring etter at du åpnet siden. Det du har valgt, står fortsatt.',
+  commonConflictValue: '{label} er nå «{value}».',
+  commonSaveMineAnyway: 'Lagre mine endringer likevel',
+  commonUseTheirs: 'Bruk verdien som er lagret',
+  panelValueHere: 'Verdien her',
+  panelSecretNotHere:
+    'Hemmelige verdier kan ikke settes her ennå. API-et tar ikke imot en hemmelighet virksomheten lagrer selv i en innstilling, så vi lar deg ikke tro at den er lagret.',
+  panelNoRight: 'Du kan se verdien, men ikke endre den. {need}',
+  panelRefused: 'Endringen ble ikke lagret: du mangler «{right}».',
+  panelConflict:
+    'Noen andre lagret denne innstillingen etter at du åpnet den. Nå lagret: {value}. Det du skrev, står fortsatt.',
+  panelSaveMineAnyway: 'Lagre min verdi likevel',
+  conflictBy: 'Lagret av {who} {when}: «{reason}».',
 
   layerP: 'Plattformstandard',
   layerV: 'Virksomhet',
@@ -141,7 +195,6 @@ const settings = defineNamespace({
 
   panelToday: 'I dag kl. {time}',
   panelPreviewReason: 'Forhåndsvisning',
-  panelStale: 'Innstillingene ble endret et annet sted. Last inn på nytt og prøv igjen.',
   panelPreviewFailed: 'Kunne ikke vise hva endringen gjør. Prøv igjen om litt.',
   panelSaveFailed: 'Endringen ble ikke lagret. Prøv igjen om litt.',
   panelNewVersion: 'Ny versjon av tjenesten ({version})',
@@ -177,6 +230,9 @@ const settings = defineNamespace({
   panelPinnedLayer: 'Festet',
   panelNewValue: 'Ny verdi her',
   panelCannotHere: 'Kan ikke settes på dette laget',
+  panelSetByDigdir: 'Digdir setter denne grensen',
+  panelSetByDigdirHelp:
+    'Grensen beskytter kostnaden og kapasiteten på plattformen. Ta kontakt med Digdir hvis dere trenger en annen verdi.',
   panelSecretStored: 'Lagret i Key Vault. Sist erstattet 2. oktober av Jonas Lie.',
   panelSecretNotSet: 'Ikke satt',
   panelNewSecret: 'Ny verdi',
@@ -191,7 +247,6 @@ const settings = defineNamespace({
   panelBefore: 'Før',
   panelAfter: 'Etter',
   panelReasonHelp: 'Lagres i revisjonsloggen.',
-  panelReload: 'Last inn på nytt',
   panelSaveDraft: 'Legg i utkastet',
   panelNoDatasetApi: 'Innstillinger per datasett kan ikke lagres gjennom API-et ennå.',
   panelDraftHint: 'Legges i utkastet til v{version}. Tas i bruk når du publiserer.',
@@ -427,8 +482,11 @@ const settingDefs = defineNamespace({
   retrieval_queryAwareBoost_label: 'Løft treff som ligner spørsmålet',
   retrieval_autoFilter_enabled_label: 'Automatisk filter',
   retrieval_autoFilter_enabled_desc:
-    'Legg til filter ut fra virksomhets- og årstall-navn i spørsmålet.',
+    'Finner virksomheter og årstall som søket nevner. En agent får dem som et hint og velger selv om den filtrerer. Andre tjenester løfter treff fra dem høyere opp uten å utelate noe.',
   retrieval_autoFilter_rules_label: 'Regler for automatisk filter',
+  retrieval_autoFilter_aliases_label: 'Andre navn på verdier',
+  retrieval_autoFilter_aliases_desc:
+    'Navn som betyr det samme som en verdi i datasettet, for eksempel en forkortelse. Hver oppføring er en gruppe navn. Når søket nevner ett av dem, gjelder det verdien slik den er lagret i datasettet.',
   retrieval_docTitle_fanout_label: 'Tekstbiter per titteltreff',
   retrieval_merge_mode_label: 'Måte å flette søkene på',
   retrieval_merge_rrfK_label: 'Utjevning ved fletting (RRF k)',
@@ -455,6 +513,8 @@ const settingDefs = defineNamespace({
   synthesis_instructions_label: 'Systemledetekst for svaret',
   synthesis_temperature_label: 'Temperatur for svaret',
   synthesis_temperature_desc: 'Tomt bruker standarden til arbeidsmåten.',
+  knowledge_nightWindow_label: 'Nattvindu for tungt arbeid',
+  knowledge_heavyThreshold_label: 'Grense for tungt arbeid (tekstbiter)',
   knowledge_switchRetentionDays_label: 'Dager forrige søkemotor beholdes',
   assistant_enabled_label: 'Byggeassistenten er på',
   assistant_dailyTokens_label: 'Tokens per dag for assistenten',
@@ -485,7 +545,8 @@ const settingDefs = defineNamespace({
   planner_prompt_desc:
     'Ledetekst som erstatter den innebygde for planleggeren. Tomt bruker den innebygde.',
   retrieval_queryAwareBoost_desc: 'Gi treff som deler ord med spørsmålet høyere plass.',
-  retrieval_autoFilter_rules_desc: 'Reglene for automatisk filter, i den rekkefølgen de prøves.',
+  retrieval_autoFilter_rules_desc:
+    'Reglene for automatisk filter, i den rekkefølgen de prøves. Uten agent filtrerer de søket, en agent får dem som et hint.',
   retrieval_docTitle_fanout_desc: 'Tekstbiter som leses fra hvert dokument som treffer på tittel.',
   retrieval_merge_mode_desc: 'Hvordan treffene fra de ulike søkemåtene flettes sammen.',
   retrieval_merge_rrfK_desc: 'Konstant som jevner ut rangeringen ved fletting (RRF).',
@@ -504,6 +565,10 @@ const settingDefs = defineNamespace({
     'Ledetekst som erstatter den innebygde for å lage svaret. Tomt bruker den innebygde.',
   synthesis_instructions_desc:
     'Systemledetekst som erstatter den innebygde for modellen som svarer. Tomt bruker den innebygde.',
+  knowledge_nightWindow_desc:
+    'Tidsrom (norsk tid) der indeksbygg, store innlesinger og VACUUM kjøres, skrevet som 01:00-06:00, eller «always» for å la dem kjøre når som helst, som før lansering.',
+  knowledge_heavyThreshold_desc:
+    'Antall tekstbiter et indeksbygg, en innlesing eller en VACUUM må gå over for å vente til nattvinduet.',
   knowledge_switchRetentionDays_desc:
     'Dager den forrige kopien i søkemotoren beholdes etter at et datasett bytter søkemotor.',
   assistant_enabled_desc: 'Tilby byggeassistenten i byggeren for tjenester.',

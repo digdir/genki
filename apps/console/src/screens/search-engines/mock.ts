@@ -278,12 +278,15 @@ const datasetCounts: Record<string, number> = {
   'opensearch-sev': 4,
 };
 
-const datasetsOn: Record<string, { tenant: string; id: string; name: string }[]> = {
+const datasetsOn: Record<
+  string,
+  { tenant: string; id: string; name: string; pipelines: number }[]
+> = {
   'typesense-digdir': [
-    { tenant: '991825827', id: 'kudos', name: 'Kudos' },
-    { tenant: '999888777', id: 'regelverk', name: 'Regelverk' },
+    { tenant: '991825827', id: 'kudos', name: 'Kudos', pipelines: 1 },
+    { tenant: '999888777', id: 'regelverk', name: 'Regelverk', pipelines: 2 },
   ],
-  'opensearch-sev': [{ tenant: '974222333', id: 'saksarkiv', name: 'Saksarkiv' }],
+  'opensearch-sev': [{ tenant: '974222333', id: 'saksarkiv', name: 'Saksarkiv', pipelines: 0 }],
 };
 
 const viewOf = (id: string, spec: Record<string, unknown>, version = 1): KnowledgeEndpoint => {
@@ -302,6 +305,12 @@ const viewOf = (id: string, spec: Record<string, unknown>, version = 1): Knowled
     writeKeyRequired: engine?.engine === 'typesense',
     capabilities: engine ? capabilitiesOf(engine) : { supported: [], missing: [] },
     datasetCount,
+    datasets: (datasetsOn[id] ?? []).map((d) => ({
+      id: `${d.tenant}/${d.id}`,
+      scope: d.tenant,
+      name: d.name,
+      pipelines: d.pipelines,
+    })),
     status: datasetCount ? 'ok' : 'unused',
     shared: spec.sharing !== undefined,
     version,

@@ -14,6 +14,9 @@ const actionKeys: Record<string, PlainKey> = {
   'platform.apikeys.create': 'changes.apikeyCreate',
   'platform.apikeys.revoke': 'changes.apikeyRevoke',
   'platform.hook.save': 'changes.hookSave',
+  'platform.tracing.connection.save': 'changes.traceConnectionSave',
+  'platform.tracing.connection.remove': 'changes.traceConnectionRemove',
+  'platform.tracing.connection.residency': 'changes.traceConnectionResidency',
   'platform.hook.delete': 'changes.hookDelete',
   'platform.hook.publish-check': 'changes.hookPublishCheck',
   'platform.hook.feedback': 'changes.hookFeedback',
@@ -25,11 +28,22 @@ const actionKeys: Record<string, PlainKey> = {
   'platform.block.settings': 'changes.blockSettings',
   'platform.catalog.delete': 'changes.catalogDelete',
   'platform.catalog.publish': 'changes.catalogPublish',
+  'platform.provider-object.incident': 'changes.providerObjectIncident',
   'platform.batch-run.start': 'changes.batchRunStart',
   'platform.batch-run.cancel': 'changes.batchRunCancel',
   'platform.batch-run.retry': 'changes.batchRunRetry',
   'platform.clients.webhook-test': 'changes.clientsWebhookTest',
   'platform.quality.matrix.run': 'changes.qualityMatrixRun',
+  'platform.operations.try': 'changes.operationTry',
+  'platform.operations.maturity': 'changes.operationMaturity',
+  'platform.demo.save': 'changes.demoSave',
+  'platform.demo.recording.start': 'changes.demoRecordingStart',
+  'platform.demo.recording.finish': 'changes.demoRecordingFinish',
+  'platform.operations.processor-record': 'changes.processorRecord',
+  'platform.operations.descriptor-upload': 'changes.descriptorUpload',
+  'platform.operations.descriptor-status': 'changes.descriptorStatus',
+  'platform.operations.descriptor-withdraw': 'changes.descriptorWithdraw',
+  'platform.operations.descriptor-fixture': 'changes.descriptorFixture',
   'platform.task.review.approve': 'changes.taskReviewApprove',
   'platform.task.review.edit': 'changes.taskReviewEdit',
   'platform.clients.remove': 'changes.clientsRemove',
@@ -38,10 +52,13 @@ const actionKeys: Record<string, PlainKey> = {
   'platform.dataset.enrichment.revert': 'changes.datasetEnrichmentRevert',
   'platform.dataset.upload': 'changes.datasetUpload',
   'platform.dataset.upload.delete': 'changes.datasetUploadDelete',
+  'platform.dataset.delete': 'changes.datasetDelete',
   'platform.default.set': 'changes.defaultSet',
   'platform.engine-switch.cancel': 'changes.engineSwitchCancel',
+  'platform.engine-switch.activate': 'changes.engineSwitchActivate',
   'platform.engine-switch.retry': 'changes.engineSwitchRetry',
   'platform.engine-switch.start': 'changes.engineSwitchStart',
+  'platform.engine-switch.readmit': 'changes.engineSwitchReadmit',
   'platform.eval.run': 'changes.evalRun',
   'platform.gate.delete': 'changes.gateDelete',
   'platform.gate.save': 'changes.gateSave',
@@ -49,6 +66,8 @@ const actionKeys: Record<string, PlainKey> = {
   'platform.guardrail-rule.save': 'changes.guardrailRuleSave',
   'platform.improvement.decide': 'changes.improvementDecide',
   'platform.judge.label': 'changes.judgeLabel',
+  'platform.judge.label.accept': 'changes.judgeLabelAccept',
+  'platform.judge.label.reject': 'changes.judgeLabelReject',
   'platform.keypolicy.attach': 'changes.keypolicyAttach',
   'platform.keypolicy.delete': 'changes.keypolicyDelete',
   'platform.keypolicy.save': 'changes.keypolicySave',
@@ -59,6 +78,9 @@ const actionKeys: Record<string, PlainKey> = {
   'platform.onboarding.decide': 'changes.onboardingDecide',
   'platform.onboarding.request': 'changes.onboardingRequest',
   'platform.pipeline.cancel': 'changes.pipelineCancel',
+  'platform.jobs.redrive': 'changes.jobsRedrive',
+  'platform.jobs.readmit': 'changes.jobsReadmit',
+  'platform.knowledge.fields': 'changes.knowledgeFields',
   'platform.pipeline.delete': 'changes.pipelineDelete',
   'platform.pipeline.execute': 'changes.pipelineExecute',
   'platform.pipeline.save': 'changes.pipelineSave',
@@ -86,11 +108,16 @@ const actionKeys: Record<string, PlainKey> = {
   'platform.proposal.decide': 'changes.proposalDecide',
   'platform.proposal.status': 'changes.proposalStatus',
   'platform.secrets.set': 'changes.secretsSet',
+  'platform.secrets.hosts': 'changes.secretsHosts',
   'platform.secrets.delete': 'changes.secretsDelete',
   'platform.service.draft.delete': 'changes.serviceDraftDelete',
   'platform.service.draft.rebase': 'changes.serviceDraftRebase',
   'platform.service.draft.save': 'changes.serviceDraftSave',
   'platform.service.lifecycle': 'changes.serviceLifecycle',
+  'platform.service.environments.add': 'changes.environmentAdd',
+  'platform.service.environments.remove': 'changes.environmentRemove',
+  'platform.service.environments.promote': 'changes.environmentPromote',
+  'platform.service.environments.rollback': 'changes.environmentRollback',
   'platform.service.risk.confirm': 'changes.serviceRiskConfirm',
   'platform.service.share': 'changes.serviceShare',
   'platform.skill.attachment.upload': 'changes.skillAttachmentUpload',
@@ -117,31 +144,153 @@ const actionKeys: Record<string, PlainKey> = {
   'platform.tools.register': 'changes.toolsRegister',
   'platform.tools.sync': 'changes.toolsSync',
   'platform.trigger.pause': 'changes.triggerPause',
+  'platform.incident.resolve': 'changes.incidentResolve',
+  'platform.incident.save': 'changes.incidentSave',
+  'platform.quota.decide': 'changes.quotaDecide',
+  'platform.quota.request': 'changes.quotaRequest',
+  'platform.run.cancel': 'changes.taskCancel',
 };
 
 export const auditActionsWithLabels = Object.keys(actionKeys);
 
 const hiddenTargetKinds = new Set(['audit', 'support']);
 
-const targetText = (entry: AuditRow, t: T) => {
+const keyIssuer = ':urn:genai:legacy-api-key:';
+
+export type ChangeArea = 'services' | 'datasets' | 'access' | 'settings';
+
+export const changeAreas: readonly ChangeArea[] = ['services', 'datasets', 'access', 'settings'];
+
+const areaPrefixes: [string, ChangeArea][] = [
+  ['platform.dataset.', 'datasets'],
+  ['platform.pipeline.', 'datasets'],
+  ['platform.engine-switch.', 'datasets'],
+  ['platform.jobs.', 'datasets'],
+  ['platform.knowledge.', 'datasets'],
+  ['platform.support.', 'access'],
+  ['platform.keypolicy.', 'access'],
+  ['platform.maskinporten-client.', 'access'],
+  ['platform.clients.', 'access'],
+  ['platform.setting.', 'settings'],
+  ['platform.quota.', 'settings'],
+  ['platform.incident.', 'settings'],
+  ['platform.default.', 'settings'],
+  ['platform.tracing.', 'settings'],
+  ['platform.secrets.', 'settings'],
+  ['platform.private-networks.', 'settings'],
+  ['platform.tenant.', 'settings'],
+];
+
+export const areaOf = (action: string): ChangeArea =>
+  areaPrefixes.find(([prefix]) => action.startsWith(prefix))?.[1] ?? 'services';
+
+export const serviceOfTarget = (target: string) =>
+  /^Service:([^@/]+)@\d+$/.exec(target)?.[1] ??
+  /^service:\d{9}\/([^/]+)$/.exec(target)?.[1] ??
+  /^service:([^/]+)\/risk$/.exec(target)?.[1] ??
+  /^service-draft:(.+)$/.exec(target)?.[1];
+
+export const keyOfActor = (actor: string) => {
+  const at = actor.indexOf(keyIssuer);
+  return at < 0 ? undefined : actor.slice(at + keyIssuer.length);
+};
+
+export interface ChangeTarget {
+  text: string;
+  service?: string;
+}
+
+const targetOf = (
+  entry: AuditRow,
+  t: T,
+  serviceName: (id: string) => string | undefined,
+): ChangeTarget | undefined => {
   const target = entry.target;
-  if (!target || target === entry.action) return '';
+  if (!target || target === entry.action) return undefined;
   const typed = /^([A-Za-z-]+):(.+)$/.exec(target);
-  if (!typed?.[1] || !typed[2]) return target;
-  if (hiddenTargetKinds.has(typed[1].toLowerCase())) return '';
+  if (!typed?.[1] || !typed[2]) return undefined;
+  if (hiddenTargetKinds.has(typed[1].toLowerCase())) return undefined;
+  const version = /@(\d+)$/.exec(target)?.[1];
+  const service = serviceOfTarget(target);
+  if (service) {
+    const name = serviceName(service) ?? service;
+    return {
+      text: version ? t('changes.targetVersion', { name, version }) : name,
+      service,
+    };
+  }
   const id = typed[2].replace(/^\d{9}\//, '');
   const versioned = /^(.+)@(\d+)$/.exec(id);
-  return versioned?.[1] && versioned[2]
-    ? t('changes.targetVersion', { name: versioned[1], version: versioned[2] })
-    : id;
+  return {
+    text:
+      versioned?.[1] && versioned[2]
+        ? t('changes.targetVersion', { name: versioned[1], version: versioned[2] })
+        : id,
+  };
+};
+
+export const changeParts = (
+  entry: AuditRow,
+  t: T = nbT,
+  serviceName: (id: string) => string | undefined = () => undefined,
+) => {
+  const key = actionKeys[entry.action];
+  const target = targetOf(entry, t, serviceName);
+  const version = /^Service:[^@]+@(\d+)$/.exec(entry.target)?.[1];
+  const publishedVersion =
+    entry.action === 'platform.service.publish' && target?.service ? version : undefined;
+  const label = publishedVersion
+    ? t('changes.publishVersion', { version: publishedVersion })
+    : key
+      ? t(key)
+      : t('changes.otherAction');
+  const shown =
+    publishedVersion && target?.service
+      ? { ...target, text: serviceName(target.service) ?? target.service }
+      : target;
+  return {
+    label,
+    target: shown,
+    suffix: entry.outcome === 'rejected' ? t('changes.rejectedSuffix') : '',
+  };
 };
 
 export const changeText = (entry: AuditRow, t: T = nbT) => {
-  const key = actionKeys[entry.action];
-  const label = key ? t(key) : t('changes.otherAction');
-  const target = targetText(entry, t);
-  return target ? `${label} ${target}` : label;
+  const { label, target, suffix } = changeParts(entry, t);
+  return `${target ? `${label} ${target.text}` : label}${suffix}`;
 };
+
+export const actorOf = (
+  entry: AuditRow,
+  t: T,
+  keyName: (id: string) => string | undefined = () => undefined,
+) => {
+  const key = keyOfActor(entry.actor);
+  if (key !== undefined) {
+    const name = keyName(key);
+    return name ? t('logRuns.actorApiKey', { name }) : t('logRuns.actorApiKeyUnnamed');
+  }
+  if (entry.actor.startsWith('operator:')) return t('common.actorOperator');
+  if (/^(platform|worker):/.test(entry.actor)) return t('common.actorPlatform');
+  if (entry.actor.startsWith('employee:')) return entry.actorName ?? t('common.actorEmployee');
+  return t('logRuns.actorSystem');
+};
+
+const sameMinutes = 10 * 60_000;
+
+export const collapseRepeats = (entries: AuditRow[]) =>
+  entries.filter((e, i) => {
+    const before = entries[i - 1];
+    return !(
+      before &&
+      before.actor === e.actor &&
+      before.action === e.action &&
+      before.target === e.target &&
+      before.outcome === e.outcome &&
+      before.reason === e.reason &&
+      Math.abs(Date.parse(before.at) - Date.parse(e.at)) <= sameMinutes
+    );
+  });
 
 export const newestFirst = (entries: AuditRow[]) =>
   [...entries].sort((a, b) => b.at.localeCompare(a.at));

@@ -13,15 +13,10 @@ import { PLATFORM_RIGHTS, trustedEntraScope } from '@genai/identity';
 import { createAdmin } from './admin.js';
 import { restartMessage } from './background-lease.js';
 import { batchRunsModule, createBatchRunsModule } from './batch-run-routes.js';
-import {
-  batchEstimateKind,
-  batchItemKind,
-  batchRunKind,
-  notFoundOf,
-  type Range,
-} from './batch-runs.js';
+import { batchEstimateKind, batchItemKind, batchRunKind, type Range } from './batch-runs.js';
 import { resolveCatalog } from './catalogs.js';
 import { localeMiddleware } from './i18n/index.js';
+import { notFoundOf } from './not-found.js';
 import { createPlatform, platformModules } from './composition.js';
 import { appendVersion, InMemoryConfigEntryStore } from './config-store.js';
 import { serviceLifecycleKind } from './service-lifecycle.js';
@@ -843,9 +838,9 @@ describe('batch runs over a document set', () => {
     });
   });
 
-  it('links a retired numeric Kudos document and its sources to a Kudos title search in the run and its exports', async () => {
+  it('links an old numeric Kudos document and its sources to its Kudos page by UUID in the run and its exports', async () => {
     const env = await boot();
-    const search = 'https://kudos.dfo.no/dokumenter?query=Tildelingsbrev%202021';
+    const page = 'https://kudos.dfo.no/dokument/40adee75-df78-4d8a-8587-21761020d3f9';
     const estimate = await estimateFor(env, { dataset: 'digdir/kudos', documents: ['330296'] });
     const run = await runTo(env, { estimate: estimate.id, maxCostNok: 5 });
 
@@ -855,12 +850,19 @@ describe('batch runs over a document set', () => {
 
     expect((detail.body.items as { document: unknown }[])[0]?.document).toMatchObject({
       id: '330296',
-      url: search,
+      url: page,
     });
-    expect(String(csv.body)).toContain(`330296;Tildelingsbrev 2021;${search};digdir/kudos`);
+    expect((detail.body.items as { sources: unknown[] }[])[0]?.sources).toContainEqual(
+      expect.objectContaining({ document: '330296', url: page }),
+    );
+    expect(String(csv.body)).toContain(`330296;Tildelingsbrev 2021;${page};digdir/kudos`);
+    expect(String(csv.body)).toContain(`;Tildelingsbrev 2021 ${page};`);
     expect((json.body.items as { document: unknown }[])[0]?.document).toMatchObject({
-      url: search,
+      url: page,
     });
+    expect((json.body.items as { sources: unknown[] }[])[0]?.sources).toContainEqual(
+      expect.objectContaining({ document: '330296', url: page }),
+    );
   });
 
   it('runs only the named documents when ids are given', async () => {
@@ -925,6 +927,40 @@ describe('batch runs over a document set', () => {
       'platform.batch-run.cancel',
     ]);
     expect(audit[0]).toMatchObject({ outcome: 'applied', reason: 'Oppsummerer årsrapportene' });
+  });
+
+  it('shows tokens and cost of a batch run only with view-usage or to the person who started it', async () => {
+    const env = await boot();
+    const estimate = await estimateFor(env);
+    const run = await runTo(env, { estimate: estimate.id, maxCostNok: 5 });
+
+    const listed = (await env.send('GET', base, 'erik')).body.data as Record<string, unknown>[];
+    const detail = (await env.send('GET', `${base}/${String(run.id)}`, 'erik')).body;
+    const json = (await env.send('GET', `${base}/${String(run.id)}/export?format=json`, 'erik'))
+      .body;
+    const csv = String(
+      (await env.send('GET', `${base}/${String(run.id)}/export?format=csv`, 'erik')).body,
+    );
+    const own = (await env.send('GET', `${base}/${String(run.id)}`, 'kari')).body;
+
+    for (const field of ['tokens', 'costMicroNok', 'cap', 'perItem']) {
+      expect(listed[0]).not.toHaveProperty(field);
+      expect(detail).not.toHaveProperty(field);
+    }
+    for (const item of detail.items as Record<string, unknown>[]) {
+      expect(item).not.toHaveProperty('tokens');
+      expect(item).not.toHaveProperty('costMicroNok');
+    }
+    for (const item of json.items as Record<string, unknown>[])
+      expect(item).not.toHaveProperty('costMicroNok');
+    const row =
+      csv
+        .replace(/^\uFEFF/, '')
+        .split('\r\n')[2]
+        ?.split(';') ?? [];
+    expect(row.slice(13, 16)).toEqual(['', '', '']);
+    expect(own).toHaveProperty('costMicroNok');
+    expect(own).toHaveProperty('tokens');
   });
 
   it('keeps runs to their tenant and needs the right to manage services to start one', async () => {
@@ -1107,6 +1143,41 @@ describe('a batch run keeps the version it was estimated on', () => {
   });
 });
 
+describe('a batch run of a service with environments', () => {
+  it('runs on the version prod runs, not a newer one only test runs', async () => {
+    const env = await boot();
+    const added = await env.send(
+      'POST',
+      `/tenants/${tenant}/services/oppsummering/environments`,
+      'kari',
+      {
+        name: 'test',
+      },
+    );
+    expect(added.status).toBe(201);
+    const republished = await env.platform.definitions.publish(
+      {
+        ...service,
+        spec: {
+          ...service.spec,
+          strategy: { ...service.spec.strategy, config: { instructions: 'Ny versjon.' } },
+        },
+      },
+      'kari',
+      'andre',
+    );
+    expect(republished.ok).toBe(true);
+    env.state.broken = false;
+
+    const estimate = await estimateFor(env);
+    const run = await runTo(env, { estimate: estimate.id, maxCostNok: 5 });
+
+    expect(estimate).toMatchObject({ version: 1 });
+    expect(run).toMatchObject({ version: 1 });
+    expect(env.state.users.some((u) => u.includes('Ny versjon.'))).toBe(false);
+  });
+});
+
 describe('batch runs of a paused or archived service', () => {
   const setState = (store: InMemoryConfigEntryStore, state: 'paused' | 'archived' | 'active') =>
     appendVersion(store, {
@@ -1247,7 +1318,9 @@ describe('batch runs after a restart', () => {
 describe('approval above the per-job limit', () => {
   it('says the estimate needs approval when it is above the tenant limit, and refuses to start without a reason', async () => {
     const env = await boot();
-    expect(env.platform.settings.setTenant(tenant, 'batch.approvalLimitNok', 0.5).ok).toBe(true);
+    expect(
+      env.platform.settings.setTenant(tenant, 'batch.approvalLimitNok', 0.5, 'operator').ok,
+    ).toBe(true);
     const estimate = await estimateFor(env);
 
     expect(estimate.approval).toEqual({ limitNok: 0.5, required: true });
@@ -1473,7 +1546,7 @@ describe('a run stored by an earlier version of the platform', () => {
     });
     return boot({ store });
   };
-  const search = 'https://kudos.dfo.no/dokumenter?query=Tildelingsbrev%202021';
+  const page = 'https://kudos.dfo.no/dokument/40adee75-df78-4d8a-8587-21761020d3f9';
 
   it('exports every row with its document link and each source once', async () => {
     const env = await legacy();
@@ -1481,8 +1554,8 @@ describe('a run stored by an earlier version of the platform', () => {
     const csv = String((await env.send('GET', `${base}/gammel/export?format=csv`)).body);
 
     const row = csv.split('\r\n').find((l) => l.startsWith('1;')) ?? '';
-    expect(row).toContain(`330296;Tildelingsbrev 2021;${search};digdir/kudos;Fullført`);
-    expect(row).toContain(`;Tildelingsbrev 2021 ${search};oppsummering;`);
+    expect(row).toContain(`330296;Tildelingsbrev 2021;${page};digdir/kudos;Fullført`);
+    expect(row).toContain(`;Tildelingsbrev 2021 ${page};oppsummering;`);
     expect(row.split('Tildelingsbrev 2021').length - 1).toBe(2);
   });
 
@@ -1579,7 +1652,9 @@ describe('a batch run within the monthly token quota', () => {
     env.state.broken = false;
     const estimate = await estimateFor(env);
     await runTo(env, { estimate: estimate.id, maxCostNok: 5 });
-    expect(env.platform.settings.setTenant(tenant, 'usage.monthlyTokens', 100).ok).toBe(true);
+    expect(env.platform.settings.setTenant(tenant, 'usage.monthlyTokens', 100, 'operator').ok).toBe(
+      true,
+    );
 
     const next = await estimateFor(env);
     const refused = await env.send('POST', base, 'kari', { estimate: next.id, maxCostNok: 5 });
@@ -1596,7 +1671,12 @@ describe('a batch run within the monthly token quota', () => {
     const reservation = perItem.inputTokens.high + perItem.outputTokens.high;
     const used = env.state.bodies.length * 120;
     expect(
-      env.platform.settings.setTenant(tenant, 'usage.monthlyTokens', used + reservation + 60).ok,
+      env.platform.settings.setTenant(
+        tenant,
+        'usage.monthlyTokens',
+        used + reservation + 60,
+        'operator',
+      ).ok,
     ).toBe(true);
 
     const run = await runTo(env, { estimate: estimate.id, maxCostNok: 50, concurrency: 1 });

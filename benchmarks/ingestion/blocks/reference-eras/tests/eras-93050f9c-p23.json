@@ -1,0 +1,416 @@
+{
+ "tests": [
+  {
+   "id": "eras-93050f9c-p23-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Vedlegg 3: Kostnader",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-93050f9c-p23-t02",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "caption",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Tabell 1: Forvaltningskostnader per investeringsstrategi i 2020",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-93050f9c-p23-t03",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "10,7",
+     "max_diffs": 1
+    },
+    "left_heading": {
+     "text": "hvorav unotert eiendom",
+     "max_diffs": 1
+    },
+    "top_heading": {
+     "text": "Forvaltningskostnader basert på kapital under forvaltning",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-93050f9c-p23-t04",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "50,9",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Ekstern verdipapirseleksjon",
+     "max_diffs": 0
+    },
+    "left": {
+     "text": "2,0",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-93050f9c-p23-t05",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "1,9",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Markedseksponering",
+     "max_diffs": 0
+    },
+    "right": {
+     "text": "2,5",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-93050f9c-p23-t06",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "5,1",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Totalt",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Bidrag til fondets forvaltningskostnader",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-93050f9c-p23-t07",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "14,4",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Verdipapirseleksjon",
+     "max_diffs": 0
+    },
+    "up": {
+     "text": "10,7",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-93050f9c-p23-t08",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "caption",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "hvorav unotert eiendom",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "Tabell 2: Forvaltningskostnader per investeringsstrategi 2013-2020",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-93050f9c-p23-t09",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "caption",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Tabell 2: Forvaltningskostnader per investeringsstrategi 2013-2020",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-93050f9c-p23-t10",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "0,3",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Allokering",
+     "max_diffs": 0
+    },
+    "down": {
+     "text": "2,6",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-93050f9c-p23-t11",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "44,8",
+     "max_diffs": 1
+    },
+    "left_heading": {
+     "text": "Ekstern verdipapirseleksjon",
+     "max_diffs": 1
+    },
+    "top_heading": {
+     "text": "Forvaltningskostnader basert på kapital under forvaltning",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-93050f9c-p23-t12",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "21,5",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Unotert eiendom",
+     "max_diffs": 0
+    },
+    "left": {
+     "text": "0,4",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-93050f9c-p23-t13",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "5,6",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Total",
+     "max_diffs": 0
+    },
+    "up": {
+     "text": "0,4",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-93050f9c-p23-t14",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "5,7",
+     "max_diffs": 1
+    },
+    "left_heading": {
+     "text": "Intern verdipapirseleksjon",
+     "max_diffs": 1
+    },
+    "top_heading": {
+     "text": "Forvaltningskostnader basert på kapital under forvaltning",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-93050f9c-p23-t15",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "50,9",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-93050f9c-p23-t16",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "44,8",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-93050f9c-p23-t17",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Fra 2017 er unotert eiendom en del av allokeringsstrategien.",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-93050f9c-p23-t18",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "caption",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Tabell 1: Forvaltningskostnader per investeringsstrategi i 2020",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "Fra 2017 er unotert eiendom en del av allokeringsstrategien",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

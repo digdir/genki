@@ -9,7 +9,7 @@ import { runContract } from '@genai/plugins';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parse as parseYaml } from 'yaml';
 import type { Principal } from '@genai/contracts';
-import { InMemoryDefinitionStore, SettingsRegistry } from '@genai/definitions';
+import { InMemoryDefinitionStore, SettingsRegistry, type Definition } from '@genai/definitions';
 import { defaultMessages } from '@genai/guardrails';
 import { systemPrincipal } from '@genai/jobs';
 import { apiKeyDigest } from '@genai/identity';
@@ -18,9 +18,11 @@ import { InMemoryBlobStore } from '@genai/port-blob';
 import { fakeHttp, type FakeServer } from '@genai/port-model/testing';
 import { createAdmin } from './admin.js';
 import { resolveCatalog } from './catalogs.js';
+import { confirmedAs } from './risk-confirmation.js';
 import { createPlatform, definitionSubject } from './composition.js';
 
 const tenant = '991825827';
+const other = '974761076';
 const config = join(import.meta.dirname, '..', 'config', 'local');
 const yaml = (file: string) =>
   parseYaml(readFileSync(join(config, file), 'utf8')) as Record<string, unknown>;
@@ -91,7 +93,12 @@ const boot = async () => {
     if (!body.messages)
       return {
         status: 200,
-        json: { data: [{ id: 'gpt-4o-2M-tps', model: 'gpt-4o', status: 'succeeded' }] },
+        json: {
+          data: [
+            { id: 'gpt-4o-2M-tps', model: 'gpt-4o', status: 'succeeded' },
+            { id: 'gpt-5.6-terra', model: 'gpt-5.6-terra', status: 'succeeded' },
+          ],
+        },
       };
     const format = body.response_format as { json_schema?: { schema: Schema } } | undefined;
     if (body.stream)
@@ -174,6 +181,20 @@ const boot = async () => {
       authorizedFor: [{ org: tenant }],
     } as Principal,
     ops: { kind: 'operator', issuer: 'test', subject: 'ops' },
+    per: {
+      kind: 'employee',
+      issuer: 'test',
+      subject: 'per',
+      tenant,
+      authorizedFor: [{ org: tenant, actions: ['use-services'] }],
+    } as Principal,
+    ola: {
+      kind: 'employee',
+      issuer: 'test',
+      subject: 'ola',
+      tenant: other,
+      authorizedFor: [{ org: other }],
+    } as Principal,
   };
   const platform = await createPlatform({
     catalogs: {
@@ -403,7 +424,7 @@ describe('the integrated platform', () => {
     const secret = await app.request(`/tenants/${tenant}/secrets/case-api`, {
       method: 'PUT',
       headers: as('kari', { 'change-reason': 'test av endringen' }),
-      body: JSON.stringify({ value: 'tool-token' }),
+      body: JSON.stringify({ value: 'tool-token', allowedHosts: [`http://127.0.0.1:${port}`] }),
     });
     await platform.connections.save({
       connection: {
@@ -439,6 +460,142 @@ describe('the integrated platform', () => {
     expect(platform.plugins.tools.has('saker.search_cases@1')).toBe(true);
     expect(JSON.stringify(result?.parts)).toContain('Fant 2 saker.');
     expect(headers.at(-1)).toBe('Bearer tool-token');
+  });
+
+  it('keeps the last failed sync of a tool connection, with its error, until a sync succeeds', async () => {
+    const { platform, app } = await boot();
+    let failing = true;
+    const server = createServer((req, res) => {
+      let raw = '';
+      req.on('data', (c: Buffer) => (raw += c.toString()));
+      req.on('end', () => {
+        const body = JSON.parse(raw || '{}') as Record<string, unknown>;
+        if (failing) {
+          res.writeHead(503);
+          res.end();
+          return;
+        }
+        const reply = (result: unknown) => {
+          res.writeHead(200, { 'content-type': 'application/json', 'mcp-session-id': 's1' });
+          res.end(JSON.stringify({ jsonrpc: '2.0', id: body.id, result }));
+        };
+        if (body.method === 'initialize')
+          return reply({ protocolVersion: '2025-06-18', capabilities: { tools: {} } });
+        if (body.method === 'tools/list') return reply({ tools: [] });
+        res.writeHead(202);
+        res.end();
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    servers.push(server);
+    const port = (server.address() as AddressInfo).port;
+    await platform.connections.save({
+      connection: {
+        id: 'saker',
+        tenant,
+        name: 'Saksarkiv',
+        endpoint: `http://127.0.0.1:${port}/mcp`,
+        version: '1',
+        allow: [{ host: '127.0.0.1', port }],
+      },
+      tools: [],
+      pending: [],
+    } as Parameters<typeof platform.connections.save>[0]);
+    const sync = () =>
+      app.request(`/tenants/${tenant}/tool-connections/saker/sync`, {
+        method: 'POST',
+        headers: as('kari', { 'change-reason': 'test av endringen' }),
+      });
+    const lastSync = async () =>
+      (
+        (await (
+          await app.request(`/tenants/${tenant}/tool-connections`, { headers: as('kari') })
+        ).json()) as { data: { lastSync?: { ok: boolean; code?: string } }[] }
+      ).data[0]?.lastSync;
+
+    expect((await sync()).status).toBe(400);
+    expect(await lastSync()).toEqual({
+      at: expect.any(String),
+      ok: false,
+      code: 'protocol_error',
+      message: 'verktøytjeneren svarte på en måte plattformen ikke forstår',
+    });
+    failing = false;
+    expect((await sync()).status).toBe(200);
+    expect(await lastSync()).toEqual({ at: expect.any(String), ok: true });
+  });
+
+  it('keeps no trace of a tool server error that echoes the secret, plain, base64-encoded or split, and gives every member only the code', async () => {
+    const { platform, app, admin } = await boot();
+    const secret = 'tool-token-7f3a';
+    const encoded = Buffer.from(secret).toString('base64');
+    const server = createServer((req, res) => {
+      let raw = '';
+      req.on('data', (c: Buffer) => (raw += c.toString()));
+      req.on('end', () => {
+        const body = JSON.parse(raw || '{}') as Record<string, unknown>;
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            jsonrpc: '2.0',
+            id: body.id,
+            error: {
+              code: -32000,
+              message: `refused ${req.headers.authorization}, ${encoded}, tool- token- 7f3a`,
+            },
+          }),
+        );
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    servers.push(server);
+    const port = (server.address() as AddressInfo).port;
+    await app.request(`/tenants/${tenant}/secrets/case-api`, {
+      method: 'PUT',
+      headers: as('kari', { 'change-reason': 'test av endringen' }),
+      body: JSON.stringify({ value: secret, allowedHosts: [`http://127.0.0.1:${port}`] }),
+    });
+    await platform.connections.save({
+      connection: {
+        id: 'saker',
+        tenant,
+        name: 'Saksarkiv',
+        endpoint: `http://127.0.0.1:${port}/mcp`,
+        version: '1',
+        allow: [{ host: '127.0.0.1', port }],
+        auth: { kind: 'bearer', secret: `secret://tenant/${tenant}/case-api` },
+      },
+      tools: [],
+      pending: [],
+    } as Parameters<typeof platform.connections.save>[0]);
+
+    const sync = await app.request(`/tenants/${tenant}/tool-connections/saker/sync`, {
+      method: 'POST',
+      headers: as('kari', { 'change-reason': 'test av endringen' }),
+    });
+    const listed = async (who: string) =>
+      (await app.request(`/tenants/${tenant}/tool-connections`, { headers: as(who) })).text();
+    const seen = [
+      await sync.text(),
+      JSON.stringify(await platform.connections.get(tenant, 'saker')),
+      await listed('kari'),
+      await listed('per'),
+      JSON.stringify(await admin.audit(tenant)),
+    ];
+
+    expect(sync.status).toBe(400);
+    for (const text of seen) {
+      expect(text).not.toContain('7f3a');
+      expect(text).not.toContain('token');
+      expect(text).not.toContain(encoded);
+      expect(text).not.toContain('refused');
+    }
+    expect(
+      (await admin.audit(tenant)).filter((e) => e.action === 'platform.tools.sync'),
+    ).toMatchObject([{ outcome: 'rejected' }]);
+    expect(JSON.parse(await listed('per'))).toMatchObject({
+      data: [{ lastSync: { ok: false, code: 'protocol_error' } }],
+    });
   });
 
   it('records feedback on an answer through the KA-compatible route', async () => {
@@ -571,6 +728,74 @@ describe('the integrated platform', () => {
     expect(better.ok).toBe(true);
   });
 
+  it('lets a portal test run of the draft unlock a gated publish once publishing stamps the risk confirmation', async () => {
+    const { platform, app, state } = await boot();
+    const evaluation = { testSets: ['referanse'], gates: ['nynorsk-chrf'] };
+    expect(
+      (await platform.definitions.publish(singleCall('omset', { evaluation }), 'test', 'test')).ok,
+    ).toBe(true);
+    await platform.evalStores.testSets.put({
+      apiVersion: 'genai/v1',
+      kind: 'TestSet',
+      metadata: { tenant, id: 'referanse', name: 'Referanse', version: 1 },
+      spec: {
+        service: 'omset',
+        cases: [
+          {
+            id: 'klage',
+            split: 'validation',
+            input: 'Hvis du er uenig i vedtaket, kan du klage.',
+            expected: { referenceAnswer: 'Viss du er usamd i vedtaket, kan du klage.' },
+            grounding: 'answer-only',
+          },
+        ],
+      },
+    } as Parameters<typeof platform.evalStores.testSets.put>[0]);
+    const draft = singleCall('omset', {
+      evaluation,
+      strategy: { id: 'single-call', version: 1, config: { instructions: 'Omset til nynorsk.' } },
+      riskConfirmation: { reasons: ['Ansatte får omsetjinga'], riskClass: 'limited' },
+    });
+    const publish = async () =>
+      platform.definitions.publish(
+        confirmedAs(draft as Definition, 'kari', new Date()),
+        'kari',
+        'ny instruks for nynorsk',
+      );
+    const beforeRun = await publish();
+    await app.request(`/tenants/${tenant}/services/omset/draft`, {
+      method: 'PUT',
+      headers: as('kari', { 'change-reason': 'ny instruks' }),
+      body: JSON.stringify({ definition: draft, files: {} }),
+    });
+    const testRun = async (answer: string) => {
+      state.answer = answer;
+      const started = await app.request(`/tenants/${tenant}/services/omset/eval-runs`, {
+        method: 'POST',
+        headers: as('kari'),
+        body: JSON.stringify({ testSet: 'referanse', version: 'draft' }),
+      });
+      const { id } = (await started.json()) as { id: string };
+      for (let i = 0; i < 200; i += 1) {
+        const run = (await (
+          await app.request(`/tenants/${tenant}/eval-runs/${id}`, { headers: as('kari') })
+        ).json()) as { status: string };
+        if (run.status !== 'queued' && run.status !== 'running') return run;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      throw new Error('the test run did not finish');
+    };
+
+    expect((await testRun('Noe helt annet.')).status).toBe('completed');
+    const poorRun = await publish();
+    await testRun('Viss du er usamd i vedtaket, kan du klage.');
+    const goodRun = await publish();
+
+    expect(beforeRun).toMatchObject({ ok: false, errors: [{ path: 'spec.evaluation' }] });
+    expect(poorRun).toMatchObject({ ok: false, errors: [{ path: 'spec.evaluation' }] });
+    expect(goodRun.ok).toBe(true);
+  });
+
   it('serves the portal pages: overview, usage and an API key stored by digest until revoked', async () => {
     const { platform, app } = await boot();
     await platform.definitions.publish(singleCall('pages'), 'test', 'test');
@@ -656,5 +881,101 @@ describe('the integrated platform', () => {
     expect(running.length).toBe(1);
     expect(cancelled.status).toBe(200);
     expect(refused.status).toBe(403);
+  });
+});
+
+describe('sharing a pinned older version', () => {
+  const pinnedVersionOne = async (app: Hono, id: string) => {
+    const res = await app.request('/v1/chat/completions', {
+      method: 'POST',
+      headers: as('kari', { 'GenAI-Version': '1' }),
+      body: JSON.stringify({
+        model: `${id}__default`,
+        messages: [{ role: 'user', content: 'Hei' }],
+      }),
+    });
+    expect(res.headers.get('genai-service-version')).toBe('1');
+    return `${tenant}/${id}/default@1`;
+  };
+  const ola: Principal = {
+    kind: 'employee',
+    issuer: 'test',
+    subject: 'ola',
+    tenant: other,
+    authorizedFor: [{ org: other }],
+  } as Principal;
+
+  it('a pinned older version is shared with the organisations the latest version names', async () => {
+    const { platform, app } = await boot();
+    await platform.definitions.publish(singleCall('delt', { availableTo: [other] }), 'test', 't');
+    await platform.definitions.publish(singleCall('delt'), 'test', 't');
+    await platform.definitions.publish(singleCall('ny'), 'test', 't');
+    await platform.definitions.publish(singleCall('ny', { availableTo: [other] }), 'test', 't');
+    const unshared = await pinnedVersionOne(app, 'delt');
+    const shared = await pinnedVersionOne(app, 'ny');
+
+    const seen = (await platform.kernel.describe(ola)).map((d) => d.id);
+
+    expect(seen).not.toContain(unshared);
+    expect(seen).toContain(shared);
+    await expect(platform.kernel.invoke(ola, unshared, { parts: [] })).rejects.toThrow(
+      'not available',
+    );
+  });
+
+  it('an organisation unshared from a service cannot run a pinned older version through an eval run', async () => {
+    const { platform, app } = await boot();
+    await platform.definitions.publish(singleCall('delt', { availableTo: [other] }), 'test', 't');
+    await platform.definitions.publish(singleCall('delt'), 'test', 't');
+    const unshared = await pinnedVersionOne(app, 'delt');
+    await platform.evalStores.testSets.put({
+      apiVersion: 'genai/v1',
+      kind: 'TestSet',
+      metadata: { tenant: other, id: 'mini', name: 'Mini', version: 1 },
+      spec: { cases: [{ id: 'a', split: 'validation', input: 'hei', expected: {} }] },
+    } as Parameters<typeof platform.evalStores.testSets.put>[0]);
+    const evaluate = (capability: string) =>
+      app.request(`/tenants/${other}/eval-runs`, {
+        method: 'POST',
+        headers: as('ola'),
+        body: JSON.stringify({
+          capability,
+          testSet: { id: 'mini' },
+          evaluators: ['contract'],
+          provenance: { commit: 'test', data: 'test' },
+        }),
+      });
+
+    const pinned = await evaluate(unshared);
+    const latest = await evaluate(`${tenant}/delt/default`);
+
+    expect(pinned.status).toBe(404);
+    expect(latest.status).toBe(404);
+  });
+
+  it('runs an eval run of a pinned older version of a service shared with the organisation', async () => {
+    const { platform, app } = await boot();
+    await platform.definitions.publish(singleCall('delt'), 'test', 't');
+    await platform.definitions.publish(singleCall('delt', { availableTo: [other] }), 'test', 't');
+    const pinned = await pinnedVersionOne(app, 'delt');
+    await platform.evalStores.testSets.put({
+      apiVersion: 'genai/v1',
+      kind: 'TestSet',
+      metadata: { tenant: other, id: 'mini', name: 'Mini', version: 1 },
+      spec: { cases: [{ id: 'a', split: 'validation', input: 'hei', expected: {} }] },
+    } as Parameters<typeof platform.evalStores.testSets.put>[0]);
+
+    const started = await app.request(`/tenants/${other}/eval-runs`, {
+      method: 'POST',
+      headers: as('ola'),
+      body: JSON.stringify({
+        capability: pinned,
+        testSet: { id: 'mini' },
+        evaluators: ['contract'],
+        provenance: { commit: 'test', data: 'test' },
+      }),
+    });
+
+    expect(started.status).toBe(202);
   });
 });

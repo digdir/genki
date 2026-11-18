@@ -1,0 +1,20 @@
+{"tests": [
+ {"id": "kudos-336522-p52-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Inntrykket er også at arbeidsgivere ofte ikke har tenkt på IMDi som et relevant direktorat å se til", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-336522-p52-t02", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"before": {"text": "fatte interesse for mangfoldsarbeid.", "max_diffs": 1}, "after": {"text": "I intervjurundene i 2021 og 2022 spurte vi informantene", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-336522-p52-t03", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Noen mente dette var problemfritt og følte at de fikk god oppfølgning fra saksbehandler i IMDi", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-336522-p52-t04", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"before": {"text": "Dette er nærmere beskrevet i de tidligere delrapportene.", "max_diffs": 2}, "after": {"text": "I intervjurunden i 2024 ble selve søknadsprosessen lite tematisert", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-336522-p52-t05", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Søknadsfristen de siste årene har vært satt til februar eller mars", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-336522-p52-t06", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Flere kunne ønske at sluttdato for tiltakene ble satt ett år etter at tilskuddet reelt sett ble tildelt", "max_diffs": 4}}, "settings": {}},
+ {"id": "kudos-336522-p52-t07", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "«å jobbe med mennesker og menneskeprosesser tar tid og krever mye planleggingsarbeid»", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-336522-p52-t08", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"before": {"text": "tiltakene før de får svar på om de får tilslag på søknadene.", "max_diffs": 2}, "after": {"text": "Det har vært ulike grunner til at søknadsbehandlingen hos IMDi har blitt utsatt.", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-336522-p52-t09", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "I 2022 fikk direktoratet uventet ekstraarbeid da krigen i Ukraina brøt ut", "max_diffs": 2}}, "settings": {}}
+]}

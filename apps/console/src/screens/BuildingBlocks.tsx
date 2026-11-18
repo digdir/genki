@@ -31,7 +31,7 @@ import {
   ValidationMessage,
 } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { ApiError, type ApiClient } from '../api';
 import { useT, type Format, type PlainKey, type T } from '../i18n';
 import { parse as parseYaml } from 'yaml';
@@ -613,10 +613,6 @@ const Detail = ({
     (draft !== 'selected' ||
       [...chosen].sort().join() === [...(block.agencies ?? [])].sort().join());
 
-  useEffect(() => {
-    setPreview(undefined);
-  }, [draft, chosen]);
-
   const open = (kind: PreviewKind) => {
     setPreview(kind);
     setReason('');
@@ -824,7 +820,11 @@ const Detail = ({
                 label={label}
                 value={value}
                 checked={draft === value}
-                onChange={() => setDraft(value)}
+                onChange={() => {
+                  // A changed choice makes an open preview stale.
+                  setDraft(value);
+                  setPreview(undefined);
+                }}
               />
             ))}
           </Fieldset>
@@ -837,9 +837,10 @@ const Detail = ({
                     key={a}
                     data-size="sm"
                     checked={chosen.includes(a)}
-                    onChange={() =>
-                      setChosen((c) => (c.includes(a) ? c.filter((x) => x !== a) : [...c, a]))
-                    }
+                    onChange={() => {
+                      setChosen((c) => (c.includes(a) ? c.filter((x) => x !== a) : [...c, a]));
+                      setPreview(undefined);
+                    }}
                   >
                     {a}
                   </Chip.Checkbox>

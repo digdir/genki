@@ -13,6 +13,18 @@ export interface MaskinportenClientOptions {
 
 const JWT_BEARER = 'urn:ietf:params:oauth:grant-type:jwt-bearer';
 
+const singleFlight = (fresh: () => string | undefined, fetchToken: () => Promise<string>) => {
+  let pending: Promise<string> | undefined;
+  return async (): Promise<string> => {
+    const known = fresh();
+    if (known) return known;
+    pending ??= fetchToken().finally(() => {
+      pending = undefined;
+    });
+    return pending;
+  };
+};
+
 export const maskinportenTokens = (options: MaskinportenClientOptions) => {
   const now = options.now ?? Date.now;
   const endpoint = options.tokenEndpoint ?? new URL('token', options.issuer).toString();
@@ -34,21 +46,25 @@ export const maskinportenTokens = (options: MaskinportenClientOptions) => {
       .sign(key);
   };
 
+  const fetchToken = async (): Promise<string> => {
+    const response = await (options.fetch ?? fetch)(endpoint, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ grant_type: JWT_BEARER, assertion: await grant() }),
+    });
+    if (!response.ok) throw new Error(`Maskinporten answered ${response.status}`);
+    const body = (await response.json()) as { access_token?: string; expires_in?: number };
+    if (!body.access_token) throw new Error('Maskinporten sent no access token');
+    const lifetime = Math.max(0, (body.expires_in ?? 60) - 30);
+    cached = { token: body.access_token, until: now() + lifetime * 1000 };
+    return body.access_token;
+  };
+
   return {
-    token: async (): Promise<string> => {
-      if (cached && cached.until > now()) return cached.token;
-      const response = await (options.fetch ?? fetch)(endpoint, {
-        method: 'POST',
-        headers: { 'content-type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({ grant_type: JWT_BEARER, assertion: await grant() }),
-      });
-      if (!response.ok) throw new Error(`Maskinporten answered ${response.status}`);
-      const body = (await response.json()) as { access_token?: string; expires_in?: number };
-      if (!body.access_token) throw new Error('Maskinporten sent no access token');
-      const lifetime = Math.max(0, (body.expires_in ?? 60) - 30);
-      cached = { token: body.access_token, until: now() + lifetime * 1000 };
-      return body.access_token;
-    },
+    token: singleFlight(
+      () => (cached && cached.until > now() ? cached.token : undefined),
+      fetchToken,
+    ),
   };
 };
 
@@ -78,17 +94,21 @@ export const altinnTokens = (options: AltinnTokenOptions) => {
   ).toString();
   let cached: { token: string; until: number } | undefined;
 
+  const fetchToken = async (): Promise<string> => {
+    const response = await (options.fetch ?? fetch)(endpoint, {
+      headers: { authorization: `Bearer ${await options.maskinporten.token()}` },
+    });
+    if (!response.ok) throw new Error(`Altinn token exchange answered ${response.status}`);
+    const token = (await response.text()).trim().replace(/^"|"$/g, '');
+    if (!token) throw new Error('Altinn token exchange sent no token');
+    cached = { token, until: (expiryOf(token) ?? now() + 60_000) - 30_000 };
+    return token;
+  };
+
   return {
-    token: async (): Promise<string> => {
-      if (cached && cached.until > now()) return cached.token;
-      const response = await (options.fetch ?? fetch)(endpoint, {
-        headers: { authorization: `Bearer ${await options.maskinporten.token()}` },
-      });
-      if (!response.ok) throw new Error(`Altinn token exchange answered ${response.status}`);
-      const token = (await response.text()).trim().replace(/^"|"$/g, '');
-      if (!token) throw new Error('Altinn token exchange sent no token');
-      cached = { token, until: (expiryOf(token) ?? now() + 60_000) - 30_000 };
-      return token;
-    },
+    token: singleFlight(
+      () => (cached && cached.until > now() ? cached.token : undefined),
+      fetchToken,
+    ),
   };
 };

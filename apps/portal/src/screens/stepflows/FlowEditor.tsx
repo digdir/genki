@@ -1,9 +1,11 @@
+import { CheckmarkIcon } from '@navikt/aksel-icons';
 import {
   Alert,
   Badge,
   Button,
   Field,
   Heading,
+  Input,
   Label,
   Switch,
   Tabs,
@@ -14,17 +16,23 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ApiError, type ApiClient } from '../../api';
 import { ApiCallLink } from '../../components/ApiCall';
-import { Icon, icons } from '../../components/Icon';
+import { needsRight, useRights } from '../../Shell';
+import { useAsync } from '../../hooks';
+import { isOperationStep } from '../../data/step-operations';
+import type { PortalRight } from '../../types';
+import { Icon } from '../../components/Icon';
 import { blocks, serviceOfFlow, type Flow, type RunOverlay, type Step } from '../../data/stepflows';
 import { useT, type PlainKey } from '../../i18n';
 import { BlockPicker } from './BlockPicker';
 import { parseYaml, toYaml } from '../../yaml';
 import { Diagram } from './Diagram';
-import { SelectField } from './fields';
+import { SearchField } from './fields';
 import {
+  allSteps,
   analyse,
   errorCount,
   findStep,
+  flowName,
   fromDefinition,
   insertAfter,
   newBlockStep,
@@ -35,12 +43,27 @@ import {
 } from './model';
 import { StepPanel } from './StepPanel';
 import { reasonProblem } from '../../components/ReasonField';
+import { slug } from '../../data/service-form';
 
 const runStatusKey = {
   Fullført: 'stepflows.runStatusDone',
   'Venter på godkjenning': 'stepflows.runStatusWaiting',
   Feilet: 'stepflows.runStatusFailed',
 } as const satisfies Record<RunOverlay['status'], PlainKey>;
+
+const rights: readonly PortalRight[] = [
+  'use-services',
+  'manage-services',
+  'manage-datasets',
+  'register-building-blocks',
+  'view-usage',
+];
+
+export const missingRight = (error: unknown): PortalRight | undefined => {
+  if (!(error instanceof ApiError) || error.status !== 403) return undefined;
+  const named = error.problem?.errors?.find((e) => e.path === 'right')?.message;
+  return rights.find((r) => r === named);
+};
 
 export type Flash = { text: string; color: 'success' | 'info' | 'warning' | 'danger' } | undefined;
 
@@ -50,11 +73,12 @@ interface Props {
   flows: Record<string, Flow>;
   flow: Flow;
   serviceName?: string;
+  serviceId?: string;
   showPicker: boolean;
   initialTab: 'diagram' | 'yaml';
   initialOverlay: boolean;
   onPickFlow: (id: string) => void;
-  onChange: (flow: Flow) => void;
+  onChange: (flow: Flow, previousId?: string) => void;
   onFlash: (flash: Flash) => void;
 }
 
@@ -64,6 +88,7 @@ export const FlowEditor = ({
   flows,
   flow,
   serviceName,
+  serviceId,
   showPicker,
   initialTab,
   initialOverlay,
@@ -90,11 +115,47 @@ export const FlowEditor = ({
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => () => clearTimeout(timer.current), []);
 
-  const analysis = useMemo(() => analyse(flow, flows, subOpen, t), [flow, flows, subOpen, t]);
+  const [purposeErr, setPurposeErr] = useState('');
+  const [nameErr, setNameErr] = useState('');
+  const savedId = flow.unsaved ? slug(flow.name) : flow.id;
+  const canSave = useRights().has('manage-services');
+  const [operations] = useAsync((signal) => api.stepOperations(tenant, signal), [api, tenant]);
+  const [guardrails] = useAsync(
+    async (signal) =>
+      serviceId
+        ? Object.keys(
+            (
+              (await api.getDefinition(tenant, 'Service', serviceId, signal)).latest.definition
+                .spec as { guardrails?: Record<string, unknown> } | undefined
+            )?.guardrails ?? {},
+          )
+        : undefined,
+    [api, tenant, serviceId],
+  );
+  const ops = useMemo(
+    () => ({
+      operations: operations.status === 'ready' ? operations.data : undefined,
+      failed: operations.status === 'error',
+      masking:
+        guardrails.status === 'ready' && guardrails.data
+          ? guardrails.data.includes('pii-before-model')
+          : undefined,
+    }),
+    [operations, guardrails],
+  );
+  const hasOperations = useMemo(() => allSteps(flow.steps).some(isOperationStep), [flow.steps]);
+  const analysis = useMemo(
+    () => analyse(flow, flows, subOpen, t, ops),
+    [flow, flows, subOpen, t, ops],
+  );
+  const nextVersion = flow.draft ? flow.version : flow.version + 1;
   const count = errorCount(analysis);
   const run = flow.run;
   const overlayOn = overlay && !!run;
-  const definition = useMemo(() => toDefinition(flow, tenant, flows), [flow, tenant, flows]);
+  const definition = useMemo(
+    () => toDefinition({ ...flow, id: savedId || flow.id }, tenant, flows),
+    [flow, savedId, tenant, flows],
+  );
   const generated = useMemo(() => toYaml(definition), [definition]);
   const yaml = yamlDraft ?? generated;
   const yamlClean = yamlDraft === undefined || yamlDraft === generated;
@@ -166,11 +227,20 @@ export const FlowEditor = ({
       onFlash({ text: t('stepflows.fixBeforeSave'), color: 'warning' });
       return;
     }
+    if (!canSave) return;
     const reasonError = reasonProblem(reason, t);
-    if (reasonError) {
-      setReasonErr(reasonError);
-      return;
-    }
+    const noPurpose = !flow.desc.trim();
+    const nameError = !flow.unsaved
+      ? ''
+      : !savedId
+        ? t('stepflows.nameRequired')
+        : flows[savedId] && savedId !== flow.id
+          ? t('stepflows.nameTaken', { id: savedId })
+          : '';
+    if (noPurpose) setPurposeErr(t('stepflows.purposeRequired'));
+    if (reasonError) setReasonErr(reasonError);
+    if (nameError) setNameErr(nameError);
+    if (reasonError || noPurpose || nameError) return;
     setSaving(true);
     setServerErrors([]);
     try {
@@ -181,7 +251,15 @@ export const FlowEditor = ({
         return;
       }
       const saved = await api.publishDefinition(definition, {}, reason.trim());
-      onChange({ ...flow, version: saved.version, draft: false, changed: 'nå' });
+      const next: Flow = {
+        ...flow,
+        id: savedId,
+        version: saved.version,
+        draft: false,
+        changed: 'nå',
+      };
+      delete next.unsaved;
+      onChange(next, flow.id);
       setDirty(false);
       setReason('');
       onFlash({
@@ -191,7 +269,11 @@ export const FlowEditor = ({
     } catch (error) {
       if (error instanceof ApiError && error.status === 422)
         setServerErrors(error.problem?.errors ?? []);
-      onFlash({ text: tRef.current('stepflows.saveFailed'), color: 'danger' });
+      const right = missingRight(error);
+      onFlash({
+        text: right ? needsRight(right, tRef.current) : tRef.current('stepflows.saveFailed'),
+        color: 'danger',
+      });
     } finally {
       setSaving(false);
     }
@@ -213,6 +295,7 @@ export const FlowEditor = ({
         flows,
         {},
         t,
+        ops,
       ).errors.get(draft.id) ?? [])
     : [];
 
@@ -221,15 +304,17 @@ export const FlowEditor = ({
       {showPicker ? (
         <div className="flow-picker">
           <div className="flow-picker-select">
-            <SelectField
+            <SearchField
               id="flyt"
               label={t('stepflows.flowLabel')}
+              clearLabel={t('stepflows.clearFlowSearch')}
               value={flow.id}
               options={Object.values(flows).map((x) => ({
                 value: x.id,
-                label: x.sub ? t('stepflows.subSuffix', { name: x.name }) : x.name,
+                label: x.sub ? t('stepflows.subSuffix', { name: flowName(x, t) }) : flowName(x, t),
               }))}
               onChange={(id) => {
+                if (!id) return;
                 setDraft(undefined);
                 setYamlDraft(undefined);
                 setYamlErr('');
@@ -238,13 +323,13 @@ export const FlowEditor = ({
             />
           </div>
           <span className="flow-picker-text">
-            {versionLabel(flow, t)} · {flow.desc}
+            {versionLabel(flow, t)} · {flow.desc || t('stepflows.newFlowDesc')}
             <span className="meta block">{shared}</span>
           </span>
         </div>
       ) : (
         <p className="flow-picker-text">
-          {versionLabel(flow, t)} · {flow.desc}
+          {versionLabel(flow, t)} · {flow.desc || t('stepflows.newFlowDesc')}
           <span className="meta block">{shared}</span>
         </p>
       )}
@@ -275,12 +360,18 @@ export const FlowEditor = ({
               variant="secondary"
               data-size="sm"
               aria-disabled={running || undefined}
+              aria-describedby={hasOperations ? 'flow-test-note' : undefined}
               onClick={runTest}
             >
               {t('stepflows.runTest')}
             </Button>
           </div>
         </div>
+        {hasOperations ? (
+          <p id="flow-test-note" className="meta">
+            {t('stepflows.operationTestNote')}
+          </p>
+        ) : null}
 
         {count > 0 ? (
           <Alert data-color="danger">
@@ -301,7 +392,7 @@ export const FlowEditor = ({
           </Alert>
         ) : (
           <p role="status" className="flow-valid">
-            <Icon d={icons.check} size={18} strokeWidth={2} />
+            <Icon icon={CheckmarkIcon} size={18} />
             {t('stepflows.flowValid')}
           </p>
         )}
@@ -383,7 +474,7 @@ export const FlowEditor = ({
       {dirty ? (
         <section className="flow-save" aria-labelledby="flow-save-h">
           <Heading level={2} data-size="2xs" id="flow-save-h">
-            {t('stepflows.saveAs', { version: flow.version + 1 })}
+            {t('stepflows.saveAs', { version: nextVersion })}
           </Heading>
           {serverErrors.length ? (
             <Alert data-color="danger" data-size="sm">
@@ -396,6 +487,39 @@ export const FlowEditor = ({
               </ul>
             </Alert>
           ) : null}
+          {flow.unsaved ? (
+            <Field className="reason-field">
+              <Label htmlFor="flow-name">{t('stepflows.nameLabel')}</Label>
+              <Field.Description>
+                {savedId ? t('stepflows.nameId', { id: savedId }) : t('stepflows.nameHelp')}
+              </Field.Description>
+              <Input
+                id="flow-name"
+                value={flow.name}
+                aria-invalid={nameErr ? true : undefined}
+                onChange={(e) => {
+                  onChange({ ...flow, name: e.target.value });
+                  setNameErr('');
+                }}
+              />
+              {nameErr ? <ValidationMessage>{nameErr}</ValidationMessage> : null}
+            </Field>
+          ) : null}
+          <Field className="reason-field">
+            <Label htmlFor="flow-purpose">{t('stepflows.purposeLabel')}</Label>
+            <Field.Description>{t('stepflows.purposeHelp')}</Field.Description>
+            <Textarea
+              id="flow-purpose"
+              rows={2}
+              value={flow.desc}
+              aria-invalid={purposeErr ? true : undefined}
+              onChange={(e) => {
+                onChange({ ...flow, desc: e.target.value });
+                setPurposeErr('');
+              }}
+            />
+            {purposeErr ? <ValidationMessage>{purposeErr}</ValidationMessage> : null}
+          </Field>
           <Field className="reason-field">
             <Label htmlFor="flow-reason">{t('stepflows.reasonLabel')}</Label>
             <Field.Description>{t('stepflows.reasonHelp')}</Field.Description>
@@ -414,21 +538,27 @@ export const FlowEditor = ({
           <div className="actions">
             <Button
               variant="primary"
-              aria-disabled={saving || undefined}
+              aria-disabled={saving || !canSave || undefined}
+              aria-describedby={canSave ? undefined : 'flow-save-right'}
               onClick={() => void save()}
             >
-              {t('stepflows.saveAs', { version: flow.version + 1 })}
+              {t('stepflows.saveAs', { version: nextVersion })}
             </Button>
             <ApiCallLink
               call={{
                 action: t('stepflows.apiAction'),
                 method: 'POST',
                 path: '/definitions',
-                body: { definition: { kind: 'StepFlow', metadata: { id: flow.id } } },
+                body: { definition: { kind: 'StepFlow', metadata: { id: savedId || flow.id } } },
                 right: 'Administrere tjenester',
               }}
             />
           </div>
+          {canSave ? null : (
+            <p id="flow-save-right" className="meta">
+              {needsRight('manage-services', t)}
+            </p>
+          )}
         </section>
       ) : null}
 
@@ -439,6 +569,7 @@ export const FlowEditor = ({
           base={analysis}
           errors={draftErrors}
           flows={flows}
+          ops={ops}
           onClose={() => setDraft(undefined)}
           onApply={() => {
             update(

@@ -30,7 +30,6 @@ import {
 import { guardrailSchemaLabels } from '@genai/guardrails';
 import { negotiate } from '@genai/i18n';
 import { pluginManifest, pluginManifestSchemaLabels, type PluginManifest } from '@genai/plugins';
-import { embeddingCatalog, embeddingCatalogSchemaLabels } from '@genai/port-embedding';
 import { knowledgeCatalog, knowledgeCatalogSchemaLabels } from '@genai/port-knowledge';
 import { instructionSchemaLabels, modelCatalog, modelCatalogSchemaLabels } from '@genai/port-model';
 import { rerankCatalog, rerankCatalogSchemaLabels } from '@genai/port-rerank';
@@ -38,6 +37,7 @@ import { connectionInput, toolConnectionSchemaLabels } from '@genai/providers-mc
 import { agentLoopSchemaLabels } from '@genai/strategy-agent-loop';
 import { platformServiceSchemaLabels } from '@genai/strategy-builder';
 import { ragSchemaLabels } from '@genai/strategy-rag';
+import { liveSessionSchemaLabels } from '@genai/operations';
 import { remoteAgentSchemaLabels } from '@genai/strategy-remote';
 import { singleCallSchemaLabels } from '@genai/strategy-single-call';
 import {
@@ -106,6 +106,7 @@ const strategyLabels: Record<string, SchemaLabels> = {
   'rag-single-shot': ragSchemaLabels,
   'step-flow': stepFlowConfigSchemaLabels,
   'remote-agent': remoteAgentSchemaLabels,
+  'live-session': liveSessionSchemaLabels,
   'builder-assistant': platformServiceSchemaLabels,
   optimiser: platformServiceSchemaLabels,
 };
@@ -327,20 +328,6 @@ export const schemaEntries = (sources: SchemaSources): SchemaEntry[] => {
       text('Endepunkt for omrangering', 'Rerank endpoint'),
       element(shapeOf(rerankCatalog, 'endpoints')),
       [rerankCatalogSchemaLabels, ...endpointLabels],
-      operator,
-    ),
-    top(
-      'Embedding',
-      text('Innbyggingsmodell', 'Embedding model'),
-      element(shapeOf(embeddingCatalog, 'models')),
-      [embeddingCatalogSchemaLabels, ...endpointLabels],
-      operator,
-    ),
-    top(
-      'EmbeddingEndpoint',
-      text('Endepunkt for innbygging', 'Embedding endpoint'),
-      element(shapeOf(embeddingCatalog, 'endpoints')),
-      [embeddingCatalogSchemaLabels, ...endpointLabels],
       operator,
     ),
     top('Price', text('Pris', 'Price'), catalogPrice, [priceSchemaLabels], operator),

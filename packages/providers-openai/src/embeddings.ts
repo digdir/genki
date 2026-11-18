@@ -8,38 +8,40 @@ import {
 import OpenAI, { APIError, APIUserAbortError } from 'openai';
 import { z } from 'zod';
 
-const endpointOptions = z.strictObject({ apiVersion: z.string().min(1).optional() });
 const modelOptions = z.strictObject({ sendDimensions: z.boolean().default(false) });
-type EndpointOptions = z.infer<typeof endpointOptions>;
 type ModelOptions = z.infer<typeof modelOptions>;
 
 const toEmbeddingError = (error: unknown): EmbeddingError => {
   if (error instanceof EmbeddingError) return error;
   if (error instanceof APIUserAbortError)
     return new EmbeddingError('cancelled', 'the request was cancelled');
-  if (error instanceof APIError) return embeddingErrorFromStatus(error.status, error.message);
+  if (error instanceof APIError)
+    return embeddingErrorFromStatus(error.status, error.message, error.headers);
   return new EmbeddingError('unavailable', error instanceof Error ? error.message : String(error));
 };
 
-export const openAiEmbeddings: EmbeddingAdapter<EndpointOptions, ModelOptions> = {
-  protocol: 'openai-embeddings',
-  endpointOptions,
+export const openAiEmbeddingsApi = 'openai/embeddings@1';
+
+export const openAiEmbeddings: EmbeddingAdapter<ModelOptions> = {
+  api: { id: openAiEmbeddingsApi, family: 'openai' },
   modelOptions,
 
-  connect(endpoint: EmbeddingEndpointConfig<EndpointOptions>) {
+  connect(endpoint: EmbeddingEndpointConfig) {
     const client = new OpenAI({
       baseURL: endpoint.baseURL,
       apiKey: 'replaced-by-fetch',
-      fetch: authenticatedFetch(endpoint.credential, 'authorization', ['authorization']),
+      fetch: authenticatedFetch(
+        endpoint.credential,
+        'authorization',
+        ['authorization'],
+        endpoint.fetch,
+      ),
       maxRetries: endpoint.maxRetries,
       timeout: endpoint.timeoutMs,
-      ...(endpoint.options.apiVersion
-        ? { defaultQuery: { 'api-version': endpoint.options.apiVersion } }
-        : {}),
     });
 
     return {
-      embed: async (model, texts, signal) => {
+      embed: async (model, texts, signal, options = {}) => {
         try {
           const response = await client.embeddings.create(
             {
@@ -48,7 +50,10 @@ export const openAiEmbeddings: EmbeddingAdapter<EndpointOptions, ModelOptions> =
               encoding_format: 'float',
               ...(model.options.sendDimensions ? { dimensions: model.dimensions } : {}),
             },
-            { signal },
+            {
+              signal,
+              ...(options.maxRetries === undefined ? {} : { maxRetries: options.maxRetries }),
+            },
           );
           const vectors: number[][] = new Array<number[]>(texts.length);
           for (const item of response.data) vectors[item.index] = item.embedding;

@@ -21,6 +21,6 @@
     "@genai/port-knowledge": "0.0.0",
     "@genai/port-model": "0.0.0",
     "@genai/port-tools": "0.0.0",
-    "zod": "^4.6.5"
+    "zod": "^4.6.7"
   }
 }

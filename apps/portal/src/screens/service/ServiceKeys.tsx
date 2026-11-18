@@ -1,7 +1,9 @@
 import {
   Alert,
   Button,
+  Checkbox,
   Field,
+  Fieldset,
   Heading,
   Label,
   Paragraph,
@@ -22,7 +24,7 @@ import { reasonProblem } from '../../components/ReasonField';
 
 export const problemText = (error: unknown, t: T) =>
   error instanceof ApiError
-    ? (error.problem?.errors?.map((e) => e.message).join(' ') ?? error.message)
+    ? error.problem?.errors?.map((e) => e.message).join(' ') || error.message
     : t('serviceKeys.wrong');
 
 export const ServiceKeys = ({
@@ -30,12 +32,14 @@ export const ServiceKeys = ({
   tenant,
   service,
   clients,
+  environments = [],
   onFlash,
 }: {
   api: ApiClient;
   tenant: string;
   service: string;
   clients: ClientView[];
+  environments?: string[];
   onFlash: (text: string, color?: 'success' | 'info' | 'danger') => void;
 }) => {
   const t = useT();
@@ -47,7 +51,14 @@ export const ServiceKeys = ({
   const [catalog] = useAsync((signal) => api.settingsCatalog(signal).catch(() => []), [api]);
   const groups = catalog.status === 'ready' ? overrideGroups(catalog.data) : [];
   const [form, setForm] = useState<
-    { name: string; client: string; reason: string; overrides: string[] } | undefined
+    | {
+        name: string;
+        client: string;
+        reason: string;
+        overrides: string[];
+        environments: string[];
+      }
+    | undefined
   >();
   const [rotating, setRotating] = useState<{ id: string; overrides: string[] }>();
   const [formError, setFormError] = useState('');
@@ -74,6 +85,7 @@ export const ServiceKeys = ({
           name: form.name.trim(),
           ...(form.client ? { client: form.client } : {}),
           allowedOverrides: form.overrides,
+          ...(form.environments.length ? { environments: form.environments } : {}),
         },
         form.reason.trim(),
       );
@@ -132,7 +144,7 @@ export const ServiceKeys = ({
           onClick={() => {
             setSecret(undefined);
             setFormError('');
-            setForm({ name: '', client: '', reason: '', overrides: [] });
+            setForm({ name: '', client: '', reason: '', overrides: [], environments: [] });
           }}
         >
           {t('serviceKeys.create')}
@@ -188,6 +200,29 @@ export const ServiceKeys = ({
               ))}
             </Select>
           </Field>
+          {environments.length > 1 ? (
+            <Fieldset data-size="sm">
+              <Fieldset.Legend>{t('serviceKeys.environments')}</Fieldset.Legend>
+              <Fieldset.Description>
+                {t('serviceKeys.environmentsDescription')}
+              </Fieldset.Description>
+              {environments.map((name) => (
+                <Checkbox
+                  key={name}
+                  label={name}
+                  checked={form.environments.includes(name)}
+                  onChange={() =>
+                    setForm({
+                      ...form,
+                      environments: form.environments.includes(name)
+                        ? form.environments.filter((e) => e !== name)
+                        : [...form.environments, name],
+                    })
+                  }
+                />
+              ))}
+            </Fieldset>
+          ) : null}
           <OverridePicker
             id="fe-key-overrides"
             groups={groups}
@@ -237,13 +272,23 @@ export const ServiceKeys = ({
                     </span>
                     <span className="meta">
                       {k.prefix ?? 'gp'}…{k.lastFour ?? ''}
-                      {t('serviceKeys.created', {
+                      {t(k.createdByName ? 'serviceKeys.createdBy' : 'serviceKeys.created', {
                         when: k.createdAt
                           ? f.date(k.createdAt, 'medium')
                           : t('serviceKeys.unknownDate'),
+                        who: k.createdByName ?? '',
                       })}
                       {k.rotatedFrom ? t('serviceKeys.rotated') : ''}
                     </span>
+                    {!active || k.modelsInLockdown === undefined ? null : (
+                      <span className="meta">
+                        {t(
+                          k.modelsInLockdown
+                            ? 'serviceKeys.modelsAllowed'
+                            : 'serviceKeys.modelsRefused',
+                        )}
+                      </span>
+                    )}
                   </span>
                   <span className="stack-xs fe-row-meta">
                     <span>
@@ -251,6 +296,13 @@ export const ServiceKeys = ({
                         ? t('serviceKeys.clientLine', { client })
                         : t('serviceKeys.allChannels')}
                     </span>
+                    {k.environments?.length || environments.length > 1 ? (
+                      <span className="meta">
+                        {k.environments?.length
+                          ? t('serviceKeys.environmentsLine', { list: k.environments.join(', ') })
+                          : t('serviceKeys.allEnvironments')}
+                      </span>
+                    ) : null}
                     <span className="meta">
                       {t('serviceKeys.lastUsed', {
                         when: k.lastUsedAt

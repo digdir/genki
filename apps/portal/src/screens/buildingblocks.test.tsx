@@ -4,12 +4,12 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { App } from '../App';
 import { mockAnsattporten } from '../auth';
 import type { CatalogItem, CatalogProposal } from '../api/building-blocks';
-import { exampleProposal } from '../data/building-blocks';
+import { exampleBlocks, exampleProposal } from '../data/building-blocks';
 import { mockFetch } from '../mock';
 import type { BuildingBlocksMockOptions } from '../mock/building-blocks';
 import { translator } from '../i18n';
 import { versionText } from './buildingblocks/common';
-import { expectAccessible, renderAt } from '../test-utils';
+import { expectAccessible, failingFetch, renderAt } from '../test-utils';
 
 const blocksFetch = (options: BuildingBlocksMockOptions = {}) =>
   mockFetch(undefined, undefined, undefined, undefined, {
@@ -55,7 +55,7 @@ const connectorProposal: CatalogProposal = {
 };
 
 const groupHeadings = () =>
-  screen
+  within(screen.getByRole('main'))
     .getAllByRole('heading', { level: 2 })
     .map((h) => h.textContent)
     .filter((t) => t !== 'Kunne ikke hente dataene');
@@ -74,7 +74,7 @@ describe('Byggeklosser: liste', () => {
   it('shows the blocks in use grouped by type with tabs, filters and a live count', async () => {
     await open('#/building-blocks');
     expect(await screen.findByRole('heading', { level: 1, name: 'Byggeklosser' })).toBeTruthy();
-    expect(screen.getByRole('tab', { name: 'I bruk hos oss (18)' })).toBeTruthy();
+    expect(await screen.findByRole('tab', { name: 'I bruk hos oss (18)' })).toBeTruthy();
     expect(screen.getByRole('tab', { name: 'Katalog (27)' })).toBeTruthy();
     expect(screen.getByRole('status').textContent).toBe(
       'Viser 18 byggeklosser som Testetaten bruker',
@@ -145,6 +145,55 @@ describe('Byggeklosser: liste', () => {
       true,
     );
     expectAccessible();
+  });
+});
+
+describe('Byggeklosser: adressen', () => {
+  it('opens the catalogue tab from its own address', async () => {
+    await open('#/building-blocks/catalogue', { proposals: [] });
+    const tab = await screen.findByRole('tab', { name: 'Katalog (27)' });
+    expect(tab.getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByRole('status').textContent).toBe('Viser 27 byggeklosser i katalogen');
+  });
+
+  it('puts the chosen tab in the address', async () => {
+    await open('#/building-blocks', { proposals: [] });
+    fireEvent.click(await screen.findByRole('tab', { name: 'Katalog (27)' }));
+    await waitFor(() => expect(window.location.hash).toBe('#/building-blocks/catalogue'));
+  });
+
+  it('keeps the type filter and the search in the address', async () => {
+    await open('#/building-blocks/catalogue', { proposals: [] });
+    fireEvent.click(await screen.findByRole('radio', { name: 'Modeller 4' }));
+    fireEvent.change(screen.getByLabelText('Søk etter navn'), { target: { value: 'qwen' } });
+    await waitFor(() =>
+      expect(window.location.hash).toBe('#/building-blocks/catalogue?type=model&q=qwen'),
+    );
+    cleanup();
+
+    await open('#/building-blocks/catalogue?type=model&q=qwen', { proposals: [] });
+    expect(await screen.findByRole('radio', { name: 'Modeller 1' })).toHaveProperty(
+      'checked',
+      true,
+    );
+    expect((screen.getByLabelText('Søk etter navn') as HTMLInputElement).value).toBe('qwen');
+    expect(groupHeadings()).toEqual(['Modeller']);
+  });
+
+  it('shows a failed proposals load with retry instead of hiding it', async () => {
+    let fail = true;
+    const ok = blocksFetch();
+    const broken = failingFetch(/\/proposals\?/, 503, ok);
+    await renderAt('#/building-blocks', (input, init) =>
+      fail ? broken(input, init) : ok(input, init),
+    );
+    expect(await screen.findByRole('heading', { name: 'Kunne ikke hente dataene' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Borealis-27B' })).toBeTruthy();
+    fail = false;
+    fireEvent.click(screen.getByRole('button', { name: 'Prøv igjen' }));
+    await waitFor(() =>
+      expect(screen.queryByRole('heading', { name: 'Kunne ikke hente dataene' })).toBeNull(),
+    );
   });
 });
 
@@ -513,7 +562,7 @@ describe('Byggeklosser: detalj', () => {
     expectAccessible();
   });
 
-  it('shows the update table, capabilities, access and versions for a block with an update', async () => {
+  it('shows the update table and test scores on the Om tab of a block with an update', async () => {
     await open('#/building-blocks/model/borealis');
     await screen.findByRole('heading', { level: 1, name: 'Borealis-27B' });
     expect(
@@ -524,14 +573,115 @@ describe('Byggeklosser: detalj', () => {
     expect(within(table).getByText('−1')).toBeTruthy();
     expect(within(table).getByText('Ingen endring')).toBeTruthy();
     expect(
-      within(table).getByRole('link', { name: 'Prøv i utkastet til Rapportassistenten' }),
-    ).toBeTruthy();
-    expect(screen.getByText('Lagres ikke av modellen')).toBeTruthy();
-    expect(await screen.findByText('Versjon 2.0')).toBeTruthy();
+      within(table).getByRole('link', { name: 'Rapportassistenten' }).getAttribute('href'),
+    ).toBe('#/services/rapportassistenten');
     expect(screen.getByText('84 av 100')).toBeTruthy();
     expectAccessible();
   });
 
+  it('keeps the versions of a block on its own Versjoner tab with its own address', async () => {
+    await open('#/building-blocks/model/borealis');
+    await screen.findByRole('heading', { level: 1, name: 'Borealis-27B' });
+    expect(screen.queryByText('Versjon 2.0')).toBeNull();
+    const tab = screen.getByRole('link', { name: 'Versjoner' });
+    expect(tab.getAttribute('href')).toBe('#/building-blocks/model/borealis/versions');
+    expect(screen.getByRole('link', { name: 'Om' }).getAttribute('aria-current')).toBe('page');
+    window.location.hash = '#/building-blocks/model/borealis/versions';
+    expect(await screen.findByText('Versjon 2.0')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Versjoner' }).getAttribute('aria-current')).toBe(
+      'page',
+    );
+    expectAccessible();
+  });
+
+  it('lists the services that use a block on the Brukes av tab with their runs in the last 7 days', async () => {
+    await open('#/building-blocks/model/borealis/used-by');
+    expect(
+      await screen.findByRole('heading', { level: 2, name: 'Brukes i 5 tjenester' }),
+    ).toBeTruthy();
+    const table = screen.getByRole('region', { name: 'Tjenester som bruker Borealis-27B' });
+    expect(
+      within(table).getByRole('columnheader', { name: 'Kjøringer siste 7 dager' }),
+    ).toBeTruthy();
+    const row = within(table).getByRole('link', { name: 'Rapportassistenten' }).closest('tr');
+    expect(row?.querySelector('td')?.textContent).toMatch(/^[\d\s]+$|^–$/);
+    expectAccessible();
+  });
+
+  it('describes what a model is good at in plain language, not raw capability names', async () => {
+    const terra: CatalogItem = {
+      ...(exampleBlocks.find((b) => b.id === 'borealis') as CatalogItem),
+      id: 'gpt-5.6-terra',
+      name: 'gpt-5.6-terra',
+      dataLocation: 'eu',
+      capabilities: ['stream', 'tools', 'json-schema', 'reasoning'],
+      permissions: [{ type: 'model', value: 'gpt-5.6-terra', note: 'eu' }],
+    };
+    await open('#/building-blocks/model/gpt-5.6-terra', { items: [...exampleBlocks, terra] });
+    await screen.findByRole('heading', { level: 1, name: 'gpt-5.6-terra' });
+    const good = screen.getByRole('heading', { name: 'Hva den er god til' }).closest('section');
+    expect(within(good as HTMLElement).getByText('Viser svaret mens det skrives.')).toBeTruthy();
+    expect(
+      within(good as HTMLElement).getByText(
+        'Kan svare i faste felter, for eksempel til et skjema.',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText('json-schema')).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Tilganger' })).toBeNull();
+    expect(screen.queryByText('eu')).toBeNull();
+  });
+
+  it('says in prose where a block processes data, with a link to how data is handled', async () => {
+    await open('#/building-blocks/model/borealis');
+    await screen.findByRole('heading', { level: 1, name: 'Borealis-27B' });
+    const where = screen.getByRole('heading', { name: 'Hvor data behandles' }).closest('section');
+    expect(where?.textContent).toContain('I Norge. Det Borealis-27B får, behandles i Norge.');
+    expect(
+      within(where as HTMLElement)
+        .getByRole('link', { name: 'Slik behandles data' })
+        .getAttribute('href'),
+    ).toBe('#/data-handling');
+  });
+
+  it('says in the lead how many services use the block and who it is from', async () => {
+    await open('#/building-blocks/model/borealis');
+    await screen.findByRole('heading', { level: 1, name: 'Borealis-27B' });
+    expect(screen.getByText('Modell · fra Digdir')).toBeTruthy();
+    expect(screen.getByText(/Brukes i 5 tjenester\.$/)).toBeTruthy();
+  });
+
+  it('lists each tool of a connected tool by name with its description, and shows its address', async () => {
+    const archive: CatalogItem = {
+      ...(exampleBlocks.find((b) => b.kind === 'tool') as CatalogItem),
+      id: 'arkivsystemet',
+      name: 'Arkivsystemet',
+      description: 'https://arkiv.testetaten.no/mcp',
+      publisher: { type: 'own', name: '999888777' },
+      dataLocation: null,
+      capabilities: ['sok: Søker etter saker og dokumenter.', 'hent'],
+    };
+    await open('#/building-blocks/tool/arkivsystemet', { items: [...exampleBlocks, archive] });
+    await screen.findByRole('heading', { level: 1, name: 'Arkivsystemet' });
+    expect(screen.getByText('Verktøy · fra Testetaten')).toBeTruthy();
+    const tools = screen.getByRole('heading', { name: 'Verktøyene den tilbyr' }).closest('section');
+    expect(within(tools as HTMLElement).getByText('sok')).toBeTruthy();
+    expect(within(tools as HTMLElement).getByText('Søker etter saker og dokumenter.')).toBeTruthy();
+    expect(within(tools as HTMLElement).getByText('hent')).toBeTruthy();
+    const address = screen.getByText('Adresse', { selector: 'dt' }).nextElementSibling;
+    expect(address?.textContent).toBe('https://arkiv.testetaten.no/mcp');
+  });
+
+  it('hides the access table of a block that gets access to nothing', async () => {
+    const empty: CatalogItem = {
+      ...(exampleBlocks.find((b) => b.id === 'sf-hoering') as CatalogItem),
+      permissions: [],
+    };
+    await open('#/building-blocks/step_flow/sf-hoering', {
+      items: [...exampleBlocks.filter((b) => b.id !== 'sf-hoering'), empty],
+    });
+    await screen.findByRole('heading', { level: 1, name: 'Høringsoppsummering' });
+    expect(screen.queryByRole('heading', { name: 'Hva den får tilgang til' })).toBeNull();
+  });
   it('the settings form shows inherited, overridden and changed tags', async () => {
     await open('#/building-blocks/model/borealis');
     await screen.findByRole('heading', { name: 'Innstillinger for Testetaten' });
@@ -636,6 +786,62 @@ describe('Byggeklosser: detalj', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Send forespørselen' }));
     expect(await screen.findByText(/Forespørselen er sendt til Digdir\. Endret av/)).toBeTruthy();
     expect(await screen.findByText('Venter på godkjenning')).toBeTruthy();
+  });
+});
+
+describe('Byggeklosser: versjoner og overlevering', () => {
+  it('shows an empty text when a block has no versions', async () => {
+    await open('#/building-blocks/model/qwen/versions', { versions: {} });
+    await screen.findByRole('heading', { level: 1, name: 'Qwen3.8-27B' });
+    expect(
+      await screen.findByText('Ingen versjoner eller endringer er registrert ennå.'),
+    ).toBeTruthy();
+  });
+
+  it('shows the versions error with retry', async () => {
+    let fail = true;
+    const ok = blocksFetch();
+    const broken = failingFetch(/\/versions$/, 503, ok);
+    await renderAt('#/building-blocks/model/borealis/versions', (input, init) =>
+      fail ? broken(input, init) : ok(input, init),
+    );
+    await screen.findByRole('heading', { level: 1, name: 'Borealis-27B' });
+    expect(
+      screen.getByRole('heading', { level: 3, name: 'Kunne ikke hente dataene' }),
+    ).toBeTruthy();
+    fail = false;
+    fireEvent.click(screen.getByRole('button', { name: 'Prøv igjen' }));
+    expect(await screen.findByText('Versjon 2.0')).toBeTruthy();
+  });
+
+  it('keeps the typed reason when the block reloads', async () => {
+    let fail = true;
+    const ok = blocksFetch();
+    const broken = failingFetch(/\/versions$/, 503, ok);
+    await renderAt('#/building-blocks/model/qwen/versions', (input, init) =>
+      fail ? broken(input, init) : ok(input, init),
+    );
+    await screen.findByRole('heading', { level: 1, name: 'Qwen3.8-27B' });
+    fireEvent.click(screen.getByRole('button', { name: 'Ta i bruk hos oss' }));
+    fireEvent.change(screen.getByLabelText('Begrunnelse'), {
+      target: { value: 'Raskere uttrekk i Postsortering' },
+    });
+    fail = false;
+    fireEvent.click(screen.getByRole('button', { name: 'Prøv igjen' }));
+    await waitFor(() =>
+      expect(screen.queryByRole('heading', { name: 'Kunne ikke hente dataene' })).toBeNull(),
+    );
+    expect((screen.getByLabelText('Begrunnelse') as HTMLTextAreaElement).value).toBe(
+      'Raskere uttrekk i Postsortering',
+    );
+  });
+
+  it('links a block to services without a hand-off the builder does not read', async () => {
+    await open('#/building-blocks/model/borealis');
+    await screen.findByRole('heading', { level: 1, name: 'Borealis-27B' });
+    expect(screen.queryByRole('button', { name: 'Legg til i en tjeneste' })).toBeNull();
+    const hrefs = screen.getAllByRole('link').map((a) => a.getAttribute('href') ?? '');
+    expect(hrefs.filter((h) => h.includes('byggekloss='))).toEqual([]);
   });
 });
 
@@ -1082,7 +1288,318 @@ describe('Byggeklosser: API-format', () => {
     expect(calls).toContain(
       'POST /api/tenants/999888777/building-blocks/model/local%2Fllama-3/adopt',
     );
-    expect(await screen.findByText('Tatt i bruk')).toBeTruthy();
+    expect(await screen.findByText('Sist endret hos dere')).toBeTruthy();
     expect(screen.getByText('I bruk')).toBeTruthy();
+  });
+});
+
+describe('Byggeklosser: Langfuse-dommere', () => {
+  const rule = 'svar_oppfyller_kriteriene-eksperimenter';
+  const judgeBlock = (over: Partial<CatalogItem> = {}): CatalogItem => ({
+    id: `langfuse:kudos/${rule}`,
+    kind: 'judge',
+    name: rule,
+    description: '',
+    publisher: { type: 'own', name: 'Testetaten' },
+    version: '1',
+    dataLocation: 'global',
+    status: 'available',
+    capabilities: [],
+    permissions: [],
+    usedBy: [],
+    scores: [],
+    settingsSchema: { type: 'object', properties: {} },
+    tenantOverrides: {},
+    settingsVersion: 0,
+    right: 'manage-services',
+    judge: {
+      connection: 'kudos',
+      model: 'foundry-claude/claude-sonnet-5',
+      version: '1',
+      dataType: 'BOOLEAN',
+      fields: [
+        { variable: 'input', source: 'input' },
+        { variable: 'output', source: 'output' },
+        { variable: 'criteria', source: 'expected_output', jsonPath: '$.criteria' },
+      ],
+    },
+    ...over,
+  });
+  const detailOf = (block: CatalogItem) =>
+    `#/building-blocks/judge/${encodeURIComponent(block.id)}`;
+
+  it("shows each active experiment rule of a connection's project as a judge block with its model, evaluator version, data type and mapped fields, and adds it only with Ta i bruk and a reason", async () => {
+    const short = judgeBlock({
+      id: 'langfuse:kudos/svar_er_kort-eksperimenter',
+      name: 'svar_er_kort-eksperimenter',
+    });
+    const items = [judgeBlock(), short];
+
+    await open('#/building-blocks', { items });
+    fireEvent.click(await screen.findByRole('tab', { name: /Katalog/ }));
+    expect(await screen.findByRole('link', { name: rule })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'svar_er_kort-eksperimenter' })).toBeTruthy();
+    cleanup();
+
+    await open(detailOf(judgeBlock()), { items });
+    await screen.findByRole('heading', { level: 1, name: rule });
+    expect(
+      screen.getByText(
+        'Langfuse-dommer i koblingen kudos. Den er rådgivende og stopper aldri en publisering.',
+      ),
+    ).toBeTruthy();
+    const fact = (label: string) => screen.getByText(label).nextElementSibling?.textContent;
+    expect(fact('Modell')).toBe('foundry-claude/claude-sonnet-5');
+    expect(fact('Dommerversjon')).toBe('1');
+    expect(fact('Svartype')).toBe('Ja eller nei');
+    expect(fact('Leser')).toBe(
+      'input ← input, output ← output, criteria ← expected_output $.criteria',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Ta i bruk hos oss' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Ta i bruk' }));
+    expect(screen.getByText('Skriv en begrunnelse på minst 10 tegn.')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Begrunnelse'), {
+      target: { value: 'Kudos-teamet bruker denne dommeren i Langfuse' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Ta i bruk' }));
+    expect(
+      await screen.findByText(new RegExp(`${rule} er tatt i bruk hos Testetaten`)),
+    ).toBeTruthy();
+    expectAccessible();
+  });
+
+  it("shows why a Langfuse judge block is refused: the project's default model, or a field genki does not send", async () => {
+    const defaultModel = judgeBlock({
+      status: 'not_allowed',
+      policyBlock: {
+        rule: 'refused',
+        ownedBy: 'Testetaten',
+        text: `${rule} uses the project's or organisation's default model, which cannot be read through Langfuse's API`,
+      },
+      judge: {
+        ...(judgeBlock().judge as NonNullable<CatalogItem['judge']>),
+        model: undefined,
+        refused: {
+          reason: 'default-model',
+          message: `${rule} uses the project's or organisation's default model, which cannot be read through Langfuse's API`,
+        },
+      },
+    });
+    const toolCalls = judgeBlock({
+      id: 'langfuse:kudos/verktøy-eksperimenter',
+      name: 'verktøy-eksperimenter',
+      status: 'not_allowed',
+      policyBlock: {
+        rule: 'refused',
+        ownedBy: 'Testetaten',
+        text: 'verktøy-eksperimenter reads tool_calls, which genki does not send',
+      },
+      judge: {
+        ...(judgeBlock().judge as NonNullable<CatalogItem['judge']>),
+        refused: {
+          reason: 'unsent-field',
+          field: 'tool_calls',
+          message: 'verktøy-eksperimenter reads tool_calls, which genki does not send',
+        },
+      },
+    });
+
+    await open(detailOf(defaultModel), { items: [defaultModel, toolCalls] });
+    await screen.findByRole('heading', { level: 1, name: rule });
+    const refusal = screen
+      .getByText(
+        'Dommeren bruker prosjektets standardmodell, som ikke kan leses gjennom Langfuse. Velg en modell for dommeren i Langfuse for å ta den i bruk.',
+      )
+      .closest('.ds-alert');
+    expect(refusal?.getAttribute('data-color')).toBe('danger');
+    expect(screen.getByText('Modell').nextElementSibling?.textContent).toBe(
+      'Prosjektets standardmodell',
+    );
+    expect(screen.queryByText(/default model/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Ta i bruk hos oss' })).toBeNull();
+    cleanup();
+
+    await open(detailOf(toolCalls), { items: [defaultModel, toolCalls] });
+    await screen.findByRole('heading', { level: 1, name: 'verktøy-eksperimenter' });
+    expect(screen.getByText('Dommeren leser tool_calls, som genki ikke sender.')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Ta i bruk hos oss' })).toBeNull();
+    expectAccessible();
+  });
+
+  it("names the paths genki reads when a judge's path is refused", async () => {
+    const message = `${rule} reads output at $..text, a JSON path genki cannot read; genki reads $, .key and [n]`;
+    const pathed = judgeBlock({
+      status: 'not_allowed',
+      policyBlock: { rule: 'refused', ownedBy: 'Testetaten', text: message },
+      judge: {
+        ...(judgeBlock().judge as NonNullable<CatalogItem['judge']>),
+        refused: { reason: 'unread-path', field: 'output $..text', message },
+      },
+    });
+
+    await open(detailOf(pathed), { items: [pathed] });
+    await screen.findByRole('heading', { level: 1, name: rule });
+    expect(
+      screen.getByText(
+        'Dommeren leser output $..text, en JSON-sti genki ikke kan lese. genki leser $, .nøkkel og [n], for eksempel $[0].body.text.',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Ta i bruk hos oss' })).toBeNull();
+  });
+
+  it('says in Byggeklosser which filter genki cannot read', async () => {
+    const message = `${rule} has a filter on level that genki cannot read`;
+    const filtered = judgeBlock({
+      status: 'not_allowed',
+      policyBlock: { rule: 'refused', ownedBy: 'Testetaten', text: message },
+      judge: {
+        ...(judgeBlock().judge as NonNullable<CatalogItem['judge']>),
+        refused: { reason: 'filtered', field: 'level', message },
+      },
+    });
+
+    await open(detailOf(filtered), { items: [filtered] });
+    await screen.findByRole('heading', { level: 1, name: rule });
+
+    expect(
+      screen.getByText(
+        'Dommeren har et filter på level, som genki ikke kan lese før kjøringen. Fjern det filteret i Langfuse, eller hold testkjøringene utenfor med et annet filter.',
+      ),
+    ).toBeTruthy();
+  });
+
+  it('shows that a Langfuse judge on a connection without answer text cannot be taken in use', async () => {
+    const message = `${rule} has nothing to judge: the connection kudos gets no answer text`;
+    const silent = judgeBlock({
+      status: 'not_allowed',
+      policyBlock: { rule: 'refused', ownedBy: 'Testetaten', text: message },
+      judge: {
+        ...(judgeBlock().judge as NonNullable<CatalogItem['judge']>),
+        refused: { reason: 'no-content', connection: 'kudos', message },
+      },
+    });
+
+    await open(detailOf(silent), { items: [silent] });
+    await screen.findByRole('heading', { level: 1, name: rule });
+
+    expect(
+      screen.getByText(
+        'Koblingen kudos får ikke svartekst, så dommeren har ingenting å vurdere. Slå på «Send tekst» for koblingen under Utviklerverktøy, Sporing og evaluering, for å ta den i bruk.',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Ta i bruk hos oss' })).toBeNull();
+  });
+  it('shows that a Langfuse judge whose rule shares its name with another cannot be taken in use', async () => {
+    const message = `${rule} is the name of more than one rule in the project, so genki cannot tell them apart`;
+    const twin = judgeBlock({
+      status: 'not_allowed',
+      policyBlock: { rule: 'refused', ownedBy: 'Testetaten', text: message },
+      judge: {
+        ...(judgeBlock().judge as NonNullable<CatalogItem['judge']>),
+        refused: { reason: 'same-name', message },
+      },
+    });
+
+    await open(detailOf(twin), { items: [twin] });
+    await screen.findByRole('heading', { level: 1, name: rule });
+
+    expect(
+      screen.getByText(
+        'Flere regler i prosjektet har dette navnet, så genki kan ikke skille dem fra hverandre. Gi reglene ulike navn i Langfuse for å ta dem i bruk.',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Ta i bruk hos oss' })).toBeNull();
+  });
+
+  it('shows a connection whose Langfuse judges cannot be read as a refused block saying why', async () => {
+    const message =
+      'the judges of the connection kudos could not be read: Langfuse answered HTTP 404 for /api/public/v2/evaluation-rules';
+    const unreadable = judgeBlock({
+      id: 'sink-judges:kudos',
+      name: 'Dommerne i Langfuse (kudos)',
+      version: '',
+      // As the API gives it: where runs go, and no field or model.
+      permissions: [
+        {
+          type: 'network',
+          value: 'https://langfuse.etaten.example.no',
+          note: 'Hit sendes testkjøringene',
+        },
+      ],
+      status: 'not_allowed',
+      policyBlock: { rule: 'refused', ownedBy: 'Testetaten', text: message },
+      judge: {
+        connection: 'kudos',
+        version: '',
+        dataType: '',
+        fields: [],
+        refused: { reason: 'unreadable', connection: 'kudos', message },
+      },
+    });
+
+    await open(detailOf(unreadable), { items: [unreadable] });
+    await screen.findByRole('heading', { level: 1, name: 'Dommerne i Langfuse (kudos)' });
+
+    const refusal = screen
+      .getByText(
+        'Dommerne i prosjektet til koblingen kudos kunne ikke leses (HTTP 404). Langfuse må ha versjon 4.23.0 eller nyere, og koblingens nøkler må gjelde.',
+      )
+      .closest('.ds-alert');
+    expect(refusal?.getAttribute('data-color')).toBe('danger');
+    // It is no judge: nothing to say about a model, version or fields.
+    expect(screen.queryByText('Modell')).toBeNull();
+    expect(screen.queryByText(/could not be read/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Ta i bruk hos oss' })).toBeNull();
+    expectAccessible();
+  });
+});
+
+describe('a step flow in Byggeklosser', () => {
+  const flow = exampleBlocks.find((b) => b.id === 'sf-vedtak') as CatalogItem;
+  const stepType: CatalogItem = { ...flow, id: 'call-operation@1', name: 'Kall en operasjon' };
+
+  it('opens a flow definition in the step-flow editor', async () => {
+    await open('#/building-blocks/step_flow/sf-vedtak');
+    await screen.findByRole('heading', { level: 1, name: 'Vedtaksforberedelse' });
+    expect(screen.getByRole('link', { name: 'Åpne i stegflyteditoren' }).getAttribute('href')).toBe(
+      '#/step-flows/sf-vedtak',
+    );
+  });
+
+  it('shows an own step flow as a read-only diagram and as YAML inside Byggeklosser', async () => {
+    const routing: CatalogItem = { ...flow, id: 'postruting', name: 'Postruting' };
+    await open('#/building-blocks/step_flow/postruting/diagram', {
+      items: [...exampleBlocks, routing],
+    });
+    await screen.findByRole('heading', { level: 1, name: 'Postruting' });
+    expect((await screen.findAllByText('Klassifiser')).length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: /Legg til steg/ })).toBeNull();
+    window.location.hash = '#/building-blocks/step_flow/postruting/yaml';
+    const yaml = await screen.findByRole('region', { name: 'Stegflyten som YAML' });
+    expect(yaml.textContent).toContain('kind: StepFlow');
+    expect(yaml.textContent).toContain('id: klassifiser');
+  });
+
+  it('offers no diagram or YAML tab for a step flow published by someone else', async () => {
+    await open('#/building-blocks/step_flow/sf-hoering');
+    await screen.findByRole('heading', { level: 1, name: 'Høringsoppsummering' });
+    expect(screen.queryByRole('link', { name: 'Diagram' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'YAML' })).toBeNull();
+    expect(screen.getByRole('link', { name: 'Brukes av' })).toBeTruthy();
+  });
+
+  it('gives a step type no link to the step-flow editor', async () => {
+    await open(`#/building-blocks/step_flow/${encodeURIComponent(stepType.id)}`, {
+      items: [...exampleBlocks, stepType],
+    });
+    await screen.findByRole('heading', { level: 1, name: 'Kall en operasjon' });
+    expect(screen.queryByRole('link', { name: 'Åpne i stegflyteditoren' })).toBeNull();
+  });
+
+  it('links the step flow group to the step-flow library', async () => {
+    await open('#/building-blocks');
+    expect(
+      (await screen.findByRole('link', { name: 'Gå til Stegflyter' })).getAttribute('href'),
+    ).toBe('#/step-flows');
   });
 });

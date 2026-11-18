@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockFetch } from '../../mock';
 import { exampleEndpoints, type SearchEnginesMockOptions } from '../../mock/search-engines';
 import { expectAccessible, renderAt } from '../../test-utils';
@@ -29,7 +29,10 @@ const switchSection = async () => {
 beforeEach(() => {
   window.location.hash = '';
 });
-afterEach(cleanup);
+afterEach(() => {
+  vi.useRealTimers();
+  cleanup();
+});
 
 describe('Datasett: søkemotor', () => {
   it('shows the engine facts, what it can do and the services that search the dataset', async () => {
@@ -195,6 +198,78 @@ describe('Datasett: søkemotor', () => {
       await within(flow).findByText('Tilsynsrapport 2023/4471', {}, { timeout: 3000 }),
     ).toBeTruthy();
     expect(within(flow).getByText('Bedre', { selector: 'td *' })).toBeTruthy();
+  });
+
+  it('keeps polling a running switch after a failed poll', async () => {
+    let failures = 1;
+    const base = fetchWith({ scenario: 'switching', progressStep: 60 });
+    const fetch: typeof globalThis.fetch = (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (failures > 0 && !init?.method && url.endsWith('/engine-switches/1')) {
+        failures -= 1;
+        return Promise.resolve(new Response('{}', { status: 503 }));
+      }
+      return base(input, init);
+    };
+    await renderAt(kudos, fetch);
+    const flow = await switchSection();
+    expect(
+      await within(flow).findByText(
+        'Fikk ikke hentet status akkurat nå. Vi prøver igjen av oss selv.',
+        {},
+        { timeout: 3000 },
+      ),
+    ).toBeTruthy();
+    await waitFor(() => expect(within(flow).getByText('Steg 4 av 5')).toBeTruthy(), {
+      timeout: 6000,
+    });
+  }, 10000);
+
+  it('activating a switch into the knowledge database shows the refresh, then the new engine', async () => {
+    await renderAt(
+      kudos,
+      fetchWith({ scenario: 'switching', progressStep: 60, refresh: true, failedDocuments: 2 }),
+    );
+    const flow = await switchSection();
+    await waitFor(() => expect(within(flow).getByText('Steg 4 av 5')).toBeTruthy(), {
+      timeout: 4000,
+    });
+    expect(
+      await within(flow).findByText(
+        '2 dokumenter kunne ikke leses inn. De leses inn på nytt før byttet tas i bruk.',
+        {},
+        { timeout: 3000 },
+      ),
+    ).toBeTruthy();
+    fireEvent.click(within(flow).getByRole('button', { name: 'Neste' }));
+    fireEvent.change(within(flow).getByRole('textbox', { name: /Begrunnelse/ }), {
+      target: { value: 'Flytter til kunnskapsdatabasen' },
+    });
+    fireEvent.click(within(flow).getByRole('button', { name: 'Ta i bruk' }));
+    expect(
+      await within(flow).findByText(/Leser inn det som er endret i kilden siden overføringen/),
+    ).toBeTruthy();
+    expect(within(flow).queryByRole('button', { name: 'Ta i bruk' })).toBeNull();
+    expect(await screen.findByText(/søker nå i/, {}, { timeout: 4000 })).toBeTruthy();
+  });
+
+  it("the portal's engine switch screen shows when admission runs out, and admits the switch again", async () => {
+    vi.useFakeTimers({ now: new Date('2026-11-15T05:00:00Z'), shouldAdvanceTime: true });
+    await openKudos({
+      scenario: 'switching',
+      progressStep: 0,
+      admissionRunsOutAt: '2026-11-15T07:56:00Z',
+    });
+    const flow = await switchSection();
+    const warned = await within(flow).findByText(
+      /sluppet inn bare til 15\. november 2026 kl\. 08\.56/,
+    );
+    expect(warned.closest('[data-color="warning"]')).not.toBeNull();
+
+    fireEvent.click(within(flow).getByRole('button', { name: 'Slipp inn igjen' }));
+
+    const calm = await within(flow).findByText(/sluppet inn til 16\. november 2026 kl\. 06\.00/);
+    expect(calm.closest('[data-color="warning"]')).toBeNull();
   });
 
   it('a failed transfer offers Prøv igjen and Avbryt byttet, and the block explains it', async () => {

@@ -103,7 +103,13 @@ export const platformRetriever =
       throw failure('diagnostics/retrieve', response.status, response.body);
     const body = obj(response.body);
     const expansion = obj(obj(body?.trace)?.expansion);
-    const detected = expansion?.detectedFilter;
+    const detections = Array.isArray(expansion?.detections) ? expansion.detections : undefined;
+    const detected = detections
+      ? detections.flatMap((d) => {
+          const values = obj(d)?.values;
+          return Array.isArray(values) ? values : [];
+        })
+      : expansion?.detectedFilter;
     const rerank = text(obj(expansion?.rerank)?.status);
     return {
       chunks: hits(body?.chunks),

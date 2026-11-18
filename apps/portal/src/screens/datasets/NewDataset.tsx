@@ -1,3 +1,4 @@
+import { ChevronLeftIcon } from '@navikt/aksel-icons';
 import {
   Alert,
   Button,
@@ -24,7 +25,6 @@ import { kudosTypes, sampleFiles } from '../../data/datasets';
 import { useT, type Format, type PlainKey, type T } from '../../i18n';
 import { count } from './model';
 
-const back = 'M15 6l-6 6 6 6';
 type Source = 'kudos' | 'web' | 'upload';
 
 export interface NewDatasetResult {
@@ -272,7 +272,7 @@ export const NewDataset = ({
           onCancel();
         }}
       >
-        <Icon d={back} size={18} />
+        <Icon icon={ChevronLeftIcon} size={18} />
         {t('datasets.title')}
       </a>
       <div className="stack-sm">
@@ -342,7 +342,9 @@ export const NewDataset = ({
             </label>
           ))}
           <p className="meta">
-            {t.rich('datasets.integrationsHint', { link: (c) => <a href="#/integrations">{c}</a> })}
+            {t.rich('datasets.integrationsHint', {
+              link: (c) => <a href="#/developer/systems">{c}</a>,
+            })}
           </p>
         </Fieldset>
       ) : null}

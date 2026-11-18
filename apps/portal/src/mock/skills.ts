@@ -31,6 +31,7 @@ import type { MockHandler, MockRequest } from '../mock';
 export interface SkillsMockOptions {
   skills?: SkillRecord[];
   failing?: boolean;
+  judgeChanged?: boolean;
   defaultPassThreshold?: number;
   assistant?: { status?: SkillAssistantTurn['status']; rejected?: SkillAssistantRejection[] };
 }
@@ -272,7 +273,9 @@ export const skillsMock = (options: SkillsMockOptions = {}): MockHandler => {
       published: r.published ?? null,
       versions: r.versions,
       lastTestRun,
-      stale: Boolean(lastTestRun && lastTestRun.draftRevision !== r.revision),
+      stale: Boolean(
+        lastTestRun && (options.judgeChanged || lastTestRun.draftRevision !== r.revision),
+      ),
       threshold: gates.threshold,
       requirements: gates.requirements,
       shareRequest: own ? (r.shareRequest ?? null) : null,

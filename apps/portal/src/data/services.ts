@@ -4,6 +4,7 @@ import type {
   AssistantTurn,
   JsonPatchOp,
 } from '../api/assistant';
+import type { ModelPrice } from '../types';
 import {
   applySpec,
   type OutputField,
@@ -34,55 +35,47 @@ const asRecord = (v: unknown): Record<string, unknown> =>
 
 export const variantSlug = /^[a-z0-9][a-z0-9-]{0,62}$/;
 
-export const jobs: { id: JobId; label: string; example: string; icon: string }[] = [
+export const jobs: { id: JobId; label: string; example: string }[] = [
   {
     id: 'answers',
     label: 'Svarer på spørsmål',
     example:
       'En saksbehandler spør hva evalueringer sier om digital veiledning, og får svar med kilder.',
-    icon: 'M4 5h16v11H9l-5 4z',
   },
   {
     id: 'drafts',
     label: 'Lager utkast',
     example: 'Utkast til svar på en klage, basert på saken og malen for svarbrev.',
-    icon: 'M6 3h9l3 3v15H6z M9 11h6 M9 15h6',
   },
   {
     id: 'rewrites',
     label: 'Omskriver',
     example: 'Et utgående brev skrives om til klarspråk, eller fra bokmål til nynorsk.',
-    icon: 'M4 8h13l-3-3 M20 16H7l3 3',
   },
   {
     id: 'summarises',
     label: 'Oppsummerer',
     example: '214 høringssvar oppsummeres per tema, med hvem som mener hva.',
-    icon: 'M4 6h16 M4 11h12 M4 16h8',
   },
   {
     id: 'extracts',
     label: 'Henter ut opplysninger',
     example: 'Navn, organisasjonsnummer og beløp hentes ut fra søknader om tilskudd.',
-    icon: 'M4 5h16v14H4z M4 10h16 M10 10v9',
   },
   {
     id: 'sorts',
     label: 'Sorterer',
     example: 'Innkommende post fordeles til riktig avdeling og får en prioritet.',
-    icon: 'M4 5h16l-6 7v6l-4 2v-8z',
   },
   {
     id: 'prepares',
     label: 'Forbereder saker',
     example: 'En søknad sjekkes mot regelverket i flere steg, og saksbehandler godkjenner.',
-    icon: 'M5 7l2 2 3-3 M13 8h6 M5 15l2 2 3-3 M13 16h6',
   },
   {
     id: 'transcribes',
     label: 'Transkriberer',
     example: 'Et møteopptak blir til tekst og et referat med beslutninger.',
-    icon: 'M12 4a3 3 0 0 1 3 3v5a3 3 0 0 1-6 0V7a3 3 0 0 1 3-3z M6 11a6 6 0 0 0 12 0 M12 17v3',
   },
 ];
 
@@ -237,6 +230,7 @@ export interface ModelChoice {
   ore: number;
   note: string;
   residency?: string;
+  price?: ModelPrice | null;
 }
 
 export const models: ModelChoice[] = [

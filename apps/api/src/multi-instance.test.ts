@@ -140,7 +140,7 @@ const boot = async (shared: {
       models: {
         endpoints: {
           fake: {
-            protocol: 'openai-chat',
+            families: { openai: '' },
             baseURL: `${model.url}/v1`,
             auth: { kind: 'api-key', secret: 'secret://env/fake-key' },
           },
@@ -386,6 +386,22 @@ describe('several API instances sharing durable stores', () => {
     expect(await ask(b, capability)).toContainEqual(
       expect.objectContaining({ body: { kind: 'text', text: 'Et kort svar.' } }),
     );
+  });
+
+  it("one platform's cached compiled services show another platform's publish only after a definitions change", async () => {
+    const { a, b, feed } = await twoPlatforms();
+    const versions = async () => (await b.definitions.capabilities()).map((c) => c.service.version);
+    await a.definitions.publish(service, 'test', 'første versjon', { 'prompts/svar.md': 'Svar.' });
+    await feed.emit('definitions');
+    expect(await versions()).toEqual([1]);
+
+    await a.definitions.publish(service, 'test', 'andre versjon', { 'prompts/svar.md': 'Kort.' });
+    expect((await a.definitions.capabilities()).map((c) => c.service.version)).toEqual([2]);
+    expect(await versions()).toEqual([1]);
+
+    await feed.emit('definitions');
+
+    expect(await versions()).toEqual([2]);
   });
 
   it('an engine switch activated on one platform reaches the other after a config-entries change', async () => {

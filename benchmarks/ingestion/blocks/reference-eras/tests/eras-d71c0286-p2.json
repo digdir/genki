@@ -1,0 +1,193 @@
+{
+ "tests": [
+  {
+   "id": "eras-d71c0286-p2-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "The most common nationalities among convicted returnees so far in 2024 are Romanian (18%), Lithuanian (10%) and Polish (9%).",
+     "max_diffs": 4
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d71c0286-p2-t02",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_review",
+   "tags": [
+    "heading",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Lithuanian (10%) and Polish (9%).",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "A total of 17 minors were returned in July",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d71c0286-p2-t03",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "A total of 17 minors were returned in July, either to their home country or to a safe third country.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d71c0286-p2-t04",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "As a rule, Norwegian authorities do not attempt to verify the age of unaccompanied minors",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d71c0286-p2-t05",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "caption",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Returned minors so far this year",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d71c0286-p2-t06",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "caption",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "the child welfare services in the country in question.",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "Returned minors so far this year",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d71c0286-p2-t07",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Returns on chartered flights",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d71c0286-p2-t08",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "So far this year, there have been three chartered returnee flights.",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "The various returnee categories",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d71c0286-p2-t09",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "list",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "all persons who have applied for protection (asylum) in Norway and who have had their application processed and rejected in Norway",
+     "max_diffs": 4
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d71c0286-p2-t10",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "list",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "The Dublin Regulation applies in the EU, Iceland, Liechtenstein, Switzerland and Norway.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

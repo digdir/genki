@@ -1,3 +1,4 @@
+import { ExternalLinkIcon } from '@navikt/aksel-icons';
 import {
   Avatar,
   Button,
@@ -8,7 +9,7 @@ import {
   Textarea,
 } from '@digdir/designsystemet-react';
 import { useEffect, useId, useState } from 'react';
-import { Icon, icons } from '../components/Icon';
+import { Icon } from '../components/Icon';
 import { accessManagers } from '../data/access';
 import { useT, type PlainKey } from '../i18n';
 import type { PortalRight } from '../types';
@@ -144,7 +145,7 @@ const NoAccessContent = ({
         <Button asChild>
           <a href="https://www.altinn.no" target="_blank" rel="noopener">
             {t('noAccess.requestInAltinn')}
-            <Icon d={icons.external} size={18} />
+            <Icon icon={ExternalLinkIcon} size={18} />
             <span className="visually-hidden">{t('noAccess.newTab')}</span>
           </a>
         </Button>

@@ -8,10 +8,15 @@ export interface SourceRecord {
   url?: string;
   text?: string;
   headers?: string[];
+  /** The page the chunk starts on, the page it ends on when another, and its PDF's address. */
+  page?: number;
+  pageEnd?: number;
+  fileUrl?: string;
   document?: string;
   position?: number;
   version?: string;
   publishedAt?: string;
+  publisher?: string;
 }
 
 export interface Clarification {

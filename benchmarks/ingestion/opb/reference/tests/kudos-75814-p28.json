@@ -1,0 +1,162 @@
+{
+ "tests": [
+  {
+   "id": "kudos-75814-p28-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Note A Forklaring av samlet tildeling utgifter",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-75814-p28-t02",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "163 000",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Kap. 0226 post 22",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Overført fra i fjor",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-75814-p28-t03",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "581 000",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Kap. 0226 post 22",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Samlet tildeling",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-75814-p28-t04",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "418 000",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Kap. 0226 post 22",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Årets tildelinger",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-75814-p28-t05",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "Kap. 0222 post 45",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Kapittel og post",
+     "max_diffs": 0
+    },
+    "down": {
+     "text": "Kap. 0226 post 22",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-75814-p28-t06",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "581 000",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-75814-p28-t07",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "12 231 000",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

@@ -18,6 +18,11 @@ const TriggerRun = z
     outcome: z.enum(['completed', 'failed']),
     task: z.string().optional(),
     error: z.string().optional(),
+    usage: z
+      .object({ inputTokens: z.number(), outputTokens: z.number() })
+      .optional()
+      .describe('Only for callers with view-usage'),
+    costMicroNok: z.number().optional().describe('Only for callers with view-usage'),
     timeline: z.string().optional(),
   })
   .openapi('TriggerRun');

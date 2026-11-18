@@ -2,6 +2,7 @@ import {
   knowledgeProfiles,
   matchAllQuery,
   type DocumentSummary,
+  type FilterKind,
   type FilterValue,
   type Hit,
   type KnowledgePort,
@@ -11,6 +12,7 @@ import type { RerankPort } from '@genai/port-rerank';
 import { retrievalConfig } from './config.js';
 import {
   callerFirst,
+  portFilters,
   toFilterMapFields,
   type FilterInput,
   type HeadlessFilterField,
@@ -23,7 +25,7 @@ import {
   type SkippedDocument,
 } from './pipeline.js';
 import { createPlanner } from './planner.js';
-import type { Chunk } from './stages.js';
+import type { Chunk, Detection } from './stages.js';
 import {
   bestContentWindows,
   formatMetadataHeaders,
@@ -40,11 +42,18 @@ export interface RetrievedSummary {
   title?: string;
   url?: string;
   headers?: string[];
+  /** The page the chunk starts on, and the page it ends on when that is another. */
+  page?: number;
+  pageEnd?: number;
+  /** The chunk's PDF as its document's record names it, for a link to `#page=N`. */
+  fileUrl?: string;
   score?: number;
   rerankScore?: number;
   rank?: number;
   version?: string;
   publishedAt?: string;
+  /** The organisation that published the document, several joined with a comma. */
+  publisher?: string;
 }
 
 export interface RetrievedChunk extends RetrievedSummary {
@@ -57,6 +66,7 @@ export interface RetrievalAttribution {
   content?: number;
   autoFilter?: { field: string; options: string[] };
   autoFilterFallback?: boolean;
+  detections?: Detection[];
   rerankEnabled?: boolean;
   rerankMs?: number;
   rerankError?: string;
@@ -94,6 +104,7 @@ export interface RetrievalFactoryOptions {
   facetCache?: FacetCache;
   now?: () => number;
   filters?: Record<string, FilterInput>;
+  detectionUse?: 'boost' | 'hint';
 }
 
 const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
@@ -117,9 +128,21 @@ const isoDate = (value: unknown): string | undefined => {
 };
 
 const publishedAtOf = (fields: Record<string, unknown>) =>
-  ['publish_date', 'published_at', 'publishedAt', 'ingested_at']
+  ['publish_date', 'published_at', 'publishedAt']
     .map((name) => isoDate(joined(fields, name)))
     .find((v) => v !== undefined);
+
+const namesIn = (value: unknown) =>
+  (Array.isArray(value) ? value : [value]).flatMap((v) =>
+    typeof v === 'string' && v.trim() ? [v.trim()] : [],
+  );
+
+/** The document's publisher, several joined with a comma, as a source names it. */
+const publisherOf = (fields: Record<string, unknown>) => {
+  const listed = namesIn(joined(fields, 'publisher_names'));
+  const names = listed.length ? listed : namesIn(joined(fields, 'publisher'));
+  return names.length ? names.join(', ') : undefined;
+};
 
 const versionOf = (fields: Record<string, unknown>) => {
   const value = joined(fields, 'document_version') ?? joined(fields, 'version');
@@ -129,6 +152,15 @@ const versionOf = (fields: Record<string, unknown>) => {
       ? String(value)
       : undefined;
 };
+
+const pageOf = (value: unknown) =>
+  typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : undefined;
+
+/** The heading path the knowledge database gives a chunk, outermost first. */
+const headingPathOf = (value: unknown) =>
+  Array.isArray(value) && value.length > 0 && value.every((h) => typeof h === 'string')
+    ? (value as string[])
+    : undefined;
 
 const describe = (
   id: string,
@@ -140,7 +172,9 @@ const describe = (
     fields: Record<string, unknown>;
   },
 ): RetrievedSummary => {
-  const headers = metadataHeaders(base.fields.metadata);
+  const headers = headingPathOf(base.fields.headingPath) ?? metadataHeaders(base.fields.metadata);
+  const page = pageOf(base.fields.page);
+  const pageEnd = page === undefined ? undefined : pageOf(base.fields.pageEnd);
   return {
     chunkId: id,
     ...optional('document', base.document),
@@ -150,8 +184,18 @@ const describe = (
     ...optional('title', base.title),
     ...optional('url', base.url),
     ...(headers.length > 0 ? { headers } : {}),
+    ...optional('page', page),
+    ...optional(
+      'pageEnd',
+      pageEnd !== undefined && page !== undefined && pageEnd > page ? pageEnd : undefined,
+    ),
+    ...optional(
+      'fileUrl',
+      typeof base.fields.fileUrl === 'string' ? base.fields.fileUrl : undefined,
+    ),
     ...optional('version', versionOf(base.fields)),
     ...optional('publishedAt', publishedAtOf(base.fields)),
+    ...optional('publisher', publisherOf(base.fields)),
   };
 };
 
@@ -183,6 +227,7 @@ const attributionOf = (
     ...optional('content', trace.hitsPerStrategy.content),
     ...(detected ? { autoFilter: { field: detected[0], options: options(detected[1]) } } : {}),
     ...(trace.autoFilterFallback ? { autoFilterFallback: true } : {}),
+    ...(trace.detections ? { detections: trace.detections } : {}),
     ...(trace.rerank.status === 'off' ? {} : { rerankEnabled: true, rerankMs: trace.rerank.ms }),
     ...optional('rerankError', trace.rerank.error),
     ...(caller ? { callerFilter: toFilterMapFields(caller) } : {}),
@@ -193,17 +238,32 @@ const attributionOf = (
 
 const toFilters = (
   selections: FilterSelection[] | undefined,
+  textFields: Set<string> = new Set(),
 ): Record<string, FilterValue> | undefined => {
   const entries = (selections ?? [])
     .filter((s) => s.selectedOptions.length > 0)
     .map((s): [string, FilterValue] => [
       s.field,
-      s.valueType === 'integer' ? s.selectedOptions.map(Number) : s.selectedOptions,
+      textFields.has(s.field)
+        ? { contains: s.selectedOptions }
+        : s.valueType === 'integer'
+          ? s.selectedOptions.map(Number)
+          : s.selectedOptions,
     ]);
   return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 };
 
 const kindName: Record<string, string> = { text: 'contains' };
+
+const firstKind = (declared: FilterKind | FilterKind[]) =>
+  (Array.isArray(declared) ? declared[0] : declared) ?? 'select';
+
+const textFieldsOf = (knowledge: KnowledgePort) =>
+  new Set(
+    Object.entries(knowledge.info().filters).flatMap(([field, declared]) =>
+      firstKind(declared) === 'text' ? [field] : [],
+    ),
+  );
 
 export const createRetrievalBackend = (options: RetrievalFactoryOptions) => {
   const config = retrievalConfig.parse(options.config ?? {});
@@ -229,6 +289,7 @@ export const createRetrievalBackend = (options: RetrievalFactoryOptions) => {
       config,
       facetCache,
       ...optional('now', options.now),
+      ...optional('detectionUse', options.detectionUse),
     });
     for (const c of result.chunks) remember(c.id, c.fields);
     return result;
@@ -306,6 +367,7 @@ export const createAgentRetrieval = (options: RetrievalFactoryOptions) => {
   const backend = createRetrievalBackend({
     ...options,
     config: searchRerankByDefault(options.config, options.rerank),
+    detectionUse: 'hint',
   });
   return {
     search: async (
@@ -316,7 +378,7 @@ export const createAgentRetrieval = (options: RetrievalFactoryOptions) => {
       const result = await backend.run(
         queries,
         opts.userIntent,
-        backend.toFilters(opts.filters),
+        backend.toFilters(opts.filters, textFieldsOf(options.knowledge)),
         signal,
       );
       return {
@@ -331,7 +393,7 @@ export const createAgentRetrieval = (options: RetrievalFactoryOptions) => {
     filterFields: async (signal: AbortSignal) => {
       signal.throwIfAborted();
       return Object.entries(options.knowledge.info().filters).map(([field, declared]) => {
-        const kind = (Array.isArray(declared) ? declared[0] : declared) ?? 'select';
+        const kind = firstKind(declared);
         return {
           field,
           type: kindName[kind] ?? kind,
@@ -344,7 +406,7 @@ export const createAgentRetrieval = (options: RetrievalFactoryOptions) => {
       const declared = options.knowledge.info().filters;
       const known = fields.filter((f) => f in declared);
       if (known.length === 0) return {};
-      const values = await options.knowledge.facets(known);
+      const values = await options.knowledge.facets(known, portFilters(options.filters));
       return Object.fromEntries(
         Object.entries(values).map(([f, list]) => [f, list.slice(0, maxOptions)]),
       );

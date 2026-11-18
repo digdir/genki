@@ -9,6 +9,11 @@
       "source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./testing": {
+      "source": "./src/testing/index.ts",
+      "types": "./dist/testing/index.d.ts",
+      "default": "./dist/testing/index.js"
     }
   },
   "scripts": {
@@ -18,7 +23,7 @@
     "@genai/contracts": "0.0.0",
     "@genai/kernel": "0.0.0",
     "@genai/port-blob": "0.0.0",
-    "zod": "^4.6.5",
+    "zod": "^4.6.7",
     "@genai/definitions": "0.0.0",
     "@genai/eval": "0.0.0"
   },

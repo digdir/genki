@@ -104,11 +104,16 @@ describe('atlas edges', () => {
 
 describe('built page', () => {
   it('is up to date with the module data and template', () => {
-    const tsx = join(repoRoot, 'node_modules/.bin/tsx');
-    const check = spawnSync(tsx, ['--conditions=source', 'scripts/build-atlas.ts', '--check'], {
-      cwd: repoRoot,
-      encoding: 'utf8',
-    });
+    // tsx through the node that runs the test: `.bin/tsx` is a shell script, which Windows cannot spawn.
+    const tsx = join(repoRoot, 'node_modules/tsx/dist/cli.mjs');
+    const check = spawnSync(
+      process.execPath,
+      [tsx, '--conditions=source', 'scripts/build-atlas.ts', '--check'],
+      {
+        cwd: repoRoot,
+        encoding: 'utf8',
+      },
+    );
     expect(check.status, check.stderr || check.stdout).toBe(0);
   }, 60_000);
 

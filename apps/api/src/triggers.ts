@@ -18,7 +18,7 @@ import { actorOf, type AdminHandler, type AdminOutcome } from './admin.js';
 import { appendVersion, serialized, type ConfigEntryStore } from './config-store.js';
 import { changeReasonOf, isReasonLongEnough, reasonTooShort } from './http.js';
 import type { PlatformModuleFactory } from './platform-modules.js';
-import { rightRefused, type Right } from './rights.js';
+import { rightRefused, seesUsage, type Right } from './rights.js';
 import { documentTriggerRoutes } from './triggers-openapi.js';
 
 export type TriggerStatus = 'active' | 'failing' | 'paused';
@@ -68,6 +68,16 @@ const runView = (tenant: string, run: TriggerRunRecord): TriggerRunView => ({
   ...(run.usage ? { usage: run.usage } : {}),
   ...(run.costMicroNok === undefined ? {} : { costMicroNok: run.costMicroNok }),
 });
+
+const withoutCost = (run: TriggerRunView): TriggerRunView => {
+  const shown = { ...run };
+  delete shown.usage;
+  delete shown.costMicroNok;
+  return shown;
+};
+
+const triggerShown = (view: TriggerView, cost: boolean): TriggerView =>
+  cost || !view.lastRun ? view : { ...view, lastRun: withoutCost(view.lastRun) };
 
 const statusOf = (paused: boolean, last?: TriggerRunRecord): TriggerStatus =>
   paused ? 'paused' : last?.outcome === 'failed' && !last.task ? 'failing' : 'active';
@@ -202,7 +212,8 @@ export const triggersModule: PlatformModuleFactory = (deps) => {
       app.get('/tenants/:tenant/triggers', async (c) => {
         const guard = await entered(c, 'use-services');
         if ('response' in guard) return guard.response;
-        return c.json({ data: await list(guard.tenant) });
+        const cost = seesUsage(guard.principal, guard.tenant);
+        return c.json({ data: (await list(guard.tenant)).map((t) => triggerShown(t, cost)) });
       });
 
       app.get('/tenants/:tenant/triggers/:id/runs', async (c) => {
@@ -214,7 +225,14 @@ export const triggersModule: PlatformModuleFactory = (deps) => {
         const wanted = Number(c.req.query('limit') ?? 20);
         const limit = Number.isInteger(wanted) && wanted > 0 ? Math.min(wanted, maxRuns) : 20;
         const recent = await runs.recent(guard.tenant, id, limit);
-        return c.json({ trigger, data: recent.map((r) => runView(guard.tenant, r)) });
+        const cost = seesUsage(guard.principal, guard.tenant);
+        return c.json({
+          trigger: triggerShown(trigger, cost),
+          data: recent.map((r) => {
+            const view = runView(guard.tenant, r);
+            return cost ? view : withoutCost(view);
+          }),
+        });
       });
 
       app.put('/tenants/:tenant/triggers/:id/pause', async (c) => {
@@ -242,7 +260,7 @@ export const triggersModule: PlatformModuleFactory = (deps) => {
           return problem(c, 400, 'Invalid request', result.errors);
         }
         const trigger = (await list(guard.tenant)).find((t) => t.id === id);
-        return c.json(trigger);
+        return c.json(trigger && triggerShown(trigger, seesUsage(guard.principal, guard.tenant)));
       });
     },
   };

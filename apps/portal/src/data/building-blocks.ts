@@ -224,6 +224,11 @@ export const defaultAuthFor = (type: RegistrationType): RegistrationAuth['kind']
 
 export const exampleSecretNames = ['arkiv-nokkel', 'saks-api'];
 
+export const exampleSecretHosts: Record<string, string[]> = {
+  'arkiv-nokkel': ['https://arkiv.testetaten.example.no'],
+  'saks-api': ['https://sak.testetaten.example.no'],
+};
+
 export const mcpContractTests = [
   'Oppsettet er gyldig',
   'Svarer på tools/list',
@@ -304,7 +309,7 @@ type Example = Omit<
   Partial<Pick<CatalogItem, 'permissions' | 'settingsSchema' | 'tenantOverrides'>> & {
     usedBy?: string[];
     scores?: { service: string; testSet: string; score: number }[];
-    versions?: { version: string; publishedAt: string; notes: string }[];
+    versions?: { version: string; publishedAt: string; notes: string; by?: string }[];
   };
 
 const exampleRun = '2026-10-06T05:00:00Z';
@@ -817,48 +822,57 @@ const examples: Example[] = [
     capabilities: ['4 steg', 'Viser hvilke høringssvar hvert tema bygger på'],
   },
   {
-    id: 'fs-trans',
+    id: '991825827/transkribering',
     kind: 'shared_service',
     name: 'Transkribering',
     description: 'Gjør om lydopptak til tekst, med hvem som snakker.',
     publisher: publishers.digdir,
-    version: '2.0',
+    version: '2',
     dataLocation: 'norway',
     status: 'in_use',
     usedBy: ['motereferat'],
     capabilities: ['Bokmål, nynorsk og engelsk', 'Skiller mellom de som snakker'],
   },
   {
-    id: 'fs-klar',
+    id: '991825827/klarsprak',
     kind: 'shared_service',
     name: 'Klarspråk',
     description: 'Skriver om tekst til klart språk.',
     publisher: publishers.digdir,
-    version: '2.3',
+    version: '3',
+    versions: [
+      {
+        version: '3',
+        publishedAt: '2026-11-04',
+        notes: 'Kortere setninger i vedtak.',
+        by: 'kari.nordmann@digdir.no',
+      },
+      { version: '2', publishedAt: '2026-09-29', notes: 'Ny modell.' },
+    ],
     dataLocation: 'norway',
     status: 'in_use',
     usedBy: ['vedtaksutkast'],
     capabilities: ['Beholder fagbegreper', 'Viser hva som er endret'],
   },
   {
-    id: 'fs-nyn',
+    id: '991825827/nynorsk',
     kind: 'shared_service',
     name: 'Bokmål til nynorsk',
     description: 'Omset tekst frå bokmål til nynorsk.',
     publisher: publishers.digdir,
-    version: '1.8',
+    version: '1',
     dataLocation: 'norway',
     status: 'in_use',
     usedBy: ['nettsider-nynorsk'],
     capabilities: ['Følgjer rettskrivinga frå 2012', 'Kan bruke ordlista til verksemda'],
   },
   {
-    id: 'fs-anon',
+    id: '991825827/anonymisering',
     kind: 'shared_service',
     name: 'Anonymisering',
     description: 'Fjerner personopplysninger fra dokumenter før deling.',
     publisher: publishers.digdir,
-    version: '1.0',
+    version: '1',
     dataLocation: 'norway',
     status: 'available',
     isNew: true,
@@ -880,6 +894,7 @@ export const exampleVersions: Record<string, BlockVersion[]> = Object.fromEntrie
         source: 'publisher',
         version: v.version,
         at: `${v.publishedAt}T08:00:00Z`,
+        ...(v.by ? { by: v.by } : {}),
         reason: v.notes,
       })),
     ]),

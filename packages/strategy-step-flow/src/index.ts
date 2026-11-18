@@ -16,6 +16,7 @@ export {
   StepFailure,
 } from './blocks/model.js';
 export { toolBlock } from './blocks/tools.js';
+export { callOperationBlock, callOperationModel, callOperationRef } from './blocks/operation.js';
 export {
   chunkSource,
   isTable,

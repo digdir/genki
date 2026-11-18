@@ -268,3 +268,53 @@ describe('an operator working on one tenant', () => {
     ]);
   });
 });
+
+describe("an agency's dataset in the console", () => {
+  it("shows the search engine switch under an agency's dataset", async () => {
+    at(`/catalog?tab=dataset&tenant=${org}`);
+    const dataset = {
+      id: `${org}/notater`,
+      kind: 'dataset',
+      scope: org,
+      origin: 'api',
+      version: 1,
+      spec: { name: 'Notater', endpoint: 'platform-pg', residency: 'norway' },
+    };
+    const engine = {
+      dataset: `${org}/notater`,
+      endpoint: 'platform-pg',
+      embedding: null,
+      canSwitch: true,
+      retentionDays: 14,
+    };
+    const { api } = platform({
+      ...tenantCatalog,
+      [`GET /tenants/${org}/catalog?kind=dataset`]: () => [200, { data: [dataset] }],
+      [`GET /tenants/${org}/catalog/dataset/notater/versions`]: () => [200, { data: [] }],
+      [`GET /tenants/${org}/datasets/notater/pipelines`]: () => [200, { data: [] }],
+      [`GET /tenants/${org}/datasets/notater/engine`]: () => [200, engine],
+      'GET /operator/catalog/entries?kind=knowledge-endpoint': () => [
+        200,
+        {
+          data: [
+            {
+              ...shared,
+              id: 'knowledge-pg',
+              spec: {
+                engine: 'pgvector',
+                options: { connection: 'knowledge' },
+                sharing: { tenants: '*' },
+              },
+            },
+          ],
+        },
+      ],
+    });
+    render(<Catalog api={api} tab="dataset" />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /Åpne .*notater/ }));
+    expect(
+      await screen.findByRole('button', { name: 'Flytt til kunnskapsdatabasen' }),
+    ).toBeTruthy();
+  });
+});

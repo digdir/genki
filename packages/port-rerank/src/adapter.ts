@@ -25,6 +25,8 @@ export interface RerankConnection<M = unknown> {
 
 export interface RerankAdapter<E = unknown, M = unknown> {
   engine: string;
+  /** The API a reranker model binds to reach this adapter (ADR 0048). */
+  api?: { id: string; family: string };
   endpointOptions: z.ZodType<E>;
   rerankerOptions: z.ZodType<M>;
   connect(endpoint: RerankEndpointConfig<E>): RerankConnection<M>;

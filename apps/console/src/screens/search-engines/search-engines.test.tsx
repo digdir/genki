@@ -255,6 +255,22 @@ describe('Søkemotorer', () => {
     });
   });
 
+  it('the search engine page lists the datasets on an endpoint', async () => {
+    await openEndpoint('typesense-digdir');
+
+    const list = screen.getByRole('region', { name: 'Datasett på søkemotoren' });
+    await waitFor(() =>
+      expect(
+        within(list)
+          .getAllByRole('listitem')
+          .map((li) => li.textContent),
+      ).toEqual([
+        'Kudos · Digdir · 1 innlesingsoppsett',
+        'Regelverk · Testetaten · 2 innlesingsoppsett',
+      ]),
+    );
+  });
+
   it('shows which datasets still use an endpoint when the platform refuses to remove it', async () => {
     await open();
 

@@ -15,6 +15,10 @@ const nb = {
   embedding: { label: 'Innbygging' },
   'embedding.model': { label: 'Innbyggingsmodell' },
   'embedding.dimensions': { label: 'Dimensjoner' },
+  generation: {
+    label: 'Aktiv generasjon',
+    help: 'Settes når datasettet legges på kunnskapsserveren. La det stå som det er.',
+  },
   options: { label: 'Valg for søkemotoren' },
 } satisfies Record<string, LabelText>;
 
@@ -33,6 +37,10 @@ const en: Record<keyof typeof nb, LabelText> = {
   embedding: { label: 'Embedding' },
   'embedding.model': { label: 'Embedding model' },
   'embedding.dimensions': { label: 'Dimensions' },
+  generation: {
+    label: 'Active generation',
+    help: 'Set when the dataset is put on the knowledge server. Leave it as it is.',
+  },
   options: { label: 'Options for the search engine' },
 };
 

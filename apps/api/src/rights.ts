@@ -1,7 +1,14 @@
 import type { Principal } from '@genai/contracts';
-import { PLATFORM_RIGHTS, platformRightsOf } from '@genai/identity';
+import {
+  carriesAltinnActions,
+  isTestRunnerKey,
+  PLATFORM_RIGHTS,
+  platformRightsOf,
+  rightsOnlyFromGrants,
+} from '@genai/identity';
 import type { Context } from 'hono';
 import { platformScope } from './config-store.js';
+import { testRunnerMayPerform } from './test-runner.js';
 
 export type Right =
   | 'use-services'
@@ -44,6 +51,9 @@ export const requireRight = (principal: Principal, tenant: string, right: Right)
     ? { ok: true }
     : { ok: false, problem: rightProblem(right) };
 
+export const seesUsage = (principal: Principal, tenant: string) =>
+  rightsOf(principal, tenant).has('view-usage');
+
 export const rightRefused = (c: Context, problem: RightProblem) =>
   c.json(problem, 403, { 'content-type': 'application/problem+json' });
 
@@ -64,19 +74,45 @@ const datasetWrite = (input: ActionInput): ActionRequirement =>
 const subscriptionRight = (input: ActionInput): Right =>
   input.mode === 'run' ? 'manage-services' : 'use-services';
 const toolRegistration = { anyOf: ['register-building-blocks', 'manage-services'] } as const;
+const objectOf = (value: unknown): Record<string, unknown> =>
+  typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
+const connectionDefaults: Record<string, unknown> = { port: 5432, tls: true };
+const connectionFields = ['password', 'host', 'port', 'database', 'user', 'tls'] as const;
+const borrowsTenantSecret = (input: ActionInput) => {
+  const source = objectOf(objectOf(input.spec).source);
+  if (source.kind !== 'database') return false;
+  const given = objectOf(source.connection);
+  const connector = objectOf(input.connector);
+  if (typeof given.password !== 'string') return true;
+  return connectionFields.some(
+    (field) =>
+      (given[field] ?? connectionDefaults[field]) !==
+      (connector[field] ?? connectionDefaults[field]),
+  );
+};
+const pipelineSave = (input: ActionInput): ActionRequirement =>
+  borrowsTenantSecret(input) ? ['manage-datasets', 'manage-services'] : 'manage-datasets';
 
 export const adminActionRights: Readonly<
   Record<string, ActionRequirement | ((input: ActionInput) => ActionRequirement)>
 > = {
   'platform.service.publish': 'manage-services',
   'platform.service.lifecycle': 'manage-services',
+  'platform.service.environments.add': 'manage-services',
+  'platform.service.environments.remove': 'manage-services',
+  'platform.service.environments.promote': 'manage-services',
+  'platform.service.environments.rollback': 'manage-services',
   'platform.setting.set': 'manage-services',
   'platform.setting.pin': 'manage-services',
   'platform.tenant.import': 'manage-services',
   'platform.tools.register': toolRegistration,
   'platform.tools.sync': toolRegistration,
   'platform.tools.approve': 'manage-services',
-  'platform.secrets.set': { anyOf: ['manage-services', 'register-building-blocks'] },
+  'platform.secrets.set': (input) =>
+    input.hostsChange === true
+      ? 'manage-services'
+      : { anyOf: ['manage-services', 'register-building-blocks'] },
+  'platform.secrets.hosts': 'manage-services',
   'platform.secrets.delete': { anyOf: ['manage-services', 'register-building-blocks'] },
   'platform.apikeys.create': 'manage-services',
   'platform.apikeys.rotate': 'manage-services',
@@ -98,12 +134,18 @@ export const adminActionRights: Readonly<
   'platform.improvement.decide': 'manage-services',
   'platform.catalog.publish': catalogWrite,
   'platform.catalog.delete': catalogWrite,
-  'platform.pipeline.save': 'manage-datasets',
+  'platform.pipeline.save': pipelineSave,
   'platform.pipeline.delete': 'manage-datasets',
   'platform.pipeline.execute': 'manage-datasets',
   'platform.pipeline.cancel': 'manage-datasets',
+  // Knowledge jobs only: ADR 0042 widens ADR 0041, where only operators send jobs back.
+  'platform.jobs.redrive': 'manage-datasets',
+  'platform.jobs.readmit': 'manage-datasets',
+  // Operators only, through their own route (ADR 0042).
+  'platform.knowledge.fields': 'manage-datasets',
   'platform.dataset.upload': 'manage-datasets',
   'platform.dataset.upload.delete': 'manage-datasets',
+  'platform.dataset.delete': datasetWrite,
   'platform.dataset.enrichment.apply': 'manage-datasets',
   'platform.dataset.enrichment.revert': 'manage-datasets',
   'platform.batch-run.start': 'manage-services',
@@ -112,6 +154,8 @@ export const adminActionRights: Readonly<
   'platform.engine-switch.start': datasetWrite,
   'platform.engine-switch.retry': datasetWrite,
   'platform.engine-switch.cancel': datasetWrite,
+  'platform.engine-switch.readmit': datasetWrite,
+  'platform.engine-switch.activate': datasetWrite,
   'platform.testcase.propose': 'manage-services',
   'platform.testcase.review': 'manage-services',
   'platform.service.risk.confirm': 'manage-services',
@@ -155,6 +199,9 @@ export const adminActionRights: Readonly<
   'platform.project.subscription.resume': subscriptionRight,
   'platform.project.subscription.check': subscriptionRight,
   'platform.default.set': 'operator',
+  'platform.tracing.connection.save': 'manage-services',
+  'platform.tracing.connection.remove': 'manage-services',
+  'platform.tracing.connection.residency': 'operator',
   'platform.support.open': 'operator',
   'platform.support.end': 'operator',
   'platform.support.extend': 'operator',
@@ -171,13 +218,30 @@ export const adminActionRights: Readonly<
   'platform.service.share': 'operator',
   'platform.private-networks.save': 'operator',
   'platform.judge.label': 'operator',
+  'platform.judge.label.accept': 'operator',
+  'platform.judge.label.reject': 'operator',
   'platform.task.cancel': 'operator',
   'platform.audit.export': 'operator',
   'platform.task.export': 'manage-services',
   'platform.task.review.edit': 'use-services',
   'platform.task.review.approve': 'use-services',
+  'platform.run.cancel': (input) => (input.own === true ? 'use-services' : 'manage-services'),
+  'platform.quota.request': 'manage-services',
+  'platform.quota.decide': 'operator',
+  'platform.incident.save': 'operator',
+  'platform.incident.resolve': 'operator',
   'platform.clients.webhook-test': 'manage-services',
   'platform.quality.matrix.run': 'operator',
+  'platform.operations.try': 'operator',
+  'platform.demo.save': 'operator',
+  'platform.demo.recording.start': 'operator',
+  'platform.demo.recording.finish': 'operator',
+  'platform.operations.maturity': 'operator',
+  'platform.operations.processor-record': 'operator',
+  'platform.operations.descriptor-upload': 'operator',
+  'platform.operations.descriptor-status': 'operator',
+  'platform.operations.descriptor-withdraw': 'operator',
+  'platform.operations.descriptor-fixture': 'operator',
   'platform.plugin.verify': 'operator',
   'platform.plugin.register': 'operator',
   'platform.plugin.remove': 'operator',
@@ -194,14 +258,16 @@ export const actionRequirement = (action: string, input: ActionInput): ActionReq
   return typeof entry === 'function' ? entry(input) : entry;
 };
 
-export const carriesAltinnActions = (principal: Principal) =>
-  principal.authorizedFor?.some((entry) => entry.actions !== undefined) ?? false;
+export const rightsAreChecked = (principal: Principal) =>
+  carriesAltinnActions(principal) || rightsOnlyFromGrants(principal);
 
-const isOperator = (principal: Principal) =>
+export const isOperator = (principal: Principal) =>
   principal.kind === 'operator' || principal.actor?.kind === 'operator';
 
 export type ActionRefusal =
-  { kind: 'operator' } | { kind: 'right'; right: Right; problem: RightProblem };
+  | { kind: 'operator' }
+  | { kind: 'test-runner' }
+  | { kind: 'right'; right: Right; problem: RightProblem };
 
 export const refusedAction = (
   principal: Principal,
@@ -209,7 +275,9 @@ export const refusedAction = (
   tenant: string,
   input: ActionInput,
 ): ActionRefusal | undefined => {
-  if (isOperator(principal) || !carriesAltinnActions(principal)) return undefined;
+  if (isTestRunnerKey(principal))
+    return testRunnerMayPerform(action, input) ? undefined : { kind: 'test-runner' };
+  if (isOperator(principal) || !rightsAreChecked(principal)) return undefined;
   const requirement = actionRequirement(action, input);
   if (requirement === 'operator') return { kind: 'operator' };
   const held = rightsOf(principal, tenant);

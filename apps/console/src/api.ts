@@ -2,6 +2,8 @@ import { translator, type Locale, type T } from './i18n';
 import { tenantLabel } from './tenant-names';
 import type {
   AuditEntry,
+  DatasetSearchAnswer,
+  DatasetSearchRequest,
   ModelClassification,
   ModelPrice,
   OperatorModel,
@@ -20,6 +22,8 @@ import type {
   PluginSummary,
   QualityOverview,
   LabelItem,
+  SinkLabelBatch,
+  SinkLabels,
   MatrixEstimate,
   MatrixRun,
   MatrixRunDetail,
@@ -27,7 +31,18 @@ import type {
   SupportSessionRow,
   RunningTask,
   EffectiveSettings,
+  DescriptorDetail,
+  DescriptorStatus,
+  DescriptorUpload,
+  EndpointProcessorRecord,
+  Maturity,
+  OperationDescriptor,
+  OperationKind,
+  OperationKinds,
   OperationsOverview,
+  OperationTryResult,
+  ProcessorRecord,
+  WireExchange,
   SettingOverrides,
   SettingsGrid,
   TaskTimeline,
@@ -41,6 +56,9 @@ import type {
   TenantDefinitionHistory,
   EndpointTestResult,
   KnowledgeEndpoint,
+  DatasetEngine,
+  EngineSwitch,
+  SwitchEstimate,
   KnowledgeEndpointItem,
   KnowledgeEngine,
   StoredSecret,
@@ -48,6 +66,7 @@ import type {
   AnswerSource,
   BlockApprovalRequest,
   ChatTurn,
+  ModelApi,
   ModelEndpointInput,
   ModelSettings,
   PlatformProposal,
@@ -56,6 +75,65 @@ import type {
   SkillShareRequest,
   TenantKey,
 } from './types';
+
+/** GET /operator/state-register: the register and how the state accounts differ (ADR 0058). */
+export interface StateRegisterView {
+  syncedAt: string | null;
+  lastGood: string | null;
+  failedNights: number;
+  units: number;
+  accountsPeriod: string | null;
+  same: number;
+  differences: {
+    orgnr: string;
+    name: string;
+    kind: 'mismatch' | 'budget-booking' | 'not-in-register';
+    registerMinistry?: string;
+    registerMinistryName?: string;
+    accountsMinistry?: string;
+    accountsMinistryName?: string;
+  }[];
+}
+
+export type DemoApp = 'portal' | 'console' | 'workspace';
+export type DemoAudience = 'municipality' | 'state-agency' | 'internal';
+
+export interface DemoRecording {
+  id: string;
+  demo: string;
+  demoVersion: number;
+  genkiVersion: string;
+  status: 'running' | 'recorded' | 'failed';
+  steps: number;
+  narrated: boolean;
+  voice?: string;
+  startedAt: string;
+  finishedAt?: string;
+  seconds?: number;
+  files: { name: string; size: number; contentType: string }[];
+  failure?: { step: number; command?: string; message: string };
+}
+
+export interface Demo {
+  id: string;
+  version: number;
+  updatedAt: string;
+  title: string;
+  description: string;
+  audience: DemoAudience[];
+  language: string;
+  voice: string;
+  app: DemoApp;
+  path: string;
+  steps: { say: string; hold?: number }[];
+  latest?: DemoRecording;
+  recorded?: DemoRecording;
+}
+
+export interface DemoDetail extends Demo {
+  genkiVersion: string | null;
+  recordings: DemoRecording[];
+}
 
 export class ApiError extends Error {
   constructor(
@@ -266,6 +344,73 @@ export const createApiClient = ({
     },
     listModels: async (signal?: AbortSignal) =>
       (await call<{ data: OperatorModel[] }>('GET', '/operator/models', { signal })).data,
+    operationKinds: async (signal?: AbortSignal) =>
+      (await call<{ data: OperationKind[] }>('GET', '/operator/operation-kinds', { signal })).data,
+    operationKindsOverview: (signal?: AbortSignal) =>
+      call<OperationKinds>('GET', '/operator/operation-kinds', { signal }),
+    setKindMaturity: (kind: string, maturity: Maturity, reason: string) =>
+      call<OperationKind>(
+        'POST',
+        `/operator/operation-kinds/${encodeURIComponent(kind)}/maturity`,
+        {
+          body: { maturity },
+          headers: { 'change-reason': reason },
+        },
+      ),
+    operationDescriptors: async (signal?: AbortSignal) =>
+      (
+        await call<{ data: OperationDescriptor[] }>('GET', '/operator/operation-descriptors', {
+          signal,
+        })
+      ).data,
+    operationDescriptor: (id: string, signal?: AbortSignal) =>
+      call<DescriptorDetail>('GET', `/operator/operation-descriptors/${id}`, { signal }),
+    uploadDescriptor: (id: string, upload: DescriptorUpload, reason: string) =>
+      call<OperationDescriptor>('PUT', `/operator/operation-descriptors/${id}`, {
+        body: upload,
+        headers: { 'change-reason': reason },
+      }),
+    setDescriptorStatus: (id: string, status: Exclude<DescriptorStatus, 'typed'>, reason: string) =>
+      call<OperationDescriptor>('POST', `/operator/operation-descriptors/${id}/status`, {
+        body: { status },
+        headers: { 'change-reason': reason },
+      }),
+    withdrawDescriptor: (id: string, reason: string) =>
+      call<unknown>('DELETE', `/operator/operation-descriptors/${id}`, {
+        headers: { 'change-reason': reason },
+      }),
+    tryOperation: (id: string, model: string, input: unknown, reason: string) =>
+      call<OperationTryResult>('POST', `/operator/operations/${id}/try`, {
+        body: { model, input, synthetic: true },
+        headers: { 'change-reason': reason },
+      }),
+    recordFixture: (
+      id: string,
+      fixture: { task: string; name: string; exchange: WireExchange },
+      reason: string,
+    ) =>
+      call<OperationDescriptor>('POST', `/operator/operation-descriptors/${id}/fixtures`, {
+        body: fixture,
+        headers: { 'change-reason': reason },
+      }),
+    processorRecords: async (signal?: AbortSignal) =>
+      (
+        await call<{ data: EndpointProcessorRecord[] }>('GET', '/operator/processor-records', {
+          signal,
+        })
+      ).data,
+    saveProcessorRecord: (endpoint: string, record: ProcessorRecord, reason: string) =>
+      call<EndpointProcessorRecord>(
+        'PUT',
+        `/operator/model-endpoints/${encodeURIComponent(endpoint)}/processor-record`,
+        { body: record, headers: { 'change-reason': reason } },
+      ),
+    removeProcessorRecord: (endpoint: string, reason: string) =>
+      call<unknown>(
+        'DELETE',
+        `/operator/model-endpoints/${encodeURIComponent(endpoint)}/processor-record`,
+        { headers: { 'change-reason': reason } },
+      ),
     refreshModels: (reason: string) =>
       call<RefreshResult>('POST', '/operator/models/refresh', {
         headers: { 'change-reason': reason },
@@ -276,6 +421,9 @@ export const createApiClient = ({
         headers: { 'change-reason': reason },
       }),
     health: (signal?: AbortSignal) => call<Health>('GET', '/health', { signal }),
+    readOnlyInLockdown: async (signal?: AbortSignal) =>
+      (await call<{ lockdownReadOnly?: boolean }>('GET', '/me', { signal })).lockdownReadOnly ===
+      true,
     askService: async (
       model: string,
       messages: ChatTurn[],
@@ -371,6 +519,28 @@ export const createApiClient = ({
       ),
     openSupportSession: (tenant: string, reason: string, minutes = 30) =>
       call<SupportSession>('POST', '/support-sessions', { body: { tenant, reason, minutes } }),
+    demos: (signal?: AbortSignal) =>
+      call<{ genkiVersion: string | null; data: Demo[] }>('GET', '/operator/demos', { signal }),
+    demo: (id: string, signal?: AbortSignal) =>
+      call<DemoDetail>('GET', `/operator/demos/${encodeURIComponent(id)}`, { signal }),
+    demoFile: async (recording: string, name: string, signal?: AbortSignal) => {
+      const bearer = token();
+      const response = await send(
+        `${baseUrl}/operator/recordings/${encodeURIComponent(recording)}/files/${encodeURIComponent(name)}`,
+        {
+          headers: bearer ? { authorization: `Bearer ${bearer}` } : {},
+          ...(signal ? { signal } : {}),
+        },
+      );
+      if (!response.ok)
+        throw new ApiError(
+          response.status,
+          (await response.json().catch(() => undefined)) as Problem | undefined,
+        );
+      return response.blob();
+    },
+    stateRegister: (signal?: AbortSignal) =>
+      call<StateRegisterView>('GET', '/operator/state-register', { signal }),
     sharedServices: async (signal?: AbortSignal) =>
       (await call<{ data: SharedService[] }>('GET', '/operator/shared-services', { signal })).data,
     shareService: (
@@ -406,6 +576,30 @@ export const createApiClient = ({
         body: { item: item.item, judge: item.judge, judgeLabel: item.judgeLabel, humanLabel },
         headers: { 'change-reason': reason },
       }),
+    sinkLabels: (signal?: AbortSignal) =>
+      call<SinkLabels>('GET', '/operator/quality/sink-labels', { signal }),
+    fetchSinkLabels: (tenant: string, connection: string) =>
+      call<{ pending: number; shared?: { name: string; rules: string[] }[] }>(
+        'POST',
+        '/operator/quality/sink-labels/fetch',
+        {
+          body: { tenant, connection },
+        },
+      ),
+    decideSinkLabels: (batch: SinkLabelBatch, decision: 'accept' | 'reject', reason: string) =>
+      call<{ accepted?: number; rejected?: number }>(
+        'POST',
+        `/operator/quality/sink-labels/${decision}`,
+        {
+          body: {
+            tenant: batch.tenant,
+            connection: batch.connection,
+            judge: batch.judge,
+            labels: batch.labels.map((l) => ({ id: l.id, revision: l.revision })),
+          },
+          headers: { 'change-reason': reason },
+        },
+      ),
     tracing: (signal?: AbortSignal) => call<TracingStatus>('GET', '/operator/tracing', { signal }),
     supportSessions: async (signal?: AbortSignal) =>
       (await call<{ data: SupportSessionRow[] }>('GET', '/operator/support-sessions', { signal }))
@@ -428,6 +622,14 @@ export const createApiClient = ({
         )
       ).data;
     },
+    tasks: async (status: string, signal?: AbortSignal) =>
+      (
+        await call<{ data: RunningTask[] }>(
+          'GET',
+          `/operator/tasks?${new URLSearchParams({ status }).toString()}`,
+          { signal },
+        )
+      ).data,
     cancelTask: (task: string, reason: string) =>
       call<{ task: string; cancelled: boolean }>(
         'POST',
@@ -608,6 +810,47 @@ export const createApiClient = ({
           signal,
         })
       ).data,
+    /** Searches a dataset directly, as a service's search does; `base` is the dataset's path. */
+    datasetSearch: (base: string, body: DatasetSearchRequest, signal?: AbortSignal) =>
+      call<DatasetSearchAnswer>('POST', `${base}/search`, { body, signal }),
+    /** `base` is a dataset's path: `/operator/datasets/{id}` or `/tenants/{org}/datasets/{id}`. */
+    datasetEngine: (base: string, signal?: AbortSignal) =>
+      call<DatasetEngine>('GET', `${base}/engine`, { signal }),
+    engineSwitchEstimate: (base: string, to: string, signal?: AbortSignal, model?: string) =>
+      call<SwitchEstimate>(
+        'GET',
+        `${base}/engine-switches/estimate?to=${encodeURIComponent(to)}&method=reingest${
+          model ? `&model=${encodeURIComponent(model)}` : ''
+        }`,
+        { signal },
+      ),
+    engineSwitch: (base: string, sid: string, signal?: AbortSignal) =>
+      call<EngineSwitch>('GET', `${base}/engine-switches/${encodeURIComponent(sid)}`, { signal }),
+    startEngineSwitch: (
+      base: string,
+      body: {
+        to: string;
+        method: 'copy' | 'reingest';
+        embedding?: { model: string; dimensions: number };
+        /** Source ids for a copy of named documents. */
+        documents?: string[];
+      },
+      reason: string,
+    ) =>
+      call<EngineSwitch>('POST', `${base}/engine-switches`, {
+        body,
+        headers: { 'change-reason': reason },
+      }),
+    engineSwitchAction: (
+      base: string,
+      sid: string,
+      action: 'retry' | 'cancel' | 'activate' | 'rollback' | 'readmit',
+      reason: string,
+    ) =>
+      call<EngineSwitch>('POST', `${base}/engine-switches/${encodeURIComponent(sid)}/${action}`, {
+        body: {},
+        headers: { 'change-reason': reason },
+      }),
     knowledgeSecrets: async (signal?: AbortSignal) =>
       (await call<{ data: StoredSecret[] }>('GET', '/operator/knowledge/secrets', { signal })).data,
     testKnowledgeEndpoint: (spec: Record<string, unknown>) =>
@@ -717,11 +960,18 @@ export const createApiClient = ({
           { signal },
         )
       ).data.filter((e) => !e.scope || e.scope === 'platform'),
-    addModelEndpoint: (endpoint: ModelEndpointInput, reason: string) =>
+    addModelEndpoint: (id: string, endpoint: ModelEndpointInput, reason: string) =>
       call<unknown>('POST', '/operator/model-endpoints', {
+        body: { id, ...endpoint },
+        headers: { 'change-reason': reason },
+      }),
+    updateModelEndpoint: (id: string, endpoint: ModelEndpointInput, reason: string) =>
+      call<unknown>('PUT', `/operator/model-endpoints/${encodeURIComponent(id)}`, {
         body: endpoint,
         headers: { 'change-reason': reason },
       }),
+    modelApis: async (signal?: AbortSignal) =>
+      (await call<{ data: ModelApi[] }>('GET', '/operator/apis', { signal })).data,
     deleteModelEndpoint: (id: string, reason: string) =>
       call<unknown>('DELETE', `/operator/model-endpoints/${encodeURIComponent(id)}`, {
         headers: { 'change-reason': reason },

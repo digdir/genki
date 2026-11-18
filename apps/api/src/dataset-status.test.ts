@@ -5,9 +5,14 @@ import { IndexWriterRouter } from '@genai/port-knowledge';
 import { memoryEngine } from '@genai/port-knowledge/testing';
 import type { CatalogItem } from './catalog-registry.js';
 import { InMemoryConfigEntryStore } from './config-store.js';
-import { datasetStatus, publicDatasetState } from './dataset-status.js';
+import { datasetStatus, lastImportAt, publicDatasetState } from './dataset-status.js';
 import { indexIngestionBackend, uploadPrefix } from './index-ingestion.js';
-import { InMemoryExecutionStore, IngestionService } from './ingestion.js';
+import {
+  InMemoryExecutionStore,
+  IngestionService,
+  type Execution,
+  type Pipeline,
+} from './ingestion.js';
 
 const tenant = '991825827';
 const dataset = `${tenant}/filer`;
@@ -170,5 +175,42 @@ describe('the status of a dataset', () => {
 
     expect(await publicDatasetState(ingestion, tenant, dataset, true)).toBe('external');
     expect(await publicDatasetState(ingestion, tenant, dataset)).toBe('needs-pipeline');
+  });
+});
+
+describe('the last import of a dataset', () => {
+  const run = (pipelineDataset: string, status: Execution['status'], endedAt?: string) =>
+    ({
+      id: `${pipelineDataset}-${status}-${endedAt ?? 'open'}`,
+      dataset: pipelineDataset,
+      pipeline: 'p',
+      pipelineVersion: 1,
+      backend: 'index',
+      status,
+      startedBy: 'kari',
+      startedAt: '2026-11-01T00:00:00.000Z',
+      ...(endedAt ? { endedAt } : {}),
+    }) satisfies Execution;
+  const runs = [
+    run(dataset, 'succeeded', '2026-11-10T02:00:00.000Z'),
+    run(dataset, 'succeeded', '2026-11-14T02:00:00.000Z'),
+    run(dataset, 'failed', '2026-11-15T02:00:00.000Z'),
+    run(dataset, 'running'),
+    run('923609016/andre', 'succeeded', '2026-11-16T02:00:00.000Z'),
+  ];
+  const ingestion = {
+    list: async (scope: string, id: string) =>
+      scope === tenant && id === dataset ? [{ id: 'p' } as Pipeline] : [],
+    executions: async (id: string) => runs.filter((r) => r.dataset === id),
+  };
+
+  it('is when its newest successful run ended, never a failed or open run or another dataset', async () => {
+    expect(await lastImportAt(ingestion, item)).toBe('2026-11-14T02:00:00.000Z');
+  });
+
+  it('is unknown for a dataset the platform has never imported', async () => {
+    expect(await lastImportAt(ingestion, { scope: 'platform', id: 'digdir/kudos' })).toBe(
+      undefined,
+    );
   });
 });

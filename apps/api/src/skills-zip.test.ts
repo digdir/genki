@@ -1,8 +1,10 @@
+import { deflateRawSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import { readZip } from './skills.js';
 
 interface Central {
   name: string;
+  method?: number;
   size: number;
   compressed: number;
   offset: number;
@@ -27,6 +29,7 @@ const centralEntry = (entry: Central) => {
   const record = new Uint8Array(46 + nameBytes.length);
   const view = new DataView(record.buffer);
   view.setUint32(0, 0x02014b50, true);
+  view.setUint16(10, entry.method ?? 0, true);
   view.setUint32(20, entry.compressed, true);
   view.setUint32(24, entry.size, true);
   view.setUint16(28, nameBytes.length, true);
@@ -117,5 +120,19 @@ describe('readZip', () => {
       })),
     );
     expect(() => readZip(zip)).toThrow(/too many files/);
+  });
+
+  it('refuses an entry whose declared size exceeds what is left of the package budget before inflating it', () => {
+    const deflated = deflateRawSync(asset);
+    const zip = zipOf([{ name: 'assets/a', data: deflated }], ([a = 0]) => [
+      {
+        name: 'assets/a',
+        method: 8,
+        size: 21 * 1024 * 1024,
+        compressed: deflated.length,
+        offset: a,
+      },
+    ]);
+    expect(() => readZip(zip)).toThrow(/too large/);
   });
 });

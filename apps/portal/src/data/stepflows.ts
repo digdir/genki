@@ -96,6 +96,7 @@ export interface Flow {
   desc: string;
   version: number;
   draft?: boolean;
+  unsaved?: boolean;
   changed: string;
   usedBy: string[];
   input: [string, string][];

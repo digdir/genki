@@ -54,6 +54,7 @@ export type PortalRight =
 
 export interface Session {
   name: string;
+  email?: string;
   organisations: Organisation[];
   token: string;
 }
@@ -70,6 +71,7 @@ export interface TimelineBlock {
   title?: string;
   body?: string;
   sources?: string[];
+  media?: { id: string; mediaType: string; bytes: number }[];
 }
 
 export type TimelineStepState =
@@ -102,6 +104,11 @@ export interface TimelineStep {
   raw?: unknown;
 }
 
+export interface RunErasure {
+  reason: 'conversation-deleted' | 'retention' | 'erased';
+  at?: string;
+}
+
 export interface TaskTimeline {
   id: string;
   service: string;
@@ -111,10 +118,13 @@ export interface TaskTimeline {
   caller: string;
   startedAt: string;
   durationSeconds: number;
-  inputTokens: number;
-  outputTokens: number;
-  costOre: number | null;
+  inputTokens?: number;
+  outputTokens?: number;
+  costOre?: number | null;
+  costMicroNok?: number | null;
+  erasure?: RunErasure;
   steps: TimelineStep[];
+  stats?: { byModel?: { model: string }[] };
 }
 
 export type Residency = 'norway' | 'eu' | 'global';
@@ -130,6 +140,7 @@ export interface ModelOption {
   family?: string;
   residency: Residency;
   capabilities: string[];
+  operations?: string[];
   price?: ModelPrice | null;
   parameters?: {
     temperature?: { mode: 'unsupported' } | { mode: 'fixed'; value: number | string };
@@ -165,6 +176,7 @@ export interface SettingInfo {
   sensitivity: 'normal' | 'secret';
   default: unknown;
   settableAt: string[];
+  operatorOnly?: boolean;
   schema?: Record<string, unknown>;
 }
 
@@ -207,10 +219,11 @@ export type Split = 'train' | 'validation' | 'holdout';
 export interface TestCaseSummary {
   id: string;
   split: Split;
+  type?: string;
   input: string | { data?: unknown; parts?: unknown[] };
   tags: string[];
   needsReview: boolean;
-  expected: { referenceAnswer?: string; sources?: unknown[] };
+  expected: { referenceAnswer?: string; criteria?: Record<string, string>; sources?: unknown[] };
 }
 
 export interface TestSet {
@@ -248,9 +261,20 @@ export interface CapabilityModel {
   _mode?: string;
 }
 
+export interface UnmaskedInputUse {
+  flow: string;
+  step: string;
+  stepName?: string;
+  descriptor: string;
+  operation: string;
+  mediaType: string;
+  consent?: { mediaType: string; reason: string };
+}
+
 export interface ValidationResult {
   valid: boolean;
   errors: { path: string; message: string }[];
+  unmaskedInput?: UnmaskedInputUse[];
 }
 
 export interface UsageTotals {
@@ -260,7 +284,10 @@ export interface UsageTotals {
   runs?: number;
   costMicroNok: number | null;
   priced?: boolean;
+  bySource?: { source: UsageSourceId; usage: UsageTotals }[];
 }
+
+export type UsageSourceId = 'genki' | 'gateway';
 
 export interface TaskActor {
   kind: 'person' | 'api-key' | 'system';
@@ -273,11 +300,14 @@ export interface TaskRow {
   service: string;
   serviceName?: string;
   excerpt?: string;
+  erasure?: RunErasure;
   actor?: TaskActor;
   capability: string;
+  version?: number | null;
+  environment?: string | null;
   createdAt: string;
   endedAt: string | null;
-  usage: UsageTotals;
+  usage?: UsageTotals;
 }
 
 export interface ServiceLifecycleView {
@@ -312,7 +342,7 @@ export interface Overview {
     runsThisWeek?: number;
   }[];
   recentTasks: TaskRow[];
-  usageThisMonth: UsageTotals;
+  usageThisMonth?: UsageTotals;
   qualityWarnings: { service: string; message: string }[];
   review: { pendingToolChanges: number; failedTasksLastDay: number };
 }
@@ -342,8 +372,13 @@ export interface ApiKeyView {
   service?: string | null;
   policy?: string | null;
   createdAt: string | null;
+  createdBy?: string | null;
+  createdByName?: string;
+  lastUsedAt?: string | null;
+  modelsInLockdown?: boolean;
   expiresAt: string | null;
   revokedAt: string | null;
+  testRunner?: boolean;
 }
 
 export type ClientChannel = 'mcp' | 'openai' | 'rest' | 'conversations' | 'feedback' | 'facets';
@@ -351,6 +386,7 @@ export type WebhookEvent = 'task.completed' | 'feedback.received';
 
 export interface ClientSpec {
   service: string;
+  environments?: string[];
   kind: 'server' | 'browser';
   url?: string;
   channels: ClientChannel[];
@@ -398,6 +434,7 @@ export interface ServiceKeyView extends ApiKeyView {
   lastUsedAt: string | null;
   rotatedFrom: string | null;
   allowedOverrides: string[];
+  environments?: string[];
 }
 
 export interface AccessView {
@@ -408,6 +445,7 @@ export interface AccessView {
     requirement: { resource: string; action: string; scope?: string };
   }[];
   keys: ApiKeyView[];
+  testRunnerKeys?: boolean;
 }
 
 export interface UsageReport {
@@ -420,11 +458,38 @@ export interface UsageReport {
     usage: UsageTotals;
     byService?: Record<string, UsageTotals>;
     byModel?: Record<string, UsageTotals>;
+    testing?: UsageTotals;
+    ingestion?: UsageTotals;
   }[];
   byService: { service: string; title?: string; usage: UsageTotals }[];
-  byModel: { model: string; usage: UsageTotals }[];
+  byModel: { model: string; source?: UsageSourceId; usage: UsageTotals }[];
+  bySubject?: {
+    subject: { kind: string; id: string; org?: string } | null;
+    usage: UsageTotals;
+    cost: { currency: string; micros: number };
+    rate: number | null;
+    rateDay: string | null;
+  }[];
   byProject?: { project: string; name: string; usage: UsageTotals }[];
   project?: string;
+  byEnvironment?: { environment: string; usage: UsageTotals }[];
+  environment?: string;
+  quota?: UsageQuota;
+  ingestion?: { usage: UsageTotals };
+}
+
+export interface UsageQuota {
+  usedTokens: number;
+  monthlyTokens: number;
+  usedPercent: number;
+  alertPercent: number;
+  alert: boolean;
+}
+
+export interface ToolConnectionView {
+  id: string;
+  name: string;
+  lastSync?: { at: string; ok: boolean; code?: string; message?: string };
 }
 
 export interface ConnectionView {

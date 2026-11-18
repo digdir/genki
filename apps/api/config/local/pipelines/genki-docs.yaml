@@ -9,7 +9,6 @@ spec:
     include:
       - README.md
       - CONTRIBUTING.md
-      - SECURITY.md
       - docs/**/*.md
       - docs/architecture/modules/*.yaml
       - packages/*/README.md

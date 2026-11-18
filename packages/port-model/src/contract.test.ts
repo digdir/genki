@@ -5,9 +5,15 @@ import type { ModelAdapter } from './adapter.js';
 import { modelContract, modelContractTarget } from './contract.js';
 
 const careless: ModelAdapter = {
-  protocol: 'careless',
-  endpointOptions: z.object({}),
-  modelOptions: z.object({}),
+  apis: [
+    {
+      id: 'careless/chat@1',
+      kind: 'chat',
+      family: 'careless',
+      modelOptions: z.strictObject({}),
+      default: true,
+    },
+  ],
   connect: () => ({
     chat: async () => ({
       content: '',

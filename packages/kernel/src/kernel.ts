@@ -1,4 +1,6 @@
+import { addUsage, countedKeys, usageKeys } from './usage-sum.js';
 import {
+  providerFailureOf,
   strategyEventTypes,
   type CapabilityDescriptor,
   type Event,
@@ -25,6 +27,7 @@ import {
   type TaskStore,
 } from './memory.js';
 import { DeltaCoalescer } from './deltas.js';
+import type { QuotaCheck, UseOptions } from './gate.js';
 import {
   KERNEL_MAJOR,
   KernelError,
@@ -51,6 +54,7 @@ export interface KernelLimits {
   maxConcurrentPerTenant: number;
   deltaFlushMs: number;
   deltaFlushChars: number;
+  cancelPollMs: number;
 }
 
 export interface CapabilitySource {
@@ -62,6 +66,7 @@ export interface KernelOptions {
   capabilities: Capability[] | CapabilitySource;
   ports: Record<string, PortProvider>;
   policy: PolicyDecisionPoint;
+  quota?: QuotaCheck;
   log?: EventLog;
   tasks?: TaskStore;
   state?: StateStore;
@@ -76,15 +81,8 @@ const defaultLimits: KernelLimits = {
   maxConcurrentPerTenant: 100,
   deltaFlushMs: 100,
   deltaFlushChars: 500,
+  cancelPollMs: 1000,
 };
-
-const usageKeys = [
-  'inputTokens',
-  'outputTokens',
-  'cachedInputTokens',
-  'requests',
-  'costMicroNok',
-] as const;
 
 const strategyTypes = new Set<string>(strategyEventTypes);
 const extensionType = /^x\.[a-z0-9-]+\.[a-z0-9.-]+$/i;
@@ -116,15 +114,6 @@ const stableStringify = (value: unknown): string => {
 const sha256 = async (text: string) => {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
-};
-
-const addUsage = (a: Usage, b: Usage): Usage => {
-  const sum: Usage = {};
-  for (const k of usageKeys) {
-    const total = (a[k] ?? 0) + (b[k] ?? 0);
-    if (total) sum[k] = total;
-  }
-  return sum;
 };
 
 const tighter = (a: Usage | undefined, b: Usage): Usage => {
@@ -176,12 +165,15 @@ class BudgetNode {
   }
 
   charge(usage: Usage): void {
-    for (const k of usageKeys) {
+    for (const k of countedKeys) {
       const v = usage[k];
       if (v !== undefined && (!Number.isFinite(v) || v < 0)) {
         throw new KernelError('invalid_state', `usage ${k} must be a non-negative number`);
       }
     }
+    for (const [name, v] of Object.entries(usage.units ?? {}))
+      if (!Number.isFinite(v) || v < 0)
+        throw new KernelError('invalid_state', `usage unit ${name} must be a non-negative number`);
     const chain = this.chain();
     for (const node of chain) node.used = addUsage(node.used, usage);
     for (const node of chain) {
@@ -403,6 +395,35 @@ export const createKernel = (options: KernelOptions): Kernel => {
     l.controller.abort(reason);
   };
 
+  const cancelled = () => new KernelError('cancelled', 'task was cancelled');
+
+  let cancelWatch: ReturnType<typeof setInterval> | undefined;
+  let checkingCancels = false;
+  const checkCancels = async () => {
+    if (live.size === 0) {
+      clearInterval(cancelWatch);
+      cancelWatch = undefined;
+      return;
+    }
+    if (checkingCancels || !store.cancelRequested) return;
+    checkingCancels = true;
+    try {
+      for (const id of await store.cancelRequested([...live.keys()])) {
+        const running = live.get(id);
+        if (running) abort(running, cancelled());
+      }
+    } catch {
+      // The next round asks again.
+    } finally {
+      checkingCancels = false;
+    }
+  };
+  const watchCancels = () => {
+    if (cancelWatch || !store.cancelRequested) return;
+    cancelWatch = setInterval(() => void checkCancels(), limits.cancelPollMs);
+    cancelWatch.unref?.();
+  };
+
   const outputLimit = (l: Live) => {
     const limits = [
       l.budget.headroom()?.outputTokens,
@@ -452,9 +473,14 @@ export const createKernel = (options: KernelOptions): Kernel => {
     if (l.finished) return;
     l.finished = true;
     const code = error instanceof KernelError ? error.code : 'strategy_error';
+    const provider = providerFailureOf(error);
     await emit(
       l,
-      { type: 'kernel.error', data: { code, message: error.message }, audience: 'audit' },
+      {
+        type: 'kernel.error',
+        data: { code, message: error.message, ...(provider ? { provider } : {}) },
+        audience: 'audit',
+      },
       'kernel',
     );
     const clientMessage = error instanceof KernelError ? error.message : 'the service failed';
@@ -464,7 +490,7 @@ export const createKernel = (options: KernelOptions): Kernel => {
   };
 
   const finishAborted = async (l: Live) => {
-    const reason = l.abortReason ?? new KernelError('cancelled', 'task was cancelled');
+    const reason = l.abortReason ?? cancelled();
     if (reason.code !== 'cancelled') return fail(l, reason);
     if (l.finished) return;
     l.finished = true;
@@ -509,6 +535,7 @@ export const createKernel = (options: KernelOptions): Kernel => {
   const drive = async (l: Live, start: () => AsyncIterable<Emitted>) => {
     await setStatus(l, 'running');
     live.set(l.task.id, l);
+    watchCancels();
     const deadlineMs = l.capability.deadlineMs;
     const timer =
       deadlineMs === undefined
@@ -607,7 +634,7 @@ export const createKernel = (options: KernelOptions): Kernel => {
   const contextFor = (l: Live): InvocationContext => {
     const budget: Budget = {
       remaining: () => l.budget.remaining(),
-      charge: (usage) => chargeLive(l, usage),
+      charge: (usage, model) => chargeLive(l, usage, model ? { model } : {}),
     };
     return {
       principal: l.principal,
@@ -633,7 +660,7 @@ export const createKernel = (options: KernelOptions): Kernel => {
           await persist(l);
         },
       },
-      use: async <P>(port: string, ref: Ref) => {
+      use: async <P>(port: string, ref: Ref, useOptions: UseOptions = {}) => {
         if (!l.strategy.requires.ports.includes(port)) {
           throw new KernelError(
             'forbidden',
@@ -659,16 +686,29 @@ export const createKernel = (options: KernelOptions): Kernel => {
           tenant: l.task.tenant,
           principal: l.principal,
           task: l.task.id,
+          capability: l.capability.descriptor.id,
           signal: l.controller.signal,
           meter: (usage, model) => chargeLive(l, usage, { port, ref, ...(model ? { model } : {}) }),
           outputLimit: () => outputLimit(l),
           provenance: (resource) => recordResource(l, resource),
+          ...(useOptions.guards?.length ? { guards: useOptions.guards } : {}),
+          ...(useOptions.serviceResidency ? { serviceResidency: useOptions.serviceResidency } : {}),
+          ...(useOptions.unmaskedMedia?.length ? { unmaskedMedia: useOptions.unmaskedMedia } : {}),
+          audit: async (record) => {
+            await emit(l, { type: 'kernel.gate.call', data: record, audience: 'audit' }, 'kernel');
+          },
         };
         return provider.open(ref, portContext) as P;
       },
-      invoke: async (capabilityId, input) => {
+      invoke: async (capabilityId, input, options = {}) => {
         requireFeature(l, 'subinvoke');
-        return invoke(l.principal, capabilityId, input, {}, l);
+        return invoke(
+          l.principal,
+          capabilityId,
+          input,
+          options.evaluation ? { evaluation: options.evaluation } : {},
+          l,
+        );
       },
     };
   };
@@ -695,6 +735,10 @@ export const createKernel = (options: KernelOptions): Kernel => {
       capabilityRef(capability.descriptor),
     );
     if (!decision.allow) throw new KernelError('forbidden', decision.reason);
+    if (!parent) {
+      const spent = await options.quota?.({ tenant, capability: capability.descriptor.id });
+      if (spent) throw new KernelError('quota_exhausted', spent);
+    }
     const depth = parent ? parent.depth + 1 : 0;
     if (depth > limits.maxDepth)
       throw new KernelError('limit_exceeded', `invocation depth over ${limits.maxDepth}`);
@@ -729,12 +773,16 @@ export const createKernel = (options: KernelOptions): Kernel => {
           capability: { id: capability.descriptor.id, version: capability.descriptor.version },
           strategy: { id: strategy.id, version: strategy.version },
           configHash,
+          ...(invokeOptions.environment === undefined
+            ? {}
+            : { environment: invokeOptions.environment }),
         },
         principal: principalRef(principal),
         tenant,
         owner: capability.descriptor.tenant,
         ...(parent ? { parent: parent.task.id } : {}),
         ...(thread === undefined ? {} : { thread }),
+        ...(invokeOptions.entryPoint === undefined ? {} : { entryPoint: invokeOptions.entryPoint }),
         status: 'queued',
         artifacts: [],
         usage: {},
@@ -777,7 +825,14 @@ export const createKernel = (options: KernelOptions): Kernel => {
     await emit(l, { type: 'kernel.task.status', data: { status: 'queued' } }, 'kernel');
     await emit(
       l,
-      { type: 'kernel.task.input', data: { input }, audience: 'audit' },
+      {
+        type: 'kernel.task.input',
+        data: {
+          input,
+          ...(invokeOptions.evaluation ? { evaluation: invokeOptions.evaluation } : {}),
+        },
+        audience: 'audit',
+      },
       principalRef(principal),
     );
     await persist(l);
@@ -892,7 +947,8 @@ export const createKernel = (options: KernelOptions): Kernel => {
     cancel: async (principal, taskId) => {
       const stored = await authorize(principal, taskId, 'cancel');
       const running = live.get(taskId);
-      if (running) return abort(running, new KernelError('cancelled', 'task was cancelled'));
+      if (running) return abort(running, cancelled());
+      if (isRunning(stored.task.status)) return store.requestCancel?.(taskId, now().toISOString());
       if (stored.task.status !== 'interrupted') return;
       const l = revive(stored);
       l.finished = true;

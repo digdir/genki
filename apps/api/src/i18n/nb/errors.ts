@@ -3,12 +3,28 @@ import { defineNamespace } from '@genai/i18n';
 export const catalogErrors = defineNamespace({
   onlyOperatorsChangeModels: 'bare operatører endrer modeller',
   routeOnlyAction: 'denne handlingen kjøres bare fra sin egen rute',
+  testRunnerExpiry: 'en testkjørernøkkel må utløpe innen 1 til {testRunnerMaxDays} dager',
+  testRunnerCallsPerMinute: 'en testkjørernøkkel må ha en grense for kall per minutt',
   supportMinutes: '1 til {minutes} minutter',
   noModel: 'ingen modell {id}',
   tenantsCannotRegister: 'virksomheter kan ikke registrere {kind}',
   facetsList: 'fasetter er en liste med feltnavn',
   facetsFilter: 'fasetter må også være filterfelt: {missing}',
   runsInside: '{engine} kjører inne i plattformen og tar ikke {key}',
+  moveWithEngineSwitch:
+    'flytt et datasett til kunnskapsdatabasen med et bytte av søkemotor, som fyller en generasjon først',
+  generationOfAnother: '{generation} er generasjonen til et annet datasett',
+  knowledgeWrittenByWorker: 'kunnskapsdata skrives av bakgrunnstjenesten',
+  knowledgePhrases:
+    'søkefraser kan ikke fylle et datasett i kunnskapsdatabasen før oppskriftene har dem',
+  knowledgeOnePipeline:
+    'et datasett i kunnskapsdatabasen fylles av én pipeline til medeiere er bygget; det har {pipelines}',
+  knowledgeChunking:
+    'oppdeling endres gjennom en ny generasjon, som ikke er bygget ennå; datasettets generasjon beholder oppdelingen den ble fylt med',
+  knowledgeSourceKind:
+    'en kilde av typen {kind} kan ikke fylle et datasett i kunnskapsdatabasen ennå',
+  knowledgeBusy: 'kunnskapsserveren er opptatt, prøv igjen',
+  noKnowledgeServer: 'ingen kunnskapsserver er satt opp',
   onlyPlatformShared: 'bare plattformens endepunkter deles',
   tenantEndpointsModels: 'virksomhetens endepunkter lister modellene sine eksplisitt',
   tenantEndpointsAuth: 'virksomhetens endepunkter bruker api-key eller bearer',
@@ -40,6 +56,7 @@ export const catalogErrors = defineNamespace({
   noDataset: 'ingen datasett {dataset}',
   onlyTenantTestSets: 'bare virksomheten eller en operatør endrer testsettene',
   onlyTenantChangesServiceState: 'bare virksomheten endrer tilstanden til tjenestene sine',
+  onlyTenantChangesEnvironments: 'bare virksomheten endrer miljøene til tjenestene sine',
   serviceStateValues: 'tilstanden må være active, paused eller archived',
   indexRequired: 'en indeks er påkrevd',
   datasetExists: 'datasettet {datasetId} finnes',
@@ -87,8 +104,25 @@ export const catalogErrors = defineNamespace({
   hooksOff: 'kroker er slått av',
   endpointId: 'små bokstaver, sifre, punktum og bindestrek',
   httpsAddress: 'en HTTPS-adresse uten påloggingsopplysninger',
-  apiKeyOrBearer: 'api-key eller bearer',
+  familyAndBase: 'oppgi minst én API-familie og stien eller adressen til den',
+  noApiFamily: 'ingen API-er i familien {family}; en av {knownFamilies}',
+  familyBase: 'en sti under baseURL, eller en HTTPS-adresse uten påloggingsopplysninger',
+  allowedHostList: 'en liste på høyst 20 vertsnavn, hvert med valgfri port',
+  discoveryRules: 'en liste med regler for å finne modeller',
+  apiKeyOrBearer: 'api-key, bearer eller federated-app',
+  guid: 'en GUID',
+  federatedScope: 'et scope som slutter på /.default',
   usePlatformSecret: 'bruk en hemmelighet for plattformen: secret://platform/<name>',
+  namedKeyList: 'høyst 4 navngitte nøkler, hver med et nøkkelnavn',
+  settingOrKey: 'et navn er enten en innstilling eller en nøkkel',
+  settingName: 'en liten bokstav, deretter bokstaver, sifre eller _, høyst 32 tegn',
+  settingValue: 'synlig tekst på høyst 256 tegn',
+  settingNotSecret: 'en innstilling er ikke en hemmelighet; legg den under keys',
+  settingsCount: 'høyst 20 innstillinger',
+  keysCount: 'høyst 4 navngitte nøkler',
+  secretReference: 'må være en secret://-referanse',
+  onlyOperatorSets: 'bare operatøren setter {field}, og bare på en modellkobling',
+  gatewayBoolean: 'gateway må være true eller false',
   endpointExists: 'Endepunktet finnes allerede',
   endpointModelsInUse: 'Modellene fra endepunktet er i bruk',
   usesModelFrom: '{tenant}/{service} bruker en modell fra {id}',
@@ -97,6 +131,57 @@ export const catalogErrors = defineNamespace({
   idStartsWith: 'id-en begynner med {id}/',
   noPluginRegistry: 'ingen register for tillegg',
   builtInPlugin: '{id} er et innebygd tillegg',
+  tracingSecretNotForHost: 'hemmeligheten er ikke satt for {outside}',
+  tracingServiceCovered: '{service} er allerede dekket av koblingen {id}',
+  tracingResidencyByOperator:
+    'en driftsoperatør setter lagringssted for en kobling til Digdirs Langfuse',
+  tracingBeingRemoved: 'koblingen {id} er i ferd med å bli fjernet',
+  tracingDeletesOwed: 'koblingen {id} har fortsatt sporinger å slette der den peker nå',
+  tracingNoConnection: 'ingen kobling {id}',
+  tracingNotCovered: 'ingen sporingskobling dekker tjenesten {service}',
+  tracingCoveredTwice: 'to sporingskoblinger dekker tjenesten {service}: {ids}',
+  tracingResidencyForbids:
+    'tjenestens lagringssted {residency} tillater ikke koblingens {connection}',
+  gateOnSinkJudge:
+    'kvalitetskravet {gate} leser Langfuse-dommeren {judge} på koblingen {connection}, som er rådgivende og aldri stopper en publisering',
+  sinkJudgeGone:
+    'dommeren {id} er ikke lenger en aktiv eksperimentdommer i prosjektet til koblingen {connection}',
+  sinkJudgeNoContent: '{rule} har ingenting å vurdere: koblingen {connection} får ikke svartekst',
+  sinkJudgesUnreadable: 'dommerne til koblingen {connection} kunne ikke leses: {error}',
+  sinkDatasetUnavailable:
+    'datasettet til testsettet {testSet} kunne verken finnes eller lages i prosjektet til koblingen {connection}: {error}',
+  sinkJudgesDiffer:
+    'prosjektet til koblingen {connection} har aktive dommere som genki ikke leser: {judges}; ta dem i bruk eller slå dem av i Langfuse',
+  sinkJudgeNotAModel:
+    '{rule} er ikke en LLM-som-dommer-evaluator, så den har ingen modell genki kan navngi',
+  sinkJudgeSampled:
+    '{rule} vurderer bare en del av elementene den får, så noen testtilfeller ville aldri fått vurdering',
+  sinkJudgeFiltered: '{rule} har et filter på {column} som genki ikke kan lese før kjøringen',
+  sinkRuleEverySpan:
+    '{rule} ville vurdert hvert spenn i testtilfellene; legg til filteret isExperimentItemRootSpan = true, eller hold genkis testkjøringer utenfor med environment none of genki-test-runs',
+  sinkRuleRootOnly:
+    '{rule} vurderer rotspennene i kjøringen uten isExperimentItemRootSpan = true, som genki trenger for å lese en dommer',
+  sinkRuleUnreadEvaluator: '{rule} kjører en evaluator genki ikke kan lese',
+  sinkJudgeDefaultModel:
+    '{rule} bruker prosjektets eller organisasjonens standardmodell, som ikke kan leses gjennom Langfuses API',
+  sinkJudgeUnsentField: '{rule} leser {field}, som genki ikke sender',
+  sinkJudgeUnreadPath: '{rule} leser {field} på {path}, en JSON-sti genki ikke kan lese',
+  sinkJudgeSeveral: '{rule} kjører mer enn én evaluator; genki leser en regel med én',
+  sinkJudgeSameName:
+    '{rule} er navnet på mer enn én regel i prosjektet, så genki kan ikke skille dem fra hverandre',
+  sinkJudgePaused: 'evaluatoren {evaluator} til {rule} er satt på pause i Langfuse',
+  tracingHostOrigin:
+    'adressen skrives som https://langfuse.example.no, uten sti eller brukernavn og passord',
+  tracingHostDot: 'vertsnavnet slutter med punktum',
+  tracingContentNeedsInstance:
+    'innhold krever at LANGFUSE_BASE_URL er satt, så Digdirs Langfuse aldri forveksles med en virksomhets egen',
+  tracingResidencyValues: 'norway, eu eller global',
+  tracingResidencyByTenant: 'virksomheten oppgir lagringssted for sin egen Langfuse',
+  tracingKeysRefused: 'Langfuse avviste nøklene',
+  tracingHttpStatus: 'HTTP {status}',
+  tracingUnreachable: 'Langfuse kunne ikke nås',
+  pluginContractOutdated:
+    'tillegg av typen {kind} følger {expected}; registrer {id} på nytt under {expected}',
   noExternalPlugin: 'ingen eksternt tillegg {id}',
   invalidManifest: 'Ugyldig manifest',
   pluginEndpointNeedsAuth: 'et endepunkt av typen {kind} trenger autentisering',
@@ -142,6 +227,10 @@ export const knowledgeErrors = defineNamespace({
   copyOrReingest: 'method er copy eller reingest',
   retryStopped: 'Bare et bytte som har stoppet kan prøves på nytt.',
   switchEnded: 'Byttet er allerede avsluttet.',
+  switchRunDiscarded: 'Kjøringen skrev til en generasjon byttet har forkastet.',
+  switchRunStillOpen: 'En kjøring i byttet går fortsatt.',
+  switchNoOpenRuns: 'Byttet har ingen åpne kjøringer.',
+  switchRunNotReadmitted: 'Kjøringen kunne ikke slippes inn igjen.',
   switchNotReady: 'Byttet er ikke klart til å tas i bruk.',
   datasetChangedSwitch: 'Datasettet er endret siden byttet startet.',
   engineNotUsed: 'Søkemotoren kunne ikke tas i bruk',
@@ -150,7 +239,35 @@ export const knowledgeErrors = defineNamespace({
   datasetChangedEngine: 'Datasettet er endret siden søkemotoren ble tatt i bruk.',
   previousNotRestored: 'Den forrige søkemotoren kunne ikke tas i bruk igjen',
   pipelineOff: 'innlesingen er slått av',
+  notSendRunBack: 'du har ikke lov til å sende denne kjøringen tilbake',
+  onlyOperatorRefreshesFields: 'bare en driftsoperatør fyller nye felt',
+  fillMustBeOneOf: 'fill må være en av {fieldFills}',
+  runOpenRefreshAfter: 'en kjøring av datasettet pågår; fyll feltene når den er ferdig',
+  onlyJobRunsSentBack: 'bare en kjøring som går som jobber, kan sendes tilbake',
+  notReadmitRun: 'du har ikke lov til å slippe denne kjøringen inn igjen',
+  onlyJobRunsReadmitted: 'bare en kjøring som går som jobber, kan slippes inn igjen',
+  jobRunNotReadmitted:
+    'bare en kjøring i kø eller som pågår, som går som jobber og ikke er i ferd med å avbrytes, kan slippes inn igjen',
   datasetGone: 'datasettet finnes ikke lenger',
+  parquetOneLocation: 'en Parquet-kilde trenger nøyaktig én av url, urls og huggingface',
+  parquetGlob: 'må være et .parquet-filmønster',
+  parquetTableRequired: 'table kreves akkurat når urls er satt',
+  parquetDuplicate: 'duplikat Parquet-rad-ID {sourceId} i tabellen {origin}',
+  parquetTreePages: 'Parquet-fillisten overskrider sidegrensen',
+  parquetTreeInvalid: 'ugyldig Parquet-filliste',
+  parquetTreePagination: 'ugyldig URL for neste side av Parquet-fillisten',
+  parquetTooManyShards: 'Parquet-tabellen har mer enn 1000 filer',
+  parquetNoFiles: 'Parquet-filmønsteret fant ingen filer',
+  parquetWriteStalled: 'skrivingen til den midlertidige Parquet-filen stoppet opp',
+  parquetFileRange: 'ugyldig byteområde i Parquet-filen',
+  parquetFileEnd: 'uventet slutt på den midlertidige Parquet-filen',
+  parquetColumns: 'Parquet-filen har ingen kolonne {columns}',
+  parquetLookupLocation: 'et oppslag trenger nøyaktig én av file og url',
+  parquetLookupFile: 'en oppslagsfil trenger en huggingface-kilde; bruk url ellers',
+  parquetLookupRows: 'Parquet-oppslaget {file} har mer enn {maxRows} rader',
+  parquetLookupMemory: 'Parquet-oppslaget {file} trenger mer enn {maxMemoryBytes} byte',
+  parquetLookupConflict: 'Parquet-oppslaget {file} har nøkkelen {key} to ganger med ulike verdier',
+  parquetLookupColumns: 'Parquet-oppslaget {label} har ingen kolonne {missing}',
   engineInUse: 'Søkemotoren brukes av datasett',
   datasetUses: '{tenant}/{dataset} bruker {id}',
   endpointJson: 'send endepunktet som et JSON-objekt',
@@ -158,9 +275,22 @@ export const knowledgeErrors = defineNamespace({
   noEnrichmentProfile: 'Datasettet har ingen søkeprofil for berikelsen {profile}',
   enrichmentModelFailed: 'Modellen kunne ikke foreslå spørsmål',
   enrichmentWriteFailed: 'Spørsmålene kunne ikke lagres',
+  enrichmentModelRefused: 'Modellen kan ikke brukes',
+  enrichmentUncounted: 'Bruken av modellen kan ikke telles, så det blir ikke foreslått spørsmål',
+  jobRunQueuedExists:
+    'en kjøring av {dataset}/{pipeline} venter allerede på den åpne; vent på den eller avbryt den',
+  jobRunNotSentBack: 'bare en avsluttet kjøring som går som jobber, kan sendes tilbake',
+  jobRunOpen:
+    '{dataset}/{pipeline} har en åpen kjøring; vent på den eller avbryt den før du sender denne tilbake',
+  ingestStillEnding:
+    'den siste innlesingsjobben for {dataset}/{pipeline} avslutter fortsatt; start kjøringen igjen om et minutt',
   noRunningIngestion: 'ingen pågående innlesing {execution}',
   ingestionRunLocked:
     'datasettet {dataset} leses allerede inn av kjøring {execution}; vent til den er ferdig eller avbryt den',
+  switchHold:
+    'datasettet {dataset} byttes til en annen søkemotor ({engineSwitch}); innlesingene kjører igjen når byttet er klart, tatt i bruk eller avsluttet',
+  generationNotBuilt:
+    'generasjonen {generation} ble ikke bygget: byggejobben sluttet uten å koble den til; prøv byttet på nytt',
 });
 
 export const blockErrors = defineNamespace({
@@ -200,6 +330,11 @@ export const blockErrors = defineNamespace({
   onlyOperatorsShare: 'bare operatører endrer hva som deles',
   sharedWith: 'må være "*", organisasjonsnumre eller null',
   onlyOperatorsLabel: 'bare operatører merker resultater fra dommere',
+  onlyOperatorsDecideLabels: 'bare operatører avgjør hvilke etiketter som teller',
+  sinkLabelsOff: 'koblingen {id} henter ikke etiketter; slå på etiketter først',
+  labelsNotAList: 'labels må være en liste over etikettene som ble vist, med id og revisjon',
+  noPendingLabels: 'det finnes ingen slik bunke med ventende etiketter',
+  tenantAndConnectionRequired: 'virksomhet og kobling må oppgis',
   onlyOperatorsEndSessions: 'bare operatører avslutter støtteøkter',
   noActiveSession: 'ingen aktiv økt med den id-en',
   onlyOperatorsExtend: 'bare operatører forlenger støtteøkter',
@@ -231,6 +366,14 @@ export const blockErrors = defineNamespace({
   alreadyRegisteredShort: 'allerede registrert',
   applicationPending: 'Virksomheten har allerede en søknad til behandling',
   approveAndReason: 'approve (true eller false) og en begrunnelse er påkrevd',
+  toolSyncAuthFailed: 'verktøytjeneren avviste påloggingen',
+  toolSyncSecretUnavailable: 'hemmeligheten til tilkoblingen kan ikke brukes mot denne adressen',
+  toolSyncBlocked: 'adressen er ikke tillatt for tilkoblingen',
+  toolSyncUnreachable: 'plattformen kom ikke fram til verktøytjeneren',
+  toolSyncTimeout: 'verktøytjeneren svarte ikke i tide',
+  toolSyncProtocolError: 'verktøytjeneren svarte på en måte plattformen ikke forstår',
+  toolSyncToolListInvalid: 'verktøylisten fra tjeneren er ugyldig',
+  toolSyncUnknown: 'synkroniseringen av verktøyene feilet',
 });
 
 export const projectErrors = defineNamespace({
@@ -299,6 +442,9 @@ export const qualityErrors = defineNamespace({
   instructionsChanged: 'Instruksjonene i utkastet er endret siden forslaget ble laget.',
   notReleased: 'modellen {model} er ikke sluppet ennå; den venter på kvalitetsmatrisen',
   modelToTest: 'modellen som skal testes, er påkrevd',
+  descriptorsOperatorsOnly: 'bare operatører prøver beskrivelser under gjennomgang',
+  descriptorsTestOnly: 'GENAI_ENV er ikke test',
+  noDescriptor: 'ingen beskrivelse {id}',
   modelInUse: 'modellen som er i bruk, er påkrevd',
   compareAnother: 'sammenlign med en annen modell',
   modelNotFound: 'Fant ikke modellen',
@@ -327,12 +473,20 @@ export const qualityErrors = defineNamespace({
   baseVersionRange: 'baseVersion er en publisert versjon fra 0 til {latest}',
   inputRequired: 'input er påkrevd',
   lockedOrOpen: 'split er locked eller open',
+  caseIdList: 'cases er en liste med minst én id for et testtilfelle',
+  noCaseIn: 'ingen testtilfelle {id} i {setId}',
   expectedRequired: 'forventet svar eller kriterier er påkrevd',
+  expectedShape: 'forventet svar er en tekst, eller et referansesvar og navngitte kriterier',
+  criteriaCaseNeedsCriteria: 'et kriterietilfelle trenger kriterier',
+  exactCaseNeedsText: 'et tilfelle med nøyaktig svar trenger teksten som skal finnes',
   caseExists: 'testtilfellet {id} finnes',
   testSetRequired: 'testsettet er påkrevd',
   noTestSetFor: 'ingen testsett {setId} for {service}',
   noVersion: 'ingen versjon {version}',
+  noTestSetInService: 'ingen testsett {testSet} i tjenesten',
   noCases: 'Testsettet har ingen testtilfeller',
+  serviceCannotRun: 'Tjenesten kan ikke kjøres',
+  runNotTraced: 'Testkjøringen kan ikke sendes til sporing',
   noCasesToRun: 'ingen testtilfeller å kjøre',
   approveTrueFalse: 'approve er true eller false',
   skillId: 'må være små bokstaver, sifre og bindestrek, og ikke import eller imports',
@@ -373,6 +527,57 @@ export const qualityErrors = defineNamespace({
   onlyOperatorsShareRecipes: 'bare operatører deler oppskrifter',
   noRecipeToShare: 'ingen publisert oppskrift {flow} å dele',
   noPendingShare: 'ingen ventende deling av {skill}',
+});
+
+export const operationErrors = defineNamespace({
+  stepAt: '{at}: {message}',
+  fixedOperation: 'operasjonen og modellen er faste verdier, ikke fylt inn mens tjenesten kjører',
+  noOperationDescriptor: 'det finnes ingen operasjonsbeskrivelse {id}',
+  mediaInputWithoutConsent:
+    '{id} tar imot {mediaType}, som ikke kan maskeres; tjenestens risikovurdering må registrere umaskert inndata av {mediaType} med en begrunnelse',
+  descriptorInReview:
+    '{id} er under gjennomgang; en operatør prøver den i råsjiktet, og en tjeneste kan bruke den når den er gjennomgått',
+  kindInTest:
+    'operasjonen {operation} er i test i dette miljøet; en operatør må flytte den til produksjon før en tjeneste kan bruke den',
+  notServiceModel: 'modellen {modelId} er ikke en av modellene til tjenesten',
+  noCatalogueModel: 'det finnes ingen modell {modelId} i katalogen',
+  modelOutsideResidency: 'modellen {modelId} kjører i {residency}, utenfor {residency}',
+  modelBindsOther: 'modellen {modelId} bruker {bound} for {operation}, ikke {id}',
+  modelBindsNone: 'modellen {modelId} bruker ikke noe API for {operation}',
+  noProcessorRecordForService:
+    'endepunktet {endpoint} for {modelId} har ingen databehandleropplysninger, så det kan ikke betjene en tjeneste med ekte data',
+  decideOnlyThroughPurposeCheck:
+    'decide brukes bare gjennom vernregelen purpose-check, som sender et avslag eller et usikkert svar til en person',
+  callOperationNeedsMasking:
+    'et steg som kaller en operasjon, trenger vernregelen pii-before-model, slik at teksten det sender, er maskert',
+  operatorsGovernOperations: 'bare operatører styrer operasjoner',
+  noOperationDescriptors: 'denne plattformen har ingen operasjonsbeskrivelser',
+  noDescriptorForKind: 'ingen beskrivelse beskriver {kind}',
+  maturityValues: 'modenheten er test eller production',
+  noProcessorRecord: '{id} har ingen databehandleropplysninger',
+  noModelEndpoint: 'ingen modellendepunkt {id}',
+  operatorsManageDescriptors: 'bare operatører forvalter operasjonsbeskrivelser',
+  descriptorBundled: '{id} følger med Genki; last opp en ny versjon i stedet',
+  descriptorUploadTooLarge: 'en opplasting er på høyst {size} KiB',
+  descriptorDescribedInUse: '{id} er beskrevet og kan være i bruk; last opp en ny versjon i stedet',
+  descriptorNoFixturesYet:
+    '{id} har ingen testtilfeller ennå; lagre ett fra et forsøk før den beskrives',
+  fixturesFromTriesInTest: 'testtilfeller lagres fra forsøk, bare i test',
+  descriptorBundledFixtures: '{id} følger med Genki; testtilfellene endres gjennom en pull request',
+  notAFinishedTry: '{task} er ikke et fullført forsøk med {id}',
+  exchangeNotTheTry: 'utvekslingen er ikke den dette forsøket sendte og fikk',
+  fixtureNameTaken: '{id} har allerede et testtilfelle som heter {name}',
+  descriptorFixturesAtMost: 'en beskrivelse har høyst {maxDescriptorFixtures} testtilfeller',
+  bodyNotJson: 'innholdet er ikke JSON',
+  uploadStatusValues:
+    'status er review eller described; typed betyr at Genki har egen kode for operasjonen',
+  descriptorIsMapping: 'en beskrivelse er et sett med felter',
+  uploadNeverTyped:
+    'typed betyr at Genki har egen kode for operasjonen, så en opplasting er aldri typed',
+  uploadStartsInReview:
+    'en opplastet beskrivelse starter under gjennomgang; en operatør flytter den til described etterpå',
+  descriptorCalled: 'beskrivelsen heter {id}',
+  fixturesCalledTwice: 'to opptak heter {names}',
 });
 
 export const adapterErrors = defineNamespace({
@@ -431,6 +636,24 @@ export const routeErrors = defineNamespace({
   noAgentsAvailable: 'Ingen agenter er tilgjengelige',
   conversationNotFound: 'Fant ikke samtalen',
   unknownResidency: 'ukjent dataplassering {residency}',
+  runNotStoppable: 'bare en kjøring som ble startet gjennom et API kan stoppes her',
+  runFinished: 'kjøringen er allerede ferdig',
+  incidentResolved: 'hendelsen er allerede løst',
+  quotaRequestPending: 'en forespørsel om kvote venter allerede på en avgjørelse',
+  quotaRequestApproved: 'forespørselen om kvote er allerede godkjent',
+  quotaRequestRejected: 'forespørselen om kvote er allerede avslått',
+});
+
+export const demoErrors = defineNamespace({
+  recordingFinished: 'opptaket er ferdig',
+  demoIdSlug: 'en demo-id er en slug med små bokstaver',
+  ifMatchVersion: 'if-match er et versjonsnummer',
+  recordingFileTooLarge: '{name} er på høyst {maxBytes} byte',
+  recordingFileEmpty: 'filen er tom',
+  uploadVideoFirst: 'last opp demo.mp4 før opptaket avsluttes som tatt opp',
+  failureNeedsReason: 'et mislykket opptak sier hvorfor',
+  demoIsMapping: 'en demo er en YAML-mapping',
+  notSlug: 'ikke en slug med små bokstaver',
 });
 
 export const errors = {
@@ -439,7 +662,9 @@ export const errors = {
   blockErrors,
   projectErrors,
   qualityErrors,
+  operationErrors,
   adapterErrors,
   definitionErrors,
   routeErrors,
+  demoErrors,
 };

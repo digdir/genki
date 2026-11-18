@@ -17,7 +17,7 @@ afterEach(async () => {
 const question = 'Hemmelig spørsmål om Ola Nordmann';
 
 describe('the API log', () => {
-  it('logs a failed model call and the failed run with ids and codes, never the content', async () => {
+  it("logs a failed model call and the failed run with ids, codes and the provider's status, never the content", async () => {
     const model = await fakeHttp(() => ({
       status: 400,
       json: { error: { message: 'deployment not found' } },
@@ -29,7 +29,7 @@ describe('the API log', () => {
         models: {
           endpoints: {
             fake: {
-              protocol: 'openai-chat',
+              families: { openai: '' },
               baseURL: `${model.url}/v1`,
               auth: { kind: 'api-key', secret: 'secret://env/fake-key' },
             },
@@ -82,7 +82,7 @@ describe('the API log', () => {
     await expect(run.result).rejects.toThrow();
     await new Promise((resolve) => setTimeout(resolve, 10));
 
-    expect(lines).toEqual([
+    expect(lines.filter((l) => !l.msg.includes('processor record'))).toEqual([
       {
         msg: 'model call failed',
         fields: {
@@ -103,6 +103,7 @@ describe('the API log', () => {
           capability,
           models: ['fake/gpt'],
           code: 'strategy_error',
+          providerStatus: 400,
         },
       },
     ]);
@@ -135,5 +136,36 @@ describe('the API log in local debugging', () => {
 
     expect(lines[0]).not.toHaveProperty('message');
     expect(lines[1]).toMatchObject({ message: 'step dokumenter failed' });
+  });
+
+  it("logs the provider's error body only when asked to", async () => {
+    const lines: Record<string, unknown>[] = [];
+    const inner = {
+      append: async (event: unknown) => event,
+      read: async function* () {},
+      wake: () => undefined,
+    } as unknown as Parameters<typeof failureLoggingEventLog>[0];
+    const failed = {
+      task: 't1',
+      type: 'kernel.error',
+      audience: 'audit',
+      data: {
+        code: 'strategy_error',
+        message: 'step svar failed: the model is unavailable',
+        provider: { status: 503, body: 'upstream reset' },
+      },
+    } as unknown as Parameters<Parameters<typeof failureLoggingEventLog>[0]['append']>[0];
+    const capabilityOf = async () => undefined;
+
+    await failureLoggingEventLog(inner, (_m, f) => lines.push(f), capabilityOf).append(failed, {
+      tenant: digdir,
+    } as never);
+    await failureLoggingEventLog(inner, (_m, f) => lines.push(f), capabilityOf, {
+      messages: true,
+    }).append(failed, { tenant: digdir } as never);
+
+    expect(lines[0]).toMatchObject({ providerStatus: 503 });
+    expect(lines[0]).not.toHaveProperty('providerBody');
+    expect(lines[1]).toMatchObject({ providerStatus: 503, providerBody: 'upstream reset' });
   });
 });

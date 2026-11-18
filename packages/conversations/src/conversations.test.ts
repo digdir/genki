@@ -5,8 +5,11 @@ import {
   InMemoryConversationStore,
   type AgentSelector,
   type ConversationCaller,
+  type ConversationRoutesOptions,
   type ConversationStore,
+  type NewMessage,
   type Owner,
+  type TurnRun,
 } from './index.js';
 
 const callers: Record<string, ConversationCaller> = {
@@ -80,7 +83,10 @@ const selectAgent: AgentSelector = async (_caller, requested) => {
 
 const AGENT = 'kunnskapsassistenten__default';
 
-const setup = (store: ConversationStore = new InMemoryConversationStore()) => {
+const setup = (
+  store: ConversationStore = new InMemoryConversationStore(),
+  extra: Partial<ConversationRoutesOptions> = {},
+) => {
   const app = conversationRoutes({
     store,
     selectAgent,
@@ -90,6 +96,7 @@ const setup = (store: ConversationStore = new InMemoryConversationStore()) => {
         return who ? callers[who] : undefined;
       },
     },
+    ...extra,
   });
   const send = (
     path: string,
@@ -395,6 +402,110 @@ describe('conversation routes for frontends', () => {
     expect(messages.find((m) => m.role === 'user')?.input).toEqual({ ministry: 'KD' });
   });
 
+  it('marks an answer whose run was cancelled as stopped, and no other answer', async () => {
+    const { send, store } = setup();
+    const { json } = await create(send, 'ka', 'u');
+    const owner = { tenant: '991825827', user: 'legacy-api-key|key-ka#u' };
+    await store.append(owner, json.conversation.id, { role: 'assistant', text: 'Hele svaret' });
+    await store.append(owner, json.conversation.id, {
+      role: 'assistant',
+      text: 'Svaret begy',
+      task: 't2',
+      stopped: true,
+    });
+
+    const [whole, stopped] = (await messagesOf(send, json.conversation.id)).slice(-2);
+
+    expect(whole).not.toHaveProperty('stopped');
+    expect(stopped).toMatchObject({ text: 'Svaret begy', task: 't2', stopped: true });
+  });
+
+  it('returns the markers an answer that cites excerpts was stored with', async () => {
+    const { send, store } = setup();
+    const { json } = await create(send, 'ka', 'u');
+    const owner = { tenant: '991825827', user: 'legacy-api-key|key-ka#u' };
+    const markers = [
+      { marker: '1', chunk_id: 'c1', document: 'd1' },
+      { marker: '2', chunk_id: 'c2', document: 'd1' },
+    ];
+    const sources = [
+      {
+        index: 1,
+        title: 'Tildelingsbrev',
+        document_id: 'd1',
+        excerpts: [
+          { chunk_id: 'c1', text: 'Første', position: 0, markers: ['1'] },
+          { chunk_id: 'c2', text: 'Andre', position: 1, markers: ['2'] },
+        ],
+        markers: ['1', '2'],
+      },
+    ];
+    await store.append(owner, json.conversation.id, {
+      role: 'assistant',
+      text: 'Første [1] og andre [2].',
+      sources,
+      markers,
+    });
+
+    const answer = (await messagesOf(send, json.conversation.id)).at(-1);
+
+    expect(answer).toMatchObject({ sources, markers });
+  });
+
+  it('returns every field a stored excerpt was given, also one the store does not name', async () => {
+    const { send, store } = setup();
+    const { json } = await create(send, 'ka', 'u');
+    const owner = { tenant: '991825827', user: 'legacy-api-key|key-ka#u' };
+    const excerpt = { chunk_id: 'c1', text: 'Første', markers: ['1'], heading: '1 Innledning' };
+    const sources = [{ index: 1, title: 'Tildelingsbrev', excerpts: [excerpt] }];
+    await store.append(owner, json.conversation.id, { role: 'assistant', text: '[1]', sources });
+
+    const answer = (await messagesOf(send, json.conversation.id)).at(-1) as {
+      sources?: { excerpts: unknown[] }[];
+    };
+
+    expect(answer.sources?.[0]?.excerpts).toStrictEqual([excerpt]);
+  });
+
+  it('reads a stored turn from before markers were kept as it was', async () => {
+    const { send, store } = setup();
+    const { json } = await create(send, 'ka', 'u');
+    const owner = { tenant: '991825827', user: 'legacy-api-key|key-ka#u' };
+    const chunks = [
+      { chunkId: 'c1', docTitle: 'Tildelingsbrev', docNum: 'd1', contentMarkdown: 'Første' },
+    ];
+    const sources = [
+      {
+        index: 1,
+        title: 'Tildelingsbrev',
+        url: 'https://x.no/d1',
+        document_id: 'd1',
+        excerpts: [{ chunk_id: 'c1', text: 'Første', position: 0 }],
+      },
+    ];
+    await store.append(owner, json.conversation.id, {
+      role: 'assistant',
+      text: 'Svar [1].',
+      chunks,
+      sources,
+      task: 'task-1',
+    });
+
+    const answer = (await messagesOf(send, json.conversation.id)).at(-1);
+
+    expect(answer).toStrictEqual({
+      id: expect.any(String),
+      text: 'Svar [1].',
+      role: 'assistant',
+      created: expect.any(Number),
+      tags: [],
+      filterValue: null,
+      chunks,
+      sources,
+      task: 'task-1',
+    });
+  });
+
   it.each(['title', 'topic'])('renames a conversation with the key %s', async (key) => {
     const { send } = setup();
     const { json } = await create(send, 'ka', 'u');
@@ -446,7 +557,136 @@ describe('conversation routes for frontends', () => {
   });
 });
 
+describe('the run that answers the last question', () => {
+  const owner = { tenant: '991825827', user: 'legacy-api-key|key-ka#u' };
+  const asked = Date.parse('2026-11-15T10:00:00Z');
+  const now = () => Date.parse('2026-11-15T10:01:00Z');
+
+  const withRun = (runOf: NonNullable<ConversationRoutesOptions['runOf']>) => {
+    const { send, store } = setup(new InMemoryConversationStore(), { runOf, now });
+    const thread = async (...turns: NewMessage[]) => {
+      const { json } = await create(send, 'ka', 'u');
+      for (const turn of turns) await store.append(owner, json.conversation.id, turn);
+      return json.conversation.id;
+    };
+    const read = async (id: string) =>
+      (
+        (await (await send(`/api/conversations/${id}`, 'ka', { user: 'u' })).json()) as {
+          messages: Record<string, unknown>[];
+        }
+      ).messages;
+    return { thread, read };
+  };
+  const answering = (run: TurnRun) => withRun(async () => run);
+
+  it.each([
+    ['queued', 'running'],
+    ['running', 'running'],
+    ['failed', 'failed'],
+    ['cancelled', 'cancelled'],
+    ['interrupted', 'failed'],
+  ] as const)(
+    'gives the last question with no stored answer, whose run is %s, the run state %s',
+    async (status, runState) => {
+      const { thread, read } = answering({ status, createdAt: asked, deadlineMs: 300_000 });
+      const id = await thread({ role: 'user', text: 'Hva?', task: 'task-1' });
+
+      expect((await read(id)).at(-1)).toMatchObject({ role: 'user', task: 'task-1', runState });
+    },
+  );
+
+  it('says the answer of a run that completed is still coming while it is being stored', async () => {
+    const { thread, read } = answering({
+      status: 'completed',
+      createdAt: asked,
+      deadlineMs: 300_000,
+    });
+    const id = await thread({ role: 'user', text: 'Hva?', task: 'task-1' });
+
+    expect((await read(id)).at(-1)).toMatchObject({ runState: 'running' });
+  });
+
+  it.each(['running', 'completed'] as const)(
+    'says a run still marked %s with no stored answer after its deadline has failed, since no live run outlasts it',
+    async (status) => {
+      const { thread, read } = answering({ status, createdAt: asked, deadlineMs: 59_000 });
+      const id = await thread({ role: 'user', text: 'Hva?', task: 'task-1' });
+
+      expect((await read(id)).at(-1)).toMatchObject({ runState: 'failed' });
+    },
+  );
+
+  it('reads only the run of the last question, as the caller who reads the thread', async () => {
+    const seen: { caller: ConversationCaller; task: string }[] = [];
+    const { thread, read } = withRun(async (caller, task) => {
+      seen.push({ caller, task });
+      return { status: 'running', createdAt: asked };
+    });
+    const id = await thread(
+      { role: 'user', text: 'Først', task: 'task-1' },
+      { role: 'assistant', text: 'Svar', task: 'task-1' },
+      { role: 'user', text: 'Så', task: 'task-2' },
+    );
+
+    const messages = await read(id);
+
+    expect(messages.map((m) => m.runState)).toEqual([undefined, undefined, 'running']);
+    expect(seen).toEqual([{ caller: callers.ka, task: 'task-2' }]);
+  });
+
+  it.each([
+    [
+      'whose answer is stored',
+      [
+        { role: 'user', text: 'Hva?', task: 'task-1' },
+        { role: 'assistant', text: 'Svar', task: 'task-1' },
+      ],
+    ],
+    ['that names no run', [{ role: 'user', text: 'Hva?' }]],
+  ] as [string, NewMessage[]][])('gives no run state to a question %s', async (_case, turns) => {
+    const seen: string[] = [];
+    const { thread, read } = withRun(async (_caller, task) => {
+      seen.push(task);
+      return { status: 'running', createdAt: asked };
+    });
+    const id = await thread(...turns);
+
+    const messages = await read(id);
+
+    expect(messages.map((m) => m.role)).toEqual(turns.map((t) => t.role));
+    expect(messages.some((m) => 'runState' in m)).toBe(false);
+    expect(seen).toEqual([]);
+  });
+
+  it.each([
+    ['may not read the run', async () => undefined],
+    [
+      'cannot be read',
+      async () => {
+        throw new Error('task store down');
+      },
+    ],
+  ])('reads the thread without a run state when the run %s', async (_case, runOf) => {
+    const { thread, read } = withRun(runOf);
+    const id = await thread({ role: 'user', text: 'Hva?', task: 'task-1' });
+
+    const last = (await read(id)).at(-1);
+
+    expect(last).toMatchObject({ role: 'user', task: 'task-1' });
+    expect(last).not.toHaveProperty('runState');
+  });
+});
+
 describe('in-memory conversation store', () => {
+  it('keeps the run that answers a question with the message', async () => {
+    const store = new InMemoryConversationStore();
+    const owner = { tenant: '991825827', user: 'u' };
+    const conversation = await store.create(owner, { agentId: AGENT, userId: 'u' });
+    await store.append(owner, conversation.id, { role: 'user', text: 'Hva?', task: 'task-7' });
+
+    expect((await store.messages(owner, conversation.id))?.at(-1)?.task).toBe('task-7');
+  });
+
   it('keeps messages in order even when appended within the same millisecond', async () => {
     const store = new InMemoryConversationStore(() => 5);
     const owner = { tenant: '991825827', user: 'u' };

@@ -1,0 +1,20 @@
+{"tests": [
+ {"id": "kudos-32223-p18-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["caption", "nno", "Latn"],
+  "args": {"content": {"text": "Austrått, Ørland.", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-32223-p18-t02", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["caption", "nno", "Latn"],
+  "args": {"before": {"text": "Austrått, Ørland.", "max_diffs": 1}, "after": {"text": "For å auke effektiviteten i statens bygg- og eigedomsforvaltning", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-32223-p18-t03", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nno", "Latn"],
+  "args": {"content": {"text": "Statsbygg er statens sentrale fagmiljø for bygg og eigedom i sivil sektor.", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-32223-p18-t04", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nno", "Latn"],
+  "args": {"content": {"text": "Strategien peiker på enkelte område der Statsbygg kan få ei sterkare rolle.", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-32223-p18-t05", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nno", "Latn"],
+  "args": {"content": {"text": "Det skal vurderast å etablere eit felles mål- og rapporteringssystem for bygg og eigedommar", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-32223-p18-t06", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nno", "Latn"],
+  "args": {"content": {"text": "Effektiv ressursbruk i eit samfunnsperspektiv", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-32223-p18-t07", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nno", "Latn"],
+  "args": {"before": {"text": "i marknaden og utvikling av byggeprosjekt.", "max_diffs": 1}, "after": {"text": "Effektiv ressursbruk i eit samfunnsperspektiv", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-32223-p18-t08", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nno", "Latn"],
+  "args": {"content": {"text": "Det er eit grunnleggande prinsipp at ressursbruken i staten skal vere effektiv.", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-32223-p18-t09", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nno", "Latn"],
+  "args": {"content": {"text": "Samtidig skal samfunnet gjennomføre det grøne skiftet og nødvendige omstillingar.", "max_diffs": 3}}, "settings": {}}
+]}

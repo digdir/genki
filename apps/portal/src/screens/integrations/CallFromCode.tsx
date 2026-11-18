@@ -5,7 +5,6 @@ import {
   Fieldset,
   Heading,
   Label,
-  Link,
   Select,
   Spinner,
   Tag,
@@ -13,7 +12,6 @@ import {
 import { useEffect, useRef, useState } from 'react';
 import type { ApiClient } from '../../api';
 import { CopyButton } from '../../components/CopyButton';
-import { Icon } from '../../components/Icon';
 import {
   API_BASE,
   answerSources,
@@ -53,8 +51,6 @@ export const codeFor = (lang: Lang, url: string, body: unknown) => {
   return `using System.Net.Http.Headers;\nusing System.Text;\n\nvar klient = new HttpClient();\nklient.DefaultRequestHeaders.Authorization =\n    new AuthenticationHeaderValue("Bearer", Environment.GetEnvironmentVariable("TOKEN"));\n\nvar innhold = new StringContent("""\n${b}\n""", Encoding.UTF8, "application/json");\n\nvar svar = await klient.PostAsync("${url}", innhold);\nsvar.EnsureSuccessStatusCode();\nConsole.WriteLine(await svar.Content.ReadAsStringAsync());`;
 };
 
-const back = 'M15 6l-6 6 6 6';
-
 export interface CodeService {
   id: string;
   name: string;
@@ -77,16 +73,6 @@ export const liveCodeServices = (
       type: typeOf(byId.get(a.id)?.outputKind),
     }))
     .sort((a, b) => a.name.localeCompare(b.name, 'nb'));
-};
-
-const BackLink = () => {
-  const t = useT();
-  return (
-    <Link href="#/integrations" className="int-back">
-      <Icon d={back} size={18} />
-      {t('integrations.heading')}
-    </Link>
-  );
 };
 
 export const LiveCallFromCode = ({
@@ -114,12 +100,11 @@ export const LiveCallFromCode = ({
   if (!state.data.length)
     return (
       <div className="stack int">
-        <BackLink />
-        <Heading level={1} data-size="md">
+        <Heading level={3} data-size="xs">
           {t('integrations.callFromCode')}
         </Heading>
         <div className="state empty">
-          <Heading level={2} data-size="2xs">
+          <Heading level={4} data-size="2xs">
             {t('integCode.noServices')}
           </Heading>
           <p>{t('integCode.noServicesText')}</p>
@@ -272,9 +257,8 @@ export const CallFromCode = ({
 
   return (
     <div className="stack int">
-      <BackLink />
       <div className="stack-xs int-intro-text">
-        <Heading level={1} data-size="md">
+        <Heading level={3} data-size="xs">
           {t('integrations.callFromCode')}
         </Heading>
         <p className="lead">{t(live ? 'integCode.liveLead' : 'integCode.lead')}</p>
@@ -352,7 +336,7 @@ export const CallFromCode = ({
             1
           </span>
           <div className="stack-xs">
-            <Heading level={2} data-size="xs">
+            <Heading level={4} data-size="xs">
               {t('integCode.getToken')}
             </Heading>
             <p className="int-step-text">{step1}</p>
@@ -367,7 +351,7 @@ export const CallFromCode = ({
             2
           </span>
           <div className="stack-sm">
-            <Heading level={2} data-size="xs">
+            <Heading level={4} data-size="xs">
               {step2Title}
             </Heading>
             <p className="int-step-text">{step2}</p>
@@ -398,7 +382,7 @@ export const CallFromCode = ({
             3
           </span>
           <div className="stack-sm">
-            <Heading level={2} data-size="xs">
+            <Heading level={4} data-size="xs">
               {t('integCode.response')}
             </Heading>
             <p className="int-step-text">{step3}</p>
@@ -420,7 +404,7 @@ export const CallFromCode = ({
         </li>
       </ol>
       <section aria-labelledby="feil-h" className="stack-sm">
-        <Heading level={2} data-size="xs" id="feil-h">
+        <Heading level={4} data-size="xs" id="feil-h">
           {t('integCode.errorsHeading')}
         </Heading>
         <dl className="int-errors">
@@ -433,6 +417,27 @@ export const CallFromCode = ({
             </div>
           ))}
         </dl>
+      </section>
+      <section aria-labelledby="api-more-h" className="stack-sm">
+        <Heading level={4} data-size="xs" id="api-more-h">
+          {t('integCode.moreHeading')}
+        </Heading>
+        <ul className="bullets">
+          <li>
+            <a href="#/developer/api/reference">{t('integCode.moreReference')}</a>
+          </li>
+          <li>
+            <a href="#/developer/keys">{t('integCode.moreKeys')}</a>
+          </li>
+          <li>
+            <a href="#/statistics">{t('integCode.moreLimits')}</a>
+          </li>
+          <li>
+            <a href="https://docs.digdir.no/docs/idporten/" target="_blank" rel="noreferrer">
+              {t('integCode.moreIdporten')}
+            </a>
+          </li>
+        </ul>
       </section>
     </div>
   );

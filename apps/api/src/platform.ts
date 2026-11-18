@@ -1,8 +1,14 @@
+import { isHiddenAuditTarget } from './internal-services.js';
 import { createRoute, z, type OpenAPIHono } from '@hono/zod-openapi';
 import type { Context } from 'hono';
 import { toJSONSchema } from 'zod';
 import type { Principal, Task } from '@genai/contracts';
-import { parameterRuleProblems, parameterRules } from '@genai/port-model';
+import {
+  apiIdPattern,
+  operationKindPattern,
+  parameterRuleProblems,
+  parameterRules,
+} from '@genai/port-model';
 import {
   exportTenant,
   importTenant,
@@ -11,9 +17,14 @@ import {
   type SettingsRegistry,
 } from '@genai/definitions';
 import { refusedRight, type Access } from './access.js';
-import { requireRight, rights, rightsOf } from './rights.js';
+import { requireRight, rights, rightsOf, seesUsage } from './rights.js';
 import {
+  operatorOnlyRefused,
+  operatorOnlySettingType,
   settingsConflictMessage,
+  settingWriterOf,
+  shareOperatorOnlyType,
+  sharingRefused,
   type Admin,
   type AdminResult,
   type AuditEntry as AuditRecord,
@@ -29,9 +40,11 @@ import {
   problemContent,
   problems,
   reasonTooShort,
+  RunErasure,
 } from './http.js';
 import { originOf, serviceOrigin, type DraftOrigin } from './draft-runner.js';
 import { t } from './i18n/index.js';
+import { readOnlyInLockdown } from './lockdown.js';
 import { toTimeline, type TaskReader } from './timeline.js';
 import type { ActorNames } from './actor-names.js';
 
@@ -58,6 +71,7 @@ export interface PlatformApiOptions {
   lifecycle?: (tenant: string, service: string) => Promise<{ state: string }>;
   names?: ActorNames;
   now?: () => Date;
+  lockdown?: boolean;
 }
 
 const tenantParam = z
@@ -81,6 +95,11 @@ const optionalSchema = (schema: unknown) => {
   }
 };
 
+const operatorOnlyForbidden = {
+  content: problemContent,
+  description: `Not allowed for this tenant, or ${operatorOnlySettingType}: a limit only an operator in a support session changes for a tenant`,
+};
+
 const conflict = {
   content: problemContent,
   description: 'Changed elsewhere since it was read; reload and try again',
@@ -100,6 +119,9 @@ const SettingInfo = z
     sensitivity: z.enum(['normal', 'secret']),
     default: z.unknown(),
     settableAt: z.array(z.string()),
+    operatorOnly: z.boolean().optional().openapi({
+      description: 'At the tenant layer only an operator in a support session sets it',
+    }),
     schema: z.record(z.string(), z.unknown()).optional(),
   })
   .openapi('SettingInfo');
@@ -219,6 +241,9 @@ const Block = z.object({
   sources: z.array(z.string()).optional(),
   calls: z.literal(true).optional(),
   usage: z.literal(true).optional(),
+  media: z
+    .array(z.object({ id: z.string(), mediaType: z.string(), bytes: z.number().int() }))
+    .optional(),
 });
 
 const RunStats = z
@@ -228,17 +253,24 @@ const RunStats = z
     chunksRead: z.number().int(),
     documents: z.number().int(),
     warnings: z.array(z.string()),
-    inputTokens: z.number().int(),
-    outputTokens: z.number().int(),
+    inputTokens: z.number().int().optional(),
+    outputTokens: z.number().int().optional(),
     cachedInputTokens: z.number().int().optional(),
-    byModel: z.array(
-      z.object({
-        model: z.string(),
-        inputTokens: z.number().int(),
-        outputTokens: z.number().int(),
-        calls: z.number().int(),
-      }),
-    ),
+    costMicroNok: z.number().int().optional(),
+    unpricedTokens: z.number().int().optional(),
+    units: z.record(z.string(), z.number()).optional(),
+    unpricedUnits: z.record(z.string(), z.number()).optional(),
+    byModel: z
+      .array(
+        z.object({
+          model: z.string(),
+          inputTokens: z.number().int(),
+          outputTokens: z.number().int(),
+          calls: z.number().int(),
+          costMicroNok: z.number().int().optional(),
+        }),
+      )
+      .optional(),
   })
   .openapi('RunStats');
 
@@ -252,9 +284,17 @@ const Timeline = z
     caller: z.string(),
     startedAt: z.string(),
     durationSeconds: z.number(),
-    inputTokens: z.number(),
-    outputTokens: z.number(),
-    costOre: z.number(),
+    inputTokens: z.number().optional(),
+    outputTokens: z.number().optional(),
+    costOre: z.number().optional(),
+    units: z
+      .record(z.string(), z.number())
+      .optional()
+      .describe('Units besides tokens, built in or open, by name'),
+    unpricedUnits: z.record(z.string(), z.number()).optional(),
+    costMicroNok: z.number().int().nullable().optional(),
+    priced: z.boolean().optional(),
+    erasure: RunErasure.optional(),
     steps: z.array(
       z.object({
         id: z.string(),
@@ -302,14 +342,27 @@ const routes = {
     summary:
       'The organisations the signed-in person may act for, with names and rights, for logins whose token lists none',
     responses: {
-      200: json(z.object({ organisations: z.array(MyOrganisation) }), 'Organisations'),
+      200: json(
+        z.object({
+          organisations: z.array(MyOrganisation),
+          email: z.string().optional().openapi({
+            description: "The signed-in person's email, only when the login token carried one",
+          }),
+          lockdownReadOnly: z.literal(true).optional().openapi({
+            description:
+              'Present only in a locked environment when the login may only read: not a trusted Entra login and not in LOCKDOWN_USER_GROUPS',
+          }),
+        }),
+        'Organisations',
+      ),
       401: problems[401],
     },
   }),
   timeline: createRoute({
     method: 'get',
     path: '/tenants/{tenant}/tasks/{task}/timeline',
-    summary: 'A task as a timeline: status, numbers and steps, from what the client may see',
+    summary:
+      'A task as a timeline: status, numbers and steps, with the error details only for those who manage services',
     request: {
       params: z.object({
         tenant: tenantParam,
@@ -438,7 +491,7 @@ const routes = {
       200: json(z.union([Applied, Preview]), 'Applied or previewed'),
       400: problems[400],
       401: problems[401],
-      403: problems[403],
+      403: operatorOnlyForbidden,
       409: conflict,
       422: problems[422],
       404: problems[404],
@@ -452,7 +505,7 @@ const routes = {
     responses: {
       200: json(Applied, 'Removed'),
       401: problems[401],
-      403: problems[403],
+      403: operatorOnlyForbidden,
       409: conflict,
       422: problems[422],
       404: problems[404],
@@ -478,7 +531,7 @@ const routes = {
       200: json(Applied, 'Pinned'),
       400: problems[400],
       401: problems[401],
-      403: problems[403],
+      403: operatorOnlyForbidden,
       409: conflict,
       422: problems[422],
       404: problems[404],
@@ -518,7 +571,10 @@ const routes = {
       200: json(ImportPlan, 'Plan'),
       400: problems[400],
       401: problems[401],
-      403: problems[403],
+      403: {
+        content: problemContent,
+        description: `Not allowed for this tenant; ${shareOperatorOnlyType}: the bundle changes a service's spec.availableTo, which only operators change; or ${operatorOnlySettingType}: the bundle sets or pins a limit only an operator changes for a tenant`,
+      },
       409: conflict,
       422: problems[422],
       404: problems[404],
@@ -555,9 +611,35 @@ const routes = {
     method: 'get',
     path: '/tenants/{tenant}/audit',
     summary: 'Administrative changes in a tenant, each backed by a platform task',
-    request: { params: z.object({ tenant: tenantParam }) },
+    description:
+      'Oldest first. With limit or offset the page is newest first: offset skips that many of the newest entries.',
+    request: {
+      params: z.object({ tenant: tenantParam }),
+      query: z.object({
+        limit: z.coerce
+          .number()
+          .int()
+          .min(1)
+          .max(500)
+          .optional()
+          .openapi({ param: { name: 'limit', in: 'query' }, description: '1 to 500' }),
+        offset: z.coerce
+          .number()
+          .int()
+          .min(0)
+          .optional()
+          .openapi({ param: { name: 'offset', in: 'query' } }),
+      }),
+    },
     responses: {
-      200: json(z.object({ data: z.array(AuditEntry) }), 'Audit log'),
+      200: json(
+        z.object({
+          data: z.array(AuditEntry),
+          total: z.number().int().openapi({ description: 'Entries the caller may see in all' }),
+        }),
+        'Audit log',
+      ),
+      400: problems[400],
       401: problems[401],
       403: problems[403],
       404: problems[404],
@@ -596,11 +678,19 @@ const OperatorModel = z
     family: z.string().optional(),
     residency: z.string(),
     capabilities: z.array(z.string()),
+    apis: z
+      .record(z.string(), z.string())
+      .optional()
+      .describe('The API the model binds for each operation kind it offers'),
+    operations: z.array(z.string()).optional().describe('The kinds it offers, the keys of apis'),
     enabled: z.boolean(),
     origin: z.string().optional(),
     classified: z.boolean().optional(),
     parameters: parameterRules.optional(),
     rejectedParameters: z.record(z.string(), z.string()).optional(),
+    transport: z
+      .object({ api: z.string(), source: z.enum(['configured', 'learned', 'default']) })
+      .optional(),
   })
   .openapi('OperatorModel');
 
@@ -608,6 +698,12 @@ const ModelClassificationBody = z
   .strictObject({
     residency: z.enum(['norway', 'eu', 'global']).optional(),
     capabilities: z.array(z.enum(['stream', 'tools', 'json-schema', 'reasoning'])).optional(),
+    apis: z
+      .record(z.string().regex(operationKindPattern), z.string().regex(apiIdPattern))
+      .optional()
+      .describe(
+        'One API per operation kind, such as { chat: openai/responses@1 }; the API must be of that kind and in a family the connection offers',
+      ),
     enabled: z.boolean().optional(),
     parameters: parameterRules.optional(),
   })
@@ -778,13 +874,18 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
     const lacking =
       !startedBy(found, principal) && refusedRight(c, acting, tenant, 'manage-services');
     if (lacking) return lacking;
+    const erasure = await options.tasks.erasure?.(tenant, task);
     return c.json(
       toTimeline(
         found,
         await options.tasks.events(task),
         now(),
         await serviceNameOf(found.service.capability.id),
-        { details: requireRight(acting, tenant, 'manage-services').ok },
+        {
+          details: requireRight(acting, tenant, 'manage-services').ok,
+          usage: startedBy(found, principal) || seesUsage(acting, tenant),
+          ...(erasure ? { erasure } : {}),
+        },
       ),
       200,
     );
@@ -821,11 +922,15 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
         organisations: orgs.map((orgNumber) => ({
           orgNumber,
           name:
-            directory.find((d) => d.orgNumber === orgNumber)?.name ??
-            options.organisationName?.(orgNumber) ??
-            orgNumber,
+            [
+              directory.find((d) => d.orgNumber === orgNumber)?.name,
+              principal.orgNames?.[orgNumber],
+              options.organisationName?.(orgNumber),
+            ].find((name) => name && name !== orgNumber) ?? orgNumber,
           rights: [...rightsOf(principal, orgNumber)],
         })),
+        ...(principal.email ? { email: principal.email } : {}),
+        ...(options.lockdown && readOnlyInLockdown(principal) ? { lockdownReadOnly: true } : {}),
       },
       200,
     );
@@ -892,6 +997,7 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
           sensitivity: d.sensitivity,
           default: d.default,
           settableAt: d.settableAt,
+          ...(d.operatorOnly ? { operatorOnly: true } : {}),
           ...optionalSchema(d.schema),
         })),
       },
@@ -970,7 +1076,14 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
     if (lacking) return lacking;
     const { value } = c.req.valid('json');
     if (c.req.valid('query').dryRun === 'true') {
-      const preview = settings.previewTenant(tenant, key, value, await services());
+      const preview = settings.previewTenant(
+        tenant,
+        key,
+        value,
+        await services(),
+        settingWriterOf(acting),
+      );
+      if (!preview.ok && preview.operatorOnly) return operatorOnlyRefused(c, preview.errors);
       if (!preview.ok) return problem(c, 422, 'Invalid setting', { errors: preview.errors });
       return c.json({ dryRun: true as const, ...preview.value }, 200);
     }
@@ -983,6 +1096,8 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
     );
     c.header('genai-task', result.task);
     if (!result.ok && result.conflict) return conflicted(c);
+    if (!result.ok && result.type === operatorOnlySettingType)
+      return operatorOnlyRefused(c, result.errors);
     if (!result.ok) return problem(c, 422, 'Invalid setting', { errors: result.errors });
     return c.json(applied(result), 200);
   });
@@ -998,6 +1113,8 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
     const result = await admin.setTenantSetting(acting, tenant, key, null, changeReasonOf(c) ?? '');
     c.header('genai-task', result.task);
     if (!result.ok && result.conflict) return conflicted(c);
+    if (!result.ok && result.type === operatorOnlySettingType)
+      return operatorOnlyRefused(c, result.errors);
     if (!result.ok) return problem(c, 422, 'Invalid setting', { errors: result.errors });
     return c.json(applied(result), 200);
   });
@@ -1019,6 +1136,8 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
     );
     c.header('genai-task', result.task);
     if (!result.ok && result.conflict) return conflicted(c);
+    if (!result.ok && result.type === operatorOnlySettingType)
+      return operatorOnlyRefused(c, result.errors);
     if (!result.ok) return problem(c, 422, 'Invalid pin', { errors: result.errors });
     return c.json(applied(result), 200);
   });
@@ -1052,14 +1171,20 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
         onConflict,
         actor: '',
         reason,
-        check: admin.check,
+        writer: settingWriterOf(acting),
+        check: admin.importCheck(acting),
       });
+      if (!plan.ok && plan.operatorOnly) return operatorOnlyRefused(c, plan.errors);
       if (!plan.ok) return problem(c, 422, 'Invalid bundle', { errors: plan.errors });
       return c.json({ dryRun: true, plan: plan.plan }, 200);
     }
     const result = await admin.importTenant(acting, tenant, bundle, onConflict, reason);
     c.header('genai-task', result.task);
     if (!result.ok && result.conflict) return conflicted(c);
+    if (!result.ok && result.type === shareOperatorOnlyType)
+      return sharingRefused(c, result.errors);
+    if (!result.ok && result.type === operatorOnlySettingType)
+      return operatorOnlyRefused(c, result.errors);
     if (!result.ok) return problem(c, 422, 'Invalid bundle', { errors: result.errors });
     return c.json({ dryRun: false, task: result.task, plan: result.value }, 200);
   });
@@ -1086,13 +1211,22 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
     const principal = await auth.authenticate(c.req.raw);
     if (!principal) return problem(c, 401, 'Not authenticated');
     const { tenant } = c.req.valid('param');
+    const { limit, offset } = c.req.valid('query');
     const acting = access(principal, tenant, c.req.raw);
     if (!acting) return problem(c, 404, 'Not found');
     const lacking = refusedRight(c, acting, tenant, 'manage-services');
     if (lacking) return lacking;
     const all = await admin.audit(tenant);
-    const entries =
+    const visible =
       principal.kind === 'operator' ? all : all.filter((e) => visibleToTenant(e, tenant));
+    const hidden = await Promise.all(
+      visible.map((e) => isHiddenAuditTarget(store, tenant, e.target)),
+    );
+    const shown = visible.filter((_, i) => !hidden[i]);
+    const paged = limit !== undefined || offset !== undefined;
+    const entries = paged
+      ? shown.reverse().slice(offset ?? 0, (offset ?? 0) + (limit ?? shown.length))
+      : shown;
     const names = await options.names?.namesOf(
       entries.filter((e) => e.actor.startsWith('employee:')).map((e) => e.actor),
     );
@@ -1102,6 +1236,7 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
           const actorName = e.actor.startsWith('employee:') ? names?.get(e.actor) : undefined;
           return actorName ? { ...e, actorName } : e;
         }),
+        total: shown.length,
       },
       200,
     );
@@ -1115,7 +1250,8 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
     if (!acting) return problem(c, 404, 'Not found');
     const lacking = refusedRight(c, acting, tenant, 'manage-services');
     if (lacking) return lacking;
-    if (!(await admin.audit(tenant)).some((a) => a.task === task))
+    const entry = (await admin.audit(tenant)).find((a) => a.task === task);
+    if (!entry || (await isHiddenAuditTarget(store, tenant, entry.target)))
       return problem(c, 404, 'Not found');
     const found = await admin.task(task);
     if (!found) return problem(c, 404, 'Not found');

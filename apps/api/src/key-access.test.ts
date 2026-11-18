@@ -1,5 +1,7 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { Principal, Task } from '@genai/contracts';
+import { textPart, type Principal, type Task } from '@genai/contracts';
 import { InMemoryDefinitionStore, platformSettings, SettingsRegistry } from '@genai/definitions';
 import {
   apiKeyDigest,
@@ -76,9 +78,14 @@ const boot = async (
   const authenticator = createAuthenticator({ apiKeys: keys });
   const settings = new SettingsRegistry(platformSettings);
   if (options.monthlyTokens)
-    settings.setTenant(digdir, 'usage.monthlyTokens', options.monthlyTokens);
+    settings.setTenant(digdir, 'usage.monthlyTokens', options.monthlyTokens, 'operator');
   if (options.tenantCallsPerMinute)
-    settings.setTenant(digdir, 'usage.tenantCallsPerMinute', options.tenantCallsPerMinute);
+    settings.setTenant(
+      digdir,
+      'usage.tenantCallsPerMinute',
+      options.tenantCallsPerMinute,
+      'operator',
+    );
   const used: Task = {
     id: 'brukt',
     service: {
@@ -123,7 +130,7 @@ const boot = async (
       models: {
         endpoints: {
           fake: {
-            protocol: 'openai-chat',
+            families: { openai: '' },
             baseURL: `${model.url}/v1`,
             auth: { kind: 'api-key', secret: 'secret://env/fake-key' },
           },
@@ -234,7 +241,7 @@ const boot = async (
         ...(typeof params.name === 'string' ? { 'Mcp-Name': params.name } : {}),
       },
     });
-  return { send, mcp, platform, settings };
+  return { send, mcp, platform, settings, model };
 };
 
 const json = async <T>(res: Response) => (await res.json()) as T;
@@ -486,21 +493,130 @@ describe('rate limits and quota', () => {
     const { mcp, settings } = await boot();
     for (let i = 0; i < 3; i++) expect((await mcp('veileder', 'tools/list')).status).toBe(200);
 
-    settings.setTenant(digdir, 'usage.tenantCallsPerMinute', 4);
+    settings.setTenant(digdir, 'usage.tenantCallsPerMinute', 4, 'operator');
 
     expect((await mcp('alle', 'tools/list')).status).toBe(200);
     expect((await mcp('alle', 'tools/list')).status).toBe(429);
   });
 
-  it('refuses a service call once the monthly token quota is used', async () => {
-    const { send } = await boot({ monthlyTokens: 100, usedTokens: 150 });
-    const refused = await send('/api/tools/call/veileder__default', 'veileder', {
-      body: { query: 'hei' },
+  it('an exhausted quota refuses a service invoke on /v1, tools/call and A2A with 429 from the kernel', async () => {
+    const { send, platform, model } = await boot({ monthlyTokens: 100, usedTokens: 150 });
+    const agent = service('agent');
+    await platform.definitions.publish(
+      { ...agent, spec: { ...agent.spec, exposure: { rest: true, a2a: true } } },
+      'test',
+      'test',
+      files,
+    );
+    const messages = [{ role: 'user', content: 'hei' }];
+
+    const problems = [
+      await send('/v1/chat/completions', 'veileder', {
+        body: { model: 'veileder__default', messages },
+      }),
+      await send('/v1/chat/completions', 'veileder', {
+        body: { model: 'veileder__default', messages, stream: true },
+      }),
+      await send('/api/tools/call/veileder__default', 'veileder', { body: { query: 'hei' } }),
+    ];
+    const a2a = await send('/a2a/agent__default', 'kari', {
+      body: {
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'SendMessage',
+        params: { message: { messageId: 'm1', role: 'ROLE_USER', parts: [{ text: 'hei' }] } },
+      },
     });
 
-    expect(refused.status).toBe(429);
-    expect(await refused.json()).toMatchObject({ type: 'urn:genai:problem:quota-exhausted' });
+    for (const refused of [...problems, a2a]) {
+      expect(refused.status).toBe(429);
+      expect(refused.headers.get('retry-after')).toMatch(/^\d+$/);
+    }
+    for (const refused of problems)
+      expect(await refused.json()).toMatchObject({
+        type: 'urn:genai:problem:quota-exhausted',
+        status: 429,
+      });
+    expect(await a2a.json()).toMatchObject({
+      error: { code: -32029, data: { type: 'urn:genai:problem:quota-exhausted', status: 429 } },
+    });
+    expect(model.seen).toEqual([]);
     expect((await send('/v1/models', 'veileder')).status).toBe(200);
+  });
+
+  it('refuses every MCP tool call once the monthly token quota is used, with or without the Mcp-Method header', async () => {
+    const { send } = await boot({ monthlyTokens: 100, usedTokens: 150 });
+    const call = (meta: Record<string, unknown>) =>
+      send('/api/mcp', 'veileder', {
+        body: {
+          jsonrpc: '2.0',
+          id: 7,
+          method: 'tools/call',
+          params: { name: 'veileder__default', arguments: { query: 'hei' }, _meta: meta },
+        },
+        headers: { 'MCP-Protocol-Version': '2025-06-18' },
+      });
+
+    for (const refused of [await call({}), await call({ progressToken: 'p1' })]) {
+      expect(refused.status).toBe(429);
+      expect(refused.headers.get('retry-after')).toMatch(/^\d+$/);
+      expect(await refused.json()).toMatchObject({
+        jsonrpc: '2.0',
+        id: 7,
+        error: {
+          code: -32029,
+          data: { type: 'urn:genai:problem:quota-exhausted', status: 429 },
+        },
+      });
+    }
+  });
+
+  it('still takes a cancel of a run when the monthly token quota is used', async () => {
+    const { send } = await boot({ monthlyTokens: 100, usedTokens: 150 });
+    const cancelled = await send('/v1/tasks/no-such-task/cancel', 'veileder', { body: {} });
+
+    expect(cancelled.status).toBe(404);
+    expect(await cancelled.json()).toMatchObject({ error: { code: 'task_not_found' } });
+  });
+
+  it('a call through any route stops at the monthly token quota', async () => {
+    const { platform, model } = await boot({ monthlyTokens: 100, usedTokens: 150 });
+    const run = platform.kernel.invoke(kari, `${digdir}/veileder/default`, {
+      data: { query: 'hei' },
+      parts: [textPart('hei')],
+    });
+
+    await expect(run).rejects.toMatchObject({
+      code: 'quota_exhausted',
+      message: expect.stringMatching(/monthly token quota/),
+    });
+    expect(model.seen).toEqual([]);
+  });
+
+  it('no route-level quota lookup remains: entry points leave the refusal to the kernel and the gate', () => {
+    const entryPoints = [
+      'apps/api/src/composition.ts',
+      'apps/api/src/extensions.ts',
+      'apps/api/src/dataset-enrichment.ts',
+      'apps/api/src/playground.ts',
+      'packages/adapter-openai/src/app.ts',
+      'packages/adapter-mcp/src/app.ts',
+      'packages/adapter-a2a/src/app.ts',
+    ];
+    const root = join(import.meta.dirname, '..', '..', '..');
+
+    const checks = entryPoints.filter((file) =>
+      /if\s*\([^)]*\.exhausted\b|quotaExhausted\??\.?\(/.test(
+        readFileSync(join(root, file), 'utf8'),
+      ),
+    );
+
+    expect(checks).toEqual([]);
+  });
+
+  it('still answers MCP tools/list when the monthly token quota is used', async () => {
+    const { mcp } = await boot({ monthlyTokens: 100, usedTokens: 150 });
+    expect((await mcp('veileder', 'tools/list')).status).toBe(200);
   });
 });
 

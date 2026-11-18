@@ -1,0 +1,207 @@
+{
+ "tests": [
+  {
+   "id": "eras-b3ffd2a8-p12-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "LIFESAVERS",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-b3ffd2a8-p12-t02",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Stem cell researchers and the biotechnology industry have now intensified their collaboration",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-b3ffd2a8-p12-t03",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "LIFESAVERS",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "Major breakthroughs in cancer research are opening up entirely",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-b3ffd2a8-p12-t04",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "By Anita Thorolvsen Munch",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-b3ffd2a8-p12-t05",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "This will help save lives.",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "is currently a construction site, the director",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-b3ffd2a8-p12-t06",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "His voice is calm, but his message is dramatic.",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-b3ffd2a8-p12-t07",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Given that 30 percent of the population dies of cancer",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-b3ffd2a8-p12-t08",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_review",
+   "tags": [
+    "heading",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "the tumour/stem cell approach will yield results very soon",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "We are facing a paradigm shift",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-b3ffd2a8-p12-t09",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Paradigm shift",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-b3ffd2a8-p12-t10",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "We are facing a paradigm shift in tumour therapy.",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-b3ffd2a8-p12-t11",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "As they grow, these cells retain the stem cell properties that make growth possible.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

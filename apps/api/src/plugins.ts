@@ -25,7 +25,7 @@ import {
   fileSystemBlobContractTarget,
   memoryBlobContractTarget,
 } from '@genai/port-blob/contract';
-import { tenantSecretPattern } from '@genai/providers-mcp-client';
+import { tenantSecretPattern, toolSyncDeadlineMs } from '@genai/providers-mcp-client';
 import {
   builtinToolsContractTarget,
   toolSourceContract,
@@ -48,6 +48,7 @@ import { adoptionKind, blockKey } from '@genai/composition';
 import {
   agentEndpointOf,
   checkExternalPlugin,
+  contractFor,
   pluginBlockOf,
   type PluginBlock,
   externalPlugins,
@@ -323,7 +324,7 @@ export const pluginsModule: PlatformModuleFactory = (deps) => {
       tools: enabled ? (before?.tools ?? []) : [],
       pending: enabled ? (before?.pending ?? []) : [],
     });
-    if (enabled) await tools.source.sync(tenant, id);
+    if (enabled) await tools.source.sync(tenant, id, AbortSignal.timeout(toolSyncDeadlineMs));
     await tools.source.load(tenant);
     await tools.changed(tenant);
   };
@@ -352,6 +353,18 @@ export const pluginsModule: PlatformModuleFactory = (deps) => {
           errors: [{ path: 'manifest.id', message: `${id} is a built-in plug-in` }],
           target,
           conflict: true,
+        };
+      const expected = contractFor(plugin.manifest.kind);
+      if (expected && expected !== plugin.manifest.contract)
+        return {
+          ok: false,
+          errors: [
+            {
+              path: 'manifest.contract',
+              message: `${plugin.manifest.kind} plug-ins meet ${expected}; register ${id} again under ${expected}`,
+            },
+          ],
+          target,
         };
       const by = actorOf(principal.actor ?? principal);
       const run = await registry.admit(external.registrationOf(plugin), { by });

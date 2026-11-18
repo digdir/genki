@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { platformActor, shareOperatorOnlyType } from './admin.js';
 import { digdir, files, klarsprak, klarsprakYaml, other, setup } from './testkit.js';
 
 describe('definitions API', () => {
@@ -428,5 +429,116 @@ describe('definitions API', () => {
         '/services/by-name/{name}',
       ]),
     );
+  });
+
+  const sharedWith = (availableTo: unknown) => {
+    const definition = klarsprak();
+    return availableTo === undefined
+      ? definition
+      : { ...definition, spec: { ...definition.spec, availableTo } };
+  };
+
+  const supportSession = async (send: ReturnType<typeof setup>['send']) => {
+    const opened = await send('/support-sessions', 'operator', {
+      body: { tenant: digdir, reason: 'deling av tjenester', minutes: 30 },
+    });
+    return ((await opened.json()) as { id: string }).id;
+  };
+
+  it('refuses a publish that changes availableTo unless an operator makes it', async () => {
+    const { send, publish } = setup();
+    const session = await supportSession(send);
+    const refusedShare = async (response: Response) => {
+      expect(response.status).toBe(403);
+      expect(await response.json()).toMatchObject({
+        type: shareOperatorOnlyType,
+        errors: [{ path: 'spec.availableTo' }],
+      });
+    };
+
+    await refusedShare(await publish('kari', sharedWith('*')));
+
+    expect(
+      (await publish('operator', sharedWith([other]), 'deler med en etat', session)).status,
+    ).toBe(201);
+    await refusedShare(await publish('kari', sharedWith([other, '974760673'])));
+
+    expect((await publish('operator', sharedWith('*'), 'deler med alle nå', session)).status).toBe(
+      201,
+    );
+    expect(
+      (await publish('operator', sharedWith(undefined), 'slutter å dele', session)).status,
+    ).toBe(201);
+    const shared = (await (
+      await send(`/tenants/${digdir}/definitions/services/klarsprak/versions/2`, 'kari')
+    ).json()) as { definition: unknown };
+    await refusedShare(await publish('kari', shared.definition, 'går tilbake til versjon 2'));
+
+    const latest = (await (
+      await send(`/tenants/${digdir}/definitions/services/klarsprak`, 'kari')
+    ).json()) as { latest: { version: number; definition: { spec: Record<string, unknown> } } };
+    expect(latest.latest.version).toBe(3);
+    expect(latest.latest.definition.spec).not.toHaveProperty('availableTo');
+  });
+
+  it('keeps availableTo when a tenant republishes it unchanged', async () => {
+    const { send, publish } = setup();
+    const session = await supportSession(send);
+    expect(
+      (await publish('operator', sharedWith([other, '974760673']), 'deler med to', session)).status,
+    ).toBe(201);
+
+    const republished = await publish(
+      'kari',
+      sharedWith(['974760673', other]),
+      'ny instruksjon, samme deling',
+    );
+
+    expect(republished.status).toBe(201);
+  });
+
+  it('lets the platform seed publish a service shared with every agency', async () => {
+    const { admin, store } = setup();
+
+    const seeded = await admin.publish(platformActor('seed', digdir), {
+      definition: sharedWith('*'),
+      files,
+      reason: 'local configuration',
+    });
+
+    expect(seeded.ok).toBe(true);
+    expect((await store.get('Service', digdir, 'klarsprak'))?.definition.spec).toMatchObject({
+      availableTo: '*',
+    });
+  });
+
+  it('refuses an import that changes availableTo unless an operator makes it', async () => {
+    const { send } = setup();
+    const bundle = {
+      format: 'genai-tenant-export/v1',
+      tenant: digdir,
+      exportedAt: '2026-10-06T10:00:00.000Z',
+      definitions: [{ definition: sharedWith('*'), files }],
+      settings: { values: {}, pins: {} },
+    };
+
+    const dryRun = await send(`/tenants/${digdir}/import?dryRun=true`, 'kari', {
+      body: bundle,
+      reason: 'flytter tjenester',
+    });
+    const applied = await send(`/tenants/${digdir}/import`, 'kari', {
+      body: bundle,
+      reason: 'flytter tjenester',
+    });
+    const byOperator = await send(`/tenants/${digdir}/import`, 'operator', {
+      body: bundle,
+      reason: 'flytter tjenester',
+      session: await supportSession(send),
+    });
+
+    expect(dryRun.status).toBe(422);
+    expect(applied.status).toBe(403);
+    expect(await applied.json()).toMatchObject({ type: shareOperatorOnlyType });
+    expect(byOperator.status).toBe(200);
   });
 });

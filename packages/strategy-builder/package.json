@@ -20,6 +20,9 @@
     "@genai/kernel": "0.0.0",
     "@genai/port-knowledge": "0.0.0",
     "@genai/port-model": "0.0.0",
-    "zod": "^4.6.5"
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@genai/ui-blocks": "0.0.0"
   }
 }

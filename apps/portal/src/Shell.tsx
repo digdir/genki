@@ -1,36 +1,131 @@
-import { Alert, Avatar, Button, Link, SkipLink, Tag } from '@digdir/designsystemet-react';
+import {
+  BarChartIcon,
+  Buildings3Icon,
+  BulletListIcon,
+  ChevronDownIcon,
+  CodeIcon,
+  CogIcon,
+  ComponentIcon,
+  DatabaseIcon,
+  HouseIcon,
+  MenuHamburgerIcon,
+  PersonGroupIcon,
+  RectangleSectionsIcon,
+  SandboxIcon,
+  ShieldLockIcon,
+  SidebarLeftIcon,
+} from '@navikt/aksel-icons';
+import { Alert, Avatar, Button, Divider, SkipLink, Tag } from '@digdir/designsystemet-react';
 import {
   createContext,
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
+  type KeyboardEvent,
   useState,
+  type CSSProperties,
   type ReactNode,
 } from 'react';
-import { LanguageChoice } from '@genai/i18n/react';
 import type { ApiClient } from './api';
-import { Icon, icons } from './components/Icon';
-import { formatOrgNumber, profileFor } from './data/organisations';
-import { isEntraLogin } from './oidc';
-import { useEscape, useNarrow } from './hooks';
+import { Icon, type IconComponent } from './components/Icon';
+import { formatOrgNumber, hasOwnName, organisationName, profileFor } from './data/organisations';
+import { restoringScroll, useEscape, useNarrow } from './hooks';
 import { translator, useT, type PlainKey, type T } from './i18n';
 import { Unregistered } from './screens/Unregistered';
 import type { Organisation, PortalRight, Session } from './types';
 
-export const navigation = [
-  { path: '/overview', label: 'shell.navOverview' },
-  { path: '/services', label: 'shell.navServices', also: ['/step-flows'] },
-  { path: '/shared-services', label: 'shell.navSharedServices' },
-  { path: '/datasets', label: 'shell.navDatasets' },
-  { path: '/building-blocks', label: 'shell.navBuildingBlocks', also: ['/skills'] },
-  { path: '/playground', label: 'shell.navPlayground' },
-  { path: '/access', label: 'shell.navAccess' },
-  { path: '/usage', label: 'shell.navUsage' },
-  { path: '/integrations', label: 'shell.navIntegrations', also: ['/api-reference'] },
-  { path: '/log', label: 'shell.navLog' },
-  { path: '/settings', label: 'shell.navSettings' },
-] as const satisfies readonly { path: string; label: PlainKey; also?: readonly string[] }[];
+type NavItem = { path: string; label: PlainKey; icon: IconComponent; also?: readonly string[] };
+
+type NavGroup = { heading?: PlainKey; items: readonly NavItem[] };
+
+export const navigationGroups: readonly NavGroup[] = [
+  {
+    items: [{ path: '/overview', label: 'shell.navOverview', icon: HouseIcon }],
+  },
+  {
+    heading: 'shell.groupBuild',
+    items: [
+      {
+        path: '/services',
+        label: 'shell.navServices',
+        icon: RectangleSectionsIcon,
+      },
+      {
+        path: '/shared-services',
+        label: 'shell.navSharedServices',
+        icon: PersonGroupIcon,
+      },
+      {
+        path: '/datasets',
+        label: 'shell.navDatasets',
+        icon: DatabaseIcon,
+      },
+      {
+        path: '/building-blocks',
+        label: 'shell.navBuildingBlocks',
+        icon: ComponentIcon,
+        also: ['/skills', '/step-flows'],
+      },
+      { path: '/playground', label: 'shell.navPlayground', icon: SandboxIcon },
+      {
+        path: '/developer',
+        label: 'shell.menuDeveloper',
+        icon: CodeIcon,
+        also: ['/api-reference'],
+      },
+    ],
+  },
+  {
+    heading: 'shell.groupAnalyse',
+    items: [
+      {
+        path: '/statistics',
+        label: 'shell.navStatistics',
+        icon: BarChartIcon,
+      },
+      { path: '/log', label: 'shell.navLog', icon: BulletListIcon },
+    ],
+  },
+  {
+    heading: 'shell.groupAdmin',
+    items: [
+      {
+        path: '/access',
+        label: 'shell.navAccess',
+        icon: ShieldLockIcon,
+      },
+      {
+        path: '/settings',
+        label: 'shell.navSettings',
+        icon: CogIcon,
+      },
+    ],
+  },
+];
+
+export const navigation: readonly NavItem[] = navigationGroups.flatMap(
+  (g): readonly NavItem[] => g.items,
+);
+
+const collapsedKey = 'genki.sidebarCollapsed';
+
+const readCollapsed = () => {
+  try {
+    return localStorage.getItem(collapsedKey) === 'true';
+  } catch {
+    return false;
+  }
+};
+
+const storeCollapsed = (collapsed: boolean) => {
+  try {
+    localStorage.setItem(collapsedKey, String(collapsed));
+  } catch {
+    // Remembering is a convenience; the panel still works without storage.
+  }
+};
 
 const initials = (name: string) =>
   name
@@ -99,12 +194,48 @@ const UserNameContext = createContext('');
 
 export const useUserName = () => useContext(UserNameContext);
 
-const isActive = (path: string, item: (typeof navigation)[number]) => {
-  const roots: readonly string[] = [item.path, ...('also' in item ? item.also : [])];
+const RightLabelsContext = createContext<readonly string[]>([]);
+
+/** The rights as Altinn names them for this person, including the older read and write. */
+export const useRightLabels = () => useContext(RightLabelsContext);
+
+const isActive = (path: string, item: NavItem) => {
+  const roots: readonly string[] = [item.path, ...(item.also ?? [])];
   return roots.some((root) => path === root || path.startsWith(`${root}/`));
 };
 
-const readableUnregistered = ['api-reference', 'shared-services', 'data-handling'];
+const userMenuLinks: readonly (readonly [string, PlainKey])[] = [
+  ['#/profile', 'shell.menuProfile'],
+  ['#/onboarding', 'shell.menuOnboarding'],
+  ['#/data-handling', 'shell.menuDataHandling'],
+  ['#/contact', 'shell.contact'],
+];
+
+const moveFocus = (event: KeyboardEvent<HTMLElement>) => {
+  const items = [...event.currentTarget.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+  const at = items.indexOf(document.activeElement as HTMLElement);
+  const target =
+    event.key === 'ArrowDown'
+      ? items[(at + 1) % items.length]
+      : event.key === 'ArrowUp'
+        ? items[(at - 1 + items.length) % items.length]
+        : event.key === 'Home'
+          ? items[0]
+          : event.key === 'End'
+            ? items[items.length - 1]
+            : undefined;
+  if (!target) return;
+  event.preventDefault();
+  target.focus();
+};
+
+const readableUnregistered = [
+  '/api-reference',
+  '/developer/api/reference',
+  '/shared-services',
+  '/data-handling',
+  '/profile',
+];
 
 interface ShellProps {
   session: Session;
@@ -121,24 +252,25 @@ interface ShellProps {
 
 export const LockdownBanner = ({
   api,
-  entra,
 }: {
-  api: Pick<ApiClient, 'getHealth'>;
-  entra: boolean;
+  api: Pick<ApiClient, 'getHealth' | 'isReadOnlyInLockdown'>;
 }) => {
   const t = useT();
-  const [locked, setLocked] = useState(false);
+  const [readOnly, setReadOnly] = useState(false);
   useEffect(() => {
     const controller = new AbortController();
-    api.getHealth(controller.signal).then(
-      (health) => setLocked(health.lockdown === true),
-      () => undefined,
-    );
+    api
+      .getHealth(controller.signal)
+      .then(async (health) => {
+        if (health.lockdown !== true) return;
+        if (await api.isReadOnlyInLockdown(controller.signal)) setReadOnly(true);
+      })
+      .catch(() => undefined);
     return () => controller.abort();
   }, [api]);
-  return locked ? (
+  return readOnly ? (
     <Alert data-color="warning" data-size="sm" className="lockdown-banner">
-      {t(entra ? 'shell.lockdown' : 'shell.lockdownReadOnly')}
+      {t('shell.lockdownReadOnly')}
     </Alert>
   ) : null;
 };
@@ -147,36 +279,59 @@ const NavLinks = ({
   path,
   badges,
   onNavigate,
+  compact = false,
 }: {
   path: string;
   badges: ShellProps['badges'];
   onNavigate: () => void;
+  compact?: boolean;
 }) => {
   const t = useT();
   return (
-    <ul className="nav-list">
-      {navigation.map((item) => {
-        const active = isActive(path, item);
-        const badge = badges?.[item.path];
+    <div className="nav-groups">
+      {navigationGroups.map((group, i) => {
+        const headingId = 'heading' in group ? `nav-group-${i}` : undefined;
         return (
-          <li key={item.path}>
-            <a
-              href={`#${item.path}`}
-              aria-current={active ? 'page' : undefined}
-              className={active ? 'active' : undefined}
-              onClick={onNavigate}
-            >
-              {t(item.label)}
-              {badge && badge.count > 0 ? (
-                <Tag data-color="danger" data-size="sm" aria-label={badge.label}>
-                  {badge.count}
-                </Tag>
-              ) : null}
-            </a>
-          </li>
+          <div key={i} className="nav-group">
+            {i > 0 ? <Divider /> : null}
+            {'heading' in group ? (
+              <span id={headingId} className={compact ? 'visually-hidden' : 'nav-group-heading'}>
+                {t(group.heading)}
+              </span>
+            ) : null}
+            <ul className="nav-list" aria-labelledby={headingId}>
+              {group.items.map((item: NavItem) => {
+                const active = isActive(path, item);
+                const badge = badges?.[item.path];
+                return (
+                  <li key={item.path}>
+                    <a
+                      href={`#${item.path}`}
+                      aria-current={active ? 'page' : undefined}
+                      className={active ? 'active' : undefined}
+                      onClick={onNavigate}
+                      title={compact ? t(item.label) : undefined}
+                    >
+                      <span className="nav-item">
+                        <Icon icon={item.icon} />
+                        <span className={compact ? 'visually-hidden' : undefined}>
+                          {t(item.label)}
+                        </span>
+                      </span>
+                      {badge && badge.count > 0 ? (
+                        <Tag data-color="danger" data-size="sm" aria-label={badge.label}>
+                          {badge.count}
+                        </Tag>
+                      ) : null}
+                    </a>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
         );
       })}
-    </ul>
+    </div>
   );
 };
 
@@ -195,19 +350,46 @@ export const Shell = ({
   const t = useT();
   const narrow = useNarrow();
   const [open, setOpen] = useState<'org' | 'user' | 'menu' | undefined>();
+  const [collapsed, setCollapsed] = useState(readCollapsed);
   const closeAll = useCallback(() => setOpen(undefined), []);
-  useEscape(open !== undefined, closeAll);
+  const userButton = useRef<HTMLButtonElement>(null);
+  const orgButton = useRef<HTMLButtonElement>(null);
+  const userMenuRef = useRef<HTMLDivElement>(null);
+  const openNow = useRef(open);
+  openNow.current = open;
+  const closeToButton = useCallback(() => {
+    const was = openNow.current;
+    setOpen(undefined);
+    (was === 'user' ? userButton : was === 'org' ? orgButton : undefined)?.current?.focus();
+  }, []);
+  const toggleCollapsed = () =>
+    setCollapsed((c) => {
+      storeCollapsed(!c);
+      return !c;
+    });
+  useEscape(open !== undefined, closeToButton);
+  useEffect(() => {
+    if (open === 'user')
+      userMenuRef.current
+        ?.querySelector<HTMLElement>('[role="menuitem"]')
+        ?.focus({ preventScroll: true });
+  }, [open]);
   useEffect(() => {
     if (!narrow) setOpen((o) => (o === 'menu' ? undefined : o));
   }, [narrow]);
-  useEffect(closeAll, [path, closeAll]);
+  const shownPath = useRef(path);
+  useEffect(() => {
+    if (shownPath.current === path) return;
+    shownPath.current = path;
+    closeAll();
+  }, [path, closeAll]);
   const area = path.split('/')[1] ?? '';
   const shownArea = useRef(area);
   useEffect(() => {
     if (shownArea.current === area) return;
     shownArea.current = area;
     document.getElementById('hovedinnhold')?.focus({ preventScroll: true });
-    window.scrollTo(0, 0);
+    if (!restoringScroll()) window.scrollTo(0, 0);
   }, [area]);
   useEffect(() => {
     if (open !== 'org' && open !== 'user') return;
@@ -216,188 +398,278 @@ export const Shell = ({
         closeAll();
     };
     document.addEventListener('mousedown', onPointer);
-    return () => document.removeEventListener('mousedown', onPointer);
+    window.addEventListener('resize', closeAll);
+    return () => {
+      document.removeEventListener('mousedown', onPointer);
+      window.removeEventListener('resize', closeAll);
+    };
   }, [open, closeAll]);
 
   const profile = profileFor(organisation.orgNumber, organisation.name);
   const orgNr = formatOrgNumber(organisation.orgNumber);
+  const orgName = organisationName(organisation, t);
   const multi = session.organisations.length > 1;
-  const { rights, labels } = rightsFor(organisation.actions ?? profile.rights, t);
-  const gated = unregistered && !readableUnregistered.includes(area);
+  const actions = organisation.actions ?? profile.rights;
+  const actionsKey = actions.join('\u0000');
+  const { rights, labels } = useMemo(() => rightsFor(actions, t), [actionsKey, t]);
+  const gated =
+    unregistered && !readableUnregistered.some((p) => path === p || path.startsWith(`${p}/`));
   const orgMeta = t(unregistered ? 'shell.orgMetaUnregistered' : 'shell.orgMeta', { orgNr });
-  const toggle = (which: 'org' | 'user' | 'menu') =>
+  const [above, setAbove] = useState<CSSProperties>();
+  // In the sidebar a menu opens above its button, placed from where the button is now.
+  const toggle = (which: 'org' | 'user' | 'menu', from?: HTMLElement) => {
+    if (from) {
+      const box = from.getBoundingClientRect();
+      setAbove({ left: box.left, bottom: window.innerHeight - box.top + 8 });
+    }
     setOpen((o) => (o === which ? undefined : which));
+  };
+  // The sidebar holds the brand and the user menu; without one (narrow, unregistered) they stay in the header.
+  const userInSidebar = !narrow && !unregistered;
+  const brand = (
+    <a className="brand" href="#/overview">
+      <img src="/emblem-felleslosning.svg" alt="" width={32} height={32} />
+      {userInSidebar && collapsed ? (
+        <span className="visually-hidden">{t('shell.brandFull')}</span>
+      ) : (
+        <span className="brand-text">
+          <span className="brand-owner">{t('shell.owner')}</span>
+          <span className="brand-name">
+            {narrow ? t('shell.brandShort') : t('shell.brandFull')}
+          </span>
+        </span>
+      )}
+    </a>
+  );
+  const userMenu = (
+    <div className={userInSidebar ? 'popover-anchor sidebar-user' : 'popover-anchor'}>
+      <Button
+        ref={userButton}
+        variant="tertiary"
+        data-size="sm"
+        aria-expanded={open === 'user'}
+        aria-haspopup="menu"
+        aria-controls={open === 'user' ? 'user-menu' : undefined}
+        aria-label={t('shell.userMenuButton', { name: session.name, organisation: orgName })}
+        className="user-button"
+        onClick={(e) => toggle('user', e.currentTarget)}
+        onKeyDown={(e) => {
+          if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+          e.preventDefault();
+          if (open !== 'user') toggle('user', e.currentTarget);
+        }}
+      >
+        <Avatar data-size="sm" aria-hidden="true">
+          {initials(session.name)}
+        </Avatar>
+        {narrow || (userInSidebar && collapsed) ? null : (
+          <span className="user-button-text">
+            <span className="user-button-name">{session.name}</span>
+            {userInSidebar ? <span className="user-button-org">{orgName}</span> : null}
+          </span>
+        )}
+      </Button>
+      {open === 'user' ? (
+        <div
+          id="user-menu"
+          ref={userMenuRef}
+          role="menu"
+          aria-label={t('shell.userMenu')}
+          className="popover user-menu"
+          style={userInSidebar ? above : undefined}
+          onKeyDown={(e) => {
+            if (e.key === 'Tab') closeAll();
+            else moveFocus(e);
+          }}
+        >
+          <div className="popover-head" role="presentation">
+            <span className="popover-title">{session.name}</span>
+            {session.email && session.email !== session.name ? (
+              <span className="meta">{session.email}</span>
+            ) : null}
+            <span className="user-menu-org">
+              {hasOwnName(organisation)
+                ? t('shell.actingFor', { name: orgName })
+                : t('shell.actingForNumber', { orgNr })}
+            </span>
+          </div>
+          <ul className="user-menu-list" role="presentation">
+            {userMenuLinks.map(([href, label]) => (
+              <li key={href} role="presentation">
+                <a href={href} role="menuitem" tabIndex={-1} onClick={closeAll}>
+                  {t(label)}
+                </a>
+              </li>
+            ))}
+          </ul>
+          <Divider />
+          <Button
+            role="menuitem"
+            tabIndex={-1}
+            variant="secondary"
+            data-size="sm"
+            onClick={onLogout}
+          >
+            {t('shell.logout')}
+          </Button>
+        </div>
+      ) : null}
+    </div>
+  );
+
+  const orgCompact = userInSidebar && collapsed;
+  const orgChooser = (
+    <div className={userInSidebar ? 'popover-anchor sidebar-org' : 'popover-anchor'}>
+      {multi ? (
+        <Button
+          ref={orgButton}
+          variant="secondary"
+          data-size="sm"
+          aria-expanded={open === 'org'}
+          aria-haspopup="true"
+          aria-label={t(unregistered ? 'shell.orgButtonUnregistered' : 'shell.orgButton', {
+            name: orgName,
+            orgNr,
+          })}
+          onClick={(e) => toggle('org', e.currentTarget)}
+          title={orgCompact ? orgName : undefined}
+        >
+          {orgCompact ? (
+            <Icon icon={Buildings3Icon} />
+          ) : (
+            <>
+              <span className="org-button">
+                <span className="org-name">{orgName}</span>
+                {narrow ? null : <span className="meta">{orgMeta}</span>}
+              </span>
+              <Icon icon={ChevronDownIcon} size={16} />
+            </>
+          )}
+        </Button>
+      ) : userInSidebar ? null : (
+        <div className="org-static">
+          <span className="visually-hidden">{t('shell.actingForLabel')} </span>
+          <span className="org-button">
+            <span className="org-name">{orgName}</span>
+            {narrow ? null : <span className="meta">{orgMeta}</span>}
+          </span>
+        </div>
+      )}
+      {open === 'org' && multi ? (
+        <div
+          role="dialog"
+          aria-label={t('shell.chooseOrg')}
+          className="popover"
+          style={userInSidebar ? above : undefined}
+        >
+          <div className="popover-head">
+            <span className="popover-title">{t('shell.chooseOrg')}</span>
+            <span className="meta">{t('shell.chooseOrgHelp')}</span>
+          </div>
+          <fieldset className="org-options">
+            <legend className="visually-hidden">{t('shell.organisations')}</legend>
+            {session.organisations.map((org) => {
+              const p = profileFor(org.orgNumber, org.name);
+              const checked = org.orgNumber === organisation.orgNumber;
+              return (
+                <label
+                  key={org.orgNumber}
+                  className={checked ? 'org-option checked' : 'org-option'}
+                >
+                  <input
+                    className="ds-input"
+                    type="radio"
+                    name="org"
+                    checked={checked}
+                    onChange={() => {
+                      onSwitch(org);
+                      closeAll();
+                    }}
+                  />
+                  <span className="org-option-text">
+                    <span className="org-option-name">{organisationName(org, t)}</span>
+                    <span className="meta">
+                      {checked && unregistered
+                        ? t('shell.orgOptionUnregistered', {
+                            orgNr: formatOrgNumber(org.orgNumber),
+                          })
+                        : p.role
+                          ? t('shell.orgOptionRole', {
+                              orgNr: formatOrgNumber(org.orgNumber),
+                              role: p.role,
+                            })
+                          : t('shell.orgOptionMeta', {
+                              orgNr: formatOrgNumber(org.orgNumber),
+                            })}
+                    </span>
+                  </span>
+                </label>
+              );
+            })}
+          </fieldset>
+        </div>
+      ) : null}
+    </div>
+  );
 
   return (
-    <div className="shell">
+    <div className={userInSidebar ? 'shell no-header' : 'shell'}>
       <SkipLink href="#hovedinnhold">{t('shell.skipToContent')}</SkipLink>
-      <header className="header">
-        <div className="header-bar">
-          {narrow && !unregistered ? (
-            <Button
-              variant="tertiary"
-              data-size="sm"
-              aria-expanded={open === 'menu'}
-              aria-controls="hovedmeny"
-              onClick={() => toggle('menu')}
-            >
-              <Icon d={icons.menu} />
-              <span>{t('shell.menu')}</span>
-            </Button>
-          ) : null}
-          <a className="brand" href="#/overview">
-            <img src="/emblem-felleslosning.svg" alt="" width={32} height={32} />
-            <span className="brand-text">
-              <span className="brand-owner">{t('shell.owner')}</span>
-              <span className="brand-name">
-                {narrow ? t('shell.brandShort') : t('shell.brandFull')}
-              </span>
-            </span>
-          </a>
-          <div className="header-spacer" />
-          <div className="popover-anchor">
-            {multi ? (
+      {userInSidebar ? null : (
+        <header className="header">
+          <div className="header-bar">
+            {narrow && !unregistered ? (
               <Button
-                variant="secondary"
+                variant="tertiary"
                 data-size="sm"
-                aria-expanded={open === 'org'}
-                aria-haspopup="true"
-                aria-label={t(unregistered ? 'shell.orgButtonUnregistered' : 'shell.orgButton', {
-                  name: organisation.name,
-                  orgNr,
-                })}
-                onClick={() => toggle('org')}
+                aria-expanded={open === 'menu'}
+                aria-controls="hovedmeny"
+                onClick={() => toggle('menu')}
               >
-                <span className="org-button">
-                  <span className="org-name">{organisation.name}</span>
-                  {narrow ? null : <span className="meta">{orgMeta}</span>}
-                </span>
-                <Icon d={icons.chevronDown} size={16} />
+                <Icon icon={MenuHamburgerIcon} />
+                <span>{t('shell.menu')}</span>
               </Button>
-            ) : (
-              <div className="org-static">
-                <span className="visually-hidden">{t('shell.actingForLabel')} </span>
-                <span className="org-button">
-                  <span className="org-name">{organisation.name}</span>
-                  {narrow ? null : <span className="meta">{orgMeta}</span>}
-                </span>
-              </div>
-            )}
-            {open === 'org' && multi ? (
-              <div role="dialog" aria-label={t('shell.chooseOrg')} className="popover">
-                <div className="popover-head">
-                  <span className="popover-title">{t('shell.chooseOrg')}</span>
-                  <span className="meta">{t('shell.chooseOrgHelp')}</span>
-                </div>
-                <fieldset className="org-options">
-                  <legend className="visually-hidden">{t('shell.organisations')}</legend>
-                  {session.organisations.map((org) => {
-                    const p = profileFor(org.orgNumber, org.name);
-                    const checked = org.orgNumber === organisation.orgNumber;
-                    return (
-                      <label
-                        key={org.orgNumber}
-                        className={checked ? 'org-option checked' : 'org-option'}
-                      >
-                        <input
-                          className="ds-input"
-                          type="radio"
-                          name="org"
-                          checked={checked}
-                          onChange={() => {
-                            onSwitch(org);
-                            closeAll();
-                          }}
-                        />
-                        <span className="org-option-text">
-                          <span className="org-option-name">{org.name}</span>
-                          <span className="meta">
-                            {checked && unregistered
-                              ? t('shell.orgOptionUnregistered', {
-                                  orgNr: formatOrgNumber(org.orgNumber),
-                                })
-                              : p.role
-                                ? t('shell.orgOptionRole', {
-                                    orgNr: formatOrgNumber(org.orgNumber),
-                                    role: p.role,
-                                  })
-                                : t('shell.orgOptionMeta', {
-                                    orgNr: formatOrgNumber(org.orgNumber),
-                                  })}
-                          </span>
-                        </span>
-                      </label>
-                    );
-                  })}
-                </fieldset>
-              </div>
             ) : null}
+            {brand}
+            <div className="header-spacer" />
+            {orgChooser}
+            {userMenu}
           </div>
-          <div className="popover-anchor">
-            <Button
-              variant="tertiary"
-              data-size="sm"
-              aria-expanded={open === 'user'}
-              aria-haspopup="true"
-              aria-label={t('shell.userMenuButton', { name: session.name })}
-              onClick={() => toggle('user')}
-            >
-              <Avatar data-size="sm" aria-hidden="true">
-                {initials(session.name)}
-              </Avatar>
-              {narrow ? null : <span>{session.name}</span>}
-            </Button>
-            {open === 'user' ? (
-              <div role="dialog" aria-label={t('shell.userMenu')} className="popover user-menu">
-                <div className="popover-head">
-                  <span className="popover-title">{session.name}</span>
-                  <span className="meta">
-                    {t('shell.actingFor', { name: organisation.name, orgNr })}
-                  </span>
-                </div>
-                <div className="user-rights">
-                  <span className="meta">{t('shell.yourRights')}</span>
-                  <div className="tag-row">
-                    {labels.map((r) => (
-                      <Tag key={r} data-color="neutral" data-size="sm">
-                        {r}
-                      </Tag>
-                    ))}
-                  </div>
-                  <span className="small">{t('shell.rightsGivenBy')}</span>
-                  <Link href="https://www.altinn.no" target="_blank" rel="noopener">
-                    {t('shell.seeInAltinn')}
-                  </Link>
-                </div>
-                <LanguageChoice className="user-language" />
-                <Button variant="secondary" data-size="sm" onClick={onLogout}>
-                  {t('shell.logout')}
-                </Button>
-              </div>
-            ) : null}
-          </div>
-        </div>
-        {narrow && open === 'menu' && !unregistered ? (
-          <nav id="hovedmeny" aria-label={t('shell.mainMenu')} className="narrow-nav">
-            <NavLinks path={path} badges={badges} onNavigate={closeAll} />
-          </nav>
-        ) : null}
-      </header>
+          {narrow && open === 'menu' && !unregistered ? (
+            <nav id="hovedmeny" aria-label={t('shell.mainMenu')} className="narrow-nav">
+              <NavLinks path={path} badges={badges} onNavigate={closeAll} />
+            </nav>
+          ) : null}
+        </header>
+      )}
       <div className="body">
         {narrow || unregistered ? null : (
-          <nav aria-label={t('shell.mainMenu')} className="sidebar">
-            <NavLinks path={path} badges={badges} onNavigate={closeAll} />
-            <div className="sidebar-spacer" />
-            <div className="sidebar-links">
-              <Link href="#/help">{t('shell.guide')}</Link>
-              <Link href="#/status">{t('shell.status')}</Link>
-              <Link href="#/contact">{t('shell.contact')}</Link>
+          <nav
+            aria-label={t('shell.mainMenu')}
+            className={collapsed ? 'sidebar collapsed' : 'sidebar'}
+          >
+            <div className="sidebar-top">
+              {brand}
+              <Button
+                variant="tertiary"
+                data-size="sm"
+                icon
+                aria-label={t(collapsed ? 'shell.showSidebar' : 'shell.hideSidebar')}
+                onClick={toggleCollapsed}
+              >
+                <Icon icon={SidebarLeftIcon} />
+              </Button>
+            </div>
+            <NavLinks path={path} badges={badges} onNavigate={closeAll} compact={collapsed} />
+            <div className="sidebar-account">
+              {userMenu}
+              {orgChooser}
             </div>
           </nav>
         )}
         <main id="hovedinnhold" className="main" tabIndex={-1}>
           <div className="main-inner">
-            <LockdownBanner api={api} entra={isEntraLogin(session.token)} />
+            <LockdownBanner api={api} />
             {gated ? (
               <Unregistered
                 api={api}
@@ -409,7 +681,11 @@ export const Shell = ({
               />
             ) : (
               <UserNameContext.Provider value={session.name}>
-                <RightsContext.Provider value={rights}>{children}</RightsContext.Provider>
+                <RightsContext.Provider value={rights}>
+                  <RightLabelsContext.Provider value={labels}>
+                    {children}
+                  </RightLabelsContext.Provider>
+                </RightsContext.Provider>
               </UserNameContext.Provider>
             )}
           </div>

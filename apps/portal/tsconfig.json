@@ -18,10 +18,22 @@
   "include": ["src", "src/**/*.json"],
   "references": [
     {
+      "path": "../../packages/docs-site"
+    },
+    {
+      "path": "../../packages/docs-content"
+    },
+    {
       "path": "../../packages/i18n"
     },
     {
       "path": "../../packages/schema-forms"
+    },
+    {
+      "path": "../../packages/ui-assembly"
+    },
+    {
+      "path": "../../packages/ui-blocks"
     }
   ]
 }

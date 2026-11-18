@@ -1,5 +1,6 @@
 import { buildExampleUsage, exampleProjects, quotaTokensPerMonth } from './data/usage';
 import { platformStepBlocks } from './mock/step-blocks';
+import { examplePng, exampleStepOperations } from './mock/step-operations';
 import { platformRecipes } from './mock/recipes';
 import { strategyRoutes } from './mock/strategies';
 import { assistantMock } from './mock/assistant';
@@ -9,6 +10,7 @@ import { keyPoliciesMock } from './mock/key-policies';
 import { maskinportenMock } from './mock/maskinporten';
 import { hooksMock } from './mock/hooks';
 import { triggersMock } from './mock/triggers';
+import { environmentsMock } from './mock/environments';
 import { preferencesMock } from './mock/preferences';
 import { onboardingMock } from './mock/onboarding';
 import { playgroundMock } from './mock/playground';
@@ -16,6 +18,8 @@ import { qualityMock } from './mock/quality';
 import { batchRunsMock } from './mock/batch-runs';
 import { searchEnginesMock } from './mock/search-engines';
 import { skillsMock } from './mock/skills';
+import { platformStatusMock } from './mock/platform-status';
+import { exampleSecretNames } from './data/building-blocks';
 import { inputFieldsOf } from './data/playground';
 import { parseYaml } from './yaml';
 import { reasonProblem } from './components/ReasonField';
@@ -43,7 +47,7 @@ import type {
   TaskRow,
   UsageReport,
 } from './types';
-import { logTasks, logTimelines, playgroundTimeline } from './data/log';
+import { logTasks, logTimelines, playgroundTasks, playgroundTimeline } from './data/log';
 import { exampleQualityFeedback, exampleQualityRuns, exampleQualityTestSets } from './data/quality';
 
 export const exampleOrganisations: Organisation[] = [
@@ -375,6 +379,7 @@ export const exampleShared: SharedService[] = [
   version: version as number,
   riskClass: 'minimal',
   residency: 'norway',
+  model: 'aivar/borealis-27b',
   exposure: ['rest', 'mcp'],
   variants: [{ id: 'default', publicName: `${String(id)}__default`, aliases: [] }],
 }));
@@ -402,6 +407,7 @@ export const exampleAccess: AccessView = {
       datasets: [],
       agents: ['nettsider-nynorsk__default'],
       createdAt: '2026-08-14T10:00:00Z',
+      lastUsedAt: '2026-10-07T08:30:00Z',
       expiresAt: null,
       revokedAt: null,
     },
@@ -414,6 +420,7 @@ export const exampleAccess: AccessView = {
       datasets: [],
       agents: [],
       createdAt: '2026-10-02T09:00:00Z',
+      lastUsedAt: null,
       expiresAt: null,
       revokedAt: null,
     },
@@ -479,7 +486,9 @@ const featureMocks = {
   keyPolicies: keyPoliciesMock,
   hooks: hooksMock,
   triggers: triggersMock,
+  environments: environmentsMock,
   preferences: preferencesMock,
+  platformStatus: platformStatusMock,
 };
 
 export type FeatureMockOptions = {
@@ -495,6 +504,7 @@ export interface MockExtras {
   chatReply?: string;
   stepFlows?: DefinitionWithHistory[];
   tasks?: TaskRow[];
+  playgroundTasks?: TaskRow[];
   usage?: UsageReport;
   shared?: SharedService[];
   access?: AccessView;
@@ -551,6 +561,7 @@ export const exampleModels: ModelOption[] = [
     family: 'borealis',
     residency: 'norway',
     capabilities: ['stream', 'tools', 'json-schema'],
+    operations: ['chat', 'generate-image'],
   },
   {
     id: 'aivar/nora-70b',
@@ -564,6 +575,7 @@ export const exampleModels: ModelOption[] = [
     family: 'gpt-4.1',
     residency: 'eu',
     capabilities: ['stream', 'tools', 'json-schema'],
+    operations: ['chat', 'generate-image'],
   },
   {
     id: 'foundry-openai/gpt-4o-2m-tps',
@@ -740,6 +752,24 @@ const strategyNeeds: Record<string, string[]> = {
   'rag-single-shot@1': ['json-schema'],
 };
 
+const withMockQuota = (report: UsageReport): UsageReport => {
+  const month = report.to.slice(0, 7);
+  const usedTokens = report.daily
+    .filter((d) => d.date.startsWith(month))
+    .reduce((n, d) => n + d.usage.inputTokens + d.usage.outputTokens, 0);
+  const usedPercent = (usedTokens / quotaTokensPerMonth) * 100;
+  return {
+    ...report,
+    quota: {
+      usedTokens: Math.round(usedTokens),
+      monthlyTokens: quotaTokensPerMonth,
+      usedPercent,
+      alertPercent: 80,
+      alert: usedPercent >= 80,
+    },
+  };
+};
+
 export const mockFetch = (
   services = exampleServices,
   timelines: TaskTimeline[] = logTimelines,
@@ -754,8 +784,12 @@ export const mockFetch = (
   const capabilities = extras.capabilities ?? exampleCapabilities;
   const chatReply = extras.chatReply ?? exampleChatReply;
   const taskRows = extras.tasks ?? exampleTasks;
-  const lifecycles = new Map<string, { state: string; reason: string }>();
-  const usageReport = extras.usage ?? exampleUsage;
+  const trialRows = extras.playgroundTasks ?? playgroundTasks;
+  const lifecycles = new Map<
+    string,
+    { state: string; reason?: string; by?: string; at?: string }
+  >();
+  const usageReport = extras.usage ?? withMockQuota(exampleUsage);
   const shared = extras.shared ?? exampleShared;
   let access = structuredClone(extras.access ?? exampleAccess);
   const clientRoutes = clientMock();
@@ -773,7 +807,13 @@ export const mockFetch = (
     featureMocks.hooks(extras.features?.hooks),
     featureMocks.triggers(extras.features?.triggers),
     featureMocks.preferences(extras.features?.preferences),
+    featureMocks.platformStatus(extras.features?.platformStatus),
     batchRuns,
+    featureMocks.environments({
+      latest: (service) =>
+        current.find((d) => d.kind === 'Service' && d.id === service)?.latest.version,
+      ...extras.features?.environments,
+    }),
     featureMocks.quality({
       published: (service) =>
         current.find((d) => d.kind === 'Service' && d.id === service)?.latest.definition,
@@ -819,7 +859,8 @@ export const mockFetch = (
       if (unknown) return json({ error: `dataset digdir/kudos cannot filter on ${unknown}` }, 400);
       return json({ fields: fields.map((field) => ({ field, options: exampleFacets[field] })) });
     }
-    if (path === '/health') return json({ status: 'ok', version: 'mock' });
+    if (path === '/health')
+      return json({ status: 'ok', version: 'mock', builtAt: '2026-10-06T08:00:00Z' });
     if (path === '/settings') return json({ data: exampleSettingsCatalog });
     if (/^\/tenants\/[^/]+\/settings\/effective$/.test(path)) return json(exampleEffective);
     if (/^\/tenants\/[^/]+\/settings\/[^/]+$/.test(path) && init?.method === 'DELETE')
@@ -872,8 +913,36 @@ export const mockFetch = (
       });
     }
     if (path === '/v1/models') return json({ object: 'list', data: capabilities });
-    if (path === '/v1/chat/completions' && init?.method === 'POST')
-      return json({ choices: [{ index: 0, message: { role: 'assistant', content: chatReply } }] });
+    if (path === '/v1/chat/completions' && init?.method === 'POST') {
+      const asked = JSON.stringify(
+        (JSON.parse(String(init.body ?? '{}')) as { messages?: unknown }).messages ?? [],
+      );
+      const image = /figur|bilde|image/i.test(asked);
+      return new Response(
+        JSON.stringify({
+          choices: [{ index: 0, message: { role: 'assistant', content: chatReply } }],
+          ...(image
+            ? {
+                attachments: [
+                  {
+                    type: 'image',
+                    id: 'm1',
+                    mediaType: 'image/png',
+                    bytes: examplePng.byteLength,
+                    step: 'figur',
+                    url: '/v1/tasks/prove-1/media/m1',
+                  },
+                ],
+              }
+            : {}),
+        }),
+        { status: 200, headers: { 'content-type': 'application/json', 'genai-task': 'prove-1' } },
+      );
+    }
+    if (/^\/v1\/tasks\/[^/]+\/media\/[^/]+$/.test(path))
+      return new Response(examplePng, { status: 200, headers: { 'content-type': 'image/png' } });
+    if (/^\/tenants\/[^/]+\/step-flows\/operations$/.test(path))
+      return json({ environment: 'test', data: exampleStepOperations });
     if (/^\/tenants\/[^/]+\/step-flows\/blocks$/.test(path))
       return json({ blocks: platformStepBlocks });
     if (/^\/tenants\/[^/]+\/step-flows\/recipes$/.test(path))
@@ -990,7 +1059,17 @@ export const mockFetch = (
       if (init?.method === 'PUT') {
         if (needsReason()) return missingReason();
         const { state } = JSON.parse(String(init.body)) as { state: string };
-        lifecycles.set(id, { state, reason: reasonOf(init) ?? '' });
+        lifecycles.set(
+          id,
+          state === 'active'
+            ? { state }
+            : {
+                state,
+                reason: reasonOf(init) ?? '',
+                by: 'employee:ansattporten:kari',
+                at: new Date().toISOString(),
+              },
+        );
       }
       return json(lifecycles.get(id) ?? { state: 'active' });
     }
@@ -1023,7 +1102,9 @@ export const mockFetch = (
       });
     const taskOne = /^\/tenants\/[^/]+\/tasks\/([^/]+)$/.exec(path);
     if (taskOne) {
-      const found = taskRows.find((t) => t.id === decodeURIComponent(taskOne[1] ?? ''));
+      const found = [...taskRows, ...trialRows].find(
+        (t) => t.id === decodeURIComponent(taskOne[1] ?? ''),
+      );
       return found ? json(found) : notFound();
     }
     const portal = /^\/tenants\/([^/]+)\/(overview|access|usage|tasks|integrations)$/.exec(path);
@@ -1048,6 +1129,13 @@ export const mockFetch = (
       if (portal[2] === 'access') return json(access);
       if (portal[2] === 'usage') {
         const project = url.searchParams.get('project');
+        const environment = url.searchParams.get('environment');
+        if (environment)
+          return json({
+            ...usageReport,
+            environment,
+            byEnvironment: usageReport.byEnvironment?.filter((e) => e.environment === environment),
+          });
         if (!project) return json(usageReport);
         if (extras.usage)
           return json({
@@ -1064,10 +1152,20 @@ export const mockFetch = (
       if (portal[2] === 'integrations') return json(integrations);
       const status = url.searchParams.get('status');
       const wanted = url.searchParams.get('service');
-      const data = taskRows.filter(
-        (t) => (!status || t.status === status) && (!wanted || t.service === wanted),
+      const environment = url.searchParams.get('environment');
+      const from = url.searchParams.get('from');
+      const to = url.searchParams.get('to');
+      const limit = Number(url.searchParams.get('limit') ?? 100) || 100;
+      const rows = url.searchParams.get('origin') === 'playground' ? trialRows : taskRows;
+      const matching = rows.filter(
+        (t) =>
+          (!status || t.status === status) &&
+          (!wanted || t.service === wanted) &&
+          (!environment || t.environment === environment) &&
+          (!from || t.createdAt >= from) &&
+          (!to || t.createdAt <= to),
       );
-      return json({ data, total: data.length });
+      return json({ data: matching.slice(0, limit), total: matching.length });
     }
     if (/^\/tenants\/[^/]+\/api-keys$/.test(path) && init?.method === 'POST') {
       if (needsReason()) return missingReason();
@@ -1161,7 +1259,24 @@ export const mockFetch = (
     }
     if (/^\/tenants\/[^/]+\/secrets\/[^/]+$/.test(path) && init?.method === 'PUT') {
       if (needsReason()) return missingReason();
-      return json({ ref: 'secret://tenant/999888777/x' });
+      const name = decodeURIComponent(path.split('/').pop() ?? '');
+      const { allowedHosts } = JSON.parse(String(init.body)) as { allowedHosts?: string[] };
+      if (!exampleSecretNames.includes(name) && !allowedHosts?.length)
+        return json(
+          {
+            title: 'Invalid request',
+            status: 400,
+            errors: [
+              {
+                path: 'allowedHosts',
+                message:
+                  'Skriv adressene hemmeligheten skal brukes mot, for eksempel https://api.example.no.',
+              },
+            ],
+          },
+          400,
+        );
+      return json({ ref: `secret://tenant/999888777/${name}` });
     }
     const parts = path.split('/').filter(Boolean).map(decodeURIComponent);
     const [root, tenant, area, kind, id, versions, version] = parts;

@@ -79,4 +79,7 @@ export const platformBlocks = {
   blockToolName: 'Call a tool',
   blockToolDescription:
     'Calls one tool from a registered tool source with values from the flow, and passes the result on to later steps.',
+  blockCallOperationName: 'Call an operation',
+  blockCallOperationDescription:
+    "Calls a reviewed kind of model operation on one of the service's models, with values from the flow. It runs under the service's guardrails and is masked, metered and audited.",
 } satisfies Translation<typeof source>;

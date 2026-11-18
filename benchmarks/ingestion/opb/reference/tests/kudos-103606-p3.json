@@ -1,0 +1,184 @@
+{
+ "tests": [
+  {
+   "id": "kudos-103606-p3-t01",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "Kunnskap, evaluering og læring av Nansen-programmet",
+     "max_diffs": 2
+    },
+    "left": {
+     "text": "Oppdrag nr. 21-2023",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-103606-p3-t02",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Nansen-programmet representerer den største enkeltsatsing i norsk utviklingssamarbeid.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-103606-p3-t03",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "list",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "inkludere hvordan Norge skal samarbeide med andre givere og implementerende partnere på feltet.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-103606-p3-t04",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "list",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "sikre kunnskapsbygging og læring underveis i programmet.",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "muliggjøre kunnskapsbasert prioritering mellom innsatser.",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-103606-p3-t05",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "15. september 2023",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-103606-p3-t06",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "sikre systematisk og robust kunnskap om hva Nansen-programmet oppnår.",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "Utarbeide forslag til innretning av en søknadsbasert ordning",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-103606-p3-t07",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Styrking av lokale humanitære organisasjoner bidrar til samfunnets motstandskraft og prioriteres i norsk humanitær strategi.",
+     "max_diffs": 4
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-103606-p3-t08",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "Støtte til institusjonssamarbeid med Ukraina",
+     "max_diffs": 2
+    },
+    "left": {
+     "text": "Oppdrag nr. 23-2023",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-103606-p3-t09",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Norad skal utarbeide forslag til en ordning for støtte til institusjonssamarbeid.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

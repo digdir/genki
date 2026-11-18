@@ -1,3 +1,10 @@
+import type {
+  EnvironmentTier,
+  LiveDescriptorRegistry,
+  OperationGovernanceStore,
+  OperationTry,
+  OperationTryOutcome,
+} from '@genai/composition';
 import type { Event, Principal, Task } from '@genai/contracts';
 import type {
   DefinitionStore,
@@ -10,7 +17,7 @@ import type { Capability as KernelCapability, Kernel, TaskStore } from '@genai/k
 import type { TriggerRunStore } from '@genai/jobs';
 import type { BlobStore } from '@genai/port-blob';
 import type { IndexWriterRouter, KnowledgeRouter } from '@genai/port-knowledge';
-import type { ModelRouter, Residency } from '@genai/port-model';
+import type { ModelRouter, ProcessorRecordCheck, Residency } from '@genai/port-model';
 import type { ConnectionRegistry } from '@genai/providers-mcp-client';
 import type { Env, Hono, Schema } from 'hono';
 import type { Access } from './access.js';
@@ -19,9 +26,11 @@ import type { CatalogRegistry } from './catalog-registry.js';
 import type { ChangeTopic } from './change-feed.js';
 import type { ConfigEntryStore } from './config-store.js';
 import type { ApiLog } from './failure-log.js';
+import type { OperationsOverview } from './operations.js';
 import type { DraftDecoration, DraftRunner, ModelPrice } from './draft-runner.js';
+import type { EvalSlots } from './eval-slots.js';
 import type { TaskIndex } from './extensions.js';
-import type { IngestSourceOptions } from './index-ingestion.js';
+import type { IngestSourceConfig } from './index-ingestion.js';
 import type { IngestionService } from './ingestion.js';
 import type { EngineDescription } from './knowledge-engines.js';
 import type { SearchModuleExtras } from './knowledge-endpoints.js';
@@ -29,7 +38,15 @@ import type { createWebhooks } from './webhooks.js';
 import type { HookRuntime } from './hooks.js';
 import type { ContractSetup, PluginRegistry } from '@genai/plugins';
 import type { ExternalPlugin, PluginRuntime } from './external-plugins.js';
-import type { ConnectionToolSource } from '@genai/providers-mcp-client';
+import type {
+  ConnectionToolSource,
+  EgressOptions,
+  TenantSecrets,
+} from '@genai/providers-mcp-client';
+import type { TraceDeliveryStore } from '@genai/jobs';
+import type { TraceSinks, TracingOptions } from './trace-connections.js';
+import type { SinkLabels } from './sink-labels.js';
+import type { TrackedWork } from './tracked-work.js';
 
 export interface ModuleDeps extends Omit<SearchModuleExtras, 'now'> {
   platformTenant: string;
@@ -58,18 +75,44 @@ export interface ModuleDeps extends Omit<SearchModuleExtras, 'now'> {
     tenant: string,
     options?: { fresh?: boolean },
   ): Promise<{ usedTokens: number; monthlyTokens: number; exhausted: boolean }>;
+  tenantOperations?(tenant: string): Promise<OperationsOverview>;
   drafts: DraftRunner;
+  /** The capability that runs an eval as a kernel task (`platform.eval.run`). */
+  evalCapability?: string;
+  /** The platform's own version, recorded as the commit of the eval runs it starts. */
+  appVersion?: string;
+  demoRecorderKeyDigest?: string;
+  /** Resolves a tenant's secret references, only for the hosts each secret is set for. */
+  tenantSecrets?: TenantSecrets;
+  /** The egress rules every outbound call to a tenant's own endpoint follows (ADR 0015). */
+  egressOptions?: EgressOptions;
+  tracing?: TracingOptions;
+  traceSinks?: TraceSinks;
+  /** Labels brought back from trace sinks, and each sink judge's agreement with them. */
+  sinkLabels?: SinkLabels;
+  traceDeliveries?: TraceDeliveryStore;
+  evalSlots?: EvalSlots;
   pinService?(tenant: string, service: string, version: number): Promise<string | undefined>;
   kernel: Kernel;
+  operations?: {
+    tier: EnvironmentTier;
+    descriptors: LiveDescriptorRegistry;
+    governance: OperationGovernanceStore;
+    processorRecords?: ProcessorRecordCheck;
+    try(operator: Principal, request: OperationTry): Promise<OperationTryOutcome>;
+  };
+  enrichmentTask?: TrackedWork;
+  /** Runs a direct dataset search as a kernel task, so its embedding counts like a run's (#678). */
+  datasetSearchTask?: TrackedWork;
   tasks: TaskIndex;
   task(id: string): Promise<Task | undefined>;
   events(task: string): AsyncIterable<Event>;
   webhooks: ReturnType<typeof createWebhooks>;
   sync(): Promise<void>;
   onChange(topic: ChangeTopic, listener: () => void | Promise<void>): () => void;
-  ingestSources?: IngestSourceOptions;
+  ingestSources?: IngestSourceConfig;
   vault?: {
-    set(tenant: string, name: string, value: string): Promise<string>;
+    set(tenant: string, name: string, value: string, hosts?: readonly string[]): Promise<string>;
     delete(tenant: string, name: string): Promise<void>;
   };
   defaultEmbedding?: { model: string; dimensions: number; residency: Residency };
@@ -113,7 +156,7 @@ export interface PlatformModule {
     capability: KernelCapability,
     context: CapabilityContext,
   ): KernelCapability | Promise<KernelCapability>;
-  checkPublish?(definition: unknown): Promise<ValidationError[]>;
+  checkPublish?(definition: unknown, publisher: string): Promise<ValidationError[]>;
   onFeedback?(feedback: FeedbackGiven): Promise<void>;
   qualityOverview?(): Promise<Record<string, unknown>>;
 }

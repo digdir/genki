@@ -1,5 +1,6 @@
+import { CheckmarkIcon } from '@navikt/aksel-icons';
 import { useT } from '../i18n';
-import { Icon, icons } from './Icon';
+import { Icon } from './Icon';
 
 export const StepList = ({
   steps,
@@ -19,7 +20,7 @@ export const StepList = ({
         return (
           <li key={step} aria-current={state === 'current' ? 'step' : undefined} data-state={state}>
             <span className="step-list-mark" aria-hidden="true">
-              {state === 'done' ? <Icon d={icons.check} size={14} strokeWidth={2} /> : n}
+              {state === 'done' ? <Icon icon={CheckmarkIcon} size={14} /> : n}
             </span>
             {step}
             {state === 'done' ? (

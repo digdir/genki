@@ -1,20 +1,25 @@
 id: providers-openai
 plane: providers
-name: openai-chat adapter
-note: Chat + Foundry discovery
+name: OpenAI adapter
+note: Chat, Responses, Decisions + Foundry discovery
 icon: llm
 color: '#8fa8b3'
 status: Provider
 packages:
   - '@genai/providers-openai'
-summary: The openai-chat wire protocol, and discovery of Azure AI Foundry deployments.
-description: Translates the model port to the OpenAI chat API with the vendor SDK, and lists Foundry
+summary: OpenAI Chat Completions and stateless Responses, and discovery of Azure AI Foundry deployments.
+description:
+  Translates the model port to the OpenAI chat and Responses APIs with the vendor SDK, and lists Foundry
   deployments so models are discovered, not configured.
 responsibilities:
-  - openai-chat protocol
+  - The openai family's built-in APIs openai/chat-completions@1, openai/responses@1,
+    openai/decide@1 and openai/embeddings@1, with learned Responses recovery
+  - The decide operation against the Azure OpenAI Decisions API, with a closed response shape
   - Azure deployment discovery
 files:
   - packages/providers-openai/src/index.ts
+  - packages/providers-openai/src/responses.ts
+  - packages/providers-openai/src/decisions.ts
 input: Port request
 output: OpenAI API call
 replaces:
@@ -29,7 +34,7 @@ edges:
       file: packages/providers-openai/src/contract.ts
       imports: '@genai/plugins'
   - to: port-embedding
-    label: OpenAI-compatible embeddings adapter
+    label: openai/embeddings@1, the OpenAI-compatible embeddings adapter
     kind: call
     target: call
     witness:
@@ -43,7 +48,7 @@ edges:
       file: packages/providers-openai/src/index.ts
       imports: '@genai/port-model'
   - to: azure-foundry
-    label: Chat completions and deployment listing
+    label: Chat completions, Responses, Decisions and deployment listing
     kind: http
     target: http
     witness:

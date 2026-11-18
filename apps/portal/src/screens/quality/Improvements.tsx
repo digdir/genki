@@ -8,8 +8,6 @@ import {
   Paragraph,
   Select,
   Tag,
-  Textarea,
-  ValidationMessage,
 } from '@digdir/designsystemet-react';
 import { useEffect, useId, useRef, useState } from 'react';
 import { ApiError, type ApiClient } from '../../api';
@@ -18,6 +16,7 @@ import { answerLanguages, type AnswerLanguage } from '../../data/service-languag
 import { usePortalFormat } from '../../format';
 import { useAsync } from '../../hooks';
 import { useT, type PlainKey, type T } from '../../i18n';
+import { rightLabel, useRights } from '../../Shell';
 import { ErrorState, Loading } from '../../states';
 import { servicePath } from '../service/sections';
 import { DiffLines } from './DiffLines';
@@ -63,26 +62,27 @@ const ProposalCard = ({
   p,
   serviceId,
   busy,
+  canDecide,
   onDecide,
 }: {
   p: Improvement;
   serviceId: string;
-  busy: boolean;
-  onDecide: (approve: boolean, comment: string) => void;
+  busy: 'approve' | 'reject' | undefined;
+  canDecide: boolean;
+  onDecide: (approve: boolean) => void;
 }) => {
   const { t, f, dateTime } = usePortalFormat();
   const pct = (n: number) => f.percent(n);
-  const [comment, setComment] = useState('');
-  const [error, setError] = useState('');
   const [labelKey, color] = statusTag[p.status] ?? [undefined, 'neutral'];
   const label = labelKey ? t(labelKey) : p.status;
   const heading = `proposal-${p.id}`;
   const reasons = reasonsOf(p.reasons);
   const s = p.scores;
+  const decidedAt = p.decision?.at ? dateTime(p.decision.at) : undefined;
   return (
     <section aria-labelledby={heading} className="proposal-detail">
       <div className="row-wrap">
-        <Heading level={2} data-size="xs" id={heading}>
+        <Heading level={3} data-size="2xs" id={heading}>
           {t('quality.impFrom', { when: dateTime(p.createdAt) })}
         </Heading>
         <Tag data-size="sm" data-color={color}>
@@ -95,29 +95,17 @@ const ProposalCard = ({
       {p.status === 'failed' ? (
         <Paragraph data-size="sm">{t('quality.impFailedText')}</Paragraph>
       ) : null}
-      {reasons.length ? (
-        <div className="stack-sm">
-          <Heading level={3} data-size="2xs">
-            {t('quality.why')}
-          </Heading>
-          <ul className="bullets">
-            {reasons.map((r) => (
-              <li key={r}>{r}</li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
       {p.change ? (
-        <div className="stack-sm">
-          <Heading level={3} data-size="2xs">
-            {t('quality.whatChanges')}
-          </Heading>
-          <DiffLines
-            title={fieldName(t, p.change.path, p.language)}
-            before={p.change.before}
-            after={p.change.after}
-          />
-        </div>
+        <DiffLines
+          title={fieldName(t, p.change.path, p.language)}
+          before={p.change.before}
+          after={p.change.after}
+        />
+      ) : null}
+      {reasons.length ? (
+        <Paragraph data-size="sm" className="meta">
+          {reasons.join(' ')}
+        </Paragraph>
       ) : null}
       {s ? (
         <dl className="proposal-facts">
@@ -138,78 +126,63 @@ const ProposalCard = ({
         </dl>
       ) : null}
       {p.examples?.length ? (
-        <div className="stack-sm">
-          <Heading level={3} data-size="2xs">
-            {t('quality.examples')}
-          </Heading>
-          {p.examples.slice(0, 3).map((e) => (
-            <div key={e.input} className="example good">
-              <strong>{e.input}</strong>
-              <div className="example-pair">
-                <div>
-                  <span className="diff-label">{t('quality.now')}</span>
-                  <span>{e.before}</span>
-                </div>
-                <div>
-                  <span className="diff-label">{t('quality.withProposal')}</span>
-                  <span>{e.after}</span>
+        <details>
+          <summary>{t('quality.examples')}</summary>
+          <div className="stack-sm">
+            {p.examples.slice(0, 3).map((e) => (
+              <div key={e.input} className="example good">
+                <strong>{e.input}</strong>
+                <div className="example-pair">
+                  <div>
+                    <span className="diff-label">{t('quality.now')}</span>
+                    <span>{e.before}</span>
+                  </div>
+                  <div>
+                    <span className="diff-label">{t('quality.withProposal')}</span>
+                    <span>{e.after}</span>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
+        </details>
+      ) : null}
+      {p.status === 'ready' && canDecide ? (
+        <div className="actions">
+          <Button
+            variant="primary"
+            aria-busy={busy === 'approve' || undefined}
+            aria-disabled={busy ? true : undefined}
+            onClick={() => !busy && onDecide(true)}
+          >
+            {busy === 'approve' ? t('qualityPage.saving') : t('qualityPage.approve')}
+          </Button>
+          <Button
+            variant="secondary"
+            aria-busy={busy === 'reject' || undefined}
+            aria-disabled={busy ? true : undefined}
+            onClick={() => !busy && onDecide(false)}
+          >
+            {busy === 'reject' ? t('qualityPage.saving') : t('quality.reject')}
+          </Button>
         </div>
       ) : null}
-      {p.status === 'approved' ? (
-        <Alert data-color="success" data-size="sm">
-          <Paragraph data-size="sm">
-            {t.rich('quality.impApprovedText', {
+      <div role="status">
+        {p.status === 'approved' ? (
+          <Paragraph data-size="sm" className="success-text">
+            {t.rich(decidedAt ? 'qualityPage.approvedAt' : 'qualityPage.approved', {
+              when: decidedAt ?? '',
               link: (c) => <Link href={`#${servicePath(serviceId, 'setup')}`}>{c}</Link>,
             })}
           </Paragraph>
-        </Alert>
-      ) : null}
-      {p.status === 'ready' ? (
-        <div className="proposal-actions stack-sm">
-          <Field className="reason-field">
-            <Label htmlFor={`imp-com-${p.id}`}>{t('quality.comment')}</Label>
-            <Field.Description>{t('quality.requiredIfReject')}</Field.Description>
-            <Textarea
-              id={`imp-com-${p.id}`}
-              rows={2}
-              value={comment}
-              aria-invalid={error ? true : undefined}
-              onChange={(e) => {
-                setComment(e.target.value);
-                setError('');
-              }}
-            />
-            {error ? <ValidationMessage>{error}</ValidationMessage> : null}
-          </Field>
-          <div className="actions">
-            <Button
-              variant="primary"
-              aria-disabled={busy || undefined}
-              onClick={() => !busy && onDecide(true, comment.trim())}
-            >
-              {t('quality.acceptInDraft')}
-            </Button>
-            <Button
-              variant="secondary"
-              aria-disabled={busy || undefined}
-              onClick={() => {
-                if (busy) return;
-                if (!comment.trim()) {
-                  setError(t('quality.whyReject'));
-                  return;
-                }
-                onDecide(false, comment.trim());
-              }}
-            >
-              {t('quality.reject')}
-            </Button>
-          </div>
-        </div>
-      ) : null}
+        ) : p.status === 'rejected' ? (
+          <Paragraph data-size="sm">
+            {decidedAt
+              ? t('qualityPage.rejectedAt', { when: decidedAt })
+              : t('qualityPage.rejected')}
+          </Paragraph>
+        ) : null}
+      </div>
     </section>
   );
 };
@@ -226,8 +199,10 @@ export const Improvements = ({
   setFlash: SetFlash;
 }) => {
   const t = useT();
+  const canManage = useRights().has('manage-services');
   const [round, setRound] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [deciding, setDeciding] = useState<{ id: string; approve: boolean }>();
   const [state, retry] = useAsync(
     (signal) => api.quality.improvements(tenant, serviceId, signal),
     [api, tenant, serviceId, round],
@@ -247,13 +222,18 @@ export const Improvements = ({
   const [language, setLanguage] = useState<AnswerLanguage | ''>('');
   const languageId = useId();
 
-  const act = async (work: () => Promise<unknown>, done: string, color: 'success' | 'info') => {
-    if (busy) return;
+  const start = async () => {
+    if (busy || running) return;
     setBusy(true);
     setNotAllowed(undefined);
     try {
-      await work();
-      setFlash({ text: done, color });
+      await api.quality.startImprovement(
+        tenant,
+        serviceId,
+        t('quality.impStartReason'),
+        language || undefined,
+      );
+      setFlash({ text: t('quality.impStarted'), color: 'info' });
       setRound((r) => r + 1);
     } catch (error) {
       if (refusedByService(error)) {
@@ -265,51 +245,39 @@ export const Improvements = ({
     }
   };
 
+  const decide = async (p: Improvement, approve: boolean) => {
+    if (deciding) return;
+    setDeciding({ id: p.id, approve });
+    try {
+      const decided = await api.quality.decideImprovement(
+        tenant,
+        serviceId,
+        p.id,
+        approve,
+        t(approve ? 'quality.impApproveReason' : 'quality.impRejectReason'),
+      );
+      seen.current = list.map((x) => (x.id === p.id ? { ...x, ...decided } : x));
+      setRound((r) => r + 1);
+    } catch (error) {
+      setFlash({ text: problemTitle(error, t), color: 'danger' });
+    } finally {
+      setDeciding(undefined);
+    }
+  };
+
   return (
-    <div className="stack">
-      <Alert data-color="info">
-        <Paragraph>
-          {t.rich('quality.impNothingChanges', { strong: (c) => <strong>{c}</strong> })}
-        </Paragraph>
-      </Alert>
-      <div className="row-between">
-        <Paragraph data-size="sm">{t('quality.impLead')}</Paragraph>
-        <Field className="narrow-field" data-size="sm">
-          <Label htmlFor={languageId}>{t('quality.impScope')}</Label>
-          <Select
-            id={languageId}
-            value={language}
-            onChange={(e) => setLanguage(e.target.value as AnswerLanguage | '')}
-          >
-            <Select.Option value="">{t('quality.impScopeShared')}</Select.Option>
-            {answerLanguages.map((l) => (
-              <Select.Option key={l} value={l}>
-                {t('quality.impScopeLanguage', { language: t(languageTabKeys[l]) })}
-              </Select.Option>
-            ))}
-          </Select>
-        </Field>
-        <Button
-          variant="primary"
-          aria-disabled={busy || running || undefined}
-          onClick={() =>
-            !running &&
-            void act(
-              () =>
-                api.quality.startImprovement(
-                  tenant,
-                  serviceId,
-                  t('quality.impStartReason'),
-                  language || undefined,
-                ),
-              t('quality.impStarted'),
-              'info',
-            )
-          }
-        >
-          {t('quality.impPropose')}
-        </Button>
+    <section aria-labelledby="quality-proposals-h" className="quality-section">
+      <div className="stack-xs">
+        <Heading level={2} data-size="sm" id="quality-proposals-h">
+          {t('qualityPage.proposalsTitle')}
+        </Heading>
+        <Paragraph>{t('qualityPage.proposalsLead')}</Paragraph>
       </div>
+      {canManage ? null : (
+        <Paragraph className="quality-note">
+          {t('qualityPage.proposalsNoRight', { right: rightLabel(t, 'manage-services') })}
+        </Paragraph>
+      )}
       {notAllowed ? (
         <Alert data-color="warning" data-size="sm">
           <Paragraph data-size="sm">{notAllowed}</Paragraph>
@@ -320,39 +288,56 @@ export const Improvements = ({
       ) : null}
       {state.status === 'loading' && !seen.current ? (
         <Loading label={t('quality.impLoading')} />
-      ) : state.status === 'error' ? (
-        <ErrorState error={state.error} onRetry={retry} />
+      ) : state.status === 'error' && !seen.current ? (
+        <ErrorState error={state.error} onRetry={retry} headingLevel={3} />
       ) : list.length === 0 ? (
         <div className="state empty">
-          <Heading level={2} data-size="2xs">
+          <Heading level={3} data-size="2xs">
             {t('quality.impNone')}
           </Heading>
           <Paragraph>{t('quality.impNoneText')}</Paragraph>
         </div>
       ) : (
-        list.map((p) => (
-          <ProposalCard
-            key={p.id}
-            p={p}
-            serviceId={serviceId}
-            busy={busy}
-            onDecide={(approve, comment) =>
-              void act(
-                () =>
-                  api.quality.decideImprovement(
-                    tenant,
-                    serviceId,
-                    p.id,
-                    approve,
-                    comment || t(approve ? 'quality.impApproveReason' : 'quality.impRejectReason'),
-                  ),
-                t(approve ? 'quality.impApprovedFlash' : 'quality.proposalRejected'),
-                approve ? 'success' : 'info',
-              )
-            }
-          />
-        ))
+        <ul className="quality-rows proposal-list">
+          {list.map((p) => (
+            <li key={p.id}>
+              <ProposalCard
+                p={p}
+                serviceId={serviceId}
+                busy={deciding?.id === p.id ? (deciding.approve ? 'approve' : 'reject') : undefined}
+                canDecide={canManage}
+                onDecide={(approve) => void decide(p, approve)}
+              />
+            </li>
+          ))}
+        </ul>
       )}
-    </div>
+      {canManage ? (
+        <div className="filter-row align-end">
+          <Field className="narrow-field" data-size="sm">
+            <Label htmlFor={languageId}>{t('quality.impScope')}</Label>
+            <Select
+              id={languageId}
+              value={language}
+              onChange={(e) => setLanguage(e.target.value as AnswerLanguage | '')}
+            >
+              <Select.Option value="">{t('quality.impScopeShared')}</Select.Option>
+              {answerLanguages.map((l) => (
+                <Select.Option key={l} value={l}>
+                  {t('quality.impScopeLanguage', { language: t(languageTabKeys[l]) })}
+                </Select.Option>
+              ))}
+            </Select>
+          </Field>
+          <Button
+            variant="secondary"
+            aria-disabled={busy || running || undefined}
+            onClick={() => void start()}
+          >
+            {t('quality.impPropose')}
+          </Button>
+        </div>
+      ) : null}
+    </section>
   );
 };

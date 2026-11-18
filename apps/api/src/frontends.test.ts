@@ -2,10 +2,13 @@ import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
 import type { Principal } from '@genai/contracts';
 import { InMemoryDefinitionStore, SettingsRegistry } from '@genai/definitions';
-import { createAuthenticator } from '@genai/identity';
+import { createAuthenticator, type ClientStore } from '@genai/identity';
 import { envSecrets } from '@genai/kernel';
+import { actorNames } from './actor-names.js';
 import { createAdmin } from './admin.js';
 import { createPlatform } from './composition.js';
+import { InMemoryConfigEntryStore } from './config-store.js';
+import { admitConfined } from './frontends.js';
 import { InMemoryTenantApiKeys } from './routes/portal-routes.js';
 import { digdir, files, klarsprak, other, plugins, principals } from './testkit.js';
 import { SIGNATURE_HEADER, verifyWebhookSignature } from './webhooks.js';
@@ -23,8 +26,17 @@ const ka = (spec: Record<string, unknown> = {}) => ({
   },
 });
 
+const reader: Principal = {
+  kind: 'employee',
+  issuer: 'test',
+  subject: 'lise',
+  tenant: digdir,
+  authorizedFor: [{ org: digdir, actions: ['use-services'] }],
+};
+
 const boot = async () => {
   const keys = new InMemoryTenantApiKeys();
+  const configEntries = new InMemoryConfigEntryStore();
   const keyAuth = createAuthenticator({ apiKeys: keys });
   const hooks: { url: string; headers: Record<string, string>; body: string }[] = [];
   const platform = await createPlatform({
@@ -36,6 +48,7 @@ const boot = async () => {
     secrets: envSecrets({}),
     definitions: (p) => new InMemoryDefinitionStore({ ...p, models: plugins.models }),
     policy: { decide: async () => ({ allow: true }) },
+    configurables: { store: configEntries },
     apiKeys: keys,
     reservedClientIds: ['local-portal'],
     webhookSend: async (url, init) => {
@@ -44,7 +57,7 @@ const boot = async () => {
     },
     authenticate: async (request) => {
       const bearer = request.headers.get('authorization')?.replace(/^Bearer /, '') ?? '';
-      const person = principals[bearer];
+      const person = bearer === 'lise' ? reader : principals[bearer];
       if (person) return { principal: person };
       const found = await keyAuth.authenticate(request);
       return (
@@ -64,6 +77,7 @@ const boot = async () => {
     plugins: platform.plugins,
     settings: new SettingsRegistry([]),
     extensions: platform.extensions,
+    names: actorNames(configEntries),
   });
   const app = new Hono();
   platform.mount(app, admin);
@@ -348,6 +362,73 @@ describe('service-scoped API keys', () => {
   });
 });
 
+describe('who created a key', () => {
+  type Listed = { id: string; createdBy?: string | null; createdByName?: string };
+  const listed = async (call: Awaited<ReturnType<typeof boot>>['call'], as: string) =>
+    (
+      await json<{ keys: Listed[] }>(
+        await call(`/tenants/${digdir}/services/klarsprak/api-keys`, { as }),
+      )
+    ).keys;
+  const create = async (call: Awaited<ReturnType<typeof boot>>['call'], as: string) =>
+    json<{ key: string; apiKey: { id: string } }>(
+      await call(`/tenants/${digdir}/services/klarsprak/api-keys`, {
+        method: 'POST',
+        as,
+        body: { name: 'Backend' },
+      }),
+    );
+
+  it('lists who created a service key, by name, to people who manage services', async () => {
+    const { call } = await boot();
+    const { apiKey } = await create(call, 'kristin');
+
+    expect((await listed(call, 'kari')).find((k) => k.id === apiKey.id)).toMatchObject({
+      createdBy: 'employee:test:kristin@digdir.example',
+      createdByName: 'Kristin Entra',
+    });
+  });
+
+  it('records the person who rotated a key as its creator', async () => {
+    const { call } = await boot();
+    const { apiKey } = await create(call, 'kristin');
+
+    const rotated = await json<{ apiKey: { id: string } }>(
+      await call(`/tenants/${digdir}/api-keys/${apiKey.id}/rotate`, { method: 'POST', as: 'kari' }),
+    );
+
+    expect((await listed(call, 'kari')).find((k) => k.id === rotated.apiKey.id)).toMatchObject({
+      createdBy: 'employee:test:kari',
+    });
+  });
+
+  it('does not show who created a key to someone without manage-services', async () => {
+    const { call } = await boot();
+    await create(call, 'kristin');
+
+    const keys = await listed(call, 'lise');
+
+    expect(keys).toHaveLength(1);
+    expect(keys[0]).not.toHaveProperty('createdBy');
+    expect(keys[0]).not.toHaveProperty('createdByName');
+  });
+
+  it('audits creating and rotating a key under the person who did it', async () => {
+    const { admin, call } = await boot();
+    const { apiKey } = await create(call, 'kristin');
+    await call(`/tenants/${digdir}/api-keys/${apiKey.id}/rotate`, { method: 'POST', as: 'kari' });
+
+    const entries = (await admin.audit(digdir)).filter((e) =>
+      e.action.startsWith('platform.apikeys'),
+    );
+
+    expect(entries.map((e) => [e.action, e.actor, e.outcome])).toEqual([
+      ['platform.apikeys.create', 'employee:test:kristin@digdir.example', 'applied'],
+      ['platform.apikeys.rotate', 'employee:test:kari', 'applied'],
+    ]);
+  });
+});
+
 describe('allowed overrides on service keys', () => {
   it('stores the chosen overrides, drops invalid ones, and replaces them on rotation', async () => {
     const { call } = await boot();
@@ -488,3 +569,28 @@ describe('missing clients and keys', () => {
 });
 
 export type { Principal };
+
+describe('a login confined to a client', () => {
+  const clients: ClientStore = {
+    list: async () => [],
+    get: async () => undefined,
+    save: async () => undefined,
+    remove: async () => false,
+  };
+  const person: Principal = {
+    kind: 'employee',
+    issuer: 'test',
+    subject: 'kari',
+    tenant: digdir,
+    confinedTo: { tenant: digdir, service: 'klarsprak', client: 'klarsprak-web' },
+  };
+
+  it('may read who it is, so the frontend can list the organisations, but nothing else outside its channels', async () => {
+    const at = (method: string, path: string) =>
+      admitConfined(clients, new Request(`http://api.test${path}`, { method }), person);
+
+    expect(await at('GET', '/me')).toBe(true);
+    expect(await at('POST', '/me')).toBe(false);
+    expect(await at('GET', `/tenants/${digdir}/overview`)).toBe(false);
+  });
+});

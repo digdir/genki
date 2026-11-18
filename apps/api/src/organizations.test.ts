@@ -29,6 +29,23 @@ describe('organisation lookup', () => {
     expect(brreg.asked).toEqual([]);
   });
 
+  it('asks Enhetsregisteret for a tenant that is registered only by its number', async () => {
+    const brreg = registry(() =>
+      Response.json({ organisasjonsnummer: '974760673', navn: 'BRØNNØYSUNDREGISTRENE' }),
+    );
+    const lookup = organizationLookup({
+      tenants: async () => [{ orgNumber: '974760673', name: '974760673' }],
+      registryUrl: 'https://brreg.example/enheter',
+      fetch: brreg.fetch,
+    });
+
+    expect(await lookup('974760673')).toEqual({
+      orgNumber: '974760673',
+      name: 'BRØNNØYSUNDREGISTRENE',
+      source: 'enhetsregisteret',
+    });
+  });
+
   it('knows only registered tenants when Enhetsregisteret is not configured', async () => {
     expect(await organizationLookup({ tenants })('974760673')).toBeUndefined();
   });

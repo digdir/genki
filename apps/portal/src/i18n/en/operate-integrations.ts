@@ -3,8 +3,6 @@ import type { integrationsArea as source } from '../nb/operate-integrations';
 
 export const integrationsArea = {
   integrations: {
-    heading: 'Integrations',
-    lead: 'Systems and frontends that call the platform, and sources that start services automatically.',
     callFromCode: 'Call a service from code',
     tabSystems: 'Systems',
     tabFrontends: 'Frontends',
@@ -18,7 +16,6 @@ export const integrationsArea = {
       one: '{count} integration needs follow-up',
       other: '{count} integrations need follow-up',
     },
-    badgeFailing: '{count} failing',
     systemRejected: '{name}: calls are being rejected',
     systemSub: '{env} · Owner: {owner}',
     triggerSub: '{kind} · starts {service}',
@@ -75,7 +72,6 @@ export const integrationsArea = {
     addTrigger: 'Connect a folder or queue',
     triggerSetupInfo:
       'Triggers are set up in the service. How folders and queues are connected here is not decided yet.',
-    tracingNotAvailable: 'Tracing to your own tool cannot be set up from here yet.',
     loadingTriggers: 'Loading triggers',
     noSystems: 'No systems are connected',
     noSystemsText:
@@ -84,8 +80,6 @@ export const integrationsArea = {
     noFrontendsText: 'Register a frontend when you want to offer services in your own solutions.',
     noTriggers: 'No triggers',
     noTriggersText: 'Triggers are set up in the service.',
-    downloadOpenApi: 'Download OpenAPI file',
-    openApiDownloaded: 'The OpenAPI file is downloaded.',
     statusActive: 'Active',
     statusFailing: 'Failing',
     statusUnused: 'Not in use',
@@ -102,22 +96,6 @@ export const integrationsArea = {
     scopeWriteDesc: 'Add and remove documents.',
     scopeUsageLabel: 'Read usage',
     scopeUsageDesc: 'Fetch figures for tokens and cost.',
-    docCodeTitle: 'Call a service from code',
-    docCodeDesc: 'Examples in curl, Python, JavaScript and C#, with responses.',
-    docApiTitle: 'API reference',
-    docApiDesc: 'All endpoints, fields and error codes (OpenAPI 3.1).',
-    docMaskinportenTitle: 'Get started with Maskinporten',
-    docMaskinportenDesc: 'Create a client in Samarbeidsportalen and fetch a token.',
-    docAnsattportenTitle: 'Ansattporten for frontends',
-    docAnsattportenDesc: 'Sign in employees and call the platform on their behalf.',
-    docOpenaiTitle: 'OpenAI-compatible endpoint',
-    docOpenaiDesc: 'Use existing code and tools without changes.',
-    docMcpTitle: 'MCP',
-    docMcpDesc: 'Make the services available as tools for AI assistants.',
-    docLimitsTitle: 'Test environment and limits',
-    docLimitsDesc: 'Addresses, test data, maximum file size and calls per minute.',
-    docStatusTitle: 'Operating status and changes',
-    docStatusDesc: 'Planned maintenance and new versions of the API.',
     name: 'Name',
     register: 'Register',
     connect: 'Connect',
@@ -178,6 +156,9 @@ export const integrationsArea = {
       'You have no published services yet. Publish a service before you register a frontend.',
   },
   integTriggers: {
+    runsFailed: 'We could not fetch the events',
+    runsFailedWhy: 'The events for the trigger did not answer. That does not mean there were none.',
+    runsUnknown: 'Could not fetch the events',
     runQuota: 'Not started because the monthly token quota is used up',
     runCost: ' · {cost}',
     kindDocument: 'When a document arrives',
@@ -250,8 +231,16 @@ export const integrationsArea = {
     address: 'Address (https)',
     secretName: 'Name of the secret (optional)',
     secret: 'The secret',
-    secretHelp: 'Stored in Key Vault and cannot be read out again, only replaced.',
+    secretHelp:
+      'Stored in Key Vault for the address above and cannot be read out again, only replaced.',
     register: 'Register connection',
+    syncButton: 'Fetch the tools',
+  },
+  secretHosts: {
+    setElsewhere:
+      'The secret "{name}" is set up for other addresses ({hosts}). Choose another name for the secret.',
+    unchecked:
+      'We could not check which addresses the secret "{name}" is set up for, so nothing was stored.',
   },
   integHooks: {
     pointBeforeModel: 'Before model call',
@@ -364,10 +353,13 @@ export const integrationsArea = {
   },
   integKeys: {
     loading: 'Loading API keys',
-    notUsedYet: 'not used yet',
     createdToday: 'today by you',
     rotatedToday: 'rotated today by you',
     unknownDate: 'unknown date',
+    createdBy: '{date} by {who}',
+    modelsAllowed: 'Can use models in the locked environment',
+    modelsRefused:
+      'Cannot use models in the locked environment: created by a login that is not admitted. Rotate it while signed in with Entra ID.',
     nameProblem: 'Give the key a name.',
     selectionProblem: 'Choose at least one service or dataset, or choose "All".',
     rateProblem: 'Enter a whole number from 1 to 6,000.',
@@ -380,7 +372,6 @@ export const integrationsArea = {
     intro:
       'API keys for systems that cannot use Maskinporten. Each key can be limited to selected services and datasets, and has its own limit on the number of calls.',
     create: 'Create API key',
-    copyNow: 'Copy the key now',
     copyNowText: 'It is shown only this once. Store it in a secret store, for example Key Vault.',
     newKeyLabel: 'The new key',
     iSavedIt: 'I have saved the key',
@@ -396,12 +387,18 @@ export const integrationsArea = {
     datasets: 'Datasets',
     rate: 'Calls per minute',
     rateHelp: 'From 1 to 6,000.',
+    testRunner: 'Test runner for smoke tests',
+    testRunnerHelp:
+      'The key can read everything in the organisation and the platform configuration in the operator overviews, try services in the playground when it reaches all services, and create and archive definitions whose id starts with smoke-. It expires after 90 days. Only in this locked test environment.',
+    testRunnerTag: 'Test runner',
     createKey: 'Create key',
     none: 'No API keys yet',
     noneText: 'Create a key for systems that cannot use Maskinporten.',
     listLabel: 'API keys',
     revokedStatus: 'Revoked',
     prefixCreated: '{prefix}… · created {created}',
+    rateNotUsed: '{rate} calls per minute · not used yet',
+    rateOnly: '{rate} calls per minute',
     rateLastUsed: '{rate} calls per minute · last used {last}',
     editAccess: 'Edit access',
     rotate: 'Rotate',
@@ -409,6 +406,23 @@ export const integrationsArea = {
     revokeWarning:
       'Systems that use {name} have all calls rejected immediately. This cannot be undone.',
     revokeKey: 'Revoke the key',
+    nameTaken: 'A key named "{name}" already exists. Choose another name.',
+    inUse: 'In use ({count})',
+    revokedGroup: 'Revoked ({count})',
+    revokedListLabel: 'Revoked keys',
+    madeFor: 'New key for "{name}"',
+    discardAsk: 'Discard what you have written?',
+    goBack: 'Go back',
+    discard: 'Discard',
+    uncopiedAsk:
+      'You have not copied the key. If you close now, you must create a new key to get one you can use.',
+    backToCopy: 'Go back and copy',
+    closeUncopied: 'Close without copying',
+    revokeTitle: 'Revoke "{name}"?',
+    rotateTitle: 'Rotate "{name}"?',
+    rotateWarning:
+      'You get a new key with the same access. The old one stops working at once, so the system using {name} must switch to the new one.',
+    rotateKey: 'Rotate the key',
   },
   integMaskinporten: {
     alreadyRegistered: 'The client is already registered.',
@@ -575,6 +589,11 @@ export const integrationsArea = {
   },
   integCode: {
     callService: 'Call the service',
+    moreHeading: 'Next',
+    moreReference: 'API reference: every endpoint, with "Try" that runs as you',
+    moreKeys: 'Keys: create an API key for systems without Maskinporten',
+    moreLimits: 'Test environment and limits: usage and quota in Statistics',
+    moreIdporten: 'Ansattporten and ID-porten for frontends (opens in a new tab)',
     apiStep2Approval:
       'The service has an approval step, so "vent" is set to false. You get a run ID back immediately, and can fetch the status or be notified when the caseworker has approved.',
     apiStep2Wait:
@@ -656,5 +675,112 @@ export const integrationsArea = {
     outputValue: 'Answer with sources',
     authNow: 'API key for now. Maskinporten, scope',
     undecided: 'Not decided',
+  },
+  integLangfuse: {
+    loading: 'Loading Langfuse connections',
+    heading: 'Langfuse',
+    intro:
+      "Connect a service to your organisation's Langfuse. The service's test runs go there as experiments, and genki deletes what it sent when it deletes its own copy. Holdout test cases are never sent.",
+    none: 'No services are connected to Langfuse.',
+    services: 'Services: {services}',
+    residencyByDigdir: 'Residency: {residency}, set by Digdir',
+    residencyByYou: 'Residency: {residency}, declared by you',
+    inNorway: 'in Norway',
+    inEu: 'in the EU/EEA',
+    global: 'not settled (global)',
+    contentOn: 'Receives text',
+    contentOff: 'Receives metadata only',
+    labelsOn: 'Brings labels back',
+    datasets: 'Datasets in Langfuse',
+    datasetsHelp:
+      "One dataset per test set in the services the connection covers. Each test run sent to Langfuse is linked to its test set's dataset. To have a judge judge one test set, pick the dataset in the judge's filter in Langfuse, together with isExperimentItemRootSpan = true.",
+    check: 'Check the connection',
+    checkedOk:
+      'The secret key opens the project {project}. Langfuse does not check the public key, so make sure it belongs to the same project.',
+    edit: 'Edit',
+    add: 'Connect to Langfuse',
+    nameTaken: 'A connection with the id {id} exists. Choose another, or edit that one.',
+    addHeading: 'New Langfuse connection',
+    editHeading: 'Edit the Langfuse connection',
+    id: 'Connection id',
+    idHelp: 'Small letters, digits and hyphens. It cannot be changed later.',
+    idInvalid:
+      'Use only small letters, digits and hyphens, starting with a letter or digit, for example agency-langfuse.',
+    host: 'Address',
+    hostHelp: 'For example https://langfuse.agency.no. HTTPS only.',
+    hostInvalid: 'Write the whole address, for example https://langfuse.agency.no.',
+    publicKey: 'Public key',
+    secret: 'Secret key',
+    secretHelp: 'Stored as a secret that can only be sent to this Langfuse, and never shown again.',
+    secretKeepHelp: 'Leave it empty to keep the stored key. It is stored for this Langfuse only.',
+    secretAgain: 'Enter the secret key again when the address changes, so it is only sent there.',
+    which: 'Langfuse',
+    whichHelp: "Digdir's Langfuse is {host}.",
+    instanceOption: "Digdir's Langfuse",
+    ownOption: 'Your own Langfuse',
+    servicesLabel: 'Services',
+    servicesHelp:
+      'The services that send their test runs here. A service can have only one connection.',
+    coveredBy: 'Connected to {id}',
+    unknownService: '{id} (does not exist)',
+    noServices: 'The organisation has no services yet.',
+    servicesFailed: 'Could not read the services.',
+    residency: 'Residency',
+    residencyHelp: "Where Langfuse stores what it receives, and where its judges' models run.",
+    content: 'Send text',
+    contentHelp:
+      'Questions, answers and what the judges read. Needs a Langfuse that deletes what genki deletes and keeps raw files at most 7 days.',
+    labels: 'Bring labels back from Langfuse as calibration labels',
+    labelsHelp:
+      "What people label in the project comes back as pending labels for its judges. An operator fetches them in the operations console, and they count only once the operator accepts them. Make the score config with the name and type of the judge's evaluator.",
+    declaration:
+      'We confirm that our Langfuse deletes what genki deletes and keeps raw files at most 7 days.',
+    required: 'Fill in the field',
+    save: 'Save',
+    remove: 'Remove the connection',
+    cancel: 'Cancel',
+    saved: 'The connection {id} is saved.',
+    removing: 'Being removed: deleting what was sent',
+    removingFlash:
+      'The connection {id} is removed once everything it received is deleted in Langfuse.',
+    removed: 'The connection {id} is removed.',
+    failed: 'The connection was not saved.',
+    guide: 'How Langfuse judges score the test runs',
+    guideIntro:
+      "A judge in Langfuse can score a service's test runs. genki shows the scores on the run, beside its own metrics.",
+    guideSteps: 'Four steps',
+    guideConnect:
+      "Someone who manages the services connects them to a Langfuse project with the project's two keys, with Connect to Langfuse below.",
+    guideJudge:
+      "Write a judge in Langfuse, under Evaluation › Evaluators, for the test set. Choose Experiments as the target and pick genki/<service-id>/<test-set-id> under Dataset. Langfuse adds isExperimentItemRootSpan = true itself. The judge names its own model, not the project's or the organisation's default model.",
+    guideMapping:
+      'The judge reads the whole question and answer, or a path into them with $, .key and [n]. A text question is at input $.parts[0].body.text, and the answer at output $[0].body.text.',
+    guideAdopt:
+      'Adopt the judge under Building blocks › Catalogue › Judges. It also says there why genki cannot use a judge.',
+    guideRun: 'Run the test set with "Send the run to Langfuse" ticked.',
+    guideLive:
+      'A judge for live traffic in the same project stops the test run if it also matches it. Leave the test runs out with environment none of [genki-test-runs].',
+    guideCopy:
+      'The button beside each dataset below copies its name, to paste into the search under Dataset.',
+    guideWhere: 'Where it shows up',
+    guideInLangfuse: 'In Langfuse',
+    guideInGenki: 'In genki',
+    guideDatasetLangfuse:
+      'One dataset per test set, genki/<service-id>/<test-set-id>, with no items',
+    guideDatasetGenki:
+      "The connection lists the datasets, and the test set shows its dataset's name",
+    guideJudgeLangfuse: 'The judge: an evaluation rule you write',
+    guideJudgeGenki:
+      'A building block under Building blocks › Catalogue › Judges, named after the rule, or refused with the reason',
+    guideExperimentLangfuse:
+      'Each sent run: an experiment on the dataset, named after the test set and its version, such as rapport-kjerne v3',
+    guideExperimentGenki:
+      'The run, with the box ticked, and "Waiting for scores" while the judges work',
+    guideTraceLangfuse:
+      "Each test case: a trace in the environment genki-test-runs, with the judges' scores on it",
+    guideTraceGenki:
+      "The Langfuse scores on the run, apart from genki's metrics, with cost, agreement with labels and a link to the experiment",
+    copyName: 'Copy the name',
+    copyNameOf: 'Copy the name {dataset}',
   },
 } satisfies Translation<typeof source>;

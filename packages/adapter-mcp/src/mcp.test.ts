@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { textPart, type CapabilityDescriptor, type Principal } from '@genai/contracts';
-import { createKernel, type Capability, type Kernel, type Strategy } from '@genai/kernel';
+import {
+  createKernel,
+  KernelError,
+  type Capability,
+  type Kernel,
+  type Strategy,
+} from '@genai/kernel';
 import {
   createMcpApp,
   progressTracker,
@@ -460,6 +466,25 @@ describe('transport', () => {
       id: 9,
       error: { code: -32601, message: 'Method not found', data: { method: 'ping' } },
     });
+  });
+  it('answers 413 when a body streams in past the size limit', async () => {
+    const chunk = new Uint8Array(1024).fill(32);
+    const res = typed(
+      await setup({ maxBodyBytes: 4096 }).app.request('/api/mcp', {
+        method: 'POST',
+        headers: { 'x-api-key': 'good' },
+        body: new ReadableStream({
+          start(controller) {
+            for (let i = 0; i < 5; i += 1) controller.enqueue(chunk);
+            controller.close();
+          },
+        }),
+        duplex: 'half',
+      } as RequestInit),
+    );
+
+    expect(res.status).toBe(413);
+    expect((await res.json()).error.code).toBe(-32700);
   });
 });
 
@@ -959,6 +984,18 @@ describe('retrieval details in structuredContent', () => {
     expect(structuredContent(structured, 'c1')).toEqual({ conversation_id: 'c1', fields });
   });
 
+  it('gives a chunk published_at only when its source has a publish date', () => {
+    const sources = [{ chunkId: 'c1', publishedAt: '2025-01-15' }, { chunkId: 'c2' }];
+    const { structured } = defaultOutput([
+      { mime: SOURCES_MIME, body: { kind: 'json', json: { sources } } },
+    ]);
+
+    expect(structuredContent(structured, 'c1').chunks).toEqual([
+      { chunk_id: 'c1', published_at: '2025-01-15' },
+      { chunk_id: 'c2' },
+    ]);
+  });
+
   it('keeps filters the strategy already reported in its sources part', () => {
     const own = [{ filter: { fields: [] }, source: 'explicit' }];
     const { structured } = defaultOutput([
@@ -1187,7 +1224,7 @@ describe('MCP wire parity with headless-rag streams and KA', () => {
     expect(withoutQueries).toMatch(/"chunks":\[[^\]]*\]\}$/);
   });
 
-  it('records the user turn before the run and the assistant turn with its chunks after', async () => {
+  it('records the user turn once the run has started, and the assistant turn with its chunks after', async () => {
     const turns: { id: string; role: string; text: string; chunks?: unknown[] }[] = [];
     const { app } = setup({
       conversations: {
@@ -1211,6 +1248,109 @@ describe('MCP wire parity with headless-rag streams and KA', () => {
       ['stored-1', 'assistant', 'Svar på: hei'],
     ]);
     expect(turns[1]?.chunks).toHaveLength(3);
+  });
+
+  it('stores the run id on the assistant turn, the id feedback on the answer names', async () => {
+    const turns: { role: string; task?: string }[] = [];
+    const { app } = setup({
+      conversations: {
+        open: async () => ({ ok: true, id: 'stored-2', history: [] }),
+        append: async (_request, _id, turn) => {
+          turns.push(turn);
+        },
+      },
+    });
+
+    await (await call(app, KA, { query: 'hei' })).json();
+
+    expect(turns.map((t) => t.role)).toEqual(['user', 'assistant']);
+    expect(turns[1]?.task).toBe(tasks.at(-1));
+  });
+
+  it('stores the question with the id of the run that answers it', async () => {
+    const turns: { role: string; task?: string }[] = [];
+    const { app } = setup({
+      conversations: {
+        open: async () => ({ ok: true, id: 'stored-3', history: [] }),
+        append: async (_request, _id, turn) => {
+          turns.push(turn);
+        },
+      },
+    });
+
+    await (await call(app, KA, { query: 'hei' })).json();
+
+    expect(turns[0]).toMatchObject({ role: 'user', task: tasks.at(-1) });
+  });
+
+  it('cancels the run when the question cannot be stored', async () => {
+    tasks.length = 0;
+    const { app, kernel } = setup({
+      conversations: {
+        open: async () => ({ ok: true, id: 'stored-4', history: [] }),
+        append: async () => {
+          throw new Error('store unavailable');
+        },
+      },
+    });
+
+    const body = await (await call(app, 'kunnskapsassistenten__slow', { query: 'hei' })).json();
+
+    await until(
+      async () =>
+        tasks.length === 1 && (await kernel.task(kari, tasks[0] as string)).status === 'cancelled',
+    );
+    expect(body.error.code).toBe(-32603);
+  });
+
+  it('stores no question and leaves no new conversation when the run is refused', async () => {
+    const turns: string[] = [];
+    const discarded: string[] = [];
+    const { app } = setup({
+      resolver: {
+        list: resolver.list,
+        resolve: async () => ({ ok: true, entry: { id: KA, capability: 'not-published' } }),
+      },
+      conversations: {
+        open: async () => ({ ok: true, id: 'stored-5', history: [] }),
+        append: async (_request, _id, turn) => {
+          turns.push(turn.role);
+        },
+        discard: async (_request, id) => {
+          discarded.push(id);
+        },
+      },
+    });
+
+    const body = await (await call(app, KA, { query: 'hei' })).json();
+
+    expect(body.result.isError).toBe(true);
+    expect(turns).toEqual([]);
+    expect(discarded).toEqual(['stored-5']);
+  });
+
+  it('stores no user turn when the kernel refuses the call at the monthly token quota', async () => {
+    const turns: string[] = [];
+    const base = setup().kernel;
+    const { app } = setup({
+      kernel: {
+        ...base,
+        invoke: async () => {
+          throw new KernelError('quota_exhausted', 'the monthly token quota is used up');
+        },
+      },
+      conversations: {
+        open: async () => ({ ok: true, id: 'c', history: [] }),
+        append: async (_r, _id, turn) => {
+          turns.push(turn.role);
+        },
+      },
+    });
+
+    const res = await call(app, KA, { query: 'hei' });
+
+    expect(res.status).toBe(429);
+    expect(turns).toEqual([]);
   });
 
   it('answers the conversation store refusal as a tool error without running the service', async () => {

@@ -972,6 +972,35 @@ export const logTimelines: TaskTimeline[] = [
     t4Steps,
   ),
   timeline('t5', 'Høringsoppsummering', 'running', 'Samlet jobb', at(0, 7, 30), 4320, 0, 0, 0, []),
+  {
+    ...timeline(
+      't8',
+      'Kunnskapsassistenten',
+      'completed',
+      'Chat',
+      at(1, 18, 41),
+      3.9,
+      3870,
+      290,
+      1.9,
+      [
+        { type: 'trigger', title: 'Startet', summary: 'Oppgaven ble mottatt', t: 0 },
+        {
+          type: 'model',
+          title: 'Modellkall',
+          summary: 'gpt-4o · 3 870 inn, 290 ut',
+          t: 0.6,
+          dur: 3.2,
+          tokens: 4160,
+        },
+        { type: 'result', title: 'Svar', summary: 'Svaret er slettet', t: 3.9 },
+      ],
+    ),
+    erasure: {
+      reason: 'conversation-deleted',
+      at: new Date(Date.parse(at(1, 18, 41)) + 12_000).toISOString(),
+    },
+  },
   timeline(
     't6',
     'Møtereferat',
@@ -998,62 +1027,103 @@ export const logTimelines: TaskTimeline[] = [
   ),
 ];
 
-export const playgroundTimeline = (id: string): TaskTimeline =>
-  timeline(id, 'Prøveområdet', 'completed', 'Prøveområdet', at(0, 10, 0), 3.1, 4380, 410, 2.4, [
-    {
-      type: 'trigger',
-      title: 'Prøvekjøring',
-      summary: 'Kjørt fra prøveområdet',
-      t: 0,
-    },
-    {
-      type: 'search',
-      title: 'Søk',
-      summary: '«omsøkt beløp» · 9 treff',
-      t: 0.2,
-      dur: 0.3,
-    },
-    {
-      type: 'searchnote',
-      title: 'Søkemerknad',
-      summary: '3 dokumenter hoppet over',
-      t: 0.5,
-      blocks: [
-        {
-          kind: 'list',
-          label: 'Søkemotoren hoppet over',
-          items: [
-            ['Skannet årsrapport 2019.pdf', 'Skannet PDF uten tekst'],
-            ['Budsjett 2024.xlsx', 'Filtypen kan ikke søkes i'],
-            ['Personalsak 2023.docx', 'Utenfor tilgangen til tjenesten'],
-          ],
-        },
-      ],
-    },
-    { type: 'model', title: 'Svar fra modellen', summary: '4380 inn · 410 ut', t: 0.8, dur: 2.2 },
-    { type: 'result', title: 'Svar', summary: 'Levert i prøveområdet', t: 3.1 },
-  ]);
+export const playgroundTimeline = (id: string): TaskTimeline => ({
+  serviceName: 'Prøveområdet',
+  ...timeline(
+    id,
+    `platform/draft/playground/${id}`,
+    'completed',
+    'Prøveområdet',
+    at(0, 10, 0),
+    3.1,
+    4380,
+    410,
+    2.4,
+    [
+      {
+        type: 'trigger',
+        title: 'Prøvekjøring',
+        summary: 'Kjørt fra prøveområdet',
+        t: 0,
+        blocks: [{ kind: 'quote', text: 'Hva er omsøkt beløp i søknadene?' }],
+      },
+      {
+        type: 'search',
+        title: 'Søk',
+        summary: '«omsøkt beløp» · 9 treff',
+        t: 0.2,
+        dur: 0.3,
+      },
+      {
+        type: 'searchnote',
+        title: 'Søkemerknad',
+        summary: '3 dokumenter hoppet over',
+        t: 0.5,
+        blocks: [
+          {
+            kind: 'list',
+            label: 'Søkemotoren hoppet over',
+            items: [
+              ['Skannet årsrapport 2019.pdf', 'Skannet PDF uten tekst'],
+              ['Budsjett 2024.xlsx', 'Filtypen kan ikke søkes i'],
+              ['Personalsak 2023.docx', 'Utenfor tilgangen til tjenesten'],
+            ],
+          },
+        ],
+      },
+      { type: 'model', title: 'Svar fra modellen', summary: '4380 inn · 410 ut', t: 0.8, dur: 2.2 },
+      { type: 'result', title: 'Svar', summary: 'Levert i prøveområdet', t: 3.1 },
+    ],
+  ),
+});
 
 const serviceIdByName = Object.fromEntries(Object.entries(serviceNames).map(([id, n]) => [n, id]));
 
-export const logTasks: TaskRow[] = logTimelines.map((t) => {
-  const service = serviceIdByName[t.service] ?? t.service;
+const excerptOf = (t: TaskTimeline) => {
+  const question = t.steps
+    .find((s) => s.type === 'trigger')
+    ?.blocks.find((b) => b.kind === 'quote');
+  const text = (question?.text ?? '').replace(/\s+/g, ' ').trim();
+  return text.length > 90 ? `${text.slice(0, 89)}…` : text;
+};
+
+const taskRowOf = (t: TaskTimeline, service: string, capability: string): TaskRow => {
+  const excerpt = t.erasure ? '' : excerptOf(t);
   return {
     id: t.id,
     status: t.status,
     service,
-    capability: `999888777/${service}/default`,
+    serviceName: serviceNames[service] ?? t.service,
+    ...(excerpt ? { excerpt } : {}),
+    ...(t.erasure ? { erasure: t.erasure } : {}),
+    capability,
+    version: 7,
     createdAt: t.startedAt,
     endedAt:
       t.status === 'running' || t.status === 'interrupted'
         ? null
         : new Date(Date.parse(t.startedAt) + t.durationSeconds * 1000).toISOString(),
     usage: {
-      inputTokens: t.inputTokens,
-      outputTokens: t.outputTokens,
+      inputTokens: t.inputTokens ?? 0,
+      outputTokens: t.outputTokens ?? 0,
       requests: t.steps.filter((s) => s.type === 'model').length,
-      costMicroNok: t.costOre === null ? null : Math.round(t.costOre * 10_000),
+      costMicroNok:
+        t.costOre === null || t.costOre === undefined ? null : Math.round(t.costOre * 10_000),
     },
+  };
+};
+
+export const logTasks: TaskRow[] = logTimelines.map((t) => {
+  const service = serviceIdByName[t.service] ?? t.service;
+  return taskRowOf(t, service, `999888777/${service}/default`);
+});
+
+export const playgroundTasks: TaskRow[] = ['tp1', 'tp2'].map((id) => {
+  const capability = `platform/draft/playground/${id}`;
+  return {
+    ...taskRowOf(playgroundTimeline(id), capability, capability),
+    serviceName: capability,
+    version: null,
   };
 });
 

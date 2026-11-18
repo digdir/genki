@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
+import fc from 'fast-check';
 import {
   flowUsesOf,
   InMemoryDefinitionStore,
@@ -76,6 +77,7 @@ const plugins: PluginSchemas = {
     ['mcp-client@1', z.strictObject({ connection: z.string() })],
     ['digdir.klarsprak@2.3', z.strictObject({})],
     ['saker.sok@1', z.strictObject({})],
+    ['github.search_issues@1', z.strictObject({})],
   ]),
   guardrails: new Map<string, z.ZodType>([
     ['pii-before-model', z.strictObject({ categories: z.array(z.string()).min(1) })],
@@ -99,7 +101,8 @@ const plugins: PluginSchemas = {
   rerankers: new Set(['colbert']),
   strategyResidency: (id, config) =>
     id === strategyKey('remote-agent', 1)
-      ? (config as { endpoint: { residency: 'norway' | 'eu' | 'global' } }).endpoint.residency
+      ? (config as { endpoint?: { residency?: 'norway' | 'eu' | 'global' } } | null)?.endpoint
+          ?.residency
       : undefined,
   models: new Map([
     ['foundry/gpt-4o', { residency: 'norway', capabilities: ['stream', 'tools', 'json-schema'] }],
@@ -169,6 +172,10 @@ describe('service definitions', () => {
     expect(errorsOf(withSpec({ tools: ['digdir.klarsprak'] })).map((e) => e.path)).toEqual([
       'spec.tools[0]',
     ]);
+  });
+
+  it('accepts a connected tool whose name has an underscore, as MCP and OpenAPI tools often do', () => {
+    expect(errorsOf(withSpec({ tools: ['github.search_issues@1'] }))).toEqual([]);
   });
 
   it("validates each guardrail's settings with its own schema", () => {
@@ -431,6 +438,52 @@ describe('service definitions', () => {
     ]);
   });
 
+  it('names the missing field inside a mode, not only the mode', () => {
+    expect(
+      errorsOf(
+        withSpec({
+          variants: [
+            { id: 'default' },
+            { id: 'search', strategy: { id: 'rag-single-shot', version: 1 } },
+          ],
+        }),
+      ),
+    ).toEqual([{ path: 'spec.variants[1].strategy.config', message: 'Required' }]);
+  });
+
+  it('names the field of the wrong type inside a mode', () => {
+    expect(
+      errorsOf(withSpec({ variants: [{ id: 'default' }, { id: 'search', chat: 'yes' }] })).map(
+        (e) => e.path,
+      ),
+    ).toEqual(['spec.variants[1].chat']);
+  });
+
+  it('names an unknown key inside a mode object, not a type mismatch on the mode', () => {
+    const errors = errorsOf(withSpec({ variants: [{ id: 'default' }, { name: 'search' }] }));
+    expect(errors.map((e) => e.path).sort()).toEqual(['spec.variants[1]', 'spec.variants[1].id']);
+    expect(errors.find((e) => e.path === 'spec.variants[1]')?.message).toContain('name');
+  });
+
+  it('names both an unknown key and a wrongly typed field inside a mode', () => {
+    const errors = errorsOf(
+      withSpec({ variants: [{ id: 'default' }, { id: 's', titel: 'x', chat: 'yes' }] }),
+    );
+    expect(errors.map((e) => e.path).sort()).toEqual(['spec.variants[1]', 'spec.variants[1].chat']);
+    expect(errors.find((e) => e.path === 'spec.variants[1]')?.message).toContain('titel');
+  });
+
+  it('names the wrong field inside an alias object', () => {
+    const errors = errorsOf(
+      withSpec({ variants: [{ id: 'default' }, { id: 's', aliases: [{ nam: 'x' }] }] }),
+    );
+    expect(errors.map((e) => e.path).sort()).toEqual([
+      'spec.variants[1].aliases[0]',
+      'spec.variants[1].aliases[0].name',
+    ]);
+    expect(errors.find((e) => e.path === 'spec.variants[1].aliases[0]')?.message).toContain('nam');
+  });
+
   it('checks mode overrides against the strategy the mode switches to', () => {
     const strategy = { id: 'rag-single-shot', version: 1, config: { generate: false } };
     expect(
@@ -522,6 +575,99 @@ describe('service definitions', () => {
         variant: 'arsrapport-forst',
       },
     ]);
+  });
+
+  it('a variant can fix a retrieval filter, which only that variant carries into its knowledge config', () => {
+    const filters = { fields: [{ field: 'orgs_short', 'selected-options': ['DIGDIR'] }] };
+    const result = validateService(
+      withSpec({ variants: [{ id: 'default' }, { id: 'digdir', filters }] }),
+      plugins,
+    );
+    if (!result.ok) throw new Error(JSON.stringify(result.errors));
+
+    const [service, variant] = toCapabilities(result.definition, 1);
+    const knowledge = (c: typeof service) =>
+      (c?.capability.config as { knowledge: { filters?: unknown } }).knowledge;
+
+    expect(knowledge(service).filters).toBeUndefined();
+    expect(knowledge(variant).filters).toEqual(filters);
+  });
+
+  it('refuses a variant filter without fields or options, or of an unknown type', () => {
+    for (const filters of [
+      { fields: [] },
+      { fields: [{ field: 'orgs_short', 'selected-options': [] }] },
+      { fields: [{ field: 'orgs_short', type: 'range', 'selected-options': ['x'] }] },
+    ]) {
+      const result = validateService(withSpec({ variants: [{ id: 'default', filters }] }), plugins);
+      expect(result.ok).toBe(false);
+    }
+  });
+
+  it('refuses a variant filter on a service without datasets', () => {
+    const filters = { fields: [{ field: 'orgs_short', 'selected-options': ['DIGDIR'] }] };
+    const result = validateService(
+      withSpec({ knowledge: { datasets: [] }, variants: [{ id: 'default', filters }] }),
+      plugins,
+    );
+    expect(!result.ok && result.errors).toContainEqual({
+      path: 'spec.variants[0].filters',
+      message: 'a filter needs a dataset to search',
+    });
+  });
+
+  it('refuses a variant filter on a field none of the datasets declares, when the catalog is known', () => {
+    const filters = (field: string) => ({ fields: [{ field, 'selected-options': ['x'] }] });
+    const declared = {
+      ...plugins,
+      datasetFilters: (dataset: string) =>
+        dataset === 'digdir/kudos' ? { orgs_short: 'multiselect' } : undefined,
+    };
+    const check = (field: string) =>
+      validateService(
+        withSpec({ variants: [{ id: 'default', filters: filters(field) }] }),
+        declared,
+      );
+
+    expect(check('orgs_short').ok).toBe(true);
+    const refused = check('produkt');
+    expect(!refused.ok && refused.errors).toContainEqual({
+      path: 'spec.variants[0].filters.fields[0].field',
+      message: 'no dataset of this service declares the filter field produkt',
+    });
+  });
+
+  it('refuses a variant filter whose type the declared field cannot run, and ignores inherited keys', () => {
+    const declared = {
+      ...plugins,
+      datasetFilters: (dataset: string) =>
+        dataset === 'digdir/kudos' ? { orgs_short: 'multiselect', title: 'text' } : undefined,
+    };
+    const check = (field: string, type?: string) =>
+      validateService(
+        withSpec({
+          variants: [
+            {
+              id: 'default',
+              filters: {
+                fields: [{ field, ...(type ? { type } : {}), 'selected-options': ['x'] }],
+              },
+            },
+          ],
+        }),
+        declared,
+      );
+
+    expect(check('orgs_short', 'not-in-set').ok).toBe(true);
+    expect(check('title', 'contains').ok).toBe(true);
+    const refused = check('orgs_short', 'contains');
+    expect(!refused.ok && refused.errors).toContainEqual({
+      path: 'spec.variants[0].filters.fields[0].type',
+      message:
+        'the filter field orgs_short is not a text field, so it cannot be filtered as contains',
+    });
+    expect(check('title').ok).toBe(false);
+    expect(check('constructor').ok).toBe(false);
   });
 
   it("a variant without its own way of working uses the service's", () => {
@@ -1217,6 +1363,21 @@ describe('platform settings', () => {
     expect(new Set(platformSettings.map((s) => s.key)).size).toBe(platformSettings.length);
   });
 
+  it('the night window is set only for the platform and is 01:00-06:00 by default', () => {
+    expect(resolveSettings(platformSettings, { values: {} })['knowledge.nightWindow']?.value).toBe(
+      '01:00-06:00',
+    );
+    expect(platformSettings.find((s) => s.key === 'knowledge.nightWindow')?.settableAt).toEqual([
+      'platform',
+    ]);
+  });
+
+  it('the night window setting refuses a window that starts when it ends', () => {
+    const schema = platformSettings.find((s) => s.key === 'knowledge.nightWindow')?.schema;
+    expect(schema?.safeParse('22:00-04:00').success).toBe(true);
+    expect(schema?.safeParse('01:00-01:00').success).toBe(false);
+  });
+
   it('lets a tenant change the new settings within their ranges, and nothing below the tenant', () => {
     const resolved = resolveSettings(platformSettings, {
       values: {
@@ -1231,5 +1392,146 @@ describe('platform settings', () => {
       value: true,
       rejected: [{ layer: 'service', reason: 'cannot be set at the service layer' }],
     });
+  });
+});
+
+describe('definition validation on arbitrary input', () => {
+  const samples = readdirSync(examples)
+    .filter((f) => f.endsWith('.yaml'))
+    .map(example);
+  const pathsIn = (value: unknown, at: string[] = []): string[][] =>
+    value && typeof value === 'object'
+      ? [at, ...Object.entries(value).flatMap(([k, v]) => pathsIn(v, [...at, k]))]
+      : [at];
+  const placed = (root: unknown, path: string[], value: unknown): unknown => {
+    const [head, ...rest] = path;
+    if (head === undefined) return value;
+    const copy = (Array.isArray(root) ? [...root] : { ...(root as object) }) as Record<
+      string,
+      unknown
+    >;
+    if (value === undefined && rest.length === 0) Reflect.deleteProperty(copy, head);
+    else copy[head] = placed(copy[head], rest, value);
+    return copy;
+  };
+  const mutated = fc
+    .constantFrom(...samples)
+    .chain((sample) =>
+      fc
+        .tuple(
+          fc.constantFrom(...pathsIn(sample)),
+          fc.option(fc.jsonValue({ maxDepth: 3 }), { nil: undefined }),
+        )
+        .map(([path, value]) => placed(sample, path, value)),
+    );
+
+  it('answers with errors instead of throwing when any field of a valid definition is replaced or removed', () => {
+    fc.assert(
+      fc.property(fc.oneof(mutated, fc.jsonValue()), (input) => {
+        const result = validateDefinition(input, plugins);
+        if (!result.ok) {
+          expect(result.errors.length).toBeGreaterThan(0);
+          for (const error of result.errors) {
+            expect(typeof error.path).toBe('string');
+            expect(typeof error.message).toBe('string');
+          }
+        }
+      }),
+    );
+  });
+});
+
+describe('decisions', () => {
+  const withDecider = {
+    ...plugins,
+    allowHighRisk: true,
+    guardrails: new Map([...plugins.guardrails, ['purpose-check', z.looseObject({})]]),
+    models: new Map([
+      ...plugins.models,
+      [
+        'foundry/gpt-6-luna',
+        { residency: 'norway' as const, capabilities: ['stream'], operations: ['chat', 'decide'] },
+      ],
+      [
+        'foundry/gpt-6-luna-eu',
+        { residency: 'eu' as const, capabilities: ['stream'], operations: ['chat', 'decide'] },
+      ],
+    ]),
+  };
+  const errors = (patch: Record<string, unknown>) => {
+    const result = validateDefinition(withSpec(patch), withDecider);
+    return result.ok ? [] : result.errors;
+  };
+  const kept = { 'pii-before-model': { categories: ['national-id'] } };
+
+  it('a service that decides about people cannot publish without risk class high and a human step', () => {
+    expect(errors({ decidesAboutPeople: true, guardrails: kept })).toEqual([
+      {
+        path: 'spec.riskClass',
+        message: 'a service that decides about people must have risk class high',
+      },
+      {
+        path: 'spec.guardrails.human-approval',
+        message:
+          'a service that decides about people needs a person to approve each result before it is final',
+      },
+    ]);
+    expect(
+      errors({
+        decidesAboutPeople: true,
+        riskClass: 'high',
+        guardrails: { ...kept, 'human-approval': true },
+      }),
+    ).toEqual([]);
+  });
+
+  it('a service that decides about people keeps the model input for review', () => {
+    expect(
+      errors({
+        decidesAboutPeople: true,
+        riskClass: 'high',
+        guardrails: { 'human-approval': true, 'pii-out-of-log': { categories: ['national-id'] } },
+      }).map((e) => e.path),
+    ).toEqual(['spec.guardrails.pii-out-of-log']);
+  });
+
+  it('a purpose check needs a model that offers decide inside the service residency', () => {
+    expect(errors({ guardrails: { 'purpose-check': { model: 'foundry/gpt-4o' } } })).toEqual([
+      {
+        path: 'spec.guardrails.purpose-check.model',
+        message: 'model foundry/gpt-4o does not offer the decide operation',
+      },
+    ]);
+    expect(errors({ guardrails: { 'purpose-check': { model: 'foundry/gpt-6-luna-eu' } } })).toEqual(
+      [
+        {
+          path: 'spec.guardrails.purpose-check.model',
+          message: 'model foundry/gpt-6-luna-eu runs in eu, outside norway',
+        },
+      ],
+    );
+    expect(errors({ guardrails: { 'purpose-check': { model: 'nobody/none' } } })).toEqual([
+      { path: 'spec.guardrails.purpose-check.model', message: 'unknown model nobody/none' },
+    ]);
+  });
+
+  it('a purpose check grants the service the decision port for its model, and nothing more', () => {
+    const result = validateDefinition(
+      withSpec({ guardrails: { 'purpose-check': { model: 'foundry/gpt-6-luna' } } }),
+      withDecider,
+    );
+    if (!result.ok || result.definition.kind !== 'Service') throw new Error('invalid');
+    const grants = toCapabilities(result.definition, 1)[0]?.capability.grants ?? [];
+    expect(grants.filter((g) => g.port === 'decision')).toEqual([
+      {
+        port: 'decision',
+        ref: { kind: 'model', id: 'foundry/gpt-6-luna', tenant: result.definition.metadata.tenant },
+      },
+    ]);
+    const plain = validateDefinition(withSpec({}), withDecider);
+    if (!plain.ok || plain.definition.kind !== 'Service') throw new Error('invalid');
+    expect(
+      toCapabilities(plain.definition, 1)[0]?.capability.grants.some((g) => g.port === 'decision'),
+    ).toBe(false);
   });
 });

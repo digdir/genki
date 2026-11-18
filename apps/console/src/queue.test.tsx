@@ -157,6 +157,13 @@ describe('til behandling', () => {
     expect(within(done()).getByText('Tatt med i planen')).toBeTruthy();
   });
 
+  it('shows the person who asked the build assistant for a platform change', async () => {
+    await open('#/queue?tab=proposals');
+
+    const panel = await openRow('Koble til journalsystemet');
+    expect(within(panel).getByText('Byggeassistenten, for Hanne Lie')).toBeTruthy();
+  });
+
   it('approves an access request and shows who sent it apart from the contact person', async () => {
     const { calls, fetch } = recording();
     await open('#/queue?tab=access', fetch);

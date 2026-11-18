@@ -3,14 +3,17 @@ import { textPart, type Event, type RiskClass, type Task } from '@genai/contract
 import { platformSettings, SettingsRegistry, type CompiledCapability } from '@genai/definitions';
 import {
   InMemoryEventLog,
+  InMemoryOutsideRunRetention,
   InMemoryRetentionStore,
   InMemoryTaskStore,
+  outsideRunTask,
   retentionPolicy,
 } from '@genai/kernel';
 import { InMemoryBlobStore } from '@genai/port-blob';
 import { runDocumentFolder } from './run-documents.js';
 import { retentionFor } from './retention-policy.js';
 import { purgeExpired, scheduleRetention } from './retention.js';
+import { InMemoryTraceDeliveries } from './trace-deliveries.js';
 import type { Clock } from './scheduler.js';
 
 const tenant = '991825827';
@@ -129,6 +132,28 @@ describe('retention policy', () => {
   });
 });
 
+describe('purging content that went to a trace sink', () => {
+  it("marks a purged task's traces in the sink for deletion, and no other task's", async () => {
+    const { deps } = await setup(
+      [taskOf('fresh', 'svar', 10), taskOf('old', 'svar', 100)],
+      [capability('svar', 'minimal')],
+    );
+    const deliveries = new InMemoryTraceDeliveries();
+    await deliveries.record(
+      [
+        { tenant, sink: 'etaten', task: 'old', trace: 'trace-old' },
+        { tenant, sink: 'etaten', task: 'fresh', trace: 'trace-fresh' },
+      ],
+      now.toISOString(),
+    );
+
+    const run = await purgeExpired({ ...deps, deliveries });
+
+    expect(run.traceDeletes).toBe(1);
+    expect((await deliveries.pending(10)).map((d) => d.trace)).toEqual(['trace-old']);
+  });
+});
+
 describe('purging expired tasks', () => {
   it('drops the content after the retention class and keeps the envelope until the audit period ends', async () => {
     const { log, store, deps } = await setup(
@@ -203,6 +228,68 @@ describe('purging expired conversations', () => {
       vedtak: daysAgo(183),
       borte: daysAgo(183),
     });
+  });
+});
+
+describe('purging the outside-run audit log', () => {
+  const other = '889640782';
+  const logDay = (owner: string, days: number) =>
+    outsideRunTask(owner, new Date(now.getTime() - days * 86_400_000));
+
+  const seedLog = async (log: InMemoryEventLog, owner: string, days: number[]) => {
+    for (const d of days)
+      await log.append({
+        ...event(logDay(owner, d), 'kernel.gate.call', { operation: 'embed' }),
+        audience: 'audit',
+      });
+  };
+
+  const purgeLog = async (days: number[], auditDays?: number) => {
+    const { log, settings, deps } = await setup([], [capability('svar', 'minimal')]);
+    if (auditDays !== undefined) settings.setTenant(tenant, 'retention.auditDays', auditDays);
+    await seedLog(log, tenant, days);
+    await seedLog(log, other, [1000]);
+    const outsideRun = new InMemoryOutsideRunRetention(log);
+    const run = await purgeExpired({ ...deps, outsideRun });
+    return { log, run, outsideRun, deps };
+  };
+
+  it("removes outside-run audit events after the tenant's audit retention", async () => {
+    const { log, run } = await purgeLog([201, 400], 200);
+
+    expect(run.outsideRunDays).toBe(2);
+    expect(await collect(log, logDay(tenant, 201))).toEqual([]);
+    expect(await collect(log, logDay(tenant, 400))).toEqual([]);
+  });
+
+  it("keeps outside-run audit events within the tenant's audit retention", async () => {
+    const { log, run } = await purgeLog([0, 199, 200], 200);
+
+    expect(run.outsideRunDays).toBe(0);
+    for (const d of [0, 199, 200]) expect(await collect(log, logDay(tenant, d))).toHaveLength(1);
+  });
+
+  it("never removes another tenant's outside-run events", async () => {
+    const { log } = await purgeLog([201], 200);
+
+    expect(await collect(log, logDay(other, 1000))).toHaveLength(1);
+  });
+
+  it('uses the platform audit retention when a tenant sets none', async () => {
+    const { log, run } = await purgeLog([729, 731]);
+
+    expect(run.outsideRunDays).toBe(1);
+    expect(await collect(log, logDay(tenant, 729))).toHaveLength(1);
+    expect(await collect(log, logDay(tenant, 731))).toEqual([]);
+  });
+
+  it('purging the outside-run log twice changes nothing the second time', async () => {
+    const { log, outsideRun, deps } = await purgeLog([0, 201], 200);
+
+    const again = await purgeExpired({ ...deps, outsideRun });
+
+    expect(again.outsideRunDays).toBe(0);
+    expect(await collect(log, logDay(tenant, 0))).toHaveLength(1);
   });
 });
 
@@ -319,5 +406,30 @@ describe('the scheduled purge', () => {
     active.stop();
 
     expect(runs).toEqual([1]);
+  });
+
+  it('works through the deletes owed to trace sinks after every purge, also one that failed', async () => {
+    const { deps } = await setup([taskOf('old', 'svar', 100)], [capability('svar', 'minimal')]);
+    const afterPurge: string[] = [];
+    const leader = manualClock();
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 10));
+
+    const failing = scheduleRetention({
+      ...deps,
+      store: {
+        groups: () => deps.store.groups(),
+        purge: () => Promise.reject(new Error('the database is down')),
+      },
+      clock: leader.clock,
+      afterPurge: async () => {
+        afterPurge.push('deletes');
+      },
+      onError: () => undefined,
+    });
+    leader.fire();
+    await settle();
+    failing.stop();
+
+    expect(afterPurge).toEqual(['deletes']);
   });
 });

@@ -1,0 +1,22 @@
+{"tests": [
+ {"id": "kudos-8650-p47-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"content": {"text": "4.2 Nærmere omtale av vesentlige forhold ved styring og kontroll", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-8650-p47-t02", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "I 2018 ble et gjennomført en omorganisering i Helsedirektoratet der en av hensiktene var å etablere en ny stabsdivisjon, Virksomhetsstyring.", "max_diffs": 4}}, "settings": {}},
+ {"id": "kudos-8650-p47-t03", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"content": {"text": "4.3 IKT porteføljestyring", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-8650-p47-t04", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Helsedirektoratet har siden 2016 hatt ett eget regime for IKT prosjekter gjennom ett eget porteføljestyre", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-8650-p47-t05", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "IKT porteføljen består av ca. 40-50 prosjekter, der flere er flerårige, og har en total årlig investering på ca. 300 millioner kroner", "max_diffs": 4}}, "settings": {}},
+ {"id": "kudos-8650-p47-t06", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"before": {"text": "Helsedirektoratets videre arbeid med styrking av intern styring og internkontroll.", "max_diffs": 2}, "after": {"text": "4.3 IKT porteføljestyring", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-8650-p47-t07", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Risikostyring er integrert i virksomhetens styringsverktøy Puls", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-8650-p47-t08", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"before": {"text": "over Helsedirektoratets reelle risikofaktorer på overordnet og strategisk nivå.", "max_diffs": 2}, "after": {"text": "4.5 Internrevisjon", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-8650-p47-t09", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Internrevisjonen er en uavhengig og objektiv bekreftelses- og rådgivningsfunksjon for Helsedirektoratet, opprettet i 2018.", "max_diffs": 4}}, "settings": {}},
+ {"id": "kudos-8650-p47-t10", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "For nærmere beskrivelse, se årsrapport for internrevisjonen.", "max_diffs": 2}}, "settings": {}}
+]}

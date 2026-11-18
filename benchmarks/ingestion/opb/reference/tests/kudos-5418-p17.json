@@ -1,0 +1,159 @@
+{
+ "tests": [
+  {
+   "id": "kudos-5418-p17-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "THE RESEARCH COUNCIL WILL INVEST IN RESEARCH AND INNOVATION TO PROMOTE:",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-5418-p17-t02",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "list",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "AND INNOVATION TO PROMOTE:",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "Satisfactory and sustainable health care",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-5418-p17-t03",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "list",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Satisfactory and sustainable health care for all segments of the population",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-5418-p17-t04",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "list",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Strong, competitive health industries",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-5418-p17-t05",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "list",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Strong, competitive health industries",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "Reduced exclusion and high participation",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-5418-p17-t06",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "list",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Reduced exclusion and high participation in the labour force",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-5418-p17-t07",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "list",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "A sustainable welfare system adapted to a demographic changes",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-5418-p17-t08",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "caption",
+    "rotated",
+    "tiny",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Photo: Jonas Bendiksen",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

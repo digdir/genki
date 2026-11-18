@@ -19,9 +19,9 @@ import {
 } from './platform-services.js';
 import {
   casesIn,
+  runDetail,
   type CaseResult,
   type ServiceEval,
-  type ServiceRun,
   type Subject,
 } from './service-eval.js';
 
@@ -115,7 +115,11 @@ export const allowsInstructions = (definition: Record<string, unknown>) => {
   return Array.isArray(allow) && allow.includes('instructions');
 };
 
-export const optimiserFailures = (set: TestSet, run: ServiceRun | undefined, language?: string) => {
+export const optimiserFailures = (
+  set: TestSet,
+  run: { cases: CaseResult[] } | undefined,
+  language?: string,
+) => {
   if (!run) return [];
   const open = new Set(
     casesIn(set, 'open')
@@ -348,9 +352,8 @@ export const improvements = (deps: ModuleDeps, evals: ServiceEval) => {
     if (!set) return refused(404, 'Fant ikke testsettet', 'testSet');
     if (casesIn(set, 'locked').length === 0 || casesIn(set, 'open').length === 0)
       return refused(409, 'Testsettet trenger både låste og åpne testtilfeller', 'testSet');
-    const latest = (await evals.runsOf(tenant, service)).find(
-      (r) => r.status === 'succeeded' && r.testSet === set.metadata.id,
-    );
+    const completed = await evals.latestCompleted(tenant, service, set.metadata.id);
+    const latest = completed && runDetail(completed.run, set, await evals.answersOf(completed.run));
     const evidence: ImprovementEvidence = {
       purpose: String((base.definition.spec as { purpose?: unknown }).purpose ?? ''),
       ...(language ? { language: language as 'nb' } : {}),

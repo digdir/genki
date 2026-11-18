@@ -8,6 +8,8 @@ import {
   type PinnedTool,
 } from './registry.js';
 
+export const toolSyncDeadlineMs = 60_000;
+
 export interface SyncResult {
   active: number;
   pending: string[];

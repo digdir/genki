@@ -25,10 +25,22 @@ export interface StoredTask {
   checkpoint?: unknown;
 }
 
+export type ErasureReason = 'conversation-deleted' | 'retention' | 'erased';
+
+export interface TaskErasure {
+  task: string;
+  reason: ErasureReason;
+  at?: string;
+}
+
 export interface TaskStore {
   put(stored: StoredTask, scope: ContentScope): Promise<void>;
   get(id: string): Promise<StoredTask | undefined>;
   pendingFor(who: Ref): Promise<Task[]>;
+  erasures?(tenant: string, tasks: string[]): Promise<TaskErasure[]>;
+  /** Records a cancel for whichever instance runs the task; only a queued or running task takes one. */
+  requestCancel?(id: string, at: string): Promise<void>;
+  cancelRequested?(ids: readonly string[]): Promise<string[]>;
 }
 
 export interface StateStore {
@@ -71,6 +83,10 @@ export class InMemoryEventLog implements EventLog {
     this.#events.delete(task);
   }
 
+  tasks(): string[] {
+    return [...this.#events.keys()];
+  }
+
   wake(task: string): void {
     const waiters = this.#waiters.get(task) ?? [];
     this.#waiters.delete(task);
@@ -98,9 +114,23 @@ export class InMemoryEventLog implements EventLog {
 
 export class InMemoryTaskStore implements TaskStore {
   readonly #tasks = new Map<string, StoredTask>();
+  readonly #erased = new Map<string, TaskErasure>();
+  readonly #cancels = new Map<string, string>();
 
   async put(stored: StoredTask): Promise<void> {
     this.#tasks.set(stored.task.id, structuredClone(stored));
+    if (stored.task.status !== 'queued' && stored.task.status !== 'running')
+      this.#cancels.delete(stored.task.id);
+  }
+
+  async requestCancel(id: string, at: string): Promise<void> {
+    const status = this.#tasks.get(id)?.task.status;
+    if ((status === 'queued' || status === 'running') && !this.#cancels.has(id))
+      this.#cancels.set(id, at);
+  }
+
+  async cancelRequested(ids: readonly string[]): Promise<string[]> {
+    return ids.filter((id) => this.#cancels.has(id));
   }
 
   async get(id: string): Promise<StoredTask | undefined> {
@@ -112,9 +142,10 @@ export class InMemoryTaskStore implements TaskStore {
     return [...this.#tasks.values()].map((s) => structuredClone(s));
   }
 
-  dropContent(id: string): void {
+  dropContent(id: string, reason: ErasureReason, at = new Date()): void {
     const found = this.#tasks.get(id);
     if (!found) return;
+    this.#erased.set(id, { task: id, reason, at: at.toISOString() });
     const task = { ...found.task };
     delete task.result;
     delete task.pendingInterrupt;
@@ -132,6 +163,15 @@ export class InMemoryTaskStore implements TaskStore {
 
   delete(id: string): void {
     this.#tasks.delete(id);
+    this.#erased.delete(id);
+    this.#cancels.delete(id);
+  }
+
+  async erasures(tenant: string, tasks: string[]): Promise<TaskErasure[]> {
+    return tasks.flatMap((id) => {
+      const erasure = this.#erased.get(id);
+      return erasure && this.#tasks.get(id)?.task.tenant === tenant ? [erasure] : [];
+    });
   }
 
   async pendingFor(who: Ref): Promise<Task[]> {

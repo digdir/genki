@@ -12,17 +12,40 @@ export class PostgresTenantSecrets {
     private readonly keys: ContentKeys,
   ) {}
 
-  async set(tenant: string, name: string, value: string): Promise<void> {
+  async set(tenant: string, name: string, value: string, hosts?: readonly string[]): Promise<void> {
     const key = await this.keys.get(tenant, SCOPE, true);
     if (!key) throw new Error('no content key');
     const sealed = seal(key, Buffer.from(value), aad(tenant, name));
     await withTenant(this.pool, tenant, (client) =>
       client.query(
-        `insert into tenant_secrets (tenant, name, value) values ($1, $2, $3)
-         on conflict (tenant, name) do update set value = excluded.value, updated_at = now()`,
-        [tenant, name, sealed],
+        `insert into tenant_secrets (tenant, name, value, allowed_hosts) values ($1, $2, $3, $4)
+         on conflict (tenant, name) do update set value = excluded.value,
+           allowed_hosts = coalesce(excluded.allowed_hosts, tenant_secrets.allowed_hosts),
+           updated_at = now()`,
+        [tenant, name, sealed, hosts ? [...hosts] : null],
       ),
     );
+  }
+
+  async hosts(tenant: string, name: string): Promise<string[] | undefined> {
+    return withTenant(this.pool, tenant, async (client) => {
+      const found = await client.query<{ allowed_hosts: string[] | null }>(
+        'select allowed_hosts from tenant_secrets where tenant = $1 and name = $2',
+        [tenant, name],
+      );
+      return found.rows[0]?.allowed_hosts ?? undefined;
+    });
+  }
+
+  async setHosts(tenant: string, name: string, hosts: readonly string[]): Promise<boolean> {
+    return withTenant(this.pool, tenant, async (client) => {
+      const updated = await client.query(
+        `update tenant_secrets set allowed_hosts = $3, updated_at = now()
+         where tenant = $1 and name = $2`,
+        [tenant, name, [...hosts]],
+      );
+      return (updated.rowCount ?? 0) > 0;
+    });
   }
 
   async get(tenant: string, name: string): Promise<string | undefined> {

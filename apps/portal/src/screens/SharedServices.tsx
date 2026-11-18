@@ -1,40 +1,68 @@
-import { Button, Heading, Paragraph, Tag } from '@digdir/designsystemet-react';
+import { Button, Heading, Paragraph } from '@digdir/designsystemet-react';
+import type { CatalogItem } from '../api/building-blocks';
 import { findCapability, type SharedCapability } from '../data/shared-services';
-import { useAsync } from '../hooks';
+import { useAsync, type AsyncState } from '../hooks';
 import { modelLabel } from '../models';
 import { useT, type T } from '../i18n';
 import type { ScreenProps } from '../screen';
 import { EmptyState, ErrorState, Loading } from '../states';
-import type { SharedService } from '../types';
+import type { ModelOption, Residency, SharedService } from '../types';
 import { SharedServiceDetail } from './shared/SharedServiceDetail';
+import { UsageTag } from './shared/UsageTag';
 import './shared.css';
 
 interface Entry {
   capability: SharedCapability;
   publicName: string;
+  residency: Residency | undefined;
+  block: CatalogItem | undefined;
+  service: SharedService;
 }
 
-const residencyLabel = (t: T, r: string | null) =>
+const residencyLabel = (t: T, r: Residency | undefined, models: AsyncState<ModelOption[]>) =>
   r === 'norway'
     ? t('sharedServices.residencyNorway')
     : r === 'eu'
       ? t('sharedServices.residencyEu')
-      : r
+      : r === 'global'
         ? t('sharedServices.residencyOutside')
-        : t('sharedServices.notGiven');
+        : models.status === 'error'
+          ? t('sharedServices.residencyUnavailable')
+          : t('sharedServices.notGiven');
 
-const fromApi = (t: T, s: SharedService): SharedCapability => ({
+const processedLabel = (t: T, r: Residency | undefined, models: AsyncState<ModelOption[]>) =>
+  r === 'norway'
+    ? t('sharedServices.processesNorway')
+    : r === 'eu'
+      ? t('sharedServices.processesEu')
+      : r === 'global'
+        ? t('sharedServices.processesOutside')
+        : models.status === 'error'
+          ? t('sharedServices.residencyUnavailable')
+          : t('sharedServices.processesUnknown');
+
+export const modelResidency = (model: string | null | undefined, models: ModelOption[]) =>
+  model ? models.find((m) => m.id === model)?.residency : undefined;
+
+export const sharedBlockId = (s: Pick<SharedService, 'tenant' | 'id'>) => `${s.tenant}/${s.id}`;
+
+const fromApi = (
+  t: T,
+  s: SharedService,
+  location: string,
+  known: ModelOption[],
+): SharedCapability => ({
   id: s.id,
   alias: s.id,
   tool: `digdir.${s.id}`,
   name: s.name,
-  version: s.version === null ? '–' : String(s.version),
+  version: s.version === null ? '' : String(s.version),
   does: s.purpose,
   long: s.purpose,
   input: t('sharedServices.text'),
   output: t('sharedServices.text'),
-  model: s.model ? modelLabel(s.model) : t('sharedServices.notGiven'),
-  location: residencyLabel(t, s.residency),
+  model: s.model ? modelLabel(s.model, known) : t('sharedServices.notGiven'),
+  location,
   score: 0,
   price: '–',
   priceNote: t('sharedServices.notPriced'),
@@ -48,17 +76,32 @@ const fromApi = (t: T, s: SharedService): SharedCapability => ({
   body: {},
 });
 
-const merge = (t: T, services: SharedService[], live: boolean): Entry[] =>
+const merge = (
+  t: T,
+  services: SharedService[],
+  models: AsyncState<ModelOption[]>,
+  blocks: CatalogItem[],
+  live: boolean,
+): Entry[] =>
   services.map((s) => {
+    const residency = modelResidency(s.model, models.status === 'ready' ? models.data : []);
+    const location = residencyLabel(t, residency, models);
     const design = live ? undefined : findCapability(s.id);
+    const api = fromApi(t, s, location, models.status === 'ready' ? models.data : []);
     return {
-      capability: design ?? fromApi(t, s),
+      capability: design
+        ? { ...design, location, model: api.model, version: api.version, does: s.purpose }
+        : api,
       publicName: s.variants[0]?.publicName ?? `${s.id}__default`,
+      residency,
+      block: blocks.find((b) => b.kind === 'shared_service' && b.id === sharedBlockId(s)),
+      service: s,
     };
   });
 
-const Card = ({ entry: { capability: c } }: { entry: Entry }) => {
+const Card = ({ entry, processed }: { entry: Entry; processed: string }) => {
   const t = useT();
+  const c = entry.capability;
   const href = `#/shared-services/${encodeURIComponent(c.id)}`;
   return (
     <li className="cap-card">
@@ -67,53 +110,13 @@ const Card = ({ entry: { capability: c } }: { entry: Entry }) => {
           <h2 className="cap-card-title">
             <a href={href}>{c.name}</a>
           </h2>
-          {c.used ? (
-            <Tag data-size="sm" data-color="accent">
-              {c.used}
-            </Tag>
-          ) : null}
+          <UsageTag block={entry.block} />
         </div>
         <p className="cap-does">{c.does}</p>
-      </div>
-      <dl className="kv">
-        <dt>{t('sharedServices.input')}</dt>
-        <dd>{c.input}</dd>
-        <dt>{t('sharedServices.output')}</dt>
-        <dd>{c.output}</dd>
-        <dt>{t('sharedServices.model')}</dt>
-        <dd className="tag-row">
-          {c.model}
-          <Tag
-            data-size="sm"
-            data-color={
-              c.location === 'Norge' || c.location === t('sharedServices.residencyNorway')
-                ? 'success'
-                : c.location === 'EU/EØS' || c.location === t('sharedServices.residencyEu')
-                  ? 'info'
-                  : 'warning'
-            }
-          >
-            {c.location}
-          </Tag>
-        </dd>
-      </dl>
-      <div className="cap-figures">
-        <div>
-          <span className="meta">{t('sharedServices.quality')}</span>
-          <span className="cap-figure">
-            {c.score
-              ? t('sharedServices.scoreOf', { score: c.score })
-              : t('sharedServices.notMeasured')}
-          </span>
-          {c.scoreNote ? <span className="score-note">{c.scoreNote}</span> : null}
-        </div>
-        <div>
-          <span className="meta">{t('sharedServices.per1000')}</span>
-          <span className="cap-figure">{c.price}</span>
-          <span className="meta">{c.priceNote}</span>
-        </div>
+        <p className="cap-meta">{processed}</p>
       </div>
       <Button
+        className="cap-action"
         variant="secondary"
         aria-label={t('sharedServices.tryAndDetailsFor', { name: c.name })}
         onClick={() => {
@@ -126,11 +129,18 @@ const Card = ({ entry: { capability: c } }: { entry: Entry }) => {
   );
 };
 
-export const SharedServices = ({ api, route, live }: ScreenProps) => {
+export const SharedServices = ({ api, tenant, route, live }: ScreenProps) => {
   const t = useT();
   const [state, retry] = useAsync((signal) => api.sharedServices(signal), [api]);
+  const [models] = useAsync((signal) => api.listModels({}, signal), [api]);
+  const [blocks] = useAsync(
+    async (signal) =>
+      (await api.buildingBlocks.list(tenant, { kind: 'shared_service' }, signal)).data,
+    [api, tenant],
+  );
   const id = route.segments[1];
-  if (state.status === 'loading') return <Loading label={t('sharedServices.loading')} />;
+  if (state.status === 'loading' || models.status === 'loading' || blocks.status === 'loading')
+    return <Loading label={t('sharedServices.loading')} />;
   if (state.status === 'error')
     return (
       <>
@@ -140,7 +150,7 @@ export const SharedServices = ({ api, route, live }: ScreenProps) => {
         <ErrorState error={state.error} onRetry={retry} />
       </>
     );
-  const entries = merge(t, state.data, live);
+  const entries = merge(t, state.data, models, blocks.status === 'ready' ? blocks.data : [], live);
 
   if (id) {
     const key = (live ? undefined : findCapability(id)?.id) ?? id;
@@ -158,7 +168,14 @@ export const SharedServices = ({ api, route, live }: ScreenProps) => {
         </>
       );
     return (
-      <SharedServiceDetail api={api} capability={entry.capability} publicName={entry.publicName} />
+      <SharedServiceDetail
+        api={api}
+        tenant={tenant}
+        capability={entry.capability}
+        publicName={entry.publicName}
+        block={entry.block}
+        blockId={sharedBlockId(entry.service)}
+      />
     );
   }
 
@@ -173,15 +190,24 @@ export const SharedServices = ({ api, route, live }: ScreenProps) => {
       {entries.length === 0 ? (
         <EmptyState title={t('sharedServices.emptyTitle')}>
           <Paragraph>{t('sharedServices.emptyBody')}</Paragraph>
+          <a href="#/contact">{t('sharedServices.emptyLink')}</a>
         </EmptyState>
       ) : (
-        <ul className="cap-grid">
-          {entries.map((e) => (
-            <Card key={e.capability.id} entry={e} />
-          ))}
-        </ul>
+        <>
+          <ul className="cap-grid">
+            {entries.map((e) => (
+              <Card
+                key={e.capability.id}
+                entry={e}
+                processed={processedLabel(t, e.residency, models)}
+              />
+            ))}
+          </ul>
+          <Paragraph>
+            {t('sharedServices.moreComing')} <a href="#/contact">{t('sharedServices.tellUs')}</a>
+          </Paragraph>
+        </>
       )}
-      <p className="meta footnote">{t('sharedServices.footnote')}</p>
     </div>
   );
 };

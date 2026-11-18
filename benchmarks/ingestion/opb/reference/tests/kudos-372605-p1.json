@@ -1,0 +1,8 @@
+{"tests": [
+ {"id": "kudos-372605-p1-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"], "args": {"content": {"text": "Rapport 104", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-372605-p1-t02", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"], "args": {"content": {"text": "ISSN 1891-8050", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-372605-p1-t03", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"], "args": {"content": {"text": "Overvåking av fiskebestandene i Tokkeåi i Vestfold og Telemark fylke", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-372605-p1-t04", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"], "args": {"content": {"text": "Resultater fra undersøkelsen i 2021 med vurdering av tidligere år", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-372605-p1-t05", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"], "args": {"content": {"text": "Svein Jakob Saltveit, Åge Brabrand, Trond Bremnes og Henning Pavels", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-372605-p1-t06", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"], "args": {"before": {"text": "Vestfold og Telemark fylke", "max_diffs": 1}, "after": {"text": "Resultater fra undersøkelsen i 2021", "max_diffs": 1}}, "settings": {}}
+]}

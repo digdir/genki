@@ -1,13 +1,15 @@
 import type { CompiledCapability, SettingsRegistry } from '@genai/definitions';
 import {
+  type OutsideRunRetentionStore,
   type RetentionGroup,
   type RetentionPolicy,
   type RetentionStore,
   type ThreadRetentionStore,
 } from '@genai/kernel';
 import type { BlobStore } from '@genai/port-blob';
-import { retentionFor } from './retention-policy.js';
+import { retentionFor, tenantAuditDays } from './retention-policy.js';
 import { purgeRunDocuments } from './run-documents.js';
+import type { TraceDeliveryStore } from './trace-deliveries.js';
 import { schedule, type Clock, type ScheduledJob } from './scheduler.js';
 
 const dayMs = 86_400_000;
@@ -17,18 +19,23 @@ export interface RetentionDeps {
   settings: SettingsRegistry;
   capabilities(): Promise<CompiledCapability[]>;
   threads?: ThreadRetentionStore;
+  outsideRun?: OutsideRunRetentionStore;
   documents?: Pick<BlobStore, 'list' | 'delete'>;
   tenants?: () => Promise<string[]>;
+  /** Traces sent to a sink are deleted there too once their task's content is purged. */
+  deliveries?: Pick<TraceDeliveryStore, 'markPending'>;
   now?: () => Date;
 }
 
 export interface RetentionRun {
   at: string;
   groups: (RetentionGroup & RetentionPolicy & { payloads: number; envelopes: number })[];
+  traceDeletes: number;
   payloads: number;
   envelopes: number;
   conversations: number;
   documents: number;
+  outsideRunDays: number;
 }
 
 const serviceNamed = (capabilities: CompiledCapability[], tenant: string, agent: string) =>
@@ -44,13 +51,21 @@ export const purgeExpired = async (deps: RetentionDeps): Promise<RetentionRun> =
   const capabilities = await deps.capabilities();
   const byId = new Map(capabilities.map((c) => [c.capability.descriptor.id, c]));
   const groups: RetentionRun['groups'] = [];
+  let traceDeletes = 0;
   for (const group of await deps.store.groups()) {
     const policy = retentionFor(deps.settings, group.tenant, byId.get(group.capability));
-    const purged = await deps.store.purge({
+    const {
+      tasks,
+      traceDeletes: marked,
+      ...purged
+    } = await deps.store.purge({
       ...group,
       payloadBefore: new Date(now.getTime() - policy.payloadDays * dayMs),
       envelopeBefore: new Date(now.getTime() - policy.envelopeDays * dayMs),
     });
+    if (marked !== undefined) traceDeletes += marked;
+    else if (deps.deliveries && tasks.length > 0)
+      traceDeletes += await deps.deliveries.markPending(group.tenant, { tasks }, now.toISOString());
     groups.push({ ...group, ...policy, ...purged });
   }
   let conversations = 0;
@@ -74,6 +89,13 @@ export const purgeExpired = async (deps: RetentionDeps): Promise<RetentionRun> =
         });
       }
   }
+  let outsideRunDays = 0;
+  if (deps.outsideRun)
+    for (const tenant of tenants)
+      outsideRunDays += await deps.outsideRun.purge({
+        tenant,
+        before: new Date(now.getTime() - tenantAuditDays(deps.settings, tenant) * dayMs),
+      });
   const documents = deps.documents
     ? await purgeRunDocuments({
         blobs: deps.documents,
@@ -90,6 +112,8 @@ export const purgeExpired = async (deps: RetentionDeps): Promise<RetentionRun> =
     envelopes: groups.reduce((n, g) => n + g.envelopes, 0),
     conversations,
     documents,
+    outsideRunDays,
+    traceDeletes,
   };
 };
 
@@ -100,13 +124,19 @@ export const scheduleRetention = (
     active?: () => Promise<boolean>;
     onRun?: (run: RetentionRun) => void;
     onError?: (error: unknown) => void;
+    /** Runs after every purge, also one that failed, such as the deletes owed to trace sinks. */
+    afterPurge?: () => Promise<void>;
   },
 ): ScheduledJob =>
   schedule(
     deps.cron ?? '17 3 * * *',
     async () => {
       if (deps.active && !(await deps.active())) return;
-      deps.onRun?.(await purgeExpired(deps));
+      try {
+        deps.onRun?.(await purgeExpired(deps));
+      } finally {
+        await deps.afterPurge?.();
+      }
     },
     {
       timeZone: 'Europe/Oslo',

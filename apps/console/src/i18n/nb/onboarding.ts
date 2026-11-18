@@ -60,4 +60,5 @@ export const onboarding = defineNamespace({
   reminderSent: 'Påminnelse sendt til {contact}, {name}.',
   contactFallback: 'kontaktpersonen',
   reminderFailed: 'Kunne ikke sende påminnelsen. Prøv igjen om litt.',
+  reminderUnavailable: 'Påminnelse: ikke tilgjengelig ennå.',
 });

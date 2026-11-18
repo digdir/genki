@@ -1,3 +1,4 @@
+import { FileIcon } from '@navikt/aksel-icons';
 import {
   Alert,
   Button,
@@ -16,22 +17,9 @@ import { fileSize, refName, refVersion, toolName, type ProposalSection } from '.
 import { ChangeCard } from './ChangeCard';
 import type { AssistantNotice, EditorCard, RejectedEditorCard } from './model';
 import { RejectedCard } from './RejectedCard';
+import { Icon } from '../../components/Icon';
 
-const fileIcon = (
-  <svg
-    width="18"
-    height="18"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.5"
-    aria-hidden="true"
-    focusable="false"
-  >
-    <path d="M6 3h8l4 4v14H6z" />
-    <path d="M14 3v4h4" />
-  </svg>
-);
+const fileIcon = <Icon icon={FileIcon} size={18} />;
 
 interface Props {
   definition: SkillDefinition;

@@ -1,0 +1,102 @@
+{
+  "source": "hand-made for the step runner: upload audio, poll the job until it succeeds, fetch the transcript as text, delete the job",
+  "deployment": "transcriber",
+  "input": {
+    "audio": {
+      "mediaType": "audio/wav",
+      "data": "UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA="
+    },
+    "language": "nb"
+  },
+  "steps": [
+    {
+      "step": "start",
+      "request": {
+        "method": "POST",
+        "path": "/jobs",
+        "body": {
+          "model": "transcriber",
+          "file": {
+            "mediaType": "audio/wav",
+            "bytes": 44,
+            "sha256": "4f8734c5e13ac599e168cf247a51c1dd0758537ce00bf16d7fed1a3d14d07041"
+          },
+          "language": "nb"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "id": "job_abc123",
+          "status": "queued"
+        }
+      }
+    },
+    {
+      "step": "poll",
+      "request": {
+        "method": "GET",
+        "path": "/jobs/job_abc123"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "id": "job_abc123",
+          "status": "running"
+        }
+      }
+    },
+    {
+      "step": "poll",
+      "request": {
+        "method": "GET",
+        "path": "/jobs/job_abc123"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "id": "job_abc123",
+          "status": "succeeded",
+          "progress": 1
+        }
+      }
+    },
+    {
+      "step": "transcript",
+      "request": {
+        "method": "GET",
+        "path": "/jobs/job_abc123/transcript"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "x-audio-seconds": "2.5"
+        },
+        "body": "Hei, jeg lurer på fakturaen min."
+      }
+    },
+    {
+      "step": "remove",
+      "request": {
+        "method": "DELETE",
+        "path": "/jobs/job_abc123"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "deleted": true
+        }
+      }
+    }
+  ],
+  "result": {
+    "text": "Hei, jeg lurer på fakturaen min."
+  },
+  "usage": {
+    "units": {
+      "job": 1
+    },
+    "audioSeconds": 2.5
+  },
+  "dropped": 1
+}

@@ -1210,7 +1210,7 @@ export const endpoints: Endpoint[] = [
     desc: 'apirefData.int-secret.desc',
     right: 'adm',
     params: [tenant, ['name', 'path', 'text', 'apirefData.int-secret.p.name'], reason],
-    body: { value: '…' },
+    body: { value: '…', allowedHosts: ['https://journal.example.no'] },
     response: { ref: 'secret://tenant/999888777/journal-token' },
     errors: [reasonError],
   },
@@ -2628,4 +2628,6 @@ export const portalActions: PortalAction[] = [
 ];
 
 export const fillPath = (path: string, values: Record<string, string>) =>
-  path.replace(/\{(\w+)\}/g, (m, k: string) => values[k] ?? m);
+  path.replace(/\{(\w+)\}/g, (m, k: string) =>
+    values[k] === undefined ? m : encodeURIComponent(values[k]),
+  );

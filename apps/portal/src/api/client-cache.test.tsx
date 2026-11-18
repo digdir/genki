@@ -1,18 +1,23 @@
 // @vitest-environment jsdom
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createApiClient } from '../api';
 import { useAsync } from '../hooks';
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
-const server = () => {
+const server = (draft: unknown = null) => {
   const state = { version: 1, gets: 0, locale: 'nb' };
   const fetch: typeof globalThis.fetch = async (input, init) => {
     const method = init?.method ?? 'GET';
     if (method === 'GET') state.gets += 1;
     else state.version += 1;
-    return new Response(JSON.stringify(method === 'GET' ? { data: [`v${state.version}`] } : {}), {
+    const opening = String(input).includes('/draft?rebase=clean');
+    const body = opening ? draft : method === 'GET' ? { data: [`v${state.version}`] } : {};
+    return new Response(JSON.stringify(body), {
       status: 200,
       headers: { 'content-type': 'application/json' },
     });
@@ -43,6 +48,8 @@ describe('the cache in the portal API layer', () => {
     await waitFor(() => expect(first.result.current.status).toBe('ready'));
     first.unmount();
     state.version = 2;
+    const later = Date.now() + 60_000;
+    vi.spyOn(Date, 'now').mockReturnValue(later);
 
     const second = visit(api);
     await waitFor(() => expect(second.result.current).toEqual({ status: 'ready', data: ['v2'] }));
@@ -67,6 +74,33 @@ describe('the cache in the portal API layer', () => {
     expect(second.result.current.status).toBe('loading');
     await waitFor(() => expect(second.result.current).toEqual({ status: 'ready', data: ['v2'] }));
     expect(state.gets).toBe(2);
+  });
+
+  it('a GET never clears the response cache', async () => {
+    const { api, state } = server();
+    const first = visit(api);
+    await waitFor(() => expect(first.result.current.status).toBe('ready'));
+    first.unmount();
+
+    await act(() => api.quality.openDraft('1', 'x', 'Test'));
+
+    const second = visit(api);
+    await waitFor(() => expect(second.result.current).toEqual({ status: 'ready', data: ['v1'] }));
+    expect(state.gets).toBe(2);
+  });
+
+  it('clears the response cache when opening a draft rebased it on the server', async () => {
+    const { api, state } = server({ definition: {}, revision: 2, rebasedFrom: 1 });
+    const first = visit(api);
+    await waitFor(() => expect(first.result.current.status).toBe('ready'));
+    first.unmount();
+
+    await act(() => api.quality.openDraft('1', 'x', 'Test'));
+
+    const second = visit(api);
+    expect(second.result.current.status).toBe('loading');
+    await waitFor(() => expect(second.result.current.status).toBe('ready'));
+    expect(state.gets).toBe(3);
   });
 
   it('does not share a cached page between tenants or languages', async () => {

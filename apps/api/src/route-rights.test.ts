@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
 import type { Principal, Task } from '@genai/contracts';
 import { InMemoryDefinitionStore, SettingsRegistry } from '@genai/definitions';
+import { LEGACY_KEY_ISSUER } from '@genai/identity';
 import { envSecrets } from '@genai/kernel';
 import { createAdmin } from './admin.js';
 import { createApp } from './app.js';
@@ -31,7 +32,20 @@ const people: Record<string, Principal> = {
   erik: person('erik', ['use-services']),
   per: person('per', ['use-services', 'manage-services']),
   kari: person('kari', ['use-services', 'manage-services', 'manage-datasets', 'view-usage']),
-  key: { kind: 'agency-system', issuer: 'api-key', subject: 'nøkkel-1', tenant: digdir },
+  key: {
+    kind: 'agency-system',
+    issuer: LEGACY_KEY_ISSUER,
+    subject: 'nøkkel-1',
+    tenant: digdir,
+    scopes: ['legacy:admin'],
+  },
+  klient: {
+    kind: 'agency-system',
+    issuer: 'https://maskinporten.test/',
+    subject: 'sak-123',
+    tenant: digdir,
+    client: 'sak-123',
+  },
   drift: { kind: 'operator', issuer: 'test', subject: 'drift' },
 };
 Object.assign(testkitPrincipals, people);
@@ -47,7 +61,7 @@ const boot = async () => {
       models: {
         endpoints: {
           fake: {
-            protocol: 'openai-chat',
+            families: { openai: '' },
             baseURL: 'https://modell.example.no/v1',
             auth: { kind: 'api-key', secret: 'secret://env/fake-key' },
           },
@@ -166,7 +180,10 @@ describe('platform rights on the tenant routes', () => {
       [`/tenants/${digdir}/test-sets`, { body: { id: 'grunnsett' } }],
       [`/tenants/${digdir}/eval-runs`, { body: {} }],
       [`/tenants/${digdir}/tool-connections`, { body: { id: 'arkiv' } }],
-      [`/tenants/${digdir}/secrets/arkiv-token`, { method: 'PUT', body: { value: 'hemmelig' } }],
+      [
+        `/tenants/${digdir}/secrets/arkiv-token`,
+        { method: 'PUT', body: { value: 'hemmelig', allowedHosts: ['https://arkiv.example.no'] } },
+      ],
       [`/tenants/${digdir}/clients/intranett`, { method: 'PUT', body: {} }],
       [`/tenants/${digdir}/definitions/test-run`, { body: { definition: {}, query: 'hei' } }],
       [`/tenants/${digdir}/definitions/input-fields`, { body: { definition: {} } }],
@@ -182,8 +199,14 @@ describe('platform rights on the tenant routes', () => {
     const call = await boot();
     const path = `/tenants/${digdir}/secrets/arkiv-token`;
 
-    const saved = await call(path, 'bygger', { method: 'PUT', body: { value: 'hemmelig' } });
-    const refused = await call(path, 'erik', { method: 'PUT', body: { value: 'hemmelig' } });
+    const saved = await call(path, 'bygger', {
+      method: 'PUT',
+      body: { value: 'hemmelig', allowedHosts: ['https://arkiv.example.no'] },
+    });
+    const refused = await call(path, 'erik', {
+      method: 'PUT',
+      body: { value: 'hemmelig', allowedHosts: ['https://arkiv.example.no'] },
+    });
 
     expect(saved.status).toBe(200);
     expect(refused.status).toBe(403);
@@ -257,7 +280,26 @@ describe('platform rights on the tenant routes', () => {
     expect((await send(`/tenants/${digdir}/audit`, 'drift', { session: id })).status).toBe(200);
   });
 
-  it('keeps access for an API key bound to the tenant', async () => {
+  it('gives a machine principal without a grant no right on the tenant routes', async () => {
+    const { publish } = setup();
+    const published = await publish('klient', klarsprak());
+    expect(published.status).toBe(403);
+    expect(await published.json()).toMatchObject({
+      errors: [{ path: 'right', message: 'manage-services' }],
+    });
+
+    const call = await boot();
+    for (const [path, init] of [
+      [`/tenants/${digdir}/usage`, {}],
+      [
+        `/tenants/${digdir}/catalog/knowledge-endpoint/sok`,
+        { method: 'PUT', body: searchEndpoint },
+      ],
+    ] as const)
+      expect((await call(path, 'klient', init)).status).toBe(403);
+  });
+
+  it('keeps access for an API key with the admin scope in its own tenant', async () => {
     const { publish, send } = setup();
     expect((await publish('key', klarsprak())).status).toBe(201);
     expect((await send(`/tenants/${digdir}/audit`, 'key')).status).toBe(200);

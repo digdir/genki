@@ -62,18 +62,20 @@ describe('building blocks in English', () => {
             tenantName="Testetaten"
             item={borealis}
             services={[]}
-            versions={[]}
+            versions={{ ok: true, data: [] }}
+            tab="about"
+            onRetry={() => undefined}
             onChanged={() => undefined}
           />
         </RightsProvider>,
       ),
     );
-    expect(screen.getByRole('heading', { name: 'What it can do' })).toBeTruthy();
-    expect(screen.getByRole('heading', { name: 'What it can access' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'What it is good at' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Where data is processed' })).toBeTruthy();
     expect(
       screen.getByRole('heading', { name: /^Version 2\.2, available from \d+ Oct$/ }),
     ).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Add to a service' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Versions' })).toBeTruthy();
   });
 
   it('shows a read-only notice naming the right in English', () => {
@@ -86,7 +88,9 @@ describe('building blocks in English', () => {
             tenantName="Testetaten"
             item={borealis}
             services={[]}
-            versions={[]}
+            versions={{ ok: true, data: [] }}
+            tab="about"
+            onRetry={() => undefined}
             onChanged={() => undefined}
           />
         </RightsProvider>,

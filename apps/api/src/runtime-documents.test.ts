@@ -6,7 +6,8 @@ import {
   InMemoryApiKeys,
   type StoredApiKey,
 } from '@genai/identity';
-import { envSecrets } from '@genai/kernel';
+import type { Event } from '@genai/contracts';
+import { envSecrets, InMemoryEventLog, InMemoryTaskStore } from '@genai/kernel';
 import { InMemoryBlobStore } from '@genai/port-blob';
 import { fakeHttp, type FakeServer } from '@genai/port-model/testing';
 import { createAdmin } from './admin.js';
@@ -19,6 +20,7 @@ import {
   runtimeDocumentTypes,
 } from './runtime-documents.js';
 import { digdir, files, klarsprak } from './testkit.js';
+import { kernelTaskReader, toTimeline } from './timeline.js';
 
 const servers: FakeServer[] = [];
 afterEach(async () => {
@@ -61,13 +63,17 @@ const boot = async () => {
   const authenticator = createAuthenticator({ apiKeys: keys });
   const settings = new SettingsRegistry(platformSettings);
   const blobs = new InMemoryBlobStore();
+  const log = new InMemoryEventLog();
+  const tasks = new InMemoryTaskStore();
   const platform = await createPlatform({
     blobStore: blobs,
+    log,
+    tasks,
     catalogs: {
       models: {
         endpoints: {
           fake: {
-            protocol: 'openai-chat',
+            families: { openai: '' },
             baseURL: model.url,
             auth: { kind: 'api-key', secret: 'secret://env/fake-key' },
           },
@@ -134,7 +140,7 @@ const boot = async () => {
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
-  return { send, model, blobs };
+  return { send, model, blobs, log, tasks, platform };
 };
 
 const encoded = (text: string) => Buffer.from(text, 'utf8').toString('base64');
@@ -250,6 +256,55 @@ describe('documents an employee attaches to a question', () => {
 
     expect(deleted.status).toBe(200);
     expect(await blobs.list(digdir, runDocumentsFolder)).toEqual([]);
+  });
+
+  it('deleting a conversation erases the task events of its turns, but not other conversations', async () => {
+    const { send, log, tasks } = await boot();
+    const gone = await converse(send, 'Fristen er 1. mars.');
+    const kept = await converse(send, 'Fristen er 2. april.');
+    const inputOf = async (thread: string) => {
+      const task = tasks.all().find((t) => t.task.thread === thread)?.task;
+      const events: Event[] = [];
+      for await (const e of log.read(task?.id ?? '', 0, () => false)) events.push(e);
+      return events.find((e) => e.type === 'kernel.task.input')?.data;
+    };
+    expect(JSON.stringify(await inputOf(gone))).toContain('Fristen er 1. mars.');
+
+    await send(`/api/conversations/${gone}`, 'frontend', undefined, 'DELETE');
+
+    expect(await inputOf(gone)).toEqual({ erased: true });
+    expect(JSON.stringify(await inputOf(kept))).toContain('Fristen er 2. april.');
+  });
+
+  it('a run whose conversation was deleted reads as erased, with the time it was erased', async () => {
+    const { send, tasks, platform } = await boot();
+    const gone = await converse(send, 'Fristen er 1. mars.');
+    const kept = await converse(send, 'Fristen er 2. april.');
+    const reader = kernelTaskReader(
+      platform.kernel,
+      { kind: 'operator', issuer: 'platform', subject: 'task-reader' },
+      tasks,
+    );
+    const timelineOf = async (thread: string) => {
+      const id = tasks.all().find((t) => t.task.thread === thread)?.task.id ?? '';
+      const task = await reader.task(id);
+      if (!task) throw new Error(`no task for ${thread}`);
+      const erasure = await reader.erasure?.(digdir, id);
+      return toTimeline(task, await reader.events(id), new Date(), undefined, {
+        ...(erasure ? { erasure } : {}),
+      });
+    };
+    const before = Date.now();
+
+    await send(`/api/conversations/${gone}`, 'frontend', undefined, 'DELETE');
+
+    const erased = await timelineOf(gone);
+    expect(erased.erasure).toEqual({ reason: 'conversation-deleted', at: expect.any(String) });
+    expect(Date.parse(erased.erasure?.at ?? '')).toBeGreaterThanOrEqual(before - 1000);
+    expect(erased.steps.at(-1)).toMatchObject({ type: 'result', summary: 'Svaret er slettet' });
+    expect(erased.steps.some((s) => s.title === 'Innholdet er ikke tilgjengelig')).toBe(false);
+    expect(erased).toMatchObject({ status: 'completed', inputTokens: 10, outputTokens: 5 });
+    expect((await timelineOf(kept)).erasure).toBeUndefined();
   });
 
   it('deleting a conversation leaves other conversations’ documents alone', async () => {

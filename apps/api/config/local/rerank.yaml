@@ -1,9 +1,3 @@
-endpoints:
-  colbert:
-    engine: colbert
-    baseURL: ${COLBERT_API_URL}
-    auth: { kind: api-key, header: x-api-key, secret: secret://env/colbert-api-key }
-rerankers:
-  - id: colbert
-    endpoint: colbert
-    residency: norway
+# Rerankers on engines that have no API yet; colbert is a model in models.yaml (ADR 0048).
+endpoints: {}
+rerankers: []

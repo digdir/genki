@@ -1,0 +1,253 @@
+{
+ "tests": [
+  {
+   "id": "kudos-49449-p21-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Vedlegg 1. Bevaringsforhold i miljøbrønnene MB5 og MB10",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-49449-p21-t02",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Oversikt over fysisk og kjemisk analyser utført på hele tomten Foyn eiendom",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-49449-p21-t03",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Miljøbrønn 5 og 10 markert i tabellene.",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "Svakt basisk og middels",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-49449-p21-t04",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "Oksiderende",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "MB 5-3 lag 3",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Redoksforhold",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-49449-p21-t05",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "Dårlig",
+     "max_diffs": 0
+    },
+    "left": {
+     "text": "Oksiderende",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Bevaringsforhold",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-49449-p21-t06",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "Svakt basisk og middels",
+     "max_diffs": 1
+    },
+    "left_heading": {
+     "text": "2A-3 lag 3",
+     "max_diffs": 1
+    },
+    "top_heading": {
+     "text": "Surhet og salinitet",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-49449-p21-t07",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "2661",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "MB 5-3 lag 3",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Sulfat (mg/kg TS)",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-49449-p21-t08",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "24 %",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "MB 5-3 lag 3",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Andel av Jern (II)",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-49449-p21-t09",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "212",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "MB 10-2 lag 2",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Sulfid (mg/kg TS)",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-49449-p21-t10",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "3127",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-49449-p21-t11",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "1745",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

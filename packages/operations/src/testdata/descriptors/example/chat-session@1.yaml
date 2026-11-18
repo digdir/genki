@@ -1,0 +1,74 @@
+id: example/chat-session@1
+operation: chat-session
+status: described
+summary: A made-up live session where text goes in and the reply comes back in pieces.
+api:
+  family: example
+  version: '1'
+input:
+  object:
+    topic: text
+output:
+  object:
+    transcript: text
+steps:
+  - name: session
+    request:
+      method: GET
+      path: /live
+    wire:
+      query:
+        object: {}
+    websocket:
+      longestSeconds: 60
+      maxMessages: 20
+      maxMessageBytes: 4096
+      client:
+        name: $event.event
+        binary: audio/wav
+        events:
+          open:
+            shape:
+              object:
+                event: { enum: [open] }
+                topic: text
+          say:
+            shape:
+              object:
+                event: { enum: [say] }
+                text: text
+      server:
+        name: $event.event
+        binary: audio/wav
+        events:
+          reply:
+            shape:
+              object:
+                event: { enum: [reply] }
+                text: text
+            transcript: $event.text
+          stats:
+            shape:
+              object:
+                event: { enum: [stats] }
+                input: number
+                output: number
+            usage:
+              inputTokens: $event.input
+              outputTokens: $event.output
+              requests: 1
+          bye:
+            shape:
+              object:
+                event: { enum: [bye] }
+            done: true
+          oops:
+            shape:
+              object:
+                event: { enum: [oops] }
+                reason: text
+            fail:
+              kind: unavailable
+              message: $event.reason
+result:
+  transcript: $response.transcript

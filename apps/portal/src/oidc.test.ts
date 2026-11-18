@@ -212,6 +212,34 @@ describe('login through Ansattporten', () => {
     expect((await client.refresh())?.token).toBe(renewedToken);
   });
 
+  it('renews without a refresh token by a silent prompt=none authorization', async () => {
+    refreshable = 'none';
+    const authorized: URL[] = [];
+    const { client, navigated, returnFromAnsattporten } = setup({
+      silent: async (url) => {
+        const sent = new URL(url);
+        authorized.push(sent);
+        return new URL(
+          `http://localhost:5175/callback?code=silent&state=${sent.searchParams.get('state')}&iss=${issuer}`,
+        );
+      },
+    });
+    void client.login();
+    await vi.waitFor(() => expect(navigated).toHaveLength(1));
+    returnFromAnsattporten({ code: 'abc' });
+    await client.login();
+
+    issued = { access_token: renewedToken, token_type: 'Bearer' };
+    const renewed = await client.refresh().finally(() => {
+      issued = undefined;
+    });
+
+    expect(authorized[0]?.searchParams.get('prompt')).toBe('none');
+    expect(authorized[0]?.searchParams.get('code_challenge_method')).toBe('S256');
+    expect(renewed?.token).toBe(renewedToken);
+    expect(client.current()?.token).toBe(renewedToken);
+  });
+
   it('keeps the session until it expires when the refresh token is refused', async () => {
     refreshable = 'none';
     const { client, navigated, returnFromAnsattporten } = setup();
@@ -372,6 +400,7 @@ describe('login with Entra ID through Ansattporten', () => {
     expect(asked).toEqual([{ url: '/api/me', authorization: `Bearer ${entraAccess}` }]);
     expect(session).toEqual({
       name: 'lise@digdir.example',
+      email: 'lise@digdir.example',
       organisations: [
         {
           orgNumber: '312521172',
@@ -381,6 +410,43 @@ describe('login with Entra ID through Ansattporten', () => {
       ],
       token: entraAccess,
     });
+  });
+
+  const signInWith = async (access: string) => {
+    issued = { access_token: access, token_type: 'Bearer' };
+    try {
+      const { client, navigated, returnFromAnsattporten } = setup({
+        organisations: api().organisations,
+      });
+      void client.login();
+      await vi.waitFor(() => expect(navigated).toHaveLength(1));
+      returnFromAnsattporten({ code: 'abc' });
+      return await client.login();
+    } finally {
+      issued = undefined;
+    }
+  };
+
+  it('uses the name claim as the name, never the login email, and keeps the email apart', async () => {
+    const session = await signInWith(
+      jwt({ exp: 4_000_000_000, email: 'lise@digdir.example', name: 'Lise Dahl' }),
+    );
+
+    expect(session.name).toBe('Lise Dahl');
+    expect(session.email).toBe('lise@digdir.example');
+  });
+
+  it('builds the name from the given and family name before falling back to the email', async () => {
+    const session = await signInWith(
+      jwt({
+        exp: 4_000_000_000,
+        email: 'lise@digdir.example',
+        given_name: 'Lise',
+        family_name: 'Dahl',
+      }),
+    );
+
+    expect(session.name).toBe('Lise Dahl');
   });
 
   it('reports why the API refuses an Entra login', async () => {

@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto';
 import type { RuntimeDocumentStore } from '@genai/adapter-openai';
 import { attachedMeta } from '@genai/strategy-agent-loop';
 import { runDocumentFolder, runDocumentsFolder } from '@genai/jobs';
-import { readablePart, type BlobStore } from '@genai/port-blob';
+import { mediaTypeCovers } from '@genai/kernel';
+import { blobPart, readablePart, type BlobStore } from '@genai/port-blob';
 
 const readableTypes = new Set(['text/plain', 'text/markdown', 'text/csv', 'application/json']);
 
@@ -18,6 +19,33 @@ export const runtimeDocumentTypes = (spec: unknown): string[] => {
       accepts.flatMap((a) => {
         const type = typeof a === 'string' ? (a.split(';')[0]?.trim().toLowerCase() ?? '') : '';
         return readableTypes.has(type) ? [type] : [];
+      }),
+    ),
+  ];
+};
+
+export const runtimeMediaTypes = (spec: unknown): string[] => {
+  const accepts = (spec as { input?: { accepts?: unknown } } | undefined)?.input?.accepts;
+  return Array.isArray(accepts)
+    ? [
+        ...new Set(
+          accepts.filter(
+            (a): a is string =>
+              typeof a === 'string' && (a.startsWith('audio/') || a.startsWith('image/')),
+          ),
+        ),
+      ]
+    : [];
+};
+
+export const runtimeFileTypes = (spec: unknown, stepTypes: readonly string[]): string[] => {
+  const accepts = (spec as { input?: { accepts?: unknown } } | undefined)?.input?.accepts;
+  if (!Array.isArray(accepts)) return [];
+  return [
+    ...new Set(
+      accepts.flatMap((a) => {
+        const type = typeof a === 'string' ? (a.split(';')[0]?.trim().toLowerCase() ?? '') : '';
+        return type && stepTypes.some((t) => mediaTypeCovers(t, type)) ? [type] : [];
       }),
     ),
   ];
@@ -63,8 +91,11 @@ export const runtimeDocumentStore = (blobs: BlobStore): RuntimeDocumentStore => 
           d.body,
           d.mediaType,
         );
+        if (d.asFile) return blobPart(info);
         const part = readablePart(info, d.body);
-        return { ...part, meta: { ...part.meta, [attachedMeta]: true } };
+        return part.body.kind === 'text'
+          ? { ...part, meta: { ...part.meta, [attachedMeta]: true } }
+          : part;
       }),
     );
   },

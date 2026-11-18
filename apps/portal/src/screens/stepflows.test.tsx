@@ -60,7 +60,18 @@ const openLibrary = async (fetch?: typeof globalThis.fetch) => {
   await screen.findByRole('heading', { level: 1, name: 'Stegflyter' });
 };
 
-const picker = () => screen.getByRole('combobox', { name: 'Stegflyt' }) as HTMLSelectElement;
+const picker = () => screen.getByRole('combobox', { name: 'Stegflyt' }) as HTMLInputElement;
+
+const choose = (input: HTMLElement, value: string, label: string) => {
+  const item = document.createElement('data');
+  item.value = value;
+  item.textContent = label;
+  act(() => {
+    input
+      .closest('ds-suggestion')
+      ?.dispatchEvent(new CustomEvent('comboboxbeforeselect', { detail: item, cancelable: true }));
+  });
+};
 const yamlBox = () => screen.getByLabelText('Stegflyt som YAML') as HTMLTextAreaElement;
 
 beforeAll(() => {
@@ -107,7 +118,7 @@ describe('Arbeidsmåte in the step flow editor', () => {
     expect(
       (within(group).getByRole('radio', { name: 'Fast stegflyt' }) as HTMLInputElement).checked,
     ).toBe(true);
-    expect(picker().value).toBe('svar-med-kilder');
+    expect(picker().value).toBe('Svar med kilder');
     expect(screen.getByText(/Brukes også av Spør veilederen, Intern spørsmålsbank/)).toBeTruthy();
     expect(screen.getByRole('list', { name: 'Stegene i flyten' })).toBeTruthy();
     expect(
@@ -153,19 +164,28 @@ describe('Arbeidsmåte in the step flow editor', () => {
   });
 
   it.each([
-    ['svar', 'svar-med-kilder'],
-    ['sak', 'saksforberedelse'],
-    ['post', 'sorter-post'],
-  ])('picks flyt=%s from the query', async (q, id) => {
+    ['svar', 'Svar med kilder'],
+    ['sak', 'Saksforberedelse'],
+    ['post', 'Sorter post'],
+  ])('picks flyt=%s from the query', async (q, name) => {
     await openService(`?flyt=${q}`);
-    expect(picker().value).toBe(id);
+    expect(picker().value).toBe(name);
     expectAccessible();
   });
 
   it('changes flow with the picker', async () => {
     await openService();
-    fireEvent.change(picker(), { target: { value: 'saksforberedelse' } });
-    expect(picker().value).toBe('saksforberedelse');
+    choose(picker(), 'saksforberedelse', 'Saksforberedelse');
+    await waitFor(() => expect(picker().value).toBe('Saksforberedelse'));
+    expect(screen.queryByRole('button', { name: 'Endre steget Planlegg søk' })).toBeNull();
+  });
+
+  it('searches flows as the person types and never switches flow on a keystroke', async () => {
+    await openService();
+    expect(picker().tagName).toBe('INPUT');
+    fireEvent.change(picker(), { target: { value: 'Sa' } });
+    fireEvent.input(picker(), { target: { value: 'Sak' } });
+    expect(screen.getByRole('button', { name: 'Endre steget Planlegg søk' })).toBeTruthy();
   });
 
   it('shows Gjenta, For hver, Velg and Delflyt controls', async () => {
@@ -658,12 +678,42 @@ describe('library', () => {
   it('opens a flow from a card and offers to use it in a service', async () => {
     await openLibrary();
     fireEvent.click(screen.getByRole('button', { name: 'Bruk Saksforberedelse i en tjeneste' }));
-    expect(await screen.findByText(/Flyten Saksforberedelse v\d/)).toBeTruthy();
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Bruk Saksforberedelse i en tjeneste',
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Lukk' }));
     fireEvent.click(screen.getByRole('button', { name: 'Åpne Postruting' }));
     expect(await screen.findByRole('heading', { level: 1, name: 'Arbeidsmåte' })).toBeTruthy();
-    expect(picker().value).toBe('postruting');
+    expect(picker().value).toBe('Postruting');
     expect(screen.getByRole('heading', { level: 2, name: /feil i flyten/ })).toBeTruthy();
     expectAccessible();
+  });
+
+  it('pins the current version of a flow to a chosen service through its draft', async () => {
+    const { calls, fetch } = recording();
+    await openLibrary(fetch);
+    fireEvent.click(screen.getByRole('button', { name: 'Bruk Saksforberedelse i en tjeneste' }));
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Bruk Saksforberedelse i en tjeneste',
+    });
+    const input = within(dialog).getByRole('combobox', { name: 'Tjeneste' });
+    const options = () =>
+      [...dialog.querySelectorAll<HTMLOptionElement>('u-option, option')].filter((o) => o.value);
+    await waitFor(() => expect(options().length).toBeGreaterThan(0));
+    const option = options()[0] as HTMLOptionElement;
+    choose(input, option.value, option.label);
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Koble til tjenesten' }));
+
+    expect(await within(dialog).findByText(/er koblet til .+ i et utkast/)).toBeTruthy();
+    const saved = calls.find(
+      (c) => c.method === 'PUT' && c.url.endsWith(`/services/${option.value}/draft`),
+    );
+    const version = flows.saksforberedelse?.version;
+    expect(
+      (saved?.body as { definition: { spec: { strategy: unknown } } }).definition.spec.strategy,
+    ).toMatchObject({ id: 'step-flow', config: { flow: `saksforberedelse@${version}` } });
+    expect(saved?.headers.get('change-reason')).toBeTruthy();
+    expect(calls.some((c) => c.method === 'POST' && c.url.endsWith('/definitions'))).toBe(false);
   });
 
   it('opens visning=bibliotek from the editor', async () => {
@@ -674,7 +724,7 @@ describe('library', () => {
   it('opens the editor at #/step-flows/:id', async () => {
     await renderAt('#/step-flows/postruting');
     expect(await screen.findByRole('heading', { level: 1, name: 'Arbeidsmåte' })).toBeTruthy();
-    expect(picker().value).toBe('postruting');
+    expect(picker().value).toBe('Postruting');
   });
 
   it('shows an error with retry when the live list fails, keeping the design flows', async () => {
@@ -717,6 +767,39 @@ describe('saving', () => {
     ).toBe('Planlegg');
   });
 
+  it('asks a new flow for a name before its first save and derives the id from it', async () => {
+    const { calls, fetch } = recording();
+    await openLibrary(fetch);
+    fireEvent.click(screen.getByRole('button', { name: 'Ny stegflyt' }));
+    await screen.findByRole('heading', { level: 1, name: 'Arbeidsmåte' });
+    fireEvent.click(screen.getByRole('button', { name: /Legg til (et )?steg/ }));
+    pickBlock(/^Klassifiser/);
+    fireEvent.click(screen.getByRole('button', { name: 'Slett steget' }));
+    fireEvent.change(screen.getByLabelText(/Hva flyten gjør/), {
+      target: { value: 'Sorterer brev' },
+    });
+    fireEvent.change(screen.getByLabelText(/Hva er endret, og hvorfor\?/), {
+      target: { value: 'Første versjon' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Lagre som v/ }));
+    expect(screen.getByText('Gi flyten et navn.')).toBeTruthy();
+    expect(calls.some((c) => c.url.endsWith('/definitions/validate'))).toBe(false);
+
+    fireEvent.change(screen.getByLabelText('Navn på flyten'), {
+      target: { value: 'Brev til arkiv' },
+    });
+    expect(screen.getByText(/Id: brev-til-arkiv\./)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /Lagre som v/ }));
+    await waitFor(() =>
+      expect(calls.some((c) => c.url.endsWith('/definitions/validate'))).toBe(true),
+    );
+    const validate = calls.find((c) => c.url.endsWith('/definitions/validate'));
+    expect(
+      (validate?.body as { definition: { metadata: { id: string; name: string } } }).definition
+        .metadata,
+    ).toMatchObject({ id: 'brev-til-arkiv', name: 'Brev til arkiv' });
+  });
+
   it('shows server validation errors for an empty new flow', async () => {
     await openLibrary();
     fireEvent.click(screen.getByRole('button', { name: 'Ny stegflyt' }));
@@ -724,6 +807,12 @@ describe('saving', () => {
     fireEvent.click(screen.getByRole('button', { name: /Legg til (et )?steg/ }));
     pickBlock(/^Klassifiser/);
     fireEvent.click(screen.getByRole('button', { name: 'Slett steget' }));
+    fireEvent.change(screen.getByLabelText('Navn på flyten'), {
+      target: { value: 'Brevsortering' },
+    });
+    fireEvent.change(screen.getByLabelText(/Hva flyten gjør/), {
+      target: { value: 'Sorterer brev' },
+    });
     fireEvent.change(screen.getByLabelText(/Hva er endret, og hvorfor\?/), {
       target: { value: 'Første versjon' },
     });

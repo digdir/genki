@@ -1,5 +1,8 @@
 apps/api/config
 apps/parity/config/services
+demos
 packages/eval/judges
 packages/eval/testsets
 packages/jobs/examples
+packages/operations/descriptors
+packages/operations/fixtures

@@ -1,0 +1,22 @@
+{"tests": [
+ {"id": "kudos-326749-p3-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "For enkelte tjenester vil innbyggere, næringsliv, ansatte i øvrige offentlige virksomheter og samarbeidspartnere", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-326749-p3-t02", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"content": {"text": "Leverandør av fellestjenester", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-326749-p3-t03", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["list", "nob", "Latn"],
+  "args": {"content": {"text": "Sikt skal levere en helhetlig og sammenhengende digital grunnmur for kunnskapssektoren", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-326749-p3-t04", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["list", "nob", "Latn"],
+  "args": {"content": {"text": "er Sikt faglig rådgiver for Kunnskapsdepartementet og Direktoratet for høyere utdanning og kompetanse (HK-dir)", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-326749-p3-t05", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "list", "nob", "Latn"],
+  "args": {"before": {"text": "oppfølging av eID-strategien.", "max_diffs": 1}, "after": {"text": "Tilrettelegger for deling og gjenbruk av data", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-326749-p3-t06", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["list", "nob", "Latn"],
+  "args": {"content": {"text": "Sikt skal legge til rette for dataprodusenter og gjøre det enklere å dele og gjenbruke data", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-326749-p3-t07", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"content": {"text": "Sektorvist responsmiljø for IKT-sikkerhetshendelser (SRM)", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-326749-p3-t08", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "list", "nob", "Latn"],
+  "args": {"before": {"text": "HK-dirs sektortilpasning av rammeverket.", "max_diffs": 2}, "after": {"text": "Oversikt over Sikts myndighets- og forvaltningsoppgaver", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-326749-p3-t09", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["list", "nob", "Latn"],
+  "args": {"content": {"text": "jf. opplæringsloven § 25-2 og opplæringsforskrifta § 20-6", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-326749-p3-t10", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["list", "nob", "Latn"],
+  "args": {"content": {"text": "(vitnemålsportalen), jf. universitets- og høyskoleloven (uhl) § 15-1", "max_diffs": 2}}, "settings": {}}
+]}

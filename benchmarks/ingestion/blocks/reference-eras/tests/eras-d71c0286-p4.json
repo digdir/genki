@@ -1,0 +1,253 @@
+{
+ "tests": [
+  {
+   "id": "eras-d71c0286-p4-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "heading",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Returnees so far this year by nationality",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d71c0286-p4-t02",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "13",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Eritrea",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Dublin",
+     "max_diffs": 0
+    },
+    "left": {
+     "text": "3",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d71c0286-p4-t03",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "24",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "India",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Refused stay or entry",
+     "max_diffs": 0
+    },
+    "left": {
+     "text": "1",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d71c0286-p4-t04",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "5",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Democratic Republic of the Congo",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Dublin",
+     "max_diffs": 0
+    },
+    "right": {
+     "text": "1",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d71c0286-p4-t05",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "39",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Lithuania",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Expulsion",
+     "max_diffs": 0
+    },
+    "right": {
+     "text": "41",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d71c0286-p4-t06",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "3",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Montenegro",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Total",
+     "max_diffs": 0
+    },
+    "left": {
+     "text": "3",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d71c0286-p4-t07",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "43",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d71c0286-p4-t08",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Democratic Republic of the Congo",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d71c0286-p4-t09",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Returnees so far this year by nationality",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "Ivory Coast",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d71c0286-p4-t10",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "The Philippines",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "Democratic Republic of the Congo",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

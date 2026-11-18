@@ -1,0 +1,22 @@
+{"tests": [
+ {"id": "kudos-7181-p5-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Direktoratet forvalter rollen som kontaktpunkt opp mot FNs, NATOs og EUs sivile krisehåndteringsmekanismer.", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-7181-p5-t02", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "DSB skal bidra i EØS-samarbeidet gjennom EØS-midlene i tråd med norsk Europa-politikk.", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-7181-p5-t03", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Climate Change Mitigation and Adaptation og Disaster Prevention and Preparedness", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-7181-p5-t04", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"content": {"text": "Ledelsen av virksomheten", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-7181-p5-t05", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"before": {"text": "Ledelsen av virksomheten", "max_diffs": 1}, "after": {"text": "DSB ledes av en direktør som ansettes på åremål.", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-7181-p5-t06", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"content": {"text": "2.3 Styringsdialogen", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-7181-p5-t07", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Den årlige styringsdialogen mellom JD og DSB skal være forankret i Prop. 1 S og Stortingets behandling av denne.", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-7181-p5-t08", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["list", "nob", "Latn"],
+  "args": {"content": {"text": "Supplerende tildelingsbrev i løpet av året", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-7181-p5-t09", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["list", "nob", "Latn"],
+  "args": {"before": {"text": "Overordnet risikovurdering av virksomhetens måloppnåelse", "max_diffs": 2}, "after": {"text": "Referater fra etatsstyringsmøter og særmøter i styringsdialogen", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-7181-p5-t10", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Antallet etatsstyringsmøter gjennom året vil bli fastsatt på bakgrunn av risiko- og vesentlighetsbetraktninger samt virksomhetens egenart.", "max_diffs": 4}}, "settings": {}}
+]}

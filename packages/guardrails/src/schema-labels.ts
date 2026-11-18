@@ -30,6 +30,19 @@ const nb = {
   },
   prompt: { label: 'Tekst til den som godkjenner' },
   expiresInMinutes: { label: 'Minutter før godkjenningen går ut' },
+  model: { label: 'Modell som avgjør', help: 'En modell som kan ta beslutninger.' },
+  threshold: {
+    label: 'Hvor sikker modellen må være',
+    help: 'Under denne grensen avgjør ikke modellen alene.',
+  },
+  uncertain: {
+    label: 'Når modellen er usikker',
+    values: { person: 'En person ser på det', allow: 'Slipp gjennom' },
+  },
+  refusal: {
+    label: 'Når modellen ikke vil svare',
+    values: { person: 'En person ser på det', allow: 'Slipp gjennom' },
+  },
 } satisfies Record<string, LabelText>;
 
 const en: Record<keyof typeof nb, LabelText> = {
@@ -67,6 +80,19 @@ const en: Record<keyof typeof nb, LabelText> = {
   },
   prompt: { label: 'Text for the person who approves' },
   expiresInMinutes: { label: 'Minutes before the approval expires' },
+  model: { label: 'Model that decides', help: 'A model that can make decisions.' },
+  threshold: {
+    label: 'How sure the model must be',
+    help: 'Below this limit the model does not decide alone.',
+  },
+  uncertain: {
+    label: 'When the model is unsure',
+    values: { person: 'A person looks at it', allow: 'Let it through' },
+  },
+  refusal: {
+    label: 'When the model will not answer',
+    values: { person: 'A person looks at it', allow: 'Let it through' },
+  },
 };
 
 export const guardrailSchemaLabels: SchemaLabels = {
@@ -87,5 +113,6 @@ export const guardrailSchemaLabels: SchemaLabels = {
     'refuse-topics': { nb: 'Avslå emner', en: 'Refuse topics' },
     'human-approval': { nb: 'Menneskelig godkjenning', en: 'Human approval' },
     'custom-rules': { nb: 'Egne regler', en: 'Custom rules' },
+    'purpose-check': { nb: 'Sjekk av formålet', en: 'Purpose check' },
   },
 };

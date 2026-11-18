@@ -1,0 +1,73 @@
+id: openai/transcriptions@1
+operation: transcribe
+status: described
+summary: Speech to text on an OpenAI-compatible endpoint (Create transcription, /audio/transcriptions), audio up as a multipart file and the transcript back as JSON.
+api:
+  family: openai
+  version: v1
+auth:
+  keyHeader: authorization
+input:
+  object:
+    audio: { media: audio/* }
+    language?: { enum: [nb, nn, no, en, sv, da] }
+    prompt?: text
+output:
+  object:
+    text: text
+    usage:
+      object:
+        inputTokens?: { number: { min: 0 } }
+        outputTokens?: { number: { min: 0 } }
+        audioSeconds?: { number: { min: 0 } }
+        requests?: { number: { min: 0 } }
+        costMicroNok?: { number: { min: 0 } }
+request:
+  method: POST
+  path: /audio/transcriptions
+  encoding: multipart
+  parts:
+    model: $deployment
+    file: $input.audio
+    language: $input.language
+    prompt: $input.prompt
+    response_format: json
+response:
+  encoding: json
+wire:
+  request:
+    object:
+      model: plain
+      file: { media: audio/* }
+      language?: { enum: [nb, nn, no, en, sv, da] }
+      prompt?: text
+      response_format: { enum: [json] }
+  response:
+    object:
+      text: text
+      usage?:
+        variant: type
+        options:
+          tokens:
+            input_tokens: { number: { integer: true, min: 0 } }
+            input_token_details?:
+              object:
+                text_tokens?: { number: { integer: true, min: 0 } }
+                audio_tokens?: { number: { integer: true, min: 0 } }
+            output_tokens: { number: { integer: true, min: 0 } }
+            total_tokens?: { number: { integer: true, min: 0 } }
+          duration:
+            seconds: { number: { min: 0 } }
+errors:
+  - { status: 429, kind: rate-limited }
+  - { status: [400, 413, 415], kind: invalid }
+  - { status: 5xx, kind: unavailable }
+result:
+  text: $response.text
+  usage: $usage
+usage:
+  input-token: $response.usage.input_tokens
+  output-token: $response.usage.output_tokens
+  audio-second: $response.usage.seconds
+  request: 1
+stream: none

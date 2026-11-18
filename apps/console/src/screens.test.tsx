@@ -8,7 +8,7 @@ import { validOrgNumber } from './screens/Onboarding';
 import { createFormat } from '@genai/i18n';
 import { translator } from './i18n';
 import { formatValue, parseDraft } from './settings-model';
-import type { GridSetting } from './types';
+import type { GridSetting, TaskTimeline } from './types';
 
 document.getAnimations ??= () => [];
 HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {
@@ -78,6 +78,19 @@ describe('byggeklosser', () => {
 
     fireEvent.click(screen.getByRole('radio', { name: 'Ikke bestått' }));
     expect(screen.queryByRole('button', { name: /Borealis-27B/ })).toBeNull();
+  });
+
+  it('closes an open preview when the availability choice changes, and keeps it open until then', async () => {
+    await open('#/building-blocks?block=borealis');
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Gjør 2.2 tilgjengelig' }));
+    expect(await screen.findByText(/Ingen tjeneste bytter versjon av seg selv/)).toBeTruthy();
+    // Nothing else closes it: the preview stays while the person reads it.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.getByText(/Ingen tjeneste bytter versjon av seg selv/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('radio', { name: 'Ingen (bare Digdir kan teste den)' }));
+
+    expect(screen.queryByText(/Ingen tjeneste bytter versjon av seg selv/)).toBeNull();
   });
 
   it('makes a new version available with a preview that says no service switches', async () => {
@@ -510,6 +523,69 @@ describe('kvalitetsmatrise og dommere', () => {
   });
 });
 
+describe('etiketter fra Langfuse', () => {
+  it('counts a label only after its batch is accepted with a reason, in the audit log', async () => {
+    const { calls, fetch } = recording();
+    await open('#/quality-matrix?tab=sink', fetch);
+
+    const batch = await screen.findByRole('region', { name: /kudos_quotes_covered/ });
+    expect(
+      within(batch).getByText(
+        '3 etiketter venter: 1 lik dommeren, 1 ulik, 1 uten dommerscore · 2 merkere',
+      ),
+    ).toBeTruthy();
+    expect(within(batch).getAllByText(/^pseudonym:/).length).toBe(3);
+    fireEvent.click(within(batch).getByRole('button', { name: 'Godta…' }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Godta etikettene' }));
+    expect(
+      await within(dialog).findByText(
+        /Skriv en begrunnelse på minst \d+ tegn\. Den vises i Revisjon\./,
+      ),
+    ).toBeTruthy();
+    expect(calls.some((c) => c.path.endsWith('/sink-labels/accept'))).toBe(false);
+
+    fireEvent.change(within(dialog).getByRole('textbox'), {
+      target: { value: 'Merket av fagfolk i DFØ' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Godta etikettene' }));
+
+    expect(await screen.findByText('3 etiketter teller nå i dommerens samsvar.')).toBeTruthy();
+    await waitFor(() =>
+      expect(screen.queryByRole('region', { name: /kudos_quotes_covered/ })).toBeNull(),
+    );
+    expect(calls.find((c) => c.path === '/api/operator/quality/sink-labels/accept')).toMatchObject({
+      method: 'POST',
+      reason: 'Merket av fagfolk i DFØ',
+      body: {
+        tenant: '991825827',
+        connection: 'kudos',
+        judge: 'langfuse:991825827/kudos/kudos_quotes_covered',
+      },
+    });
+  });
+  it('says after a fetch which evaluators got no labels because rules share them', async () => {
+    const base = mockFetch();
+    const shared: typeof globalThis.fetch = async (input, init) =>
+      new URL(String(input), 'http://mock').pathname === '/api/operator/quality/sink-labels/fetch'
+        ? Response.json({
+            pending: 2,
+            shared: [{ name: 'svar_oppfyller_kriteriene', rules: ['regel_a', 'regel_b'] }],
+          })
+        : base(input, init);
+    await open('#/quality-matrix?tab=sink', shared);
+
+    const fetchButton = (await screen.findAllByRole('button', { name: 'Hent nye etiketter' }))[0];
+    fireEvent.click(fetchButton as HTMLElement);
+
+    const notice = await screen.findByText(
+      '2 nye etiketter fra kudos. Ingen etiketter for svar_oppfyller_kriteriene: reglene regel_a, regel_b skriver vurderinger med samme navn, så merkingene kan ikke skilles fra hverandre.',
+    );
+    // Some labels were left out: a warning, not a plain success.
+    expect(notice.closest('.ds-alert')?.getAttribute('data-color')).toBe('warning');
+  });
+});
+
 describe('sporing og evaluering', () => {
   it('states the fixed privacy rule and warns when the tool is hosted outside EU/EØS', async () => {
     await open('#/tracing');
@@ -637,6 +713,41 @@ describe('diagnostikk', () => {
       .closest('tr') as HTMLElement;
     expect(within(pinned).getByText('Festet til v11')).toBeTruthy();
     expect(screen.getAllByText('Satt på datasettet').length).toBeGreaterThan(0);
+  });
+
+  it("shows the provider's status and error body on a failed run", async () => {
+    const base = mockFetch();
+    const failed: typeof fetch = async (input, init) => {
+      if (!String(input).endsWith('/tasks/opg_7f2kq9d1/timeline')) return base(input, init);
+      const run = (await (await base(input, init)).json()) as TaskTimeline;
+      return Response.json({
+        ...run,
+        status: 'failed',
+        steps: [
+          {
+            id: 'e9f',
+            type: 'error',
+            title: 'Steget «svar» feilet',
+            summary: 'Vi fikk ikke svar fra modellen.',
+            at: 1,
+            blocks: [
+              { kind: 'quote', text: 'step svar failed: the model is unavailable' },
+              { kind: 'quote', label: 'Leverandøren svarte 503', text: 'upstream reset' },
+            ],
+          },
+        ],
+      });
+    };
+    await open('#/tenants', failed);
+    await screen.findByRole('table');
+    await startSupport();
+    window.location.hash = '#/diagnostics?tenant=999888777';
+
+    fireEvent.change(await screen.findByRole('textbox', { name: 'ID for kjøringen' }), {
+      target: { value: 'opg_7f2kq9d1' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Slå opp' }));
+    expect(await screen.findByText('Leverandøren svarte 503: upstream reset')).toBeTruthy();
   });
 
   it('says when a run is not found', async () => {

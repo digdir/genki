@@ -1,0 +1,4 @@
+{"tests": [
+ {"id": "kudos-7841-p1-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nno", "Latn"],
+  "args": {"content": {"text": "Årsrapport 2019", "max_diffs": 0}}, "settings": {}}
+]}

@@ -1,0 +1,22 @@
+{"tests": [
+ {"id": "kudos-71220-p45-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"content": {"text": "Vedlegg 4: oversikt over datainnsamlingsprosedyrer i kontroll- og intervensjonsgruppa", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-71220-p45-t02", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["caption", "eng", "Latn"],
+  "args": {"content": {"text": "Table 1 Recruitment and data collection procedures in the control group", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-71220-p45-t03", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "caption", "nob", "eng", "Latn"],
+  "args": {"before": {"text": "oversikt over datainnsamlingsprosedyrer", "max_diffs": 1}, "after": {"text": "Recruitment and data collection procedures", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-71220-p45-t04", "test_type": "table_cell", "output_type": "html", "derivation": "model_panel", "tags": ["table", "eng", "Latn"],
+  "args": {"cell": {"text": "38/2017", "max_diffs": 0}, "top_heading": {"text": "Week/year", "max_diffs": 0}, "left_heading": {"text": "Notice letter", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-71220-p45-t05", "test_type": "table_cell", "output_type": "html", "derivation": "model_panel", "tags": ["table", "eng", "Latn"],
+  "args": {"cell": {"text": "39/40+/2017", "max_diffs": 0}, "top_heading": {"text": "Week/year", "max_diffs": 0}, "left": {"text": "1/2", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-71220-p45-t06", "test_type": "table_cell", "output_type": "html", "derivation": "model_panel", "tags": ["table", "eng", "Latn"],
+  "args": {"cell": {"text": "MD/receptionist", "max_diffs": 0}, "top_heading": {"text": "Responsible", "max_diffs": 0}, "right": {"text": "G", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-71220-p45-t07", "test_type": "table_cell", "output_type": "html", "derivation": "model_panel", "tags": ["table", "eng", "Latn"],
+  "args": {"cell": {"text": "Willingness to participation", "max_diffs": 1}, "top_heading": {"text": "Task", "max_diffs": 1}, "left": {"text": "39/40+/2017", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-71220-p45-t08", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["table", "eng", "Latn"],
+  "args": {"content": {"text": "The notice letter re. first visit in OD will include a short smoking status registration form", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-71220-p45-t09", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["table", "eng", "Latn"],
+  "args": {"content": {"text": "Some patients may prefer to read the provided study information at home and decide whether to participate before second consultation.", "max_diffs": 4}}, "settings": {}},
+ {"id": "kudos-71220-p45-t10", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["table", "eng", "Latn"],
+  "args": {"content": {"text": "39+/2017", "max_diffs": 0}}, "settings": {}}
+]}

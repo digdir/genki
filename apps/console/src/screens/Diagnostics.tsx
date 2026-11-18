@@ -277,6 +277,15 @@ const Run = ({
               <span className="two-line grow">
                 <span className="label-strong">{s.title}</span>
                 <span className="meta">{s.summary}</span>
+                {s.type === 'error'
+                  ? s.blocks
+                      .filter((b) => b.text)
+                      .map((b, i) => (
+                        <span key={i} className="meta">
+                          {b.label ? `${b.label}: ${b.text ?? ''}` : b.text}
+                        </span>
+                      ))
+                  : null}
               </span>
             </li>
           );

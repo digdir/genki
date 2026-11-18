@@ -1,0 +1,74 @@
+id: example/chunked-upload@1
+operation: chunked-upload
+status: described
+summary: A made-up S3-style multipart upload that starts an upload, sends the file in parts and completes it with each part's number and ETag.
+api:
+  family: example
+  version: '2026-11-01'
+input:
+  object:
+    document: { media: application/pdf }
+output:
+  object:
+    bytes: number
+steps:
+  - name: start
+    request:
+      method: POST
+      path: /documents
+    wire:
+      response:
+        object:
+          upload_id: { ref: '^up_[a-z0-9]+$' }
+    bind:
+      upload: { from: $response.upload_id, class: { issued: '^up_[a-z0-9]+$' } }
+  - name: send
+    parts: { of: $input.document, bytes: 4, most: 5 }
+    request:
+      method: PUT
+      path: /documents/{steps.start.upload}/parts
+      encoding: binary
+      body: $part.body
+      query:
+        partNumber: { $add: [$part.index, 1] }
+        offset: $part.offset
+    response:
+      encoding: text
+      headers:
+        etag: { issued: '^"[0-9a-f]{8}"$' }
+    wire:
+      request: { media: application/pdf }
+      query:
+        object:
+          partNumber: number
+          offset: number
+      response: plain
+    bind:
+      parts:
+        from:
+          number: { $add: [$part.index, 1] }
+          etag: $headers.etag
+        class:
+          object:
+            number: number
+            etag: { issued: '^"[0-9a-f]{8}"$' }
+    errors:
+      - { status: 503, kind: unavailable, retry: true }
+  - name: complete
+    request:
+      method: POST
+      path: /documents/{steps.start.upload}/complete
+      body:
+        parts: $steps.send.parts
+    wire:
+      request:
+        object:
+          parts: { array: { object: { number: number, etag: { issued: '^"[0-9a-f]{8}"$' } } } }
+      response:
+        object:
+          bytes: number
+    usage:
+      upload: 1
+result:
+  bytes: $response.bytes
+stream: none

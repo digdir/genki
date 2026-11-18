@@ -1,4 +1,4 @@
-import { isTrustedEntraLogin } from '@genai/composition';
+import { isAdmittedEntraLogin } from '@genai/composition';
 import type { Principal } from '@genai/contracts';
 import { clientGrants, isUnregisteredClient } from '@genai/identity';
 import type { Context, MiddlewareHandler } from 'hono';
@@ -149,7 +149,7 @@ export const maskinportenClientsModule: PlatformModuleFactory = (deps) => {
           kind: maskinportenClientKind,
           scope: tenant,
           id: clientId,
-          spec: isTrustedEntraLogin(principal) ? { ...spec, admittedInLockdown: true } : spec,
+          spec: isAdmittedEntraLogin(principal) ? { ...spec, admittedInLockdown: true } : spec,
           deleted: false,
           by: actorOf(principal),
           reason,

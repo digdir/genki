@@ -304,37 +304,6 @@ export const keyDatasetChoices: Choice[] = [
   { value: 'testetaten/nettsider', label: 'Nettsidene til Testetaten' },
 ];
 
-export const docs: { title: PlainKey; desc: PlainKey; href: string }[] = [
-  {
-    title: 'integrations.docCodeTitle',
-    desc: 'integrations.docCodeDesc',
-    href: '#/integrations/code',
-  },
-  { title: 'integrations.docApiTitle', desc: 'integrations.docApiDesc', href: '#/api-reference' },
-  {
-    title: 'integrations.docMaskinportenTitle',
-    desc: 'integrations.docMaskinportenDesc',
-    href: 'https://docs.digdir.no/docs/Maskinporten/',
-  },
-  {
-    title: 'integrations.docAnsattportenTitle',
-    desc: 'integrations.docAnsattportenDesc',
-    href: 'https://docs.digdir.no/docs/idporten/',
-  },
-  {
-    title: 'integrations.docOpenaiTitle',
-    desc: 'integrations.docOpenaiDesc',
-    href: '#/api-reference?endpoint=oa-chat',
-  },
-  {
-    title: 'integrations.docMcpTitle',
-    desc: 'integrations.docMcpDesc',
-    href: '#/api-reference?view=service',
-  },
-  { title: 'integrations.docLimitsTitle', desc: 'integrations.docLimitsDesc', href: '#/usage' },
-  { title: 'integrations.docStatusTitle', desc: 'integrations.docStatusDesc', href: '#/status' },
-];
-
 export const callErrors: [string, PlainKey, PlainKey][] = [
   ['401', 'integCode.error401Title', 'integCode.error401Text'],
   ['403', 'integCode.error403Title', 'integCode.error403Text'],

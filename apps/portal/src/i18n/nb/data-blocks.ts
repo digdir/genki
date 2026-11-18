@@ -30,6 +30,7 @@ export const blocks = defineNamespace({
   viewAndAdoptNamed: 'Se og ta i bruk {name}',
   viewCatalog: 'Se hele katalogen',
   goToSkills: 'Gå til Ferdigheter',
+  goToStepFlows: 'Gå til Stegflyter',
   noHits: 'Ingen byggeklosser passer søket og filtrene.',
   resetFilters: 'Nullstill filtrene',
   new: 'Ny',
@@ -150,6 +151,36 @@ export const blocks = defineNamespace({
   factRuns: 'Kjøres',
   factChangedBy: 'Endres av',
   factId: 'ID',
+  judgeModel: 'Modell',
+  judgeDefaultModel: 'Prosjektets standardmodell',
+  judgeVersion: 'Dommerversjon',
+  judgeDataType: 'Svartype',
+  judgeBoolean: 'Ja eller nei',
+  judgeNumeric: 'Tall',
+  judgeCategorical: 'Kategori',
+  judgeFields: 'Leser',
+  judgeAdvisory:
+    'Langfuse-dommer i koblingen {connection}. Den er rådgivende og stopper aldri en publisering.',
+  judgeRefusedDefaultModel:
+    'Dommeren bruker prosjektets standardmodell, som ikke kan leses gjennom Langfuse. Velg en modell for dommeren i Langfuse for å ta den i bruk.',
+  judgeRefusedField: 'Dommeren leser {field}, som genki ikke sender.',
+  judgeRefusedNoContent:
+    'Koblingen {connection} får ikke svartekst, så dommeren har ingenting å vurdere. Slå på «Send tekst» for koblingen under Utviklerverktøy, Sporing og evaluering, for å ta den i bruk.',
+  judgeRefusedNotAModel:
+    'Dommeren er ikke en LLM-som-dommer i Langfuse, så den har ingen modell genki kan navngi.',
+  judgeRefusedSampled:
+    'Dommeren vurderer bare en del av svarene den får, så noen testtilfeller ville aldri fått vurdering. Sett sampling til 100 % i Langfuse for å ta den i bruk.',
+  judgeRefusedFiltered:
+    'Dommeren har et filter på {field}, som genki ikke kan lese før kjøringen. Fjern det filteret i Langfuse, eller hold testkjøringene utenfor med et annet filter.',
+  judgeRefusedPath:
+    'Dommeren leser {field}, en JSON-sti genki ikke kan lese. genki leser $, .nøkkel og [n], for eksempel $[0].body.text.',
+  judgeRefusedSeveral:
+    'Regelen kjører mer enn én evaluator. Gi regelen én evaluator i Langfuse for å ta den i bruk.',
+  judgeRefusedPaused: 'Evaluatoren er satt på pause i Langfuse.',
+  judgeRefusedSameName:
+    'Flere regler i prosjektet har dette navnet, så genki kan ikke skille dem fra hverandre. Gi reglene ulike navn i Langfuse for å ta dem i bruk.',
+  judgesUnreadable:
+    'Dommerne i prosjektet til koblingen {connection} kunne ikke leses{status}. Langfuse må ha versjon 4.23.0 eller nyere, og koblingens nøkler må gjelde.',
   pendingNotice:
     'Forespørselen er sendt til {approver}. Du får beskjed på Oversikt når den er behandlet.',
   updateHeading: 'Versjon {version}, tilgjengelig fra {date}',
@@ -160,21 +191,10 @@ export const blocks = defineNamespace({
   colScoreNow: 'Poeng nå ({version})',
   colScoreWith: 'Poeng med {version}',
   colChange: 'Endring',
-  colAction: 'Handling',
   noChange: 'Ingen endring',
-  tryInDraftNamed: 'Prøv i utkastet til {name}',
-  tryInDraft: 'Prøv i utkastet',
   editSkill: 'Rediger ferdigheten',
   openSkill: 'Åpne ferdigheten',
-  addToService: 'Legg til i en tjeneste',
-  service: 'Tjeneste',
-  addToDraft:
-    'Byggeklossen legges i utkastet til {name}. Ingenting publiseres før dere publiserer utkastet.',
-  adoptedAtSameTime: 'Den tas i bruk hos {tenant} samtidig.',
-  openDraft: 'Åpne utkastet',
-  noServices:
-    '{tenant} har ingen tjenester ennå. Lag en tjeneste først, så kan du legge til byggeklossen i byggeren.',
-  createService: 'Lag en tjeneste',
+  openStepFlow: 'Åpne i stegflyteditoren',
   adoptTitle: 'Ta i bruk {name} hos {tenant}',
   requestTitle: 'Be om godkjenning for {name}',
   adoptBody:
@@ -191,6 +211,7 @@ export const blocks = defineNamespace({
   colAccess: 'Tilgang',
   colWhat: 'Hva',
   colNote: 'Merknad',
+  noVersions: 'Ingen versjoner eller endringer er registrert ennå.',
   versionsAndChanges: 'Versjoner og endringer',
   about: 'Om byggeklossen',
   testSetQuality: 'Kvalitet på testsett',
@@ -343,6 +364,41 @@ export const blocks = defineNamespace({
   registerBlock: 'Registrer byggeklossen',
   notDecidedWhat: 'å registrere {type}',
   notDecidedNote: 'Kallet er et forslag i samme mønster som resten av katalogen.',
+
+  tabsLabel: 'Visninger av {name}',
+  tabAbout: 'Om',
+  tabDiagram: 'Diagram',
+  tabYaml: 'YAML',
+  tabUsedBy: 'Brukes av',
+  tabVersions: 'Versjoner',
+  kindFrom: '{kind} · fra {publisher}',
+  usedInSentence: { one: 'Brukes i {count} tjeneste.', other: 'Brukes i {count} tjenester.' },
+  usedInHeading: { one: 'Brukes i {count} tjeneste', other: 'Brukes i {count} tjenester' },
+  goodAt: 'Hva den er god til',
+  toolsOffered: 'Verktøyene den tilbyr',
+  capStream: 'Viser svaret mens det skrives.',
+  capTools: 'Kan bruke verktøy, for eksempel oppslag i andre systemer.',
+  capJsonSchema: 'Kan svare i faste felter, for eksempel til et skjema.',
+  capReasoning: 'Tenker gjennom vanskelige spørsmål før den svarer.',
+  whereProcessed: 'Hvor data behandles',
+  processedNorway: 'I Norge.',
+  processedEu: 'I EU/EØS.',
+  processedGlobal: 'Kan være utenfor EU/EØS.',
+  processedBodyNorway: 'Det {name} får, behandles i Norge.',
+  processedBodyEu: 'Det {name} får, behandles innenfor EU/EØS.',
+  processedBodyGlobal: 'Det {name} får, kan behandles utenfor EU/EØS.',
+  howDataIsHandled: 'Slik behandles data',
+  connection: 'Tilkobling',
+  address: 'Adresse',
+  aboutModel: 'Om modellen',
+  factLastChanged: 'Sist endret hos dere',
+  dateBy: '{date} av {by}',
+  colRunsWeek: 'Kjøringer siste 7 dager',
+  usedByTable: 'Tjenester som bruker {name}',
+  flowLoading: 'Henter stegflyten',
+  yamlLead:
+    'Samme flyt som tekst. Utviklere kan kopiere den inn i en tjeneste eller endre den i stegflyteditoren.',
+  yamlRegion: 'Stegflyten som YAML',
 });
 
 export const blocksLane = { blocks } as const;

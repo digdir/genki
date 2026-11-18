@@ -117,6 +117,17 @@ export interface CatalogItem {
   pendingRequest?: PendingRequest;
   extensionPoint?: ExtensionPoint;
   isNew?: boolean;
+  /** A judge from the project of one of the tenant's Langfuse connections. */
+  judge?: SinkJudgeInfo;
+}
+
+export interface SinkJudgeInfo {
+  connection: string;
+  model?: string | undefined;
+  version: string;
+  dataType: string;
+  fields: { variable: string; source: string; jsonPath?: string }[];
+  refused?: { reason: string; field?: string; connection?: string; message: string };
 }
 
 export interface BuildingBlockList {
@@ -192,6 +203,7 @@ export interface RegistrationInput {
 export interface TenantSecretName {
   name: string;
   ref: string;
+  allowedHosts?: string[];
 }
 
 export interface AgentCardSummary {
@@ -383,6 +395,11 @@ export const blockPath = (block: Pick<CatalogItem, 'kind' | 'id'>, rest = '') =>
 export const blockHref = (block: Pick<CatalogItem, 'kind' | 'id'>) =>
   `#/building-blocks${blockPath(block)}`;
 
+export const flowEditorHref = (block: Pick<CatalogItem, 'kind' | 'id'>) =>
+  block.kind === 'step_flow' && !block.id.includes('@')
+    ? `#/step-flows/${encodeURIComponent(block.id)}`
+    : undefined;
+
 export const changeOf = (result: BlockChangeResult): LoggedChange | undefined =>
   result.block.changedBy;
 
@@ -448,7 +465,7 @@ export const buildingBlocksApi = (ctx: ApiContext) => {
     contractTest: (tenant: string, input: RegistrationInput) =>
       ctx.request<ContractTestReport>('POST', at(tenant, '/contract-tests'), input),
     manifestPreview: (tenant: string, input: RegistrationInput) =>
-      ctx.request<ManifestPreview>('POST', at(tenant, '/manifest-preview'), input),
+      (ctx.query ?? ctx.request)<ManifestPreview>('POST', at(tenant, '/manifest-preview'), input),
     register: (tenant: string, input: RegistrationInput, reason: string) =>
       ctx.request<RegistrationResult>('POST', at(tenant), input, reasonHeader(reason)),
     proposalsPath: proposalsAt,

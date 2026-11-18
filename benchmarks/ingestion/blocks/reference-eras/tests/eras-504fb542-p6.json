@@ -1,0 +1,150 @@
+{
+ "tests": [
+  {
+   "id": "eras-504fb542-p6-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "fra",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Avenant à la Convention entre le Gouvernement du Royaume de Norvège",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-504fb542-p6-t02",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "fra",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "désireux de modifier la Convention entre les deux Gouvernements",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-504fb542-p6-t03",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "fra",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "sont convenus des dispositions suivantes",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "L'article 19 de la Convention est supprimé",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-504fb542-p6-t04",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "fra",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Fonctions publiques",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-504fb542-p6-t05",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "fra",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Toutefois, ces salaires, traitements et autres rémunérations similaires ne sont imposables que dans l'autre Etat",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-504fb542-p6-t06",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "fra",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "soit directement, soit par prélèvement sur des fonds qu'ils ont constitués",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-504fb542-p6-t07",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "fra",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Les pensions payées par un Etat",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "Les dispositions des articles 15, 16 et du paragraphe 2",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-504fb542-p6-t08",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "fra",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "industrielle ou commerciale exercée par un Etat ou l»une de ses collectivités locales",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

@@ -4,12 +4,28 @@ import type * as source from '../nb/errors.js';
 export const catalogErrors = {
   onlyOperatorsChangeModels: 'only operators change models',
   routeOnlyAction: 'this action runs only from its own route',
+  testRunnerExpiry: 'a test-runner key needs an expiry of 1 to {testRunnerMaxDays} days',
+  testRunnerCallsPerMinute: 'a test-runner key needs a calls-per-minute limit',
   supportMinutes: '1 to {minutes} minutes',
   noModel: 'no model {id}',
   tenantsCannotRegister: 'tenants cannot register {kind}',
   facetsList: 'facets are a list of field names',
   facetsFilter: 'facets must be filter fields too: {missing}',
   runsInside: '{engine} runs inside the platform and takes no {key}',
+  moveWithEngineSwitch:
+    'move a dataset onto the knowledge database with an engine switch, which fills a generation first',
+  generationOfAnother: '{generation} is the generation of another dataset',
+  knowledgeWrittenByWorker: 'knowledge data is written by the worker',
+  knowledgePhrases:
+    'search phrases cannot fill a dataset on the knowledge database until recipes hold them',
+  knowledgeOnePipeline:
+    'a dataset on the knowledge database is filled by one pipeline until co-owners are built; it has {pipelines}',
+  knowledgeChunking:
+    "chunking changes through a new generation, which is not built yet; the dataset's generation keeps the chunking it was filled with",
+  knowledgeSourceKind:
+    'a source of kind {kind} cannot fill a dataset on the knowledge database yet',
+  knowledgeBusy: 'the knowledge server is busy, try again',
+  noKnowledgeServer: 'no knowledge server configured',
   onlyPlatformShared: 'only platform endpoints are shared',
   tenantEndpointsModels: 'tenant endpoints list their models explicitly',
   tenantEndpointsAuth: 'tenant endpoints use api-key or bearer',
@@ -41,6 +57,7 @@ export const catalogErrors = {
   noDataset: 'no dataset {dataset}',
   onlyTenantTestSets: 'only the tenant or an operator changes its test sets',
   onlyTenantChangesServiceState: 'only the tenant changes the state of its services',
+  onlyTenantChangesEnvironments: 'only the tenant changes the environments of its services',
   serviceStateValues: 'state must be active, paused or archived',
   indexRequired: 'an index is required',
   datasetExists: 'dataset {datasetId} exists',
@@ -88,8 +105,25 @@ export const catalogErrors = {
   hooksOff: 'hooks are off',
   endpointId: 'lowercase letters, digits, dots, dashes',
   httpsAddress: 'an HTTPS address without credentials',
-  apiKeyOrBearer: 'api-key or bearer',
+  familyAndBase: 'name at least one API family and its base',
+  noApiFamily: 'no API in the {family} family; one of {knownFamilies}',
+  familyBase: 'a path under baseURL, or an HTTPS address without credentials',
+  allowedHostList: 'a list of at most 20 host names, each with an optional port',
+  discoveryRules: 'a list of discovery rules',
+  apiKeyOrBearer: 'api-key, bearer or federated-app',
+  guid: 'a GUID',
+  federatedScope: 'a scope ending in /.default',
   usePlatformSecret: 'use a platform secret: secret://platform/<name>',
+  namedKeyList: 'at most 4 named keys, each a key name',
+  settingOrKey: 'a name is a setting or a key, not both',
+  settingName: 'a lowercase letter, then letters, digits or _, at most 32 characters',
+  settingValue: 'printable text of at most 256 characters',
+  settingNotSecret: 'a setting is not a secret; name it under keys',
+  settingsCount: 'at most 20 settings',
+  keysCount: 'at most 4 named keys',
+  secretReference: 'must be a secret:// reference',
+  onlyOperatorSets: 'only the operator sets {field}, and only on a model connection',
+  gatewayBoolean: 'gateway must be true or false',
   endpointExists: 'The endpoint already exists',
   endpointModelsInUse: 'The models from the endpoint are in use',
   usesModelFrom: '{tenant}/{service} uses a model from {id}',
@@ -98,6 +132,56 @@ export const catalogErrors = {
   idStartsWith: 'the id starts with {id}/',
   noPluginRegistry: 'no plug-in registry',
   builtInPlugin: '{id} is a built-in plug-in',
+  tracingSecretNotForHost: 'the secret is not set for {outside}',
+  tracingServiceCovered: '{service} is already covered by the connection {id}',
+  tracingResidencyByOperator: "an operator sets the residency of a connection to Digdir's Langfuse",
+  tracingBeingRemoved: 'the connection {id} is being removed',
+  tracingDeletesOwed: 'the connection {id} still has traces to delete where it points now',
+  tracingNoConnection: 'no connection {id}',
+  tracingNotCovered: 'no trace connection covers the service {service}',
+  tracingCoveredTwice: 'two trace connections cover the service {service}: {ids}',
+  tracingResidencyForbids:
+    "the service's residency {residency} does not allow the connection's {connection}",
+  gateOnSinkJudge:
+    'the gate {gate} reads the Langfuse judge {judge} on the connection {connection}, which is advisory and never blocks a publish',
+  sinkJudgeGone:
+    'the judge {id} is no longer an active experiment judge in the project of the connection {connection}',
+  sinkJudgeNoContent:
+    '{rule} has nothing to judge: the connection {connection} gets no answer text',
+  sinkJudgesUnreadable: 'the judges of the connection {connection} could not be read: {error}',
+  sinkDatasetUnavailable:
+    'the dataset of the test set {testSet} could not be found or made in the project of the connection {connection}: {error}',
+  sinkJudgesDiffer:
+    'the project of the connection {connection} has active judges genki does not read: {judges}; take them in use or switch them off in Langfuse',
+  sinkJudgeNotAModel:
+    '{rule} is not an LLM-as-a-judge evaluator, so it has no model genki can name',
+  sinkJudgeSampled:
+    '{rule} judges only part of the items it gets, so some cases would never be scored',
+  sinkJudgeFiltered: '{rule} has a filter on {column} that genki cannot read before the run',
+  sinkRuleEverySpan:
+    "{rule} would judge every span of the run's cases; add the filter isExperimentItemRootSpan = true, or leave genki's test runs out with environment none of genki-test-runs",
+  sinkRuleRootOnly:
+    "{rule} judges the run's root spans without isExperimentItemRootSpan = true, which genki needs to read a judge",
+  sinkRuleUnreadEvaluator: '{rule} runs an evaluator genki cannot read',
+  sinkJudgeDefaultModel:
+    "{rule} uses the project's or organisation's default model, which cannot be read through Langfuse's API",
+  sinkJudgeUnsentField: '{rule} reads {field}, which genki does not send',
+  sinkJudgeUnreadPath: '{rule} reads {field} at {path}, a JSON path genki cannot read',
+  sinkJudgeSeveral: '{rule} runs more than one evaluator; genki reads a rule with one',
+  sinkJudgeSameName:
+    '{rule} is the name of more than one rule in the project, so genki cannot tell them apart',
+  sinkJudgePaused: "{rule}'s evaluator {evaluator} is paused in Langfuse",
+  tracingHostOrigin:
+    'the host is an address like https://langfuse.example.no, without a path or credentials',
+  tracingHostDot: 'the host name ends with a dot',
+  tracingContentNeedsInstance:
+    "content needs LANGFUSE_BASE_URL, so Digdir's Langfuse is never taken for an agency's own",
+  tracingResidencyValues: 'norway, eu or global',
+  tracingResidencyByTenant: 'the tenant declares the residency of its own Langfuse',
+  tracingKeysRefused: 'Langfuse refused the keys',
+  tracingHttpStatus: 'HTTP {status}',
+  tracingUnreachable: 'Langfuse could not be reached',
+  pluginContractOutdated: '{kind} plug-ins meet {expected}; register {id} again under {expected}',
   noExternalPlugin: 'no external plug-in {id}',
   invalidManifest: 'Invalid manifest',
   pluginEndpointNeedsAuth: 'a {kind} endpoint needs auth',
@@ -143,6 +227,10 @@ export const knowledgeErrors = {
   copyOrReingest: 'method is copy or reingest',
   retryStopped: 'Only a switch that has stopped can be retried.',
   switchEnded: 'The switch has already ended.',
+  switchRunDiscarded: 'The run wrote to a generation the switch has discarded.',
+  switchRunStillOpen: 'A run of the switch is still running.',
+  switchNoOpenRuns: 'The switch has no open runs.',
+  switchRunNotReadmitted: 'The run could not be admitted again.',
   switchNotReady: 'The switch is not ready to be put into use.',
   datasetChangedSwitch: 'The dataset has changed since the switch started.',
   engineNotUsed: 'The search engine could not be put into use',
@@ -151,7 +239,35 @@ export const knowledgeErrors = {
   datasetChangedEngine: 'The dataset has changed since the search engine was put into use.',
   previousNotRestored: 'The previous search engine could not be put back into use',
   pipelineOff: 'the pipeline is turned off',
+  notSendRunBack: 'not allowed to send this run back',
+  onlyOperatorRefreshesFields: 'only an operator refreshes fields',
+  fillMustBeOneOf: 'fill must be one of {fieldFills}',
+  runOpenRefreshAfter: 'a run of the dataset is open; refresh after it ends',
+  onlyJobRunsSentBack: 'only a run that runs as jobs can be sent back',
+  notReadmitRun: 'not allowed to admit this run again',
+  onlyJobRunsReadmitted: 'only a run that runs as jobs can be admitted again',
+  jobRunNotReadmitted:
+    'only a queued or running run that runs as jobs, and is not being cancelled, can be admitted again',
   datasetGone: 'the dataset is gone',
+  parquetOneLocation: 'a Parquet source needs exactly one of url, urls and huggingface',
+  parquetGlob: 'must be a .parquet glob',
+  parquetTableRequired: 'table is required exactly when urls is set',
+  parquetDuplicate: 'duplicate Parquet row id {sourceId} in table {origin}',
+  parquetTreePages: 'Parquet tree listing exceeds page limit',
+  parquetTreeInvalid: 'invalid Parquet tree listing',
+  parquetTreePagination: 'invalid Parquet tree pagination URL',
+  parquetTooManyShards: 'Parquet table exceeds 1000 shards',
+  parquetNoFiles: 'Parquet file pattern matched no files',
+  parquetWriteStalled: 'Parquet temporary file write made no progress',
+  parquetFileRange: 'invalid Parquet file range',
+  parquetFileEnd: 'unexpected end of Parquet temporary file',
+  parquetColumns: 'the Parquet file has no column {columns}',
+  parquetLookupLocation: 'a lookup needs exactly one of file and url',
+  parquetLookupFile: 'a lookup file needs a huggingface source; use url otherwise',
+  parquetLookupRows: 'the Parquet lookup {file} has more than {maxRows} rows',
+  parquetLookupMemory: 'the Parquet lookup {file} needs more than {maxMemoryBytes} bytes',
+  parquetLookupConflict: 'the Parquet lookup {file} has key {key} twice with different values',
+  parquetLookupColumns: 'the Parquet lookup {label} has no column {missing}',
   engineInUse: 'The search engine is used by datasets',
   datasetUses: '{tenant}/{dataset} uses {id}',
   endpointJson: 'send the endpoint as a JSON object',
@@ -159,9 +275,22 @@ export const knowledgeErrors = {
   noEnrichmentProfile: 'The dataset has no search profile for the enrichment {profile}',
   enrichmentModelFailed: 'The model could not propose questions',
   enrichmentWriteFailed: 'The questions could not be stored',
+  enrichmentModelRefused: 'The model cannot be used',
+  enrichmentUncounted: 'Model use cannot be counted, so no questions are proposed',
+  jobRunQueuedExists:
+    'a run of {dataset}/{pipeline} already waits for the open one; wait for it or cancel it',
+  jobRunNotSentBack: 'only an ended run that runs as jobs can be sent back',
+  jobRunOpen:
+    '{dataset}/{pipeline} has an open run; wait for it or cancel it before sending this one back',
+  ingestStillEnding:
+    'the last ingest job of {dataset}/{pipeline} is still ending; start the run again in a minute',
   noRunningIngestion: 'no running ingestion {execution}',
   ingestionRunLocked:
     'the dataset {dataset} is already being ingested by run {execution}; wait for it to finish or cancel it',
+  switchHold:
+    'the dataset {dataset} is being switched to another search engine ({engineSwitch}); its pipelines run again once the switch is ready, active or ended',
+  generationNotBuilt:
+    'the generation {generation} was not built: its build job ended without attaching it; retry the switch',
 } satisfies Translation<typeof source.knowledgeErrors>;
 
 export const blockErrors = {
@@ -201,6 +330,11 @@ export const blockErrors = {
   onlyOperatorsShare: 'only operators change what is shared',
   sharedWith: 'must be "*", org numbers or null',
   onlyOperatorsLabel: 'only operators label judge results',
+  onlyOperatorsDecideLabels: 'only operators decide which labels count',
+  sinkLabelsOff: 'the connection {id} does not bring labels back; switch labels on first',
+  labelsNotAList: 'labels must be a list of the labels shown, by id and revision',
+  noPendingLabels: 'no such batch of pending labels',
+  tenantAndConnectionRequired: 'tenant and connection are required',
   onlyOperatorsEndSessions: 'only operators end support sessions',
   noActiveSession: 'no active session with that id',
   onlyOperatorsExtend: 'only operators extend support sessions',
@@ -232,6 +366,14 @@ export const blockErrors = {
   alreadyRegisteredShort: 'already registered',
   applicationPending: 'The organisation already has an application being processed',
   approveAndReason: 'approve (true or false) and a reason are required',
+  toolSyncAuthFailed: 'the tool server refused the credentials',
+  toolSyncSecretUnavailable: "the connection's secret cannot be used for this address",
+  toolSyncBlocked: 'the address is not allowed for the connection',
+  toolSyncUnreachable: 'the platform could not reach the tool server',
+  toolSyncTimeout: 'the tool server did not answer in time',
+  toolSyncProtocolError: 'the tool server answered in a way the platform does not understand',
+  toolSyncToolListInvalid: 'the tool list from the server is not valid',
+  toolSyncUnknown: 'the tool sync failed',
 } satisfies Translation<typeof source.blockErrors>;
 
 export const projectErrors = {
@@ -300,6 +442,9 @@ export const qualityErrors = {
   instructionsChanged: 'The instructions in the draft have changed since the suggestion was made.',
   notReleased: 'model {model} is not released yet; it is waiting for the quality matrix',
   modelToTest: 'the model to test is required',
+  descriptorsOperatorsOnly: 'only operators try descriptors in review',
+  descriptorsTestOnly: 'GENAI_ENV is not test',
+  noDescriptor: 'no descriptor {id}',
   modelInUse: 'the model in use is required',
   compareAnother: 'compare against another model',
   modelNotFound: 'Could not find the model',
@@ -328,12 +473,20 @@ export const qualityErrors = {
   baseVersionRange: 'baseVersion is a published version from 0 to {latest}',
   inputRequired: 'the input is required',
   lockedOrOpen: 'split is locked or open',
+  caseIdList: 'cases is a non-empty list of case ids',
+  noCaseIn: 'no case {id} in {setId}',
   expectedRequired: 'the expected answer or criteria are required',
+  expectedShape: 'expected is a text, or a reference answer and named criteria',
+  criteriaCaseNeedsCriteria: 'a criteria case needs criteria',
+  exactCaseNeedsText: 'an exact case needs the text to find',
   caseExists: 'case {id} exists',
   testSetRequired: 'the test set is required',
   noTestSetFor: 'no test set {setId} for {service}',
   noVersion: 'no {version} version',
+  noTestSetInService: 'no test set {testSet} in the service',
   noCases: 'The test set has no test cases',
+  serviceCannotRun: 'The service cannot run',
+  runNotTraced: 'The test run cannot be sent for tracing',
   noCasesToRun: 'no cases to run',
   approveTrueFalse: 'approve is true or false',
   skillId: 'must be lowercase letters, digits and dashes, and not import or imports',
@@ -373,6 +526,58 @@ export const qualityErrors = {
   noRecipeToShare: 'no published recipe {flow} to share',
   noPendingShare: 'no pending share of {skill}',
 } satisfies Translation<typeof source.qualityErrors>;
+
+export const operationErrors = {
+  stepAt: '{at}: {message}',
+  fixedOperation:
+    'the operation and the model are fixed values, not filled in while the service runs',
+  noOperationDescriptor: 'there is no operation descriptor {id}',
+  mediaInputWithoutConsent:
+    "{id} takes {mediaType} input, which cannot be masked; the service's risk assessment must record unmasked input of {mediaType} with a reason",
+  descriptorInReview:
+    '{id} is in review; an operator tries it in the raw tier, and a service can use it once it is reviewed',
+  kindInTest:
+    'the {operation} operation is in test in this environment; an operator must move it to production before a service can use it',
+  notServiceModel: "the model {modelId} is not one of the service's models",
+  noCatalogueModel: 'there is no model {modelId} in the catalogue',
+  modelOutsideResidency: 'the model {modelId} runs in {residency}, outside {residency}',
+  modelBindsOther: 'the model {modelId} binds {bound} for {operation}, not {id}',
+  modelBindsNone: 'the model {modelId} binds no API for {operation}',
+  noProcessorRecordForService:
+    'the endpoint {endpoint} of {modelId} has no processor record, so it cannot serve a service with real data',
+  decideOnlyThroughPurposeCheck:
+    'decide is served only through the purpose-check guardrail, which sends a refusal or a low-confidence answer to a person',
+  callOperationNeedsMasking:
+    'a call-operation step needs the pii-before-model guardrail, so the text it sends is masked',
+  operatorsGovernOperations: 'only operators govern operations',
+  noOperationDescriptors: 'this platform has no operation descriptors',
+  noDescriptorForKind: 'no descriptor describes {kind}',
+  maturityValues: 'maturity is test or production',
+  noProcessorRecord: '{id} has no processor record',
+  noModelEndpoint: 'no model endpoint {id}',
+  operatorsManageDescriptors: 'only operators manage operation descriptors',
+  descriptorBundled: '{id} is bundled with Genki; upload a new version instead',
+  descriptorUploadTooLarge: 'an upload is at most {size} KiB',
+  descriptorDescribedInUse: '{id} is described and may be in use; upload a new version instead',
+  descriptorNoFixturesYet: '{id} has no fixtures yet; record one from a try before it is described',
+  fixturesFromTriesInTest: 'fixtures are recorded from tries, in test only',
+  descriptorBundledFixtures:
+    '{id} is bundled with Genki; its fixtures change through a pull request',
+  notAFinishedTry: '{task} is not a finished try of {id}',
+  exchangeNotTheTry: 'the exchange is not the one this try sent and received',
+  fixtureNameTaken: '{id} already has a fixture called {name}',
+  descriptorFixturesAtMost: 'a descriptor has at most {maxDescriptorFixtures} fixtures',
+  bodyNotJson: 'the body is not JSON',
+  uploadStatusValues:
+    'status is review or described; typed means Genki has its own code for the operation',
+  descriptorIsMapping: 'a descriptor is a mapping of fields',
+  uploadNeverTyped:
+    'typed means Genki has its own code for the operation, so an upload is never typed',
+  uploadStartsInReview:
+    'an uploaded descriptor starts in review; an operator moves it to described after',
+  descriptorCalled: 'the descriptor is called {id}',
+  fixturesCalledTwice: 'two fixtures are called {names}',
+} satisfies Translation<typeof source.operationErrors>;
 
 export const adapterErrors = {
   fillFormOrAsk: 'Fill in the form or write a question.',
@@ -427,7 +632,25 @@ export const routeErrors = {
   noAgentsAvailable: 'No agents are available',
   conversationNotFound: 'Conversation not found',
   unknownResidency: 'unknown residency {residency}',
+  runNotStoppable: 'only a run started through an API entry point is stopped here',
+  runFinished: 'the run has already finished',
+  incidentResolved: 'the incident is already resolved',
+  quotaRequestPending: 'a quota request is already waiting for a decision',
+  quotaRequestApproved: 'the quota request is already approved',
+  quotaRequestRejected: 'the quota request is already rejected',
 } satisfies Translation<typeof source.routeErrors>;
+
+export const demoErrors = {
+  recordingFinished: 'the recording has finished',
+  demoIdSlug: 'a demo id is a lowercase slug',
+  ifMatchVersion: 'if-match is a version number',
+  recordingFileTooLarge: '{name} is at most {maxBytes} bytes',
+  recordingFileEmpty: 'the file is empty',
+  uploadVideoFirst: 'upload demo.mp4 before finishing as recorded',
+  failureNeedsReason: 'a failed recording says why',
+  demoIsMapping: 'a demo is a YAML mapping',
+  notSlug: 'not a lowercase slug',
+} satisfies Translation<typeof source.demoErrors>;
 
 export const errors = {
   catalogErrors,
@@ -435,7 +658,9 @@ export const errors = {
   blockErrors,
   projectErrors,
   qualityErrors,
+  operationErrors,
   adapterErrors,
   definitionErrors,
   routeErrors,
+  demoErrors,
 };
