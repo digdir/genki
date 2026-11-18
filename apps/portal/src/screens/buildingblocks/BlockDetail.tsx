@@ -1,6 +1,7 @@
 import { Alert, Button, Heading, Link, Paragraph, Tag } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
 import { useId, useState } from 'react';
+import type { BlockFacts, ToolConnectionDetail } from '../../api/blocks';
 import type { ApiClient } from '../../api';
 import {
   blockPath,
@@ -10,10 +11,8 @@ import {
   type BlockUser,
   type BlockVersion,
   type CatalogItem,
-  flowEditorHref,
 } from '../../api/building-blocks';
 import { reasonPlaceholder, type ApiCallPreview } from '../../components/ApiCall';
-import { Crumbs } from '../../components/Crumbs';
 import { DataLocationTag } from '../../components/DataLocationTag';
 import { ReasonField, reasonProblem } from '../../components/ReasonField';
 import {
@@ -24,6 +23,7 @@ import {
   storageLabels,
   versionEventLabels,
 } from '../../data/building-blocks';
+import { useAsync } from '../../hooks';
 import { useT, type T } from '../../i18n';
 import { rightLabel } from '../../Shell';
 import { ErrorState, refusalOf } from '../../states';
@@ -43,6 +43,9 @@ import {
 } from './common';
 import { SettingsForm } from './SettingsForm';
 import { StepFlowView } from './StepFlowView';
+import { BackLink, LinkTabs } from './LinkTabs';
+import { SyncButton, ToolConnectionSections } from './ToolConnection';
+import { UseInService } from '../stepflows/UseInService';
 
 export type BlockTab = 'about' | 'diagram' | 'yaml' | 'used-by' | 'versions';
 
@@ -65,15 +68,22 @@ const tabLabels = {
   versions: 'blocks.tabVersions',
 } as const;
 
-export const hasFlowDefinition = (item: Pick<CatalogItem, 'kind' | 'id' | 'publisher'>) =>
-  item.kind === 'step_flow' && item.publisher.type === 'own' && !item.id.includes('@');
+export const hasFlowDefinition = (item: Pick<CatalogItem, 'kind' | 'id'>) =>
+  item.kind === 'step_flow' && !item.id.includes('@');
 
-export const tabsFor = (item: Pick<CatalogItem, 'kind' | 'id' | 'publisher'>): BlockTab[] => [
-  'about',
-  ...(hasFlowDefinition(item) ? (['diagram', 'yaml'] as const) : []),
-  'used-by',
-  'versions',
-];
+export const tabsFor = (item: Pick<CatalogItem, 'kind' | 'id'>): BlockTab[] =>
+  hasFlowDefinition(item)
+    ? ['diagram', 'yaml', 'used-by', 'versions']
+    : ['about', 'used-by', 'versions'];
+
+export const flowEditHref = (item: Pick<CatalogItem, 'kind' | 'id' | 'publisher'>) =>
+  hasFlowDefinition(item) && item.publisher.type === 'own' ? `${blockHref(item)}/edit` : undefined;
+
+export const priceText = (
+  t: T,
+  f: { decimal: (n: number, digits?: number) => string },
+  perThousand: number,
+) => t('blockModel.pricePerThousand', { price: f.decimal(perThousand, 2) });
 
 const modelCapabilities: Record<
   string,
@@ -162,12 +172,35 @@ export const BlockDetail = ({
     pending: useId(),
     where: useId(),
     connection: useId(),
+    price: useId(),
   };
   const tabs = tabsFor(item);
-  const current = tabs.includes(tab) ? tab : 'about';
+  const current = tabs.includes(tab) ? tab : (tabs[0] ?? 'about');
+  const facts2 = item as CatalogItem & BlockFacts;
+  const ownTool = item.kind === 'tool' && item.publisher.type === 'own';
+  const [extra, reloadExtra] = useAsync(
+    async (signal) => ({
+      model:
+        item.kind === 'model'
+          ? (await api.blocks.models(signal).catch(() => [])).find((m) => m.id === item.id)
+          : undefined,
+      connection: ownTool
+        ? (
+            await api.blocks.toolConnections(tenant, signal).catch((): ToolConnectionDetail[] => [])
+          ).find((c) => c.id === item.id)
+        : undefined,
+    }),
+    [api, tenant, item.kind, item.id],
+  );
+  const model = extra.status === 'ready' ? extra.data.model : undefined;
+  const connection = extra.status === 'ready' ? extra.data.connection : undefined;
+  const [syncMessage, setSyncMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const [using, setUsing] = useState(false);
+  const maker = facts2.maker ?? model?.maker;
+  const operator = facts2.operator ?? model?.operator;
   const rights = useBlockRights();
   const canChange = rights.canChange(item.kind);
-  const editorHref = flowEditorHref(item);
+  const editorHref = flowEditHref(item);
   const [pending, setPending] = useState<Pending>(null);
   const [reason, setReason] = useState('');
   const [tried, setTried] = useState(false);
@@ -238,7 +271,16 @@ export const BlockDetail = ({
 
   const facts = [
     { label: t('blocks.factType'), value: kindLabel(t, item.kind) },
-    { label: t('blocks.publisher'), value: item.publisher.name },
+    ...(maker ? [{ label: t('blockModel.maker'), value: maker }] : []),
+    ...(operator
+      ? [
+          {
+            label: t('blockModel.operator'),
+            value: operator.region ? `${operator.name}, ${operator.region}` : operator.name,
+          },
+        ]
+      : []),
+    { label: t('blockModel.publishedBy'), value: item.publisher.name },
     ...(item.judge
       ? judgeFacts(t, item.judge)
       : [
@@ -264,6 +306,17 @@ export const BlockDetail = ({
           },
         ]
       : []),
+    ...(facts2.adoptedAt
+      ? [
+          {
+            label: t('blockModel.adopted'),
+            value: t('blocks.dateBy', {
+              date: f.date(facts2.adoptedAt),
+              by: facts2.adoptedByName ?? facts2.adoptedBy ?? '',
+            }),
+          },
+        ]
+      : []),
     { label: t('blocks.factChangedBy'), value: right },
     { label: t('blocks.factId'), value: item.id },
   ];
@@ -275,14 +328,12 @@ export const BlockDetail = ({
       : item.description;
   const publisherName = item.publisher.type === 'own' ? tenantName : item.publisher.name;
   const runsOf = (id: string) => services.find((s) => s.id === id)?.runsThisWeek;
-  const tabHref = (next: BlockTab) => `${blockHref(item)}${next === 'about' ? '' : `/${next}`}`;
+  const tabHref = (next: BlockTab) => `${blockHref(item)}${next === tabs[0] ? '' : `/${next}`}`;
 
   return (
     <div className="stack">
-      <Crumbs
-        items={[{ label: t('blocks.title'), href: '#/building-blocks' }, { label: item.name }]}
-      />
       <div className="stack-sm">
+        <BackLink label={t('blocks.title')} href="#/building-blocks" />
         <span className="bb-meta">
           {t('blocks.kindFrom', { kind: kindLabel(t, item.kind), publisher: publisherName })}
         </span>
@@ -292,6 +343,22 @@ export const BlockDetail = ({
           </Heading>
           <Tag data-color={status.color}>{t(status.label)}</Tag>
           {item.dataLocation ? <DataLocationTag location={item.dataLocation} /> : null}
+          {ownTool && canChange ? (
+            <SyncButton
+              api={api}
+              tenant={tenant}
+              connection={item}
+              onSynced={(message) => {
+                setSyncMessage(message);
+                reloadExtra();
+              }}
+            />
+          ) : null}
+          {hasFlowDefinition(item) && rights.canChange('step_flow') ? (
+            <Button variant="primary" onClick={() => setUsing(true)}>
+              {t('blockFlow.useInService')}
+            </Button>
+          ) : null}
         </div>
         <p className="lead bb-desc">
           {lead}
@@ -301,6 +368,20 @@ export const BlockDetail = ({
       </div>
 
       {!canChange ? <ReadOnlyAlert right={right} /> : null}
+
+      {connection?.lastSync && !connection.lastSync.ok ? (
+        <Alert data-color="danger">
+          <Paragraph>
+            <strong>
+              {t('blockTool.failedHeading', {
+                name: item.name,
+                at: f.dateTime(connection.lastSync.at),
+              })}
+            </strong>{' '}
+            {connection.lastSync.message ?? ''} {t('blockTool.failedBody')}
+          </Paragraph>
+        </Alert>
+      ) : null}
 
       {item.status === 'not_allowed' && item.policyBlock ? (
         <Alert data-color="danger">
@@ -401,13 +482,6 @@ export const BlockDetail = ({
                 {t('blocks.requestApproval')}
               </Button>
             ) : null}
-            {item.kind === 'skill' ? (
-              <Button asChild variant="secondary">
-                <a href={`#/skills?id=${encodeURIComponent(item.id)}`}>
-                  {item.publisher.type === 'own' ? t('blocks.editSkill') : t('blocks.openSkill')}
-                </a>
-              </Button>
-            ) : null}
             {editorHref ? (
               <Button asChild variant="secondary">
                 <a href={editorHref}>{t('blocks.openStepFlow')}</a>
@@ -450,20 +524,20 @@ export const BlockDetail = ({
         </div>
       ) : null}
 
-      <nav aria-label={t('blocks.tabsLabel', { name: item.name })} className="bb-nav">
-        <ul>
-          {tabs.map((k) => (
-            <li key={k}>
-              <a href={tabHref(k)} aria-current={k === current ? 'page' : undefined}>
-                {t(tabLabels[k])}
-              </a>
-            </li>
-          ))}
-        </ul>
-      </nav>
+      <LinkTabs
+        label={t('blocks.tabsLabel', { name: item.name })}
+        tabs={tabs.map((k) => ({ key: k, label: t(tabLabels[k]), href: tabHref(k) }))}
+        current={current}
+      />
 
       {current === 'diagram' || current === 'yaml' ? (
-        <StepFlowView api={api} tenant={tenant} id={item.id} view={current} />
+        <StepFlowView
+          api={api}
+          tenant={tenant}
+          id={item.id}
+          own={item.publisher.type === 'own'}
+          view={current}
+        />
       ) : null}
 
       {current === 'used-by' ? (
@@ -536,7 +610,17 @@ export const BlockDetail = ({
       {current === 'about' ? (
         <div className="bb-columns">
           <div className="bb-main">
-            {item.kind === 'tool' ? (
+            {ownTool ? (
+              <ToolConnectionSections
+                api={api}
+                tenant={tenant}
+                item={item}
+                connection={connection}
+                canChange={canChange}
+                syncMessage={syncMessage}
+                onSaved={reloadExtra}
+              />
+            ) : item.kind === 'tool' ? (
               <section aria-labelledby={ids.caps} className="stack-sm">
                 <Heading level={2} data-size="xs" id={ids.caps}>
                   {t('blocks.toolsOffered')}
@@ -579,7 +663,7 @@ export const BlockDetail = ({
               </section>
             ) : null}
 
-            {address ? (
+            {address && !ownTool ? (
               <section aria-labelledby={ids.connection} className="stack-sm">
                 <Heading level={2} data-size="xs" id={ids.connection}>
                   {t('blocks.connection')}
@@ -590,6 +674,31 @@ export const BlockDetail = ({
                     <dd>{address}</dd>
                   </div>
                 </dl>
+              </section>
+            ) : null}
+
+            {item.kind === 'model' && model ? (
+              <section aria-labelledby={ids.price} className="stack-sm">
+                <Heading level={2} data-size="xs" id={ids.price}>
+                  {t('blockModel.price')}
+                </Heading>
+                {model.price ? (
+                  <>
+                    <dl className="kv bb-kv">
+                      <div className="bb-kv-row">
+                        <dt>{t('blockModel.priceIn')}</dt>
+                        <dd>{priceText(t, f, model.price.inputPerThousand)}</dd>
+                      </div>
+                      <div className="bb-kv-row">
+                        <dt>{t('blockModel.priceOut')}</dt>
+                        <dd>{priceText(t, f, model.price.outputPerThousand)}</dd>
+                      </div>
+                    </dl>
+                    <p className="bb-meta">{t('blockModel.priceNote')}</p>
+                  </>
+                ) : (
+                  <p className="bb-meta">{t('blockModel.notPriced')}</p>
+                )}
               </section>
             ) : null}
 
@@ -697,6 +806,14 @@ export const BlockDetail = ({
             </section>
           </aside>
         </div>
+      ) : null}
+      {using ? (
+        <UseInService
+          api={api}
+          tenant={tenant}
+          flow={{ id: item.id, version: Number(item.version), name: item.name }}
+          onClose={() => setUsing(false)}
+        />
       ) : null}
     </div>
   );

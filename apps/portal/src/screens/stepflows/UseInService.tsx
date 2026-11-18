@@ -48,7 +48,7 @@ export const UseInService = ({
 }: {
   api: ApiClient;
   tenant: string;
-  flow: Flow;
+  flow: Pick<Flow, 'id' | 'version' | 'name'>;
   onClose: () => void;
 }) => {
   const t = useT();

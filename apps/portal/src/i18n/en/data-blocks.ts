@@ -1,7 +1,9 @@
 import type { Translation } from '@genai/i18n';
 import type { blocksLane as source } from '../nb/data-blocks';
+import { sharedLane } from './data-shared';
 
 export const blocksLane = {
+  ...sharedLane,
   blocks: {
     title: 'Building blocks',
     blockOne: 'Building block',
@@ -401,5 +403,112 @@ export const blocksLane = {
     yamlLead:
       'The same flow as text. Developers can copy it into a service or change it in the step-flow editor.',
     yamlRegion: 'The step flow as YAML',
+  },
+  blockPages: {
+    lead: 'The parts services in {tenant} are built from: models, search, tools, skills, guardrails, judges and step flows.',
+    register: 'Register a building block',
+    searchInUse: 'Search building blocks',
+    searchCatalogue: 'Search the catalogue',
+    searchPlaceholder: 'Search names and descriptions',
+    countInUse: 'Showing {shown} of {total} building blocks',
+    countCatalogue: 'Showing {shown} of {total} in the catalogue',
+    groupTitle: '{kind} ({count})',
+    allFlows: 'Show all {count} step flows',
+    fewerFlows: 'Show fewer step flows',
+    noMatchInUse: 'No building blocks match the search',
+    noMatchInUseBody: 'Try another word, or see if it is in the catalogue.',
+    noMatchCatalogue: 'No building blocks in the catalogue match the search',
+    noMatchCatalogueBody: 'Perhaps you already use it, or it needs to be registered.',
+    resetSearch: 'Reset search and filter',
+    emptyInUseTitle: 'No building blocks in use yet',
+    emptyInUseBody:
+      'A building block is a part a service can use, such as a model, a tool that looks something up in a register, or a guardrail that removes personal data. Pick from the catalogue to get started.',
+    seeCatalogue: 'See the catalogue',
+    emptyCatalogueTitle: 'You use everything in the catalogue',
+    emptyCatalogueBody:
+      'The catalogue shows building blocks from Digdir and other organisations that you have not taken into use yet. If you have a system of your own that services should use, you can register it yourself.',
+    errorInUseTitle: 'We could not load the building blocks',
+    errorInUseBody:
+      'The service did not answer. Your services work as before; only this list is missing.',
+    errorCatalogueTitle: 'We could not load the catalogue',
+    errorCatalogueBody:
+      "Digdir's catalogue did not answer. The building blocks you already use work as before.",
+    otherSkills: 'Drafts and other skills ({count})',
+    draftTag: 'Draft',
+    notUsed: 'Not in use',
+    fromPublisher: 'From {publisher}',
+    adopt: 'Take into use',
+    adoptNamed: 'Take {name} into use',
+    adopting: 'Taking into use ...',
+    sendForApproval: 'Send for approval',
+    pendingTag: 'Waiting for approval',
+    sentTo: 'Sent to {approver} {date}',
+    adoptQuestion: 'Take {name} into use?',
+    adoptConsequence:
+      'Every service owner in {tenant} can choose {name} when building. No service changes until someone chooses it.',
+    adoptReason: 'Why are you taking it into use?',
+    adoptReasonHelp: 'Shown in Log, Changes.',
+    close: 'Close',
+    discardQuestion: 'Discard what you have written?',
+    keepWriting: 'Keep writing',
+    discard: 'Discard',
+    adoptedMessage: '{name} is in use. Services can choose it now.',
+    seeInUse: 'See it under In use here',
+    pendingMessage:
+      '{name} is waiting for approval. We will tell you on Overview when it is ready.',
+  },
+  blockModel: {
+    maker: 'Made by',
+    operator: 'Run by',
+    publishedBy: 'Published by',
+    adopted: 'Taken into use',
+    price: 'Price',
+    priceIn: 'Text in',
+    priceOut: 'Text out',
+    pricePerThousand: 'NOK {price} per 1,000 tokens',
+    priceNote: 'The prices are estimates and also apply to test runs.',
+    notPriced: 'The price has not been calculated yet.',
+  },
+  blockTool: {
+    syncNow: 'Sync now',
+    syncing: 'Syncing ...',
+    syncReason: 'Synced from Building blocks to fetch the tool list again',
+    synced: 'Synced. {active} tools are approved, {pending} waiting for approval.',
+    syncFailed: 'The sync failed. Try again in a little while.',
+    lastSync: 'Last synced',
+    lastSyncFailed: '{at}, failed',
+    neverSynced: 'Not synced yet',
+    ownServers: 'On the servers of whoever runs the tool. Only what the service sends goes out.',
+    failedHeading: '{name} did not answer at the last sync {at}.',
+    failedBody:
+      'Services use the tool list from the last successful sync. Check that the server is up, and sync again.',
+    approvedCount: '{approved} of {total} approved',
+    approvalNote:
+      'Services can only use approved tools. Tools that change something should only be approved when a service needs them.',
+    approvedLegend: 'Approved tools',
+    noToolsTitle: '{name} offers no tools yet',
+    noToolsBody: 'Check that the server has tools set up, and sync again.',
+    changesData: 'Changes data',
+    newSince: 'New {date}',
+    saved: 'Saved at {time}. The change is in Log, Changes.',
+    unsavedRegion: 'Unsaved changes',
+    unsaved: 'You have changes that are not saved',
+    save: 'Save',
+    saving: 'Saving ...',
+    why: 'Why are you changing this?',
+  },
+  blockRegister: {
+    residency: 'Where is the data processed?',
+    residencyHelp: 'Shown to everyone who considers using the building block.',
+    residencyNorway: 'In Norway',
+    residencyEu: 'In the EU/EEA',
+    residencyGlobal: 'Outside the EU/EEA',
+  },
+  blockFlow: {
+    useInService: 'Use in a service',
+    errorTitle: 'We could not load the step flow',
+    errorBody: 'The services that use it work as before. Only this view is missing.',
+    notShared:
+      'The publisher has not shared the diagram and YAML for this step flow yet. You can use it in a service as before.',
   },
 } satisfies Translation<typeof source>;

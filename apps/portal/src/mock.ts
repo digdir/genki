@@ -19,6 +19,7 @@ import { batchRunsMock } from './mock/batch-runs';
 import { searchEnginesMock } from './mock/search-engines';
 import { skillsMock } from './mock/skills';
 import { platformStatusMock } from './mock/platform-status';
+import { blocksMock } from './mock/blocks';
 import { exampleSecretNames } from './data/building-blocks';
 import { inputFieldsOf } from './data/playground';
 import { parseYaml } from './yaml';
@@ -489,6 +490,7 @@ const featureMocks = {
   environments: environmentsMock,
   preferences: preferencesMock,
   platformStatus: platformStatusMock,
+  blocks: blocksMock,
 };
 
 export type FeatureMockOptions = {
@@ -562,6 +564,7 @@ export const exampleModels: ModelOption[] = [
     residency: 'norway',
     capabilities: ['stream', 'tools', 'json-schema'],
     operations: ['chat', 'generate-image'],
+    price: { inputPerThousand: 0.0119, outputPerThousand: 0.0952 },
   },
   {
     id: 'aivar/nora-70b',
@@ -795,6 +798,7 @@ export const mockFetch = (
   const clientRoutes = clientMock();
   const batchRuns = featureMocks.batchRuns(extras.features?.batchRuns);
   const features: MockHandler[] = [
+    featureMocks.blocks(extras.features?.blocks),
     featureMocks.buildingBlocks(extras.features?.buildingBlocks),
     featureMocks.skills(extras.features?.skills),
     featureMocks.playground(extras.features?.playground),

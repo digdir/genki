@@ -36,6 +36,8 @@ interface Props {
   publicName: string;
   block: CatalogItem | undefined;
   blockId: string;
+  owner: string;
+  price: string;
 }
 
 const codeLanguages = [
@@ -59,6 +61,8 @@ export const SharedServiceDetail = ({
   publicName,
   block,
   blockId,
+  owner,
+  price,
 }: Props) => {
   const t = useT();
   const f = useFormat();
@@ -195,9 +199,13 @@ export const SharedServiceDetail = ({
         {c.location} <a href="#/data-handling">{t('sharedServices.howDataIsHandled')}</a>
       </>,
     ],
-    ...(block
-      ? ([[t('sharedServices.responsible'), block.publisher.name]] as [string, string][])
-      : []),
+    [t('sharedServicesMore.stored'), t('sharedServicesMore.notStatedYet')],
+    [t('sharedServicesMore.price'), price],
+    [t('sharedServicesMore.languages'), t('sharedServicesMore.notStatedYet')],
+    [
+      t('sharedServices.responsible'),
+      block ? block.publisher.name : t('sharedServicesMore.orgNumber', { org: owner }),
+    ],
   ];
 
   return (

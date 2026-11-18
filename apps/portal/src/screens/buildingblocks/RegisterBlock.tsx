@@ -27,7 +27,7 @@ import type {
   RegistrationType,
   TenantSecretName,
 } from '../../api/building-blocks';
-import { Crumbs } from '../../components/Crumbs';
+import { BackLink } from './LinkTabs';
 import { ReasonField, reasonProblem } from '../../components/ReasonField';
 import {
   authOptions,
@@ -57,7 +57,16 @@ interface Form {
   tokenUrl: string;
   clientId: string;
   scope: string;
+  residency: RegistrationResidency;
 }
+
+export type RegistrationResidency = 'norway' | 'eu-eea' | 'global';
+
+export const residencyOptions: { value: RegistrationResidency; label: PlainKey }[] = [
+  { value: 'norway', label: 'blockRegister.residencyNorway' },
+  { value: 'eu-eea', label: 'blockRegister.residencyEu' },
+  { value: 'global', label: 'blockRegister.residencyGlobal' },
+];
 
 const emptyForm: Form = {
   type: 'mcp',
@@ -72,6 +81,7 @@ const emptyForm: Form = {
   tokenUrl: '',
   clientId: '',
   scope: '',
+  residency: 'norway',
 };
 
 const needsUrl = (type: RegistrationType) =>
@@ -107,9 +117,13 @@ export const agentCardUrl = (address: string) => {
     : `${url.replace(/\/+$/, '')}/.well-known/agent-card.json`;
 };
 
-const toDraft = (form: Form): RegistrationInput => ({
+const toDraft = (
+  form: Form,
+  withResidency: boolean,
+): RegistrationInput & { residency?: RegistrationResidency } => ({
   type: form.type,
   name: form.name.trim(),
+  ...(withResidency ? { residency: form.residency } : {}),
   ...(needsUrl(form.type)
     ? { endpoint: form.type === 'a2a' ? agentCardUrl(form.url) : form.url.trim() }
     : {}),
@@ -212,6 +226,8 @@ export const RegisterBlock = ({
 }) => {
   const t = useT();
   const ids = {
+    residency: useId(),
+    residencyHelp: useId(),
     name: useId(),
     url: useId(),
     urlHelp: useId(),
@@ -243,6 +259,16 @@ export const RegisterBlock = ({
   const [secretsFailed, setSecretsFailed] = useState(false);
   const [operations, setOperations] = useState<RegisteredTool[] | null>(null);
   const [agent, setAgent] = useState<AgentCardSummary | null>(null);
+  const [residencyStored, setResidencyStored] = useState(false);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    api.buildingBlocks.list(tenant, {}, controller.signal).then(
+      (list) => setResidencyStored(list.data.some((b) => 'residency' in b)),
+      () => undefined,
+    );
+    return () => controller.abort();
+  }, [tenant]);
 
   useEffect(() => {
     if (!canRegister) return;
@@ -254,7 +280,7 @@ export const RegisterBlock = ({
     return () => controller.abort();
   }, [tenant, canRegister]);
 
-  const draft = toDraft(form);
+  const draft = toDraft(form, residencyStored);
   const draftKey = JSON.stringify(draft);
   useEffect(() => {
     const controller = new AbortController();
@@ -385,21 +411,14 @@ export const RegisterBlock = ({
     change({ file: { name: file.name, content } });
   };
 
-  const crumbs = (
-    <Crumbs
-      items={[
-        { label: t('blocks.title'), href: '#/building-blocks' },
-        { label: t('blocks.addOwn') },
-      ]}
-    />
-  );
+  const crumbs = <BackLink label={t('blocks.title')} href="#/building-blocks" />;
 
   if (!canRegister)
     return (
       <div className="stack">
         {crumbs}
         <Heading level={1} data-size="md">
-          {t('blocks.addOwn')}
+          {t('blockPages.register')}
         </Heading>
         <Alert data-color="info">
           <Paragraph>
@@ -414,7 +433,7 @@ export const RegisterBlock = ({
       {crumbs}
       <div className="bb-intro">
         <Heading level={1} data-size="md">
-          {t('blocks.addOwn')}
+          {t('blockPages.register')}
         </Heading>
         <p className="lead">{t('blocks.registerLead', { tenant: tenantName })}</p>
       </div>
@@ -424,34 +443,31 @@ export const RegisterBlock = ({
           {t('blocks.whatToAdd')}
         </legend>
         <div className="bb-types">
-          {registrationTypes.map((rt) => (
-            <label key={rt.type} className={`bb-type${form.type === rt.type ? ' selected' : ''}`}>
-              <input
-                className="ds-input"
-                type="radio"
-                name="bb-reg-type"
-                checked={form.type === rt.type}
-                onChange={() => {
-                  change({
-                    type: rt.type,
-                    ...(authUnavailableKey(rt.type, form.auth)
-                      ? { auth: defaultAuthFor(rt.type) }
-                      : {}),
-                  });
-                  setTried(false);
-                }}
-              />
-              <span className="bb-type-text">
-                <span className="bb-strong">{t(rt.label)}</span>
-                <span className="bb-meta">{t(rt.description)}</span>
-                {rt.notDecided ? (
-                  <Tag data-size="sm" data-color="warning" className="bb-start">
-                    {t('blocks.apiNotDecided')}
-                  </Tag>
-                ) : null}
-              </span>
-            </label>
-          ))}
+          {registrationTypes
+            .filter((rt) => !rt.notDecided)
+            .map((rt) => (
+              <label key={rt.type} className={`bb-type${form.type === rt.type ? ' selected' : ''}`}>
+                <input
+                  className="ds-input"
+                  type="radio"
+                  name="bb-reg-type"
+                  checked={form.type === rt.type}
+                  onChange={() => {
+                    change({
+                      type: rt.type,
+                      ...(authUnavailableKey(rt.type, form.auth)
+                        ? { auth: defaultAuthFor(rt.type) }
+                        : {}),
+                    });
+                    setTried(false);
+                  }}
+                />
+                <span className="bb-type-text">
+                  <span className="bb-strong">{t(rt.label)}</span>
+                  <span className="bb-meta">{t(rt.description)}</span>
+                </span>
+              </label>
+            ))}
         </div>
       </fieldset>
 
@@ -689,6 +705,26 @@ export const RegisterBlock = ({
               })}
             </Fieldset>
           ) : null}
+          {form.type === 'skill_package' || !residencyStored ? null : (
+            <Field>
+              <Label htmlFor={ids.residency}>{t('blockRegister.residency')}</Label>
+              <span className="bb-help" id={ids.residencyHelp}>
+                {t('blockRegister.residencyHelp')}
+              </span>
+              <Select
+                id={ids.residency}
+                aria-describedby={ids.residencyHelp}
+                value={form.residency}
+                onChange={(e) => change({ residency: e.target.value as RegistrationResidency })}
+              >
+                {residencyOptions.map((o) => (
+                  <Select.Option key={o.value} value={o.value}>
+                    {t(o.label)}
+                  </Select.Option>
+                ))}
+              </Select>
+            </Field>
+          )}
           <div className="actions">
             <Button
               variant="secondary"
