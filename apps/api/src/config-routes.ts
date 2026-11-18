@@ -22,9 +22,11 @@ import {
 } from './admin.js';
 import {
   catalogKinds,
+  datasetSearchScopes,
   type CatalogItem,
   type CatalogKind,
   type CatalogRegistry,
+  type DatasetSearchScope,
 } from './catalog-registry.js';
 import { platformScope } from './config-store.js';
 import { keyReachesDataset } from './tenant-gate.js';
@@ -39,8 +41,18 @@ import type { EngineDescription } from './knowledge-engines.js';
 import { rightRefused, seesUsage, type Right } from './rights.js';
 import type { GateRegistry, GuardrailRuleRegistry, ScopedResult } from './scoped-registry.js';
 import { changeReasonOf, isReasonLongEnough, reasonTooShort } from './http.js';
+import { t } from './i18n/index.js';
 import type { DatasetReader } from './dataset-readers.js';
 import { datasetStatus } from './dataset-status.js';
+import {
+  endpointNotAllowedType,
+  endpointRefusal,
+  endpointSource,
+  endpointSourceConnection,
+  endpointSourceId,
+  endpointSourceSecret,
+  type EndpointSourceDeps,
+} from './endpoint-source.js';
 import { candidateRelease, tenantModelRefusal } from './model-access.js';
 import { effectiveResidency, locationOf } from './residency.js';
 
@@ -68,6 +80,7 @@ export interface ConfigDeps {
   gateProblem?: (gate: string, metric: string) => string | undefined;
   usedBy?: (dataset: string) => Promise<DatasetReader[]>;
   usedByCounts?: (tenant: string) => Promise<Map<string, number>>;
+  endpointSources?: EndpointSourceDeps;
 }
 
 export const ingestionTarget = (item: CatalogItem): IngestionTarget => ({
@@ -550,6 +563,7 @@ export const datasetFields = z.strictObject({
   valueTypes: z.record(z.string(), z.enum(filterValueTypes)).optional(),
   maxFacetValues: z.number().int().positive().max(1000).optional(),
   links: z.enum(sourceLinkRules).optional(),
+  searchScope: z.enum(datasetSearchScopes).optional(),
 });
 
 const datasetBody = datasetFields.transform(({ collection, index, endpoint, ...rest }, ctx) => {
@@ -592,6 +606,9 @@ export const datasetView = (item: CatalogItem) => {
     ...(spec.valueTypes ? { valueTypes: spec.valueTypes } : {}),
     ...(maxFacetValues !== undefined ? { maxFacetValues } : {}),
     ...(spec.links ? { links: spec.links } : {}),
+    ...(item.scope === platformScope
+      ? {}
+      : { searchScope: (spec.searchScope as DatasetSearchScope | undefined) ?? 'tenant' }),
   };
 };
 
@@ -620,6 +637,7 @@ const datasetSpec = (body: DatasetBody, adapter: KnowledgeAdapter | undefined) =
     ...(body.facets ? { facets: body.facets } : {}),
     ...(body.embedding ? { embedding: body.embedding } : {}),
     ...(body.links ? { links: body.links } : {}),
+    ...(body.searchScope ? { searchScope: body.searchScope } : {}),
     options,
   };
 };
@@ -821,6 +839,127 @@ export const registerConfigRoutes = <E extends Env, S extends Schema, B extends 
       if (!deps.catalog.get('dataset', deps.catalog.qualify(scope, candidate))) return candidate;
     }
   };
+  const connectEndpointSource = async (
+    c: Context,
+    principal: Principal,
+    scope: string,
+    datasetId: string,
+    rawSource: unknown,
+    options: { create: boolean; given: Record<string, unknown> },
+  ): Promise<
+    | { response: Response; endpoint?: never; undo?: never }
+    | { response?: never; endpoint: string; undo: () => Promise<void> }
+  > => {
+    const sources = deps.endpointSources;
+    const issues = (errors: Problem[]) => ({
+      response: problem(c, 400, 'Invalid request', errors),
+    });
+    if (!options.create || scope === platformScope || !sources)
+      return issues([
+        {
+          path: 'endpointSource',
+          message: "an endpoint source is given when an organisation's dataset is created",
+        },
+      ]);
+    if (['index', 'collection', 'endpoint'].some((k) => options.given[k] !== undefined))
+      return issues([
+        { path: 'endpointSource', message: 'give an endpoint source or an index, not both' },
+      ]);
+    const datasetProblems = datasetBody.safeParse({ ...options.given, endpoint: 'endpoint' });
+    if (!datasetProblems.success)
+      return issues(
+        datasetProblems.error.issues.map((i) => ({
+          path: i.path.map(String).join('.'),
+          message: i.message,
+        })),
+      );
+    const parsed = endpointSource.safeParse(rawSource);
+    if (!parsed.success)
+      return issues(
+        parsed.error.issues.map((i) => ({
+          path: ['endpointSource', ...i.path.map(String)].join('.'),
+          message: i.message,
+        })),
+      );
+    const source = parsed.data;
+    const refusal = await endpointRefusal(source.url, sources.network);
+    if (refusal)
+      return {
+        response: c.json(
+          {
+            type: endpointNotAllowedType,
+            title: t('problems.endpointNotAllowed'),
+            status: 422,
+            errors: [{ path: 'endpointSource.url', message: refusal }],
+          },
+          422,
+          { 'content-type': 'application/problem+json' },
+        ),
+      };
+    const reason = reasonOf(c);
+    if (!isReasonLongEnough(reason))
+      return issues([{ path: 'change-reason', message: reasonTooShort }]);
+    const endpoint = endpointSourceId(datasetId);
+    if (deps.catalog.get('knowledge-endpoint', deps.catalog.qualify(scope, endpoint)))
+      return {
+        response: problem(c, 409, 'Conflict', [
+          { path: 'endpointSource', message: `the connection ${endpoint} exists` },
+        ]),
+      };
+    const secretName = endpointSourceSecret(datasetId);
+    if (source.auth.kind === 'api-key' && (await sources.secretNames(scope)).includes(secretName))
+      return {
+        response: problem(c, 409, 'Conflict', [
+          { path: 'endpointSource', message: `the secret ${secretName} exists` },
+        ]),
+      };
+    const removeKey = async () => {
+      if (source.auth.kind !== 'api-key') return;
+      await deps.admin.performThen(
+        principal,
+        'platform.secrets.delete',
+        { tenant: scope, name: secretName, reason },
+        () => sources.deleteSecret(scope, secretName),
+      );
+    };
+    if (source.auth.kind === 'api-key') {
+      const apiKey = source.auth.apiKey;
+      const host = new URL(source.url).origin;
+      const stored = await deps.admin.performThen(
+        principal,
+        'platform.secrets.set',
+        { tenant: scope, name: secretName, allowedHosts: [host], reason },
+        async () => {
+          await sources.setSecret(scope, secretName, apiKey, [host]);
+        },
+      );
+      c.header('genai-task', stored.task);
+      if (!stored.ok)
+        return stored.problem
+          ? { response: rightRefused(c, stored.problem) }
+          : { response: problem(c, 403, 'Forbidden', stored.errors) };
+    }
+    const connected = await perform(c, principal, 'platform.catalog.publish', scope, {
+      kind: 'knowledge-endpoint',
+      id: endpoint,
+      spec: endpointSourceConnection(scope, datasetId, source),
+    });
+    if (connected.status !== 200) {
+      await removeKey();
+      return { response: connected };
+    }
+    return {
+      endpoint,
+      undo: async () => {
+        await perform(c, principal, 'platform.catalog.delete', scope, {
+          kind: 'knowledge-endpoint',
+          id: endpoint,
+        });
+        await removeKey();
+      },
+    };
+  };
+
   const saveDataset = async (
     c: Context,
     principal: Principal,
@@ -828,13 +967,23 @@ export const registerConfigRoutes = <E extends Env, S extends Schema, B extends 
     id: string | undefined,
     create: boolean,
   ) => {
-    const raw = await body(c);
+    const { endpointSource: rawSource, ...raw } = await body(c);
     const existing = id ? deps.catalog.get('dataset', deps.catalog.qualify(scope, id)) : undefined;
     if (!create && (!existing || existing.scope !== scope)) return problem(c, 404, 'Not found');
     const datasetId =
       id ?? (raw.id === undefined ? freeSlug(scope, String(raw.name ?? '')) : String(raw.id));
     if (create && deps.catalog.get('dataset', deps.catalog.qualify(scope, datasetId)))
       return problem(c, 409, 'Conflict', [{ path: 'id', message: `dataset ${datasetId} exists` }]);
+    let undoSource: (() => Promise<void>) | undefined;
+    if (rawSource !== undefined) {
+      const connected = await connectEndpointSource(c, principal, scope, datasetId, rawSource, {
+        create,
+        given: raw,
+      });
+      if (connected.response) return connected.response;
+      raw.index = { endpoint: connected.endpoint };
+      undoSource = connected.undo;
+    }
     const merged = existing
       ? (() => {
           const view = datasetView(existing);
@@ -857,6 +1006,7 @@ export const registerConfigRoutes = <E extends Env, S extends Schema, B extends 
             facets: view.facets,
             filters: view.filters,
             ...(view.maxFacetValues !== undefined ? { maxFacetValues: view.maxFacetValues } : {}),
+            ...('searchScope' in view ? { searchScope: view.searchScope } : {}),
             ...Object.fromEntries(
               Object.entries(raw).filter(
                 ([k]) => !['collection', 'index', 'id', 'endpoint'].includes(k),
@@ -866,7 +1016,8 @@ export const registerConfigRoutes = <E extends Env, S extends Schema, B extends 
         })()
       : raw;
     const parsed = datasetBody.safeParse(merged);
-    if (!parsed.success)
+    if (!parsed.success) {
+      await undoSource?.();
       return problem(
         c,
         400,
@@ -876,12 +1027,16 @@ export const registerConfigRoutes = <E extends Env, S extends Schema, B extends 
           message: i.message,
         })),
       );
+    }
     const response = await perform(c, principal, 'platform.catalog.publish', scope, {
       kind: 'dataset',
       id: datasetId,
       spec: datasetSpec(parsed.data, adapterOf(scope, parsed.data.index.endpoint)),
     });
-    if (response.status !== 200) return response;
+    if (response.status !== 200) {
+      await undoSource?.();
+      return response;
+    }
     const item = deps.catalog.get('dataset', deps.catalog.qualify(scope, datasetId));
     return c.json(item ? datasetView(item) : {}, create ? 201 : 200);
   };
@@ -960,15 +1115,17 @@ export const registerConfigRoutes = <E extends Env, S extends Schema, B extends 
       },
       item,
     );
+    const owned = item.scope === tenant || item.scope === platformScope;
     return {
       ...datasetView(item),
       effectiveResidency: effectiveResidency(location),
       ...(location.embedding ? { embeddingResidency: location.embedding.residency ?? null } : {}),
       editable: item.scope === tenant,
       ...status,
+      ...(owned ? {} : { source: 'none' as const, lastExecution: null, nextRunAt: null }),
       ...(detail
         ? {
-            skipped,
+            skipped: owned ? skipped : [],
             usedBy: ((await deps.usedBy?.(item.id)) ?? []).filter((r) => r.tenant === tenant),
           }
         : {}),

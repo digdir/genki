@@ -1,10 +1,19 @@
 import type { SkippedDocument } from '@genai/ingest';
 import type { IndexWriterRouter } from '@genai/port-knowledge';
 import type { CatalogItem } from './catalog-registry.js';
+import { endpointSourceEngine } from './endpoint-source.js';
 import type { Execution, ExecutionStatus, IngestionService, Pipeline } from './ingestion.js';
 
 export type DatasetSource =
-  'website' | 'upload' | 'kudos' | 'folder' | 'database' | 'parquet' | 'episerver' | 'none';
+  | 'website'
+  | 'upload'
+  | 'kudos'
+  | 'folder'
+  | 'database'
+  | 'parquet'
+  | 'episerver'
+  | 'endpoint'
+  | 'none';
 
 export type DatasetState =
   'needs-pipeline' | 'configured' | 'running' | 'ready' | 'degraded' | 'external';
@@ -114,7 +123,7 @@ export const datasetStatus = async (
     const documents = await deps.documentCount?.(item).catch(() => undefined);
     return {
       state: 'external',
-      source: 'none',
+      source: engine === endpointSourceEngine ? 'endpoint' : 'none',
       documents: documents ?? null,
       chunks: null,
       lastExecution: null,

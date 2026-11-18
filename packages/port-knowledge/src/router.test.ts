@@ -142,6 +142,22 @@ describe('knowledge catalog', () => {
   });
 });
 
+describe('endpoints without a key', () => {
+  const open = (adapter: KnowledgeAdapter) =>
+    parseKnowledgeCatalog(
+      { endpoints: { main: { engine: 'stub', baseURL: 'https://s.example' } }, datasets: [] },
+      [adapter],
+    );
+
+  it('an engine that searches open endpoints takes one without auth, and every other engine still needs auth', () => {
+    const keyed = open(stub().adapter);
+    const openEngine = open({ ...stub().adapter, requiresAuth: false });
+
+    expect(!keyed.ok && keyed.errors.map((e) => e.path)).toEqual(['endpoints.main.auth']);
+    expect(openEngine.ok).toBe(true);
+  });
+});
+
 describe('knowledge catalog addresses', () => {
   it('refuses an address without http or https, such as a bare host:port', () => {
     for (const baseURL of ['search.example.no:8108', 'ftp://search.example.no']) {

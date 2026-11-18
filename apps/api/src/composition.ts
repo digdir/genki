@@ -1509,6 +1509,14 @@ export const createPlatform = async (input: PlatformInput) => {
   };
 
   const config = await configurables.attach({
+    endpointSources: {
+      network: (host) => databaseGuard.network(host),
+      setSecret: async (tenant, name, value, hosts) => {
+        await vault.set(tenant, name, value, hosts);
+      },
+      deleteSecret: (tenant, name) => vault.delete(tenant, name),
+      secretNames: (tenant) => vault.names(tenant),
+    },
     catalog: runtime.catalog,
     routers: { knowledge, writers },
     engines: () => describeEngines(knowledgeAdapters, writerAdapters),
@@ -1535,6 +1543,7 @@ export const createPlatform = async (input: PlatformInput) => {
           definitions,
           configEntries: configurables.store,
           resolve: (id) => knowledge.resolve(id),
+          names: actorNames(configEntries),
         },
         dataset,
       ),

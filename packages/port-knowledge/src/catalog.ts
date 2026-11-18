@@ -101,7 +101,7 @@ export const parseKnowledgeCatalog = (
     if (adapter.requiresBaseURL !== false) {
       if (!e.baseURL)
         errors.push({ path: `endpoints.${name}.baseURL`, message: `${e.engine} needs a baseURL` });
-      if (!e.auth)
+      if (!e.auth && adapter.requiresAuth !== false)
         errors.push({ path: `endpoints.${name}.auth`, message: `${e.engine} needs auth` });
     }
     const options = adapter.endpointOptions.safeParse(e.options);

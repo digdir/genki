@@ -3,9 +3,10 @@ import { uploadPrefix } from '@genai/ingest';
 import type { Context } from 'hono';
 import { enterTenant } from './access.js';
 import { actorOf, routeOnlyActions } from './admin.js';
-import type { CatalogItem } from './catalog-registry.js';
+import { catalogSecretRef, type CatalogItem } from './catalog-registry.js';
 import { platformScope } from './config-store.js';
 import { datasetReaders } from './dataset-readers.js';
+import { endpointSourceEngine, endpointSourceId, endpointSourceSecret } from './endpoint-source.js';
 import { changeReasonOf, isReasonLongEnough, reasonTooShort } from './http.js';
 import { t } from './i18n/index.js';
 import type { PlatformModule, PlatformModuleFactory } from './platform-modules.js';
@@ -20,6 +21,8 @@ export interface DatasetDeleteResult {
     pipelines: string[];
     uploads: string[];
     generations: string[];
+    endpoint?: string;
+    secret?: string;
   };
   kept: {
     knowledgeRecords: boolean;
@@ -61,6 +64,44 @@ export const datasetDeleteModule: PlatformModuleFactory = (deps): PlatformModule
       );
 
     const openRuns = (scope: string, dataset: string) => deps.ingestion.openRuns(scope, dataset);
+
+    const endpointSourceOf = (scope: string, item: CatalogItem) => {
+      if (scope === platformScope) return undefined;
+      const local = item.id.slice(scope.length + 1);
+      const name = endpointSourceId(local);
+      const id = deps.catalog.qualify(scope, name);
+      if (item.spec.endpoint !== name && item.spec.endpoint !== id) return undefined;
+      const connection = deps.catalog.get('knowledge-endpoint', id);
+      if (connection?.scope !== scope || connection.spec.engine !== endpointSourceEngine)
+        return undefined;
+      const secret = endpointSourceSecret(local);
+      const auth = connection.spec.auth as { secret?: string } | undefined;
+      return {
+        name,
+        secret: auth?.secret === catalogSecretRef(scope, secret) ? secret : undefined,
+      };
+    };
+
+    const removeEndpointSource = async (
+      scope: string,
+      item: CatalogItem,
+      by: string,
+      reason: string,
+    ) => {
+      const source = endpointSourceOf(scope, item);
+      if (!source) return {};
+      const removed = await deps.catalog.remove({
+        kind: 'knowledge-endpoint',
+        scope,
+        id: source.name,
+        by,
+        reason,
+      });
+      if (!removed.ok) return {};
+      if (!source.secret || !deps.vault) return { endpoint: source.name };
+      await deps.vault.delete(scope, source.secret);
+      return { endpoint: source.name, secret: source.secret };
+    };
 
     const remove = async (c: Context, principal: Principal, scope: string, item: CatalogItem) => {
       const reason = changeReasonOf(c)?.trim() ?? '';
@@ -185,6 +226,7 @@ export const datasetDeleteModule: PlatformModuleFactory = (deps): PlatformModule
         reason,
       });
       if (!removed.ok) throw new DeleteRefused(removed.errors);
+      const source = await removeEndpointSource(scope, item, by, reason);
       if (route && active) {
         const served = active;
         if (wrote.has(served))
@@ -201,6 +243,7 @@ export const datasetDeleteModule: PlatformModuleFactory = (deps): PlatformModule
           pipelines: pipelines.map((p) => p.id),
           uploads,
           generations: dropped,
+          ...source,
         },
         kept: { knowledgeRecords: onKnowledgeServer, generations: failed },
       };

@@ -30,6 +30,19 @@ const problem = (c: Context, status: 400 | 401 | 404 | 413 | 500, title: string,
     'content-type': 'application/problem+json',
   });
 
+export const originalNotKeptType = 'urn:genai:problem:original-not-kept';
+export const uploadPeopleOnlyType = 'urn:genai:problem:upload-people-only';
+
+const people = new Set<Principal['kind']>(['employee', 'operator']);
+
+const typedProblem = (c: Context, type: string, status: 403 | 404, title: string) =>
+  c.json({ type, title, status }, status, { 'content-type': 'application/problem+json' });
+
+const attachment = (name: string) => {
+  const ascii = name.replace(/[^A-Za-z0-9._-]/g, '_');
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(name)}`;
+};
+
 export const uploadName = (raw: string) => {
   const base = raw.split(/[\\/]/).pop() ?? '';
   const ext = extname(base).toLowerCase();
@@ -174,6 +187,32 @@ export const createDatasetUploadsModule =
               type: b.contentType,
               uploadedAt: b.createdAt,
             })),
+          });
+        });
+
+        app.get(`${base}/:name`, async (c) => {
+          const g = await guard(c);
+          if ('response' in g) return g.response;
+          if (!people.has(g.principal.kind))
+            return typedProblem(c, uploadPeopleOnlyType, 403, t('problems.uploadPeopleOnly'));
+          const name = c.req.param('name') ?? '';
+          const type = uploadTypes[extname(name).toLowerCase()] ?? 'application/octet-stream';
+          const found =
+            uploadName(name) === name && extname(name).toLowerCase() in uploadTypes
+              ? await deps.blobs.get({
+                  tenant: g.tenant,
+                  path: `${uploadPrefix(g.item.id, g.tenant)}${name}`,
+                })
+              : undefined;
+          if (!found)
+            return typedProblem(c, originalNotKeptType, 404, t('problems.originalNotKept'));
+          return c.body(found.body.slice().buffer, 200, {
+            'content-type': type,
+            'content-length': String(found.body.byteLength),
+            'content-disposition': attachment(name),
+            'x-content-type-options': 'nosniff',
+            'content-security-policy': "sandbox; default-src 'none'",
+            'cache-control': 'private, no-store',
           });
         });
 

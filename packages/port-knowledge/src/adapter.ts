@@ -117,6 +117,8 @@ export interface KnowledgeAdapter<E = unknown, D = unknown> {
   datasetOptions: z.ZodType<D>;
   /** False when endpoints need no baseURL or auth; such adapters are built with localKnowledgeAdapter. */
   requiresBaseURL?: boolean;
+  /** False for an engine that may search an open endpoint without a key. */
+  requiresAuth?: boolean;
   capabilities?(dataset: DatasetConfig<D>): KnowledgeCapability[];
   /** Dataset options to add when a draft leaves them out, such as default profiles. */
   defaults?(dataset: DatasetDraft): Record<string, unknown>;

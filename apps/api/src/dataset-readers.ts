@@ -1,5 +1,6 @@
 import { adoptionKind, blockKey } from '@genai/composition';
 import type { DefinitionStore } from '@genai/definitions';
+import type { ActorNames } from './actor-names.js';
 import type { ConfigEntryStore } from './config-store.js';
 
 export interface DatasetReader {
@@ -7,13 +8,53 @@ export interface DatasetReader {
   tenant: string;
   id: string;
   name: string;
+  addedAt?: string;
+  addedBy?: string;
+  addedByName?: string;
 }
 
 export interface DatasetReaderDeps {
-  definitions: Pick<DefinitionStore, 'capabilities'>;
-  configEntries: Pick<ConfigEntryStore, 'latest'>;
+  definitions: Pick<DefinitionStore, 'capabilities'> & Partial<Pick<DefinitionStore, 'versions'>>;
+  configEntries: Pick<ConfigEntryStore, 'latest'> & Partial<Pick<ConfigEntryStore, 'history'>>;
   resolve(idOrAlias: string): string | undefined;
+  names?: Pick<ActorNames, 'namesOf'>;
 }
+
+const mentions = (value: unknown, matches: (text: string) => boolean): boolean => {
+  if (typeof value === 'string') return matches(value);
+  if (Array.isArray(value)) return value.some((v) => mentions(v, matches));
+  if (value && typeof value === 'object')
+    return Object.values(value).some((v) => mentions(v, matches));
+  return false;
+};
+
+/** The first of the newest unbroken run of entries that still hold the dataset. */
+const firstOfRun = <T>(newestLast: T[], holds: (entry: T) => boolean) => {
+  let first: T | undefined;
+  for (let i = newestLast.length - 1; i >= 0; i--) {
+    const entry = newestLast[i] as T;
+    if (!holds(entry)) break;
+    first = entry;
+  }
+  return first;
+};
+
+const added = async (
+  deps: DatasetReaderDeps,
+  reader: DatasetReader,
+  dataset: string,
+): Promise<{ at: string; by: string } | undefined> => {
+  if (reader.kind === 'service') {
+    const versions = (await deps.definitions.versions?.('Service', reader.tenant, reader.id)) ?? [];
+    const matches = (text: string) => (deps.resolve(text) ?? text) === dataset;
+    const first = firstOfRun(versions, (v) => mentions(v.definition, matches));
+    return first ? { at: first.publishedAt, by: first.publishedBy } : undefined;
+  }
+  const history =
+    (await deps.configEntries.history?.(adoptionKind, reader.tenant, reader.id)) ?? [];
+  const first = firstOfRun(history, (e) => !e.deleted);
+  return first ? { at: first.at, by: first.by } : undefined;
+};
 
 export const datasetReaders = async (
   deps: DatasetReaderDeps,
@@ -41,9 +82,19 @@ export const datasetReaders = async (
       name: dataset,
     });
   }
-  return [...readers.values()].sort((a, b) =>
+  const sorted = [...readers.values()].sort((a, b) =>
     `${a.kind}:${a.tenant}/${a.id}`.localeCompare(`${b.kind}:${b.tenant}/${b.id}`),
   );
+  const when = await Promise.all(sorted.map((r) => added(deps, r, dataset)));
+  const names =
+    (await deps.names?.namesOf(when.flatMap((w) => (w ? [w.by] : [])))) ??
+    new Map<string, string>();
+  return sorted.map((reader, i) => {
+    const w = when[i];
+    if (!w) return reader;
+    const name = names.get(w.by);
+    return { ...reader, addedAt: w.at, addedBy: w.by, ...(name ? { addedByName: name } : {}) };
+  });
 };
 
 export const datasetReaderCounts = async (

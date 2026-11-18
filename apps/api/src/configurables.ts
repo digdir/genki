@@ -12,6 +12,7 @@ import type { Residency } from '@genai/port-model';
 import type { Env, Hono, Schema } from 'hono';
 import type { Admin } from './admin.js';
 import { configAdminHandlers, ingestionTarget, registerConfigRoutes } from './config-routes.js';
+import type { EndpointSourceDeps } from './endpoint-source.js';
 import { connectorConnectionOf } from './connectors.js';
 import type { DatasetReader } from './dataset-readers.js';
 import { platformScope, type ConfigEntryStore } from './config-store.js';
@@ -104,6 +105,7 @@ export const createConfigurables = (
     testSetTaken?: (tenant: string, id: string) => Promise<boolean>;
     usedBy?: (dataset: string) => Promise<DatasetReader[]>;
     usedByCounts?: (tenant: string) => Promise<Map<string, number>>;
+    endpointSources?: EndpointSourceDeps;
   }) => {
     const { catalog } = deps;
     const ingestion = new IngestionService({
@@ -135,6 +137,7 @@ export const createConfigurables = (
       ...(deps.embeddingResidency ? { embeddingResidency: deps.embeddingResidency } : {}),
       ...(deps.usedBy ? { usedBy: deps.usedBy } : {}),
       ...(deps.usedByCounts ? { usedByCounts: deps.usedByCounts } : {}),
+      ...(deps.endpointSources ? { endpointSources: deps.endpointSources } : {}),
       documentCount: cachedDocumentCount(deps.routers.knowledge),
       connectorConnection: connectorConnectionOf(store),
       ...(input.gateProblem ? { gateProblem: input.gateProblem } : {}),
