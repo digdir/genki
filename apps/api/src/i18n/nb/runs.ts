@@ -17,6 +17,7 @@ export const runs = defineNamespace({
   failMisconfigured: 'Tjenesten er satt opp feil.',
   failCancelled: 'Kjøringen ble avbrutt.',
   failInterrupted: 'Kjøringen ble avbrutt da plattformen startet på nytt.',
+  failServerStopped: 'Serveren stoppet mens kjøringen pågikk. Prøv igjen.',
   stepFailedReason: 'Steget «{step}» feilet. {reason}',
   skipUnsupportedType: 'Filtypen kan ikke søkes i',
   skipOutsideAccess: 'Utenfor tilgangen til tjenesten',

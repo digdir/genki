@@ -110,6 +110,8 @@ export {
   PostgresStateStore,
   PostgresTaskStore,
   type TaskQuery,
+  type StoppedTask,
+  type TaskLeaseOptions,
   type TaskSummary,
 } from './stores.js';
 export {

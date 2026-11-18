@@ -41,6 +41,7 @@ export interface TaskStore {
   /** Records a cancel for whichever instance runs the task; only a queued or running task takes one. */
   requestCancel?(id: string, at: string): Promise<void>;
   cancelRequested?(ids: readonly string[]): Promise<string[]>;
+  renewLeases?(ids: readonly string[]): Promise<string[]>;
 }
 
 export interface StateStore {
