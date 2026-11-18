@@ -4,7 +4,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   cached,
+  Cancelled,
+  demoOfRecording,
   demoSessions,
+  failureOf,
+  libraryOf,
+  managedIdentityTokenUrl,
   estimateDemo,
   keep,
   languageScript,
@@ -12,6 +17,7 @@ import {
   parseArgs,
   parseDemo,
   pickDemos,
+  posterArgs,
   readyFailure,
   retrying,
   runStep,
@@ -347,5 +353,133 @@ describe('demo recordings', () => {
     });
     expect(parseArgs(['record', '--only', ''])).toMatchObject({ only: undefined, files: [] });
     expect(parseArgs(['check'])).toMatchObject({ mode: 'check', files: [] });
+  });
+});
+
+describe('reporting to the demo library', () => {
+  const fake = () => {
+    const calls: {
+      method: string;
+      url: string;
+      headers: Record<string, string>;
+      body?: unknown;
+    }[] = [];
+    let status = 200;
+    const send = (async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      calls.push({
+        method: init?.method ?? 'GET',
+        url,
+        headers: (init?.headers ?? {}) as Record<string, string>,
+        ...(init?.body === undefined ? {} : { body: init.body }),
+      });
+      if (url.endsWith('/health')) return Response.json({ version: '0.44.0' });
+      if (url.endsWith('/recordings')) return Response.json({ id: 'r1' }, { status: 201 });
+      return new Response('{}', { status });
+    }) as typeof fetch;
+    return { calls, send, fail: (s: number) => void (status = s) };
+  };
+
+  it('starts a recording on the version the API runs, with the recorder key', async () => {
+    const { calls, send } = fake();
+    const library = libraryOf('https://api.example/', 'nøkkel', send, () => Buffer.from('x'));
+
+    const id = await library.start('playground', true, 'q1');
+
+    expect(id).toBe('r1');
+    const started = calls.find((c) => c.method === 'POST');
+    expect(started?.url).toBe('https://api.example/recorder/demos/playground/recordings');
+    expect(started?.headers['x-recorder-key']).toBe('nøkkel');
+    expect(JSON.parse(String(started?.body))).toEqual({
+      genkiVersion: '0.44.0',
+      narrated: true,
+      recording: 'q1',
+    });
+  });
+
+  it('stops as cancelled when the API says the recording has ended', async () => {
+    const { send, fail } = fake();
+    const library = libraryOf('https://api.example', 'k', send, () => Buffer.from('x'));
+    fail(409);
+
+    await expect(library.upload('r1', 'step-1.png', 'f')).rejects.toBeInstanceOf(Cancelled);
+  });
+
+  it('reports a failed step with the command it was running and why', () => {
+    const step = { say: 'Vi åpner kjøringen.', do: [['find', 'role', 'link', 'click']] };
+    let caught: unknown;
+    try {
+      runStep(
+        step,
+        3,
+        () => {
+          throw new Error('no element\nmore');
+        },
+        0,
+        clock().now,
+        clock().pause,
+      );
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(failureOf(caught)).toEqual({
+      step: 4,
+      command: '["find","role","link","click"]',
+      message: 'no element',
+    });
+  });
+
+  it('builds the demo of a queued recording from its app, path and the first steps of a trial', () => {
+    const demo = demoOfRecording(
+      {
+        id: 'r1',
+        demo: 'playground',
+        upTo: 1,
+        demoSpec: {
+          title: 'T',
+          language: 'nb-NO',
+          voice: 'nb-NO-PernilleNeural',
+          app: 'console',
+          path: '/#/demos',
+          steps: [{ say: 'En.' }, { say: 'To.' }],
+        },
+        settings: { viewport: [1440, 900], tenant: null },
+      },
+      { DEMO_CONSOLE_URL: 'https://console.example/' },
+    );
+
+    expect(demo).toMatchObject({
+      start: 'https://console.example/#/demos',
+      viewport: [1440, 900],
+      steps: [{ say: 'En.' }],
+    });
+  });
+
+  it('asks the managed identity for a speech token', () => {
+    expect(managedIdentityTokenUrl('http://localhost:42356/msi/token')).toBe(
+      'http://localhost:42356/msi/token?resource=https%3A%2F%2Fcognitiveservices.azure.com&api-version=2019-08-01',
+    );
+  });
+});
+
+describe('the still of a recording', () => {
+  it('takes one frame two seconds in, scaled to the card', () => {
+    expect(posterArgs('in.mp4', 'poster.jpg')).toEqual([
+      '-y',
+      '-loglevel',
+      'error',
+      '-ss',
+      '2',
+      '-i',
+      'in.mp4',
+      '-frames:v',
+      '1',
+      '-vf',
+      'scale=640:-2',
+      '-q:v',
+      '4',
+      'poster.jpg',
+    ]);
   });
 });

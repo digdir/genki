@@ -130,6 +130,23 @@ export const mixArgs = (
   ];
 };
 
+export const posterArgs = (video: string, out: string, at = 2) => [
+  '-y',
+  '-loglevel',
+  'error',
+  '-ss',
+  String(at),
+  '-i',
+  video,
+  '-frames:v',
+  '1',
+  '-vf',
+  'scale=640:-2',
+  '-q:v',
+  '4',
+  out,
+];
+
 export const scriptLiteral = (value: unknown) =>
   JSON.stringify(value).replace(
     /[<>/\u2028\u2029]/g,
@@ -311,23 +328,33 @@ const firstLine = (error: unknown) =>
 
 export class StepFailure extends Error {
   readonly step: number;
+  readonly command: string[] | undefined;
+  readonly why: string;
 
-  constructor(message: string, step: number) {
+  constructor(message: string, step: number, command?: string[], why = message) {
     super(message);
     this.step = step;
+    this.command = command;
+    this.why = why;
   }
 }
+
+export class Cancelled extends Error {}
 
 export const stepFailure = (index: number, step: DemoStep, command: string[], error: unknown) =>
   new StepFailure(
     `Step ${index + 1} («${step.say.slice(0, 60)}») failed on: ${command.join(' ')}\n  ${firstLine(error)}`,
     index + 1,
+    command,
+    firstLine(error),
   );
 
 export const readyFailure = (demo: Demo, error: unknown) =>
   new StepFailure(
     `The start page ${demo.start} never showed «${demo.ready ?? ''}»\n  ${firstLine(error)}`,
     0,
+    ['wait', '--text', demo.ready ?? ''],
+    firstLine(error),
   );
 
 export interface DemoResult {
@@ -375,12 +402,37 @@ const run = (cmd: string, args: string[], timeout = commandTimeoutMs) =>
 
 const speechConfigured = () =>
   Boolean(
-    process.env.SPEECH_RESOURCE &&
-    process.env.SPEECH_RESOURCE_GROUP &&
-    process.env.SPEECH_SUBSCRIPTION,
+    (process.env.SPEECH_ENDPOINT && process.env.IDENTITY_ENDPOINT) ||
+    (process.env.SPEECH_RESOURCE &&
+      process.env.SPEECH_RESOURCE_GROUP &&
+      process.env.SPEECH_SUBSCRIPTION),
   );
 
-const speechEndpoint = () => {
+export const managedIdentityTokenUrl = (endpoint: string) => {
+  const url = new URL(endpoint);
+  url.searchParams.set('resource', 'https://cognitiveservices.azure.com');
+  url.searchParams.set('api-version', '2019-08-01');
+  return url.toString();
+};
+
+const speechEndpoint = async () => {
+  const {
+    SPEECH_ENDPOINT: direct,
+    IDENTITY_ENDPOINT: identity,
+    IDENTITY_HEADER: secret,
+  } = process.env;
+  if (direct && identity) {
+    const res = await fetch(managedIdentityTokenUrl(identity), {
+      headers: { 'x-identity-header': secret ?? '' },
+    });
+    if (!res.ok) throw new Error(`The managed identity answered ${res.status}`);
+    const { access_token: token } = (await res.json()) as { access_token: string };
+    return { url: `${direct.replace(/\/$/, '')}/tts/cognitiveservices/v1`, token };
+  }
+  return speechFromCli();
+};
+
+const speechFromCli = () => {
   const {
     SPEECH_RESOURCE: name,
     SPEECH_RESOURCE_GROUP: group,
@@ -438,15 +490,12 @@ export const keep = (file: string, data: Buffer) => {
 export const clipFile = (dir: string, voice: string, text: string) =>
   join(dir, `${createHash('sha256').update(`${voice}\n${text}`).digest('hex').slice(0, 16)}.mp3`);
 
-async function speak(
-  text: string,
-  demo: Demo,
-  dir: string,
-  speech: () => { url: string; token: string },
-) {
+type Speech = () => Promise<{ url: string; token: string }>;
+
+async function speak(text: string, demo: Demo, dir: string, speech: Speech) {
   const file = clipFile(dir, demo.voice, text);
   if (!cached(file)) {
-    const { url, token } = speech();
+    const { url, token } = await speech();
     const res = await fetch(url, {
       method: 'POST',
       headers: {
@@ -477,10 +526,12 @@ const sleep = (ms: number) => {
 
 const cacheDir = () => resolve('demos/out/.voice');
 
-const speechOnce = () => {
-  let endpoint: { url: string; token: string } | undefined;
+const speechOnce = (): Speech => {
+  let endpoint: Promise<{ url: string; token: string }> | undefined;
   return () => (endpoint ??= speechEndpoint());
 };
+
+export const sampleLine = 'Hei! Det er denne stemmen som leser demoene i genki.';
 
 async function voice(path: string) {
   const demo = parseDemo(readFileSync(path, 'utf8'), path);
@@ -488,12 +539,156 @@ async function voice(path: string) {
   mkdirSync(cache, { recursive: true });
   const speech = speechOnce();
   for (const step of demo.steps) await speak(step.say, demo, cache, speech);
+  await speak(sampleLine, demo, cache, speech);
   console.log(`${basename(path)}: ${demo.steps.length} lines voiced`);
+}
+
+export interface RecordingFinish {
+  status: 'recorded' | 'failed';
+  seconds?: number;
+  failure?: { step: number; command?: string; message: string };
+}
+
+export interface Library {
+  start(name: string, narrated: boolean, recording?: string): Promise<string>;
+  upload(recording: string, name: string, file: string): Promise<void>;
+  finish(recording: string, body: RecordingFinish): Promise<void>;
+}
+
+export const libraryOf = (
+  api: string,
+  key: string,
+  send: typeof fetch = fetch,
+  read: (file: string) => Buffer = readFileSync,
+): Library => {
+  const base = api.replace(/\/$/, '');
+  let version: Promise<string> | undefined;
+  const genkiVersion = () =>
+    (version ??= send(`${base}/health`).then(async (res) =>
+      res.ok ? ((await res.json()) as { version: string }).version : 'unknown',
+    ));
+  const call = async (method: string, path: string, body?: BodyInit, type?: string) => {
+    const res = await send(`${base}${path}`, {
+      method,
+      headers: { 'x-recorder-key': key, ...(type ? { 'content-type': type } : {}) },
+      ...(body === undefined ? {} : { body }),
+    });
+    if (res.status === 409) throw new Cancelled(`${path} answered 409: the recording has ended`);
+    if (!res.ok) throw new Error(`${method} ${path} answered ${res.status}`);
+    return res;
+  };
+  return {
+    start: async (name, narrated, recording) => {
+      const res = await call(
+        'POST',
+        `/recorder/demos/${encodeURIComponent(name)}/recordings`,
+        JSON.stringify({
+          genkiVersion: await genkiVersion(),
+          narrated,
+          ...(recording ? { recording } : {}),
+        }),
+        'application/json',
+      );
+      return ((await res.json()) as { id: string }).id;
+    },
+    upload: async (recording, name, file) => {
+      await call(
+        'PUT',
+        `/recorder/recordings/${encodeURIComponent(recording)}/files/${encodeURIComponent(name)}`,
+        new Uint8Array(read(file)),
+        'application/octet-stream',
+      );
+    },
+    finish: async (recording, body) => {
+      await call(
+        'POST',
+        `/recorder/recordings/${encodeURIComponent(recording)}/finish`,
+        JSON.stringify(body),
+        'application/json',
+      );
+    },
+  };
+};
+
+const libraryFromEnv = (env: NodeJS.ProcessEnv) =>
+  env.DEMO_RECORDER_KEY && env.DEMO_API_URL
+    ? libraryOf(env.DEMO_API_URL, env.DEMO_RECORDER_KEY)
+    : undefined;
+
+export const appBases = (env: NodeJS.ProcessEnv) => ({
+  portal: env.DEMO_PORTAL_URL || 'https://portal.genki-test.digdir.cloud',
+  console: env.DEMO_CONSOLE_URL || 'https://console.genki-test.digdir.cloud',
+  workspace: env.DEMO_WORKSPACE_URL || 'https://workspace.genki-test.digdir.cloud',
+});
+
+export interface StoredRecording {
+  id: string;
+  demo: string;
+  upTo?: number;
+  demoSpec: Omit<Demo, 'start'> & { app: 'portal' | 'console' | 'workspace'; path: string };
+  settings: { viewport: [number, number]; tenant: string | null };
+}
+
+export const demoOfRecording = (stored: StoredRecording, env: NodeJS.ProcessEnv): Demo => {
+  const { app, path, ...rest } = stored.demoSpec;
+  const steps = stored.upTo ? rest.steps.slice(0, stored.upTo) : rest.steps;
+  return {
+    title: rest.title,
+    language: rest.language,
+    voice: rest.voice,
+    viewport: rest.viewport ?? stored.settings.viewport,
+    start: `${appBases(env)[app].replace(/\/$/, '')}${path}`,
+    ...(rest.signedIn !== undefined ? { signedIn: rest.signedIn } : {}),
+    ...(rest.ready !== undefined ? { ready: rest.ready } : {}),
+    steps,
+  };
+};
+
+export const failureOf = (error: unknown): RecordingFinish['failure'] =>
+  error instanceof StepFailure
+    ? {
+        step: error.step,
+        ...(error.command ? { command: JSON.stringify(error.command).slice(0, 1000) } : {}),
+        message: error.why.slice(0, 2000),
+      }
+    : { step: 0, message: (error instanceof Error ? error.message : String(error)).slice(0, 2000) };
+
+interface Reporting {
+  library: Library;
+  recording?: string;
+  tenant?: string | null;
 }
 
 async function record(path: string, silent: boolean): Promise<DemoResult> {
   const demo = parseDemo(readFileSync(path, 'utf8'), path);
-  const name = basename(path, '.yaml');
+  const library = libraryFromEnv(process.env);
+  return recordDemo(demo, basename(path, '.yaml'), silent, library ? { library } : undefined);
+}
+
+async function recordStored(id: string, silent: boolean): Promise<DemoResult> {
+  const env = process.env;
+  const library = libraryFromEnv(env);
+  if (!library || !env.DEMO_API_URL || !env.DEMO_RECORDER_KEY)
+    throw new Error('Set DEMO_API_URL and DEMO_RECORDER_KEY to record a queued recording');
+  const res = await fetch(
+    `${env.DEMO_API_URL.replace(/\/$/, '')}/recorder/recordings/${encodeURIComponent(id)}`,
+    { headers: { 'x-recorder-key': env.DEMO_RECORDER_KEY } },
+  );
+  if (!res.ok) throw new Error(`The recording ${id} answered ${res.status}`);
+  const stored = (await res.json()) as StoredRecording;
+  return recordDemo(demoOfRecording(stored, env), stored.demo, silent || Boolean(stored.upTo), {
+    library,
+    recording: stored.id,
+    tenant: stored.settings.tenant,
+  });
+}
+
+async function recordDemo(
+  demo: Demo,
+  name: string,
+  silent: boolean,
+  reporting?: Reporting,
+): Promise<DemoResult> {
   const env = process.env;
   const key = env.DEMO_API_KEY || undefined;
   if (demo.signedIn && !key) {
@@ -508,6 +703,50 @@ async function record(path: string, silent: boolean): Promise<DemoResult> {
 
   const narrate = !silent && narrationOf(demo, cache, speechConfigured());
   if (!narrate) console.log(`${name}: no voice, recording with subtitles only`);
+  const library = reporting?.library;
+  const recording = library ? await library.start(name, narrate, reporting.recording) : undefined;
+  const upload = async (file: string, as: string) => {
+    if (library && recording) await library.upload(recording, as, file);
+  };
+  const finished = async (seconds: number) => {
+    if (library && recording)
+      await library.finish(recording, {
+        status: 'recorded',
+        seconds: Math.round(seconds * 10) / 10,
+      });
+  };
+  try {
+    return await capture(demo, name, narrate, key, out, cache, upload, finished, reporting?.tenant);
+  } catch (error) {
+    if (error instanceof Cancelled) {
+      console.log(`${name}: cancelled`);
+      return { name, outcome: 'skipped', reason: 'cancelled' };
+    }
+    if (library && recording) {
+      const failure = failureOf(error);
+      const shot = join(out, `failed-step-${failure?.step ?? 0}.png`);
+      if (cached(shot))
+        await upload(shot, `failed-step-${failure?.step ?? 0}.png`).catch(() => undefined);
+      await library
+        .finish(recording, { status: 'failed', ...(failure ? { failure } : {}) })
+        .catch(() => undefined);
+    }
+    throw error;
+  }
+}
+
+async function capture(
+  demo: Demo,
+  name: string,
+  narrate: boolean,
+  key: string | undefined,
+  out: string,
+  cache: string,
+  upload: (file: string, as: string) => Promise<void>,
+  finished: (seconds: number) => Promise<void>,
+  tenantOverride?: string | null,
+): Promise<DemoResult> {
+  const env = process.env;
   const speech = speechOnce();
   const clips: Clip[] = [];
   for (const step of demo.steps) {
@@ -535,14 +774,12 @@ async function record(path: string, silent: boolean): Promise<DemoResult> {
     const init = [join(scripts, 'language.js')];
     writeFileSync(init[0], languageScript(demo.language), { mode: 0o600 });
     if (demo.signedIn && key) {
-      const portal = (env.DEMO_PORTAL_URL || 'https://portal.genki-test.digdir.cloud').replace(
-        /\/$/,
-        '',
-      );
-      const consoleUrl = env.DEMO_CONSOLE_URL || 'https://console.genki-test.digdir.cloud';
+      const bases = appBases(env);
+      const portal = bases.portal.replace(/\/$/, '');
       const config = await fetch(`${portal}/config.js`);
       if (!config.ok) throw new Error(`${portal}/config.js answered ${config.status}`);
       const tenant =
+        tenantOverride ||
         env.DEMO_TENANT ||
         (JSON.parse(readFileSync(resolve('scripts/smoke/plan.json'), 'utf8')) as { tenant: string })
           .tenant;
@@ -554,7 +791,7 @@ async function record(path: string, silent: boolean): Promise<DemoResult> {
             key,
             {
               portal,
-              console: consoleUrl,
+              console: bases.console,
               portalClientId: portalClientIdOf(await config.text()),
               tenant,
             },
@@ -587,7 +824,7 @@ async function record(path: string, silent: boolean): Promise<DemoResult> {
     ab('record', 'start', raw, '--cursor');
     const t0 = Date.now();
     try {
-      demo.steps.forEach((step, i) => {
+      for (const [i, step] of demo.steps.entries()) {
         const at = (Date.now() - t0) / 1000;
         const clip = clips[i] as Clip;
         lines.push({ at, seconds: clip.seconds, text: step.say });
@@ -598,9 +835,12 @@ async function record(path: string, silent: boolean): Promise<DemoResult> {
           quietly('screenshot', join(out, `failed-step-${i + 1}.png`));
           throw error;
         }
+        const shot = join(out, `step-${i + 1}.png`);
+        quietly('screenshot', shot);
+        if (cached(shot)) await upload(shot, `step-${i + 1}.png`);
         const elapsed = (Date.now() - t0) / 1000 - at;
         sleep((clip.seconds + (step.hold ?? 0.6) - elapsed) * 1000);
-      });
+      }
     } finally {
       quietly('record', 'stop');
     }
@@ -617,13 +857,28 @@ async function record(path: string, silent: boolean): Promise<DemoResult> {
   );
   run('ffmpeg', mixArgs(raw, voiced, srt, mp4, demo.language), 600_000);
   rmSync(raw, { force: true });
+  await upload(mp4, 'demo.mp4');
+  await upload(srt, 'demo.srt');
+  const poster = join(out, 'poster.jpg');
+  try {
+    run('ffmpeg', posterArgs(mp4, poster));
+  } catch {
+    console.log(`${name}: no still`);
+  }
+  if (cached(poster)) await upload(poster, 'poster.jpg');
+  const sample = clipFile(cache, demo.voice, sampleLine);
+  if (narrate && cached(sample)) await upload(sample, 'sample.mp3');
+  await finished(duration(mp4));
   console.log(`${name}: ${mp4}`);
   return { name, outcome: 'recorded' };
 }
 
 export const parseArgs = (argv: string[]) => {
   const [first, ...rest] = argv;
-  const mode = first === 'check' || first === 'voice' || first === 'record' ? first : 'record';
+  const mode =
+    first === 'check' || first === 'voice' || first === 'record' || first === 'recording'
+      ? first
+      : 'record';
   const args = mode === first ? rest : argv;
   const only = args.includes('--only') ? args[args.indexOf('--only') + 1] : undefined;
   const files = args.filter((a, i) => !a.startsWith('--') && args[i - 1] !== '--only');
@@ -632,6 +887,16 @@ export const parseArgs = (argv: string[]) => {
 
 async function main(argv: string[]) {
   const { mode, silent, only, files } = parseArgs(argv);
+  if (mode === 'recording') {
+    const id = files[0];
+    if (!id || !/^[0-9a-f-]{36}$/.test(id)) throw new Error('recording takes a recording id');
+    const result = await recordStored(id, silent).catch((error: unknown) => {
+      console.error(error instanceof Error ? error.message : String(error));
+      return { name: id, outcome: 'failed' as const };
+    });
+    if (result.outcome === 'failed') process.exitCode = 1;
+    return;
+  }
   const demos = pickDemos(resolve('demos'), only, files);
   const results: DemoResult[] = [];
   let failed = false;

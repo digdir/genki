@@ -650,6 +650,9 @@ export const demoErrors = {
   failureNeedsReason: 'a failed recording says why',
   demoIsMapping: 'a demo is a YAML mapping',
   notSlug: 'not a lowercase slug',
+  demoStepCount: 'the demo has {steps} steps',
+  recordedByWorkflow: 'recordings are made by the demos workflow',
+  recordingNotQueued: 'the recording could not be queued',
 } satisfies Translation<typeof source.demoErrors>;
 
 export const errors = {

@@ -33,6 +33,8 @@ node scripts/demo.ts record --silent demos/portal-tour.yaml   # subtitles only, 
 
 Without the speech settings, and without a saved clip for every line, a demo is recorded with subtitles only.
 
+To fill the console's library, also set `DEMO_API_URL` and `DEMO_RECORDER_KEY`: the recording is then started, followed step by step and finished in the API. `node scripts/demo.ts recording <id>` records a recording queued from the console.
+
 Each line is sent to the voice once and cached in `demos/out/.voice`, so recording again only pays for changed lines. A recording drives genki-test like a person would, so record against the test environment only. Only `playground` sends a question to a model.
 
 See `docs/design/demos/brief.md` for where this is going.

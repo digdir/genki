@@ -66,6 +66,13 @@ describe('the demos workflow', () => {
     expect(holders[0]?.env?.DEMO_API_KEY).toBe('${{ secrets.SMOKE_API_KEY }}');
   });
 
+  it('hands the recordings to the library with the recorder key, in the job that records', () => {
+    const recorder = record.steps.find((s) => s.env?.DEMO_RECORDER_KEY);
+    expect(recorder?.env?.DEMO_RECORDER_KEY).toBe('${{ secrets.DEMO_RECORDER_KEY }}');
+    expect(recorder?.env?.DEMO_API_URL).toBe('${{ vars.SMOKE_API_URL }}');
+    expect(JSON.stringify(voice)).not.toContain('DEMO_RECORDER_KEY');
+  });
+
   it('passes inputs and outputs only through env and files, never into a run script', () => {
     for (const job of [voice, record])
       for (const step of job.steps.filter((s) => s.run)) expect(step.run).not.toContain('${{');

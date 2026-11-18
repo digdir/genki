@@ -30,7 +30,7 @@ interface Recording {
   failure?: { step: number };
 }
 
-const booted = async () => {
+const booted = async (sendRecording?: (recording: string) => Promise<void>) => {
   let second = 0;
   const now = () => new Date(Date.UTC(2026, 10, 17, 10, 0, second++));
   const blobs = new InMemoryBlobStore();
@@ -40,7 +40,7 @@ const booted = async () => {
     demoRecorderKeyDigest: recorderKeyDigest(recorderKey),
     modules: [
       ...platformModules.filter((m) => m !== demosModule),
-      createDemosModule({ now }),
+      createDemosModule({ now, ...(sendRecording ? { sendRecording } : {}) }),
       onboardingModule,
       maskinportenClientsModule,
     ],
@@ -350,5 +350,301 @@ describe('saving a demo', () => {
     });
 
     expect(response.status).toBe(409);
+  });
+});
+
+const reasonText = 'ny versjon av portalen';
+
+describe('recording from the console', () => {
+  const queued = async (sent: string[] = []) => {
+    const platform = await booted(async (id) => {
+      sent.push(id);
+    });
+    const request = (body: unknown = {}) =>
+      platform.send('/operator/demos/playground/recordings', 'operator', {
+        body,
+        reason: reasonText,
+      });
+    return { ...platform, request, sent };
+  };
+
+  it('refuses to queue a recording where no recorder job is set up', async () => {
+    const { send } = await booted();
+
+    const response = await send('/operator/demos/playground/recordings', 'operator', {
+      body: {},
+      reason: reasonText,
+    });
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ type: 'urn:genai:problem:recorder-not-set-up' });
+    expect(
+      await readJson<{ recorder: string }>(await send('/operator/demos', 'operator')),
+    ).toMatchObject({ recorder: 'workflow' });
+  });
+
+  it('queues a recording, hands it to the job and audits it as the person who asked', async () => {
+    const { request, sent, admin, send } = await queued();
+
+    const response = await request();
+    const recording = await readJson<Recording & { requestedBy: string }>(response);
+
+    expect(response.status).toBe(202);
+    expect(recording).toMatchObject({
+      status: 'queued',
+      requestedBy: expect.stringContaining('operator'),
+    });
+    expect(sent).toEqual([recording.id]);
+    expect(
+      (await admin.audit(digdir))
+        .filter((a) => a.target === `demo-recording:${recording.id}`)
+        .map((a) => [a.action, a.reason]),
+    ).toEqual([['platform.demo.recording.start', reasonText]]);
+    const library = await readJson<{ recorder: string; data: { open?: Recording }[] }>(
+      await send('/operator/demos', 'operator'),
+    );
+    expect(library).toMatchObject({ recorder: 'job', data: [{ open: { id: recording.id } }] });
+  });
+
+  it('refuses a second recording while the first has not ended', async () => {
+    const { request } = await queued();
+    await request();
+
+    const second = await request();
+
+    expect(second.status).toBe(409);
+    expect(await second.json()).toMatchObject({ type: 'urn:genai:problem:recording-open' });
+  });
+
+  it('refuses to queue without a reason, and from someone who is not a demo editor', async () => {
+    const { send } = await queued();
+
+    expect(
+      (await send('/operator/demos/playground/recordings', 'operator', { body: {} })).status,
+    ).toBe(400);
+    expect(
+      (
+        await send('/operator/demos/playground/recordings', 'kari', {
+          body: {},
+          reason: reasonText,
+        })
+      ).status,
+    ).toBe(403);
+  });
+
+  it('marks a recording the job could not take as failed', async () => {
+    const { send } = await booted(async () => {
+      throw new Error('queue down');
+    });
+
+    const response = await send('/operator/demos/playground/recordings', 'operator', {
+      body: {},
+      reason: reasonText,
+    });
+    const detail = await readJson<{ recordings: Recording[] }>(
+      await send('/operator/demos/playground', 'operator'),
+    );
+
+    expect(response.status).toBe(503);
+    expect(detail.recordings).toMatchObject([{ status: 'failed', failure: { step: 0 } }]);
+  });
+
+  it('lets the recorder take up a queued recording with the demo version and settings it records', async () => {
+    const { request, record } = await queued();
+    const recording = await readJson<Recording>(await request());
+
+    const read = await readJson<{ demoSpec: { title: string }; settings: { voice: string } }>(
+      await record(`/recorder/recordings/${recording.id}`, { method: 'GET' }),
+    );
+    const started = await record('/recorder/demos/playground/recordings', {
+      json: { genkiVersion: '0.44.0', narrated: true, recording: recording.id },
+    });
+
+    expect(read).toMatchObject({
+      demoSpec: { title: 'Prøv en tjeneste' },
+      settings: { voice: 'nb-NO-PernilleNeural' },
+    });
+    expect(started.status).toBe(201);
+    expect(await started.json()).toMatchObject({
+      id: recording.id,
+      status: 'running',
+      genkiVersion: '0.44.0',
+    });
+  });
+
+  it('keeps a trial of the first steps silent and out of the library', async () => {
+    const { request, record, send } = await queued();
+    const trial = await readJson<Recording & { upTo: number; steps: number }>(
+      await request({ upTo: 1 }),
+    );
+    await record('/recorder/demos/playground/recordings', {
+      json: { genkiVersion: '0.44.0', narrated: true, recording: trial.id },
+    });
+    await record(`/recorder/recordings/${trial.id}/files/demo.mp4`, {
+      method: 'PUT',
+      body: new Uint8Array([1]),
+    });
+    const finished = await readJson<Recording & { narrated: boolean }>(
+      await record(`/recorder/recordings/${trial.id}/finish`, { json: { status: 'recorded' } }),
+    );
+
+    const library = await readJson<{ data: { latest?: Recording; recorded?: Recording }[] }>(
+      await send('/operator/demos', 'operator'),
+    );
+    expect(trial).toMatchObject({ upTo: 1, steps: 1 });
+    expect(finished).toMatchObject({ narrated: false });
+    expect(library.data[0]?.latest).toBeUndefined();
+    expect(library.data[0]?.recorded).toBeUndefined();
+  });
+
+  it('refuses a trial past the last step', async () => {
+    const { request } = await queued();
+
+    expect((await request({ upTo: 3 })).status).toBe(400);
+  });
+
+  it('cancels a running recording, after which the recorder can upload nothing', async () => {
+    const { request, record, send, admin } = await queued();
+    const recording = await readJson<Recording>(await request());
+    await record('/recorder/demos/playground/recordings', {
+      json: { genkiVersion: '0.44.0', narrated: false, recording: recording.id },
+    });
+
+    const cancelled = await send(`/operator/recordings/${recording.id}/cancel`, 'operator', {
+      body: {},
+      reason: 'feil versjon av demoen',
+    });
+    const upload = await record(`/recorder/recordings/${recording.id}/files/step-1.png`, {
+      method: 'PUT',
+      body: new Uint8Array([1]),
+    });
+    const again = await send(`/operator/recordings/${recording.id}/cancel`, 'operator', {
+      body: {},
+      reason: 'feil versjon av demoen',
+    });
+
+    expect(cancelled.status).toBe(200);
+    expect(await cancelled.json()).toMatchObject({ status: 'cancelled' });
+    expect(upload.status).toBe(409);
+    expect(again.status).toBe(409);
+    expect(
+      (await admin.audit(digdir)).filter(
+        (a) =>
+          a.action === 'platform.demo.recording.finish' && a.reason === 'feil versjon av demoen',
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('does not let the recorder take up a cancelled recording', async () => {
+    const { request, record, send } = await queued();
+    const recording = await readJson<Recording>(await request());
+    await send(`/operator/recordings/${recording.id}/cancel`, 'operator', {
+      body: {},
+      reason: 'feil versjon av demoen',
+    });
+
+    const started = await record('/recorder/demos/playground/recordings', {
+      json: { genkiVersion: '0.44.0', narrated: true, recording: recording.id },
+    });
+
+    expect(started.status).toBe(409);
+  });
+
+  it('takes a screenshot after each step as the progress of a running recording', async () => {
+    const { record, start, send } = await booted();
+    const recording = await start();
+
+    await record(`/recorder/recordings/${recording.id}/files/step-1.png`, {
+      method: 'PUT',
+      body: new Uint8Array([1]),
+    });
+
+    const read = await readJson<Recording>(
+      await send(`/operator/recordings/${recording.id}`, 'operator'),
+    );
+    expect(read.files.map((f) => f.name)).toEqual(['step-1.png']);
+  });
+});
+
+describe('the demo settings', () => {
+  it('shows the defaults until someone saves them', async () => {
+    const { send } = await booted();
+
+    const settings = await readJson<Record<string, unknown>>(
+      await send('/operator/demo-settings', 'operator'),
+    );
+
+    expect(settings).toMatchObject({
+      version: 0,
+      voice: 'nb-NO-PernilleNeural',
+      viewport: [1280, 720],
+      tenant: null,
+      retentionDays: 90,
+      recorder: 'workflow',
+    });
+  });
+
+  it('saves the settings with a reason as a demo editor, audited', async () => {
+    const { send, admin } = await booted();
+    const body = {
+      voice: 'nb-NO-FinnNeural',
+      viewport: [1440, 900],
+      tenant: '310000001',
+      login: 'Demo-opptaker i Eksempel kommune',
+      retentionDays: 30,
+      writerDailyTokens: 50000,
+    };
+
+    const saved = await send('/operator/demo-settings', 'operator', {
+      method: 'PUT',
+      body,
+      reason: 'ny stemme for demoene',
+    });
+    const refused = await send('/operator/demo-settings', 'kari', {
+      method: 'PUT',
+      body,
+      reason: 'ny stemme for demoene',
+    });
+
+    expect(saved.status).toBe(200);
+    expect(await saved.json()).toMatchObject({ ...body, version: 1 });
+    expect(refused.status).toBe(403);
+    expect(
+      (await admin.audit(digdir)).filter((a) => a.target === 'demo-settings').map((a) => a.action),
+    ).toEqual(['platform.demo.save']);
+  });
+
+  it('refuses a retention shorter than a week', async () => {
+    const { send } = await booted();
+
+    const response = await send('/operator/demo-settings', 'operator', {
+      method: 'PUT',
+      body: {
+        voice: 'nb-NO-PernilleNeural',
+        viewport: [1280, 720],
+        tenant: null,
+        login: 'recorder',
+        retentionDays: 1,
+        writerDailyTokens: 0,
+      },
+      reason: 'kortere lagringstid',
+    });
+
+    expect(response.status).toBe(400);
+  });
+
+  it('points at a sample of the default voice from the newest recording that has one', async () => {
+    const { send, record, start } = await booted();
+    const recording = await start();
+    await record(`/recorder/recordings/${recording.id}/files/sample.mp3`, {
+      method: 'PUT',
+      body: new Uint8Array([1]),
+    });
+
+    const settings = await readJson<{ sample?: { recording: string } }>(
+      await send('/operator/demo-settings', 'operator'),
+    );
+
+    expect(settings.sample).toEqual({ recording: recording.id, file: 'sample.mp3' });
   });
 });
