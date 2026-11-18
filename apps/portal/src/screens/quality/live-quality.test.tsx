@@ -146,6 +146,12 @@ describe('live Testsett', () => {
     });
   });
 
+  it('names the models of past runs among all models, so a model the policy holds back is not a bare id', async () => {
+    const { calls } = await openLive();
+    await screen.findAllByRole('region', { name: 'Kjøringer av testsettet' });
+    await waitFor(() => expect(calls.some((c) => c.path === '/models?all=true')).toBe(true));
+  });
+
   it('runs the test set on the published version and shows the history and per-case detail', async () => {
     const { writes } = await openLive();
     await screen.findByText('Hvor mange tilsyn hadde vi i 2025?');

@@ -1,0 +1,173 @@
+.mp-chosen {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 20px;
+  padding: 14px 18px;
+  border: 1px solid var(--ds-color-neutral-border-default);
+  border-radius: var(--ds-border-radius-md);
+}
+
+.mp-chosen-text {
+  flex: 1 1 320px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mp-chosen-name {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.mp-facts {
+  font-size: 15px;
+  color: var(--ds-color-neutral-text-subtle);
+}
+
+.mp-dialog {
+  width: min(560px, 100vw);
+  max-width: 100vw;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.mp-dialog[open] {
+  display: flex;
+}
+
+.mp-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.mp-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.mp-title .ds-heading {
+  margin: 0;
+}
+
+.mp-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.mp-body {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mp-list {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mp-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px 12px;
+  padding: 12px;
+  border: 1px solid transparent;
+  border-radius: var(--ds-border-radius-md);
+}
+
+.mp-row-picked {
+  background: var(--ds-color-accent-surface-tinted);
+  border-color: var(--ds-color-accent-border-strong);
+}
+
+.mp-row > .ds-field {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.mp-row-side {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  font-size: 14px;
+}
+
+.mp-desc {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mp-none {
+  padding: 12px 8px;
+}
+
+.mp-start {
+  align-self: flex-start;
+}
+
+.mp-foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.mc-scroll {
+  overflow-x: auto;
+}
+
+.mc-compare {
+  width: 100%;
+}
+
+.mc-compare th[scope='row'] {
+  text-align: left;
+  vertical-align: top;
+  font-weight: 500;
+}
+
+.mc-compare td {
+  vertical-align: top;
+}
+
+.mc-differs {
+  background: var(--ds-color-warning-surface-tinted);
+}
+
+.mc-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mc-head-name {
+  display: flex;
+  flex-direction: column;
+  font-weight: 600;
+}
+
+.mp-search {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}

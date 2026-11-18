@@ -86,7 +86,7 @@ const areas: Partial<Record<string, Area>> = {
     list: [
       (api, tenant, _live, signal) => api.usage(tenant, 190, signal),
       (api, tenant, _live, signal) => api.tenantEffectiveSettings(tenant, signal),
-      (api, _tenant, _live, signal) => api.listModels({}, signal),
+      (api, _tenant, _live, signal) => api.listModels({ all: true }, signal),
     ],
   },
   playground: {

@@ -471,7 +471,7 @@ export const Overview = ({
   const unpricedModels =
     usage.status === 'ready' ? (usage.data.totals.unpricedModels?.length ?? 0) > 0 : false;
   const [models] = useAsync(
-    async (signal) => (unpricedModels ? api.listModels({}, signal) : []),
+    async (signal) => (unpricedModels ? api.listModels({ all: true }, signal) : []),
     [api, unpricedModels],
   );
   const [datasets, retryDatasets] = useAsync(

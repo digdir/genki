@@ -110,16 +110,15 @@ describe('the live builder', () => {
     ]);
   });
 
-  it('shows the price per 1,000 tokens the API returns and "ikke priset" only for a model without one', async () => {
+  it('shows the price per 1M tokens the API returns and "Ikke priset" only for a model without one', async () => {
     const { fetch } = recorded();
     await startBuilder(fetch);
     await openSection(/^Modell/);
 
-    const models = screen.getByRole('group', { name: 'Modeller Digdir tillater' });
-    expect(
-      within(models).getByText('Kostnad: 0,02 kr inn og 0,08 kr ut per 1 000 tokens'),
-    ).toBeTruthy();
-    expect(within(models).getAllByText('Kostnad: ikke priset')).toHaveLength(1);
+    fireEvent.click(await screen.findByRole('button', { name: 'Bytt modell' }));
+    const picker = screen.getByRole('dialog', { name: 'Velg modell' });
+    expect(within(picker).getByText('20,00 / 80,00 kr')).toBeTruthy();
+    expect(within(picker).getAllByText('Ikke priset')).toHaveLength(1);
   });
 
   it('lists only live models with residency in words and no invented cost or speed', async () => {
@@ -127,10 +126,11 @@ describe('the live builder', () => {
     await startBuilder(fetch);
     await openSection(/^Modell/);
 
-    const models = screen.getByRole('group', { name: 'Modeller Digdir tillater' });
-    expect(within(models).getAllByRole('radio')).toHaveLength(2);
-    expect(within(models).getByText(/Data behandles i EU/)).toBeTruthy();
-    expect(within(models).queryByText(/Borealis|Fart:|Kostnad: høy/)).toBeNull();
+    fireEvent.click(await screen.findByRole('button', { name: 'Bytt modell' }));
+    const picker = screen.getByRole('dialog', { name: 'Velg modell' });
+    expect(within(picker).getAllByRole('radio')).toHaveLength(2);
+    expect(within(picker).getByText('Data i EU/EØS')).toBeTruthy();
+    expect(within(picker).queryByText(/Borealis|Fart:|Kostnad: høy/)).toBeNull();
   });
 
   it('picks datasets from the catalog, writes the full id and removes them again', async () => {

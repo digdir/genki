@@ -75,6 +75,36 @@ describe('model per operation in the service setup', () => {
     expect(latest?.spec.model.operations).toEqual({ 'generate-image': 'aivar/borealis-27b' });
   });
 
+  it('says under the chosen model which model each operation the flow calls uses, and links to the choices', () => {
+    const kinds = [
+      ...operationModels,
+      { kind: 'decide', models: [{ id: 'foundry-openai/gpt-4.1', name: 'GPT-4.1', where: 'EU' }] },
+    ];
+    render(
+      <SetupHarness
+        sections={['model']}
+        initial={exampleTemplate('answers')}
+        operationModels={kinds}
+      />,
+    );
+    expect(
+      screen.getByText(/^Bilde bruker samme som chat\. Avgjørelse bruker samme som chat\./),
+    ).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Modell for Generate image'), {
+      target: { value: 'aivar/borealis-27b' },
+    });
+    expect(
+      screen.getByText(/^Bilde bruker Borealis-27B\. Avgjørelse bruker samme som chat\./),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Modell per type kall' }));
+    expect(document.activeElement).toBe(screen.getByLabelText('Modell for Generate image'));
+  });
+
+  it('says nothing about other operations when the flow calls none', () => {
+    render(<SetupHarness sections={['model']} initial={exampleTemplate('answers')} />);
+    expect(screen.queryByRole('button', { name: 'Modell per type kall' })).toBeNull();
+  });
+
   it('choosing the main model for an operation removes it from the service', () => {
     const spec = {
       ...exampleTemplate('answers').spec,

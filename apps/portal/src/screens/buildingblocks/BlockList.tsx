@@ -388,6 +388,9 @@ export const BlockList = ({
               {g.kind === 'skill' && !catalogue ? (
                 <SkillCreateActions api={api} tenant={tenant} />
               ) : null}
+              {g.kind === 'model' ? (
+                <a href="#/building-blocks/models">{t('modelCatalog.openCatalog')}</a>
+              ) : null}
             </div>
             <ul className="bb-rows">
               {g.items.map((b) => (
