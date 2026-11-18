@@ -8,6 +8,7 @@ import { mockFetch, type MockExtras } from '../../mock';
 import type { QualityMockOptions } from '../../mock/quality';
 import { expectAccessible, kari } from '../../test-utils';
 import type { FeedbackItem, Organisation, TaskRow } from '../../types';
+import { feedbackRowsToReserve } from './QualityPage';
 
 const base = '#/services/rapportassistenten/quality';
 const now = new Date('2026-11-17T12:00:00Z');
@@ -123,7 +124,11 @@ describe('the Kvalitet page', () => {
       'Tilbakemeldinger fra brukerne',
       'Forslag til forbedringer',
     ]);
-    expect(screen.queryByRole('tablist')).toBeNull();
+    expect(
+      screen
+        .queryAllByRole('tablist')
+        .filter((list) => !/^Faner for /.test(list.getAttribute('aria-label') ?? '')),
+    ).toEqual([]);
     expectAccessible();
   });
 
@@ -378,6 +383,21 @@ describe('feedback from users', () => {
       .map((c) => new URL(c.path, 'http://portal').searchParams.get('from'));
     expect(windows.length).toBeGreaterThan(0);
     expect(new Set(windows)).toEqual(new Set(['2026-10-18T12:00:00.000Z']));
+  });
+
+  it('reserves as many feedback rows as the last visit listed, so Forslag til forbedringer stays put', async () => {
+    sessionStorage.clear();
+    const many: FeedbackItem[] = Array.from({ length: 7 }, (_, i) => ({
+      task: `t-${i}`,
+      rating: 'up',
+      at: '2026-11-16T10:00:00Z',
+    }));
+    await open('', {}, { feedback: many, tasks });
+    const fb = await section('Tilbakemeldinger fra brukerne');
+    await within(fb).findByText('Siste 30 dager: 7 tommel opp, 0 tommel ned.');
+
+    await waitFor(() => expect(feedbackRowsToReserve('999888777', 'rapportassistenten')).toBe(7));
+    expect(feedbackRowsToReserve('999888777', 'en-annen-tjeneste')).toBe(4);
   });
 
   it('says so when no one has given feedback yet', async () => {

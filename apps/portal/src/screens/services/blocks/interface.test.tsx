@@ -17,7 +17,7 @@ afterEach(() => {
 });
 
 const navLink = (name: string) =>
-  within(screen.getByRole('navigation', { name: 'Tjenesten' })).getByRole('link', { name });
+  within(screen.getByRole('tablist', { name: /^Faner for/ })).getByRole('tab', { name });
 
 const openInterface = async (service = 'rapportassistenten', name = 'Rapportassistenten') => {
   await renderAt(`#/services/${service}/interface`);
@@ -44,7 +44,7 @@ const keptFor = (service: string) => {
 describe('the Grensesnitt tab', () => {
   it('is on the page of a service that is published, and starts from the next look of Kunnskapsassistenten', async () => {
     await openInterface();
-    expect(navLink('Grensesnitt').getAttribute('aria-current')).toBe('page');
+    expect(navLink('Grensesnitt').getAttribute('aria-selected')).toBe('true');
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
     fireEvent.click(screen.getByRole('radio', { name: 'Maler' }));
     expect(
@@ -58,10 +58,10 @@ describe('the Grensesnitt tab', () => {
     await screen.findByRole('heading', { level: 1, name: 'Ny tjeneste' });
     fireEvent.click(screen.getByRole('button', { name: /Henter ut opplysninger/ }));
     await screen.findByText('Satte jobb: henter ut opplysninger');
-    const nav = screen.getByRole('navigation', { name: 'Tjenesten' });
+    const nav = screen.getByRole('tablist', { name: /^Faner for/ });
     expect(
       within(nav)
-        .getAllByRole('link')
+        .getAllByRole('tab')
         .map((a) => a.textContent),
     ).toEqual(['Oppsett', 'Grensesnitt', 'Avanserte innstillinger', 'Utviklerverktøy']);
     fireEvent.click(navLink('Grensesnitt'));
@@ -91,7 +91,7 @@ describe('the Grensesnitt tab', () => {
     expect(switchIn('Høyre panel', 'Kilder').checked).toBe(true);
     fireEvent.click(switchIn('Høyre panel', 'Kilder'));
     go('#/services/rapportassistenten/setup');
-    await waitFor(() => expect(navLink('Oppsett').getAttribute('aria-current')).toBe('page'));
+    await waitFor(() => expect(navLink('Oppsett').getAttribute('aria-selected')).toBe('true'));
     go('#/services/rapportassistenten/interface');
     await screen.findByRole('group', { name: 'Byggeklosser og maler' });
     expect(switchIn('Høyre panel', 'Kilder').checked).toBe(false);

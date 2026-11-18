@@ -333,7 +333,7 @@ export const Builder = ({
   const [adding, setAdding] = useState<{ key: string; blocks: readonly string[] }>();
   const clearAdding = useCallback(() => setAdding(undefined), []);
   const rights = useRights();
-  const lifecycle = useServiceLifecycle(api, tenant, id, live && !isNew);
+  const lifecycle = useServiceLifecycle(api, tenant, id, !isNew);
   const reloadLifecycle = () => lifecycleChanged(tenant, id);
   const archived = lifecycle?.state === 'archived';
   const section = archived && !archivedSections.includes(routeSection) ? 'overview' : routeSection;
@@ -438,9 +438,10 @@ export const Builder = ({
 
   const addressed = route.segments[2];
   useEffect(() => {
-    if (addressed && addressed in sectionLabels && addressed !== section)
-      window.location.replace(`#${servicePath(routeId, section)}`);
-  }, [addressed, section, routeId]);
+    if (!addressed || addressed === section) return;
+    const alias = !(addressed in sectionLabels) && detail ? `/${detail}` : '';
+    window.location.replace(`#${servicePath(routeId, section, alias)}`);
+  }, [addressed, section, routeId, detail]);
 
   useEffect(() => {
     const target: SectionId | undefined =
@@ -1376,16 +1377,7 @@ export const Builder = ({
     if (section === 'batch')
       return <BatchSection api={api} tenant={tenant} id={id} runId={detail} />;
     if (section === 'log')
-      return (
-        <LogSection
-          api={api}
-          tenant={tenant}
-          tenantName={tenantName}
-          id={id}
-          runId={detail}
-          live={live}
-        />
-      );
+      return <LogSection api={api} tenant={tenant} id={id} runId={detail} live={live} />;
     if (section === 'versions')
       return live && !isNew ? (
         <VersionsSection
@@ -1424,7 +1416,16 @@ export const Builder = ({
           }
         />
       );
-    return <div className="stack-sm">{setup(setupSections)}</div>;
+    return (
+      <div className="stack-sm">
+        {setup(setupSections)}
+        {isNew ? (
+          <Paragraph data-size="sm" className="meta">
+            {t('service.draftNote')}
+          </Paragraph>
+        ) : null}
+      </div>
+    );
   })();
 
   const subNav = <ServiceSubNav id={routeId} sections={sections} current={section} />;
@@ -1451,7 +1452,7 @@ export const Builder = ({
           flash={flash}
           actions={
             <>
-              {live && canPublish && !isNew && lifecycle && !archived ? (
+              {canPublish && !isNew && lifecycle && !archived ? (
                 <ServiceLifecycle
                   api={api}
                   tenant={tenant}
@@ -1461,7 +1462,7 @@ export const Builder = ({
                     reloadLifecycle();
                     onPublished?.();
                   }}
-                  onCopy={() => void copyService()}
+                  {...(live ? { onCopy: () => void copyService() } : {})}
                 />
               ) : null}
               {!archived ? (
@@ -1526,7 +1527,12 @@ export const Builder = ({
             )}
           </Alert>
         ) : null}
-        <ServiceNav id={routeId} sections={sections} current={section} />
+        <ServiceNav
+          id={routeId}
+          name={service.metadata.name}
+          sections={sections}
+          current={section}
+        />
         {archived && lifecycle ? (
           <ArchivedBanner
             api={api}

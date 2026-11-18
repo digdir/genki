@@ -195,6 +195,8 @@ export const assistantUi = {
     jobSorts: 'Sorterer',
     jobPrepares: 'Forbereder saker',
     jobTranscribes: 'Transkriberer',
+    noStart: 'Ikke valgt ennå',
+    noRunsYet: 'Ingen kjøringer ennå',
     perWeek: '{unit} denne uken',
     changed: 'Endret {when} av {by}',
     noMatch: 'Ingen tjenester passer søket',

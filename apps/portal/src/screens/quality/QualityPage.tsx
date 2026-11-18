@@ -379,6 +379,26 @@ const filters: [FeedbackFilter, PlainKey][] = [
   ['comment', 'qualityPage.filterComment'],
 ];
 
+const feedbackRowsKey = (tenant: string, serviceId: string) =>
+  `genki.feedbackRows.${tenant}/${serviceId}`;
+
+export const feedbackRowsToReserve = (tenant: string, serviceId: string) => {
+  try {
+    const seen = Number(sessionStorage.getItem(feedbackRowsKey(tenant, serviceId)));
+    return seen > 0 ? Math.min(seen, feedbackShown) : 4;
+  } catch {
+    return 4;
+  }
+};
+
+export const rememberFeedbackRows = (tenant: string, serviceId: string, rows: number) => {
+  try {
+    sessionStorage.setItem(feedbackRowsKey(tenant, serviceId), String(rows));
+  } catch {
+    // Without storage the next visit reserves the default.
+  }
+};
+
 const FeedbackSection = ({
   api,
   tenant,
@@ -416,6 +436,11 @@ const FeedbackSection = ({
   const failed = useRef(false);
   if (state.status !== 'loading') failed.current = state.status === 'error';
   const radios = useId();
+  const [reserved] = useState(() => feedbackRowsToReserve(tenant, serviceId));
+  const listed = state.status === 'ready' ? Math.min(state.data.items.length, feedbackShown) : 0;
+  useEffect(() => {
+    if (state.status === 'ready') rememberFeedbackRows(tenant, serviceId, listed);
+  }, [state.status, tenant, serviceId, listed]);
 
   const shown = (item: FeedbackItem) =>
     filter === 'all' ||
@@ -452,7 +477,7 @@ const FeedbackSection = ({
       ) : state.status === 'loading' ? (
         <div className="stack-sm" role="status" aria-label={t('qualityPage.feedbackLoading')}>
           <Skeleton variant="text" width="40%" />
-          {[0, 1, 2, 3].map((i) => (
+          {Array.from({ length: reserved }, (_, i) => (
             <Skeleton key={i} variant="rectangle" height={40} />
           ))}
         </div>

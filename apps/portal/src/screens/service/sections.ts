@@ -122,7 +122,8 @@ export const locate = (
     return { section: 'setup', detail: 'how', redirect: servicePath(id, 'setup', '/how') };
   const known = (Object.keys(sectionLabels) as ServiceSection[]).find((s) => s === raw);
   if (!raw) return { section: fallback, detail: undefined };
-  if (!known || !allowed.includes(known))
+  if (!known) return { section: fallback, detail: undefined };
+  if (!allowed.includes(known))
     return { section: fallback, detail: undefined, redirect: servicePath(id, fallback) };
   return { section: known, detail };
 };

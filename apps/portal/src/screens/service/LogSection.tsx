@@ -1,7 +1,6 @@
 import { Field, Heading, Label, Link, Select, Table, Tag } from '@digdir/designsystemet-react';
 import { useState } from 'react';
 import type { ApiClient } from '../../api';
-import { profileFor } from '../../data/organisations';
 import { notPriced, statusOf } from '../../format';
 import { useT } from '../../i18n';
 import { useFormat } from '@genai/i18n/react';
@@ -11,18 +10,17 @@ import { RunDetail } from '../log/RunDetail';
 import { actorText } from '../log/format';
 import { servicePath } from './sections';
 import '../log.css';
+import { BackLink } from '../../components/BackLink';
 
 export const LogSection = ({
   api,
   tenant,
-  tenantName,
   id,
   runId,
   live,
 }: {
   api: ApiClient;
   tenant: string;
-  tenantName: string;
   id: string;
   runId: string | undefined;
   live: boolean;
@@ -53,26 +51,13 @@ export const LogSection = ({
     [api, tenant, id, environment],
     { keepPreviousFor: id },
   );
-  const canReveal = profileFor(tenant, tenantName).rights.includes('Administrere tjenester');
   const href = (run: string) => `#${servicePath(id, 'log', `/${encodeURIComponent(run)}`)}`;
 
   if (runId)
     return (
       <div className="stack log">
-        <Link href={`#${servicePath(id, 'log')}`} className="back-link">
-          {t('serviceLog.all')}
-        </Link>
-        <RunDetail
-          key={runId}
-          api={api}
-          tenant={tenant}
-          runId={runId}
-          itemIndex={undefined}
-          canReveal={canReveal}
-          live={live}
-          onStatus={() => undefined}
-          onChange={() => undefined}
-        />
+        <BackLink label={t('serviceLog.all')} href={`#${servicePath(id, 'log')}`} />
+        <RunDetail key={runId} api={api} tenant={tenant} runId={runId} live={live} />
       </div>
     );
 

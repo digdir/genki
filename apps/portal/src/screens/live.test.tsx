@@ -532,7 +532,7 @@ describe('live service page', () => {
     async (path) => {
       await renderLive(`#/services/kunnskapsassistenten${path}`, kaPlatform);
 
-      await screen.findByRole('navigation', { name: 'Tjenesten' });
+      await screen.findByRole('tablist', { name: /^Faner for/ });
       expect(screen.queryByRole('complementary', { name: 'Byggeassistent' })).toBeNull();
       expect(screen.queryByText(/KI-assistenten som setter opp tjenesten/)).toBeNull();
       expect(screen.queryByText(/Prøvekjøring fra portalen er ikke koblet til/)).toBeNull();
