@@ -45,6 +45,7 @@ export const playgroundUi = {
       'Forslaget er lagt til i «{name}». Det blir et testtilfelle når eieren av testsettet godtar det. <link>Gå til testsettet</link>',
     runningBoth: 'Kjører begge oppsettene',
     running: 'Kjører',
+    sending: 'Sender …',
     newConversation: 'Ny samtale',
     document: 'Dokument',
     fileChosen: 'Valgt: {name}',

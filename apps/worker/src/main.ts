@@ -860,7 +860,7 @@ const stopFollowingChanges = db
       },
       descriptors: runtime.descriptors,
       definitions: { sync: following.run },
-      models: runtime.models,
+      models: runtime.modelDiscovery,
       toolConnections: { reload: loadToolConnections },
     })
   : undefined;

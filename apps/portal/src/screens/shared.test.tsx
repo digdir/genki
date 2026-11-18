@@ -73,6 +73,18 @@ afterEach(() => {
 });
 
 describe('Fellestjenester: liste', () => {
+  it('looks up model prices among all models, so a model the policy holds back keeps its price', async () => {
+    const urls: string[] = [];
+    const base = mockFetch();
+    const fetch: typeof globalThis.fetch = (input, init) => {
+      urls.push(urlOf(input));
+      return base(input, init);
+    };
+    await renderAt('#/shared-services', fetch);
+    await screen.findByRole('heading', { level: 1, name: 'Fellestjenester' });
+    expect(urls.filter((u) => /\/models(\?|$)/.test(u))).toEqual(['/api/models?all=true']);
+  });
+
   it('shows the six capabilities from the live API as cards', async () => {
     const urls: string[] = [];
     const base = mockFetch();

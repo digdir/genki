@@ -10,7 +10,6 @@ import {
   Paragraph,
   Radio,
   Select,
-  Spinner,
   Tag,
   Textarea,
   Textfield,
@@ -20,11 +19,12 @@ import { useFormat } from '@genai/i18n/react';
 import { useRef, useState, type ComponentRef } from 'react';
 import type { ApiClient } from '../../api';
 import type { EndpointAuth, PipelineSource, Schedule, SearchScope } from '../../api/datasets';
+import { BusyButton } from '../../components/BusyButton';
 import { BackLink } from '../../components/BackLink';
 import { reasonProblem, ReasonField } from '../../components/ReasonField';
 import { kudosDocumentTypes } from '../../data/datasets';
 import { useAsync } from '../../hooks';
-import { ErrorState } from '../../states';
+import { ErrorState, Loading } from '../../states';
 import { ApiError } from '../../api/error';
 import { useT, type PlainKey, type T } from '../../i18n';
 import { FilePicker } from './FilePicker';
@@ -610,10 +610,7 @@ export const LiveNewDataset = ({
               {t('datasets.whereStored')}
             </Heading>
             {engines.status === 'loading' ? (
-              <span role="status" className="row-wrap">
-                <Spinner aria-hidden="true" data-size="xs" />
-                {t('searchEngine.loading')}
-              </span>
+              <Loading label={t('searchEngine.loading')} shape="list" rows={1} headingLevel={3} />
             ) : engines.status === 'error' ? (
               <ErrorState error={engines.error} onRetry={retryEngines} headingLevel={3} />
             ) : (
@@ -651,8 +648,7 @@ export const LiveNewDataset = ({
         </Alert>
         <div aria-live="polite">
           {busy ? (
-            <span role="status" className="row-wrap">
-              <Spinner aria-hidden="true" data-size="xs" />
+            <span role="status" className="meta">
               {busy}
             </span>
           ) : null}
@@ -666,13 +662,15 @@ export const LiveNewDataset = ({
           ) : null}
         </div>
         <div className="wizard-actions">
-          <Button
+          <BusyButton
             type="submit"
             variant="primary"
-            aria-disabled={busy || !prerequisitesReady ? true : undefined}
+            busy={Boolean(busy)}
+            busyLabel={t('datasets.creating')}
+            aria-disabled={!prerequisitesReady || undefined}
           >
-            {busy ? t('datasets.creating') : t('datasets.createAndIngest')}
-          </Button>
+            {t('datasets.createAndIngest')}
+          </BusyButton>
           <Button type="button" variant="tertiary" onClick={onCancel}>
             {t('common.cancel')}
           </Button>

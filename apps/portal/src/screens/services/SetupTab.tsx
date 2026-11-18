@@ -9,6 +9,7 @@ import {
   Field,
   Input,
   Label,
+  Link,
   Radio,
   Select,
   Switch,
@@ -17,9 +18,7 @@ import {
   Textfield,
   ValidationMessage,
 } from '@digdir/designsystemet-react';
-import { useFormat } from '@genai/i18n/react';
 import { useState, type ReactNode } from 'react';
-import { formatModelPrice } from '../../format';
 import { Icon } from '../../components/Icon';
 import {
   exampleDatasets,
@@ -85,7 +84,12 @@ import {
 import { sharedInstructionsOf, withSharedInstructions } from '../../data/service-languages';
 import { kindName } from '../../data/step-operations';
 import { defaultInstructionsOf, strategyFor, takesOf } from '../../data/strategies';
-import type { AsyncState } from '../../hooks';
+import { useAsync, type AsyncState } from '../../hooks';
+import type { CatalogModel } from '../../api/models';
+import { ModelPicker } from '../../components/ModelPicker';
+import { useModelText } from '../../components/model-text';
+import { modelLabel } from '../../models';
+import type { Residency } from '../../types';
 import { useT, type PlainKey, type T } from '../../i18n';
 import { useUserName } from '../../Shell';
 import { ErrorState } from '../../states';
@@ -390,6 +394,23 @@ export const piiConflict = (t: T, spec: ServiceSpec) =>
     ? t('setup.piiConflict')
     : '';
 
+const choiceModel = (m: ModelChoice): CatalogModel => ({
+  id: m.id,
+  name: m.name,
+  maker: m.via,
+  residency: m.residency
+    ? (m.residency as Residency)
+    : m.where === 'Norge'
+      ? 'norway'
+      : m.where === 'EU'
+        ? 'eu'
+        : 'global',
+  capabilities: [],
+  operations: ['chat'],
+  price: m.price ?? null,
+  available: true,
+});
+
 const residencyOfChoice = (m: ModelChoice, live: boolean) =>
   live ? m.residency : m.where === 'Norge' ? 'norway' : m.where === 'EU' ? 'eu' : undefined;
 
@@ -523,13 +544,32 @@ export const SetupTab = ({
   operationModels = [],
 }: Props) => {
   const t = useT();
-  const f = useFormat();
   const userName = useUserName();
   const modelList = modelCatalog ?? models;
+  const [liveModels, retryModels] = useAsync(
+    (signal) =>
+      modelCatalog && api ? api.models.catalog(signal) : Promise.resolve<CatalogModel[]>([]),
+    [api, !!modelCatalog],
+  );
+  const pickerModels: AsyncState<CatalogModel[]> =
+    modelCatalog && api ? liveModels : { status: 'ready', data: modelList.map(choiceModel) };
   const [catalog, setCatalog] = useState(false);
   const [datasetPicker, setDatasetPicker] = useState(false);
   const [refuseInput, setRefuseInput] = useState('');
   const s = d.spec;
+  const modelText = useModelText();
+  const operationLine = operationModels
+    .filter(({ kind }) => kind !== 'chat')
+    .map(({ kind }) => {
+      const chosen = s.model.operations?.[kind];
+      const name =
+        (pickerModels.status === 'ready'
+          ? pickerModels.data.find((x) => x.id === chosen)?.name
+          : undefined) ?? (chosen ? modelLabel(chosen) : '');
+      return chosen
+        ? t('modelPicker.operationUses', { kind: modelText.use(kind), model: name })
+        : t('modelPicker.operationSame', { kind: modelText.use(kind) });
+    });
   const datasetNames =
     live?.datasets.status === 'ready'
       ? new Map(live.datasets.data.map((x) => [x.id, x.name] as const))
@@ -1209,64 +1249,45 @@ export const SetupTab = ({
       </Section>
 
       <Section {...props('model')}>
-        <fieldset className="plain-fieldset stack-xs">
-          <legend className="ds-label">{t('setup.allowedModels')}</legend>
-          {modelCatalog && primary && !modelList.some((x) => x.id === primary) ? (
-            <Alert data-color="warning" data-size="sm">
-              {t('setup.modelNotAllowed', { model: primary })}
-            </Alert>
-          ) : null}
-          {modelCatalog && modelList.length === 0 ? (
-            <p className="meta">{t('setup.noModels')}</p>
-          ) : null}
-          {(modelCatalog || modelList.some((x) => x.id === primary)
-            ? modelList
-            : [modelFor(primary, s.model.residency), ...modelList]
-          ).map((x) => (
-            <div key={x.id} className={pickClass(primary === x.id)}>
-              <Radio
-                name="modell"
-                label={
-                  <span className="row-wrap">
-                    <span>{x.name}</span>
-                    <span className="meta">{t('setup.via', { via: x.via })}</span>
-                  </span>
-                }
-                description={
-                  <span className="stack-xs">
-                    <span className="tag-row">
-                      <Tag
-                        data-size="sm"
-                        data-color={
-                          x.where === 'Norge' ? 'success' : x.where === 'EU' ? 'info' : 'warning'
-                        }
-                      >
-                        {t('setup.dataIn', { where: modelWord(t, x.where) })}
-                      </Tag>
-                      <Tag data-size="sm" data-color="neutral">
-                        {t('setup.cost', {
-                          cost: modelCatalog
-                            ? formatModelPrice(x.price, f, t)
-                            : modelWord(t, x.cost).toLowerCase(),
-                        })}
-                      </Tag>
-                      {modelCatalog ? null : (
-                        <Tag data-size="sm" data-color="neutral">
-                          {t('setup.speed', { speed: modelWord(t, x.speed).toLowerCase() })}
-                        </Tag>
-                      )}
-                    </span>
-                    {x.note ? <span>{x.note}</span> : null}
-                  </span>
-                }
-                checked={primary === x.id}
-                onChange={() =>
-                  patch((cur) => withModel(cur.spec, x.id, residencyOfChoice(x, !!modelCatalog)))
-                }
-              />
-            </div>
-          ))}
-        </fieldset>
+        <ModelPicker
+          models={pickerModels}
+          value={primary}
+          service={d.metadata.name ?? serviceId}
+          readOnly={readOnly}
+          onRetry={retryModels}
+          onChange={(id) => {
+            const choice = modelList.find((x) => x.id === id);
+            const picked =
+              pickerModels.status === 'ready'
+                ? pickerModels.data.find((x) => x.id === id)
+                : undefined;
+            patch((cur) =>
+              withModel(
+                cur.spec,
+                id,
+                choice ? residencyOfChoice(choice, !!modelCatalog) : picked?.residency,
+              ),
+            );
+          }}
+        />
+        {operationLine.length ? (
+          <p className="meta">
+            {operationLine.join(' ')}{' '}
+            <Link asChild>
+              <button
+                type="button"
+                className="link-button"
+                onClick={() => {
+                  const target = document.getElementById('setup-operation-models');
+                  target?.scrollIntoView?.({ block: 'start' });
+                  target?.querySelector('select')?.focus();
+                }}
+              >
+                {t('modelPicker.operationLink')}
+              </button>
+            </Link>
+          </p>
+        ) : null}
         <Field className="narrow-field">
           <Label htmlFor="felt-reserve">{t('setup.fallbackModel')}</Label>
           <Field.Description>{t('setup.fallbackHelp')}</Field.Description>
@@ -1292,7 +1313,7 @@ export const SetupTab = ({
           </Alert>
         ) : null}
         {operationModels.length ? (
-          <fieldset className="plain-fieldset stack-xs">
+          <fieldset id="setup-operation-models" className="plain-fieldset stack-xs">
             <legend className="ds-label">{t('setup.operationModels')}</legend>
             <p className="meta">{t('setup.operationModelsHelp')}</p>
             {operationModels.map(({ kind, models: offered }) => {

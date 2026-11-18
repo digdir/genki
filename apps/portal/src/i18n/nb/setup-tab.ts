@@ -199,16 +199,8 @@ export const setup = defineNamespace({
   improveLabel: 'La plattformen foreslå endringer i instruksjonene',
   improveHelp:
     'Plattformen kan foreslå bedre instruksjoner ut fra tilbakemeldinger og testsett. Du godtar hvert forslag selv. Gjelder fra neste publisering.',
-  allowedModels: 'Modeller Digdir tillater',
-  modelNotAllowed:
-    'Modellen {model} er ikke blant modellene Digdir tillater nå. Velg en av modellene under.',
-  noModels: 'Ingen modeller er tilgjengelige. Driftsteamet må gjøre en modell tilgjengelig først.',
-  via: 'via {via}',
-  dataIn: 'Data behandles i {where}',
-  cost: 'Kostnad: {cost}',
   modelPrice: '{input} kr inn og {output} kr ut per 1 000 tokens',
   notPriced: 'ikke priset',
-  speed: 'Fart: {speed}',
   operationModels: 'Modell per operasjon',
   operationModelsHelp:
     'Flyten kaller disse operasjonene. Velg modellen som utfører hver av dem. Stedet for behandling følger modellen.',

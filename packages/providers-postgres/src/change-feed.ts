@@ -56,6 +56,21 @@ export class PostgresChangeFeed {
     };
   }
 
+  async announce(topic: ChangeTopic): Promise<void> {
+    const bumped = await this.pool.query<{ version: string }>(
+      `with bumped as (
+         insert into change_versions (topic, version) values ($1, 1)
+           on conflict (topic) do update set version = change_versions.version + 1
+         returning version
+       )
+       select version, pg_notify($2, $1) from bumped`,
+      [topic, CHANNEL],
+    );
+    const version = bumped.rows[0]?.version;
+    if (version !== undefined && (this.#seen.get(topic) ?? '0') === String(Number(version) - 1))
+      this.#seen.set(topic, version);
+  }
+
   async start(): Promise<void> {
     if (!this.#closed) return;
     this.#closed = false;

@@ -1,8 +1,10 @@
 import { useFormat } from '@genai/i18n/react';
 import { SchemaFormProvider } from '@genai/schema-forms';
-import { useEffect, useState } from 'react';
+import { Button, Heading, Tabs } from '@digdir/designsystemet-react';
+import { useEffect, useState, type ReactNode } from 'react';
 import type { ApiClient } from '../../api';
 import type { CatalogItem } from '../../api/building-blocks';
+import { BackLink } from '../../components/BackLink';
 import {
   exampleFlows,
   flowQueryIds,
@@ -87,6 +89,55 @@ export interface LiveWorkspaceProps {
   live?: boolean;
 }
 
+const LoadingFrame = ({
+  view,
+  onView,
+  children,
+}: {
+  view: 'flow' | 'lib';
+  onView: (view: 'flow' | 'lib') => void;
+  children: ReactNode;
+}) => {
+  const t = useT();
+  return (
+    <div className="stack-md stepflows">
+      <Tabs value={view} onChange={(v) => onView(v as 'flow' | 'lib')}>
+        <Tabs.List aria-label={t('stepflows.viewLabel')}>
+          <Tabs.Tab value="flow">{t('stepflows.tabInService')}</Tabs.Tab>
+          <Tabs.Tab value="lib">{t('stepflows.tabLibrary')}</Tabs.Tab>
+        </Tabs.List>
+        <Tabs.Panel value={view}>
+          {view === 'lib' ? (
+            <div className="stack-md">
+              <div className="page-head">
+                <div className="stack-xs">
+                  <Heading level={1} data-size="md">
+                    {t('stepflows.libraryTitle')}
+                  </Heading>
+                  <p className="lead">{t('stepflows.libraryLead')}</p>
+                </div>
+                <Button aria-disabled>{t('stepflows.newFlow')}</Button>
+              </div>
+              {children}
+            </div>
+          ) : (
+            <div className="stack-md">
+              <BackLink
+                label={t('stepflows.crumbFlows')}
+                href="#/building-blocks/in-use?type=step_flow"
+              />
+              <Heading level={1} data-size="md">
+                {t('stepflows.strategyTitle')}
+              </Heading>
+              {children}
+            </div>
+          )}
+        </Tabs.Panel>
+      </Tabs>
+    </div>
+  );
+};
+
 export const LiveWorkspace = ({
   api,
   tenant,
@@ -104,14 +155,6 @@ export const LiveWorkspace = ({
   );
   const [flows, setFlows] = useState<Record<string, Flow>>(() => (live ? {} : designFlows()));
 
-  useEffect(() => {
-    if (state.status !== 'ready') return;
-    setFlows((all) => ({ ...all, ...Object.fromEntries(state.data.map((f) => [f.id, f])) }));
-  }, [state]);
-
-  if (state.status === 'loading')
-    return <Loading label={t('stepflows.loading')} shape="list" onRetry={retry} />;
-
   const flyt = query.get('flyt') ?? '';
   const byService =
     service && !live
@@ -125,6 +168,22 @@ export const LiveWorkspace = ({
   const strategi = query.get('strategi') ?? '';
   const visning = query.get('visning');
 
+  const [view, setView] = useState<'flow' | 'lib'>(
+    visning === 'bibliotek' || (library && !visning) ? 'lib' : 'flow',
+  );
+
+  useEffect(() => {
+    if (state.status !== 'ready') return;
+    setFlows((all) => ({ ...all, ...Object.fromEntries(state.data.map((f) => [f.id, f])) }));
+  }, [state]);
+
+  if (state.status === 'loading')
+    return (
+      <LoadingFrame view={view} onView={setView}>
+        <Loading label={t('stepflows.loading')} shape="list" onRetry={retry} />
+      </LoadingFrame>
+    );
+
   return (
     <SchemaFormProvider fetchJson={api.getJson} routeParams={{ tenant }}>
       <Workspace
@@ -135,7 +194,7 @@ export const LiveWorkspace = ({
         liveError={state.status === 'error' ? { error: state.error, retry } : undefined}
         service={service}
         live={live}
-        initialView={visning === 'bibliotek' || (library && !visning) ? 'lib' : 'flow'}
+        initialView={view}
         initialFlow={initialFlow}
         initialStrategy={
           strategyIds.includes(strategi as Strategy['id'])

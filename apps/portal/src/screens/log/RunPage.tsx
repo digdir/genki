@@ -1,4 +1,5 @@
-import { Alert, Button, Heading, Paragraph, Spinner, Tag } from '@digdir/designsystemet-react';
+import { Alert, Button, Heading, Paragraph, Tag } from '@digdir/designsystemet-react';
+import { HeadingSkeleton } from '../../components/Skeleton';
 import { useFormat } from '@genai/i18n/react';
 import { useState } from 'react';
 import type { ApiClient } from '../../api';
@@ -143,6 +144,7 @@ export const RunPage = ({
     return (
       <div className="stack log-run-page">
         {crumb}
+        <HeadingSkeleton label={t('logRun.loading')} size="lg" />
         <Loading label={t('logRun.loading')} shape="detail" onRetry={retry} />
       </div>
     );
@@ -248,10 +250,7 @@ export const RunPage = ({
               {headline ? t('logRun.title', { service: name, question: short(headline) }) : name}
             </Heading>
             <div className="log-run-meta">
-              <Tag data-color={status.color}>
-                {running ? <Spinner aria-hidden="true" data-size="2xs" /> : null}
-                {status.text}
-              </Tag>
+              <Tag data-color={status.color}>{status.text}</Tag>
               <span>{relativeTime(run.startedAt, t, f)}</span>
               <span>{durationText}</span>
               {costText ? <span>{costText}</span> : null}

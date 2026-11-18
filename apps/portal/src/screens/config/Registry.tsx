@@ -321,6 +321,7 @@ export const Registry = ({
   const [state, retry] = useAsync(
     (signal) => api.configList(paths.list, signal),
     [api, paths.list, round],
+    { keepPreviousFor: paths.list },
   );
   const [open, setOpen] = useState<string | 'new'>();
   const flash = useFlash();

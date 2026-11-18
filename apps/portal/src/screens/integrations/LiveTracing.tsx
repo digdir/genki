@@ -252,6 +252,7 @@ export const LiveTracing = ({
       return { connections: listing.data, instance: listing.instance, services };
     },
     [api, tenant, round, outerRound],
+    { keepPreviousFor: tenant },
   );
   const [draft, setDraft] = useState<Draft>();
   const [editing, setEditing] = useState(false);
@@ -369,7 +370,18 @@ export const LiveTracing = ({
 
   if (state.status === 'loading')
     return (
-      <Loading label={t('integLangfuse.loading')} shape="list" headingLevel={3} onRetry={retry} />
+      <section aria-labelledby="tracing-h" className="stack-md">
+        <Heading level={3} data-size="xs" id="tracing-h">
+          {t('integLangfuse.heading')}
+        </Heading>
+        <Paragraph data-size="sm">{t('integLangfuse.intro')}</Paragraph>
+        <Loading label={t('integLangfuse.loading')} shape="list" headingLevel={3} onRetry={retry} />
+        {canManage ? (
+          <Button variant="primary" aria-disabled>
+            {t('integLangfuse.add')}
+          </Button>
+        ) : null}
+      </section>
     );
   if (state.status === 'error')
     return <ErrorState error={state.error} onRetry={retry} headingLevel={3} />;

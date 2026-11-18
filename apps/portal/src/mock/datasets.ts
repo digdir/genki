@@ -3,6 +3,8 @@ import type {
   DatasetDetailView,
   DatasetDocumentDetail,
   DatasetSearchHit,
+  DocumentListing,
+  DocumentSortKey,
   ExecutionView,
   PipelineView,
   DatasetChange,
@@ -24,6 +26,7 @@ export interface DatasetsMockOptions {
   report?: { stored: number; skipped: SkippedDocument[] };
   documents?: Record<string, DatasetDocumentDetail[]>;
   documentsFound?: Record<string, number | undefined>;
+  listing?: Record<string, DocumentListing>;
 }
 
 const day = 86_400_000;
@@ -199,7 +202,10 @@ const doc = (
   title: string,
   fields: Record<string, unknown>,
   extra: Partial<DatasetDocumentDetail> = {},
-): DatasetDocumentDetail => ({ id, title, fields, ...extra });
+): DatasetDocumentDetail => ({ id, title, fields, status: 'indexed', ...extra });
+
+const chunksOf = (...texts: string[]) =>
+  texts.map((text, position) => ({ id: `c${position}`, position, page: position + 1, text }));
 
 export const exampleDocuments: Record<string, DatasetDocumentDetail[]> = {
   '999888777/veiledere': [
@@ -211,6 +217,11 @@ export const exampleDocuments: Record<string, DatasetDocumentDetail[]> = {
         original: { name: 'Rundskriv 3-2026.pdf', size: 634_880, type: 'pdf' },
         excerpt:
           'Rundskrivet gjelder fra 1. mars 2026 og erstatter rundskriv 7-2024. Endringene gjelder fristene for klage.',
+        chunks: chunksOf(
+          'Rundskrivet gjelder fra 1. mars 2026 og erstatter rundskriv 7-2024.',
+          'Endringene gjelder fristene for klage.',
+        ),
+        chunkCount: 2,
       },
     ),
     doc(
@@ -258,6 +269,15 @@ export const exampleDocuments: Record<string, DatasetDocumentDetail[]> = {
 
 const exampleFound: Record<string, number | undefined> = { 'digdir/kudos': 48312 };
 
+const exampleListing: Record<string, DocumentListing> = {
+  'digdir/kudos': { query: true, sort: ['title', 'year'] },
+};
+
+const noListing: DocumentListing = { query: false, sort: [] };
+
+const sortValue = (d: DatasetDocumentDetail, key: DocumentSortKey) =>
+  key === 'title' ? (d.title ?? d.id) : String(d.fields[key] ?? '');
+
 const slugOk = /^[a-z0-9][a-z0-9-]{0,62}$/;
 
 export const datasetsMock = (options: DatasetsMockOptions = {}): MockHandler => {
@@ -272,6 +292,7 @@ export const datasetsMock = (options: DatasetsMockOptions = {}): MockHandler => 
   const until = options.pollsUntilDone ?? 1;
   const documents = structuredClone(options.documents ?? exampleDocuments);
   const found = options.documentsFound ?? exampleFound;
+  const listings = options.listing ?? exampleListing;
 
   const find = (tenant: string, id: string) =>
     datasets.find((d) => d.fullId === id || d.fullId === `${tenant}/${id}`);
@@ -494,6 +515,12 @@ export const datasetsMock = (options: DatasetsMockOptions = {}): MockHandler => 
       }
       if (content[3] !== 'documents' || method !== 'GET') return undefined;
       const item = content[4] ? decodeURIComponent(content[4]) : undefined;
+      const invalid = (errors: { path: string; message: string }[]) =>
+        json({ title: 'Invalid request', status: 422, errors }, 422);
+      const shown = ({ excerpt: _, chunks, ...rest }: DatasetDocumentDetail) => ({
+        ...rest,
+        ...(rest.chunkCount === undefined && chunks ? { chunkCount: chunks.length } : {}),
+      });
       if (item) {
         const one = all.find((d) => d.id === item);
         if (!one)
@@ -505,15 +532,37 @@ export const datasetsMock = (options: DatasetsMockOptions = {}): MockHandler => 
             },
             404,
           );
-        return json(one);
+        const range = request.url.searchParams.get('chunks');
+        if (range === null)
+          return json({ ...shown(one), ...(one.excerpt ? { excerpt: one.excerpt } : {}) });
+        const [from, to] = /^(\d+)-(\d+)$/.exec(range)?.slice(1).map(Number) ?? [];
+        if (from === undefined || to === undefined || to < from || to - from >= 50)
+          return invalid([{ path: 'chunks', message: 'chunks must be from-to, at most 50' }]);
+        return json({
+          ...shown(one),
+          ...(one.excerpt ? { excerpt: one.excerpt } : {}),
+          chunks: (one.chunks ?? []).slice(from, to + 1),
+        });
       }
-      const limit = Number(request.url.searchParams.get('limit') ?? 50);
-      const offset = Number(request.url.searchParams.get('offset') ?? 0);
-      const invalid = (errors: { path: string; message: string }[]) =>
-        json({ title: 'Invalid request', status: 422, errors }, 422);
+      const params = request.url.searchParams;
+      const limit = Number(params.get('limit') ?? 50);
+      const offset = Number(params.get('offset') ?? 0);
+      const query = params.get('query') ?? '';
+      const sort = params.get('sort') as DocumentSortKey | null;
+      const order = params.get('order') === 'desc' ? 'desc' : 'asc';
+      const status = params.get('status') ?? 'indexed';
+      const listing = listings[dataset.fullId] ?? noListing;
       if (offset % limit !== 0)
         return invalid([{ path: 'offset', message: 'offset must be a multiple of limit' }]);
-      const raw = request.url.searchParams.get('filters');
+      const raw = params.get('filters');
+      if (status !== 'indexed' && (raw || sort))
+        return invalid([
+          { path: raw ? 'filters' : 'sort', message: 'only query, limit and offset' },
+        ]);
+      if (query && status === 'indexed' && !listing.query)
+        return invalid([{ path: 'query', message: 'The engine cannot search titles' }]);
+      if (sort && !listing.sort.includes(sort))
+        return invalid([{ path: 'sort', message: `The engine cannot sort by ${sort}` }]);
       let filters: Record<string, unknown> | undefined;
       if (raw) {
         const parsed: unknown = (() => {
@@ -535,15 +584,46 @@ export const datasetsMock = (options: DatasetsMockOptions = {}): MockHandler => 
             })),
           );
       }
-      const kept = filters ? all.filter((d) => matches(d, Object.entries(filters))) : all;
-      const total = !filters && dataset.fullId in found ? found[dataset.fullId] : kept.length;
+      const failed: DatasetDocumentDetail[] = own
+        ? (dataset.skipped ?? []).map((s) => ({
+            id: s.document,
+            title: s.document,
+            fields: {},
+            status: 'failed',
+            reason: s.reason,
+          }))
+        : [];
+      const needle = query.toLowerCase();
+      const titled = (d: DatasetDocumentDetail) =>
+        !needle || `${d.title ?? ''} ${d.id}`.toLowerCase().includes(needle);
+      const indexedCount = found[dataset.fullId] ?? all.length;
+      const statusCounts = { indexed: indexedCount, failed: failed.length, pending: 0 };
+      const pool = status === 'failed' ? failed : status === 'pending' ? [] : all;
+      const kept = pool
+        .filter(titled)
+        .filter((d) => !filters || matches(d, Object.entries(filters)));
+      if (sort) {
+        kept.sort((a, b) => sortValue(a, sort).localeCompare(sortValue(b, sort), 'nb'));
+        if (order === 'desc') kept.reverse();
+      }
+      const total =
+        status === 'indexed' && !filters && !query && dataset.fullId in found
+          ? (found[dataset.fullId] ?? kept.length)
+          : kept.length;
       return json({
         dataset: dataset.fullId,
         limit,
         offset,
-        ...(total === undefined ? {} : { found: total }),
+        found: total,
+        total,
+        totalExact: true,
+        status,
+        statusCounts,
+        listing,
+        ...(query ? { query } : {}),
+        ...(sort ? { sort: { key: sort, order } } : {}),
         ...(filters ? { filters } : {}),
-        documents: kept.slice(offset, offset + limit).map(({ excerpt: _, ...d }) => d),
+        documents: kept.slice(offset, offset + limit).map(shown),
       });
     }
 

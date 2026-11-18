@@ -1,5 +1,5 @@
 import { CodeIcon } from '@navikt/aksel-icons';
-import { Button, Chip, Field, Label, Spinner, Tag, Textarea } from '@digdir/designsystemet-react';
+import { Button, Chip, Field, Label, Tag, Textarea } from '@digdir/designsystemet-react';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { AssistantProposal, AssistantTurn, ProposalDecision } from '../../api/assistant';
 import { Icon } from '../../components/Icon';
@@ -284,7 +284,6 @@ export const AssistantPanel = ({
         })}
         {pending ? (
           <span role="status" className="typing">
-            <Spinner aria-hidden="true" data-size="xs" />
             {t('assistant.typing')}
           </span>
         ) : null}

@@ -10,7 +10,6 @@ import {
   Paragraph,
   Radio,
   Select,
-  Spinner,
   Switch,
   Tag,
   Textfield,
@@ -20,6 +19,7 @@ import { useFormat } from '@genai/i18n/react';
 import { useState } from 'react';
 import { ApiError, type ApiClient } from '../../api';
 import type { Hook, HookPoint, HookSpec, HookTrial } from '../../api/hooks';
+import { BusyButton } from '../../components/BusyButton';
 import { BackLink } from '../../components/BackLink';
 import { ReasonField, reasonProblem } from '../../components/ReasonField';
 import { navigate, useAsync } from '../../hooks';
@@ -242,9 +242,31 @@ export const Hooks = ({
   const [state, retry] = useAsync((signal) => api.hooks.list(tenant, signal), [api, tenant]);
   const [toggled, setToggled] = useState<Record<string, boolean>>({});
 
-  if (state.status === 'loading')
-    return <Loading label={t('integHooks.loading')} shape="list" onRetry={retry} />;
-  if (state.status === 'error') return <ErrorState error={state.error} onRetry={retry} />;
+  const intro = (
+    <div className="int-intro">
+      <Paragraph data-size="sm" className="meta int-intro-text">
+        {t('integHooks.intro')}
+      </Paragraph>
+      {canManage ? (
+        <Button variant="primary" data-size="sm" onClick={() => navigate(hookHref())}>
+          {t('integHooks.addHook')}
+        </Button>
+      ) : (
+        <span className="meta">{needsRight('manage-services', t)}</span>
+      )}
+    </div>
+  );
+  if (state.status !== 'ready')
+    return (
+      <div className="stack-md">
+        {intro}
+        {state.status === 'loading' ? (
+          <Loading label={t('integHooks.loading')} shape="list" onRetry={retry} />
+        ) : (
+          <ErrorState error={state.error} onRetry={retry} />
+        )}
+      </div>
+    );
   const { data: own, platform, builtins } = state.data;
   const typeText = ({ handler }: Hook) =>
     handler.kind === 'webhook'
@@ -279,18 +301,7 @@ export const Hooks = ({
 
   return (
     <div className="stack-md">
-      <div className="int-intro">
-        <Paragraph data-size="sm" className="meta int-intro-text">
-          {t('integHooks.intro')}
-        </Paragraph>
-        {canManage ? (
-          <Button variant="primary" data-size="sm" onClick={() => navigate(hookHref())}>
-            {t('integHooks.addHook')}
-          </Button>
-        ) : (
-          <span className="meta">{needsRight('manage-services', t)}</span>
-        )}
-      </div>
+      {intro}
       {sorted.length ? (
         <ul className="plain-list dev-rows" aria-label={t('integHooks.ownHeading')}>
           {sorted.map((h) => (
@@ -414,12 +425,6 @@ const TestPanel = ({
           {id ? null : ` ${t('integHooks.saveFirst')}`}
         </Paragraph>
       ) : null}
-      {testing ? (
-        <span className="int-inline">
-          <Spinner aria-hidden="true" data-size="xs" />
-          {t('integHooks.sending')}
-        </span>
-      ) : null}
       {trial && tag && !testing ? (
         <div className="stack-xs">
           <div className="tag-row">
@@ -459,9 +464,15 @@ const TestPanel = ({
       ) : null}
       {id ? (
         <div className="actions">
-          <Button variant="secondary" data-size="sm" onClick={() => void run()}>
+          <BusyButton
+            variant="secondary"
+            data-size="sm"
+            busy={testing}
+            busyLabel={t('integHooks.sending')}
+            onClick={() => void run()}
+          >
             {trial ? t('integHooks.testAgain') : t('integHooks.testHeading')}
-          </Button>
+          </BusyButton>
         </div>
       ) : null}
     </section>

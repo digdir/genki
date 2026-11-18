@@ -8,7 +8,6 @@ import { priceSegment } from './screens/about/public-pages';
 import { apiReferenceHashFor, developerHashFor } from './screens/developer-routes';
 import { Overview } from './screens/Overview';
 import { navigation } from './Shell';
-import { StrategyCatalogue } from './strategy-catalogue';
 import './not-found.css';
 
 const distance = (a: string, b: string) => {
@@ -135,12 +134,7 @@ export const Page = ({
   const t = useT();
   const [area = 'overview', id, sub] = props.route.segments;
   if (area === 'overview') return <Overview {...props} onFailingIngests={onFailingIngests} />;
-  if (area === 'services')
-    return (
-      <StrategyCatalogue api={props.api} tenant={props.tenant}>
-        <Services {...props} />
-      </StrategyCatalogue>
-    );
+  if (area === 'services') return <Services {...props} />;
   if (area === 'step-flows') return <StepFlows {...props} />;
   if (area === 'shared-services') return <SharedServices {...props} />;
   if (area === 'datasets' && id && id !== 'new' && sub === 'settings')

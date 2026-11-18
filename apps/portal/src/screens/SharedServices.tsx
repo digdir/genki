@@ -1,6 +1,8 @@
 import { Button, Heading, Paragraph } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
 import type { CatalogItem } from '../api/building-blocks';
+import { BackLink } from '../components/BackLink';
+import { HeadingSkeleton } from '../components/Skeleton';
 import { findCapability, type SharedCapability } from '../data/shared-services';
 import { useAsync, type AsyncState } from '../hooks';
 import { modelLabel } from '../models';
@@ -133,7 +135,7 @@ export const SharedServices = ({ api, tenant, route, live }: ScreenProps) => {
   const t = useT();
   const f = useFormat();
   const [state, retry] = useAsync((signal) => api.sharedServices(signal), [api]);
-  const [models, retryModels] = useAsync((signal) => api.listModels({}, signal), [api]);
+  const [models, retryModels] = useAsync((signal) => api.listModels({ all: true }, signal), [api]);
   const [blocks, retryBlocks] = useAsync(
     async (signal) =>
       (await api.buildingBlocks.list(tenant, { kind: 'shared_service' }, signal)).data,
@@ -147,7 +149,11 @@ export const SharedServices = ({ api, tenant, route, live }: ScreenProps) => {
   const id = route.segments[1];
   if (state.status === 'loading' || models.status === 'loading' || blocks.status === 'loading')
     return id ? (
-      <Loading label={t('sharedServices.loading')} shape="detail" onRetry={retryPending} />
+      <div className="stack">
+        <BackLink label={t('sharedServices.back')} href="#/shared-services" />
+        <HeadingSkeleton label={t('sharedServices.loading')} />
+        <Loading label={t('sharedServices.loading')} shape="detail" onRetry={retryPending} />
+      </div>
     ) : (
       <>
         <Heading level={1} data-size="lg">

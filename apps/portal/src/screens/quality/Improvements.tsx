@@ -207,6 +207,7 @@ export const Improvements = ({
   const [state, retry] = useAsync(
     (signal) => api.quality.improvements(tenant, serviceId, signal),
     [api, tenant, serviceId, round],
+    { keepPreviousFor: `${tenant}/${serviceId}` },
   );
   const seen = useRef<Improvement[] | undefined>(undefined);
   if (state.status === 'ready') seen.current = state.data;

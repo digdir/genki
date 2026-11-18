@@ -16,7 +16,7 @@ import {
   TasklistIcon,
   WrenchIcon,
 } from '@navikt/aksel-icons';
-import { Alert, Button, Spinner, Tag } from '@digdir/designsystemet-react';
+import { Alert, Button, Tag } from '@digdir/designsystemet-react';
 import { useState } from 'react';
 import { Attachments, mediaUrl, type LoadMedia } from '../../components/Attachments';
 import { Icon, type IconComponent } from '../../components/Icon';
@@ -294,9 +294,6 @@ export const Steps = ({
                       <span className="log-step-title">{step.title}</span>
                       {tag ? (
                         <Tag data-size="sm" data-color={tag[1]}>
-                          {step.state === 'running' ? (
-                            <Spinner aria-hidden="true" data-size="2xs" />
-                          ) : null}
                           {t(tag[0])}
                         </Tag>
                       ) : null}
