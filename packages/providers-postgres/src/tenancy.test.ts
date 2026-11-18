@@ -165,7 +165,16 @@ describe('postgres conversations', () => {
     const conversations = store();
     const created = await conversations.create(kari, { agentId: AGENT, userId: 'kari' });
     const sources = [
-      { index: 1, title: 'Rapport', url: 'https://x.no/d1', document_id: 'd1', excerpts: [] },
+      {
+        index: 1,
+        title: 'Rapport',
+        url: 'https://x.no/d1',
+        document_id: 'd1',
+        excerpts: [],
+        version: '3',
+        published_at: '2025-01-15',
+        publisher: 'Justis- og beredskapsdepartementet',
+      },
     ];
     await conversations.append(kari, created.id, { role: 'assistant', text: '[1]', sources });
 

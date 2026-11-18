@@ -24,6 +24,7 @@ export interface ChunkSummary {
   rank?: number;
   version?: string;
   publishedAt?: string;
+  publisher?: string;
   hitCount?: number;
   searchTypes?: SearchType[];
   matchedQuestions?: string[];

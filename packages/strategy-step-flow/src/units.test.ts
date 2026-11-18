@@ -5,6 +5,7 @@ import {
   evaluateEvidence,
   parseCitations,
   renumberCitations,
+  sourceRecord,
   validateCitations,
 } from './blocks/retrieval.js';
 import { evaluateCondition, render, resolvePath, type Scope } from './expressions.js';
@@ -161,5 +162,18 @@ describe('flow checks', () => {
       'spec.steps[1].block',
       'spec.steps[2].params.labels',
     ]);
+  });
+});
+
+describe("a step flow's answer sources", () => {
+  it("a step flow's answer source names its publisher", () => {
+    const named = sourceRecord({
+      chunkId: 'c1',
+      content: 'Tekst',
+      publisher: 'Justis- og beredskapsdepartementet',
+    });
+
+    expect(named.publisher).toBe('Justis- og beredskapsdepartementet');
+    expect(sourceRecord({ chunkId: 'c2', content: 'Tekst' })).not.toHaveProperty('publisher');
   });
 });

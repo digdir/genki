@@ -217,6 +217,25 @@ describe('/v1 frontend contract: conversations', () => {
     expect(stored.get('conv-1')?.[1]?.sources?.[1]).not.toHaveProperty('url');
   });
 
+  it("stores a source's version and publish date with the turn, so a reopened thread keeps the year", async () => {
+    pool = chunks.map((c) =>
+      c.document === 'd1' ? { ...c, version: 3, publishedAt: '2025-01-15' } : c,
+    );
+    try {
+      const { ask, stored } = setup();
+
+      await ask({ genai_conversation: true });
+
+      expect(stored.get('conv-1')?.[1]?.sources?.map((s) => [s.version, s.published_at])).toEqual([
+        ['3', '2025-01-15'],
+        [undefined, undefined],
+      ]);
+      expect(stored.get('conv-1')?.[1]?.sources?.[1]).not.toHaveProperty('published_at');
+    } finally {
+      pool = chunks;
+    }
+  });
+
   it('stores a turn that cites documents as before, with no markers on the turn, its sources or their excerpts', async () => {
     const { ask, stored } = setup();
 
@@ -744,5 +763,31 @@ describe('/v1 frontend contract: steps', () => {
 
     expect(stepFrames(stepped)).toHaveLength(1);
     expect(stepped).not.toContain('"genai_step":{}');
+  });
+});
+
+describe("/v1 frontend contract: a source's publisher", () => {
+  afterEach(() => {
+    pool = chunks;
+  });
+
+  it("a reopened conversation's source keeps its publisher", async () => {
+    pool = chunks.map((c) =>
+      c.document === 'd1' ? { ...c, publisher: 'Justis- og beredskapsdepartementet' } : c,
+    );
+    const { ask, stored } = setup();
+
+    const body = (await (await ask({ genai_conversation: true })).json()) as {
+      sources: { publisher?: string }[];
+    };
+
+    expect(body.sources.map((s) => s.publisher)).toEqual([
+      'Justis- og beredskapsdepartementet',
+      undefined,
+    ]);
+    expect(stored.get('conv-1')?.[1]?.sources?.map((s) => s.publisher)).toEqual([
+      'Justis- og beredskapsdepartementet',
+      undefined,
+    ]);
   });
 });
