@@ -1,7 +1,17 @@
 import type { Task } from '@genai/contracts';
 import { describe, expect, it } from 'vitest';
 import { createApp } from './app.js';
-import { auth, digdir, files, klarsprak, other, plugins, principals, setup } from './testkit.js';
+import {
+  auth,
+  bootPlatform,
+  digdir,
+  files,
+  klarsprak,
+  other,
+  plugins,
+  principals,
+  setup,
+} from './testkit.js';
 
 type Json = Record<string, unknown>;
 const body = async <T = Json>(res: Response) => (await res.json()) as T;
@@ -150,6 +160,34 @@ describe('audit of administrative changes', () => {
     expect(JSON.stringify(events.filter((e) => e.type.startsWith('x.')))).not.toContain(
       'sk-live-123',
     );
+  });
+
+  it('pages the audit log newest first with limit and offset, and says how many entries there are', async () => {
+    const { send } = setup();
+    for (const value of [11, 12, 13])
+      await send(`/tenants/${digdir}/settings/search.topK`, 'kari', {
+        method: 'PUT',
+        body: { value },
+        reason: `topK til ${value}`,
+      });
+
+    const page = await body<{ data: { reason: string }[]; total: number }>(
+      await send(`/tenants/${digdir}/audit?limit=2&offset=1`, 'kari'),
+    );
+    const whole = await body<{ data: { reason: string }[]; total: number }>(
+      await send(`/tenants/${digdir}/audit`, 'kari'),
+    );
+
+    expect(page).toMatchObject({ total: 3 });
+    expect(page.data.map((e) => e.reason)).toEqual(['topK til 12', 'topK til 11']);
+    expect(whole.data.map((e) => e.reason)).toEqual(['topK til 11', 'topK til 12', 'topK til 13']);
+  });
+
+  it('refuses an audit page size outside 1 to 500', async () => {
+    const { send } = setup();
+
+    for (const query of ['limit=0', 'limit=501', 'limit=ti', 'offset=-1'])
+      expect((await send(`/tenants/${digdir}/audit?${query}`, 'kari')).status).toBe(400);
   });
 
   it("keeps a tenant's audit log away from other tenants", async () => {
@@ -802,5 +840,25 @@ describe("a tenant's change list", () => {
       actor: 'employee:test:kristin@digdir.example',
       actorName: 'Kristin Entra',
     });
+  });
+});
+
+describe('the signed-in person', () => {
+  it('answers /me with the email the login carried, and without one when it carried none', async () => {
+    const { send } = await bootPlatform({
+      people: {
+        kari: {
+          kind: 'employee',
+          issuer: 'test',
+          subject: 'kari',
+          tenant: digdir,
+          email: 'kari@digdir.no',
+        },
+        ola: { kind: 'employee', issuer: 'test', subject: 'ola', tenant: digdir },
+      },
+    });
+
+    expect(await body(await send('/me', 'kari'))).toMatchObject({ email: 'kari@digdir.no' });
+    expect(await body(await send('/me', 'ola'))).not.toHaveProperty('email');
   });
 });

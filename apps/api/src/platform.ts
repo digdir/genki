@@ -345,6 +345,9 @@ const routes = {
       200: json(
         z.object({
           organisations: z.array(MyOrganisation),
+          email: z.string().optional().openapi({
+            description: "The signed-in person's email, only when the login token carried one",
+          }),
           lockdownReadOnly: z.literal(true).optional().openapi({
             description:
               'Present only in a locked environment when the login may only read: not a trusted Entra login and not in LOCKDOWN_USER_GROUPS',
@@ -608,9 +611,35 @@ const routes = {
     method: 'get',
     path: '/tenants/{tenant}/audit',
     summary: 'Administrative changes in a tenant, each backed by a platform task',
-    request: { params: z.object({ tenant: tenantParam }) },
+    description:
+      'Oldest first. With limit or offset the page is newest first: offset skips that many of the newest entries.',
+    request: {
+      params: z.object({ tenant: tenantParam }),
+      query: z.object({
+        limit: z.coerce
+          .number()
+          .int()
+          .min(1)
+          .max(500)
+          .optional()
+          .openapi({ param: { name: 'limit', in: 'query' }, description: '1 to 500' }),
+        offset: z.coerce
+          .number()
+          .int()
+          .min(0)
+          .optional()
+          .openapi({ param: { name: 'offset', in: 'query' } }),
+      }),
+    },
     responses: {
-      200: json(z.object({ data: z.array(AuditEntry) }), 'Audit log'),
+      200: json(
+        z.object({
+          data: z.array(AuditEntry),
+          total: z.number().int().openapi({ description: 'Entries the caller may see in all' }),
+        }),
+        'Audit log',
+      ),
+      400: problems[400],
       401: problems[401],
       403: problems[403],
       404: problems[404],
@@ -900,6 +929,7 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
             ].find((name) => name && name !== orgNumber) ?? orgNumber,
           rights: [...rightsOf(principal, orgNumber)],
         })),
+        ...(principal.email ? { email: principal.email } : {}),
         ...(options.lockdown && readOnlyInLockdown(principal) ? { lockdownReadOnly: true } : {}),
       },
       200,
@@ -1181,6 +1211,7 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
     const principal = await auth.authenticate(c.req.raw);
     if (!principal) return problem(c, 401, 'Not authenticated');
     const { tenant } = c.req.valid('param');
+    const { limit, offset } = c.req.valid('query');
     const acting = access(principal, tenant, c.req.raw);
     if (!acting) return problem(c, 404, 'Not found');
     const lacking = refusedRight(c, acting, tenant, 'manage-services');
@@ -1191,7 +1222,11 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
     const hidden = await Promise.all(
       visible.map((e) => isHiddenAuditTarget(store, tenant, e.target)),
     );
-    const entries = visible.filter((_, i) => !hidden[i]);
+    const shown = visible.filter((_, i) => !hidden[i]);
+    const paged = limit !== undefined || offset !== undefined;
+    const entries = paged
+      ? shown.reverse().slice(offset ?? 0, (offset ?? 0) + (limit ?? shown.length))
+      : shown;
     const names = await options.names?.namesOf(
       entries.filter((e) => e.actor.startsWith('employee:')).map((e) => e.actor),
     );
@@ -1201,6 +1236,7 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
           const actorName = e.actor.startsWith('employee:') ? names?.get(e.actor) : undefined;
           return actorName ? { ...e, actorName } : e;
         }),
+        total: shown.length,
       },
       200,
     );

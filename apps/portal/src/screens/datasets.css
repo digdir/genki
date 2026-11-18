@@ -590,3 +590,55 @@
   display: flex;
   flex-direction: column;
 }
+
+.dataset-table td {
+  vertical-align: top;
+}
+
+.dataset-cell-name,
+.dataset-cell-status {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dataset-cell-status .meta {
+  font-size: 14px;
+}
+
+.dataset-page .run-live {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 0 20px 16px;
+}
+
+.dataset-page .run-live progress {
+  flex: 1 1 200px;
+}
+
+.dataset-page .run-toggle-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.dataset-save-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  padding: 16px 20px;
+  background: var(--ds-color-neutral-background-default);
+  border: 1px solid var(--ds-color-neutral-border-default);
+  border-radius: var(--ds-border-radius-lg);
+  box-shadow: var(--ds-shadow-md);
+}
+
+.dataset-settings-after {
+  margin-top: 20px;
+}
+
+.dataset-page .used-by-head {
+  justify-content: space-between;
+}

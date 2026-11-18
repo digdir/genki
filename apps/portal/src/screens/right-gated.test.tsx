@@ -55,6 +55,26 @@ const expectLockedWithReason = (button: HTMLElement) => {
 };
 
 describe('buttons the person has no right for', () => {
+  it('the empty Statistikk names the right instead of offering a service to someone without it', async () => {
+    const empty: UsageReport = {
+      from: '2026-10-01T00:00:00.000Z',
+      to: '2026-10-06T10:00:00.000Z',
+      priced: true,
+      totals: { inputTokens: 0, outputTokens: 0, requests: 0, costMicroNok: 0 },
+      daily: [],
+      byService: [],
+      byModel: [],
+    };
+    await renderAs(
+      '#/statistics',
+      useOnly,
+      mockFetch(undefined, undefined, undefined, undefined, { usage: empty }),
+    );
+
+    expect(await screen.findByText(reason)).toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'Lag en tjeneste' })).toBeNull();
+  });
+
   it('API key buttons are disabled with the missing right next to them', async () => {
     const calls = await renderAs('#/integrations?tab=keys', useOnly);
     const create = await screen.findByRole('button', { name: 'Lag API-nøkkel' });
@@ -65,7 +85,7 @@ describe('buttons the person has no right for', () => {
   });
 
   it('test set and run buttons are disabled with the reason, and nothing is sent', async () => {
-    const calls = await renderAs('#/services/rapportassistenten/quality', useOnly);
+    const calls = await renderAs('#/services/rapportassistenten/quality?view=testsets', useOnly);
     await screen.findByText('Hvor mange tilsyn hadde vi i 2025?');
     expectLockedWithReason(screen.getByRole('button', { name: 'Nytt testtilfelle' }));
     const run = screen.getByRole('button', { name: 'Kjør testsettet' });
@@ -80,7 +100,7 @@ describe('buttons the person has no right for', () => {
   });
 
   it('candidate review buttons are disabled with the reason, and nothing is sent', async () => {
-    const calls = await renderAs('#/services/rapportassistenten/quality', useOnly);
+    const calls = await renderAs('#/services/rapportassistenten/quality?view=testsets', useOnly);
     const section = await screen.findByRole('region', { name: 'Forslag til testtilfeller' });
     const item = (await within(section).findByText('Hva var ventetiden på telefon i fjor?'))
       .parentElement as HTMLElement;
@@ -123,7 +143,7 @@ describe('buttons the person has no right for', () => {
     calls.push(...(await renderAs('#/integrations?tab=systems', useOnly)));
     await screen.findByRole('heading', { name: /Maskinporten/ });
     cleanup();
-    calls.push(...(await renderAs('#/settings?tab=transfer', useOnly)));
+    calls.push(...(await renderAs('#/settings/all', useOnly)));
     await screen.findAllByText(reason);
     expect(calls.filter((c) => /\/(audit|maskinporten-clients|export)(\?|$)/.test(c))).toEqual([]);
   });
@@ -155,7 +175,7 @@ describe('cost estimate before a paid test set run', () => {
       features: { quality: {} },
     });
     const calls = await renderAs(
-      '#/services/rapportassistenten/quality',
+      '#/services/rapportassistenten/quality?view=testsets',
       manager,
       async (input, init) =>
         urlOf(input).split('?')[0]?.endsWith('/usage')

@@ -4,7 +4,8 @@ import { syntheticNationalId } from '@genai/kernel/gate-contract';
 import { descriptorRegistry, loadDescriptors, parseDescriptor } from '@genai/operations';
 import { InMemoryBlobStore } from '@genai/port-blob';
 import { fakeHttp, type FakeServer } from '@genai/port-model/testing';
-import { bootPlatform, digdir } from './testkit.js';
+import type { UnmaskedInputUse } from './operation-governance.js';
+import { bootPlatform, digdir, other } from './testkit.js';
 
 const classifyYaml = (status: 'review' | 'described') => `
 id: example/classify@1
@@ -86,12 +87,19 @@ const describeAudioYaml = describeImageYaml
   .replaceAll('image/png', 'audio/*')
   .replace('takes a picture', 'takes a recording');
 
+const describeTextYaml = describeImageYaml
+  .replaceAll('describe-image', 'describe-text')
+  .replaceAll('picture', 'document')
+  .replaceAll('image/png', 'text/plain')
+  .replace('takes a picture', 'takes a document');
+
 const registry = (status: 'review' | 'described' = 'described') =>
   descriptorRegistry([
     ...loadDescriptors().list(),
     parseDescriptor(classifyYaml(status)),
     parseDescriptor(describeImageYaml),
     parseDescriptor(describeAudioYaml),
+    parseDescriptor(describeTextYaml),
   ]);
 
 const people: Record<string, Principal> = {
@@ -103,6 +111,13 @@ const people: Record<string, Principal> = {
     subject: 'kari',
     tenant: digdir,
     authorizedFor: [{ org: digdir }],
+  },
+  utenfor: {
+    kind: 'employee',
+    issuer: 'test',
+    subject: 'utenfor',
+    tenant: other,
+    authorizedFor: [{ org: other }],
   },
 };
 
@@ -154,7 +169,7 @@ const boot = async (
           deployment: 'small',
           residency: 'norway',
           capabilities: ['json-schema'],
-          operations: ['chat', 'classify', 'describe-image', 'describe-audio'],
+          operations: ['chat', 'classify', 'describe-image', 'describe-audio', 'describe-text'],
         },
         {
           id: 'lab/classifier',
@@ -715,12 +730,276 @@ describe('processor records', () => {
       );
     });
 
+    it('the validate route lists exactly the unmasked input that publishing refuses without consent', async () => {
+      const booted = await ready();
+      const refused = messages(await publishAudio(booted));
+      const unconsented = {
+        ...service,
+        spec: { ...service.spec, input: { accepts: ['audio/wav'] } },
+      };
+      const listed = async (definition: unknown) =>
+        (
+          (await (
+            await booted.send('/definitions/validate', 'kari', { body: { definition } })
+          ).json()) as { unmaskedInput?: UnmaskedInputUse[] }
+        ).unmaskedInput ?? [];
+      const before = await listed(unconsented);
+      expect(before).toEqual([
+        {
+          flow: 'sortering@1',
+          step: 'sorter',
+          stepName: 'Sorter henvendelsen',
+          descriptor: 'example/describe-audio@1',
+          operation: 'describe-audio',
+          mediaType: 'audio/*',
+        },
+      ]);
+      expect(refused).toEqual(
+        before
+          .map(
+            (u) =>
+              `step ${u.step} in sortering@1: example/describe-audio@1 takes ${u.mediaType} input, which cannot be masked; the service's risk assessment must record unmasked input of ${u.mediaType} with a reason`,
+          )
+          .join('\n'),
+      );
+      const consented = {
+        ...unconsented,
+        spec: { ...unconsented.spec, riskConfirmation: audioConsent },
+      };
+      expect(await listed(consented)).toEqual([
+        { ...before[0], consent: audioConsent.unmaskedInput[0] },
+      ]);
+      expect(
+        messages(await booted.platform.definitions.publish(consented, 'test', 'test')),
+      ).toEqual([]);
+    });
+
+    it('the validate route does not list unmasked input to someone outside the tenant', async () => {
+      const booted = await ready();
+      await publishAudio(booted);
+      const response = await booted.send('/definitions/validate', 'utenfor', {
+        body: {
+          definition: { ...service, spec: { ...service.spec, input: { accepts: ['audio/wav'] } } },
+        },
+      });
+      expect(response.status).toBe(403);
+      expect(JSON.stringify(await response.json())).not.toContain('audio');
+    });
+
     it('is refused when the service does not accept its media type', async () => {
       const booted = await ready();
       expect(messages(await publishAudio(booted, audioConsent))).toEqual([]);
       const response = await speak(booted, 'mp3');
       expect(response.status).toBe(415);
       expect(booted.server.seen).toEqual([]);
+    });
+  });
+
+  describe('a text file the caller sends', () => {
+    const letter = 'Fristen er 1. mars.';
+    const textConsent = {
+      reasons: [],
+      unmaskedInput: [
+        { mediaType: 'text/plain', reason: 'Dokumenter som lastes opp til leverandøren' },
+      ],
+    };
+    const textFlow = () => {
+      const steps = flow({ document: '{{input.files.0}}' });
+      const [step] = steps.spec.steps;
+      return {
+        ...steps,
+        spec: {
+          ...steps.spec,
+          steps: [{ ...step, params: { descriptor: 'example/describe-text@1' } }],
+        },
+      };
+    };
+    const ready = async () => {
+      const booted = await boot();
+      await booted.promote();
+      await booted.processorRecord();
+      await booted.send('/operator/operation-kinds/describe-text/maturity', 'drift', {
+        body: { maturity: 'production' },
+        reason,
+      });
+      return booted;
+    };
+    const publishText = async (
+      { platform }: Booted,
+      riskConfirmation?: unknown,
+      steps: Record<string, unknown> = textFlow(),
+    ) => {
+      const published = await platform.definitions.publish(steps, 'test', 'test');
+      expect(published.ok ? [] : published.errors).toEqual([]);
+      return platform.definitions.publish(
+        {
+          ...service,
+          spec: { ...service.spec, ...(riskConfirmation ? { riskConfirmation } : {}) },
+        },
+        'test',
+        'test',
+      );
+    };
+    const upload = ({ send }: Booted, file: { file_data: string; filename?: string }) =>
+      send('/v1/chat/completions', 'app', {
+        body: {
+          model: 'sortering__default',
+          messages: [
+            {
+              role: 'user',
+              content: [
+                { type: 'text', text: 'Les dokumentet' },
+                { type: 'file', file: file },
+              ],
+            },
+          ],
+        },
+      });
+    const asDataUrl = (text: string, type = 'text/plain') =>
+      `data:${type};base64,${Buffer.from(text, 'utf8').toString('base64')}`;
+
+    it('reaches a call-operation step as input.files.0 through a file content part', async () => {
+      const booted = await ready();
+      expect(messages(await publishText(booted, textConsent))).toEqual([]);
+      const response = await upload(booted, { filename: 'brev.txt', file_data: asDataUrl(letter) });
+      expect(response.status).toBe(200);
+      expect(booted.server.seen[0]?.body).toMatchObject({
+        document: Buffer.from(letter, 'utf8').toString('base64'),
+      });
+      const task = response.headers.get('genai-task') ?? '';
+      expect(
+        (await auditOf(booted, task)).find((e) => e.type === 'kernel.gate.call')?.data,
+      ).toMatchObject({
+        outcome: 'ok',
+        mediaInput: [{ path: 'document', mediaType: 'text/plain', bytes: letter.length }],
+      });
+    });
+
+    it('is offered in /v1/models only for the types the service steps take', async () => {
+      const booted = await ready();
+      expect(messages(await publishText(booted, textConsent))).toEqual([]);
+      const listed = (await (await booted.send('/v1/models', 'app')).json()) as {
+        data: { id: string; _files?: unknown }[];
+      };
+      expect(listed.data.find((m) => m.id === 'sortering__default')?._files).toEqual({
+        accepts: ['text/plain'],
+        max_bytes: 10 * 1024 * 1024,
+        max_count: 5,
+      });
+    });
+
+    it('is refused for a service whose steps take no file', async () => {
+      const booted = await ready();
+      expect(messages(await publishText(booted, undefined, flow()))).toEqual([]);
+      const response = await upload(booted, { filename: 'brev.txt', file_data: asDataUrl(letter) });
+      expect(response.status).toBe(400);
+      expect(((await response.json()) as { error: { code: string } }).error.code).toBe(
+        'documents_not_accepted',
+      );
+      expect(booted.server.seen).toEqual([]);
+    });
+
+    it('is refused when the service does not take its media type', async () => {
+      const booted = await ready();
+      expect(messages(await publishText(booted, textConsent))).toEqual([]);
+      const response = await upload(booted, {
+        filename: 'brev.pdf',
+        file_data: asDataUrl('%PDF-1.7', 'application/pdf'),
+      });
+      expect(response.status).toBe(415);
+      expect(((await response.json()) as { error: { code: string } }).error.code).toBe(
+        'unsupported_document_type',
+      );
+      expect(booted.server.seen).toEqual([]);
+    });
+
+    it('is refused when it is larger than the file limit', async () => {
+      const booted = await ready();
+      expect(messages(await publishText(booted, textConsent))).toEqual([]);
+      const response = await upload(booted, {
+        filename: 'brev.txt',
+        file_data: asDataUrl('x'.repeat(10 * 1024 * 1024 + 1)),
+      });
+      expect(response.status).toBe(413);
+      expect(booted.server.seen).toEqual([]);
+    });
+
+    it('is refused when a text/plain file is not valid UTF-8', async () => {
+      const booted = await ready();
+      expect(messages(await publishText(booted, textConsent))).toEqual([]);
+      const response = await upload(booted, {
+        filename: 'brev.txt',
+        file_data: `data:text/plain;base64,${Buffer.from([0xff, 0xfe, 0x00]).toString('base64')}`,
+      });
+      expect(response.status).toBe(415);
+      expect(((await response.json()) as { error: { code: string } }).error.code).toBe(
+        'unsupported_document_type',
+      );
+      expect(booted.server.seen).toEqual([]);
+    });
+
+    it('is not offered for a variant whose own strategy is not a step flow', async () => {
+      const booted = await ready();
+      const published = await booted.platform.definitions.publish(textFlow(), 'test', 'test');
+      expect(published.ok ? [] : published.errors).toEqual([]);
+      expect(
+        messages(
+          await booted.platform.definitions.publish(
+            {
+              ...service,
+              spec: {
+                ...service.spec,
+                riskConfirmation: textConsent,
+                variants: [
+                  'default',
+                  {
+                    id: 'kort',
+                    strategy: {
+                      id: 'single-call',
+                      version: 1,
+                      config: { instructions: 'Svar kort.' },
+                    },
+                  },
+                ],
+              },
+            },
+            'test',
+            'test',
+          ),
+        ),
+      ).toEqual([]);
+      const listed = (await (await booted.send('/v1/models', 'app')).json()) as {
+        data: { id: string; _files?: unknown }[];
+      };
+      expect(listed.data.find((m) => m.id === 'sortering__default')?._files).toBeDefined();
+      expect(listed.data.find((m) => m.id === 'sortering__kort')).toBeDefined();
+      expect(listed.data.find((m) => m.id === 'sortering__kort')?._files).toBeUndefined();
+      const response = await booted.send('/v1/chat/completions', 'app', {
+        body: {
+          model: 'sortering__kort',
+          messages: [
+            {
+              role: 'user',
+              content: [
+                { type: 'text', text: 'Les dokumentet' },
+                { type: 'file', file: { filename: 'brev.txt', file_data: asDataUrl(letter) } },
+              ],
+            },
+          ],
+        },
+      });
+      expect(response.status).toBe(400);
+      expect(((await response.json()) as { error: { code: string } }).error.code).toBe(
+        'documents_not_accepted',
+      );
+      expect(booted.server.seen).toEqual([]);
+    });
+
+    it('is not published as input without recorded consent for unmasked text/plain', async () => {
+      const booted = await ready();
+      expect(messages(await publishText(booted))).toMatch(
+        /takes text\/plain input, which cannot be masked/,
+      );
     });
   });
 

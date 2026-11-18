@@ -267,17 +267,21 @@ export const LiveTestSets = ({
   tenant,
   serviceId,
   setFlash,
+  initialSet,
+  openRun,
 }: {
   api: ApiClient;
   tenant: string;
   serviceId: string;
   setFlash: SetFlash;
+  initialSet?: string;
+  openRun?: string;
 }) => {
   const t = useT();
   const canManage = useRights().has('manage-services');
   const [setsRound, setSetsRound] = useState(0);
   const [casesRound, setCasesRound] = useState(0);
-  const [chosen, setChosen] = useState<string>();
+  const [chosen, setChosen] = useState<string | undefined>(initialSet);
   const [form, setForm] = useState<CaseForm>();
   const [busy, setBusy] = useState(false);
   // Marks belong to the test set they were made in, so they do not follow to another set.
@@ -463,7 +467,8 @@ export const LiveTestSets = ({
         {t.rich('quality.liveSplits', { strong: (c) => <strong>{c}</strong> })}
       </p>
       {current.dataset ? (
-        <>
+        <details className="quality-technical">
+          <summary>{t('qualityPage.technical')}</summary>
           <p>
             {t('quality.langfuseDataset', { connection: current.dataset.connection })}{' '}
             <code>{current.dataset.name}</code>
@@ -475,7 +480,7 @@ export const LiveTestSets = ({
             testSet={current.id}
             connection={current.dataset.connection}
           />
-        </>
+        </details>
       ) : null}
 
       {form ? (
@@ -549,6 +554,7 @@ export const LiveTestSets = ({
         marked={markedIds}
         onClearMarks={() => setMarks(undefined)}
         setFlash={setFlash}
+        {...(openRun && current.id === initialSet ? { openRun } : {})}
       />
 
       <section aria-labelledby="cases-h" className="stack-sm">

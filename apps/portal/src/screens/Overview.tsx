@@ -1,117 +1,170 @@
+import { daysThisMonth } from '../usage-window';
 import { PlusIcon } from '@navikt/aksel-icons';
 import {
   Alert,
-  Avatar,
   Button,
   Heading,
+  Paragraph,
   Skeleton,
-  Spinner,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeaderCell,
+  TableRow,
   Tag,
 } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
-import { useEffect, useState, type MouseEvent } from 'react';
-import { Icon } from '../components/Icon';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import type { ApiClient } from '../api';
 import type { DatasetView } from '../api/datasets';
-import {
-  ingestIssues,
-  recentChanges,
-  runningIngestions,
-  serviceSummaries,
-  startSteps,
-  statusColor,
-  type IngestIssue,
-  type ServiceSummary,
-} from '../data/overview';
-import { formatOrgNumber } from '../data/organisations';
-import { serviceLabel } from '../format';
-import { useT, type Format, type PlainKey, type T } from '../i18n';
-import { useAsync } from '../hooks';
+import { Icon } from '../components/Icon';
+import { isTrialService } from '../format';
+import { useT, type Format, type T } from '../i18n';
+import { useAsync, type AsyncState } from '../hooks';
 import type { ScreenProps } from '../screen';
-import { needsRight, useRights } from '../Shell';
-import { ErrorState, limitOf, Loading, refusalOf } from '../states';
+import { useRights } from '../Shell';
+import { failureText } from './datasets/live-model';
+import { datasetTabPath } from './datasets/model';
+import { ErrorState, Loading, limitOf, refusalOf } from '../states';
+import type { Overview as OverviewData, TaskRow, UsageReport } from '../types';
 import { LiveChanges } from './changes/LiveChanges';
-import type { UsageReport } from '../types';
-import { costOf, money, quotaOf, withPricing } from './usage/model';
+import { allDone, doneCount, ownDataset, startProgress, StartSteps } from './start-progress';
+import {
+  costOf,
+  money,
+  monthStatus,
+  monthUsage,
+  quotaOf,
+  tokensOf,
+  withPricing,
+  withTrialRows,
+} from './usage/model';
+import { quotaFacts } from './quota/model';
+import { QuotaRequestAction } from './quota/QuotaRequest';
 import './overview.css';
 
-const millions = (t: T, f: Format, n: number) =>
-  t('overview.millions', { value: f.decimal(n / 1_000_000, 1) });
+const pollMs = 5000;
 
-const quotaMillions = (f: Format, n: number) =>
-  f.number(n / 1_000_000, { maximumFractionDigits: 1 });
+const millions = (f: Format, n: number) => f.number(n / 1_000_000, { maximumFractionDigits: 1 });
 
-const statusKeys: Record<ServiceSummary['status'], PlainKey> = {
-  'I bruk': 'serviceList.statusLive',
-  Utkast: 'serviceList.statusDraft',
-  'I test': 'serviceList.statusTest',
-  'Satt på pause': 'serviceList.statusPaused',
-};
-
-const summaryFor = (
-  id: string,
-  name: string,
-  version: number | null,
-  live: boolean,
-): ServiceSummary =>
-  (live ? undefined : serviceSummaries.find((s) => s.id === id)) ?? {
-    id,
-    name,
-    status: version ? 'I bruk' : 'Utkast',
-    job: '',
-    triggerKind: '',
-    trigger: '',
-    io: '',
-    calls: '',
-    callsLabel: '',
-  };
-
-type IngestRow = Omit<IngestIssue, 'retryText' | 'status'> & {
-  status: string;
-  retryText?: string;
-};
-
-const needsFollowUp = (d: DatasetView) =>
+const failedRecently = (d: DatasetView) =>
   d.state === 'degraded' ||
   d.lastExecution?.status === 'failed' ||
   d.lastExecution?.status === 'cancelled';
 
-const jump = (id: string) => (event: MouseEvent<HTMLAnchorElement>) => {
-  event.preventDefault();
-  const target = document.getElementById(id);
-  target?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
-  target?.focus({ preventScroll: true });
+const isRunning = (d: DatasetView) =>
+  d.state === 'running' || d.lastExecution?.status === 'running';
+
+export const monthLabel = (f: Format, date: Date) => {
+  const name = f.month(date, { year: true });
+  return name.charAt(0).toUpperCase() + name.slice(1);
+};
+
+const dayMs = 86_400_000;
+
+export const startOfDay = (now: Date) => new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+const localDate = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+export interface FailedRuns {
+  today: { id: string; name: string; count: number }[];
+  week: Map<string, number>;
+  complete: boolean;
+}
+
+export const countFailedRuns = (rows: TaskRow[], total: number, now: Date): FailedRuns => {
+  const since = startOfDay(now).getTime();
+  const today = new Map<string, { id: string; name: string; count: number }>();
+  const week = new Map<string, number>();
+  for (const row of rows) {
+    if (isTrialService(row.service)) continue;
+    week.set(row.service, (week.get(row.service) ?? 0) + 1);
+    if (Date.parse(row.createdAt) < since) continue;
+    const entry = today.get(row.service) ?? {
+      id: row.service,
+      name: row.serviceName ?? row.service,
+      count: 0,
+    };
+    entry.count += 1;
+    today.set(row.service, entry);
+  }
+  return {
+    today: [...today.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name)),
+    week,
+    complete: rows.length >= total,
+  };
+};
+
+export const failedRunsToday = (service: string, now: Date) =>
+  `#/log/runs?status=failed&service=${encodeURIComponent(service)}&date=${localDate(now)}`;
+
+const partlyRead = (d: DatasetView) =>
+  d.lastExecution !== null &&
+  !failedRecently(d) &&
+  !isRunning(d) &&
+  d.lastExecution.status !== 'cancelled' &&
+  d.lastExecution.skipped > 0;
+
+type Started = Record<string, 'starting' | 'started' | { error: string }>;
+
+interface Item {
+  key: string;
+  badge: string;
+  color: 'danger' | 'warning' | 'info' | 'success' | 'neutral';
+  text: ReactNode;
+  action?: ReactNode;
+  alert?: boolean;
+}
+
+const startError = (t: T, error: unknown) =>
+  t('overview.ingestStartFailed', {
+    reason: refusalOf(error, t) ?? failureText(t, error),
+  });
+
+const useIngestRetry = (api: ApiClient, tenant: string, onStarted: () => void) => {
+  const t = useT();
+  const [started, setStarted] = useState<Started>({});
+  const retry = async (d: DatasetView) => {
+    setStarted((s) => ({ ...s, [d.fullId]: 'starting' }));
+    try {
+      const pipeline = (await api.datasets.pipelines(tenant, d.id))[0];
+      if (!pipeline) {
+        setStarted((s) => ({ ...s, [d.fullId]: { error: t('overview.ingestNoPipeline') } }));
+        return;
+      }
+      await api.datasets.execute(tenant, d.id, pipeline.id, 'Ny innlesing fra Oversikt');
+      setStarted((s) => ({ ...s, [d.fullId]: 'started' }));
+      onStarted();
+    } catch (error) {
+      setStarted((s) => ({ ...s, [d.fullId]: { error: startError(t, error) } }));
+    }
+  };
+  return { started, retry };
 };
 
 const UsageCard = ({
   state,
   retry,
-  empty,
-  names,
   quota,
+  month,
 }: {
-  state: ReturnType<typeof useAsync<UsageReport>>[0];
+  state: AsyncState<UsageReport>;
   retry: () => void;
-  empty: boolean;
-  names: Map<string, string>;
   quota: number | null;
+  month: string;
 }) => {
   const t = useT();
-  const f = useFormat();
-  const now = new Date();
-  const next = new Date(now.getFullYear(), now.getMonth() + 1, 1);
   return (
-    <section aria-labelledby="forbruk-h" className="card overview-usage">
-      <div className="row-between">
-        <Heading level={2} data-size="xs" id="forbruk-h">
-          {t('overview.usageHeading', { month: f.month(now) })}
-        </Heading>
-        <span className="meta">{t('overview.quotaRenews', { month: f.month(next) })}</span>
-      </div>
+    <section aria-labelledby="usage-h" className="stack-sm overview-usage">
+      <Heading level={2} data-size="xs" id="usage-h">
+        {t('overview.usageHeading', { month })}
+      </Heading>
       {state.status === 'loading' ? (
         <div role="status" className="stack-sm">
           <Skeleton variant="text" width="60%" height={32} />
-          <Skeleton width="100%" height={14} />
-          <Skeleton variant="text" width="80%" />
+          <Skeleton width="100%" height={8} />
           <span className="visually-hidden">{t('overview.loadingUsage')}</span>
         </div>
       ) : null}
@@ -120,116 +173,193 @@ const UsageCard = ({
       ) : null}
       {state.status === 'error' && !refusalOf(state.error) && !limitOf(state.error) ? (
         <Alert data-color="danger">
-          <Heading level={3} data-size="2xs">
-            {t('overview.usageFailed')}
-          </Heading>
-          <p className="alert-text">{t('overview.usageFailedText')}</p>
+          <Paragraph>{t('overview.usageFailed')}</Paragraph>
           <Button variant="secondary" data-size="sm" onClick={retry}>
             {t('common.tryAgain')}
           </Button>
         </Alert>
       ) : null}
-      {state.status === 'ready' ? (
-        <UsageFigures report={state.data} empty={empty} names={names} quota={quota} />
-      ) : null}
+      {state.status === 'ready' ? <UsageFigures report={state.data} quota={quota} /> : null}
     </section>
   );
 };
 
-const UsageFigures = ({
-  report,
-  empty,
-  names,
-  quota,
+const UsageFigures = ({ report, quota }: { report: UsageReport; quota: number | null }) => {
+  const t = useT();
+  const f = useFormat();
+  const usage = monthUsage(report);
+  const used = tokensOf(usage.total);
+  const pct = quota === null ? 0 : Math.round((used / quota) * 100);
+  const parts = [
+    { key: 'services', label: t('overview.partServices'), tokens: tokensOf(usage.services) },
+    { key: 'trial', label: t('overview.partTrial'), tokens: tokensOf(usage.trial) },
+    { key: 'ingestion', label: t('usageParts.ingestion'), tokens: tokensOf(usage.ingestion) },
+    { key: 'outside', label: t('overview.partOutside'), tokens: tokensOf(usage.gateway) },
+  ].filter((p) => (p.key !== 'outside' && p.key !== 'ingestion') || p.tokens > 0);
+  return (
+    <>
+      <p className="usage-figure">
+        <span className="usage-used numeric">
+          {t('overview.millions', { value: millions(f, used) })}
+        </span>{' '}
+        <span className="meta-lg">
+          {quota === null
+            ? t('overview.quotaUnknown')
+            : t('overview.ofQuota', { value: millions(f, quota) })}
+        </span>
+      </p>
+      {quota === null ? null : (
+        <div
+          role="progressbar"
+          aria-label={t('overview.quotaBar')}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.min(pct, 100)}
+          aria-valuetext={t('overview.percentUsed', { pct })}
+          className="quota-bar"
+        >
+          <div
+            className={
+              pct >= 100 ? 'quota-fill full' : pct >= 80 ? 'quota-fill high' : 'quota-fill'
+            }
+            style={{ width: `${Math.min(pct, 100)}%` }}
+          />
+        </div>
+      )}
+      <dl className="usage-parts">
+        {parts.map((p) => (
+          <div key={p.key}>
+            <dt>{p.label}</dt>
+            <dd className="numeric">{t('overview.millions', { value: millions(f, p.tokens) })}</dd>
+          </div>
+        ))}
+      </dl>
+      <dl className="usage-facts">
+        <div>
+          <dt>{t('overview.cost')}</dt>
+          <dd className="numeric">{money(f, t, costOf(usage.total))}</dd>
+        </div>
+        <div>
+          <dt>{t('overview.runs')}</dt>
+          <dd className="numeric">{f.number(usage.runs)}</dd>
+        </div>
+      </dl>
+      <a href="#/statistics">{t('overview.seeUsagePerService')}</a>
+    </>
+  );
+};
+
+const AttentionList = ({
+  items,
+  checking,
+  checkedAt,
 }: {
-  report: UsageReport;
-  empty: boolean;
-  names: Map<string, string>;
-  quota: number | null;
+  items: Item[];
+  checking: boolean;
+  checkedAt: Date | undefined;
 }) => {
   const t = useT();
   const f = useFormat();
-  const used = empty ? 0 : report.totals.inputTokens + report.totals.outputTokens;
-  const pct = quota === null ? 0 : Math.round((used / quota) * 100);
-  const over = pct >= 80;
-  const perService = empty
-    ? []
-    : report.byService
-        .map((s) => ({
-          name: names.get(s.service) ?? serviceLabel(s.service, s.title),
-          tokens: s.usage.inputTokens + s.usage.outputTokens,
-        }))
-        .filter((s) => s.tokens > 0);
   return (
-    <div className="stack-md">
-      <div className="stack-xs">
-        <div className="usage-figure">
-          <span className="usage-used numeric">{millions(t, f, used)}</span>
-          <span className="meta-lg">
-            {quota === null
-              ? t('overview.quotaUnknown')
-              : t('overview.ofQuota', { value: quotaMillions(f, quota) })}
-          </span>
-        </div>
-        {quota === null ? null : (
-          <>
-            <div
-              role="progressbar"
-              aria-label={t('overview.quotaBar')}
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={pct}
-              aria-valuetext={t('overview.percentUsed', { pct })}
-              className="quota-bar"
-            >
-              <div
-                className={over ? 'quota-fill over' : 'quota-fill'}
-                style={{ width: `${Math.min(pct, 100)}%` }}
-              />
-              <div className="quota-mark" />
-            </div>
-            <div className="row-between meta">
-              <span className={over ? 'quota-pct over' : 'quota-pct'}>
-                {t('overview.percentUsed', { pct })}
-              </span>
-              <span>{t('overview.alertAt80')}</span>
-            </div>
-          </>
-        )}
-        <p className="meta">{t('usage.counted')}</p>
-      </div>
-      <dl className="facts">
-        <div>
-          <dt>{t('overview.costSoFar')}</dt>
-          <dd>{empty ? money(f, t, 0) : money(f, t, costOf(report.totals))}</dd>
-        </div>
-        <div>
-          <dt>{t('overview.runsThisMonth')}</dt>
-          <dd>{empty ? '0' : f.number(report.totals.runs ?? report.totals.requests)}</dd>
-        </div>
-      </dl>
-      {perService.length > 0 ? (
-        <div className="stack-sm">
-          <h3 className="overview-h3">{t('overview.perService')}</h3>
-          <ul className="plain-list per-service">
-            {perService.map((p) => (
-              <li key={p.name}>
-                <div className="row-between">
-                  <span>{p.name}</span>
-                  <span className="numeric meta-15">{millions(t, f, p.tokens)}</span>
-                </div>
-                <div aria-hidden="true" className="mini-bar">
-                  <div style={{ width: `${Math.round((p.tokens / Math.max(used, 1)) * 100)}%` }} />
-                </div>
-              </li>
-            ))}
-          </ul>
-        </div>
+    <section aria-labelledby="attention-h" className="stack-sm">
+      <Heading level={2} data-size="sm" id="attention-h">
+        {t('overview.attention')}
+      </Heading>
+      {items.length > 0 ? (
+        <ul className="plain-list attention-list" aria-live="polite">
+          {items.map((item) => (
+            <li key={item.key} className="attention-row" role={item.alert ? 'alert' : undefined}>
+              <Tag data-size="sm" data-color={item.color}>
+                {item.badge}
+              </Tag>
+              <span className="attention-text">{item.text}</span>
+              {item.action ? <span className="attention-action">{item.action}</span> : null}
+            </li>
+          ))}
+        </ul>
+      ) : checking ? (
+        <Loading label={t('overview.checking')} />
       ) : (
-        <p className="empty-text">{t('overview.noUsage')}</p>
+        <p className="attention-none">
+          {t('overview.nothing', { time: checkedAt ? f.time(checkedAt) : '' })}
+        </p>
       )}
-      <a href="#/statistics">{t('overview.seeUsage')}</a>
-    </div>
+    </section>
+  );
+};
+
+const TopServices = ({
+  services,
+  failed,
+}: {
+  services: OverviewData['services'];
+  failed: FailedRuns | undefined;
+}) => {
+  const t = useT();
+  const f = useFormat();
+  const top = [...services]
+    .sort((a, b) => (b.runsThisWeek ?? 0) - (a.runsThisWeek ?? 0))
+    .slice(0, 5);
+  const failedCell = (id: string) => {
+    if (!failed) return '';
+    const count = failed.week.get(id) ?? 0;
+    return failed.complete || count === 0
+      ? f.number(count)
+      : t('overview.atLeast', { value: f.number(count) });
+  };
+  return (
+    <section aria-labelledby="top-h" className="stack-sm overview-top">
+      <div className="row-between">
+        <Heading level={2} data-size="sm" id="top-h">
+          {t('overview.topServices')}
+        </Heading>
+        <a href="#/services">{t('overview.allServices', { count: services.length })}</a>
+      </div>
+      <div className="overview-table-wrap">
+        <Table className="overview-table">
+          <TableHead>
+            <TableRow>
+              <TableHeaderCell scope="col">{t('overview.colService')}</TableHeaderCell>
+              <TableHeaderCell scope="col" className="num">
+                {t('overview.colRuns')}
+              </TableHeaderCell>
+              <TableHeaderCell scope="col" className="num">
+                {t('overview.colFailed')}
+              </TableHeaderCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {top.map((s) => {
+              const failures = failed?.week.get(s.id) ?? 0;
+              return (
+                <TableRow key={s.id}>
+                  <TableCell>
+                    <span className="tag-row">
+                      <a href={`#/services/${encodeURIComponent(s.id)}`}>{s.name}</a>
+                      {s.latestVersion === null ? (
+                        <Tag data-size="sm" data-color="neutral">
+                          {t('serviceList.statusDraft')}
+                        </Tag>
+                      ) : s.status === 'paused' ? (
+                        <Tag data-size="sm" data-color="warning">
+                          {t('overview.tagPaused')}
+                        </Tag>
+                      ) : null}
+                    </span>
+                  </TableCell>
+                  <TableCell className="num numeric">
+                    {s.runsThisWeek === undefined ? '' : f.number(s.runsThisWeek)}
+                  </TableCell>
+                  <TableCell className={failures > 0 ? 'num numeric has-failures' : 'num numeric'}>
+                    {failedCell(s.id)}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </div>
+    </section>
   );
 };
 
@@ -237,418 +367,366 @@ export const Overview = ({
   api,
   tenant,
   tenantName,
-  live,
   onFailingIngests,
 }: ScreenProps & { onFailingIngests?: (count: number) => void }) => {
   const t = useT();
   const f = useFormat();
+  const rights = useRights();
+  const now = useMemo(() => new Date(), []);
+  const month = monthLabel(f, now);
   const [overview, retryOverview] = useAsync(
     (signal) => api.overview(tenant, signal),
     [api, tenant],
   );
   const [usage, retryUsage] = useAsync(
     async (signal) =>
-      withPricing(await api.usage(tenant, Math.max(new Date().getDate(), 1), signal)),
-    [api, tenant],
+      withTrialRows(withPricing(await api.usage(tenant, daysThisMonth(now), signal))),
+    [api, tenant, now],
+    { keepPreviousFor: tenant },
   );
   const [settings] = useAsync(
     (signal) => api.tenantEffectiveSettings(tenant, signal),
     [api, tenant],
   );
+  const [datasets, retryDatasets] = useAsync(
+    (signal) => api.datasets.list(tenant, signal),
+    [api, tenant],
+    { keepPreviousFor: tenant },
+  );
+  const { started, retry } = useIngestRetry(api, tenant, retryDatasets);
+  const hasServices = overview.status === 'ready' && overview.data.services.length > 0;
+  const [failedRuns, retryFailedRuns] = useAsync(
+    async (signal) => {
+      if (!hasServices) return undefined;
+      const result = await api.tasks(
+        tenant,
+        { status: 'failed', from: new Date(now.getTime() - 7 * dayMs).toISOString(), limit: 500 },
+        signal,
+      );
+      return countFailedRuns(result.data, result.total, now);
+    },
+    [api, tenant, now, hasServices],
+  );
+  const failed = failedRuns.status === 'ready' ? failedRuns.data : undefined;
   const quota = settings.status === 'ready' ? quotaOf(settings.data) : null;
-  const [datasets] = useAsync((signal) => api.datasets.list(tenant, signal), [api, tenant]);
-  const [retried, setRetried] = useState<Record<string, boolean>>({});
-  const rights = useRights();
-  const canCreate = rights.has('manage-services');
-  const hasDataset =
-    datasets.status === 'ready' &&
-    datasets.data.some((d) => d.editable ?? d.fullId.startsWith(`${tenant}/`));
-  const own = (d: DatasetView) => d.editable ?? d.fullId.startsWith(`${tenant}/`);
-  const ownDatasets = datasets.status === 'ready' ? datasets.data.filter(own) : [];
-  const runningCount = live
-    ? ownDatasets.filter((d) => d.state === 'running' || d.lastExecution?.status === 'running')
-        .length
-    : runningIngestions;
-  const liveIngest: IngestRow[] = ownDatasets.filter(needsFollowUp).map((d) => {
-    const cancelled = d.state !== 'degraded' && d.lastExecution?.status === 'cancelled';
-    return {
-      id: d.fullId,
-      dataset: d.fullId,
-      name: d.name,
-      status: cancelled ? t('datasets.runCancelled') : t('datasets.statusFailed'),
-      color: cancelled ? 'warning' : 'danger',
-      meta: d.lastExecution
-        ? t('overview.ingestMeta', { when: f.dateTime(d.lastExecution.startedAt) })
-        : '',
-      message: cancelled ? t('overview.ingestCancelledText') : t('overview.ingestFailedText'),
-    };
-  });
-  const ingest: IngestRow[] = live
-    ? liveIngest
-    : !hasDataset || overview.status !== 'ready' || overview.data.services.length === 0
-      ? []
-      : ingestIssues;
-  const failing = ingest.filter((j) => !retried[j.id]).length;
+
+  const own = datasets.status === 'ready' ? datasets.data.filter(ownDataset(tenant)) : [];
+  const watched = own.filter((d) => started[d.fullId] !== undefined || failedRecently(d));
+  const anyRunning = watched.some((d) => started[d.fullId] === 'started' && isRunning(d));
+  useEffect(() => {
+    if (!anyRunning) return;
+    const timer = setInterval(retryDatasets, pollMs);
+    return () => clearInterval(timer);
+  }, [anyRunning, retryDatasets]);
+  const failing = own.filter((d) => failedRecently(d) && !isRunning(d)).length;
   useEffect(() => {
     onFailingIngests?.(failing);
   }, [onFailingIngests, failing]);
 
-  const alertsKnown = settings.status !== 'loading' && datasets.status !== 'loading';
-  if (overview.status === 'loading' || (overview.status === 'ready' && !alertsKnown))
-    return <Loading label={t('overview.loading')} />;
-  if (overview.status === 'error')
-    return (
-      <>
+  const checkedAt = useMemo(
+    () => (datasets.status === 'ready' || usage.status === 'ready' ? new Date() : undefined),
+    [datasets, usage],
+  );
+
+  const header = (canCreate: boolean) => (
+    <div className="page-head">
+      <div className="stack-xs">
         <Heading level={1} data-size="lg">
           {t('overview.title')}
         </Heading>
+        <p className="lead">{t('overview.lead', { name: tenantName, month })}</p>
+      </div>
+      {canCreate ? (
+        <a className="ds-button" data-variant="primary" href="#/services/new">
+          <Icon icon={PlusIcon} />
+          {t('overview.newService')}
+        </a>
+      ) : null}
+    </div>
+  );
+  const canCreate = rights.has('manage-services');
+
+  if (overview.status === 'loading')
+    return (
+      <div className="stack overview">
+        {header(canCreate)}
+        <Loading label={t('overview.loading')} />
+      </div>
+    );
+  if (overview.status === 'error')
+    return (
+      <div className="stack overview">
+        {header(canCreate)}
         <ErrorState error={overview.error} onRetry={retryOverview} />
-      </>
+      </div>
     );
 
-  const services = overview.data.services.map((s) => {
-    const summary = summaryFor(s.id, s.name, s.latestVersion, live);
-    if (!live) return summary;
-    return {
-      ...summary,
-      status: s.status === 'paused' ? ('Satt på pause' as const) : summary.status,
-      ...(s.runsThisWeek === undefined
-        ? {}
-        : {
-            calls: f.number(s.runsThisWeek),
-            callsLabel: t('serviceList.perWeek', { unit: t('servicesScreen.runsUnit') }),
-          }),
-    };
-  });
+  const services = overview.data.services;
+  const report = usage.status === 'ready' ? usage.data : undefined;
+  const progress =
+    datasets.status === 'ready'
+      ? startProgress(tenant, {
+          datasets: datasets.data,
+          services,
+          trialTokens: report ? tokensOf(monthUsage(report).trial) : 0,
+        })
+      : undefined;
+  const showStart = services.length === 0 || (progress !== undefined && !allDone(progress));
+
   const names = new Map(services.map((s) => [s.id, s.name]));
-  const empty = services.length === 0;
-  const noDatasets =
-    empty || (datasets.status === 'ready' && (live ? datasets.data.length === 0 : !hasDataset));
-  const doneSteps: Record<string, boolean> = { dataset: hasDataset };
-  const monthTotals =
-    overview.data.usageThisMonth ?? (usage.status === 'ready' ? usage.data.totals : undefined);
-  const used = monthTotals && !empty ? monthTotals.inputTokens + monthTotals.outputTokens : 0;
-  const quotaAlert = quota !== null && used / quota > 0.9;
-  const counts = (['I bruk', 'Utkast', 'I test', 'Satt på pause'] as const)
-    .map((status) => ({ status, n: services.filter((s) => s.status === status).length }))
-    .filter((c) => c.n > 0);
+  const items: Item[] = [];
+  if (datasets.status === 'error')
+    items.push({
+      key: 'datasets',
+      badge: t('overview.badgeUnknown'),
+      color: 'neutral',
+      alert: true,
+      text: t('overview.datasetsUnknown'),
+      action: (
+        <Button variant="tertiary" data-size="sm" onClick={retryDatasets}>
+          {t('overview.retryCheck')}
+        </Button>
+      ),
+    });
+  for (const d of watched) {
+    const state = started[d.fullId];
+    const running = isRunning(d);
+    const name = <a href={`#/datasets/${encodeURIComponent(d.id)}`}>{d.name}</a>;
+    const when = d.lastExecution ? f.dateTime(d.lastExecution.startedAt) : '';
+    const canRetry = rights.has('manage-datasets') && d.editable !== false;
+    if (state === 'starting' || (state === 'started' && running) || running) {
+      items.push({
+        key: d.fullId,
+        badge: t('overview.badgeRunning'),
+        color: 'info',
+        text: (
+          <>
+            {name} {t('overview.ingestRunning')}
+          </>
+        ),
+      });
+      continue;
+    }
+    if (state === 'started' && !failedRecently(d)) {
+      items.push({
+        key: d.fullId,
+        badge: t('overview.badgeReady'),
+        color: 'success',
+        text: (
+          <>
+            {name} {t('overview.ingestReady')}
+          </>
+        ),
+        action: <a href={`#/datasets/${encodeURIComponent(d.id)}`}>{t('overview.seeIngestion')}</a>,
+      });
+      continue;
+    }
+    const cancelled = d.state !== 'degraded' && d.lastExecution?.status === 'cancelled';
+    const error = typeof state === 'object' ? state.error : undefined;
+    items.push({
+      key: d.fullId,
+      badge: t(cancelled ? 'overview.badgeCancelled' : 'overview.badgeFailed'),
+      color: cancelled ? 'warning' : 'danger',
+      text: (
+        <>
+          {name} {t(cancelled ? 'overview.ingestCancelled' : 'overview.ingestFailed', { when })}
+          {error ? <span className="attention-error">{error}</span> : null}
+        </>
+      ),
+      action: canRetry ? (
+        <Button
+          variant="tertiary"
+          data-size="sm"
+          aria-label={t('overview.ingestRetryFor', { name: d.name })}
+          onClick={() => void retry(d)}
+        >
+          {t('overview.ingestRetry')}
+        </Button>
+      ) : (
+        <a href={`#/datasets/${encodeURIComponent(d.id)}`}>{t('overview.seeDataset')}</a>
+      ),
+    });
+  }
+  if (failedRuns.status === 'error')
+    items.push({
+      key: 'runs-unknown',
+      badge: t('overview.badgeUnknown'),
+      color: 'neutral',
+      alert: true,
+      text: t('overview.runsUnknown'),
+      action: (
+        <Button variant="tertiary" data-size="sm" onClick={retryFailedRuns}>
+          {t('overview.retryCheck')}
+        </Button>
+      ),
+    });
+  for (const run of failed?.today ?? []) {
+    const name = names.get(run.id) ?? run.name;
+    items.push({
+      key: `runs-${run.id}`,
+      badge: t('overview.badgeErrorsToday'),
+      color: 'danger',
+      text: (
+        <>
+          <a href={`#/services/${encodeURIComponent(run.id)}`}>{name}</a>
+          {t('overview.failedToday', { count: run.count })}
+        </>
+      ),
+      action: (
+        <a
+          href={failedRunsToday(run.id, now)}
+          aria-label={t('overview.seeRunsFor', { service: name })}
+        >
+          {t('overview.seeRuns')}
+        </a>
+      ),
+    });
+  }
+  for (const d of own.filter(partlyRead)) {
+    const last = d.lastExecution;
+    if (!last) continue;
+    items.push({
+      key: `partial-${d.fullId}`,
+      badge: t('overview.badgePartial'),
+      color: 'warning',
+      text: (
+        <>
+          <a href={`#/datasets/${encodeURIComponent(d.id)}`}>{d.name}</a>
+          {t('overview.partialText', {
+            count: last.stored,
+            skipped: f.number(last.skipped),
+            total: f.number(last.stored + last.skipped),
+          })}
+        </>
+      ),
+      action: (
+        <a
+          href={`#${datasetTabPath(d.id, 'ingestions')}`}
+          aria-label={t('overview.seeFilesFor', { name: d.name })}
+        >
+          {t('overview.seeFiles')}
+        </a>
+      ),
+    });
+  }
+  if (usage.status === 'error' && !refusalOf(usage.error))
+    items.push({
+      key: 'quota-unknown',
+      badge: t('overview.badgeUnknown'),
+      color: 'neutral',
+      alert: true,
+      text: t('overview.quotaUnknownCheck'),
+      action: (
+        <Button variant="tertiary" data-size="sm" onClick={retryUsage}>
+          {t('overview.retryCheck')}
+        </Button>
+      ),
+    });
+  const facts = report ? quotaFacts(report, quota, tokensOf(monthUsage(report).total)) : undefined;
+  if (report && facts?.alert) {
+    const { pct } = facts;
+    const next = f.month(new Date(now.getFullYear(), now.getMonth() + 1, 1));
+    const forecast = monthStatus(report, facts.quota, null, f, t).forecast;
+    const values = {
+      used: millions(f, facts.used),
+      quota: millions(f, facts.quota),
+      month: f.month(now),
+      next,
+    };
+    items.push({
+      key: 'quota',
+      badge: t('overview.badgeQuota', { pct }),
+      color: pct >= 100 ? 'danger' : 'warning',
+      text:
+        pct >= 100
+          ? t('overview.quotaUsedUp', values)
+          : t('quotaRequest.overviewText', { ...values, forecast: millions(f, forecast) }),
+      action: (
+        <QuotaRequestAction
+          api={api}
+          tenant={tenant}
+          facts={facts}
+          forecast={forecast}
+          month={f.month(now)}
+          canRequest={rights.has('manage-services')}
+          fallback={<a href="#/statistics">{t('overview.seeUsagePerService')}</a>}
+        />
+      ),
+    });
+  }
+  for (const w of overview.data.qualityWarnings)
+    items.push({
+      key: `quality-${w.service}-${w.message}`,
+      badge: t('overview.badgeQuality'),
+      color: 'warning',
+      text: t('overview.qualityWarning', {
+        service: names.get(w.service) ?? w.service,
+        message: w.message,
+      }),
+      action: (
+        <a href={`#/services/${encodeURIComponent(w.service)}`}>{t('overview.seeService')}</a>
+      ),
+    });
+  const checking =
+    datasets.status === 'loading' ||
+    usage.status === 'loading' ||
+    settings.status === 'loading' ||
+    failedRuns.status === 'loading';
 
   return (
     <div className="stack overview">
-      <div className="page-head">
-        <div className="stack-xs">
-          <Heading level={1} data-size="lg">
-            {t('overview.title')}
-          </Heading>
-          <p className="lead">
-            {t('overview.orgLine', { name: tenantName, orgNr: formatOrgNumber(tenant) })}
-          </p>
-        </div>
-        {empty || !canCreate ? null : (
-          <a className="ds-button" data-variant="primary" href="#/services/new">
-            <Icon icon={PlusIcon} />
-            {t('overview.newService')}
-          </a>
-        )}
-      </div>
+      {header(canCreate)}
 
-      <div aria-live="polite" className="stack-sm">
-        {quotaAlert ? (
-          <Alert data-color="danger">
-            <Heading level={2} data-size="2xs">
-              {t('overview.quotaAlertTitle')}
+      {showStart ? (
+        <section aria-labelledby="start-h" className="stack-sm overview-start">
+          <div className="row-between">
+            <Heading level={2} data-size="sm" id="start-h">
+              {t('overview.startTitle', { name: tenantName })}
             </Heading>
-            <p className="alert-text">
-              {t('overview.quotaAlertText', {
-                pct: Math.round((used / (quota ?? 1)) * 100),
-                quota: quotaMillions(f, quota ?? 0),
-                month: f.month(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1)),
-              })}
-            </p>
-            <div className="actions">
-              <Button variant="primary" data-size="sm">
-                {t('overview.requestQuota')}
-              </Button>
-              <a className="ds-button" data-variant="secondary" data-size="sm" href="#/statistics">
-                {t('overview.seeUsagePerService')}
-              </a>
-            </div>
-          </Alert>
-        ) : null}
-        {failing > 0 ? (
-          <Alert data-color="warning">
-            <p className="alert-text">
-              <strong>{t('overview.ingestAttention', { count: failing })}</strong>{' '}
-              {t('overview.ingestKept')}{' '}
-              <a href="#innlesinger" onClick={jump('innlesinger')}>
-                {t('overview.goToIngests')}
-              </a>
-            </p>
-          </Alert>
-        ) : null}
-      </div>
-
-      {empty ? (
-        <section aria-labelledby="kom-i-gang" className="get-started">
-          <div className="stack-xs get-started-intro">
-            <Heading level={2} data-size="sm" id="kom-i-gang">
-              {t('overview.getStarted')}
-            </Heading>
-            <p className="body-lg">{t('overview.noServicesIntro', { name: tenantName })}</p>
+            {progress ? (
+              <span className="meta">{t('overview.progress', { done: doneCount(progress) })}</span>
+            ) : null}
           </div>
-          <ol className="plain-list start-steps-grid">
-            {startSteps.map((s, i) => (
-              <li key={s.id} className={doneSteps[s.id] ? 'step-done' : undefined}>
-                <span className="step-label">{t('overview.stepLabel', { n: i + 1 })}</span>
-                <span className="step-title">{t(s.title)}</span>
-                <span className="step-body">{t(s.body)}</span>
-                {doneSteps[s.id] ? (
-                  <span className="row-wrap">
-                    <Tag data-color="success" data-size="sm">
-                      {t('overview.stepDone')}
-                    </Tag>
-                    <a href="#/datasets">{t('overview.seeDatasets')}</a>
-                  </span>
-                ) : s.right && !rights.has(s.right) ? (
-                  <span className="meta">{needsRight(s.right, t)}</span>
-                ) : (
-                  <a className="ds-button" data-variant={s.variant} data-size="sm" href={s.href}>
-                    {t(s.cta)}
-                  </a>
-                )}
-              </li>
-            ))}
-          </ol>
+          {datasets.status === 'error' ? (
+            <Alert data-color="warning">
+              <Heading level={3} data-size="2xs">
+                {t('overview.startFailed')}
+              </Heading>
+              <Paragraph>{t('overview.startFailedText')}</Paragraph>
+              <Button variant="secondary" data-size="sm" onClick={retryDatasets}>
+                {t('common.tryAgain')}
+              </Button>
+            </Alert>
+          ) : null}
+          <StartSteps progress={progress} headingLevel={3} />
+          <p className="meta">
+            {t.rich('overview.startHint', { link: (c) => <a href="#/onboarding">{c}</a> })}
+          </p>
         </section>
       ) : null}
 
-      <div className="overview-grid">
-        <div className="stack">
-          <section aria-labelledby="tjenester-h" className="card">
-            <div className="card-head">
-              <Heading level={2} data-size="xs" id="tjenester-h">
-                {t('overview.services')}
-              </Heading>
-              {empty ? null : (
-                <ul aria-label={t('overview.countPerStatus')} className="plain-list tag-row">
-                  {counts.map((c) => (
-                    <li
-                      key={c.status}
-                      className="ds-tag"
-                      data-color={statusColor[c.status]}
-                      data-size="sm"
-                    >
-                      {t('overview.countLabel', {
-                        n: c.n,
-                        status: t(statusKeys[c.status]).toLowerCase(),
-                      })}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-            {empty ? (
-              <div className="card-empty">
-                <span className="empty-title">{t('overview.noServices')}</span>
-                <span className="empty-text">{t('overview.noServicesText')}</span>
-                {canCreate ? (
-                  <a
-                    className="ds-button"
-                    data-variant="secondary"
-                    data-size="sm"
-                    href="#/services/new"
-                  >
-                    {t('overview.createService')}
-                  </a>
-                ) : (
-                  <span className="meta">{needsRight('manage-services', t)}</span>
-                )}
-              </div>
-            ) : (
-              <>
-                <ul className="plain-list card-rows">
-                  {services.map((s) => (
-                    <li key={s.id} className="service-row">
-                      <div className="service-main">
-                        <div className="tag-row">
-                          <a
-                            href={`#/services/${encodeURIComponent(s.id)}`}
-                            className="service-name"
-                          >
-                            {s.name}
-                          </a>
-                          <Tag data-color={statusColor[s.status]} data-size="sm">
-                            {t(statusKeys[s.status])}
-                          </Tag>
-                        </div>
-                        {s.job ? <span className="service-job">{s.job}</span> : null}
-                        {s.trigger || s.io || s.shared ? (
-                          <dl className="kv">
-                            {s.trigger ? (
-                              <>
-                                <dt>{t('overview.startedBy')}</dt>
-                                <dd className="tag-row">
-                                  <Tag data-size="sm" data-color="neutral">
-                                    {s.triggerKind}
-                                  </Tag>
-                                  <span>{s.trigger}</span>
-                                </dd>
-                              </>
-                            ) : null}
-                            {s.io ? (
-                              <>
-                                <dt>{t('overview.inOut')}</dt>
-                                <dd>{s.io}</dd>
-                              </>
-                            ) : null}
-                            {s.shared ? (
-                              <>
-                                <dt>{t('overview.builtOn')}</dt>
-                                <dd>{s.shared}</dd>
-                              </>
-                            ) : null}
-                          </dl>
-                        ) : null}
-                        {s.note ? <span className="service-note">{s.note}</span> : null}
-                      </div>
-                      {s.calls ? (
-                        <div className="service-calls">
-                          <span className="calls numeric">{s.calls}</span>
-                          <span className="meta">{s.callsLabel}</span>
-                        </div>
-                      ) : null}
-                    </li>
-                  ))}
-                </ul>
-                <div className="card-foot">
-                  <a href="#/services">{t('overview.seeAllServices')}</a>
-                </div>
-              </>
-            )}
-          </section>
+      {services.length > 0 ? (
+        <AttentionList items={checking ? [] : items} checking={checking} checkedAt={checkedAt} />
+      ) : null}
 
-          <section
-            id="innlesinger"
-            tabIndex={-1}
-            aria-labelledby="innlesinger-h"
-            className="card ingest-card"
+      {services.length > 0 ? (
+        <div className="overview-grid">
+          <TopServices services={services} failed={failed} />
+          <aside
+            className="stack overview-aside"
+            aria-label={t('overview.usageHeading', { month })}
           >
-            <div className="card-head">
-              <Heading level={2} data-size="xs" id="innlesinger-h">
-                {t('overview.ingestHeading')}
-              </Heading>
-              {empty || !hasDataset || runningCount === 0 ? null : (
-                <span className="running meta">
-                  <Spinner data-size="xs" aria-hidden="true" />
-                  {t('overview.ingestRunning', { count: runningCount })}
-                </span>
-              )}
-            </div>
-            {ingest.length > 0 ? (
-              <ul aria-live="polite" className="plain-list card-rows">
-                {ingest.map((j) => {
-                  const queued = retried[j.id];
-                  return (
-                    <li key={j.id} className="ingest-row">
-                      <div className="tag-row">
-                        <a
-                          href={`#/datasets/${encodeURIComponent(j.dataset)}`}
-                          className="service-name"
-                        >
-                          {j.name}
-                        </a>
-                        <Tag data-color={queued ? 'info' : j.color} data-size="sm">
-                          {queued ? t('overview.queued') : j.status}
-                        </Tag>
-                      </div>
-                      <span className="meta-15">{j.meta}</span>
-                      <span className="ingest-message">
-                        {queued ? t('overview.restarting') : j.message}
-                      </span>
-                      {queued ? null : (
-                        <div className="actions">
-                          {j.retryText ? (
-                            <Button
-                              variant="secondary"
-                              data-size="sm"
-                              aria-label={t('overview.retryFor', {
-                                action: j.retryText,
-                                name: j.name,
-                              })}
-                              onClick={() => setRetried((r) => ({ ...r, [j.id]: true }))}
-                            >
-                              {j.retryText}
-                            </Button>
-                          ) : null}
-                          <a
-                            className="ds-button"
-                            data-variant="tertiary"
-                            data-size="sm"
-                            aria-label={t('overview.detailsFor', { name: j.name })}
-                            href={`#/datasets/${encodeURIComponent(j.dataset)}`}
-                          >
-                            {t('overview.details')}
-                          </a>
-                        </div>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            ) : (
-              <div className="card-empty">
-                <span className="empty-title">
-                  {noDatasets ? t('overview.noDatasets') : t('overview.allOk')}
-                </span>
-                <span className="empty-text">
-                  {noDatasets ? t('overview.noDatasetsText') : t('overview.noneFailed')}
-                </span>
-              </div>
-            )}
-          </section>
-        </div>
-
-        <div className="stack">
-          <UsageCard state={usage} retry={retryUsage} empty={empty} names={names} quota={quota} />
-
-          <section aria-labelledby="endringer-h" className="card">
-            <div className="card-head">
-              <Heading level={2} data-size="xs" id="endringer-h">
+            <UsageCard state={usage} retry={retryUsage} quota={quota} month={f.month(now)} />
+            <section aria-labelledby="changes-h" className="stack-sm overview-changes">
+              <Heading level={2} data-size="xs" id="changes-h">
                 {t('overview.changes')}
               </Heading>
-            </div>
-            {live ? (
-              <LiveChanges api={api} tenant={tenant} />
-            ) : empty ? (
-              <div className="card-empty">
-                <span className="empty-title">{t('overview.noChanges')}</span>
-                <span className="empty-text">{t('overview.noChangesText')}</span>
-              </div>
-            ) : (
-              <>
-                <ol className="plain-list card-rows">
-                  {recentChanges.map(([ini, who, what, when, color]) => (
-                    <li key={`${who}-${when}`} className="change-row">
-                      <Avatar data-size="xs" data-color={color} aria-hidden="true">
-                        {ini}
-                      </Avatar>
-                      <div className="change-text">
-                        <span>
-                          <strong>{who}</strong> {what}
-                        </span>
-                        <time className="meta">{when}</time>
-                      </div>
-                    </li>
-                  ))}
-                </ol>
-                <div className="card-foot">
-                  <a href="#/log?tab=changes">{t('overview.seeLog')}</a>
-                </div>
-              </>
-            )}
-          </section>
+              <LiveChanges api={api} tenant={tenant} limit={3} />
+              <a href="#/log/changes">{t('overview.seeLog')}</a>
+            </section>
+          </aside>
         </div>
-      </div>
+      ) : null}
     </div>
   );
 };

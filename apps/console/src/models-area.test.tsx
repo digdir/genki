@@ -340,7 +340,7 @@ describe('Modeller: connections', () => {
     expect(document.body.textContent).not.toContain('sk-hemmelig');
   });
 
-  it("adds a connection that signs in with genki's own identity, with no secret field", async () => {
+  it("adds a connection that signs in with genki's own identity, with no secret field, marked as the AI gateway", async () => {
     const { calls, fetch } = recorded();
     await signedIn('#/models', fetch);
 
@@ -356,6 +356,7 @@ describe('Modeller: connections', () => {
     );
     typeInto(within(panel).getByLabelText('Leietaker for tjenesten'), 'digdir');
     typeInto(within(panel).getByLabelText('Scope'), 'api://gateway/.default');
+    fireEvent.click(within(panel).getByRole('checkbox', { name: /Dette er KI-gatewayen/ }));
     giveReason(panel);
     fireEvent.click(within(panel).getByRole('button', { name: 'Legg til tilkobling' }));
     expect(await within(panel).findByText(/Skriv en GUID/)).toBeTruthy();
@@ -375,6 +376,7 @@ describe('Modeller: connections', () => {
         tenant: '11111111-2222-3333-4444-555555555555',
         scope: 'api://gateway/.default',
       },
+      gateway: true,
     });
   });
 

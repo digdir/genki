@@ -11,3 +11,9 @@ condition = "AND"
 paths = ['''^benchmarks/.+\.json$''']
 regexTarget = "line"
 regexes = ['''"key":\s*"[a-z0-9.-]+"''']
+
+[[allowlists]]
+description = "Recorded Docling answers name a document by its file's sha256 (key=<sha256>): a hash of a test PDF, not a credential"
+condition = "AND"
+paths = ['''(^|/)packages/ingest/src/fixtures/docling/[^/]+\.json$''']
+regexes = ['''^[0-9a-f]{64}$''']

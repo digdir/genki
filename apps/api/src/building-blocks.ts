@@ -1,3 +1,4 @@
+import { syncFailureMessage } from './sync-errors.js';
 import type { Principal } from '@genai/contracts';
 import {
   adoptionKind,
@@ -329,6 +330,7 @@ export interface RegistrationResult {
   contractTests: ContractTestResult[];
   synced: boolean;
   syncError?: string;
+  syncErrorCode?: string;
   changedBy: { by: string; at: string; reason: string };
   writesApproval?: { request: string; state: ApprovalState };
 }
@@ -2395,6 +2397,9 @@ const mountRoutes = <E extends Env, S extends Schema, B extends string>(
       id,
     });
     const value = registered.value as { id: string; version: string };
+    const syncCode = synced.ok
+      ? undefined
+      : ((await deps.connections.get(guard.tenant, id))?.lastSync?.code ?? 'unknown');
     const writesRequest = wantsWrites
       ? await deps.admin.perform(guard.principal, 'platform.block.request', {
           tenant: guard.tenant,
@@ -2413,7 +2418,9 @@ const mountRoutes = <E extends Env, S extends Schema, B extends string>(
       version: value.version,
       contractTests: report.results,
       synced: synced.ok,
-      ...(synced.ok ? {} : { syncError: synced.errors.map((e) => e.message).join('; ') }),
+      ...(syncCode === undefined
+        ? {}
+        : { syncErrorCode: syncCode, syncError: syncFailureMessage(syncCode) }),
       changedBy: {
         by: actorOf(guard.principal.actor ?? guard.principal),
         at: new Date().toISOString(),

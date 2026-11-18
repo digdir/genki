@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { App } from '../App';
+import { mockAnsattporten } from '../auth';
 import { mockFetch } from '../mock';
 import { expectAccessible, failingFetch, renderAt } from '../test-utils';
 
@@ -20,12 +22,15 @@ const pick = (input: HTMLElement, name: string, size = 1000) => {
   fireEvent.change(input, { target: { files: [file] } });
 };
 
+const clipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
 beforeEach(() => {
   window.location.hash = '';
 });
 afterEach(() => {
   vi.useRealTimers();
   cleanup();
+  if (clipboard) Object.defineProperty(navigator, 'clipboard', clipboard);
+  else Reflect.deleteProperty(navigator, 'clipboard');
 });
 
 describe('Fellestjenester: liste', () => {
@@ -53,7 +58,7 @@ describe('Fellestjenester: liste', () => {
     const nyn = screen
       .getByRole('link', { name: 'Bokmål til nynorsk' })
       .closest('li') as HTMLElement;
-    expect(within(nyn).getByText('Brukes i 1 av tjenestene deres')).toBeTruthy();
+    expect(within(nyn).getByText('Brukes i 1 tjeneste')).toBeTruthy();
     expectAccessible();
   });
 
@@ -68,22 +73,36 @@ describe('Fellestjenester: liste', () => {
     expect(screen.queryByText(/Kvaliteten er målt på testsettene til Digdir/)).toBeNull();
   });
 
-  it('shows where data is processed as a tag on each shared service card', async () => {
+  it('says on each card how many services use it, or that none does yet', async () => {
+    await renderAt('#/shared-services');
+    const card = async (name: string) =>
+      (await screen.findByRole('link', { name })).closest('li') as HTMLElement;
+    expect(within(await card('Klarspråk')).getByText('Brukes i 1 tjeneste')).toBeTruthy();
+    expect(within(await card('Anonymisering')).getByText('Brukes ikke ennå')).toBeTruthy();
+  });
+
+  it('says nothing about usage on a card when the building blocks cannot be loaded', async () => {
+    await renderAt('#/shared-services', failingFetch(/building-blocks/));
+    const klar = (await screen.findByRole('link', { name: 'Klarspråk' })).closest(
+      'li',
+    ) as HTMLElement;
+    expect(within(klar).queryByText(/Brukes/)).toBeNull();
+  });
+
+  it('says where each shared service processes data in a line on its card', async () => {
     await renderAt('#/shared-services');
     const felt = (await screen.findByRole('link', { name: 'Hent ut opplysninger' })).closest(
       'li',
     ) as HTMLElement;
-    expect(within(felt).getByText('Brukes i 1 av tjenestene deres')).toBeTruthy();
-    expect(within(felt).getByText('Norge')).toBeTruthy();
+    expect(within(felt).getByText('Behandler data i Norge')).toBeTruthy();
   });
-
-  it('explains how quality and price are measured on the detail page', async () => {
-    await openDetail('klarsprak', 'Klarspråk');
+  it('ends the list by asking which shared services are needed, linked to the contact page', async () => {
+    await renderAt('#/shared-services');
+    expect(await screen.findByText(/Flere fellestjenester kommer\./)).toBeTruthy();
     expect(
-      screen.getByText(/Kvaliteten er målt på testsettene til Digdir og oppdateres hver uke/),
-    ).toBeTruthy();
+      screen.getByRole('link', { name: 'Si fra hvilke dere trenger.' }).getAttribute('href'),
+    ).toBe('#/contact');
   });
-
   it('opens a detail page from the card button', async () => {
     await renderAt('#/shared-services');
     fireEvent.click(
@@ -103,10 +122,13 @@ describe('Fellestjenester: liste', () => {
       '#/shared-services',
       mockFetch(undefined, undefined, undefined, undefined, { shared: [] }),
     );
-    expect(await screen.findByText('Ingen fellestjenester ennå')).toBeTruthy();
+    expect(await screen.findByText('Ingen fellestjenester er tilgjengelige ennå')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Si fra hva dere trenger' }).getAttribute('href')).toBe(
+      '#/contact',
+    );
   });
 
-  it("shows the API's purpose and residency on the card for a capability without design data", async () => {
+  it("shows the API's purpose and its model's residency on the card for a capability without design data", async () => {
     await renderAt(
       '#/shared-services',
       mockFetch(undefined, undefined, undefined, undefined, {
@@ -118,7 +140,8 @@ describe('Fellestjenester: liste', () => {
             purpose: 'Tolker tekst.',
             version: null,
             riskClass: null,
-            residency: 'eu',
+            residency: 'norway',
+            model: 'foundry-openai/gpt-4.1',
             exposure: [],
             variants: [],
           },
@@ -127,7 +150,7 @@ describe('Fellestjenester: liste', () => {
     );
     expect(await screen.findByRole('link', { name: 'Tolk' })).toBeTruthy();
     expect(screen.getByText('Tolker tekst.')).toBeTruthy();
-    expect(screen.getByText('EU/EØS')).toBeTruthy();
+    expect(screen.getByText('Behandler data i EU/EØS')).toBeTruthy();
     expectAccessible();
   });
 });
@@ -152,41 +175,37 @@ describe('Fellestjenester: detalj', () => {
     );
 
     const fact = (label: string) => screen.getByText(label, { selector: 'dt' }).nextElementSibling;
-    expect(fact('Modell og data')?.textContent).toBe('Behandles i EU/EØS');
-    expect(screen.queryByText('Per 1 000 kjøringer')).toBeNull();
+    expect(fact('Modell')?.textContent).toBe('Ikke oppgitt');
+    expect(fact('Hvor data behandles')?.textContent).toBe('Ikke oppgitt Slik behandles data');
     expect(screen.queryByRole('group', { name: 'Valg' })).toBeNull();
-    expect(screen.queryByText(/Ikke oppgitt, behandles i/)).toBeNull();
+    expect(screen.queryByText('Versjon')).toBeNull();
   });
 
-  it('hides the quality and price footnote for a service with no score and no price', async () => {
-    const tolk = {
-      tenant: '991825827',
-      id: 'tolk',
-      name: 'Tolk',
-      purpose: 'Tolker tekst.',
-      version: null,
-      riskClass: null,
-      residency: 'eu',
-      exposure: [],
-      variants: [],
-    };
-    await openDetail(
-      'tolk',
-      'Tolk',
-      mockFetch(undefined, undefined, undefined, undefined, { shared: [tolk] }),
+  it('leaves out price and quality, which the API does not give', async () => {
+    await openDetail('klarsprak', 'Klarspråk');
+    for (const label of ['Pris', 'Kvalitet på testsett', 'Per 1 000 kjøringer'])
+      expect(screen.queryByText(label, { selector: 'dt' })).toBeNull();
+    expect(screen.queryByText(/av 100/)).toBeNull();
+    expect(screen.queryByText(/Kvaliteten falt/)).toBeNull();
+  });
+  it('names who publishes it, the version and when that version was published', async () => {
+    await openDetail('klarsprak', 'Klarspråk');
+    expect(
+      await screen.findByText('Fra Digdir · versjon 3, oppdatert 4. november 2026'),
+    ).toBeTruthy();
+    const fact = screen.getByText('Ansvarlig', { selector: 'dt' }).nextElementSibling;
+    expect(fact?.textContent).toBe('Digdir');
+  });
+
+  it('says how many services use it and names them, linked to each service', async () => {
+    await openDetail('klarsprak', 'Klarspråk');
+    expect(screen.getByText('Brukes i 1 tjeneste')).toBeTruthy();
+    expect(screen.getByText(/Brukes i dag av/)).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Vedtaksutkast' }).getAttribute('href')).toBe(
+      '#/services/vedtaksutkast',
     );
-    expect(screen.getByText('Ikke målt')).toBeTruthy();
-    expect(screen.queryByText(/Kvaliteten er målt på testsettene til Digdir/)).toBeNull();
   });
-
-  it('shows the score note next to the score on the detail page', async () => {
-    await openDetail('felt', 'Hent ut opplysninger');
-    const fact = screen.getByText('Kvalitet på testsett', { selector: 'dt' }).nextElementSibling;
-    expect(fact?.textContent).toBe('83 av 100Var 86 for to uker siden');
-    expect(within(fact as HTMLElement).getByText('Var 86 for to uker siden')).toBeTruthy();
-  });
-
-  it('names the model the API gives for a shared service instead of saying it is not given', async () => {
+  it("takes where data is processed from the model's residency, not from the service definition", async () => {
     const tolk = {
       tenant: '991825827',
       id: 'tolk',
@@ -205,27 +224,29 @@ describe('Fellestjenester: detalj', () => {
       mockFetch(undefined, undefined, undefined, undefined, { shared: [tolk] }),
     );
     const fact = (label: string) => screen.getByText(label, { selector: 'dt' }).nextElementSibling;
-    expect(fact('Modell og data')?.textContent).toBe('gpt-4o-2m-tps, behandles i EU/EØS');
+    expect(fact('Modell')?.textContent).toBe('gpt-4o-2m-tps');
+    expect(fact('Hvor data behandles')?.textContent).toBe('Utenfor EU/EØS Slik behandles data');
   });
 
-  it('klar: shows facts, the score drop alert and builder links with the versioned tool', async () => {
+  it('klar: shows facts from the API and opens the builder without a hand-off it does not read', async () => {
     await openDetail('klar', 'Klarspråk');
-    expect(screen.getByText('Versjon 2.3')).toBeTruthy();
-    expect(screen.getByText('Borealis-27B, behandles i Norge')).toBeTruthy();
-    expect(screen.getByText(/Kvaliteten falt fra 89 til 79/)).toBeTruthy();
-    const links = [
-      screen.getByRole('link', { name: 'Bruk i en tjeneste' }),
-      screen.getByRole('link', { name: 'Åpne byggeren med Klarspråk' }),
-    ];
-    links.forEach((l) =>
-      expect(l.getAttribute('href')).toBe('#/services/new?tool=digdir.klarsprak@2.3'),
+    const fact = (label: string) => screen.getByText(label, { selector: 'dt' }).nextElementSibling;
+    expect(fact('Modell')?.textContent).toBe('borealis-27b');
+    expect(fact('Hvor data behandles')?.textContent).toBe('Norge Slik behandles data');
+    expect(screen.getByRole('link', { name: 'Slik behandles data' }).getAttribute('href')).toBe(
+      '#/data-handling',
     );
-    expect(screen.getByText('Verktøynavn: digdir.klarsprak@2.3')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Åpne byggeren' }).getAttribute('href')).toBe(
+      '#/services/new',
+    );
+    expect(document.querySelector('a[href*="?tool="]')).toBeNull();
+    expect(screen.getByText('Verktøynavn: digdir.klarsprak@3')).toBeTruthy();
     expect(screen.getByText('Resultatet vises her når du trykker «Kjør».')).toBeTruthy();
     expectAccessible();
   });
-
   it('klar: runs the sample and shows result, change notes and copy', async () => {
+    const writeText = vi.fn(async (_text: string) => undefined);
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
     vi.useFakeTimers({ shouldAdvanceTime: true });
     await openDetail('klarsprak', 'Klarspråk');
     expect((screen.getByLabelText('Tekst du vil skrive om') as HTMLTextAreaElement).value).toMatch(
@@ -242,10 +263,11 @@ describe('Fellestjenester: detalj', () => {
     expect(within(resultBox()).getByText(/Du får ikke tilskudd\./)).toBeTruthy();
     expect(within(resultBox()).getByText('Beholdt henvisningen til § 4 første ledd.')).toBeTruthy();
     expect(
-      within(resultBox()).getByText('Ferdig på 2,1 s · 1 240 tokens · Borealis-27B, Norge'),
+      within(resultBox()).getByText('Ferdig på 2,1 s · 1 240 tokens · borealis-27b, Norge'),
     ).toBeTruthy();
     fireEvent.click(within(resultBox()).getByRole('button', { name: 'Kopier resultatet' }));
-    expect(within(resultBox()).getByText('Kopiert')).toBeTruthy();
+    expect(await within(resultBox()).findByText('Kopiert')).toBeTruthy();
+    expect(writeText).toHaveBeenCalledWith(expect.stringMatching(/Du får ikke tilskudd\./));
     expect(within(resultBox()).getByRole('link', { name: 'Se tidslinjen' })).toBeTruthy();
     expectAccessible();
   });
@@ -270,7 +292,7 @@ describe('Fellestjenester: detalj', () => {
       model: 'klarsprak__default',
       messages: [{ role: 'user', content: 'Egen tekst.' }],
     });
-    expect(within(resultBox()).getByText('Ferdig · Borealis-27B, Norge')).toBeTruthy();
+    expect(within(resultBox()).getByText('Ferdig · borealis-27b, Norge')).toBeTruthy();
   });
 
   it('klar: explains a failed live run without saving anything', async () => {
@@ -388,7 +410,7 @@ describe('Fellestjenester: detalj', () => {
       vi.advanceTimersByTime(2000);
     });
     expect(within(resultBox()).getByText(/\[00:00\] Taler 1: Da starter vi\./)).toBeTruthy();
-    expect(within(resultBox()).getByText('Ferdig på 9,8 s · NB-Whisper large, Norge')).toBeTruthy();
+    expect(within(resultBox()).getByText('Ferdig på 9,8 s · borealis-27b, Norge')).toBeTruthy();
   });
 
   it('felt: shows extracted fields as a description list', async () => {
@@ -406,42 +428,53 @@ describe('Fellestjenester: detalj', () => {
     expectAccessible();
   });
 
-  it('shows request and response examples in three languages with copy buttons', async () => {
+  it('shows the call in three languages with an API key, and links to where a key is made', async () => {
     await openDetail('klar', 'Klarspråk');
     const request = screen.getByRole('region', { name: 'Eksempel på forespørsel' });
     expect(request.getAttribute('tabindex')).toBe('0');
     expect(request.textContent).toContain('curl -X POST');
+    expect(request.textContent).toContain('Bearer $GENKI_KEY');
     expect(request.textContent).toContain('"model": "klarsprak__default"');
-    expect(request.textContent).toContain('digdir.klarsprak@2.3');
-    fireEvent.click(screen.getByRole('radio', { name: 'Python' }));
-    expect(request.textContent).toContain('requests.post(');
-    fireEvent.click(screen.getByRole('radio', { name: 'JavaScript' }));
-    expect(request.textContent).toContain('await fetch(');
-    const response = screen.getByRole('region', { name: 'Eksempel på svar' });
-    expect(response.textContent).toContain('"total_tokens": 1240');
-    expect(screen.getByText('200 OK')).toBeTruthy();
-    expect(screen.getAllByRole('button', { name: 'Kopier' })).toHaveLength(2);
-    expect(
-      screen.getByRole('link', { name: 'Mer om Maskinporten-klienter' }).getAttribute('href'),
-    ).toBe('#/developer/systems');
+    fireEvent.click(screen.getByRole('tab', { name: 'Python' }));
+    expect(screen.getByRole('region', { name: 'Eksempel på forespørsel' }).textContent).toContain(
+      'requests.post(',
+    );
+    fireEvent.click(screen.getByRole('tab', { name: 'JavaScript' }));
+    expect(screen.getByRole('region', { name: 'Eksempel på forespørsel' }).textContent).toContain(
+      'await fetch(',
+    );
+    expect(screen.getByRole('button', { name: 'Kopier koden' })).toBeTruthy();
+    expect(screen.getByText(/Bruk en API-nøkkel med tilgang til alle tjenestene/)).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Lag en nøkkel' }).getAttribute('href')).toBe(
+      '#/developer/keys',
+    );
+    expect(screen.queryByText(/Maskinporten/)).toBeNull();
     expectAccessible();
   });
-
-  it('marks the example response as an example with an id no real call has', async () => {
-    await openDetail('klar', 'Klarspråk');
-    const response = screen.getByRole('region', { name: 'Eksempel på svar' });
-    expect(response.textContent).toContain('"id": "chatcmpl-example"');
-    expect(response.textContent).not.toMatch(/opg_/);
-    expect(
-      screen.getByText('Svaret er et eksempel. Id, innhold og tokens blir andre i ekte kall.'),
-    ).toBeTruthy();
-  });
-
   it('says the capability was not found for an unknown id', async () => {
     await renderAt('#/shared-services/finnes-ikke');
     expect(
       await screen.findByRole('heading', { level: 1, name: 'Fant ikke fellestjenesten' }),
     ).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Gå til Fellestjenester' })).toBeTruthy();
+  });
+
+  it('offers the builder only to people who may manage services, and names the right otherwise', async () => {
+    const auth = mockAnsattporten({
+      name: 'Ola Nordmann',
+      organisations: [{ orgNumber: '999888777', name: 'Testetaten', actions: ['use-services'] }],
+    });
+    await auth.login();
+    window.location.hash = '#/shared-services/klarsprak';
+    render(<App auth={auth} fetch={mockFetch()} />);
+    await screen.findByRole('heading', { level: 1, name: 'Klarspråk' });
+    expect(screen.queryByRole('link', { name: 'Åpne byggeren' })).toBeNull();
+    expect(screen.getByText(/Administrere tjenester/)).toBeTruthy();
+  });
+
+  it('says where data is processed could not be fetched when the model list fails', async () => {
+    await openDetail('klarsprak', 'Klarspråk', failingFetch(/\/models/));
+    const fact = screen.getByText('Hvor data behandles', { selector: 'dt' }).nextElementSibling;
+    expect(fact?.textContent).toBe('Kunne ikke hente hvor data behandles Slik behandles data');
   });
 });

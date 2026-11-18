@@ -18,12 +18,18 @@ const service = {
   purpose: 'Summarises documents',
   version: 1,
   residency: 'norway',
+  model: 'aivar/borealis-27b',
   variants: [],
 } as unknown as SharedService;
 
+const models = [{ id: 'aivar/borealis-27b', residency: 'norway', capabilities: [] }];
+
 describe('shared services in English', () => {
   it('shows a live service with English labels', async () => {
-    const api = { sharedServices: () => Promise.resolve([service]) } as unknown as ApiClient;
+    const api = {
+      sharedServices: () => Promise.resolve([service]),
+      listModels: () => Promise.resolve(models),
+    } as unknown as ApiClient;
     const props = { api, live: true, route: { segments: ['shared-services'] } } as ScreenProps;
     render(inEnglish(<SharedServices {...props} />));
     expect(await screen.findByRole('heading', { level: 1, name: 'Shared services' })).toBeTruthy();
@@ -31,8 +37,11 @@ describe('shared services in English', () => {
     expect(screen.getByRole('button', { name: 'Try and see details for Summary' })).toBeTruthy();
   });
 
-  it('shows the residency and missing score of a live service in English on the detail page', async () => {
-    const api = { sharedServices: () => Promise.resolve([service]) } as unknown as ApiClient;
+  it('shows the residency of a live service in English on the detail page', async () => {
+    const api = {
+      sharedServices: () => Promise.resolve([service]),
+      listModels: () => Promise.resolve(models),
+    } as unknown as ApiClient;
     const props = {
       api,
       live: true,
@@ -40,15 +49,22 @@ describe('shared services in English', () => {
     } as ScreenProps;
     render(inEnglish(<SharedServices {...props} />));
     expect(await screen.findByRole('heading', { level: 1, name: 'Summary' })).toBeTruthy();
-    expect(screen.getByText('Processed in Norway')).toBeTruthy();
-    expect(screen.getByText('Not measured')).toBeTruthy();
+    const fact = (label: string) => screen.getByText(label, { selector: 'dt' }).nextElementSibling;
+    expect(fact('Where data is processed')?.textContent).toBe('Norway How data is handled');
   });
 
   it('shows the detail page chrome and validation in English', () => {
     const capability = sharedCapabilities[0] as (typeof sharedCapabilities)[number];
     render(
       inEnglish(
-        <SharedServiceDetail api={{} as ApiClient} capability={capability} publicName="x" />,
+        <SharedServiceDetail
+          api={{} as ApiClient}
+          tenant="999888777"
+          capability={capability}
+          publicName="x"
+          block={undefined}
+          blockId="991825827/klarsprak"
+        />,
       ),
     );
     expect(screen.getByRole('heading', { name: 'Try now' })).toBeTruthy();

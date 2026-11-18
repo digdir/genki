@@ -35,12 +35,17 @@ describe('API reference in English', () => {
   it('describes an endpoint with its rights, parameters and errors', () => {
     render(
       inEnglish(
-        <EndpointDetail ep={endpoint('tj-pub')} tenant="999888777" tenantName="Testetaten" />,
+        <EndpointDetail
+          ep={endpoint('tj-pub')}
+          api={{ getJson: () => Promise.resolve({}) }}
+          tenant="999888777"
+          tenantName="Testetaten"
+        />,
       ),
     );
     const detail = screen.getByRole('article');
     expect(
-      within(detail).getByRole('heading', { level: 2, name: 'Publish a version' }),
+      within(detail).getByRole('heading', { level: 4, name: 'Publish a version' }),
     ).toBeTruthy();
     expect(within(detail).getByText('Manage services')).toBeTruthy();
     expect(within(detail).getByRole('region', { name: 'Parameters' })).toBeTruthy();
@@ -51,7 +56,7 @@ describe('API reference in English', () => {
   });
 
   it('shows portal actions in English', () => {
-    render(inEnglish(<Actions tenant="999888777" onDone={() => undefined} />));
+    render(inEnglish(<Actions tenant="999888777" />));
     expect(screen.getByText('Publish version 8')).toBeTruthy();
     expect(screen.getByText('Services › Kunnskapsassistenten › Publish')).toBeTruthy();
   });

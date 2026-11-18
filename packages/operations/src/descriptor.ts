@@ -34,7 +34,7 @@ export type DescriptorStatus = (typeof descriptorStatuses)[number];
 
 export const requestEncodings = ['json', 'multipart', 'form', 'binary', 'text', 'ndjson'] as const;
 export type RequestEncoding = (typeof requestEncodings)[number];
-export const responseEncodings = ['json', 'binary', 'text', 'ndjson'] as const;
+export const responseEncodings = ['json', 'binary', 'text', 'ndjson', 'none'] as const;
 export const streamFramings = ['sse', 'ndjson', 'lines'] as const;
 export type StreamFraming = (typeof streamFramings)[number];
 export type ResponseEncoding = (typeof responseEncodings)[number];
@@ -81,7 +81,7 @@ const reservedHeaderNames = new Set([
   'x-forwarded-host',
 ]);
 const keptOutPath =
-  /\/(?:realtime|batch(?:es)?|files|uploads|vector_stores|assistants|threads|conversations|containers|fine_tuning|agents)(?:\/|$)|\/responses\/\{/i;
+  /\/(?:realtime|batch(?:es)?|files|uploads|vector_stores|assistants|threads|conversations|containers|fine_tuning|agents)(?:[/:]|$)|\/responses\/\{/i;
 const keptOutFields = new Set(['store', 'background']);
 const providerObjectFields = new Set([
   'previous_response_id',
@@ -228,7 +228,7 @@ const requestFile = z.strictObject({
   method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']),
   path: z
     .string()
-    .regex(/^\/[A-Za-z0-9/_.{}-]*$/)
+    .regex(/^\/[A-Za-z0-9/_.{}:-]*$/)
     .optional(),
   follow: z.string().startsWith('$steps.').optional(),
   encoding: z.enum(requestEncodings).default('json'),
@@ -1026,11 +1026,18 @@ const toStep = (
     throw new DescriptorError(
       `${at}: a step sent in parts is one plain request per part, without until, a stream, a session or a link`,
     );
+  const empty = raw.response.encoding === 'none';
+  if (empty && (stream || sessionSpec))
+    throw new DescriptorError(
+      `${at}: a ${stream ? 'stream' : 'session'} has an answer, so its encoding is not none`,
+    );
+  if (empty && raw.wire.response !== undefined)
+    throw new DescriptorError(`${at}: a step without an answer body declares no wire.response`);
   if ((stream || sessionSpec) && raw.wire.response !== undefined)
     throw new DescriptorError(
       `${at}: wire.response is not declared for a ${stream ? 'stream' : 'session'}; its events are`,
     );
-  if (!stream && !sessionSpec && raw.wire.response === undefined)
+  if (!empty && !stream && !sessionSpec && raw.wire.response === undefined)
     throw new DescriptorError(`${at}: wire.response is required`);
   const eventShapes = Object.values(stream?.events ?? {}).map((e) => e.shape);
   const wireResponse = stream
@@ -1042,7 +1049,9 @@ const toStep = (
       })
     : sessionSpec
       ? shape.object({ transcript: shape.text })
-      : shapeOf(raw.wire.response, `${at}: wire.response`);
+      : empty
+        ? shape.nothing
+        : shapeOf(raw.wire.response, `${at}: wire.response`);
   if (wireRequest) {
     const kinds = Object.values(wireRequest.kind === 'object' ? wireRequest.fields : {});
     const encoding = request.encoding;
@@ -1187,7 +1196,7 @@ const toStep = (
     throw new DescriptorError(
       `${at}: a step that binds a secret binds nothing else and maps no usage, so nothing can read it`,
     );
-  if (Object.values(bind).some((b) => b.class.kind === 'url') && raw.wire.response === undefined)
+  if (Object.values(bind).some((b) => b.class.kind === 'url') && (stream || sessionSpec))
     throw new DescriptorError(`${at}: a link is bound from an answer, not a stream`);
   let auth: Step['auth'];
   if (raw.auth) {

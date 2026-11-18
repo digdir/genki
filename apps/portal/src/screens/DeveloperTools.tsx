@@ -10,14 +10,19 @@ import {
   TimelineIcon,
   VitalsIcon,
 } from '@navikt/aksel-icons';
-import { Heading, Paragraph } from '@digdir/designsystemet-react';
+import { Heading, Paragraph, Tabs } from '@digdir/designsystemet-react';
 import type { ReactNode } from 'react';
+import type { ApiClient } from '../api';
 import { Icon, type IconComponent } from '../components/Icon';
 import { NotAvailable } from '../components/NotAvailable';
+import { exampleSystems, exampleTriggers } from '../data/integrations';
+import { navigate, useAsync } from '../hooks';
 import { useT, type PlainKey } from '../i18n';
 import type { ScreenProps } from '../screen';
-import { Status } from './FooterPages';
+import { ApiReference } from './ApiReference';
 import { GuardrailRules } from './service/GuardrailRules';
+import { DevStatus } from './integrations/DevStatus';
+import './integrations.css';
 import { developerTabs, IntegrationTab } from './developer-routes';
 
 interface Tool {
@@ -92,19 +97,45 @@ const tools: readonly Tool[] = [
     label: 'devTools.api',
     desc: 'devTools.apiDesc',
     icon: CodeIcon,
-    links: [
-      ['#/developer/api/code', 'integrations.callFromCode'],
-      ['#/api-reference', 'devTools.openApiReference'],
-    ],
   },
 ];
+
+export type Attention = Partial<Record<'systems' | 'triggers', number>>;
+
+export const useAttention = (
+  api: Pick<ApiClient, 'integrations' | 'triggers'>,
+  tenant: string,
+  live: boolean,
+): Attention => {
+  const [state] = useAsync(
+    async (signal): Promise<Attention> => {
+      if (!live)
+        return {
+          systems: exampleSystems.filter((s) => s.status === 'Feiler').length,
+          triggers: exampleTriggers.filter((s) => s.status === 'Feiler').length,
+        };
+      const [integrations, triggers] = await Promise.all([
+        api.integrations(tenant, signal).catch(() => undefined),
+        api.triggers.list(tenant, signal).catch(() => undefined),
+      ]);
+      return {
+        systems: integrations?.connections.filter((c) => c.pending.length > 0).length ?? 0,
+        triggers: triggers?.filter((x) => x.status === 'failing').length ?? 0,
+      };
+    },
+    [api, tenant, live],
+  );
+  return state.status === 'ready' ? state.data : {};
+};
 
 /** The Utviklerverktøy heading and submenu around one of its pages. */
 export const DeveloperToolsFrame = ({
   currentId,
+  attention = {},
   children,
 }: {
   currentId: string;
+  attention?: Attention;
   children: ReactNode;
 }) => {
   const t = useT();
@@ -119,15 +150,25 @@ export const DeveloperToolsFrame = ({
           <ul className="nav-list">
             {tools.map((tool) => {
               const active = tool.id === currentId;
+              const count = attention[tool.id as keyof Attention] ?? 0;
               return (
                 <li key={tool.id}>
                   <a
-                    href={`#/developer/${tool.id}`}
+                    href={tool.id === 'step-flows' ? '#/step-flows' : `#/developer/${tool.id}`}
                     aria-current={active ? 'page' : undefined}
                     className={active ? 'active' : undefined}
                   >
                     <Icon icon={tool.icon} />
                     {t(tool.label)}
+                    {count > 0 ? ' ' : null}
+                    {count > 0 ? (
+                      <span className="dev-tools-badge">
+                        <span aria-hidden="true">{count}</span>
+                        <span className="visually-hidden">
+                          {t('devTools.needsFollowUp', { count })}
+                        </span>
+                      </span>
+                    ) : null}
                   </a>
                 </li>
               );
@@ -140,15 +181,39 @@ export const DeveloperToolsFrame = ({
   );
 };
 
+const ApiPage = (props: ScreenProps & { integrations: (props: ScreenProps) => ReactNode }) => {
+  const t = useT();
+  const { integrations, ...rest } = props;
+  const tab = props.route.segments[2] === 'reference' ? 'reference' : 'start';
+  return (
+    <Tabs
+      value={tab}
+      onChange={(v) =>
+        navigate(v === 'reference' ? '#/developer/api/reference' : '#/developer/api')
+      }
+    >
+      <Tabs.List aria-label={t('devTools.apiTabs')}>
+        <Tabs.Tab value="start">{t('devTools.apiStart')}</Tabs.Tab>
+        <Tabs.Tab value="reference">{t('devTools.apiReference')}</Tabs.Tab>
+      </Tabs.List>
+      <Tabs.Panel value="start">{tab === 'start' ? integrations(rest) : null}</Tabs.Panel>
+      <Tabs.Panel value="reference">
+        {tab === 'reference' ? <ApiReference {...rest} /> : null}
+      </Tabs.Panel>
+    </Tabs>
+  );
+};
+
 export const DeveloperTools = ({
   integrations,
   ...props
 }: ScreenProps & { integrations: (props: ScreenProps) => ReactNode }) => {
   const { api, route, tenant, live } = props;
   const t = useT();
+  const attention = useAttention(api, tenant, live);
   const current = tools.find((tool) => tool.id === route.segments[1]) ?? statusTool;
   return (
-    <DeveloperToolsFrame currentId={current.id}>
+    <DeveloperToolsFrame currentId={current.id} attention={attention}>
       <div>
         <Heading level={2} data-size="xs">
           {t(current.label)}
@@ -165,7 +230,9 @@ export const DeveloperTools = ({
         </div>
       ) : null}
       {current.id === 'status' ? (
-        <Status api={api} />
+        <DevStatus api={api} tenant={tenant} />
+      ) : current.id === 'api' ? (
+        <ApiPage {...props} integrations={integrations} />
       ) : current.id === 'guardrails' ? (
         live ? (
           <GuardrailRules api={api} tenant={tenant} />

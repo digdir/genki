@@ -1,3 +1,5 @@
+import type { T } from '../i18n';
+
 export interface OrganisationProfile {
   orgNumber: string;
   name: string;
@@ -40,3 +42,13 @@ export const profileFor = (orgNumber: string, name: string): OrganisationProfile
   };
 
 export const formatOrgNumber = (n: string) => n.replace(/(\d{3})(\d{3})(\d{3})/, '$1 $2 $3');
+
+export const hasOwnName = (org: { orgNumber: string; name: string }) => {
+  const name = org.name.trim();
+  return name !== '' && name !== org.orgNumber && !/^\d{9}$/.test(name);
+};
+
+export const organisationName = (org: { orgNumber: string; name: string }, t: T) =>
+  hasOwnName(org)
+    ? org.name.trim()
+    : t('shell.orgNumberOnly', { orgNr: formatOrgNumber(org.orgNumber) });

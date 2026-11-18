@@ -951,6 +951,7 @@ export const serviceEval = (
   const keptPrincipal = (principal: Principal): Principal => {
     const kept = { ...principal };
     delete kept.name;
+    delete kept.email;
     delete kept.orgNames;
     delete kept.expiresAt;
     if (kept.actor) kept.actor = keptPrincipal(kept.actor);

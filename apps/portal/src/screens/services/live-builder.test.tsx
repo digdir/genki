@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../../App';
 import { mockAnsattporten } from '../../auth';
 import { logTimelines } from '../../data/log';
@@ -19,7 +19,10 @@ beforeAll(() => {
 beforeEach(() => {
   window.location.hash = '';
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 const liveModels: ModelOption[] = [
   { id: 'foundry-openai/gpt-4.1-mini', residency: 'global', capabilities: ['stream'] },
@@ -337,7 +340,7 @@ describe('the live builder and the server draft', () => {
       improvements: [ready],
     });
     const card = await screen.findByRole('region', { name: /^Forslag fra/ });
-    fireEvent.click(within(card).getByRole('button', { name: 'Godta i utkastet' }));
+    fireEvent.click(within(card).getByRole('button', { name: 'Godkjenn' }));
     await within(card).findByText('Godtatt i utkastet');
 
     window.location.hash = '#/services/rapportassistenten/setup/instructions';
@@ -396,12 +399,20 @@ describe('the live builder and the server draft', () => {
     });
   });
 
+  it('opening a service opens its draft once', async () => {
+    const { calls } = await openService('#/services/rapportassistenten/setup');
+    await screen.findByRole('heading', { level: 1, name: 'Rapportassistenten' });
+    await screen.findByText(/^Versjon 7 i bruk · publisert/);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(calls.filter((c) => c.url.endsWith('/draft?rebase=clean'))).toHaveLength(1);
+  });
+
   it('shows the latest published version in the header, also after a publish elsewhere', async () => {
     const { fetch } = await openService('#/services/rapportassistenten/setup');
     const header = (
       await screen.findByRole('heading', { level: 1, name: 'Rapportassistenten' })
     ).closest('header') as HTMLElement;
-    expect(await within(header).findByText(/^Versjon 7 · publisert/)).toBeTruthy();
+    expect(await within(header).findByText(/^Versjon 7 i bruk · publisert/)).toBeTruthy();
 
     const found = exampleServices.find((s) => s.id === 'rapportassistenten');
     await fetch('/api/definitions', {
@@ -409,9 +420,10 @@ describe('the live builder and the server draft', () => {
       headers: { 'change-reason': 'Ny innstilling' },
       body: JSON.stringify({ definition: found?.latest.definition, files: {} }),
     });
+    vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 60_000);
     window.location.hash = '#/services/rapportassistenten/quality';
 
-    expect(await screen.findByText(/^Versjon 8 · publisert/)).toBeTruthy();
+    expect(await screen.findByText(/^Versjon 8 i bruk · publisert/)).toBeTruthy();
   });
 });
 

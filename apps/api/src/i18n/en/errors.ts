@@ -123,6 +123,7 @@ export const catalogErrors = {
   keysCount: 'at most 4 named keys',
   secretReference: 'must be a secret:// reference',
   onlyOperatorSets: 'only the operator sets {field}, and only on a model connection',
+  gatewayBoolean: 'gateway must be true or false',
   endpointExists: 'The endpoint already exists',
   endpointModelsInUse: 'The models from the endpoint are in use',
   usesModelFrom: '{tenant}/{service} uses a model from {id}',
@@ -365,6 +366,14 @@ export const blockErrors = {
   alreadyRegisteredShort: 'already registered',
   applicationPending: 'The organisation already has an application being processed',
   approveAndReason: 'approve (true or false) and a reason are required',
+  toolSyncAuthFailed: 'the tool server refused the credentials',
+  toolSyncSecretUnavailable: "the connection's secret cannot be used for this address",
+  toolSyncBlocked: 'the address is not allowed for the connection',
+  toolSyncUnreachable: 'the platform could not reach the tool server',
+  toolSyncTimeout: 'the tool server did not answer in time',
+  toolSyncProtocolError: 'the tool server answered in a way the platform does not understand',
+  toolSyncToolListInvalid: 'the tool list from the server is not valid',
+  toolSyncUnknown: 'the tool sync failed',
 } satisfies Translation<typeof source.blockErrors>;
 
 export const projectErrors = {
@@ -623,7 +632,25 @@ export const routeErrors = {
   noAgentsAvailable: 'No agents are available',
   conversationNotFound: 'Conversation not found',
   unknownResidency: 'unknown residency {residency}',
+  runNotStoppable: 'only a run started through an API entry point is stopped here',
+  runFinished: 'the run has already finished',
+  incidentResolved: 'the incident is already resolved',
+  quotaRequestPending: 'a quota request is already waiting for a decision',
+  quotaRequestApproved: 'the quota request is already approved',
+  quotaRequestRejected: 'the quota request is already rejected',
 } satisfies Translation<typeof source.routeErrors>;
+
+export const demoErrors = {
+  recordingFinished: 'the recording has finished',
+  demoIdSlug: 'a demo id is a lowercase slug',
+  ifMatchVersion: 'if-match is a version number',
+  recordingFileTooLarge: '{name} is at most {maxBytes} bytes',
+  recordingFileEmpty: 'the file is empty',
+  uploadVideoFirst: 'upload demo.mp4 before finishing as recorded',
+  failureNeedsReason: 'a failed recording says why',
+  demoIsMapping: 'a demo is a YAML mapping',
+  notSlug: 'not a lowercase slug',
+} satisfies Translation<typeof source.demoErrors>;
 
 export const errors = {
   catalogErrors,
@@ -635,4 +662,5 @@ export const errors = {
   adapterErrors,
   definitionErrors,
   routeErrors,
+  demoErrors,
 };

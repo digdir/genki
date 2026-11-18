@@ -606,6 +606,28 @@ describe('recording fixtures from tries', () => {
     expect(stored.fixtureCases[0]?.settings).toEqual({ keyId: 'AKID-7' });
   });
 
+  it('a try whose step is a GET with no body is recorded as a fixture', async () => {
+    const booted = await boot('test');
+    const yaml = classifyYaml()
+      .replace(
+        'request:\n  method: POST\n  path: /classifications\n  body:\n    model: $deployment\n    text: $input.text\n',
+        'request:\n  method: GET\n  path: /classifications\n  query:\n    model: $deployment\n    text: $input.text\n',
+      )
+      .replace('wire:\n  request:', 'wire:\n  query:');
+    expect(yaml).toContain('method: GET');
+    expect((await booted.put(upload(yaml, []))).status).toBe(201);
+    expect((await booted.offerClassify()).ok).toBe(true);
+    const tried = await tryWith(booted, 'hei');
+    const recorded = await record(booted, {
+      task: tried.task,
+      name: 'get-try',
+      exchange: tried.exchange,
+    });
+    expect(recorded.status).toBe(201);
+    expect(tried.exchange).toMatchObject({ request: { method: 'GET', body: null } });
+    expect(await recorded.json()).toMatchObject({ contract: { passed: true } });
+  });
+
   it('a fixture is recorded only with the exchange the try answered', async () => {
     const booted = await ready();
     const tried = await tryWith(booted, 'hei');

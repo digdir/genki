@@ -24,6 +24,7 @@ import {
   assessTimeline,
   Budget,
   fileNameOf,
+  inLanes,
   parseJsonOr,
   runFailedOf,
   modelChecksRan,
@@ -66,6 +67,8 @@ import { renderTable } from './report.ts';
 import { toolboxOf } from './review.ts';
 
 const retryDelay = 20_000;
+// Model checks at once (docs/smoke-tests.md); raise it once a few gates are measured.
+const lanes = 3;
 const modelChecksMs = 14 * 60_000;
 const maxDiffChars = 40_000;
 const maxPrs = 30;
@@ -164,28 +167,42 @@ export const main = async () => {
   const checks: CheckResult[] = [];
   const client = createClient(api, key, plan);
 
+  const checked = (
+    group: string,
+    tier: Tier,
+    id: string,
+    verdict: Verdict,
+    attempts = 1,
+  ): CheckResult => ({
+    id,
+    tier,
+    group,
+    outcome: verdict.ok ? 'pass' : 'fail',
+    detail: redact(verdict.detail),
+    attempts,
+    tasks: verdict.task ? [verdict.task] : [],
+  });
+  const skipped = (
+    group: string,
+    tier: Tier,
+    id: string,
+    reason: SkipReason,
+    detail: string,
+  ): CheckResult => ({
+    id,
+    tier,
+    group,
+    outcome: 'skip',
+    skipReason: reason,
+    detail,
+    attempts: 0,
+    tasks: [],
+  });
   const record = (group: string, tier: Tier, id: string, verdict: Verdict, attempts = 1) => {
-    checks.push({
-      id,
-      tier,
-      group,
-      outcome: verdict.ok ? 'pass' : 'fail',
-      detail: redact(verdict.detail),
-      attempts,
-      tasks: verdict.task ? [verdict.task] : [],
-    });
+    checks.push(checked(group, tier, id, verdict, attempts));
   };
   const skip = (group: string, tier: Tier, id: string, reason: SkipReason, detail: string) =>
-    checks.push({
-      id,
-      tier,
-      group,
-      outcome: 'skip',
-      skipReason: reason,
-      detail,
-      attempts: 0,
-      tasks: [],
-    });
+    checks.push(skipped(group, tier, id, reason, detail));
 
   let health = assessHealth(await call(`${api}/health`, { timeout: freeTimeout }), expected);
   for (let i = 1; i < 10 && !health.ok && expected; i++) {
@@ -339,12 +356,17 @@ export const main = async () => {
           `The key has no test-runner grant (playground options answered ${probe.status}), so the checks that need it were skipped.`,
         );
     }
-    const needsGrant = (group: string, tier: Tier, id: string) =>
+    const withoutGrant = (group: string, tier: Tier, id: string) =>
       !key
-        ? (skip(group, tier, id, 'key', 'no key'), false)
+        ? skipped(group, tier, id, 'key', 'no key')
         : !granted
-          ? (skip(group, tier, id, 'credential', 'needs the test-runner grant'), false)
-          : true;
+          ? skipped(group, tier, id, 'credential', 'needs the test-runner grant')
+          : undefined;
+    const needsGrant = (group: string, tier: Tier, id: string) => {
+      const missing = withoutGrant(group, tier, id);
+      if (missing) checks.push(missing);
+      return !missing;
+    };
 
     const modelCheck = async (
       group: string,
@@ -363,9 +385,7 @@ export const main = async () => {
         now: Date.now,
         wait: (ms) => sleep(ms),
       });
-      const tagged = { ...result, group, detail: redact(result.detail) };
-      checks.push(tagged);
-      return tagged;
+      return { ...result, group, detail: redact(result.detail) };
     };
     if (needsGrant('access', 'free', 'access:models-in-lockdown') && key) {
       const admission = assessKeyAdmission(
@@ -381,81 +401,183 @@ export const main = async () => {
       else record('access', 'free', 'access:models-in-lockdown', admission);
     }
     const notRun = (group: string, tier: Tier, id: string) =>
-      skip(group, tier, id, 'tier', 'not run in this run');
+      skipped(group, tier, id, 'tier', 'not run in this run');
 
-    const timelines: {
+    interface Timeline {
       id: string;
       task: string;
       failed: boolean;
       detected?: string[];
       question?: string;
       knownIssue?: string;
-    }[] = [];
+    }
+    const timelines: Timeline[] = [];
     const answer = (id: string) => async (result: HttpResult) => {
       save(`answers/${fileNameOf(id)}.json`, result.text, 20_000);
       return result;
     };
 
+    // Model checks run a few at a time, longest first; rows are added in the plan's order.
+    interface Ran {
+      rows: CheckResult[];
+      timeline?: Timeline;
+    }
+    interface Entry {
+      longest: number;
+      run: () => Promise<Ran>;
+    }
+    const at = (...rows: CheckResult[]): Entry => ({ longest: 0, run: async () => ({ rows }) });
+
+    const modelEntries: Entry[] = [];
     for (const m of plan.models) {
       for (const stream of runs('models', false) ? [false, true] : [false]) {
         const id = `model:${m.model}${stream ? ':stream' : ''}`;
-        if (!tiers.includes('cheap')) notRun('models', 'cheap', id);
-        else if (!key) skip('models', 'cheap', id, 'key', 'no key');
-        else {
-          let reply: HttpResult | undefined;
-          const result = await modelCheck(
-            'models',
-            'cheap',
-            id,
-            m.estimateKr,
-            m.model,
-            async () => {
-              reply = await answer(id)(await client.ask(m.variant, plan.modelQuestion, stream));
-              return stream
-                ? assessStream(reply, { answer: true })
-                : assessCompletion(reply, { model: m.model, answer: true });
+        if (!tiers.includes('cheap')) modelEntries.push(at(notRun('models', 'cheap', id)));
+        else if (!key) modelEntries.push(at(skipped('models', 'cheap', id, 'key', 'no key')));
+        else
+          modelEntries.push({
+            longest: 2,
+            run: async () => {
+              let reply: HttpResult | undefined;
+              const result = await modelCheck(
+                'models',
+                'cheap',
+                id,
+                m.estimateKr,
+                m.model,
+                async () => {
+                  reply = await answer(id)(await client.ask(m.variant, plan.modelQuestion, stream));
+                  return stream
+                    ? assessStream(reply, { answer: true })
+                    : assessCompletion(reply, { model: m.model, answer: true });
+                },
+              );
+              const task = result.tasks.at(-1);
+              return {
+                rows: [result],
+                ...(task && result.outcome !== 'skip' && (!stream || runs('timeline', false))
+                  ? { timeline: { id, task, failed: reply ? runFailedOf(reply, stream) : false } }
+                  : {}),
+              };
             },
-          );
-          const task = result.tasks.at(-1);
-          if (task && result.outcome !== 'skip' && (!stream || runs('timeline', false)))
-            timelines.push({ id, task, failed: reply ? runFailedOf(reply, stream) : false });
-        }
-      }
-    }
-
-    for (const q of plan.questions) {
-      const id = `question:${q.id}`;
-      if (!tiers.includes('core')) notRun('runs', 'core', id);
-      else if (!key) skip('runs', 'core', id, 'key', 'no key');
-      else {
-        const expect = {
-          answer: q.stream,
-          ...(q.minCitations === undefined ? {} : { minCitations: q.minCitations }),
-          ...(q.minSources === undefined ? {} : { minSources: q.minSources }),
-        };
-        let reply: HttpResult | undefined;
-        const result = await modelCheck('runs', 'core', id, q.estimateKr, q.model, async () => {
-          reply = await answer(id)(await client.ask(q.variant, q.question, q.stream));
-          return q.stream ? assessStream(reply, expect) : assessCompletion(reply, expect);
-        });
-        if (reply && reply.status === 200 && q.minCitations)
-          record(
-            'runs',
-            'core',
-            `sources:${q.id}`,
-            assessSourcesUnique(sourcesOfAnswer(reply, q.stream)),
-          );
-        const task = result.tasks.at(-1);
-        if (task && result.outcome !== 'skip')
-          timelines.push({
-            id: q.id,
-            task,
-            failed: reply ? runFailedOf(reply, q.stream) : false,
-            ...(q.detected ? { detected: q.detected, question: q.question } : {}),
-            ...(q.knownIssue ? { knownIssue: q.knownIssue } : {}),
           });
       }
     }
+
+    const questionEntries: Entry[] = plan.questions.map((q) => {
+      const id = `question:${q.id}`;
+      if (!tiers.includes('core')) return at(notRun('runs', 'core', id));
+      if (!key) return at(skipped('runs', 'core', id, 'key', 'no key'));
+      const expect = {
+        answer: q.stream,
+        ...(q.minCitations === undefined ? {} : { minCitations: q.minCitations }),
+        ...(q.minSources === undefined ? {} : { minSources: q.minSources }),
+      };
+      return {
+        // An agent run takes several model rounds; a retrieval answers in one.
+        longest: q.stream ? 4 : 1,
+        run: async () => {
+          let reply: HttpResult | undefined;
+          const result = await modelCheck('runs', 'core', id, q.estimateKr, q.model, async () => {
+            reply = await answer(id)(await client.ask(q.variant, q.question, q.stream));
+            return q.stream ? assessStream(reply, expect) : assessCompletion(reply, expect);
+          });
+          const rows = [result];
+          if (reply && reply.status === 200 && q.minCitations)
+            rows.push(
+              checked(
+                'runs',
+                'core',
+                `sources:${q.id}`,
+                assessSourcesUnique(sourcesOfAnswer(reply, q.stream)),
+              ),
+            );
+          const task = result.tasks.at(-1);
+          return {
+            rows,
+            ...(task && result.outcome !== 'skip'
+              ? {
+                  timeline: {
+                    id: q.id,
+                    task,
+                    failed: reply ? runFailedOf(reply, q.stream) : false,
+                    ...(q.detected ? { detected: q.detected, question: q.question } : {}),
+                    ...(q.knownIssue ? { knownIssue: q.knownIssue } : {}),
+                  },
+                }
+              : {}),
+          };
+        },
+      };
+    });
+
+    let version: number | undefined;
+    let options: CheckResult | undefined;
+    if (tiers.includes('cheap')) {
+      options = withoutGrant('playground', 'cheap', 'playground:options');
+      if (!options) {
+        const listed = await client.playgroundOptions();
+        const smoke = parseJsonOr<{ services?: { id: string; latestVersion: number }[] }>(
+          listed.status === 200 ? listed.text : '',
+          {},
+        ).services?.find((s) => s.id === plan.service);
+        version = smoke?.latestVersion;
+        options = checked('playground', 'cheap', 'playground:options', {
+          ok: version !== undefined,
+          detail:
+            version === undefined
+              ? 'the smoke service is not in the playground'
+              : `version ${version}`,
+        });
+      }
+    }
+    const playgroundEntries: Entry[] = plan.models.map((m) => {
+      const id = `playground:${m.model}`;
+      if (!tiers.includes('cheap')) return at(notRun('playground', 'cheap', id));
+      if (version === undefined)
+        return at(
+          skipped(
+            'playground',
+            'cheap',
+            id,
+            !key ? 'key' : granted ? 'unavailable' : 'credential',
+            'no playground',
+          ),
+        );
+      const v = version;
+      return {
+        longest: 3,
+        run: async () => ({
+          rows: [
+            await modelCheck('playground', 'cheap', id, m.playgroundKr, m.model, async () => {
+              const reply = await answer(id)(
+                await client.playground(v, m.model, plan.modelQuestion),
+              );
+              return assessPlayground(reply);
+            }),
+          ],
+        }),
+      };
+    });
+
+    const entries = [...modelEntries, ...questionEntries, ...playgroundEntries];
+    const longestFirst = entries
+      .map((entry, index) => ({ entry, index }))
+      .sort((a, b) => b.entry.longest - a.entry.longest);
+    const results: Ran[] = new Array<Ran>(entries.length);
+    await inLanes(
+      Math.max(1, Number(env.SMOKE_LANES) || lanes),
+      longestFirst.map(({ entry, index }) => async () => {
+        results[index] = await entry.run();
+      }),
+    );
+    const added = (from: number, count: number) => {
+      for (const r of results.slice(from, from + count)) {
+        checks.push(...r.rows);
+        if (r.timeline) timelines.push(r.timeline);
+      }
+    };
+    added(0, modelEntries.length + questionEntries.length);
 
     for (const t of timelines) {
       const id = `timeline:${t.id}`;
@@ -475,41 +597,8 @@ export const main = async () => {
         if (last && !t.failed) checks[checks.length - 1] = withKnownIssue(last, t.knownIssue);
       }
     }
-    let version: number | undefined;
-    if (tiers.includes('cheap') && needsGrant('playground', 'cheap', 'playground:options')) {
-      const options = await client.playgroundOptions();
-      const smoke = parseJsonOr<{ services?: { id: string; latestVersion: number }[] }>(
-        options.status === 200 ? options.text : '',
-        {},
-      ).services?.find((s) => s.id === plan.service);
-      version = smoke?.latestVersion;
-      record('playground', 'cheap', 'playground:options', {
-        ok: version !== undefined,
-        detail:
-          version === undefined
-            ? 'the smoke service is not in the playground'
-            : `version ${version}`,
-      });
-    }
-    for (const m of plan.models) {
-      const id = `playground:${m.model}`;
-      if (!tiers.includes('cheap')) notRun('playground', 'cheap', id);
-      else if (version === undefined)
-        skip(
-          'playground',
-          'cheap',
-          id,
-          !key ? 'key' : granted ? 'unavailable' : 'credential',
-          'no playground',
-        );
-      else {
-        const v = version;
-        await modelCheck('playground', 'cheap', id, m.playgroundKr, m.model, async () => {
-          const reply = await answer(id)(await client.playground(v, m.model, plan.modelQuestion));
-          return assessPlayground(reply);
-        });
-      }
-    }
+    if (options) checks.push(options);
+    added(modelEntries.length + questionEntries.length, playgroundEntries.length);
 
     if (needsGrant('definitions', 'free', 'validate:smoke')) {
       record(
@@ -632,10 +721,10 @@ export const main = async () => {
             assessScreen(await browser.visit('portal', path, { token: 'key', locale: 'en' }), plan),
           );
       const playgroundScreen = 'screen:portal/playground-run';
-      if (!tiers.includes('core')) notRun('playground', 'core', playgroundScreen);
+      if (!tiers.includes('core')) checks.push(notRun('playground', 'core', playgroundScreen));
       else if (needsGrant('playground', 'core', playgroundScreen) && browser) {
         const b = browser;
-        await modelCheck(
+        const screen = await modelCheck(
           'playground',
           'core',
           playgroundScreen,
@@ -650,6 +739,7 @@ export const main = async () => {
               plan,
             ),
         );
+        checks.push(screen);
       }
     } else
       for (const app of ['portal', 'console'] as const)

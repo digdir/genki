@@ -3,6 +3,8 @@ import type {
   app as appSource,
   devTools as devToolsSource,
   shell as shellSource,
+  profile as profileSource,
+  notFound as notFoundSource,
 } from '../nb/core-shell';
 
 export const shell = {
@@ -17,7 +19,7 @@ export const shell = {
   skipToContent: 'Skip to main content',
   menu: 'Menu',
   mainMenu: 'Main menu',
-  brandShort: 'AI portal',
+  brandShort: 'Generative AI platform',
   brandFull: 'Generative AI platform',
   owner: 'Digdir',
   lockdownReadOnly:
@@ -33,9 +35,11 @@ export const shell = {
   orgOptionMeta: 'Org. no. {orgNr}',
   orgOptionUnregistered: 'Org. no. {orgNr} · not registered',
   orgOptionRole: 'Org. no. {orgNr} · {role}',
-  userMenuButton: '{name}, open user menu',
+  userMenuButton: 'User menu for {name}, {organisation}',
+  orgNumberOnly: 'Org. no. {orgNr}',
+  actingForNumber: 'Acting for org. no. {orgNr}',
   userMenu: 'User menu',
-  actingFor: 'Acting for {name} (org. no. {orgNr})',
+  actingFor: 'Acting for {name}',
   yourRights: 'Your rights',
   rightsGivenBy: 'The rights are granted by the access managers at your organisation, in Altinn.',
   seeInAltinn: 'View or change in Altinn (opens in a new tab)',
@@ -60,33 +64,12 @@ export const shell = {
 } satisfies Translation<typeof shellSource>;
 
 export const app = {
-  notFound: 'Page not found',
-  notDrawn: 'This page has not been designed yet. Go back to <link>Overview</link>.',
-  guideIntro:
-    'In the portal, your organisation sets up AI services and keeps an eye on them. This is how the pages fit together.',
-  guideStartTitle: 'Get started',
-  guideStart:
-    '<overview>Overview</overview> shows the services, datasets and ingests of the organisation you act for. You switch organisation at the top of the page.',
-  guideBuildTitle: 'Set up a service',
-  guideBuild:
-    'Create and publish services under <services>Services</services>, add knowledge under <datasets>Datasets</datasets>, and reuse parts from <blocks>Building blocks</blocks>. Services Digdir shares with everyone are under <shared>Shared services</shared>.',
-  guideTryTitle: 'Try it and put it to use',
-  guideTry:
-    'Try a service in the <playground>Playground</playground>. Call it from your own system with the examples in <code>Call a service from code</code> and the endpoints in the <api>API reference</api>.',
-  guideFollowTitle: 'Follow up and control',
-  guideFollow:
-    'See use and cost in <usage>Statistics</usage>, runs in the <log>Log</log>, who has access in <access>Access</access>, and defaults for the organisation in <settings>Settings</settings>.',
-  guideRights:
-    'What you can do depends on the rights your organisation has given you in Altinn. You see them on your Profile.',
   statusIntro: 'This page asks the platform API whether it answers.',
   statusChecking: 'Checking the API',
   statusApi: 'API',
-  statusUp: 'Answering',
   statusDown: 'The API does not answer right now. Try again in a little while.',
   statusVersion: 'Version',
   statusCheckAgain: 'Check again',
-  statusScope:
-    'This page only shows whether the API answers. You see the status of each service under <services>Services</services>, and failed runs in the <log>Log</log>.',
   contactOwner:
     'The platform is owned and developed by the Norwegian Digitalisation Agency (Digdir). The source code is in the genki repository.',
   contactText:
@@ -129,5 +112,48 @@ export const devTools = {
   apiDesc: 'The API reference and documentation for developers.',
   openLog: 'Open Log',
   openStepFlows: 'Open Step flows',
-  openApiReference: 'Open the API reference',
+  needsFollowUp: '{count} need follow-up',
+  apiTabs: 'API',
+  apiStart: 'Get started',
+  apiReference: 'Reference',
+  statusChecked: 'Last checked at {time}.',
+  statusCheckNow: 'Check now',
+  statusNoContact: 'We could not reach the API',
+  statusNoContactText:
+    'The API may be down, or your network may not reach it. Check again in a moment.',
+  statusWhatWeCheck: 'What we check',
+  statusApiCheck: 'The API answers',
+  statusApiHow: 'Asks /health when you open the page or press "Check now".',
+  statusAnsweredIn: 'Answered in {ms} ms',
+  statusLockdown: 'Locked environment',
+  statusLockdownOn: 'Yes, only some people can change things now',
+  statusLockdownOff: 'No',
 } satisfies Translation<typeof devToolsSource>;
+
+export const profile = {
+  name: 'Name',
+  actingFor: 'Acting for',
+  organisation: '{name} (org. no. {orgNr})',
+  noRights: 'You have no rights in {name} yet.',
+  useServicesLine: 'Ask questions and get answers in the services your organisation uses.',
+  manageServicesLine: 'Build, change and publish services, and see what has changed.',
+  manageDatasetsLine: 'Add sources, upload files and ingest again.',
+  registerBuildingBlocksLine:
+    'Register tools, models and other building blocks for the organisation.',
+  viewUsageLine: 'See quota, usage and estimated cost under Statistics.',
+  language: 'Language',
+  theme: 'Theme',
+  themeLegend: 'How the portal looks',
+  themeLight: 'Light',
+  themeDark: 'Dark',
+  themeAuto: 'Follow the system',
+  savedHere: 'Saved in this browser',
+  notStored: 'The choice lasts until you close the page. The browser does not let us store it.',
+} satisfies Translation<typeof profileSource>;
+
+export const notFound = {
+  title: 'Page not found',
+  text: 'The address "{path}" does not exist, or the page has moved.',
+  goTo: 'Go to {area}',
+  goToOverview: 'Go to Overview',
+} satisfies Translation<typeof notFoundSource>;

@@ -26,6 +26,7 @@ import {
   verdictColors,
   verdictLabels,
 } from '../../data/search-engines';
+import { backoffDelay } from './backoff';
 import { useT, type T } from '../../i18n';
 import { admissionRunsOutSoon } from './admission';
 
@@ -91,6 +92,7 @@ export const EngineSwitch = ({
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState('');
+  const [pollFailures, setPollFailures] = useState(0);
 
   const dest = engines.find((e) => e.id === target) ?? (targets[0] as SearchEngineInfo);
   const sameModel = canCopy(now, dest);
@@ -108,23 +110,27 @@ export const EngineSwitch = ({
   useEffect(() => {
     if (!sw || (sw.state !== 'running' && sw.state !== 'comparing' && sw.state !== 'activating'))
       return;
-    const timer = setTimeout(() => {
-      api.searchEngines.getSwitch(tenant, datasetId, sw.id).then(
-        (next) => {
-          // Activating into the knowledge database ends once the refresh has run and the catalog names it.
-          if (sw.state === 'activating' && next.state === 'active') {
-            onClose({ kind: 'activated', target: dest.title });
-            return;
-          }
-          setSw(next);
-          if (next.state === 'comparing' || next.state === 'ready')
-            setStep((s) => (s === 3 ? 4 : s));
-        },
-        () => undefined,
-      );
-    }, pollMs);
+    const timer = setTimeout(
+      () => {
+        api.searchEngines.getSwitch(tenant, datasetId, sw.id).then(
+          (next) => {
+            // Activating into the knowledge database ends once the refresh has run and the catalog names it.
+            if (sw.state === 'activating' && next.state === 'active') {
+              onClose({ kind: 'activated', target: dest.title });
+              return;
+            }
+            setPollFailures(0);
+            setSw(next);
+            if (next.state === 'comparing' || next.state === 'ready')
+              setStep((s) => (s === 3 ? 4 : s));
+          },
+          () => setPollFailures((n) => n + 1),
+        );
+      },
+      backoffDelay(pollMs, pollFailures),
+    );
     return () => clearTimeout(timer);
-  }, [api, tenant, datasetId, sw, pollMs, onClose, dest.title]);
+  }, [api, tenant, datasetId, sw, pollMs, pollFailures, onClose, dest.title]);
 
   const act = async (work: () => Promise<void>) => {
     setBusy(true);
@@ -583,6 +589,11 @@ export const EngineSwitch = ({
             </span>
           ) : null}
         </div>
+      ) : null}
+      {pollFailures > 0 ? (
+        <p className="meta" role="status">
+          {t('searchEngine.swPollRetrying')}
+        </p>
       ) : null}
 
       {step === 4 ? (

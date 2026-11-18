@@ -30,6 +30,7 @@ const connection = z.object({
   families: z.record(z.string(), z.string()),
   settings: z.record(z.string(), z.string()).optional(),
   keys: z.record(z.string(), secret).optional(),
+  gateway: z.boolean().optional(),
 });
 
 /** An embedding model in the model catalogue, as the embedding port reads it. */

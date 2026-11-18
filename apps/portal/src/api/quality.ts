@@ -212,6 +212,7 @@ export interface Improvement {
   examples?: { input: string; before: string; after: string }[];
   reasons?: string[] | string;
   createdAt: string;
+  decision?: { approved: boolean; at: string; reason: string };
 }
 
 export interface ServiceDraft {
@@ -268,7 +269,7 @@ export const latestRunFact = (runs: EvalRun[], t: T = translator('nb')) => {
   });
 };
 
-export const qualityApi = ({ get, request, tenantPath }: ApiContext) => {
+export const qualityApi = ({ get, request, tenantPath, invalidate }: ApiContext) => {
   const service = (tenant: string, id: string) =>
     `${tenantPath(tenant)}/services/${encodeURIComponent(id)}`;
   const set = (tenant: string, id: string) =>
@@ -304,6 +305,7 @@ export const qualityApi = ({ get, request, tenantPath }: ApiContext) => {
           | (Partial<OpenedDraft> & { baseVersion?: number | null; latestVersion?: number | null })
           | null
         >('GET', `${service(tenant, id)}/draft?rebase=clean`, undefined, why(reason));
+        if (typeof draft?.rebasedFrom === 'number') invalidate?.(tenant);
         if (!draft?.definition || typeof draft.revision !== 'number') return undefined;
         const { baseVersion, latestVersion, ...rest } = draft;
         return {

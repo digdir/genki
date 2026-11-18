@@ -81,6 +81,7 @@ const endpoint = z
     allowedHosts: z.array(z.string().regex(allowedHostPattern)).max(20).optional(),
     settings: connectionSettings.optional(),
     keys: connectionKeys.optional(),
+    gateway: z.boolean().optional(),
   })
   .refine((e) => !Object.keys(e.settings ?? {}).some((name) => Object.hasOwn(e.keys ?? {}, name)), {
     message: 'a name is a setting or a key, not both',

@@ -441,6 +441,15 @@ export class CatalogRegistry {
           message: 'a list of at most 20 host names, each with an optional port',
         });
     }
+    if (out.gateway !== undefined) {
+      if (kind !== 'model-endpoint' || scope !== platformScope)
+        errors.push({
+          path: 'spec.gateway',
+          message: 'only the operator sets gateway, and only on a model connection',
+        });
+      else if (typeof out.gateway !== 'boolean')
+        errors.push({ path: 'spec.gateway', message: 'gateway must be true or false' });
+    }
     for (const [field, schema] of [
       ['settings', connectionSettings],
       ['keys', connectionKeys],

@@ -73,7 +73,7 @@ describe('Integrasjoner: oversikt', () => {
     expect(
       screen.getByRole('heading', { name: '2 integrasjoner trenger oppfølging' }),
     ).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Systemer' }).getAttribute('aria-current')).toBe(
+    expect(screen.getByRole('link', { name: /^Systemer/ }).getAttribute('aria-current')).toBe(
       'page',
     );
     expect(
@@ -172,7 +172,7 @@ describe('Integrasjoner: Nøkler', () => {
     const list = await screen.findByRole('list', { name: 'API-nøkler' });
     expect(within(list).getByText('Publiseringssystemet')).toBeTruthy();
     expect(within(list).getByText('Alle tjenester og datasett')).toBeTruthy();
-    expect(within(list).getByText('Trukket tilbake')).toBeTruthy();
+    expect(within(list).queryByText('Trukket tilbake')).toBeNull();
     expect(within(list).getByText(/60 kall per minutt · sist brukt i dag kl. 02.03/)).toBeTruthy();
     expectAccessible();
   });
@@ -220,7 +220,49 @@ describe('Integrasjoner: Nøkler', () => {
     const created = within(list).getByText('Analyseverktøy').closest('li') as HTMLElement;
     expect(within(created).getByText(/^120 kall per minutt/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Jeg har lagret nøkkelen' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Lukk uten å kopiere' }));
     expect(screen.queryByLabelText('Den nye nøkkelen')).toBeNull();
+  });
+
+  it('puts revoked keys under a closed Trukket tilbake group, apart from the keys in use', async () => {
+    await renderAt('#/developer/keys');
+    await screen.findByRole('list', { name: 'API-nøkler' });
+    const group = screen
+      .getByText(/^Trukket tilbake \(\d+\)$/)
+      .closest('details') as HTMLDetailsElement;
+    expect(group.open).toBe(false);
+    expect(screen.getByRole('heading', { name: /^I bruk \(\d+\)$/ })).toBeTruthy();
+  });
+
+  it('refuses a new key with the name of a key in use', async () => {
+    const { calls, fetch } = recording();
+    await renderAt('#/developer/keys', fetch);
+    await screen.findByRole('list', { name: 'API-nøkler' });
+    fireEvent.click(screen.getByRole('button', { name: 'Lag API-nøkkel' }));
+    fireEvent.change(screen.getByLabelText('Navn'), { target: { value: 'publiseringssystemet' } });
+    fireEvent.click(screen.getByLabelText('Rapportassistenten'));
+    fireEvent.change(screen.getByLabelText('Begrunnelse'), {
+      target: { value: 'Nytt analyseverktøy' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Lag nøkkel' }));
+    expect(
+      screen.getAllByText(/Det finnes allerede en nøkkel som heter «publiseringssystemet»/).length,
+    ).toBeGreaterThan(0);
+    expect(calls.some((c) => c.method === 'POST' && c.url.endsWith('/api-keys'))).toBe(false);
+  });
+
+  it('asks before throwing away what was typed in a new key', async () => {
+    await renderAt('#/developer/keys');
+    await screen.findByRole('list', { name: 'API-nøkler' });
+    fireEvent.click(screen.getByRole('button', { name: 'Lag API-nøkkel' }));
+    fireEvent.change(screen.getByLabelText('Navn'), { target: { value: 'Halvferdig' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Avbryt' }));
+    expect(screen.getByText('Forkaste det du har skrevet?')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Gå tilbake' }));
+    expect((screen.getByLabelText('Navn') as HTMLInputElement).value).toBe('Halvferdig');
+    fireEvent.click(screen.getByRole('button', { name: 'Avbryt' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Forkast' }));
+    expect(screen.queryByLabelText('Navn')).toBeNull();
   });
 
   it('offers no test-runner choice when the API does not allow it here', async () => {
@@ -325,6 +367,9 @@ describe('Integrasjoner: Nøkler', () => {
     await renderAt('#/developer/keys', fetch);
     const list = await screen.findByRole('list', { name: 'API-nøkler' });
     fireEvent.click(within(list).getAllByRole('button', { name: 'Roter' })[0] as HTMLElement);
+    expect(screen.getByText(/Den gamle slutter å virke med en gang/)).toBeTruthy();
+    expect(calls.some((c) => c.url.endsWith('/revoke'))).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Roter nøkkelen' }));
     expect(await screen.findByLabelText('Den nye nøkkelen')).toBeTruthy();
     expect(
       screen.getByText(/Hvor lenge den gamle kan virke parallelt, er ikke bestemt./),
@@ -344,12 +389,15 @@ describe('Integrasjoner: verktøy fra egne systemer', () => {
     await renderAt('#/developer/systems', fetch);
     const arkiv = await screen.findByRole('region', { name: 'Arkivsøk' });
     fireEvent.click(within(arkiv).getByRole('button', { name: 'Godkjenn arkiv.sok' }));
-    expect(await screen.findByText('Skriv en begrunnelse på minst 10 tegn.')).toBeTruthy();
+    const dialog = screen.getByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Godkjenn arkiv.sok' }));
+    expect(await within(dialog).findByText('Skriv en begrunnelse på minst 10 tegn.')).toBeTruthy();
+    expect(calls.some((c) => c.url.endsWith('/approve'))).toBe(false);
 
-    fireEvent.change(screen.getByLabelText('Begrunnelse'), {
+    fireEvent.change(within(dialog).getByLabelText('Begrunnelse'), {
       target: { value: 'Ny versjon er gjennomgått' },
     });
-    fireEvent.click(within(arkiv).getByRole('button', { name: 'Godkjenn arkiv.sok' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Godkjenn arkiv.sok' }));
     expect(await screen.findByText('arkiv.sok er godkjent.')).toBeTruthy();
     expect(calls.find((c) => c.url.endsWith('/approve'))?.reason).toBe('Ny versjon er gjennomgått');
   });
@@ -377,20 +425,35 @@ describe('Integrasjoner: Sporing og evaluering', () => {
 });
 
 describe('Integrasjoner: dokumentasjon og kode', () => {
-  it('links to the guides and the API reference', async () => {
+  it('gives the API item the tabs Kom i gang and Referanse, each with its own address', async () => {
     await renderAt('#/developer/api');
+    expect(await screen.findByRole('tab', { name: 'Kom i gang', selected: true })).toBeTruthy();
     expect(
       screen.getAllByRole('link', { name: /API-referanse/ }).map((a) => a.getAttribute('href')),
-    ).toContain('#/api-reference');
-    fireEvent.click(screen.getByRole('button', { name: 'Last ned OpenAPI-fil' }));
-    expect(await screen.findByText('OpenAPI-filen er lastet ned.')).toBeTruthy();
+    ).toContain('#/developer/api/reference');
     expectAccessible();
+    fireEvent.click(screen.getByRole('tab', { name: 'Referanse' }));
+    await waitFor(() => expect(window.location.hash).toBe('#/developer/api/reference'));
+    expect(await screen.findByRole('navigation', { name: 'Endepunkter' })).toBeTruthy();
+    expect(screen.getByRole('navigation', { name: 'Utviklerverktøy' })).toBeTruthy();
+  });
+
+  it('marks Systemer and Utløsere in the submenu when something needs follow-up', async () => {
+    await renderAt('#/developer/status');
+    const menu = await screen.findByRole('navigation', { name: 'Utviklerverktøy' });
+    await waitFor(() =>
+      expect(
+        within(menu).getByRole('link', { name: 'Systemer 1 trenger oppfølging' }),
+      ).toBeTruthy(),
+    );
+    expect(within(menu).getByRole('link', { name: 'Utløsere 1 trenger oppfølging' })).toBeTruthy();
+    expect(within(menu).getByRole('link', { name: 'Nøkler' })).toBeTruthy();
   });
 
   it('shows how to call a service from code in each channel', async () => {
-    await renderAt('#/developer/api/code');
+    await renderAt('#/developer/api');
     expect(
-      screen.getByRole('heading', { level: 1, name: 'Kall en tjeneste fra kode' }),
+      await screen.findByRole('heading', { level: 3, name: 'Kall en tjeneste fra kode' }),
     ).toBeTruthy();
     expect(screen.getByLabelText('POST /api/tools/call/rapportassistenten__default')).toBeTruthy();
     expectAccessible();
@@ -405,8 +468,8 @@ describe('Integrasjoner: dokumentasjon og kode', () => {
   });
 
   it('says the example answer is only an example and nothing was sent', async () => {
-    await renderAt('#/developer/api/code');
-    fireEvent.click(screen.getByRole('button', { name: 'Vis eksempel på svar' }));
+    await renderAt('#/developer/api');
+    fireEvent.click(await screen.findByRole('button', { name: 'Vis eksempel på svar' }));
 
     expect(
       await screen.findByText('Eksempel på svar. Ingen kall er sendt.', {}, { timeout: 3000 }),

@@ -49,7 +49,11 @@ const clientCredentials = async (
     parsed = {};
   }
   if (response.status !== 200 || typeof parsed.access_token !== 'string')
-    throw new EgressError('network', `the token endpoint answered HTTP ${response.status}`);
+    throw new EgressError(
+      'network',
+      `the token endpoint answered HTTP ${response.status}`,
+      response.status,
+    );
   const seconds =
     typeof parsed.expires_in === 'number' ? Math.min(parsed.expires_in, maxTokenSeconds) : 300;
   tokens.set(key, {

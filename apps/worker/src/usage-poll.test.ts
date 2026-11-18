@@ -3,7 +3,6 @@ import type { Job, JobQueue } from '@genai/jobs';
 import {
   InMemoryUsageBuckets,
   memoryUsageSource,
-  toUsageRow,
   UsageGatewayError,
   type UsageSource,
 } from '@genai/port-usage';
@@ -24,7 +23,6 @@ const job = (source: string): Job<{ source: string }> => ({
 const setup = (source?: UsageSource) => {
   let now = new Date(day + 30 * 60_000);
   const fake = memoryUsageSource({ now: () => now });
-  fake.addKey({ id: 'k', subject: { kind: 'org', id: tenant } });
   const store = new InMemoryUsageBuckets(() => [tenant]);
   const logged: string[] = [];
   const work = usagePollWork({
@@ -36,7 +34,8 @@ const setup = (source?: UsageSource) => {
   const record = (hour: number) => {
     now = new Date(Math.max(now.getTime(), day + hour * hourMs + 2 * 60_000));
     fake.record({
-      key: 'k',
+      client: 'portal',
+      org: tenant,
       model: 'gpt-test',
       at: new Date(day + hour * hourMs + 60_000),
       inputTokens: 100,
@@ -46,14 +45,9 @@ const setup = (source?: UsageSource) => {
   };
   const fakeRows = async () =>
     (
-      await fake.query({
-        from: new Date(day),
-        to: new Date(day + 24 * hourMs),
-        bucket: 'hour',
-        groupBy: ['model', 'subject'],
-      })
-    ).data
-      .map((r) => JSON.stringify(toUsageRow(fake.id, r)))
+      await fake.usage({ from: new Date(day), to: new Date(day + 24 * hourMs), bucket: 'hour' })
+    ).rows
+      .map((r) => JSON.stringify(r))
       .sort();
   const storedRows = () =>
     store

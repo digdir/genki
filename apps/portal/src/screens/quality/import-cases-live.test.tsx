@@ -32,7 +32,7 @@ const openLive = async () => {
   };
   const auth = mockAnsattporten(kari);
   await auth.login();
-  window.location.hash = '#/services/rapportassistenten/quality';
+  window.location.hash = '#/services/rapportassistenten/quality?view=testsets';
   render(<App auth={auth} fetch={fetch} live />);
   await screen.findByText('Hvor mange tilsyn hadde vi i 2025?');
   return writes;

@@ -62,6 +62,9 @@ export const endpoints = defineNamespace({
   federatedApp: 'Genkis egen identitet (føderert app)',
   federatedAppDescription:
     'Genki logger inn med sin administrerte identitet gjennom en flerleietaker-app. Ingen hemmelighet lagres.',
+  gateway: 'Dette er KI-gatewayen',
+  gatewayDescription:
+    'Hvert modellkall sender genki-tenant med organisasjonsnummeret til virksomheten kallet gjelder, så gatewayen fører bruken på riktig virksomhet.',
   appClientId: 'Appens klient-ID',
   appClientIdDescription: 'Klient-ID-en til flerleietaker-appen.',
   resourceTenant: 'Leietaker for tjenesten',

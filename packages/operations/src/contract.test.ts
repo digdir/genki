@@ -310,3 +310,27 @@ describe('image usage in the bundled image recipes', () => {
     expect(pricedUsage(usageOf('one-edit'), textOnly).costMicroNok).toBeUndefined();
   });
 });
+
+describe('answers without a body in operation@1', () => {
+  const testdata = join(import.meta.dirname, 'testdata');
+  const yaml = readFileSync(
+    join(testdata, 'descriptors', 'example', 'summarize-file@1.yaml'),
+    'utf8',
+  ).replace(
+    '      path: /files/{steps.upload.file}\n    wire:\n      response:\n        object:\n          deleted: boolean\n',
+    '      path: /files/{steps.upload.file}\n    response:\n      encoding: none\n    wire: {}\n',
+  );
+  const [recorded] = fixturesFor(join(testdata, 'fixtures'), 'example/summarize-file@1');
+  if (!recorded?.steps) throw new Error('the summarize-file fixture is missing');
+  const fixture: OperationFixture = {
+    ...recorded,
+    steps: recorded.steps.map((s) =>
+      s.step === 'remove_file' ? { ...s, response: { status: 204, body: null } } : s,
+    ),
+  };
+
+  it('a delete step recorded as 204 with no body passes operation@1 when the step declares no answer body', async () => {
+    expect(yaml).toContain('encoding: none');
+    expect(contractFailures(await operationContract(parseDescriptor(yaml), [fixture]))).toEqual([]);
+  });
+});

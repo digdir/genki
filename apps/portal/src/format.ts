@@ -18,6 +18,8 @@ export const formatSeconds = (s: number, f: Format = nbFormat, t: T = nbT) =>
 export const formatOre = (n: number, f: Format = nbFormat, t: T = nbT) =>
   t('common.ore', { value: oneDecimal(f, n) });
 export const formatDate = (iso: string, f: Format = nbFormat) => f.date(iso, 'medium');
+export const isTrialService = (id: string) => id.startsWith('platform/');
+
 export const serviceLabel = (id: string, title?: string) => {
   if (title) return title;
   const parts = id.split('/');

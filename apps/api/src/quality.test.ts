@@ -67,6 +67,7 @@ const people: Record<string, Principal> = {
     kind: 'employee',
     issuer: 'test',
     subject: 'kari',
+    email: 'kari@digdir.no',
     tenant,
     authorizedFor: [{ org: tenant }],
   },
@@ -3650,6 +3651,7 @@ describe('a test-set run across a deploy', () => {
     const { principal } = kept[0]?.spec as { principal: Principal };
     expect(principal).not.toHaveProperty('name');
     expect(principal).not.toHaveProperty('orgNames');
+    expect(principal).not.toHaveProperty('email');
   });
 
   it('takes a run up once when two requests on one instance find it left at the same time', async () => {

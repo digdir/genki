@@ -89,7 +89,14 @@ export const exampleLiveDatasets: DatasetDetailView[] = [
     source: 'website',
     documents: 1240,
     chunks: 9810,
-    usedBy: [{ kind: 'service', tenant: '999888777', id: 'hjelperen', name: 'Hjelperen' }],
+    usedBy: [
+      {
+        kind: 'service',
+        tenant: '999888777',
+        id: 'rapportassistenten',
+        name: 'Rapportassistenten',
+      },
+    ],
     lastExecution: {
       status: 'failed',
       startedAt: '2026-10-08T02:00:00Z',
@@ -278,7 +285,10 @@ export const datasetsMock = (options: DatasetsMockOptions = {}): MockHandler => 
     const list = /^\/tenants\/([^/]+)\/datasets$/.exec(path);
     if (list && method === 'GET')
       return json({
-        data: visible(decodeURIComponent(list[1] ?? '')).map(({ skipped: _, ...d }) => d),
+        data: visible(decodeURIComponent(list[1] ?? '')).map(({ skipped: _, usedBy, ...d }) => ({
+          ...d,
+          usedByCount: usedBy?.length ?? 0,
+        })),
       });
 
     const one =

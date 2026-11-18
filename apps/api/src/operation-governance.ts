@@ -20,7 +20,7 @@ import {
   type ValidationError,
 } from '@genai/definitions';
 import { maturities, mediaTypeCovers, mediaTypesOf, residencyAllows } from '@genai/kernel';
-import type { DescriptorRegistry } from '@genai/operations';
+import type { Descriptor, DescriptorRegistry } from '@genai/operations';
 import { builtInOperations, type ModelDescription } from '@genai/port-model';
 import { callOperationModel, callOperationRef } from '@genai/strategy-step-flow';
 import type { Context } from 'hono';
@@ -54,6 +54,28 @@ export const stepsIn = (steps: readonly FlowStep[]): FlowStep[] =>
     ...stepsIn(s.else ?? []),
   ]);
 
+export const stepMediaTypes = async (
+  flowRefs: readonly string[],
+  deps: Pick<DescribedStepDeps, 'descriptors' | 'flow'>,
+): Promise<string[]> => {
+  const seen = new Set<string>();
+  const types = new Set<string>();
+  const visit = async (ref: string) => {
+    if (seen.has(ref)) return;
+    seen.add(ref);
+    const flow = await deps.flow(ref);
+    for (const step of stepsIn(flow?.spec.steps ?? [])) {
+      if (step.subflow) await visit(step.subflow);
+      const id = (step.params as { descriptor?: unknown } | undefined)?.descriptor;
+      if (step.block !== callOperationRef || typeof id !== 'string') continue;
+      const descriptor = deps.descriptors.get(id);
+      for (const type of descriptor ? mediaTypesOf(descriptor.input) : []) types.add(type);
+    }
+  };
+  for (const ref of flowRefs) await visit(ref);
+  return [...types];
+};
+
 export interface DescribedStepDeps {
   descriptors: DescriptorRegistry;
   governance: OperationGovernanceStore;
@@ -72,6 +94,87 @@ const serviceModels = (spec: ServiceDefinition['spec']) =>
     ].filter((m): m is string => typeof m === 'string'),
   );
 
+interface CallOperationStep {
+  ref: string;
+  step: FlowStep;
+}
+
+const callOperationSteps = async (
+  flow: StepFlowDefinition,
+  flowRef: string,
+  load: DescribedStepDeps['flow'],
+): Promise<CallOperationStep[]> => {
+  const seen = new Set<string>([flowRef]);
+  const found: CallOperationStep[] = [];
+  const visit = async (current: StepFlowDefinition, ref: string) => {
+    for (const step of stepsIn(current.spec.steps)) {
+      if (step.subflow && !seen.has(step.subflow)) {
+        seen.add(step.subflow);
+        const sub = await load(step.subflow);
+        if (sub) await visit(sub, step.subflow);
+      }
+      if (step.block === callOperationRef) found.push({ ref, step });
+    }
+  };
+  await visit(flow, flowRef);
+  return found;
+};
+
+const fixedCall = (service: ServiceDefinition, step: FlowStep) => {
+  const params = (step.params ?? {}) as { descriptor?: unknown; model?: unknown };
+  const id = typeof params.descriptor === 'string' ? params.descriptor : '';
+  const modelId =
+    params.model === undefined
+      ? callOperationModel(id, undefined, service.spec.model)
+      : params.model;
+  const templated = id.includes('{{') || (typeof modelId === 'string' && modelId.includes('{{'));
+  return { id, modelId, templated };
+};
+
+export interface UnmaskedInputUse {
+  flow: string;
+  step: string;
+  stepName?: string;
+  descriptor: string;
+  operation: string;
+  mediaType: string;
+  consent?: { mediaType: string; reason: string };
+}
+
+const unmaskedInputOf = (
+  service: ServiceDefinition,
+  { ref, step }: CallOperationStep,
+  descriptor: Descriptor,
+): UnmaskedInputUse[] => {
+  const consented = service.spec.riskConfirmation?.unmaskedInput ?? [];
+  return mediaTypesOf(descriptor.input).map((mediaType) => {
+    const consent = consented.find((c) => mediaTypeCovers(c.mediaType, mediaType));
+    return {
+      flow: ref,
+      step: step.id,
+      ...(step.name ? { stepName: step.name } : {}),
+      descriptor: descriptor.id,
+      operation: descriptor.operation,
+      mediaType,
+      ...(consent ? { consent: { mediaType: consent.mediaType, reason: consent.reason } } : {}),
+    };
+  });
+};
+
+export const unmaskedInputIn = async (
+  service: ServiceDefinition,
+  flow: StepFlowDefinition,
+  flowRef: string,
+  deps: Pick<DescribedStepDeps, 'descriptors' | 'flow'>,
+): Promise<UnmaskedInputUse[]> => {
+  await deps.descriptors.refresh?.();
+  return (await callOperationSteps(flow, flowRef, deps.flow)).flatMap((call) => {
+    const { id, templated } = fixedCall(service, call.step);
+    const descriptor = templated ? undefined : deps.descriptors.get(id);
+    return descriptor ? unmaskedInputOf(service, call, descriptor) : [];
+  });
+};
+
 /** What keeps a service from publishing its `call-operation` steps, here and in the subflows they reach. */
 export const describedStepProblems = async (
   service: ServiceDefinition,
@@ -83,85 +186,68 @@ export const describedStepProblems = async (
   await deps.descriptors.refresh?.();
   const own = serviceModels(service.spec);
   const catalogue = new Map(deps.models().map((m) => [m.id, m]));
-  const seen = new Set<string>([flowRef]);
   const problems: ValidationError[] = [];
-  const visit = async (current: StepFlowDefinition, ref: string) => {
-    for (const step of stepsIn(current.spec.steps)) {
-      if (step.subflow && !seen.has(step.subflow)) {
-        seen.add(step.subflow);
-        const sub = await deps.flow(step.subflow);
-        if (sub) await visit(sub, step.subflow);
-      }
-      if (step.block !== callOperationRef) continue;
-      const at = `step ${step.id} in ${ref}`;
-      const refuse = (message: string) => problems.push({ path, message: `${at}: ${message}` });
-      const params = (step.params ?? {}) as { descriptor?: unknown; model?: unknown };
-      const id = typeof params.descriptor === 'string' ? params.descriptor : '';
-      const modelId =
-        params.model === undefined
-          ? callOperationModel(id, undefined, service.spec.model)
-          : params.model;
-      if (id.includes('{{') || (typeof modelId === 'string' && modelId.includes('{{'))) {
-        refuse(
-          'the operation and the model are fixed values, not filled in while the service runs',
-        );
-        continue;
-      }
-      const descriptor = deps.descriptors.get(id);
-      if (!descriptor) {
-        refuse(`there is no operation descriptor ${id}`);
-        continue;
-      }
-      if (descriptor.operation === 'decide')
-        refuse(
-          'decide is served only through the purpose-check guardrail, which sends a refusal or a low-confidence answer to a person',
-        );
-      const consented = service.spec.riskConfirmation?.unmaskedInput ?? [];
-      for (const mediaType of mediaTypesOf(descriptor.input))
-        if (!consented.some((c) => mediaTypeCovers(c.mediaType, mediaType)))
-          refuse(
-            `${id} takes ${mediaType} input, which cannot be masked; the service's risk assessment must record unmasked input of ${mediaType} with a reason`,
-          );
-      if (!('pii-before-model' in service.spec.guardrails))
-        refuse(
-          'a call-operation step needs the pii-before-model guardrail, so the text it sends is masked',
-        );
-      if (descriptor.status === 'review')
-        refuse(
-          `${id} is in review; an operator tries it in the raw tier, and a service can use it once it is reviewed`,
-        );
-      const maturity = await deps.governance.maturityOf(descriptor.operation);
-      if (maturity.maturity !== 'production')
-        refuse(
-          `the ${descriptor.operation} operation is in test in this environment; an operator must move it to production before a service can use it`,
-        );
-      if (typeof modelId !== 'string' || !own.has(modelId)) {
-        refuse(`the model ${String(modelId)} is not one of the service's models`);
-        continue;
-      }
-      const model = catalogue.get(modelId);
-      if (!model) {
-        refuse(`there is no model ${modelId} in the catalogue`);
-        continue;
-      }
-      const bound = model.apis[descriptor.operation];
-      if (bound !== id)
-        refuse(
-          bound
-            ? `the model ${modelId} binds ${bound} for ${descriptor.operation}, not ${id}`
-            : `the model ${modelId} binds no API for ${descriptor.operation}`,
-        );
-      if (!residencyAllows(service.spec.model.residency, model.residency))
-        refuse(
-          `the model ${modelId} runs in ${model.residency}, outside ${service.spec.model.residency}`,
-        );
-      if (!(await deps.governance.processorRecord(model.endpoint)))
-        refuse(
-          `the endpoint ${model.endpoint} of ${modelId} has no processor record, so it cannot serve a service with real data`,
-        );
+  for (const call of await callOperationSteps(flow, flowRef, deps.flow)) {
+    const { ref, step } = call;
+    const at = `step ${step.id} in ${ref}`;
+    const refuse = (message: string) => problems.push({ path, message: `${at}: ${message}` });
+    const { id, modelId, templated } = fixedCall(service, step);
+    if (templated) {
+      refuse('the operation and the model are fixed values, not filled in while the service runs');
+      continue;
     }
-  };
-  await visit(flow, flowRef);
+    const descriptor = deps.descriptors.get(id);
+    if (!descriptor) {
+      refuse(`there is no operation descriptor ${id}`);
+      continue;
+    }
+    if (descriptor.operation === 'decide')
+      refuse(
+        'decide is served only through the purpose-check guardrail, which sends a refusal or a low-confidence answer to a person',
+      );
+    for (const use of unmaskedInputOf(service, call, descriptor))
+      if (!use.consent)
+        refuse(
+          `${id} takes ${use.mediaType} input, which cannot be masked; the service's risk assessment must record unmasked input of ${use.mediaType} with a reason`,
+        );
+    if (!('pii-before-model' in service.spec.guardrails))
+      refuse(
+        'a call-operation step needs the pii-before-model guardrail, so the text it sends is masked',
+      );
+    if (descriptor.status === 'review')
+      refuse(
+        `${id} is in review; an operator tries it in the raw tier, and a service can use it once it is reviewed`,
+      );
+    const maturity = await deps.governance.maturityOf(descriptor.operation);
+    if (maturity.maturity !== 'production')
+      refuse(
+        `the ${descriptor.operation} operation is in test in this environment; an operator must move it to production before a service can use it`,
+      );
+    if (typeof modelId !== 'string' || !own.has(modelId)) {
+      refuse(`the model ${String(modelId)} is not one of the service's models`);
+      continue;
+    }
+    const model = catalogue.get(modelId);
+    if (!model) {
+      refuse(`there is no model ${modelId} in the catalogue`);
+      continue;
+    }
+    const bound = model.apis[descriptor.operation];
+    if (bound !== id)
+      refuse(
+        bound
+          ? `the model ${modelId} binds ${bound} for ${descriptor.operation}, not ${id}`
+          : `the model ${modelId} binds no API for ${descriptor.operation}`,
+      );
+    if (!residencyAllows(service.spec.model.residency, model.residency))
+      refuse(
+        `the model ${modelId} runs in ${model.residency}, outside ${service.spec.model.residency}`,
+      );
+    if (!(await deps.governance.processorRecord(model.endpoint)))
+      refuse(
+        `the endpoint ${model.endpoint} of ${modelId} has no processor record, so it cannot serve a service with real data`,
+      );
+  }
   return problems;
 };
 

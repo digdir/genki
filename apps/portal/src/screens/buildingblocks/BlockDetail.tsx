@@ -1,14 +1,4 @@
-import {
-  Alert,
-  Button,
-  Field,
-  Heading,
-  Label,
-  Link,
-  Paragraph,
-  Select,
-  Tag,
-} from '@digdir/designsystemet-react';
+import { Alert, Button, Heading, Link, Paragraph, Tag } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
 import { useId, useState } from 'react';
 import type { ApiClient } from '../../api';
@@ -16,6 +6,7 @@ import {
   blockPath,
   changeOf,
   requestChange,
+  blockHref,
   type BlockUser,
   type BlockVersion,
   type CatalogItem,
@@ -35,7 +26,7 @@ import {
 } from '../../data/building-blocks';
 import { useT, type T } from '../../i18n';
 import { rightLabel } from '../../Shell';
-import { refusalOf } from '../../states';
+import { ErrorState, refusalOf } from '../../states';
 import {
   ApiCallButton,
   approverName,
@@ -48,8 +39,71 @@ import {
   shortDate,
   useBlockRights,
   type Flash,
+  type Settled,
 } from './common';
 import { SettingsForm } from './SettingsForm';
+import { StepFlowView } from './StepFlowView';
+
+export type BlockTab = 'about' | 'diagram' | 'yaml' | 'used-by' | 'versions';
+
+export interface ServiceRuns extends BlockUser {
+  runsThisWeek?: number;
+}
+
+export const blockTabs: Record<string, BlockTab> = {
+  diagram: 'diagram',
+  yaml: 'yaml',
+  'used-by': 'used-by',
+  versions: 'versions',
+};
+
+const tabLabels = {
+  about: 'blocks.tabAbout',
+  diagram: 'blocks.tabDiagram',
+  yaml: 'blocks.tabYaml',
+  'used-by': 'blocks.tabUsedBy',
+  versions: 'blocks.tabVersions',
+} as const;
+
+export const hasFlowDefinition = (item: Pick<CatalogItem, 'kind' | 'id' | 'publisher'>) =>
+  item.kind === 'step_flow' && item.publisher.type === 'own' && !item.id.includes('@');
+
+export const tabsFor = (item: Pick<CatalogItem, 'kind' | 'id' | 'publisher'>): BlockTab[] => [
+  'about',
+  ...(hasFlowDefinition(item) ? (['diagram', 'yaml'] as const) : []),
+  'used-by',
+  'versions',
+];
+
+const modelCapabilities: Record<
+  string,
+  'blocks.capStream' | 'blocks.capTools' | 'blocks.capJsonSchema' | 'blocks.capReasoning'
+> = {
+  stream: 'blocks.capStream',
+  tools: 'blocks.capTools',
+  'json-schema': 'blocks.capJsonSchema',
+  reasoning: 'blocks.capReasoning',
+};
+
+export const plainCapability = (t: T, item: Pick<CatalogItem, 'kind'>, capability: string) => {
+  const key = item.kind === 'model' ? modelCapabilities[capability] : undefined;
+  return key ? t(key) : capability;
+};
+
+const isAddress = (text: string) => /^https?:\/\/\S+$/.test(text);
+
+const toolParts = (capability: string) => {
+  const at = capability.indexOf(': ');
+  return at < 0
+    ? { name: capability, text: '' }
+    : { name: capability.slice(0, at), text: capability.slice(at + 2) };
+};
+
+const processedText = {
+  norway: ['blocks.processedNorway', 'blocks.processedBodyNorway'],
+  eu: ['blocks.processedEu', 'blocks.processedBodyEu'],
+  global: ['blocks.processedGlobal', 'blocks.processedBodyGlobal'],
+} as const;
 
 type Pending = 'adopt' | 'request' | null;
 
@@ -81,14 +135,18 @@ export const BlockDetail = ({
   item,
   services,
   versions,
+  tab,
+  onRetry,
   onChanged,
 }: {
   api: ApiClient;
   tenant: string;
   tenantName: string;
   item: CatalogItem;
-  services: BlockUser[];
-  versions: BlockVersion[];
+  services: ServiceRuns[];
+  tab: BlockTab;
+  versions: Settled<BlockVersion[]>;
+  onRetry: () => void;
   onChanged: (flash: Flash) => void;
 }) => {
   const t = useT();
@@ -102,27 +160,26 @@ export const BlockDetail = ({
     quality: useId(),
     update: useId(),
     pending: useId(),
-    service: useId(),
+    where: useId(),
+    connection: useId(),
   };
+  const tabs = tabsFor(item);
+  const current = tabs.includes(tab) ? tab : 'about';
   const rights = useBlockRights();
   const canChange = rights.canChange(item.kind);
   const editorHref = flowEditorHref(item);
   const [pending, setPending] = useState<Pending>(null);
-  const [addOpen, setAddOpen] = useState(false);
-  const [addService, setAddService] = useState('');
   const [reason, setReason] = useState('');
   const [tried, setTried] = useState(false);
   const [problem, setProblem] = useState('');
   const status = statusLabels[item.status];
   const approver = approverName(t, item.approver);
   const right = rightLabelFor(t, item.kind);
-  const chosen = services.find((s) => s.id === addService) ?? services[0];
   const used = item.usedBy;
   const known = [...item.usedBy, ...services];
 
   const open = (next: Pending) => {
     setPending(next);
-    setAddOpen(false);
     setReason('');
     setTried(false);
     setProblem('');
@@ -196,9 +253,29 @@ export const BlockDetail = ({
     ...(item.extensionPoint
       ? [{ label: t('blocks.factRuns'), value: extensionPointLabel(item.extensionPoint, t) }]
       : []),
+    ...(item.changedBy
+      ? [
+          {
+            label: t('blocks.factLastChanged'),
+            value: t('blocks.dateBy', {
+              date: f.date(item.changedBy.at),
+              by: item.changedBy.by,
+            }),
+          },
+        ]
+      : []),
     { label: t('blocks.factChangedBy'), value: right },
     { label: t('blocks.factId'), value: item.id },
   ];
+  const address = item.kind === 'tool' && isAddress(item.description) ? item.description : '';
+  const lead = item.judge
+    ? t('blocks.judgeAdvisory', { connection: item.judge.connection })
+    : address
+      ? ''
+      : item.description;
+  const publisherName = item.publisher.type === 'own' ? tenantName : item.publisher.name;
+  const runsOf = (id: string) => services.find((s) => s.id === id)?.runsThisWeek;
+  const tabHref = (next: BlockTab) => `${blockHref(item)}${next === 'about' ? '' : `/${next}`}`;
 
   return (
     <div className="stack">
@@ -207,7 +284,7 @@ export const BlockDetail = ({
       />
       <div className="stack-sm">
         <span className="bb-meta">
-          {kindLabel(t, item.kind)} · {item.publisher.name}
+          {t('blocks.kindFrom', { kind: kindLabel(t, item.kind), publisher: publisherName })}
         </span>
         <div className="bb-title">
           <Heading level={1} data-size="md">
@@ -217,9 +294,9 @@ export const BlockDetail = ({
           {item.dataLocation ? <DataLocationTag location={item.dataLocation} /> : null}
         </div>
         <p className="lead bb-desc">
-          {item.judge
-            ? t('blocks.judgeAdvisory', { connection: item.judge.connection })
-            : item.description}
+          {lead}
+          {lead && used.length ? ' ' : ''}
+          {used.length ? t('blocks.usedInSentence', { count: used.length }) : ''}
         </p>
       </div>
 
@@ -272,9 +349,6 @@ export const BlockDetail = ({
                   <th scope="col">{t('blocks.colScoreNow', { version: item.version })}</th>
                   <th scope="col">{t('blocks.colScoreWith', { version: item.update.version })}</th>
                   <th scope="col">{t('blocks.colChange')}</th>
-                  <th scope="col">
-                    <span className="visually-hidden">{t('blocks.colAction')}</span>
-                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -287,7 +361,7 @@ export const BlockDetail = ({
                   return (
                     <tr key={r.service}>
                       <th scope="row" className="bb-row-head">
-                        {name}
+                        <Link href={`#/services/${encodeURIComponent(r.service)}`}>{name}</Link>
                       </th>
                       <td className="numeric">{r.scoreBefore ?? '–'}</td>
                       <td className="numeric">{r.scoreAfter ?? '–'}</td>
@@ -304,16 +378,6 @@ export const BlockDetail = ({
                                 : t('blocks.noChange')}
                           </Tag>
                         )}
-                      </td>
-                      <td>
-                        {canChange ? (
-                          <Link
-                            href={`#/services/${encodeURIComponent(r.service)}?byggekloss=${encodeURIComponent(`${item.id}@${item.update?.version ?? ''}`)}`}
-                            aria-label={t('blocks.tryInDraftNamed', { name })}
-                          >
-                            {t('blocks.tryInDraft')}
-                          </Link>
-                        ) : null}
                       </td>
                     </tr>
                   );
@@ -349,65 +413,8 @@ export const BlockDetail = ({
                 <a href={editorHref}>{t('blocks.openStepFlow')}</a>
               </Button>
             ) : null}
-            {item.status === 'in_use' || item.status === 'available' ? (
-              <Button
-                variant={item.status === 'in_use' ? 'primary' : 'secondary'}
-                aria-expanded={addOpen}
-                onClick={() => {
-                  setAddOpen((o) => !o);
-                  setPending(null);
-                }}
-              >
-                {t('blocks.addToService')}
-              </Button>
-            ) : null}
             <ApiCallButton call={call} />
           </div>
-
-          {addOpen ? (
-            <div className="bb-panel">
-              {chosen ? (
-                <>
-                  <Field>
-                    <Label htmlFor={ids.service}>{t('blocks.service')}</Label>
-                    <Select
-                      id={ids.service}
-                      value={chosen.id}
-                      onChange={(e) => setAddService(e.target.value)}
-                    >
-                      {services.map((s) => (
-                        <Select.Option key={s.id} value={s.id}>
-                          {s.name}
-                        </Select.Option>
-                      ))}
-                    </Select>
-                  </Field>
-                  <Paragraph data-size="sm">
-                    {t('blocks.addToDraft', { name: chosen.name })}
-                    {item.status !== 'in_use'
-                      ? ` ${t('blocks.adoptedAtSameTime', { tenant: tenantName })}`
-                      : ''}
-                  </Paragraph>
-                  <Button asChild variant="primary" className="bb-start">
-                    <a
-                      href={`#/services/${encodeURIComponent(chosen.id)}?byggekloss=${encodeURIComponent(item.id)}`}
-                    >
-                      {t('blocks.openDraft')}
-                    </a>
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <Paragraph data-size="sm">
-                    {t('blocks.noServices', { tenant: tenantName })}
-                  </Paragraph>
-                  <Button asChild variant="secondary" className="bb-start">
-                    <a href="#/services/new">{t('blocks.createService')}</a>
-                  </Button>
-                </>
-              )}
-            </div>
-          ) : null}
 
           {pending ? (
             <section aria-labelledby={ids.pending} className="bb-confirm">
@@ -443,71 +450,78 @@ export const BlockDetail = ({
         </div>
       ) : null}
 
-      <div className="bb-columns">
-        <div className="bb-main">
-          <section aria-labelledby={ids.caps} className="stack-sm">
-            <Heading level={2} data-size="xs" id={ids.caps}>
-              {t('blocks.capabilities')}
-            </Heading>
-            <ul className="bb-list">
-              {item.capabilities.map((c) => (
-                <li key={c}>{c}</li>
-              ))}
-            </ul>
-          </section>
+      <nav aria-label={t('blocks.tabsLabel', { name: item.name })} className="bb-nav">
+        <ul>
+          {tabs.map((k) => (
+            <li key={k}>
+              <a href={tabHref(k)} aria-current={k === current ? 'page' : undefined}>
+                {t(tabLabels[k])}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </nav>
 
-          <section aria-labelledby={ids.access} className="stack-sm">
-            <div className="bb-stack-xs">
-              <Heading level={2} data-size="xs" id={ids.access}>
-                {t('blocks.access')}
-              </Heading>
-              <span className="bb-meta">{t('blocks.accessNote')}</span>
-            </div>
+      {current === 'diagram' || current === 'yaml' ? (
+        <StepFlowView api={api} tenant={tenant} id={item.id} view={current} />
+      ) : null}
+
+      {current === 'used-by' ? (
+        <section aria-labelledby={ids.used} className="stack-sm">
+          <Heading level={2} data-size="xs" id={ids.used}>
+            {used.length
+              ? t('blocks.usedInHeading', { count: used.length })
+              : t('blocks.usedByHeading')}
+          </Heading>
+          {used.length ? (
             <div
               className="table-scroll"
               tabIndex={0}
               role="region"
-              aria-label={t('blocks.accessTable')}
+              aria-label={t('blocks.usedByTable', { name: item.name })}
             >
               <table className="ds-table bb-table-access">
                 <thead>
                   <tr>
-                    <th scope="col">{t('blocks.colAccess')}</th>
-                    <th scope="col">{t('blocks.colWhat')}</th>
-                    <th scope="col">{t('blocks.colNote')}</th>
+                    <th scope="col">{t('blocks.colService')}</th>
+                    <th scope="col" className="numeric">
+                      {t('blocks.colRunsWeek')}
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {item.permissions.map((p) => (
-                    <tr key={p.type}>
-                      <th scope="row" className="bb-row-head">
-                        {t(permissionLabels[p.type])}
-                      </th>
-                      <td>{p.value}</td>
-                      <td>{p.note ?? ''}</td>
-                    </tr>
-                  ))}
+                  {used.map((s) => {
+                    const runs = runsOf(s.id);
+                    return (
+                      <tr key={s.id}>
+                        <th scope="row" className="bb-row-head">
+                          <Link href={`#/services/${encodeURIComponent(s.id)}`}>{s.name}</Link>
+                        </th>
+                        <td className="numeric">{runs === undefined ? '–' : f.number(runs)}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
-          </section>
+          ) : (
+            <p className="bb-meta">{t('blocks.usedByNoneHere', { tenant: tenantName })}</p>
+          )}
+        </section>
+      ) : null}
 
-          <SettingsForm
-            key={`${item.id}-${JSON.stringify(item.tenantOverrides)}`}
-            api={api}
-            tenant={tenant}
-            tenantName={tenantName}
-            item={item}
-            canChange={canChange}
-            onSaved={onChanged}
-          />
-
-          <section aria-labelledby={ids.versions} className="stack-sm">
-            <Heading level={2} data-size="xs" id={ids.versions}>
-              {t('blocks.versionsAndChanges')}
-            </Heading>
+      {current === 'versions' ? (
+        <section aria-labelledby={ids.versions} className="stack-sm">
+          <Heading level={2} data-size="xs" id={ids.versions}>
+            {t('blocks.versionsAndChanges')}
+          </Heading>
+          {!versions.ok ? (
+            <ErrorState error={versions.error} onRetry={onRetry} headingLevel={3} />
+          ) : versions.data.length === 0 ? (
+            <p className="bb-meta">{t('blocks.noVersions')}</p>
+          ) : (
             <ol className="bb-versions">
-              {versionRows(t, versions).map((v) => (
+              {versionRows(t, versions.data).map((v) => (
                 <li key={v.key}>
                   <span className="bb-version">{v.label}</span>
                   <span className="bb-version-date">{shortDate(f, v.at)}</span>
@@ -515,80 +529,175 @@ export const BlockDetail = ({
                 </li>
               ))}
             </ol>
-          </section>
-        </div>
+          )}
+        </section>
+      ) : null}
 
-        <aside className="bb-aside">
-          <section aria-labelledby={ids.facts} className="bb-facts">
-            <Heading level={2} data-size="2xs" id={ids.facts}>
-              {t('blocks.about')}
-            </Heading>
-            <dl className="kv bb-kv">
-              {facts.map((f) => (
-                <div key={f.label} className="bb-kv-row">
-                  <dt>{f.label}</dt>
-                  <dd>{f.value}</dd>
+      {current === 'about' ? (
+        <div className="bb-columns">
+          <div className="bb-main">
+            {item.kind === 'tool' ? (
+              <section aria-labelledby={ids.caps} className="stack-sm">
+                <Heading level={2} data-size="xs" id={ids.caps}>
+                  {t('blocks.toolsOffered')}
+                </Heading>
+                <ul className="bb-list bb-tools">
+                  {item.capabilities.map((c) => {
+                    const tool = toolParts(c);
+                    return (
+                      <li key={c}>
+                        <strong>{tool.name}</strong>
+                        {tool.text ? <span className="bb-meta">{tool.text}</span> : null}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </section>
+            ) : item.capabilities.length ? (
+              <section aria-labelledby={ids.caps} className="stack-sm">
+                <Heading level={2} data-size="xs" id={ids.caps}>
+                  {item.kind === 'model' ? t('blocks.goodAt') : t('blocks.capabilities')}
+                </Heading>
+                <ul className="bb-list">
+                  {item.capabilities.map((c) => (
+                    <li key={c}>{plainCapability(t, item, c)}</li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
+
+            {item.dataLocation ? (
+              <section aria-labelledby={ids.where} className="stack-sm">
+                <Heading level={2} data-size="xs" id={ids.where}>
+                  {t('blocks.whereProcessed')}
+                </Heading>
+                <Paragraph className="bb-measure">
+                  <strong>{t(processedText[item.dataLocation][0])}</strong>{' '}
+                  {t(processedText[item.dataLocation][1], { name: item.name })}
+                </Paragraph>
+                <Link href="#/data-handling">{t('blocks.howDataIsHandled')}</Link>
+              </section>
+            ) : null}
+
+            {address ? (
+              <section aria-labelledby={ids.connection} className="stack-sm">
+                <Heading level={2} data-size="xs" id={ids.connection}>
+                  {t('blocks.connection')}
+                </Heading>
+                <dl className="kv bb-kv">
+                  <div className="bb-kv-row">
+                    <dt>{t('blocks.address')}</dt>
+                    <dd>{address}</dd>
+                  </div>
+                </dl>
+              </section>
+            ) : null}
+
+            {item.kind !== 'model' && item.permissions.length ? (
+              <section aria-labelledby={ids.access} className="stack-sm">
+                <div className="bb-stack-xs">
+                  <Heading level={2} data-size="xs" id={ids.access}>
+                    {t('blocks.access')}
+                  </Heading>
+                  <span className="bb-meta">{t('blocks.accessNote')}</span>
                 </div>
-              ))}
-            </dl>
-          </section>
-          <section aria-labelledby={ids.used} className="stack-sm">
-            <Heading level={2} data-size="2xs" id={ids.used}>
-              {used.length ? t('blocks.usedBy', { count: used.length }) : t('blocks.usedByHeading')}
-            </Heading>
-            {used.length ? (
-              <ul className="plain-list bb-used">
-                {used.map((s) => (
-                  <li key={s.id}>
-                    <Link href={`#/services/${encodeURIComponent(s.id)}`}>{s.name}</Link>
-                  </li>
+                <div
+                  className="table-scroll"
+                  tabIndex={0}
+                  role="region"
+                  aria-label={t('blocks.accessTable')}
+                >
+                  <table className="ds-table bb-table-access">
+                    <thead>
+                      <tr>
+                        <th scope="col">{t('blocks.colAccess')}</th>
+                        <th scope="col">{t('blocks.colWhat')}</th>
+                        <th scope="col">{t('blocks.colNote')}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {item.permissions.map((p) => (
+                        <tr key={`${p.type}-${p.value}`}>
+                          <th scope="row" className="bb-row-head">
+                            {t(permissionLabels[p.type])}
+                          </th>
+                          <td>{p.value}</td>
+                          <td>{p.note ?? ''}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            ) : null}
+
+            <SettingsForm
+              key={`${item.id}-${JSON.stringify(item.tenantOverrides)}`}
+              api={api}
+              tenant={tenant}
+              tenantName={tenantName}
+              item={item}
+              canChange={canChange}
+              onSaved={onChanged}
+            />
+          </div>
+
+          <aside className="bb-aside">
+            <section aria-labelledby={ids.facts} className="bb-facts">
+              <Heading level={2} data-size="2xs" id={ids.facts}>
+                {item.kind === 'model' ? t('blocks.aboutModel') : t('blocks.about')}
+              </Heading>
+              <dl className="kv bb-kv">
+                {facts.map((fact) => (
+                  <div key={fact.label} className="bb-kv-row">
+                    <dt>{fact.label}</dt>
+                    <dd>{fact.value}</dd>
+                  </div>
                 ))}
-              </ul>
-            ) : (
-              <p className="bb-meta">{t('blocks.usedByNoneHere', { tenant: tenantName })}</p>
-            )}
-          </section>
-          <section aria-labelledby={ids.quality} className="stack-sm">
-            <Heading level={2} data-size="2xs" id={ids.quality}>
-              {t('blocks.testSetQuality')}
-            </Heading>
-            {item.scores.length ? (
-              <>
-                <ul className="plain-list bb-scores">
-                  {item.scores.map((s) => (
-                    <li key={`${s.service}|${s.testSet}`}>
-                      <div className="bb-score-row">
-                        <span>
-                          {serviceName(known, s.service)} · {s.testSet}
-                        </span>
-                        <span className="bb-score">
-                          {t('blocks.scoreOf100', { score: s.score })}
-                        </span>
-                      </div>
-                      <div className="bb-bar" aria-hidden="true">
-                        <div style={{ width: `${s.score}%` }} />
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-                <ul className="plain-list">
-                  {[...new Set(item.scores.map((s) => s.service))].map((service, _, all) => (
-                    <li key={service}>
-                      <Link href={`#/services/${encodeURIComponent(service)}/quality`}>
-                        {all.length > 1
-                          ? t('blocks.seeTestSetsFor', { service: serviceName(known, service) })
-                          : t('blocks.seeTestSets')}
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              </>
-            ) : (
-              <p className="bb-meta">{t('blocks.noTestSets', { tenant: tenantName })}</p>
-            )}
-          </section>
-        </aside>
-      </div>
+              </dl>
+            </section>
+            <section aria-labelledby={ids.quality} className="stack-sm">
+              <Heading level={2} data-size="2xs" id={ids.quality}>
+                {t('blocks.testSetQuality')}
+              </Heading>
+              {item.scores.length ? (
+                <>
+                  <ul className="plain-list bb-scores">
+                    {item.scores.map((s) => (
+                      <li key={`${s.service}|${s.testSet}`}>
+                        <div className="bb-score-row">
+                          <span>
+                            {serviceName(known, s.service)} · {s.testSet}
+                          </span>
+                          <span className="bb-score">
+                            {t('blocks.scoreOf100', { score: s.score })}
+                          </span>
+                        </div>
+                        <div className="bb-bar" aria-hidden="true">
+                          <div style={{ width: `${s.score}%` }} />
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                  <ul className="plain-list">
+                    {[...new Set(item.scores.map((s) => s.service))].map((service, _, all) => (
+                      <li key={service}>
+                        <Link href={`#/services/${encodeURIComponent(service)}/quality`}>
+                          {all.length > 1
+                            ? t('blocks.seeTestSetsFor', { service: serviceName(known, service) })
+                            : t('blocks.seeTestSets')}
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : (
+                <p className="bb-meta">{t('blocks.noTestSets', { tenant: tenantName })}</p>
+              )}
+            </section>
+          </aside>
+        </div>
+      ) : null}
     </div>
   );
 };

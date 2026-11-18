@@ -1,3 +1,10 @@
+import {
+  redactSecrets,
+  syncFailureMessage,
+  syncFailureOf,
+  type SyncFailureCode,
+} from './sync-errors.js';
+import type { ApiLog } from './failure-log.js';
 import { hidesInternalServices } from './internal-services.js';
 import { t } from './i18n/index.js';
 import { quotaRefused } from './rate-limit.js';
@@ -167,7 +174,23 @@ export interface ToolAdminDeps {
   source: ConnectionToolSource;
   secrets: TenantSecrets;
   onToolsChanged: (tenant: string) => Promise<void>;
+  now?: () => Date;
+  log?: ApiLog;
 }
+
+const syncErrorLength = 500;
+
+const connectionSecrets = async (tools: ToolAdminDeps, tenant: string, id: string) => {
+  const connection = (await tools.connections.get(tenant, id))?.connection;
+  const auth = connection?.auth;
+  if (!auth) return [];
+  const targets =
+    auth.kind === 'oauth-client-credentials'
+      ? [connection.endpoint, auth.tokenUrl]
+      : [connection.endpoint];
+  const value = await tools.secrets.resolveFor(tenant, auth.secret, targets).catch(() => undefined);
+  return value ? [value] : [];
+};
 
 const forTenant = (principal: Principal, tenant: string) =>
   principal.kind === 'operator'
@@ -262,20 +285,43 @@ export const adminExtensions = (deps: {
     const target = `tool-connection:${tenant}/${id}`;
     if (!forTenant(principal, tenant))
       return refused(target, 'only the tenant or an operator syncs tools');
+    const remember = async (code?: SyncFailureCode) => {
+      const state = await deps.tools.connections.get(tenant, id);
+      if (!state) return;
+      const at = (deps.tools.now?.() ?? new Date()).toISOString();
+      await deps.tools.connections.save({
+        ...state,
+        lastSync: code === undefined ? { at, ok: true } : { at, ok: false, code },
+      });
+    };
     try {
       const result = await deps.tools.source.sync(
         tenant,
         id,
         AbortSignal.timeout(toolSyncDeadlineMs),
       );
+      await remember();
       await deps.tools.source.load(tenant);
       await deps.tools.onToolsChanged(tenant);
       return { ok: true, value: result, target, audit: { result } };
     } catch (error) {
+      const code = syncFailureOf(error);
+      if (deps.tools.log) {
+        const raw = error instanceof Error ? error.message : String(error);
+        const secrets = await connectionSecrets(deps.tools, tenant, id);
+        deps.tools.log('tool sync failed', {
+          tenant,
+          connection: id,
+          code,
+          error: redactSecrets(raw, secrets).slice(0, syncErrorLength),
+        });
+      }
+      await remember(code);
       return {
         ok: false,
-        errors: [{ path: 'id', message: error instanceof Error ? error.message : String(error) }],
+        errors: [{ path: 'id', message: syncFailureMessage(code) }],
         target,
+        audit: { code },
       };
     }
   },
@@ -509,6 +555,18 @@ export const mountExtensions = <E extends Env, S extends Schema, B extends strin
         endpoint: s.connection.endpoint,
         version: s.connection.version,
         tools: s.tools.map((t) => t.name),
+        ...(s.lastSync
+          ? {
+              lastSync: s.lastSync.ok
+                ? { at: s.lastSync.at, ok: true }
+                : {
+                    at: s.lastSync.at,
+                    ok: false,
+                    code: s.lastSync.code ?? 'unknown',
+                    message: syncFailureMessage(s.lastSync.code ?? 'unknown'),
+                  },
+            }
+          : {}),
       })),
     });
   });

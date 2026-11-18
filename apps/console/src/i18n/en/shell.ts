@@ -13,6 +13,7 @@ export const shell = {
   pageBuildingBlocks: 'Building blocks',
   pageSearchEngines: 'Search engines',
   pageSharedServices: 'Shared services',
+  pageDemos: 'Demos',
   pageStateRegister: "The state's organisation",
   pageSettings: 'Settings',
   pageQuality: 'Quality',
