@@ -1,4 +1,4 @@
-import { XMarkIcon } from '@navikt/aksel-icons';
+import { CodeIcon, XMarkIcon } from '@navikt/aksel-icons';
 import {
   Alert,
   Button,
@@ -12,6 +12,7 @@ import {
 } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react';
+import type { CatalogModel } from '../../api/models';
 import type { AnswerLanguage } from '../../data/service-languages';
 import { AnswerLanguagePicker } from './AnswerLanguagePicker';
 import { ApiError, type ApiClient } from '../../api';
@@ -41,6 +42,7 @@ import {
   inputFieldsOf,
   withOptionsFrom,
   modelOf,
+  pickerModelsOf,
   questionOf,
   quotaTokensText,
   resultLabel,
@@ -50,7 +52,7 @@ import {
   suggestionsFor,
   withNamedOptions,
 } from '../../data/playground';
-import { useEscape, useNarrow } from '../../hooks';
+import { useAsync, useEscape, useNarrow, type AsyncState } from '../../hooks';
 import { useT, type T } from '../../i18n';
 import { ApiCallPanel } from '../ApiCall';
 import { BusyButton } from '../BusyButton';
@@ -71,12 +73,16 @@ import {
   type LiveRun,
 } from './RunView';
 import { apiBackend, exampleBackend } from './backend';
+import { CompareSide } from './CompareSide';
+import { PageSetup } from './PageSetup';
 import { SaveAsTestCase, testSetLabel, type TestCaseDraft } from './SaveAsTestCase';
 import { SetupBar } from './SetupBar';
 import { SetupForm } from './SetupForm';
+import { RunTimeline } from './StepTimeline';
+import '../../screens/shared.css';
 import './playground.css';
 
-export type PlaygroundLayout = 'side' | 'full';
+export type PlaygroundLayout = 'side' | 'full' | 'page';
 export type PlaygroundContext = 'free' | 'service' | 'skill' | 'dataset';
 export type PlaygroundState = 'empty' | 'answer' | 'compare' | 'quota' | 'not-allowed' | 'error';
 
@@ -331,6 +337,7 @@ export const PlaygroundPanel = ({
   const headingId = `${id}-heading`;
   const narrow = useNarrow();
   const side = layout === 'side';
+  const page = layout === 'page';
   const overlay = side && narrow;
   const sectionRef = useRef<HTMLElement>(null);
   const backend = useMemo(
@@ -338,6 +345,10 @@ export const PlaygroundPanel = ({
     [api, tenant],
   );
   const [loaded, setLoaded] = useState<PlaygroundOptions>();
+  const [catalog] = useAsync(
+    (signal) => (page && api ? api.models.catalog(signal) : Promise.resolve<CatalogModel[]>([])),
+    [api, page],
+  );
   const [loadFailed, setLoadFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const [a, setA] = useState<PlaygroundSetup>();
@@ -466,12 +477,11 @@ export const PlaygroundPanel = ({
         modelDown: true,
       });
     const blocked = options.models.find((m) => m.status === 'not_allowed');
-    setA(first);
+    const notAllowed = state === 'not-allowed';
+    setA(notAllowed && page ? { ...first, model: blocked?.id ?? first.model } : first);
     setB(second);
-    setEditing(state === 'not-allowed' ? 'a' : null);
-    setDraft(
-      state === 'not-allowed' ? { ...clone(first), model: blocked?.id ?? first.model } : null,
-    );
+    setEditing(notAllowed && !page ? 'a' : null);
+    setDraft(notAllowed && !page ? { ...clone(first), model: blocked?.id ?? first.model } : null);
     setMessages(seeded);
     setText('');
     setFile(null);
@@ -492,7 +502,7 @@ export const PlaygroundPanel = ({
     setQuotaWarning(
       state === 'quota' ? 94 : options.quota.usedPercent >= 90 ? options.quota.usedPercent : null,
     );
-  }, [options, state, context, name, hasDraft, tenant]);
+  }, [options, state, context, name, hasDraft, tenant, page]);
 
   const close = useCallback(() => onClose?.(), [onClose]);
   useEscape(overlay && !!onClose && !call, close);
@@ -503,7 +513,13 @@ export const PlaygroundPanel = ({
   const execute = async (input: PlaygroundInput, replace?: string) => {
     if (!a || !options) return;
     setBusy(true);
-    const history = historyOf(messagesRef.current, replace);
+    const history =
+      page && b
+        ? []
+        : historyOf(
+            page ? messagesRef.current.filter((m) => !m.setups.b) : messagesRef.current,
+            replace,
+          );
     const request: PlaygroundRunRequest = {
       setup: attachDraft(a),
       ...(b ? { compareWith: attachDraft(b) } : {}),
@@ -624,7 +640,7 @@ export const PlaygroundPanel = ({
       return;
     }
     if (!trimmed) return;
-    setText('');
+    if (!(page && b)) setText('');
     void execute({ text: trimmed });
   };
 
@@ -645,13 +661,52 @@ export const PlaygroundPanel = ({
     void execute(message.input, message.id);
   };
 
+  const startCompare = () => {
+    if (!a || !options) return;
+    const next = { ...clone(a), model: otherModel(options, a.model) };
+    setB(next);
+    remember(a, next);
+  };
+  const endCompare = () => {
+    if (!a) return;
+    setB(null);
+    remember(a, null);
+  };
+  const pageHead = page ? (
+    <div className="page-head">
+      <div className="page-head-text">
+        {b ? (
+          <Link asChild>
+            <button type="button" className="link-button playground-back" onClick={endCompare}>
+              {t('playground.pageTitle')}
+            </button>
+          </Link>
+        ) : null}
+        <Heading level={1} data-size="lg" id={headingId}>
+          {b ? t('playground.compareTitle') : t('playground.pageTitle')}
+        </Heading>
+        <p className="lead">{b ? t('playground.compareLead') : t('playground.pageLead')}</p>
+      </div>
+      <Button
+        variant="secondary"
+        aria-disabled={a && options ? undefined : true}
+        onClick={b ? endCompare : startCompare}
+      >
+        {b ? t('playground.endCompare') : t('playground.compareStart')}
+      </Button>
+    </div>
+  ) : null;
+
   if (loadFailed)
     return (
       <section
         className="playground-panel"
         data-layout={layout}
-        aria-label={t('playground.panelLabel')}
+        {...(page
+          ? { 'aria-labelledby': headingId }
+          : { 'aria-label': t('playground.panelLabel') })}
       >
+        {pageHead}
         <Alert data-color="danger">
           <Heading level={2} data-size="2xs">
             {t('playground.loadFailedTitle')}
@@ -682,34 +737,36 @@ export const PlaygroundPanel = ({
           ? t('playground.contextService')
           : t('playground.contextFree');
 
-  const header = side ? (
-    <div className="playground-head">
-      <div className="playground-head-title">
-        <Heading level={2} data-size="xs" id={headingId}>
-          {t('playground.panelTitle')}
-        </Heading>
-        <span className="playground-subtle">{contextText}</span>
+  const header =
+    pageHead ??
+    (side ? (
+      <div className="playground-head">
+        <div className="playground-head-title">
+          <Heading level={2} data-size="xs" id={headingId}>
+            {t('playground.panelTitle')}
+          </Heading>
+          <span className="playground-subtle">{contextText}</span>
+        </div>
+        <div className="playground-head-actions">
+          <Link href="#/playground">{t('playground.openInPlayground')}</Link>
+          {onClose ? (
+            <Button
+              variant="tertiary"
+              data-size="sm"
+              icon
+              aria-label={t('common.close')}
+              onClick={close}
+            >
+              <Icon icon={XMarkIcon} />
+            </Button>
+          ) : null}
+        </div>
       </div>
-      <div className="playground-head-actions">
-        <Link href="#/playground">{t('playground.openInPlayground')}</Link>
-        {onClose ? (
-          <Button
-            variant="tertiary"
-            data-size="sm"
-            icon
-            aria-label={t('common.close')}
-            onClick={close}
-          >
-            <Icon icon={XMarkIcon} />
-          </Button>
-        ) : null}
-      </div>
-    </div>
-  ) : (
-    <h2 id={headingId} className="visually-hidden">
-      {t('playground.contextFree')}
-    </h2>
-  );
+    ) : (
+      <h2 id={headingId} className="visually-hidden">
+        {t('playground.contextFree')}
+      </h2>
+    ));
 
   const sectionProps = {
     ref: sectionRef,
@@ -870,21 +927,338 @@ export const PlaygroundPanel = ({
     ask(text);
   };
 
-  return (
-    <section {...sectionProps}>
-      {header}
-      {quotaWarning !== null ? (
-        <Alert data-color="warning" data-size="sm">
+  const quotaAlert =
+    quotaWarning !== null ? (
+      <Alert data-color="warning" data-size="sm">
+        <Paragraph data-size="sm">
+          {t.rich('playground.quotaBody', {
+            percent: quotaWarning,
+            tokens: quotaTokensText(options.quota.monthlyTokens, f, t),
+            strong: (c) => <strong>{c}</strong>,
+            link: (c) => <Link href="#/statistics">{c}</Link>,
+          })}
+        </Paragraph>
+      </Alert>
+    ) : null;
+
+  const failurePart = (m: Message) =>
+    m.failure ? (
+      <RunFailure failure={m.failure} busy={busy} onRetry={() => retry(m)} />
+    ) : m.error && m.modelDown ? (
+      <ModelNoAnswer text={m.error} busy={busy} onRetry={() => retry(m)} />
+    ) : m.error ? (
+      <Alert data-color="danger">
+        <Heading level={3} data-size="2xs">
+          {t('playground.noAnswerTitle')}
+        </Heading>
+        <Paragraph>{m.error}</Paragraph>
+        <Button
+          variant="secondary"
+          data-size="sm"
+          aria-disabled={busy ? true : undefined}
+          onClick={() => retry(m)}
+        >
+          {t('common.tryAgain')}
+        </Button>
+      </Alert>
+    ) : null;
+
+  const savePart = (m: Message) => (
+    <>
+      {saving?.message === m.id ? (
+        <SaveAsTestCase
+          key={`${m.id}-${saving.which}`}
+          testSets={options.testSets}
+          owners={owners}
+          initial={savingDraft(m, saving.which)}
+          onSend={(values) => sendCandidate(m, saving.which, values)}
+          onCancel={() => setSaving(null)}
+        />
+      ) : null}
+      {m.saved ? (
+        <Alert data-color="success" data-size="sm">
           <Paragraph data-size="sm">
-            {t.rich('playground.quotaBody', {
-              percent: quotaWarning,
-              tokens: quotaTokensText(options.quota.monthlyTokens, f, t),
-              strong: (c) => <strong>{c}</strong>,
-              link: (c) => <Link href="#/statistics">{c}</Link>,
+            {t.rich('playground.saved', {
+              name: m.saved.name,
+              link: (c) => <Link href={m.saved?.href ?? '#'}>{c}</Link>,
             })}
           </Paragraph>
         </Alert>
       ) : null}
+    </>
+  );
+
+  const inputPart = isExtract ? (
+    <div className="playground-input">
+      <Field>
+        <Label data-size="sm" htmlFor={`${id}-file`}>
+          {t('playground.document')}
+        </Label>
+        <Field.Description>
+          {file ? t('playground.fileChosen', { name: file.name }) : t('playground.fileHelp')}
+        </Field.Description>
+        <input
+          className="ds-input"
+          id={`${id}-file`}
+          type="file"
+          accept=".pdf,.docx,.png,.jpg"
+          onChange={(e) => {
+            const chosen = e.target.files?.[0];
+            setFile(chosen ? { name: chosen.name, file: chosen } : null);
+          }}
+        />
+      </Field>
+      <div className="playground-actions">
+        <Button
+          variant="primary"
+          aria-disabled={cantSend ? true : undefined}
+          onClick={() => void extract()}
+        >
+          {t('playground.extract')}
+        </Button>
+        <Button variant="tertiary" data-size="sm" onClick={() => setFile({ name: sampleFileName })}>
+          {t('playground.useSampleFile')}
+        </Button>
+      </div>
+    </div>
+  ) : (
+    <form className="playground-input playground-chat" onSubmit={submit} noValidate>
+      {formFields.length ? (
+        <InputForm
+          fields={formFields}
+          values={formValues}
+          errors={formErrs}
+          intro={t('playground.formIntro')}
+          onChange={(field, value) => {
+            setFormValues((v) => ({ ...v, [field]: value }));
+            setFormErrs(({ [field]: _cleared, ...rest }) => rest);
+          }}
+        />
+      ) : null}
+      <Field className="playground-grow">
+        <Label
+          data-size="sm"
+          htmlFor={`${id}-in`}
+          className={page && !comparing && !formFields.length ? 'visually-hidden' : undefined}
+        >
+          {formFields.length
+            ? t('playground.questionOptional')
+            : comparing
+              ? t(page ? 'playground.questionToBoth' : 'playground.questionBoth')
+              : t('playground.question')}
+        </Label>
+        <Textarea
+          ref={questionRef}
+          id={`${id}-in`}
+          rows={2}
+          {...(page && !comparing ? { placeholder: t('playground.questionPlaceholder') } : {})}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              ask(text);
+            }
+          }}
+        />
+      </Field>
+      <BusyButton
+        variant="primary"
+        type="submit"
+        busy={busy}
+        busyLabel={page ? t('playground.runningShort') : t('playground.sending')}
+        aria-disabled={draft ? true : undefined}
+      >
+        {page ? t(comparing ? 'playground.runBoth' : 'playground.run') : t('playground.send')}
+      </BusyButton>
+    </form>
+  );
+
+  const callPanel = call ? (
+    <ApiCallPanel
+      call={{
+        action: call.title,
+        method: 'POST',
+        path: `/tenants/${tenant ?? '{tenant}'}/playground/runs`,
+        body: call.body,
+        needsReason: false,
+        right: t('playground.callRight', {
+          services: t('rights.manageServices'),
+          datasets: t('rights.manageDatasets'),
+        }),
+      }}
+      onClose={() => setCall(null)}
+    />
+  ) : null;
+
+  const pickerModels: AsyncState<CatalogModel[]> = {
+    status: 'ready',
+    data: pickerModelsOf(options, catalog.status === 'ready' ? catalog.data : [], t),
+  };
+  const threadFoot = (shown: Message[]) => (
+    <div className="playground-thread-foot">
+      <span role="status" className="playground-status">
+        {busy ? t(comparing ? 'playground.runningBoth' : 'playground.running') : null}
+      </span>
+      {shown.length && !isExtract && !comparing ? (
+        <Button variant="tertiary" data-size="sm" onClick={newConversation}>
+          {t('playground.newConversation')}
+        </Button>
+      ) : null}
+    </div>
+  );
+  const showCall = () =>
+    setCall({ title: t('playground.callRun'), body: callBody(currentInput()) });
+
+  if (page && b) {
+    const compared = messages.findLast((m) => m.setups.b);
+    const sides = { a, b };
+    const changeSide = (key: SetupKey) => (next: PlaygroundSetup) => {
+      if (key === 'a') {
+        const nextB = { ...b, output: next.output };
+        setA(next);
+        setB(nextB);
+        remember(next, nextB);
+        return;
+      }
+      const nextB = { ...next, output: a.output };
+      setB(nextB);
+      remember(a, nextB);
+    };
+    return (
+      <section {...sectionProps}>
+        {header}
+        {quotaAlert}
+        {compared ? failurePart(compared) : null}
+        <div className="playground-compare">
+          {(['a', 'b'] as const).map((key) => (
+            <CompareSide
+              key={key}
+              side={key}
+              options={options}
+              setup={sides[key]}
+              other={sides[key === 'a' ? 'b' : 'a']}
+              models={pickerModels}
+              tenantName={tenantName}
+              run={compared?.live?.[key]}
+              result={key === 'a' ? compared?.result : compared?.compareResult}
+              saveExpanded={!!compared && saving?.message === compared.id && saving.which === key}
+              onChange={changeSide(key)}
+              onSave={() => compared && startSave(compared, key)}
+              onShowCall={() =>
+                compared &&
+                setCall({ title: t('playground.callRerun'), body: callBody(compared.input) })
+              }
+            />
+          ))}
+        </div>
+        {compared ? savePart(compared) : null}
+        <div className="playground-compare-ask">
+          {threadFoot([])}
+          {inputPart}
+          <div className="playground-compare-note">
+            <span className="playground-subtle">
+              {t('playground.compareCostNote')} {sessionText}
+            </span>
+            <Button variant="tertiary" data-size="sm" onClick={showCall}>
+              <Icon icon={CodeIcon} size={18} />
+              {t('common.apiCall')}
+            </Button>
+          </div>
+        </div>
+        {callPanel}
+      </section>
+    );
+  }
+
+  if (page) {
+    const shown = messages.filter((m) => !m.setups.b);
+    return (
+      <section {...sectionProps}>
+        {header}
+        {quotaAlert}
+        <div className="playground-workbench">
+          <PageSetup
+            options={options}
+            setup={a}
+            models={pickerModels}
+            tenantName={tenantName}
+            answerLanguage={answerLanguage}
+            sessionText={sessionText}
+            onChange={(next) => {
+              setA(next);
+              remember(next, null);
+            }}
+            onAnswerLanguage={setAnswerLanguage}
+            onShowCall={showCall}
+          />
+          <section aria-label={t('playground.conversation')} className="playground-conversation">
+            {shown.length === 0 && !busy ? (
+              <div className="playground-empty">
+                <span className="playground-empty-title">
+                  {t(isExtract ? 'playground.emptyExtract' : 'playground.emptyChat')}
+                </span>
+                <span className="playground-subtle">{t('playground.emptyHelp')}</span>
+                {isExtract || !suggestionsFor(options, a).length ? null : (
+                  <div className="playground-chips">
+                    {suggestionsFor(options, a).map((s) => (
+                      <Chip.Button key={s} data-size="sm" onClick={() => fillQuestion(s)}>
+                        {s}
+                      </Chip.Button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : null}
+            <ol
+              aria-live="polite"
+              className="playground-messages"
+              aria-label={t('playground.runsLabel')}
+            >
+              {shown.map((m) => {
+                const last = shown.at(-1)?.id === m.id;
+                const run = m.live?.a;
+                return (
+                  <li key={m.id} aria-busy={run?.status === 'running' ? true : undefined}>
+                    <div className="playground-question">
+                      <span className="playground-question-who">{t('playground.you')}</span>
+                      {questionOf(m.input, t)}
+                    </div>
+                    {failurePart(m)}
+                    {m.result ? (
+                      <AnswerCard
+                        result={m.result}
+                        saveExpanded={saving?.message === m.id && saving.which === 'a'}
+                        onSave={() => startSave(m, 'a')}
+                        onShowCall={() =>
+                          setCall({ title: t('playground.callRerun'), body: callBody(m.input) })
+                        }
+                        {...(last && !busy ? { onReply: ask } : {})}
+                      />
+                    ) : run ? (
+                      <LiveText run={run} />
+                    ) : null}
+                    {last && (run || m.result) ? (
+                      <RunTimeline steps={run?.steps ?? m.result?.steps ?? []} />
+                    ) : null}
+                    {savePart(m)}
+                  </li>
+                );
+              })}
+            </ol>
+            {threadFoot(shown)}
+            {inputPart}
+          </section>
+        </div>
+        {callPanel}
+      </section>
+    );
+  }
+
+  return (
+    <section {...sectionProps}>
+      {header}
+      {quotaAlert}
       <SetupBar
         rows={[
           { key: 'a' as const, setup: a },
@@ -958,26 +1332,7 @@ export const PlaygroundPanel = ({
                   <span className="playground-question-who">{t('playground.you')}</span>
                   {questionOf(m.input, t)}
                 </div>
-                {m.failure ? (
-                  <RunFailure failure={m.failure} busy={busy} onRetry={() => retry(m)} />
-                ) : m.error && m.modelDown ? (
-                  <ModelNoAnswer text={m.error} busy={busy} onRetry={() => retry(m)} />
-                ) : m.error ? (
-                  <Alert data-color="danger">
-                    <Heading level={3} data-size="2xs">
-                      {t('playground.noAnswerTitle')}
-                    </Heading>
-                    <Paragraph>{m.error}</Paragraph>
-                    <Button
-                      variant="secondary"
-                      data-size="sm"
-                      aria-disabled={busy ? true : undefined}
-                      onClick={() => retry(m)}
-                    >
-                      {t('common.tryAgain')}
-                    </Button>
-                  </Alert>
-                ) : null}
+                {failurePart(m)}
                 {m.live || m.result ? (
                   <div
                     className="playground-answers"
@@ -1020,26 +1375,7 @@ export const PlaygroundPanel = ({
                     })}
                   </div>
                 ) : null}
-                {saving?.message === m.id ? (
-                  <SaveAsTestCase
-                    key={`${m.id}-${saving.which}`}
-                    testSets={options.testSets}
-                    owners={owners}
-                    initial={savingDraft(m, saving.which)}
-                    onSend={(values) => sendCandidate(m, saving.which, values)}
-                    onCancel={() => setSaving(null)}
-                  />
-                ) : null}
-                {m.saved ? (
-                  <Alert data-color="success" data-size="sm">
-                    <Paragraph data-size="sm">
-                      {t.rich('playground.saved', {
-                        name: m.saved.name,
-                        link: (c) => <Link href={m.saved?.href ?? '#'}>{c}</Link>,
-                      })}
-                    </Paragraph>
-                  </Alert>
-                ) : null}
+                {savePart(m)}
               </li>
             ))}
           </ol>
@@ -1053,111 +1389,11 @@ export const PlaygroundPanel = ({
               </Button>
             ) : null}
           </div>
-          {isExtract ? (
-            <div className="playground-input">
-              <Field>
-                <Label data-size="sm" htmlFor={`${id}-file`}>
-                  {t('playground.document')}
-                </Label>
-                <Field.Description>
-                  {file
-                    ? t('playground.fileChosen', { name: file.name })
-                    : t('playground.fileHelp')}
-                </Field.Description>
-                <input
-                  className="ds-input"
-                  id={`${id}-file`}
-                  type="file"
-                  accept=".pdf,.docx,.png,.jpg"
-                  onChange={(e) => {
-                    const chosen = e.target.files?.[0];
-                    setFile(chosen ? { name: chosen.name, file: chosen } : null);
-                  }}
-                />
-              </Field>
-              <div className="playground-actions">
-                <Button
-                  variant="primary"
-                  aria-disabled={cantSend ? true : undefined}
-                  onClick={() => void extract()}
-                >
-                  {t('playground.extract')}
-                </Button>
-                <Button
-                  variant="tertiary"
-                  data-size="sm"
-                  onClick={() => setFile({ name: sampleFileName })}
-                >
-                  {t('playground.useSampleFile')}
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <form className="playground-input playground-chat" onSubmit={submit} noValidate>
-              {formFields.length ? (
-                <InputForm
-                  fields={formFields}
-                  values={formValues}
-                  errors={formErrs}
-                  intro={t('playground.formIntro')}
-                  onChange={(field, value) => {
-                    setFormValues((v) => ({ ...v, [field]: value }));
-                    setFormErrs(({ [field]: _cleared, ...rest }) => rest);
-                  }}
-                />
-              ) : null}
-              <Field className="playground-grow">
-                <Label data-size="sm" htmlFor={`${id}-in`}>
-                  {formFields.length
-                    ? t('playground.questionOptional')
-                    : comparing
-                      ? t('playground.questionBoth')
-                      : t('playground.question')}
-                </Label>
-                <Textarea
-                  ref={questionRef}
-                  id={`${id}-in`}
-                  rows={2}
-                  value={text}
-                  onChange={(e) => setText(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      ask(text);
-                    }
-                  }}
-                />
-              </Field>
-              <BusyButton
-                variant="primary"
-                type="submit"
-                busy={busy}
-                busyLabel={t('playground.sending')}
-                aria-disabled={draft ? true : undefined}
-              >
-                {t('playground.send')}
-              </BusyButton>
-            </form>
-          )}
+          {inputPart}
         </div>
         {timelinePanel ? <TimelinePanel run={timelineRun} /> : null}
       </div>
-      {call ? (
-        <ApiCallPanel
-          call={{
-            action: call.title,
-            method: 'POST',
-            path: `/tenants/${tenant ?? '{tenant}'}/playground/runs`,
-            body: call.body,
-            needsReason: false,
-            right: t('playground.callRight', {
-              services: t('rights.manageServices'),
-              datasets: t('rights.manageDatasets'),
-            }),
-          }}
-          onClose={() => setCall(null)}
-        />
-      ) : null}
+      {callPanel}
     </section>
   );
 };

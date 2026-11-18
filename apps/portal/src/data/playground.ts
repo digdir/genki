@@ -16,6 +16,7 @@ import type {
 import { createFormat, type Format } from '@genai/i18n';
 import { notPricedLabel } from '../format';
 import { translator, type PlainKey, type T } from '../i18n';
+import type { CatalogModel } from '../api/models';
 import type { Residency, TimelineStep } from '../types';
 
 const nbFormat = createFormat('nb');
@@ -729,3 +730,128 @@ export const quotaTokensText = (tokens: number, f: Format = nbFormat, t: T = nbT
   tokens >= 1_000_000
     ? t('playground.quotaMillions', { value: formatCount(tokens / 1_000_000, f) })
     : t('playground.quotaTokens', { value: formatCount(tokens, f) });
+
+const versionKeyOf = (v: { version: number; draft: boolean }) =>
+  v.draft ? 'draft' : String(v.version);
+
+export const emptyStart = '';
+
+export const startKeyOf = (setup: PlaygroundSetup) =>
+  setup.service
+    ? `${encodeURIComponent(setup.service.id)}/${String(setup.service.version)}`
+    : emptyStart;
+
+export const startChoices = (options: PlaygroundOptions, t: T = nbT) => [
+  ...options.services.flatMap((service) =>
+    service.versions.map((version) => ({
+      key: `${encodeURIComponent(service.id)}/${versionKeyOf(version)}`,
+      label: t('playground.startService', {
+        name: service.name,
+        version: versionLabel(version, t).toLowerCase(),
+      }),
+    })),
+  ),
+  { key: emptyStart, label: t('playground.startEmpty') },
+];
+
+export const startLabel = (options: PlaygroundOptions, setup: PlaygroundSetup, t: T = nbT) =>
+  startChoices(options, t).find((c) => c.key === startKeyOf(setup))?.label ??
+  t('playground.startEmpty');
+
+export const setupFromStart = (
+  options: PlaygroundOptions,
+  key: string,
+  current: PlaygroundSetup,
+): PlaygroundSetup => {
+  const [id, version] = key.split('/');
+  const service = id ? options.services.find((s) => s.id === decodeURIComponent(id)) : undefined;
+  const chosen = service?.versions.find((v) => versionKeyOf(v) === version);
+  const fromService = service && chosen ? serviceSetup(options, service.id, chosen) : undefined;
+  return (
+    fromService ?? {
+      model: current.model,
+      datasets: [],
+      skills: [],
+      blocks: options.defaultBlocks ?? [],
+      output: 'text',
+    }
+  );
+};
+
+const startModel = (options: PlaygroundOptions, setup: PlaygroundSetup) =>
+  variantOf(options, setup)?.model ?? versionOf(options, setup)?.version.setup.model;
+
+export const changedFromStart = (options: PlaygroundOptions, setup: PlaygroundSetup) => {
+  const model = startModel(options, setup);
+  return model !== undefined && model !== setup.model ? ['model' as const] : [];
+};
+
+export type SetupPart = 'model' | 'instructions' | 'knowledge';
+
+const sameList = (x: string[], y: string[]) =>
+  x.length === y.length && x.every((v) => y.includes(v));
+
+export const setupDifferences = (a: PlaygroundSetup, b: PlaygroundSetup): SetupPart[] => [
+  ...(a.model === b.model ? [] : ['model' as const]),
+  ...((a.instructions ?? '') === (b.instructions ?? '') ? [] : ['instructions' as const]),
+  ...(sameList(a.datasets, b.datasets) ? [] : ['knowledge' as const]),
+];
+
+export const sentenceCount = (text: string) => {
+  let count = 0;
+  let open = false;
+  for (const char of text) {
+    if (char === '.' || char === '!' || char === '?') {
+      if (open) count += 1;
+      open = false;
+    } else if (char.trim()) open = true;
+  }
+  return count + (open ? 1 : 0);
+};
+
+export const pickerModelsOf = (
+  options: PlaygroundOptions,
+  catalog: CatalogModel[] = [],
+  t: T = nbT,
+): CatalogModel[] =>
+  options.models.map((m) => {
+    const known = catalog.find((c) => c.id === m.id);
+    const name = known?.name ?? m.name;
+    return {
+      capabilities: [],
+      ...known,
+      id: m.id,
+      name: m.candidate ? t('playground.candidateName', { name }) : name,
+      residency: known?.residency ?? m.dataLocation,
+      available: m.status === 'allowed',
+      ...(m.status === 'allowed' ? {} : { reason: m.status }),
+    };
+  });
+
+export interface TimelineBar {
+  step: TimelineStep;
+  left: number;
+  width: number;
+}
+
+export const timelineBars = (steps: TimelineStep[]): TimelineBar[] => {
+  const total = Math.max(0, ...steps.map((s) => s.at + (s.durationSeconds ?? 0)));
+  const share = (n: number) => (total > 0 ? Math.min(100, (n / total) * 100) : 0);
+  return steps.map((step) => {
+    const left = share(Math.max(0, step.at));
+    return {
+      step,
+      left,
+      width: Math.max(1, Math.min(100 - left, share(step.durationSeconds ?? 0))),
+    };
+  });
+};
+
+export const timedSteps = (steps: TimelineStep[]) =>
+  steps.filter((s) => (s.durationSeconds ?? 0) > 0);
+
+export const withInstructions = (setup: PlaygroundSetup, text: string): PlaygroundSetup => {
+  const next = { ...setup };
+  delete next.instructions;
+  return text.trim() ? { ...next, instructions: text } : next;
+};
