@@ -63,6 +63,13 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ## API changes
 
+### 2026-11-18: facts and actions for the portal's building blocks and service tabs
+
+- `GET /tenants/{tenant}/services/{id}/environment-history`: who added, removed, promoted or rolled back each environment of a service, when and why, newest first (see [services.md](services.md#build-and-edit-a-service-from-your-own-admin-ui)). Changes from now on record their action; older ones are inferred.
+- `POST /tenants/{tenant}/services/{id}/eval-runs/{runId}/cancel` cancels a running test run for whoever started it, or with `manage-services`; the run ends with the new status `cancelled` (see [work.md](work.md#rights)).
+- `GET /tenants/{tenant}/tasks` takes `actor` (`me` or an actor id), gives `actor.id` for actors of the caller's own tenant and a `channel` per run (`api-key`, `interface`, `api`, `playground`, `batch` or `null`). The usage report's `daily[].byService` adds `latency` per day.
+- Building blocks add `versionAt` (step flows and skills), `required` and `counts.required` (mandatory guardrail rules), and on a model block `operations` (API, built-in and maturity per call type) and `processor` (whether its connection has a processor record, its sub-processors and retention). See [access.md](access.md). A service uses a model through the draft: set `spec.model.primary` and save with `PUT .../draft`.
+
 ### 2026-11-18: comparing two test runs case by case
 
 - New `GET /tenants/{tenant}/services/{id}/eval-runs/compare?candidate={runId}`: two test-set runs of a service, case by case, with each verdict, a `change` per case (`better`, `worse`, `same`, `new`, `missing`, `pending`) and `counts`; the baseline is a named run or, by default, the run of the published version. Paged with `limit` and `offset` (see [work.md](work.md#two-kinds-of-evaluation-run)).

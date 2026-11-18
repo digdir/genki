@@ -48,6 +48,7 @@ import {
 import type { CatalogRegistry } from './catalog-registry.js';
 import { InMemoryConfigEntryStore, platformScope } from './config-store.js';
 import { actorNames } from './actor-names.js';
+import { operationGovernance } from '@genai/composition';
 import { adminExtensions, TenantDirectory, TenantSecretVault } from './extensions.js';
 import { localeMiddleware } from './i18n/index.js';
 import type { ModuleDeps } from './platform-modules.js';
@@ -159,6 +160,7 @@ const setup = async ({
   access = undefined as Access | undefined,
   tools = [] as string[],
   guardrails = [] as string[],
+  governed = false,
 } = {}) => {
   const runs = new InMemoryEvalRunStore();
   const blockSet = new Set(blockRefs);
@@ -228,6 +230,7 @@ const setup = async ({
     engines: () => [],
     evalStores: { runs },
     connections,
+    ...(governed ? { operations: { governance: operationGovernance(configEntries, 'test') } } : {}),
   } as unknown as ModuleDeps;
   let ids = 0;
   const blocks = createBuildingBlocksModule({
@@ -1701,5 +1704,116 @@ describe('building-block settings at run time', () => {
       default: 5,
       maximum: 5,
     });
+  });
+});
+
+describe('facts a building block page shows', () => {
+  const entry = (kind: string, scope: string, id: string, spec: unknown) => ({
+    kind,
+    scope,
+    id,
+    version: 1,
+    spec,
+    deleted: false,
+    by: 'drift',
+    at: '2026-10-07T08:00:00Z',
+    reason: 'Satt opp for testen',
+  });
+  const flow = (name: string) => ({
+    apiVersion: 'genai/v1' as const,
+    kind: 'StepFlow' as const,
+    metadata: { tenant: digdir, id: 'svarflyt', name },
+    spec: { purpose: 'Henter svar', steps: [{ id: 'hent', block: 'retrieve@1' }] },
+  });
+
+  it('dates the version a step flow is on even when no update is waiting', async () => {
+    const { send, store } = await setup({ blockRefs: ['retrieve@1'] });
+    await store.publish(flow('Svarflyt'), 'test', 'første versjon');
+    await store.publish(flow('Svarflyt 2'), 'test', 'andre versjon');
+    const published = (await store.versions('StepFlow', digdir, 'svarflyt')).at(-1)?.publishedAt;
+
+    const block = await json<BuildingBlock>(await send(`${base}/step_flow/svarflyt`, 'kari'));
+
+    expect(block).toMatchObject({ version: '2', versionAt: published });
+    expect(block.update).toBeUndefined();
+  });
+
+  it('marks a guardrail rule the platform made mandatory as required and counts it, never a tenant rule', async () => {
+    const { send, configEntries } = await setup();
+    const rule = { kind: 'regex', pattern: '\\d{11}', action: 'block', message: 'Fødselsnummer' };
+    await configEntries.append(
+      entry('guardrail-rule', platformScope, 'fnr', { spec: rule, mandatory: true }),
+    );
+    await configEntries.append(entry('guardrail-rule', platformScope, 'navn', { spec: rule }));
+    await configEntries.append(
+      entry('guardrail-rule', digdir, `${digdir}/egen`, { spec: rule, mandatory: true }),
+    );
+
+    const list = await json<BuildingBlockList>(await send(`${base}?kind=guardrail`, 'kari'));
+
+    expect(list.counts.required).toEqual({ guardrail: 1 });
+    expect(list.data.filter((b) => b.required).map((b) => b.id)).toEqual(['custom-rules/fnr']);
+  });
+
+  it('names the API and maturity of each call type of a model, and whether its connection has a processor record', async () => {
+    const { send, configEntries } = await setup({ governed: true });
+    await configEntries.append(
+      entry('operation-maturity', 'test', 'chat', { maturity: 'production' }),
+    );
+    await configEntries.append(
+      entry('processor-record', platformScope, 'foundry', {
+        agreement: 'Databehandleravtale 2026-04',
+        subProcessors: [{ name: 'Microsoft', location: 'Norge' }],
+        retention: { days: 0 },
+      }),
+    );
+
+    const block = await json<Record<string, unknown>>(
+      await send(`${base}/model/${enc('foundry/gpt-4o')}`, 'erik'),
+    );
+
+    expect(block.operations).toEqual([
+      {
+        operation: 'chat',
+        api: 'openai/chat-completions@1',
+        builtIn: true,
+        maturity: 'production',
+      },
+    ]);
+    expect(block.processor).toEqual({
+      recorded: true,
+      subProcessors: [{ name: 'Microsoft', location: 'Norge' }],
+      retentionDays: 0,
+    });
+    expect(JSON.stringify(block)).not.toContain('Databehandleravtale');
+  });
+
+  it('says a model has no processor record when none is recorded, and gives no maturity or processor fact without operation governance', async () => {
+    const governed = await setup({ governed: true });
+    const plain = await setup();
+
+    const recorded = await json<Record<string, unknown>>(
+      await governed.send(`${base}/model/${enc('azure/gpt-41')}`, 'kari'),
+    );
+    const ungoverned = await json<Record<string, unknown>>(
+      await plain.send(`${base}/model/${enc('azure/gpt-41')}`, 'kari'),
+    );
+
+    expect(recorded.processor).toEqual({ recorded: false });
+    expect(recorded.operations).toEqual([
+      { operation: 'chat', api: 'openai/chat-completions@1', builtIn: true, maturity: 'test' },
+    ]);
+    expect(ungoverned.processor).toBeUndefined();
+    expect(ungoverned.operations).toEqual([
+      { operation: 'chat', api: 'openai/chat-completions@1', builtIn: true },
+    ]);
+  });
+
+  it('gives model facts only to a member of the tenant asked for', async () => {
+    const { send } = await setup({ governed: true });
+
+    const res = await send(`${base}/model/${enc('foundry/gpt-4o')}`, 'ola');
+
+    expect(res.status).toBe(404);
   });
 });

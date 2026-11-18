@@ -53,12 +53,14 @@ import { markedNotFound } from './not-found.js';
 import type { ModuleDeps } from './platform-modules.js';
 import { serviceDrafts } from './service-drafts.js';
 import { chooseEnvironment } from './service-environments.js';
+import { runCanceller } from './tenant-run-cancel.js';
 
 export const judgedModels = (byModel: DraftModelUsage[]) =>
   byModel.filter(judgedAgainst).map((m) => m.model);
 
 export const quotaStopMessage = 'Stoppet fordi månedskvoten for tokens er brukt opp';
 export const serviceEvalResumeKind = 'service-eval-resume';
+export const serviceEvalCancelKind = 'service-eval-cancel';
 export const maxResumes = 3;
 export { serviceDraftKind, type ServiceDraft } from './service-drafts.js';
 
@@ -1009,6 +1011,22 @@ export const serviceEval = (
     return entry && !entry.deleted ? (entry.spec as Resumable) : undefined;
   };
 
+  const cancelMarked = async (tenant: string, run: string) => {
+    const entry = (await deps.configEntries.history(serviceEvalCancelKind, tenant, run)).at(-1);
+    return entry !== undefined && !entry.deleted;
+  };
+
+  const cancelledRun = (run: EvalRun): EvalRun => ({
+    ...ended(run),
+    status: 'cancelled',
+    endedAt: leases.now().toISOString(),
+  });
+
+  const isCancel = (error: unknown) =>
+    typeof error === 'object' &&
+    error !== null &&
+    (error as { code?: unknown }).code === 'cancelled';
+
   const tokensOf = (usage: EvalRun['usage']) =>
     [usage?.answers, usage?.judges].reduce(
       (n, u) => n + (u ? u.inputTokens + u.outputTokens : 0),
@@ -1047,6 +1065,8 @@ export const serviceEval = (
     let handed = false;
     return (async () => {
       try {
+        if (await cancelMarked(tenant, first.id))
+          throw Object.assign(new Error('the run was cancelled'), { code: 'cancelled' });
         const invoked = await deps.kernel.invoke(principal, deps.evalCapability as string, {
           data: {
             id: first.id,
@@ -1063,6 +1083,8 @@ export const serviceEval = (
           },
         });
         go.setTask(invoked.task);
+        if (await cancelMarked(tenant, first.id))
+          await deps.kernel.cancel(runCanceller, invoked.task).catch(() => undefined);
         // Notices are applied in order to the latest state, and never reopen a finished run.
         void (async () => {
           for await (const event of invoked.events) {
@@ -1154,6 +1176,10 @@ export const serviceEval = (
           };
         }, 'completed');
       } catch (error) {
+        if (isCancel(error) || (await cancelMarked(tenant, first.id).catch(() => false))) {
+          await lease.update(cancelledRun, 'cancelled').catch(() => undefined);
+          return;
+        }
         if (slots.draining()) {
           handed = go.resumable;
           await lease
@@ -1374,6 +1400,14 @@ export const serviceEval = (
   const resume = async (stored: StoredRun): Promise<StoredRun | undefined> => {
     const { tenant, run } = stored;
     if (runState(run) !== 'running' || !stored.service) return undefined;
+    if (await cancelMarked(tenant, run.id)) {
+      const stopped: StoredRun = { ...stored, run: cancelledRun(run) };
+      const won = await deps.evalStores.runs
+        .replace(stopped, { status: run.status, heartbeatAt: run.heartbeatAt })
+        .catch(() => false);
+      await forget(tenant, run.id);
+      return won ? stopped : ((await deps.evalStores.runs.get(run.id)) ?? stored);
+    }
     const resumable = await resumableOf(tenant, run.id);
     if (!resumable) return undefined;
     if ((run.resumes ?? 0) >= maxResumes) {
@@ -1463,6 +1497,32 @@ export const serviceEval = (
     return { ...record, task, run: claimed };
   };
 
+  const cancelRun = async (
+    tenant: string,
+    service: string,
+    id: string,
+    by: string,
+    reason: string,
+  ): Promise<{ state: EvalRun['status'] | 'cancelling' } | undefined> => {
+    const stored = await deps.evalStores.runs.get(id);
+    if (!stored || stored.tenant !== tenant || stored.service !== service) return undefined;
+    if (finished(stored.run)) return { state: runState(stored.run) };
+    if (!(await cancelMarked(tenant, id)))
+      await appendVersion(deps.configEntries, {
+        kind: serviceEvalCancelKind,
+        scope: tenant,
+        id,
+        spec: { run: id },
+        deleted: false,
+        by,
+        reason,
+      });
+    const current = await settled(stored);
+    if (finished(current.run)) return { state: runState(current.run) };
+    if (current.task) await deps.kernel.cancel(runCanceller, current.task).catch(() => undefined);
+    return { state: 'cancelling' };
+  };
+
   /** Every run left unfinished on any instance, taken up again or settled. */
   const resumeAbandoned = async () => {
     if (slots.draining()) return;
@@ -1493,6 +1553,7 @@ export const serviceEval = (
     sendingOf,
     leases,
     startRun,
+    cancelRun,
     resumeAbandoned,
   };
 };

@@ -18,7 +18,7 @@ import {
   type Leased,
   type LeaseOptions,
 } from './background-lease.js';
-import { appendVersion, type ConfigEntry } from './config-store.js';
+import { appendVersion, type ConfigEntry, type ConfigEntryStore } from './config-store.js';
 import type { ServiceRunOutcome } from './draft-runner.js';
 import { notFoundOf } from './not-found.js';
 import type { ModuleDeps } from './platform-modules.js';
@@ -161,6 +161,13 @@ const legacyFailureCode = (item: Pick<BatchItem, 'error' | 'errorCode'>) => {
   const found = legacyFailureTexts.find(([pattern]) => pattern.test(item.error as string));
   return found ? { errorCode: found[1] } : {};
 };
+
+export const batchTasksOf = async (store: ConfigEntryStore, tenant: string) =>
+  new Set(
+    (await store.latest({ kind: batchItemKind, scope: tenant }))
+      .map((entry) => (entry.spec as Partial<BatchItem>).task)
+      .filter((task): task is string => typeof task === 'string'),
+  );
 
 export interface BatchItem {
   run: string;

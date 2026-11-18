@@ -191,6 +191,19 @@ describe('services and definitions in the API reference', () => {
         status: 201,
       },
       {
+        method: 'post',
+        path: '/tenants/{tenant}/services/{id}/environments',
+        url: `${t}/services/klarsprak/environments`,
+        body: { name: 'test' },
+        status: 201,
+      },
+      {
+        method: 'get',
+        path: '/tenants/{tenant}/services/{id}/environment-history',
+        url: `${t}/services/klarsprak/environment-history`,
+        status: 200,
+      },
+      {
         method: 'get',
         path: '/tenants/{tenant}/services/{id}/risk-confirmations',
         url: `${t}/services/klarsprak/risk-confirmations`,
@@ -207,6 +220,14 @@ describe('services and definitions in the API reference', () => {
         path: '/tenants/{tenant}/services/{id}/eval-runs',
         url: `${t}/services/klarsprak/eval-runs`,
         status: 200,
+      },
+      {
+        method: 'post',
+        path: '/tenants/{tenant}/services/{id}/eval-runs/{runId}/cancel',
+        url: `${t}/services/klarsprak/eval-runs/finnes-ikke/cancel`,
+        body: {},
+        status: 404,
+        type: 'application/problem+json',
       },
       {
         method: 'get',

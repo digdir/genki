@@ -144,6 +144,7 @@ const throughAdminTasks = [
   'POST /tenants/:tenant/proposals/:pid/send-for-approval',
   'POST /tenants/:tenant/services/:id/batch-runs',
   'POST /tenants/:tenant/services/:id/batch-runs/:runId/cancel',
+  'POST /tenants/:tenant/services/:id/eval-runs/:runId/cancel',
   'POST /tenants/:tenant/services/:id/batch-runs/:runId/retry',
   'POST /tenants/:tenant/services/:id/draft/rebase',
   'POST /tenants/:tenant/services/:id/environments',

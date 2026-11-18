@@ -114,6 +114,7 @@ export const problems = {
   datasetDocumentsFailed: 'Could not read the documents from the search engine',
   evalCompareInvalid: 'Invalid comparison',
   evalRunNotFound: 'No such test run for this service',
+  evalRunFinished: 'The test run has already ended',
   evalBaselineMissing: 'The version in use has no completed run of the test set',
   evalRunsNotComparable: 'The runs are of different test sets',
   draftNotFound: 'The service has no draft',

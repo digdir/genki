@@ -41,6 +41,7 @@ import {
   maxResumes,
   progressed,
   quotaStopMessage,
+  serviceEvalCancelKind,
   serviceEvalResumeKind,
   runSummary,
   waitingForScores,
@@ -75,6 +76,13 @@ const people: Record<string, Principal> = {
     kind: 'employee',
     issuer: 'test',
     subject: 'erik',
+    tenant,
+    authorizedFor: [{ org: tenant, actions: ['use-services'] }],
+  },
+  kariReader: {
+    kind: 'employee',
+    issuer: 'test',
+    subject: 'kari',
     tenant,
     authorizedFor: [{ org: tenant, actions: ['use-services'] }],
   },
@@ -340,7 +348,7 @@ const boot = async (prices?: Record<string, ModelPrice>, options: BootOptions = 
     );
     return { 'support-session': opened.ok ? (opened.value as { id: string }).id : '' };
   };
-  return { platform, send, settled, optimiserPrompts, judgePrompts, supportSession };
+  return { platform, admin, send, settled, optimiserPrompts, judgePrompts, supportSession };
 };
 
 const services = `/tenants/${tenant}/services/svar`;
@@ -3453,6 +3461,95 @@ describe('test-set runs on a shared instance', () => {
     expect(run).toMatchObject({ status: 'failed', error: quotaStopMessage, finished: 2, total: 3 });
     expect(run.cases.map((c) => c.caseId)).toEqual(['o1', 'o2']);
   });
+
+  const cancel = (
+    env: Awaited<ReturnType<typeof boot>>,
+    id: string,
+    who = 'kari',
+    reason = 'Feil testsett valgt',
+    at = tenant,
+    service = 'svar',
+  ) =>
+    env.send(
+      'POST',
+      `/tenants/${at}/services/${service}/eval-runs/${id}/cancel`,
+      who,
+      {},
+      reason ? { 'change-reason': encodeURIComponent(reason) } : {},
+    );
+  const cancelAudits = async (env: Awaited<ReturnType<typeof boot>>) =>
+    (await env.admin.audit(tenant)).filter((a) => a.action === 'platform.eval-run.cancel');
+
+  it('cancels a running test run for the person who started it, keeps finished cases and starts no further case', async () => {
+    const cases = holding();
+    const env = await boot(undefined, {
+      ...{ evalSlots: { perInstance: 4, perTenant: 4, perRun: 1 } },
+      hold: cases.hold,
+    });
+    const id = await start(env);
+    await cases.release(o1);
+    await vi.waitFor(async () => expect((await read(env, id)).finished).toBe(1));
+    await vi.waitFor(() => expect(cases.started).toHaveLength(2));
+
+    const cancelled = await cancel(env, id, 'kariReader');
+    await cases.finish(env);
+    const run = await read(env, id);
+
+    expect([200, 202]).toContain(cancelled.status);
+    expect(cancelled.body).toMatchObject({ id });
+    expect(run).toMatchObject({ status: 'cancelled', finished: 1, total: 3 });
+    expect(run).not.toHaveProperty('error');
+    expect(cases.started.map((c) => c.input)).toEqual([o1, o2]);
+  });
+
+  it('needs manage-services to cancel a run someone else started, and a change reason', async () => {
+    const cases = holding();
+    const env = await boot(undefined, { hold: cases.hold });
+    const id = await start(env);
+
+    const reader = await cancel(env, id, 'erik');
+    const unreasoned = await cancel(env, id, 'kari', '');
+    await cases.finish(env);
+
+    expect(reader.status).toBe(403);
+    expect(reader.body.errors).toEqual([{ path: 'right', message: 'manage-services' }]);
+    expect(unreasoned.status).toBe(400);
+    expect((await read(env, id)).status).toBe('completed');
+    expect(await cancelAudits(env)).toHaveLength(0);
+  });
+
+  it('answers a cancelled run again without a new audit entry, and refuses a run that has ended', async () => {
+    const cases = holding();
+    const env = await boot(undefined, { hold: cases.hold });
+    const id = await start(env);
+    await vi.waitFor(() => expect(cases.started.length).toBeGreaterThan(0));
+
+    await cancel(env, id);
+    await cases.finish(env);
+    const again = await cancel(env, id);
+    const done = await start(env);
+    await env.settled();
+    const ended = await cancel(env, done);
+
+    expect(again).toMatchObject({ status: 200, body: { id, status: 'cancelled' } });
+    expect(await cancelAudits(env)).toHaveLength(1);
+    expect(ended.status).toBe(409);
+    expect(ended.body.type).toBe('urn:genai:problem:run-finished');
+  });
+
+  it("never cancels another organisation's test run", async () => {
+    const cases = holding();
+    const env = await boot(undefined, { hold: cases.hold, otherTenant: true });
+    const id = await start(env);
+
+    const fromOther = await cancel(env, id, 'ola', 'Feil testsett valgt', other, 'svar-to');
+    const intoOurs = await cancel(env, id, 'ola');
+    await cases.finish(env);
+
+    expect(fromOther.status).toBe(404);
+    expect(intoOurs.status).toBe(404);
+    expect((await read(env, id)).status).toBe('completed');
+  });
 });
 
 describe('a test-set run across a deploy', () => {
@@ -3530,6 +3627,45 @@ describe('a test-set run across a deploy', () => {
     });
     expect(run.cases.map((c) => c.caseId)).toEqual(['o1', 'o2', 'l1']);
     expect(run.cost).toBeGreaterThan(running.cost ?? 0);
+  });
+
+  it('settles a run cancelled while its instance was gone as cancelled, never taking it up again', async () => {
+    const stores = shared();
+    const before = await boot(prices, {
+      ...stores,
+      holdLocked: true,
+      leases: { instance: 'before', now: () => t0 },
+    });
+    const id = await start(before);
+    await vi.waitFor(async () => expect((await read(before, id)).finished).toBe(2), {
+      timeout: 5000,
+    });
+    await stores.store.append({
+      kind: serviceEvalCancelKind,
+      scope: tenant,
+      id,
+      version: 1,
+      spec: { run: id },
+      deleted: false,
+      by: 'employee:test:kari',
+      at: t0.toISOString(),
+      reason: 'Feil testsett valgt',
+    });
+    const later = asked();
+    const after = await boot(prices, {
+      ...stores,
+      hold: later.hold,
+      leases: { instance: 'after', now: () => new Date(t0.getTime() + 10 * 60_000) },
+    });
+
+    const run = await read(after, id);
+    await after.settled();
+
+    expect(run).toMatchObject({ status: 'cancelled', finished: 2, total: 3 });
+    expect(later.seen).toEqual([]);
+    expect(await stores.store.history(serviceEvalResumeKind, tenant, id)).toContainEqual(
+      expect.objectContaining({ deleted: true }),
+    );
   });
 
   it('hands a run over when the instance stops: lets the case in flight finish, starts no new one, and the next instance takes it up', async () => {

@@ -8,17 +8,19 @@ import {
   caseView,
   isCaseSplit,
   isCaseType,
+  runState,
   testCase,
   type CaseSplit,
   type TestSet,
 } from '@genai/eval';
 import type { Context, Env, Hono, Schema } from 'hono';
-import { enterTenant } from './access.js';
+import { enterTenant, refusedRight } from './access.js';
 import { actorNames } from './actor-names.js';
 import { actorOf, AdminRefused, refusedBy, routeOnly } from './admin.js';
 import type { LeaseOptions } from './background-lease.js';
 import { VersionConflict, type ConfigEntry } from './config-store.js';
-import { changeReasonOf } from './http.js';
+import { changeReasonOf, isReasonLongEnough, reasonTooShort } from './http.js';
+import { runFinishedType } from './tenant-run-cancel.js';
 import { improvements, improvementView } from './improvements.js';
 import { t } from './i18n/index.js';
 import { hidesInternalServices, isHiddenService } from './internal-services.js';
@@ -116,6 +118,8 @@ const costless = <
   return shown;
 };
 
+export const evalRunCancelAction = 'platform.eval-run.cancel';
+
 export const serviceDraftActions = [
   'platform.service.draft.save',
   'platform.service.draft.rebase',
@@ -128,6 +132,7 @@ export const createQualityModule =
       onBackground?: (work: Promise<void>) => void;
       leases?: LeaseOptions;
       resumeEveryMs?: number;
+      cancelWaitMs?: number;
     } = {},
   ): PlatformModuleFactory =>
   (deps) => {
@@ -136,6 +141,7 @@ export const createQualityModule =
       options.onBackground?.(work);
     };
     const evals = serviceEval(deps, options.leases, background);
+    const cancelWaitMs = options.cancelWaitMs ?? 2000;
     const isSinkJudge = (evaluator: string) => deps.traceSinks?.isSinkJudge?.(evaluator) ?? false;
     const improving = improvements(deps, evals);
     background(improving.recover());
@@ -150,6 +156,7 @@ export const createQualityModule =
       id: 'quality',
       handlers: {
         ...Object.fromEntries(serviceDraftActions.map((action) => [action, routeOnly])),
+        [evalRunCancelAction]: routeOnly,
         ...improving.handlers,
       },
       mount: <E extends Env, S extends Schema, B extends string>(
@@ -693,6 +700,84 @@ export const createQualityModule =
               error.messages.map((message) => ({ path: 'trace', message })),
             );
           }
+        });
+
+        app.post('/tenants/:tenant/services/:id/eval-runs/:runId/cancel', async (c) => {
+          const guard = await member(c);
+          if (guard.response) return guard.response;
+          const { tenant, principal } = guard;
+          const service = param(c, 'id');
+          const id = param(c, 'runId');
+          const stored = await deps.evalStores.runs.get(id);
+          if (
+            !stored ||
+            stored.tenant !== tenant ||
+            stored.service !== service ||
+            (await isHiddenService(deps.definitions, tenant, service))
+          )
+            return problem(c, 404, t('problems.evalRunNotFound'));
+          const task = stored.task ? await mountDeps.task(stored.task) : undefined;
+          const own =
+            task?.principal.tenant === tenant &&
+            task.principal.id === JSON.stringify([principal.issuer, principal.subject]);
+          const lacking = refusedRight(
+            c,
+            principal,
+            tenant,
+            own ? 'use-services' : 'manage-services',
+          );
+          if (lacking) return lacking;
+          const reason = reasonOf(c);
+          if (!isReasonLongEnough(reason))
+            return problem(c, 400, 'Ugyldig forespørsel', [
+              { path: 'change-reason', message: reasonTooShort },
+            ]);
+          const answer = (state: string) =>
+            state === 'cancelled'
+              ? c.json({ id, status: 'cancelled' }, 200)
+              : state === 'cancelling'
+                ? c.json({ id, status: 'cancelling' }, 202)
+                : problem(
+                    c,
+                    409,
+                    t('problems.evalRunFinished'),
+                    [{ path: 'status', message: `the run has already ended as ${state}` }],
+                    runFinishedType,
+                  );
+          const before = runState(stored.run);
+          if (before !== 'running' && before !== 'waiting-for-scores') return answer(before);
+          let outcome: Awaited<ReturnType<typeof evals.cancelRun>>;
+          try {
+            const done = await mountDeps.admin.within(
+              principal,
+              evalRunCancelAction,
+              { tenant, reason, service, run: id, own },
+              async () => ({
+                value: await evals.cancelRun(
+                  tenant,
+                  service,
+                  id,
+                  actorOf(principal.actor ?? principal),
+                  reason,
+                ),
+                target: `eval-run:${service}/${id}`,
+              }),
+            );
+            c.header('genai-task', done.task);
+            outcome = done.value;
+          } catch (error) {
+            if (error instanceof AdminRefused) return refusedBy(c, error);
+            throw error;
+          }
+          if (!outcome) return problem(c, 404, t('problems.evalRunNotFound'));
+          let state: string = outcome.state ?? 'cancelling';
+          for (let waited = 0; state === 'cancelling' && waited < cancelWaitMs; waited += 50) {
+            await new Promise((resolve) => setTimeout(resolve, 50));
+            const now = await deps.evalStores.runs.get(id);
+            const read = now ? runState(now.run) : 'cancelling';
+            if (read !== 'running' && read !== 'waiting-for-scores') state = read;
+          }
+          return answer(state);
         });
 
         app.get('/tenants/:tenant/services/:id/eval-runs/sending', async (c) => {
