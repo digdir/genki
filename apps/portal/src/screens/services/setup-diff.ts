@@ -42,6 +42,7 @@ export type ChangeTopic =
   | 'knowledge'
   | 'input'
   | 'inputField'
+  | 'files'
   | 'output'
   | 'model'
   | 'fallback'
@@ -195,11 +196,17 @@ const specChangesOf = (was: ServiceSpec, now: ServiceSpec): DraftChange[] => {
   );
   if (
     !sameValue(
-      without(tree(was.knowledge), ['datasets']),
-      without(tree(now.knowledge), ['datasets']),
+      without(tree(was.knowledge), ['datasets', 'runtimeDocuments']),
+      without(tree(now.knowledge), ['datasets', 'runtimeDocuments']),
     )
   )
     simple('sources', 'knowledge');
+  if ((was.knowledge?.runtimeDocuments === true) !== (now.knowledge?.runtimeDocuments === true))
+    out.push({
+      area: 'input',
+      topic: 'files',
+      kind: now.knowledge?.runtimeDocuments === true ? 'added' : 'removed',
+    });
 
   const fieldId = (f: { id?: unknown; label?: unknown }) =>
     typeof f.id === 'string' ? f.id : String(f.label ?? '');

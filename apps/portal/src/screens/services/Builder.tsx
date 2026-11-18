@@ -52,6 +52,7 @@ import {
   autoPublicName,
   examplesOf,
   flowOf,
+  guardOn,
   renameService,
   riskConfirmationFor,
   toolRefsOf,
@@ -72,7 +73,8 @@ import { SuggestedTests } from './assistant/SuggestedTests';
 import { proposalKey, useAssistant, type TurnEntry } from './assistant/useAssistant';
 import type { InputOptionLookup } from './InputFormEditor';
 import { areaSummaries, datasetName, modelWord, SetupTab, type SectionId } from './SetupTab';
-import { DraftBar, type SaveState } from './DraftBar';
+import { TryPane } from './setup-try-pane';
+import { DraftBar, savedByOf, saverOf, type SaveState, type SavedBy } from './DraftBar';
 import { DiscardDialog } from './DiscardDialog';
 import { PublishDiff, type ModelFacts, type TestWarning } from './PublishDiff';
 import { SetupLayout, type AreaFact, type SidePane } from './setup-layout';
@@ -320,10 +322,13 @@ export const Builder = ({
   const [datasetOptions] = useAsync(
     async (signal) =>
       live
-        ? (await api.catalog(tenant, 'dataset', signal)).map((d) => ({
-            id: d.id,
-            name: typeof d.spec.name === 'string' && d.spec.name ? d.spec.name : d.id,
-            shared: d.scope !== tenant,
+        ? (await api.datasets.list(tenant, signal)).map((d) => ({
+            id: d.fullId,
+            name: d.name || d.id,
+            shared: (d.owner?.tenant ?? d.scope) !== tenant,
+            documents: d.documents,
+            updatedAt: d.updatedAt ?? null,
+            ...(d.owner ? { owner: d.owner } : {}),
           }))
         : [],
     [api, tenant, live],
@@ -419,7 +424,13 @@ export const Builder = ({
   const [savedAt, setSavedAt] = useState<string | undefined>(
     init.draftRevision ? init.opened?.at : undefined,
   );
+  const [savedBy, setSavedBy] = useState<SavedBy | undefined>(
+    init.draftRevision && init.opened ? savedByOf(init.opened) : undefined,
+  );
+  const selfActor = useRef<string | undefined>(undefined);
+  const self = { actor: selfActor.current, name: userName };
   const [failedAt, setFailedAt] = useState<string>();
+  const [conflictDraft, setConflictDraft] = useState<ServiceDraft>();
   const [discarding, setDiscarding] = useState(false);
   const [discardedTo, setDiscardedTo] = useState<number>();
   const [baseline, setBaseline] = useState<{
@@ -792,6 +803,8 @@ export const Builder = ({
       );
       keepRevision(saved.revision);
       setSavedAt(saved.at);
+      if (saved.by) selfActor.current = saved.by;
+      setSavedBy(savedByOf(saved));
       if (first)
         window.location.replace(
           window.location.hash.replace(/^#\/services\/new\b/, `#${servicePath(id)}`),
@@ -801,6 +814,8 @@ export const Builder = ({
     } catch (error) {
       draftBlocked.current = error instanceof ApiError && error.status === 409;
       setSaveState(draftBlocked.current ? 'conflict' : 'failed');
+      if (draftBlocked.current && !isNew)
+        void api.quality.draft(tenant, id).then(setConflictDraft, () => undefined);
       setFailedAt(f.time(new Date()));
       if (isNew)
         setFlash(
@@ -825,12 +840,25 @@ export const Builder = ({
     if (!remoteDraft || remoteDraft.revision === revisionRef.current || unsaved.current) return;
     keepRevision(remoteDraft.revision);
     setSavedAt(remoteDraft.at);
+    setSavedBy(savedByOf(remoteDraft));
     setService(asServiceDefinition(remoteDraft.definition));
     setFiles(remoteDraft.files);
   }, [remoteDraft]);
 
   const draftBar = serverDraft && !isNew;
   const liveVersion = baseline ?? remoteLatest;
+  const fileKey = JSON.stringify([
+    service.spec.input.accepts,
+    service.spec.knowledge?.runtimeDocuments === true,
+  ]);
+  const onInputArea = setupArea === 'input';
+  const [fileInput] = useAsync(
+    async () =>
+      live && draftBar && onInputArea
+        ? api.draftFileInput(tenant, definitionRef.current)
+        : undefined,
+    [api, tenant, live, draftBar, onInputArea, fileKey],
+  );
   const publishedDefinition = useMemo(
     () => (liveVersion ? asServiceDefinition(liveVersion.definition) : undefined),
     [liveVersion],
@@ -1188,6 +1216,7 @@ export const Builder = ({
       setService(asServiceDefinition(result.definition));
       setSaveState('idle');
       setSavedAt(undefined);
+      setSavedBy(undefined);
       setDiscardedTo(undefined);
     }
     record(
@@ -1275,6 +1304,7 @@ export const Builder = ({
     setFiles(liveVersion.files ?? {});
     setSaveState('idle');
     setSavedAt(undefined);
+    setSavedBy(undefined);
     setDiscarding(false);
     setDiscardedTo(liveVersion.version);
   };
@@ -1368,7 +1398,9 @@ export const Builder = ({
   const publishPage = draftBar && canPublish && section === 'setup' && detail === 'publish';
   const draftRuns =
     evalRuns.status === 'ready' && Array.isArray(evalRuns.data)
-      ? evalRuns.data.filter((r) => r.version === 'draft' && (!savedAt || r.startedAt >= savedAt))
+      ? evalRuns.data.filter(
+          (r) => r.version === 'draft' && draftRevision > 0 && r.draftRevision === draftRevision,
+        )
       : [];
   const testWarning: TestWarning =
     hasTestSet && changeList.length && draftRuns.length === 0
@@ -1469,6 +1501,8 @@ export const Builder = ({
       {...(live ? { live: { datasets: datasetOptions, tools: toolOptions } } : {})}
       sections={only}
       readOnly={readOnly}
+      inUse={publishedDefinition}
+      fileInput={fileInput}
       {...(frontends ? { frontends } : {})}
       inputLockedIds={publishedFieldIds}
       inputLookup={inputLookup}
@@ -1498,6 +1532,30 @@ export const Builder = ({
 
   const assistantPanel = (
     <AssistantPanel
+      messages={messages}
+      cardFor={cardFor}
+      undone={undone}
+      done={done}
+      applied={Object.fromEntries(Object.keys(assisted).map((k) => [k, true]))}
+      typing={typing}
+      composer={composer}
+      suggestions={suggestions}
+      userName={userName}
+      tenantName={tenantName}
+      assistant={assistant}
+      canApprove={canApprove}
+      onDecide={decide}
+      onComposer={setComposer}
+      onSend={send}
+      onShow={showCard}
+      onUndo={toggleUndo}
+      onAction={action}
+    />
+  );
+
+  const sideAssistantPanel = (
+    <AssistantPanel
+      side
       messages={messages}
       cardFor={cardFor}
       undone={undone}
@@ -1657,30 +1715,34 @@ export const Builder = ({
           current={setupArea}
           onPick={setSetupArea}
           facts={areaFacts}
-          {...(readOnly ? {} : { assistant: assistantPanel })}
+          {...(readOnly ? {} : { assistant: sideAssistantPanel })}
           tryPane={
-            <div className="setup-try">
-              <Paragraph data-size="sm" className="meta">
-                {t('setupList.tryNote', { n: publishedVersion })}
-              </Paragraph>
-              <PlaygroundPanel
-                layout="side"
-                context="service"
-                name={serviceId}
-                api={api}
-                tenant={tenant}
-                tenantName={tenantName}
-                serviceDraft={{ definition, files }}
-                onClose={() => setSidePane('assistant')}
-              />
-              <a href={`#${servicePath(routeId, 'test')}`}>{t('setupList.openPlayground')}</a>
-            </div>
+            <TryPane
+              api={api}
+              tenant={tenant}
+              serviceId={serviceId}
+              draft={definition}
+              model={service.spec.model.primary}
+              datasets={(service.spec.knowledge?.datasets ?? []).map((d) => d.dataset)}
+              files={files}
+              version={publishedVersion}
+              playgroundHref={`#${servicePath(routeId, 'test')}`}
+            />
           }
           pane={sidePane}
           onPane={setSidePane}
         >
           {setupArea === 'limits' ? (
-            <SettingsSection {...screenProps} id={id} />
+            <SettingsSection
+              {...screenProps}
+              id={id}
+              readOnly={readOnly}
+              limits={{
+                logMasked: guardOn(service.spec, 'pii-out-of-log'),
+                own: service.spec.settings ?? {},
+                onLogging: () => setSetupArea('guards'),
+              }}
+            />
           ) : (
             setup(setupSections, setupArea)
           )}
@@ -1798,9 +1860,17 @@ export const Builder = ({
           name={name}
           status={status}
           meta={meta}
+          tag={
+            draftBar && status === 'I bruk' && liveVersion
+              ? t('serviceDraft.versionInUse', { n: liveVersion.version })
+              : undefined
+          }
           flash={flash}
           actions={
             <>
+              {canPublish && draftBar && !archived && missingText ? (
+                <span className="meta service-missing">{missingText}</span>
+              ) : null}
               {canPublish && !isNew && lifecycle && !archived ? (
                 <ServiceLifecycle
                   api={api}
@@ -1814,7 +1884,7 @@ export const Builder = ({
                   {...(live ? { onCopy: () => void copyService() } : {})}
                 />
               ) : null}
-              {!archived ? (
+              {!archived && !(draftBar && section === 'setup') ? (
                 <Button asChild variant="secondary" data-size="sm">
                   <a href={`#${servicePath(routeId, 'test')}`}>
                     {t('serviceLifecycle.tryService')}
@@ -1837,18 +1907,22 @@ export const Builder = ({
                 </Button>
               ) : null}
               {archived ? null : canPublish &&
-                (draftBar
-                  ? !hasDraft
-                  : !isNew && current > 0 && !changes.length && draftRevision === 0 && !edited) ? (
+                !draftBar &&
+                !isNew &&
+                current > 0 &&
+                !changes.length &&
+                draftRevision === 0 &&
+                !edited ? (
                 <span className="meta">{t('services.nothingToPublish')}</span>
               ) : canPublish && draftBar ? (
                 <>
-                  {missingText ? <span className="meta service-missing">{missingText}</span> : null}
                   <Button
                     variant="primary"
                     data-size="sm"
-                    aria-disabled={checkProblems.length > 0 || undefined}
-                    onClick={() => checkProblems.length === 0 && go('setup', '/publish')}
+                    aria-disabled={!hasDraft || checkProblems.length > 0 || undefined}
+                    onClick={() =>
+                      hasDraft && checkProblems.length === 0 && go('setup', '/publish')
+                    }
                   >
                     {t('serviceDraft.publishOpen')}
                   </Button>
@@ -1899,7 +1973,28 @@ export const Builder = ({
             changes={changeList.length}
             hasDraft={hasDraft}
             savedAt={savedAt ? f.time(savedAt) : undefined}
+            savedBy={saverOf(savedBy, self)}
             failedAt={failedAt}
+            conflictBy={
+              conflictDraft
+                ? {
+                    saver: saverOf(savedByOf(conflictDraft), self),
+                    at: f.time(conflictDraft.at),
+                  }
+                : undefined
+            }
+            conflictDiff={
+              conflictDraft ? (
+                <ul className="discard-lost">
+                  {diffDraft(asServiceDefinition(conflictDraft.definition), service).map((c, i) => (
+                    <li key={`${c.topic}-${i}`}>
+                      <span className="meta">{changeLabel(t, c)}</span>
+                      <span>{changeText(t, c, changeNames)}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : undefined
+            }
             canEdit={!readOnly}
             changesHref={publishHref}
             onSave={() => void saveDraft()}
@@ -1919,7 +2014,17 @@ export const Builder = ({
               label: changeLabel(t, c),
               text: changeText(t, c, changeNames),
             }))}
-            savedAt={savedAt ? formatDateTime(savedAt, f) : undefined}
+            savedAt={
+              savedAt
+                ? new Date(savedAt).toDateString() === new Date().toDateString()
+                  ? t('serviceDraft.todayAt', { time: f.time(savedAt) })
+                  : t('serviceDraft.dayAt', {
+                      date: f.date(savedAt, 'medium'),
+                      time: f.time(savedAt),
+                    })
+                : undefined
+            }
+            savedBy={saverOf(savedBy, self)}
             detailsHref={publishHref}
             onKeep={() => setDiscarding(false)}
             onConfirm={discardDraft}

@@ -1219,6 +1219,15 @@ code {
     padding-inline: 4px;
   }
 
+  .header-bar .org-static {
+    min-width: 0;
+    padding-inline: 0;
+  }
+
+  .header-bar > .ds-button {
+    flex: none;
+  }
+
   .header-bar .org-button,
   .header-bar .org-name {
     min-width: 0;

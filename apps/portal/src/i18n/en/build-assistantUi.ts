@@ -22,6 +22,9 @@ export const assistantUi = {
     actionDone: '{label} (done)',
     showApiCall: 'Show API call',
     previousMessage: 'Previous message',
+    sideIntro:
+      'Ask about changes to the setup. What I suggest goes into the draft, not the version in use.',
+    sidePlaceholder: 'Ask about something …',
     composerLabel: 'Write to the assistant',
     send: 'Send',
     bannerUnavailableTitle: 'The build assistant is not available',

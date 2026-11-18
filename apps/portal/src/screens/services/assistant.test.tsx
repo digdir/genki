@@ -333,7 +333,7 @@ describe('builder assistant', () => {
       ).toMatchObject({ definition: flow }),
     );
     openArea(/^Varianter/);
-    expect(await screen.findByRole('heading', { level: 3, name: 'Kort svar' })).toBeTruthy();
+    expect(await screen.findByText('Kort svar', { selector: '.area-row-title' })).toBeTruthy();
   });
 
   it('Forbedre instruksjonene changes the draft only after Bruk forslaget', async () => {

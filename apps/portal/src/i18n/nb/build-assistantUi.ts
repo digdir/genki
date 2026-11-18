@@ -21,6 +21,9 @@ export const assistantUi = {
     actionDone: '{label} (gjort)',
     showApiCall: 'Vis API-kall',
     previousMessage: 'Forrige melding',
+    sideIntro:
+      'Spør om endringer i oppsettet. Det jeg foreslår havner i utkastet, ikke i versjonen i bruk.',
+    sidePlaceholder: 'Spør om noe …',
     composerLabel: 'Skriv til assistenten',
     send: 'Send',
     bannerUnavailableTitle: 'Byggeassistenten er ikke tilgjengelig',

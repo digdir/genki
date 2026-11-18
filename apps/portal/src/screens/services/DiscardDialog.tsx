@@ -2,6 +2,7 @@ import { Alert, Button, Dialog, Heading, Link, Paragraph } from '@digdir/designs
 import { useState } from 'react';
 import { BusyButton } from '../../components/BusyButton';
 import { useT } from '../../i18n';
+import { saverName, type Saver } from './DraftBar';
 import './setup-layout.css';
 
 export interface LostItem {
@@ -14,6 +15,7 @@ export const DiscardDialog = ({
   version,
   items,
   savedAt,
+  savedBy,
   detailsHref,
   onKeep,
   onConfirm,
@@ -22,6 +24,7 @@ export const DiscardDialog = ({
   version: number;
   items: LostItem[];
   savedAt?: string | undefined;
+  savedBy?: Saver | undefined;
   detailsHref: string;
   onKeep: () => void;
   onConfirm: () => Promise<void>;
@@ -70,7 +73,13 @@ export const DiscardDialog = ({
           </div>
         ) : null}
         <Paragraph data-size="sm" className="meta">
-          {savedAt ? `${t('serviceDraft.discardSavedAt', { when: savedAt })} ` : null}
+          {savedAt
+            ? `${
+                savedBy && (savedBy.self || savedBy.name)
+                  ? t('serviceDraft.discardSavedBy', { name: saverName(t, savedBy), when: savedAt })
+                  : t('serviceDraft.discardSavedAt', { when: savedAt })
+              } `
+            : null}
           <Link href={detailsHref}>{t('serviceDraft.discardDetails')}</Link>
         </Paragraph>
         {error ? (

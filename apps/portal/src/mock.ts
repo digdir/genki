@@ -28,6 +28,7 @@ import { inputFieldsOf } from './data/playground';
 import { parseYaml } from './yaml';
 import { reasonProblem } from './components/ReasonField';
 import { clientMock } from './mock-clients';
+import type { ServiceSpec } from './data/service-definition';
 import type {
   CapabilityModel,
   EvalRunSummary,
@@ -657,6 +658,23 @@ export const exampleFacets: Record<string, FacetField['options']> = {
   ],
 };
 
+const readableTypes = ['text/plain', 'text/markdown', 'text/csv', 'application/json'];
+
+const mockFileInput = (definition: unknown) => {
+  const spec = (definition as { spec?: ServiceSpec } | undefined)?.spec;
+  const accepts = spec?.input.accepts ?? [];
+  const documents =
+    spec?.knowledge?.runtimeDocuments === true
+      ? accepts.filter((type) => readableTypes.includes(type))
+      : [];
+  const media = accepts.filter((type) => type.startsWith('audio/') || type.startsWith('image/'));
+  return {
+    documents: documents.length ? { accepts: documents, maxBytes: 2097152, maxCount: 5 } : null,
+    media: media.length ? { accepts: media, maxBytes: 10485760, maxCount: 5 } : null,
+    maxRequestBytes: 16777216,
+  };
+};
+
 const mockInputFields = (definition: unknown) => {
   let parsed = definition;
   try {
@@ -1009,7 +1027,7 @@ export const mockFetch = (
     }
     if (/^\/tenants\/[^/]+\/definitions\/input-fields$/.test(path) && init?.method === 'POST') {
       const { definition } = JSON.parse(String(init.body)) as { definition: unknown };
-      return json({ fields: mockInputFields(definition) });
+      return json({ fields: mockInputFields(definition), files: mockFileInput(definition) });
     }
     if (/^\/tenants\/[^/]+\/definitions\/test-run$/.test(path) && init?.method === 'POST')
       return json({ ok: true, task: 'prove-1', answer: chatReply, parts: [] });

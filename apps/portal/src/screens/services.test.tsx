@@ -230,7 +230,10 @@ describe('builder', () => {
 
   it('answers in the assistant and shows the change in the setup', async () => {
     await openBuilder('#/services/soknadsuttrekk/setup', 'Søknadsuttrekk');
-    fireEvent.click(screen.getByRole('button', { name: 'Hva koster dette?' }));
+    fireEvent.change(screen.getByLabelText('Skriv til assistenten'), {
+      target: { value: 'Hva koster dette?' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
     expect(await screen.findByText(/kr per 1000 kjøringer/, {}, { timeout: 2000 })).toBeTruthy();
     fireEvent.click(
       screen.getByRole('button', { name: 'Vis endring: Valgte modell: Qwen3.8-27B' }),
@@ -264,7 +267,7 @@ describe('risk level and v3 checks', () => {
     await openRisk();
     expect(screen.getByText('Assistenten foreslår: Begrenset risiko')).toBeTruthy();
     expect(
-      screen.getByText('Ansatte bruker resultatene, men tjenesten tar ikke beslutninger om folk.'),
+      screen.getByText(/Ansatte bruker resultatene, men tjenesten tar ikke beslutninger om folk\./),
     ).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Bekreft risikonivå' }));
     expect(screen.getByText('Bekreftet av Kari Nordmann i dag')).toBeTruthy();
@@ -273,6 +276,7 @@ describe('risk level and v3 checks', () => {
 
   it('stops the service when a prohibited use is ticked', async () => {
     await openRisk();
+    fireEvent.click(screen.getByRole('button', { name: 'Velg et annet nivå' }));
     const legend = screen.getByText('Først: skal tjenesten gjøre noe av dette?');
     const box = within(legend.closest('fieldset') as HTMLElement).getAllByRole('checkbox')[0];
     fireEvent.click(box as HTMLElement);

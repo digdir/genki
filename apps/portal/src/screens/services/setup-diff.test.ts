@@ -27,6 +27,15 @@ describe('draft changes against the published version', () => {
     expect(draftChanges(base, { ...reordered, spec: { ...reordered.spec } })).toEqual([]);
   });
 
+  it('puts files from the user under Inndata, not under Kilder', () => {
+    expect(
+      draftChanges(
+        base,
+        edit({ knowledge: { datasets: [{ dataset: 'ds-1' }], runtimeDocuments: true } }),
+      ),
+    ).toEqual([{ area: 'input', topic: 'files', kind: 'added' }]);
+  });
+
   it('names the model change with both models and puts it under Modell', () => {
     expect(draftChanges(base, edit({ model: { primary: 'a/two' } }))).toEqual([
       { area: 'model', topic: 'model', kind: 'changed', before: 'a/one', after: 'a/two' },

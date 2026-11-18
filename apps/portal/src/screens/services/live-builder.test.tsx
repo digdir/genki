@@ -256,7 +256,7 @@ describe('the live builder', () => {
     await waitFor(() => expect(window.location.hash).toBe('#/services/ny-tjeneste'));
     const published = await waitFor(() => {
       const head = document.querySelector('.service-head') as HTMLElement;
-      expect(within(head).getByText('I bruk')).toBeTruthy();
+      expect(within(head).getByText('Versjon 1 i bruk')).toBeTruthy();
       return head;
     });
     expect(within(published).queryByText('Utkast')).toBeNull();
@@ -320,6 +320,7 @@ describe('the live builder', () => {
           status: 'completed',
           testSet: 'ts',
           version: 'draft',
+          draftRevision: 1,
           startedAt: '2099-01-01T10:00:00Z',
           total: 10,
           passed: 8,
@@ -332,6 +333,25 @@ describe('the live builder', () => {
       expect(within(page).queryByText('Testsettet er ikke kjørt mot utkastet')).toBeNull(),
     );
     expect(within(page).queryByText(/Uten testsett/)).toBeNull();
+  });
+
+  it('counts a draft test run only when it ran the saved revision of the draft', async () => {
+    const page = await openPublish(
+      [
+        {
+          id: 'r1',
+          status: 'completed',
+          testSet: 'ts',
+          version: 'draft',
+          draftRevision: 99,
+          startedAt: '2099-01-01T10:00:00Z',
+          total: 10,
+          passed: 8,
+        },
+      ],
+      [{ id: 'ts', name: 'Spørsmål', cases: 10 }],
+    );
+    expect(await within(page).findByText('Testsettet er ikke kjørt mot utkastet')).toBeTruthy();
   });
 
   it('warns about a missing test set, and about a test set not run against the draft', async () => {
@@ -435,7 +455,7 @@ describe('the live builder and the server draft', () => {
   it('opening a service opens its draft once', async () => {
     const { calls } = await openService('#/services/rapportassistenten/setup');
     await screen.findByRole('heading', { level: 1, name: 'Rapportassistenten' });
-    await screen.findByText(/^Versjon 7 i bruk · publisert/);
+    await screen.findByText('Versjon 7 i bruk');
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(calls.filter((c) => c.url.endsWith('/draft?rebase=clean'))).toHaveLength(1);
   });
@@ -482,7 +502,7 @@ describe('the live builder and the server draft', () => {
           }).textContent,
         ).toBe(tab),
       );
-      expect(within(header).getByText(/^Versjon 7/).textContent).toBe(shown);
+      expect(within(header).getByText(/^Versjon 7 i bruk · publisert/).textContent).toBe(shown);
     }
     expect(header.isConnected).toBe(true);
     expect(
@@ -492,7 +512,7 @@ describe('the live builder and the server draft', () => {
 
   it('switching tabs while the definition is fresh sends no request for it again', async () => {
     const { calls } = await openService('#/services/rapportassistenten/setup');
-    await screen.findByText(/^Versjon 7 i bruk · publisert/);
+    await screen.findByText('Versjon 7 i bruk');
     await new Promise((resolve) => setTimeout(resolve, 50));
     const definitionReads = () =>
       calls.filter(
@@ -558,7 +578,7 @@ describe('the live builder and the server draft', () => {
     const header = (
       await screen.findByRole('heading', { level: 1, name: 'Rapportassistenten' })
     ).closest('header') as HTMLElement;
-    expect(await within(header).findByText(/^Versjon 7 i bruk · publisert/)).toBeTruthy();
+    expect(await within(header).findByText('Versjon 7 i bruk')).toBeTruthy();
 
     const found = exampleServices.find((s) => s.id === 'rapportassistenten');
     await fetch('/api/definitions', {
@@ -579,7 +599,7 @@ describe('the live builder and the server draft', () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
 
     expect(definitionReads()).toBe(before);
-    expect(within(header).getByText(/^Versjon 7 i bruk · publisert/)).toBeTruthy();
+    expect(within(header).getByText('Versjon 7 i bruk')).toBeTruthy();
   });
 });
 
