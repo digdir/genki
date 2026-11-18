@@ -9,6 +9,7 @@ import type {
   PlaygroundServiceVersion,
   PlaygroundSetup,
   PlaygroundSource,
+  PlaygroundStrategy,
   PlaygroundVariant,
   PlaygroundStreamEvent,
   RunStats,
@@ -28,12 +29,31 @@ export const decisionQuestion =
   'Eksempel IL søker om 120 000 kr til nytt øvingslokale. Alle vilkår er oppfylt. Lag et vedtak.';
 export const phoneQuestion = 'Hva står det i årsrapporten om ventetid på telefon?';
 
-const draftOf = (setup: PlaygroundServiceVersion['setup'], version: number) => ({
+const draftOf = (
+  setup: PlaygroundServiceVersion['setup'],
+  version: number,
+  strategy: PlaygroundStrategy,
+) => ({
   latestVersion: version - 1,
   versions: [
-    { version, draft: true, inUse: false, setup },
-    { version: version - 1, draft: false, inUse: true, setup },
+    { version, draft: true, inUse: false, setup, strategy },
+    { version: version - 1, draft: false, inUse: true, setup, strategy },
   ],
+});
+
+const agentLoop: PlaygroundStrategy = {
+  id: 'agent-loop',
+  version: 1,
+  title: { nb: 'Agent (søker selv)', en: 'Agent (searches by itself)' },
+  takesInstructions: true,
+};
+
+const stepFlow = (id: string, version: number, nb: string, en: string): PlaygroundStrategy => ({
+  id: 'step-flow',
+  version: 1,
+  title: { nb: 'Fast stegflyt', en: 'Fixed step flow' },
+  takesInstructions: false,
+  flow: { ref: `${id}@${version}`, id, version, title: { nb, en } },
 });
 
 export const examplePlaygroundOptions: PlaygroundOptions = {
@@ -46,12 +66,13 @@ export const examplePlaygroundOptions: PlaygroundOptions = {
       ...draftOf(
         {
           model: 'aivar/borealis-27b',
-          datasets: ['digdir/kudos', '999888777/nettsider'],
+          datasets: ['digdir/kudos'],
           skills: [],
           blocks: ['hybridsok', 'rangering', 'personvernfilter', 'kildekrav'],
           output: 'text',
         },
-        4,
+        8,
+        agentLoop,
       ),
     },
     {
@@ -66,6 +87,7 @@ export const examplePlaygroundOptions: PlaygroundOptions = {
           output: 'fields',
         },
         2,
+        stepFlow('les-soknad', 2, 'Les søknaden', 'Read the application'),
       ),
     },
     {
@@ -80,17 +102,31 @@ export const examplePlaygroundOptions: PlaygroundOptions = {
           output: 'fields',
         },
         6,
+        stepFlow('postsortering-flyt', 1, 'Sorter posten', 'Sort the mail'),
       ),
     },
   ],
   models: [
-    { id: 'aivar/borealis-27b', name: 'Borealis-27B', dataLocation: 'norway', status: 'allowed' },
-    { id: 'aivar/qwen3-8', name: 'Qwen3.8-27B', dataLocation: 'norway', status: 'allowed' },
+    {
+      id: 'aivar/borealis-27b',
+      name: 'Borealis-27B',
+      dataLocation: 'norway',
+      status: 'allowed',
+      price: { inputPerThousand: 0.0119, outputPerThousand: 0.0952 },
+    },
+    {
+      id: 'aivar/qwen3-8',
+      name: 'Qwen3.8-27B',
+      dataLocation: 'norway',
+      status: 'allowed',
+      price: { inputPerThousand: 0.0076, outputPerThousand: 0.0459 },
+    },
     {
       id: 'foundry-openai/gpt-4.1',
       name: 'GPT-4.1 (Azure OpenAI)',
       dataLocation: 'eu',
       status: 'requires_approval',
+      price: { inputPerThousand: 0.0184, outputPerThousand: 0.0736 },
       policy: {
         block: 'foundry-openai/gpt-4.1',
         rule: 'Data behandles i EU/EØS, men ikke i Norge. Digdir må godkjenne at Testetaten tar modellen i bruk før den kan prøves her.',
@@ -103,6 +139,7 @@ export const examplePlaygroundOptions: PlaygroundOptions = {
       name: 'GPT-5 (OpenAI)',
       dataLocation: 'global',
       status: 'not_allowed',
+      price: null,
       policy: {
         block: 'openai/gpt-5',
         rule: 'Regelen er at data skal behandles i Norge eller EU/EØS. GPT-5 behandler data i USA. Regelen er plattforminnstillingen «Tillatt datalagring», som Digdir eier. Digdir kan endre den, og administratorer hos dere kan be Digdir om et unntak. Det gjelder også i prøveområdet.',
@@ -745,10 +782,9 @@ export const startChoices = (options: PlaygroundOptions, t: T = nbT) => [
   ...options.services.flatMap((service) =>
     service.versions.map((version) => ({
       key: `${encodeURIComponent(service.id)}/${versionKeyOf(version)}`,
-      label: t('playground.startService', {
-        name: service.name,
-        version: versionLabel(version, t).toLowerCase(),
-      }),
+      label: version.draft
+        ? t('playground.startDraft', { name: service.name })
+        : t('playground.startVersion', { name: service.name, version: version.version }),
     })),
   ),
   { key: emptyStart, label: t('playground.startEmpty') },
@@ -781,19 +817,123 @@ export const setupFromStart = (
 const startModel = (options: PlaygroundOptions, setup: PlaygroundSetup) =>
   variantOf(options, setup)?.model ?? versionOf(options, setup)?.version.setup.model;
 
-export const changedFromStart = (options: PlaygroundOptions, setup: PlaygroundSetup) => {
+export type SetupChange =
+  { kind: 'model' } | { kind: 'instructions' } | { kind: 'dataset'; id: string; on: boolean };
+
+export const instructionsChanged = (setup: PlaygroundSetup, base: string | undefined) =>
+  setup.instructions !== undefined &&
+  setup.instructions.trim() !== '' &&
+  setup.instructions !== (base ?? '');
+
+export const changedFromStart = (
+  options: PlaygroundOptions,
+  setup: PlaygroundSetup,
+  base?: string,
+): SetupChange[] => {
+  const found = versionOf(options, setup);
+  if (!found) return [];
   const model = startModel(options, setup);
-  return model !== undefined && model !== setup.model ? ['model' as const] : [];
+  const before = found.version.setup.datasets;
+  return [
+    ...(model !== undefined && model !== setup.model ? [{ kind: 'model' as const }] : []),
+    ...(instructionsChanged(setup, base) ? [{ kind: 'instructions' as const }] : []),
+    ...setup.datasets
+      .filter((d) => !before.includes(d))
+      .map((id) => ({ kind: 'dataset' as const, id, on: true })),
+    ...before
+      .filter((d) => !setup.datasets.includes(d))
+      .map((id) => ({ kind: 'dataset' as const, id, on: false })),
+  ];
 };
+
+export const changeText = (options: PlaygroundOptions, change: SetupChange, t: T = nbT) =>
+  change.kind === 'model'
+    ? t('playground.changeModel')
+    : change.kind === 'instructions'
+      ? t('playground.changeInstructions')
+      : t(change.on ? 'playground.changeDatasetOn' : 'playground.changeDatasetOff', {
+          name: nameIn(options.datasets, change.id),
+        });
+
+export const startWord = (options: PlaygroundOptions, setup: PlaygroundSetup, t: T = nbT) => {
+  const found = versionOf(options, setup);
+  if (!found) return t('playground.startEmpty').toLowerCase();
+  return found.version.draft
+    ? t('playground.fromDraft')
+    : t('playground.fromVersion', { version: found.version.version });
+};
+
+export const changesLine = (
+  options: PlaygroundOptions,
+  setup: PlaygroundSetup,
+  base: string | undefined,
+  t: T = nbT,
+) => {
+  const changes = changedFromStart(options, setup, base);
+  return changes.length
+    ? t('playground.changesFromStart', {
+        count: changes.length,
+        start: startWord(options, setup, t),
+        list: changes.map((c) => changeText(options, c, t)).join(', '),
+      })
+    : undefined;
+};
+
+export const strategyOf = (options: PlaygroundOptions, setup: PlaygroundSetup) =>
+  variantOf(options, setup)?.strategy ?? versionOf(options, setup)?.version.strategy;
+
+export const takesInstructions = (options: PlaygroundOptions, setup: PlaygroundSetup) =>
+  strategyOf(options, setup)?.takesInstructions !== false;
+
+export const workText = (
+  strategy: PlaygroundStrategy,
+  language: 'nb' | 'en',
+  t: T = nbT,
+  short = false,
+) => {
+  const title = strategy.title[language];
+  const flow = strategy.flow;
+  if (!flow) return title;
+  const name = flow.title[language];
+  return short
+    ? t('playground.workFlowShort', { flow: name, version: flow.version })
+    : t('playground.workFlow', { strategy: title, flow: name, version: flow.version });
+};
+
+export const priceText = (model: PlaygroundModelOption, f: Format = nbFormat, t: T = nbT) =>
+  model.price
+    ? t('playground.pricePerThousand', {
+        input: f.number(model.price.inputPerThousand, { maximumFractionDigits: 4 }),
+        output: f.number(model.price.outputPerThousand, { maximumFractionDigits: 4 }),
+      })
+    : notPricedLabel(t);
+
+export const modelFactsText = (model: PlaygroundModelOption, f: Format = nbFormat, t: T = nbT) =>
+  t('playground.modelFacts', {
+    where: t(locationShort[model.dataLocation]),
+    price: priceText(model, f, t),
+  });
 
 export type SetupPart = 'model' | 'instructions' | 'knowledge';
 
 const sameList = (x: string[], y: string[]) =>
   x.length === y.length && x.every((v) => y.includes(v));
 
-export const setupDifferences = (a: PlaygroundSetup, b: PlaygroundSetup): SetupPart[] => [
+export const effectiveInstructions = (setup: PlaygroundSetup, base: string | undefined) =>
+  setup.instructions !== undefined && setup.instructions.trim() !== ''
+    ? setup.instructions
+    : (base ?? '');
+
+export const setupDifferences = (
+  a: PlaygroundSetup,
+  b: PlaygroundSetup,
+  baseA?: string,
+  baseB?: string,
+): SetupPart[] => [
   ...(a.model === b.model ? [] : ['model' as const]),
-  ...((a.instructions ?? '') === (b.instructions ?? '') ? [] : ['instructions' as const]),
+  ...(effectiveInstructions(a, baseA) === effectiveInstructions(b, baseB)
+    ? []
+    : ['instructions' as const]),
   ...(sameList(a.datasets, b.datasets) ? [] : ['knowledge' as const]),
 ];
 
@@ -853,5 +993,12 @@ export const timedSteps = (steps: TimelineStep[]) =>
 export const withInstructions = (setup: PlaygroundSetup, text: string): PlaygroundSetup => {
   const next = { ...setup };
   delete next.instructions;
-  return text.trim() ? { ...next, instructions: text } : next;
+  return text.trim() || setup.service ? { ...next, instructions: text } : next;
+};
+
+export const runnableSetup = (setup: PlaygroundSetup): PlaygroundSetup => {
+  if (setup.instructions === undefined || setup.instructions.trim()) return setup;
+  const next = { ...setup };
+  delete next.instructions;
+  return next;
 };

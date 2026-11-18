@@ -18,9 +18,9 @@ export const RunTimeline = ({ steps }: { steps: TimelineStep[] }) => {
   return (
     <section aria-labelledby={`${id}-title`} className="playground-gantt">
       <div className="playground-gantt-head">
-        <h3 id={`${id}-title`} className="playground-gantt-title">
+        <h2 id={`${id}-title`} className="playground-gantt-title">
           {t('playground.timelineAnswer')}
-        </h3>
+        </h2>
         <span className="playground-subtle">{t('playground.timelineHint')}</span>
       </div>
       {steps.length === 0 ? (
@@ -79,7 +79,7 @@ export const TimelineStrip = ({ steps, side }: { steps: TimelineStep[]; side: st
   if (timed.length === 0) return null;
   const total = timed.reduce((sum, s) => sum + (s.durationSeconds ?? 0), 0);
   const summary = timed
-    .map((s) => `${s.title} ${formatDuration(s.durationSeconds ?? 0, f, t)}`)
+    .map((s) => `${s.title} ${t('common.seconds', { value: f.decimal(s.durationSeconds ?? 0) })}`)
     .join(' · ');
   return (
     <div className="playground-strip-wrap">

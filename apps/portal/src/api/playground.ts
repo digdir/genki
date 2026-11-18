@@ -23,10 +23,31 @@ export interface PlaygroundSetup {
   output: PlaygroundOutput;
 }
 
+export interface PlaygroundText {
+  nb: string;
+  en: string;
+}
+
+export interface PlaygroundFlow {
+  ref: string;
+  id: string;
+  version: number;
+  title: PlaygroundText;
+}
+
+export interface PlaygroundStrategy {
+  id: string;
+  version: number;
+  title: PlaygroundText;
+  takesInstructions: boolean;
+  flow?: PlaygroundFlow;
+}
+
 export interface PlaygroundVariant {
   id: string;
   title?: string;
   model?: string;
+  strategy?: PlaygroundStrategy;
 }
 
 export interface PlaygroundServiceVersion {
@@ -34,6 +55,7 @@ export interface PlaygroundServiceVersion {
   draft: boolean;
   inUse: boolean;
   setup: Omit<PlaygroundSetup, 'service'>;
+  strategy?: PlaygroundStrategy;
   variants?: PlaygroundVariant[];
   inputFields?: PlaygroundInputField[];
 }
@@ -61,6 +83,12 @@ export interface PlaygroundModelOption {
   status: PlaygroundModelStatus;
   policy?: PlaygroundPolicy;
   candidate?: true;
+  price?: PlaygroundPrice | null;
+}
+
+export interface PlaygroundPrice {
+  inputPerThousand: number;
+  outputPerThousand: number;
 }
 
 export interface PlaygroundNamed {

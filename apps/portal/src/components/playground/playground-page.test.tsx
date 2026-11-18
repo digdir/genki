@@ -42,7 +42,7 @@ const run = async (text = question) => {
     target: { value: text },
   });
   fireEvent.click(screen.getByRole('button', { name: 'Kjør' }));
-  return screen.findByRole('link', { name: 'Se kjøringen' });
+  return screen.findByRole('link', { name: 'Åpne i Logg' });
 };
 
 describe('the playground page', () => {
@@ -55,7 +55,7 @@ describe('the playground page', () => {
     };
     await renderAt('#/playground', pending);
 
-    expect(await screen.findByRole('heading', { level: 1, name: 'Prøveområde' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { level: 1, name: 'Prøveområdet' })).toBeTruthy();
     expect(
       screen
         .getByRole('button', { name: 'Sammenlign med et annet oppsett' })
@@ -85,11 +85,191 @@ describe('the playground page', () => {
     expectAccessible();
   });
 
-  it('shows only the knowledge of a service version, since the run uses the version as it is', async () => {
+  it('sends instructions and knowledge changed on a service start with the run and counts them as changes', async () => {
+    const runs: PlaygroundRunRequest[] = [];
+    const panel = await openPage({ runs });
+
+    const instructions = within(panel).getByRole('textbox', { name: 'Instruksjoner' });
+    await waitFor(() =>
+      expect((instructions as HTMLTextAreaElement).value).toMatch(/^Svar saksbehandlere/),
+    );
+    fireEvent.change(instructions, { target: { value: 'Svar kort. Vis kilden.' } });
+    fireEvent.click(within(panel).getByRole('checkbox', { name: 'Tilsynsrapporter 2025' }));
+
+    expect(
+      within(panel).getByText('2 endringer fra utkastet: instruksjoner, Tilsynsrapporter 2025 på.'),
+    ).toBeTruthy();
+    await run();
+    expect(runs[0]?.setup).toMatchObject({
+      service: { id: 'rapportassistenten', version: 'draft' },
+      instructions: 'Svar kort. Vis kilden.',
+      datasets: ['digdir/kudos', '999888777/tilsynsrapporter-2025'],
+    });
+  });
+
+  it('shows the instructions read-only with the reason when the way of working has no instructions field', async () => {
+    const runs: PlaygroundRunRequest[] = [];
+    const panel = await openPage({ runs });
+    chooseStart(panel, 'Postsortering, utkast');
+
+    const instructions = within(panel).getByRole('textbox', { name: 'Instruksjoner' });
+    expect(instructions.hasAttribute('readonly')).toBe(true);
+    expect(instructions.getAttribute('aria-describedby')).toBeTruthy();
+    expect(
+      document.getElementById(instructions.getAttribute('aria-describedby') ?? '')?.textContent,
+    ).toMatch(/har ingen instruksjoner å bytte ut/);
+    expect(within(panel).getByText('Fast stegflyt «Sorter posten», v1')).toBeTruthy();
+    expect(runs).toHaveLength(0);
+  });
+
+  it('shows the price of each model from the playground options with where its data is processed', async () => {
     const panel = await openPage();
 
-    expect(within(panel).queryByRole('checkbox')).toBeNull();
-    expect(within(panel).queryByRole('textbox', { name: 'Instruksjoner' })).toBeNull();
+    expect(within(panel).getByText('Data i Norge · 0,0119 / 0,0952 kr')).toBeTruthy();
+  });
+
+  it('saves the changes in the service draft only after asking, and never publishes', async () => {
+    const requests: { method: string; url: string; body?: unknown }[] = [];
+    const inner = mockFetch();
+    const recording: typeof fetch = (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      requests.push({
+        method: init?.method ?? 'GET',
+        url,
+        ...(typeof init?.body === 'string' ? { body: JSON.parse(init.body) as unknown } : {}),
+      });
+      return inner(input, init);
+    };
+    await renderAt('#/playground', recording);
+    const panel = await screen.findByRole('complementary', { name: 'Oppsett' });
+    const instructions = within(panel).getByRole('textbox', { name: 'Instruksjoner' });
+    await waitFor(() =>
+      expect((instructions as HTMLTextAreaElement).value).toMatch(/^Svar saksbehandlere/),
+    );
+    fireEvent.change(instructions, { target: { value: 'Svar kort. Vis kilden.' } });
+
+    fireEvent.click(
+      within(panel).getByRole('button', { name: 'Lagre i utkastet til Rapportassistenten' }),
+    );
+    const dialog = screen.getByRole('dialog', { name: 'Lagre i utkastet til Rapportassistenten?' });
+    expect(within(dialog).getByText('instruksjoner')).toBeTruthy();
+    expect(within(dialog).getByText(/blir ikke publisert/)).toBeTruthy();
+    const writes = () => requests.filter((r) => r.method !== 'GET');
+    expect(writes().filter((r) => r.url.endsWith('/draft'))).toHaveLength(0);
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Lagre i utkastet' }));
+    expect(
+      await screen.findByText(
+        'Endringene er lagret i utkastet til Rapportassistenten. Ingenting er publisert.',
+      ),
+    ).toBeTruthy();
+    expect(
+      screen
+        .getByRole('link', { name: 'Åpne utkastet til Rapportassistenten' })
+        .getAttribute('href'),
+    ).toBe('#/services/rapportassistenten/setup');
+    const saved = writes().find(
+      (r) => r.method === 'PUT' && r.url.endsWith('/services/rapportassistenten/draft'),
+    );
+    expect(saved?.body).toMatchObject({
+      definition: { spec: { strategy: { config: { instructions: 'Svar kort. Vis kilden.' } } } },
+    });
+    expect(
+      writes().filter((r) => r.url.includes('publish') || /\/definitions$/.test(r.url)),
+    ).toEqual([]);
+  });
+
+  it('stops counting instructions as a change once they are saved in the draft', async () => {
+    const panel = await openPage();
+    const instructions = within(panel).getByRole('textbox', { name: 'Instruksjoner' });
+    await waitFor(() =>
+      expect((instructions as HTMLTextAreaElement).value).toMatch(/^Svar saksbehandlere/),
+    );
+    fireEvent.change(instructions, { target: { value: 'Svar kort. Vis kilden.' } });
+    expect(within(panel).getByText('1 endring fra utkastet: instruksjoner.')).toBeTruthy();
+
+    fireEvent.click(
+      within(panel).getByRole('button', { name: 'Lagre i utkastet til Rapportassistenten' }),
+    );
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: 'Lagre i utkastet' }),
+    );
+    await screen.findByText(/Endringene er lagret i utkastet/);
+
+    await waitFor(() => expect(within(panel).queryByText(/endring fra utkastet/)).toBeNull());
+    expect((instructions as HTMLTextAreaElement).value).toBe('Svar kort. Vis kilden.');
+  });
+
+  it('keeps a dataset the draft added when saving a change made from an older version', async () => {
+    const puts: { definition: { spec: { knowledge?: { datasets?: { dataset: string }[] } } } }[] =
+      [];
+    const inner = mockFetch();
+    const recording: typeof fetch = (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (init?.method === 'PUT' && url.endsWith('/draft') && typeof init.body === 'string')
+        puts.push(JSON.parse(init.body) as (typeof puts)[number]);
+      return inner(input, init);
+    };
+    await renderAt('#/playground', recording);
+    const panel = await screen.findByRole('complementary', { name: 'Oppsett' });
+    const save = async () => {
+      fireEvent.click(
+        within(panel).getByRole('button', { name: 'Lagre i utkastet til Rapportassistenten' }),
+      );
+      fireEvent.click(
+        within(screen.getByRole('dialog')).getByRole('button', { name: 'Lagre i utkastet' }),
+      );
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    };
+
+    fireEvent.click(
+      within(panel).getByRole('checkbox', { name: 'Veiledere fra Statens eksempelverk' }),
+    );
+    await save();
+    chooseStart(panel, 'Rapportassistenten, versjon 7');
+    fireEvent.click(within(panel).getByRole('checkbox', { name: 'Tilsynsrapporter 2025' }));
+    expect(
+      within(panel).getByText('1 endring fra versjon 7: Tilsynsrapporter 2025 på.'),
+    ).toBeTruthy();
+    await save();
+
+    expect(puts).toHaveLength(2);
+    expect(puts[1]?.definition.spec.knowledge?.datasets?.map((d) => d.dataset)).toEqual(
+      expect.arrayContaining(['999888777/veiledere', '999888777/tilsynsrapporter-2025']),
+    );
+  });
+
+  it('shows the way of working on each side and offers to use B in its draft only after asking', async () => {
+    await openPage();
+    fireEvent.click(screen.getByRole('button', { name: 'Sammenlign med et annet oppsett' }));
+    const sideA = screen.getByRole('region', { name: /^Oppsett A:/ });
+    const sideB = screen.getByRole('region', { name: /^Oppsett B:/ });
+    expect(within(sideA).getByText('Arbeidsmåte').nextElementSibling?.textContent).toBe(
+      'Agent (søker selv)',
+    );
+    expect(within(sideA).queryByRole('button', { name: 'Bruk A i utkastet' })).toBeNull();
+
+    fireEvent.click(within(sideB).getByRole('button', { name: 'Bruk B i utkastet' }));
+    const dialog = screen.getByRole('dialog', { name: 'Lagre i utkastet til Rapportassistenten?' });
+    expect(within(dialog).getByText('modell')).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Avbryt' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('names the sources of an answer in one line and opens a source from its citation', async () => {
+    await openPage();
+    await run();
+
+    const answer = screen.getByRole('article');
+    expect(
+      within(answer).getByText(/^Kilder?: Evaluering av digital veiledning i Testetaten \(2023\)/),
+    ).toBeTruthy();
+    expect(within(answer).queryByRole('list', { name: 'Kilder' })).toBeNull();
+    const [citation] = within(answer).getAllByRole('button', { name: /Kilde 1/ });
+    fireEvent.click(citation as HTMLElement);
+    expect(
+      within(answer).getByRole('region', { name: /Evaluering av digital veiledning/ }),
+    ).toBeTruthy();
   });
 
   it('picks the model with the model picker and counts it as a change from the start', async () => {
@@ -101,9 +281,7 @@ describe('the playground page', () => {
     fireEvent.click(within(picker).getByRole('radio', { name: /Qwen3\.8-27B/ }));
     fireEvent.click(within(picker).getByRole('button', { name: 'Bruk Qwen3.8-27B' }));
 
-    expect(
-      within(panel).getByText(/^1 endring fra rapportassistenten, .*: modell\.$/),
-    ).toBeTruthy();
+    expect(within(panel).getByText(/^1 endring fra utkastet: modell\.$/)).toBeTruthy();
     await run();
     expect(runs[0]?.setup.model).toBe('aivar/qwen3-8');
   });
@@ -140,7 +318,7 @@ describe('the playground page', () => {
     const sideA = screen.getByRole('region', { name: /^Oppsett A:/ });
     const marks = within(sideA)
       .getAllByText('Ulikt')
-      .map((tag) => tag.closest('dt')?.firstChild?.textContent);
+      .map((tag) => tag.closest('dd')?.previousElementSibling?.textContent);
     expect(marks).toEqual(['Modell']);
 
     const sideB = screen.getByRole('region', { name: /^Oppsett B:/ });
@@ -149,8 +327,8 @@ describe('the playground page', () => {
     expect(
       within(sideA)
         .getAllByText('Ulikt')
-        .map((tag) => tag.closest('dt')?.firstChild?.textContent),
-    ).toEqual(['Modell', 'Kunnskap']);
+        .map((tag) => tag.closest('dd')?.previousElementSibling?.textContent),
+    ).toEqual(['Modell', 'Instruksjoner', 'Kunnskap']);
   });
 
   it('hides and shows the setup of one side with a button that says whether it is open', async () => {

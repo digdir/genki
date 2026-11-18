@@ -93,7 +93,16 @@ export const exampleServices: DefinitionWithHistory[] = [
       riskClass: 'limited',
       audience: ['employees'],
       output: { kind: 'answer', withSources: true },
-      strategy: { id: 'agent-loop', version: 1, config: { maxSteps: 8, tokenBudget: 20000 } },
+      strategy: {
+        id: 'agent-loop',
+        version: 1,
+        config: {
+          maxSteps: 8,
+          tokenBudget: 20000,
+          instructions:
+            'Svar saksbehandlere i Testetaten på spørsmål om evalueringer. Bruk bare rapportene og nettsidene. Vis alltid kilden med dato.',
+        },
+      },
       knowledge: { datasets: [{ dataset: 'digdir/kudos' }], runtimeDocuments: false },
       tools: ['rag@1'],
       model: { primary: 'aivar/borealis-27b', fallback: 'aivar/qwen3-8', residency: 'norway' },

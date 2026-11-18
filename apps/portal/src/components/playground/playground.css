@@ -813,7 +813,7 @@
   margin: 0;
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr);
-  gap: 10px 14px;
+  gap: 4px 14px;
   font-size: 14px;
 }
 
@@ -833,6 +833,10 @@
 .playground-side-row dd {
   margin: 0;
   min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
 }
 
 .playground-side-instructions {
@@ -886,4 +890,144 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 8px 14px;
+}
+
+.playground-model-box {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--ds-color-neutral-border-default);
+  border-radius: var(--ds-border-radius-md);
+}
+
+.playground-model-text {
+  flex: 1 1 160px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.playground-model-text strong {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.playground-model-text .playground-subtle {
+  font-size: 13px;
+}
+
+.playground-model-box .mp-chosen,
+.playground-side-picker .mp-chosen {
+  padding: 0;
+  border: 0;
+}
+
+.playground-model-box .mp-chosen-text,
+.playground-side-picker .mp-chosen-text {
+  display: none;
+}
+
+.playground-model-box .mp-chosen .ds-button,
+.playground-side-picker .mp-chosen .ds-button,
+.playground-draft-link.ds-button,
+.playground-inline-action.ds-button {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ds-color-accent-text-subtle);
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: underline;
+}
+
+.playground-draft-link.ds-button {
+  font-size: 15px;
+}
+
+.playground-side-picker {
+  display: contents;
+}
+
+.playground-draft-primary {
+  align-self: flex-start;
+  margin-top: 4px;
+}
+
+.playground-answer[data-layout='page'] {
+  gap: 8px;
+  padding: 14px 16px;
+}
+
+.playground-answer[data-layout='plain'] {
+  gap: 10px;
+  padding: 0;
+  border: 0;
+}
+
+.playground-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  padding-top: 8px;
+  border-top: 1px solid var(--ds-color-neutral-border-subtle);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ds-color-neutral-text-subtle);
+}
+
+.playground-panel[data-layout='page'] .playground-question {
+  max-width: 75%;
+}
+
+.playground-panel[data-layout='page'] .playground-question-who {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.playground-side-row dd .ds-tag {
+  font-size: 12px;
+  padding: 0 6px;
+  min-height: 0;
+}
+
+.playground-setup .ds-label,
+.playground-setup legend {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.playground-setup textarea,
+.playground-setup select {
+  font-size: 15px;
+  padding: 8px 10px;
+}
+
+.playground-setup fieldset .ds-label,
+.playground-setup fieldset > span {
+  font-size: 15px;
+  font-weight: 400;
+}
+
+.playground-panel[data-layout='page'] .playground-input {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.playground-setup fieldset legend,
+.playground-setup fieldset legend .ds-label {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.playground-source-line {
+  margin: 0;
+  font-size: 14px;
+  color: var(--ds-color-neutral-text-subtle);
 }
