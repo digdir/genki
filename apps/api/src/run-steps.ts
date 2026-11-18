@@ -182,6 +182,38 @@ export const warningText = (warning: string) => {
   return undefined;
 };
 
+const searchStrategies: Record<string, () => string> = {
+  content: () => t('steps.searchByContent'),
+  metadata: () => t('steps.searchByMetadata'),
+  phrase: () => t('steps.searchByPhrase'),
+  'doc-title': () => t('steps.searchByDocTitle'),
+};
+
+const searchFailures: Record<string, (search: string) => string> = {
+  timeout: (search) => t('steps.searchTimedOut', { search }),
+  'query-too-long': (search) => t('steps.searchQueryTooLong', { search }),
+  'text-unavailable': (search) => t('steps.searchTextUnavailable', { search }),
+  'vector-unavailable': (search) => t('steps.searchVectorUnavailable', { search }),
+};
+
+const own = <T>(map: Record<string, T>, key: string) =>
+  Object.hasOwn(map, key) ? map[key] : undefined;
+
+/** "innholdssøket tok for lang tid, metadatasøket feilet" from the agent loop's failed strategies. */
+const failedSearchText = (failed: unknown) => {
+  const lines = (Array.isArray(failed) ? failed : []).flatMap((item) => {
+    const { strategy, reason } = record(item);
+    if (typeof strategy !== 'string') return [];
+    const search =
+      own(searchStrategies, strategy)?.() ?? t('steps.searchByOther', { name: strategy });
+    const text = own(searchFailures, String(reason));
+    return [text ? text(search) : t('steps.searchErred', { search })];
+  });
+  return lines.length ? lines.join(', ') : undefined;
+};
+
+const sentence = (text: string) => `${text.charAt(0).toUpperCase()}${text.slice(1)}.`;
+
 const stepStatus: Record<string, ApiKey> = {
   started: 'steps.running',
   done: 'runs.stepDone',
@@ -352,6 +384,8 @@ export class RunMapper {
   private readonly skippedDocs = new Set<string>();
   private readonly documents = new Set<string>();
   private readonly warnings: string[] = [];
+  /** Open steps that turn partial when they close, so they keep their duration and their reads. */
+  private readonly partialOnClose = new Set<TimelineStep>();
   private readonly byModel = new Map<string, ModelTokens>();
   private errorStep: TimelineStep | undefined;
   private unreadableStep: TimelineStep | undefined;
@@ -498,9 +532,14 @@ export class RunMapper {
 
   private close(step: TimelineStep, ts: number) {
     if (step.state !== 'running') return;
-    delete step.state;
+    this.settle(step);
     step.durationSeconds ??= round(this.offset(ts) - step.at);
     this.emit(step);
+  }
+
+  private settle(step: TimelineStep) {
+    if (this.partialOnClose.delete(step)) step.state = 'partial';
+    else delete step.state;
   }
 
   private closeAll(ts: number) {
@@ -772,6 +811,18 @@ export class RunMapper {
       step.warning = true;
       step.blocks.push({ kind: 'note', text: t('steps.filterFellBack') });
       this.warn(t('steps.warnFellBack'));
+    }
+    const failed = failedSearchText(data.failed);
+    if (failed) {
+      if (open) this.partialOnClose.add(open);
+      else step.state = 'partial';
+      step.warning = true;
+      step.summary = `${step.summary} · ${failed}`;
+      step.blocks.push({
+        kind: 'note',
+        text: `${sentence(failed)} ${t('steps.searchOthersOnly')}`,
+      });
+      this.warn(sentence(failed));
     }
     if (this.details) step.raw = { ...record(step.raw), retrieval: data };
     if (open) this.emit(open);
@@ -1185,7 +1236,7 @@ export class RunMapper {
       if (!step) return;
       const ms = num(call['duration-ms']);
       if (ms !== undefined) step.durationSeconds = round(ms / 1000);
-      if (step.state === 'running') delete step.state;
+      if (step.state === 'running') this.settle(step);
       if (call['ok?'] === false) step.state = 'failed';
       const pending = step.summary === t('steps.running');
       if (

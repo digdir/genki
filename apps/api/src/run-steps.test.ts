@@ -122,6 +122,79 @@ describe('the run mapper', () => {
     });
   });
 
+  it('a failed search strategy shows as a warning on the search step in the timeline', () => {
+    seq = 0;
+    const run = mapRun([
+      at(0, 'kernel.task.status', { status: 'running' }),
+      notice(420, { stage: 'tool', tool: 'search', iteration: 0 }),
+      notice(16_000, {
+        kind: 'retrieval',
+        queries: ['ventetid'],
+        hits: [{ id: 'c1', document: 'd1' }],
+        failed: [
+          { strategy: 'content', reason: 'timeout' },
+          { strategy: 'metadata', reason: 'error' },
+        ],
+      }),
+      notice(16_100, { kind: 'read', auto: true, chunks: [{ id: 'c1', document: 'd1' }] }),
+      notice(16_200, {
+        event: 'agent/turn-completed',
+        iteration: 0,
+        'tool-calls': [
+          { tool: 'search', args: { queries: ['ventetid'] }, 'ok?': true, 'duration-ms': 15_600 },
+        ],
+      }),
+    ]);
+
+    const search = run.steps.find((s) => s.type === 'search');
+    const failed = 'innholdssøket tok for lang tid, metadatasøket feilet';
+    expect(search).toMatchObject({ warning: true, state: 'partial', durationSeconds: 15.6 });
+    expect(search?.summary).toBe(
+      `«ventetid» · 1 treff · ${failed} · leste 1 tekstbit fra 1 dokument`,
+    );
+    expect(search?.blocks).toContainEqual({
+      kind: 'note',
+      text: 'Innholdssøket tok for lang tid, metadatasøket feilet. Treffene kommer bare fra søkene som virket.',
+    });
+    expect(run.stats().warnings).toEqual(['Innholdssøket tok for lang tid, metadatasøket feilet.']);
+  });
+
+  it('names every failed strategy and why, an unknown strategy by its own name', () => {
+    seq = 0;
+    const run = mapRun([
+      at(0, 'kernel.task.status', { status: 'running' }),
+      notice(700, {
+        kind: 'retrieval',
+        queries: ['ventetid'],
+        hits: [],
+        failed: [
+          { strategy: 'doc-title', reason: 'query-too-long' },
+          { strategy: 'phrase', reason: 'text-unavailable' },
+          { strategy: 'metadata', reason: 'vector-unavailable' },
+          { strategy: '__proto__', reason: 'timeout' },
+          { strategy: 'toString', reason: 'error' },
+        ],
+      }),
+    ]);
+
+    const search = run.steps.find((s) => s.type === 'search');
+    expect(search).toMatchObject({ warning: true, state: 'partial' });
+    expect(run.stats().warnings).toEqual([
+      'Tittelsøket fikk en for lang spørring, frasesøket fikk ikke søkt på ord, bare på betydning, metadatasøket fikk ikke søkt på betydning, søket «__proto__» tok for lang tid, søket «toString» feilet.',
+    ]);
+  });
+
+  it('a search with no failed strategy is not marked as a warning', () => {
+    seq = 0;
+    const search = mapRun([
+      at(0, 'kernel.task.status', { status: 'running' }),
+      notice(700, { kind: 'retrieval', queries: ['ventetid'], hits: [{ id: 'c1' }] }),
+    ]).steps.find((s) => s.type === 'search');
+
+    expect(search?.warning).toBeUndefined();
+    expect(search?.blocks.some((b) => b.kind === 'note')).toBe(false);
+  });
+
   it('shows steps whose content was erased as one card that says so, not as unknown steps', () => {
     seq = 0;
     const steps = mapRun([
