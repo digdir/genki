@@ -1523,16 +1523,16 @@ export const mapRun = (events: Event[], options: RunMapperOptions = {}) => {
   return mapper;
 };
 
-export const failureDetail = (events: Event[]) => {
+const explainedBySearch = (code: string, reason: unknown) =>
+  code === 'strategy_error' || (code === 'deadline_exceeded' && reason === 'timeout');
+
+export const failureDetail = (events: Event[], code: string) => {
   for (const event of [...events].sort((a, b) => a.seq - b.seq)) {
     if (event.type !== 'kernel.notice') continue;
     const data = record(event.data);
-    if (data.kind !== 'retrieval') continue;
-    const failed =
-      data.failedCompletely !== undefined
-        ? searchFailureText(t('steps.searchByAll'), data.failedCompletely)
-        : failedSearchText(data.failed);
-    if (failed) return sentence(failed);
+    if (data.kind !== 'retrieval' || data.failedCompletely === undefined) continue;
+    if (!explainedBySearch(code, data.failedCompletely)) continue;
+    return sentence(searchFailureText(t('steps.searchByAll'), data.failedCompletely));
   }
   return undefined;
 };

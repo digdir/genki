@@ -73,7 +73,7 @@ describe('sources in answers', () => {
     expect(sources?.body).toEqual({ kind: 'json', json: { sources: [], insufficient: false } });
   });
 
-  it('leaves the source markers out of the streamed text too, also when a marker is split across pieces', async () => {
+  it('leaves the same source markers out of the streamed text as out of the answer, also when a marker is split across pieces', async () => {
     const registry = new SettingsRegistry(platformSettings);
     registry.setTenant(tenant, 'answers.showSources', false);
     const streaming: Strategy = {
@@ -85,15 +85,21 @@ describe('sources in answers', () => {
       },
     };
 
-    let streamed = '';
+    const events: Emitted[] = [];
     for await (const event of withSourcesSetting(registry, streaming).run(
       ctx,
       { data: { question: 'Kan jeg søke?' } },
       config(),
     ))
-      if (event.type === 'kernel.part.delta') streamed += (event.data as { text: string }).text;
+      events.push(event);
+    const streamed = events
+      .filter((e) => e.type === 'kernel.part.delta')
+      .map((e) => (e.data as { text: string }).text)
+      .join('');
 
+    const result = events.find((e) => e.type === 'kernel.result')?.data as Part[];
     expect(streamed).toBe('Du kan søke om tilskudd innen fristen.');
+    expect(result[0]?.body).toEqual({ kind: 'text', text: streamed });
   });
 
   it('lets a service turn sources back on when the organisation has turned them off', async () => {

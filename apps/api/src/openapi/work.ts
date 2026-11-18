@@ -262,7 +262,7 @@ const RunFailure = z
       .string()
       .optional()
       .describe(
-        "The specific cause from the run's timeline, such as 'The content search timed out.'; a fixed translated sentence, never engine or model text",
+        "Set only when every search in the run failed and that explains the failure: on strategy_error, or on deadline_exceeded when the searches timed out, such as 'Every search timed out.'. A fixed translated sentence, never engine or model text",
       ),
   })
   .openapi('RunFailure');

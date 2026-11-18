@@ -992,7 +992,7 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
     const out = new Map<string, TaskFailure>();
     for (const [task, found] of errors) {
       const failure = failureOf(found);
-      const detail = failure ? failureDetail(found) : undefined;
+      const detail = failure ? failureDetail(found, failure.code) : undefined;
       if (failure)
         out.set(task, {
           code: failure.code,

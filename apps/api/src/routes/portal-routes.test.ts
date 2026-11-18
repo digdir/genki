@@ -554,7 +554,7 @@ describe('portal routes', () => {
           ...shared.spec,
           availableTo: '*',
           languages: ['nb', 'nn'],
-          guardrails: { ...shared.spec.guardrails, language: { mode: 'nn' } },
+          guardrails: { language: { mode: 'nn' } },
         },
       },
       'employee:test:kari',
@@ -1518,7 +1518,7 @@ describe('usage totals with open units', () => {
 });
 
 describe('the failure cause on the run list', () => {
-  const failed = (task: string, message: string): Event =>
+  const failed = (task: string, message: string, code = 'deadline_exceeded'): Event =>
     ({
       task,
       seq: 4,
@@ -1527,7 +1527,7 @@ describe('the failure cause on the run list', () => {
       ts: '2026-10-06T08:00:02Z',
       actor: { kind: 'kernel', id: 'kernel' },
       audience: 'audit',
-      data: { code: 'deadline_exceeded', message },
+      data: { code, message },
     }) as Event;
   const leaky = 'provider said: invalid key sk-hemmelig-1234 for https://intern.example';
   const withErrors = () =>
@@ -1608,44 +1608,62 @@ describe('the failure cause on the run list', () => {
     });
   });
 
-  it('names the search that failed as the specific cause, in fixed words and never with the engine text', async () => {
-    const searchNotice = {
-      task: 't2',
-      seq: 2,
-      type: 'kernel.notice',
-      v: 1,
-      ts: '2026-10-06T08:00:01Z',
-      actor: { kind: 'kernel', id: 'kernel' },
-      audience: 'client',
-      data: {
-        kind: 'retrieval',
-        queries: ['ventetid'],
-        hits: [],
-        failed: [{ strategy: 'content', reason: 'timeout' }],
-      },
-    } as unknown as Event;
-    const { send } = await setup({
-      events: async function* (id): AsyncIterable<Event> {
-        if (id !== 't2') return;
-        yield searchNotice;
-        yield failed('t2', leaky);
-      },
-    });
-
-    const listed = await json<{ data: { id: string; failure?: Record<string, unknown> }[] }>(
-      await send(`/tenants/${digdir}/tasks`, 'leser'),
-    );
-    const one = await json<{ failure?: Record<string, unknown> }>(
-      await send(`/tenants/${digdir}/tasks/t2`, 'leser'),
-    );
-
-    for (const failure of [listed.data.find((r) => r.id === 't2')?.failure, one.failure])
-      expect(failure).toEqual({
-        code: 'deadline_exceeded',
-        reason: failureReason({ code: 'deadline_exceeded' }),
-        detail: 'Innholdssøket tok for lang tid.',
+  it('names the searches as the cause only when every search failed and that explains the failure, in fixed words and never with the engine text', async () => {
+    const searchNotice = (data: Record<string, unknown>) =>
+      ({
+        task: 't2',
+        seq: 2,
+        type: 'kernel.notice',
+        v: 1,
+        ts: '2026-10-06T08:00:01Z',
+        actor: { kind: 'kernel', id: 'kernel' },
+        audience: 'client',
+        data: { kind: 'retrieval', queries: ['ventetid'], hits: [], ...data },
+      }) as unknown as Event;
+    const failureWith = async (notice: Event, code: string) => {
+      const { send } = await setup({
+        events: async function* (id): AsyncIterable<Event> {
+          if (id !== 't2') return;
+          yield notice;
+          yield failed('t2', leaky, code);
+        },
       });
-    expect(JSON.stringify(listed)).not.toContain('ventetid');
+      const listed = await json<{ data: { id: string; failure?: Record<string, unknown> }[] }>(
+        await send(`/tenants/${digdir}/tasks`, 'leser'),
+      );
+      const one = await json<{ failure?: Record<string, unknown> }>(
+        await send(`/tenants/${digdir}/tasks/t2`, 'leser'),
+      );
+      expect(JSON.stringify(listed)).not.toContain('ventetid');
+      expect(one.failure).toEqual(listed.data.find((r) => r.id === 't2')?.failure);
+      return one.failure;
+    };
+
+    const timedOut = await failureWith(
+      searchNotice({ failedCompletely: 'timeout' }),
+      'deadline_exceeded',
+    );
+    const modelAfterPartial = await failureWith(
+      searchNotice({ failed: [{ strategy: 'content', reason: 'timeout' }] }),
+      'model_unavailable',
+    );
+    const deadlineAfterPartial = await failureWith(
+      searchNotice({ failed: [{ strategy: 'content', reason: 'timeout' }] }),
+      'deadline_exceeded',
+    );
+    const modelAfterAll = await failureWith(
+      searchNotice({ failedCompletely: 'timeout' }),
+      'model_unavailable',
+    );
+
+    expect(timedOut).toEqual({
+      code: 'deadline_exceeded',
+      reason: failureReason({ code: 'deadline_exceeded' }),
+      detail: 'Alle søkene tok for lang tid.',
+    });
+    expect(modelAfterPartial).not.toHaveProperty('detail');
+    expect(deadlineAfterPartial).not.toHaveProperty('detail');
+    expect(modelAfterAll).not.toHaveProperty('detail');
   });
 
   it("never lists another tenant's failed runs or their causes", async () => {

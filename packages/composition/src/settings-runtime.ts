@@ -297,33 +297,6 @@ export const withSettings = <C>(registry: SettingsRegistry, inner: Strategy<C>):
 export const showSourcesSetting = 'answers.showSources';
 const sourcesMime = 'application/vnd.genai.sources+json';
 
-const citedIndexes = (part: Part) => {
-  const citations = part.meta?.citations;
-  return Array.isArray(citations)
-    ? citations.flatMap((c) =>
-        typeof (c as { index?: unknown }).index === 'number'
-          ? [(c as { index: number }).index]
-          : [],
-      )
-    : [];
-};
-
-const withoutSources = (part: Part): Part => {
-  if (part.mime === sourcesMime && part.body.kind === 'json' && isObject(part.body.json))
-    return { ...part, body: { kind: 'json', json: { ...part.body.json, sources: [] } } };
-  const cited = citedIndexes(part);
-  if (part.body.kind !== 'text' || cited.length === 0) return part;
-  const text = cited.reduce(
-    (current, index) => current.split(` [${index}]`).join('').split(`[${index}]`).join(''),
-    part.body.text,
-  );
-  return {
-    ...part,
-    body: { kind: 'text', text },
-    meta: { ...part.meta, citations: [] },
-  };
-};
-
 const sourceMarker = / ?\[\d{1,3}\]/g;
 const partialMarker = / ?(?:\[\d{0,3})?$/;
 const deltaText = (event: Emitted) =>
@@ -332,6 +305,17 @@ const deltaText = (event: Emitted) =>
   typeof (event.data as { text?: unknown }).text === 'string'
     ? (event.data as { text: string }).text
     : undefined;
+
+const withoutSources = (part: Part): Part => {
+  if (part.mime === sourcesMime && part.body.kind === 'json' && isObject(part.body.json))
+    return { ...part, body: { kind: 'json', json: { ...part.body.json, sources: [] } } };
+  if (part.body.kind !== 'text') return part;
+  return {
+    ...part,
+    body: { kind: 'text', text: part.body.text.replace(sourceMarker, '') },
+    ...(part.meta?.citations !== undefined ? { meta: { ...part.meta, citations: [] } } : {}),
+  };
+};
 
 export const withSourcesSetting = <C>(
   registry: SettingsRegistry,
