@@ -214,7 +214,14 @@ describe('a smooth portal', () => {
       'Oversikt',
       '#/log',
       '#/overview',
-      [/\/overview$/, /\/usage\?days=\d+$/, /\/settings\/effective$/, /\/datasets$/],
+      [
+        /\/overview$/,
+        /\/usage\?days=\d+$/,
+        /\/settings\/effective$/,
+        /\/datasets$/,
+        /\/tasks\?status=failed&from=[^&]+&limit=500$/,
+        /\/audit$/,
+      ],
     ],
     ['Datasett', '#/developer', '#/datasets', [/\/datasets$/, /\/catalog\?kind=dataset$/]],
     ['Innstillinger', '#/developer', '#/settings', [/\/settings$/, /\/settings\/effective$/]],
@@ -240,6 +247,47 @@ describe('a smooth portal', () => {
       expect(requests.map((r) => api.gets(r))).toEqual(hovered);
     },
   );
+
+  it('resting the pointer on Oversikt does not load the change log for someone without manage-services', async () => {
+    const api = recording();
+    await renderLiveAt('#/log', api.fetch, [
+      { orgNumber: '999888777', name: 'Testetaten', actions: ['use-services'] },
+    ] as typeof kari.organisations);
+    await screen.findByRole('navigation', { name: 'Hovedmeny' });
+    await settle();
+
+    await hover('Oversikt');
+
+    expect(api.gets(/\/tasks\?status=failed/)).toBe(1);
+    expect(api.gets(/\/(audit|access)$/)).toBe(0);
+  });
+
+  it('opening the log runs or changes asks for no run with the id "runs" or "changes"', async () => {
+    const api = recording();
+    await renderLiveAt('#/log/runs', api.fetch);
+    await screen.findByRole('heading', { level: 1, name: 'Logg' });
+    await go('#/log/changes');
+    await settle();
+
+    expect(api.gets(/\/tasks\/(runs|changes)/)).toBe(0);
+  });
+
+  it('coming back to the overview within the hour shows what needs you without checking again', async () => {
+    const api = recording();
+    await renderLiveAt('#/overview', api.fetch);
+    await screen.findByRole('region', { name: 'Mest brukt siste 7 dager' });
+    await settle();
+    await go('#/log');
+    await screen.findByRole('heading', { level: 1, name: 'Logg' });
+    await settle();
+    vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 1_000);
+
+    await go('#/overview');
+
+    const attention = screen.getByRole('region', { name: 'Trenger deg nå' });
+    expect(within(attention).queryByLabelText('Sjekker hva som trenger deg')).toBeNull();
+    expect(api.gets(/\/tasks\?status=failed/)).toBe(1);
+  });
 
   it.each(['2026-11-17T23:04:00Z', '2026-11-30T23:30:00Z'])(
     'the screen reuses the usage loaded on hover just after midnight in Oslo (%s)',
