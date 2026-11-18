@@ -105,6 +105,7 @@ describe('a search strategy that fails', () => {
           'content search: text search took longer than 15 s; these hits come from vector search only',
           'content search: vector search failed: 503',
           'phrase search: no query vector',
+          'skipped phrase search: dataset lacks profile phrase',
           'metadata search: the query is too long',
           'innhold-søk search: canceling statement\ndue to statement timeout',
           'content.v2 search: connect ECONNREFUSED 10.0.0.4:5432',
@@ -197,21 +198,34 @@ describe('a search strategy that fails', () => {
     ]);
   });
 
-  it('a search that fails completely shows on the search step as every search failing', async () => {
-    const r: AgentRetrieval = {
-      ...retrieval().impl,
-      search: async () => {
-        throw new Error('canceling statement due to statement timeout');
-      },
-    };
-    const out = await searchOnce(r);
+  const throwing: AgentRetrieval = {
+    ...retrieval().impl,
+    search: async () => {
+      throw new Error('canceling statement due to statement timeout');
+    },
+  };
 
-    expect(retrievalNotice(out.notices)).toMatchObject({
+  it('a search that fails completely shows on the search step as failing completely', async () => {
+    const out = await searchOnce(throwing);
+
+    const notice = retrievalNotice(out.notices);
+    expect(notice).toMatchObject({
       hits: [],
       queries: ['tildelingsbrev', 'digdir 2025'],
-      failed: [{ strategy: 'all', reason: 'timeout' }],
+      failedCompletely: 'timeout',
     });
+    expect(notice).not.toHaveProperty('failed');
     expect(JSON.stringify(out.notices)).not.toContain('canceling');
+  });
+
+  it('a filtered search that fails completely keeps its filters on the search step', async () => {
+    const out = await searchOnce(throwing, {
+      filter_by: { fields: [{ field: 'orgs_short', selected_options: ['DIGDIR'] }] },
+    });
+
+    expect(retrievalNotice(out.notices)?.filters).toEqual([
+      { field: 'orgs_short', selectedOptions: ['DIGDIR'] },
+    ]);
   });
 
   it("a search that fails completely tells the agent why without the engine's message", async () => {

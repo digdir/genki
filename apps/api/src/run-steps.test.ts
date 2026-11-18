@@ -173,6 +173,7 @@ describe('the run mapper', () => {
           { strategy: 'metadata', reason: 'vector-unavailable' },
           { strategy: '__proto__', reason: 'timeout' },
           { strategy: 'toString', reason: 'error' },
+          { strategy: 'all', reason: 'error' },
         ],
       }),
     ]);
@@ -180,11 +181,11 @@ describe('the run mapper', () => {
     const search = run.steps.find((s) => s.type === 'search');
     expect(search).toMatchObject({ warning: true, state: 'partial' });
     expect(run.stats().warnings).toEqual([
-      'Tittelsøket fikk en for lang spørring, frasesøket fikk ikke søkt på ord, bare på betydning, metadatasøket fikk ikke søkt på betydning, søket «__proto__» tok for lang tid, søket «toString» feilet.',
+      'Tittelsøket fikk en for lang spørring, frasesøket fikk ikke søkt på ord, bare på betydning, metadatasøket fikk ikke søkt på betydning, søket «__proto__» tok for lang tid, søket «toString» feilet, søket «all» feilet.',
     ]);
   });
 
-  it('a search where every strategy failed shows as a failed search step', () => {
+  it('a search that fails completely shows as a failed search step', () => {
     seq = 0;
     const run = mapRun([
       at(0, 'kernel.task.status', { status: 'running' }),
@@ -193,7 +194,7 @@ describe('the run mapper', () => {
         kind: 'retrieval',
         queries: ['ventetid'],
         hits: [],
-        failed: [{ strategy: 'all', reason: 'timeout' }],
+        failedCompletely: 'timeout',
       }),
       notice(16_200, {
         event: 'agent/turn-completed',

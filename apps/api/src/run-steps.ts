@@ -187,7 +187,6 @@ const searchStrategies: Record<string, () => string> = {
   metadata: () => t('steps.searchByMetadata'),
   phrase: () => t('steps.searchByPhrase'),
   'doc-title': () => t('steps.searchByDocTitle'),
-  all: () => t('steps.searchByAll'),
 };
 
 const searchFailures: Record<string, (search: string) => string> = {
@@ -207,11 +206,13 @@ const failedSearchText = (failed: unknown) => {
     if (typeof strategy !== 'string') return [];
     const search =
       own(searchStrategies, strategy)?.() ?? t('steps.searchByOther', { name: strategy });
-    const text = own(searchFailures, String(reason));
-    return [text ? text(search) : t('steps.searchErred', { search })];
+    return [searchFailureText(search, reason)];
   });
   return lines.length ? lines.join(', ') : undefined;
 };
+
+const searchFailureText = (search: string, reason: unknown) =>
+  own(searchFailures, String(reason))?.(search) ?? t('steps.searchErred', { search });
 
 const sentence = (text: string) => `${text.charAt(0).toUpperCase()}${text.slice(1)}.`;
 
@@ -385,7 +386,7 @@ export class RunMapper {
   private readonly skippedDocs = new Set<string>();
   private readonly documents = new Set<string>();
   private readonly warnings: string[] = [];
-  /** Open steps that turn partial when they close, so they keep their duration and their reads. */
+  /** Open steps that turn partial or failed when they close, so they keep their duration and their reads. */
   private readonly stateOnClose = new Map<TimelineStep, StepState>();
   private readonly byModel = new Map<string, ModelTokens>();
   private errorStep: TimelineStep | undefined;
@@ -815,11 +816,11 @@ export class RunMapper {
       step.blocks.push({ kind: 'note', text: t('steps.filterFellBack') });
       this.warn(t('steps.warnFellBack'));
     }
-    const failed = failedSearchText(data.failed);
+    const everyFailed = data.failedCompletely !== undefined;
+    const failed = everyFailed
+      ? searchFailureText(t('steps.searchByAll'), data.failedCompletely)
+      : failedSearchText(data.failed);
     if (failed) {
-      const everyFailed = (Array.isArray(data.failed) ? data.failed : []).some(
-        (f) => record(f).strategy === 'all',
-      );
       const state = everyFailed ? 'failed' : 'partial';
       if (open) this.stateOnClose.set(open, state);
       else step.state = state;

@@ -95,9 +95,12 @@ export interface SearchMade {
   fellBack?: boolean;
   detections?: SearchDetection[];
   failed?: SearchFailure[];
+  /** The whole search threw, so no strategy found anything. */
+  failedCompletely?: SearchFailureReason;
 }
 
-const failedStrategy = /^(.+?) search: ([\s\S]+)$/;
+/** `<strategy> search: <message>`, but not the pipeline's `skipped <x> search: …` notices. */
+const failedStrategy = /^(?!skipped )(.+?) search: ([\s\S]+)$/;
 
 const timedOut = /statement timeout|took longer than|timed out/i;
 
@@ -131,18 +134,12 @@ const failureText: Record<SearchFailureReason, string> = {
   error: 'failed',
 };
 
-/** A whole search that threw, as the strategy `all`: never the engine's message. */
-const thrownFailure = (error: unknown): SearchFailure => ({
-  strategy: 'all',
-  reason:
-    (error as { code?: unknown } | undefined)?.code === 'timeout' ||
-    timedOut.test(error instanceof Error ? error.message : String(error))
-      ? 'timeout'
-      : 'error',
-});
-
-const searchError = (failure: SearchFailure) =>
-  `every search ${failureText[failure.reason]}. Try again later, or say that search is failing.`;
+/** Why a whole search threw, as a reason: never the engine's message. */
+const thrownReason = (error: unknown): SearchFailureReason =>
+  (error as { code?: unknown } | undefined)?.code === 'timeout' ||
+  timedOut.test(error instanceof Error ? error.message : String(error))
+    ? 'timeout'
+    : 'error';
 
 const searchWarning = (failed: SearchFailure[], hits = true): string =>
   failed.length
@@ -469,12 +466,17 @@ const autoReadTopK = async (
 const keptWhenEmpty = new Set(['owner_orgnr', 'recipient_orgnr']);
 
 /** A search that threw: the agent hears why, and the search step shows that every search failed. */
-const thrown = (queries: string[], error: unknown, lead: string): ToolOutcome => {
-  const failure = thrownFailure(error);
+const thrown = (
+  queries: string[],
+  filters: FilterField[] | undefined,
+  error: unknown,
+  lead: string,
+): ToolOutcome => {
+  const reason = thrownReason(error);
   return {
-    content: `${lead}${searchError(failure)}`,
+    content: `${lead}every search ${failureText[reason]}. Try again later, or say that search is failing.`,
     retrieved: [],
-    search: { queries, failed: [failure] },
+    search: { queries, ...(filters?.length ? { filters } : {}), failedCompletely: reason },
   };
 };
 
@@ -503,7 +505,7 @@ const search = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome> 
     );
   } catch (error) {
     if (signal.aborted) throw error;
-    return thrown(args.data.queries, error, 'Search backend error: ');
+    return thrown(args.data.queries, filters, error, 'Search backend error: ');
   }
   const noted = [...(outcome.attribution?.warnings ?? [])];
   const kept = (filters ?? []).filter((f) => keptWhenEmpty.has(f.field));
@@ -517,6 +519,7 @@ const search = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome> 
       if (signal.aborted) throw error;
       return thrown(
         args.data.queries,
+        kept,
         error,
         'Filtered retrieval returned 0 chunks; retry with only the org-number filter failed: ',
       );
@@ -545,6 +548,7 @@ const search = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome> 
       if (signal.aborted) throw error;
       return thrown(
         args.data.queries,
+        searched,
         error,
         'Filtered retrieval returned 0 chunks; retry without filters failed: ',
       );
