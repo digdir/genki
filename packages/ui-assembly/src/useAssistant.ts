@@ -53,7 +53,7 @@ import {
   type VariantOption,
   type Zone,
 } from '@genai/ui-blocks';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   failureOf,
   FILTER_VALUES_LIMIT,
@@ -1133,7 +1133,7 @@ export const useAssistant = ({
       : named || shortTitle(firstQuestion) || t('threads.newThread');
   // The thread's title as the page names it: the tab, and the next look's `h1`.
   const threadTitle = repeatsQuestion ? shortTitle(heading) : heading;
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!threadInUrl) return;
     const name = page === 'settings' ? t('settings.title') : threadTitle;
     document.title = t('assembly.tabTitle', { page: name, assistant: assistantName });

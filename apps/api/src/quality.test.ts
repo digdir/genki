@@ -3341,8 +3341,9 @@ describe('test-set runs on a shared instance', () => {
     const second = await start(env);
     const theirs = await start(env, 'ola', other);
 
-    await vi.waitFor(() =>
-      expect(cases.started).toEqual([
+    await vi.waitFor(() => expect(cases.started).toHaveLength(2));
+    expect(cases.started).toEqual(
+      expect.arrayContaining([
         { tenant, input: o1 },
         { tenant: other, input: o1 },
       ]),

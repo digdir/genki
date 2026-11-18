@@ -2,6 +2,9 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { App } from '../App';
+import { createApiClient } from '../api';
+import { parseRoute } from '../hooks';
+import { BuildingBlocks } from './BuildingBlocks';
 import { mockAnsattporten } from '../auth';
 import type { ToolConnectionDetail } from '../api/blocks';
 import type { CatalogItem, CatalogProposal } from '../api/building-blocks';
@@ -291,6 +294,31 @@ describe('Byggeklosser: adressen', () => {
     ).toBe('true');
     expect((screen.getByLabelText('Søk i katalogen') as HTMLInputElement).value).toBe('qwen');
     expect(groupHeadings()).toEqual(['Modeller (1)']);
+  });
+
+  it('keeps the chosen type when a render of an older address arrives after the click', async () => {
+    const props = {
+      api: createApiClient({
+        baseUrl: '/api',
+        fetch: blocksFetch({ proposals: [] }),
+        token: () => 'test',
+      }),
+      tenant: '999888777',
+      tenantName: 'Testetaten',
+      live: true,
+    };
+    window.location.hash = '#/building-blocks';
+    const { rerender } = render(
+      <BuildingBlocks {...props} route={parseRoute('#/building-blocks')} />,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Modeller 1' }));
+    rerender(<BuildingBlocks {...props} route={parseRoute('#/building-blocks/in-use')} />);
+    expect(screen.getByRole('button', { name: 'Modeller 1' }).getAttribute('aria-pressed')).toBe(
+      'true',
+    );
+    expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
+      'Modeller (1)',
+    ]);
   });
 
   it('shows a failed proposals load with retry instead of hiding it', async () => {

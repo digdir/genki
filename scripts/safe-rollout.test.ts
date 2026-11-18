@@ -133,10 +133,13 @@ const hasJq = (() => {
 const posix = process.platform !== 'win32' && (hasJq || Boolean(process.env.CI));
 
 describe('a deploy that takes minutes, not half an hour', () => {
-  it('takes the result of ci.yml’s run on the commit’s push to main', () => {
+  it('takes the result of ci.yml’s run on this commit from the merge queue or the push to main', () => {
     const ci = step(job('ci'), 'ci').run ?? '';
-    expect(ci).toContain('actions/workflows/ci.yml/runs?head_sha=$SHA&event=push');
-    expect(ci).toContain('echo "passed=$([ "$state" = success ] && echo true || echo false)"');
+    expect(ci).toContain('actions/workflows/ci.yml/runs?head_sha=$SHA&per_page=20');
+    expect(ci).toContain(
+      'echo "passed=$([ "$state" = success ] || [ "$state" = queue ] && echo true || echo false)"',
+    );
+    expect(step(job('ci'), 'ci').env?.SHA).toBe('${{ github.sha }}');
     expect(job('ci').permissions).toEqual({ contents: 'read', actions: 'read' });
   });
 
@@ -156,32 +159,76 @@ describe('a deploy that takes minutes, not half an hour', () => {
     expect(step(job('ci'), 'ci').run).toMatch(/end'\) \|\| state=failure/);
   });
 
-  it.skipIf(!posix)('counts only a successful push run on main of ci.yml as passed', () => {
+  const sha = 'c'.repeat(40);
+  const verdict = (runs: object[]) => {
     const filter = /--jq '([\s\S]*?)'\)/.exec(step(job('ci'), 'ci').run ?? '')?.[1] ?? '';
-    const ci = { head_branch: 'main', path: '.github/workflows/ci.yml' };
-    const verdict = (runs: object[]) =>
-      execFileSync('jq', ['-r', filter], {
-        input: JSON.stringify({ workflow_runs: runs }),
-        encoding: 'utf8',
-      }).trim();
+    return execFileSync('jq', ['-r', filter], {
+      input: JSON.stringify({ workflow_runs: runs }),
+      encoding: 'utf8',
+      env: { ...process.env, SHA: sha },
+    }).trim();
+  };
+  const push = {
+    event: 'push',
+    head_branch: 'main',
+    head_sha: sha,
+    path: '.github/workflows/ci.yml',
+  };
+  const queue = {
+    event: 'merge_group',
+    head_branch: `gh-readonly-queue/main/pr-1-${'b'.repeat(40)}`,
+    head_sha: sha,
+    path: '.github/workflows/ci.yml',
+  };
+
+  it.skipIf(!posix)('counts a push run on main of ci.yml as passed only when it succeeded', () => {
     expect(verdict([])).toBe('none');
-    expect(verdict([{ ...ci, status: 'in_progress', conclusion: null }])).toBe('running');
-    expect(verdict([{ ...ci, status: 'completed', conclusion: 'cancelled' }])).toBe('failure');
-    expect(verdict([{ ...ci, status: 'completed', conclusion: 'failure' }])).toBe('failure');
+    expect(verdict([{ ...push, status: 'in_progress', conclusion: null }])).toBe('running');
+    expect(verdict([{ ...push, status: 'completed', conclusion: 'cancelled' }])).toBe('failure');
+    expect(verdict([{ ...push, status: 'completed', conclusion: 'failure' }])).toBe('failure');
     expect(
       verdict([
-        { ...ci, status: 'completed', conclusion: 'failure' },
-        { ...ci, status: 'completed', conclusion: 'success' },
+        { ...push, status: 'completed', conclusion: 'failure' },
+        { ...push, status: 'completed', conclusion: 'success' },
       ]),
     ).toBe('success');
     expect(
-      verdict([{ ...ci, head_branch: 'feature', status: 'completed', conclusion: 'success' }]),
+      verdict([{ ...push, head_branch: 'feature', status: 'completed', conclusion: 'success' }]),
     ).toBe('none');
     expect(
       verdict([
-        { ...ci, path: '.github/workflows/other.yml', status: 'completed', conclusion: 'success' },
+        {
+          ...push,
+          path: '.github/workflows/other.yml',
+          status: 'completed',
+          conclusion: 'success',
+        },
       ]),
     ).toBe('none');
+  });
+
+  it.skipIf(!posix)(
+    'takes the merge queue’s run on the same commit, which runs every check in full',
+    () => {
+      expect(verdict([{ ...queue, status: 'completed', conclusion: 'success' }])).toBe('queue');
+      const ci = parse(read('.github/workflows/ci.yml')) as Workflow;
+      for (const name of ['scope', 'test'])
+        for (const s of ci.jobs[name]?.steps ?? [])
+          expect(s.env?.BASE ?? '').not.toContain('merge_group');
+    },
+  );
+
+  it.skipIf(!posix)('never takes a run on another commit, branch or event as this commit’s', () => {
+    const green = { status: 'completed', conclusion: 'success' };
+    expect(verdict([{ ...queue, ...green, head_sha: 'd'.repeat(40) }])).toBe('none');
+    expect(verdict([{ ...push, ...green, head_sha: 'd'.repeat(40) }])).toBe('none');
+    expect(
+      verdict([{ ...queue, ...green, head_branch: `gh-readonly-queue/feature/pr-1-${sha}` }]),
+    ).toBe('none');
+    expect(verdict([{ ...queue, ...green, event: 'pull_request', head_branch: 'feature' }])).toBe(
+      'none',
+    );
+    expect(verdict([{ ...queue, status: 'completed', conclusion: 'failure' }])).toBe('none');
   });
 
   const ciLoop = (answers: string[]) => {
@@ -209,6 +256,10 @@ describe('a deploy that takes minutes, not half an hour', () => {
     });
     return readFileSync(output, 'utf8').trim();
   };
+
+  it.skipIf(!posix)('deploys at once on the merge queue’s green run', () => {
+    expect(ciLoop(['queue'])).toBe('passed=true');
+  });
 
   it.skipIf(!posix)('waits a minute for a push run that has not started yet', () => {
     expect(ciLoop(['none', 'none', 'running', 'success'])).toBe('passed=true');
