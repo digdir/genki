@@ -38,13 +38,13 @@ describe('the Composer styles', () => {
     expect(wrapped).toContain('flex-basis: 100%;');
   });
 
-  it('give the inline frame a shadow, kept under the focus ring, and send the 8 px corners', () => {
+  it('give the inline frame a shadow, kept under the focus ring, and send the 12 px corners', () => {
     const inline = ".uib-composer-frame[data-variant='inline']";
     expect(rule(inline)).toContain('var(--genai-composer-frame-shadow, var(--ds-shadow-md))');
     expect(rule(`${inline}:focus-within`)).toContain(
       'var(--dsc-focus-boxShadow), var(--genai-composer-frame-shadow, var(--ds-shadow-md))',
     );
-    expect(rule(`${inline} .uib-composer-send`)).toContain('var(--ds-border-radius-lg)');
+    expect(rule(`${inline} .uib-composer-send`)).toContain('var(--ds-border-radius-xl)');
   });
 
   it('take the empty refusal out of the flow, but keep it in the page', () => {

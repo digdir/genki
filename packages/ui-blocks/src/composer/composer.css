@@ -181,7 +181,7 @@
   .uib-composer-frame[data-variant='inline'] .uib-composer-send {
     --dsc-button-border-radius: var(
       --genai-composer-send-border-radius,
-      var(--ds-border-radius-lg)
+      var(--ds-border-radius-xl)
     );
 
     order: 4;
