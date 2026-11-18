@@ -653,6 +653,8 @@ export const routeErrors = defineNamespace({
   unknownResidency: 'ukjent dataplassering {residency}',
   runNotStoppable: 'bare en kjøring som ble startet gjennom et API kan stoppes her',
   runFinished: 'kjøringen er allerede ferdig',
+  evalRunEndedAs: 'kjøringen er allerede avsluttet som {state}',
+  actorFilter: 'actor er me eller en aktør-id fra en kjøring i listen',
   incidentResolved: 'hendelsen er allerede løst',
   quotaRequestPending: 'en forespørsel om kvote venter allerede på en avgjørelse',
   quotaRequestApproved: 'forespørselen om kvote er allerede godkjent',

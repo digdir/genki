@@ -1593,6 +1593,32 @@ export const serviceRoutes: RouteConfig[] = [
     responses: { 200: json(z.object({ data: z.array(EvalRunSummary) }), 'Runs'), ...tenantErrors },
   }),
   createRoute({
+    method: 'post',
+    path: '/tenants/{tenant}/services/{id}/eval-runs/{runId}/cancel',
+    summary:
+      'Cancel a running test run: no further case starts, finished cases are kept and the run ends as cancelled. The person who started it needs use-services, anyone else manage-services; audited, and a cancelled run answers 200 again without a new entry',
+    request: {
+      params: z.object({
+        tenant,
+        id: service,
+        runId: z.string().openapi({ param: { name: 'runId', in: 'path' } }),
+      }),
+      headers: changeReason,
+      body: body(z.object({}).describe('Empty'), false),
+    },
+    responses: {
+      200: audited(z.object({ id: z.string(), status: z.literal('cancelled') }), 'Cancelled'),
+      202: audited(
+        z.object({ id: z.string(), status: z.literal('cancelling') }),
+        'Asked to stop; the instance running it ends it as cancelled before its next case',
+      ),
+      400: problem('Missing reason'),
+      ...tenantErrors,
+      404: problem('No such test run for this service'),
+      409: problem('urn:genai:problem:run-finished: the run has already ended'),
+    },
+  }),
+  createRoute({
     method: 'get',
     path: '/tenants/{tenant}/services/{id}/eval-runs/compare',
     summary:
@@ -1710,6 +1736,53 @@ export const serviceRoutes: RouteConfig[] = [
     request: { params: z.object({ tenant, id: service }) },
     responses: {
       200: json(ServiceEnvironments, 'Environments'),
+      ...tenantErrors,
+      404: problem('No published service'),
+    },
+  }),
+  createRoute({
+    method: 'get',
+    path: '/tenants/{tenant}/services/{id}/environment-history',
+    summary:
+      'Changes to the environments of the service, newest first: added, removed, promoted and rolled back, with who and why. Needs use-services',
+    request: {
+      params: z.object({ tenant, id: service }),
+      query: z.object({
+        environment: z.string().optional().describe('Only changes to this environment'),
+        limit: z.string().optional().describe('1 to 200, default 50'),
+      }),
+    },
+    responses: {
+      200: json(
+        z.object({
+          data: z.array(
+            z.object({
+              environment: z.string(),
+              action: z
+                .enum(['added', 'removed', 'promoted', 'rolled-back', 'changed'])
+                .describe(
+                  'changed: a version change saved before changes were recorded, so whether it was a promotion or a rollback is not known',
+                ),
+              version: z
+                .number()
+                .int()
+                .nullable()
+                .describe(
+                  'The version the environment runs after it; null while it follows every publish, or once removed',
+                ),
+              previousVersion: z.number().int().nullable(),
+              from: z.string().optional().describe('On a promotion: the environment it came from'),
+              at: z.string(),
+              by: z.string(),
+              byName: z.string().optional().describe('When genki knows the name'),
+              reason: z.string(),
+            }),
+          ),
+          total: z.number().int().describe('Changes that match, before limit'),
+        }),
+        'History',
+      ),
+      400: problem('An environment that is not a name, or a limit outside 1 to 200'),
       ...tenantErrors,
       404: problem('No published service'),
     },

@@ -46,6 +46,8 @@ Each connection lists `connectedAt` and, when genki knows the name, `connectedBy
 
 A step flow in the tenant's building-block catalogue, its own or the platform's, can be read with `GET /tenants/{tenant}/building-blocks/step_flow/{id}/definition` by any member: `{id, owner, version, publishedAt, yaml, definition}` for the latest version. Another organisation's flow and a step block (`retrieve@1`) answer `404`.
 
+A step flow or skill block has `versionAt`: when the version in `version` was published, also when no update is waiting. A guardrail rule the platform made mandatory has `required: true`, since it applies to every run of every service whether the organisation adopted it or not, and `counts.required` on the list counts them per kind. A tenant's own rule is never required. `GET /tenants/{tenant}/building-blocks/model/{id}` adds `operations`, each call type the model list binds an API for: `operation`, `api`, `builtIn: true` for chat, decide, embed and rerank (genki's own typed calls of these are always production), and `maturity` of the kind in this environment, which governs calls through a `call-operation@1` step. It also adds `processor`: `{ recorded: true, subProcessors, retentionDays }` when an operator recorded a processor record for the model's connection, else `{ recorded: false }`; the agreement text stays with the operators. Without operation governance on the platform, `maturity` and `processor` are left out.
+
 ## Langfuse connections
 
 A tenant connects its services to a Langfuse with `PUT /tenants/{tenant}/tracing/connections/{id}` (`manage-services`, `change-reason`). A connection carries eval runs only, never live answers (ADR 0040).

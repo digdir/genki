@@ -278,8 +278,20 @@ const TaskRow = TaskBase.extend({
   erasure: RunErasure.optional(),
   actor: z.object({
     kind: z.enum(['api-key', 'person', 'system']),
+    id: z
+      .string()
+      .optional()
+      .describe(
+        "employee:<issuer>:<subject> for a person or api-key:<key id> for a key of the caller's own tenant, as the actor filter takes it; absent for a caller from another tenant",
+      ),
     name: z.string().optional(),
   }),
+  channel: z
+    .enum(['api-key', 'interface', 'api', 'playground', 'batch'])
+    .nullable()
+    .describe(
+      "How the run came in: api-key (a key not bound to a frontend), interface (a key bound to a server frontend), api (a token that is not an API key on /v1, REST, MCP or A2A: a person's, or a registered Maskinporten client's; a browser frontend's runs are not told apart), playground (a trial run), batch (an item of a batch run's latest attempt); null when the run records none of these, such as a trigger",
+    ),
 }).openapi('TaskRow');
 
 const MyTask = TaskBase.extend({
@@ -937,6 +949,12 @@ const taskRoutes: RouteConfig[] = [
         status: taskStatus.optional(),
         service: z.string().optional(),
         environment: z.string().optional().describe('Only runs in this service environment'),
+        actor: z
+          .string()
+          .optional()
+          .describe(
+            "me for the caller's own runs, or an actor.id from a run row: only runs that actor of the caller's tenant started",
+          ),
         from: z.string().optional().describe('ISO time, inclusive'),
         to: z.string().optional().describe('ISO time, inclusive'),
         limit: z.string().optional().describe('1 to 500, default 100'),
@@ -966,6 +984,7 @@ const taskRoutes: RouteConfig[] = [
         'Runs',
       ),
       ...memberRead,
+      400: problem('An actor that is not me or an actor id'),
     },
   }),
   createRoute({
@@ -2773,10 +2792,23 @@ const qualityRoutes: RouteConfig[] = [
   }),
 ];
 
+const Latency = z.object({
+  p50Ms: z.number().int(),
+  p95Ms: z.number().int(),
+  runs: z.number().int().describe('Ended runs the percentiles are taken over'),
+});
+
 const Day = z.object({
   date: z.string(),
   usage: Usage.extend({ bySource: BySource }),
-  byService: z.record(z.string(), UsageWithRuns),
+  byService: z.record(
+    z.string(),
+    UsageWithRuns.extend({
+      latency: Latency.nullable().describe(
+        "Milliseconds from start to end of the service's runs started this day that have ended, by nearest rank; null when none has",
+      ),
+    }),
+  ),
   byModel: z.record(z.string(), Usage),
   testing: Usage.describe('Test-set and playground runs on this day'),
   ingestion: Usage.describe('Ingestion on this day'),
@@ -2793,16 +2825,9 @@ const TenantUsage = z
       z.object({
         service: z.string(),
         usage: UsageWithRuns,
-        latency: z
-          .object({
-            p50Ms: z.number().int(),
-            p95Ms: z.number().int(),
-            runs: z.number().int().describe('Ended runs the percentiles are taken over'),
-          })
-          .nullable()
-          .describe(
-            "Milliseconds from a run's start to its end in the period, by nearest rank; null when no run ended",
-          ),
+        latency: Latency.nullable().describe(
+          "Milliseconds from a run's start to its end in the period, by nearest rank; null when no run ended",
+        ),
         title: z.string().optional(),
       }),
     ),

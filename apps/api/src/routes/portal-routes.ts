@@ -56,6 +56,8 @@ import { pausedMessage, type LifecycleView } from '../service-lifecycle.js';
 import { isHiddenTask, shownKeys } from '../internal-services.js';
 import { rightBeyondHolder } from '../key-policies.js';
 
+export type TaskChannel = 'api-key' | 'interface' | 'api' | 'playground' | 'batch';
+
 export interface PortalTaskRow {
   task: string;
   tenant: string;
@@ -212,6 +214,7 @@ export interface PortalRouteDeps {
   lockdown?: Lockdown;
   traces?: { enabled: boolean; content: boolean };
   qualityWarnings?(tenant: string): Promise<{ service: string; message: string }[]>;
+  batchTasks?(tenant: string): Promise<Set<string>>;
   drafts?: DraftRunner;
   gatewayUsage?: UsageReads;
   countingRule?(): CountingRule;
@@ -941,17 +944,54 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
     }
   };
 
-  const keyNames = async (tenant: string) =>
-    new Map((await deps.apiKeys.list(tenant)).map((k) => [k.id, k.name]));
+  const keysOf = async (tenant: string) =>
+    new Map((await deps.apiKeys.list(tenant)).map((k) => [k.id, k]));
 
-  const taskActors = async (tasks: Task[], tenant: string) => {
+  const actorIdOf = (t: Task, tenant: string) => {
+    if (t.principal.tenant !== tenant) return undefined;
+    const [issuer = '', subject = ''] = refOf(t.principal.id);
+    if (issuer === LEGACY_KEY_ISSUER) return `api-key:${subject}`;
+    return t.principal.kind === 'employee' ? `employee:${issuer}:${subject}` : undefined;
+  };
+
+  const startedByCaller = (t: Task, principal: Principal, tenant: string) =>
+    t.principal.tenant === tenant &&
+    t.principal.id === JSON.stringify([principal.issuer, principal.subject]);
+
+  const maybeBatch = (t: Task) =>
+    t.entryPoint === undefined &&
+    t.parent === undefined &&
+    originOf(t.service.capability.id) === serviceOrigin;
+
+  const taskChannels = async (tasks: Task[], tenant: string, keys: Map<string, TenantApiKey>) => {
+    const batch = tasks.some(maybeBatch)
+      ? ((await deps.batchTasks?.(tenant)) ?? new Set<string>())
+      : new Set<string>();
+    return new Map(
+      tasks.map((t) => {
+        const [issuer = '', subject = ''] = refOf(t.principal.id);
+        const channel: TaskChannel | null = trialOrigins.includes(originOf(t.service.capability.id))
+          ? 'playground'
+          : issuer === LEGACY_KEY_ISSUER
+            ? keys.get(subject)?.clientId
+              ? 'interface'
+              : 'api-key'
+            : batch.has(t.id)
+              ? 'batch'
+              : t.entryPoint !== undefined
+                ? 'api'
+                : null;
+        return [t.id, channel] as const;
+      }),
+    );
+  };
+
+  const taskActors = async (tasks: Task[], tenant: string, keyed: Map<string, TenantApiKey>) => {
     const refs = tasks.map((t) => {
       const [issuer = '', subject = ''] = refOf(t.principal.id);
-      return { task: t.id, kind: t.principal.kind, issuer, subject };
+      return { task: t.id, kind: t.principal.kind, issuer, subject, id: actorIdOf(t, tenant) };
     });
-    const keys = refs.some((r) => r.issuer === LEGACY_KEY_ISSUER)
-      ? await keyNames(tenant)
-      : new Map<string, string>();
+    const keys = new Map([...keyed].map(([id, k]) => [id, k.name]));
     const people = await deps.names?.namesOf(
       refs.filter((r) => r.kind === 'employee').map((r) => `${r.kind}:${r.issuer}:${r.subject}`),
     );
@@ -959,11 +999,12 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       refs.map((r) => {
         const person = people?.get(`${r.kind}:${r.issuer}:${r.subject}`);
         const key = keys.get(r.subject);
+        const id = r.id ? { id: r.id } : {};
         const actor =
           r.issuer === LEGACY_KEY_ISSUER
-            ? { kind: 'api-key' as const, ...(key ? { name: key } : {}) }
+            ? { kind: 'api-key' as const, ...id, ...(key ? { name: key } : {}) }
             : r.kind === 'employee'
-              ? { kind: 'person' as const, ...(person ? { name: person } : {}) }
+              ? { kind: 'person' as const, ...id, ...(person ? { name: person } : {}) }
               : { kind: 'system' as const };
         return [r.task, actor] as const;
       }),
@@ -977,8 +1018,12 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
     withInput: boolean,
     withUsage: boolean,
   ) => {
-    const [actors, usage, inputs, erased] = await Promise.all([
-      taskActors(tasks, tenant),
+    const keys = tasks.some((t) => refOf(t.principal.id)[0] === LEGACY_KEY_ISSUER)
+      ? await keysOf(tenant)
+      : new Map<string, TenantApiKey>();
+    const [actors, channels, usage, inputs, erased] = await Promise.all([
+      taskActors(tasks, tenant, keys),
+      taskChannels(tasks, tenant, keys),
       withUsage ? usageByTask(tasks.map((t) => t.id)) : new Map<string, ModelUsage[]>(),
       withInput ? inputTexts(tasks.map((t) => t.id)) : new Map<string, string>(),
       deps.erasures?.(
@@ -1011,6 +1056,7 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
         ...(excerpt ? { excerpt } : {}),
         ...(erasure ? { erasure } : {}),
         actor: actors.get(t.id) ?? { kind: 'system' as const },
+        channel: channels.get(t.id) ?? null,
       };
     });
   };
@@ -1149,6 +1195,7 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       bump(inner, key, tally);
     };
     const durations = new Map<string, number[]>();
+    const dailyDurations = new Map<string, number[]>();
     const failedRuns = new Map<string, number>();
     const count = (key: string, failed = false) => {
       runs.set(key, (runs.get(key) ?? 0) + 1);
@@ -1181,8 +1228,11 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       if (title && !titles.has(service)) titles.set(service, title);
       bump(byService, service, tally);
       const took = t.endedAt ? Date.parse(t.endedAt) - Date.parse(t.createdAt) : Number.NaN;
-      if (Number.isFinite(took) && took >= 0)
+      if (Number.isFinite(took) && took >= 0) {
         durations.set(service, [...(durations.get(service) ?? []), took]);
+        const onDay = `${date}|${service}`;
+        dailyDurations.set(onDay, [...(dailyDurations.get(onDay) ?? []), took]);
+      }
       const ranIn = environmentOf(t);
       if (ranIn !== null) {
         bump(byEnvironment, ranIn, tally);
@@ -1271,7 +1321,7 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
         : {};
     const views = (
       map: Map<string, Tally> | undefined,
-      runsOf?: (key: string) => { runs: number; failedRequests: number },
+      runsOf?: (key: string) => Record<string, unknown>,
     ) =>
       Object.fromEntries(
         [...(map ?? [])].map(([key, tally]) => [
@@ -1292,7 +1342,10 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
           ...usageView(daily.get(d) ?? empty()),
           ...sources(genkiDaily.get(d) ?? empty(), gatewayDaily.get(d) ?? empty()),
         },
-        byService: views(dailyService.get(d), (s) => tallied(`day|${d}|${s}`)),
+        byService: views(dailyService.get(d), (s) => ({
+          ...tallied(`day|${d}|${s}`),
+          latency: latencyOf(dailyDurations.get(`${d}|${s}`) ?? []),
+        })),
         byModel: views(dailyModel.get(d)),
         testing: usageView(dailyTesting.get(d) ?? empty()),
         ingestion: usageView(dailyIngestion.get(d) ?? empty()),
@@ -1740,6 +1793,17 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       100_000,
     );
     const needle = c.req.query('q')?.trim().toLowerCase().slice(0, 200) || undefined;
+    const actor = c.req.query('actor')?.trim() || undefined;
+    if (actor !== undefined && (actor.length > 300 || !/^(me$|employee:|api-key:)/.test(actor)))
+      return problem(c, 400, 'Invalid request', [
+        { path: 'actor', message: 'actor is me, or an actor id from a run row' },
+      ]);
+    const byActor = (t: Task | undefined) =>
+      !actor ||
+      (t !== undefined &&
+        (actor === 'me'
+          ? startedByCaller(t, g.principal, g.tenant)
+          : actorIdOf(t, g.tenant) === actor));
     const keep = (row: PortalTaskRow) =>
       (!status || row.status === status) && (!from || row.at >= from);
     const tasks =
@@ -1754,6 +1818,7 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       .filter((r) => !environment || r.environment === environment)
       .filter((r) => !from || r.createdAt >= from)
       .filter((r) => !to || r.createdAt <= to)
+      .filter((r) => byActor(byId.get(r.id)))
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     const matching = needle
       ? await searchTasks(

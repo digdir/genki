@@ -28,8 +28,8 @@ import {
   runState,
   type StoredRun,
 } from '@genai/eval';
-import { type SecretResolver, type Strategy } from '@genai/kernel';
-import { residencies, servesModelPort, type Residency } from '@genai/port-model';
+import { type Maturity, type SecretResolver, type Strategy } from '@genai/kernel';
+import { builtInOperations, residencies, servesModelPort, type Residency } from '@genai/port-model';
 import {
   A2aClient,
   jsonRpcInterface,
@@ -175,10 +175,12 @@ export interface BuildingBlock {
   publisher: BlockPublisher;
   version: string;
   latestVersion?: string;
+  versionAt?: string;
   update?: BlockUpdate;
   dataLocation: DataLocation | null;
   residency?: DataLocation;
   status: BlockStatus;
+  required?: true;
   policyBlock?: PolicyBlock;
   approver?: string;
   capabilities: string[];
@@ -199,7 +201,12 @@ export interface BuildingBlock {
 
 export interface BuildingBlockList {
   data: BuildingBlock[];
-  counts: { inUse: number; catalog: number; byKind: Record<BlockKind, number> };
+  counts: {
+    inUse: number;
+    catalog: number;
+    byKind: Record<BlockKind, number>;
+    required: Partial<Record<BlockKind, number>>;
+  };
 }
 
 export type BlockEvent =
@@ -396,6 +403,7 @@ interface Source {
   >;
   owner?: string;
   latest?: { version: number; at: string; reason: string };
+  versionDates?: Record<string, string>;
   /** Why the tenant cannot take it in use, whatever its policy says. */
   refused?: string;
   uses(ref: BlockReference): boolean;
@@ -978,6 +986,9 @@ export const createBuildingBlocksModule =
               settingsSchema: settingsOf(),
             },
             latest: { version: latest.version, at: latest.publishedAt, reason: latest.reason },
+            versionDates: Object.fromEntries(
+              history.map((v) => [String(v.version), v.publishedAt]),
+            ),
             uses: (ref) => ref.kind === kind && ref.id === entry.id,
             history: async () =>
               history.map((v) => ({
@@ -1030,7 +1041,11 @@ export const createBuildingBlocksModule =
         for (const entry of await deps.configEntries.latest({ kind: 'guardrail-rule', scope })) {
           if (entry.deleted) continue;
           const ruleId = scope === platformScope ? entry.id : entry.id.slice(scope.length + 1);
-          const spec = (entry.spec as { spec?: { kind?: string; message?: string } }).spec ?? {};
+          const stored = entry.spec as {
+            spec?: { kind?: string; message?: string };
+            mandatory?: unknown;
+          };
+          const spec = stored.spec ?? {};
           const id = `custom-rules/${ruleId}`;
           out.push({
             block: {
@@ -1044,6 +1059,9 @@ export const createBuildingBlocksModule =
               capabilities: spec.kind ? [spec.kind] : [],
               permissions: [],
               settingsSchema: settingsOf(),
+              ...(scope === platformScope && stored.mandatory === true
+                ? { required: true as const }
+                : {}),
             },
             uses: (ref) => ref.kind === 'guardrail' && ref.id === id,
             history: async () =>
@@ -1339,9 +1357,11 @@ export const createBuildingBlocksModule =
       const request = pending.find(
         (r) => r.kind === block.kind && r.block === block.id && r.state === 'pending',
       );
+      const versionAt = source.versionDates?.[version];
       return {
         ...block,
         version,
+        ...(versionAt ? { versionAt } : {}),
         ...(latestVersion ? { latestVersion } : {}),
         ...(update ? { update } : {}),
         status,
@@ -1404,13 +1424,18 @@ export const createBuildingBlocksModule =
           (!filter.publisher || b.publisher.type === filter.publisher),
       );
       const byKind = Object.fromEntries(blockKinds.map((k) => [k, 0])) as Record<BlockKind, number>;
-      for (const b of all) byKind[b.kind] += 1;
+      const required: Partial<Record<BlockKind, number>> = {};
+      for (const b of all) {
+        byKind[b.kind] += 1;
+        if (b.required) required[b.kind] = (required[b.kind] ?? 0) + 1;
+      }
       return {
         data,
         counts: {
           inUse: all.filter((b) => b.status === 'in_use').length,
           catalog: all.length,
           byKind,
+          required,
         },
       };
     };
@@ -2194,6 +2219,37 @@ export const createBuildingBlocksModule =
     const secretNames = async (tenant: string) =>
       options.secretNames ? options.secretNames(tenant) : [];
 
+    const modelFacts = async (id: string): Promise<ModelFacts> => {
+      const model = deps.models.describe().find((m) => m.id === id);
+      if (!model) return {};
+      const governance = deps.operations?.governance;
+      const operations = await Promise.all(
+        Object.entries(model.apis)
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(async ([operation, api]) => ({
+            operation,
+            api,
+            ...(builtInKinds.includes(operation) ? { builtIn: true as const } : {}),
+            ...(governance ? { maturity: (await governance.maturityOf(operation)).maturity } : {}),
+          })),
+      );
+      const record = governance ? await governance.processorRecord(model.endpoint) : undefined;
+      return {
+        operations,
+        ...(governance
+          ? {
+              processor: record
+                ? {
+                    recorded: true,
+                    subProcessors: record.spec.subProcessors,
+                    retentionDays: record.spec.retention.days,
+                  }
+                : { recorded: false },
+            }
+          : {}),
+      };
+    };
+
     const secretHosts = async (ref: string) => [
       ...((await options.secrets?.hostsFor?.(ref)) ?? []),
     ];
@@ -2211,6 +2267,7 @@ export const createBuildingBlocksModule =
           list,
           find,
           adopted,
+          modelFacts,
           names: actorNames(deps.configEntries),
           flowDefinition,
           versions,
@@ -2231,6 +2288,15 @@ export const createBuildingBlocksModule =
     };
   };
 
+const builtInKinds: readonly string[] = [...builtInOperations, 'embed', 'rerank'];
+
+interface ModelFacts {
+  operations?: { operation: string; api: string; builtIn?: true; maturity?: Maturity }[];
+  processor?:
+    | { recorded: true; subProcessors: { name: string; location: string }[]; retentionDays: number }
+    | { recorded: false };
+}
+
 interface Reads {
   list(
     tenant: string,
@@ -2248,6 +2314,7 @@ interface Reads {
     id: string,
   ): Promise<{ at: string; by: string } | undefined>;
   names: Pick<ActorNames, 'namesOf'>;
+  modelFacts(id: string): Promise<ModelFacts>;
   flowDefinition(
     tenant: string,
     id: string,
@@ -2579,8 +2646,10 @@ const mountRoutes = <E extends Env, S extends Schema, B extends string>(
     if (!found) return problem(c, 404, 'Not found');
     const adopted = await reads.adopted(guard.tenant, param(c, 'kind'), param(c, 'id'));
     const name = adopted ? (await reads.names.namesOf([adopted.by])).get(adopted.by) : undefined;
+    const facts = found.block.kind === 'model' ? await reads.modelFacts(found.block.id) : {};
     return c.json({
       ...found.block,
+      ...facts,
       ...(adopted ? { adoptedAt: adopted.at } : {}),
       ...(name ? { adoptedByName: name } : {}),
     });

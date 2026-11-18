@@ -649,6 +649,8 @@ export const routeErrors = {
   unknownResidency: 'unknown residency {residency}',
   runNotStoppable: 'only a run started through an API entry point is stopped here',
   runFinished: 'the run has already finished',
+  evalRunEndedAs: 'the run has already ended as {state}',
+  actorFilter: 'actor is me, or an actor id from a run row',
   incidentResolved: 'the incident is already resolved',
   quotaRequestPending: 'a quota request is already waiting for a decision',
   quotaRequestApproved: 'the quota request is already approved',

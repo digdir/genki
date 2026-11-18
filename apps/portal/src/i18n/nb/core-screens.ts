@@ -208,6 +208,7 @@ export const changes = defineNamespace({
   engineSwitchRetry: 'prøvde bytte av søkemotor på nytt for',
   engineSwitchStart: 'startet bytte av søkemotor for',
   evalRun: 'kjørte testsettet',
+  evalRunCancel: 'avbrøt en kjøring av testsettet',
   gateDelete: 'slettet kvalitetskravet',
   gateSave: 'lagret kvalitetskravet',
   guardrailRuleDelete: 'slettet vernregelen',

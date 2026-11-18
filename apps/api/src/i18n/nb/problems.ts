@@ -115,6 +115,7 @@ export const problems = defineNamespace({
   datasetDocumentsFailed: 'Klarte ikke å hente dokumentene fra søkemotoren',
   evalCompareInvalid: 'Ugyldig sammenligning',
   evalRunNotFound: 'Fant ikke testkjøringen for denne tjenesten',
+  evalRunFinished: 'Testkjøringen er allerede ferdig',
   evalBaselineMissing: 'Versjonen i bruk har ingen fullført kjøring av testsettet',
   evalRunsNotComparable: 'Kjøringene er av ulike testsett',
   draftNotFound: 'Tjenesten har ikke noe utkast',

@@ -228,6 +228,7 @@ export const adminActionRights: Readonly<
   'platform.task.review.edit': 'use-services',
   'platform.task.review.approve': 'use-services',
   'platform.run.cancel': (input) => (input.own === true ? 'use-services' : 'manage-services'),
+  'platform.eval-run.cancel': (input) => (input.own === true ? 'use-services' : 'manage-services'),
   'platform.quota.request': 'manage-services',
   'platform.quota.decide': 'operator',
   'platform.incident.save': 'operator',

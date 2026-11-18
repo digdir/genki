@@ -2,7 +2,13 @@ import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
 import type { Event, Principal, Task } from '@genai/contracts';
 import { InMemoryDefinitionStore, SettingsRegistry } from '@genai/definitions';
-import { apiKeyDigest, createAuthenticator, InMemoryApiKeys, keyReaches } from '@genai/identity';
+import {
+  apiKeyDigest,
+  createAuthenticator,
+  InMemoryApiKeys,
+  keyReaches,
+  LEGACY_KEY_ISSUER,
+} from '@genai/identity';
 import { InMemoryUsageBuckets, memoryUsageSource, pollUsage } from '@genai/port-usage';
 import { InMemoryConnections } from '@genai/providers-mcp-client';
 import { createAdmin } from '../admin.js';
@@ -24,6 +30,7 @@ import {
   tallyOf,
   usageView,
   type PortalTaskRow,
+  type TenantApiKey,
 } from './portal-routes.js';
 
 const task = (
@@ -1925,5 +1932,144 @@ describe('service tabs: latency, failure causes and run search', () => {
     );
 
     expect(body.data).toEqual([]);
+  });
+});
+
+describe('who started a run and how it came in', () => {
+  const by = (
+    id: string,
+    at: string,
+    principal: Task['principal'],
+    more: Partial<Task> = {},
+  ): Task => ({ ...task(id, digdir, at), principal, ...more });
+  const person = (subject: string, tenant = digdir) => ({
+    kind: 'employee',
+    id: JSON.stringify(['test', subject]),
+    tenant,
+  });
+  const key = (id: string) => ({
+    kind: 'service',
+    id: JSON.stringify([LEGACY_KEY_ISSUER, id]),
+    tenant: digdir,
+  });
+  const tasks = [
+    by('api', '2026-10-06T08:00:00Z', person('kari'), { entryPoint: 'openai' }),
+    by('key', '2026-10-06T08:01:00Z', key('k1'), { entryPoint: 'openai' }),
+    by('frontend', '2026-10-06T08:02:00Z', key('k2'), { entryPoint: 'openai' }),
+    by('batch', '2026-10-06T08:03:00Z', person('per')),
+    by('trigger', '2026-10-06T08:04:00Z', { kind: 'workload', id: '["platform","trigger"]' }),
+    {
+      ...by('shared', '2026-10-06T08:05:00Z', person('kari', other), { entryPoint: 'openai' }),
+      tenant: other,
+    },
+    task('trial', digdir, '2026-10-06T08:06:00Z', 'completed', 'platform/draft/playground/p1'),
+  ];
+  const stored = (id: string, clientId?: string): TenantApiKey => ({
+    id,
+    tenant: digdir,
+    name: `Nøkkel ${id}`,
+    digest: id,
+    scopes: [],
+    datasets: [],
+    agents: [],
+    ...(clientId ? { clientId } : {}),
+  });
+  const boot = () =>
+    setup({
+      tasks: () =>
+        tasks.map((t) => ({ task: t.id, tenant: t.owner, status: t.status, at: t.createdAt })),
+      task: async (id: string) => tasks.find((t) => t.id === id),
+      apiKeys: {
+        list: async (tenant: string) =>
+          tenant === digdir ? [stored('k1'), stored('k2', 'nettside')] : [],
+        add: async () => undefined,
+        revoke: async () => undefined,
+      },
+      batchTasks: async (tenant: string) => new Set(tenant === digdir ? ['batch'] : []),
+    });
+  const list = async (send: Awaited<ReturnType<typeof boot>>['send'], query = '', who = 'kari') =>
+    json<{ data: { id: string; channel: unknown; actor: { id?: string } }[]; total: number }>(
+      await send(`/tenants/${digdir}/tasks${query}`, who),
+    );
+
+  it('says through which channel each run came in, from what the run records', async () => {
+    const { send } = await boot();
+
+    const service = await list(send);
+    const trials = await list(send, '?origin=playground');
+    const channels = Object.fromEntries(service.data.map((r) => [r.id, r.channel]));
+
+    expect(channels).toEqual({
+      api: 'api',
+      key: 'api-key',
+      frontend: 'interface',
+      batch: 'batch',
+      trigger: null,
+      shared: 'api',
+    });
+    expect(trials.data.map((r) => [r.id, r.channel])).toEqual([['trial', 'playground']]);
+  });
+
+  it("filters the run list by the caller's own runs or by an actor id from a row", async () => {
+    const { send } = await boot();
+
+    const mine = await list(send, '?actor=me');
+    const byKey = await list(send, '?actor=api-key%3Ak1');
+    const byPer = await list(send, `?actor=${encodeURIComponent('employee:test:per')}`);
+
+    expect(mine.data.map((r) => r.id)).toEqual(['api']);
+    expect(byKey.data.map((r) => r.id)).toEqual(['key']);
+    expect(byPer).toMatchObject({ total: 1, data: [{ id: 'batch' }] });
+    expect(byPer.data[0]?.actor.id).toBe('employee:test:per');
+  });
+
+  it('never names or matches an actor from another tenant, even on a run of its own service', async () => {
+    const { send } = await boot();
+
+    const all = await list(send);
+    const asOther = await list(send, `?actor=${encodeURIComponent('employee:test:kari')}`);
+
+    expect(all.data.find((r) => r.id === 'shared')?.actor.id).toBeUndefined();
+    expect(asOther.data.map((r) => r.id)).toEqual(['api']);
+    expect((await send(`/tenants/${digdir}/tasks?actor=me`, 'ola')).status).toBe(404);
+  });
+
+  it('refuses an actor filter that is neither me nor an actor id', async () => {
+    const { send } = await boot();
+
+    const res = await send(`/tenants/${digdir}/tasks?actor=kari`, 'kari');
+
+    expect(res.status).toBe(400);
+  });
+
+  it("gives each day of a service's usage the p50 and p95 time of that day's ended runs", async () => {
+    const ended = (id: string, at: string, ms: number): Task => ({
+      ...task(id, digdir, at),
+      endedAt: new Date(Date.parse(at) + ms).toISOString(),
+    });
+    const daily = [
+      ended('a', '2026-10-05T08:00:00Z', 1000),
+      ended('b', '2026-10-05T09:00:00Z', 3000),
+      ended('c', '2026-10-06T08:00:00Z', 500),
+      task('d', digdir, '2026-10-06T09:00:00Z', 'running'),
+    ];
+    const { send } = await setup({
+      tasks: () =>
+        daily.map((t) => ({ task: t.id, tenant: t.tenant, status: t.status, at: t.createdAt })),
+      task: async (id: string) => daily.find((t) => t.id === id),
+    });
+
+    const body = await json<{
+      daily: { date: string; byService: Record<string, { latency: unknown }> }[];
+    }>(await send(`/tenants/${digdir}/usage?days=3`, 'kari'));
+    const latency = Object.fromEntries(
+      body.daily.map((d) => [d.date, d.byService.klarsprak?.latency]),
+    );
+
+    expect(latency).toEqual({
+      '2026-10-04': undefined,
+      '2026-10-05': { p50Ms: 1000, p95Ms: 3000, runs: 2 },
+      '2026-10-06': { p50Ms: 500, p95Ms: 500, runs: 1 },
+    });
   });
 });

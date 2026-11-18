@@ -311,6 +311,14 @@ describe('access and extensions API reference', () => {
       '/tenants/{tenant}/building-blocks/{kind}/{id}',
       200,
     );
+    const model = blocks.find((b) => b.kind === 'model');
+    expect(model).toBeDefined();
+    await conforms(
+      await send(`${t}/building-blocks/model/${encodeURIComponent(model?.id ?? '')}`, 'kari'),
+      'get',
+      '/tenants/{tenant}/building-blocks/{kind}/{id}',
+      200,
+    );
     await conforms(
       await send(
         `${t}/building-blocks/${first?.kind}/${encodeURIComponent(first?.id ?? '')}/versions`,

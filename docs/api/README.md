@@ -63,6 +63,13 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ## API changes
 
+### 2026-11-18: facts and actions for the portal's building blocks and service tabs
+
+- `GET /tenants/{tenant}/services/{id}/environment-history`: who added, removed, promoted or rolled back each environment of a service, when and why, newest first (see [services.md](services.md#build-and-edit-a-service-from-your-own-admin-ui)). Changes from now on record their action; older ones are inferred.
+- `POST /tenants/{tenant}/services/{id}/eval-runs/{runId}/cancel` cancels a running test run for whoever started it, or with `manage-services`; the run ends with the new status `cancelled` (see [work.md](work.md#rights)).
+- `GET /tenants/{tenant}/tasks` takes `actor` (`me` or an actor id), gives `actor.id` for actors of the caller's own tenant and a `channel` per run (`api-key`, `interface`, `api`, `playground`, `batch` or `null`). The usage report's `daily[].byService` adds `latency` per day.
+- Building blocks add `versionAt` (step flows and skills), `required` and `counts.required` (mandatory guardrail rules), and on a model block `operations` (API, built-in and maturity per call type) and `processor` (whether its connection has a processor record, its sub-processors and retention). See [access.md](access.md). A service uses a model through the draft: set `spec.model.primary` and save with `PUT .../draft`.
+
 ### 2026-11-18: playground changes on top of a service version
 
 - `POST /tenants/{tenant}/playground/runs` (and `/stream`) now applies `setup.instructions` and `setup.datasets` when `setup.service` is set; before, they were ignored. They change that run only and never the service, a version or a draft (see [services.md](services.md#playground-changes-on-top-of-a-service-version)). A dataset the tenant may not use, or instructions for a strategy without one instructions field (a step flow), answers `422`. A dataset that does not exist or is not shared with the tenant now answers `422` before the run in the setup without a service too.

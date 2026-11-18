@@ -206,6 +206,7 @@ export const evalRunStates = [
   'completed',
   'failed',
   'interrupted',
+  'cancelled',
 ] as const;
 export type EvalRunState = (typeof evalRunStates)[number];
 

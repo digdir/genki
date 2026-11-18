@@ -338,6 +338,10 @@ const BuildingBlock = z
     description: z.string(),
     publisher: z.object({ type: z.enum(['digdir', 'own', 'shared']), name: z.string() }),
     version: z.string(),
+    versionAt: z
+      .string()
+      .optional()
+      .describe('When the version in version was published; step flows and skills only'),
     latestVersion: z.string().optional(),
     update: z
       .object({
@@ -358,6 +362,12 @@ const BuildingBlock = z
       'Where a registered tool connection processes data, as the registrant declared it; also its dataLocation. Not verified',
     ),
     status: z.enum(blockStatuses),
+    required: z
+      .literal(true)
+      .optional()
+      .describe(
+        'A guardrail rule the platform made mandatory: it applies to every run of every service, adopted or not',
+      ),
     policyBlock: z.object({ rule: z.string(), ownedBy: z.string(), text: z.string() }).optional(),
     approver: z.string().optional(),
     capabilities: z.array(z.string()),
@@ -415,6 +425,9 @@ const BuildingBlockList = z
       inUse: z.number().int(),
       catalog: z.number().int(),
       byKind: z.record(z.string(), z.number().int()),
+      required: z
+        .record(z.string(), z.number().int())
+        .describe('Required blocks per kind, such as the mandatory guardrail rules'),
     }),
   })
   .openapi('BuildingBlockList');
@@ -1907,6 +1920,40 @@ export const accessRoutes: RouteConfig[] = [
             .string()
             .optional()
             .describe('The name of the person who took it into use, when genki knows it'),
+          operations: z
+            .array(
+              z.object({
+                operation: z.string().describe('The call type, such as chat, embed or transcribe'),
+                api: z.string().describe('The API the model is called through for it'),
+                builtIn: z
+                  .literal(true)
+                  .optional()
+                  .describe(
+                    "A built-in kind (chat, decide, embed, rerank): genki's own typed calls of it are always production",
+                  ),
+                maturity: z
+                  .enum(['test', 'production'])
+                  .optional()
+                  .describe(
+                    'The maturity of the kind in this environment, which governs calls through a call-operation step; absent when the platform has no operation governance',
+                  ),
+              }),
+            )
+            .optional()
+            .describe('A model only: each call type the model list binds an API for'),
+          processor: z
+            .union([
+              z.object({
+                recorded: z.literal(true),
+                subProcessors: z.array(z.object({ name: z.string(), location: z.string() })),
+                retentionDays: z.number().int(),
+              }),
+              z.object({ recorded: z.literal(false) }),
+            ])
+            .optional()
+            .describe(
+              "A model only: whether an operator recorded a processor record for the model's connection, with its sub-processors and retention; absent when the platform has no operation governance",
+            ),
         }),
         'Building block',
       ),
