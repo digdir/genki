@@ -413,16 +413,6 @@ export const RunPage = ({
               </dd>
             </>
           ) : null}
-          {run.trace?.url ? (
-            <>
-              <dt>{t('logRun.traceTool')}</dt>
-              <dd>
-                <a href={run.trace.url} target="_blank" rel="noreferrer">
-                  {t('logRun.openInLangfuse')}
-                </a>
-              </dd>
-            </>
-          ) : null}
         </dl>
       </details>
     </div>
