@@ -90,6 +90,23 @@ describe('postgres change feed', () => {
     await vi.waitFor(() => expect(heard).toHaveBeenCalledTimes(1), { timeout: 3000 });
   });
 
+  it('an announced topic reaches the other replicas but not the one that announced it', async () => {
+    const own = await feedOn();
+    const other = await feedOn();
+    const heardOwn = vi.fn();
+    const heardOther = vi.fn();
+    own.on('model-classifications', heardOwn);
+    other.on('model-classifications', heardOther);
+    const before = await versionOf('model-classifications');
+
+    await own.announce('model-classifications');
+
+    await vi.waitFor(() => expect(heardOther).toHaveBeenCalledTimes(1), { timeout: 3000 });
+    await own.poll();
+    expect(heardOwn).not.toHaveBeenCalled();
+    expect(await versionOf('model-classifications')).toBe(before + 1);
+  });
+
   it('bumps a topic once per statement, not per row', async () => {
     const before = await versionOf('settings');
 

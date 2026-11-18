@@ -56,3 +56,15 @@ export const followChanges = (feed: ChangeFeed, followers: ChangeFollowers): (()
     for (const stop of stops) stop();
   };
 };
+
+export const refreshEverywhere = async <R>(
+  discovery: { refresh(): Promise<R> },
+  feed: { announce(topic: ChangeTopic): Promise<void> } | undefined,
+  onError: (error: unknown) => void = () => undefined,
+): Promise<R> => {
+  try {
+    return await discovery.refresh();
+  } finally {
+    await feed?.announce('model-classifications').catch(onError);
+  }
+};
