@@ -298,6 +298,7 @@ const kudosStoredFields = [
   'type',
   'language',
   'concerned_years',
+  'report',
   'total_chunks',
   'last_retrieval_success_at',
   'first_retrieval_failure_at',
@@ -324,6 +325,84 @@ export const kudosOrgFields = (record: Record<string, unknown>) => {
     ...(recipients.length ? { recipient_orgnr: recipients } : {}),
   };
 };
+
+/** The 17 ministries' abbreviations on 18 Nov 2026 (9,057 KUDOS titles, issue 677); add a renamed ministry's here. */
+const ministries = new Set([
+  'AID',
+  'BFD',
+  'DFD',
+  'ED',
+  'FD',
+  'FIN',
+  'HOD',
+  'JD',
+  'KD',
+  'KDD',
+  'KLD',
+  'KUD',
+  'LMD',
+  'NFD',
+  'SD',
+  'SMK',
+  'UD',
+]);
+
+/** A trailing "(HOD)", "(KUD)": the abbreviation a ministry adds to its copy of a report, else undefined. */
+export const ministrySuffix = (title: string): string | undefined => {
+  const t = title.trimEnd();
+  if (!t.endsWith(')')) return undefined;
+  const open = t.lastIndexOf('(');
+  const inner = t.slice(open + 1, -1);
+  return open > 0 && ministries.has(inner) ? inner : undefined;
+};
+
+/** A title without its ministry suffix, in lower case, its whitespace collapsed. */
+export const reportTitle = (title: string) => {
+  const suffix = ministrySuffix(title);
+  const bare = suffix === undefined ? title : title.trimEnd().slice(0, -(suffix.length + 2));
+  return bare.normalize('NFC').toLowerCase().split(/\s+/).filter(Boolean).join(' ');
+};
+
+/** KUDOS dates the records it has no date for 1 January, and most ministry copies. */
+const isRealDate = (date: unknown) =>
+  typeof date === 'string' && /^\d{4}-\d{2}-\d{2}/.test(date) && date.slice(5, 10) !== '01-01';
+
+/** The concerned years, else `p` and the publish year, so yearly editions without years stay apart. */
+const reportYears = (doc: KudosDocument) => {
+  const years = concernedYears(doc);
+  if (years.length) return years.join(',');
+  const date = typeof doc.publish_date === 'string' ? doc.publish_date : '';
+  return /^\d{4}/.test(date) ? `p${date.slice(0, 4)}` : '';
+};
+
+const pagesOf = (files: unknown) => {
+  const pages = (Array.isArray(files) ? files : []).flatMap((f: unknown) => {
+    const n = (f as KudosFile | null)?.pages;
+    return typeof n === 'number' && Number.isInteger(n) && n > 0 ? [n] : [];
+  });
+  return pages.length ? pages.reduce((a, b) => a + b, 0) : undefined;
+};
+
+/** The key one report's KUDOS records share, whether this one is the agency's own, and its pages. */
+export const kudosReportFields = (
+  record: Record<string, unknown>,
+): { report?: { key: string; own: boolean; pages?: number } } => {
+  const doc = record as KudosDocument;
+  const type = typeof doc.type === 'string' ? doc.type.trim().toLowerCase() : '';
+  const title = typeof doc.title === 'string' ? reportTitle(doc.title) : '';
+  const owners = orgNumbers((record.owners ?? []) as KudosOrganisation[]).sort();
+  if (!type || !title || owners.length === 0) return {};
+  const pages = pagesOf(record.files);
+  return {
+    report: {
+      key: [type, owners.join(','), reportYears(doc), title].join('|'),
+      own: ministrySuffix(String(doc.title)) === undefined && isRealDate(doc.publish_date),
+      ...(pages === undefined ? {} : { pages }),
+    },
+  };
+};
+
+const reportFieldNames = ['report'] as const;
 
 type StoredKudos = { id: string; record: Record<string, unknown>; fields: Record<string, unknown> };
 
@@ -374,6 +453,12 @@ export const kudosLinkAndAbbreviationFields = (
   return record.uuid || record.id ? { fields, url: kudosPublicUrl(record) } : { fields };
 };
 
+/** `kudos-report-keys`: the report fields an ingest writes now, from the stored record (issue 677). */
+export const kudosReportKeyFields = (doc: StoredKudos): Record<string, unknown> => {
+  if (!kudosRoles.some((role) => Array.isArray(doc.record[role]))) return doc.fields;
+  return refilled(doc.fields, reportFieldNames, kudosReportFields(doc.record));
+};
+
 export const prepareKudosDoc = (
   doc: ReturnType<typeof fillInKudosFields> & Record<string, unknown>,
   totalChunks: number,
@@ -388,6 +473,7 @@ export const prepareKudosDoc = (
   const enriched: Record<string, unknown> = {
     ...doc,
     ...kudosOrgFields(doc),
+    ...kudosReportFields(doc),
     files,
     file_sha256: [...new Set(files.flatMap((f) => (f.sha256 ? [f.sha256] : [])))],
     total_chunks: totalChunks,

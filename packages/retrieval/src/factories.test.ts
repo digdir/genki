@@ -294,6 +294,25 @@ describe('agent retrieval factory', () => {
     });
   });
 
+  it('a search result names the records of one report it left out for a hit', async () => {
+    const report = (own: boolean) => ({
+      key: 'årsrapport|983544622|2023|årsrapport',
+      own,
+      pages: 10,
+    });
+    const s = stub(['c1', 'c3'], {
+      c1: { page: 3, docs: { report: report(false), publish_date: '2024-01-01' } },
+      c3: { page: 3, docs: { report: report(true), publish_date: '2024-04-15' } },
+    });
+    const agent = createAgentRetrieval({ knowledge: s.knowledge, config: metadataOnly });
+
+    const found = await agent.search(['årsverk'], {}, signal);
+
+    expect(found.chunks.map((c) => [c.chunkId, c.copies])).toEqual([
+      ['c3', [{ chunkId: 'c1', document: 'd1' }]],
+    ]);
+  });
+
   it('never gives the ingestion date as the publish date of an undated chunk', async () => {
     const s = stub([], { c1: { ingested_at: '2026-10-01T08:00:00.000Z' } });
     const agent = createAgentRetrieval({ knowledge: s.knowledge, config: metadataOnly });

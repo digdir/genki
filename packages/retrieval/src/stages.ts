@@ -34,7 +34,14 @@ export interface Chunk {
   retrievalBoosts?: Record<string, number>;
   rerankScore?: number;
   rerankRank?: number;
+  /** Hits on the same page of other records of this report, collapsed into this one (issue 677). */
+  copies?: ReportCopy[];
   fields: Record<string, unknown>;
+}
+
+export interface ReportCopy {
+  id: string;
+  document?: string;
 }
 
 const nested = (fields: Record<string, unknown>, name: string): unknown => {
@@ -219,6 +226,120 @@ export const suppressDuplicateFiles = (chunks: Chunk[]): Chunk[] => {
       return true;
     }
     return claimed.get(digest) === c.document;
+  });
+};
+
+interface ReportInfo {
+  key: string;
+  own: boolean;
+  pages: number;
+  date: string;
+}
+
+const reportOf = (c: Chunk): ReportInfo | undefined => {
+  const report = nested(c.fields, 'report') as Record<string, unknown> | null | undefined;
+  const key = report?.key;
+  const pages = report?.pages;
+  if (typeof key !== 'string' || key === '' || typeof pages !== 'number' || !(pages > 0))
+    return undefined;
+  const date = nested(c.fields, 'publish_date');
+  return { key, own: report?.own === true, pages, date: typeof date === 'string' ? date : '' };
+};
+
+/** Records whose page counts differ by more than this are kept apart, whatever their key. */
+const reportPageTolerance = 0.05;
+/** Two hits are the same page when this share of their words is shared. */
+const samePageOverlap = 0.8;
+/** Fewer words than this, such as a footer, are compared by page instead. */
+const samePageMinWords = 5;
+
+const closePages = (a: number, b: number) =>
+  Math.abs(a - b) <= reportPageTolerance * Math.max(a, b);
+
+const overlap = (a: Set<string>, b: Set<string>) => {
+  if (a.size === 0 || b.size === 0) return 0;
+  return intersect(a, b).size / new Set([...a, ...b]).size;
+};
+
+/** The agency's own record first, then the latest publish date. */
+const preferred = (a: ReportInfo, b: ReportInfo) => (a.own !== b.own ? a.own : a.date > b.date);
+
+/** Hits on the same page of records of one report come back once, from the preferred record. */
+export const collapseReportCopies = (
+  chunks: Chunk[],
+  textOf: (c: Chunk) => string | undefined = (c) => c.text,
+): Chunk[] => {
+  interface Member {
+    info: ReportInfo;
+    words: Set<string>;
+    page: unknown;
+  }
+  interface Slot {
+    keeper: Chunk;
+    info: ReportInfo;
+    members: Member[];
+    documents: Set<string>;
+    copies: Chunk[];
+  }
+  const samePage = (a: Member, b: Member) => {
+    const aLong = a.words.size >= samePageMinWords;
+    const bLong = b.words.size >= samePageMinWords;
+    if (aLong && bLong) return overlap(a.words, b.words) >= samePageOverlap;
+    // A short hit, such as a footer, only matches another short one on the same page.
+    return (
+      !aLong && !bLong && a.info.pages === b.info.pages && a.page !== undefined && a.page === b.page
+    );
+  };
+  const slotsByKey = new Map<string, Slot[]>();
+  const out: (Chunk | Slot)[] = [];
+  for (const c of chunks) {
+    const info = reportOf(c);
+    const document = c.document ?? c.id;
+    if (!info) {
+      out.push(c);
+      continue;
+    }
+    const member = { info, words: tokenize(textOf(c)), page: c.fields.page };
+    const slots = slotsByKey.get(info.key) ?? [];
+    const slot = slots.find(
+      (s) =>
+        !s.documents.has(document) &&
+        s.members.every((m) => closePages(m.info.pages, info.pages)) &&
+        s.members.some((m) => samePage(m, member)),
+    );
+    if (!slot) {
+      const fresh = {
+        keeper: c,
+        info,
+        members: [member],
+        documents: new Set([document]),
+        copies: [],
+      };
+      slots.push(fresh);
+      slotsByKey.set(info.key, slots);
+      out.push(fresh);
+      continue;
+    }
+    slot.documents.add(document);
+    slot.members.push(member);
+    if (preferred(info, slot.info)) {
+      slot.copies.push(slot.keeper);
+      Object.assign(slot, { keeper: c, info });
+    } else slot.copies.push(c);
+  }
+  return out.map((x): Chunk => {
+    if (!('keeper' in x)) return x;
+    if (x.copies.length === 0) return x.keeper;
+    const named = new Map<string, ReportCopy>();
+    for (const copy of [
+      ...(x.keeper.copies ?? []),
+      ...x.copies.flatMap((c) => [
+        { id: c.id, ...(c.document === undefined ? {} : { document: c.document }) },
+        ...(c.copies ?? []),
+      ]),
+    ])
+      if (copy.id !== x.keeper.id && !named.has(copy.id)) named.set(copy.id, copy);
+    return { ...x.keeper, copies: [...named.values()] };
   });
 };
 

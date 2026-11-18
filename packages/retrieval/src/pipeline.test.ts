@@ -35,6 +35,7 @@ interface Doc {
   title: string;
   metadata?: string;
   digest?: string;
+  report?: { own: boolean; date: string; pages: number };
 }
 
 const corpus: Record<string, Doc> = {
@@ -67,6 +68,38 @@ const corpus: Record<string, Doc> = {
     title: 'Evaluering av veiledningstjenesten (2019)',
     text: ' ',
   },
+  c6: {
+    document: 'kudos:51fe0107',
+    position: 17,
+    title: 'Årsrapport Helsedirektoratet 2023',
+    text: 'For kvinner utgjorde gjennomsnittslønnen kr. 826 000.',
+    digest: 'sha-own',
+    report: { own: true, date: '2024-04-15', pages: 151 },
+  },
+  c7: {
+    document: 'kudos:fdfac1a8',
+    position: 17,
+    title: 'Årsrapport Helsedirektoratet 2023 (HOD)',
+    text: 'For kvinner utgjorde gjennomsnittslønnen kr. 826 000.',
+    digest: 'sha-hod',
+    report: { own: false, date: '2024-01-01', pages: 151 },
+  },
+  c8: {
+    document: 'kudos:a2a2fe02',
+    position: 17,
+    title: 'Årsrapport Helsedirektoratet 2023',
+    text: 'For kvinner utgjorde gjennomsnittslønnen kr. 826 000.',
+    digest: 'sha-own',
+    report: { own: false, date: '2023-01-01', pages: 151 },
+  },
+  c9: {
+    document: 'kudos:51fe0107',
+    position: 1,
+    title: 'Årsrapport Helsedirektoratet 2023',
+    text: 'Forord: direktoratet la frem sin årsrapport for 2023 med mange nye tall.',
+    digest: 'sha-own',
+    report: { own: true, date: '2024-04-15', pages: 151 },
+  },
 };
 
 type Script = (request: SearchRequest) => string[];
@@ -98,6 +131,16 @@ const knowledgeStub = (script: Script, options: StubOptions = {}) => {
           orgs_long: ['Digitaliseringsdirektoratet'],
           orgs_short: ['Digdir'],
           ...(d.digest ? { file_sha256: [d.digest] } : {}),
+          ...(d.report
+            ? {
+                report: {
+                  key: 'årsrapport|983544622|2023|årsrapport helsedirektoratet 2023',
+                  own: d.report.own,
+                  pages: d.report.pages,
+                },
+                publish_date: d.report.date,
+              }
+            : {}),
         },
       },
     };
@@ -363,6 +406,157 @@ describe('retrieval pipeline', () => {
     expect(metadataOnly.chunks.every((c) => c.text === undefined)).toBe(true);
   });
 
+  it("returns a page of a report KUDOS holds twice once, from the agency's own record", async () => {
+    const script: (r: SearchRequest) => string[] = (r) =>
+      r.profile === 'content' ? ['c7', 'c4', 'c6'] : [];
+
+    const result = await retrieve({
+      knowledge: knowledgeStub(script).port,
+      queries: ['gjennomsnittslønn kvinner Helsedirektoratet 2023'],
+      config: { autoFilter: { enabled: false }, queryAwareBoost: false },
+    });
+
+    expect(result.chunks.map((c) => c.id)).toEqual(['c6', 'c4']);
+    expect(result.chunks[0]?.copies).toEqual([{ id: 'c7', document: 'kudos:fdfac1a8' }]);
+    expect(result.trace.expansion.droppedAsReportCopy).toBe(1);
+  });
+
+  it("keeps the agency's own record when a copy of the same file ranks above it", async () => {
+    const script: (r: SearchRequest) => string[] = (r) =>
+      r.profile === 'content' ? ['c8', 'c6'] : [];
+
+    const result = await retrieve({
+      knowledge: knowledgeStub(script).port,
+      queries: ['gjennomsnittslønn kvinner Helsedirektoratet 2023'],
+      config: { autoFilter: { enabled: false }, queryAwareBoost: false },
+    });
+
+    expect(result.chunks.map((c) => c.id)).toEqual(['c6']);
+    expect(result.chunks[0]?.copies).toEqual([{ id: 'c8', document: 'kudos:a2a2fe02' }]);
+  });
+
+  it('a per-strategy rerank fills its final cap after collapsing records of one report', async () => {
+    const script: (r: SearchRequest) => string[] = (r) =>
+      r.profile === 'content' ? ['c7', 'c4'] : r.profile === 'phrase' ? ['c6'] : [];
+    const rr = rerankStub((r) => r.documents.map((_, i) => ({ index: i, score: 1, rank: 1 })));
+
+    const result = await retrieve({
+      knowledge: knowledgeStub(script).port,
+      rerank: rr.port,
+      queries: ['gjennomsnittslønn kvinner Helsedirektoratet 2023'],
+      config: {
+        autoFilter: { enabled: false },
+        rerank: { enabled: true, perStrategy: true, finalCap: 2 },
+      },
+    });
+
+    expect(result.chunks.map((c) => c.id).sort()).toEqual(['c4', 'c6']);
+  });
+
+  it('the user-intent union returns a page of one report once', async () => {
+    const script: (r: SearchRequest) => string[] = (r) =>
+      r.profile !== 'content' ? [] : r.query === 'intent' ? ['c6'] : ['c7'];
+
+    const result = await retrieve({
+      knowledge: knowledgeStub(script).port,
+      queries: ['gjennomsnittslønn'],
+      userIntent: 'intent',
+      config: { autoFilter: { enabled: false }, userIntentUnion: { enabled: true } },
+    });
+
+    expect(result.chunks.map((c) => c.id)).toEqual(['c6']);
+  });
+
+  it("the per-document cap never brings back a copy's page in place of the agency's own record", async () => {
+    const script: (r: SearchRequest) => string[] = (r) =>
+      r.profile === 'content' ? ['c9', 'c7', 'c6'] : [];
+
+    const result = await retrieve({
+      knowledge: knowledgeStub(script).port,
+      queries: ['gjennomsnittslønn kvinner Helsedirektoratet 2023'],
+      config: { autoFilter: { enabled: false }, queryAwareBoost: false, maxPerDocument: 1 },
+    });
+
+    expect(result.chunks.map((c) => c.id)).toEqual(['c9']);
+  });
+
+  it('the user-intent union compares the pages of one report by their text when hits carry none', async () => {
+    const script: (r: SearchRequest) => string[] = (r) =>
+      r.profile !== 'content' ? [] : r.query === 'intent' ? ['c6'] : ['c7'];
+
+    const result = await retrieve({
+      knowledge: knowledgeStub(script).port,
+      queries: ['gjennomsnittslønn'],
+      userIntent: 'intent',
+      config: {
+        autoFilter: { enabled: false },
+        metadataOnly: true,
+        userIntentUnion: { enabled: true },
+      },
+    });
+
+    expect(result.chunks.map((c) => c.id)).toEqual(['c6']);
+  });
+
+  it('the user-intent union compares pages by their text after a per-strategy rerank of hits that carry none', async () => {
+    const script: (r: SearchRequest) => string[] = (r) =>
+      r.query === 'intent'
+        ? r.profile === 'content'
+          ? ['c6']
+          : []
+        : r.profile === 'phrase'
+          ? ['c7']
+          : ['c1'];
+    const rr = rerankStub((r) => r.documents.map((_, i) => ({ index: i, score: 1, rank: 1 })));
+
+    const result = await retrieve({
+      knowledge: knowledgeStub(script).port,
+      rerank: rr.port,
+      queries: ['gjennomsnittslønn'],
+      userIntent: 'intent',
+      config: {
+        autoFilter: { enabled: false },
+        metadataOnly: true,
+        retrieveTopK: 1,
+        rerank: { enabled: true, perStrategy: true },
+        userIntentUnion: { enabled: true },
+      },
+    });
+
+    expect(result.chunks.map((c) => c.id)).not.toContain('c7');
+    expect(result.trace.union?.droppedAsReportCopy).toBe(1);
+  });
+
+  it('the trace counts the records of one report the user-intent union leaves out', async () => {
+    const script: (r: SearchRequest) => string[] = (r) =>
+      r.profile !== 'content' ? [] : r.query === 'intent' ? ['c6'] : ['c7'];
+
+    const result = await retrieve({
+      knowledge: knowledgeStub(script).port,
+      queries: ['gjennomsnittslønn'],
+      userIntent: 'intent',
+      config: { autoFilter: { enabled: false }, userIntentUnion: { enabled: true } },
+    });
+
+    expect(result.trace.union?.droppedAsReportCopy).toBe(1);
+  });
+
+  it('collapses records of one report that meet only after a per-strategy rerank', async () => {
+    const script: (r: SearchRequest) => string[] = (r) =>
+      r.profile === 'content' ? ['c7'] : r.profile === 'phrase' ? ['c6'] : [];
+    const rr = rerankStub((r) => r.documents.map((_, i) => ({ index: i, score: 1, rank: 1 })));
+
+    const result = await retrieve({
+      knowledge: knowledgeStub(script).port,
+      rerank: rr.port,
+      queries: ['gjennomsnittslønn kvinner Helsedirektoratet 2023'],
+      config: { autoFilter: { enabled: false }, rerank: { enabled: true, perStrategy: true } },
+    });
+
+    expect(result.chunks.map((c) => c.id)).toEqual(['c6']);
+    expect(result.trace.expansion.droppedAsReportCopy).toBe(1);
+  });
+
   it('fetches at most retrieve-top-k chunks and caps chunks per document', async () => {
     const k = knowledgeStub((r) => (r.profile === 'content' ? ['c1', 'c2', 'c4'] : []));
 
@@ -519,7 +713,7 @@ describe('retrieval pipeline', () => {
     });
 
     expect(result.chunks.map((c) => c.id)).toEqual(['c4', 'c1']);
-    expect(result.trace.union).toEqual({ mode: 'cap', cap: 1, rrfK: 60 });
+    expect(result.trace.union).toEqual({ mode: 'cap', cap: 1, rrfK: 60, droppedAsReportCopy: 0 });
     expect(result.trace.intent?.queries).toEqual(['intent']);
     expect(same.trace.intent).toBeUndefined();
   });
