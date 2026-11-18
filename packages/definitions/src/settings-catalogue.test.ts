@@ -38,4 +38,15 @@ describe('settings catalogue', () => {
       }
     }
   });
+
+  it('points every settings row with an API key at a key the platform catalogue holds', () => {
+    const portalRows = readFileSync(
+      join(packagesDir, '..', 'apps', 'portal', 'src', 'data', 'settings.ts'),
+      'utf8',
+    );
+    const rowKeys = [...portalRows.matchAll(/apiKey: '([^']+)'/g)].map((m) => m[1] ?? '');
+    const catalogueKeys = new Set(catalogueSettings.map((s) => s.key));
+    expect(rowKeys.length).toBeGreaterThan(0);
+    for (const key of rowKeys) expect(catalogueKeys.has(key), key).toBe(true);
+  });
 });
