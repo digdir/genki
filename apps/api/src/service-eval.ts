@@ -771,6 +771,7 @@ export const serviceEval = (
         s.run.testSet.id === testSet &&
         runState(s.run) === 'completed' &&
         !s.run.tested?.selected &&
+        !s.run.tested?.split &&
         !s.run.tested?.variant &&
         (s.subject === subject || s.run.tested?.version === found.version),
     );

@@ -97,7 +97,17 @@ export const compareCases = (
       baseline.set?.spec.cases.find((c) => c.id === id);
     return found ? caseView(found) : undefined;
   };
-  const compared = ids.map((id): ComparedCase => {
+  const covers = (run: EvalRun, id: string, split: string | undefined) =>
+    (!run.tested?.split || split === undefined || run.tested.split === split) &&
+    (!run.tested?.selected || run.tested.selected.includes(id));
+  const shared = ids.filter((id) => {
+    const split = viewOf(id)?.split;
+    return (
+      (before.has(id) || covers(baseline.run, id, split)) &&
+      (after.has(id) || covers(candidate.run, id, split))
+    );
+  });
+  const compared = shared.map((id): ComparedCase => {
     const view = viewOf(id);
     return {
       case: id,

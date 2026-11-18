@@ -490,7 +490,7 @@ const EvalComparison = z
         change: z
           .enum(caseChanges)
           .describe(
-            'better or worse when the verdict flipped, same when it did not, new or missing when only the candidate or the baseline has the case, pending when the run without it is still running',
+            'better or worse when the verdict flipped, same when it did not, new or missing when only the candidate or the baseline has the case, pending when the run without it is still running. A case outside the split or selected cases of the run without it is left out',
           ),
         baseline: CaseOutcome,
         candidate: CaseOutcome,

@@ -4301,6 +4301,47 @@ describe('comparing two test runs case by case', () => {
     expect(running.body.candidate).toMatchObject({ status: 'running', score: null, endedAt: null });
   });
 
+  it('the default baseline skips a newer run of only one split', async () => {
+    const env = await boot();
+    const published = await runPublished(env);
+    await copyRun(env, published, 'bare-apne', (run) => ({
+      ...run,
+      endedAt: '2999-01-01T00:00:00Z',
+      tested: { ...run.tested, version: 1, split: 'open' },
+      results: run.results.filter((r) => r.split !== 'holdout'),
+    }));
+    const draft = await runDraft(env);
+
+    const compared = await env.send('GET', `${compare}?candidate=${draft}`);
+
+    expect(compared.body.baseline).toMatchObject({ id: published });
+    expect(compared.body.counts).toMatchObject({ new: 0 });
+  });
+
+  it('leaves out a case outside the split of the run that lacks it, instead of calling it new or missing', async () => {
+    const env = await boot();
+    const published = await runPublished(env);
+    await copyRun(env, published, 'bare-apne', (run) => ({
+      ...run,
+      tested: { ...run.tested, version: 1, split: 'open' },
+      results: run.results.filter((r) => r.split !== 'holdout'),
+    }));
+
+    const asCandidate = await env.send(
+      'GET',
+      `${compare}?candidate=bare-apne&baseline=${published}`,
+    );
+    const asBaseline = await env.send(
+      'GET',
+      `${compare}?candidate=${published}&baseline=bare-apne`,
+    );
+
+    for (const res of [asCandidate, asBaseline]) {
+      expect((res.body.data as { case: string }[]).map((c) => c.case)).not.toContain('l1');
+      expect(res.body.counts).toMatchObject({ new: 0, missing: 0, same: 2 });
+    }
+  });
+
   it('pages the cases and filters them by change, while the counts cover every case', async () => {
     const env = await boot();
     await runPublished(env);
