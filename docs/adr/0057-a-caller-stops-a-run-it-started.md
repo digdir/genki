@@ -1,6 +1,6 @@
 # 0057 A caller stops a run it started
 
-Status: proposed, 2026-11-15 (built, 2026-11-15; tenant route, 2026-11-17)
+Status: proposed, 2026-11-15 (built, 2026-11-15; tenant route, 2026-11-17; runs of a stopped instance end, 2026-11-18)
 
 ## Context
 
@@ -14,6 +14,7 @@ A run goes on when its client stops reading the stream, on purpose: a reader who
 - **A tenant stops one run from its own API.** `POST /tenants/{tenant}/tasks/{task}/cancel` stops a run of that tenant that has an entry point (`openai`, `rest`, `mcp` or `a2a`). Whoever started it needs `use-services`, anyone else `manage-services`. It is an audited admin task (`platform.run.cancel`) with a change reason. A run of another tenant answers 404, a run without an entry point or a child task 409, a finished run 409, and a cancelled run 200 again without a new audit entry. After the checks, the API asks the kernel to cancel as the platform, since the kernel only lets the owner or an operator cancel.
 - **Through the kernel's own abort path.** The route calls `Kernel.cancel`, which aborts the run the way a deadline or a used-up budget does: the abort signal reaches the model call through the gate, the task records `cancelled` in the task store, and the status change is in the run's event log.
 - **On whichever instance runs it.** A cancel for a task another instance runs is recorded in the task store (`TaskStore.requestCancel`, the column `tasks.cancel_requested_at`), and every kernel asks the store about its own running tasks every `cancelPollMs`, 1 second by default. The request is cleared when the task leaves `queued` and `running`, so a run that paused for approval before its instance saw it is not stopped later when it resumes; the route cancels such a run itself. A2A's `tasks/cancel` and the operator's `POST /operator/tasks/{task}/cancel` call the same kernel method and reach other instances the same way.
+- **A run whose instance stops ends.** Each running task has a lease in the task store (`tasks.lease_owner`, `tasks.lease_until`): the instance that runs it owns it for 2 minutes and renews it every 30 seconds (`TaskStore.renewLeases`). Once a minute, one worker at a time (leader lease `genai-worker-stopped-runs`) takes over the tasks whose lease has run out, or that are an hour old with no lease (from before leases), and fails them with the code `server_stopped` and the reason "Serveren stoppet mens kjøringen pågikk. Prøv igjen." ("The server stopped during the run. Try again."). Their usage is the sum of their `kernel.usage` events, so the quota and the cost count what the run used. A task store write from an instance that no longer owns the lease is ignored, so a run is never failed while another live instance renews it, and an instance that finds its lease taken stops the run without writing over the failure. A sweep that stops half way is taken up by the next one, which adds no second failure. On `SIGTERM` the API starts no new run (`server_stopped`) and waits up to `SHUTDOWN_GRACE_MS` for the runs in flight to end.
 - **The answer says where the stop is.** The route waits up to 2 seconds for the run to end and answers `200 { id, object: "task", status: "cancelled" }`, or `202` with the current status when the stop has not landed yet.
 - **The turn is kept as stopped.** A `/v1` run cancelled while it runs, that belongs to a conversation, stores an assistant turn with `stopped: true`, its `task`, no sources, and as text the answer as far as it had come, after any drafts the run took back. The conversation is kept, streamed or not. A stopped turn is left out of the history that later questions get. A client still reading the stream keeps what it got, and the stream ends with `finish_reason: "error"` and `failure_code: "cancelled"`.
 - **A cancel is not a call to a service.** The monthly token quota does not refuse it, since it only ends work.
@@ -29,7 +30,7 @@ A run goes on when its client stops reading the stream, on purpose: a reader who
 
 - Frontends call the route when the person stops an answer. `@genai/client` has `cancel(taskId)`, yields the run's id first on a stream as a `task` event, and reads `stopped` on stored messages. The UI assembly's «Avbryt genereringen» does not call it yet.
 - The UI assembly and the workspace do not read `stopped` yet, so they show a stopped turn as an answer.
-- A run whose instance stopped stays `running` in the store; a cancel for it answers `202` and nothing ends it.
+- A run whose instance stopped stays `running` for up to 3 minutes before the worker fails it; a cancel for it answers `202`, and the run ends `failed`, not `cancelled`. A `/v1` run in a conversation that ends this way stores no assistant turn.
 - A task stored before this change has no entry point and cannot be stopped through `/v1`.
 - Deleting a conversation does not stop a run in it; a client stops the run first.
 - Test-set runs and the playground have no route that stops a run.

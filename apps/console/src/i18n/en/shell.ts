@@ -19,6 +19,7 @@ export const shell = {
   pageQuality: 'Quality',
   pageQualityMatrix: 'Quality matrix and judges',
   pagePolicies: 'Quality requirements and safeguards',
+  pagePlatformSecrets: 'Platform secrets',
   pageTracing: 'Tracing and evaluation',
   pageOperations: 'Operations',
   pageDiagnostics: 'Diagnostics',

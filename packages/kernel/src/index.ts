@@ -7,7 +7,9 @@ export {
   type CapabilitySource,
   type KernelLimits,
   type KernelOptions,
+  type StoppableKernel,
 } from './kernel.js';
+export { addUsage } from './usage-sum.js';
 export {
   InMemoryEventLog,
   InMemoryStateStore,

@@ -18,6 +18,7 @@ export const runs = {
   failMisconfigured: 'The service is set up incorrectly.',
   failCancelled: 'The run was cancelled.',
   failInterrupted: 'The run was interrupted when the platform restarted.',
+  failServerStopped: 'The server stopped during the run. Try again.',
   stepFailedReason: 'The step "{step}" failed. {reason}',
   skipUnsupportedType: 'The file type cannot be searched',
   skipOutsideAccess: 'Outside what the service has access to',

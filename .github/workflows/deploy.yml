@@ -21,7 +21,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Takes the result of ci.yml's run on this commit's push to main; `check` runs it again otherwise (infra/README.md).
+  # Takes ci.yml's green run on this exact commit, from the merge queue or the push to main; `check` runs it otherwise.
   ci:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -39,17 +39,19 @@ jobs:
         run: |
           state=none
           for round in $(seq 1 60); do
-            state=$(gh api "repos/$REPO/actions/workflows/ci.yml/runs?head_sha=$SHA&event=push&per_page=10" \
-              --jq '[.workflow_runs[] | select(.head_branch == "main" and .path == ".github/workflows/ci.yml")] |
-                if any(.conclusion == "success") then "success"
-                elif any(.status != "completed") then "running"
-                elif length == 0 then "none" else "failure" end') || state=failure
+            state=$(gh api "repos/$REPO/actions/workflows/ci.yml/runs?head_sha=$SHA&per_page=20" \
+              --jq '[.workflow_runs[] | select(.head_sha == $ENV.SHA and .path == ".github/workflows/ci.yml")] |
+                (map(select(.event == "push" and .head_branch == "main"))) as $push |
+                if any(.[]; .event == "merge_group" and (.head_branch | startswith("gh-readonly-queue/main/")) and .conclusion == "success") then "queue"
+                elif any($push[]; .conclusion == "success") then "success"
+                elif any($push[]; .status != "completed") then "running"
+                elif ($push | length) == 0 then "none" else "failure" end') || state=failure
             # A push run appears a few seconds after the merge, so a missing one is waited for for a minute.
             [ "$state" = running ] || { [ "$state" = none ] && [ "$round" -le 6 ]; } || break
             sleep 10
           done
           echo "The ci run on main for $SHA: $state"
-          echo "passed=$([ "$state" = success ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "passed=$([ "$state" = success ] || [ "$state" = queue ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
 
   check:
     needs: ci

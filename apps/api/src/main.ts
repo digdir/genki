@@ -42,6 +42,7 @@ import { FileSystemBlobStore } from '@genai/port-blob';
 import type { PolicyDecisionPoint } from '@genai/kernel';
 import { documentConverterFrom, phraseArchiveFrom } from './document-converter.js';
 import { evalSlotLimitsFromEnv, shutdownGraceFromEnv } from './eval-slots.js';
+import { drainBeforeExit } from './shutdown.js';
 import { createAdmin, platformActor } from './admin.js';
 import { createAccessPeopleModule, peopleSourceFrom, selectedPeople } from './access-people.js';
 import { draftServices } from './access-draft-services.js';
@@ -67,7 +68,7 @@ import { buildTimeOf, createApp } from './app.js';
 import { defaultSlowRequestMs } from './request-timing.js';
 import { sharedLimiter } from './rate-limit.js';
 import { kernelTaskReader } from './timeline.js';
-import { followChanges } from './change-feed.js';
+import { followChanges, refreshEverywhere } from './change-feed.js';
 import { postgresTaskIndex, postgresTenantDirectory } from './postgres-adapters.js';
 import { loadCatalog } from './catalogs.js';
 import {
@@ -633,7 +634,14 @@ const admin = createAdmin({
   lifecycle: platform.lifecycle,
   plugins: platform.plugins,
   settings,
-  models: platform.models,
+  models: {
+    describe: () => platform.models.describe(),
+    refresh: () =>
+      refreshEverywhere(platform.modelDiscovery, db?.changes, (error) =>
+        log('model refresh not announced to other replicas', { error: String(error) }),
+      ),
+    classify: platform.models.classify.bind(platform.models),
+  },
   extensions: platform.extensions,
   tenants: () => platform.directory.list(),
   names: actorNames(configEntries),
@@ -766,7 +774,7 @@ if (db)
     catalog: platform.catalog,
     descriptors: platform.descriptors,
     definitions: platform,
-    models: platform.models,
+    models: platform.modelDiscovery,
     toolConnections: platform.toolConnections,
   });
 if (mock) {
@@ -816,10 +824,17 @@ let stopping = false;
 const stop = (signal: string) => {
   if (stopping) process.exit(1);
   stopping = true;
-  log('api stopping', { signal, casesInFlight: platform.evalSlots.inFlight(), shutdownGraceMs });
-  const deadline = new Promise<void>((resolve) => setTimeout(resolve, shutdownGraceMs).unref());
-  void Promise.race([platform.evalSlots.drain(), deadline]).finally(() => {
-    log('api stopped', { casesInFlight: platform.evalSlots.inFlight() });
+  log('api stopping', {
+    signal,
+    casesInFlight: platform.evalSlots.inFlight(),
+    runsInFlight: platform.kernel.running(),
+    shutdownGraceMs,
+  });
+  void drainBeforeExit(platform.kernel, platform.evalSlots, shutdownGraceMs).finally(() => {
+    log('api stopped', {
+      casesInFlight: platform.evalSlots.inFlight(),
+      runsInFlight: platform.kernel.running(),
+    });
     server.close();
     process.exit(0);
   });

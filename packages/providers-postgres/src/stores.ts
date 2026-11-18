@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { Principal, Ref, Task, TaskStatus } from '@genai/contracts';
 import {
   KernelError,
@@ -62,11 +63,43 @@ export interface TaskQuery {
   limit?: number;
 }
 
+export interface TaskLeaseOptions {
+  instance?: string;
+  leaseMs?: number;
+  unleasedMs?: number;
+  now?: () => Date;
+}
+
+export interface StoppedTask {
+  id: string;
+  tenant: string;
+  scope: string;
+}
+
 export class PostgresTaskStore implements TaskStore {
+  readonly instance: string;
+  readonly #leaseMs: number;
+  readonly #unleasedMs: number;
+  readonly #now: () => Date;
+
   constructor(
     private readonly pool: Pool,
     private readonly keys: ContentKeys,
-  ) {}
+    private readonly lease: TaskLeaseOptions = {},
+  ) {
+    this.instance = lease.instance ?? randomUUID();
+    this.#leaseMs = lease.leaseMs ?? 120_000;
+    this.#unleasedMs = lease.unleasedMs ?? 60 * 60_000;
+    this.#now = lease.now ?? (() => new Date());
+  }
+
+  withLease(lease: TaskLeaseOptions): PostgresTaskStore {
+    return new PostgresTaskStore(this.pool, this.keys, { ...this.lease, ...lease });
+  }
+
+  #leaseEnd() {
+    return new Date(this.#now().getTime() + this.#leaseMs).toISOString();
+  }
 
   async put(stored: StoredTask, scope: ContentScope): Promise<void> {
     const key = await this.keys.get(scope.tenant, scope.key, true);
@@ -74,13 +107,24 @@ export class PostgresTaskStore implements TaskStore {
     const { task } = stored;
     const body = seal(key, Buffer.from(JSON.stringify(stored)), `task:${task.id}`);
     await this.pool.query(
-      `insert into tasks (id, tenant, owner, status, principal, assignee, last_seq, created_at, ended_at, envelope, scope, body)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      `insert into tasks (id, tenant, owner, status, principal, assignee, last_seq, created_at, ended_at, envelope, scope, body, lease_owner, lease_until)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
+         case when $4 in ('queued', 'running') then $13 end,
+         case when $4 in ('queued', 'running') then $14::timestamptz end)
        on conflict (id) do update set status = excluded.status, assignee = excluded.assignee,
          last_seq = excluded.last_seq, ended_at = excluded.ended_at, envelope = excluded.envelope,
          scope = excluded.scope, body = excluded.body,
          cancel_requested_at = case when excluded.status in ('queued', 'running')
-           then tasks.cancel_requested_at end`,
+           then tasks.cancel_requested_at end,
+         lease_owner = case when excluded.status in ('queued', 'running')
+           then coalesce(tasks.lease_owner, excluded.lease_owner) end,
+         lease_until = case when excluded.status in ('queued', 'running')
+           then coalesce(tasks.lease_until, excluded.lease_until) end
+       where tasks.status = 'interrupted'
+         or (tasks.status in ('queued', 'running')
+           and (tasks.lease_owner is null or tasks.lease_owner = $13))
+         or (tasks.status in ('completed', 'failed', 'cancelled') and tasks.status = excluded.status
+           and tasks.ended_at is not distinct from excluded.ended_at)`,
       [
         task.id,
         task.tenant,
@@ -94,8 +138,36 @@ export class PostgresTaskStore implements TaskStore {
         JSON.stringify(envelopeOf(task)),
         scope.key,
         body,
+        this.instance,
+        this.#leaseEnd(),
       ],
     );
+  }
+
+  async renewLeases(ids: readonly string[]): Promise<string[]> {
+    if (ids.length === 0) return [];
+    const found = await this.pool.query<{ id: string }>(
+      `update tasks set lease_until = $3
+        where id = any($1) and status in ('queued', 'running') and lease_owner = $2
+        returning id`,
+      [ids, this.instance, this.#leaseEnd()],
+    );
+    return found.rows.map((row) => row.id);
+  }
+
+  async claimStopped(limit: number): Promise<StoppedTask[]> {
+    const now = this.#now();
+    const found = await this.pool.query<StoppedTask>(
+      `update tasks t set lease_owner = $1, lease_until = $2
+         from (select id from tasks
+                where status in ('queued', 'running')
+                  and coalesce(lease_until, created_at + make_interval(secs => $4)) < $3
+                order by created_at limit $5 for update skip locked) stopped
+        where t.id = stopped.id
+        returning t.id, t.tenant, t.scope`,
+      [this.instance, this.#leaseEnd(), now.toISOString(), this.#unleasedMs / 1000, limit],
+    );
+    return found.rows;
   }
 
   async get(id: string): Promise<StoredTask | undefined> {

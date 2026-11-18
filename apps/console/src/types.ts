@@ -993,6 +993,14 @@ export interface KnowledgeEndpointItem {
   spec: Record<string, unknown>;
 }
 
+export interface PlatformSecret {
+  name: string;
+  ref: string;
+  set: boolean;
+  changedAt?: string;
+  usedBy: { kind: string; id: string }[];
+}
+
 export interface StoredSecret {
   ref: string;
   name: string;

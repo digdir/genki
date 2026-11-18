@@ -390,6 +390,8 @@ export const projectErrors = {
   estimateRequired: 'an estimate id is required',
   runNotFound: 'Could not find the run',
   atMost4000: 'at most 4000 characters',
+  atMost16384: 'at most 16384 characters',
+  platformSecretName: 'lowercase letters, digits, dots, dashes; at most 63',
   atMost120: 'at most 120 characters',
   selectionsList: 'selections is a list',
   selectionObject: 'a selection is an object',
