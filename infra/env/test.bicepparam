@@ -60,6 +60,10 @@ param appEnv = {
   LOCKDOWN_SERVICE_CLIENT_IDS: readEnvironmentVariable('LOCKDOWN_SERVICE_CLIENT_IDS', '')
   LOCKDOWN_ENTRA_EMAIL_DOMAIN: readEnvironmentVariable('LOCKDOWN_ENTRA_EMAIL_DOMAIN', 'digdir.no')
   OPERATOR_CLIENT_IDS: readEnvironmentVariable('OPERATOR_CLIENT_IDS', '')
+  GATEWAY_USAGE_URL: 'https://api.aivar.no'
+  GATEWAY_USAGE_APP_CLIENT_ID: '334f8fa1-437e-4b84-bceb-f320fb60f3ed'
+  GATEWAY_USAGE_APP_TENANT: '008e560f-08af-4cec-a056-b35447503991'
+  GATEWAY_USAGE_APP_SCOPE: 'api://3eca282e-8b4d-49d6-991f-79849dffd652/.default'
 }
 
 param ansattportenIssuer = readEnvironmentVariable('ANSATTPORTEN_ISSUER', '')

@@ -95,6 +95,10 @@ describe('money', () => {
     expect(inNok({ currency: 'SEK', micros: 1000 }, '2026-10-12', rates)).toBeUndefined();
   });
 
+  it('takes a zero amount in any currency as zero kroner, without a rate', () => {
+    expect(inNok({ currency: 'USD', micros: 0 }, '2026-10-01', [])).toEqual({ micros: 0 });
+  });
+
   it('takes kroner as they are, without a rate', () => {
     expect(inNok({ currency: 'NOK', micros: 1234 }, '2026-10-01', [])).toEqual({ micros: 1234 });
   });
