@@ -312,15 +312,24 @@ export const ServiceKeys = ({
                           : t('serviceKeys.never'),
                       })}
                     </span>
-                    <span className="meta">
-                      {k.allowedOverrides.length
-                        ? t('serviceKeys.canOverride', {
-                            list: k.allowedOverrides
-                              .map((o) => overrideLabel(t, groups, o))
-                              .join(', '),
-                          })
-                        : t('serviceKeys.cannotOverride')}
-                    </span>
+                    {k.allowedOverrides.length ? (
+                      <span className="tag-row">
+                        <span className="meta">{t('serviceKeys.allowedTo')}</span>
+                        <span
+                          className="tag-row"
+                          role="list"
+                          aria-label={t('serviceKeys.allowedTo')}
+                        >
+                          {k.allowedOverrides.map((o) => (
+                            <Tag key={o} role="listitem" data-size="sm" data-color="neutral">
+                              {overrideLabel(t, groups, o)}
+                            </Tag>
+                          ))}
+                        </span>
+                      </span>
+                    ) : (
+                      <span className="meta">{t('serviceKeys.cannotOverride')}</span>
+                    )}
                   </span>
                 </div>
                 {rotating?.id === k.id ? (

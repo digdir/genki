@@ -16,6 +16,7 @@ import { useT } from '../../i18n';
 import { ErrorState, Loading } from '../../states';
 import type { PublishedDefinition } from '../../types';
 import { definitionYaml, problemErrors } from './definition';
+import { servicePath } from './sections';
 import './sections.css';
 import { reasonProblem } from '../../components/ReasonField';
 
@@ -52,10 +53,12 @@ const Errors = ({ errors }: { errors: { path: string; message: string }[] }) => 
 
 const Editor = ({
   api,
+  serviceId,
   latest,
   onPublished,
 }: {
   api: ApiClient;
+  serviceId: string;
   latest: PublishedDefinition;
   onPublished: (published: PublishedDefinition) => void;
 }) => {
@@ -100,8 +103,43 @@ const Editor = ({
   };
 
   const busy = check.kind === 'busy';
+  const download = () => {
+    const url = URL.createObjectURL(new Blob([text], { type: 'application/yaml' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${serviceId}.yaml`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
   return (
     <div className="stack-sm">
+      <div className="row-wrap">
+        <Button variant="secondary" data-size="sm" onClick={download}>
+          {t('serviceDev.download')}
+        </Button>
+        <Button variant="secondary" data-size="sm" asChild>
+          <label>
+            {t('serviceDev.pasteFile')}
+            <input
+              type="file"
+              accept=".yaml,.yml,text/yaml,application/yaml"
+              className="visually-hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = '';
+                if (!file) return;
+                void file.text().then((content) => {
+                  setText(content);
+                  setCheck({ kind: 'idle' });
+                });
+              }}
+            />
+          </label>
+        </Button>
+        <a href={`#${servicePath(serviceId, 'versions')}`}>
+          {t('serviceDev.seeChanges', { version: latest.version })}
+        </a>
+      </div>
       <Field>
         <Label htmlFor="definisjon-yaml">{t('serviceEditor.label')}</Label>
         <Field.Description>
@@ -204,6 +242,7 @@ export const DefinitionEditor = ({ api, tenant, serviceId, onPublished }: Props)
       <Editor
         key={state.data.latest.version}
         api={api}
+        serviceId={serviceId}
         latest={state.data.latest}
         onPublished={(result) => {
           setPublished(result.version);

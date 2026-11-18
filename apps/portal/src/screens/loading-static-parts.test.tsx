@@ -77,12 +77,11 @@ describe('the title, back link, tabs and buttons show while the data loads', () 
     expect(screen.getByRole('tab', { name: 'Vanlige' })).toBeTruthy();
   });
 
-  it('Stegflyter shows its tabs, title and Ny stegflyt while the flows load', async () => {
-    await whileDataLoads('#/step-flows');
+  it('Stegflyter shows its title and Ny stegflyt while the flows load', async () => {
+    await whileDataLoads('#/developer/step-flows');
 
-    expect(screen.getByRole('tab', { name: 'I tjenesten' })).toBeTruthy();
-    expect(screen.getByRole('heading', { level: 1, name: 'Stegflyter' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Ny stegflyt' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { level: 2, name: 'Stegflyter' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Ny stegflyt' })).toBeTruthy();
     expect(screen.queryByRole('heading', { name: 'Ingen stegflyter ennå' })).toBeNull();
   });
 

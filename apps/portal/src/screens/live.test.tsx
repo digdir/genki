@@ -35,6 +35,7 @@ const emptyPlatform: typeof fetch = async (input) => {
     if (/^\/tenants\/[^/]+\/services$/.test(path)) return { data: [] };
     if (/^\/tenants\/[^/]+\/service-drafts$/.test(path)) return { data: [] };
     if (path.endsWith('/definitions')) return { data: [] };
+    if (path.endsWith('/building-blocks')) return { data: [] };
     if (path.endsWith('/audit')) return { data: [] };
     if (path.endsWith('/access')) return { services: [], keys: [] };
     if (path.endsWith('/tasks')) return { data: [], total: 0 };
@@ -337,7 +338,7 @@ describe('live mode shows only platform data', () => {
   });
 
   it('shows the empty state for step flows and datasets', async () => {
-    await renderLive('#/step-flows');
+    await renderLive('#/developer/step-flows');
     expect(await screen.findByText('Ingen stegflyter ennå')).toBeTruthy();
     cleanup();
 
@@ -395,11 +396,9 @@ describe('live mode shows only platform data', () => {
     expect(await screen.findByText('/api/mcp')).toBeTruthy();
     expect(screen.getByRole('heading', { name: /Start og kanaler/ })).toBeTruthy();
     go('#/services/kunnskapsassistenten');
-    expect(
-      await screen.findByRole('heading', { level: 2, name: 'Hva tjenesten gjør' }),
-    ).toBeTruthy();
-    expect(screen.getAllByText(/gpt-4o-2m-tps/).length).toBeGreaterThan(0);
-    expect(screen.getByText(/digdir\/kudos/)).toBeTruthy();
+    expect(await screen.findByRole('heading', { level: 2, name: 'I drift' })).toBeTruthy();
+    expect((await screen.findAllByText(/gpt-4o-2m-tps/)).length).toBeGreaterThan(0);
+    expect(await screen.findByText(/digdir\/kudos/)).toBeTruthy();
     expect(screen.queryByText(/Qwen|Borealis/)).toBeNull();
   });
 
@@ -495,8 +494,8 @@ describe('live service page', () => {
       ((await screen.findByLabelText(new RegExp(`^${field}`))) as HTMLInputElement).value,
     ).toBe(value);
     expect(
-      screen.getByRole('button', {
-        name: new RegExp(`^Arbeidsmåte\\s*${name.replace(/[()]/g, '\\$&')}`),
+      within(screen.getByRole('navigation', { name: 'Deler av oppsettet' })).getByRole('button', {
+        name: new RegExp(`^Arbeidsmåte.*${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`),
       }),
     ).toBeTruthy();
   });

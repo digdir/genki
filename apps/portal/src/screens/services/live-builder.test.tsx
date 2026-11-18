@@ -6,6 +6,7 @@ import { mockAnsattporten } from '../../auth';
 import { logTimelines } from '../../data/log';
 import { exampleDatasets, exampleOrganisations, exampleServices, mockFetch } from '../../mock';
 import type { ModelOption } from '../../types';
+import { openArea } from './setup-areas.test-utils';
 
 document.getAnimations ??= () => [];
 beforeAll(() => {
@@ -67,6 +68,23 @@ const startBuilder = async (fetch: typeof globalThis.fetch) => {
   });
   fireEvent.click(screen.getByRole('button', { name: 'Start med assistenten' }));
   return screen.findByRole('complementary', { name: 'Byggeassistent' });
+};
+
+const publishPage = async (reason: string) => {
+  window.location.hash = '#/services/rapportassistenten/setup/risk';
+  fireEvent.click(await screen.findByRole('button', { name: 'Bekreft risikonivå' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Publiser ...' }));
+  await screen.findByRole('heading', { level: 1, name: /^Publiser Rapportassistenten, versjon/ });
+  fireEvent.change(screen.getByLabelText(/^Hva endret du, og hvorfor\?/), {
+    target: { value: reason },
+  });
+  return document.body;
+};
+
+const publishOnPage = async (page: HTMLElement) => {
+  const button = within(page).getByRole('button', { name: /^Publiser versjon \d+$/ });
+  await waitFor(() => expect(button.getAttribute('aria-disabled')).not.toBe('true'));
+  fireEvent.click(button);
 };
 
 const openSection = async (name: RegExp) => {
@@ -254,7 +272,30 @@ describe('the live builder', () => {
   });
 
   const openPublish = async (runs: unknown[], testSets: unknown[]) => {
-    const base = mockFetch(exampleServices, logTimelines, liveModels, exampleDatasets);
+    const found = exampleServices.find((x) => x.id === 'rapportassistenten');
+    const definition = found?.latest.definition as {
+      spec: { strategy: { config: Record<string, unknown> } };
+    };
+    const base = mockFetch(exampleServices, logTimelines, liveModels, exampleDatasets, {
+      features: {
+        quality: {
+          drafts: {
+            rapportassistenten: {
+              definition: {
+                ...definition,
+                spec: {
+                  ...definition.spec,
+                  strategy: {
+                    ...definition.spec.strategy,
+                    config: { ...definition.spec.strategy.config, instructions: 'Svar kort.' },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
     const fetch: typeof globalThis.fetch = async (input, init) => {
       const url = String(input);
       if (/\/services\/rapportassistenten\/eval-runs$/.test(url))
@@ -267,37 +308,40 @@ describe('the live builder', () => {
     await auth.login();
     window.location.hash = '#/services/rapportassistenten/setup?publiser=1';
     render(<App auth={auth} fetch={fetch} live />);
-    return screen.findByRole('dialog');
+    await screen.findByRole('heading', { level: 1, name: /^Publiser Rapportassistenten, versjon/ });
+    return document.body;
   };
 
-  it('shows the latest test run from the API in the publish dialog, not an example score', async () => {
-    const dialog = await openPublish(
+  it('opens the publish page from ?publiser=1 and says nothing about tests once the draft has a newer test run', async () => {
+    const page = await openPublish(
       [
         {
           id: 'r1',
           status: 'completed',
           testSet: 'ts',
           version: 'draft',
-          startedAt: '2026-10-07T10:00:00Z',
+          startedAt: '2099-01-01T10:00:00Z',
           total: 10,
           passed: 8,
         },
       ],
       [{ id: 'ts', name: 'Spørsmål', cases: 10 }],
     );
-    const fact = await within(dialog).findByText('8 av 10 (80 %)');
-    expect(fact).toBeTruthy();
-    expect(within(dialog).queryByText(/Uten testsett/)).toBeNull();
+    expect(window.location.hash).toBe('#/services/rapportassistenten/setup/publish');
+    await waitFor(() =>
+      expect(within(page).queryByText('Testsettet er ikke kjørt mot utkastet')).toBeNull(),
+    );
+    expect(within(page).queryByText(/Uten testsett/)).toBeNull();
   });
 
-  it('warns about a missing test set from the API and says Ikke kjørt without runs', async () => {
-    const dialog = await openPublish([], []);
-    expect(await within(dialog).findByText(/Uten testsett ser du ikke/)).toBeTruthy();
-    expect(within(dialog).getByText('Ikke laget')).toBeTruthy();
+  it('warns about a missing test set, and about a test set not run against the draft', async () => {
+    const page = await openPublish([], []);
+    expect(await within(page).findByText(/Uten testsett ser du ikke/)).toBeTruthy();
     cleanup();
 
     const withSet = await openPublish([], [{ id: 'ts', name: 'Spørsmål', cases: 3 }]);
-    expect(await within(withSet).findByText('Ikke kjørt')).toBeTruthy();
+    expect(await within(withSet).findByText('Testsettet er ikke kjørt mot utkastet')).toBeTruthy();
+    expect(within(withSet).getByRole('link', { name: 'Kjør testsettet' })).toBeTruthy();
   });
 });
 
@@ -345,20 +389,9 @@ describe('the live builder and the server draft', () => {
 
     window.location.hash = '#/services/rapportassistenten/setup/instructions';
     await waitFor(() => expect(instructions().value).toBe(after));
-    window.location.hash = '#/services/rapportassistenten/setup/purpose';
-    fireEvent.click(await screen.findByRole('button', { name: 'Bekreft risikonivå' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Publiser' }));
-    const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByText('Endringer i utkastet som ikke er publisert')).toBeTruthy();
-    fireEvent.change(within(dialog).getByLabelText('Hva er endret, og hvorfor?'), {
-      target: { value: 'Tar i bruk forbedringsforslaget' },
-    });
-    await waitFor(() =>
-      expect(
-        within(dialog).getByRole('button', { name: 'Publiser' }).getAttribute('aria-disabled'),
-      ).not.toBe('true'),
-    );
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Publiser' }));
+    const page = await publishPage('Tar i bruk forbedringsforslaget');
+    expect(within(page).getAllByText(/Lagt til:/).length).toBeGreaterThan(0);
+    await publishOnPage(page);
 
     await waitFor(() => expect(draftWrites(calls, 'DELETE')).toHaveLength(1));
     const published = calls.find((c) => c.method === 'POST' && c.url.endsWith('/api/definitions'));
@@ -437,7 +470,7 @@ describe('the live builder and the server draft', () => {
       ['interface', 'Grensesnitt'],
       ['versions', 'Utviklerverktøy'],
       ['quality', 'Kvalitet'],
-      ['settings', 'Avanserte innstillinger'],
+      ['settings', 'Oppsett'],
       ['log', 'Utviklerverktøy'],
       ['setup', 'Oppsett'],
     ] as const) {
@@ -520,8 +553,8 @@ describe('the live builder and the server draft', () => {
     );
   });
 
-  it('shows the latest published version in the header, also after a publish elsewhere', async () => {
-    const { fetch } = await openService('#/services/rapportassistenten/setup');
+  it('a tab switch sends no request for the definition, even once the cache has gone stale', async () => {
+    const { calls, fetch } = await openService('#/services/rapportassistenten/setup');
     const header = (
       await screen.findByRole('heading', { level: 1, name: 'Rapportassistenten' })
     ).closest('header') as HTMLElement;
@@ -533,10 +566,20 @@ describe('the live builder and the server draft', () => {
       headers: { 'change-reason': 'Ny innstilling' },
       body: JSON.stringify({ definition: found?.latest.definition, files: {} }),
     });
+    const definitionReads = () =>
+      calls.filter(
+        (c) => c.method === 'GET' && c.url.endsWith('/definitions/services/rapportassistenten'),
+      ).length;
+    const before = definitionReads();
     vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 60_000);
     window.location.hash = '#/services/rapportassistenten/quality';
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    window.location.hash = '#/services/rapportassistenten/setup';
+    await screen.findByRole('navigation', { name: 'Deler av oppsettet' });
+    await new Promise((resolve) => setTimeout(resolve, 50));
 
-    expect(await screen.findByText(/^Versjon 8 i bruk · publisert/)).toBeTruthy();
+    expect(definitionReads()).toBe(before);
+    expect(within(header).getByText(/^Versjon 7 i bruk · publisert/)).toBeTruthy();
   });
 });
 
@@ -587,21 +630,11 @@ describe('the live builder when the draft is outdated', () => {
   const openOutdated = async (elsewhere: Record<string, unknown>) => {
     const { calls, publishElsewhere } = await startOutdated(elsewhere, true);
     await publishElsewhere();
-    window.location.hash = '#/services/rapportassistenten/setup/purpose';
-    fireEvent.click(await screen.findByRole('button', { name: 'Bekreft risikonivå' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Publiser' }));
-    const dialog = await screen.findByRole('dialog');
-    fireEvent.change(within(dialog).getByLabelText('Hva er endret, og hvorfor?'), {
-      target: { value: 'Kortere svar til brukerne' },
-    });
+    const dialog = await publishPage('Kortere svar til brukerne');
     return { calls, dialog };
   };
 
-  const publishIn = async (dialog: HTMLElement) => {
-    const button = within(dialog).getByRole('button', { name: 'Publiser' });
-    await waitFor(() => expect(button.getAttribute('aria-disabled')).not.toBe('true'));
-    fireEvent.click(button);
-  };
+  const publishIn = publishOnPage;
   const publishes = (calls: Call[]) =>
     calls.filter((c) => c.method === 'POST' && c.url.endsWith('/api/definitions'));
 
@@ -681,6 +714,9 @@ describe('the live builder when the draft is outdated', () => {
       revision: 2,
       definition: { spec: { strategy: { config: { instructions: 'Svar utfyllende.' } } } },
     });
+    fireEvent.click(within(dialog).getByRole('link', { name: 'Fortsett å redigere' }));
+    await screen.findByRole('navigation', { name: 'Deler av oppsettet' });
+    openArea(/^Formål og målgruppe/);
     await waitFor(() =>
       expect(
         (screen.getByLabelText('Instruksjoner til tjenesten') as HTMLTextAreaElement).value,

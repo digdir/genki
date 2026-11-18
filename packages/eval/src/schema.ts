@@ -305,6 +305,7 @@ export const evalRun = z.strictObject({
   tested: z
     .strictObject({
       version: z.union([z.number().int().positive(), z.literal('draft')]),
+      draftRevision: z.number().int().positive().optional(),
       variant: z.string().optional(),
       split: z.enum(['locked', 'open']).optional(),
       /** The tenant's trace connection the run's cases were sent to. */

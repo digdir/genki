@@ -50,6 +50,7 @@ import type { Lockdown } from '../lockdown.js';
 import { erasureOf } from '../timeline.js';
 import { t } from '../i18n/index.js';
 import { testRunnerRefusedType } from '../test-runner.js';
+import { fileInputOf } from '../runtime-documents.js';
 import type { ServiceHealth } from '../service-health.js';
 import { pausedMessage, type LifecycleView } from '../service-lifecycle.js';
 import { isHiddenTask, shownKeys } from '../internal-services.js';
@@ -1978,6 +1979,7 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       return problem(c, 400, 'Invalid request', [{ path: 'definition', message: 'required' }]);
     return c.json({
       fields: await deps.drafts.inputFields(g.principal, g.tenant, body.definition),
+      files: fileInputOf(body.definition),
     });
   });
 

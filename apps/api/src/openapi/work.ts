@@ -1289,6 +1289,13 @@ const ServiceEvalRun = z
     testSet: z.string(),
     testSetVersion: z.number().int(),
     version: z.union([z.literal('draft'), z.number().int()]),
+    draftRevision: z
+      .number()
+      .int()
+      .optional()
+      .describe(
+        'The revision of the saved draft the run tested; left out when it ran a published version or an unsaved definition',
+      ),
     variant: z.string().optional(),
     environment: z
       .string()

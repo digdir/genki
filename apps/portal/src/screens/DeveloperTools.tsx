@@ -21,6 +21,7 @@ import { ApiReference } from './ApiReference';
 import { Guardrails } from './integrations/Guardrails';
 import { TracingPage } from './integrations/TracingPage';
 import { DevStatus } from './integrations/DevStatus';
+import { StepFlowsHome } from './stepflows/StepFlowsHome';
 import './integrations.css';
 import { developerTabs, IntegrationTab } from './developer-routes';
 
@@ -28,7 +29,6 @@ interface Tool {
   id: string;
   label: PlainKey;
   icon: IconComponent;
-  href?: string;
 }
 
 const statusTool: Tool = {
@@ -63,7 +63,6 @@ const tools: readonly Tool[] = [
     id: 'step-flows',
     label: 'devTools.stepFlows',
     icon: BranchingIcon,
-    href: '#/step-flows',
   },
   {
     id: 'hooks',
@@ -139,7 +138,7 @@ export const DeveloperToolsFrame = ({
               return (
                 <li key={tool.id}>
                   <a
-                    href={tool.href ?? `#/developer/${tool.id}`}
+                    href={`#/developer/${tool.id}`}
                     aria-current={active ? 'page' : undefined}
                     className={active ? 'active' : undefined}
                   >
@@ -221,14 +220,15 @@ export const DeveloperTools = ({
       );
   }, [moved, page]);
   if (moved) return null;
-  const current =
-    page === undefined ? statusTool : tools.find((tool) => tool.id === page && !tool.href);
+  const current = page === undefined ? statusTool : tools.find((tool) => tool.id === page);
   return (
     <DeveloperToolsFrame currentId={current?.id ?? ''} attention={attention}>
       {current === undefined ? (
         <NotFoundHere />
       ) : current.id === 'api' ? (
         <ApiPage {...props} integrations={integrations} />
+      ) : current.id === 'step-flows' ? (
+        <StepFlowsHome api={api} tenant={tenant} />
       ) : (
         <>
           <Heading level={2} data-size="xs">

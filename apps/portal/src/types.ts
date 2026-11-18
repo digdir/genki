@@ -290,6 +290,7 @@ export interface UsageTotals {
   outputTokens: number;
   requests: number;
   runs?: number;
+  failedRequests?: number;
   costMicroNok: number | null;
   priced?: boolean;
   unpricedModels?: string[];
@@ -472,7 +473,12 @@ export interface UsageReport {
     testing?: UsageTotals;
     ingestion?: UsageTotals;
   }[];
-  byService: { service: string; title?: string; usage: UsageTotals }[];
+  byService: {
+    service: string;
+    title?: string;
+    usage: UsageTotals;
+    latency?: { p50Ms: number; p95Ms: number; runs: number } | null;
+  }[];
   byModel: { model: string; source?: UsageSourceId; usage: UsageTotals }[];
   bySubject?: {
     subject: { kind: string; id: string; org?: string } | null;

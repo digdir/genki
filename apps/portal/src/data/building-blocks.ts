@@ -1002,6 +1002,17 @@ export const builderProposals: CatalogProposal[] = [
       { name: 'Testlesing: 50 søknader lest uten feil.', passed: true },
       { name: 'Leser ikke tabellen saksbehandler_notat.', passed: true },
     ],
+    item: block({
+      id: 'kobling-fagsystem',
+      kind: 'dataset',
+      name: 'Kobling til fagsystemet',
+      description: 'Leser avsluttede søknader fra fagsystemet.',
+      publisher: publishers.own,
+      version: '1',
+      dataLocation: null,
+      status: 'available',
+      capabilities: [],
+    }),
   },
   {
     id: 'cp-risikoscore',

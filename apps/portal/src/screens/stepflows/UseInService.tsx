@@ -44,11 +44,13 @@ export const UseInService = ({
   api,
   tenant,
   flow,
+  service = '',
   onClose,
 }: {
   api: ApiClient;
   tenant: string;
   flow: Pick<Flow, 'id' | 'version' | 'name'>;
+  service?: string;
   onClose: () => void;
 }) => {
   const t = useT();
@@ -60,7 +62,7 @@ export const UseInService = ({
         .map((s) => ({ value: s.id, label: s.name || s.id })),
     [api, tenant],
   );
-  const [chosen, setChosen] = useState('');
+  const [chosen, setChosen] = useState(service);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState<{ id: string; name: string }>();

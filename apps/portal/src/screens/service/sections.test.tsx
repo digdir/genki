@@ -158,10 +158,11 @@ describe('service definition sections', () => {
       }),
       'POST /definitions': () => published(3),
     });
-    render(<Versions api={api} tenant={tenant} serviceId="klarsprak" />);
+    render(asManager(<Versions api={api} tenant={tenant} serviceId="klarsprak" />));
 
-    expect(await screen.findByText('Begrunnelse: Kortere')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: /Ta i bruk igjen/ }));
+    expect(await screen.findByText('«Kortere»')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /^Versjon 1\b/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Ta i bruk igjen/ }));
     fireEvent.change(screen.getByLabelText('Begrunnelse'), {
       target: { value: 'Tilbake til lange svar' },
     });
@@ -191,10 +192,11 @@ describe('service definition sections', () => {
       }),
       'POST /definitions': () => published(3),
     });
-    render(<Versions api={api} tenant={tenant} serviceId="klarsprak" />);
+    render(asManager(<Versions api={api} tenant={tenant} serviceId="klarsprak" />));
 
-    await screen.findByText('Begrunnelse: Kortere');
-    fireEvent.click(screen.getByRole('button', { name: /Ta i bruk igjen/ }));
+    await screen.findByText('«Kortere»');
+    fireEvent.click(screen.getByRole('button', { name: /^Versjon 1\b/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Ta i bruk igjen/ }));
     fireEvent.change(screen.getByLabelText('Begrunnelse'), {
       target: { value: 'Tilbake til lange svar' },
     });

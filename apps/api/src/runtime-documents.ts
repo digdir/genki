@@ -1,9 +1,15 @@
 import { randomUUID } from 'node:crypto';
-import type { RuntimeDocumentStore } from '@genai/adapter-openai';
+import {
+  bodyLimits,
+  documentLimits,
+  mediaLimits,
+  type RuntimeDocumentStore,
+} from '@genai/adapter-openai';
 import { attachedMeta } from '@genai/strategy-agent-loop';
 import { runDocumentFolder, runDocumentsFolder } from '@genai/jobs';
 import { mediaTypeCovers } from '@genai/kernel';
 import { blobPart, readablePart, type BlobStore } from '@genai/port-blob';
+import { parse as parseYaml } from 'yaml';
 
 const readableTypes = new Set(['text/plain', 'text/markdown', 'text/csv', 'application/json']);
 
@@ -36,6 +42,31 @@ export const runtimeMediaTypes = (spec: unknown): string[] => {
         ),
       ]
     : [];
+};
+
+const specOf = (definition: unknown): unknown => {
+  let parsed = definition;
+  if (typeof definition === 'string') {
+    try {
+      parsed = parseYaml(definition) as unknown;
+    } catch {
+      return undefined;
+    }
+  }
+  return typeof parsed === 'object' && parsed !== null
+    ? (parsed as { spec?: unknown }).spec
+    : undefined;
+};
+
+export const fileInputOf = (definition: unknown) => {
+  const spec = specOf(definition);
+  const documents = runtimeDocumentTypes(spec);
+  const media = runtimeMediaTypes(spec);
+  return {
+    documents: documents.length > 0 ? { accepts: documents, ...documentLimits } : null,
+    media: media.length > 0 ? { accepts: media, ...mediaLimits } : null,
+    maxRequestBytes: bodyLimits.chat,
+  };
 };
 
 export const runtimeFileTypes = (spec: unknown, stepTypes: readonly string[]): string[] => {

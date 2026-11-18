@@ -1,7 +1,7 @@
 import { useFormat } from '@genai/i18n/react';
 import { SchemaFormProvider } from '@genai/schema-forms';
-import { Button, Heading, Tabs } from '@digdir/designsystemet-react';
-import { useEffect, useState, type ReactNode } from 'react';
+import { Heading } from '@digdir/designsystemet-react';
+import { useEffect, useState } from 'react';
 import type { ApiClient } from '../../api';
 import type { CatalogItem } from '../../api/building-blocks';
 import { BackLink } from '../../components/BackLink';
@@ -21,7 +21,7 @@ import { useAsync } from '../../hooks';
 import { useT } from '../../i18n';
 import { Loading } from '../../states';
 import { fromDefinition } from './model';
-import { Workspace } from './Workspace';
+import { blankFlow, Workspace } from './Workspace';
 import '../stepflows.css';
 
 const designFlows = () => Object.fromEntries(exampleFlows.map((f) => [f.id, structuredClone(f)]));
@@ -85,58 +85,10 @@ export interface LiveWorkspaceProps {
   query: URLSearchParams;
   flowId?: string | undefined;
   service?: { id: string; name: string } | undefined;
-  library: boolean;
   live?: boolean;
 }
 
-const LoadingFrame = ({
-  view,
-  onView,
-  children,
-}: {
-  view: 'flow' | 'lib';
-  onView: (view: 'flow' | 'lib') => void;
-  children: ReactNode;
-}) => {
-  const t = useT();
-  return (
-    <div className="stack-md stepflows">
-      <Tabs value={view} onChange={(v) => onView(v as 'flow' | 'lib')}>
-        <Tabs.List aria-label={t('stepflows.viewLabel')}>
-          <Tabs.Tab value="flow">{t('stepflows.tabInService')}</Tabs.Tab>
-          <Tabs.Tab value="lib">{t('stepflows.tabLibrary')}</Tabs.Tab>
-        </Tabs.List>
-        <Tabs.Panel value={view}>
-          {view === 'lib' ? (
-            <div className="stack-md">
-              <div className="page-head">
-                <div className="stack-xs">
-                  <Heading level={1} data-size="md">
-                    {t('stepflows.libraryTitle')}
-                  </Heading>
-                  <p className="lead">{t('stepflows.libraryLead')}</p>
-                </div>
-                <Button aria-disabled>{t('stepflows.newFlow')}</Button>
-              </div>
-              {children}
-            </div>
-          ) : (
-            <div className="stack-md">
-              <BackLink
-                label={t('stepflows.crumbFlows')}
-                href="#/building-blocks/in-use?type=step_flow"
-              />
-              <Heading level={1} data-size="md">
-                {t('stepflows.strategyTitle')}
-              </Heading>
-              {children}
-            </div>
-          )}
-        </Tabs.Panel>
-      </Tabs>
-    </div>
-  );
-};
+export const newFlowId = 'ny-flyt';
 
 export const LiveWorkspace = ({
   api,
@@ -144,7 +96,6 @@ export const LiveWorkspace = ({
   query,
   flowId,
   service,
-  library,
   live = false,
 }: LiveWorkspaceProps) => {
   const t = useT();
@@ -153,7 +104,11 @@ export const LiveWorkspace = ({
     (signal) => loadLiveFlows(api, tenant, live, f, t, signal),
     [api, tenant, live, f, t],
   );
-  const [flows, setFlows] = useState<Record<string, Flow>>(() => (live ? {} : designFlows()));
+  const creating = flowId === 'new';
+  const [flows, setFlows] = useState<Record<string, Flow>>(() => ({
+    ...(live ? {} : designFlows()),
+    ...(creating ? { [newFlowId]: blankFlow(newFlowId, t('stepflows.newFlowChanged')) } : {}),
+  }));
 
   const flyt = query.get('flyt') ?? '';
   const byService =
@@ -161,16 +116,13 @@ export const LiveWorkspace = ({
       ? Object.keys(serviceOfFlow).find((id) => serviceOfFlow[id] === service.name)
       : undefined;
   const initialFlow =
+    (creating ? newFlowId : '') ||
     flowQueryIds[flyt] ||
     (flowId && (flowQueryIds[flowId] ?? flowId)) ||
     byService ||
     'svar-med-kilder';
   const strategi = query.get('strategi') ?? '';
   const visning = query.get('visning');
-
-  const [view, setView] = useState<'flow' | 'lib'>(
-    visning === 'bibliotek' || (library && !visning) ? 'lib' : 'flow',
-  );
 
   useEffect(() => {
     if (state.status !== 'ready') return;
@@ -179,9 +131,13 @@ export const LiveWorkspace = ({
 
   if (state.status === 'loading')
     return (
-      <LoadingFrame view={view} onView={setView}>
-        <Loading label={t('stepflows.loading')} shape="list" onRetry={retry} />
-      </LoadingFrame>
+      <div className="stack-md stepflows">
+        <BackLink label={t('stepflows.crumbFlows')} href="#/developer/step-flows" />
+        <Heading level={1} data-size="md">
+          {t('stepflows.strategyTitle')}
+        </Heading>
+        <Loading label={t('stepflows.loading')} shape="detail" onRetry={retry} />
+      </div>
     );
 
   return (
@@ -194,7 +150,6 @@ export const LiveWorkspace = ({
         liveError={state.status === 'error' ? { error: state.error, retry } : undefined}
         service={service}
         live={live}
-        initialView={view}
         initialFlow={initialFlow}
         initialStrategy={
           strategyIds.includes(strategi as Strategy['id'])

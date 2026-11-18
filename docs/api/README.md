@@ -70,9 +70,21 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 - `GET /tenants/{tenant}/tasks` takes `actor` (`me` or an actor id), gives `actor.id` for actors of the caller's own tenant and a `channel` per run (`api-key`, `interface`, `api`, `playground`, `batch` or `null`). The usage report's `daily[].byService` adds `latency` per day.
 - Building blocks add `versionAt` (step flows and skills), `required` and `counts.required` (mandatory guardrail rules), and on a model block `operations` (API, built-in and maturity per call type) and `processor` (whether its connection has a processor record, its sub-processors and retention). See [access.md](access.md). A service uses a model through the draft: set `spec.model.primary` and save with `PUT .../draft`.
 
+### 2026-11-18: playground changes on top of a service version
+
+- `POST /tenants/{tenant}/playground/runs` (and `/stream`) now applies `setup.instructions` and `setup.datasets` when `setup.service` is set; before, they were ignored. They change that run only and never the service, a version or a draft (see [services.md](services.md#playground-changes-on-top-of-a-service-version)). A dataset the tenant may not use, or instructions for a strategy without one instructions field (a step flow), answers `422`. A dataset that does not exist or is not shared with the tenant now answers `422` before the run in the setup without a service too.
+- `GET /tenants/{tenant}/playground/options` gives each version `strategy`: `id`, `version`, `title` in bokmål and English, `takesInstructions` and, for a step flow, `flow` with its `ref`, `id`, `version` and `title`. A variant with its own strategy has `strategy` too. Each model adds `price`, the same as on `GET /models`, or `null`.
+
 ### 2026-11-18: comparing two test runs case by case
 
 - New `GET /tenants/{tenant}/services/{id}/eval-runs/compare?candidate={runId}`: two test-set runs of a service, case by case, with each verdict, a `change` per case (`better`, `worse`, `same`, `new`, `missing`, `pending`) and `counts`; the baseline is a named run or, by default, the run of the published version. Paged with `limit` and `offset` (see [work.md](work.md#two-kinds-of-evaluation-run)).
+
+### 2026-11-18: who saved a draft, the draft a test run tested, dataset owners and file limits
+
+- `GET` and `PUT /tenants/{tenant}/services/{id}/draft` (and the draft in a rebase answer) add `by`, who saved the draft last, and `byName`, that person's name, or `null` when genki does not know it.
+- An eval run of the saved draft records its revision: `GET /tenants/{tenant}/services/{id}/eval-runs` and `GET /tenants/{tenant}/eval-runs/{runId}` add `draftRevision`. A run of a published version or of a definition sent in the request has none, nor has a run started before this change.
+- `GET /tenants/{tenant}/datasets` and `GET /tenants/{tenant}/datasets/{id}` add `owner` (`tenant`, and `name` or `null`) and `updatedAt`, when an ingestion run last succeeded. `updatedAt` is `null` for another organisation's dataset, one never read in and one filled outside genki's pipelines.
+- `POST /tenants/{tenant}/definitions/input-fields` adds `files`: the `documents` and `media` the definition takes, each with `accepts`, `maxBytes` and `maxCount` as `/v1` enforces them, or `null`, and `maxRequestBytes`.
 
 ### 2026-11-18: platform secrets on their own console screen
 

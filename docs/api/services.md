@@ -20,11 +20,19 @@ A playground run whose model or step fails answers `502` as `application/problem
 
 A playground run on a published version that no longer fits the platform, for example one whose strategy version is gone, answers `422` with `type: urn:genai:problem:definition-outdated`, `setup`, `service`, `version`, `latestVersion` and the validation `errors`. The title names the first problem and points to the newest version, in bokmål or English.
 
+## Playground changes on top of a service version
+
+A playground setup with `service` runs that version's definition. `model`, `instructions` and `datasets` in the same setup change it for that run only; genki never writes the change to the service, a version or a draft. The changed definition is validated and checked against the building block policy like any other.
+
+- `datasets` replaces the version's datasets. A dataset the version already has keeps its settings; any other must exist and be shared with the tenant, or the run answers `422` with the path `setup.datasets[i]`, the same answer for both cases. A setup without a service gets the same check.
+- `instructions` replaces the one instructions field of the strategy the chosen variant runs: the variant's own strategy, or else `spec.strategy`, and the variant's `overrides.instructions` when it sets one. A strategy with several steps keeps its steps; agent-loop uses the replaced text wherever it uses its instructions. A strategy without one instructions field, such as step-flow, whose prompts live in the flow's steps, answers `422` with the path `setup.instructions` and a text in bokmål or English. `takesInstructions` on the version's `strategy` in `GET .../playground/options` tells beforehand.
+- `skills`, `blocks` and `fields` are still ignored with a service.
+
 ## Typical sequence: change and publish a service
 
 1. `GET /tenants/{tenant}/services`: the published services with status and channels. `GET /tenants/{tenant}/service-drafts`: the saved drafts, newest first, with `latestVersion: null` for a service never published (ADR 0051).
 2. `GET /tenants/{tenant}/definitions/services/{id}`: the latest published version (`latest`) and every version (`versions`). For a new service, start from `GET /tenants/{tenant}/definitions/template`.
-3. `PUT /tenants/{tenant}/services/{id}/draft` with `{ definition, files?, baseVersion, revision? }`. Send the `revision` you read; `409` means someone else saved in between.
+3. `PUT /tenants/{tenant}/services/{id}/draft` with `{ definition, files?, baseVersion, revision? }`. Send the `revision` you read; `409` means someone else saved in between. The draft answers `by`, who saved it last, and `byName`, their name or `null`. A test run of the saved draft (`POST .../eval-runs` with `version: draft` and no `definition`) records the revision as `draftRevision` on the run.
 4. `POST /tenants/{tenant}/definitions/test-run` with `{ definition, files?, query }`: one run of the unpublished definition, nothing saved.
    `GET /tenants/{tenant}/services/{id}/draft/checks`: the checks a publish runs (schema, policies, risk confirmation, step flows, datasets and evaluation gates against recorded test runs) on the saved draft, without publishing it or calling a model; `ready` is `true` when publishing it now would pass, else `problems` lists why. on_publish hooks are not run here: when the organisation has enabled one, the answer has `hooksSkipped: true`, and the hook can still refuse the publish.
 5. `POST /definitions` with `change-reason` and `{ definition, files, draftRevision }`: publishes the draft as the next version (`201`). `409 draft-outdated` means a newer version was published; call `POST .../draft/rebase` first. `422` lists what is invalid.

@@ -97,7 +97,8 @@ export const ProposalSection = ({
   const name =
     proposal.item?.name ??
     (connector ? t('blocks.connectorFor', { service }) : t('blocks.newBlock'));
-  const kind = proposal.item ? kindLabel(t, proposal.item.kind) : t('blocks.connectorKind');
+  const kind =
+    !connector && proposal.item ? kindLabel(t, proposal.item.kind) : t('blocks.connectorKind');
   const allPassed = proposal.tests.every((test) => test.passed);
   const rightName = rightLabel(t, right);
 

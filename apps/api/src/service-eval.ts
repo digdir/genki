@@ -177,6 +177,7 @@ export interface Subject {
   definition: Record<string, unknown>;
   files: Record<string, string>;
   version: RunVersion;
+  draftRevision?: number;
   environment?: string;
   variant?: string;
 }
@@ -263,6 +264,7 @@ export const runSummary = (
     testSet: run.testSet.id,
     testSetVersion: run.testSet.version,
     version: run.tested?.version ?? 'draft',
+    ...(run.tested?.draftRevision ? { draftRevision: run.tested.draftRevision } : {}),
     ...(run.tested?.variant ? { variant: run.tested.variant } : {}),
     ...(run.tested?.split ? { split: run.tested.split } : {}),
     ...(run.tested?.environment ? { environment: run.tested.environment } : {}),
@@ -560,7 +562,12 @@ export const serviceEval = (
       }
       const draft = await draftOf(tenant, service);
       return draft
-        ? { definition: draft.spec.definition, files: draft.spec.files, version: 'draft' }
+        ? {
+            definition: draft.spec.definition,
+            files: draft.spec.files,
+            version: 'draft',
+            draftRevision: draft.version,
+          }
         : undefined;
     }
     if (version === undefined || version === 'published') {
@@ -1323,6 +1330,7 @@ export const serviceEval = (
       progress: { done: 0, total: cases.length },
       tested: {
         version: subject.version,
+        ...(subject.draftRevision ? { draftRevision: subject.draftRevision } : {}),
         ...(subject.variant ? { variant: subject.variant } : {}),
         ...(split ? { split } : {}),
         ...(sink ? { sink: sink.id } : {}),

@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parse as parseYaml, stringify } from 'yaml';
+import { bodyLimits, documentLimits, mediaLimits } from '@genai/adapter-openai';
 import type { Part, Principal } from '@genai/contracts';
 import { InMemoryDefinitionStore, SettingsRegistry } from '@genai/definitions';
 import { envSecrets } from '@genai/kernel';
@@ -193,11 +194,51 @@ describe('a draft with options drawn from dataset facets', () => {
     for (const definition of [withForm, stringify(withForm)]) {
       const res = await post(app, '/definitions/input-fields', { definition });
       expect(res.status).toBe(200);
-      expect(await res.json()).toEqual({
+      expect(await res.json()).toMatchObject({
         fields: [expect.objectContaining({ id: 'agency', options: ['Udir', 'Digdir'] })],
       });
     }
     expect((await post(app, '/definitions/input-fields', {})).status).toBe(400);
+  });
+
+  it('gives the file types, sizes and counts a run of the definition accepts, as the run API enforces them', async () => {
+    const { app } = await boot();
+    const withFiles = {
+      ...withForm,
+      spec: {
+        ...withForm.spec,
+        knowledge: { ...withForm.spec.knowledge, runtimeDocuments: true },
+        input: {
+          ...withForm.spec.input,
+          accepts: ['text/plain', 'text/markdown', 'image/png', 'application/zip'],
+        },
+      },
+    };
+
+    for (const definition of [withFiles, stringify(withFiles)]) {
+      const res = await post(app, '/definitions/input-fields', { definition });
+      expect((await res.json()).files).toEqual({
+        documents: {
+          accepts: ['text/plain', 'text/markdown'],
+          maxBytes: documentLimits.maxBytes,
+          maxCount: documentLimits.maxCount,
+        },
+        media: {
+          accepts: ['image/png'],
+          maxBytes: mediaLimits.maxBytes,
+          maxCount: mediaLimits.maxCount,
+        },
+        maxRequestBytes: bodyLimits.chat,
+      });
+    }
+  });
+
+  it('gives no file limits for a definition that takes only text', async () => {
+    const { app } = await boot();
+
+    const res = await post(app, '/definitions/input-fields', { definition: withForm });
+
+    expect((await res.json()).files).toMatchObject({ documents: null, media: null });
   });
 
   it('lists the facet values for published versions in the playground options', async () => {

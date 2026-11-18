@@ -10,7 +10,9 @@ export type ServiceSection =
   | 'quality'
   | 'batch'
   | 'versions'
-  | 'log';
+  | 'log'
+  | 'environments'
+  | 'definition';
 
 export const sectionLabels: Record<ServiceSection, PlainKey> = {
   overview: 'service.sectionOverview',
@@ -23,6 +25,8 @@ export const sectionLabels: Record<ServiceSection, PlainKey> = {
   batch: 'service.sectionBatch',
   versions: 'service.sectionVersions',
   log: 'service.sectionLog',
+  environments: 'service.sectionEnvironments',
+  definition: 'service.sectionDefinition',
 };
 
 const order: ServiceSection[] = [
@@ -30,37 +34,37 @@ const order: ServiceSection[] = [
   'setup',
   'interface',
   'test',
-  'channels',
   'settings',
   'quality',
-  'batch',
   'versions',
   'log',
+  'channels',
+  'environments',
+  'batch',
+  'definition',
 ];
 
-const forNew: ServiceSection[] = ['setup', 'interface', 'test', 'channels', 'versions'];
+const forNew: ServiceSection[] = ['setup', 'interface', 'test', 'channels', 'definition'];
 
-export type ServiceTab = 'overview' | 'setup' | 'interface' | 'advanced' | 'quality' | 'developer';
+export type ServiceTab = 'overview' | 'setup' | 'interface' | 'quality' | 'developer';
 
 const tabSections: Record<ServiceTab, ServiceSection[]> = {
-  overview: ['overview', 'batch'],
-  setup: ['setup', 'test'],
+  overview: ['overview'],
+  setup: ['setup', 'test', 'settings'],
   interface: ['interface'],
-  advanced: ['settings', 'channels'],
   quality: ['quality'],
-  developer: ['versions', 'log'],
+  developer: ['versions', 'log', 'channels', 'environments', 'batch', 'definition'],
 };
 
 export const tabLabels: Record<ServiceTab, PlainKey> = {
   overview: 'service.sectionOverview',
   setup: 'service.sectionSetup',
   interface: 'service.sectionInterface',
-  advanced: 'service.tabAdvanced',
   quality: 'service.sectionQuality',
   developer: 'service.tabDeveloper',
 };
 
-const notListed: ServiceSection[] = ['batch', 'test'];
+const notListed: ServiceSection[] = ['test', 'settings'];
 
 export const tabOf = (section: ServiceSection): ServiceTab =>
   (Object.keys(tabSections) as ServiceTab[]).find((tab) => tabSections[tab].includes(section)) ??
@@ -84,11 +88,11 @@ export const servicePath = (id: string, section?: ServiceSection, rest = '') => 
   return `${base}/${section}${rest}`;
 };
 
-const legacyTabs: Record<string, [ServiceSection, string]> = {
-  oppsett: ['setup', ''],
-  test: ['test', ''],
-  yaml: ['versions', '?view=yaml'],
-  versjoner: ['versions', ''],
+const legacyTabs: Record<string, ServiceSection> = {
+  oppsett: 'setup',
+  test: 'test',
+  yaml: 'definition',
+  versjoner: 'versions',
 };
 
 export interface ServiceLocation {
@@ -105,24 +109,27 @@ export const locate = (
 ): ServiceLocation => {
   const [, , raw, detail] = segments;
   const fallback: ServiceSection = allowed.includes('overview') ? 'overview' : 'setup';
-  const tab = query.get('tab');
-  const legacy = !raw && tab ? legacyTabs[tab] : undefined;
   const keep = new URLSearchParams(query);
   keep.delete('tab');
-  const suffix = (extra: string) => {
-    const q = new URLSearchParams(extra.replace(/^\?/, ''));
-    keep.forEach((v, k) => q.set(k, v));
-    return q.size ? `?${q.toString()}` : '';
+  const suffix = () => (keep.size ? `?${keep.toString()}` : '');
+  const go = (section: ServiceSection, rest = '') => {
+    const target = allowed.includes(section) ? section : fallback;
+    return {
+      section: target,
+      detail: target === section && rest ? rest.slice(1) : undefined,
+      redirect: servicePath(id, target, `${target === section ? rest : ''}${suffix()}`),
+    };
   };
-  if (legacy) {
-    const section = allowed.includes(legacy[0]) ? legacy[0] : fallback;
-    return { section, detail: undefined, redirect: servicePath(id, section, suffix(legacy[1])) };
+  const tab = query.get('tab');
+  const legacy = !raw && tab ? legacyTabs[tab] : undefined;
+  if (legacy) return go(legacy);
+  if (raw === 'versions' && query.get('view') === 'yaml') {
+    keep.delete('view');
+    return go('definition');
   }
-  if (raw === 'how-it-works')
-    return { section: 'setup', detail: 'how', redirect: servicePath(id, 'setup', '/how') };
+  if (raw === 'how-it-works') return go('setup', '/how');
   const known = (Object.keys(sectionLabels) as ServiceSection[]).find((s) => s === raw);
-  if (!raw) return { section: fallback, detail: undefined };
-  if (!known) return { section: fallback, detail: undefined };
+  if (!raw || !known) return { section: fallback, detail: undefined };
   if (!allowed.includes(known))
     return { section: fallback, detail: undefined, redirect: servicePath(id, fallback) };
   return { section: known, detail };

@@ -924,3 +924,77 @@
   border-color: var(--ds-color-accent-base-default);
   color: var(--ds-color-accent-base-contrast-default);
 }
+
+.bb-crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 15px;
+  color: var(--ds-color-neutral-text-subtle);
+}
+
+.bb-detail-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px 16px;
+}
+
+.bb-search-all {
+  display: flex;
+}
+
+.bb-search-all > * {
+  flex: 1 1 280px;
+  min-width: 0;
+}
+
+.bb-type-grid {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+  gap: 14px;
+}
+
+.bb-type-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 16px 18px;
+  border: 1px solid var(--ds-color-neutral-border-subtle);
+  border-radius: var(--ds-border-radius-lg);
+  color: var(--ds-color-neutral-text-default);
+  text-decoration: none;
+}
+
+.bb-type-card:hover {
+  border-color: var(--ds-color-accent-border-default);
+  background: var(--ds-color-accent-background-tinted);
+}
+
+.bb-type-card-home {
+  border-style: dashed;
+  border-color: var(--ds-color-neutral-border-default);
+}
+
+.bb-type-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 18px;
+  color: var(--ds-color-accent-text-default);
+}
+
+.bb-type-name strong {
+  font-weight: 600;
+}
+
+.bb-type-card .bb-meta {
+  margin-top: auto;
+}

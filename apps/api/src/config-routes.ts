@@ -1095,6 +1095,7 @@ export const registerConfigRoutes = <E extends Env, S extends Schema, B extends 
       return typeof found?.spec.engine === 'string' ? found.spec.engine : undefined;
     },
   };
+  const ownerNames = () => deps.admin.tenantNames().catch(() => new Map<string, string>());
   const namesOf = async (actors: string[]) =>
     (await deps.names?.namesOf(actors)) ?? new Map<string, string>();
   const withStatus = async (
@@ -1102,6 +1103,7 @@ export const registerConfigRoutes = <E extends Env, S extends Schema, B extends 
     tenant: string,
     principal: Principal,
     detail: boolean,
+    tenantNames: Map<string, string>,
   ) => {
     const { skipped, ...status } = await datasetStatus(
       {
@@ -1127,14 +1129,18 @@ export const registerConfigRoutes = <E extends Env, S extends Schema, B extends 
       status.lastExecution && !own
         ? (({ startedBy: _hidden, ...rest }) => rest)(status.lastExecution)
         : undefined;
+    const ownerTenant = item.scope === platformScope ? deps.platformTenant : item.scope;
     return {
       ...datasetView(item),
+      owner: { tenant: ownerTenant, name: tenantNames.get(ownerTenant) ?? null },
       effectiveResidency: effectiveResidency(location),
       ...(location.embedding ? { embeddingResidency: location.embedding.residency ?? null } : {}),
       editable: item.scope === tenant,
       ...status,
       ...(lastExecution ? { lastExecution } : {}),
-      ...(owned ? {} : { source: 'none' as const, lastExecution: null, nextRunAt: null }),
+      ...(owned
+        ? {}
+        : { source: 'none' as const, lastExecution: null, nextRunAt: null, updatedAt: null }),
       ...(starterName && status.lastExecution
         ? { lastExecution: { ...status.lastExecution, startedByName: starterName } }
         : {}),
@@ -1151,13 +1157,14 @@ export const registerConfigRoutes = <E extends Env, S extends Schema, B extends 
     const guard = await member(c);
     if (guard.response) return guard.response;
     const counts = await deps.usedByCounts?.(guard.tenant);
+    const tenantNames = await ownerNames();
     return c.json({
       data: await Promise.all(
         deps.catalog
           .visibleTo(guard.tenant)
           .filter((i) => i.kind === 'dataset')
           .map(async (i) => ({
-            ...(await withStatus(i, guard.tenant, guard.principal, false)),
+            ...(await withStatus(i, guard.tenant, guard.principal, false, tenantNames)),
             ...(counts ? { usedByCount: counts.get(i.id) ?? 0 } : {}),
           })),
       ),
@@ -1179,7 +1186,7 @@ export const registerConfigRoutes = <E extends Env, S extends Schema, B extends 
           i.kind === 'dataset' && (i.id === id || i.id === deps.catalog.qualify(guard.tenant, id)),
       );
     return item
-      ? c.json(await withStatus(item, guard.tenant, guard.principal, true))
+      ? c.json(await withStatus(item, guard.tenant, guard.principal, true, await ownerNames()))
       : problem(c, 404, 'Not found');
   });
   app.put('/tenants/:tenant/datasets/:id', async (c) => {

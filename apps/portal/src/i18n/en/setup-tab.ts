@@ -1,5 +1,5 @@
 import type { Translation } from '@genai/i18n';
-import type { setup as source } from '../nb/setup-tab';
+import type { setup as source, setupList as setupListSource } from '../nb/setup-tab';
 
 export const setup = {
   sectionPurpose: 'Purpose and audience',
@@ -312,3 +312,61 @@ export const setup = {
   noToolsConnected:
     'No tools are connected yet. Connect a tool under <link>Building blocks</link>.',
 } satisfies Translation<typeof source>;
+
+export const setupList = {
+  navLabel: 'Parts of the setup',
+  groupBasic: 'Basics',
+  groupAdvanced: 'Advanced',
+  areaPurpose: 'Purpose and audience',
+  areaSources: 'Sources',
+  areaInput: 'Input',
+  areaResult: 'Result',
+  areaModel: 'Model',
+  areaTools: 'Tools',
+  areaHow: 'Way of working',
+  areaVariants: 'Variants',
+  areaGuards: 'Guards',
+  areaRisk: 'Risk and the AI Act',
+  areaLimits: 'Limits and logging',
+  areaChannels: 'Channels',
+  areaQuality: 'Quality',
+  areaOther: 'Other',
+  areaInstructions: 'Instructions',
+  helpPurpose: 'What the service is for, who it is for, and the instructions it follows.',
+  helpSources: 'What the service can answer from: datasets and documents the user sends along.',
+  helpInput: 'What the user sends to the service: the question, form fields and files.',
+  helpResult: 'What comes out of the service.',
+  helpModel: 'The model that writes the answers.',
+  helpTools: 'What the service can do besides writing answers.',
+  helpHow: 'How the service arrives at the answer.',
+  helpVariants: 'Try two setups against each other with real users.',
+  helpGuards: 'Rules that stop or change questions and answers.',
+  helpRisk:
+    'The risk level under the AI Act. It must be confirmed before the changes can be published.',
+  helpLimits: 'Time limits, quota and what is logged.',
+  statusDone: 'Done',
+  statusChanged: 'Changed',
+  statusMissing: 'Missing',
+  statusOptional: 'Optional',
+  advancedInUse: '{used} of {count} in use',
+  advancedMissing: { one: 'One missing', other: '{count} missing' },
+  savedNote: 'Changes are saved in the draft right away.',
+  next: 'Next: {name}',
+  sideLabel: 'Builder assistant and trying',
+  sideTabs: 'Side panel',
+  tabAssistant: 'Assistant',
+  tabTry: 'Try',
+  tryNote: 'Tries the draft, not version {n}. Only you see the answer. Costs like a normal run.',
+  openPlayground: 'Open in the Playground with the timeline',
+  askGoal: 'What should the users achieve?',
+  askSources: 'Which sources are relevant?',
+  askInput: 'What does the service need from the user?',
+  askOutcome: 'What should the user be left with?',
+  inputLooksNote: 'How the fields look to the user is set in the Interface tab.',
+  modelChanged: 'Changed in the draft. Version {n} in use has {model}.',
+  notWrittenPurpose: 'The purpose is not written',
+  limitsDefault: 'Default',
+  limitsOwn: { one: '{count} own setting', other: '{count} own settings' },
+  riskConfirmedSummary: '{level}, confirmed',
+  riskUnconfirmedSummary: '{level}, not confirmed',
+} satisfies Translation<typeof setupListSource>;

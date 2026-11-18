@@ -114,8 +114,33 @@ const ServiceDraft = z
     latestVersion: z.number().int().nullable(),
     at: z.string(),
     reason: z.string(),
+    by: z.string().openapi({ description: 'Who saved the draft last' }),
+    byName: z.string().nullable().openapi({
+      description: 'The name of who saved the draft last; null when genki does not know it',
+    }),
   })
   .openapi('ServiceDraft');
+
+const FileLimit = z.object({
+  accepts: z.array(z.string()).describe('The media types a caller may send'),
+  maxBytes: z.number().int().describe('The largest file accepted, in bytes'),
+  maxCount: z.number().int().describe('The most files accepted in one run'),
+});
+
+const FileInput = z
+  .object({
+    documents: FileLimit.nullable().describe(
+      'Text documents read into the run (knowledge.runtimeDocuments with readable types in input.accepts); null when the definition takes none',
+    ),
+    media: FileLimit.nullable().describe(
+      'Audio and image parts (audio/ and image/ types in input.accepts); null when the definition takes none. File parts a step flow takes have the same limits',
+    ),
+    maxRequestBytes: z.number().int().describe('The largest request body a run accepts, in bytes'),
+  })
+  .openapi('ServiceFileInput', {
+    description:
+      'The files a run of the definition may carry, with the limits the OpenAI-compatible run API enforces and reports on /v1/models',
+  });
 
 const ServiceDraftSummary = z
   .object({
@@ -367,6 +392,13 @@ const EvalRunSummary = z
     testSet: z.string(),
     testSetVersion: z.number().int(),
     version: z.union([z.literal('draft'), z.number().int()]),
+    draftRevision: z
+      .number()
+      .int()
+      .optional()
+      .describe(
+        'The revision of the saved draft the run tested; left out when it ran a published version or an unsaved definition',
+      ),
     variant: z.string().optional(),
     environment: z
       .string()
@@ -1107,6 +1139,22 @@ const playgroundPolicy = z.object({
 });
 const blockStatus = z.enum(['allowed', 'requires_approval', 'not_allowed']);
 const playgroundOutput = z.enum(['text', 'fields']);
+const PlaygroundStrategy = z
+  .object({
+    id: z.string(),
+    version: z.number().int(),
+    title: UiText,
+    takesInstructions: z
+      .boolean()
+      .describe(
+        'Whether the strategy has one instructions field that setup.instructions can replace in a run',
+      ),
+    flow: z
+      .object({ ref: z.string(), id: z.string(), version: z.number().int(), title: UiText })
+      .optional()
+      .describe('The step flow a step-flow strategy runs; title is its recipe title, or its name'),
+  })
+  .openapi('PlaygroundStrategy');
 
 const PlaygroundOptions = z
   .object({
@@ -1132,12 +1180,16 @@ const PlaygroundOptions = z
               blocks: z.array(z.string()),
               output: playgroundOutput,
             }),
+            strategy: PlaygroundStrategy.optional().describe("The version's spec.strategy"),
             variants: z
               .array(
                 z.object({
                   id: z.string(),
                   title: z.string().optional(),
                   model: z.string().optional(),
+                  strategy: PlaygroundStrategy.optional().describe(
+                    'Only when the variant has its own strategy',
+                  ),
                 }),
               )
               .optional(),
@@ -1154,6 +1206,11 @@ const PlaygroundOptions = z
         dataLocation: residency,
         status: blockStatus,
         policy: playgroundPolicy.optional(),
+        candidate: z.literal(true).optional(),
+        price: z
+          .object({ inputPerThousand: z.number(), outputPerThousand: z.number() })
+          .nullable()
+          .describe('Kroner per 1,000 tokens, as GET /models gives it, or null without a price'),
       }),
     ),
     datasets: z.array(
@@ -1278,7 +1335,7 @@ const playgroundErrors = {
   409: problem('The playground is turned off for the tenant'),
   413: problem('The file is too large'),
   422: problem(
-    'Invalid setup or file; urn:genai:problem:definition-outdated when a published version no longer fits the platform (with `service`, `version` and `latestVersion`)',
+    'Invalid setup or file, a dataset the tenant may not use, or instructions for a strategy without one instructions field; urn:genai:problem:definition-outdated when a published version no longer fits the platform (with `service`, `version` and `latestVersion`)',
   ),
   429: problem('The monthly token quota is used up (with `quota`)'),
 };
@@ -2072,7 +2129,7 @@ export const serviceRoutes: RouteConfig[] = [
       'The input form a definition would show, with options filled in. Needs manage-services',
     request: { params: z.object({ tenant }), body: body(z.object({ definition: z.unknown() })) },
     responses: {
-      200: json(z.object({ fields: z.array(InputField) }), 'Fields'),
+      200: json(z.object({ fields: z.array(InputField), files: FileInput }), 'Fields'),
       400: problem('Missing definition'),
       ...tenantErrors,
     },

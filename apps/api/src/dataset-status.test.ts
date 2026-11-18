@@ -65,6 +65,7 @@ describe('the status of a dataset', () => {
       chunks: 0,
       lastExecution: null,
       nextRunAt: null,
+      updatedAt: null,
       skipped: [],
     });
 
@@ -116,6 +117,7 @@ describe('the status of a dataset', () => {
         skipped: 1,
       },
       nextRunAt: '2026-10-08T01:00:00.000Z',
+      updatedAt: '2026-10-07T10:00:00.000Z',
       skipped: [{ document: 'c.pdf', reason: 'unsupported_type' }],
     });
     expect(await datasetStatus({ ...deps, countable: () => false }, item)).toMatchObject({
@@ -152,6 +154,7 @@ describe('the status of a dataset', () => {
       chunks: null,
       lastExecution: null,
       nextRunAt: null,
+      updatedAt: null,
       skipped: [],
     });
     expect(

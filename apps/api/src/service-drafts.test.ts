@@ -433,6 +433,26 @@ describe('the list of service drafts', () => {
   });
 });
 
+describe('who saved a draft last', () => {
+  it('names who saved the draft last on the saved and the opened draft', async () => {
+    const env = await boot();
+    await env.remember('kari', 'Kari Nordmann');
+
+    const saved = await env.saveDraft({ purpose: 'Svarer grundig' });
+
+    const expected = { by: 'employee:test:kari', byName: 'Kari Nordmann' };
+    expect(saved.body).toMatchObject(expected);
+    expect(await env.draft()).toMatchObject(expected);
+  });
+
+  it('gives a null name when genki does not know who saved the draft', async () => {
+    const env = await boot();
+    await env.saveDraft({ purpose: 'Svarer grundig' });
+
+    expect(await env.draft()).toMatchObject({ by: 'employee:test:kari', byName: null });
+  });
+});
+
 describe('three-way merge of a draft', () => {
   it('keeps nested changes from both sides and reports a value changed on both', () => {
     const conflicts: DraftConflict[] = [];

@@ -642,3 +642,83 @@ button.flow-card-main {
 .block-picker-item:hover {
   background: var(--ds-color-neutral-surface-hover);
 }
+
+.sf-home-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 16px;
+}
+
+.sf-home-head h1,
+.sf-home-head h2 {
+  margin: 0;
+}
+
+.sf-home-head > :first-child {
+  flex: 1 1 20rem;
+  min-width: 0;
+}
+
+.sf-home-lead {
+  max-width: 70ch;
+  color: var(--ds-color-neutral-text-subtle);
+}
+
+.sf-home-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.sf-home-search {
+  flex: 1 1 280px;
+  min-width: 0;
+}
+
+.sf-table-box {
+  overflow-x: auto;
+}
+
+.sf-cell-stack {
+  display: flex;
+  flex-direction: column;
+}
+
+.sf-users {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sf-users li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.sf-elsewhere {
+  border-top: 1px solid var(--ds-color-neutral-border-subtle);
+  padding-top: 18px;
+  color: var(--ds-color-neutral-text-subtle);
+}
+
+.sf-elsewhere h3 {
+  margin: 0;
+  color: var(--ds-color-neutral-text-default);
+}
+
+.sf-elsewhere ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.sf-start {
+  align-self: flex-start;
+}
