@@ -2,11 +2,11 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { App } from '../../App';
-import { createApiClient } from '../../api';
 import type { DatasetDetailView, ExecutionView } from '../../api/datasets';
+import { createApiClient } from '../../api';
 import { mockAnsattporten } from '../../auth';
 import { exampleOrganisations, mockFetch, type FeatureMockOptions } from '../../mock';
-import { exampleLiveDatasets } from '../../mock/datasets';
+import { exampleDocuments, exampleLiveDatasets } from '../../mock/datasets';
 import { RightsProvider } from '../../Shell';
 import { expectAccessible } from '../../test-utils';
 import { LiveDatasetDetail } from './LiveDatasetDetail';
@@ -66,11 +66,7 @@ const renderLive = async (path: string, fetch: typeof globalThis.fetch) => {
   return render(<App auth={auth} fetch={fetch} live />);
 };
 
-const renderDetail = (
-  fetch: typeof globalThis.fetch,
-  rights: string[],
-  tab: 'content' | 'ingestions' = 'content',
-) =>
+const renderDetail = (fetch: typeof globalThis.fetch, rights: string[]) =>
   render(
     <RightsProvider value={rights as never}>
       <LiveDatasetDetail
@@ -78,7 +74,7 @@ const renderDetail = (
         tenant="999888777"
         tenantName="Testetaten"
         id="999888777/veiledere"
-        tab={tab}
+        tab="content"
       />
     </RightsProvider>,
   );
@@ -114,44 +110,395 @@ const scannedRun: ExecutionView = {
   },
 };
 
+const many = (count: number) =>
+  Array.from({ length: count }, (_, i) => {
+    const n = String(i + 1).padStart(3, '0');
+    return {
+      id: `dok-${n}`,
+      title: `Dokument ${n}`,
+      fields: { type: i % 2 ? 'Veileder' : 'Rundskriv', year: '2025' },
+      status: 'indexed' as const,
+    };
+  });
+
+const searchable = (count = 120) =>
+  recorded({
+    datasets: exampleLiveDatasets.map((d) =>
+      d.id === 'veiledere' ? { ...d, facets: ['type'] } : d,
+    ),
+    documents: { '999888777/veiledere': many(count) },
+    listing: { '999888777/veiledere': { query: true, sort: ['title', 'year'] } },
+  });
+
+const listings = (calls: Call[]) =>
+  calls.filter((c) => /\/documents\?/.test(c.url)).map((c) => decodeURIComponent(c.url));
+
+const docsTable = () => screen.findByRole('table', { name: 'Dokumenter' }, { timeout: 4000 });
+
 describe('dataset Innhold tab', () => {
-  it('lists the first page of documents with unit, type and year, and no columns the API does not give', async () => {
+  it('lists one page of documents with title, type, source, chunks and status, and no columns the API does not give', async () => {
     const { calls, fetch } = recorded();
     await renderLive(veiledere, fetch);
-    const table = await screen.findByRole('table', { name: 'Innhold' }, { timeout: 4000 });
+    const table = await docsTable();
     const row = within(table).getByRole('button', { name: 'Rundskriv 3-2026' }).closest('tr');
-    expect(row?.textContent).toContain('Fagavdelingen');
+    expect(row?.textContent).toContain('Fagavdelingen · 2026');
     expect(row?.textContent).toContain('Rundskriv');
-    expect(row?.textContent).toContain('2026');
+    expect(row?.textContent).toContain('Opplastet fil');
+    expect(row?.textContent).toContain('Lest inn');
     expect(
       within(table)
         .getAllByRole('columnheader')
         .map((h) => h.textContent),
-    ).toEqual(['Tittel', 'Type', 'År']);
-    expect(screen.getByRole('status').textContent).toBe('3 dokumenter');
-    const listing = calls.find((c) => c.url.includes('/documents?'));
-    expect(listing?.url).toMatch(/\/datasets\/veiledere\/documents\?limit=50&offset=0$/);
+    ).toEqual(['', 'Tittel', 'Type', 'Kilde', 'Biter', 'Status']);
+    expect(screen.getByRole('status').textContent).toBe('1-3 av 3 dokumenter');
+    expect(listings(calls)[0]).toMatch(/\/datasets\/veiledere\/documents\?limit=50&offset=0$/);
     expectAccessible();
   });
 
-  it('says how many files could not be read and links to the ingestions', async () => {
+  it('paging keeps the search, sort and filter and asks the API for the next page only', async () => {
+    const { calls, fetch } = searchable();
+    await renderLive(
+      `${veiledere}/content?q=Dokument&sort=title&order=asc&filter.type=Veileder`,
+      fetch,
+    );
+    await docsTable();
+    expect(await screen.findByRole('button', { name: 'Dokument 002' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Neste' }));
+    expect(await screen.findByRole('button', { name: 'Dokument 102' })).toBeTruthy();
+    expect(listings(calls).at(-1)).toContain(
+      'limit=50&offset=50&filters={"type":["Veileder"]}&query=Dokument&sort=title&order=asc',
+    );
+    expect(window.location.hash).toContain('page=2');
+    expect(window.location.hash).toContain('q=Dokument');
+    expect(window.location.hash).toContain('filter.type=Veileder');
+    expect(screen.getByRole('status').textContent).toBe('51-60 av 60 som passer');
+  });
+
+  it('the address restores the page, page size, search, sort and status filter', async () => {
+    const { calls, fetch } = searchable();
+    await renderLive(`${veiledere}/content?page=2&size=25&q=Dokument&sort=title&order=asc`, fetch);
+    await docsTable();
+    expect(listings(calls)[0]).toContain('limit=25&offset=25&query=Dokument&sort=title&order=asc');
+    expect(screen.getByRole('searchbox', { name: 'Søk i titler' })).toHaveProperty(
+      'value',
+      'Dokument',
+    );
+    expect(screen.getByRole('combobox', { name: 'Per side' })).toHaveProperty('value', '25');
+    expect(screen.getByRole('combobox', { name: 'Sorter etter' })).toHaveProperty(
+      'value',
+      'title-asc',
+    );
+    expect(screen.getByRole('button', { name: 'Side 2' }).getAttribute('aria-current')).toBe(
+      'true',
+    );
+    expect(screen.getByRole('status').textContent).toBe('26-50 av 120 som passer');
+  });
+
+  it('follows the address when it changes, as Back does', async () => {
+    const { fetch } = searchable();
+    await renderLive(`${veiledere}/content?page=3`, fetch);
+    expect(await screen.findByRole('button', { name: 'Dokument 101' })).toBeTruthy();
+    window.location.hash = `${veiledere}/content?page=2`;
+    expect(await screen.findByRole('button', { name: 'Dokument 051' })).toBeTruthy();
+  });
+
+  it('a new page keeps the rows on screen, dimmed, until it comes', async () => {
+    const { fetch: base } = searchable();
+    let release = () => {};
+    const fetch: typeof globalThis.fetch = async (input, init) => {
+      if (urlOf(input).includes('offset=50'))
+        await new Promise<void>((resolve) => (release = resolve));
+      return base(input, init);
+    };
+    await renderLive(`${veiledere}/content`, fetch);
+    const table = await docsTable();
+    fireEvent.click(screen.getByRole('button', { name: 'Neste' }));
+    await waitFor(() => expect(table.getAttribute('aria-busy')).toBe('true'));
+    expect(screen.getByRole('status').textContent).toBe('Henter side 2 …');
+    expect(within(table).getByRole('button', { name: 'Dokument 001' })).toBeTruthy();
+    release();
+    expect(await screen.findByRole('button', { name: 'Dokument 051' })).toBeTruthy();
+  });
+
+  it('changes the page size from the pager and starts on the first page', async () => {
+    const { calls, fetch } = searchable();
+    await renderLive(`${veiledere}/content?page=2`, fetch);
+    await docsTable();
+    fireEvent.change(screen.getByRole('combobox', { name: 'Per side' }), {
+      target: { value: '100' },
+    });
+    await waitFor(() => expect(listings(calls).at(-1)).toMatch(/limit=100&offset=0$/));
+    expect(window.location.hash).toContain('size=100');
+    expect(window.location.hash).not.toContain('page=');
+  });
+
+  it('goes to the page asked for in Gå til side', async () => {
+    const { fetch } = searchable(300);
+    await renderLive(`${veiledere}/content`, fetch);
+    await docsTable();
+    expect(screen.getByText('av 6')).toBeTruthy();
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Gå til side' }), {
+      target: { value: '5' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Gå' }));
+    expect(await screen.findByRole('button', { name: 'Dokument 201' })).toBeTruthy();
+  });
+
+  it('searches titles through the document listing and keeps the words in the address', async () => {
+    const { calls, fetch } = searchable();
+    await renderLive(`${veiledere}/content`, fetch);
+    await docsTable();
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Søk i titler' }), {
+      target: { value: 'Dokument 11' },
+    });
+    expect(await screen.findByText('1-10 av 10 som passer')).toBeTruthy();
+    expect(listings(calls).at(-1)).toContain('query=Dokument 11');
+    expect(calls.some((c) => c.url.endsWith('/search'))).toBe(false);
+    expect(window.location.hash).toContain('q=Dokument+11');
+  });
+
+  it('hides the search and the sort when the engine cannot search or sort', async () => {
     const { fetch } = recorded();
     await renderLive(veiledere, fetch);
-    await screen.findByRole('table', { name: 'Innhold' });
-    expect(screen.getByText(/2 av 8 filer kunne ikke leses, og er ikke med her\./)).toBeTruthy();
+    await docsTable();
+    expect(screen.queryByRole('searchbox', { name: 'Søk i titler' })).toBeNull();
+    expect(screen.queryByRole('combobox', { name: 'Sorter etter' })).toBeNull();
+  });
+
+  it('offers only the sort keys the engine names', async () => {
+    const { fetch } = recorded();
+    await renderLive(`#/datasets/${encodeURIComponent('digdir/kudos')}`, fetch);
+    await docsTable();
+    const sort = screen.getByRole('combobox', { name: 'Sorter etter' });
     expect(
-      screen.getByRole('link', { name: 'Se filene og hvordan du retter det' }).getAttribute('href'),
-    ).toBe(`#/datasets/${encodeURIComponent('999888777/veiledere')}/ingestions`);
+      within(sort)
+        .getAllByRole('option')
+        .map((o) => o.textContent),
+    ).toEqual(['Standard rekkefølge', 'Tittel A-Å', 'År, nyest først']);
+  });
+
+  it('drops a search from the address when the engine cannot search titles', async () => {
+    const { calls, fetch } = recorded();
+    await renderLive(`${veiledere}/content?q=tilsyn`, fetch);
+    expect(await docsTable()).toBeTruthy();
+    expect(listings(calls).at(-1)).toMatch(/limit=50&offset=0$/);
+    expect(window.location.hash).not.toContain('q=');
+  });
+
+  it('counts each status in the status filter and lists the failed documents with their reason', async () => {
+    const { calls, fetch } = recorded();
+    await renderLive(veiledere, fetch);
+    await docsTable();
+    const status = screen.getByRole('combobox', { name: 'Status' });
+    expect(
+      within(status)
+        .getAllByRole('option')
+        .map((o) => o.textContent),
+    ).toEqual(['Lest inn (3)', 'Feilet (2)', 'Venter (0)']);
+    fireEvent.change(status, { target: { value: 'failed' } });
+    const row = (await screen.findByRole('button', { name: 'Skannet vedtak 2019.pdf' })).closest(
+      'tr',
+    );
+    expect(row?.textContent).toContain('Filen har ikke tekst vi kan lese');
+    expect(row?.textContent).toContain('Feilet');
+    expect(listings(calls).at(-1)).toMatch(/limit=50&offset=0&status=failed$/);
+    expect(screen.getByRole('button', { name: 'Fjern filteret Status: Feilet' })).toBeTruthy();
+    expect(window.location.hash).toContain('status=failed');
+  });
+
+  it('opens a failed document with its reason, without reading it from the index', async () => {
+    const { calls, fetch } = recorded();
+    await renderLive(`${veiledere}/content?status=failed`, fetch);
+    fireEvent.click(await screen.findByRole('button', { name: 'Presentasjon.pages' }));
+    const panel = await screen.findByRole('dialog', { name: 'Presentasjon.pages' });
+    expect(within(panel).getByText(/Filtypen støttes ikke/)).toBeTruthy();
+    expect(calls.some((c) => c.url.includes('/documents/Presentasjon'))).toBe(false);
+  });
+
+  it('the chunk panel reads the first chunks, then the next range until the last chunk', async () => {
+    const chunks = Array.from({ length: 15 }, (_, i) => ({
+      id: `c${i}`,
+      position: i,
+      page: i + 1,
+      text: `Tekst i bit ${i + 1}`,
+    }));
+    const { calls, fetch } = recorded({
+      documents: {
+        '999888777/veiledere': [
+          {
+            id: 'lang',
+            title: 'Lang veileder',
+            fields: {},
+            status: 'indexed',
+            chunkCount: 15,
+            chunks,
+          },
+        ],
+      },
+    });
+    await renderLive(veiledere, fetch);
+    fireEvent.click(await screen.findByRole('button', { name: 'Lang veileder' }));
+    const panel = await screen.findByRole('dialog', { name: 'Lang veileder' });
+    expect(await within(panel).findByText('Bit 1 av 15 · side 1')).toBeTruthy();
+    expect(within(panel).getAllByRole('listitem')).toHaveLength(3);
+    expect(within(panel).getByText('15 biter')).toBeTruthy();
+    fireEvent.click(within(panel).getByRole('button', { name: 'Vis flere biter' }));
+    expect(await within(panel).findByText('Tekst i bit 13')).toBeTruthy();
+    fireEvent.click(within(panel).getByRole('button', { name: 'Vis flere biter' }));
+    expect(await within(panel).findByText('Tekst i bit 15')).toBeTruthy();
+    expect(within(panel).queryByRole('button', { name: 'Vis flere biter' })).toBeNull();
+    expect(
+      calls.filter((c) => c.url.includes('/documents/lang')).map((c) => c.url.split('?')[1]),
+    ).toEqual(['chunks=0-2', 'chunks=3-12', 'chunks=13-14']);
+  });
+
+  it('says about N when the total is an estimate', async () => {
+    const page = {
+      dataset: '999888777/veiledere',
+      limit: 50,
+      offset: 0,
+      total: 100,
+      totalExact: false,
+      status: 'indexed',
+      statusCounts: { indexed: null, failed: 0, pending: 0 },
+      listing: { query: false, sort: [] },
+      documents: many(50),
+    };
+    const { fetch } = answering(
+      (url) => url.includes('/documents?'),
+      () => new Response(JSON.stringify(page), { headers: { 'content-type': 'application/json' } }),
+    );
+    await renderLive(veiledere, fetch);
+    await docsTable();
+    expect(screen.getByRole('status').textContent).toBe('1-50 av omtrent 100 dokumenter');
+    expect(screen.getByText('av omtrent 2')).toBeTruthy();
+    expect(
+      within(screen.getByRole('combobox', { name: 'Status' }))
+        .getAllByRole('option')
+        .map((o) => o.textContent),
+    ).toEqual(['Lest inn', 'Feilet (0)', 'Venter (0)']);
+  });
+
+  it('shows the table skeleton with the real column headers while the first page loads', async () => {
+    const { fetch: base } = recorded();
+    let release = () => {};
+    const fetch: typeof globalThis.fetch = async (input, init) => {
+      if (urlOf(input).includes('/documents?'))
+        await new Promise<void>((resolve) => (release = resolve));
+      return base(input, init);
+    };
+    await renderLive(veiledere, fetch);
+    await waitFor(
+      () =>
+        expect(
+          screen.getAllByRole('columnheader', { hidden: true }).map((h) => h.textContent),
+        ).toEqual(['Tittel', 'Type', 'Kilde', 'Biter', 'Status']),
+      { timeout: 3000 },
+    );
+    release();
+    expect(await docsTable()).toBeTruthy();
+  });
+
+  it('offers row selection only on uploaded files, and removal only to people who manage the dataset', async () => {
+    const withPage = exampleDocuments['999888777/veiledere'] ?? [];
+    const { fetch } = recorded({
+      documents: {
+        '999888777/veiledere': [
+          ...withPage,
+          { id: 'side', title: 'Side uten fil', fields: {}, status: 'indexed' },
+        ],
+      },
+    });
+    renderDetail(fetch, ['use-services']);
+    const table = await docsTable();
+    expect(within(table).queryByRole('checkbox', { name: 'Velg Side uten fil' })).toBeNull();
+    fireEvent.click(within(table).getByRole('checkbox', { name: 'Velg Rundskriv 3-2026' }));
+    const bar = screen.getByRole('region', { name: 'Valgte dokumenter' });
+    expect(within(bar).getByText('1 valgt')).toBeTruthy();
+    expect(within(bar).getByRole('button', { name: 'Last ned originalfilene' })).toBeTruthy();
+    expect(within(bar).queryByRole('button', { name: 'Fjern fra datasettet' })).toBeNull();
+  });
+
+  it('downloads the original of each chosen file', async () => {
+    const { calls, fetch } = recorded();
+    await renderLive(veiledere, fetch);
+    const table = await docsTable();
+    fireEvent.click(within(table).getByRole('checkbox', { name: 'Velg Rundskriv 3-2026' }));
+    fireEvent.click(within(table).getByRole('checkbox', { name: 'Velg Veileder for tilsyn' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Last ned originalfilene' }));
+    await waitFor(() =>
+      expect(
+        calls.filter((c) => c.method === 'GET' && c.url.includes('/uploads/')).map((c) => c.url),
+      ).toEqual([
+        '/api/tenants/999888777/datasets/veiledere/uploads/Rundskriv%203-2026.pdf',
+        '/api/tenants/999888777/datasets/veiledere/uploads/Veileder%20for%20tilsyn.pdf',
+      ]),
+    );
+  });
+
+  it('asks before removing, names the count, and removes each chosen file with a reason', async () => {
+    const { calls, fetch } = recorded({
+      uploads: {
+        '999888777/veiledere': [
+          { name: 'Rundskriv 3-2026.pdf', size: 634_880, type: 'pdf' },
+          { name: 'Veileder for søkere.docx', size: 348_160, type: 'docx' },
+          { name: 'Veileder for tilsyn.pdf', size: 512_000, type: 'pdf' },
+        ],
+      },
+    });
+    await renderLive(veiledere, fetch);
+    const table = await docsTable();
+    fireEvent.click(
+      within(table).getByRole('checkbox', { name: 'Velg alle opplastede filer på siden' }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Fjern fra datasettet' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Fjerne 3 filer fra datasettet?' });
+    expect(writes(calls).filter((w) => w.startsWith('DELETE'))).toEqual([]);
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Fjern 3 filer' }));
+    await waitFor(() => expect(calls.filter((c) => c.method === 'DELETE').length).toBe(3));
+    expect(
+      await screen.findByText(
+        '3 filer er fjernet. Dokumentene forsvinner fra søket ved neste innlesing.',
+      ),
+    ).toBeTruthy();
+    const removed = calls.filter((c) => c.method === 'DELETE');
+    expect(removed.map((c) => decodeURIComponent(c.url.split('/uploads/')[1] ?? ''))).toEqual([
+      'Rundskriv 3-2026.pdf',
+      'Veileder for søkere.docx',
+      'Veileder for tilsyn.pdf',
+    ]);
+    expect(removed[0]?.reason).toBe(
+      'Fjernet Rundskriv 3-2026.pdf fra Veiledere og rundskriv i Innhold',
+    );
+    expect(screen.queryByRole('region', { name: 'Valgte dokumenter' })).toBeNull();
+  });
+
+  it('names the files it could not remove and keeps them chosen', async () => {
+    const { fetch } = recorded();
+    await renderLive(veiledere, fetch);
+    const table = await docsTable();
+    fireEvent.click(within(table).getByRole('checkbox', { name: 'Velg Veileder for tilsyn' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Fjern fra datasettet' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Fjerne 1 fil fra datasettet?' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Fjern 1 fil' }));
+    expect((await screen.findByRole('alert')).textContent).toBe(
+      'Vi fikk ikke fjernet Veileder for tilsyn.pdf.',
+    );
+    expect(
+      within(screen.getByRole('region', { name: 'Valgte dokumenter' })).getByText('1 valgt'),
+    ).toBeTruthy();
   });
 
   it('opens a document in a side panel with its facts, excerpt and the original file', async () => {
     const { calls, fetch } = recorded();
     await renderLive(veiledere, fetch);
-    fireEvent.click(await screen.findByRole('button', { name: 'Veileder for søkere' }));
+    const title = await screen.findByRole('button', { name: 'Veileder for søkere' });
+    title.focus();
+    fireEvent.click(title);
     const panel = await screen.findByRole('dialog', { name: 'Veileder for søkere' });
     expect(panel.getAttribute('aria-modal')).toBe('false');
     expect(await within(panel).findByText(/Veilederen forklarer hvordan du søker/)).toBeTruthy();
-    expect(within(panel).getByText('Veileder for søkere.docx')).toBeTruthy();
+    expect(within(panel).getByText(/^Veileder for søkere\.docx, /)).toBeTruthy();
     fireEvent.click(
       within(panel).getByRole('button', {
         name: 'Last ned originalfilen (Veileder for søkere.docx)',
@@ -166,6 +513,9 @@ describe('dataset Innhold tab', () => {
     );
     fireEvent.keyDown(document, { key: 'Escape' });
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: 'Veileder for søkere' }),
+    );
   });
 
   it('says the original file is no longer kept when the download answers original-not-kept', async () => {
@@ -198,7 +548,7 @@ describe('dataset Innhold tab', () => {
 
   it('says the document is gone when the document read answers dataset-document-not-found', async () => {
     const { fetch } = answering(
-      (url) => url.endsWith('/documents/veileder-tilsyn'),
+      (url) => url.includes('/documents/veileder-tilsyn'),
       () => problem(404, { type: 'urn:genai:problem:dataset-document-not-found' }),
     );
     await renderLive(veiledere, fetch);
@@ -217,40 +567,25 @@ describe('dataset Innhold tab', () => {
     expect(within(panel).queryByRole('button', { name: /Last ned originalfilen/ })).toBeNull();
   });
 
-  it('searches the documents through the dataset search with the chosen filters', async () => {
-    const { calls, fetch } = recorded();
-    await renderLive(veiledere, fetch);
-    await screen.findByRole('table', { name: 'Innhold' });
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Søk i dokumentene' }), {
-      target: { value: 'tilsyn' },
-    });
-    await waitFor(() =>
-      expect(screen.queryByRole('button', { name: 'Rundskriv 3-2026' })).toBeNull(),
-    );
-    expect(await screen.findByRole('button', { name: 'Veileder for tilsyn' })).toBeTruthy();
-    expect(screen.getByRole('status').textContent).toBe('1 av 3 dokumenter passer');
-    const search = calls.find((c) => c.url.endsWith('/datasets/veiledere/search'));
-    expect(search?.method).toBe('POST');
-    expect(search?.body).toEqual({ query: 'tilsyn', limit: 100 });
-    fireEvent.click(screen.getByRole('button', { name: 'Nullstill søk og filter' }));
-    expect(await screen.findByRole('button', { name: 'Rundskriv 3-2026' })).toBeTruthy();
-  });
-
-  it('filters across all documents through the API with the facet values that are ticked', async () => {
+  it('filters across all documents through the API with the value chosen, counted per value', async () => {
     const { calls, fetch } = recorded();
     await renderLive(`#/datasets/${encodeURIComponent('digdir/kudos')}`, fetch);
-    await screen.findByRole('table', { name: 'Innhold' });
-    expect(screen.getByRole('status').textContent).toMatch(/^48\s312 dokumenter$/);
-    fireEvent.click(await screen.findByRole('checkbox', { name: 'Årsrapport' }));
+    await docsTable();
+    expect(screen.getByRole('status').textContent).toMatch(/^1-2 av 48\s312 dokumenter$/);
+    const type = screen.getByRole('combobox', { name: 'Dokumenttype' });
+    await waitFor(() =>
+      expect(within(type).getByRole('option', { name: /^Årsrapport \(/ })).toBeTruthy(),
+    );
+    fireEvent.change(type, { target: { value: 'Årsrapport' } });
     await waitFor(() =>
       expect(screen.queryByRole('button', { name: 'Tildelingsbrev 2026 Testetaten' })).toBeNull(),
     );
-    expect(await screen.findByRole('button', { name: 'Årsrapport 2025 Testetaten' })).toBeTruthy();
-    expect(screen.getByRole('status').textContent).toMatch(/^1 av 48\s312 dokumenter passer$/);
-    const filtered = calls.find((c) => c.url.includes('filters='));
-    expect(filtered?.url).toContain(
-      `/documents?limit=50&offset=0&filters=${encodeURIComponent('{"type":["Årsrapport"]}')}`,
-    );
+    expect(screen.getByRole('button', { name: 'Årsrapport 2025 Testetaten' })).toBeTruthy();
+    expect(screen.getByRole('status').textContent).toBe('1-1 av 1 som passer');
+    expect(listings(calls).at(-1)).toContain('limit=50&offset=0&filters={"type":["Årsrapport"]}');
+    expect(
+      screen.getByRole('button', { name: 'Fjern filteret Dokumenttype: Årsrapport' }),
+    ).toBeTruthy();
   });
 
   it('names the field when the API refuses a filter the dataset does not declare', async () => {
@@ -261,31 +596,29 @@ describe('dataset Innhold tab', () => {
           errors: [{ path: 'filters.type', message: 'The dataset has no filter type' }],
         }),
     );
-    await renderLive(`#/datasets/${encodeURIComponent('digdir/kudos')}`, fetch);
-    await screen.findByRole('table', { name: 'Innhold' });
-    fireEvent.click(await screen.findByRole('checkbox', { name: 'Årsrapport' }));
+    await renderLive(
+      `#/datasets/${encodeURIComponent('digdir/kudos')}?filter.type=Årsrapport`,
+      fetch,
+    );
     expect((await screen.findByRole('alert')).textContent).toContain(
       'Datasettet kan ikke filtreres på «type».',
     );
   });
 
-  it('offers the search only to people who may search a dataset directly', async () => {
-    const { fetch } = recorded();
-    renderDetail(fetch, ['use-services']);
-    await screen.findByRole('table', { name: 'Innhold' });
-    expect(screen.queryByRole('searchbox', { name: 'Søk i dokumentene' })).toBeNull();
-  });
-
   it('says no document matches and resets from there', async () => {
     const { fetch } = recorded();
-    await renderLive(veiledere, fetch);
-    await screen.findByRole('table', { name: 'Innhold' });
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Søk i dokumentene' }), {
+    await renderLive(`#/datasets/${encodeURIComponent('digdir/kudos')}`, fetch);
+    await docsTable();
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Søk i titler' }), {
       target: { value: 'finnes-ikke' },
     });
-    expect(await screen.findByRole('heading', { name: 'Ingen dokumenter passer' })).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Nullstill søk og filter' }));
-    expect(await screen.findByRole('table', { name: 'Innhold' })).toBeTruthy();
+    expect(
+      await screen.findByRole('heading', { name: 'Ingen dokumenter passer søket og filteret' }),
+    ).toBeTruthy();
+    expect(screen.queryByRole('table')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Neste' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Nullstill alt' }));
+    expect(await docsTable()).toBeTruthy();
   });
 
   it('says the list is missing, not the documents, when the listing fails', async () => {
@@ -301,7 +634,7 @@ describe('dataset Innhold tab', () => {
     expect(alert.textContent).toContain('Tjenestene finner fortsatt dokumentene');
     fail = false;
     fireEvent.click(within(alert).getByRole('button', { name: 'Prøv igjen' }));
-    expect(await screen.findByRole('table', { name: 'Innhold' })).toBeTruthy();
+    expect(await docsTable()).toBeTruthy();
   });
 
   it('shows the empty state with an upload button for an upload dataset without documents', async () => {
@@ -314,6 +647,9 @@ describe('dataset Innhold tab', () => {
     await renderLive(veiledere, fetch);
     expect(await screen.findByRole('heading', { name: 'Ingen dokumenter ennå' })).toBeTruthy();
     expect(screen.getAllByRole('button', { name: 'Last opp filer' }).length).toBeGreaterThan(0);
+    expect(screen.getByRole('link', { name: 'Se innlesinger' }).getAttribute('href')).toBe(
+      `#/datasets/${encodeURIComponent('999888777/veiledere')}/ingestions`,
+    );
   });
 });
 

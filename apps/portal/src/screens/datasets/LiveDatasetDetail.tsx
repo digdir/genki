@@ -550,6 +550,7 @@ const Loaded = ({
               tenant={tenant}
               view={view}
               canUpload={canEdit && view.source === 'upload' && !!pipeline}
+              canManage={canEdit}
               onUpload={() => uploadInput.current?.click()}
             />
           ) : null}
