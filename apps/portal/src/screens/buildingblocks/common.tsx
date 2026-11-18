@@ -78,6 +78,14 @@ const judgeFactsOf = (t: T, judge: SinkJudgeInfo) => [
   },
 ];
 
+export type Settled<T> = { ok: true; data: T } | { ok: false; error: unknown };
+
+export const settled = <T,>(promise: Promise<T>): Promise<Settled<T>> =>
+  promise.then(
+    (data) => ({ ok: true, data }),
+    (error: unknown) => ({ ok: false, error }),
+  );
+
 export type Flash =
   { kind: 'logged'; text: string; change: LoggedChange } | { kind: 'plain'; text: string };
 

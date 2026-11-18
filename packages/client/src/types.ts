@@ -109,6 +109,7 @@ export type Step = { event?: string; stage?: string; tool?: string; iteration?: 
 >;
 
 export type StreamEvent =
+  | { type: 'task'; taskId: string }
   | { type: 'conversation'; conversationId: string }
   | { type: 'text'; text: string }
   | { type: 'retract' }
@@ -160,6 +161,7 @@ export interface ConversationMessage {
   markers?: AnswerMarker[];
   task?: string;
   runState?: 'running' | 'failed' | 'cancelled';
+  stopped?: true;
 }
 
 export interface ConversationPage {
@@ -205,4 +207,9 @@ export interface FeedbackRequest {
   rating: 'up' | 'down';
   comment?: string;
   reasons?: string[];
+}
+
+export interface CancelledRun {
+  taskId: string;
+  status: string;
 }

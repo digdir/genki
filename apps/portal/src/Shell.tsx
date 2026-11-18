@@ -23,13 +23,14 @@ import {
   useEffect,
   useMemo,
   useRef,
+  type KeyboardEvent,
   useState,
   type CSSProperties,
   type ReactNode,
 } from 'react';
 import type { ApiClient } from './api';
 import { Icon, type IconComponent } from './components/Icon';
-import { formatOrgNumber, profileFor } from './data/organisations';
+import { formatOrgNumber, hasOwnName, organisationName, profileFor } from './data/organisations';
 import { restoringScroll, useEscape, useNarrow } from './hooks';
 import { translator, useT, type PlainKey, type T } from './i18n';
 import { Unregistered } from './screens/Unregistered';
@@ -50,7 +51,6 @@ export const navigationGroups: readonly NavGroup[] = [
         path: '/services',
         label: 'shell.navServices',
         icon: RectangleSectionsIcon,
-        also: ['/step-flows'],
       },
       {
         path: '/shared-services',
@@ -66,7 +66,7 @@ export const navigationGroups: readonly NavGroup[] = [
         path: '/building-blocks',
         label: 'shell.navBuildingBlocks',
         icon: ComponentIcon,
-        also: ['/skills'],
+        also: ['/skills', '/step-flows'],
       },
       { path: '/playground', label: 'shell.navPlayground', icon: SandboxIcon },
       {
@@ -205,13 +205,37 @@ const isActive = (path: string, item: NavItem) => {
 };
 
 const userMenuLinks: readonly (readonly [string, PlainKey])[] = [
-  ['#/onboarding', 'shell.menuOnboarding'],
   ['#/profile', 'shell.menuProfile'],
-  ['#/contact', 'shell.contact'],
+  ['#/onboarding', 'shell.menuOnboarding'],
   ['#/data-handling', 'shell.menuDataHandling'],
+  ['#/contact', 'shell.contact'],
 ];
 
-const readableUnregistered = ['api-reference', 'shared-services', 'data-handling', 'profile'];
+const moveFocus = (event: KeyboardEvent<HTMLElement>) => {
+  const items = [...event.currentTarget.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+  const at = items.indexOf(document.activeElement as HTMLElement);
+  const target =
+    event.key === 'ArrowDown'
+      ? items[(at + 1) % items.length]
+      : event.key === 'ArrowUp'
+        ? items[(at - 1 + items.length) % items.length]
+        : event.key === 'Home'
+          ? items[0]
+          : event.key === 'End'
+            ? items[items.length - 1]
+            : undefined;
+  if (!target) return;
+  event.preventDefault();
+  target.focus();
+};
+
+const readableUnregistered = [
+  '/api-reference',
+  '/developer/api/reference',
+  '/shared-services',
+  '/data-handling',
+  '/profile',
+];
 
 interface ShellProps {
   session: Session;
@@ -328,12 +352,28 @@ export const Shell = ({
   const [open, setOpen] = useState<'org' | 'user' | 'menu' | undefined>();
   const [collapsed, setCollapsed] = useState(readCollapsed);
   const closeAll = useCallback(() => setOpen(undefined), []);
+  const userButton = useRef<HTMLButtonElement>(null);
+  const orgButton = useRef<HTMLButtonElement>(null);
+  const userMenuRef = useRef<HTMLDivElement>(null);
+  const openNow = useRef(open);
+  openNow.current = open;
+  const closeToButton = useCallback(() => {
+    const was = openNow.current;
+    setOpen(undefined);
+    (was === 'user' ? userButton : was === 'org' ? orgButton : undefined)?.current?.focus();
+  }, []);
   const toggleCollapsed = () =>
     setCollapsed((c) => {
       storeCollapsed(!c);
       return !c;
     });
-  useEscape(open !== undefined, closeAll);
+  useEscape(open !== undefined, closeToButton);
+  useEffect(() => {
+    if (open === 'user')
+      userMenuRef.current
+        ?.querySelector<HTMLElement>('[role="menuitem"]')
+        ?.focus({ preventScroll: true });
+  }, [open]);
   useEffect(() => {
     if (!narrow) setOpen((o) => (o === 'menu' ? undefined : o));
   }, [narrow]);
@@ -367,11 +407,13 @@ export const Shell = ({
 
   const profile = profileFor(organisation.orgNumber, organisation.name);
   const orgNr = formatOrgNumber(organisation.orgNumber);
+  const orgName = organisationName(organisation, t);
   const multi = session.organisations.length > 1;
   const actions = organisation.actions ?? profile.rights;
   const actionsKey = actions.join('\u0000');
   const { rights, labels } = useMemo(() => rightsFor(actions, t), [actionsKey, t]);
-  const gated = unregistered && !readableUnregistered.includes(area);
+  const gated =
+    unregistered && !readableUnregistered.some((p) => path === p || path.startsWith(`${p}/`));
   const orgMeta = t(unregistered ? 'shell.orgMetaUnregistered' : 'shell.orgMeta', { orgNr });
   const [above, setAbove] = useState<CSSProperties>();
   // In the sidebar a menu opens above its button, placed from where the button is now.
@@ -402,40 +444,72 @@ export const Shell = ({
   const userMenu = (
     <div className={userInSidebar ? 'popover-anchor sidebar-user' : 'popover-anchor'}>
       <Button
+        ref={userButton}
         variant="tertiary"
         data-size="sm"
         aria-expanded={open === 'user'}
-        aria-haspopup="true"
-        aria-label={t('shell.userMenuButton', { name: session.name })}
+        aria-haspopup="menu"
+        aria-controls={open === 'user' ? 'user-menu' : undefined}
+        aria-label={t('shell.userMenuButton', { name: session.name, organisation: orgName })}
+        className="user-button"
         onClick={(e) => toggle('user', e.currentTarget)}
+        onKeyDown={(e) => {
+          if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+          e.preventDefault();
+          if (open !== 'user') toggle('user', e.currentTarget);
+        }}
       >
         <Avatar data-size="sm" aria-hidden="true">
           {initials(session.name)}
         </Avatar>
-        {narrow || (userInSidebar && collapsed) ? null : <span>{session.name}</span>}
+        {narrow || (userInSidebar && collapsed) ? null : (
+          <span className="user-button-text">
+            <span className="user-button-name">{session.name}</span>
+            {userInSidebar ? <span className="user-button-org">{orgName}</span> : null}
+          </span>
+        )}
       </Button>
       {open === 'user' ? (
         <div
-          role="dialog"
+          id="user-menu"
+          ref={userMenuRef}
+          role="menu"
           aria-label={t('shell.userMenu')}
           className="popover user-menu"
           style={userInSidebar ? above : undefined}
+          onKeyDown={(e) => {
+            if (e.key === 'Tab') closeAll();
+            else moveFocus(e);
+          }}
         >
-          <div className="popover-head">
+          <div className="popover-head" role="presentation">
             <span className="popover-title">{session.name}</span>
-            <span className="meta">{t('shell.actingFor', { name: organisation.name, orgNr })}</span>
+            {session.email && session.email !== session.name ? (
+              <span className="meta">{session.email}</span>
+            ) : null}
+            <span className="user-menu-org">
+              {hasOwnName(organisation)
+                ? t('shell.actingFor', { name: orgName })
+                : t('shell.actingForNumber', { orgNr })}
+            </span>
           </div>
-          <ul className="user-menu-list">
+          <ul className="user-menu-list" role="presentation">
             {userMenuLinks.map(([href, label]) => (
-              <li key={href}>
-                <a href={href} onClick={closeAll}>
+              <li key={href} role="presentation">
+                <a href={href} role="menuitem" tabIndex={-1} onClick={closeAll}>
                   {t(label)}
                 </a>
               </li>
             ))}
           </ul>
           <Divider />
-          <Button variant="secondary" data-size="sm" onClick={onLogout}>
+          <Button
+            role="menuitem"
+            tabIndex={-1}
+            variant="secondary"
+            data-size="sm"
+            onClick={onLogout}
+          >
             {t('shell.logout')}
           </Button>
         </div>
@@ -448,35 +522,35 @@ export const Shell = ({
     <div className={userInSidebar ? 'popover-anchor sidebar-org' : 'popover-anchor'}>
       {multi ? (
         <Button
+          ref={orgButton}
           variant="secondary"
           data-size="sm"
           aria-expanded={open === 'org'}
           aria-haspopup="true"
           aria-label={t(unregistered ? 'shell.orgButtonUnregistered' : 'shell.orgButton', {
-            name: organisation.name,
+            name: orgName,
             orgNr,
           })}
           onClick={(e) => toggle('org', e.currentTarget)}
-          title={orgCompact ? organisation.name : undefined}
+          title={orgCompact ? orgName : undefined}
         >
           {orgCompact ? (
             <Icon icon={Buildings3Icon} />
           ) : (
             <>
               <span className="org-button">
-                <span className="org-name">{organisation.name}</span>
+                <span className="org-name">{orgName}</span>
                 {narrow ? null : <span className="meta">{orgMeta}</span>}
               </span>
               <Icon icon={ChevronDownIcon} size={16} />
             </>
           )}
         </Button>
-      ) : (
-        <div className="org-static" title={orgCompact ? organisation.name : undefined}>
+      ) : userInSidebar ? null : (
+        <div className="org-static">
           <span className="visually-hidden">{t('shell.actingForLabel')} </span>
-          {orgCompact ? <Icon icon={Buildings3Icon} /> : null}
-          <span className={orgCompact ? 'visually-hidden' : 'org-button'}>
-            <span className="org-name">{organisation.name}</span>
+          <span className="org-button">
+            <span className="org-name">{orgName}</span>
             {narrow ? null : <span className="meta">{orgMeta}</span>}
           </span>
         </div>
@@ -513,7 +587,7 @@ export const Shell = ({
                     }}
                   />
                   <span className="org-option-text">
-                    <span className="org-option-name">{org.name}</span>
+                    <span className="org-option-name">{organisationName(org, t)}</span>
                     <span className="meta">
                       {checked && unregistered
                         ? t('shell.orgOptionUnregistered', {

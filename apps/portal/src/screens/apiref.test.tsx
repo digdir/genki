@@ -18,7 +18,7 @@ const nav = () => screen.getByRole('navigation', { name: 'Endepunkter' });
 
 describe('API-referanse', () => {
   it('links to the platform reference served by the api, in both languages', async () => {
-    await renderAt('#/api-reference');
+    await renderAt('#/developer/api/reference');
     const link = await screen.findByRole('link', { name: /Hele plattformens API-referanse/ });
     expect(link.getAttribute('href')).toBe(`${publicApiBase}/reference`);
     expect(translator('en')('apiref.platformReference')).toBe(
@@ -27,12 +27,12 @@ describe('API-referanse', () => {
   });
 
   it('lists the real endpoints by area and shows the selected one', async () => {
-    await renderAt('#/api-reference?endpoint=tj-pub');
-    expect(await screen.findByRole('heading', { level: 1, name: 'API-referanse' })).toBeTruthy();
+    await renderAt('#/developer/api/reference?endpoint=tj-pub');
+    expect(await screen.findByRole('heading', { level: 3, name: 'API-referanse' })).toBeTruthy();
     expect(within(nav()).getByText('Eksport og import')).toBeTruthy();
     const detail = screen.getByRole('article');
     expect(
-      within(detail).getByRole('heading', { level: 2, name: 'Publiser en versjon' }),
+      within(detail).getByRole('heading', { level: 4, name: 'Publiser en versjon' }),
     ).toBeTruthy();
     expect(within(detail).getByText('/definitions')).toBeTruthy();
     expect(within(detail).getByText('POST')).toBeTruthy();
@@ -46,7 +46,7 @@ describe('API-referanse', () => {
   });
 
   it('keeps /v1 as the OpenAI-compatible endpoint and requires the caller for a timeline', async () => {
-    await renderAt('#/api-reference?endpoint=oa-chat');
+    await renderAt('#/developer/api/reference?endpoint=oa-chat');
     expect(await screen.findByText('/v1/chat/completions')).toBeTruthy();
     fireEvent.click(within(nav()).getByRole('button', { name: /Hent tidslinjen/ }));
     await waitFor(() => expect(window.location.hash).toContain('endpoint=op-tl'));
@@ -57,7 +57,7 @@ describe('API-referanse', () => {
   });
 
   it('lists the v4 areas with their real paths and rights', async () => {
-    await renderAt('#/api-reference');
+    await renderAt('#/developer/api/reference');
     await screen.findByRole('navigation', { name: 'Endepunkter' });
     for (const area of [
       'Byggeassistenten',
@@ -81,7 +81,7 @@ describe('API-referanse', () => {
   });
 
   it('searches the endpoints', async () => {
-    await renderAt('#/api-reference');
+    await renderAt('#/developer/api/reference');
     fireEvent.change(await screen.findByLabelText('Søk i endepunkter'), {
       target: { value: 'api-keys' },
     });
@@ -94,45 +94,88 @@ describe('API-referanse', () => {
   });
 
   it('says so when an endpoint does not exist in the API', async () => {
-    await renderAt('#/api-reference?endpoint=ds-inn');
+    await renderAt('#/developer/api/reference?endpoint=ds-inn');
     expect(await screen.findByText(/Endepunktet «ds-inn» finnes ikke i API-et ennå/)).toBeTruthy();
   });
 
-  it('says who calls with which rights, and that the answer is only an example', async () => {
+  it('says who calls with which rights, and that the call goes to the API', async () => {
     const auth = mockAnsattporten({
       name: 'Erik Larsen',
       organisations: [{ orgNumber: '999888777', name: 'Testetaten', actions: ['Bruke tjenester'] }],
     });
     await auth.login();
-    window.location.hash = '#/api-reference?endpoint=tj-pub';
+    window.location.hash = '#/developer/api/reference?endpoint=models';
     render(<App auth={auth} fetch={mockFetch()} />);
 
     const intro = (await screen.findByText(/Du kaller som/)).closest('p') as HTMLElement;
     expect(intro.textContent).toBe(
-      'Du kaller som Erik Larsen for Testetaten, med rettighetene dine fra Altinn: Bruke tjenester. Svaret er et eksempel. Ingen kall sendes.',
+      'Du kaller som Erik Larsen for Testetaten, med rettighetene dine fra Altinn: Bruke tjenester. Kallet sendes til API-et med din innlogging.',
     );
   });
 
-  it('tries a call: checks JSON and parameters, and answers 403 for Digdir-only endpoints', async () => {
-    await renderAt('#/api-reference?endpoint=inn-put');
-    const body = screen.getByLabelText('Innhold (JSON)');
-    fireEvent.change(body, { target: { value: '{ ikke json' } });
+  it('tries a read call against the API as the signed-in person and shows the real answer', async () => {
+    const calls: string[] = [];
+    const base = mockFetch();
+    const fetch: typeof globalThis.fetch = (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      calls.push(`${init?.method ?? 'GET'} ${new URL(url, 'http://test').pathname}`);
+      return base(input, init);
+    };
+    await renderAt('#/developer/api/reference?endpoint=tj-list', fetch);
+    fireEvent.change(await screen.findByLabelText('tenant'), { target: { value: '' } });
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
-    expect(screen.getByText('Innholdet er ikke gyldig JSON.')).toBeTruthy();
-    fireEvent.change(body, { target: { value: '{"value": 15}' } });
-    fireEvent.change(screen.getByLabelText('key'), { target: { value: '' } });
+    expect(screen.getByText('Fyll ut «tenant».')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('tenant'), { target: { value: '999888777' } });
+    calls.length = 0;
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
-    expect(screen.getByText('400 Ugyldig forespørsel')).toBeTruthy();
-    expect(screen.getByText('Fyll ut «key».')).toBeTruthy();
-    fireEvent.change(screen.getByLabelText('key'), { target: { value: 'search.top_k' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
-    expect(await screen.findByText('200 OK', {}, { timeout: 2000 })).toBeTruthy();
+    expect(await screen.findByText('200 OK')).toBeTruthy();
+    expect(calls.some((c) => c.endsWith('/tenants/999888777/definitions'))).toBe(true);
+  });
 
-    cleanup();
-    await renderAt('#/api-reference?endpoint=inn-plattform');
+  it('keeps a typed path value inside its own path segment', async () => {
+    const calls: string[] = [];
+    const base = mockFetch();
+    const fetch: typeof globalThis.fetch = (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      calls.push(new URL(url, 'http://test').pathname);
+      return base(input, init);
+    };
+    await renderAt('#/developer/api/reference?endpoint=tj-list', fetch);
+    fireEvent.change(await screen.findByLabelText('tenant'), { target: { value: '../admin' } });
+    calls.length = 0;
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
-    expect(screen.getByRole('button', { name: 'Send' }).getAttribute('aria-disabled')).toBe('true');
-    expect(await screen.findByText('403 Ingen tilgang', {}, { timeout: 2000 })).toBeTruthy();
+    await waitFor(() => expect(calls.length).toBeGreaterThan(0));
+    expect(calls.some((c) => c.endsWith('/tenants/..%2Fadmin/definitions'))).toBe(true);
+  });
+
+  it('shows the refusal the API gives when the person lacks the right', async () => {
+    const base = mockFetch();
+    const fetch: typeof globalThis.fetch = (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (new URL(url, 'http://test').pathname.endsWith('/tenants/999888777/settings'))
+        return Promise.resolve(
+          new Response(JSON.stringify({ title: 'Forbidden', status: 403 }), { status: 403 }),
+        );
+      return base(input, init);
+    };
+    await renderAt('#/developer/api/reference?endpoint=inn-get', fetch);
+    fireEvent.click(await screen.findByRole('button', { name: 'Send' }));
+    expect(await screen.findByText('403 Forbidden')).toBeTruthy();
+    expect(screen.getByText(/mangler rettigheten det krever/)).toBeTruthy();
+  });
+
+  it('offers no try for calls that change something', async () => {
+    await renderAt('#/developer/api/reference?endpoint=inn-put');
+    expect(await screen.findByText(/bare prøve lesekall \(GET\)/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Send' })).toBeNull();
+  });
+
+  it('sends the old address #/api-reference on to the reference under Utviklerverktøy', async () => {
+    await renderAt('#/api-reference?endpoint=oa-chat');
+    await waitFor(() =>
+      expect(window.location.hash).toBe('#/developer/api/reference?endpoint=oa-chat'),
+    );
+    expect(await screen.findByText('/v1/chat/completions')).toBeTruthy();
   });
 });
 
@@ -183,8 +226,10 @@ describe('API-referanse: innhold', () => {
 
 describe('Tjenesten som API', () => {
   it('shows variants with public names and aliases, and the version selector', async () => {
-    await renderAt('#/api-reference?view=service');
-    expect(screen.getByRole('heading', { level: 1, name: 'Tjenesten som API' })).toBeTruthy();
+    await renderAt('#/developer/api/reference?view=service');
+    expect(
+      await screen.findByRole('heading', { level: 3, name: 'Tjenesten som API' }),
+    ).toBeTruthy();
     const variants = screen.getByRole('region', { name: 'Varianter' });
     expect(within(variants).getByText('ka__retrieve-only')).toBeTruthy();
     expect(within(variants).getByText('ka')).toBeTruthy();
@@ -201,8 +246,8 @@ describe('Tjenesten som API', () => {
   });
 
   it('documents metadata.version next to GenAI-Version for chat completions', async () => {
-    await renderAt('#/api-reference?endpoint=oa-chat');
-    const params = screen.getByRole('region', { name: 'Parametre' });
+    await renderAt('#/developer/api/reference?endpoint=oa-chat');
+    const params = await screen.findByRole('region', { name: 'Parametre' });
     expect(within(params).getByText('GenAI-Version')).toBeTruthy();
     expect(within(params).getByText('metadata.version')).toBeTruthy();
     expect(within(params).getByText('innhold')).toBeTruthy();
@@ -221,7 +266,7 @@ describe('Tjenesten som API', () => {
       },
     ];
     await renderAt(
-      '#/api-reference?view=service',
+      '#/developer/api/reference?view=service',
       mockFetch(undefined, undefined, undefined, undefined, { shared }),
     );
     await screen.findByRole('option', { name: /Klarspråk/ });
@@ -238,15 +283,14 @@ describe('Tjenesten som API', () => {
 });
 
 describe('Vis API-kall', () => {
-  it('shows the call behind a portal action', async () => {
-    await renderAt('#/api-reference?view=actions');
-    expect(screen.getByRole('heading', { level: 1, name: 'Vis API-kall' })).toBeTruthy();
+  it('shows the call behind a portal action without pretending to do it', async () => {
+    await renderAt('#/developer/api/reference?view=actions');
+    expect(await screen.findByRole('heading', { level: 3, name: 'Vis API-kall' })).toBeTruthy();
     expectAccessible();
     fireEvent.click(screen.getAllByRole('button', { name: 'Vis API-kall' })[1] as HTMLElement);
     const panel = await screen.findByRole('dialog');
     expect(within(panel).getByText('/tenants/999888777/settings/search.top_k')).toBeTruthy();
     expect(within(panel).getByText('Administrere tjenester')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Lagre' }));
-    expect(await screen.findByText(/«Lagre» er utført i prototypen/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Lagre' })).toBeNull();
   });
 });

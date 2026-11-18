@@ -181,6 +181,13 @@ const boot = async () => {
       authorizedFor: [{ org: tenant }],
     } as Principal,
     ops: { kind: 'operator', issuer: 'test', subject: 'ops' },
+    per: {
+      kind: 'employee',
+      issuer: 'test',
+      subject: 'per',
+      tenant,
+      authorizedFor: [{ org: tenant, actions: ['use-services'] }],
+    } as Principal,
     ola: {
       kind: 'employee',
       issuer: 'test',
@@ -453,6 +460,142 @@ describe('the integrated platform', () => {
     expect(platform.plugins.tools.has('saker.search_cases@1')).toBe(true);
     expect(JSON.stringify(result?.parts)).toContain('Fant 2 saker.');
     expect(headers.at(-1)).toBe('Bearer tool-token');
+  });
+
+  it('keeps the last failed sync of a tool connection, with its error, until a sync succeeds', async () => {
+    const { platform, app } = await boot();
+    let failing = true;
+    const server = createServer((req, res) => {
+      let raw = '';
+      req.on('data', (c: Buffer) => (raw += c.toString()));
+      req.on('end', () => {
+        const body = JSON.parse(raw || '{}') as Record<string, unknown>;
+        if (failing) {
+          res.writeHead(503);
+          res.end();
+          return;
+        }
+        const reply = (result: unknown) => {
+          res.writeHead(200, { 'content-type': 'application/json', 'mcp-session-id': 's1' });
+          res.end(JSON.stringify({ jsonrpc: '2.0', id: body.id, result }));
+        };
+        if (body.method === 'initialize')
+          return reply({ protocolVersion: '2025-06-18', capabilities: { tools: {} } });
+        if (body.method === 'tools/list') return reply({ tools: [] });
+        res.writeHead(202);
+        res.end();
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    servers.push(server);
+    const port = (server.address() as AddressInfo).port;
+    await platform.connections.save({
+      connection: {
+        id: 'saker',
+        tenant,
+        name: 'Saksarkiv',
+        endpoint: `http://127.0.0.1:${port}/mcp`,
+        version: '1',
+        allow: [{ host: '127.0.0.1', port }],
+      },
+      tools: [],
+      pending: [],
+    } as Parameters<typeof platform.connections.save>[0]);
+    const sync = () =>
+      app.request(`/tenants/${tenant}/tool-connections/saker/sync`, {
+        method: 'POST',
+        headers: as('kari', { 'change-reason': 'test av endringen' }),
+      });
+    const lastSync = async () =>
+      (
+        (await (
+          await app.request(`/tenants/${tenant}/tool-connections`, { headers: as('kari') })
+        ).json()) as { data: { lastSync?: { ok: boolean; code?: string } }[] }
+      ).data[0]?.lastSync;
+
+    expect((await sync()).status).toBe(400);
+    expect(await lastSync()).toEqual({
+      at: expect.any(String),
+      ok: false,
+      code: 'protocol_error',
+      message: 'verktøytjeneren svarte på en måte plattformen ikke forstår',
+    });
+    failing = false;
+    expect((await sync()).status).toBe(200);
+    expect(await lastSync()).toEqual({ at: expect.any(String), ok: true });
+  });
+
+  it('keeps no trace of a tool server error that echoes the secret, plain, base64-encoded or split, and gives every member only the code', async () => {
+    const { platform, app, admin } = await boot();
+    const secret = 'tool-token-7f3a';
+    const encoded = Buffer.from(secret).toString('base64');
+    const server = createServer((req, res) => {
+      let raw = '';
+      req.on('data', (c: Buffer) => (raw += c.toString()));
+      req.on('end', () => {
+        const body = JSON.parse(raw || '{}') as Record<string, unknown>;
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            jsonrpc: '2.0',
+            id: body.id,
+            error: {
+              code: -32000,
+              message: `refused ${req.headers.authorization}, ${encoded}, tool- token- 7f3a`,
+            },
+          }),
+        );
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    servers.push(server);
+    const port = (server.address() as AddressInfo).port;
+    await app.request(`/tenants/${tenant}/secrets/case-api`, {
+      method: 'PUT',
+      headers: as('kari', { 'change-reason': 'test av endringen' }),
+      body: JSON.stringify({ value: secret, allowedHosts: [`http://127.0.0.1:${port}`] }),
+    });
+    await platform.connections.save({
+      connection: {
+        id: 'saker',
+        tenant,
+        name: 'Saksarkiv',
+        endpoint: `http://127.0.0.1:${port}/mcp`,
+        version: '1',
+        allow: [{ host: '127.0.0.1', port }],
+        auth: { kind: 'bearer', secret: `secret://tenant/${tenant}/case-api` },
+      },
+      tools: [],
+      pending: [],
+    } as Parameters<typeof platform.connections.save>[0]);
+
+    const sync = await app.request(`/tenants/${tenant}/tool-connections/saker/sync`, {
+      method: 'POST',
+      headers: as('kari', { 'change-reason': 'test av endringen' }),
+    });
+    const listed = async (who: string) =>
+      (await app.request(`/tenants/${tenant}/tool-connections`, { headers: as(who) })).text();
+    const seen = [
+      await sync.text(),
+      JSON.stringify(await platform.connections.get(tenant, 'saker')),
+      await listed('kari'),
+      await listed('per'),
+      JSON.stringify(await admin.audit(tenant)),
+    ];
+
+    expect(sync.status).toBe(400);
+    for (const text of seen) {
+      expect(text).not.toContain('7f3a');
+      expect(text).not.toContain('token');
+      expect(text).not.toContain(encoded);
+      expect(text).not.toContain('refused');
+    }
+    expect(
+      (await admin.audit(tenant)).filter((e) => e.action === 'platform.tools.sync'),
+    ).toMatchObject([{ outcome: 'rejected' }]);
+    expect(JSON.parse(await listed('per'))).toMatchObject({
+      data: [{ lastSync: { ok: false, code: 'protocol_error' } }],
+    });
   });
 
   it('records feedback on an answer through the KA-compatible route', async () => {

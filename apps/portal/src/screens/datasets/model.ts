@@ -4,6 +4,7 @@ import {
   type DatasetStatus,
   type IngestionRun,
 } from '../../data/datasets';
+import type { Route } from '../../hooks';
 import type { Format, T } from '../../i18n';
 import type { DatasetSummary } from '../../types';
 
@@ -40,6 +41,18 @@ export const fromSummary = (s: DatasetSummary, live: boolean, t: T): DatasetDeta
 
 export const datasetHref = (id: string, query = '') =>
   `#/datasets/${encodeURIComponent(id)}${query ? `?${query}` : ''}`;
+
+export const detailTabs = ['ingestions', 'used-by', 'filters', 'source'] as const;
+
+export type DetailTab = (typeof detailTabs)[number];
+
+export const detailTabOf = (route: Route): DetailTab =>
+  detailTabs.find((tab) => tab === route.segments[2]) ??
+  detailTabs.find((tab) => tab === route.query.get('tab')) ??
+  'ingestions';
+
+export const datasetTabPath = (id: string, tab: DetailTab, query = '') =>
+  `/datasets/${encodeURIComponent(id)}/${tab}${query ? `?${query}` : ''}`;
 
 export const nowLabel = (t: T, f: Format) => t('datasets.today', { time: f.time(new Date()) });
 

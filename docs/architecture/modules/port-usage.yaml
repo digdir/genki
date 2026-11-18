@@ -8,7 +8,7 @@ status: Port
 packages:
   - '@genai/port-usage'
 summary: Reads usage from sources outside genki, such as an AI gateway, and counts each call once.
-description: Holds the gateway usage contract, a fake that keeps its rules, the usage@1 contract
+description: Holds the gateway usage contract, a fake that keeps its rules, the usage@2 contract
   suite, the hourly poll and the rule that counts a call once whether genki or the gateway
   measured it.
 responsibilities:

@@ -20,6 +20,12 @@ param apiRevisionSuffix string = ''
 param apiLiveRevision string = ''
 param apiPreviousRevision string = ''
 
+@description('false: deploy the identities and the container apps only, and read the network, registry, vault, storage and servers as they are. deploy.yml passes false when infraFingerprint matches the last full deploy.')
+param deployInfrastructure bool = true
+
+@description('A hash of the compiled template and this environment\'s settings (deploy.yml, infra.yml), kept in the outputs to tell whether the infrastructure changed since.')
+param infraFingerprint string = ''
+
 @description('Plain settings for the api and worker, e.g. FOUNDRY_OPENAI_BASE_URL, TYPESENSE_URL.')
 param appEnv object = {}
 
@@ -159,6 +165,25 @@ var baseName = '${namePrefix}-${environmentName}'
 var suffix = uniqueString(resourceGroup().id)
 var allTags = union(tags, { system: 'genki', environment: environmentName })
 var postgresServerName = '${baseName}-pg-${suffix}'
+var registryName = take('${namePrefix}${environmentName}${suffix}', 50)
+var vaultName = take('${baseName}-kv-${suffix}', 24)
+var storageName = take('${namePrefix}${environmentName}data${suffix}', 24)
+var infra = deployInfrastructure
+var platformDatabase = 'genai'
+
+// Read only behind `infra ?`, as is every infrastructure module's output (infra/README.md, "Deploys that skip the infrastructure").
+resource existingRegistry 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = {
+  name: registryName
+}
+resource existingVault 'Microsoft.KeyVault/vaults@2024-11-01' existing = {
+  name: vaultName
+}
+resource existingStorage 'Microsoft.Storage/storageAccounts@2023-05-01' existing = {
+  name: storageName
+}
+resource existingPostgres 'Microsoft.DBforPostgreSQL/flexibleServers@2024-08-01' existing = {
+  name: postgresServerName
+}
 
 resource appIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
   name: '${baseName}-api-id'
@@ -166,7 +191,7 @@ resource appIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-3
   tags: allTags
 }
 
-module network 'modules/network.bicep' = {
+module network 'modules/network.bicep' = if (infra) {
   name: 'network'
   params: {
     name: '${baseName}-vnet'
@@ -179,7 +204,7 @@ module network 'modules/network.bicep' = {
   }
 }
 
-module monitoring 'modules/monitoring.bicep' = {
+module monitoring 'modules/monitoring.bicep' = if (infra) {
   name: 'monitoring'
   params: {
     name: baseName
@@ -189,10 +214,10 @@ module monitoring 'modules/monitoring.bicep' = {
   }
 }
 
-module registry 'modules/registry.bicep' = {
+module registry 'modules/registry.bicep' = if (infra) {
   name: 'registry'
   params: {
-    name: take('${namePrefix}${environmentName}${suffix}', 50)
+    name: registryName
     location: location
     tags: allTags
     pullPrincipalId: appIdentity.properties.principalId
@@ -200,10 +225,10 @@ module registry 'modules/registry.bicep' = {
   }
 }
 
-module vault 'modules/keyvault.bicep' = {
+module vault 'modules/keyvault.bicep' = if (infra) {
   name: 'keyvault'
   params: {
-    name: take('${baseName}-kv-${suffix}', 24)
+    name: vaultName
     location: location
     tags: allTags
     readerPrincipalId: appIdentity.properties.principalId
@@ -211,7 +236,7 @@ module vault 'modules/keyvault.bicep' = {
   }
 }
 
-module postgres 'modules/postgres.bicep' = {
+module postgres 'modules/postgres.bicep' = if (infra) {
   name: 'postgres'
   params: {
     name: postgresServerName
@@ -224,9 +249,9 @@ module postgres 'modules/postgres.bicep' = {
     backupRetentionDays: postgresBackupRetentionDays
     geoRedundantBackup: postgresGeoRedundantBackup
     highAvailability: postgresHighAvailability
-    databaseNames: ['genai']
-    delegatedSubnetId: network.outputs.postgresSubnetId
-    privateDnsZoneId: network.outputs.postgresDnsZoneId
+    databaseNames: [platformDatabase]
+    delegatedSubnetId: infra ? network!.outputs.postgresSubnetId : ''
+    privateDnsZoneId: infra ? network!.outputs.postgresDnsZoneId : ''
     adminGroupObjectId: postgresAdminGroupObjectId
     adminGroupName: postgresAdminGroupName
     identityAdmins: appIdentityIsPostgresAdmin
@@ -263,7 +288,7 @@ resource knowledgeAdminIdentity 'Microsoft.ManagedIdentity/userAssignedIdentitie
   tags: allTags
 }
 
-module knowledgeNetwork 'modules/knowledge-network.bicep' = if (knowledgeOn) {
+module knowledgeNetwork 'modules/knowledge-network.bicep' = if (knowledgeOn && infra) {
   name: 'knowledge-network'
   params: {
     name: knowledgeVnetName
@@ -271,21 +296,21 @@ module knowledgeNetwork 'modules/knowledge-network.bicep' = if (knowledgeOn) {
     tags: allTags
     addressPrefix: knowledgeAddressPrefix
     serverName: knowledgeServerName
-    environmentVnetId: network.outputs.vnetId
+    environmentVnetId: infra ? network!.outputs.vnetId : ''
   }
 }
 
 // The environment's side of the peering.
-module knowledgePeering 'modules/peering.bicep' = if (knowledgeOn) {
+module knowledgePeering 'modules/peering.bicep' = if (knowledgeOn && infra) {
   name: 'knowledge-peering'
   params: {
     vnetName: '${baseName}-vnet'
     name: 'to-${knowledgeVnetName}'
-    remoteVnetId: knowledgeOn ? knowledgeNetwork!.outputs.vnetId : ''
+    remoteVnetId: knowledgeOn && infra ? knowledgeNetwork!.outputs.vnetId : ''
   }
 }
 
-module knowledgePostgres 'modules/postgres.bicep' = if (knowledgeOn) {
+module knowledgePostgres 'modules/postgres.bicep' = if (knowledgeOn && infra) {
   name: 'knowledge-postgres'
   params: {
     name: knowledgeServerName
@@ -300,8 +325,8 @@ module knowledgePostgres 'modules/postgres.bicep' = if (knowledgeOn) {
     geoRedundantBackup: knowledgePostgresGeoRedundantBackup
     highAvailability: knowledgePostgresHighAvailability
     databaseNames: [knowledgeDatabaseName]
-    delegatedSubnetId: knowledgeOn ? knowledgeNetwork!.outputs.subnetId : ''
-    privateDnsZoneId: knowledgeOn ? knowledgeNetwork!.outputs.dnsZoneId : ''
+    delegatedSubnetId: knowledgeOn && infra ? knowledgeNetwork!.outputs.subnetId : ''
+    privateDnsZoneId: knowledgeOn && infra ? knowledgeNetwork!.outputs.dnsZoneId : ''
     adminGroupObjectId: postgresAdminGroupObjectId
     adminGroupName: postgresAdminGroupName
     identityAdmins: knowledgeOn
@@ -312,7 +337,13 @@ module knowledgePostgres 'modules/postgres.bicep' = if (knowledgeOn) {
   }
 }
 
-var knowledgeHost = knowledgeOn ? knowledgePostgres!.outputs.fqdn : ''
+resource existingKnowledgePostgres 'Microsoft.DBforPostgreSQL/flexibleServers@2024-08-01' existing = {
+  name: knowledgeServerName
+}
+
+var knowledgeHost = !knowledgeOn
+  ? ''
+  : infra ? knowledgePostgres!.outputs.fqdn : existingKnowledgePostgres.properties.fullyQualifiedDomainName
 
 // The principals job: makes the two logins by object id and sets up the database, as the knowledge admin.
 var knowledgeSetup = knowledgeOn
@@ -337,10 +368,10 @@ var knowledgeSetup = knowledgeOn
     }
   : {}
 
-module storage 'modules/storage.bicep' = {
+module storage 'modules/storage.bicep' = if (infra) {
   name: 'storage'
   params: {
-    name: take('${namePrefix}${environmentName}data${suffix}', 24)
+    name: storageName
     location: location
     tags: allTags
     conversionsWriterPrincipalId: knowledgeOn ? knowledgeWorkerIdentity!.properties.principalId : ''
@@ -354,14 +385,18 @@ module apps 'modules/containerapps.bicep' = {
     environmentName: environmentName
     location: location
     tags: allTags
-    appsSubnetId: network.outputs.appsSubnetId
-    workspaceId: monitoring.outputs.workspaceId
-    insightsName: monitoring.outputs.insightsName
+    appsSubnetId: infra
+      ? network!.outputs.appsSubnetId
+      : resourceId('Microsoft.Network/virtualNetworks/subnets', '${baseName}-vnet', 'apps')
+    workspaceId: infra
+      ? monitoring!.outputs.workspaceId
+      : resourceId('Microsoft.OperationalInsights/workspaces', '${baseName}-logs')
+    insightsName: infra ? monitoring!.outputs.insightsName : '${baseName}-insights'
     identityId: appIdentity.id
     identityClientId: appIdentity.properties.clientId
     identityName: appIdentity.name
-    registryServer: registry.outputs.loginServer
-    keyVaultUri: vault.outputs.uri
+    registryServer: infra ? registry!.outputs.loginServer : existingRegistry.properties.loginServer
+    keyVaultUri: infra ? vault!.outputs.uri : existingVault.properties.vaultUri
     keyVaultSecretNames: keyVaultSecretNames
     apiImage: apiImage
     apiRevisionSuffix: apiRevisionSuffix
@@ -398,19 +433,21 @@ module apps 'modules/containerapps.bicep' = {
       consoleIssuer: consoleIssuer
       consoleTokenEndpoint: consoleTokenEndpoint
     }
-    storageAccountName: storage.outputs.name
-    storageShareName: storage.outputs.shareName
+    storageAccountName: storageName
+    storageShareName: infra ? storage!.outputs.shareName : 'data'
     hostnames: hostnames
     customDomainsStage: customDomainsStage
     existingCertificates: existingCertificates
-    postgresHost: postgres.outputs.fqdn
-    postgresDatabase: postgres.outputs.databaseName
+    postgresHost: infra ? postgres!.outputs.fqdn : existingPostgres.properties.fullyQualifiedDomainName
+    postgresDatabase: platformDatabase
     knowledge: knowledgeServerStage == 'apps'
       ? {
           host: knowledgeHost
           database: knowledgeDatabaseName
           vcores: knowledgePostgresVCores
-          conversionsUrl: storage.outputs.conversionsUrl
+          conversionsUrl: infra
+            ? storage!.outputs.conversionsUrl
+            : '${existingStorage.properties.primaryEndpoints.blob}conversions'
           api: {
             id: knowledgeApiIdentity!.id
             clientId: knowledgeApiIdentity!.properties.clientId
@@ -433,15 +470,15 @@ module apps 'modules/containerapps.bicep' = {
   }
 }
 
-module alerts 'modules/alerts.bicep' = if (alertsEnabled) {
+module alerts 'modules/alerts.bicep' = if (alertsEnabled && infra) {
   name: 'alerts'
   params: {
     name: baseName
     environmentName: environmentName
     location: location
     tags: allTags
-    workspaceId: monitoring.outputs.workspaceId
-    insightsName: monitoring.outputs.insightsName
+    workspaceId: infra ? monitoring!.outputs.workspaceId : ''
+    insightsName: infra ? monitoring!.outputs.insightsName : ''
     apiAppName: apps.outputs.appName
     workerAppName: apps.outputs.workerName
     healthUrl: 'https://${customDomainsStage == 'certificates' && !empty(hostnames.api) ? hostnames.api : apps.outputs.fqdn}/health'
@@ -454,7 +491,7 @@ module alerts 'modules/alerts.bicep' = if (alertsEnabled) {
 var zoneSuffix = '.${dnsZoneName}'
 var zoneApps = filter(['api', 'portal', 'workspace', 'console'], app => !empty(hostnames[app]) && endsWith(hostnames[app], zoneSuffix))
 
-module dns 'modules/dns.bicep' = if (createDnsZone && !empty(dnsZoneName)) {
+module dns 'modules/dns.bicep' = if (createDnsZone && !empty(dnsZoneName) && infra) {
   name: 'dns'
   params: {
     zoneName: dnsZoneName
@@ -472,14 +509,14 @@ output apiCandidateUrl string = apps.outputs.apiCandidateUrl
 output apiCandidateRevision string = apps.outputs.apiCandidateRevision
 output appUrls object = apps.outputs.defaultFqdns
 output customDomainVerificationId string = apps.outputs.verificationId
-output dnsNameServers array = createDnsZone && !empty(dnsZoneName) ? dns!.outputs.nameServers : []
+output dnsNameServers array = createDnsZone && !empty(dnsZoneName) && infra ? dns!.outputs.nameServers : []
 output containerAppName string = apps.outputs.appName
 output workerAppName string = apps.outputs.workerName
 output doclingAppName string = apps.outputs.doclingName
-output registryName string = registry.outputs.name
-output registryLoginServer string = registry.outputs.loginServer
-output keyVaultName string = vault.outputs.name
-output postgresHost string = postgres.outputs.fqdn
+output registryName string = registryName
+output registryLoginServer string = infra ? registry!.outputs.loginServer : existingRegistry.properties.loginServer
+output keyVaultName string = vaultName
+output postgresHost string = infra ? postgres!.outputs.fqdn : existingPostgres.properties.fullyQualifiedDomainName
 output appIdentityClientId string = appIdentity.properties.clientId
 output appIdentityName string = appIdentity.name
 output knowledgePostgresHost string = knowledgeOn ? knowledgeHost : ''
@@ -490,3 +527,6 @@ output knowledgeWorkerIdentity object = knowledgeOn
   ? { name: knowledgeWorkerIdentity!.name, principalId: knowledgeWorkerIdentity!.properties.principalId }
   : {}
 output knowledgeSetupJobName string = apps.outputs.knowledgeSetupJobName
+@description('Whether this deploy applied the infrastructure, and the fingerprint it applied: deploy.yml compares the last full deploy\'s fingerprint with its own.')
+output infrastructureDeployed bool = infra
+output infraFingerprint string = infraFingerprint

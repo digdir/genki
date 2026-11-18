@@ -42,6 +42,7 @@ export interface Principal {
   issuer: string;
   subject: string;
   name?: string;
+  email?: string;
   tenant?: string;
   client?: string;
   assurance?: Assurance;
@@ -316,6 +317,7 @@ export interface Task {
   owner: string;
   parent?: string;
   thread?: string;
+  entryPoint?: string;
   status: TaskStatus;
   pendingInterrupt?: Interrupt;
   result?: Part[];

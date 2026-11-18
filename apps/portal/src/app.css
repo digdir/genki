@@ -292,6 +292,36 @@ a:not([class^='ds-'], [class*=' ds-']):hover {
   flex-direction: column;
   gap: var(--ds-size-4);
   margin-top: auto;
+  position: sticky;
+  bottom: 0;
+  padding: 14px 0 12px;
+  border-top: 1px solid var(--ds-color-neutral-border-subtle);
+  background: var(--ds-color-neutral-background-default);
+}
+
+.user-button-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.3;
+  text-align: left;
+}
+
+.user-button-name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.user-button-org {
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--ds-color-neutral-text-subtle);
+  overflow-wrap: anywhere;
+}
+
+.user-menu-org {
+  margin-top: 6px;
+  font-size: 14px;
 }
 
 .sidebar-org .org-static {
@@ -325,6 +355,7 @@ a:not([class^='ds-'], [class*=' ds-']):hover {
 
 .sidebar-top .brand-name {
   max-width: 150px;
+  color: var(--ds-color-accent-text-default);
 }
 
 .sidebar.collapsed {
@@ -375,6 +406,8 @@ a:not([class^='ds-'], [class*=' ds-']):hover {
 .sidebar-user > .ds-button {
   width: 100%;
   justify-content: flex-start;
+  height: auto;
+  min-height: var(--ds-size-12);
 }
 
 .sidebar.collapsed .sidebar-user > .ds-button {
@@ -669,6 +702,51 @@ a:not([class^='ds-'], [class*=' ds-']):hover {
 @keyframes state-appear {
   from {
     visibility: hidden;
+  }
+}
+
+.state.page-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40vh;
+}
+
+.navigation-progress {
+  position: fixed;
+  top: var(--header-offset, 0px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  height: 3px;
+  overflow: hidden;
+  pointer-events: none;
+  background: var(--ds-color-accent-surface-tinted);
+}
+
+.navigation-progress::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  background: var(--ds-color-accent-base-default);
+  animation: navigation-progress 1.2s ease-in-out infinite;
+}
+
+@keyframes navigation-progress {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(250%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .navigation-progress::before {
+    width: 100%;
+    animation: none;
+    opacity: 0.6;
   }
 }
 

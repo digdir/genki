@@ -31,6 +31,7 @@ export class EgressError extends Error {
   constructor(
     readonly code: EgressErrorCode,
     message: string,
+    readonly status?: number,
   ) {
     super(message);
     this.name = 'EgressError';

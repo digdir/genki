@@ -20,8 +20,12 @@ const base = '#/services/rapportassistenten/quality';
 // A test can make the case list answer slowly, so the screen shows it loading as a slow API would.
 let slowCases = false;
 
+const editor = '?view=testsets';
+
+const openTechnical = async () => fireEvent.click(await screen.findByText('Teknisk'));
+
 const openLive = async (
-  tab = '',
+  tab = editor,
   quality: QualityMockOptions = {},
   extras: Omit<MockExtras, 'features'> = {},
   respond: (path: string) => Response | undefined = () => undefined,
@@ -48,7 +52,7 @@ const openLive = async (
   await auth.login();
   window.location.hash = `${base}${tab}`;
   render(<App auth={auth} fetch={fetch} live />);
-  await screen.findByRole('tablist', { name: 'Kvalitet' });
+  await screen.findByRole('link', { name: 'Kvalitet', current: 'page' });
   const writes = () => calls.filter((c) => c.method !== 'GET');
   return { calls, writes };
 };
@@ -65,13 +69,16 @@ describe('live Testsett', () => {
     expect(await screen.findByRole('heading', { name: 'Kjernespørsmål' })).toBeTruthy();
     expect(await screen.findByText('Hvor mange tilsyn hadde vi i 2025?')).toBeTruthy();
     expect(screen.getByText('Testsettet er ikke kjørt ennå.')).toBeTruthy();
-    const panel = screen.getByRole('tabpanel');
-    expect(within(panel).queryByText(/T-014|T-149|Kari Nordmann|Poeng per emne/)).toBeNull();
+    expect(
+      within(document.querySelector('.quality') as HTMLElement).queryByText(
+        /T-014|T-149|Kari Nordmann|Poeng per emne/,
+      ),
+    ).toBeNull();
     expectAccessible();
   });
 
   it("shows the Langfuse dataset the test set's sent runs are linked to", async () => {
-    await openLive('', {}, {}, (path) =>
+    await openLive(editor, {}, {}, (path) =>
       path === '/tenants/999888777/services/rapportassistenten/test-sets'
         ? Response.json({
             data: [
@@ -178,7 +185,7 @@ describe('live Testsett', () => {
   });
 
   it('offers to send a run to Langfuse only when a connection covers the service, unticked by default', async () => {
-    const { writes } = await openLive('', {}, {});
+    const { writes } = await openLive(editor, {}, {});
     await screen.findByText('Hvor mange tilsyn hadde vi i 2025?');
     fireEvent.click(screen.getByRole('button', { name: 'Kjør testsettet' }));
     await screen.findByRole('button', { name: 'Start kjøringen' });
@@ -192,7 +199,7 @@ describe('live Testsett', () => {
   });
 
   it('does not offer a connection that is being removed', async () => {
-    await openLive('', {}, {}, (path) =>
+    await openLive(editor, {}, {}, (path) =>
       /\/tracing\/connections$/.test(path)
         ? Response.json({
             data: [
@@ -214,7 +221,7 @@ describe('live Testsett', () => {
   });
 
   it('sends a run to Langfuse when the person ticks it for that run, for a service a connection covers', async () => {
-    const { writes } = await openLive('', {}, {}, (path) =>
+    const { writes } = await openLive(editor, {}, {}, (path) =>
       /\/tracing\/connections$/.test(path)
         ? Response.json({
             data: [{ id: 'lokal', services: ['rapportassistenten'], residency: 'global' }],
@@ -249,7 +256,7 @@ describe('live Testsett', () => {
       startedAt: at,
       endedAt: at,
     };
-    await openLive('', {
+    await openLive(editor, {
       runs: [
         {
           ...base,
@@ -298,7 +305,7 @@ describe('live Testsett', () => {
   });
 
   it('shows how long a finished run took, and no duration while a run is still going', async () => {
-    await openLive('', {
+    await openLive(editor, {
       runs: [
         {
           id: 'run-ferdig',
@@ -351,7 +358,7 @@ describe('live Testsett', () => {
       output: 'Vi hadde 41 tilsyn i 2025.',
       pass: true,
     };
-    await openLive('', {
+    await openLive(editor, {
       runs: [
         {
           id: 'run-avbrutt',
@@ -405,7 +412,7 @@ describe('live Testsett', () => {
       metrics: { 'judge.criteria': { mean: 1, ci: [1, 1] as [number, number], n: 1 } },
       cases: [{ caseId: 'o1', input: 'Hei', expected: 'Hilser', output: 'Hei!', pass: true }],
     };
-    await openLive('', {
+    await openLive(editor, {
       runs: [
         { ...run, id: 'eldre', judges: [older], staleJudges: [older] },
         { ...run, id: 'na', judges: ['judge:criteria@2+foundry-openai/gpt-41-dommer'] },
@@ -430,7 +437,7 @@ describe('live Testsett', () => {
   });
 
   it('shows a run that waits for a free slot as waiting, with its place in line', async () => {
-    await openLive('', {
+    await openLive(editor, {
       runs: [
         {
           id: 'run-venter',
@@ -459,7 +466,7 @@ describe('live Testsett', () => {
   });
 
   it('shows what a running run is doing: the cases running now, the time per case and the time left', async () => {
-    await openLive('', {
+    await openLive(editor, {
       runs: [
         {
           id: 'run-pågår',
@@ -494,7 +501,7 @@ describe('live Testsett', () => {
   });
 
   it('links each finished case of a run to its timeline', async () => {
-    await openLive('', {
+    await openLive(editor, {
       runs: [
         {
           id: 'run-ferdig',
@@ -608,7 +615,7 @@ describe('live Testsett', () => {
   });
 
   it('shows a running run and blocks a second start', async () => {
-    await openLive('', { runsStayRunning: true });
+    await openLive(editor, { runsStayRunning: true });
     await screen.findByText('Hvor mange tilsyn hadde vi i 2025?');
     const run = screen.getByRole('button', { name: 'Kjør testsettet' });
     fireEvent.click(run);
@@ -634,7 +641,7 @@ describe('live Testsett', () => {
   });
 
   it('creates the first test set when the service has none', async () => {
-    const { writes } = await openLive('', { sets: [], candidates: [] });
+    const { writes } = await openLive(editor, { sets: [], candidates: [] });
     expect(await screen.findByText('Tjenesten har ikke testsett ennå')).toBeTruthy();
     fireEvent.change(screen.getByLabelText('Navn på testsettet'), {
       target: { value: 'Grunnsett' },
@@ -654,7 +661,7 @@ describe('live Testsett', () => {
   });
 
   it('derives a valid test set id from a name with spaces and Norwegian letters', async () => {
-    const { writes } = await openLive('', { sets: [], candidates: [] });
+    const { writes } = await openLive(editor, { sets: [], candidates: [] });
     await screen.findByText('Tjenesten har ikke testsett ennå');
     fireEvent.change(screen.getByLabelText('Navn på testsettet'), {
       target: { value: 'Kudos utkast for høsten' },
@@ -796,16 +803,15 @@ describe('live Forbedringsforslag', () => {
     expect(screen.queryByText(/spec\.improve/)).toBeNull();
   });
 
-  it('needs a comment to reject, approves into the draft and points to Publiser', async () => {
+  it('approves a proposal in place without a comment and says the change is in the draft', async () => {
     const { writes } = await openLive('?tab=proposals');
     fireEvent.click(await screen.findByRole('button', { name: 'Foreslå forbedring' }));
     const card = await screen.findByRole('region', { name: /^Forslag fra/ });
-    fireEvent.click(within(card).getByRole('button', { name: 'Avvis' }));
-    expect(within(card).getByText('Skriv hvorfor du avviser forslaget.')).toBeTruthy();
-    fireEvent.click(within(card).getByRole('button', { name: 'Godta i utkastet' }));
-    expect(await within(card).findByText('Godtatt i utkastet')).toBeTruthy();
-    expect(within(card).getByText(/Tjenesten bruker den først når du publiserer/)).toBeTruthy();
-    expect(within(card).getByRole('link', { name: 'Gå til Publiser' }).getAttribute('href')).toBe(
+    fireEvent.click(within(card).getByRole('button', { name: 'Godkjenn' }));
+    const status = await within(card).findByText(/^Godkjent .+\. Endringen ligger i utkastet/);
+    expect(status.closest('[role="status"]')).toBeTruthy();
+    expect(within(card).queryByRole('button', { name: 'Godkjenn' })).toBeNull();
+    expect(within(card).getByRole('link', { name: 'Se utkastet' }).getAttribute('href')).toBe(
       '#/services/rapportassistenten/setup',
     );
     expect(writes().at(-1)).toMatchObject({
@@ -814,6 +820,20 @@ describe('live Forbedringsforslag', () => {
         /^\/tenants\/999888777\/services\/rapportassistenten\/improvements\/[^/]+\/decision$/,
       ),
       body: { approve: true },
+      reason: 'Godtok forbedringsforslaget',
+    });
+  });
+
+  it('rejects a proposal in place through the decision endpoint', async () => {
+    const { writes } = await openLive('?tab=proposals');
+    fireEvent.click(await screen.findByRole('button', { name: 'Foreslå forbedring' }));
+    const card = await screen.findByRole('region', { name: /^Forslag fra/ });
+    fireEvent.click(within(card).getByRole('button', { name: 'Avvis' }));
+    expect(await within(card).findByText(/^Avvist .+\.$/)).toBeTruthy();
+    expect(writes().at(-1)).toMatchObject({
+      path: expect.stringMatching(/\/improvements\/[^/]+\/decision$/),
+      body: { approve: false },
+      reason: 'Avviste forbedringsforslaget',
     });
   });
 });
@@ -938,7 +958,7 @@ describe('live Testsett: Langfuse-dommere', () => {
     ],
   };
   const openResult = async (run: NonNullable<QualityMockOptions['runs']>[number] = judgedRun) => {
-    await openLive('', { runs: [run] });
+    await openLive(editor, { runs: [run] });
     const history = await screen
       .findAllByRole('region', { name: 'Kjøringer av testsettet' })
       .then((found) => found[0] as HTMLElement);
@@ -974,7 +994,7 @@ describe('live Testsett: Langfuse-dommere', () => {
 
   it('shows on the test set the judges that reach it and which are in use', async () => {
     const { calls } = await openLive(
-      '',
+      editor,
       {},
       {},
       withDataset(
@@ -991,6 +1011,7 @@ describe('live Testsett: Langfuse-dommere', () => {
       ),
     );
 
+    await openTechnical();
     const judges = await screen.findByRole('list', {
       name: 'Dommere i Langfuse som når testsettet',
     });
@@ -1007,7 +1028,7 @@ describe('live Testsett: Langfuse-dommere', () => {
 
   it('says on the test set that the judges could not be read, and keeps the dataset line', async () => {
     await openLive(
-      '',
+      editor,
       {},
       {},
       withDataset(
@@ -1034,8 +1055,9 @@ describe('live Testsett: Langfuse-dommere', () => {
   });
 
   it('reads the judges on the test set from the published version, so a service without a draft makes no failed call', async () => {
-    const { calls } = await openLive('', {}, {}, withDataset(reaching()));
+    const { calls } = await openLive(editor, {}, {}, withDataset(reaching()));
 
+    await openTechnical();
     const judges = await screen.findByRole('list', {
       name: 'Dommere i Langfuse som når testsettet',
     });
@@ -1046,7 +1068,7 @@ describe('live Testsett: Langfuse-dommere', () => {
   it('reads the judges on the test set from the draft when the service has no published version', async () => {
     const answer = reaching();
     await openLive(
-      '',
+      editor,
       {},
       {},
       withDataset((path) =>
@@ -1062,6 +1084,7 @@ describe('live Testsett: Langfuse-dommere', () => {
       ),
     );
 
+    await openTechnical();
     const judges = await screen.findByRole('list', {
       name: 'Dommere i Langfuse som når testsettet',
     });
@@ -1071,7 +1094,7 @@ describe('live Testsett: Langfuse-dommere', () => {
 
   it('shows the judges not in use on the test set while the run is refused for another reason', async () => {
     await openLive(
-      '',
+      editor,
       {},
       {},
       withDataset(
@@ -1083,6 +1106,7 @@ describe('live Testsett: Langfuse-dommere', () => {
       ),
     );
 
+    await openTechnical();
     const judges = await screen.findByRole('list', {
       name: 'Dommere i Langfuse som når testsettet',
     });
@@ -1093,7 +1117,7 @@ describe('live Testsett: Langfuse-dommere', () => {
 
   it('lists judges for other test sets collapsed on the test set', async () => {
     await openLive(
-      '',
+      editor,
       {},
       {},
       withDataset(
@@ -1111,7 +1135,7 @@ describe('live Testsett: Langfuse-dommere', () => {
   });
 
   it('lists in the run dialog only the judges that reach the test set', async () => {
-    const { calls } = await openLive('', {}, {}, reaching());
+    const { calls } = await openLive(editor, {}, {}, reaching());
     await screen.findByText('Hvor mange tilsyn hadde vi i 2025?');
     fireEvent.click(screen.getByRole('button', { name: 'Kjør testsettet' }));
 
@@ -1122,7 +1146,7 @@ describe('live Testsett: Langfuse-dommere', () => {
   });
 
   it('leaves Send til Langfuse unticked when the service uses a Langfuse judge, and says its judges score only a run that is sent', async () => {
-    const { writes } = await openLive('', {}, {}, sending());
+    const { writes } = await openLive(editor, {}, {}, sending());
     await screen.findByText('Hvor mange tilsyn hadde vi i 2025?');
     fireEvent.click(screen.getByRole('button', { name: 'Kjør testsettet' }));
     const send = (await screen.findByRole('checkbox', {
@@ -1167,7 +1191,7 @@ describe('live Testsett: Langfuse-dommere', () => {
 
   it("says before a run starts that the service's residency forbids sending to a Langfuse judge's connection, and does not start it", async () => {
     const { writes } = await openLive(
-      '',
+      editor,
       {},
       {},
       sending({ reason: 'residency', service: 'norway', connection: 'global' }),
@@ -1230,7 +1254,7 @@ describe('live Testsett: Langfuse-dommere', () => {
 
   it("says before a run starts that the Langfuse judges' connection gets no answer text, and does not start it", async () => {
     const { writes } = await openLive(
-      '',
+      editor,
       {},
       {},
       sending({ reason: 'no-content', connection: 'lokal' }),
@@ -1260,7 +1284,7 @@ describe('live Testsett: Langfuse-dommere', () => {
     })),
   });
   const costLine = async (run: ReturnType<typeof costedRun>) => {
-    await openLive('', { runs: [run] });
+    await openLive(editor, { runs: [run] });
     const history = await screen
       .findAllByRole('region', { name: 'Kjøringer av testsettet' })
       .then((found) => found[0] as HTMLElement);
@@ -1285,7 +1309,7 @@ describe('live Testsett: Langfuse-dommere', () => {
   it("shows a Langfuse judge's agreement with its accepted labels", async () => {
     const agreementOf = async (labels: SinkAgreement) => {
       cleanup();
-      await openLive('', {
+      await openLive(editor, {
         runs: [
           {
             ...judgedRun,
@@ -1320,7 +1344,7 @@ describe('live Testsett: Langfuse-dommere', () => {
   });
 
   it("shows what the project's other judges cost apart from the judges taken in use, as at least while some costs are not yet reported", async () => {
-    await openLive('', {
+    await openLive(editor, {
       runs: [
         {
           ...costedRun({ rate: 9.2826, date: '2026-10-29' }),
@@ -1360,7 +1384,7 @@ describe('live Testsett: Langfuse-dommere', () => {
             },
           })
         : connections(path);
-    const { writes } = await openLive('', {}, {}, differ);
+    const { writes } = await openLive(editor, {}, {}, differ);
     await screen.findByText('Hvor mange tilsyn hadde vi i 2025?');
     fireEvent.click(screen.getByRole('button', { name: 'Kjør testsettet' }));
     const send = await screen.findByRole('checkbox', {
@@ -1396,7 +1420,7 @@ describe('live Testsett: Langfuse-dommere', () => {
             },
           })
         : connections(path);
-    const { writes } = await openLive('', {}, {}, unreadable);
+    const { writes } = await openLive(editor, {}, {}, unreadable);
     await screen.findByText('Hvor mange tilsyn hadde vi i 2025?');
     fireEvent.click(screen.getByRole('button', { name: 'Kjør testsettet' }));
     const send = await screen.findByRole('checkbox', {

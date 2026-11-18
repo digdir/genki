@@ -55,7 +55,8 @@ describe('the delivery workflows', () => {
 
   it('make the release only after a deploy to test from main, and never fail the deploy', () => {
     expect(changelog.needs).toBe('deploy-test');
-    expect(changelog.if).toBe("github.ref == 'refs/heads/main'");
+    expect(changelog.if).toContain("needs.deploy-test.result == 'success'");
+    expect(changelog.if).toContain("github.ref == 'refs/heads/main'");
     expect(release.if).toContain("needs.deploy-test.result == 'success'");
     expect(release.if).toContain("github.ref == 'refs/heads/main'");
     for (const job of [changelog, release]) expect(job['continue-on-error']).toBe(true);

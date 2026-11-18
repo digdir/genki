@@ -8,11 +8,13 @@ import type { ScreenProps } from '../screen';
 import { EmptyState, ErrorState, Loading } from '../states';
 import { useRights } from '../Shell';
 import type { DatasetSummary } from '../types';
-import { DatasetDetail, type DetailTab } from './datasets/DatasetDetail';
+import { DatasetDetail } from './datasets/DatasetDetail';
 import { DatasetList, listItemFor } from './datasets/DatasetList';
 import { LiveDatasets } from './datasets/LiveDatasets';
 import {
   datasetHref,
+  datasetTabPath,
+  detailTabOf,
   fromSummary,
   nowLabel,
   outcomeFor,
@@ -22,12 +24,6 @@ import {
 import { exampleWebForm, NewDataset, type NewDatasetResult } from './datasets/NewDataset';
 import './datasets.css';
 import './shared.css';
-
-const tabs: Record<string, DetailTab> = {
-  ingestions: 'ingestions',
-  filters: 'filters',
-  source: 'source',
-};
 
 const shortId = (id: string) => id.slice(id.lastIndexOf('/') + 1);
 
@@ -254,7 +250,8 @@ const ExampleDatasets = ({ api, tenant, tenantName, route, live }: ScreenProps) 
         tenant={tenant}
         tenantName={tenantName}
         dataset={dataset}
-        initialTab={tabs[route.query.get('tab') ?? ''] ?? 'ingestions'}
+        tab={detailTabOf(route)}
+        onTab={(next) => navigate(datasetTabPath(id, next))}
         {...(route.query.get('run') ? { initialRun: route.query.get('run') as string } : {})}
         flash={flash}
         onRun={() => run(dataset)}

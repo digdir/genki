@@ -1,28 +1,5 @@
 import type { PlainKey } from '../i18n';
 
-export const anchors = [
-  ['fellestjenester', 'start.navShared'],
-  ['eksempler', 'start.navExamples'],
-  ['pris', 'start.navPrice'],
-  ['data', 'start.navData'],
-  ['dokumentasjon', 'start.navDocs'],
-] as const satisfies readonly (readonly [string, PlainKey])[];
-
-export const narrowAnchors = [
-  ['fellestjenester', 'start.navShared'],
-  ['eksempler', 'start.navExamples'],
-  ['pris', 'start.navPrice'],
-  ['data', 'start.navData'],
-  ['kom-i-gang', 'start.navGetStarted'],
-  ['dokumentasjon', 'start.navDocs'],
-] as const satisfies readonly (readonly [string, PlainKey])[];
-
-export const whatItDoes = [
-  ['start.what1Title', 'start.what1Body'],
-  ['start.what2Title', 'start.what2Body'],
-  ['start.what3Title', 'start.what3Body'],
-] as const satisfies readonly (readonly [PlainKey, PlainKey])[];
-
 export const sharedCapabilities = [
   ['start.shared1Title', 'start.shared1Body', 'start.shared1Example'],
   ['start.shared2Title', 'start.shared2Body', 'start.shared2Example'],
@@ -87,11 +64,4 @@ export const gettingStarted = [
   ['start.step2Title', 'start.step2Body'],
   ['start.step3Title', 'start.step3Body'],
   ['start.step4Title', 'start.step4Body'],
-] as const satisfies readonly (readonly [PlainKey, PlainKey])[];
-
-export const documentation = [
-  ['start.doc1Title', 'start.doc1Body'],
-  ['start.doc2Title', 'start.doc2Body'],
-  ['start.doc3Title', 'start.doc3Body'],
-  ['start.doc4Title', 'start.doc4Body'],
 ] as const satisfies readonly (readonly [PlainKey, PlainKey])[];

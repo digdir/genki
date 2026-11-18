@@ -1865,9 +1865,9 @@
             summary:
               'A local MCP server that lets coding agents list, read, validate, publish and try services through the API, as the person who logged in.',
             description:
-              "Runs on the developer's machine over stdio and calls the public API only (ADR 0046). The person logs in through the browser with Ansattporten, PKCE and a localhost callback, and the token stays in memory. Tools list services, read a definition as YAML, validate and publish it with a change reason, run the playground with a compared setup, and list and read runs with their timelines. Secrets, keys, rights and operator routes are left out.",
+              "Runs on the developer's machine over stdio and calls the public API only (ADR 0046). The person logs in through the browser with Ansattporten, PKCE and a localhost callback, and the token stays in memory. Tools list services, read a definition as YAML, validate and publish it with a change reason, run the playground with a compared setup, search a dataset as a run does, and list and read runs with their timelines. Secrets, keys, rights and operator routes are left out.",
             responsibilities: [
-              'MCP tools over the definition, playground and task routes',
+              'MCP tools over the definition, playground, dataset search and task routes',
               'Browser login with PKCE and a localhost callback',
               'Validate before publish, and a required change reason',
             ],
@@ -1883,7 +1883,7 @@
             edges: [
               {
                 to: 'api',
-                label: 'Definitions, playground runs and run timelines',
+                label: 'Definitions, playground runs, dataset searches and run timelines',
                 kind: 'http',
                 target: 'http',
                 witness: { file: 'apps/admin-mcp/src/tools.ts', contains: '/definitions/validate' },
@@ -1897,7 +1897,7 @@
               },
             ],
             keywords:
-              'admin mcp coding agent claude code copilot publish validate playground timeline',
+              'admin mcp coding agent claude code copilot publish validate playground timeline search dataset',
             schemas: [],
           },
           {
@@ -2145,6 +2145,7 @@
               {
                 'Frontend extensions': 'conversations, filters, step events, per-document sources',
               },
+              'Stopping a /v1 run for the caller that started it, with its turn kept as stopped',
               'OpenAPI tool endpoints',
             ],
             files: ['packages/adapter-openai/src/app.ts', 'packages/adapter-openai/src/sources.ts'],
@@ -7071,6 +7072,7 @@
                               pattern: '^secret:\\/\\/[a-z0-9-]+\\/[a-z0-9._-]+$',
                             },
                           },
+                          gateway: { type: 'boolean' },
                         },
                         required: ['baseURL', 'auth', 'families'],
                         additionalProperties: false,
@@ -7718,7 +7720,7 @@
                                 type: 'string',
                                 enum: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
                               },
-                              path: { type: 'string', pattern: '^\\/[A-Za-z0-9/_.{}-]*$' },
+                              path: { type: 'string', pattern: '^\\/[A-Za-z0-9/_.{}:-]*$' },
                               follow: {
                                 type: 'string',
                                 format: 'starts_with',
@@ -7762,7 +7764,7 @@
                               encoding: {
                                 default: 'json',
                                 type: 'string',
-                                enum: ['json', 'binary', 'text', 'ndjson'],
+                                enum: ['json', 'binary', 'text', 'ndjson', 'none'],
                               },
                               headers: {
                                 default: {},
@@ -8288,7 +8290,7 @@
                                 type: 'string',
                                 enum: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
                               },
-                              path: { type: 'string', pattern: '^\\/[A-Za-z0-9/_.{}-]*$' },
+                              path: { type: 'string', pattern: '^\\/[A-Za-z0-9/_.{}:-]*$' },
                               follow: {
                                 type: 'string',
                                 format: 'starts_with',
@@ -8332,7 +8334,7 @@
                               encoding: {
                                 default: 'json',
                                 type: 'string',
-                                enum: ['json', 'binary', 'text', 'ndjson'],
+                                enum: ['json', 'binary', 'text', 'ndjson', 'none'],
                               },
                               headers: {
                                 default: {},
@@ -8586,7 +8588,7 @@
                       type: 'object',
                       properties: {
                         method: { type: 'string', enum: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] },
-                        path: { type: 'string', pattern: '^\\/[A-Za-z0-9/_.{}-]*$' },
+                        path: { type: 'string', pattern: '^\\/[A-Za-z0-9/_.{}:-]*$' },
                         follow: {
                           type: 'string',
                           format: 'starts_with',
@@ -8627,7 +8629,7 @@
                         encoding: {
                           default: 'json',
                           type: 'string',
-                          enum: ['json', 'binary', 'text', 'ndjson'],
+                          enum: ['json', 'binary', 'text', 'ndjson', 'none'],
                         },
                         headers: {
                           default: {},
@@ -9406,7 +9408,7 @@
             summary:
               'Reads usage from sources outside genki, such as an AI gateway, and counts each call once.',
             description:
-              'Holds the gateway usage contract, a fake that keeps its rules, the usage@1 contract suite, the hourly poll and the rule that counts a call once whether genki or the gateway measured it.',
+              'Holds the gateway usage contract, a fake that keeps its rules, the usage@2 contract suite, the hourly poll and the rule that counts a call once whether genki or the gateway measured it.',
             responsibilities: [
               'Usage source interface and gateway usage contract',
               'Fake gateway and contract suite',

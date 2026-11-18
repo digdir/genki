@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createApp } from './app.js';
+import { buildTimeOf, createApp } from './app.js';
 
 describe('api', () => {
   const app = createApp('test');
@@ -8,6 +8,23 @@ describe('api', () => {
     const res = await app.request('/health');
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ status: 'ok', version: 'test', lockdown: false });
+  });
+
+  it('answers health with the build time when the build has one', async () => {
+    const built = createApp('abc', { builtAt: '2026-11-17T08:00:00.000Z' });
+    expect(await (await built.request('/health')).json()).toEqual({
+      status: 'ok',
+      version: 'abc',
+      lockdown: false,
+      builtAt: '2026-11-17T08:00:00.000Z',
+    });
+  });
+
+  it('reads the build time from the commit time in seconds and ignores anything else', () => {
+    expect(buildTimeOf('1763366400')).toBe('2025-11-17T08:00:00.000Z');
+    expect(buildTimeOf('')).toBeUndefined();
+    expect(buildTimeOf(undefined)).toBeUndefined();
+    expect(buildTimeOf('yesterday')).toBeUndefined();
   });
 
   it('publishes an OpenAPI document that lists health', async () => {

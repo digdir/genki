@@ -402,6 +402,24 @@ describe('conversation routes for frontends', () => {
     expect(messages.find((m) => m.role === 'user')?.input).toEqual({ ministry: 'KD' });
   });
 
+  it('marks an answer whose run was cancelled as stopped, and no other answer', async () => {
+    const { send, store } = setup();
+    const { json } = await create(send, 'ka', 'u');
+    const owner = { tenant: '991825827', user: 'legacy-api-key|key-ka#u' };
+    await store.append(owner, json.conversation.id, { role: 'assistant', text: 'Hele svaret' });
+    await store.append(owner, json.conversation.id, {
+      role: 'assistant',
+      text: 'Svaret begy',
+      task: 't2',
+      stopped: true,
+    });
+
+    const [whole, stopped] = (await messagesOf(send, json.conversation.id)).slice(-2);
+
+    expect(whole).not.toHaveProperty('stopped');
+    expect(stopped).toMatchObject({ text: 'Svaret begy', task: 't2', stopped: true });
+  });
+
   it('returns the markers an answer that cites excerpts was stored with', async () => {
     const { send, store } = setup();
     const { json } = await create(send, 'ka', 'u');

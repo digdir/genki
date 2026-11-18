@@ -45,3 +45,26 @@ export const datasetReaders = async (
     `${a.kind}:${a.tenant}/${a.id}`.localeCompare(`${b.kind}:${b.tenant}/${b.id}`),
   );
 };
+
+export const datasetReaderCounts = async (
+  deps: DatasetReaderDeps,
+  tenant: string,
+): Promise<Map<string, number>> => {
+  const readers = new Map<string, Set<string>>();
+  const add = (dataset: string, reader: string) =>
+    readers.set(dataset, (readers.get(dataset) ?? new Set()).add(reader));
+  for (const compiled of await deps.definitions.capabilities()) {
+    if (compiled.service.tenant !== tenant) continue;
+    const config = compiled.capability.config as {
+      knowledge?: { datasets?: { dataset?: string }[] };
+    };
+    for (const d of config.knowledge?.datasets ?? [])
+      if (d.dataset !== undefined)
+        add(deps.resolve(d.dataset) ?? d.dataset, `service:${compiled.service.id}`);
+  }
+  const prefix = blockKey('dataset', '');
+  for (const entry of await deps.configEntries.latest({ kind: adoptionKind, scope: tenant }))
+    if (!entry.deleted && entry.scope === tenant && entry.id.startsWith(prefix))
+      add(entry.id.slice(prefix.length), 'adoption');
+  return new Map([...readers].map(([dataset, found]) => [dataset, found.size]));
+};

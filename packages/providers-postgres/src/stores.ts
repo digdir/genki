@@ -78,7 +78,9 @@ export class PostgresTaskStore implements TaskStore {
        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
        on conflict (id) do update set status = excluded.status, assignee = excluded.assignee,
          last_seq = excluded.last_seq, ended_at = excluded.ended_at, envelope = excluded.envelope,
-         scope = excluded.scope, body = excluded.body`,
+         scope = excluded.scope, body = excluded.body,
+         cancel_requested_at = case when excluded.status in ('queued', 'running')
+           then tasks.cancel_requested_at end`,
       [
         task.id,
         task.tenant,
@@ -100,6 +102,23 @@ export class PostgresTaskStore implements TaskStore {
     const found = await this.pool.query<TaskRow>('select * from tasks where id = $1', [id]);
     const row = found.rows[0];
     return row && this.#decode(row);
+  }
+
+  async requestCancel(id: string, at: string): Promise<void> {
+    await this.pool.query(
+      `update tasks set cancel_requested_at = $2
+        where id = $1 and status in ('queued', 'running') and cancel_requested_at is null`,
+      [id, at],
+    );
+  }
+
+  async cancelRequested(ids: readonly string[]): Promise<string[]> {
+    if (ids.length === 0) return [];
+    const found = await this.pool.query<{ id: string }>(
+      'select id from tasks where id = any($1) and cancel_requested_at is not null',
+      [ids],
+    );
+    return found.rows.map((row) => row.id);
   }
 
   async pendingFor(who: Ref): Promise<Task[]> {

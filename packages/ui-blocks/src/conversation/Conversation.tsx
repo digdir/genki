@@ -102,10 +102,17 @@ export interface ConversationProps {
   stalledAfter?: number | undefined;
   /** An answer on its way has stalled: the app stops it, as with «Avbryt». */
   onStalled?: ((turn: ConversationAnswer) => void) | undefined;
-  /** «Kilder brukt i svaret» under a finished answer. */
+  /** «Kilder brukt i svaret» under a finished answer, or the Kildeliste under a `plain` one. */
   sourcesUsed?: boolean | undefined;
+  /** `Answer`'s `onCopyReferences`: «Kopier kildeliste» copies the list under that answer. */
+  onCopyReferences?:
+    ((turn: ConversationAnswer, markdown: string) => Promise<void> | void) | undefined;
   /** `Answer`'s `documentFootnotes`: marks per cited document until a service cites excerpts. */
   documentFootnotes?: boolean | undefined;
+  /** `Answer`'s `numberEachFootnote`: each footnote its own number, as they stand. */
+  numberEachFootnote?: boolean | undefined;
+  /** The footnote Sources shows whole: its answer, and its index in that answer's footnotes. */
+  shownFootnote?: { turnId: string; citation: number } | undefined;
   /** «Er det noe mer jeg kan hjelpe deg med?» under a finished answer. */
   closingQuestion?: boolean | undefined;
   /** Who answers, for a screen reader. Without it, the AI assistant. */
@@ -215,7 +222,10 @@ export const Conversation = ({
   stalledAfter = STALLED_ANSWER_MS,
   onStalled,
   sourcesUsed,
+  onCopyReferences,
   documentFootnotes,
+  numberEachFootnote,
+  shownFootnote,
   closingQuestion,
   assistantName,
   headingLevel = 3,
@@ -623,7 +633,10 @@ export const Conversation = ({
           target={target?.turnId === turn.id ? answerTarget : undefined}
           highlight={turn.id === searchedId ? highlight : undefined}
           sourcesUsed={sourcesUsed}
+          onCopyReferences={onCopyReferences && ((markdown) => onCopyReferences(turn, markdown))}
           documentFootnotes={documentFootnotes}
+          numberEachFootnote={numberEachFootnote}
+          shownFootnote={shownFootnote?.turnId === turn.id ? shownFootnote.citation : undefined}
           closingQuestion={closingQuestion}
           onRegenerate={onRegenerate && (() => regenerate(turn, question))}
           failure={turn.failure}

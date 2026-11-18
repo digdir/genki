@@ -1106,6 +1106,7 @@ const migrations: string[] = [
      end $$`,
   `create index if not exists tasks_tenant_recent on tasks (tenant, created_at desc)`,
   `create index if not exists tasks_recent on tasks (created_at desc)`,
+  `alter table tasks add column if not exists cancel_requested_at timestamptz`,
   `create index if not exists events_usage on events (task) where type = 'kernel.usage'`,
   `alter table tenant_settings add column if not exists version bigint not null default 0`,
   `alter table erased_scopes add column if not exists reason text`,

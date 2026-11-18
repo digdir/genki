@@ -175,6 +175,7 @@ export interface GateOptions {
   media?: MediaOutput;
   mediaInput?: MediaInputSource;
   quota?: QuotaCheck;
+  callScope?: CallScope;
 }
 
 export interface GateSession {
@@ -199,9 +200,20 @@ export interface GateSessionOptions {
   binaryOut?: string;
 }
 
+export const gatewayTenantHeader = 'genki-tenant';
+
+export interface CallScope {
+  run<T>(tenant: string, send: () => T): T;
+  tenant(): string | undefined;
+}
+
+export interface EgressOptions {
+  tenantHeader?: boolean;
+}
+
 export interface Gate {
   /** The fetch an adapter gets for an endpoint; the gate applies the endpoint's egress guard on every request. */
-  egress(endpoint: string): typeof fetch;
+  egress(endpoint: string, options?: EgressOptions): typeof fetch;
   call<Req, Res>(
     ctx: PortContext,
     target: GateTarget,
@@ -222,6 +234,8 @@ export interface Gate {
 
 const distinct = <T>(items: readonly T[]) => [...new Set(items)];
 
+const orgNumber = /^\d{9}$/;
+
 export class ShapeError extends Error {
   constructor(message: string) {
     super(message);
@@ -229,7 +243,36 @@ export class ShapeError extends Error {
   }
 }
 
+const unscoped: CallScope = { run: (_tenant, send) => send(), tenant: () => undefined };
+
 export const createGate = (options: GateOptions = {}): Gate => {
+  const scope = options.callScope ?? unscoped;
+
+  const tenantBound = <T>(tenant: string, make: () => AsyncIterable<T>): AsyncIterable<T> => ({
+    [Symbol.asyncIterator]: () => {
+      const inner = scope.run(tenant, () => make()[Symbol.asyncIterator]());
+      return {
+        next: () => scope.run(tenant, () => inner.next()),
+        return: (value?: unknown) =>
+          scope.run(
+            tenant,
+            () =>
+              inner.return?.(value) ?? Promise.resolve({ done: true as const, value: undefined }),
+          ),
+      };
+    },
+  });
+
+  const withTenantHeader = (input: Parameters<typeof fetch>[0], init: RequestInit | undefined) => {
+    const headers = new Headers(
+      init?.headers ?? (input instanceof Request ? input.headers : undefined),
+    );
+    headers.delete(gatewayTenantHeader);
+    const tenant = scope.tenant();
+    if (tenant && orgNumber.test(tenant)) headers.set(gatewayTenantHeader, tenant);
+    return { ...init, headers };
+  };
+
   const admit = (ctx: PortContext, target: GateTarget) => {
     const name = `${target.model.kind} ${target.model.id}`;
     const refuse = (refusal: GateRefusal, message: string) => {
@@ -560,10 +603,12 @@ export const createGate = (options: GateOptions = {}): Gate => {
     const record = recorder(ctx, target, noted);
     const guard = await open(ctx, target, payload, request, record);
     noted.mediaInput = guard.mediaInput;
-    const raw = await send(guard.body).catch(async (error: unknown) => {
-      await record('failed');
-      throw error;
-    });
+    const raw = await scope
+      .run(ctx.tenant, () => send(guard.body))
+      .catch(async (error: unknown) => {
+        await record('failed');
+        throw error;
+      });
     const answer = await received(payload, raw, record);
     await settle(ctx, target, payload, answer, record);
     return guard.finish(answer.result);
@@ -604,7 +649,7 @@ export const createGate = (options: GateOptions = {}): Gate => {
     let ended: { result: unknown } | undefined;
     let extra = 0;
     try {
-      for await (const chunk of send(guard.body)) {
+      for await (const chunk of tenantBound(ctx.tenant, () => send(guard.body))) {
         const seen = event(chunk);
         extra += seen.extra;
         if (seen.kind === 'done') ended = { result: seen.result };
@@ -790,9 +835,12 @@ export const createGate = (options: GateOptions = {}): Gate => {
     };
   };
 
-  const egress = (endpoint: string): typeof fetch => {
+  const egress = (endpoint: string, egressOptions: EgressOptions = {}): typeof fetch => {
     const guarded: typeof fetch = (input, init) =>
-      (options.egress?.(endpoint) ?? globalThis.fetch)(input, init);
+      (options.egress?.(endpoint) ?? globalThis.fetch)(
+        input,
+        egressOptions.tenantHeader ? withTenantHeader(input, init) : init,
+      );
     return guarded;
   };
 

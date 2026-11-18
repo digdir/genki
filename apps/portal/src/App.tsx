@@ -4,14 +4,15 @@ import { LocaleProvider, storedPreference, useFormat, useLocale } from '@genai/i
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createApiClient } from './api';
 import { appTitle } from './app-title';
+import { organisationName } from './data/organisations';
 import type { AuthClient } from './auth';
-import { navigate, parseRoute, useRoute } from './hooks';
+import { navigate, parseRoute, useDelayed, useRoute } from './hooks';
 import { prefetchOnIntent, prefetchPath } from './prefetch';
 import { tenantNotRegistered } from './problem-types';
 import { PublicLanding } from './screens/about/PublicLanding';
 import { translator, useT } from './i18n';
 import { useSessionTimer } from './session-timer';
-import { EmptyState, Loading } from './states';
+import { EmptyState, NavigationProgress, PageLoading } from './states';
 import { pendingInputHash, restoreUnsavedInput, saveUnsavedInput } from './unsaved-input';
 import type { Organisation, Session } from './types';
 
@@ -74,7 +75,8 @@ const Portal = ({
   save: { current: (next: Locale | null) => void };
 }) => {
   const t = useT();
-  const route = useRoute();
+  const [route, navigating] = useRoute();
+  const slowNavigation = useDelayed(navigating, 200);
   const orgParam = route.query.get('org');
   const [session, setSession] = useState<Session | undefined>(auth.current());
   const [picked, setOrganisation] = useState<Organisation | undefined>(
@@ -329,11 +331,12 @@ const Portal = ({
             </Button>
           </Alert>
         ) : null}
-        <Suspense fallback={<Loading label={t('common.loading')} />}>
+        {slowNavigation ? <NavigationProgress label={t('common.loading')} /> : null}
+        <Suspense fallback={<PageLoading label={t('common.loading')} />}>
           <Page
             api={api}
             tenant={organisation.orgNumber}
-            tenantName={organisation.name}
+            tenantName={organisationName(organisation, t)}
             route={effective}
             live={live}
             onFailingIngests={reportFailing}

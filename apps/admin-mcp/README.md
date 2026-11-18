@@ -127,6 +127,7 @@ Flags are on only for the exact value `true`.
 | `new_service_template` | A minimal valid definition for a new service, with the platform's defaults                                                                 | Reads       |
 | `describe_strategy`    | Without `id`, the strategies; with `id`, the config keys (also what a variant may override), the starting config and built-in instructions | Reads       |
 | `list_models`          | The models the organisation can choose, whether it may use them, where data is processed and the price per 1,000 tokens                    | Reads       |
+| `search_dataset`       | Searches a dataset as a service run does, with filters, and shows the raw hits; no chat model call                                         | Reads       |
 | `validate_definition`  | Checks a definition without saving it and lists the fields that differ from the published version                                          | Reads       |
 | `publish_definition`   | Validates, then publishes the next version with a `reason` of at least 10 characters                                                       | Writes      |
 | `run_playground`       | Runs a published version or an unsaved `yaml`, optionally next to a second setup in `compareWith`, and returns answer, sources, cost, time | Costs money |

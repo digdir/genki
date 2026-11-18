@@ -110,3 +110,22 @@ export const expectAccessible = (root: HTMLElement = document.body) => {
   expect(problems).toEqual([]);
   expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
 };
+
+export const renderLive = async (
+  hash: string,
+  extras: Parameters<typeof mockFetch>[4] = {},
+  override?: (url: string, method: string) => Response | undefined,
+) => {
+  const urls: string[] = [];
+  const base = mockFetch(undefined, undefined, undefined, undefined, extras);
+  const fetch: typeof globalThis.fetch = async (input, init) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    urls.push(url);
+    return override?.(url, init?.method ?? 'GET') ?? base(input, init);
+  };
+  const auth = mockAnsattporten(kari);
+  await auth.login();
+  window.location.hash = hash;
+  render(<App auth={auth} fetch={fetch} live />);
+  return urls;
+};

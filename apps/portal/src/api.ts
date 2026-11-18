@@ -17,6 +17,8 @@ import { playgroundApi, type PlaygroundInputField } from './api/playground';
 import { qualityApi } from './api/quality';
 import { recipesApi } from './api/recipes';
 import { batchRunsApi } from './api/batch-runs';
+import { platformStatusApi } from './api/platform-status';
+import { quotaRequestsApi } from './api/quota-requests';
 import { searchEnginesApi } from './api/search-engines';
 import { skillsApi } from './api/skills';
 import type {
@@ -37,6 +39,7 @@ import type {
   EvalRunSummary,
   FeedbackItem,
   TestSet,
+  UnmaskedInputUse,
   ValidationResult,
   AccessView,
   ApiKeyView,
@@ -46,6 +49,7 @@ import type {
   ServiceKeyView,
   IntegrationsView,
   Overview,
+  ToolConnectionView,
   ServiceLifecycleView,
   ServiceSummaryView,
   SharedService,
@@ -154,6 +158,7 @@ export interface ApiContext {
   ) => Promise<T>;
   tenantPath: (tenant: string) => string;
   query?: <T>(method: string, path: string, body: unknown) => Promise<T>;
+  invalidate?: (tenant: string) => void;
   send?: (
     method: string,
     path: string,
@@ -181,6 +186,8 @@ const featureClients = (ctx: ApiContext) => ({
   triggers: triggersApi(ctx),
   preferences: preferencesApi(ctx),
   recipes: recipesApi(ctx),
+  platformStatus: platformStatusApi(ctx),
+  quotaRequests: quotaRequestsApi(ctx),
 });
 
 const kindPaths: Record<PublishedDefinition['kind'], string> = {
@@ -277,7 +284,10 @@ export const createApiClient = ({
     path: string,
     body: unknown,
     headers: Record<string, string> = {},
-  ) => afterWrite(path, () => sendJson<T>(method, path, body, headers));
+  ) =>
+    method === 'GET'
+      ? sendJson<T>(method, path, body, headers)
+      : afterWrite(path, () => sendJson<T>(method, path, body, headers));
 
   const sendRaw = async (
     method: string,
@@ -299,17 +309,35 @@ export const createApiClient = ({
     });
   };
 
-  const raw = (method: string, path: string, body: unknown, headers: Record<string, string> = {}) =>
-    afterWrite(path, () => sendRaw(method, path, body, headers));
+  const raw = (
+    method: string,
+    path: string,
+    body: unknown,
+    headers: Record<string, string> = {},
+  ) =>
+    method === 'GET'
+      ? sendRaw(method, path, body, headers)
+      : afterWrite(path, () => sendRaw(method, path, body, headers));
 
   return {
     cache,
     getJson: (path: string, signal?: AbortSignal) => get<unknown>(path, signal),
     getHealth: (signal?: AbortSignal) =>
-      get<{ status: 'ok'; version: string; lockdown?: boolean }>('/health', signal),
+      get<{ status: 'ok'; version: string; lockdown?: boolean; builtAt?: string }>(
+        '/health',
+        signal,
+      ),
     isReadOnlyInLockdown: async (signal?: AbortSignal) =>
       (await get<{ lockdownReadOnly?: boolean }>('/me', signal)).lockdownReadOnly === true,
-    ...featureClients({ get, request, tenantPath, send: raw, query: sendJson }),
+    me: (signal?: AbortSignal) => get<{ email?: string }>('/me', signal),
+    ...featureClients({
+      get,
+      request,
+      tenantPath,
+      send: raw,
+      query: sendJson,
+      invalidate: (tenant: string) => cache.invalidate(encodeURIComponent(tenant)),
+    }),
     stepOperations: async (tenant: string, signal?: AbortSignal) =>
       (await get<{ data: StepOperation[] }>(`${tenantPath(tenant)}/step-flows/operations`, signal))
         .data,
@@ -502,11 +530,26 @@ export const createApiClient = ({
     },
     validate: async (definition: unknown, files: Record<string, string> = {}) => {
       try {
-        await sendJson<{ valid: true }>('POST', '/definitions/validate', { definition, files });
-        return { valid: true, errors: [] } satisfies ValidationResult;
+        const valid = await sendJson<{ valid: true; unmaskedInput?: UnmaskedInputUse[] }>(
+          'POST',
+          '/definitions/validate',
+          { definition, files },
+        );
+        return {
+          valid: true,
+          errors: [],
+          ...(valid.unmaskedInput ? { unmaskedInput: valid.unmaskedInput } : {}),
+        } satisfies ValidationResult;
       } catch (error) {
-        if (error instanceof ApiError && error.status === 422)
-          return { valid: false, errors: error.problem?.errors ?? [] } satisfies ValidationResult;
+        if (error instanceof ApiError && error.status === 422) {
+          const unmasked = (error.problem as { unmaskedInput?: UnmaskedInputUse[] } | undefined)
+            ?.unmaskedInput;
+          return {
+            valid: false,
+            errors: error.problem?.errors ?? [],
+            ...(unmasked ? { unmaskedInput: unmasked } : {}),
+          } satisfies ValidationResult;
+        }
         throw error;
       }
     },
@@ -694,6 +737,8 @@ export const createApiClient = ({
         service?: string;
         environment?: string;
         from?: string;
+        to?: string;
+        origin?: 'playground';
         limit?: number;
       },
       signal?: AbortSignal,
@@ -703,6 +748,8 @@ export const createApiClient = ({
       if (filter.service) query.set('service', filter.service);
       if (filter.environment) query.set('environment', filter.environment);
       if (filter.from) query.set('from', filter.from);
+      if (filter.to) query.set('to', filter.to);
+      if (filter.origin) query.set('origin', filter.origin);
       if (filter.limit) query.set('limit', String(filter.limit));
       const suffix = query.size > 0 ? `?${query.toString()}` : '';
       return get<{ data: TaskRow[]; total: number }>(
@@ -712,6 +759,9 @@ export const createApiClient = ({
     },
     integrations: (tenant: string, signal?: AbortSignal) =>
       get<IntegrationsView>(`${tenantPath(tenant)}/integrations`, signal),
+    toolConnections: async (tenant: string, signal?: AbortSignal) =>
+      (await get<{ data?: ToolConnectionView[] }>(`${tenantPath(tenant)}/tool-connections`, signal))
+        .data ?? [],
     registerConnection: (tenant: string, connection: Record<string, unknown>, reason: string) =>
       request<{ id: string }>('POST', `${tenantPath(tenant)}/tool-connections`, connection, {
         'change-reason': reason,
@@ -783,6 +833,18 @@ export const createApiClient = ({
       ).fields,
     audit: async (tenant: string, signal?: AbortSignal) =>
       (await get<{ data: AuditRow[] }>(`${tenantPath(tenant)}/audit`, signal)).data,
+    auditPage: async (
+      tenant: string,
+      page: { limit: number; offset: number },
+      signal?: AbortSignal,
+    ) => {
+      const found = await get<{ data?: AuditRow[]; total?: number }>(
+        `${tenantPath(tenant)}/audit?limit=${page.limit}&offset=${page.offset}`,
+        signal,
+      );
+      const data = found.data ?? [];
+      return { data, total: found.total ?? page.offset + data.length };
+    },
     exportTenant: (tenant: string, signal?: AbortSignal) =>
       get<TenantBundle>(`${tenantPath(tenant)}/export`, signal),
     importTenant: (

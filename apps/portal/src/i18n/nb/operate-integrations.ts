@@ -77,8 +77,6 @@ export const integrationsArea = {
     noFrontendsText: 'Registrer en brukerflate når dere vil tilby tjenester i egne løsninger.',
     noTriggers: 'Ingen utløsere',
     noTriggersText: 'Utløsere settes opp i tjenesten.',
-    downloadOpenApi: 'Last ned OpenAPI-fil',
-    openApiDownloaded: 'OpenAPI-filen er lastet ned.',
     statusActive: 'Aktiv',
     statusFailing: 'Feiler',
     statusUnused: 'Ikke i bruk',
@@ -95,22 +93,6 @@ export const integrationsArea = {
     scopeWriteDesc: 'Legge til og fjerne dokumenter.',
     scopeUsageLabel: 'Lese forbruk',
     scopeUsageDesc: 'Hente tall for tokens og kostnad.',
-    docCodeTitle: 'Kall en tjeneste fra kode',
-    docCodeDesc: 'Eksempler i curl, Python, JavaScript og C#, med svar.',
-    docApiTitle: 'API-referanse',
-    docApiDesc: 'Alle endepunkter, felter og feilkoder (OpenAPI 3.1).',
-    docMaskinportenTitle: 'Kom i gang med Maskinporten',
-    docMaskinportenDesc: 'Lag en klient i Samarbeidsportalen og hent token.',
-    docAnsattportenTitle: 'Ansattporten for brukerflater',
-    docAnsattportenDesc: 'Logg inn ansatte og kall plattformen på vegne av dem.',
-    docOpenaiTitle: 'OpenAI-kompatibelt endepunkt',
-    docOpenaiDesc: 'Bruk eksisterende kode og verktøy uten endringer.',
-    docMcpTitle: 'MCP',
-    docMcpDesc: 'Gjør tjenestene tilgjengelige som verktøy for KI-assistenter.',
-    docLimitsTitle: 'Testmiljø og grenser',
-    docLimitsDesc: 'Adresser, testdata, maks størrelse på filer og antall kall per minutt.',
-    docStatusTitle: 'Driftsstatus og endringer',
-    docStatusDesc: 'Planlagt vedlikehold og nye versjoner av API-et.',
     name: 'Navn',
     register: 'Registrer',
     connect: 'Koble til',
@@ -171,6 +153,10 @@ export const integrationsArea = {
       'Dere har ingen publiserte tjenester ennå. Publiser en tjeneste før du registrerer en brukerflate.',
   }),
   integTriggers: defineNamespace({
+    runsFailed: 'Vi fikk ikke hentet hendelsene',
+    runsFailedWhy:
+      'Hendelsene for utløseren svarte ikke. Det betyr ikke at det ikke har vært noen.',
+    runsUnknown: 'Fikk ikke hentet hendelsene',
     runQuota: 'Ikke startet fordi månedskvoten for tokens er brukt opp',
     runCost: ' · {cost}',
     kindDocument: 'Når et dokument kommer inn',
@@ -245,6 +231,7 @@ export const integrationsArea = {
     secret: 'Hemmeligheten',
     secretHelp: 'Lagres i Key Vault for adressen over og kan ikke leses ut igjen, bare erstattes.',
     register: 'Registrer kobling',
+    syncButton: 'Hent verktøyene',
   }),
   secretHosts: defineNamespace({
     setElsewhere:
@@ -363,7 +350,6 @@ export const integrationsArea = {
   }),
   integKeys: defineNamespace({
     loading: 'Henter API-nøkler',
-    notUsedYet: 'ikke brukt ennå',
     createdToday: 'i dag av deg',
     rotatedToday: 'rotert i dag av deg',
     unknownDate: 'ukjent dato',
@@ -383,7 +369,6 @@ export const integrationsArea = {
     intro:
       'API-nøkler for systemer som ikke kan bruke Maskinporten. Hver nøkkel kan begrenses til utvalgte tjenester og datasett, og har sin egen grense for antall kall.',
     create: 'Lag API-nøkkel',
-    copyNow: 'Kopier nøkkelen nå',
     copyNowText:
       'Den vises bare denne ene gangen. Lagre den i et hemmelighetslager, for eksempel Key Vault.',
     newKeyLabel: 'Den nye nøkkelen',
@@ -410,6 +395,8 @@ export const integrationsArea = {
     listLabel: 'API-nøkler',
     revokedStatus: 'Trukket tilbake',
     prefixCreated: '{prefix}… · laget {created}',
+    rateNotUsed: '{rate} kall per minutt · ikke brukt ennå',
+    rateOnly: '{rate} kall per minutt',
     rateLastUsed: '{rate} kall per minutt · sist brukt {last}',
     editAccess: 'Endre tilgang',
     rotate: 'Roter',
@@ -417,6 +404,23 @@ export const integrationsArea = {
     revokeWarning:
       'Systemer som bruker {name}, får avvist alle kall med en gang. Dette kan ikke angres.',
     revokeKey: 'Trekk tilbake nøkkelen',
+    nameTaken: 'Det finnes allerede en nøkkel som heter «{name}». Velg et annet navn.',
+    inUse: 'I bruk ({count})',
+    revokedGroup: 'Trukket tilbake ({count})',
+    revokedListLabel: 'Nøkler som er trukket tilbake',
+    madeFor: 'Ny nøkkel for «{name}»',
+    discardAsk: 'Forkaste det du har skrevet?',
+    goBack: 'Gå tilbake',
+    discard: 'Forkast',
+    uncopiedAsk:
+      'Du har ikke kopiert nøkkelen. Lukker du nå, må du lage en ny nøkkel for å få en du kan bruke.',
+    backToCopy: 'Gå tilbake og kopier',
+    closeUncopied: 'Lukk uten å kopiere',
+    revokeTitle: 'Trekk tilbake «{name}»?',
+    rotateTitle: 'Roter «{name}»?',
+    rotateWarning:
+      'Du får en ny nøkkel med samme tilgang. Den gamle slutter å virke med en gang, så systemet som bruker {name}, må bytte til den nye.',
+    rotateKey: 'Roter nøkkelen',
   }),
   integMaskinporten: defineNamespace({
     alreadyRegistered: 'Klienten er allerede registrert.',
@@ -583,6 +587,11 @@ export const integrationsArea = {
   }),
   integCode: defineNamespace({
     callService: 'Kall tjenesten',
+    moreHeading: 'Videre',
+    moreReference: 'API-referanse: alle endepunktene, med «Prøv» som kjører som deg',
+    moreKeys: 'Nøkler: lag en API-nøkkel for systemer uten Maskinporten',
+    moreLimits: 'Testmiljø og grenser: forbruk og kvote i Statistikk',
+    moreIdporten: 'Ansattporten og ID-porten for brukerflater (åpnes i ny fane)',
     apiStep2Approval:
       'Tjenesten har et godkjenningssteg, så «vent» er satt til false. Dere får en kjørings-ID tilbake med en gang, og kan hente status eller få beskjed når saksbehandleren har godkjent.',
     apiStep2Wait:

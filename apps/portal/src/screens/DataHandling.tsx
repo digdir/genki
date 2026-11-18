@@ -1,14 +1,26 @@
-import { Heading, List, Paragraph, Spinner } from '@digdir/designsystemet-react';
+import {
+  Heading,
+  List,
+  Paragraph,
+  Spinner,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeaderCell,
+  TableRow,
+} from '@digdir/designsystemet-react';
 import type { ApiClient } from '../api';
 import { NotDecided } from '../components/NotDecided';
 import { access, logged, stored, undecided } from '../data/data-handling';
 import { useAsync, type AsyncState } from '../hooks';
 import { useT, type PlainKey } from '../i18n';
 import { modelLabel } from '../models';
+import { ErrorState } from '../states';
 import type { ModelOption, Residency } from '../types';
 import './startside.css';
 
-const residencyKeys: Record<Residency, PlainKey> = {
+export const residencyKeys: Record<Residency, PlainKey> = {
   norway: 'dataHandling.residencyNorway',
   eu: 'dataHandling.residencyEu',
   global: 'dataHandling.residencyGlobal',
@@ -30,7 +42,13 @@ const Section = ({ id, title, items }: { id: string; title: PlainKey; items: Pla
   );
 };
 
-const Processing = ({ models }: { models?: AsyncState<ModelOption[]> }) => {
+const Processing = ({
+  models,
+  onRetry,
+}: {
+  models?: AsyncState<ModelOption[]>;
+  onRetry?: () => void;
+}) => {
   const t = useT();
   if (models?.status === 'loading')
     return (
@@ -39,26 +57,57 @@ const Processing = ({ models }: { models?: AsyncState<ModelOption[]> }) => {
         {t('dataHandling.loadingModels')}
       </span>
     );
+  if (models?.status === 'error')
+    return <ErrorState error={models.error} headingLevel={3} {...(onRetry ? { onRetry } : {})} />;
   if (models?.status !== 'ready') return <Paragraph>{t('dataHandling.processingToday')}</Paragraph>;
   if (models.data.length === 0) return <Paragraph>{t('dataHandling.noModels')}</Paragraph>;
+  const outside = models.data.filter((m) => m.residency === 'global').length;
   return (
     <>
-      <Paragraph>{t('dataHandling.modelsIntro')}</Paragraph>
-      <List.Unordered aria-label={t('dataHandling.modelsLabel')}>
-        {models.data.map((m) => (
-          <List.Item key={m.id}>
-            {t('dataHandling.modelAt', {
-              model: modelLabel(m.id, models.data),
-              where: t(residencyKeys[m.residency]),
-            })}
-          </List.Item>
-        ))}
-      </List.Unordered>
+      <Paragraph>
+        {outside === 0
+          ? t('dataHandling.allInside')
+          : t('dataHandling.someOutside', { count: outside, total: models.data.length })}
+      </Paragraph>
+      <div
+        className="table-scroll"
+        tabIndex={0}
+        role="region"
+        aria-label={t('dataHandling.modelsLabel')}
+      >
+        <Table border>
+          <TableHead>
+            <TableRow>
+              <TableHeaderCell scope="col">{t('dataHandling.columnModel')}</TableHeaderCell>
+              <TableHeaderCell scope="col">{t('dataHandling.columnWhere')}</TableHeaderCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {models.data.map((m) => (
+              <TableRow key={m.id}>
+                <TableCell>
+                  <span className="stack-xs">
+                    <span>{modelLabel(m.id, models.data)}</span>
+                    <code className="meta">{m.id}</code>
+                  </span>
+                </TableCell>
+                <TableCell>{t(residencyKeys[m.residency])}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
     </>
   );
 };
 
-export const DataHandlingContent = ({ models }: { models?: AsyncState<ModelOption[]> }) => {
+export const DataHandlingContent = ({
+  models,
+  onRetry,
+}: {
+  models?: AsyncState<ModelOption[]>;
+  onRetry?: () => void;
+}) => {
   const t = useT();
   return (
     <div className="stack">
@@ -71,7 +120,7 @@ export const DataHandlingContent = ({ models }: { models?: AsyncState<ModelOptio
         <Heading level={2} data-size="sm" id="behandles-h">
           {t('dataHandling.processingHeading')}
         </Heading>
-        <Processing {...(models ? { models } : {})} />
+        <Processing {...(models ? { models } : {})} {...(onRetry ? { onRetry } : {})} />
       </section>
       <Section id="logges-h" title="dataHandling.loggedHeading" items={logged} />
       <section aria-labelledby="merking-h" className="stack-sm">
@@ -104,6 +153,6 @@ export const DataHandlingContent = ({ models }: { models?: AsyncState<ModelOptio
 };
 
 export const DataHandling = ({ api }: { api: ApiClient }) => {
-  const [models] = useAsync((signal) => api.listModels({}, signal), [api]);
-  return <DataHandlingContent models={models} />;
+  const [models, retry] = useAsync((signal) => api.listModels({}, signal), [api]);
+  return <DataHandlingContent models={models} onRetry={retry} />;
 };

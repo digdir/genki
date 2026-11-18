@@ -2628,4 +2628,6 @@ export const portalActions: PortalAction[] = [
 ];
 
 export const fillPath = (path: string, values: Record<string, string>) =>
-  path.replace(/\{(\w+)\}/g, (m, k: string) => values[k] ?? m);
+  path.replace(/\{(\w+)\}/g, (m, k: string) =>
+    values[k] === undefined ? m : encodeURIComponent(values[k]),
+  );

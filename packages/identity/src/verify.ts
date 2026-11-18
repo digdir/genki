@@ -146,6 +146,11 @@ const claim = (...values: unknown[]) =>
 
 const named = (name: string | undefined) => (name ? { name } : {});
 
+const emailOf = (value: unknown) => {
+  const email = claim(value)?.toLowerCase();
+  return email && /^[^\s@]+@[^\s@]+$/.test(email) ? { email } : {};
+};
+
 const orgNamesOf = (parties: { org: string; name: string | undefined }[]) => {
   const names = Object.fromEntries(
     parties.flatMap(({ org, name }) => (name ? [[org, name] as const] : [])),
@@ -198,6 +203,7 @@ const trustedEntraLogin = (
       issuer,
       subject: payload.sub as string,
       ...named(claim(payload.name, payload.email)),
+      ...emailOf(payload.email),
       assurance: 'entraid',
       tenant: trusted.tenant,
       authorizedFor: [
@@ -266,6 +272,7 @@ const employee = (
       issuer: issuer.issuer,
       subject: payload.sub as string,
       ...named(claim(payload.name)),
+      ...emailOf(payload.email),
       ...(typeof payload.client_id === 'string' ? { client: payload.client_id } : {}),
       assurance,
       authorizedFor: authorizedFor.map(({ org, resource, actions }) => ({
@@ -365,6 +372,7 @@ const operator = (
       issuer: issuer.issuer,
       subject: payload.oid,
       ...named(claim(payload.name, payload.preferred_username, payload.email)),
+      ...emailOf(payload.email),
       assurance: 'entraid',
       roles,
       ...expiresAt(payload),

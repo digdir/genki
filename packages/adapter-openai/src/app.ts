@@ -15,6 +15,8 @@ import {
   type JSONSchema,
   type Part,
   type Principal,
+  type Task,
+  type TaskStatus,
 } from '@genai/contracts';
 import {
   KernelError,
@@ -99,6 +101,7 @@ export interface ModelEntry {
   live?: boolean;
   documents?: string[];
   media?: string[];
+  files?: string[];
 }
 
 export type ResolveErrorCode =
@@ -148,6 +151,7 @@ export interface AskTurn {
   sources?: StoredSource[];
   markers?: AnswerMarker[];
   task?: string;
+  stopped?: true;
   attachments?: string[];
   input?: Record<string, unknown>;
 }
@@ -171,6 +175,7 @@ export interface AskConversations {
   >;
   append(request: Request, conversationId: string, turn: AskTurn): Promise<void>;
   discard?(request: Request, conversationId: string): Promise<void>;
+  owns?(request: Request, conversationId: string): Promise<boolean>;
 }
 
 export interface FilterIssue {
@@ -269,6 +274,7 @@ export interface OpenAiAdapterOptions {
   modelsOf?: (task: string) => Promise<string[]>;
   now?: () => Date;
   newId?: () => string;
+  cancelWaitMs?: number;
   overridePolicy?: {
     check(
       principal: Principal,
@@ -485,8 +491,37 @@ const collect = async (run: Run) => {
   }
 };
 
+const wasCancelled = (error: unknown) => error instanceof KernelError && error.code === 'cancelled';
+
+const isOver = (status: TaskStatus) =>
+  status === 'completed' || status === 'failed' || status === 'cancelled';
+
+const startedBy = (task: Task, principal: Principal) =>
+  task.tenant === principal.tenant &&
+  task.principal.kind === principal.kind &&
+  task.principal.id === JSON.stringify([principal.issuer, principal.subject]);
+
+/** The answer text a run had made when it stopped, after the drafts it took back. */
+const madeSoFar = (events: Event[]) => {
+  const made = new AnswerTracker(true, { content: () => undefined, retract: () => undefined });
+  for (const e of events) {
+    const data = e.data as { text?: unknown } | undefined;
+    if (e.type === 'kernel.part.delta' && typeof data?.text === 'string') made.delta(data.text);
+    else if (e.type === 'kernel.notice') made.notice(e.data);
+  }
+  return made.text;
+};
+
+const stoppedTurn = (events: Event[], task: string): AskTurn => ({
+  role: 'assistant',
+  task,
+  text: madeSoFar(events),
+  stopped: true,
+});
+
 export const createOpenAiAdapter = (options: OpenAiAdapterOptions) => {
   const { kernel, resolver, auth } = options;
+  const cancelWaitMs = options.cancelWaitMs ?? 2_000;
   const now = () => Math.floor((options.now ?? (() => new Date()))().getTime() / 1000);
   const newId = options.newId ?? nanoId;
   const modelsOf = async (task: string) => {
@@ -586,6 +621,15 @@ export const createOpenAiAdapter = (options: OpenAiAdapterOptions) => {
                 },
               }
             : {}),
+          ...(e.files?.length && options.documents
+            ? {
+                _files: {
+                  accepts: e.files,
+                  max_bytes: mediaLimits.maxBytes,
+                  max_count: mediaLimits.maxCount,
+                },
+              }
+            : {}),
           ...(e.status
             ? { status: e.status, ...(e.statusReason ? { status_reason: e.statusReason } : {}) }
             : {}),
@@ -641,6 +685,51 @@ export const createOpenAiAdapter = (options: OpenAiAdapterOptions) => {
         'x-content-type-options': 'nosniff',
       },
     });
+  });
+
+  app.post('/v1/tasks/:task/cancel', async (c) => {
+    const principal = c.get('principal');
+    const id = c.req.param('task');
+    const read = async () => {
+      try {
+        return await kernel.task(principal, id);
+      } catch (error) {
+        if (error instanceof KernelError && ['not_found', 'forbidden'].includes(error.code))
+          return undefined;
+        throw error;
+      }
+    };
+    const found = await read();
+    const reachable =
+      found !== undefined &&
+      startedBy(found, principal) &&
+      (found.thread === undefined ||
+        ((await options.conversations?.owns?.(c.req.raw, found.thread)) ?? false));
+    if (!found || !reachable) return fail(c, 'task_not_found', 'No such run for this caller.', 404);
+    if (found.entryPoint !== 'openai')
+      return fail(
+        c,
+        'run_not_cancellable',
+        'Only a run started through /v1 can be stopped here.',
+        409,
+      );
+    let current = found;
+    if (!isOver(current.status)) {
+      await kernel.cancel(principal, id);
+      current = (await read()) ?? current;
+      for (let waited = 0; !isOver(current.status) && waited < cancelWaitMs; waited += 50) {
+        // A run that paused for approval before its instance saw the stop is cancelled here.
+        if (current.status === 'interrupted') await kernel.cancel(principal, id);
+        else await new Promise((resolve) => setTimeout(resolve, 50));
+        current = (await read()) ?? current;
+      }
+    }
+    if (current.status === 'completed' || current.status === 'failed')
+      return fail(c, 'run_finished', 'The run has already finished.', 409);
+    return c.json(
+      { id, object: 'task', status: current.status },
+      current.status === 'cancelled' ? 200 : 202,
+    );
   });
 
   app.get('/v1/sessions', async (c) => {
@@ -799,6 +888,7 @@ export const createOpenAiAdapter = (options: OpenAiAdapterOptions) => {
     const sentMedia = readMedia(
       messages.findLast((m) => m.role === 'user')?.content,
       options.documents ? resolved.entry.media : undefined,
+      options.documents ? resolved.entry.files : undefined,
     );
     if (!Array.isArray(sentMedia))
       return fail(c, sentMedia.code, sentMedia.message, sentMedia.status);
@@ -880,15 +970,20 @@ export const createOpenAiAdapter = (options: OpenAiAdapterOptions) => {
     const version = resolved.entry.version;
     const environment = resolved.entry.environment;
 
+    const keep = async (turn: AskTurn) => {
+      if (conversationId)
+        await options.conversations?.append(c.req.raw, conversationId, turn).catch(() => undefined);
+    };
+
     if (body.stream === true) {
       const live = body[liveStreamField] === 'live';
-      const remember = async (parts: Part[]) => {
-        if (conversationId)
-          await options.conversations
-            ?.append(c.req.raw, conversationId, assistantTurn(parts, run.task))
-            .catch(() => undefined);
+      const stream = {
+        live,
+        steps: body[stepsField] === true,
+        conversationId,
+        remember: (parts: Part[]) => keep(assistantTurn(parts, run.task)),
+        stopped: (events: Event[]) => keep(stoppedTurn(events, run.task)),
       };
-      const stream = { live, steps: body[stepsField] === true, conversationId, remember };
       return new Response(streamCompletion(run, id, created, model, stream), {
         status: 200,
         headers: {
@@ -905,17 +1000,26 @@ export const createOpenAiAdapter = (options: OpenAiAdapterOptions) => {
 
     const outcome = await collect(run);
     if (!outcome.ok) {
-      await discard();
-      return c.json(failureError(outcome.events, outcome.error), 500);
+      if (!wasCancelled(outcome.error)) {
+        await discard();
+        return c.json(failureError(outcome.events, outcome.error), 500);
+      }
+      await keep(stoppedTurn(outcome.events, run.task));
+      c.header('genai-task', run.task);
+      if (conversationId) c.header('genai-conversation', conversationId);
+      return c.json(
+        {
+          ...failureError(outcome.events, outcome.error),
+          ...(conversationId ? { conversation_id: conversationId } : {}),
+        },
+        500,
+      );
     }
     const { citations, sources } = sourcesBundle(outcome.parts);
     const markers = markersOf(outcome.parts);
     const media = attachmentsOf(outcome.parts, run.task);
     const usage = await usageOf(kernel, principal, run.task);
-    if (conversationId)
-      await options.conversations
-        ?.append(c.req.raw, conversationId, assistantTurn(outcome.parts, run.task))
-        .catch(() => undefined);
+    await keep(assistantTurn(outcome.parts, run.task));
     c.header('genai-task', run.task);
     if (conversationId) c.header('genai-conversation', conversationId);
     for (const [name, value] of Object.entries(
@@ -957,6 +1061,7 @@ export const createOpenAiAdapter = (options: OpenAiAdapterOptions) => {
       steps: boolean;
       conversationId: string | undefined;
       remember(parts: Part[]): Promise<void>;
+      stopped(events: Event[]): Promise<void>;
     },
   ) => {
     const { live } = stream;
@@ -1046,6 +1151,9 @@ export const createOpenAiAdapter = (options: OpenAiAdapterOptions) => {
             if (live) sourcesChunk();
             if (noAnswerOf(parts)) send(chunk({}, null, noAnswerMarker(parts)));
             send(chunk({}, 'stop'));
+          } else if (wasCancelled(failure)) {
+            await stream.stopped(events);
+            send(chunk({}, 'error', failureError(events, failure)));
           } else {
             answer.settle('');
             send(chunk({ content: `Error: ${failureMessage(events, failure)}` }, null));
@@ -1317,6 +1425,10 @@ export class AnswerTracker {
     private readonly live: boolean,
     private readonly sink: AnswerSink,
   ) {}
+
+  get text() {
+    return this.sent;
+  }
 
   delta(text: string) {
     if (!this.live || this.channel !== 'answer') return;

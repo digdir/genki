@@ -8,7 +8,7 @@ import { requireChangeReason } from './change-reason.js';
 import { rememberActorNames, type ActorNames } from './actor-names.js';
 import { createAdmin, type Admin, type ModelAdmin } from './admin.js';
 import { acceptDecodedIds } from './decoded-ids.js';
-import { registerDefinitionRoutes } from './definitions.js';
+import { registerDefinitionRoutes, type DefinitionsApiOptions } from './definitions.js';
 import {
   apiNotFoundBody,
   gzipResponses,
@@ -34,8 +34,21 @@ import {
 } from './internal-services.js';
 
 const Health = z
-  .object({ status: z.literal('ok'), version: z.string(), lockdown: z.boolean() })
+  .object({
+    status: z.literal('ok'),
+    version: z.string(),
+    lockdown: z.boolean(),
+    builtAt: z.string().optional().openapi({
+      description:
+        'When the running build was made, as the time of its commit; absent in local builds',
+    }),
+  })
   .openapi('Health');
+
+export const buildTimeOf = (epochSeconds: string | undefined) => {
+  if (!epochSeconds || !/^\d{1,12}$/.test(epochSeconds)) return undefined;
+  return new Date(Number(epochSeconds) * 1000).toISOString();
+};
 
 const healthRoute = createRoute({
   method: 'get',
@@ -64,6 +77,7 @@ export type PlatformOptions = Authentication & {
   lifecycle?: PlatformApiOptions['lifecycle'];
   models?: ModelAdmin;
   drafts?: Pick<ServiceDrafts, 'outdated' | 'followPublish'>;
+  unmaskedInput?: DefinitionsApiOptions['unmaskedInput'];
   names?: ActorNames;
   now?: () => Date;
   lockdown?: boolean;
@@ -80,6 +94,7 @@ const withoutApiKeys = (caller: Caller): Authenticator => ({
 });
 
 export interface AppOptions {
+  builtAt?: string;
   platform?: PlatformOptions;
   requestTiming?: RequestTimingOptions;
 }
@@ -104,7 +119,10 @@ export const createApp = (version: string, options: AppOptions = {}) => {
   app.use('*', localeMiddleware);
   app.use('*', problemResponses);
   const lockdown = options.platform?.lockdown ?? false;
-  app.openapi(healthRoute, (c) => c.json({ status: 'ok' as const, version, lockdown }, 200));
+  const builtAt = options.builtAt ? { builtAt: options.builtAt } : {};
+  app.openapi(healthRoute, (c) =>
+    c.json({ status: 'ok' as const, version, lockdown, ...builtAt }, 200),
+  );
   app.get('/up', (c) => c.text('ok'));
   app.notFound((c) => {
     if (!isHeadlessRagApiPath(c.req.path)) return problem(c, 404, 'Not found');
@@ -167,6 +185,7 @@ export const createApp = (version: string, options: AppOptions = {}) => {
       admin,
       access,
       ...(options.platform.drafts ? { drafts: options.platform.drafts } : {}),
+      ...(options.platform.unmaskedInput ? { unmaskedInput: options.platform.unmaskedInput } : {}),
       ...(options.platform.names ? { names: options.platform.names } : {}),
       ...(options.platform.registered ? { registered: options.platform.registered } : {}),
     });

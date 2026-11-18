@@ -103,6 +103,7 @@ export const createConfigurables = (
     testSets: TestSetStore;
     testSetTaken?: (tenant: string, id: string) => Promise<boolean>;
     usedBy?: (dataset: string) => Promise<DatasetReader[]>;
+    usedByCounts?: (tenant: string) => Promise<Map<string, number>>;
   }) => {
     const { catalog } = deps;
     const ingestion = new IngestionService({
@@ -133,6 +134,7 @@ export const createConfigurables = (
       ...(deps.routers.writers ? { writers: deps.routers.writers } : {}),
       ...(deps.embeddingResidency ? { embeddingResidency: deps.embeddingResidency } : {}),
       ...(deps.usedBy ? { usedBy: deps.usedBy } : {}),
+      ...(deps.usedByCounts ? { usedByCounts: deps.usedByCounts } : {}),
       documentCount: cachedDocumentCount(deps.routers.knowledge),
       connectorConnection: connectorConnectionOf(store),
       ...(input.gateProblem ? { gateProblem: input.gateProblem } : {}),

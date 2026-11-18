@@ -54,6 +54,7 @@ export type PortalRight =
 
 export interface Session {
   name: string;
+  email?: string;
   organisations: Organisation[];
   token: string;
 }
@@ -123,6 +124,7 @@ export interface TaskTimeline {
   costMicroNok?: number | null;
   erasure?: RunErasure;
   steps: TimelineStep[];
+  stats?: { byModel?: { model: string }[] };
 }
 
 export type Residency = 'norway' | 'eu' | 'global';
@@ -259,9 +261,20 @@ export interface CapabilityModel {
   _mode?: string;
 }
 
+export interface UnmaskedInputUse {
+  flow: string;
+  step: string;
+  stepName?: string;
+  descriptor: string;
+  operation: string;
+  mediaType: string;
+  consent?: { mediaType: string; reason: string };
+}
+
 export interface ValidationResult {
   valid: boolean;
   errors: { path: string; message: string }[];
+  unmaskedInput?: UnmaskedInputUse[];
 }
 
 export interface UsageTotals {
@@ -290,6 +303,7 @@ export interface TaskRow {
   erasure?: RunErasure;
   actor?: TaskActor;
   capability: string;
+  version?: number | null;
   environment?: string | null;
   createdAt: string;
   endedAt: string | null;
@@ -360,6 +374,7 @@ export interface ApiKeyView {
   createdAt: string | null;
   createdBy?: string | null;
   createdByName?: string;
+  lastUsedAt?: string | null;
   modelsInLockdown?: boolean;
   expiresAt: string | null;
   revokedAt: string | null;
@@ -443,6 +458,8 @@ export interface UsageReport {
     usage: UsageTotals;
     byService?: Record<string, UsageTotals>;
     byModel?: Record<string, UsageTotals>;
+    testing?: UsageTotals;
+    ingestion?: UsageTotals;
   }[];
   byService: { service: string; title?: string; usage: UsageTotals }[];
   byModel: { model: string; source?: UsageSourceId; usage: UsageTotals }[];
@@ -457,6 +474,22 @@ export interface UsageReport {
   project?: string;
   byEnvironment?: { environment: string; usage: UsageTotals }[];
   environment?: string;
+  quota?: UsageQuota;
+  ingestion?: { usage: UsageTotals };
+}
+
+export interface UsageQuota {
+  usedTokens: number;
+  monthlyTokens: number;
+  usedPercent: number;
+  alertPercent: number;
+  alert: boolean;
+}
+
+export interface ToolConnectionView {
+  id: string;
+  name: string;
+  lastSync?: { at: string; ok: boolean; code?: string; message?: string };
 }
 
 export interface ConnectionView {

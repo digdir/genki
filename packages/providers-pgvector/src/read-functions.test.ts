@@ -816,7 +816,7 @@ describe('read functions on the knowledge server', () => {
       );
       await expect(
         connection.fetch(routed(kudos, kudosGeneration), ['a#0'], signal),
-      ).rejects.toMatchObject({ code: '57014' });
+      ).rejects.toMatchObject({ code: 'timeout' });
     } finally {
       await blocker.query('rollback');
       blocker.release();

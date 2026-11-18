@@ -12,12 +12,14 @@ import {
   parseArgs,
   parseDemo,
   pickDemos,
+  readyFailure,
   retrying,
   runStep,
   scriptLiteral,
   sessionScript,
   srtTime,
   ssml,
+  StepFailure,
   subtitles,
 } from './demo.ts';
 
@@ -178,6 +180,42 @@ describe('demo recordings', () => {
       'Step 3 («Åpne tjenestene») failed on: find role link click --name Tjenester\n  No element found: Tjenester',
     );
     expect(now()).toBeGreaterThanOrEqual(15_000);
+  });
+
+  it('names the failed step by number, so its screenshot can be found', () => {
+    const { now, pause } = clock();
+    const failure = (() => {
+      try {
+        runStep(
+          { say: 'Hei', do: [['find', 'role', 'link', 'click']] },
+          4,
+          () => {
+            throw new Error('No element found');
+          },
+          1_000,
+          now,
+          pause,
+        );
+      } catch (error) {
+        return error;
+      }
+    })();
+    expect(failure).toBeInstanceOf(StepFailure);
+    expect((failure as StepFailure).step).toBe(5);
+  });
+
+  it('reports a start page that never shows its ready text as step 0', () => {
+    const demo = parseDemo(
+      minimal('  - say: Hei\n').replace('steps:', 'ready: Prøveområde\nsteps:'),
+    );
+    const failure = readyFailure(
+      demo,
+      Object.assign(new Error('x'), { stderr: 'Timeout 30000ms' }),
+    );
+    expect(failure.step).toBe(0);
+    expect(failure.message).toBe(
+      'The start page https://portal.genki-test.digdir.cloud never showed «Prøveområde»\n  Timeout 30000ms',
+    );
   });
 
   it('does not repeat a navigation that failed', () => {

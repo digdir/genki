@@ -57,6 +57,7 @@ export class A2aProtocolError extends Error {
   constructor(
     message: string,
     readonly code?: number,
+    readonly status?: number,
   ) {
     super(message);
     this.name = 'A2aProtocolError';
@@ -136,7 +137,11 @@ export class A2aClient {
       signal,
     );
     if (response.status !== 200)
-      throw new A2aProtocolError(`the agent card answered HTTP ${response.status}`);
+      throw new A2aProtocolError(
+        `the agent card answered HTTP ${response.status}`,
+        undefined,
+        response.status,
+      );
     let raw: unknown;
     try {
       raw = JSON.parse(response.body);
@@ -182,7 +187,11 @@ export class A2aClient {
         message.error.code,
       );
     if (response.status < 200 || response.status >= 300)
-      throw new A2aProtocolError(`the agent answered HTTP ${response.status}`);
+      throw new A2aProtocolError(
+        `the agent answered HTTP ${response.status}`,
+        undefined,
+        response.status,
+      );
     return message.result;
   }
 

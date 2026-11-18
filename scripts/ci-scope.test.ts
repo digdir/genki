@@ -132,3 +132,17 @@ describe('the test job when only the affected tests run', () => {
     expect(vitest?.env?.CHANGED).toBe('${{ steps.changed.outputs.since }}');
   });
 });
+
+describe('the secret scan', () => {
+  const gitleaks = () => steps('secrets').find((s) => s.run?.includes('gitleaks'))?.run ?? '';
+
+  it('scans only the history of the commit under test, so a line on another branch cannot fail every pull request', () => {
+    expect(gitleaks()).toMatch(/ git \/repo --log-opts=HEAD /);
+  });
+
+  it('still reads the whole history of that commit', () => {
+    expect(
+      steps('secrets').find((s) => s.uses?.startsWith('actions/checkout@'))?.with?.['fetch-depth'],
+    ).toBe(0);
+  });
+});

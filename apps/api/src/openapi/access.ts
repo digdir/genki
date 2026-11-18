@@ -1,3 +1,4 @@
+import { syncFailureCodes } from '../sync-errors.js';
 import { createRoute, z, type RouteConfig } from '@hono/zod-openapi';
 import { writtenStandards } from '@genai/guardrails';
 import { locales } from '@genai/i18n';
@@ -529,7 +530,8 @@ const RegistrationResult = z
     version: z.string(),
     contractTests: z.array(ContractTestResult),
     synced: z.boolean(),
-    syncError: z.string().optional(),
+    syncError: z.string().optional().describe('A fixed sentence for syncErrorCode'),
+    syncErrorCode: z.enum(syncFailureCodes).optional(),
     changedBy: ChangedBy,
     writesApproval: z
       .object({
@@ -1350,6 +1352,17 @@ export const accessRoutes: RouteConfig[] = [
               endpoint: z.string(),
               version: z.string(),
               tools: z.array(z.string()),
+              lastSync: z
+                .object({
+                  at: z.string(),
+                  ok: z.boolean(),
+                  code: z.enum(syncFailureCodes).optional(),
+                  message: z.string().optional(),
+                })
+                .optional()
+                .describe(
+                  'The last sync, kept until the next sync. A failed one has a fixed `code` and a sentence for it, never the tool server text',
+                ),
             }),
           ),
         }),

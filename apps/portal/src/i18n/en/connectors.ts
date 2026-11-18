@@ -78,6 +78,8 @@ export const connectors = {
   syncNow: 'Synchronise now',
   changePassword: 'Change password',
   rightManageDatasets: 'Manage datasets',
+  pollFailing:
+    'We cannot update the status right now. We keep trying by ourselves, less often each time.',
   listHeading: 'Connections',
   networksOpen: 'Private networks Digdir has opened for the organisation: {networks}.',
   networksNone:
