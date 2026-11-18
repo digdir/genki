@@ -1,7 +1,8 @@
 /**
  * The walk over a `DoclingDocument` that both of its derivations share: `docling-pages` 1 (ADR 0042,
  * "Conversion") and `docling-parts` 1 (ADR 0055). It gives every item in reading order with its
- * plain text and the Markdown the pages write for it.
+ * plain text and the Markdown the pages write for it. A change here changes both derivations, so it
+ * raises both versions.
  */
 
 interface Ref {

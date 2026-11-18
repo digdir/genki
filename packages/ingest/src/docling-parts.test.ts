@@ -116,6 +116,7 @@ describe('docling-parts', () => {
       text: 'Årsrapport 2023',
       start: null,
       end: null,
+      native: '#/texts/0',
     });
     expect(header?.regions).toMatchObject([{ unit: 1, start: null, end: null }]);
   });
@@ -252,6 +253,94 @@ describe('docling-parts', () => {
       [null, ['1 Innledning', '1.1 Bakgrunn']],
       [1, []],
       [null, ['2 Mål']],
+    ]);
+  });
+
+  it('offsets count code points over NFC text', () => {
+    const decomposed = 'Gård og hus.';
+    const parts = partsOf(
+      doc(1, (add) => {
+        add.text('text', decomposed, 1);
+        add.text('text', 'Neste avsnitt.', 1);
+      }),
+    );
+    expect(parts[0]?.text).toBe('Gård og hus.');
+    expect(parts[0]?.end).toBe(12);
+    expect(parts[1]?.start).toBe(14);
+  });
+
+  it("a row's text_start and text_end cover its parts' text", () => {
+    const { units } = doclingParts(
+      doc(2, (add) => {
+        add.text('text', 'Én.', 1);
+        add.text('text', 'Og to.', 1);
+        add.text('page_footer', 'Side 1', 1, { top: 780 });
+        add.text('text', 'Tre.', 2);
+      }),
+    );
+    expect(units.map((unit) => [unit.textStart, unit.textEnd])).toEqual([
+      [0, 11],
+      [13, 17],
+    ]);
+  });
+
+  it('a box without an origin is read by its shape', () => {
+    const boxOf = (fromTop: boolean) => {
+      const document = doc(1, (add) => add.text('text', 'Avsnitt.', 1, { top: 300, fromTop }));
+      for (const prov of (document.texts[0] as { prov: { bbox: Record<string, unknown> }[] }).prov)
+        delete prov.bbox.coord_origin;
+      return partsOf(document)[0]?.regions[0]?.box;
+    };
+    expect(boxOf(false)).toEqual([0.0833, 0.375, 0.5, 0.39]);
+    expect(boxOf(true)).toEqual([0.0833, 0.375, 0.5, 0.39]);
+  });
+
+  it('a title is a level-1 heading', () => {
+    const parts = partsOf(
+      doc(1, (add) => {
+        add.text('title', 'Årsrapport 2023', 1);
+        add.text('text', 'Om året.', 1);
+      }),
+    );
+    expect(parts.map((part) => [part.level, part.headingPath])).toEqual([
+      [1, []],
+      [null, ['Årsrapport 2023']],
+    ]);
+  });
+
+  it("a table's text is its Markdown table", () => {
+    const [table] = partsOf(
+      doc(1, (add) =>
+        add.table(
+          1,
+          [
+            ['År', 'Beløp'],
+            ['2023', '12'],
+          ],
+          undefined,
+          1,
+        ),
+      ),
+    );
+    expect(table?.text).toBe('| År | Beløp |\n| --- | --- |\n| 2023 | 12 |');
+  });
+
+  it('an item without a content_layer is in the body', () => {
+    const document = doc(1, (add) => add.text('text', 'Avsnitt.', 1));
+    delete (document.texts[0] as { content_layer?: string }).content_layer;
+    expect(partsOf(document)[0]).toMatchObject({ layer: 'body', start: 0, end: 8 });
+  });
+
+  it("an item under the document's furniture is a furniture part", () => {
+    const document = doc(1, (add) => {
+      add.text('text', 'Avsnitt.', 1);
+      add.text('page_footer', 'Side 1', 1, { top: 780 });
+    });
+    const footer = document.body.children?.pop();
+    document.furniture = { children: footer ? [footer] : [] };
+    expect(partsOf(document).map((part) => [part.kind, part.layer, part.text])).toEqual([
+      ['text', 'body', 'Avsnitt.'],
+      ['page_footer', 'furniture', 'Side 1'],
     ]);
   });
 });
