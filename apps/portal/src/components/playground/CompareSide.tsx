@@ -1,18 +1,38 @@
-import { Button, Heading, Tag, Textarea, Label } from '@digdir/designsystemet-react';
+import {
+  Alert,
+  Button,
+  Heading,
+  Label,
+  Link,
+  Paragraph,
+  Tag,
+  Textarea,
+} from '@digdir/designsystemet-react';
 import { useId, useState, type ReactNode } from 'react';
+import type { ApiClient } from '../../api';
 import type { CatalogModel } from '../../api/models';
 import type { PlaygroundOptions, PlaygroundResult, PlaygroundSetup } from '../../api/playground';
 import {
+  effectiveInstructions,
+  modelOf,
   sentenceCount,
   setupDifferences,
+  shortModelName,
   startLabel,
+  strategyOf,
+  takesInstructions,
+  versionOf,
   withInstructions,
+  workText,
   type SetupPart,
 } from '../../data/playground';
 import type { AsyncState } from '../../hooks';
 import { useT } from '../../i18n';
+import { ModelPicker } from '../ModelPicker';
 import { AnswerCard } from './AnswerCard';
-import { SetupModel, StartPicker } from './PageSetup';
+import { StartPicker, useWorkLanguage } from './PageSetup';
+import { SaveToDraft } from './SaveToDraft';
+import { ruleAlertFor } from './SetupForm';
 import { LiveText, type LiveRun } from './RunView';
 import { TimelineStrip } from './StepTimeline';
 
@@ -31,7 +51,15 @@ export const CompareSide = ({
   onChange,
   onSave,
   onShowCall,
+  api,
+  tenant,
+  base,
+  otherBase,
 }: {
+  api?: ApiClient | undefined;
+  tenant?: string | undefined;
+  base?: string | undefined;
+  otherBase?: string | undefined;
   side: SideKey;
   options: PlaygroundOptions;
   setup: PlaygroundSetup;
@@ -50,23 +78,29 @@ export const CompareSide = ({
   const key = side.toUpperCase();
   const [shown, setShown] = useState(true);
   const [editing, setEditing] = useState(false);
-  const differs = setupDifferences(setup, other);
+  const language = useWorkLanguage();
+  const differs = setupDifferences(setup, other, base, otherBase);
   const mark = (part: SetupPart) =>
     differs.includes(part) ? (
       <Tag data-size="sm" data-color="warning">
         {t('playground.different')}
       </Tag>
     ) : null;
-  const row = (label: string, part: SetupPart | null, value: ReactNode) => (
+  const row = (label: string, part: SetupPart | null, value: ReactNode, action?: ReactNode) => (
     <div className="playground-side-row">
-      <dt>
-        {label}
+      <dt>{label}</dt>
+      <dd>
+        {value}
         {part ? mark(part) : null}
-      </dt>
-      <dd>{value}</dd>
+        {action}
+      </dd>
     </div>
   );
-  const instructions = setup.instructions ?? '';
+  const instructions = effectiveInstructions(setup, base);
+  const editable = !setup.service || takesInstructions(options, setup);
+  const strategy = strategyOf(options, setup);
+  const rule = ruleAlertFor(options, setup, tenantName, t);
+  const found = versionOf(options, setup);
   const names = setup.datasets.map((d) => options.datasets.find((x) => x.id === d)?.name ?? d);
   const steps = run?.steps ?? result?.steps ?? [];
   return (
@@ -102,61 +136,78 @@ export const CompareSide = ({
               {row(
                 t('playground.model'),
                 'model',
-                <SetupModel
-                  options={options}
-                  setup={setup}
-                  models={models}
-                  tenantName={tenantName}
-                  onChange={onChange}
-                />,
+                <strong>{shortModelName(modelOf(options, setup.model).name)}</strong>,
+                <span className="playground-side-picker">
+                  <ModelPicker
+                    models={models}
+                    value={setup.model}
+                    service={startLabel(options, setup, t)}
+                    triggerLabel={t('playground.swapModel')}
+                    onChange={(model) => onChange({ ...setup, model })}
+                  />
+                </span>,
               )}
-              {setup.service
-                ? null
-                : row(
-                    t('playground.instructions'),
-                    'instructions',
-                    <div className="playground-side-instructions">
-                      <span>
-                        {instructions.trim()
-                          ? t('playground.sentences', { count: sentenceCount(instructions) })
-                          : t('playground.instructionsDefault')}
-                      </span>
-                      <Button
-                        variant="tertiary"
-                        data-size="sm"
-                        aria-expanded={editing}
-                        aria-controls={editing ? `${id}-instructions` : undefined}
-                        onClick={() => setEditing(!editing)}
-                      >
-                        {editing ? t('playground.doneEditing') : t('playground.change')}
-                      </Button>
-                      {editing ? (
-                        <div className="playground-side-edit">
-                          <Label htmlFor={`${id}-instructions`} data-size="sm">
-                            {t('playground.instructionsFor', { key })}
-                          </Label>
-                          <Textarea
-                            id={`${id}-instructions`}
-                            rows={4}
-                            value={instructions}
-                            onChange={(e) => onChange(withInstructions(setup, e.target.value))}
-                          />
-                        </div>
-                      ) : null}
-                    </div>,
-                  )}
+              {row(
+                t('playground.instructions'),
+                'instructions',
+                <span>
+                  {!editable
+                    ? t('playground.instructionsInSteps')
+                    : instructions.trim()
+                      ? t('playground.sentences', { count: sentenceCount(instructions) })
+                      : t('playground.instructionsDefault')}
+                </span>,
+                editable ? (
+                  <Button
+                    variant="tertiary"
+                    data-size="sm"
+                    className="playground-inline-action"
+                    aria-expanded={editing}
+                    aria-controls={editing ? `${id}-instructions` : undefined}
+                    onClick={() => setEditing(!editing)}
+                  >
+                    {editing ? t('playground.doneEditing') : t('playground.change')}
+                  </Button>
+                ) : null,
+              )}
               {row(
                 t('playground.knowledge'),
                 'knowledge',
                 names.length ? names.join(', ') : t('playground.knowledgeNone'),
               )}
+              {strategy
+                ? row(t('playground.work'), null, workText(strategy, language, t, true))
+                : null}
             </dl>
+            {editing && editable ? (
+              <div className="playground-side-edit">
+                <Label htmlFor={`${id}-instructions`} data-size="sm">
+                  {t('playground.instructionsFor', { key })}
+                </Label>
+                <Textarea
+                  id={`${id}-instructions`}
+                  rows={4}
+                  value={setup.instructions ?? base ?? ''}
+                  onChange={(e) => onChange(withInstructions(setup, e.target.value))}
+                />
+              </div>
+            ) : null}
+            {rule ? (
+              <Alert data-color={rule.color} data-size="sm">
+                <Heading level={3} data-size="2xs">
+                  {rule.title}
+                </Heading>
+                <Paragraph data-size="sm">{rule.text}</Paragraph>
+                <Link href={rule.href}>{rule.link}</Link>
+              </Alert>
+            ) : null}
           </div>
         ) : null}
       </div>
       <div className="playground-side-body">
         {result ? (
           <AnswerCard
+            layout="plain"
             result={result}
             saveExpanded={saveExpanded}
             onSave={onSave}
@@ -169,6 +220,17 @@ export const CompareSide = ({
           </>
         ) : null}
         <TimelineStrip steps={steps} side={key} />
+        {side === 'b' && found ? (
+          <SaveToDraft
+            api={api}
+            tenant={tenant}
+            options={options}
+            setup={setup}
+            base={base}
+            label={t('playground.useInDraft', { key })}
+            primary
+          />
+        ) : null}
       </div>
     </section>
   );

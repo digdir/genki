@@ -5,6 +5,7 @@ import {
   InformationSquareIcon,
 } from '@navikt/aksel-icons';
 import { Button, Chip, Heading, Link, Tag } from '@digdir/designsystemet-react';
+import type { Format } from '@genai/i18n';
 import { useFormat } from '@genai/i18n/react';
 import { useId, useState } from 'react';
 import type { PlaygroundResult, PlaygroundSource } from '../../api/playground';
@@ -67,6 +68,12 @@ export const groupSources = (result: PlaygroundResult): SourceGroup[] => {
 
 const sourceLabel = (source: PlaygroundSource, t: T) =>
   source.title?.trim() || t('playground.untitledSource');
+
+const sourceLineItem = (source: PlaygroundSource, f: Format, t: T) => {
+  const date = source.publishedAt ? new Date(source.publishedAt) : undefined;
+  const label = sourceLabel(source, t);
+  return date && !Number.isNaN(date.getTime()) ? `${label} (${f.date(date, 'short')})` : label;
+};
 
 const citeRenderer =
   (result: PlaygroundResult, onOpen: (chunkId: string) => void, t: T): CiteRenderer =>
@@ -284,7 +291,9 @@ export const AnswerCard = ({
   onSave,
   onShowCall,
   onReply,
+  layout = 'card',
 }: {
+  layout?: 'card' | 'page' | 'plain';
   label?: string;
   result: PlaygroundResult;
   saveExpanded: boolean;
@@ -317,7 +326,7 @@ export const AnswerCard = ({
   const detail = openSource ? result.sources.find((s) => s.chunkId === openSource) : undefined;
   const clarification = result.clarification;
   return (
-    <article className="playground-answer">
+    <article className="playground-answer" data-layout={layout}>
       {label ? <span className="playground-strong">{label}</span> : null}
       {table ? (
         <>
@@ -374,7 +383,24 @@ export const AnswerCard = ({
           <AnswerMarkdown text={result.text} cite={citeRenderer(result, setOpenSource, t)} />
         </>
       )}
-      {result.sources.length ? (
+      {result.sources.length && layout !== 'card' ? (
+        <>
+          <p className="playground-source-line">
+            {t('playground.sourceLine', {
+              count: sourceGroups.length,
+              list: sourceGroups.map((g) => sourceLineItem(g.first, f, t)).join('; '),
+            })}
+          </p>
+          {detail ? (
+            <SourceDetail
+              source={detail}
+              order={order}
+              onOpen={setOpenSource}
+              onClose={() => setOpenSource(null)}
+            />
+          ) : null}
+        </>
+      ) : result.sources.length ? (
         <div className="playground-sources">
           <span className="playground-strong">{t('playground.sources')}</span>
           <ol aria-label={t('playground.sources')}>
@@ -403,14 +429,33 @@ export const AnswerCard = ({
           {searchNoteText(result.searchNotes.length, t)}
         </p>
       ) : null}
-      <dl className="playground-meta">
-        {meta.map(([l, v]) => (
-          <div key={l}>
-            <dt>{l}</dt>
-            <dd>{v}</dd>
-          </div>
-        ))}
-      </dl>
+      {layout === 'card' ? (
+        <dl className="playground-meta">
+          {meta.map(([l, v]) => (
+            <div key={l}>
+              <dt>{l}</dt>
+              <dd>{v}</dd>
+            </div>
+          ))}
+        </dl>
+      ) : (
+        <div className="playground-meta-row">
+          <span>{formatSecondsShort(result.timeMs, f, t)}</span>
+          <span>
+            {t('playground.tokensRow', {
+              input: formatCount(result.tokensIn, f),
+              output: formatCount(result.tokensOut, f),
+            })}
+          </span>
+          <span>{formatKr(result.costNok, f, t)}</span>
+          {result.dataLocation ? (
+            <span>{t('playground.dataRow', { where: t(locationShort[result.dataLocation]) })}</span>
+          ) : null}
+          <Link href={`#/log?oppgave=${encodeURIComponent(result.runId)}`}>
+            {t('playground.openInLog')}
+          </Link>
+        </div>
+      )}
       {byModel.length > 1 ? (
         <ul className="playground-models" aria-label={t('playground.tokensPerModel')}>
           {byModel.map((m) => (
@@ -425,9 +470,11 @@ export const AnswerCard = ({
         </ul>
       ) : null}
       <div className="playground-answer-actions">
-        <Link href={`#/log?oppgave=${encodeURIComponent(result.runId)}`}>
-          {t('playground.viewRun')}
-        </Link>
+        {layout === 'card' ? (
+          <Link href={`#/log?oppgave=${encodeURIComponent(result.runId)}`}>
+            {t('playground.viewRun')}
+          </Link>
+        ) : null}
         <Button variant="tertiary" data-size="sm" aria-expanded={saveExpanded} onClick={onSave}>
           {t('playground.saveAsTest')}
         </Button>

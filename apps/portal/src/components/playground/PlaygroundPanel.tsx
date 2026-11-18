@@ -46,6 +46,7 @@ import {
   questionOf,
   quotaTokensText,
   resultLabel,
+  runnableSetup,
   sampleFileName,
   setupChips,
   shortModelName,
@@ -75,6 +76,7 @@ import {
 import { apiBackend, exampleBackend } from './backend';
 import { CompareSide } from './CompareSide';
 import { PageSetup } from './PageSetup';
+import { useBaseInstructions } from './startDraft';
 import { SaveAsTestCase, testSetLabel, type TestCaseDraft } from './SaveAsTestCase';
 import { SetupBar } from './SetupBar';
 import { SetupForm } from './SetupForm';
@@ -412,6 +414,7 @@ export const PlaygroundPanel = ({
       ? withDraftService(named, name, draftRef.current)
       : named;
   }, [loaded, context, name, hasDraft]);
+  const baseOf = useBaseInstructions(page ? api : undefined, tenant, [a?.service, b?.service]);
   const attachDraft = (setup: PlaygroundSetup): PlaygroundSetup => {
     const draft = draftRef.current;
     if (!hasDraft || !draft || setup.service?.id !== name || setup.service.version !== 'draft')
@@ -521,8 +524,8 @@ export const PlaygroundPanel = ({
             replace,
           );
     const request: PlaygroundRunRequest = {
-      setup: attachDraft(a),
-      ...(b ? { compareWith: attachDraft(b) } : {}),
+      setup: attachDraft(runnableSetup(a)),
+      ...(b ? { compareWith: attachDraft(runnableSetup(b)) } : {}),
       input,
       ...(history.length ? { history } : {}),
       ...(answerLanguage ? { answerLanguage } : {}),
@@ -678,12 +681,12 @@ export const PlaygroundPanel = ({
         {b ? (
           <Link asChild>
             <button type="button" className="link-button playground-back" onClick={endCompare}>
-              {t('playground.pageTitle')}
+              {t('playground.pageHeading')}
             </button>
           </Link>
         ) : null}
         <Heading level={1} data-size="lg" id={headingId}>
-          {b ? t('playground.compareTitle') : t('playground.pageTitle')}
+          {b ? t('playground.compareTitle') : t('playground.pageHeading')}
         </Heading>
         <p className="lead">{b ? t('playground.compareLead') : t('playground.pageLead')}</p>
       </div>
@@ -851,8 +854,8 @@ export const PlaygroundPanel = ({
         ? formRun(text.trim())
         : { text: text.trim() };
   const callBody = (input: PlaygroundInput): PlaygroundRunRequest => ({
-    setup: attachDraft(a),
-    ...(b ? { compareWith: attachDraft(b) } : {}),
+    setup: attachDraft(runnableSetup(a)),
+    ...(b ? { compareWith: attachDraft(runnableSetup(b)) } : {}),
     input: withoutData(input),
     ...(answerLanguage ? { answerLanguage } : {}),
   });
@@ -1143,6 +1146,10 @@ export const PlaygroundPanel = ({
               run={compared?.live?.[key]}
               result={key === 'a' ? compared?.result : compared?.compareResult}
               saveExpanded={!!compared && saving?.message === compared.id && saving.which === key}
+              api={api}
+              tenant={tenant}
+              base={baseOf(sides[key].service)}
+              otherBase={baseOf(sides[key === 'a' ? 'b' : 'a'].service)}
               onChange={changeSide(key)}
               onSave={() => compared && startSave(compared, key)}
               onShowCall={() =>
@@ -1179,6 +1186,9 @@ export const PlaygroundPanel = ({
         {quotaAlert}
         <div className="playground-workbench">
           <PageSetup
+            api={api}
+            tenant={tenant}
+            base={baseOf(a.service)}
             options={options}
             setup={a}
             models={pickerModels}
@@ -1227,6 +1237,7 @@ export const PlaygroundPanel = ({
                     {failurePart(m)}
                     {m.result ? (
                       <AnswerCard
+                        layout="page"
                         result={m.result}
                         saveExpanded={saving?.message === m.id && saving.which === 'a'}
                         onSave={() => startSave(m, 'a')}

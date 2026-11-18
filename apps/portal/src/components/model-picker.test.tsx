@@ -108,6 +108,22 @@ describe('the model picker', () => {
     );
   });
 
+  it('shows a short trigger label when given one and keeps "Bytt modell" as its name', () => {
+    render(
+      <ModelPicker
+        models={{ status: 'ready', data: catalog }}
+        value="alpha"
+        service="Rapportassistenten"
+        triggerLabel="Bytt"
+        onChange={() => undefined}
+      />,
+    );
+    const trigger = screen.getByRole('button', { name: 'Bytt modell' });
+    expect(trigger.textContent).toBe('Bytt');
+    fireEvent.click(trigger);
+    expect(screen.getByRole('dialog', { name: 'Velg modell' })).toBeTruthy();
+  });
+
   it('lists recommended models first and shows six until asked for more', () => {
     render(<Harness />);
     const dialog = open();

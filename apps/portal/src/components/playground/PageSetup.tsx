@@ -14,12 +14,20 @@ import {
   Select,
   Textarea,
 } from '@digdir/designsystemet-react';
+import { useFormat, useLocale } from '@genai/i18n/react';
 import { useId } from 'react';
+import type { ApiClient } from '../../api';
 import type { CatalogModel } from '../../api/models';
 import type { PlaygroundOptions, PlaygroundSetup } from '../../api/playground';
 import {
-  changedFromStart,
+  changesLine,
+  modelFactsText,
+  modelOf,
   setupFromStart,
+  shortModelName,
+  strategyOf,
+  takesInstructions,
+  workText,
   startChoices,
   startKeyOf,
   startLabel,
@@ -28,13 +36,17 @@ import {
   versionOf,
   withInstructions,
 } from '../../data/playground';
+import type { PlaygroundStrategy } from '../../api/playground';
 import type { AnswerLanguage } from '../../data/service-languages';
 import type { AsyncState } from '../../hooks';
 import { useT } from '../../i18n';
 import { Icon } from '../Icon';
 import { ModelPicker } from '../ModelPicker';
 import { AnswerLanguagePicker } from './AnswerLanguagePicker';
+import { SaveToDraft } from './SaveToDraft';
 import { ruleAlertFor } from './SetupForm';
+
+export const useWorkLanguage = () => (useLocale().locale === 'en' ? 'en' : 'nb');
 
 type ListKey = 'datasets' | 'skills' | 'blocks';
 
@@ -83,15 +95,24 @@ export const SetupModel = ({
   onChange: (next: PlaygroundSetup) => void;
 }) => {
   const t = useT();
+  const f = useFormat();
   const rule = ruleAlertFor(options, setup, tenantName, t);
+  const model = modelOf(options, setup.model);
   return (
     <>
-      <ModelPicker
-        models={models}
-        value={setup.model}
-        service={startLabel(options, setup, t)}
-        onChange={(model) => onChange({ ...setup, model })}
-      />
+      <div className="playground-model-box">
+        <span className="playground-model-text">
+          <strong>{shortModelName(model.name)}</strong>
+          <span className="playground-subtle">{modelFactsText(model, f, t)}</span>
+        </span>
+        <ModelPicker
+          models={models}
+          value={setup.model}
+          service={startLabel(options, setup, t)}
+          triggerLabel={t('playground.swapModel')}
+          onChange={(model) => onChange({ ...setup, model })}
+        />
+      </div>
       {rule ? (
         <Alert data-color={rule.color} data-size="sm">
           <Heading level={3} data-size="2xs">
@@ -110,6 +131,56 @@ export const SetupModel = ({
   );
 };
 
+export const datasetChoices = (options: PlaygroundOptions, setup: PlaygroundSetup) => [
+  ...options.datasets,
+  ...setup.datasets
+    .filter((d) => !options.datasets.some((o) => o.id === d))
+    .map((d) => ({ id: d, name: d })),
+];
+
+export const InstructionsField = ({
+  setup,
+  base,
+  strategy,
+  editable,
+  label,
+  rows,
+  onChange,
+}: {
+  setup: PlaygroundSetup;
+  base: string | undefined;
+  strategy: PlaygroundStrategy | undefined;
+  editable: boolean;
+  label: string;
+  rows: number;
+  onChange: (next: PlaygroundSetup) => void;
+}) => {
+  const t = useT();
+  const id = useId();
+  const language = useWorkLanguage();
+  const value = setup.instructions ?? base ?? '';
+  return (
+    <Field>
+      <Label htmlFor={id}>{label}</Label>
+      {editable ? null : (
+        <Paragraph data-size="sm" id={`${id}-why`} className="playground-subtle">
+          {t('playground.instructionsLocked', {
+            work: strategy ? workText(strategy, language, t) : '',
+          })}
+        </Paragraph>
+      )}
+      <Textarea
+        id={id}
+        rows={rows}
+        value={value}
+        readOnly={!editable}
+        {...(editable ? {} : { 'aria-describedby': `${id}-why` })}
+        onChange={(e) => onChange(withInstructions(setup, e.target.value))}
+      />
+    </Field>
+  );
+};
+
 export const PageSetup = ({
   options,
   setup,
@@ -120,7 +191,13 @@ export const PageSetup = ({
   onChange,
   onAnswerLanguage,
   onShowCall,
+  api,
+  tenant,
+  base,
 }: {
+  api?: ApiClient | undefined;
+  tenant?: string | undefined;
+  base?: string | undefined;
   options: PlaygroundOptions;
   setup: PlaygroundSetup;
   models: AsyncState<CatalogModel[]>;
@@ -133,11 +210,13 @@ export const PageSetup = ({
 }) => {
   const t = useT();
   const id = useId();
+  const language = useWorkLanguage();
   const found = versionOf(options, setup);
   const variant = variantOf(options, setup);
   const variants = found?.version.variants ?? [];
   const own = !setup.service;
-  const changes = changedFromStart(options, setup);
+  const changes = changesLine(options, setup, base, t);
+  const strategy = strategyOf(options, setup);
   const toggle = (key: ListKey, value: string) =>
     onChange({
       ...setup,
@@ -166,9 +245,6 @@ export const PageSetup = ({
         onChange={() => toggle(key, item.id)}
       />
     ));
-  const datasetNames = setup.datasets.map(
-    (d) => options.datasets.find((x) => x.id === d)?.name ?? d,
-  );
   return (
     <aside aria-labelledby={`${id}-title`} className="playground-setup">
       <div className="playground-setup-title">
@@ -206,27 +282,29 @@ export const PageSetup = ({
           onChange={onChange}
         />
       </div>
-      {own ? (
-        <Field>
-          <Label htmlFor={`${id}-instructions`}>{t('playground.instructions')}</Label>
-          <Textarea
-            id={`${id}-instructions`}
-            rows={5}
-            value={setup.instructions ?? ''}
-            onChange={(e) => onChange(withInstructions(setup, e.target.value))}
-          />
-        </Field>
-      ) : null}
+      <InstructionsField
+        setup={setup}
+        base={base}
+        strategy={strategy}
+        editable={own || takesInstructions(options, setup)}
+        label={t('playground.instructions')}
+        rows={5}
+        onChange={onChange}
+      />
       <Fieldset data-size="sm">
         <Fieldset.Legend>{t('playground.knowledge')}</Fieldset.Legend>
-        {own ? (
-          checkboxes('datasets', options.datasets)
+        {datasetChoices(options, setup).length ? (
+          checkboxes('datasets', datasetChoices(options, setup))
         ) : (
-          <span>
-            {datasetNames.length ? datasetNames.join(', ') : t('playground.knowledgeNone')}
-          </span>
+          <span>{t('playground.knowledgeNone')}</span>
         )}
       </Fieldset>
+      {strategy ? (
+        <Fieldset data-size="sm">
+          <Fieldset.Legend>{t('playground.work')}</Fieldset.Legend>
+          <span>{workText(strategy, language, t)}</span>
+        </Fieldset>
+      ) : null}
       {own ? (
         <Details data-size="sm">
           <Details.Summary>{t('playground.moreChoices')}</Details.Summary>
@@ -259,14 +337,16 @@ export const PageSetup = ({
       ) : null}
       <AnswerLanguagePicker value={answerLanguage} onChange={onAnswerLanguage} />
       <div className="playground-setup-summary">
-        {changes.length ? (
-          <span>
-            {t('playground.changesFromStart', {
-              count: changes.length,
-              start: startLabel(options, setup, t).toLowerCase(),
-              list: changes.map(() => t('playground.changeModel')).join(', '),
-            })}
-          </span>
+        {changes ? <span>{changes}</span> : null}
+        {found ? (
+          <SaveToDraft
+            api={api}
+            tenant={tenant}
+            options={options}
+            setup={setup}
+            base={base}
+            label={t('playground.saveToDraft', { name: found.service.name })}
+          />
         ) : null}
         <span>{sessionText}</span>
         <Button variant="tertiary" data-size="sm" onClick={onShowCall}>

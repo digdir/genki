@@ -84,7 +84,9 @@ export const ModelPicker = ({
   operation = 'chat',
   readOnly = false,
   onRetry,
+  triggerLabel,
 }: {
+  triggerLabel?: string;
   models: AsyncState<CatalogModel[]>;
   value: string;
   onChange: (id: string) => void;
@@ -204,8 +206,14 @@ export const ModelPicker = ({
         text={text}
         action={
           readOnly ? null : (
-            <Button ref={trigger} variant="secondary" aria-haspopup="dialog" onClick={openPanel}>
-              {t('modelPicker.change')}
+            <Button
+              ref={trigger}
+              variant="secondary"
+              aria-haspopup="dialog"
+              {...(triggerLabel ? { 'aria-label': t('modelPicker.change') } : {})}
+              onClick={openPanel}
+            >
+              {triggerLabel ?? t('modelPicker.change')}
             </Button>
           )
         }

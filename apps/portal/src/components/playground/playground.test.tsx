@@ -89,7 +89,7 @@ describe('Prøveområde', () => {
     expect(runs).toHaveLength(0);
 
     fireEvent.keyDown(input, { key: 'Enter' });
-    await screen.findByRole('link', { name: 'Se kjøringen' });
+    await screen.findByRole('link', { name: 'Åpne i Logg' });
     expect(runs).toHaveLength(1);
     expect(runs[0]?.input).toEqual({ text: 'Hva sier evalueringene om digital veiledning?' });
     expect(runs[0]?.setup.service).toEqual({ id: 'rapportassistenten', version: 'draft' });
@@ -110,7 +110,7 @@ describe('Prøveområde', () => {
     const sideA = screen.getByRole('region', { name: /^Oppsett A:\s*Rapportassistenten/ });
     const sideB = screen.getByRole('region', { name: /^Oppsett B:\s*Rapportassistenten/ });
     expect(within(sideA).queryByText('Ulikt')).not.toBeNull();
-    expect(within(sideB).getByText('Qwen3.8-27B')).toBeTruthy();
+    expect(within(sideB).getAllByText('Qwen3.8-27B').length).toBeGreaterThan(0);
 
     const question = screen.getByRole('textbox', { name: 'Spørsmål til begge' });
     fireEvent.change(question, {
@@ -126,8 +126,9 @@ describe('Prøveområde', () => {
     expect(runs[0]?.history).toBeUndefined();
     for (const side of [sideA, sideB]) {
       const answer = within(side).getByRole('article');
-      expect(within(answer).getByText('Tid')).toBeTruthy();
-      expect(within(answer).getByText('Kostnad').nextElementSibling?.textContent).toMatch(/kr/);
+      expect(within(answer).getByText(/^\d+(,\d+)? s$/)).toBeTruthy();
+      expect(within(answer).getByText(/tokens inn, .* ut$/)).toBeTruthy();
+      expect(within(answer).getByText(/^\d+,\d{2} kr$/)).toBeTruthy();
       expect(within(side).getByRole('img', { name: /^Tidslinje [AB]: / })).toBeTruthy();
     }
     expect((question as HTMLTextAreaElement).value).toBe(
@@ -137,7 +138,7 @@ describe('Prøveområde', () => {
     expectAccessible();
 
     fireEvent.click(screen.getByRole('button', { name: 'Avslutt sammenligning' }));
-    expect(screen.getByRole('heading', { level: 1, name: 'Prøveområde' })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 1, name: 'Prøveområdet' })).toBeTruthy();
     expect(screen.queryByRole('region', { name: /^Oppsett B/ })).toBeNull();
   });
 
@@ -275,7 +276,7 @@ describe('Prøveområde', () => {
     expect(screen.getByText(/Borealis-27B svarte ikke\./)).toBeTruthy();
     expect(screen.getByText(/Kjøringer teller med i kvoten/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Prøv igjen' }));
-    expect(await screen.findByRole('link', { name: 'Se kjøringen' })).toBeTruthy();
+    expect(await screen.findByRole('link', { name: 'Åpne i Logg' })).toBeTruthy();
     expect(runs).toHaveLength(2);
   });
 
@@ -401,7 +402,7 @@ describe('Prøveområde', () => {
     expect(
       (within(setupPanel()).getByRole('combobox', { name: 'Start fra' }) as HTMLSelectElement)
         .selectedOptions[0]?.textContent,
-    ).toBe('Svar, versjon 2 (i bruk)');
+    ).toBe('Svar, versjon 2');
     expect(within(setupPanel()).getByText('Kudos-rapporter')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Sammenlign med et annet oppsett' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'Spørsmål til begge' }), {
@@ -423,13 +424,12 @@ describe('Prøveområde', () => {
       input: { text: 'Hva sier evalueringene om digital veiledning?' },
     });
     const [first] = screen.getAllByRole('article');
-    const sources = within(first as HTMLElement).getByRole('list', { name: 'Kilder' });
-    const sourceItem = within(sources)
-      .getByText('Evaluering av digital veiledning i Testetaten (2023)')
-      .closest('li');
-    expect(sourceItem?.textContent).toBe('Evaluering av digital veiledning i Testetaten (2023)');
-    expect(sourceItem?.value).toBe(1);
-    expect(within(first as HTMLElement).getByText('Norge')).toBeTruthy();
+    expect(
+      within(first as HTMLElement).getByText(
+        /^Kilder?: Evaluering av digital veiledning i Testetaten \(2023\)/,
+      ),
+    ).toBeTruthy();
+    expect(within(first as HTMLElement).getByText('Data i Norge')).toBeTruthy();
 
     const [saveA] = screen.getAllByRole('button', { name: 'Lagre som testtilfelle' });
     if (saveA) fireEvent.click(saveA);
@@ -636,7 +636,7 @@ describe('Prøveområde', () => {
     expect(runs).toHaveLength(0);
 
     fireEvent.click(screen.getByRole('button', { name: 'Kjør' }));
-    await screen.findByRole('link', { name: 'Se kjøringen' });
+    await screen.findByRole('link', { name: 'Åpne i Logg' });
     expect(runs).toHaveLength(1);
     expect(runs[0]?.input).toEqual({ text: 'Hva sier evalueringene om digital veiledning?' });
   });
