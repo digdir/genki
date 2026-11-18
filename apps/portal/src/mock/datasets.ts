@@ -285,7 +285,10 @@ export const datasetsMock = (options: DatasetsMockOptions = {}): MockHandler => 
     const list = /^\/tenants\/([^/]+)\/datasets$/.exec(path);
     if (list && method === 'GET')
       return json({
-        data: visible(decodeURIComponent(list[1] ?? '')).map(({ skipped: _, ...d }) => d),
+        data: visible(decodeURIComponent(list[1] ?? '')).map(({ skipped: _, usedBy, ...d }) => ({
+          ...d,
+          usedByCount: usedBy?.length ?? 0,
+        })),
       });
 
     const one =

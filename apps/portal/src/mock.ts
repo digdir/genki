@@ -18,6 +18,7 @@ import { qualityMock } from './mock/quality';
 import { batchRunsMock } from './mock/batch-runs';
 import { searchEnginesMock } from './mock/search-engines';
 import { skillsMock } from './mock/skills';
+import { platformStatusMock } from './mock/platform-status';
 import { exampleSecretNames } from './data/building-blocks';
 import { inputFieldsOf } from './data/playground';
 import { parseYaml } from './yaml';
@@ -487,6 +488,7 @@ const featureMocks = {
   triggers: triggersMock,
   environments: environmentsMock,
   preferences: preferencesMock,
+  platformStatus: platformStatusMock,
 };
 
 export type FeatureMockOptions = {
@@ -750,6 +752,24 @@ const strategyNeeds: Record<string, string[]> = {
   'rag-single-shot@1': ['json-schema'],
 };
 
+const withMockQuota = (report: UsageReport): UsageReport => {
+  const month = report.to.slice(0, 7);
+  const usedTokens = report.daily
+    .filter((d) => d.date.startsWith(month))
+    .reduce((n, d) => n + d.usage.inputTokens + d.usage.outputTokens, 0);
+  const usedPercent = (usedTokens / quotaTokensPerMonth) * 100;
+  return {
+    ...report,
+    quota: {
+      usedTokens: Math.round(usedTokens),
+      monthlyTokens: quotaTokensPerMonth,
+      usedPercent,
+      alertPercent: 80,
+      alert: usedPercent >= 80,
+    },
+  };
+};
+
 export const mockFetch = (
   services = exampleServices,
   timelines: TaskTimeline[] = logTimelines,
@@ -769,7 +789,7 @@ export const mockFetch = (
     string,
     { state: string; reason?: string; by?: string; at?: string }
   >();
-  const usageReport = extras.usage ?? exampleUsage;
+  const usageReport = extras.usage ?? withMockQuota(exampleUsage);
   const shared = extras.shared ?? exampleShared;
   let access = structuredClone(extras.access ?? exampleAccess);
   const clientRoutes = clientMock();
@@ -787,6 +807,7 @@ export const mockFetch = (
     featureMocks.hooks(extras.features?.hooks),
     featureMocks.triggers(extras.features?.triggers),
     featureMocks.preferences(extras.features?.preferences),
+    featureMocks.platformStatus(extras.features?.platformStatus),
     batchRuns,
     featureMocks.environments({
       latest: (service) =>
@@ -838,7 +859,8 @@ export const mockFetch = (
       if (unknown) return json({ error: `dataset digdir/kudos cannot filter on ${unknown}` }, 400);
       return json({ fields: fields.map((field) => ({ field, options: exampleFacets[field] })) });
     }
-    if (path === '/health') return json({ status: 'ok', version: 'mock' });
+    if (path === '/health')
+      return json({ status: 'ok', version: 'mock', builtAt: '2026-10-06T08:00:00Z' });
     if (path === '/settings') return json({ data: exampleSettingsCatalog });
     if (/^\/tenants\/[^/]+\/settings\/effective$/.test(path)) return json(exampleEffective);
     if (/^\/tenants\/[^/]+\/settings\/[^/]+$/.test(path) && init?.method === 'DELETE')

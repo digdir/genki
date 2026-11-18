@@ -458,6 +458,8 @@ export interface UsageReport {
     usage: UsageTotals;
     byService?: Record<string, UsageTotals>;
     byModel?: Record<string, UsageTotals>;
+    testing?: UsageTotals;
+    ingestion?: UsageTotals;
   }[];
   byService: { service: string; title?: string; usage: UsageTotals }[];
   byModel: { model: string; source?: UsageSourceId; usage: UsageTotals }[];
@@ -472,6 +474,22 @@ export interface UsageReport {
   project?: string;
   byEnvironment?: { environment: string; usage: UsageTotals }[];
   environment?: string;
+  quota?: UsageQuota;
+  ingestion?: { usage: UsageTotals };
+}
+
+export interface UsageQuota {
+  usedTokens: number;
+  monthlyTokens: number;
+  usedPercent: number;
+  alertPercent: number;
+  alert: boolean;
+}
+
+export interface ToolConnectionView {
+  id: string;
+  name: string;
+  lastSync?: { at: string; ok: boolean; code?: string; message?: string };
 }
 
 export interface ConnectionView {

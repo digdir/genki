@@ -67,12 +67,9 @@ export const app = {
   statusIntro: 'This page asks the platform API whether it answers.',
   statusChecking: 'Checking the API',
   statusApi: 'API',
-  statusUp: 'Answering',
   statusDown: 'The API does not answer right now. Try again in a little while.',
   statusVersion: 'Version',
   statusCheckAgain: 'Check again',
-  statusScope:
-    'This page only shows whether the API answers. You see the status of each service under <services>Services</services>, and failed runs in the <log>Log</log>.',
   contactOwner:
     'The platform is owned and developed by the Norwegian Digitalisation Agency (Digdir). The source code is in the genki repository.',
   contactText:

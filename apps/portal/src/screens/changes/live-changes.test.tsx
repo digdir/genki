@@ -50,7 +50,8 @@ const audit: AuditRow[] = [
 
 const platform: typeof fetch = async (input, init) => {
   const url = String(input);
-  if (/\/tenants\/[^/]+\/audit$/.test(url)) return Response.json({ data: audit });
+  if (/\/tenants\/[^/]+\/audit(\?|$)/.test(url))
+    return Response.json({ data: audit, total: audit.length });
   if (/\/tenants\/[^/]+\/services$/.test(url))
     return Response.json({ data: [{ id: 'smoke-throwaway', name: 'Røyktest' }] });
   if (/\/tenants\/[^/]+\/access$/.test(url))

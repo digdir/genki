@@ -165,7 +165,7 @@ describe('Oversikt', () => {
     expect(screen.queryByRole('progressbar', { name: 'Brukt av månedens kvote' })).toBeNull();
   });
 
-  it('lists a quota of 80 percent or more as needing you, without a request button it cannot send', async () => {
+  it('lists a quota of 80 percent or more as needing you, with a button to ask for more', async () => {
     await renderAt(
       '#/overview',
       replacing(
@@ -177,7 +177,7 @@ describe('Oversikt', () => {
 
     expect(await screen.findByText('Kvote 90 %')).toBeTruthy();
     expect(screen.getByText(/9 av 10 mill. tokens er brukt i/)).toBeTruthy();
-    expect(screen.queryByRole('button', { name: /kvote/i })).toBeNull();
+    expect(await screen.findByRole('button', { name: 'Be om mer kvote' })).toBeTruthy();
   });
 
   it('says the quota is used up when usage is past it, never that it is nearly used', async () => {

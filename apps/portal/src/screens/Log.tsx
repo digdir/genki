@@ -69,7 +69,7 @@ export const Log = ({ api, tenant, route, live }: ScreenProps) => {
         </Tabs.Panel>
         <Tabs.Panel value="changes">
           {tab === 'changes' && live ? (
-            <LiveChanges api={api} tenant={tenant} limit={200} filters />
+            <LiveChanges api={api} tenant={tenant} filters paged />
           ) : tab === 'changes' ? (
             <ChangesTab changes={changes} />
           ) : null}

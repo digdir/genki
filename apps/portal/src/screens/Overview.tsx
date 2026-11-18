@@ -33,12 +33,15 @@ import { allDone, doneCount, ownDataset, startProgress, StartSteps } from './sta
 import {
   costOf,
   money,
+  monthStatus,
   monthUsage,
   quotaOf,
   tokensOf,
   withPricing,
   withTrialRows,
 } from './usage/model';
+import { quotaFacts } from './quota/model';
+import { QuotaRequestAction } from './quota/QuotaRequest';
 import './overview.css';
 
 const pollMs = 5000;
@@ -190,8 +193,9 @@ const UsageFigures = ({ report, quota }: { report: UsageReport; quota: number | 
   const parts = [
     { key: 'services', label: t('overview.partServices'), tokens: tokensOf(usage.services) },
     { key: 'trial', label: t('overview.partTrial'), tokens: tokensOf(usage.trial) },
+    { key: 'ingestion', label: t('usageParts.ingestion'), tokens: tokensOf(usage.ingestion) },
     { key: 'outside', label: t('overview.partOutside'), tokens: tokensOf(usage.gateway) },
-  ].filter((p) => p.key !== 'outside' || p.tokens > 0);
+  ].filter((p) => (p.key !== 'outside' && p.key !== 'ingestion') || p.tokens > 0);
   return (
     <>
       <p className="usage-figure">
@@ -618,23 +622,37 @@ export const Overview = ({
         </Button>
       ),
     });
-  if (report && quota !== null) {
-    const used = tokensOf(monthUsage(report).total);
-    const pct = Math.round((used / quota) * 100);
+  const facts = report ? quotaFacts(report, quota, tokensOf(monthUsage(report).total)) : undefined;
+  if (report && facts?.alert) {
+    const { pct } = facts;
     const next = f.month(new Date(now.getFullYear(), now.getMonth() + 1, 1));
-    if (pct >= 80)
-      items.push({
-        key: 'quota',
-        badge: t('overview.badgeQuota', { pct }),
-        color: pct >= 100 ? 'danger' : 'warning',
-        text: t(pct >= 100 ? 'overview.quotaUsedUp' : 'overview.quotaText', {
-          used: millions(f, used),
-          quota: millions(f, quota),
-          month: f.month(now),
-          next,
-        }),
-        action: <a href="#/statistics">{t('overview.seeUsagePerService')}</a>,
-      });
+    const forecast = monthStatus(report, facts.quota, null, f, t).forecast;
+    const values = {
+      used: millions(f, facts.used),
+      quota: millions(f, facts.quota),
+      month: f.month(now),
+      next,
+    };
+    items.push({
+      key: 'quota',
+      badge: t('overview.badgeQuota', { pct }),
+      color: pct >= 100 ? 'danger' : 'warning',
+      text:
+        pct >= 100
+          ? t('overview.quotaUsedUp', values)
+          : t('quotaRequest.overviewText', { ...values, forecast: millions(f, forecast) }),
+      action: (
+        <QuotaRequestAction
+          api={api}
+          tenant={tenant}
+          facts={facts}
+          forecast={forecast}
+          month={f.month(now)}
+          canRequest={rights.has('manage-services')}
+          fallback={<a href="#/statistics">{t('overview.seeUsagePerService')}</a>}
+        />
+      ),
+    });
   }
   for (const w of overview.data.qualityWarnings)
     items.push({
