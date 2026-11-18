@@ -1,6 +1,6 @@
 # 0055 Conversion parts
 
-Status: proposed, 2026-11-13 (units and places for every format, 2026-11-13; documents with more than one file, 2026-11-13; citation links to the source's own copy of a file, 2026-11-13; a row's last unit, Docling's labels and the fetched URL as the link, after a check against the export and the code, 2026-11-16)
+Status: proposed, 2026-11-13 (units and places for every format, 2026-11-13; documents with more than one file, 2026-11-13; citation links to the source's own copy of a file, 2026-11-13; a row's last unit, Docling's labels and the fetched URL as the link, after a check against the export and the code, 2026-11-16; charspans for a region's span and lone page numbers as furniture, 2026-11-18)
 
 Left: drawing a cited box on the page image, printed page labels in roman numerals, heading levels from a PDF's outline, joining a table that continues on the next page, and a check of reading order. Parts for formats other than PDF are built later, each in an issue of its own; this record says what they become (Formats, below). How an answer quotes the words it rests on is recorded in ADR 0052 when it is built (Citations, below).
 
@@ -32,7 +32,7 @@ PDFs are not the only input. The platform reads Word files, web pages, Markdown 
 - **The conversion's text is the `text` of its body parts in `seq` order, joined by a blank line.** It is not stored: it is rebuilt from the parts.
 - **Offsets count Unicode code points over NFC-normalised text,** from 0, end exclusive, as the W3C Web Annotation `TextPositionSelector` does. That selector asks for normalised text and names no form; NFC is genki's choice. TypeScript reads them through one helper, never with `String.prototype.slice`, which counts UTF-16 units.
 - **A part that crosses a unit is one part, with a region in each unit.** For PDFs these are paragraphs. Docling gives a table one item per page, so a table that continues on the next page is two parts until a derivation joins them (Open).
-- **Only body parts are chunked or cited.** Furniture (page headers and footers, page numbers, a site's menu) is kept so that it can be drawn. Its layer comes from the converter: Docling's `content_layer` for PDFs. Text inside a picture follows `docling-pages` (ADR 0042): it counts only on a page with under 20 characters of other text, captions not counted. Speaker notes and other text a reader does not see on the page are in the `notes` layer.
+- **Only body parts are chunked or cited.** Furniture (page headers and footers, page numbers, a site's menu) is kept so that it can be drawn. Its layer comes from the converter: Docling's `content_layer` for PDFs, except that a lone number at a page's top or bottom edge, which `docling-pages` leaves out as a page number, is furniture even where Docling leaves it in the body. Text inside a picture is part of the picture's part, not a part of its own. Text inside a picture follows `docling-pages` (ADR 0042): it counts only on a page with under 20 characters of other text, captions not counted. Speaker notes and other text a reader does not see on the page are in the `notes` layer.
 - **A table's `html` is built by the derivation** from the cells it parsed, with their text escaped. It is never copied from the source, and a frontend renders it as data.
 
 ### Units and places
@@ -46,7 +46,7 @@ PDFs are not the only input. The platform reads Word files, web pages, Markdown 
 
 ### Derivations
 
-- **`docling-parts` 1** is made from a `DoclingDocument` in Blob storage, with no download and no converter call. It computes the offsets itself while it joins the text, and does not use Docling's per-item `charspan`.
+- **`docling-parts` 1** is made from a `DoclingDocument` in Blob storage, with no download and no converter call. It computes the offsets itself while it joins the text. Docling's per-item `charspan` has one use: a region's span, which splits a part that crosses a page at the page break. When the charspans do not cover the item's text in order, every region gets the part's whole span; in 200 files of the export that is 248 of the 1,990 parts on more than one page, most of them with charspans that end 2 characters past the text.
 - **`text-layer-parts` 1** is made from a PDF's stored `text-layer` 1 conversion: one `text` part per page, its region the whole page. A file gets real parts once Docling replaces its text layer. Word files are stored as `text-layer` 1 too, as one page of text, and web pages and Markdown are read by the index job and not stored; none of them gets parts from this derivation, and each waits for its own (Formats, below).
 - Both are derivations as ADR 0042 defines them: stored beside `docling-pages` 1 and `text-layer` 1, chosen by the generation's recipe, and removed by `knowledge.cleanup` once no record or kept generation uses them. Two things change in the code for that: today the converter fixes the derivation (`derivationOf` in `apps/worker/src/knowledge-handlers.ts`), and the cleanup job is not built (issue 141). Other formats get derivations of their own (Formats, below).
 

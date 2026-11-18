@@ -32,6 +32,7 @@ export interface AcceptedConverter {
 
 export const textLayerDerivation: Derivation = { name: 'text-layer', version: 1 };
 export const doclingPagesDerivation: Derivation = { name: 'docling-pages', version: 1 };
+export const doclingPartsDerivation: Derivation = { name: 'docling-parts', version: 1 };
 
 /**
  * The converters every pipeline accepts, in order: Docling, any version and settings, kept (the
