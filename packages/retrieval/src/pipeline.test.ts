@@ -75,6 +75,7 @@ interface StubOptions {
   profiles?: string[];
   capabilities?: KnowledgeCapability[];
   refuse?: (request: SearchRequest) => boolean;
+  fail?: (request: SearchRequest) => string | undefined;
 }
 
 const knowledgeStub = (script: Script, options: StubOptions = {}) => {
@@ -112,13 +113,17 @@ const knowledgeStub = (script: Script, options: StubOptions = {}) => {
         batches.push(requests);
         if (requests.some((r) => options.refuse?.(r)))
           throw new KnowledgeError('unsupported', 'engine cannot run this search');
-        return requests.map((r) => ({
-          hits: script(r).map((id, i) =>
-            r.profile === 'doc-title'
-              ? { id, score: 100 - i, text: id, document: id, fields: {} }
-              : toHit(id, 1 - i * 0.1),
-          ),
-        }));
+        return requests.map((r) => {
+          const warning = options.fail?.(r);
+          if (warning !== undefined) return { hits: [], warning };
+          return {
+            hits: script(r).map((id, i) =>
+              r.profile === 'doc-title'
+                ? { id, score: 100 - i, text: id, document: id, fields: {} }
+                : toHit(id, 1 - i * 0.1),
+            ),
+          };
+        });
       },
       fetch: async (_d, ids) => {
         fetched.push(ids);
@@ -558,6 +563,34 @@ describe('retrieval pipeline', () => {
         'skipped phrase search: dataset lacks profile phrase',
         'skipped metadata search: dataset lacks profile metadata',
         'skipped verified-phrases search: dataset lacks profile verified',
+      ]);
+      expect(result.chunks.map((c) => c.id)).toEqual(['c4']);
+    });
+
+    it('names the strategy whose search failed in its warning', async () => {
+      const k = knowledgeStub((r) => (r.profile === 'metadata' ? ['c4'] : []), {
+        fail: (r) =>
+          r.profile === 'content'
+            ? 'canceling statement due to statement timeout'
+            : r.profile === 'doc-title'
+              ? 'the query is too long'
+              : undefined,
+      });
+
+      const result = await retrieve({
+        knowledge: k.port,
+        queries: ['x', 'y'],
+        config: {
+          autoFilter: { enabled: false },
+          docTitle: { profiles: ['doc-title'], fanout: 2 },
+        },
+      });
+
+      expect(result.trace.expansion.warnings).toEqual([
+        'content search: canceling statement due to statement timeout',
+        'content search: canceling statement due to statement timeout',
+        'doc-title search: the query is too long',
+        'doc-title search: the query is too long',
       ]);
       expect(result.chunks.map((c) => c.id)).toEqual(['c4']);
     });

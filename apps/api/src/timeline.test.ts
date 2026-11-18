@@ -1,6 +1,7 @@
 import type { Event, Task } from '@genai/contracts';
+import type { Kernel } from '@genai/kernel';
 import { describe, expect, it } from 'vitest';
-import { toTimeline, warningText } from './timeline.js';
+import { kernelTaskReader, toTimeline, warningText } from './timeline.js';
 
 const task = {
   id: 'tp1',
@@ -110,6 +111,28 @@ describe('search notes in Norwegian', () => {
         blocks: [{ kind: 'quote', text: 'something new' }],
       }),
     );
+  });
+});
+
+describe('audit events the timeline reads', () => {
+  it("keeps a search's engine message and leaves other audit events out", async () => {
+    const audit = (type: string) =>
+      ({ seq: 1, ts: '', type, data: {}, audience: 'audit' }) as unknown as Event;
+    const kernel = {
+      events: async () =>
+        (async function* () {
+          yield audit('x.search.error');
+          yield audit('x.guardrails.rule');
+        })(),
+    } as unknown as Kernel;
+
+    const events = await kernelTaskReader(kernel, {
+      kind: 'operator',
+      issuer: 'platform',
+      subject: 'task-reader',
+    }).events('t1');
+
+    expect(events.map((e) => e.type)).toEqual(['x.search.error']);
   });
 });
 

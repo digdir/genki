@@ -43,7 +43,11 @@ const dated: Record<string, Record<string, unknown>> = {
   c3: { docs: { total_chunks: 1, publish_date: 1735689600 }, document_version: 'v2' },
 };
 
-const stub = (blank: string[] = [], extraFields: Record<string, Record<string, unknown>> = {}) => {
+const stub = (
+  blank: string[] = [],
+  extraFields: Record<string, Record<string, unknown>> = {},
+  contentWarning?: string,
+) => {
   const searches: SearchRequest[] = [];
   const calls: string[] = [];
   const toHit = (id: string, score: number): Hit => {
@@ -71,9 +75,11 @@ const stub = (blank: string[] = [], extraFields: Record<string, Record<string, u
       profiles: () => ['phrase', 'metadata', 'content'],
       search: async (_d, requests) => {
         searches.push(...requests);
-        return requests.map((r) => ({
-          hits: r.profile === 'content' ? [toHit('c1', 2), toHit('c3', 1)] : [],
-        }));
+        return requests.map((r) =>
+          r.profile === 'content' && contentWarning
+            ? { hits: [], warning: contentWarning }
+            : { hits: r.profile === 'content' ? [toHit('c1', 2), toHit('c3', 1)] : [] },
+        );
       },
       fetch: async (_d, ids) => {
         calls.push(`fetch:${ids.join(',')}`);
@@ -181,6 +187,17 @@ describe('agent retrieval factory', () => {
     expect(outcome.chunks[0]?.score).toBeGreaterThan(0);
     expect(outcome.chunks[0]).not.toHaveProperty('content');
     expect(outcome.attribution).toEqual({ phrase: 0, metadata: 0, content: 2 });
+  });
+
+  it("tells the agent which strategy's search failed, in the attribution", async () => {
+    const s = stub([], {}, 'canceling statement due to statement timeout');
+    const agent = createAgentRetrieval({ knowledge: s.knowledge, config: metadataOnly });
+
+    const outcome = await agent.search(['årsverk'], {}, signal);
+
+    expect(outcome.attribution?.warnings).toEqual([
+      'content search: canceling statement due to statement timeout',
+    ]);
   });
 
   it('reads chunks and ranges with their content', async () => {

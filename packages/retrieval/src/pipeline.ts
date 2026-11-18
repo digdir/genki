@@ -371,7 +371,10 @@ export const retrieve = async (input: RetrieveInput): Promise<RetrievalResult> =
       config.batchSize,
       note,
     );
-    const warnings = results.flatMap((r) => (r.warning ? [r.warning] : []));
+    const strategyOf = (i: number) => plan[i]?.group ?? 'doc-title';
+    const warnings = results.flatMap((r, i) =>
+      r.warning ? [`${strategyOf(i)} search: ${r.warning}`] : [],
+    );
     const seen = new Map<string, Hit>();
     const remember = (hits: Hit[]) => {
       for (const h of hits) if (!seen.has(h.id)) seen.set(h.id, h);

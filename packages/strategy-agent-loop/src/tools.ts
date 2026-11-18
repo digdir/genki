@@ -81,12 +81,77 @@ export interface RetrievalHit {
   title?: string;
 }
 
+export type SearchFailureReason =
+  'timeout' | 'query-too-long' | 'text-unavailable' | 'vector-unavailable' | 'error';
+
+export interface SearchFailure {
+  strategy: string;
+  reason: SearchFailureReason;
+}
+
 export interface SearchMade {
   queries: string[];
   filters?: FilterField[];
   fellBack?: boolean;
   detections?: SearchDetection[];
+  failed?: SearchFailure[];
+  /** The whole search threw, so no strategy found anything. */
+  failedCompletely?: SearchFailureReason;
 }
+
+const searchSeparator = ' search: ';
+
+/** `<strategy> search: <message>`, but not the pipeline's `skipped <x> search: …` notices. */
+const failedStrategy = (warning: string) => {
+  if (warning.startsWith('skipped ')) return undefined;
+  const at = warning.indexOf(searchSeparator);
+  const message = warning.slice(at + searchSeparator.length);
+  return at > 0 && message ? { strategy: warning.slice(0, at), message } : undefined;
+};
+
+const timedOut = /statement timeout|took longer than|timed out/i;
+
+const failureReasons: [RegExp, SearchFailureReason][] = [
+  [/^text search (?:took longer|failed)/, 'text-unavailable'],
+  [/^vector search (?:is unavailable|failed)|^no query vector/, 'vector-unavailable'],
+  [timedOut, 'timeout'],
+  [/^the query is too long/, 'query-too-long'],
+];
+
+/** Failed strategies with the kind of failure only, never the engine's own message. */
+export const searchFailures = (attribution: SearchAttribution | undefined): SearchFailure[] => {
+  const seen = new Set<string>();
+  return (attribution?.warnings ?? []).flatMap((warning) => {
+    const failed = failedStrategy(warning);
+    if (!failed) return [];
+    const { strategy, message } = failed;
+    const reason = failureReasons.find(([p]) => p.test(message))?.[1] ?? 'error';
+    const key = `${strategy}:${reason}`;
+    if (seen.has(key)) return [];
+    seen.add(key);
+    return [{ strategy, reason }];
+  });
+};
+
+const failureText: Record<SearchFailureReason, string> = {
+  timeout: 'timed out',
+  'query-too-long': 'refused a query as too long',
+  'text-unavailable': 'could not search by words, only by meaning',
+  'vector-unavailable': 'could not search by meaning',
+  error: 'failed',
+};
+
+/** Why a whole search threw, as a reason: never the engine's message. */
+const thrownReason = (error: unknown): SearchFailureReason =>
+  (error as { code?: unknown } | undefined)?.code === 'timeout' ||
+  timedOut.test(error instanceof Error ? error.message : String(error))
+    ? 'timeout'
+    : 'error';
+
+const searchWarning = (failed: SearchFailure[], hits = true): string =>
+  failed.length
+    ? `\nSearch warning: ${failed.map((f) => `${f.strategy} search ${failureText[f.reason]}`).join('; ')}.${hits ? ' These hits come only from the searches that worked and may miss the answer: search with other words, or say that search is failing.' : ''}`
+    : '';
 
 export interface ToolOutcome {
   content: string;
@@ -95,6 +160,8 @@ export interface ToolOutcome {
   search?: SearchMade;
   read?: { chunks: RetrievalHit[]; auto?: boolean };
   planned?: { queries: string[]; userIntent?: string };
+  /** The engine's message when the whole search threw: for the audit log only, never the model. */
+  searchError?: string;
 }
 
 export const retrievalHits = (chunks: ChunkSummary[]): RetrievalHit[] =>
@@ -277,6 +344,7 @@ export const formatSearchMetadataResults = (
       ? ` Showing top ${shown.length} by rank; ${omitted} lower-ranked chunks omitted. Refine the query or read from the visible set.`
       : '') +
     searchHints(attribution) +
+    searchWarning(searchFailures(attribution)) +
     `\n${untrustedData('search-results', lines.join('\n'))}`
   );
 };
@@ -406,6 +474,22 @@ const autoReadTopK = async (
 /** Org-number filters that find nothing are kept, or a search returns others' documents as theirs. */
 const keptWhenEmpty = new Set(['owner_orgnr', 'recipient_orgnr']);
 
+/** A search that threw: the agent hears why, and the search step shows that every search failed. */
+const thrown = (
+  queries: string[],
+  filters: FilterField[] | undefined,
+  error: unknown,
+  lead: string,
+): ToolOutcome => {
+  const reason = thrownReason(error);
+  return {
+    content: `${lead}every search ${failureText[reason]}. Try again later, or say that search is failing.`,
+    retrieved: [],
+    search: { queries, ...(filters?.length ? { filters } : {}), failedCompletely: reason },
+    searchError: (error instanceof Error ? error.message : String(error)).slice(0, 500),
+  };
+};
+
 const search = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome> => {
   const { workspace, retrieval, signal } = env;
   const settings = env.search ?? defaultSearchSettings;
@@ -431,30 +515,36 @@ const search = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome> 
     );
   } catch (error) {
     if (signal.aborted) throw error;
-    return {
-      content: `Search backend error: ${error instanceof Error ? error.message : String(error)}`,
-    };
+    return thrown(args.data.queries, filters, error, 'Search backend error: ');
   }
+  const noted = [...(outcome.attribution?.warnings ?? [])];
   const kept = (filters ?? []).filter((f) => keptWhenEmpty.has(f.field));
   let narrowed = false;
   if (kept.length > 0 && kept.length < (filters?.length ?? 0) && outcome.chunks.length === 0) {
     try {
       outcome = await retrieval.search(args.data.queries, { ...options, filters: kept }, signal);
+      noted.push(...(outcome.attribution?.warnings ?? []));
       narrowed = true;
     } catch (error) {
       if (signal.aborted) throw error;
-      return {
-        content: `Filtered retrieval returned 0 chunks; retry with only the org-number filter failed: ${error instanceof Error ? error.message : String(error)}`,
-      };
+      return thrown(
+        args.data.queries,
+        kept,
+        error,
+        'Filtered retrieval returned 0 chunks; retry with only the org-number filter failed: ',
+      );
     }
   }
   if (kept.length > 0 && outcome.chunks.length === 0) {
+    const failed = searchFailures({ warnings: noted });
     workspace.recordSearch(args.data.queries, [], false, { filters: kept });
     const named = kept.map((f) => `${f.field} ${f.selectedOptions.join(', ')}`).join(' and ');
     return {
-      content: `Search found 0 chunks with ${named}${narrowed ? ', even without the other filters' : ''}. The filter was kept: these organisations have no documents that match. Search again with other words, or say that their documents do not cover this.`,
+      content: failed.length
+        ? `Search found 0 chunks with ${named}, but part of the search failed, so this does not show that these organisations have no such documents.${searchWarning(failed, false)}`
+        : `Search found 0 chunks with ${named}${narrowed ? ', even without the other filters' : ''}. The filter was kept: these organisations have no documents that match. Search again with other words, or say that their documents do not cover this.`,
       retrieved: [],
-      search: { queries: args.data.queries, filters: kept },
+      search: { queries: args.data.queries, filters: kept, ...(failed.length ? { failed } : {}) },
     };
   }
   const searched = narrowed ? kept : filters;
@@ -462,14 +552,21 @@ const search = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome> 
   if (filters?.length && outcome.chunks.length === 0) {
     try {
       outcome = await retrieval.search(args.data.queries, options, signal);
+      noted.push(...(outcome.attribution?.warnings ?? []));
       fellBack = true;
     } catch (error) {
       if (signal.aborted) throw error;
-      return {
-        content: `Filtered retrieval returned 0 chunks; retry without filters failed: ${error instanceof Error ? error.message : String(error)}`,
-      };
+      return thrown(
+        args.data.queries,
+        searched,
+        error,
+        'Filtered retrieval returned 0 chunks; retry without filters failed: ',
+      );
     }
   }
+  const attribution = noted.length
+    ? { ...outcome.attribution, warnings: noted }
+    : outcome.attribution;
   const rescored = rescoreWithTitleBonus(
     outcome.chunks,
     args.data.queries[0] ?? '',
@@ -478,15 +575,16 @@ const search = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome> 
   const effective = enforceStrategyQuota(rescored, settings.strategyQuota);
   const fresh = workspace.recordSearch(args.data.queries, effective, fellBack, {
     ...(!fellBack && searched?.length ? { filters: searched } : {}),
-    ...(outcome.attribution ? { attribution: outcome.attribution } : {}),
+    ...(attribution ? { attribution } : {}),
   });
   const autoRead = await autoReadTopK(env, effective, settings.autoReadTopK);
+  const failed = searchFailures(attribution);
   const summary = formatSearchMetadataResults(
     effective,
     fresh,
     workspace.seen.size,
     workspace.searches.length,
-    outcome.attribution,
+    attribution,
     settings.displayLimit,
     settings.showSnippets,
   );
@@ -508,6 +606,7 @@ const search = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome> 
       ...(outcome.attribution?.detections?.length
         ? { detections: outcome.attribution.detections }
         : {}),
+      ...(failed.length ? { failed } : {}),
     },
     ...(autoRead.length ? { read: { chunks: retrievalHits(autoRead), auto: true } } : {}),
   };
