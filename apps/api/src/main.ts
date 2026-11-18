@@ -633,7 +633,11 @@ const admin = createAdmin({
   lifecycle: platform.lifecycle,
   plugins: platform.plugins,
   settings,
-  models: platform.models,
+  models: {
+    describe: () => platform.models.describe(),
+    refresh: () => platform.modelDiscovery.refresh(),
+    classify: platform.models.classify.bind(platform.models),
+  },
   extensions: platform.extensions,
   tenants: () => platform.directory.list(),
   names: actorNames(configEntries),

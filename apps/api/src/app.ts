@@ -38,7 +38,7 @@ import {
 const Health = z
   .object({
     status: z.enum(['ok', 'degraded']).openapi({
-      description: 'Degraded while model discovery has not yet succeeded; the API still answers',
+      description: 'Degraded while model discovery has not succeeded; the API still answers',
     }),
     version: z.string(),
     environment: z.string().optional().openapi({
@@ -51,7 +51,9 @@ const Health = z
     }),
     modelDiscovery: z
       .object({
-        state: z.enum(['ok', 'retrying']),
+        state: z.enum(['ok', 'retrying', 'failed']).openapi({
+          description: 'failed once the background retries have run out',
+        }),
         attempts: z.number().int(),
         lastError: z.string().optional(),
         since: z.string().optional().openapi({ description: 'When discovery first failed' }),
@@ -141,7 +143,7 @@ export const createApp = (version: string, options: AppOptions = {}) => {
   const builtAt = options.builtAt ? { builtAt: options.builtAt } : {};
   app.openapi(healthRoute, (c) => {
     const discovery = options.modelDiscovery?.();
-    const status = discovery?.state === 'retrying' ? ('degraded' as const) : ('ok' as const);
+    const status = discovery && discovery.state !== 'ok' ? ('degraded' as const) : ('ok' as const);
     return c.json(
       {
         status,
