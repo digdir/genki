@@ -1,4 +1,3 @@
-import type { SettingOverride } from '../api/settings';
 import type { MockHandler } from '../mock';
 import type { SettingInfo } from '../types';
 
@@ -26,30 +25,16 @@ export const exampleSettingExtras: SettingInfo[] = [
   },
 ];
 
-export const exampleSettingOverrides: Record<string, SettingOverride[]> = {
-  'retention.class': [
-    { service: 'klarsprak', name: 'Klarspråk', value: 'transient' },
-    { service: 'rapportassistenten', name: 'Rapportassistenten', value: 'case' },
-  ],
-};
-
 export const settingsMock = ({
   catalog = [],
   extras = exampleSettingExtras,
-  overrides = exampleSettingOverrides,
 }: {
   catalog?: SettingInfo[];
   extras?: SettingInfo[];
-  overrides?: Record<string, SettingOverride[]>;
 } = {}): MockHandler => {
   return (req) => {
-    if (req.method !== 'GET') return undefined;
-    if (req.path === '/settings') {
-      const known = new Set(catalog.map((s) => s.key));
-      return req.json({ data: [...catalog, ...extras.filter((s) => !known.has(s.key))] });
-    }
-    const m = /^\/tenants\/[^/]+\/settings\/([^/]+)\/overrides$/.exec(req.path);
-    if (!m) return undefined;
-    return req.json({ data: overrides[decodeURIComponent(m[1] ?? '')] ?? [] });
+    if (req.method !== 'GET' || req.path !== '/settings') return undefined;
+    const known = new Set(catalog.map((s) => s.key));
+    return req.json({ data: [...catalog, ...extras.filter((s) => !known.has(s.key))] });
   };
 };

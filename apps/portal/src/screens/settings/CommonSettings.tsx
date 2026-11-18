@@ -10,7 +10,7 @@ import {
   Textfield,
 } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ApiError, type ApiClient } from '../../api';
 import { reasonProblem } from '../../components/ReasonField';
 import type { SettingRow } from '../../data/settings';
@@ -137,7 +137,6 @@ export const CommonSettings = ({
     | 'audit'
     | 'usage'
     | 'listModels'
-    | 'settings'
     | 'quotaRequests'
   >;
   tenant: string;
@@ -180,12 +179,6 @@ export const CommonSettings = ({
       return { report, models };
     },
     [api, tenant],
-  );
-  const hasRetention = present.some((c) => c.key === retentionKey);
-  const [overrides] = useAsync(
-    (signal) =>
-      hasRetention ? api.settings.overrides(tenant, retentionKey, signal) : Promise.resolve([]),
-    [api, tenant, hasRetention],
   );
 
   useEffect(() => onDirty(dirty), [dirty, onDirty]);
@@ -279,23 +272,6 @@ export const CommonSettings = ({
     setProblem(undefined);
   };
 
-  const retention = choices.find((c) => c.key === retentionKey);
-  const overrideList = overrides.status === 'ready' ? overrides.data : [];
-  const overrideNote =
-    retention && overrideList.length ? (
-      <Paragraph data-size="sm" className="meta common-overrides">
-        {t('settings.commonOverrides', { count: overrideList.length })}{' '}
-        {overrideList.map((o, i) => (
-          <Fragment key={o.service}>
-            {i === 0 ? null : i === overrideList.length - 1 ? ` ${t('settings.commonAnd')} ` : ', '}
-            <a href={`#/services/${encodeURIComponent(o.service)}`}>{o.name}</a>{' '}
-            {t('settings.commonOverrideValue', { value: optionLabel(retention, String(o.value)) })}
-          </Fragment>
-        ))}
-        .
-      </Paragraph>
-    ) : null;
-
   const field = (c: Choice) => {
     const row = rowFor(rows, c.key);
     const value = draft[c.key] ?? savedOf(c.key);
@@ -342,7 +318,6 @@ export const CommonSettings = ({
             </Select.Option>
           ))}
         </Select>
-        {c.key === retentionKey ? overrideNote : null}
       </Field>
     );
   };

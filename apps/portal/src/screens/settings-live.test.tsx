@@ -104,7 +104,6 @@ interface Options {
   tenantValues?: Record<string, unknown>;
   usage?: unknown;
   models?: unknown[];
-  overrides?: Record<string, unknown[]>;
 }
 
 const sourcesSetting = {
@@ -184,7 +183,6 @@ const platform = ({
   tenantValues = {},
   usage,
   models = [],
-  overrides = {},
 }: Options = {}) => {
   const calls: Call[] = [];
   const state: { tenant?: number | undefined; service?: number | undefined } = {};
@@ -228,8 +226,6 @@ const platform = ({
     const served = strategyRoutes(path);
     if (served) return json(served);
     if (path === '/settings') return json({ data: [...catalog, ...extraCatalog] });
-    const overridden = /\/settings\/([^/]+)\/overrides$/.exec(path);
-    if (overridden) return json({ data: overrides[overridden[1] ?? ''] ?? [] });
     if (usage && /\/usage\?/.test(path)) return json(usage);
     if (/\/settings\/effective\?service=ka$/.test(path))
       return json(effective(state.tenant, state.service));
@@ -604,25 +600,15 @@ describe('Innstillinger: Vanlige', () => {
     expect(screen.queryByRole('checkbox')).toBeNull();
   });
 
-  it('names the services that keep questions and answers for another time than the organisation', async () => {
-    const { fetch } = platform({
+  it('asks for no retention overrides, which the API cannot list yet', async () => {
+    const { calls, fetch } = platform({
       extraCatalog: [retentionSetting],
       tenantValues: { 'retention.class': 'standard' },
-      overrides: {
-        'retention.class': [
-          { service: 'postsortering', name: 'Postsortering', value: 'transient' },
-          { service: 'rapport', name: 'Rapportassistenten', value: 'case' },
-        ],
-      },
     });
     await renderLive('#/settings', fetch);
-    const note = await screen.findByText(/2 tjenester overstyrer dette:/);
-    expect(note.textContent).toBe(
-      '2 tjenester overstyrer dette: Postsortering (7 dager) og Rapportassistenten (1 år).',
-    );
-    expect(screen.getByRole('link', { name: 'Rapportassistenten' }).getAttribute('href')).toBe(
-      '#/services/rapport',
-    );
+    await screen.findByLabelText('Hvor lenge spørsmål og svar lagres');
+    expect(calls.filter((c) => c.path.includes('/overrides'))).toEqual([]);
+    expect(screen.queryByText(/overstyrer dette/)).toBeNull();
   });
 
   it('says data stays in the EU/EEA only when every model used this month does', async () => {

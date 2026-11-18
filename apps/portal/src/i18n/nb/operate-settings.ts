@@ -44,12 +44,6 @@ const settings = defineNamespace({
   commonLanguageNynorsk: 'Alltid nynorsk',
   commonSources: 'Kilder i svarene',
   commonSourcesAlways: 'Vis alltid hvilke dokumenter svaret bygger på',
-  commonOverrides: {
-    one: '{count} tjeneste overstyrer dette:',
-    other: '{count} tjenester overstyrer dette:',
-  },
-  commonOverrideValue: '({value})',
-  commonAnd: 'og',
   commonWhere: 'Hvor data behandles',
   commonWhereInside: 'I EU/EØS.',
   commonWhereOutside: 'Ikke bare i EU/EØS.',

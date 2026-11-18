@@ -21,7 +21,6 @@ import { platformStatusApi } from './api/platform-status';
 import { quotaRequestsApi } from './api/quota-requests';
 import { searchEnginesApi } from './api/search-engines';
 import { skillsApi } from './api/skills';
-import { settingsApi } from './api/settings';
 import type {
   DatasetSummary,
   EffectiveSetting,
@@ -189,7 +188,6 @@ const featureClients = (ctx: ApiContext) => ({
   recipes: recipesApi(ctx),
   platformStatus: platformStatusApi(ctx),
   quotaRequests: quotaRequestsApi(ctx),
-  settings: settingsApi(ctx),
 });
 
 const kindPaths: Record<PublishedDefinition['kind'], string> = {

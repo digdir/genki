@@ -45,12 +45,6 @@ const settings = {
   commonLanguageNynorsk: 'Always nynorsk',
   commonSources: 'Sources in answers',
   commonSourcesAlways: 'Always show which documents the answer is based on',
-  commonOverrides: {
-    one: '{count} service overrides this:',
-    other: '{count} services override this:',
-  },
-  commonOverrideValue: '({value})',
-  commonAnd: 'and',
   commonWhere: 'Where data is processed',
   commonWhereInside: 'In the EU/EEA.',
   commonWhereOutside: 'Not only in the EU/EEA.',
