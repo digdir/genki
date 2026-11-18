@@ -184,31 +184,48 @@ describe('live mode shows only platform data', () => {
     expect(screen.queryByRole('tab', { name: 'Grupper' })).toBeNull();
   });
 
-  it('Tilgang shows no person count in live mode, since Altinn owns who has the right', async () => {
+  it('Tilgang shows no person count in live mode when Altinn has not answered with people', async () => {
+    const json = (body: unknown, status = 200) =>
+      new Response(JSON.stringify(body), {
+        status,
+        headers: { 'content-type': 'application/json' },
+      });
     const withService: typeof fetch = async (input, init) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-      return url.split('?')[0]?.endsWith('/access')
-        ? new Response(
-            JSON.stringify({
-              services: [
-                {
-                  id: 'svar',
-                  name: 'Svartjenesten',
-                  publicName: 'svar',
-                  requirement: { resource: 'svar', action: 'use-services' },
-                },
-              ],
-              keys: [],
-            }),
-            { headers: { 'content-type': 'application/json' } },
-          )
-        : emptyPlatform(input, init);
+      const path = url.split('?')[0] ?? '';
+      if (path.endsWith('/access/people'))
+        return json(
+          { title: 'Altinn did not answer', status: 503, code: 'altinn_unavailable' },
+          503,
+        );
+      if (path.endsWith('/access/services')) return json({ services: [] });
+      if (/\/tenants\/[^/]+\/services$/.test(path))
+        return json({
+          data: [
+            {
+              id: 'svar',
+              name: 'Svartjenesten',
+              purpose: '',
+              outputKind: 'answer',
+              channels: [],
+              latestVersion: 1,
+              status: 'active',
+              statusReason: null,
+              lifecycle: 'active',
+              updatedAt: null,
+              updatedBy: null,
+              runsThisWeek: 0,
+            },
+          ],
+        });
+      return emptyPlatform(input, init);
     };
     await renderLive('#/access/services', withService);
 
-    expect(await screen.findByRole('link', { name: 'Svartjenesten' })).toBeTruthy();
-    expect(screen.getByText('Alle med «Bruke tjenester» kan bruke alle tjenestene.')).toBeTruthy();
-    expect(screen.queryByText(/0 personer/)).toBeNull();
+    const list = await screen.findByRole('list', { name: 'Tjenester' });
+    const row = await within(list).findByText('Svartjenesten');
+    expect(row.closest('li')?.textContent).toContain('Alle med «Bruke tjenester»');
+    expect(screen.queryByText(/\d+ personer?\b/)).toBeNull();
   });
 
   it('Tilgang lists active services first with their own names, and archived ones last and marked', async () => {
@@ -244,6 +261,7 @@ describe('live mode shows only platform data', () => {
           ],
           keys: [],
         });
+      if (path.endsWith('/access/services')) return json({ services: [] });
       if (path.endsWith('/services'))
         return json({
           data: [
@@ -257,10 +275,13 @@ describe('live mode shows only platform data', () => {
 
     const list = await screen.findByRole('list', { name: 'Tjenester' });
     await within(list).findByText('Svartjenesten');
-    const titles = within(list)
-      .getAllByRole('listitem')
-      .map((e) => e.textContent);
-    expect(titles).toEqual(['Svartjenesten', 'Gammel agentArkivert']);
+    const rows = within(list).getAllByRole('listitem');
+    expect(rows.map((row) => row.querySelector('.service-access-name')?.textContent)).toEqual([
+      'Svartjenesten',
+      'Gammel agent',
+    ]);
+    expect(within(rows[1] as HTMLElement).getByText('Arkivert')).toBeTruthy();
+    expect(within(rows[0] as HTMLElement).queryByText('Arkivert')).toBeNull();
     expect(screen.queryByText(/faithful/)).toBeNull();
   });
 

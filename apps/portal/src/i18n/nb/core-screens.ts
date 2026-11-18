@@ -254,6 +254,7 @@ export const changes = defineNamespace({
   serviceDraftRebase: 'oppdaterte utkastet til',
   serviceDraftSave: 'lagret utkastet til',
   serviceLifecycle: 'endret status for tjenesten',
+  serviceAccess: 'endret hvem som kan bruke',
   environmentAdd: 'la til et miljø for tjenesten',
   environmentRemove: 'fjernet et miljø fra tjenesten',
   environmentPromote: 'fremmet en versjon av tjenesten til et miljø',

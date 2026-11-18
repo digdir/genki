@@ -7,6 +7,7 @@ import { assistantMock } from './mock/assistant';
 import { buildingBlocksMock } from './mock/building-blocks';
 import { datasetsMock } from './mock/datasets';
 import { keyPoliciesMock } from './mock/key-policies';
+import { accessMock } from './mock/access';
 import { maskinportenMock } from './mock/maskinporten';
 import { hooksMock } from './mock/hooks';
 import { triggersMock } from './mock/triggers';
@@ -492,6 +493,7 @@ const featureMocks = {
   environments: environmentsMock,
   preferences: preferencesMock,
   platformStatus: platformStatusMock,
+  access: accessMock,
   devtools: devtoolsMock,
   settings: settingsMock,
   blocks: blocksMock,
@@ -816,6 +818,7 @@ export const mockFetch = (
     featureMocks.triggers(extras.features?.triggers),
     featureMocks.preferences(extras.features?.preferences),
     featureMocks.platformStatus(extras.features?.platformStatus),
+    featureMocks.access(extras.features?.access),
     featureMocks.devtools(extras.features?.devtools),
     featureMocks.settings({ catalog: exampleSettingsCatalog, ...extras.features?.settings }),
     batchRuns,

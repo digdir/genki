@@ -7,6 +7,7 @@ export interface MaskinportenClientOptions {
   clientId: string;
   scope: string;
   privateKey: JWK;
+  authorizationDetails?: readonly Record<string, unknown>[];
   fetch?: typeof fetch;
   now?: () => number;
 }
@@ -33,7 +34,12 @@ export const maskinportenTokens = (options: MaskinportenClientOptions) => {
   const grant = async () => {
     const key = await importJWK(options.privateKey, options.privateKey.alg ?? 'RS256');
     const issuedAt = Math.floor(Date.now() / 1000);
-    return new SignJWT({ scope: options.scope })
+    return new SignJWT({
+      scope: options.scope,
+      ...(options.authorizationDetails
+        ? { authorization_details: options.authorizationDetails }
+        : {}),
+    })
       .setProtectedHeader({
         alg: options.privateKey.alg ?? 'RS256',
         ...(options.privateKey.kid ? { kid: options.privateKey.kid } : {}),

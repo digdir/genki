@@ -13,6 +13,7 @@ import {
   InMemoryClients,
   InMemoryIdentities,
   oidcAudienceOf,
+  serviceAccessPolicy,
   type IdentityTestDataInput,
 } from '@genai/identity';
 import {
@@ -42,6 +43,8 @@ import type { PolicyDecisionPoint } from '@genai/kernel';
 import { documentConverterFrom, phraseArchiveFrom } from './document-converter.js';
 import { evalSlotLimitsFromEnv, shutdownGraceFromEnv } from './eval-slots.js';
 import { createAdmin, platformActor } from './admin.js';
+import { createAccessPeopleModule, peopleSourceFrom, selectedPeople } from './access-people.js';
+import { draftServices } from './access-draft-services.js';
 import { InMemoryTenantApiKeys, type TenantApiKeys } from './routes/portal-routes.js';
 import type { PriceSpec } from '@genai/contracts';
 import { postgresKeyPolicies, postgresTenantKeys } from './tenant-keys.js';
@@ -429,6 +432,8 @@ const phraseArchive = phraseArchiveFrom(process.env, log);
 log('document converter', { converter: process.env.DOCUMENT_CONVERTER ?? 'local' });
 
 const configEntries = db?.configEntries ?? new InMemoryConfigEntryStore();
+const accessPeople = peopleSourceFrom(process.env, testData, resource);
+log('altinn people', { kind: accessPeople.kind });
 const admitClients = admitMaskinportenClients(
   maskinportenClientRegistry(configEntries),
   trusted.filter((t) => t.kind === 'maskinporten').map((t) => t.issuer),
@@ -475,7 +480,11 @@ const platform = await createPlatform({
   ...(lockdown ? { lockdown: { configuredKeys } } : {}),
   environmentTier,
   processorRecords,
-  modules: [...platformModules, createDefinitionSourcesModule(definitionSources, platformTenant)],
+  modules: [
+    ...platformModules,
+    createDefinitionSourcesModule(definitionSources, platformTenant),
+    createAccessPeopleModule(accessPeople),
+  ],
   settings,
   verifyPluginsOnBoot: true,
   clients,
@@ -586,11 +595,19 @@ const platform = await createPlatform({
       }
     : {}),
   policy: allowWorker(
-    altinnPolicy({
-      altinn: altinnPdp.authorization,
-      identities,
-      requirementFor: () => serviceRequirement(resource),
-    }),
+    serviceAccessPolicy(
+      altinnPolicy({
+        altinn: altinnPdp.authorization,
+        identities,
+        requirementFor: () => serviceRequirement(resource),
+      }),
+      {
+        selectedFor: selectedPeople(configEntries),
+        identities,
+        key: accessPeople.key,
+        draftServiceOf: draftServices.of,
+      },
+    ),
   ),
   authenticate: platformCaller(authenticator, {
     isOperator: operators.isOperator,

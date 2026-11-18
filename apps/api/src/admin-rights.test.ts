@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { Principal } from '@genai/contracts';
 import { InMemoryDefinitionStore, SettingsRegistry } from '@genai/definitions';
-import { LEGACY_KEY_ISSUER } from '@genai/identity';
+import { LEGACY_KEY_ISSUER, personKeys } from '@genai/identity';
 import { envSecrets } from '@genai/kernel';
+import { createAccessPeopleModule } from './access-people.js';
 import { createAdmin, platformActions, type AdminHandler } from './admin.js';
 import { createPlatform, platformModules } from './composition.js';
 import { maskinportenClientsModule } from './maskinporten-clients.js';
@@ -76,6 +77,7 @@ const registeredActions = async () => {
       onboardingModule,
       maskinportenClientsModule,
       operatorModelsModule,
+      createAccessPeopleModule({ kind: 'not-configured', key: personKeys('rights-test') }),
     ],
   });
   return [...platformActions, ...Object.keys(platform.extensions)];

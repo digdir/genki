@@ -24,6 +24,7 @@ import {
 import type { UsageSummary } from '@genai/eval';
 import { assistantCapabilityPrefix } from '@genai/jobs';
 import {
+  KernelError,
   quotaExhaustedProblem,
   type Capability as KernelCapability,
   type CapabilityRegistry,
@@ -37,6 +38,7 @@ import { failureFromError } from './failures.js';
 import type { QuotaProblem } from './rate-limit.js';
 import { strategyCatalogue } from './strategy-catalogue.js';
 import { withFieldOptions, type FacetCount, type FacetSource } from './input-options.js';
+import { draftServices } from './access-draft-services.js';
 
 export interface ModelPrice {
   inputPerThousand: number;
@@ -412,6 +414,8 @@ export const createDraftRunner = (deps: DraftRunnerDeps): DraftRunner => {
       const spent = quotaExhaustedProblem(error);
       if (spent)
         return { ...failure(429, 'quota', spent.detail), code: 'quota_exhausted', quota: spent };
+      if (!task && error instanceof KernelError && error.code === 'forbidden')
+        return failure(403, 'service', error.message);
       const failed = failureFromError(error);
       return {
         ...failure(502, '', failed.message),
@@ -478,10 +482,15 @@ export const createDraftRunner = (deps: DraftRunnerDeps): DraftRunner => {
     } catch (error) {
       return failure(422, 'spec.strategy', messageOf(error));
     }
+    const service = (definition as { metadata?: { id?: unknown } }).metadata?.id;
+    if (typeof service === 'string') draftServices.remember(id, { tenant: input.tenant, service });
     return {
       ok: true,
       capability: id,
-      release: () => deps.registry.replace((c) => c.descriptor.id === id, []),
+      release: () => {
+        draftServices.forget(id);
+        deps.registry.replace((c) => c.descriptor.id === id, []);
+      },
     };
   };
 

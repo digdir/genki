@@ -161,4 +161,6 @@ export const problems = {
   status502: 'A service behind the platform did not answer',
   status503: 'The service is not available',
   status504: 'A service behind the platform did not answer in time',
+  altinnNotConnected: 'Altinn is not connected',
+  altinnUnavailable: 'Altinn did not answer',
 } satisfies Translation<typeof source>;

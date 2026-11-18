@@ -264,6 +264,7 @@ export const changes = {
   serviceDraftRebase: 'brought up to date the draft of',
   serviceDraftSave: 'saved the draft of',
   serviceLifecycle: 'changed the status of the service',
+  serviceAccess: 'changed who may use',
   environmentAdd: 'added an environment to the service',
   environmentRemove: 'removed an environment from the service',
   environmentPromote: 'promoted a version of the service to an environment',

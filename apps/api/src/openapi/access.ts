@@ -9,6 +9,7 @@ import { connectionInput } from '@genai/providers-mcp-client';
 import { blockKinds, blockStatuses, registrationTypes } from '../building-blocks.js';
 import { changeReason, Problem, problemContent } from '../http.js';
 import { rights } from '../rights.js';
+import { accessPeopleRoutes } from './access-people.js';
 
 const json = <T extends z.ZodType>(schema: T, description: string) => ({
   description,
@@ -911,6 +912,7 @@ const tracingRoutes: RouteConfig[] = [
 
 export const accessRoutes: RouteConfig[] = [
   ...tracingRoutes,
+  ...accessPeopleRoutes,
   createRoute({
     method: 'get',
     path: '/tenants/{tenant}/access',
