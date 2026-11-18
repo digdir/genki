@@ -49,6 +49,7 @@ export const usageArea = {
     colTokensIn: 'tokens_in',
     colTokensOut: 'tokens_out',
     colCost: 'cost_nok',
+    colCostAtLeast: 'cost_is_lower_bound',
     colTokens: 'tokens',
     exportFile: 'usage-{name}.{format}',
     downloaded: 'The file {file} has been downloaded.',

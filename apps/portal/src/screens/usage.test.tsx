@@ -283,6 +283,73 @@ describe('Forbruk', () => {
     expect(row(/Postsortering/)?.textContent).toContain('Ikke priset');
   });
 
+  it('marks a partly priced cost as a lower bound in the export, and keeps Ikke priset for unpriced rows', async () => {
+    const part = {
+      inputTokens: 800_000,
+      outputTokens: 200_000,
+      requests: 10,
+      costMicroNok: 12_000_000,
+      priced: false,
+    };
+    const none = { ...part, costMicroNok: null };
+    const total = { ...part, inputTokens: 1_600_000, outputTokens: 400_000, requests: 20 };
+    const report: UsageReport = {
+      ...emptyReport,
+      priced: false,
+      totals: total,
+      daily: [
+        {
+          date: '2026-10-05',
+          usage: total,
+          byService: { rapportassistenten: part, postsortering: none },
+          byModel: { 'foundry-openai/gpt-4.1-mini': total },
+        },
+      ],
+      byService: [
+        { service: 'rapportassistenten', usage: part },
+        { service: 'postsortering', usage: none },
+      ],
+      byModel: [{ model: 'foundry-openai/gpt-4.1-mini', usage: total }],
+    };
+    const blobs: Blob[] = [];
+    const original = URL.createObjectURL;
+    URL.createObjectURL = (blob: Blob) => {
+      blobs.push(blob);
+      return 'blob:usage';
+    };
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    try {
+      await renderAt(
+        '#/statistics',
+        mockFetch(undefined, undefined, undefined, undefined, { usage: report }),
+      );
+      await table();
+      fireEvent.click(screen.getByRole('button', { name: 'Eksporter' }));
+      await screen.findByRole('heading', { name: 'Eksporter forbruk' });
+      fireEvent.click(screen.getByLabelText(/^JSON/));
+      fireEvent.click(screen.getByLabelText('Bare summer for perioden'));
+      fireEvent.click(screen.getByRole('button', { name: 'Last ned' }));
+      await screen.findByText(/^Filen forbruk-.+\.json er lastet ned\.$/);
+
+      const records = JSON.parse((await blobs[0].text()).replace(/^\uFEFF/, '')) as Record<
+        string,
+        unknown
+      >[];
+      const byName = (name: RegExp) => records.find((r) => name.test(String(r.navn)));
+      expect(byName(/Rapportassistenten/)).toMatchObject({
+        kostnad_kr: 12,
+        kostnad_er_minst: true,
+      });
+      expect(byName(/Postsortering/)).toMatchObject({
+        kostnad_kr: 'Ikke priset',
+        kostnad_er_minst: false,
+      });
+    } finally {
+      URL.createObjectURL = original;
+      click.mockRestore();
+    }
+  });
+
   it("shows each row's share of the tokens, with 100 % on the sum row", async () => {
     const usage = (tokens: number) => ({
       inputTokens: tokens,

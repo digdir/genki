@@ -48,6 +48,7 @@ export const usageArea = {
     colTokensIn: 'tokens_inn',
     colTokensOut: 'tokens_ut',
     colCost: 'kostnad_kr',
+    colCostAtLeast: 'kostnad_er_minst',
     colTokens: 'tokens',
     exportFile: 'forbruk-{name}.{format}',
     downloaded: 'Filen {file} er lastet ned.',

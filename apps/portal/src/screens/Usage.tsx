@@ -214,7 +214,7 @@ const UsageView = ({
     status.cost === null ? null : status.used ? (status.cost * status.forecast) / status.used : 0;
 
   const doExport = () => {
-    const records: Record<string, string | number>[] =
+    const records: Record<string, string | number | boolean>[] =
       level === 'sum'
         ? rows.map((r) => ({
             [t('usage.colPeriod')]: range,
@@ -223,6 +223,7 @@ const UsageView = ({
             [t('usage.colTokensOut')]: Math.round(r.u.outputTokens),
             [t('usage.colCost')]:
               r.cost === null ? t('usage.notPriced') : Number(r.cost.toFixed(2)),
+            [t('usage.colCostAtLeast')]: r.costAtLeast,
           }))
         : bars.flatMap((b) =>
             cats
@@ -242,7 +243,11 @@ const UsageView = ({
             ...records.map((r) =>
               Object.values(r)
                 .map((v) =>
-                  typeof v === 'number' ? decimalText(f, v) : `"${v.replace(/"/g, '""')}"`,
+                  typeof v === 'number'
+                    ? decimalText(f, v)
+                    : typeof v === 'boolean'
+                      ? String(v)
+                      : `"${v.replace(/"/g, '""')}"`,
                 )
                 .join(';'),
             ),
