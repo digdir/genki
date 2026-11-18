@@ -114,8 +114,33 @@ const ServiceDraft = z
     latestVersion: z.number().int().nullable(),
     at: z.string(),
     reason: z.string(),
+    by: z.string().openapi({ description: 'Who saved the draft last' }),
+    byName: z.string().nullable().openapi({
+      description: 'The name of who saved the draft last; null when genki does not know it',
+    }),
   })
   .openapi('ServiceDraft');
+
+const FileLimit = z.object({
+  accepts: z.array(z.string()).describe('The media types a caller may send'),
+  maxBytes: z.number().int().describe('The largest file accepted, in bytes'),
+  maxCount: z.number().int().describe('The most files accepted in one run'),
+});
+
+const FileInput = z
+  .object({
+    documents: FileLimit.nullable().describe(
+      'Text documents read into the run (knowledge.runtimeDocuments with readable types in input.accepts); null when the definition takes none',
+    ),
+    media: FileLimit.nullable().describe(
+      'Audio and image parts (audio/ and image/ types in input.accepts); null when the definition takes none. File parts a step flow takes have the same limits',
+    ),
+    maxRequestBytes: z.number().int().describe('The largest request body a run accepts, in bytes'),
+  })
+  .openapi('ServiceFileInput', {
+    description:
+      'The files a run of the definition may carry, with the limits the OpenAI-compatible run API enforces and reports on /v1/models',
+  });
 
 const ServiceDraftSummary = z
   .object({
@@ -367,6 +392,13 @@ const EvalRunSummary = z
     testSet: z.string(),
     testSetVersion: z.number().int(),
     version: z.union([z.literal('draft'), z.number().int()]),
+    draftRevision: z
+      .number()
+      .int()
+      .optional()
+      .describe(
+        'The revision of the saved draft the run tested; left out when it ran a published version or an unsaved definition',
+      ),
     variant: z.string().optional(),
     environment: z
       .string()
@@ -1999,7 +2031,7 @@ export const serviceRoutes: RouteConfig[] = [
       'The input form a definition would show, with options filled in. Needs manage-services',
     request: { params: z.object({ tenant }), body: body(z.object({ definition: z.unknown() })) },
     responses: {
-      200: json(z.object({ fields: z.array(InputField) }), 'Fields'),
+      200: json(z.object({ fields: z.array(InputField), files: FileInput }), 'Fields'),
       400: problem('Missing definition'),
       ...tenantErrors,
     },

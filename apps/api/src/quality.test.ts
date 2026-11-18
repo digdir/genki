@@ -1012,6 +1012,40 @@ describe('eval runs for a service', () => {
     expect(await env.platform.definitions.versions('Service', tenant, 'svar')).toHaveLength(1);
   });
 
+  it('records the revision of the saved draft a run tested, and none for an unsaved definition', async () => {
+    const env = await boot();
+    const draft = structuredClone(service);
+    draft.spec.strategy.config.instructions = better;
+    await env.send('PUT', `${services}/draft`, 'kari', { definition: draft });
+    const saved = await env.send('PUT', `${services}/draft`, 'kari', {
+      definition: draft,
+      revision: 1,
+    });
+    expect(saved.body.revision).toBe(2);
+
+    const onDraft = await env.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+      version: 'draft',
+    });
+    const inline = await env.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+      version: 'draft',
+      definition: draft,
+    });
+    await env.settled();
+    const runOf = async (id: unknown) =>
+      (await env.send('GET', `/tenants/${tenant}/eval-runs/${String(id)}`)).body;
+    const listed = (await env.send('GET', `${services}/eval-runs`)).body.data as {
+      id: string;
+      draftRevision?: number;
+    }[];
+
+    expect(await runOf(onDraft.body.id)).toMatchObject({ version: 'draft', draftRevision: 2 });
+    expect((await runOf(inline.body.id)).draftRevision).toBeUndefined();
+    expect(listed.find((r) => r.id === onDraft.body.id)?.draftRevision).toBe(2);
+    expect(listed.find((r) => r.id === inline.body.id)?.draftRevision).toBeUndefined();
+  });
+
   it('another tenant cannot read the runs', async () => {
     const env = await boot();
     const id = await runPublished(env);
