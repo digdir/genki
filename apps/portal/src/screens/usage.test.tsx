@@ -331,10 +331,9 @@ describe('Forbruk', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Last ned' }));
       await screen.findByText(/^Filen forbruk-.+\.json er lastet ned\.$/);
 
-      const records = JSON.parse((await blobs[0].text()).replace(/^\uFEFF/, '')) as Record<
-        string,
-        unknown
-      >[];
+      const records = JSON.parse(
+        (await (blobs[0] as Blob).text()).replace(/^\uFEFF/, ''),
+      ) as Record<string, unknown>[];
       const byName = (name: RegExp) => records.find((r) => name.test(String(r.navn)));
       expect(byName(/Rapportassistenten/)).toMatchObject({
         kostnad_kr: 12,
