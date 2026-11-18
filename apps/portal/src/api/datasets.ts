@@ -180,12 +180,24 @@ export interface OriginalFile {
   type: string;
 }
 
+export type DocumentStatus = 'indexed' | 'failed' | 'pending';
+export type DocumentSortKey = 'title' | 'year' | 'updated';
+export type SortOrder = 'asc' | 'desc';
+
 export interface DatasetDocument {
   id: string;
   title?: string;
   url?: string;
   fields: Record<string, unknown>;
   original?: OriginalFile;
+  status: DocumentStatus;
+  chunkCount?: number;
+  reason?: SkipReason;
+}
+
+export interface DocumentListing {
+  query: boolean;
+  sort: DocumentSortKey[];
 }
 
 export interface DatasetDocumentsPage {
@@ -193,13 +205,50 @@ export interface DatasetDocumentsPage {
   limit: number;
   offset: number;
   found?: number;
+  total: number;
+  totalExact: boolean;
+  status: DocumentStatus;
+  statusCounts: { indexed: number | null; failed: number; pending: number };
+  listing: DocumentListing;
+  query?: string;
+  sort?: { key: DocumentSortKey; order: SortOrder };
   filters?: Record<string, unknown>;
   documents: DatasetDocument[];
 }
 
+export interface DocumentChunk {
+  id: string;
+  position?: number;
+  page?: number;
+  pageEnd?: number;
+  text: string;
+}
+
 export interface DatasetDocumentDetail extends DatasetDocument {
   excerpt?: string;
+  chunks?: DocumentChunk[];
 }
+
+export interface DocumentsRequest {
+  limit: number;
+  offset: number;
+  filters?: Record<string, unknown>;
+  query?: string;
+  sort?: { key: DocumentSortKey; order: SortOrder };
+  status?: DocumentStatus;
+}
+
+const documentsQuery = (page: DocumentsRequest) => {
+  const params: [string, string][] = [
+    ['limit', String(page.limit)],
+    ['offset', String(page.offset)],
+  ];
+  if (page.filters) params.push(['filters', JSON.stringify(page.filters)]);
+  if (page.query) params.push(['query', page.query]);
+  if (page.sort) params.push(['sort', page.sort.key], ['order', page.sort.order]);
+  if (page.status && page.status !== 'indexed') params.push(['status', page.status]);
+  return params.map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
+};
 
 export interface DatasetSearchHit {
   id: string;
@@ -338,20 +387,24 @@ export const datasetsApi = (ctx: ApiContext) => {
       if (!response.ok) throw await failed(response);
       return (await response.json()) as UploadResult;
     },
-    documents: (
+    documents: (tenant: string, id: string, page: DocumentsRequest, signal?: AbortSignal) =>
+      ctx.get<DatasetDocumentsPage>(
+        `${dataset(tenant, id)}/documents?${documentsQuery(page)}`,
+        signal,
+      ),
+    document: (
       tenant: string,
       id: string,
-      page: { limit: number; offset: number; filters?: Record<string, unknown> },
+      doc: string,
       signal?: AbortSignal,
+      chunks?: { from: number; to: number },
     ) =>
-      ctx.get<DatasetDocumentsPage>(
-        `${dataset(tenant, id)}/documents?limit=${page.limit}&offset=${page.offset}${
-          page.filters ? `&filters=${encodeURIComponent(JSON.stringify(page.filters))}` : ''
+      ctx.get<DatasetDocumentDetail>(
+        `${dataset(tenant, id)}/documents/${enc(doc)}${
+          chunks ? `?chunks=${chunks.from}-${chunks.to}` : ''
         }`,
         signal,
       ),
-    document: (tenant: string, id: string, doc: string, signal?: AbortSignal) =>
-      ctx.get<DatasetDocumentDetail>(`${dataset(tenant, id)}/documents/${enc(doc)}`, signal),
     createEndpoint: (tenant: string, input: NewEndpointDataset, reason: string) =>
       ctx.request<DatasetView>('POST', base(tenant), input, reasonHeader(reason)),
     original: async (tenant: string, id: string, name: string) => {
