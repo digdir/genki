@@ -353,6 +353,39 @@ describe('the playground', () => {
     });
   });
 
+  it('counts the trial runs of the last 7 days on each service draft, for that draft only', async () => {
+    const { platform, run, app, call } = await boot();
+    await platform.definitions.publish(service('svar', 'Svar på nynorsk.'), 'test', 'første');
+    for (const id of ['svar', 'annen'])
+      await app.request(`/tenants/${tenant}/services/${id}/draft`, {
+        method: 'PUT',
+        headers: {
+          'content-type': 'application/json',
+          authorization: 'Bearer kari',
+          'change-reason': 'Prøver et utkast',
+        },
+        body: JSON.stringify({ definition: service(id, 'Svar på bokmål.'), files: {} }),
+      });
+
+    for (let i = 0; i < 2; i += 1)
+      await run({
+        setup: {
+          service: { id: 'svar', version: 'draft', definition: service('svar', 'Svar på bokmål.') },
+          output: 'text',
+        },
+        input: { text: 'Hei' },
+      });
+    const drafts = (await call(`/tenants/${tenant}/service-drafts`)).body.data as {
+      id: string;
+      trialRuns7d: number;
+    }[];
+
+    expect(drafts.map((d) => [d.id, d.trialRuns7d]).sort()).toEqual([
+      ['annen', 0],
+      ['svar', 2],
+    ]);
+  });
+
   it('The portal playground runs a published service whose declared residency is global with an EU model and a global dataset', async () => {
     const { platform, run } = await boot();
     const published = service('kudos-svar', 'Svar på bokmål.');

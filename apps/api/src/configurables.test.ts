@@ -748,6 +748,26 @@ describe('ingestion pipelines', () => {
     expect(executed.headers.get('content-type')).toContain('application/problem+json');
   });
 
+  it("never shows who at the platform started a platform dataset's last run to an organisation", async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('offline'));
+    const { call } = await boot();
+    const base = `/operator/datasets/${encodeURIComponent('digdir/kudos')}/pipelines`;
+    await call(base, 'drift', { body: pipeline });
+    await call(`${base}/nettsider/execute`, 'drift', { body: {} });
+
+    const listed = await json<{ data: { id: string; lastExecution: unknown }[] }>(
+      await call(`/tenants/${other}/datasets`, 'ola'),
+    );
+    const kudos = listed.data.find((d) => d.id === 'digdir/kudos');
+    fetchSpy.mockRestore();
+
+    expect(kudos?.lastExecution).toEqual(
+      expect.objectContaining({ startedAt: expect.any(String) }),
+    );
+    expect(kudos?.lastExecution).not.toHaveProperty('startedBy');
+    expect(kudos?.lastExecution).not.toHaveProperty('startedByName');
+  });
+
   it('pipeline versions mark the version that removed the pipeline as deleted', async () => {
     const { call } = await boot();
     const base = `/operator/datasets/${encodeURIComponent('digdir/kudos')}/pipelines`;
@@ -835,6 +855,35 @@ describe('ingestion pipelines', () => {
       data: [],
       nextRunAt,
     });
+  });
+
+  it('clears the description of a dataset when a PUT sends it as null', async () => {
+    const { call } = await boot();
+    await call(`/tenants/${digdir}/catalog/knowledge-endpoint/sok`, 'kari', {
+      method: 'PUT',
+      body: tenantEndpoint,
+    });
+    await call(`/tenants/${digdir}/datasets`, 'kari', {
+      body: {
+        id: 'veiledere',
+        name: 'Veiledere',
+        description: 'Gammel tekst',
+        endpoint: 'sok',
+        residency: 'eu',
+      },
+    });
+
+    const cleared = await call(`/tenants/${digdir}/datasets/veiledere`, 'kari', {
+      method: 'PUT',
+      body: { description: null },
+    });
+    const read = await json<Record<string, unknown>>(
+      await call(`/tenants/${digdir}/datasets/veiledere`, 'kari'),
+    );
+
+    expect(cleared.status).toBe(200);
+    expect(read).toMatchObject({ name: 'Veiledere' });
+    expect(read).not.toHaveProperty('description');
   });
 
   it('creates a dataset from the portal shape with a slug id and merges name and description on PUT', async () => {

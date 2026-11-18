@@ -5,6 +5,7 @@ export const problems = defineNamespace({
   invalidWrittenStandard: 'Ugyldig målform',
   invalidLanguage: 'Ugyldig språk',
   reasonTooShort: 'Skriv en begrunnelse på minst {count} tegn.',
+  toolNotFound: 'Tilkoblingen har ikke et slikt verktøy å ta stilling til',
   invalidRequest: 'Ugyldig forespørsel',
   notFound: 'Fant ikke',
   unauthorized: 'Ikke logget inn',

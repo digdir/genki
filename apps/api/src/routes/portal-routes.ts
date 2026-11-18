@@ -36,6 +36,7 @@ import { defaultKeyCallsPerMinute, quotaExhausted } from '../rate-limit.js';
 import { actorOf, type Admin, type AdminHandler, type AdminOutcome } from '../admin.js';
 import {
   originOf,
+  trialOrigins,
   priced,
   serviceOrigin,
   type DraftRunner,
@@ -44,6 +45,7 @@ import {
 import { requireRight, rightRefused, type Right } from '../rights.js';
 import { changeReasonOf, isReasonLongEnough, reasonTooShort } from '../http.js';
 import { failureOf, failureReason } from '../failures.js';
+import { failureDetail } from '../run-steps.js';
 import type { Lockdown } from '../lockdown.js';
 import { erasureOf } from '../timeline.js';
 import { t } from '../i18n/index.js';
@@ -172,6 +174,7 @@ interface TaskFailure {
   code: string;
   reason: string;
   step?: string;
+  detail?: string;
 }
 
 export interface ServiceRequirement {
@@ -195,6 +198,7 @@ export interface PortalRouteDeps {
   connections: ConnectionRegistry;
   requirementFor(tenant: string, service: string): ServiceRequirement;
   prices?: Record<string, ModelPrice>;
+  retentionOf?(capability: CompiledCapability): { payloadDays: number };
   modelResidency?(model: string): Residency | undefined;
   ingestionUsage?(
     tenant: string,
@@ -705,8 +709,8 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
   const tenantTasks = (tenant: string, keep: (row: PortalTaskRow) => boolean = () => true) =>
     tasksOf(tenant, keep, true);
   const playgroundRuns = async (tenant: string, keep: (row: PortalTaskRow) => boolean) =>
-    (await tasksOf(tenant, keep, false)).filter(
-      (t) => originOf(t.service.capability.id) === 'playground',
+    (await tasksOf(tenant, keep, false)).filter((t) =>
+      trialOrigins.includes(originOf(t.service.capability.id)),
     );
   const tasksSince = async (tenant: string, since: string | undefined, fromService: boolean) => {
     const found = deps.taskEnvelopes
@@ -973,24 +977,28 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
     const keep = (event: Event) =>
       errors.set(event.task, [...(errors.get(event.task) ?? []), event]);
     if (tasks.length === 0) return new Map<string, TaskFailure>();
+    const read = (event: Event) => event.type === 'kernel.error' || event.type === 'kernel.notice';
     if (deps.eventsOfType) {
-      for (const event of await deps.eventsOfType(tasks, 'kernel.error')) keep(event);
+      for (const type of ['kernel.error', 'kernel.notice'])
+        for (const event of await deps.eventsOfType(tasks, type)) keep(event);
     } else if (deps.events) {
       const events = deps.events;
       await Promise.all(
         tasks.map(async (task) => {
-          for await (const event of events(task)) if (event.type === 'kernel.error') keep(event);
+          for await (const event of events(task)) if (read(event)) keep(event);
         }),
       );
     }
     const out = new Map<string, TaskFailure>();
     for (const [task, found] of errors) {
       const failure = failureOf(found);
+      const detail = failure ? failureDetail(found, failure.code) : undefined;
       if (failure)
         out.set(task, {
           code: failure.code,
           reason: failureReason(failure),
           ...(failure.step ? { step: failure.step } : {}),
+          ...(detail ? { detail } : {}),
         });
     }
     return out;
@@ -1070,7 +1078,15 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       nested.set(date, inner);
       bump(inner, key, tally);
     };
-    const count = (key: string) => runs.set(key, (runs.get(key) ?? 0) + 1);
+    const failedRuns = new Map<string, number>();
+    const count = (key: string, failed = false) => {
+      runs.set(key, (runs.get(key) ?? 0) + 1);
+      if (failed) failedRuns.set(key, (failedRuns.get(key) ?? 0) + 1);
+    };
+    const tallied = (key: string) => ({
+      runs: runs.get(key) ?? 0,
+      failedRequests: failedRuns.get(key) ?? 0,
+    });
     const replaceCost = (date: string, model: string, used: Tally) => {
       if (genkiCostCounts(model, counting)) return;
       totals = add(totals, minus(used));
@@ -1085,9 +1101,10 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       bump(daily, date, tally);
       const service = serviceOf(caps, t.service.capability.id);
       bumpOn(dailyService, date, service, tally);
-      count('');
-      count(`service|${service}`);
-      count(`day|${date}|${service}`);
+      const failed = t.status === 'failed';
+      count('', failed);
+      count(`service|${service}`, failed);
+      count(`day|${date}|${service}`, failed);
       const found = everyCap.get(t.service.capability.id.replace(/@\d+$/, ''));
       const title = found?.serviceName ?? found?.capability.descriptor.title;
       if (title && !titles.has(service)) titles.set(service, title);
@@ -1095,12 +1112,12 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       const ranIn = environmentOf(t);
       if (ranIn !== null) {
         bump(byEnvironment, ranIn, tally);
-        count(`environment|${ranIn}`);
+        count(`environment|${ranIn}`, failed);
       }
       const inProject = projectOf.get(t.id);
       if (inProject) {
         bump(byProject, inProject.project, tally);
-        count(`project|${inProject.project}`);
+        count(`project|${inProject.project}`, failed);
       }
       for (const m of models) {
         const used = tallyOf(m.usage, deps.prices?.[m.model]);
@@ -1178,11 +1195,14 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
             ],
           }
         : {};
-    const views = (map: Map<string, Tally> | undefined, runsOf?: (key: string) => number) =>
+    const views = (
+      map: Map<string, Tally> | undefined,
+      runsOf?: (key: string) => { runs: number; failedRequests: number },
+    ) =>
       Object.fromEntries(
         [...(map ?? [])].map(([key, tally]) => [
           key,
-          { ...usageView(tally), ...(runsOf ? { runs: runsOf(key) } : {}) },
+          { ...usageView(tally), ...(runsOf ? runsOf(key) : {}) },
         ]),
       );
     const days = [];
@@ -1198,7 +1218,7 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
           ...usageView(daily.get(d) ?? empty()),
           ...sources(genkiDaily.get(d) ?? empty(), gatewayDaily.get(d) ?? empty()),
         },
-        byService: views(dailyService.get(d), (s) => runs.get(`day|${d}|${s}`) ?? 0),
+        byService: views(dailyService.get(d), (s) => tallied(`day|${d}|${s}`)),
         byModel: views(dailyModel.get(d)),
         testing: usageView(dailyTesting.get(d) ?? empty()),
         ingestion: usageView(dailyIngestion.get(d) ?? empty()),
@@ -1228,13 +1248,13 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       totals: {
         ...totalsView,
         unpricedModels,
-        runs: runs.get('') ?? 0,
+        ...tallied(''),
         ...sources(genkiTotals, gatewayTotals),
       },
       daily: days,
       byService: rows(byService, 'service').map((r) => ({
         ...r,
-        usage: { ...r.usage, runs: runs.get(`service|${r.service}`) ?? 0 },
+        usage: { ...r.usage, ...tallied(`service|${r.service}`) },
         ...(titles.has(r.service) ? { title: titles.get(r.service) } : {}),
       })),
       byModel: withGateway
@@ -1258,12 +1278,12 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
         : {}),
       byProject: rows(byProject, 'project').map((r) => ({
         ...r,
-        usage: { ...r.usage, runs: runs.get(`project|${r.project}`) ?? 0 },
+        usage: { ...r.usage, ...tallied(`project|${r.project}`) },
         name: projectNames.get(r.project) ?? r.project,
       })),
       byEnvironment: rows(byEnvironment, 'environment').map((r) => ({
         ...r,
-        usage: { ...r.usage, runs: runs.get(`environment|${r.environment}`) ?? 0 },
+        usage: { ...r.usage, ...tallied(`environment|${r.environment}`) },
       })),
       ...(project === undefined ? {} : { project }),
       ...(environment === undefined ? {} : { environment }),
@@ -1343,7 +1363,14 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       exposure?: Record<string, boolean>;
       model?: { primary?: string; residency?: string };
       riskClass?: string;
+      languages?: string[];
+      guardrails?: { language?: { mode?: string } };
+      settings?: Record<string, unknown>;
     };
+    const retention = deps.retentionOf?.(cap);
+    const cost = spec.model?.primary
+      ? await costPerThousandRuns(cap, spec.model.primary)
+      : undefined;
     return {
       tenant: cap.service.tenant,
       id: cap.service.id,
@@ -1356,7 +1383,56 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       exposure: Object.entries(spec.exposure ?? {})
         .filter(([, on]) => on)
         .map(([k]) => k),
+      ...(retention ? { storage: { keepsText: true, logDays: retention.payloadDays } } : {}),
+      languages: { in: spec.languages ?? ['nb', 'en'], out: answerLanguageOf(spec) },
+      ...(cost ? { estimatedCostPerThousandRuns: cost } : {}),
       variants: [] as unknown[],
+    };
+  };
+
+  const answerLanguageOf = (spec: {
+    guardrails?: { language?: { mode?: string } };
+    settings?: Record<string, unknown>;
+  }) => {
+    const mode = spec.guardrails?.language?.mode;
+    if (mode) return mode;
+    const standard = spec.settings?.['answers.writtenStandard'];
+    return standard === 'bokmal' ? 'nb' : standard === 'nynorsk' ? 'nn' : 'same';
+  };
+
+  const recentOwnerRuns = new Map<string, { at: number; runs: Promise<(Task | undefined)[]> }>();
+  const ownerRuns = (owner: string) => {
+    const cached = recentOwnerRuns.get(owner);
+    if (cached && now().getTime() - cached.at < 60_000) return cached.runs;
+    const since = new Date(now().getTime() - 30 * 86_400_000).toISOString();
+    const runs = deps.taskEnvelopes
+      ? deps.taskEnvelopes(owner, { since, limit: 1000 })
+      : Promise.resolve(deps.tasks(owner)).then((rows) =>
+          Promise.all(rows.filter((r) => r.at >= since).map((r) => deps.task(r.task))),
+        );
+    recentOwnerRuns.set(owner, { at: now().getTime(), runs });
+    runs.catch(() => recentOwnerRuns.delete(owner));
+    return runs;
+  };
+
+  const minRunsForCostEstimate = 20;
+  const twoSignificantDigits = (value: number) =>
+    value <= 0 ? 0 : Math.round(Number(value.toPrecision(2)));
+
+  const costPerThousandRuns = async (cap: CompiledCapability, model: string) => {
+    const price = deps.prices?.[model];
+    if (!price) return undefined;
+    const runs = (await ownerRuns(cap.service.tenant)).filter(
+      (t): t is Task =>
+        t !== undefined &&
+        t.status === 'completed' &&
+        t.service.capability.id.replace(/@\d+$/, '') === cap.capability.descriptor.id,
+    );
+    if (runs.length < minRunsForCostEstimate) return undefined;
+    const total = runs.reduce((sum, t) => sum + priced(t.usage, price), 0);
+    return {
+      microNok: twoSignificantDigits((total / runs.length) * 1000),
+      basis: t('services.costBasisRecentRuns'),
     };
   };
 
@@ -1649,7 +1725,7 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
     if (
       !found ||
       (found.tenant !== g.tenant && found.owner !== g.tenant) ||
-      ![serviceOrigin, 'playground'].includes(originOf(found.service.capability.id))
+      ![serviceOrigin, ...trialOrigins].includes(originOf(found.service.capability.id))
     )
       return problem(c, 404, 'Not found');
     const [[view], failures] = await Promise.all([
@@ -1750,7 +1826,7 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       definition: body?.definition,
       files: files as Record<string, string>,
       parts: query ? [{ kind: 'text', text: query }] : [],
-      origin: 'builder',
+      origin: 'trial',
       input: form ?? {},
       ...(typeof body?.variant === 'string' ? { variant: body.variant } : {}),
     });

@@ -1,18 +1,14 @@
-import { Fragment } from 'react';
 import { useT } from '../i18n';
 import { useInServicePage } from '../screens/service/context';
+import { BackLink } from './BackLink';
 
 export const Crumbs = ({ items }: { items: { label: string; href?: string }[] }) => {
   const t = useT();
-  if (useInServicePage()) return null;
+  const parent = items.findLast((item) => item.href);
+  if (useInServicePage() || !parent?.href) return null;
   return (
-    <nav aria-label={t('components.breadcrumbs')} className="crumbs">
-      {items.map((item, i) => (
-        <Fragment key={`${item.label}-${i}`}>
-          {i > 0 ? <span aria-hidden="true">/</span> : null}
-          {item.href ? <a href={item.href}>{item.label}</a> : <span>{item.label}</span>}
-        </Fragment>
-      ))}
+    <nav aria-label={t('components.breadcrumbs')}>
+      <BackLink label={parent.label} href={parent.href} />
     </nav>
   );
 };

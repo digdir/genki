@@ -20,6 +20,14 @@ describe('api', () => {
     });
   });
 
+  it('names the environment it runs in on health', async () => {
+    const test = createApp('abc', { environment: 'genki-test' });
+
+    expect(await (await test.request('/health')).json()).toMatchObject({
+      environment: 'genki-test',
+    });
+  });
+
   it('health says degraded while model discovery has not succeeded, and ok once it has', async () => {
     let discovery = {
       state: 'retrying' as 'ok' | 'retrying',

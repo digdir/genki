@@ -221,6 +221,7 @@ describe('a smooth portal', () => {
         /\/datasets$/,
         /\/tasks\?status=failed&from=[^&]+&limit=500$/,
         /\/audit$/,
+        /\/service-drafts$/,
       ],
     ],
     ['Datasett', '#/developer', '#/datasets', [/\/datasets$/, /\/catalog\?kind=dataset$/]],

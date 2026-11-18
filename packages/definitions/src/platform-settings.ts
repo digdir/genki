@@ -120,6 +120,23 @@ export const nativeSettings: PlatformSetting[] = [
     ),
     settableAt: ['platform', 'tenant', 'service', 'call'],
   },
+  setting(
+    'tracing.sampleRate',
+    z.union([z.literal(1), z.literal(0.25), z.literal(0.1)]),
+    1,
+    'tracing',
+    'The share of runs whose traces are sent to the tracing tool: 1, 0.25 or 0.1. Failed runs are always traced.',
+  ),
+  {
+    ...setting(
+      'answers.showSources',
+      z.boolean(),
+      true,
+      'answers',
+      'Whether answers come with the sources they are based on. Off leaves the sources and the source markers out of the answer the caller gets, streamed or not; the retrieval record of the run keeps them.',
+    ),
+    settableAt: ['platform', 'tenant', 'service'],
+  },
   ...(
     [
       [

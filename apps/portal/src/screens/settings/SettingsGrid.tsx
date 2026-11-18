@@ -151,7 +151,7 @@ export const SettingsGrid = ({
         </span>
       </div>
       <div
-        className="table-scroll"
+        className="table-scroll settings-grid-scroll"
         tabIndex={0}
         role="region"
         aria-label={t('settings.gridRegion')}

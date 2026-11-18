@@ -159,6 +159,14 @@ const executionStatuses = [
 ] as const;
 const LastExecution = z.object({
   status: z.enum(executionStatuses),
+  startedBy: z
+    .string()
+    .optional()
+    .describe("Who started the run; only on the organisation's own datasets"),
+  startedByName: z
+    .string()
+    .optional()
+    .describe('The name of the person who started the run, when genki knows it'),
   startedAt: z.string(),
   endedAt: z.string().nullable(),
   stored: z.number().int().nullable(),
@@ -292,6 +300,10 @@ const Execution = z
     backend: z.string(),
     status: z.enum(executionStatuses),
     startedBy: z.string(),
+    startedByName: z
+      .string()
+      .optional()
+      .describe('The name of the person who started the run, when genki knows it'),
     startedAt: z.string(),
     endedAt: z.string().optional(),
     report: z
@@ -801,6 +813,11 @@ const PublicModel = z
     id: z.string(),
     name: z.string(),
     family: z.string().optional(),
+    maker: z.string().optional().describe('Who made the model, such as OpenAI'),
+    operator: z
+      .object({ name: z.string(), region: z.string().optional() })
+      .optional()
+      .describe('Who runs the model for genki and where, such as Microsoft Azure in Sweden'),
     residency: Residency,
     capabilities: z.array(z.enum(capabilities)),
     operations: z.array(z.string().regex(operationKindPattern)),

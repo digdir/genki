@@ -63,6 +63,22 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ## API changes
 
+### 2026-11-18: names, causes and facts the portal shows
+
+- Tool connection state now changes in one step (`ConnectionRegistry.update`; in Postgres a row lock in one transaction), so a revoke can no longer be undone by a sync or by the sync bookkeeping that ran at the same time.
+- Tool connections: `toolDetails`, `connectedAt`, `connectedByName`, `lastSync.attempts` and `lastSync.failingSince` on `GET /tenants/{tenant}/tool-connections`, and `POST .../tool-connections/{id}/revoke` (see [access.md](access.md)). Registration (`POST /tenants/{tenant}/building-blocks`) takes `residency` (`norway`, `eu` or `global`), declared by the person who registers the tool; a tool connection then shows it as `residency` and `dataLocation`, and the residency rules match that declaration. genki does not verify where the tool really runs.
+- `GET /tenants/{tenant}/building-blocks/step_flow/{id}/definition` reads a step flow's latest definition. `GET /tenants/{tenant}/building-blocks/{kind}/{id}` adds `adoptedAt` and `adoptedByName` while the block is in use. The organisation's own shared services are in its catalogue with their users. Built-in guardrails and judges have a name and description in the request language instead of their id.
+- `GET /tenants/{tenant}/services/{id}/lifecycle` adds `byName`. A failed run's `failure` adds `detail` (see [work.md](work.md)). Pipeline executions and a dataset's `lastExecution` add `startedBy` (on `lastExecution`) and `startedByName`, on the organisation's own datasets only; a platform dataset's `lastExecution` never names who started it.
+- New settings: `answers.showSources` (platform, tenant, service; default `true`): turned off, an answer comes without sources and without the `[n]` markers, in the streamed text too; the run's retrieval record keeps the sources. `tracing.sampleRate` (`1`, `0.25` or `0.1`; default `1`): the share of runs sent to the tracing tool, never above the platform's own rate; failed runs are always traced.
+- `GET /tenants/{tenant}/settings/overrides?key=` lists the tenant's services that set their own value for one setting, `{ data: [{ service, name, value }] }`, to any member; an unknown key answers `404`.
+- `GET /health` adds `environment` (from `GENAI_ENV`). `GET /tenants/{tenant}/status` adds `pastIncidents`: resolved incidents that concerned the tenant in the last 90 days, `{ date, title, text }`, newest first.
+- `GET /models` adds `maker` and `operator: { name, region? }` from the model list (`maker` on a model or a discovery rule, `operator` on its endpoint).
+- `GET /shared-services` adds `storage: { keepsText, logDays }` (the owner's retention), `languages: { in, out }` (`out` is `same`, `nb` or `nn`) and `estimatedCostPerThousandRuns: { microNok, basis }`, the average of the owner's completed runs of the last 30 days at the model's price, rounded to two significant digits, and absent with fewer than 20 such runs, so no single run can be worked out from it.
+- The usage report adds `failedRequests` next to every `runs`: totals, per service, per day and service, per project and per environment.
+- `GET /tenants/{tenant}/datasets` gives `documents` for shared datasets too, read from the search engine when genki cannot count its own store. `PUT /tenants/{tenant}/datasets/{id}` with `description: null` clears the description.
+- `GET /tenants/{tenant}/service-drafts` adds `trialRuns7d`: the draft's playground and builder trial runs in the last 7 days. Trial runs started before this change carry no service and are not counted.
+- A refused publish is audited with the definition (`Service:<id>`) as its target instead of `definition`.
+
 ### 2026-11-18: a source names its publisher
 
 - A source on `/v1/chat/completions` (and on a stored conversation's messages) adds `publisher`, the organisation that published the document, several joined with a comma, when the document's fields name one. A step flow's answer sources and `sources` on `/api/tools/call/{tool}` add it too. The field is optional, so the shape is otherwise unchanged.

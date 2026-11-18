@@ -28,15 +28,25 @@ export interface TenantStatus {
   }[];
 }
 
+export interface PastIncident {
+  date: string;
+  title: string;
+  text: string;
+}
+
 export const platformStatusApi = ({ get, tenantPath }: ApiContext) => ({
   tenant: async (tenant: string, signal?: AbortSignal): Promise<TenantStatus> => {
-    const found = await get<Partial<TenantStatus>>(`${tenantPath(tenant)}/status`, signal);
+    const found = await get<Partial<TenantStatus> & { pastIncidents?: PastIncident[] }>(
+      `${tenantPath(tenant)}/status`,
+      signal,
+    );
     return {
       incidents: found.incidents ?? [],
       components: found.components ?? [],
       queueStats: found.queueStats ?? [],
       queue: found.queue ?? [],
       triggers: found.triggers ?? [],
+      ...(found.pastIncidents ? { pastIncidents: found.pastIncidents } : {}),
     };
   },
 });

@@ -27,21 +27,23 @@ describe('the organisation in the header', () => {
     expect(screen.queryByRole('button', { name: /Bytt virksomhet/ })).toBeNull();
   });
 
-  it('opens the switcher when the person can act for several organisations', async () => {
+  it('lists the organisations under Handler for in the user menu when the person can act for several', async () => {
     render(<App auth={mockAnsattporten(kari)} fetch={mockFetch()} />);
     fireEvent.click((await screen.findAllByRole('button', { name: 'Logg inn' }))[0] as HTMLElement);
 
     fireEvent.click(
-      await screen.findByRole('button', {
-        name: 'Handler for Testetaten, org.nr. 999 888 777. Bytt virksomhet',
-      }),
+      await screen.findByRole('button', { name: 'Brukermeny for Kari Nordmann, Testetaten' }),
     );
 
-    expect(screen.getByRole('dialog', { name: 'Velg virksomhet' })).toBeTruthy();
+    const menu = screen.getByRole('menu', { name: 'Brukermeny' });
+    const group = within(menu).getByRole('group', { name: 'Handler for' });
+    expect(within(group).getAllByRole('menuitemradio')).toHaveLength(kari.organisations.length);
+    expect(within(group).getByText('org.nr. 999 888 777')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Bytt virksomhet/ })).toBeNull();
   });
 
-  it('keeps the switcher open when it is clicked as soon as the header appears', async () => {
-    const name = 'Handler for Testetaten, org.nr. 999 888 777. Bytt virksomhet';
+  it('keeps the user menu open when it is clicked as soon as the sidebar appears', async () => {
+    const name = 'Brukermeny for Kari Nordmann, Testetaten';
     const clicked = new Promise<void>((resolve) => {
       const observer = new MutationObserver(() => {
         const button = document.querySelector(`[aria-label="${name}"]`);
@@ -56,7 +58,7 @@ describe('the organisation in the header', () => {
     fireEvent.click((await screen.findAllByRole('button', { name: 'Logg inn' }))[0] as HTMLElement);
     await clicked;
 
-    expect(screen.getByRole('dialog', { name: 'Velg virksomhet' })).toBeTruthy();
+    expect(screen.getByRole('menu', { name: 'Brukermeny' })).toBeTruthy();
   });
 });
 
@@ -68,9 +70,7 @@ describe('login from the start page', () => {
 
     expect(await screen.findAllByRole('navigation', { name: 'Hovedmeny' })).toHaveLength(1);
     expect(
-      screen.getByRole('button', {
-        name: 'Handler for Testetaten, org.nr. 999 888 777. Bytt virksomhet',
-      }),
+      screen.getByRole('button', { name: 'Brukermeny for Kari Nordmann, Testetaten' }),
     ).toBeTruthy();
   });
 
@@ -210,7 +210,11 @@ describe('shell', () => {
     expect(button.textContent).toBe('KNKari NordmannTestetaten');
     fireEvent.click(button);
     const menu = screen.getByRole('menu', { name: 'Brukermeny' });
-    expect(within(menu).getByText('Handler for Testetaten')).toBeTruthy();
+    expect(
+      within(menu)
+        .getByRole('menuitemradio', { name: /Testetaten/ })
+        .getAttribute('aria-checked'),
+    ).toBe('true');
   });
 
   it('shows the organisation number only when the organisation has no name', async () => {
@@ -242,22 +246,28 @@ describe('shell', () => {
     expect(within(menu).getByRole('link', { name: 'Tjenester' }).getAttribute('title')).toBe(
       'Tjenester',
     );
-    expect(within(menu).getByRole('button', { name: /Handler for Testetaten/ })).toBeTruthy();
+    expect(
+      within(menu).getByRole('button', { name: 'Brukermeny for Kari Nordmann, Testetaten' }),
+    ).toBeTruthy();
     expect(localStorage.getItem('genki.sidebarCollapsed')).toBe('true');
     fireEvent.click(screen.getByRole('button', { name: 'Vis sidepanelet' }));
     expect(within(menu).getByRole('link', { name: 'Tjenester' })).toBeTruthy();
   });
 
-  it('switches organisation from the org switcher and shows role per organisation', async () => {
+  it('switches organisation from Handler for in the user menu and closes it back on its button', async () => {
     await renderAt('#/overview');
 
-    fireEvent.click(screen.getByRole('button', { name: /Handler for Testetaten/ }));
-    const dialog = screen.getByRole('dialog', { name: 'Velg virksomhet' });
-    expect(within(dialog).getByText('Org.nr. 999 777 666 · Utvikler')).toBeTruthy();
-    fireEvent.click(within(dialog).getByRole('radio', { name: /Prøvekommunen/ }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Brukermeny for Kari Nordmann, Testetaten' }),
+    );
+    const menu = screen.getByRole('menu', { name: 'Brukermeny' });
+    fireEvent.click(within(menu).getByRole('menuitemradio', { name: /Prøvekommunen/ }));
 
-    expect(screen.getByRole('button', { name: /Handler for Prøvekommunen/ })).toBeTruthy();
-    expect(screen.queryByRole('dialog', { name: 'Velg virksomhet' })).toBeNull();
+    const button = screen.getByRole('button', {
+      name: 'Brukermeny for Kari Nordmann, Prøvekommunen',
+    });
+    expect(screen.queryByRole('menu', { name: 'Brukermeny' })).toBeNull();
+    expect(document.activeElement).toBe(button);
   });
 
   it('Profil lists each right with what it allows, and saves the theme choice in the browser', async () => {
@@ -287,7 +297,7 @@ describe('shell', () => {
       within(menu)
         .getAllByRole('menuitem')
         .map((a) => a.textContent),
-    ).toEqual(['Profil', 'Kom i gang', 'Databehandling', 'Kontakt Digdir', 'Logg ut']);
+    ).toEqual(['Profil', 'Kom i gang', 'Slik behandles data', 'Logg ut']);
     expect(document.activeElement?.textContent).toBe('Profil');
 
     fireEvent.keyDown(window, { key: 'Escape' });
@@ -310,19 +320,22 @@ describe('shell', () => {
     expect(document.activeElement?.textContent).toBe('Kom i gang');
     fireEvent.keyDown(menu, { key: 'End' });
     expect(document.activeElement?.textContent).toBe('Logg ut');
+    const firstOrganisation = within(menu).getAllByRole('menuitemradio')[0];
     fireEvent.keyDown(menu, { key: 'ArrowDown' });
-    expect(document.activeElement?.textContent).toBe('Profil');
+    expect(document.activeElement).toBe(firstOrganisation);
     fireEvent.keyDown(menu, { key: 'ArrowUp' });
     expect(document.activeElement?.textContent).toBe('Logg ut');
     fireEvent.keyDown(menu, { key: 'Home' });
-    expect(document.activeElement?.textContent).toBe('Profil');
+    expect(document.activeElement).toBe(firstOrganisation);
   });
 
   it('switching agency on a page other than Oversikt goes to Oversikt with ?org=', async () => {
     await renderAt('#/usage');
 
-    fireEvent.click(screen.getByRole('button', { name: /Handler for Testetaten/ }));
-    fireEvent.click(screen.getByRole('radio', { name: /Prøvekommunen/ }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Brukermeny for Kari Nordmann, Testetaten' }),
+    );
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /Prøvekommunen/ }));
 
     expect(window.location.hash).toBe('#/overview?org=999777666');
     const menu = screen.getByRole('navigation', { name: 'Hovedmeny' });
@@ -331,7 +344,9 @@ describe('shell', () => {
         within(menu).getByRole('link', { name: 'Oversikt' }).getAttribute('aria-current'),
       ).toBe('page'),
     );
-    expect(screen.getByRole('button', { name: /Handler for Prøvekommunen/ })).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Brukermeny for Kari Nordmann, Prøvekommunen' }),
+    ).toBeTruthy();
   });
 
   it('switching agency on Oversikt stays on Oversikt and reloads for the new agency', async () => {
@@ -342,8 +357,10 @@ describe('shell', () => {
       return base(input, init);
     });
 
-    fireEvent.click(screen.getByRole('button', { name: /Handler for Testetaten/ }));
-    fireEvent.click(screen.getByRole('radio', { name: /Prøvekommunen/ }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Brukermeny for Kari Nordmann, Testetaten' }),
+    );
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /Prøvekommunen/ }));
 
     expect(window.location.hash).toBe('#/overview');
     await waitFor(() => expect(seen.some((u) => u.includes('/tenants/999777666/'))).toBe(true));
@@ -352,20 +369,13 @@ describe('shell', () => {
   it('reads ?org= at start-up', async () => {
     await renderAt('#/overview?org=999666555');
 
-    expect(screen.getByRole('button', { name: /Handler for Eksempeldirektoratet/ })).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Brukermeny for Kari Nordmann, Eksempeldirektoratet' }),
+    ).toBeTruthy();
   });
 
-  it('Escape and an outside click close the agency and user dialogs', async () => {
+  it('Escape and an outside click close the user menu', async () => {
     await renderAt('#/overview');
-
-    fireEvent.click(screen.getByRole('button', { name: /Handler for Testetaten/ }));
-    expect(screen.getByRole('dialog', { name: 'Velg virksomhet' })).toBeTruthy();
-    fireEvent.keyDown(window, { key: 'Escape' });
-    expect(screen.queryByRole('dialog', { name: 'Velg virksomhet' })).toBeNull();
-
-    fireEvent.click(screen.getByRole('button', { name: /Handler for Testetaten/ }));
-    fireEvent.mouseDown(screen.getByRole('main'));
-    expect(screen.queryByRole('dialog', { name: 'Velg virksomhet' })).toBeNull();
 
     fireEvent.click(
       screen.getByRole('button', { name: 'Brukermeny for Kari Nordmann, Testetaten' }),

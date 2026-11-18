@@ -150,6 +150,14 @@ export const settingSchemaLabels: SchemaLabels = {
       label: 'Målform i svar',
       help: 'Svar på samme målform som spørsmålet, eller alltid bokmål eller nynorsk.',
     },
+    'tracing.sampleRate': {
+      label: 'Andel kjøringer som spores',
+      help: 'Hvor stor del av kjøringene som sendes til sporingsverktøyet: alle, en av fire eller en av ti. Kjøringer som feiler, spores alltid.',
+    },
+    'answers.showSources': {
+      label: 'Kilder i svarene',
+      help: 'Vis kildene svaret bygger på. Slått av får den som spør bare svaret, uten kilder og kildehenvisninger.',
+    },
     'answers.languageInstructions.nb': {
       label: 'Husstil for svar på bokmål',
       help: 'Legges til etter instruksjonene til tjenesten når svaret er på bokmål. Virksomheten kan overstyre teksten fra Digdir.',
@@ -347,6 +355,14 @@ export const settingSchemaLabels: SchemaLabels = {
     'answers.writtenStandard': {
       label: 'Written standard in answers',
       help: 'Answer in the same written standard as the question, or always bokmål or nynorsk.',
+    },
+    'tracing.sampleRate': {
+      label: 'Share of runs traced',
+      help: 'How many of the runs are sent to the tracing tool: all, one in four or one in ten. Failed runs are always traced.',
+    },
+    'answers.showSources': {
+      label: 'Sources in answers',
+      help: 'Show the sources an answer is based on. Turned off, the person asking gets the answer alone, without sources or source markers.',
     },
     'answers.languageInstructions.nb': {
       label: 'House style for answers in bokmål',
@@ -618,6 +634,18 @@ export const settingSchemaLabels: SchemaLabels = {
       'x-group': {
         nb: 'Svar',
         en: 'Answers',
+      },
+    },
+    'answers.showSources': {
+      'x-group': {
+        nb: 'Svar',
+        en: 'Answers',
+      },
+    },
+    'tracing.sampleRate': {
+      'x-group': {
+        nb: 'Sporing',
+        en: 'Tracing',
       },
     },
     'answers.languageInstructions.nb': {

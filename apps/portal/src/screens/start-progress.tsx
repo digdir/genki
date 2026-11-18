@@ -1,12 +1,12 @@
 import { CheckmarkIcon } from '@navikt/aksel-icons';
 import { Heading } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
-import type { AuditRow } from '../api';
+import type { ApiClient, AuditRow } from '../api';
 import type { DatasetView } from '../api/datasets';
 import { Icon } from '../components/Icon';
 import { useT, type PlainKey, type T } from '../i18n';
 import { needsRight, useRights } from '../Shell';
-import type { Overview, PortalRight } from '../types';
+import type { Overview, PortalRight, TaskRow } from '../types';
 import { areaOf, serviceOfTarget } from './changes/changes';
 
 export interface StartFacts {
@@ -31,9 +31,10 @@ export const startProgress = (tenant: string, facts: StartFacts) => {
 export type Progress = ReturnType<typeof startProgress>;
 
 export interface StepDone {
-  at: string;
+  at?: string;
   by?: string;
   service?: string;
+  trialRuns?: number;
 }
 
 export type StepHistory = Partial<Record<keyof Progress, StepDone>>;
@@ -58,18 +59,57 @@ export const stepHistory = (audit: readonly AuditRow[]): StepHistory => {
   return history;
 };
 
+const auditSteps = ['dataset', 'service', 'published'] as const;
+
+/** Pages the audit log from its oldest end until every audited step is found. */
+export const fetchStepHistory = async (
+  api: Pick<ApiClient, 'auditPage'>,
+  tenant: string,
+  signal?: AbortSignal,
+  pageSize = 200,
+): Promise<StepHistory> => {
+  let end = (await api.auditPage(tenant, { limit: 1, offset: 0 }, signal)).total;
+  const oldestFirst: AuditRow[] = [];
+  let history: StepHistory = {};
+  while (end > 0) {
+    const offset = Math.max(0, end - pageSize);
+    const page = await api.auditPage(tenant, { limit: end - offset, offset }, signal);
+    oldestFirst.push(...[...page.data].reverse());
+    history = stepHistory(oldestFirst);
+    if (auditSteps.every((step) => history[step])) break;
+    end = offset;
+  }
+  return history;
+};
+
+/** The try step from the playground runs: how many, and the first one when the page reaches it. */
+export const trialHistory = (runs: { data: TaskRow[]; total: number }): StepDone | undefined => {
+  if (runs.total === 0) return undefined;
+  const first = runs.data.length >= runs.total ? runs.data.at(-1) : undefined;
+  const by = first?.actor?.kind === 'person' ? first.actor.name : undefined;
+  return {
+    trialRuns: runs.total,
+    ...(first ? { at: first.createdAt } : {}),
+    ...(by ? { by } : {}),
+  };
+};
+
 const doneLine = (
   t: T,
-  when: string,
+  when: string | undefined,
   done: StepDone,
   step: keyof Progress,
   serviceName: (id: string) => string,
 ) => {
-  const what = done.service
-    ? step === 'published'
-      ? t('getStarted.publishedWhat', { service: serviceName(done.service) })
-      : serviceName(done.service)
-    : undefined;
+  const what =
+    done.trialRuns !== undefined
+      ? t('getStarted.trialRuns', { count: done.trialRuns })
+      : done.service
+        ? step === 'published'
+          ? t('getStarted.publishedWhat', { service: serviceName(done.service) })
+          : serviceName(done.service)
+        : undefined;
+  if (!when) return what ? t('getStarted.doneWhat', { what }) : undefined;
   if (done.by && what) return t('getStarted.doneAtByWhat', { when, by: done.by, what });
   if (done.by) return t('getStarted.doneAtBy', { when, by: done.by });
   if (what) return t('getStarted.doneAtWhat', { when, what });
@@ -171,7 +211,13 @@ export const StartSteps = ({
               {long || !done ? <p className="meta-15">{t(s.body)}</p> : null}
               {record ? (
                 <p className="meta">
-                  {doneLine(t, f.date(record.at, 'long'), record, s.id, serviceName)}
+                  {doneLine(
+                    t,
+                    record.at ? f.date(record.at, 'long') : undefined,
+                    record,
+                    s.id,
+                    serviceName,
+                  )}
                 </p>
               ) : null}
             </div>

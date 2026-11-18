@@ -68,7 +68,7 @@ describe('landing', () => {
 
     expect(
       await screen.findByRole('button', {
-        name: 'Handler for Testetaten, org.nr. 999 888 777. Bytt virksomhet',
+        name: 'Brukermeny for Kari Nordmann, Testetaten',
       }),
     ).toBeTruthy();
     expect(screen.queryByRole('heading', { name: architecture })).toBeNull();
@@ -81,7 +81,7 @@ describe('landing', () => {
 
     expect(
       await screen.findByRole('button', {
-        name: 'Handler for Testetaten, org.nr. 999 888 777. Bytt virksomhet',
+        name: 'Brukermeny for Kari Nordmann, Testetaten',
       }),
     ).toBeTruthy();
   });

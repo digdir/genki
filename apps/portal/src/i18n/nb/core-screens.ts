@@ -57,6 +57,7 @@ export const overview = defineNamespace({
   seeUsagePerService: 'Se bruk per tjeneste',
   topServices: 'Mest brukt siste 7 dager',
   allServices: { one: 'Alle {count} tjenester', other: 'Alle {count} tjenester' },
+  allServicesPlain: 'Alle tjenester',
   colService: 'Tjeneste',
   colRuns: 'Kjøringer',
   colFailed: 'Feil',
@@ -74,6 +75,11 @@ export const overview = defineNamespace({
   partTrial: 'Prøvekjøringer',
   partOutside: 'Utenfor genki',
   cost: 'Anslått kostnad',
+  priceMissing: {
+    one: 'Prisen mangler for modellen {models}, så kostnaden er minst dette.',
+    other: 'Prisen mangler for modellene {models}, så kostnaden er minst dette.',
+  },
+  priceMissingUnnamed: 'Prisen mangler for minst én modell, så kostnaden er minst dette.',
   runs: 'Kjøringer',
   changes: 'Siste endringer',
   seeLog: 'Hele loggen',
@@ -93,6 +99,8 @@ export const getStarted = defineNamespace({
   doneAtBy: 'Gjort {when} av {by}.',
   doneAtWhat: 'Gjort {when}: {what}.',
   doneAtByWhat: 'Gjort {when} av {by}: {what}.',
+  doneWhat: 'Gjort: {what}.',
+  trialRuns: { one: '{count} prøvekjøring', other: '{count} prøvekjøringer' },
   publishedWhat: '{service} ble publisert',
   datasetTitle: 'Legg til en kilde',
   datasetBody:

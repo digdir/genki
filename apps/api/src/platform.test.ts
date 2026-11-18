@@ -1,4 +1,4 @@
-import type { Task } from '@genai/contracts';
+import type { Principal, Task } from '@genai/contracts';
 import { describe, expect, it } from 'vitest';
 import { createApp } from './app.js';
 import {
@@ -40,6 +40,23 @@ describe('audit of administrative changes', () => {
     );
     expect(audit.map((a) => [a.action, a.target])).toEqual([
       ['platform.service.publish', 'Service:klarsprak@1'],
+    ]);
+  });
+
+  it('names the definition as the target of a publish it refuses', async () => {
+    const { send, admin } = setup();
+
+    await admin.perform(principals.kari as Principal, 'platform.service.publish', {
+      tenant: digdir,
+      definition: klarsprak({ settings: { 'finnes.ikke': 1 } }),
+      reason: 'første versjon',
+    });
+
+    const audit = await listed<{ action: string; target: string; outcome: string }>(
+      await send(`/tenants/${digdir}/audit`, 'kari'),
+    );
+    expect(audit.map((a) => [a.action, a.target, a.outcome])).toEqual([
+      ['platform.service.publish', 'Service:klarsprak', 'rejected'],
     ]);
   });
 
@@ -704,6 +721,25 @@ describe('task timeline and the operator tenant list', () => {
         settings: { 'search.topK': 20 },
       }),
     ]);
+  });
+
+  it("lists the tenant's services that set their own value for a setting, to its members only", async () => {
+    const { send, publish } = setup();
+    await publish('kari', klarsprak({ settings: { 'search.topK': 20 } }));
+    await publish('kari', klarsprak({ id: 'enkel' }));
+    await publish('ola', klarsprak({ tenant: other, settings: { 'search.topK': 5 } }));
+
+    const own = await body<{ data: unknown[] }>(
+      await send(`/tenants/${digdir}/settings/overrides?key=search.topK`, 'kari'),
+    );
+    const outsider = await send(`/tenants/${digdir}/settings/overrides?key=search.topK`, 'ola');
+    const unknown = await send(`/tenants/${digdir}/settings/overrides?key=finnes.ikke`, 'kari');
+    const missing = await send(`/tenants/${digdir}/settings/overrides`, 'kari');
+
+    expect(own.data).toEqual([{ service: 'klarsprak', name: 'Klarspråk', value: 20 }]);
+    expect(outsider.status).toBe(404);
+    expect(unknown.status).toBe(404);
+    expect(missing.status).toBe(400);
   });
 
   it('lists every tenant with its service count for operators only', async () => {

@@ -580,6 +580,13 @@ export const exampleModels: ModelOption[] = [
   },
   { id: 'aivar/qwen3-8', family: 'qwen3', residency: 'norway', capabilities: ['stream'] },
   {
+    id: 'ai-gateway/borealis-27b',
+    name: 'Borealis 27B',
+    family: 'borealis',
+    residency: 'norway',
+    capabilities: ['stream', 'tools'],
+  },
+  {
     id: 'foundry-openai/gpt-4.1',
     family: 'gpt-4.1',
     residency: 'eu',
@@ -667,22 +674,13 @@ const mockInputFields = (definition: unknown) => {
 
 export const exampleSettingsCatalog: SettingInfo[] = [
   {
-    key: 'retrieval.topK',
-    description: 'Hvor mange tekstbiter som hentes per søk.',
-    category: 'Søk',
+    key: 'retrieval.retrieveTopK',
+    description: 'Chunks fetched by id after merging, before boosting and reranking.',
+    category: 'retrieval',
     axis: 'service',
     sensitivity: 'normal',
-    default: 10,
+    default: 100,
     settableAt: ['platform', 'tenant', 'service'],
-  },
-  {
-    key: 'answer.language',
-    description: 'Språket svaret skrives på.',
-    category: 'Svar',
-    axis: 'service',
-    sensitivity: 'normal',
-    default: 'same',
-    settableAt: ['platform', 'service'],
   },
   {
     key: 'answers.writtenStandard',
@@ -697,20 +695,20 @@ export const exampleSettingsCatalog: SettingInfo[] = [
 ];
 
 export const exampleEffective: Record<string, EffectiveSetting> = {
-  'retrieval.topK': {
-    key: 'retrieval.topK',
+  'retrieval.retrieveTopK': {
+    key: 'retrieval.retrieveTopK',
     value: 20,
     source: 'service',
     defaultVersion: 2,
     overridden: [
       { layer: 'tenant', value: 15 },
-      { layer: 'platform', value: 10 },
+      { layer: 'platform', value: 100 },
     ],
     rejected: [],
   },
-  'answer.language': {
-    key: 'answer.language',
-    value: 'same',
+  'answers.writtenStandard': {
+    key: 'answers.writtenStandard',
+    value: 'user',
     source: 'pin',
     pinnedVersion: 1,
     defaultVersion: 3,
@@ -796,9 +794,13 @@ export const mockFetch = (
   const trialRows = extras.playgroundTasks ?? playgroundTasks;
   const lifecycles = new Map<
     string,
-    { state: string; reason?: string; by?: string; at?: string }
+    { state: string; reason?: string; by?: string; byName?: string; at?: string }
   >();
-  const usageReport = extras.usage ?? withMockQuota(exampleUsage);
+  const usageReport =
+    extras.usage ??
+    withMockQuota(
+      import.meta.env.MODE === 'test' ? exampleUsage : buildExampleUsage(new Date().toISOString()),
+    );
   const shared = extras.shared ?? exampleShared;
   let access = structuredClone(extras.access ?? exampleAccess);
   const clientRoutes = clientMock();
@@ -873,7 +875,12 @@ export const mockFetch = (
       return json({ fields: fields.map((field) => ({ field, options: exampleFacets[field] })) });
     }
     if (path === '/health')
-      return json({ status: 'ok', version: 'mock', builtAt: '2026-10-06T08:00:00Z' });
+      return json({
+        status: 'ok',
+        version: 'mock',
+        builtAt: '2026-10-06T08:00:00Z',
+        environment: 'genki-test',
+      });
     if (path === '/settings') return json({ data: exampleSettingsCatalog });
     if (/^\/tenants\/[^/]+\/settings\/effective$/.test(path)) return json(exampleEffective);
     if (/^\/tenants\/[^/]+\/settings\/[^/]+$/.test(path) && init?.method === 'DELETE')
@@ -1080,6 +1087,7 @@ export const mockFetch = (
                 state,
                 reason: reasonOf(init) ?? '',
                 by: 'employee:ansattporten:kari',
+                byName: 'Kari Nordmann',
                 at: new Date().toISOString(),
               },
         );
@@ -1128,6 +1136,12 @@ export const mockFetch = (
             id: s.id,
             name: (s.latest.definition.metadata as { name?: string }).name ?? s.id,
             latestVersion: s.latest.version,
+            status: lifecycles.get(s.id)?.state === 'paused' ? 'paused' : 'active',
+            statusReason: null,
+            warnings: [],
+            runsThisWeek: taskRows.filter(
+              (t) => t.service === s.id && Date.parse(t.createdAt) >= Date.now() - 7 * 86_400_000,
+            ).length,
           })),
           recentTasks: taskRows.slice(0, 5),
           usageThisMonth: usageReport.totals,
@@ -1178,7 +1192,17 @@ export const mockFetch = (
           (!from || t.createdAt >= from) &&
           (!to || t.createdAt <= to),
       );
-      return json({ data: matching.slice(0, limit), total: matching.length });
+      return json({
+        data: matching.slice(0, limit).map((t) =>
+          t.status === 'failed' && !t.failure
+            ? {
+                ...t,
+                failure: { code: 'deadline_exceeded', reason: 'Kjøringen tok for lang tid.' },
+              }
+            : t,
+        ),
+        total: matching.length,
+      });
     }
     if (/^\/tenants\/[^/]+\/api-keys$/.test(path) && init?.method === 'POST') {
       if (needsReason()) return missingReason();
@@ -1232,7 +1256,16 @@ export const mockFetch = (
         integrations = {
           ...integrations,
           connections: integrations.connections.map((c) =>
-            c.id === approve[1] ? { ...c, pending: c.pending.filter((p) => p.name !== tool) } : c,
+            c.id === approve[1]
+              ? {
+                  ...c,
+                  tools: [
+                    ...c.tools.filter((t) => t.name !== tool),
+                    ...c.pending.filter((p) => p.name === tool),
+                  ],
+                  pending: c.pending.filter((p) => p.name !== tool),
+                }
+              : c,
           ),
         };
         return json({ approved: tool });

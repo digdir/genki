@@ -324,23 +324,13 @@ export const codeServices: { id: string; name: string; type: CodeServiceType }[]
 export const codeInput: Record<CodeServiceType, unknown> = {
   svar: {
     query: 'Hva sier evalueringer om digital veiledning siden 2020?',
-    input: { tekst: 'Hva sier evalueringer om digital veiledning siden 2020?' },
-    filter: { dokumenttype: ['Evaluering'], aar_fra: 2020 },
-    vent: true,
   },
   felter: {
-    query: 'Hent ut feltene fra søknaden.',
-    input: { fil: { navn: 'Søknad_2026_118.pdf', innhold_base64: 'JVBERi0xLjcKJcfsj6IK…' } },
-    vent: true,
+    soknadstekst: 'Søknad om tilskudd fra Eksempel Idrettslag, 85 000 kroner til nye drakter.',
   },
   dokument: {
     query: 'Lag et utkast til vedtak.',
-    input: {
-      tekst: 'Søknad om tilskudd fra Eksempel Idrettslag, 85 000 kroner.',
-      filer: [{ navn: 'Søknad.pdf', url: 'https://sak.testetaten.example.no/dok/2026-1432/1' }],
-    },
     saksnummer: '2026/1432',
-    vent: false,
   },
 };
 

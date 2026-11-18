@@ -27,6 +27,7 @@ export {
   pinTools,
   toolSyncDeadlineMs,
   type ConnectionToolSource,
+  type ToolStamp,
   type SyncResult,
 } from './pinned.js';
 export {

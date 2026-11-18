@@ -12,7 +12,6 @@ import {
   Select,
   Spinner,
   Switch,
-  Table,
   Tag,
   Textfield,
 } from '@digdir/designsystemet-react';
@@ -21,7 +20,7 @@ import { useFormat } from '@genai/i18n/react';
 import { useState } from 'react';
 import { ApiError, type ApiClient } from '../../api';
 import type { Hook, HookPoint, HookSpec, HookTrial } from '../../api/hooks';
-import { Crumbs } from '../../components/Crumbs';
+import { BackLink } from '../../components/BackLink';
 import { ReasonField, reasonProblem } from '../../components/ReasonField';
 import { navigate, useAsync } from '../../hooks';
 import { useT, type PlainKey, type T } from '../../i18n';
@@ -57,11 +56,6 @@ const failureOptions: [HookSpec['failure'], PlainKey, PlainKey][] = [
   ['open', 'integHooks.failOpen', 'integHooks.failOpenHelp'],
   ['closed', 'integHooks.failClosed', 'integHooks.failClosedHelp'],
 ];
-
-const failureKeys: Record<HookSpec['failure'], PlainKey> = {
-  open: 'integHooks.failOpenShort',
-  closed: 'integHooks.failClosedShort',
-};
 
 const refusable = (point: HookPoint) => point !== 'task_completed' && point !== 'on_feedback';
 
@@ -277,113 +271,85 @@ export const Hooks = ({
     }
   };
 
+  const where = (h: Hook) =>
+    h.handler.kind === 'webhook'
+      ? h.handler.url
+      : t('integHooks.typeTimeout', { type: typeText(h), duration: durationText(h.timeoutMs, f) });
+
   return (
     <div className="stack-md">
-      <Paragraph data-size="sm" className="meta int-intro-text">
-        {t('integHooks.intro')}
+      <div className="int-intro">
+        <Paragraph data-size="sm" className="meta int-intro-text">
+          {t('integHooks.intro')}
+        </Paragraph>
+        {canManage ? (
+          <Button variant="primary" data-size="sm" onClick={() => navigate(hookHref())}>
+            {t('integHooks.addHook')}
+          </Button>
+        ) : (
+          <span className="meta">{needsRight('manage-services', t)}</span>
+        )}
+      </div>
+      {sorted.length ? (
+        <ul className="plain-list dev-rows" aria-label={t('integHooks.ownHeading')}>
+          {sorted.map((h) => (
+            <li key={h.id} className="dev-row int-hook-row">
+              <span className="dev-row-main">
+                {canManage ? (
+                  <a href={hookHref(h.id)} className="int-row-name">
+                    {h.name}
+                  </a>
+                ) : (
+                  <span className="int-row-name">{h.name}</span>
+                )}
+                <span className="meta int-hook-where">{where(h)}</span>
+              </span>
+              <span className="dev-row-meta">
+                <span>{t(pointKeys[h.point])}</span>
+                <span>
+                  {h.services?.length ? h.services.join(', ') : t('integHooks.allServices')}
+                </span>
+              </span>
+              <Switch
+                data-size="sm"
+                aria-label={t('integHooks.isOn', { name: h.name })}
+                checked={enabled(h)}
+                readOnly={!canManage}
+                onChange={() => canManage && void toggle(h)}
+              />
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <Paragraph data-size="sm">{t('integHooks.noHooks')}</Paragraph>
+      )}
+      <Paragraph data-size="sm">
+        {t.rich('integHooks.logNote', { link: (c) => <a href="#/log">{c}</a> })}
       </Paragraph>
-      <section aria-labelledby="hooks-platform-h" className="stack-xs">
-        <Heading level={3} data-size="2xs" id="hooks-platform-h">
-          {t('integHooks.fromPlatform')}
-        </Heading>
-        <Paragraph data-size="sm" className="meta">
-          {t('integHooks.platformIntro', { tenant: tenantName })}
-        </Paragraph>
-        {platform.length ? (
-          <div className="int-table" tabIndex={0} role="region" aria-labelledby="hooks-platform-h">
-            <Table>
-              <Table.Head>
-                <Table.Row>
-                  <Table.HeaderCell scope="col">{t('integHooks.colHook')}</Table.HeaderCell>
-                  <Table.HeaderCell scope="col">{t('integHooks.colWhen')}</Table.HeaderCell>
-                  <Table.HeaderCell scope="col">{t('integHooks.colEffect')}</Table.HeaderCell>
-                  <Table.HeaderCell scope="col">{t('integHooks.colOnFailure')}</Table.HeaderCell>
-                </Table.Row>
-              </Table.Head>
-              <Table.Body>
-                {platform.map((h) => (
-                  <Table.Row key={h.id}>
-                    <Table.HeaderCell scope="row">{h.name}</Table.HeaderCell>
-                    <Table.Cell>{t(pointKeys[h.point])}</Table.Cell>
-                    <Table.Cell>{t(effectKeys[h.mode])}</Table.Cell>
-                    <Table.Cell>
-                      {t(h.failure === 'closed' ? 'integHooks.failClosed' : 'integHooks.failOpen')}
-                    </Table.Cell>
-                  </Table.Row>
-                ))}
-              </Table.Body>
-            </Table>
-          </div>
-        ) : (
-          <Paragraph data-size="sm">{t('integHooks.noPlatformHooks')}</Paragraph>
-        )}
-      </section>
-      <section aria-labelledby="hooks-own-h" className="stack-xs">
-        <div className="int-intro">
-          <Heading level={3} data-size="2xs" id="hooks-own-h">
-            {t('integHooks.ownHeading')}
-          </Heading>
-          {canManage ? (
-            <Button variant="primary" data-size="sm" onClick={() => navigate(hookHref())}>
-              {t('integHooks.addHook')}
-            </Button>
-          ) : (
-            <span className="meta">{needsRight('manage-services', t)}</span>
-          )}
-        </div>
-        {sorted.length ? (
-          <div className="int-table" tabIndex={0} role="region" aria-labelledby="hooks-own-h">
-            <Table>
-              <Table.Head>
-                <Table.Row>
-                  <Table.HeaderCell scope="col">{t('integHooks.colOrder')}</Table.HeaderCell>
-                  <Table.HeaderCell scope="col">{t('integHooks.colHook')}</Table.HeaderCell>
-                  <Table.HeaderCell scope="col">{t('integHooks.colWhen')}</Table.HeaderCell>
-                  <Table.HeaderCell scope="col">{t('integHooks.colEffect')}</Table.HeaderCell>
-                  <Table.HeaderCell scope="col">{t('integHooks.colOnFailure')}</Table.HeaderCell>
-                  <Table.HeaderCell scope="col">{t('integHooks.colServices')}</Table.HeaderCell>
-                  <Table.HeaderCell scope="col">{t('integHooks.colOn')}</Table.HeaderCell>
-                </Table.Row>
-              </Table.Head>
-              <Table.Body>
-                {sorted.map((h) => (
-                  <Table.Row key={h.id}>
-                    <Table.Cell className="int-num">{h.order}</Table.Cell>
-                    <Table.HeaderCell scope="row" className="int-hook-name">
-                      {canManage ? <a href={hookHref(h.id)}>{h.name}</a> : <span>{h.name}</span>}
-                      <span className="meta">
-                        {t('integHooks.typeTimeout', {
-                          type: typeText(h),
-                          duration: durationText(h.timeoutMs, f),
-                        })}
-                      </span>
-                    </Table.HeaderCell>
-                    <Table.Cell>{t(pointKeys[h.point])}</Table.Cell>
-                    <Table.Cell>{t(effectKeys[h.mode])}</Table.Cell>
-                    <Table.Cell>{t(failureKeys[h.failure])}</Table.Cell>
-                    <Table.Cell>
-                      {h.services?.length ? h.services.join(', ') : t('integHooks.allServices')}
-                    </Table.Cell>
-                    <Table.Cell>
-                      <Switch
-                        aria-label={t('integHooks.isOn', { name: h.name })}
-                        checked={enabled(h)}
-                        readOnly={!canManage}
-                        onChange={() => canManage && void toggle(h)}
-                      />
-                    </Table.Cell>
-                  </Table.Row>
-                ))}
-              </Table.Body>
-            </Table>
-          </div>
-        ) : (
-          <Paragraph data-size="sm">{t('integHooks.noHooks')}</Paragraph>
-        )}
-        <Paragraph data-size="sm">
-          {t.rich('integHooks.logNote', { link: (c) => <a href="#/log">{c}</a> })}
-        </Paragraph>
-      </section>
+      {platform.length ? (
+        <Details>
+          <Details.Summary>
+            {t('integHooks.fromPlatformCount', { count: platform.length })}
+          </Details.Summary>
+          <Details.Content>
+            <Paragraph data-size="sm" className="meta">
+              {t('integHooks.platformIntro', { tenant: tenantName })}
+            </Paragraph>
+            <ul className="plain-list stack-xs">
+              {platform.map((h) => (
+                <li key={h.id}>
+                  <strong>{h.name}</strong>
+                  <span className="meta">
+                    {' · '}
+                    {t(pointKeys[h.point])} · {t(effectKeys[h.mode])} ·{' '}
+                    {t(h.failure === 'closed' ? 'integHooks.failClosed' : 'integHooks.failOpen')}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </Details.Content>
+        </Details>
+      ) : null}
     </div>
   );
 };
@@ -529,15 +495,7 @@ export const HookEditor = ({
   const [saveError, setSaveError] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const crumbs = (
-    <Crumbs
-      items={[
-        { label: t('devTools.title'), href: '#/developer' },
-        { label: t('integHooks.heading'), href: hooksHref },
-        { label: id ? t('integHooks.editHook') : t('integHooks.addHook') },
-      ]}
-    />
-  );
+  const crumbs = <BackLink label={t('integHooks.heading')} href={hooksHref} />;
   const head = (
     <>
       {crumbs}

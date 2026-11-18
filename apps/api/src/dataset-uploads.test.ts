@@ -7,8 +7,10 @@ import { envSecrets } from '@genai/kernel';
 import { InMemoryBlobStore } from '@genai/port-blob';
 import { IndexWriterRouter } from '@genai/port-knowledge';
 import { memoryEngine } from '@genai/port-knowledge/testing';
+import { actorNames } from './actor-names.js';
 import { createAdmin } from './admin.js';
 import { createPlatform } from './composition.js';
+import { InMemoryConfigEntryStore } from './config-store.js';
 import { createDatasetUploadsModule, uploadName } from './dataset-uploads.js';
 import { indexIngestionBackend } from './index-ingestion.js';
 
@@ -43,6 +45,7 @@ const boot = async () => {
     secrets: envSecrets({}),
   });
   const blobs = new InMemoryBlobStore();
+  const configEntries = new InMemoryConfigEntryStore();
   const platform = await createPlatform({
     catalogs: {
       models: { endpoints: {}, models: [] },
@@ -54,6 +57,7 @@ const boot = async () => {
     policy: { decide: async () => ({ allow: true }) },
     blobStore: blobs,
     configurables: {
+      store: configEntries,
       scheduleIntervalMs: 0,
       ingestion: indexIngestionBackend({
         writers,
@@ -113,7 +117,7 @@ const boot = async () => {
     },
   });
   expect(created.status).toBe(201);
-  return { platform, admin, app, call, upload, blobs };
+  return { platform, admin, app, call, upload, blobs, configEntries };
 };
 
 const json = async <T>(response: Response) => (await response.json()) as T;
@@ -216,6 +220,30 @@ describe('uploading files to a dataset', () => {
     expect((await call(`${base}/uploads/notat.pdf`, 'kari', { method: 'DELETE' })).status).toBe(
       404,
     );
+  });
+
+  it('names the person who started a run, on the run and on the dataset', async () => {
+    const { call, upload, configEntries } = await boot();
+    await actorNames(configEntries).remember(principals.kari as Principal, 'Kari Nordmann');
+    await upload('kari', [new File(['# Veileder\n\nSlik søker du.'], 'veileder.md')]);
+    await call(`${base}/pipelines`, 'kari', {
+      body: {
+        id: 'filer',
+        name: 'Filer',
+        source: { kind: 'upload' },
+        chunking: { minimumLength: 1 },
+      },
+    });
+
+    await call(`${base}/pipelines/filer/execute`, 'kari', { body: {} });
+
+    expect(await settled(call)).toMatchObject({
+      startedBy: 'employee:test:kari',
+      startedByName: 'Kari Nordmann',
+    });
+    expect(await json(await call(base, 'kari'))).toMatchObject({
+      lastExecution: { startedBy: 'employee:test:kari', startedByName: 'Kari Nordmann' },
+    });
   });
 
   it('refuses types it cannot read and files over the size limit, with a reason', async () => {

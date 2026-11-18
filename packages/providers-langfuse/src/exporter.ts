@@ -33,6 +33,7 @@ export interface ExporterDeps {
   experiments?: boolean;
   /** The Langfuse dataset of the run's test set: every experiment span names it (ADR 0040). */
   dataset?: string;
+  sampleRateFor?: (tenant: string) => number | undefined;
 }
 
 interface Open {
@@ -123,7 +124,14 @@ export const createTraceExporter = (
     if (terminal) experiments.delete(taskId);
     const task = await deps.tasks(taskId);
     const rootTask = experiment?.rootTask ?? (await rootOf(task)) ?? taskId;
-    if (!experiment && !sampled(rootTask, config.sampleRate)) {
+    const rate = Math.min(
+      config.sampleRate,
+      (task && deps.sampleRateFor?.(task.tenant)) ?? config.sampleRate,
+    );
+    const failed =
+      task?.status === 'failed' ||
+      (terminal?.data as { status?: string } | undefined)?.status === 'failed';
+    if (!experiment && !failed && !sampled(rootTask, rate)) {
       stats.sampledOut += 1;
       return;
     }

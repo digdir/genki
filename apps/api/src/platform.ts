@@ -54,6 +54,7 @@ const draftOriginNames: Record<DraftOrigin, () => string> = {
   playground: () => t('runs.originPlayground'),
   'skill-test': () => t('runs.originSkillTest'),
   assistant: () => t('runs.originAssistant'),
+  trial: () => t('runs.originTrial'),
 };
 
 export interface PlatformApiOptions {
@@ -476,6 +477,37 @@ const routes = {
       200: json(Effective, 'Effective settings'),
       401: problems[401],
       403: problems[403],
+      404: problems[404],
+    },
+  }),
+  tenantOverrides: createRoute({
+    method: 'get',
+    path: '/tenants/{tenant}/settings/overrides',
+    summary: "The tenant's services that set their own value for one setting (any member)",
+    request: {
+      params: z.object({ tenant: tenantParam }),
+      query: z.object({
+        key: z
+          .string()
+          .min(1)
+          .openapi({ param: { name: 'key', in: 'query' }, example: 'answers.showSources' }),
+      }),
+    },
+    responses: {
+      200: json(
+        z.object({
+          data: z.array(
+            z.object({
+              service: z.string(),
+              name: z.string(),
+              value: z.unknown().describe("The service's own value, which wins over the tenant's"),
+            }),
+          ),
+        }),
+        'Services with their own value',
+      ),
+      400: problems[400],
+      401: problems[401],
       404: problems[404],
     },
   }),
@@ -1083,6 +1115,29 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
       }),
       200,
     );
+  });
+
+  app.openapi(routes.tenantOverrides, async (c) => {
+    const principal = await auth.authenticate(c.req.raw);
+    if (!principal) return problem(c, 401, 'Not authenticated');
+    const { tenant } = c.req.valid('param');
+    if (!access(principal, tenant, c.req.raw)) return problem(c, 404, 'Not found');
+    const { key } = c.req.valid('query');
+    if (!settings.definitions().some((d) => d.key === key)) return problem(c, 404, 'Not found');
+    const seen = new Set<string>();
+    const data: { service: string; name: string; value: unknown }[] = [];
+    for (const found of await store.capabilities()) {
+      if (found.service.tenant !== tenant || seen.has(found.service.id)) continue;
+      seen.add(found.service.id);
+      const own = (found.capability.config as { settings?: Record<string, unknown> }).settings;
+      if (own?.[key] === undefined) continue;
+      data.push({
+        service: found.service.id,
+        name: found.capability.descriptor.title ?? found.service.id,
+        value: own[key],
+      });
+    }
+    return c.json({ data: data.sort((a, b) => a.name.localeCompare(b.name, 'nb')) }, 200);
   });
 
   app.openapi(routes.setTenant, async (c) => {

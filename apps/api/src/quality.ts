@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { draftServiceOf, originOf, trialOrigins } from './draft-runner.js';
 import { isInternalService } from '@genai/definitions';
 import type { Principal } from '@genai/contracts';
 import {
@@ -250,6 +251,28 @@ export const createQualityModule =
           };
         };
 
+        const trialRunsByService = async (tenant: string) => {
+          const since = new Date(Date.now() - 7 * 86_400_000).toISOString();
+          const capabilities = deps.tasks.envelopes
+            ? (await deps.tasks.envelopes(tenant, { since, limit: 50_000 })).map(
+                (t) => t.service.capability.id,
+              )
+            : (
+                await Promise.all(
+                  (await deps.tasks.all(tenant))
+                    .filter((t) => t.at >= since)
+                    .map(async (t) => (await deps.task(t.task))?.service.capability.id),
+                )
+              ).filter((id): id is string => id !== undefined);
+          const counts = new Map<string, number>();
+          for (const id of capabilities) {
+            if (!trialOrigins.includes(originOf(id))) continue;
+            const service = draftServiceOf(id);
+            if (service) counts.set(service, (counts.get(service) ?? 0) + 1);
+          }
+          return counts;
+        };
+
         app.get('/tenants/:tenant/service-drafts', async (c) => {
           const guard = await member(c);
           if (guard.response) return guard.response;
@@ -259,6 +282,7 @@ export const createQualityModule =
           );
           const found = drafts.filter((_, i) => !hidden[i]);
           const people = await actorNames(deps.configEntries).namesOf(found.map((d) => d.by));
+          const trials = await trialRunsByService(guard.tenant);
           const data = await Promise.all(
             found.map(async (draft) => {
               const { metadata, spec } = draft.spec.definition;
@@ -274,6 +298,7 @@ export const createQualityModule =
                 at: draft.at,
                 by: draft.by,
                 ...(byName ? { byName } : {}),
+                trialRuns7d: trials.get(draft.id) ?? 0,
               };
             }),
           );
