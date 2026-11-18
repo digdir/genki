@@ -1,6 +1,7 @@
 import { Alert, Button, Dialog, Heading, Paragraph } from '@digdir/designsystemet-react';
 import { useId, useState } from 'react';
 import { ApiError, type ApiClient } from '../../api';
+import type { ServiceDraft } from '../../api/quality';
 import type { PlaygroundOptions, PlaygroundSetup } from '../../api/playground';
 import { changedFromStart, changeText, versionOf } from '../../data/playground';
 import { useT } from '../../i18n';
@@ -15,7 +16,9 @@ export const SaveToDraft = ({
   base,
   label,
   primary = false,
+  onSaved,
 }: {
+  onSaved?: (service: string, saved: ServiceDraft) => void;
   api: ApiClient | undefined;
   tenant: string | undefined;
   options: PlaygroundOptions;
@@ -42,17 +45,14 @@ export const SaveToDraft = ({
     setSaving(true);
     setFailed('');
     try {
-      await saveInDraft(
+      const saved = await saveInDraft(
         api,
         tenant,
         setup,
-        {
-          model: changes.some((c) => c.kind === 'model'),
-          instructions: changes.some((c) => c.kind === 'instructions'),
-          datasets: changes.some((c) => c.kind === 'dataset'),
-        },
+        changes,
         t('playground.saveDraftReason', { list: list.join(', ') }),
       );
+      onSaved?.(found.service.id, saved);
       setDone({ id: found.service.id, name });
       setAsking(false);
     } catch (error) {

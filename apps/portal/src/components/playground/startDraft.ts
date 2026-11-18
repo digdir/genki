@@ -1,6 +1,11 @@
 import { useEffect, useState } from 'react';
 import type { ApiClient } from '../../api';
-import type { PlaygroundServiceRef, PlaygroundSetup } from '../../api/playground';
+import type {
+  PlaygroundOptions,
+  PlaygroundServiceRef,
+  PlaygroundSetup,
+} from '../../api/playground';
+import type { SetupChange } from '../../data/playground';
 import { applySpec, asServiceDefinition, forTenant } from '../../data/service-definition';
 import { datasetsOf, withDatasets, withModel } from '../../data/service-form';
 
@@ -59,14 +64,14 @@ const withInstructionsIn = (
 export const withPlaygroundChanges = (
   definition: Record<string, unknown>,
   setup: PlaygroundSetup,
-  changed: { model: boolean; instructions: boolean; datasets: boolean },
+  changes: SetupChange[],
 ): Record<string, unknown> => {
   const variant = setup.service?.variant;
   let current = definition;
-  if (changed.instructions && setup.instructions !== undefined)
+  if (changes.some((c) => c.kind === 'instructions') && setup.instructions !== undefined)
     current = withInstructionsIn(current, variant, setup.instructions);
   let service = asServiceDefinition(current);
-  if (changed.model) {
+  if (changes.some((c) => c.kind === 'model')) {
     const spec = record(current.spec);
     const { list, index, own } = chosenVariant(spec, variant);
     service =
@@ -78,16 +83,24 @@ export const withPlaygroundChanges = (
           })
         : applySpec(service, (d) => withModel(d.spec, setup.model, d.spec.model.residency));
   }
-  if (changed.datasets) {
-    const declared = datasetsOf(service.spec);
-    service = applySpec(service, (d) =>
-      withDatasets(
-        d.spec,
-        setup.datasets.map((id) => declared.find((x) => x.dataset === id) ?? { dataset: id }),
-      ),
-    );
+  const datasetChanges = changes.flatMap((c) => (c.kind === 'dataset' ? [c] : []));
+  if (datasetChanges.length) {
+    const off = new Set(datasetChanges.filter((c) => !c.on).map((c) => c.id));
+    const kept = datasetsOf(service.spec).filter((d) => !off.has(d.dataset));
+    const added = datasetChanges
+      .filter((c) => c.on && !kept.some((d) => d.dataset === c.id))
+      .map((c) => ({ dataset: c.id }));
+    service = applySpec(service, (d) => withDatasets(d.spec, [...kept, ...added]));
   }
   return service as unknown as Record<string, unknown>;
+};
+
+export const draftSetupOf = (definition: Record<string, unknown>) => {
+  const service = asServiceDefinition(definition);
+  return {
+    model: service.spec.model.primary,
+    datasets: datasetsOf(service.spec).map((d) => d.dataset),
+  };
 };
 
 export const startDefinition = async (
@@ -116,6 +129,7 @@ export const useBaseInstructions = (
   const [bases, setBases] = useState<Record<string, string>>({});
   const wanted = refs.filter((r): r is PlaygroundServiceRef => !!r);
   const keys = wanted.map(baseKeyOf).join('|');
+  const [round, setRound] = useState(0);
   useEffect(() => {
     if (!api || !tenant) return;
     const controller = new AbortController();
@@ -130,15 +144,23 @@ export const useBaseInstructions = (
       );
     }
     return () => controller.abort();
-  }, [api, tenant, keys]);
-  return (ref: PlaygroundServiceRef | undefined) => (ref ? bases[baseKeyOf(ref)] : undefined);
+  }, [api, tenant, keys, round]);
+  const baseOf = (ref: PlaygroundServiceRef | undefined) =>
+    ref ? bases[baseKeyOf(ref)] : undefined;
+  const refresh = (service: string) => {
+    setBases((b) =>
+      Object.fromEntries(Object.entries(b).filter(([key]) => !key.startsWith(`${service}/`))),
+    );
+    setRound((n) => n + 1);
+  };
+  return { baseOf, refresh };
 };
 
 export const saveInDraft = async (
   api: ApiClient,
   tenant: string,
   setup: PlaygroundSetup,
-  changed: { model: boolean; instructions: boolean; datasets: boolean },
+  changes: SetupChange[],
   reason: string,
 ) => {
   const id = setup.service?.id;
@@ -148,7 +170,7 @@ export const saveInDraft = async (
     api.quality.openDraft(tenant, id, reason),
   ]);
   const current = opened ?? found.latest;
-  const next = withPlaygroundChanges(current.definition, setup, changed);
+  const next = withPlaygroundChanges(current.definition, setup, changes);
   const stamped = forTenant(asServiceDefinition(next), {
     tenant,
     id,
@@ -165,3 +187,24 @@ export const saveInDraft = async (
     reason,
   );
 };
+
+export const withSavedDrafts = (
+  options: PlaygroundOptions,
+  saved: Record<string, { model: string; datasets: string[] }>,
+): PlaygroundOptions =>
+  Object.keys(saved).length
+    ? {
+        ...options,
+        services: options.services.map((service) => {
+          const draft = saved[service.id];
+          return draft
+            ? {
+                ...service,
+                versions: service.versions.map((v) =>
+                  v.draft ? { ...v, setup: { ...v.setup, ...draft } } : v,
+                ),
+              }
+            : service;
+        }),
+      }
+    : options;

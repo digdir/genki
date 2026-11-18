@@ -76,7 +76,7 @@ import {
 import { apiBackend, exampleBackend } from './backend';
 import { CompareSide } from './CompareSide';
 import { PageSetup } from './PageSetup';
-import { useBaseInstructions } from './startDraft';
+import { draftSetupOf, useBaseInstructions, withSavedDrafts } from './startDraft';
 import { SaveAsTestCase, testSetLabel, type TestCaseDraft } from './SaveAsTestCase';
 import { SetupBar } from './SetupBar';
 import { SetupForm } from './SetupForm';
@@ -414,7 +414,21 @@ export const PlaygroundPanel = ({
       ? withDraftService(named, name, draftRef.current)
       : named;
   }, [loaded, context, name, hasDraft]);
-  const baseOf = useBaseInstructions(page ? api : undefined, tenant, [a?.service, b?.service]);
+  const { baseOf, refresh: refreshBase } = useBaseInstructions(page ? api : undefined, tenant, [
+    a?.service,
+    b?.service,
+  ]);
+  const [savedDrafts, setSavedDrafts] = useState<Record<string, ReturnType<typeof draftSetupOf>>>(
+    {},
+  );
+  const shownOptions = useMemo(
+    () => options && withSavedDrafts(options, savedDrafts),
+    [options, savedDrafts],
+  );
+  const onSaved = (service: string, saved: { definition: Record<string, unknown> }) => {
+    refreshBase(service);
+    setSavedDrafts((s) => ({ ...s, [service]: draftSetupOf(saved.definition) }));
+  };
   const attachDraft = (setup: PlaygroundSetup): PlaygroundSetup => {
     const draft = draftRef.current;
     if (!hasDraft || !draft || setup.service?.id !== name || setup.service.version !== 'draft')
@@ -1138,7 +1152,7 @@ export const PlaygroundPanel = ({
             <CompareSide
               key={key}
               side={key}
-              options={options}
+              options={shownOptions ?? options}
               setup={sides[key]}
               other={sides[key === 'a' ? 'b' : 'a']}
               models={pickerModels}
@@ -1147,6 +1161,7 @@ export const PlaygroundPanel = ({
               result={key === 'a' ? compared?.result : compared?.compareResult}
               saveExpanded={!!compared && saving?.message === compared.id && saving.which === key}
               api={api}
+              onSaved={onSaved}
               tenant={tenant}
               base={baseOf(sides[key].service)}
               otherBase={baseOf(sides[key === 'a' ? 'b' : 'a'].service)}
@@ -1187,9 +1202,10 @@ export const PlaygroundPanel = ({
         <div className="playground-workbench">
           <PageSetup
             api={api}
+            onSaved={onSaved}
             tenant={tenant}
             base={baseOf(a.service)}
-            options={options}
+            options={shownOptions ?? options}
             setup={a}
             models={pickerModels}
             tenantName={tenantName}

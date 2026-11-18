@@ -103,7 +103,7 @@ describe('the playground page', () => {
     expect(runs[0]?.setup).toMatchObject({
       service: { id: 'rapportassistenten', version: 'draft' },
       instructions: 'Svar kort. Vis kilden.',
-      datasets: ['digdir/kudos', '999888777/nettsider', '999888777/tilsynsrapporter-2025'],
+      datasets: ['digdir/kudos', '999888777/tilsynsrapporter-2025'],
     });
   });
 
@@ -177,6 +177,66 @@ describe('the playground page', () => {
     expect(
       writes().filter((r) => r.url.includes('publish') || /\/definitions$/.test(r.url)),
     ).toEqual([]);
+  });
+
+  it('stops counting instructions as a change once they are saved in the draft', async () => {
+    const panel = await openPage();
+    const instructions = within(panel).getByRole('textbox', { name: 'Instruksjoner' });
+    await waitFor(() =>
+      expect((instructions as HTMLTextAreaElement).value).toMatch(/^Svar saksbehandlere/),
+    );
+    fireEvent.change(instructions, { target: { value: 'Svar kort. Vis kilden.' } });
+    expect(within(panel).getByText('1 endring fra utkastet: instruksjoner.')).toBeTruthy();
+
+    fireEvent.click(
+      within(panel).getByRole('button', { name: 'Lagre i utkastet til Rapportassistenten' }),
+    );
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: 'Lagre i utkastet' }),
+    );
+    await screen.findByText(/Endringene er lagret i utkastet/);
+
+    await waitFor(() => expect(within(panel).queryByText(/endring fra utkastet/)).toBeNull());
+    expect((instructions as HTMLTextAreaElement).value).toBe('Svar kort. Vis kilden.');
+  });
+
+  it('keeps a dataset the draft added when saving a change made from an older version', async () => {
+    const puts: { definition: { spec: { knowledge?: { datasets?: { dataset: string }[] } } } }[] =
+      [];
+    const inner = mockFetch();
+    const recording: typeof fetch = (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (init?.method === 'PUT' && url.endsWith('/draft') && typeof init.body === 'string')
+        puts.push(JSON.parse(init.body) as (typeof puts)[number]);
+      return inner(input, init);
+    };
+    await renderAt('#/playground', recording);
+    const panel = await screen.findByRole('complementary', { name: 'Oppsett' });
+    const save = async () => {
+      fireEvent.click(
+        within(panel).getByRole('button', { name: 'Lagre i utkastet til Rapportassistenten' }),
+      );
+      fireEvent.click(
+        within(screen.getByRole('dialog')).getByRole('button', { name: 'Lagre i utkastet' }),
+      );
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    };
+
+    fireEvent.click(
+      within(panel).getByRole('checkbox', { name: 'Veiledere fra Statens eksempelverk' }),
+    );
+    await save();
+    chooseStart(panel, 'Rapportassistenten, versjon 7');
+    fireEvent.click(within(panel).getByRole('checkbox', { name: 'Tilsynsrapporter 2025' }));
+    expect(
+      within(panel).getByText('1 endring fra versjon 7: Tilsynsrapporter 2025 på.'),
+    ).toBeTruthy();
+    await save();
+
+    expect(puts).toHaveLength(2);
+    expect(puts[1]?.definition.spec.knowledge?.datasets?.map((d) => d.dataset)).toEqual(
+      expect.arrayContaining(['999888777/veiledere', '999888777/tilsynsrapporter-2025']),
+    );
   });
 
   it('shows the way of working on each side and offers to use B in its draft only after asking', async () => {

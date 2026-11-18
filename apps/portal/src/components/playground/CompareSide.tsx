@@ -10,6 +10,7 @@ import {
 } from '@digdir/designsystemet-react';
 import { useId, useState, type ReactNode } from 'react';
 import type { ApiClient } from '../../api';
+import type { ServiceDraft } from '../../api/quality';
 import type { CatalogModel } from '../../api/models';
 import type { PlaygroundOptions, PlaygroundResult, PlaygroundSetup } from '../../api/playground';
 import {
@@ -54,9 +55,11 @@ export const CompareSide = ({
   api,
   tenant,
   base,
+  onSaved,
   otherBase,
 }: {
   api?: ApiClient | undefined;
+  onSaved?: ((service: string, saved: ServiceDraft) => void) | undefined;
   tenant?: string | undefined;
   base?: string | undefined;
   otherBase?: string | undefined;
@@ -228,6 +231,7 @@ export const CompareSide = ({
             setup={setup}
             base={base}
             label={t('playground.useInDraft', { key })}
+            {...(onSaved ? { onSaved } : {})}
             primary
           />
         ) : null}

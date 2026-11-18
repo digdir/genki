@@ -17,6 +17,7 @@ import {
 import { useFormat, useLocale } from '@genai/i18n/react';
 import { useId } from 'react';
 import type { ApiClient } from '../../api';
+import type { ServiceDraft } from '../../api/quality';
 import type { CatalogModel } from '../../api/models';
 import type { PlaygroundOptions, PlaygroundSetup } from '../../api/playground';
 import {
@@ -194,8 +195,10 @@ export const PageSetup = ({
   api,
   tenant,
   base,
+  onSaved,
 }: {
   api?: ApiClient | undefined;
+  onSaved?: ((service: string, saved: ServiceDraft) => void) | undefined;
   tenant?: string | undefined;
   base?: string | undefined;
   options: PlaygroundOptions;
@@ -346,6 +349,7 @@ export const PageSetup = ({
             setup={setup}
             base={base}
             label={t('playground.saveToDraft', { name: found.service.name })}
+            {...(onSaved ? { onSaved } : {})}
           />
         ) : null}
         <span>{sessionText}</span>

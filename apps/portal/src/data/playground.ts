@@ -66,7 +66,7 @@ export const examplePlaygroundOptions: PlaygroundOptions = {
       ...draftOf(
         {
           model: 'aivar/borealis-27b',
-          datasets: ['digdir/kudos', '999888777/nettsider'],
+          datasets: ['digdir/kudos'],
           skills: [],
           blocks: ['hybridsok', 'rangering', 'personvernfilter', 'kildekrav'],
           output: 'text',
