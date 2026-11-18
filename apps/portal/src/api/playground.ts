@@ -19,6 +19,7 @@ export interface PlaygroundSetup {
   datasets: string[];
   skills: string[];
   blocks: string[];
+  instructions?: string;
   output: PlaygroundOutput;
 }
 
