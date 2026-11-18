@@ -118,6 +118,23 @@ const service = (id: string, instructions: string) => ({
   },
 });
 
+const knowledgeWith = (
+  datasets: (list: Record<string, unknown>[]) => Record<string, unknown>[],
+) => {
+  const catalog = yaml('knowledge.yaml') as { datasets: Record<string, unknown>[] };
+  return { ...catalog, datasets: datasets(catalog.datasets) };
+};
+
+const otherTenant = '123456789';
+
+const withOthersDataset = (list: Record<string, unknown>[]) => {
+  const publicDocs = list.find((d) => d.id === 'digdir/public-docs') ?? {};
+  return [
+    ...list,
+    { ...publicDocs, id: 'annen/hemmelig', name: 'Hemmelig', aliases: [], tenants: [otherTenant] },
+  ];
+};
+
 const openPolicy = {
   kind: 'block-policy',
   scope: platformScope,
@@ -134,8 +151,10 @@ const boot = async ({
   residencyRule = false,
   taskIndex,
   store = (plugins) => new InMemoryDefinitionStore(plugins),
+  datasets = (list) => list,
 }: {
   residencyRule?: boolean;
+  datasets?: (list: Record<string, unknown>[]) => Record<string, unknown>[];
   taskIndex?: TaskIndex;
   store?: (plugins: PluginSchemas) => DefinitionStore;
 } = {}) => {
@@ -158,7 +177,7 @@ const boot = async ({
     blobStore: blobs,
     catalogs: {
       models: resolveCatalog(yaml('models.yaml'), 'models', env).catalog,
-      knowledge: resolveCatalog(yaml('knowledge.yaml'), 'datasets', env).catalog,
+      knowledge: resolveCatalog(knowledgeWith(datasets), 'datasets', env).catalog,
       rerank: resolveCatalog(yaml('rerank.yaml'), 'rerankers', env).catalog,
     },
     prices: { [modelId]: { inputPerThousand: 1, outputPerThousand: 2 } },
@@ -196,7 +215,7 @@ const boot = async ({
   };
   const run = (body: unknown, who?: string) =>
     call(`/tenants/${tenant}/playground/runs`, body, who);
-  return { platform, settings, model, blobs, call, run, app };
+  return { platform, settings, model, search, blobs, call, run, app };
 };
 
 const testSet = (id: string, forService: string) =>
@@ -701,12 +720,14 @@ describe('the playground', () => {
             inUse: true,
             environments: ['prod'],
             setup: expect.objectContaining({ model: modelId }),
+            strategy: expect.objectContaining({ id: 'single-call' }),
           },
           {
             version: 1,
             draft: false,
             inUse: false,
             setup: expect.objectContaining({ output: 'text' }),
+            strategy: expect.objectContaining({ id: 'single-call' }),
           },
         ],
       },
@@ -1076,5 +1097,249 @@ describe('the playground run stream', () => {
     expect(sent.map((m) => m.role)).toEqual(['system', 'user', 'assistant', 'user']);
     expect(sent.slice(1, 3).map((m) => m.content)).toEqual(['Hvor mange søkte i år?', 'Tolv.']);
     expect(sent.at(-1)?.content).not.toContain('Tolv.');
+  });
+});
+
+describe('playground changes on top of a service version', () => {
+  const ragService = (id: string) => {
+    const base = service(id, 'Svar på bokmål.');
+    return {
+      ...base,
+      spec: {
+        ...base.spec,
+        strategy: { id: 'rag-single-shot', version: 1, config: { instructions: 'Svar kort.' } },
+        knowledge: { datasets: [{ dataset: 'digdir/kudos' }] },
+      },
+    };
+  };
+
+  const readingFlow = {
+    apiVersion: 'genai/v1',
+    kind: 'StepFlow',
+    metadata: { tenant, id: 'les-dokumentet', name: 'Les dokumentet' },
+    spec: {
+      purpose: 'Les dokumentet',
+      steps: [{ id: 'les', block: 'read-document@1', input: { document: '{{input.document}}' } }],
+    },
+  };
+
+  const flowService = () => {
+    const base = service('flyt', 'Svar på bokmål.');
+    return {
+      ...base,
+      spec: {
+        ...base.spec,
+        strategy: { id: 'step-flow', version: 1, config: { flow: 'les-dokumentet@1' } },
+        knowledge: { datasets: [{ dataset: 'digdir/kudos' }] },
+      },
+    };
+  };
+
+  it('instructions sent with a service version replace its instructions for that run only', async () => {
+    const { platform, run } = await boot();
+    await platform.definitions.publish(service('svar', 'Svar på bokmål.'), 'test', 'første');
+
+    const res = await run({
+      setup: {
+        service: { id: 'svar', version: 1 },
+        instructions: 'Svar på nynorsk.',
+        output: 'text',
+      },
+      compareWith: { service: { id: 'svar', version: 1 }, output: 'text' },
+      input: { text: 'Hei' },
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ text: 'Nynorsksvar.', compare: { text: 'Bokmålssvar.' } });
+  });
+
+  it('a playground change never writes the service, its versions or a draft', async () => {
+    const { platform, run, call } = await boot();
+    await platform.definitions.publish(ragService('svar'), 'test', 'første');
+
+    const res = await run({
+      setup: {
+        service: { id: 'svar', version: 1 },
+        instructions: 'Svar på nynorsk.',
+        datasets: ['digdir/public-docs'],
+        output: 'text',
+      },
+      input: { text: 'Hei' },
+    });
+    const versions = await platform.definitions.versions('Service', tenant, 'svar');
+    const drafts = (await call(`/tenants/${tenant}/service-drafts`)).body.data as unknown[];
+
+    expect(res.status).toBe(200);
+    expect(versions.map((v) => v.version)).toEqual([1]);
+    expect(versions[0]?.definition).toMatchObject({
+      spec: {
+        strategy: { config: { instructions: 'Svar kort.' } },
+        knowledge: { datasets: [{ dataset: 'digdir/kudos' }] },
+      },
+    });
+    expect(drafts).toEqual([]);
+  });
+
+  it('instructions replace those of the chosen variant when it has its own strategy', async () => {
+    const { platform, run } = await boot();
+    const varied = service('svar', 'Svar på bokmål.');
+    Object.assign(varied.spec, {
+      variants: [
+        'default',
+        {
+          id: 'egen',
+          strategy: { id: 'single-call', version: 1, config: { instructions: 'Svar på bokmål.' } },
+        },
+      ],
+    });
+    await platform.definitions.publish(varied, 'test', 'første');
+
+    const res = await run({
+      setup: {
+        service: { id: 'svar', version: 1, variant: 'egen' },
+        instructions: 'Svar på nynorsk.',
+        output: 'text',
+      },
+      input: { text: 'Hei' },
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ text: 'Nynorsksvar.' });
+  });
+
+  it('refuses instructions for a step flow, which has no single instructions field, without calling a model', async () => {
+    const { platform, run, model } = await boot();
+    await platform.definitions.publish(readingFlow, 'test', 'første');
+    await platform.definitions.publish(flowService(), 'test', 'første');
+    const before = model.seen.length;
+
+    const res = await run({
+      setup: { service: { id: 'flyt', version: 1 }, instructions: 'Svar kort.', output: 'text' },
+      input: { text: 'Hei' },
+    });
+
+    expect(res.status).toBe(422);
+    expect(res.body).toMatchObject({
+      errors: [{ path: 'setup.instructions', message: expect.stringContaining('Fast stegflyt') }],
+    });
+    expect(model.seen.length).toBe(before);
+  });
+
+  it('datasets sent with a service version replace the datasets it searches for that run', async () => {
+    const { platform, run, search } = await boot();
+    await platform.definitions.publish(ragService('svar'), 'test', 'første');
+
+    const res = await run({
+      setup: {
+        service: { id: 'svar', version: 1 },
+        datasets: ['digdir/public-docs'],
+        output: 'text',
+      },
+      input: { text: 'Hei' },
+    });
+    const searched = JSON.stringify(search.seen);
+
+    expect(res.status).toBe(200);
+    expect(searched).toContain('website_');
+    expect(searched).not.toContain('KUDOS_');
+  });
+
+  it('refuses a dataset another tenant owns on top of a service version, before any search or model call', async () => {
+    const { platform, run, search, model } = await boot({ datasets: withOthersDataset });
+    await platform.definitions.publish(ragService('svar'), 'test', 'første');
+    const before = { search: search.seen.length, model: model.seen.length };
+
+    const res = await run({
+      setup: {
+        service: { id: 'svar', version: 1 },
+        datasets: ['digdir/kudos', 'annen/hemmelig'],
+        output: 'text',
+      },
+      input: { text: 'Hei' },
+    });
+
+    expect(res.status).toBe(422);
+    expect(res.body).toMatchObject({
+      errors: [{ path: 'setup.datasets[1]', message: expect.stringContaining('annen/hemmelig') }],
+    });
+    expect({ search: search.seen.length, model: model.seen.length }).toEqual(before);
+  });
+
+  it('answers a dataset another tenant owns and an unknown dataset alike, also without a service', async () => {
+    const { run } = await boot({ datasets: withOthersDataset });
+
+    const refused = await Promise.all(
+      ['annen/hemmelig', 'finnes/ikke'].map((dataset) =>
+        run({
+          setup: { model: modelId, datasets: [dataset], output: 'text' },
+          input: { text: 'Hei' },
+        }),
+      ),
+    );
+
+    expect(refused.map((r) => r.status)).toEqual([422, 422]);
+    expect(refused.map((r) => r.body.errors)).toEqual([
+      [{ path: 'setup.datasets[0]', message: expect.stringContaining('annen/hemmelig') }],
+      [{ path: 'setup.datasets[0]', message: expect.stringContaining('finnes/ikke') }],
+    ]);
+    expect(
+      new Set(
+        refused.map((r) =>
+          (r.body.errors as { message: string }[])[0]?.message.replace(
+            /annen\/hemmelig|finnes\/ikke/,
+            '',
+          ),
+        ),
+      ).size,
+    ).toBe(1);
+  });
+
+  it('the options name the strategy of each version and the step flow it runs, in bokmål and English', async () => {
+    const { platform, call } = await boot();
+    await platform.definitions.publish(readingFlow, 'test', 'første');
+    await platform.definitions.publish(flowService(), 'test', 'første');
+    await platform.definitions.publish(service('svar', 'Svar kort.'), 'test', 'første');
+
+    const options = (await call(`/tenants/${tenant}/playground/options`))
+      .body as unknown as PlaygroundOptions;
+    const strategyOf = (id: string) =>
+      options.services.find((s) => s.id === id)?.versions[0]?.strategy;
+
+    expect(strategyOf('flyt')).toEqual({
+      id: 'step-flow',
+      version: 1,
+      title: { nb: 'Fast stegflyt', en: 'Fixed step flow' },
+      takesInstructions: false,
+      flow: {
+        ref: 'les-dokumentet@1',
+        id: 'les-dokumentet',
+        version: 1,
+        title: { nb: 'Les dokumentet', en: 'Les dokumentet' },
+      },
+    });
+    expect(strategyOf('svar')).toEqual({
+      id: 'single-call',
+      version: 1,
+      title: { nb: 'Ett steg', en: 'One step' },
+      takesInstructions: true,
+    });
+  });
+
+  it('the options give each model the same price GET /models gives, or null without one', async () => {
+    const { call } = await boot();
+
+    const options = (await call(`/tenants/${tenant}/playground/options`))
+      .body as unknown as PlaygroundOptions;
+    const models = (await call('/models?all=true')).body.data as {
+      id: string;
+      price: unknown;
+    }[];
+
+    expect(options.models.find((m) => m.id === modelId)?.price).toEqual({
+      inputPerThousand: 1,
+      outputPerThousand: 2,
+    });
+    for (const m of options.models)
+      expect(m.price).toEqual(models.find((x) => x.id === m.id)?.price ?? null);
   });
 });

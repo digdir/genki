@@ -281,7 +281,7 @@ import {
   readBlockPolicy,
   withBlockSettings,
 } from './building-blocks.js';
-import { recommendedModels, unavailableReason } from './public-models.js';
+import { publicPrice, recommendedModels, unavailableReason } from './public-models.js';
 import { engineSwitchesModule } from './engine-switches.js';
 import { definitionSubject } from './definition-subject.js';
 import { runJudges } from './eval-judges.js';
@@ -2455,7 +2455,7 @@ export const createPlatform = async (input: PlatformInput) => {
             capabilities,
             operations,
             parameters,
-            price: prices[id] ?? null,
+            price: publicPrice(prices, id),
             ...(contextWindow === undefined ? {} : { contextWindow }),
             ...(releaseDate === undefined ? {} : { releaseDate }),
             recommended: recommended.has(id),
