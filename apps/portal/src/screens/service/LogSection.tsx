@@ -1,7 +1,6 @@
 import { Field, Heading, Label, Link, Select, Table, Tag } from '@digdir/designsystemet-react';
 import { useState } from 'react';
 import type { ApiClient } from '../../api';
-import { profileFor } from '../../data/organisations';
 import { notPriced, statusOf } from '../../format';
 import { useT } from '../../i18n';
 import { useFormat } from '@genai/i18n/react';
@@ -15,7 +14,6 @@ import '../log.css';
 export const LogSection = ({
   api,
   tenant,
-  tenantName,
   id,
   runId,
   live,
@@ -53,7 +51,6 @@ export const LogSection = ({
     [api, tenant, id, environment],
     { keepPreviousFor: id },
   );
-  const canReveal = profileFor(tenant, tenantName).rights.includes('Administrere tjenester');
   const href = (run: string) => `#${servicePath(id, 'log', `/${encodeURIComponent(run)}`)}`;
 
   if (runId)
@@ -62,17 +59,7 @@ export const LogSection = ({
         <Link href={`#${servicePath(id, 'log')}`} className="back-link">
           {t('serviceLog.all')}
         </Link>
-        <RunDetail
-          key={runId}
-          api={api}
-          tenant={tenant}
-          runId={runId}
-          itemIndex={undefined}
-          canReveal={canReveal}
-          live={live}
-          onStatus={() => undefined}
-          onChange={() => undefined}
-        />
+        <RunDetail key={runId} api={api} tenant={tenant} runId={runId} live={live} />
       </div>
     );
 

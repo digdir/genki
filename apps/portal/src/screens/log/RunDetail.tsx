@@ -47,11 +47,7 @@ export const RunDetail = ({
   api: ApiClient;
   tenant: string;
   runId: string;
-  itemIndex?: number | undefined;
-  canReveal?: boolean;
   live?: boolean;
-  onStatus?: unknown;
-  onChange?: unknown;
 }) => {
   const t = useT();
   const f = useFormat();
