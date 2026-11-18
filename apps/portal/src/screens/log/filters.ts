@@ -36,13 +36,18 @@ export const noFilters: RunFilters = {
 
 const dayPattern = /^\d{4}-\d{2}-\d{2}$/;
 
+const periodAliases: Readonly<Record<string, Period>> = { '7d': '7', '30d': '30' };
+
+const periodOf = (value: string | null): Period | undefined =>
+  periods.find((p) => p === value) ?? (value ? periodAliases[value] : undefined);
+
 export const parseRunFilters = (query: URLSearchParams): RunFilters => {
   const day = (key: string) => {
     const value = query.get(key) ?? '';
     return dayPattern.test(value) ? value : '';
   };
   const date = query.has('period') ? '' : day('date');
-  const period = date ? 'custom' : (periods.find((p) => p === query.get('period')) ?? 'today');
+  const period = date ? 'custom' : (periodOf(query.get('period')) ?? 'today');
   return {
     q: query.get('q') ?? '',
     service: query.get('service') ?? '',

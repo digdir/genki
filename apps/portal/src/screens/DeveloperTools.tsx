@@ -11,16 +11,15 @@ import {
   VitalsIcon,
 } from '@navikt/aksel-icons';
 import { Heading, Paragraph, Tabs } from '@digdir/designsystemet-react';
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import type { ApiClient } from '../api';
 import { Icon, type IconComponent } from '../components/Icon';
-import { NotAvailable } from '../components/NotAvailable';
-import { exampleSystems, exampleTriggers } from '../data/integrations';
 import { navigate, useAsync } from '../hooks';
 import { useT, type PlainKey } from '../i18n';
 import type { ScreenProps } from '../screen';
 import { ApiReference } from './ApiReference';
-import { GuardrailRules } from './service/GuardrailRules';
+import { Guardrails } from './integrations/Guardrails';
+import { TracingPage } from './integrations/TracingPage';
 import { DevStatus } from './integrations/DevStatus';
 import './integrations.css';
 import { developerTabs, IntegrationTab } from './developer-routes';
@@ -28,16 +27,13 @@ import { developerTabs, IntegrationTab } from './developer-routes';
 interface Tool {
   id: string;
   label: PlainKey;
-  desc?: PlainKey;
   icon: IconComponent;
-  /** Where the content lives today, until it moves in here. */
-  links?: readonly (readonly [string, PlainKey])[];
+  href?: string;
 }
 
 const statusTool: Tool = {
   id: 'status',
   label: 'devTools.status',
-  desc: 'devTools.statusDesc',
   icon: VitalsIcon,
 };
 
@@ -46,33 +42,28 @@ const tools: readonly Tool[] = [
   {
     id: 'keys',
     label: 'devTools.keys',
-    desc: 'devTools.keysDesc',
     icon: KeyHorizontalIcon,
   },
   {
     id: 'frontends',
     label: 'devTools.frontends',
-    desc: 'devTools.frontendsDesc',
     icon: MonitorIcon,
   },
   {
     id: 'systems',
     label: 'devTools.systems',
-    desc: 'devTools.systemsDesc',
     icon: RouterIcon,
   },
   {
     id: 'triggers',
     label: 'devTools.triggers',
-    desc: 'devTools.triggersDesc',
     icon: LightningIcon,
   },
   {
     id: 'step-flows',
     label: 'devTools.stepFlows',
-    desc: 'devTools.stepFlowsDesc',
     icon: BranchingIcon,
-    links: [['#/step-flows', 'devTools.openStepFlows']],
+    href: '#/step-flows',
   },
   {
     id: 'hooks',
@@ -80,22 +71,18 @@ const tools: readonly Tool[] = [
     icon: LinkIcon,
   },
   {
-    id: 'runs',
+    id: 'tracing',
     label: 'integrations.tabTracing',
-    desc: 'devTools.runsDesc',
     icon: TimelineIcon,
-    links: [['#/log', 'devTools.openLog']],
   },
   {
     id: 'guardrails',
     label: 'devTools.guardrails',
-    desc: 'devTools.guardrailsDesc',
     icon: ShieldIcon,
   },
   {
     id: 'api',
     label: 'devTools.api',
-    desc: 'devTools.apiDesc',
     icon: CodeIcon,
   },
 ];
@@ -103,27 +90,25 @@ const tools: readonly Tool[] = [
 export type Attention = Partial<Record<'systems' | 'triggers', number>>;
 
 export const useAttention = (
-  api: Pick<ApiClient, 'integrations' | 'triggers'>,
+  api: Pick<ApiClient, 'integrations' | 'triggers' | 'toolConnections'>,
   tenant: string,
-  live: boolean,
 ): Attention => {
   const [state] = useAsync(
     async (signal): Promise<Attention> => {
-      if (!live)
-        return {
-          systems: exampleSystems.filter((s) => s.status === 'Feiler').length,
-          triggers: exampleTriggers.filter((s) => s.status === 'Feiler').length,
-        };
-      const [integrations, triggers] = await Promise.all([
+      const [integrations, triggers, syncs] = await Promise.all([
         api.integrations(tenant, signal).catch(() => undefined),
         api.triggers.list(tenant, signal).catch(() => undefined),
+        api.toolConnections(tenant, signal).catch(() => []),
       ]);
+      const failed = new Set(syncs.filter((c) => c.lastSync?.ok === false).map((c) => c.id));
       return {
-        systems: integrations?.connections.filter((c) => c.pending.length > 0).length ?? 0,
+        systems:
+          integrations?.connections.filter((c) => c.pending.length > 0 || failed.has(c.id))
+            .length ?? 0,
         triggers: triggers?.filter((x) => x.status === 'failing').length ?? 0,
       };
     },
-    [api, tenant, live],
+    [api, tenant],
   );
   return state.status === 'ready' ? state.data : {};
 };
@@ -154,7 +139,7 @@ export const DeveloperToolsFrame = ({
               return (
                 <li key={tool.id}>
                   <a
-                    href={tool.id === 'step-flows' ? '#/step-flows' : `#/developer/${tool.id}`}
+                    href={tool.href ?? `#/developer/${tool.id}`}
                     aria-current={active ? 'page' : undefined}
                     className={active ? 'active' : undefined}
                   >
@@ -204,56 +189,64 @@ const ApiPage = (props: ScreenProps & { integrations: (props: ScreenProps) => Re
   );
 };
 
+const NotFoundHere = () => {
+  const t = useT();
+  return (
+    <div className="stack-sm">
+      <Heading level={2} data-size="xs">
+        {t('notFound.title')}
+      </Heading>
+      <Paragraph>{t('notFound.text', { path: window.location.hash })}</Paragraph>
+      <a href="#/developer/status">{t('devPages.goToStatus')}</a>
+    </div>
+  );
+};
+
+/** Older addresses of a developer page, sent on to where it lives now. */
+const movedPages: Readonly<Record<string, string>> = { runs: 'tracing' };
+
 export const DeveloperTools = ({
   integrations,
   ...props
 }: ScreenProps & { integrations: (props: ScreenProps) => ReactNode }) => {
-  const { api, route, tenant, live } = props;
+  const { api, route, tenant } = props;
   const t = useT();
-  const attention = useAttention(api, tenant, live);
-  const current = tools.find((tool) => tool.id === route.segments[1]) ?? statusTool;
+  const attention = useAttention(api, tenant);
+  const page = route.segments[1];
+  const moved = page ? movedPages[page] : undefined;
+  useEffect(() => {
+    if (moved)
+      window.location.replace(
+        window.location.hash.replace(`/developer/${page}`, `/developer/${moved}`),
+      );
+  }, [moved, page]);
+  if (moved) return null;
+  const current =
+    page === undefined ? statusTool : tools.find((tool) => tool.id === page && !tool.href);
   return (
-    <DeveloperToolsFrame currentId={current.id} attention={attention}>
-      <div>
-        <Heading level={2} data-size="xs">
-          {t(current.label)}
-        </Heading>
-        {current.desc ? <Paragraph className="meta">{t(current.desc)}</Paragraph> : null}
-      </div>
-      {current.links ? (
-        <div className="dev-tools-links">
-          {current.links.map(([href, label]) => (
-            <a key={href} href={href}>
-              {t(label)}
-            </a>
-          ))}
-        </div>
-      ) : null}
-      {current.id === 'status' ? (
-        <DevStatus api={api} tenant={tenant} />
+    <DeveloperToolsFrame currentId={current?.id ?? ''} attention={attention}>
+      {current === undefined ? (
+        <NotFoundHere />
       ) : current.id === 'api' ? (
         <ApiPage {...props} integrations={integrations} />
-      ) : current.id === 'guardrails' ? (
-        live ? (
-          <GuardrailRules api={api} tenant={tenant} />
-        ) : (
-          <NotAvailable>{t('devTools.guardrailsNotAvailable')}</NotAvailable>
-        )
-      ) : developerTabs[current.id] ? (
-        <IntegrationTab.Provider value={developerTabs[current.id]}>
-          {integrations(props)}
-        </IntegrationTab.Provider>
-      ) : current.links ? (
-        <div className="empty-state">
-          <Icon icon={current.icon} size={32} />
-          <Paragraph>{t('devTools.livesElsewhere')}</Paragraph>
-          {current.links.map(([href, label]) => (
-            <a key={href} className="ds-button" data-variant="secondary" data-size="sm" href={href}>
-              {t(label)}
-            </a>
-          ))}
-        </div>
-      ) : null}
+      ) : (
+        <>
+          <Heading level={2} data-size="xs">
+            {t(current.label)}
+          </Heading>
+          {current.id === 'status' ? (
+            <DevStatus api={api} tenant={tenant} />
+          ) : current.id === 'guardrails' ? (
+            <Guardrails api={api} tenant={tenant} tenantName={props.tenantName} />
+          ) : current.id === 'tracing' ? (
+            <TracingPage api={api} tenant={tenant} />
+          ) : developerTabs[current.id] ? (
+            <IntegrationTab.Provider value={developerTabs[current.id]}>
+              {integrations(props)}
+            </IntegrationTab.Provider>
+          ) : null}
+        </>
+      )}
     </DeveloperToolsFrame>
   );
 };

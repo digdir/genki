@@ -65,6 +65,8 @@ export interface SearchAttribution {
     'selected-options': string[];
     'value-type': string;
   }[];
+  /** What retrieval noted; a failed strategy's reads "<strategy> search: <reason>". */
+  warnings?: string[];
 }
 
 export interface SearchOutcome {

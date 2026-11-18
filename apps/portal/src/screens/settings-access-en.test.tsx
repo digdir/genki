@@ -29,12 +29,14 @@ const renderEnglish = async (path: string) => {
 describe('settings in English', () => {
   it('shows the grid, the panel and the preview in English', async () => {
     await renderEnglish('#/settings/all');
-    const region = await screen.findByRole('region', { name: 'Settings per layer' });
-    expect(screen.getByRole('heading', { level: 1, name: 'Settings for Testetaten' })).toBeTruthy();
+    const region = await screen.findByRole('region', { name: 'All settings' });
+    expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeTruthy();
     expect(
-      within(region).getAllByText('Inherited from the platform default').length,
-    ).toBeGreaterThan(0);
-    expect(screen.getByRole('radio', { name: 'Ingestion' })).toBeTruthy();
+      within(region)
+        .getAllByRole('columnheader')
+        .map((h) => h.textContent),
+    ).toEqual(['Setting', 'Value', 'Comes from']);
+    expect(within(region).getAllByText('Default').length).toBeGreaterThan(0);
 
     fireEvent.click(within(region).getByRole('button', { name: 'Number of hits read' }));
     const panel = screen.getByRole('dialog');

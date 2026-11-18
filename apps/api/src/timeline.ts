@@ -47,7 +47,7 @@ type UsageStats =
 const seconds = (from: string, to: string) =>
   Math.max(0, Math.round((new Date(to).getTime() - new Date(from).getTime()) / 10) / 100);
 
-const auditKept = new Set(['kernel.error', 'kernel.usage', 'kernel.task.input']);
+const auditKept = new Set(['kernel.error', 'kernel.usage', 'kernel.task.input', 'x.search.error']);
 
 export const erasureOf = ({ reason, at }: TaskErasure): Erasure => ({
   reason,

@@ -5,10 +5,13 @@ import {
   Details,
   Dialog,
   ErrorSummary,
+  Field,
   Fieldset,
   Heading,
+  Label,
   Paragraph,
   Radio,
+  Select,
   Tag,
   Textfield,
   ValidationMessage,
@@ -35,9 +38,15 @@ import { reasonProblem } from '../../components/ReasonField';
 
 type Mode = 'alle' | 'utvalgte';
 
+export type Expiry = '90' | '365' | 'never';
+
+export const expiryInput = (expiry: Expiry): { expiresInDays?: number } =>
+  expiry === 'never' ? {} : { expiresInDays: Number(expiry) };
+
 interface NewSecret {
   value: string;
   name: string;
+  expiresAt?: string | null;
   copied: boolean;
   askUncopied: boolean;
 }
@@ -51,6 +60,7 @@ interface KeyForm {
   rate: string;
   reason: string;
   testRunner: boolean;
+  expires: Expiry;
   tried: boolean;
 }
 
@@ -69,10 +79,12 @@ export const Keys = ({
   tenant,
   onFlash,
   live = false,
+  now = () => new Date(),
 }: {
   api: ApiClient;
   tenant: string;
   live?: boolean;
+  now?: () => Date;
   onFlash: (text: string, color?: 'success' | 'info' | 'danger') => void;
 }) => {
   const t = useT();
@@ -202,7 +214,9 @@ export const Keys = ({
           datasets,
           agents: services,
           callsPerMinute: rate,
-          ...(form.testRunner ? { testRunner: true, expiresInDays: 90 } : {}),
+          ...(form.testRunner
+            ? { testRunner: true, expiresInDays: 90 }
+            : expiryInput(form.expires)),
         },
         form.reason.trim(),
       );
@@ -210,7 +224,13 @@ export const Keys = ({
         ...all,
         [result.apiKey.id]: { rate, origin: 'new' },
       }));
-      setSecret({ value: result.key, name: form.name.trim(), copied: false, askUncopied: false });
+      setSecret({
+        value: result.key,
+        name: form.name.trim(),
+        expiresAt: result.apiKey.expiresAt,
+        copied: false,
+        askUncopied: false,
+      });
       setForm(undefined);
       retry();
     } catch (e) {
@@ -305,6 +325,7 @@ export const Keys = ({
       rate: String(defaultKeyCallsPerMinute),
       reason: '',
       testRunner: false,
+      expires: '365',
       tried: false,
     });
   };
@@ -333,6 +354,9 @@ export const Keys = ({
                 created: v.extra.created,
               })}
             </span>
+            {isActive && k.expiresAt ? (
+              <span className="meta">{t('devKeys.expiresOn', { date: f.date(k.expiresAt) })}</span>
+            ) : null}
             {!isActive || k.modelsInLockdown === undefined ? null : (
               <span className="meta">
                 {t(k.modelsInLockdown ? 'integKeys.modelsAllowed' : 'integKeys.modelsRefused')}
@@ -375,6 +399,7 @@ export const Keys = ({
                     rate: String(v.extra.rate),
                     reason: '',
                     testRunner: k.testRunner === true,
+                    expires: '365',
                     tried: false,
                   })
                 }
@@ -575,6 +600,26 @@ export const Keys = ({
               error={shown['nk-grense']}
               onChange={(e) => setForm({ ...form, rate: e.target.value })}
             />
+            {form.id || form.testRunner ? null : (
+              <Field className="int-field-md">
+                <Label htmlFor="nk-expires">{t('devKeys.expires')}</Label>
+                <Select
+                  id="nk-expires"
+                  value={form.expires}
+                  onChange={(e) => setForm({ ...form, expires: e.target.value as Expiry })}
+                >
+                  {(['90', '365', 'never'] as const).map((value) => (
+                    <Select.Option key={value} value={value}>
+                      {value === 'never'
+                        ? t('devKeys.never')
+                        : t(value === '90' ? 'devKeys.in90' : 'devKeys.inYear', {
+                            date: f.date(new Date(now().getTime() + Number(value) * 86_400_000)),
+                          })}
+                    </Select.Option>
+                  ))}
+                </Select>
+              </Field>
+            )}
             {!form.id && state.data.access.testRunnerKeys ? (
               <Checkbox
                 label={t('integKeys.testRunner')}
@@ -641,6 +686,16 @@ export const Keys = ({
               {t('integKeys.madeFor', { name: secret.name })}
             </Heading>
             <Paragraph>{t('integKeys.copyNowText')}</Paragraph>
+            <dl className="dev-facts">
+              <div>
+                <dt>{t('integrations.name')}</dt>
+                <dd>{secret.name}</dd>
+              </div>
+              <div>
+                <dt>{t('devKeys.expires')}</dt>
+                <dd>{secret.expiresAt ? f.date(secret.expiresAt) : t('devKeys.never')}</dd>
+              </div>
+            </dl>
             <div className="actions">
               <code className="int-secret" aria-label={t('integKeys.newKeyLabel')}>
                 {secret.value}

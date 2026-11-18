@@ -305,6 +305,9 @@ export const run = async (opts: {
   });
   const events: Event[] = [];
   for await (const e of started.events) events.push(e);
+  const audit: Event[] = [];
+  for await (const e of await kernel.events(kari, started.task, { audience: 'audit' }))
+    audit.push(e);
   const parts = await started.result.catch(() => undefined);
   const task = await kernel.task(kari, started.task);
   const answer = parts?.find((p) => p.mime === 'text/plain');
@@ -324,6 +327,7 @@ export const run = async (opts: {
   const loops = seen.filter((s) => s.kind === 'loop').map((s) => s.request);
   return {
     events,
+    audit,
     requests,
     task,
     seen,

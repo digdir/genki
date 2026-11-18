@@ -35,7 +35,7 @@ import {
   type Period,
   type RunFilters,
 } from './filters';
-import { dateKey, durationBetween, formatDuration, relativeTime } from './format';
+import { actorText, dateKey, durationBetween, formatDuration, relativeTime } from './format';
 
 const statusChips: [PlainKey, TaskStatus | ''][] = [
   ['logRuns.allStatuses', ''],
@@ -75,6 +75,11 @@ export const useServiceNames = (api: ApiClient, tenant: string, live: boolean) =
 };
 
 const byNewest = (a: TaskRow, b: TaskRow) => b.createdAt.localeCompare(a.createdAt);
+
+type ListedRun = TaskRow & { failure?: { reason: string } };
+
+const failureOf = (row: TaskRow) =>
+  row.status === 'failed' ? (row as ListedRun).failure?.reason : undefined;
 
 export const RunsTab = ({
   api,
@@ -129,13 +134,23 @@ export const RunsTab = ({
       ].sort(byNewest);
       const served = runs.data.filter((r) => !isTrialService(r.service));
       const trialTotal = (playground?.total ?? 0) + (runs.data.length - served.length);
+      const never =
+        asked === '' && runs.total === 0 && trialTotal === 0
+          ? (
+              await Promise.all([
+                api.tasks(tenant, { limit: 1 }, signal),
+                api.tasks(tenant, { origin: 'playground', limit: 1 }, signal),
+              ])
+            ).every((r) => r.total === 0)
+          : false;
       return trialOnly
-        ? { rows: trials, total: trialTotal, trials: [], trialTotal: 0 }
+        ? { rows: trials, total: trialTotal, trials: [], trialTotal: 0, never }
         : {
             rows: served,
             total: runs.total - (runs.data.length - served.length),
             trials,
             trialTotal,
+            never,
           };
     },
     [api, tenant, asked],
@@ -173,108 +188,112 @@ export const RunsTab = ({
     window.location.replace(logHash(noFilters));
   };
   const days = periodDays(filters, now);
+  const filtered = hasRunFilters({ ...filters, q: typed });
+  const never = data?.never === true && !filtered;
 
   return (
     <div className="stack log-runs-page">
-      <form role="search" className="log-filters" onSubmit={(e) => e.preventDefault()}>
-        <div className="log-filter-row">
-          <Field className="log-filter-q" data-size="sm">
-            <Label htmlFor="lg-q">{t('logRuns.query')}</Label>
-            <Input
-              id="lg-q"
-              type="search"
-              placeholder={t('logRuns.queryPlaceholder')}
-              value={typed}
-              onChange={(e) => {
-                setTyped(e.target.value);
-                window.location.replace(logHash({ ...filters, q: e.target.value }));
-              }}
-            />
-          </Field>
-          <Field className="log-filter-select" data-size="sm">
-            <Label htmlFor="lg-svc">{t('logRuns.service')}</Label>
-            <Select
-              id="lg-svc"
-              value={filters.service}
-              onChange={(e) => go({ service: e.target.value, environment: '' })}
-            >
-              <Select.Option value="">{t('logRuns.allServices')}</Select.Option>
-              {Object.entries(names).map(([id, name]) => (
-                <Select.Option key={id} value={id}>
-                  {name}
-                </Select.Option>
-              ))}
-              {filters.service && filters.service !== trialRuns && !(filters.service in names) ? (
-                <Select.Option value={filters.service}>
-                  {serviceLabel(filters.service)}
-                </Select.Option>
-              ) : null}
-              <Select.Option value={trialRuns}>{t('logRuns.trialOption')}</Select.Option>
-            </Select>
-          </Field>
-          {environmentNames.length > 1 ? (
+      {never ? null : (
+        <form role="search" className="log-filters" onSubmit={(e) => e.preventDefault()}>
+          <div className="log-filter-row">
+            <Field className="log-filter-q" data-size="sm">
+              <Label htmlFor="lg-q">{t('logRuns.query')}</Label>
+              <Input
+                id="lg-q"
+                type="search"
+                placeholder={t('logRuns.queryPlaceholder')}
+                value={typed}
+                onChange={(e) => {
+                  setTyped(e.target.value);
+                  window.location.replace(logHash({ ...filters, q: e.target.value }));
+                }}
+              />
+            </Field>
             <Field className="log-filter-select" data-size="sm">
-              <Label htmlFor="lg-env">{t('logRuns.environment')}</Label>
+              <Label htmlFor="lg-svc">{t('logRuns.service')}</Label>
               <Select
-                id="lg-env"
-                value={filters.environment}
-                onChange={(e) => go({ environment: e.target.value })}
+                id="lg-svc"
+                value={filters.service}
+                onChange={(e) => go({ service: e.target.value, environment: '' })}
               >
-                <Select.Option value="">{t('logRuns.allEnvironments')}</Select.Option>
-                {environmentNames.map((name) => (
-                  <Select.Option key={name} value={name}>
+                <Select.Option value="">{t('logRuns.allServices')}</Select.Option>
+                {Object.entries(names).map(([id, name]) => (
+                  <Select.Option key={id} value={id}>
                     {name}
+                  </Select.Option>
+                ))}
+                {filters.service && filters.service !== trialRuns && !(filters.service in names) ? (
+                  <Select.Option value={filters.service}>
+                    {serviceLabel(filters.service)}
+                  </Select.Option>
+                ) : null}
+                <Select.Option value={trialRuns}>{t('logRuns.trialOption')}</Select.Option>
+              </Select>
+            </Field>
+            {environmentNames.length > 1 ? (
+              <Field className="log-filter-select" data-size="sm">
+                <Label htmlFor="lg-env">{t('logRuns.environment')}</Label>
+                <Select
+                  id="lg-env"
+                  value={filters.environment}
+                  onChange={(e) => go({ environment: e.target.value })}
+                >
+                  <Select.Option value="">{t('logRuns.allEnvironments')}</Select.Option>
+                  {environmentNames.map((name) => (
+                    <Select.Option key={name} value={name}>
+                      {name}
+                    </Select.Option>
+                  ))}
+                </Select>
+              </Field>
+            ) : null}
+            <Field className="log-filter-select" data-size="sm">
+              <Label htmlFor="lg-per">{t('logRuns.period')}</Label>
+              <Select
+                id="lg-per"
+                value={filters.period}
+                onChange={(e) => {
+                  const period = periods.find((p) => p === e.target.value) ?? 'today';
+                  go(
+                    period === 'custom'
+                      ? { period, from: addDays(today, -7), to: today }
+                      : { period, from: '', to: '' },
+                  );
+                }}
+              >
+                {periods.map((p) => (
+                  <Select.Option key={p} value={p}>
+                    {t(periodKeys[p])}
                   </Select.Option>
                 ))}
               </Select>
             </Field>
-          ) : null}
-          <Field className="log-filter-select" data-size="sm">
-            <Label htmlFor="lg-per">{t('logRuns.period')}</Label>
-            <Select
-              id="lg-per"
-              value={filters.period}
-              onChange={(e) => {
-                const period = periods.find((p) => p === e.target.value) ?? 'today';
-                go(
-                  period === 'custom'
-                    ? { period, from: addDays(today, -7), to: today }
-                    : { period, from: '', to: '' },
-                );
-              }}
-            >
-              {periods.map((p) => (
-                <Select.Option key={p} value={p}>
-                  {t(periodKeys[p])}
-                </Select.Option>
-              ))}
-            </Select>
-          </Field>
-        </div>
-        {filters.period === 'custom' ? (
-          <DateRange
-            from={days.from}
-            to={days.to}
-            today={today}
-            onChange={(from, to) => go({ from, to })}
-          />
-        ) : null}
-        <Fieldset className="log-status-chips" data-size="sm">
-          <Fieldset.Legend>{t('logRuns.status')}</Fieldset.Legend>
-          <div className="tag-row">
-            {statusChips.map(([label, value]) => (
-              <Chip.Radio
-                key={label}
-                name="lg-status"
-                checked={filters.status === value}
-                onChange={() => go({ status: value })}
-              >
-                {t(label)}
-              </Chip.Radio>
-            ))}
           </div>
-        </Fieldset>
-      </form>
+          {filters.period === 'custom' ? (
+            <DateRange
+              from={days.from}
+              to={days.to}
+              today={today}
+              onChange={(from, to) => go({ from, to })}
+            />
+          ) : null}
+          <Fieldset className="log-status-chips" data-size="sm">
+            <Fieldset.Legend>{t('logRuns.status')}</Fieldset.Legend>
+            <div className="tag-row">
+              {statusChips.map(([label, value]) => (
+                <Chip.Radio
+                  key={label}
+                  name="lg-status"
+                  checked={filters.status === value}
+                  onChange={() => go({ status: value })}
+                >
+                  {t(label)}
+                </Chip.Radio>
+              ))}
+            </div>
+          </Fieldset>
+        </form>
+      )}
 
       {state.status === 'error' ? (
         <Alert data-color="danger" className="log-alert">
@@ -288,26 +307,40 @@ export const RunsTab = ({
         </Alert>
       ) : null}
 
-      <div className="log-count">
-        <p role="status">
-          {data ? t('logRuns.showing', { shown: rows.length, count: total }) : ''}
-        </p>
-        {hasRunFilters({ ...filters, q: typed }) ? (
-          <Button variant="tertiary" data-size="sm" onClick={reset}>
-            {t('logRuns.reset')}
-          </Button>
-        ) : null}
-      </div>
+      {never ? null : (
+        <div className="log-count">
+          <p role="status">
+            {data ? t('logRuns.showing', { shown: rows.length, count: total }) : ''}
+          </p>
+          {filtered ? (
+            <Button variant="tertiary" data-size="sm" onClick={reset}>
+              {t('logRuns.reset')}
+            </Button>
+          ) : null}
+        </div>
+      )}
 
       {state.status === 'loading' ? <Loading label={t('logRuns.loading')} /> : null}
 
-      {data && rows.length === 0 && trials.length === 0 ? (
+      {never ? (
+        <div className="log-empty">
+          <Heading level={2} data-size="xs">
+            {t('logRuns.noneTitle')}
+          </Heading>
+          <Paragraph>{t('logRuns.noneText')}</Paragraph>
+          <a href="#/playground" className="log-self-start">
+            {t('logRuns.openPlayground')}
+          </a>
+        </div>
+      ) : null}
+
+      {data && !never && rows.length === 0 && trials.length === 0 ? (
         <div className="log-empty">
           <Heading level={2} data-size="xs">
             {t('logRuns.noMatchTitle')}
           </Heading>
           <Paragraph>{t('logRuns.noMatchText')}</Paragraph>
-          {hasRunFilters({ ...filters, q: typed }) ? (
+          {filtered ? (
             <Button variant="secondary" data-size="sm" className="log-self-start" onClick={reset}>
               {t('logRuns.resetFilters')}
             </Button>
@@ -347,6 +380,7 @@ export const RunsTab = ({
                       <a href={href(row)} className="log-run-link">
                         {title(row)}
                       </a>
+                      {failureOf(row) ? <div className="meta">{failureOf(row)}</div> : null}
                       {row.erasure ? (
                         <div>
                           <Tag data-size="sm" data-color="neutral">
@@ -381,7 +415,12 @@ export const RunsTab = ({
                 <span className="meta">{relativeTime(row.createdAt, t, f, now)}</span>
                 <a href={href(row)}>{title(row)}</a>
                 <span className="meta">
-                  {[statusOf(row.status, t).text, duration(row), cost(row)]
+                  {[
+                    row.actor ? actorText(row.actor, t) : '',
+                    row.status === 'completed' ? '' : statusOf(row.status, t).text,
+                    duration(row),
+                    cost(row),
+                  ]
                     .filter(Boolean)
                     .join(' · ')}
                 </span>

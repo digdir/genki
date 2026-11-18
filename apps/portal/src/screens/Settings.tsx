@@ -30,6 +30,7 @@ import { mergeRows, type Ctx } from './settings/model';
 import { settingLabel } from './settings/text';
 import { SettingPanel, type LogEntry } from './settings/SettingPanel';
 import { SettingsGrid } from './settings/SettingsGrid';
+import { AllSettingsTable } from './settings/AllSettingsTable';
 import { LiveTransfer } from './settings/LiveTransfer';
 import { Transfer } from './settings/Transfer';
 import { WrittenStandard, writtenStandardRow } from './settings/WrittenStandard';
@@ -162,9 +163,9 @@ const View = ({
         <div className="settings-header">
           <div className="settings-title">
             <Heading level={1} data-size="md">
-              {title}
+              {t('settings.heading')}
             </Heading>
-            <p className="lead">{intro}</p>
+            <p className="lead">{t('settings.introOrganisation', { name: tenantName })}</p>
           </div>
         </div>
         <Tabs
@@ -221,7 +222,7 @@ const View = ({
             {tenantTab === 'all' ? (
               <div className="stack">
                 <p>{t('settings.allIntro')}</p>
-                <SettingsGrid
+                <AllSettingsTable
                   rows={rows}
                   categories={loaded.categories}
                   ctx={ctx}
@@ -396,7 +397,18 @@ export const Settings = (props: ScreenProps & { context: SettingsContext }) => {
             {t('settings.heading')}
           </Heading>
         )}
-        {context.kind === 'tenant' ? <p>{t('settings.loadFailedNoDefaults')}</p> : null}
+        {context.kind === 'tenant' ? (
+          <>
+            <Heading level={2} data-size="xs">
+              {t('settings.loadFailedTitle')}
+            </Heading>
+            <p>
+              {props.route.segments[1] === 'all'
+                ? t('settings.loadFailedNoDefaults')
+                : t('settings.loadFailedNoForm')}
+            </p>
+          </>
+        ) : null}
         <ErrorState error={state.error} onRetry={retry} />
       </div>
     );

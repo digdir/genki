@@ -150,6 +150,8 @@ const actionKeys: Record<string, PlainKey> = {
   'platform.quota.decide': 'changes.quotaDecide',
   'platform.quota.request': 'changes.quotaRequest',
   'platform.run.cancel': 'changes.taskCancel',
+  'platform.service.copy': 'logChanges.serviceCopy',
+  'platform.tools.revoke': 'logChanges.toolsRevoke',
 };
 
 export const auditActionsWithLabels = Object.keys(actionKeys);
@@ -185,6 +187,23 @@ const areaPrefixes: [string, ChangeArea][] = [
 export const areaOf = (action: string): ChangeArea =>
   areaPrefixes.find(([prefix]) => action.startsWith(prefix))?.[1] ?? 'services';
 
+const catalogTarget = (target: string) => {
+  const found = /^catalog:([a-z_-]+)\/(.+?)(?:@(\d+))?$/.exec(target);
+  return found?.[1] && found[2] ? { kind: found[1], id: found[2], version: found[3] } : undefined;
+};
+
+const datasetKinds = new Set(['dataset', 'knowledge-endpoint']);
+
+export const areaOfEntry = (entry: Pick<AuditRow, 'action' | 'target'>): ChangeArea =>
+  datasetKinds.has(catalogTarget(entry.target)?.kind ?? '') ? 'datasets' : areaOf(entry.action);
+
+const digdirCatalogActions = ['platform.catalog.', 'platform.models.', 'platform.default.'];
+
+/** A change Digdir made to the shared catalogue, not to this organisation. */
+export const isDigdirCatalogChange = (entry: Pick<AuditRow, 'action' | 'actor'>) =>
+  entry.actor.startsWith('operator:') &&
+  digdirCatalogActions.some((prefix) => entry.action.startsWith(prefix));
+
 export const serviceOfTarget = (target: string) =>
   /^Service:([^@/]+)@\d+$/.exec(target)?.[1] ??
   /^service:\d{9}\/([^/]+)$/.exec(target)?.[1] ??
@@ -199,15 +218,29 @@ export const keyOfActor = (actor: string) => {
 export interface ChangeTarget {
   text: string;
   service?: string;
+  href?: string;
 }
+
+export type CatalogName = (kind: string, id: string) => string | undefined;
 
 const targetOf = (
   entry: AuditRow,
   t: T,
   serviceName: (id: string) => string | undefined,
+  catalogName: CatalogName,
 ): ChangeTarget | undefined => {
   const target = entry.target;
   if (!target || target === entry.action) return undefined;
+  const catalog = catalogTarget(target);
+  if (catalog) {
+    const name = catalogName(catalog.kind, catalog.id) ?? catalog.id;
+    return {
+      text: catalog.version ? t('changes.targetVersion', { name, version: catalog.version }) : name,
+      ...(catalog.kind === 'model'
+        ? { href: `#/building-blocks/model/${encodeURIComponent(catalog.id)}` }
+        : {}),
+    };
+  }
   const typed = /^([A-Za-z-]+):(.+)$/.exec(target);
   if (!typed?.[1] || !typed[2]) return undefined;
   if (hiddenTargetKinds.has(typed[1].toLowerCase())) return undefined;
@@ -234,9 +267,10 @@ export const changeParts = (
   entry: AuditRow,
   t: T = nbT,
   serviceName: (id: string) => string | undefined = () => undefined,
+  catalogName: CatalogName = () => undefined,
 ) => {
   const key = actionKeys[entry.action];
-  const target = targetOf(entry, t, serviceName);
+  const target = targetOf(entry, t, serviceName, catalogName);
   const version = /^Service:[^@]+@(\d+)$/.exec(entry.target)?.[1];
   const publishedVersion =
     entry.action === 'platform.service.publish' && target?.service ? version : undefined;

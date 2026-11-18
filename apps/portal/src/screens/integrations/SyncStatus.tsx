@@ -25,10 +25,12 @@ export const SyncAttention = ({
   name,
   sync,
   panel,
+  onShow,
 }: {
   name: string;
   sync: LastSync;
   panel: string;
+  onShow?: () => void;
 }) => {
   const t = useT();
   const f = useFormat();
@@ -43,9 +45,12 @@ export const SyncAttention = ({
         variant="tertiary"
         data-size="sm"
         onClick={() => {
-          const target = document.getElementById(panel);
-          target?.scrollIntoView?.({ block: 'center' });
-          target?.focus();
+          onShow?.();
+          setTimeout(() => {
+            const target = document.getElementById(panel);
+            target?.scrollIntoView?.({ block: 'center' });
+            target?.focus();
+          }, 0);
         }}
       >
         {t('connectionSync.seeError')}

@@ -20,6 +20,8 @@ import { batchRunsMock } from './mock/batch-runs';
 import { searchEnginesMock } from './mock/search-engines';
 import { skillsMock } from './mock/skills';
 import { platformStatusMock } from './mock/platform-status';
+import { devtoolsMock } from './mock/devtools';
+import { settingsMock } from './mock/settings';
 import { blocksMock } from './mock/blocks';
 import { exampleSecretNames } from './data/building-blocks';
 import { inputFieldsOf } from './data/playground';
@@ -492,6 +494,8 @@ const featureMocks = {
   preferences: preferencesMock,
   platformStatus: platformStatusMock,
   access: accessMock,
+  devtools: devtoolsMock,
+  settings: settingsMock,
   blocks: blocksMock,
 };
 
@@ -815,6 +819,8 @@ export const mockFetch = (
     featureMocks.preferences(extras.features?.preferences),
     featureMocks.platformStatus(extras.features?.platformStatus),
     featureMocks.access(extras.features?.access),
+    featureMocks.devtools(extras.features?.devtools),
+    featureMocks.settings({ catalog: exampleSettingsCatalog, ...extras.features?.settings }),
     batchRuns,
     featureMocks.environments({
       latest: (service) =>

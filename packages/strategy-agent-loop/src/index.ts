@@ -658,6 +658,12 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
               type: 'kernel.notice',
               data: { kind: 'retrieval', hits: outcome.retrieved, ...outcome.search },
             };
+          if (outcome.searchError)
+            yield {
+              type: 'x.search.error',
+              audience: 'audit',
+              data: { error: outcome.searchError },
+            };
           if (outcome.read)
             yield { type: 'kernel.notice', data: { kind: 'read', ...outcome.read } };
           if (call.name === 'generate_response') generated = true;
