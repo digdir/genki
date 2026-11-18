@@ -1,5 +1,5 @@
 import { mkdtempSync } from 'node:fs';
-import { createServer, type ServerResponse } from 'node:http';
+import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -129,7 +129,12 @@ interface FakeRun {
 }
 
 // A fake genki-test whose model runs take a moment and are refused, so no check retries.
-const runAgainstFake = async (env: Record<string, string>): Promise<FakeRun> => {
+type Handler = (req: IncomingMessage, res: ServerResponse) => boolean;
+
+const runAgainstFake = async (
+  env: Record<string, string>,
+  handle: Handler = () => false,
+): Promise<FakeRun> => {
   const plan = loadPlan();
   let running = 0;
   let most = 0;
@@ -140,6 +145,7 @@ const runAgainstFake = async (env: Record<string, string>): Promise<FakeRun> => 
   };
   const server = createServer((req, res) => {
     const url = req.url ?? '';
+    if (handle(req, res)) return;
     if (url === '/health') return send(res, 200, { status: 'ok', version: 'a'.repeat(40) });
     if (url.endsWith('/playground/options'))
       return send(res, 200, { services: [{ id: plan.service, latestVersion: 1 }] });
@@ -263,5 +269,63 @@ describe('the portal playground run in a browser', () => {
       outcome: 'skip',
       skipReason: 'tier',
     });
+  }, 30_000);
+});
+
+describe('the throwaway service of a run', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  const archivedAfterEarlierRun = (publishFails = false) => {
+    const state = new Map<string, string>([[loadPlan().throwaway, 'archived']]);
+    const handle: Handler = (req, res) => {
+      const reply = (status: number) => {
+        res.writeHead(status, { 'content-type': 'application/json' });
+        res.end('{}');
+        return true;
+      };
+      const id = /\/services\/([^/]+)\/lifecycle$/.exec(req.url ?? '')?.[1];
+      if (id && req.method === 'PUT') {
+        let body = '';
+        req.on('data', (chunk: Buffer) => (body += chunk.toString()));
+        req.on('end', () => {
+          if (!state.has(id)) return reply(404);
+          state.set(id, (JSON.parse(body) as { state: string }).state);
+          reply(200);
+        });
+        return true;
+      }
+      if (id && req.method === 'GET') return reply(state.has(id) ? 200 : 404);
+      if (req.url === '/definitions' && req.method === 'POST') {
+        let body = '';
+        req.on('data', (chunk: Buffer) => (body += chunk.toString()));
+        req.on('end', () => {
+          const id = loadPlan().throwaway;
+          if (!body.includes(id)) return reply(201);
+          if (publishFails && state.get(id) !== 'archived') return reply(500);
+          if (state.get(id) === 'archived') return reply(409);
+          state.set(id, 'active');
+          reply(201);
+        });
+        return true;
+      }
+      return false;
+    };
+    return { state, handle };
+  };
+
+  it('publishes the throwaway again after an earlier run archived it', async () => {
+    const { state, handle } = archivedAfterEarlierRun();
+    const { rows } = await runAgainstFake({}, handle);
+    expect(rows.find((c) => c.id === 'lifecycle:throwaway')).toMatchObject({ outcome: 'pass' });
+    expect(state.get(loadPlan().throwaway)).toBe('archived');
+  }, 30_000);
+
+  it('archives the throwaway again when it was restored but the publish failed', async () => {
+    const { state, handle } = archivedAfterEarlierRun(true);
+    await runAgainstFake({}, handle);
+    expect(state.get(loadPlan().throwaway)).toBe('archived');
   }, 30_000);
 });
