@@ -622,9 +622,9 @@ export const main = async () => {
     try {
       if (needsGrant('definitions', 'free', 'lifecycle:throwaway')) {
         const yaml = withId(serviceYaml(), plan.service, plan.throwaway);
-        await client.lifecycle(plan.throwaway, 'active');
+        const restored = await client.lifecycle(plan.throwaway, 'active');
         const publish = await client.publish(yaml);
-        if (publish.status < 300) published.push(plan.throwaway);
+        if (restored.status === 200 || publish.status < 300) published.push(plan.throwaway);
         const active =
           publish.status < 300 ? await client.lifecycle(plan.throwaway, 'active') : publish;
         const read = await client.get(

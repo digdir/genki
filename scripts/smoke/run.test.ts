@@ -278,7 +278,7 @@ describe('the throwaway service of a run', () => {
     vi.restoreAllMocks();
   });
 
-  const archivedAfterEarlierRun = () => {
+  const archivedAfterEarlierRun = (publishFails = false) => {
     const state = new Map<string, string>([[loadPlan().throwaway, 'archived']]);
     const handle: Handler = (req, res) => {
       const reply = (status: number) => {
@@ -304,6 +304,7 @@ describe('the throwaway service of a run', () => {
         req.on('end', () => {
           const id = loadPlan().throwaway;
           if (!body.includes(id)) return reply(201);
+          if (publishFails && state.get(id) !== 'archived') return reply(500);
           if (state.get(id) === 'archived') return reply(409);
           state.set(id, 'active');
           reply(201);
@@ -319,6 +320,12 @@ describe('the throwaway service of a run', () => {
     const { state, handle } = archivedAfterEarlierRun();
     const { rows } = await runAgainstFake({}, handle);
     expect(rows.find((c) => c.id === 'lifecycle:throwaway')).toMatchObject({ outcome: 'pass' });
+    expect(state.get(loadPlan().throwaway)).toBe('archived');
+  }, 30_000);
+
+  it('archives the throwaway again when it was restored but the publish failed', async () => {
+    const { state, handle } = archivedAfterEarlierRun(true);
+    await runAgainstFake({}, handle);
     expect(state.get(loadPlan().throwaway)).toBe('archived');
   }, 30_000);
 });
