@@ -760,6 +760,17 @@ export const knowledgeWork = (
         ? await deps.nativeOutputs.put(key, stored.output, stored.pages.length)
         : undefined;
     const outputPath = output?.path ?? stored.outputPath;
+    // This replacement run's records waiting on a short file's text layer, read before the store
+    // ends their waits: they go on to Docling (issue 749).
+    const waited =
+      run.replaces && key.converter === textLayer.name && deps.docling
+        ? await (async () => {
+            const { generation } = await datasetOf(deps, run, job.signal);
+            return (await conversions.waiting(key))
+              .filter((w) => w.run === run.id)
+              .map((w) => ({ ...w, generation }));
+          })()
+        : [];
     const { sent, busy } = await conversions.store(
       {
         ...key,
@@ -771,18 +782,22 @@ export const knowledgeWork = (
       sendIndex,
     );
     // In a replacement run, a text-layer conversion is a short file's fill (issue 749): once its
-    // records are indexed with it, the file goes to Docling, with the same records waiting.
-    if (run.replaces && key.converter === textLayer.name && !stored.failure && deps.docling) {
+    // records' index jobs are sent, the file goes to Docling with the same records waiting, also when
+    // the text layer refused it or a record still waits on another file. A record whose index job was
+    // busy keeps its wait, and is sent to Docling when the job is tried again.
+    if (run.replaces && key.converter === textLayer.name && deps.docling) {
       const startAfter = heavyWorkStart(deps.heavy.window(), deps.heavy.now?.() ?? new Date());
-      for (const waiter of [...sent, ...busy])
-        await waitOn(
-          conversions,
-          job.data.file,
-          waiter,
-          undefined,
-          { priority: convertPriority.replacement, startAfter },
-          doclingIdentity.name,
-        );
+      const stillWaiting = new Set(busy.map((w) => w.record));
+      for (const waiter of waited)
+        if (!stillWaiting.has(waiter.record))
+          await waitOn(
+            conversions,
+            job.data.file,
+            waiter,
+            undefined,
+            { priority: convertPriority.replacement, startAfter },
+            doclingIdentity.name,
+          );
     }
     // A replacement's new pages reach every document of its pipeline that holds the file, also
     // one written again meanwhile, which ended its wait (ADR 0042, "Conversion").
@@ -828,10 +843,10 @@ export const knowledgeWork = (
       const { generation } = await datasetOf(deps, run, job.signal);
       const startAfter = heavyWorkStart(deps.heavy.window(), deps.heavy.now?.() ?? new Date());
       const timing = { priority: convertPriority.replacement, startAfter };
-      /** Every record `select` names, page by page, waits on its files' conversion by `converter`. */
+      /** Every record `select` names, page by page, waits on each of its files' conversion. */
       const waitAll = async (
-        select: typeof conversions.replaceable,
-        converter: string,
+        select: StoredConversions['replaceable'],
+        converterFor: (sha256: string) => Promise<string>,
       ): Promise<boolean> => {
         let after = '0';
         for (;;) {
@@ -848,15 +863,25 @@ export const knowledgeWork = (
               tenant: job.data.tenant,
             };
             for (const file of files)
-              await waitOn(conversions, file.sha256, waiter, undefined, timing, converter);
+              await waitOn(
+                conversions,
+                file.sha256,
+                waiter,
+                undefined,
+                timing,
+                await converterFor(file.sha256),
+              );
           }
           after = last.record;
         }
       };
-      // Short files' text-layer jobs first, so pg-boss takes them before the Docling jobs: they
-      // take seconds, and their records are indexed with the fill in the first night (issue 749).
-      if (!(await waitAll(conversions.short.bind(conversions), textLayer.name))) return;
-      await waitAll(conversions.replaceable.bind(conversions), doclingIdentity.name);
+      // Short files first, so pg-boss takes their text-layer jobs before the Docling jobs: they take
+      // seconds, and their records are indexed with the fill in the first night (issue 749). A
+      // short file whose text layer is stored, or refused, goes to Docling.
+      const shortTo = async (sha256: string) =>
+        (await conversions.find(sha256, textLayerOnly)) ? doclingIdentity.name : textLayer.name;
+      if (!(await waitAll(conversions.short.bind(conversions), shortTo))) return;
+      await waitAll(conversions.replaceable.bind(conversions), async () => doclingIdentity.name);
     },
     deps.admission,
   );

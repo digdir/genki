@@ -1,6 +1,8 @@
 import {
+  blankPage,
   conversionKey,
   settingsHash,
+  shortEnd,
   type AcceptedConverter,
   type ConversionWaiter,
   type RecordTransaction,
@@ -33,6 +35,17 @@ const acceptedJson = (accepted: readonly AcceptedConverter[]) =>
       kept: a.kept,
     })),
   );
+
+/** Files listed row by row, grouped by their record in the order the rows come. */
+const byRecord = (rows: { record: string; name: string; sha256: string }[]) => {
+  const files = new Map<string, { name: string; sha256: string }[]>();
+  for (const row of rows)
+    files.set(row.record, [
+      ...(files.get(row.record) ?? []),
+      { name: row.name, sha256: row.sha256 },
+    ]);
+  return [...files].map(([record, list]) => ({ record, files: list }));
+};
 
 interface ConversionRow {
   sha256: string;
@@ -300,61 +313,45 @@ export const knowledgeConversionsOf = (writer: Pool): StoredConversions => ({
         order by f.number, f.name`,
       [dataset, after, acceptedJson(accepted), limit, pipeline],
     );
-    const byRecord = new Map<string, { name: string; sha256: string }[]>();
-    for (const row of rows)
-      byRecord.set(row.record, [
-        ...(byRecord.get(row.record) ?? []),
-        { name: row.name, sha256: row.sha256 },
-      ]);
-    return [...byRecord].map(([record, files]) => ({ record, files }));
+    return byRecord(rows);
   },
 
   short: async (dataset, pipeline, accepted, after, limit) => {
-    // A conversion's empty end: its pages after the last one with text, as a share of its pages.
-    const emptyEnd = (c: string) =>
-      `(cardinality(${c}.pages) - coalesce((select max(i) from generate_subscripts(${c}.pages, 1) i
-          where ${c}.pages[i] ~ '\\S'), 0)) > 0.05 * cardinality(${c}.pages)`;
+    // A file is short when every conversion of it by a kept converter, refusals included, is cut
+    // short. Each conversion's pages are read once, and the records are taken in number order up to
+    // `limit` before their files are listed, so a page of records reads only as far as it needs.
+    const shortFile = `(select bool_and(c.failure is null and cardinality(c.pages) > 0
+          and cardinality(c.pages) - (select coalesce(max(o), 0)
+                                        from unnest(c.pages) with ordinality as p(t, o) where t !~ $6)
+              > $7::numeric * cardinality(c.pages))
+        from src_conversions c
+        join kinds a on a.converter = c.converter and a.derivation = c.derivation
+         and a.derivation_version = c.derivation_version
+       where c.sha256 = f.sha256 and a.kept) is true`;
     const { rows } = await writer.query<{ record: string; name: string; sha256: string }>(
       `with kinds as (
          select * from jsonb_to_recordset($3::jsonb)
            as a(converter text, derivation text, derivation_version integer, kept boolean)
        ),
-       files as (
-         select d.number, f.file as name, f.sha256
+       records as (
+         select d.dataset, d.id, d.number
            from src_documents d
-           join src_files f on f.dataset = d.dataset and f.document = d.id
           where d.dataset = $1 and d.number > $2::bigint and $5 = any(d.owners)
             and (d.state = 'stored' or (d.state = 'skipped' and d.reason = 'no_text'))
-            and f.converts and f.sha256 is not null
             and exists (
-              select 1 from src_conversions c
-                join kinds a on a.converter = c.converter and a.derivation = c.derivation
-                 and a.derivation_version = c.derivation_version
-               where c.sha256 = f.sha256 and a.kept and c.failure is null
-                 and cardinality(c.pages) > 0 and ${emptyEnd('c')})
-            and not exists (
-              select 1 from src_conversions c
-                join kinds a on a.converter = c.converter and a.derivation = c.derivation
-                 and a.derivation_version = c.derivation_version
-               where c.sha256 = f.sha256 and a.kept and c.failure is null
-                 and cardinality(c.pages) > 0 and not ${emptyEnd('c')})
-            and not exists (
-              select 1 from src_conversions c join kinds a on a.converter = c.converter
-               where c.sha256 = f.sha256 and not a.kept)
-       ),
-       records as (select distinct number from files order by number limit $4)
-       select f.number::text as record, f.name, f.sha256
-         from files f join records r using (number)
-        order by f.number, f.name`,
-      [dataset, after, acceptedJson(accepted), limit, pipeline],
+              select 1 from src_files f
+               where f.dataset = d.dataset and f.document = d.id
+                 and f.converts and f.sha256 is not null and ${shortFile})
+          order by d.number limit $4
+       )
+       select r.number::text as record, f.file as name, f.sha256
+         from records r
+         join src_files f on f.dataset = r.dataset and f.document = r.id
+        where f.converts and f.sha256 is not null and ${shortFile}
+        order by r.number, f.file`,
+      [dataset, after, acceptedJson(accepted), limit, pipeline, blankPage.source, shortEnd],
     );
-    const byRecord = new Map<string, { name: string; sha256: string }[]>();
-    for (const row of rows)
-      byRecord.set(row.record, [
-        ...(byRecord.get(row.record) ?? []),
-        { name: row.name, sha256: row.sha256 },
-      ]);
-    return [...byRecord].map(([record, files]) => ({ record, files }));
+    return byRecord(rows);
   },
 
   holding: async (dataset, pipeline, sha256) => {

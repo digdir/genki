@@ -83,6 +83,15 @@ describe('storedConverter', () => {
     expect(conversion?.pages).toEqual(pages);
   });
 
+  it('a page of only no-break spaces counts as empty', async () => {
+    const conversion = await read([
+      docling(['Innledning', 'Drift', '\u00a0', '\u00a0\ufeff']),
+      textLayer(['Innledning', 'Drift', 'Annen rapportering', 'Vedlegg']),
+    ]);
+
+    expect(conversion?.pages).toEqual(['Innledning', 'Drift', 'Annen rapportering', 'Vedlegg']);
+  });
+
   it("a file with no text-layer conversion keeps Docling's pages as stored", async () => {
     const conversion = await read([docling(['# Innledning', '', 'Tabell 3', ''])]);
 

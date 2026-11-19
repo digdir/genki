@@ -1,8 +1,14 @@
 import { createHash } from 'node:crypto';
-import type { AcceptedConverter, StoredConversion, StoredConversions } from '@genai/port-knowledge';
+import {
+  blankPage,
+  shortEnd,
+  type AcceptedConverter,
+  type StoredConversion,
+  type StoredConversions,
+} from '@genai/port-knowledge';
 import { ConversionPending, ConversionRefused, type DocumentConverter } from './converter.js';
 
-const isEmpty = (page: string) => page.trim() === '';
+const isEmpty = (page: string) => blankPage.test(page);
 
 /**
  * Where a conversion cut short ends: the number of pages up to its last page with text, when the
@@ -10,7 +16,7 @@ const isEmpty = (page: string) => page.trim() === '';
  */
 const cutOf = (pages: readonly string[]) => {
   const kept = pages.findLastIndex((page) => !isEmpty(page)) + 1;
-  return pages.length - kept > 0.05 * pages.length ? kept : undefined;
+  return pages.length - kept > shortEnd * pages.length ? kept : undefined;
 };
 
 /**

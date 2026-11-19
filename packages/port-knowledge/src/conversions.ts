@@ -30,6 +30,19 @@ export interface AcceptedConverter {
   kept: boolean;
 }
 
+/**
+ * What a page with no text holds at most: the characters JavaScript's `\s` matches, written out so
+ * a PostgreSQL regular expression matches the same ones whatever the server's locale (issue 749).
+ */
+export const blankPageClass =
+  '[\\t\\n\\v\\f\\r \\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff]';
+
+/** A page with no text: empty, or only the characters `blankPageClass` names. */
+export const blankPage = new RegExp(`^${blankPageClass}*$`);
+
+/** A conversion cut short: its blank pages after its last page with text are more than 5 % of its pages. */
+export const shortEnd = 0.05;
+
 export const textLayerDerivation: Derivation = { name: 'text-layer', version: 1 };
 export const doclingPagesDerivation: Derivation = { name: 'docling-pages', version: 1 };
 export const doclingPartsDerivation: Derivation = { name: 'docling-parts', version: 1 };
@@ -186,11 +199,12 @@ export interface StoredConversions {
   ): Promise<{ record: string; files: { name: string; sha256: string }[] }[]>;
   /**
    * A pipeline's records in a dataset after record number `after`, at most `limit`, with files whose
-   * conversions by kept converters all end in empty pages for more than 5 % of their pages, and that
-   * have no conversion by a converter that is replaced: what a replacement run fills from the text
-   * layer and converts with Docling again (issue 749). The KUDOS export stopped Docling at 900 s, and
-   * the seed stored the pages after that empty. Only stored records and those skipped as `no_text`,
-   * in record order.
+   * conversions by kept converters, refusals included, are all cut short: their blank pages after
+   * their last page with text are more than `shortEnd` of their pages. The KUDOS export stopped
+   * Docling at 900 s, and the seed stored the pages after that empty. A replacement run fills them
+   * from the text layer and converts them with Docling again, and a file stays short until a kept
+   * converter has converted or refused it (issue 749). Only stored records and those skipped as
+   * `no_text`, in record order.
    */
   short(
     dataset: string,
