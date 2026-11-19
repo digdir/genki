@@ -543,6 +543,14 @@ export const assessStatus = (result: HttpResult, expected: number[], what: strin
         detail: `${what}: ${result.status}, expected ${expected.join(' or ')}`,
       };
 
+export const assessInternal = (result: HttpResult, id: string): Verdict => {
+  if (result.status !== 200) return { ok: false, detail: `${id}: ${result.status}, expected 200` };
+  const spec = record(record(record(record(json(result.text)).latest).definition).spec);
+  return spec.visibility === 'internal'
+    ? { ok: true, detail: `${id} is internal` }
+    : { ok: false, detail: `${id} is not internal, so the portal lists it` };
+};
+
 export const assessScopeRefusal = (result: HttpResult, type: string, what: string): Verdict => {
   if (result.status !== 403)
     return { ok: false, detail: `${what}: ${result.status}, expected 403` };

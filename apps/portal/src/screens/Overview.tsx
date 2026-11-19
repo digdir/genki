@@ -653,7 +653,8 @@ export const Overview = ({
       ),
     });
   for (const run of failed?.today ?? []) {
-    const name = names.get(run.id) ?? run.name;
+    const name = names.get(run.id);
+    if (name === undefined) continue;
     items.push({
       key: `runs-${run.id}`,
       badge: t('overview.badgeErrorsToday'),

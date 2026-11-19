@@ -2,7 +2,13 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import type { Principal, Task } from '@genai/contracts';
 import { isInternalService, type DefinitionStore, type ValidationError } from '@genai/definitions';
 import type { TestSet, TestSetStore } from '@genai/eval';
-import { ALL_GRANT, boundService, SERVICE_GRANT, seesInternalServices } from '@genai/identity';
+import {
+  ALL_GRANT,
+  boundService,
+  isTestRunnerKey,
+  SERVICE_GRANT,
+  seesInternalServices,
+} from '@genai/identity';
 import type { MiddlewareHandler } from 'hono';
 import { routeOf } from './change-reason.js';
 import { originOf, serviceOrigin } from './draft-runner.js';
@@ -18,10 +24,21 @@ const viewer = new AsyncLocalStorage<Viewer>();
 
 export const hidesInternalServices = () => viewer.getStore()?.hides ?? false;
 
-export const hidingInternalServicesFrom = <T>(principal: Principal | undefined, work: () => T): T =>
+const surfaceHeader = 'genki-surface';
+
+const portalSurface = 'portal';
+
+const sees = (principal: Principal, surface: string | undefined) =>
+  surface === portalSurface ? isTestRunnerKey(principal) : seesInternalServices(principal);
+
+export const hidingInternalServicesFrom = <T>(
+  principal: Principal | undefined,
+  work: () => T,
+  surface?: string,
+): T =>
   viewer.run(
     {
-      hides: !(principal && seesInternalServices(principal)),
+      hides: !(principal && sees(principal, surface)),
       signedIn: principal !== undefined,
       internal: new Map(),
     },
@@ -32,7 +49,7 @@ export const internalServiceViewer =
   (caller: (request: Request) => Promise<Principal | undefined>): MiddlewareHandler =>
   async (c, next) => {
     const principal = await caller(c.req.raw);
-    await hidingInternalServicesFrom(principal, next);
+    await hidingInternalServicesFrom(principal, next, c.req.header(surfaceHeader));
   };
 
 export type DraftDefinition = (tenant: string, id: string) => Promise<unknown>;

@@ -33,6 +33,14 @@ const people: Record<string, Principal> = {
     tenant: digdir,
     scopes: [trustedEntraScope],
   },
+  owner: {
+    kind: 'operator',
+    issuer: 'test',
+    subject: 'eier',
+    tenant: digdir,
+    authorizedFor: [{ org: digdir }],
+    scopes: [trustedEntraScope],
+  },
 };
 
 const internal = (id: string, extra: Record<string, unknown> = {}) => {
@@ -177,6 +185,8 @@ const boot = async () => {
   return { app, send, key, keyId, run, platform };
 };
 
+const portal = { 'genki-surface': 'portal' };
+
 const ids = async (response: Response) =>
   ((await response.json()) as { data: { id: string }[] }).data.map((d) => d.id);
 
@@ -259,6 +269,49 @@ describe('an internal service', () => {
 
     expect(listed.data.find((d) => d.id === 'smoke')).toMatchObject({ internal: true });
     expect(listed.data.find((d) => d.id === 'klarsprak')?.internal).toBeUndefined();
+  });
+
+  it.each([
+    `/tenants/${digdir}/services`,
+    `/tenants/${digdir}/overview`,
+    `/tenants/${digdir}/definitions`,
+    `/tenants/${digdir}/playground/options`,
+    `/tenants/${digdir}/tasks`,
+    `/tenants/${digdir}/usage`,
+    `/tenants/${digdir}/building-blocks`,
+  ])('is left out of %s for an operator in the portal', async (path) => {
+    const { send, run, key } = await boot();
+    expect((await run(await key({ testRunner: true }), 'smoke')).status).toBe(200);
+
+    const read = await send(path, 'owner', { headers: portal });
+
+    expect(read.status).toBe(200);
+    expect(await read.text()).not.toMatch(/\bsmoke\b/);
+  });
+
+  it('is listed for an operator outside the portal', async () => {
+    const { send } = await boot();
+
+    expect(await ids(await send(`/tenants/${digdir}/services`, 'owner'))).toContain('smoke');
+  });
+
+  it('answers an operator in the portal 404 at its paths', async () => {
+    const { send } = await boot();
+
+    const read = await send(`/tenants/${digdir}/definitions/services/smoke`, 'owner', {
+      headers: portal,
+    });
+
+    expect(read.status).toBe(404);
+  });
+
+  it('is shown to the test-runner key in the portal, so the smoke test can drive it', async () => {
+    const { send, key } = await boot();
+    const runner = await key({ testRunner: true });
+
+    const listed = await send(`/tenants/${digdir}/services`, runner, { headers: portal });
+
+    expect(await ids(listed)).toContain('smoke');
   });
 
   it('opens for an operator in the console', async () => {
