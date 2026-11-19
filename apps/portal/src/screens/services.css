@@ -171,6 +171,7 @@ a.ds-button {
 }
 
 .new-service {
+  width: 100%;
   max-width: 1180px;
   margin: 0 auto;
   display: flex;
@@ -329,6 +330,21 @@ a.ds-button {
   min-width: 0;
 }
 
+@container page (max-width: 859px) {
+  .builder-split {
+    flex-direction: column;
+  }
+
+  .builder-split > .assistant,
+  .builder-assistant-off {
+    flex: none;
+    position: relative;
+    max-height: 50vh;
+    border-right: 0;
+    border-bottom: 1px solid var(--ds-color-neutral-border-subtle);
+  }
+}
+
 .builder-tabs {
   position: sticky;
   top: 0;
@@ -377,6 +393,8 @@ a.ds-button {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  position: relative;
+  overscroll-behavior: contain;
 }
 
 .msg {
@@ -989,6 +1007,7 @@ a.ds-button {
   overflow-x: auto;
   resize: vertical;
   tab-size: 2;
+  position: relative;
 }
 
 .version-list {

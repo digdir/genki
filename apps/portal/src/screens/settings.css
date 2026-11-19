@@ -453,6 +453,7 @@
   white-space: pre;
   font-variant-numeric: tabular-nums;
   background: var(--ds-color-neutral-background-tinted);
+  position: relative;
 }
 
 .dry-table {
