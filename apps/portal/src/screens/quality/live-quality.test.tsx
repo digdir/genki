@@ -586,8 +586,27 @@ describe('live Testsett', () => {
     slowCases = false;
   });
 
-  it('runs only the test cases marked in the list, and clears the marks', async () => {
+  it('runs marked test cases on the published version when the service has no saved draft', async () => {
     const { writes } = await openLive();
+    await screen.findByText('Hvor mange tilsyn hadde vi i 2025?');
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Hvor mange tilsyn hadde vi i 2025?' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Kjør det merkede testtilfellet' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Start kjøringen' }));
+    await waitFor(() =>
+      expect(writes().at(-1)).toMatchObject({
+        method: 'POST',
+        path: '/tenants/999888777/services/rapportassistenten/eval-runs',
+        body: { testSet: 'rapport-kjerne', version: 'published', cases: ['tc-1'] },
+      }),
+    );
+    expect(screen.queryByText('Tjenesten har ikke noe lagret utkast')).toBeNull();
+    expect(screen.queryByRole('radio', { name: 'Utkastet' })).toBeNull();
+  });
+
+  it('runs only the test cases marked in the list, and clears the marks', async () => {
+    const { writes } = await openLive(editor, {
+      drafts: { rapportassistenten: { definition: { kind: 'Service' } } },
+    });
     await screen.findByText('Hvor mange tilsyn hadde vi i 2025?');
     expect(screen.queryByRole('button', { name: /merkede testtilfellene/ })).toBeNull();
     expect(screen.getByText('Kryss av testtilfeller for å kjøre bare dem.')).toBeTruthy();
