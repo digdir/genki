@@ -176,7 +176,7 @@ const base = (id: string, tenant = digdir) => `/tenants/${tenant}/datasets/${id}
 
 const createDataset = async ({ call }: Booted, id: string, endpoint = 'platform-pg') => {
   const created = await call(`/tenants/${digdir}/datasets`, 'kari', {
-    body: { id, name: 'Veiledere', residency: 'norway', index: { endpoint }, embedding },
+    body: { id, name: 'Veiledere', residency: 'eu', index: { endpoint }, embedding },
   });
   expect(created.status).toBe(201);
 };
@@ -249,7 +249,11 @@ const documentsOf = async (dataset: string) =>
 
 const reads = (dataset: string) => ({
   ...testService('leser'),
-  spec: { ...testService('leser').spec, knowledge: { datasets: [{ dataset }] } },
+  spec: {
+    ...testService('leser').spec,
+    model: { ...testService('leser').spec.model, residency: 'eu' },
+    knowledge: { datasets: [{ dataset }] },
+  },
 });
 
 describe('deleting a dataset', () => {

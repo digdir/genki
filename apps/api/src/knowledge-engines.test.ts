@@ -91,7 +91,7 @@ describe('knowledge engine descriptions', () => {
         writer: { needsVectors: true },
       }),
     ]);
-    expect(describeEngines([pgvector.adapter], [])[0]).not.toHaveProperty('dataLocation');
+    expect(describeEngines([pgvector.adapter], [])[0]?.dataLocation).toBe('eu');
   });
 
   it('secret fields carry x-secret in the engine JSON Schema', () => {

@@ -10,6 +10,7 @@ import {
   platformSettings,
   resolveSetting,
   resolveSettings,
+  serviceDataLocation,
   strategyKey,
   toCapabilities,
   validateDefinition,
@@ -253,6 +254,99 @@ describe('service definitions', () => {
         traceSink: () => ({ residency: 'global', content: false }),
       }).ok,
     ).toBe(true);
+  });
+
+  it('a service processes data in the widest place of the models, datasets and reranker it uses', () => {
+    const specOf = (patch: Record<string, unknown>) => {
+      const result = validateDefinition(withSpec(patch), plugins);
+      if (!result.ok) throw new Error(JSON.stringify(result.errors));
+      return (result.definition as ServiceDefinition).spec;
+    };
+    const located = (stored: DatasetLocation['stored'], embedded?: DatasetLocation['stored']) => ({
+      ...plugins,
+      datasetLocation: (): DatasetLocation => ({
+        stored,
+        ...(embedded ? { embedding: { model: 'embed', residency: embedded } } : {}),
+      }),
+      rerankerResidency: () => 'norway' as const,
+    });
+    const spec = specOf({
+      model: { primary: 'foundry/gpt-4o', residency: 'global' },
+      knowledge: { datasets: [{ dataset: 'digdir/kudos' }], reranker: 'colbert' },
+    });
+
+    expect(serviceDataLocation(spec, located('norway', 'norway'))).toBe('norway');
+    expect(serviceDataLocation(spec, located('eu', 'norway'))).toBe('eu');
+    expect(serviceDataLocation(spec, located('eu', 'global'))).toBe('global');
+    expect(
+      serviceDataLocation(
+        { ...spec, model: { ...spec.model, primary: 'foundry/claude-opus' } },
+        {
+          ...located('norway'),
+        },
+      ),
+    ).toBe('global');
+  });
+
+  it('a service has no known data location while a model it uses is not in the catalogue', () => {
+    const result = validateDefinition(
+      withSpec({
+        model: { primary: 'foundry/gpt-4o', residency: 'norway' },
+        knowledge: { datasets: [] },
+      }),
+      plugins,
+    );
+    if (!result.ok) throw new Error(JSON.stringify(result.errors));
+    const spec = (result.definition as ServiceDefinition).spec;
+
+    expect(serviceDataLocation(spec, plugins)).toBe('norway');
+    expect(
+      serviceDataLocation({ ...spec, model: { ...spec.model, primary: 'gone/model' } }, plugins),
+    ).toBeUndefined();
+  });
+
+  it('a service processes data where a content trace sink sends it', () => {
+    const result = validateDefinition(
+      withSpec({
+        model: { primary: 'foundry/gpt-4o', residency: 'global' },
+        knowledge: { datasets: [] },
+      }),
+      plugins,
+    );
+    if (!result.ok) throw new Error(JSON.stringify(result.errors));
+    const spec = (result.definition as ServiceDefinition).spec;
+
+    expect(
+      serviceDataLocation(spec, {
+        ...plugins,
+        traceSink: () => ({ residency: 'global', content: true }),
+      }),
+    ).toBe('global');
+    expect(
+      serviceDataLocation(spec, {
+        ...plugins,
+        traceSink: () => ({ residency: 'global', content: false }),
+      }),
+    ).toBe('norway');
+  });
+
+  it('a service processes data where an agent it calls runs', () => {
+    const result = validateDefinition(
+      withSpec({
+        model: { primary: 'foundry/gpt-4o', residency: 'global' },
+        knowledge: { datasets: [] },
+      }),
+      plugins,
+    );
+    if (!result.ok) throw new Error(JSON.stringify(result.errors));
+    const spec = (result.definition as ServiceDefinition).spec;
+
+    expect(serviceDataLocation(spec, { ...plugins, strategyResidency: () => 'global' })).toBe(
+      'global',
+    );
+    expect(serviceDataLocation(spec, { ...plugins, strategyResidency: () => undefined })).toBe(
+      'norway',
+    );
   });
 
   it('refuses a reranker that processes data outside the residency the service requires', () => {

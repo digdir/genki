@@ -208,6 +208,7 @@ const health = (
     gates?: unknown[];
     sets?: unknown[];
     datasets?: unknown[];
+    dataLocation?: string;
   } = {},
 ) => {
   const calls: string[] = [];
@@ -312,6 +313,8 @@ const health = (
     if (path.endsWith('/api-keys'))
       return reply({ keys: overrides.keys ?? [serviceKey('k1', 'Saksbehandling')] });
     if (path.endsWith('/access/services')) return reply({ services: [] });
+    if (path === `/tenants/${tenant}/services`)
+      return reply({ data: [{ id: 'rapport', dataLocation: overrides.dataLocation ?? null }] });
     if (path.endsWith('/lifecycle')) return reply({ state: 'active' });
     if (path.endsWith('/definitions/services/rapport'))
       return reply({
@@ -833,25 +836,25 @@ describe('the Oversikt tab of a published service', () => {
     expect(text(live)).toContain('ukjent datasett «borte»');
   });
 
-  it('says where data is processed from the widest of the model and its sources', async () => {
-    const { api } = health({
-      datasets: [
-        {
-          id: 'tilsyn',
-          fullId: `${tenant}/tilsyn`,
-          name: 'Tilsynsrapporter 2025',
-          aliases: [],
-          residency: 'eu',
-          effectiveResidency: 'global',
-        },
-      ],
-    });
+  it('says where the service processes data as the platform reports it', async () => {
+    const { api } = health({ dataLocation: 'eu' });
     render(
       <OverviewSection api={api} tenant={tenant} id="rapport" definition={definition} now={now} />,
     );
 
     const live = await screen.findByRole('region', { name: 'I drift' });
-    await waitFor(() => expect(text(live)).toContain('data behandles i hele verden'));
+    await waitFor(() => expect(text(live)).toContain('data behandles i EU/EØS'));
+  });
+
+  it('says nothing about where data is processed when the platform does not know', async () => {
+    const { api } = health();
+    render(
+      <OverviewSection api={api} tenant={tenant} id="rapport" definition={definition} now={now} />,
+    );
+
+    const live = await screen.findByRole('region', { name: 'I drift' });
+    await waitFor(() => expect(text(live)).toContain('gpt-5.6-terra'));
+    expect(text(live)).not.toContain('data behandles');
   });
 
   it('says the quality is the same as the version before when the score did not change', async () => {

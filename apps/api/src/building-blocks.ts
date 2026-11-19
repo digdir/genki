@@ -15,6 +15,7 @@ import {
   type RuntimeBlocks,
 } from '@genai/composition';
 import {
+  serviceDataLocation,
   type ServiceDefinition,
   type SkillDefinition,
   type StepFlowDefinition,
@@ -75,6 +76,7 @@ import type {
 } from './platform-modules.js';
 import type { SinkJudge, TraceConnection } from './trace-connections.js';
 import { requireRight, rightRefused, type Right } from './rights.js';
+import { datasetDataLocation } from './residency.js';
 import { pluginBlockOf, pluginEntries } from './external-plugins.js';
 import { actorNameOf, changeReasonOf, isReasonLongEnough, reasonTooShort } from './http.js';
 import { requestLocale, t, translate, translatorFor, type ApiKey } from './i18n/index.js';
@@ -827,7 +829,7 @@ export const createBuildingBlocksModule =
       const engines = new Map(deps.engines().map((e) => [e.engine, e]));
       for (const item of visible) {
         if (item.kind === 'dataset') {
-          const spec = item.spec as { name?: string; description?: string; residency?: string };
+          const spec = item.spec as { name?: string; description?: string };
           out.push({
             block: {
               id: item.id,
@@ -836,7 +838,7 @@ export const createBuildingBlocksModule =
               description: spec.description ?? '',
               publisher: publisherOf(item.scope, tenant),
               version: String(item.version),
-              dataLocation: locationOf(spec.residency),
+              dataLocation: datasetDataLocation(deps.plugins, item.id) ?? null,
               capabilities: Object.keys((item.spec.filters as object | undefined) ?? {}).map(
                 (f) => `filter.${f}`,
               ),
@@ -1188,7 +1190,7 @@ export const createBuildingBlocksModule =
             description: compiled.capability.descriptor.description,
             publisher: publisherOf(compiled.service.tenant, tenant),
             version: String(compiled.service.version),
-            dataLocation: locationOf(spec?.model.residency),
+            dataLocation: spec ? (serviceDataLocation(spec, deps.plugins) ?? null) : null,
             capabilities: spec ? [spec.purpose] : [],
             permissions: [],
             settingsSchema: settingsOf(),

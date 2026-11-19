@@ -33,7 +33,10 @@ const completion = (content: string) => ({
   usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
 });
 
-const boot = async (traces?: { content: boolean; residency?: 'norway' | 'eu' | 'global' }) => {
+const boot = async (
+  traces?: { content: boolean; residency?: 'norway' | 'eu' | 'global' },
+  { ownEngine = false } = {},
+) => {
   const model = await fakeHttp(() => ({ status: 200, json: completion('Klart svar.') }));
   servers.push(model);
   const auth = { kind: 'api-key', secret: 'secret://env/model-key' } as const;
@@ -59,8 +62,27 @@ const boot = async (traces?: { content: boolean; residency?: 'norway' | 'eu' | '
             auth: { kind: 'api-key', secret: 'secret://env/model-key' },
             sharing: { tenants: '*' },
           },
+          ...(ownEngine
+            ? {
+                'platform-pg': {
+                  engine: 'pgvector',
+                  options: { connection: 'platform' },
+                  sharing: { tenants: '*' },
+                },
+              }
+            : {}),
         },
         datasets: [
+          ...(ownEngine
+            ? [
+                {
+                  id: 'digdir/kunnskap',
+                  endpoint: 'platform-pg',
+                  residency: 'global',
+                  embedding: { model: 'test/embed-eu', dimensions: 8 },
+                },
+              ]
+            : []),
           {
             id: 'digdir/veiledning',
             endpoint: 'ka',
@@ -95,6 +117,13 @@ const boot = async (traces?: { content: boolean; residency?: 'norway' | 'eu' | '
             residency: 'global',
             dimensions: 8,
           },
+          {
+            id: 'test/embed-eu',
+            endpoint: 'test',
+            deployment: 'embed-eu',
+            residency: 'eu',
+            dimensions: 8,
+          },
         ],
       },
     },
@@ -106,6 +135,7 @@ const boot = async (traces?: { content: boolean; residency?: 'norway' | 'eu' | '
       return principal ? { principal } : undefined;
     },
     ...(traces ? { traces: () => ({ endpoint: 'https://traces.example', ...traces }) } : {}),
+    ...(ownEngine ? { knowledgePool: {} as never } : {}),
   });
   const admin = createAdmin({
     store: platform.definitions,
@@ -176,6 +206,81 @@ describe('residency end to end', () => {
     expect(
       (await platform.definitions.publish(service({ datasets: ['digdir/kudos'] }), 't', 't')).ok,
     ).toBe(true);
+  });
+
+  it('a service using only EU models and datasets genki stores itself publishes under an EU residency rule', async () => {
+    const { platform, call } = await boot(undefined, { ownEngine: true });
+    const definition = service({ residency: 'eu', datasets: ['digdir/kunnskap'] });
+    const published = await platform.definitions.publish(
+      { ...definition, spec: { ...definition.spec, availableTo: '*' } },
+      'test',
+      'test',
+    );
+    const services = (await (await call(`/tenants/${digdir}/services`)).json()) as {
+      data: { id: string; dataLocation: string | null }[];
+    };
+    const shared = (await (await call('/shared-services')).json()) as {
+      data: { id: string; residency: string | null; dataLocation: string | null }[];
+    };
+
+    expect(published.ok ? [] : published.errors).toEqual([]);
+    expect(services.data.find((s) => s.id === 'svar')?.dataLocation).toBe('eu');
+    expect(shared.data.find((s) => s.id === 'svar')?.dataLocation).toBe('eu');
+  });
+
+  it('building blocks and the playground give a dataset and a shared service the same data location as the publish check', async () => {
+    const { platform, call } = await boot(undefined, { ownEngine: true });
+    const definition = service({ residency: 'global', datasets: ['digdir/kunnskap'] });
+    await platform.definitions.publish(
+      { ...definition, spec: { ...definition.spec, availableTo: '*' } },
+      'test',
+      'test',
+    );
+    const blocks = (await (await call(`/tenants/${digdir}/building-blocks`)).json()) as {
+      data: { id: string; kind: string; dataLocation: string | null }[];
+    };
+    const options = (await (await call(`/tenants/${digdir}/playground/options`)).json()) as {
+      datasets: { id: string; dataLocation: string }[];
+    };
+    const located = (kind: string, id: string) =>
+      blocks.data.find((b) => b.kind === kind && b.id === id)?.dataLocation;
+
+    expect(located('dataset', 'digdir/kunnskap')).toBe('eu');
+    expect(located('dataset', 'digdir/veiledning')).toBe('global');
+    expect(located('shared_service', `${digdir}/svar`)).toBe('eu');
+    expect(options.datasets.find((d) => d.id === 'digdir/kunnskap')?.dataLocation).toBe('eu');
+  });
+
+  it('a shared service shows where it processes data, not the widest place its rule allows', async () => {
+    const { platform, call } = await boot(undefined, { ownEngine: true });
+    const definition = service({ residency: 'global' });
+    await platform.definitions.publish(
+      { ...definition, spec: { ...definition.spec, availableTo: '*' } },
+      'test',
+      'test',
+    );
+    const shared = (await (await call('/shared-services')).json()) as {
+      data: { id: string; residency: string | null; dataLocation: string | null }[];
+    };
+
+    expect(shared.data.find((s) => s.id === 'svar')).toMatchObject({
+      residency: 'global',
+      dataLocation: 'norway',
+    });
+  });
+
+  it('a dataset genki stores itself is stored in the EU/EEA, one on an outside engine where its operator declares', async () => {
+    const { platform } = await boot(undefined, { ownEngine: true });
+    const published = await platform.definitions.publish(
+      service({ residency: 'norway', datasets: ['digdir/kudos', 'digdir/kunnskap'] }),
+      'test',
+      'test',
+    );
+
+    expect(published.ok ? [] : published.errors.map((e) => e.message)).toEqual([
+      'Datasettet digdir/kunnskap lagres i EU/EØS. Tjenesten krever at data behandles i Norge.',
+      'Datasettet digdir/kunnskap søkes med embeddingmodellen test/embed-eu, som behandler data i EU/EØS. Tjenesten krever at data behandles i Norge.',
+    ]);
   });
 
   it('refuses a Norway service while content traces go to a global sink', async () => {

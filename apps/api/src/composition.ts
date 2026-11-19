@@ -41,6 +41,7 @@ import {
   SettingsRegistry,
   strategyKey,
   toCapabilities,
+  serviceDataLocation,
   validateDefinition,
   variantId,
   variantStrategyOf,
@@ -2386,6 +2387,7 @@ export const createPlatform = async (input: PlatformInput) => {
           })),
         prices,
         modelResidency: (id) => models.describe().find((m) => m.id === id)?.residency,
+        serviceDataLocation: (spec) => serviceDataLocation(spec, plugins),
         ingestionUsage,
         ...(input.gatewayUsage ? { gatewayUsage: input.gatewayUsage } : {}),
         countingRule: () => {

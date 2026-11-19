@@ -17,7 +17,8 @@ const service = {
   name: 'Summary',
   purpose: 'Summarises documents',
   version: 1,
-  residency: 'norway',
+  residency: 'global',
+  dataLocation: 'norway',
   model: 'aivar/borealis-27b',
   variants: [],
 } as unknown as SharedService;
