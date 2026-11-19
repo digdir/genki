@@ -819,4 +819,5 @@
 .doc-panel .doc-text pre {
   overflow-x: auto;
   white-space: pre;
+  position: relative;
 }

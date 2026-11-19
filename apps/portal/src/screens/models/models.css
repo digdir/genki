@@ -197,6 +197,7 @@
   overflow-x: auto;
   border: 1px solid var(--ds-color-neutral-border-subtle);
   border-radius: var(--ds-border-radius-lg);
+  position: relative;
 }
 
 .mc-table {
