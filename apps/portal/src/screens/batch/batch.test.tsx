@@ -102,6 +102,12 @@ describe('Samlet jobb', () => {
     expectAccessible();
   });
 
+  it('offers one Ny samlet jobb button when there are no jobs yet', async () => {
+    await open();
+    await screen.findByRole('heading', { name: 'Ingen samlede jobber ennå' });
+    expect(screen.getAllByRole('button', { name: 'Ny samlet jobb' })).toHaveLength(1);
+  });
+
   it('chooses documents, takes the inputs, measures the cost and starts with a stop limit', async () => {
     const { writes, starts } = await open({ truncating: ['ar-2024-2'] });
     await chooseAnnualReports();

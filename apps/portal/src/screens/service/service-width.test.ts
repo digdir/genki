@@ -4,6 +4,7 @@ let service = '';
 let app = '';
 let services = '';
 let stepflows = '';
+let sections = '';
 beforeAll(async () => {
   const fs = (await import(/* @vite-ignore */ `node:${'fs'}`)) as {
     readFileSync: (path: URL, encoding: 'utf8') => string;
@@ -12,6 +13,7 @@ beforeAll(async () => {
   app = fs.readFileSync(new URL('../../app.css', import.meta.url), 'utf8');
   services = fs.readFileSync(new URL('../services.css', import.meta.url), 'utf8');
   stepflows = fs.readFileSync(new URL('../stepflows.css', import.meta.url), 'utf8');
+  sections = fs.readFileSync(new URL('./sections.css', import.meta.url), 'utf8');
 });
 
 const rule = (css: string, selector: string) =>
@@ -61,5 +63,26 @@ describe('the width of the page', () => {
     expect(app).toContain('--dialog-width: 560px;');
     expect(app).toContain('--panel-width: 480px;');
     expect(rule(app, ':root .ds-dialog')).toContain('--dsc-dialog-max-width: var(--dialog-width);');
+  });
+});
+
+describe('Utviklerverktøy on narrow screens', () => {
+  it('wraps the service tabs instead of hiding the last ones in a scrolling row', () => {
+    expect(rule(service, '.service-nav')).toContain('flex-wrap: wrap;');
+    expect(service).not.toMatch(/\.service-nav\s*\{[^}]*flex-wrap:\s*nowrap/);
+  });
+
+  it('lets the tags in the key table wrap so Roter and Trekk tilbake stay in view', () => {
+    expect(rule(sections, '.dv-keys .tag-row > .ds-tag')).toContain('width: auto;');
+    expect(rule(sections, '.dv-keys .actions')).toContain('white-space: nowrap;');
+  });
+
+  it('keeps the hidden Handlinger header inside the key table scroll region', () => {
+    expect(rule(sections, '.dv-keys-region')).toContain('position: relative;');
+  });
+
+  it('wraps the Logg filters so every field shows its whole text', () => {
+    expect(rule(sections, '.dv-filters')).toContain('flex-wrap: wrap;');
+    expect(rule(sections, '.dv-filters > .dv-filter-search')).toContain('flex: 2 1 360px;');
   });
 });

@@ -128,6 +128,7 @@ export const locate = (
     return go('definition');
   }
   if (raw === 'how-it-works') return go('setup', '/how');
+  if (raw === 'settings' && allowed.includes('setup')) return go('setup', '/limits');
   const known = (Object.keys(sectionLabels) as ServiceSection[]).find((s) => s === raw);
   if (!raw || !known) return { section: fallback, detail: undefined };
   if (!allowed.includes(known))

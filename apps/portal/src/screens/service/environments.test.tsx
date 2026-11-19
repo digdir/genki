@@ -435,6 +435,25 @@ describe('service environments in the portal', () => {
     expect(calls.some((c) => c.method === 'POST')).toBe(false);
   });
 
+  it('puts the menu for a non-prod environment right after Ta i bruk i prod, before the reason', async () => {
+    const { api } = platform({
+      [`GET ${definitionPath}`]: history,
+      [`GET ${environmentsPath}`]: () => ({
+        latestVersion: 3,
+        environments: [env('prod', 3, false, 2), env('test', 3, true)],
+      }),
+    });
+    render(asManager(<EnvironmentsSection api={api} tenant={tenant} serviceId="klarsprak" />));
+
+    const promote = await screen.findByRole('button', {
+      name: 'Ta versjonen test kjører i bruk i prod',
+    });
+    const more = screen.getByRole('button', { name: 'Flere valg for test' });
+    const reason = screen.getByText('prod kjører allerede versjon 3.');
+    expect(promote.compareDocumentPosition(more) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(more.compareDocumentPosition(reason) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it('shows the environments without actions to a member who may not manage services', async () => {
     const { api } = platform({
       [`GET ${definitionPath}`]: history,

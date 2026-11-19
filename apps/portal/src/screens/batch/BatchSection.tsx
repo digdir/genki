@@ -311,13 +311,6 @@ export const BatchSection = ({
                 {t('batch.emptyHeading')}
               </Heading>
               <Paragraph>{t('batch.emptyBody')}</Paragraph>
-              {canManage ? (
-                <div>
-                  <Button data-size="sm" onClick={() => setWizard(true)}>
-                    {t('batch.newJob')}
-                  </Button>
-                </div>
-              ) : null}
             </div>
           ) : (
             <RunList

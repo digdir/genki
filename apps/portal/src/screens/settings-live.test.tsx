@@ -380,7 +380,8 @@ describe('live settings', () => {
 
   it('publishes a service value as a new version with the reason', async () => {
     const { calls, fetch } = platform();
-    await renderLive('#/services/ka/settings', fetch);
+    await renderLive('#/services/ka/setup/limits', fetch);
+    fireEvent.click(await screen.findByRole('button', { name: 'Endre grenser' }));
     fireEvent.click(
       await within(await grid()).findByRole('button', { name: 'Treff som hentes (top-k)' }),
     );
@@ -410,7 +411,8 @@ describe('live settings', () => {
 describe('Målform i svar', () => {
   it('lets a service inherit or choose its own, and publishes the choice', async () => {
     const { calls, fetch } = platform();
-    await renderLive('#/services/ka/settings', fetch);
+    await renderLive('#/services/ka/setup/limits', fetch);
+    fireEvent.click(await screen.findByRole('button', { name: 'Endre grenser' }));
     const serviceLevel = await screen.findByRole('group', {
       name: 'Målform i svar, Tjeneste: Kunnskapsassistenten',
     });
