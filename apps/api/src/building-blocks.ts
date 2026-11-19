@@ -608,20 +608,24 @@ export type { RuntimeBlock, RuntimeBlocks };
 
 export const disabledBlockText = (name: string) => t('blocks.disabled', { name });
 
+const platformTextKey = (kind: 'flow' | 'block', id: string, field: 'Name' | 'Description') =>
+  `platformBlocks.${kind}${id
+    .split('-')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join('')}${field}`;
+
 const platformText = (
   kind: 'flow' | 'block',
   id: string,
   field: 'Name' | 'Description',
   fallback: string,
 ) => {
-  const camel = id
-    .split('-')
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join('');
-  const translator = translatorFor(requestLocale());
-  const key = `platformBlocks.${kind}${camel}${field}`;
-  return translator.has(key) ? translate(key as ApiKey) : fallback;
+  const key = platformTextKey(kind, id, field);
+  return translatorFor(requestLocale()).has(key) ? translate(key as ApiKey) : fallback;
 };
+
+const shippedFlow = (id: string) =>
+  translatorFor(requestLocale()).has(platformTextKey('flow', id, 'Name'));
 
 const blockTexts: BlockTexts = {
   disabled: disabledBlockText,
@@ -977,7 +981,10 @@ export const createBuildingBlocksModule =
                     spec.description ?? spec.purpose ?? '',
                   )
                 : (spec.description ?? spec.purpose ?? ''),
-              publisher: publisherOf(owner, tenant),
+              publisher:
+                owner === tenant && !(ownedByPlatform && shippedFlow(entry.id))
+                  ? { type: 'own', name: tenant }
+                  : publisherOf(owner, tenant),
               version: String(latest.version),
               dataLocation: null,
               capabilities:

@@ -485,6 +485,50 @@ describe('Oversikt', () => {
     expect(await within(menu).findByLabelText('1 datasett trenger oppfølging')).toBeTruthy();
   });
 
+  it('lists a Digdir dataset that needs follow-up, since the Datasett badge counts it', async () => {
+    const sharedDegraded = {
+      features: {
+        datasets: {
+          datasets: [
+            {
+              id: 'kudos',
+              fullId: 'digdir/kudos',
+              name: 'Kudos',
+              description: '',
+              scope: 'platform',
+              editable: false,
+              residency: 'norway',
+              effectiveResidency: 'norway',
+              index: { endpoint: 'platform-pg' },
+              facets: [],
+              searchScope: 'tenant',
+              source: 'kudos',
+              documents: 10,
+              chunks: 10,
+              usedBy: [],
+              lastExecution: {
+                status: 'cancelled',
+                startedAt: '2026-10-01T01:00:00Z',
+                endedAt: '2026-10-01T01:10:00Z',
+                stored: 0,
+                skipped: 0,
+              },
+              nextRunAt: null,
+              skipped: [],
+            },
+          ],
+        },
+      },
+    } as Parameters<typeof mockFetch>[4];
+    await renderAt('#/overview', withUsage(normalUsage, sharedDegraded));
+
+    const menu = await screen.findByRole('navigation', { name: 'Hovedmeny' });
+    expect(await within(menu).findByLabelText('1 datasett trenger oppfølging')).toBeTruthy();
+    const attention = screen.getByRole('region', { name: 'Trenger deg nå' });
+    expect(within(attention).getByRole('link', { name: 'Se datasettet: Kudos' })).toBeTruthy();
+    expect(within(attention).queryByText(/Ingenting trenger deg nå/)).toBeNull();
+  });
+
   it('shows no Datasett badge for a tenant without datasets', async () => {
     await renderAt('#/overview', withUsage(normalUsage, noFailedDatasets));
 

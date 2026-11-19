@@ -109,6 +109,18 @@ describe('the draft bar on Oppsett for an existing service', () => {
     );
   });
 
+  it('gives the date with the time of a draft saved on an earlier day', async () => {
+    await openService('#/services/rapportassistenten/setup', {
+      draft: withInstructions('Svar kort.'),
+    });
+
+    expect(
+      await within(await screen.findByRole('region', { name: 'Utkast' })).findByText(
+        'Utkast lagret 7. okt. 2026 kl. 12:00.',
+      ),
+    ).toBeTruthy();
+  });
+
   it('autosaves after a short pause, not on every keystroke, and then counts the changes', async () => {
     const calls = await openService('#/services/rapportassistenten/setup/purpose');
     await screen.findByLabelText('Instruksjoner til tjenesten');
@@ -125,9 +137,8 @@ describe('the draft bar on Oppsett for an existing service', () => {
     expect(draftWrites(calls, 'PUT')[0]?.body).toMatchObject({
       definition: { spec: { strategy: { config: { instructions: 'Svar kort og høflig.' } } } },
     });
-    expect(
-      within(bar()).getByText('1 endring siden versjon 7. Versjon 7 er i bruk til du publiserer.'),
-    ).toBeTruthy();
+    expect(within(bar()).getByText('1 endring siden versjon 7.')).toBeTruthy();
+    expect(within(bar()).getByText('Versjon 7 er i bruk til du publiserer.')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Publiser ...' })).toBeTruthy();
   });
 
@@ -476,6 +487,16 @@ describe('the Prøv pane on Oppsett', () => {
     fireEvent.change(field, { target: { value: question } });
     fireEvent.keyDown(field, { key: 'Enter' });
   };
+
+  it('takes a narrow screen from the form to Prøv with one button, as the pane sits below the form there', async () => {
+    await openService('#/services/rapportassistenten/setup/purpose');
+    fireEvent.click(await screen.findByRole('button', { name: 'Prøv tjenesten' }));
+
+    const side = screen.getByRole('region', { name: 'Byggeassistent og prøving' });
+    expect(within(side).getByRole('tab', { name: 'Prøv', selected: true })).toBeTruthy();
+    expect(document.activeElement).toBe(side);
+    expect(within(side).getByLabelText('Spørsmål til utkastet')).toBeTruthy();
+  });
 
   it('runs the edited draft, not the version in use, and shows the answer with its sources', async () => {
     const calls = await openService('#/services/rapportassistenten/setup/purpose', {

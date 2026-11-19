@@ -73,7 +73,7 @@ export const TryPane = ({
   return (
     <div className="setup-try">
       <Paragraph data-size="sm" className="meta">
-        {t('setupList.tryNote', { n: version })}
+        {version > 0 ? t('setupList.tryNote', { n: version }) : t('setupList.tryNoteFirst')}
       </Paragraph>
       <div className="try-log" aria-live="polite">
         {turns.map((turn, i) => (

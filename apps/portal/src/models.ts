@@ -125,6 +125,23 @@ export const recommendedFirst = (a: ModelEntry, b: ModelEntry) =>
   Number(b.status === 'in_use') - Number(a.status === 'in_use') ||
   byName(a, b);
 
+export const withinResidency = (m: Pick<CatalogModel, 'residency'>, required?: Residency) =>
+  !required || residencies.indexOf(m.residency) <= residencies.indexOf(required);
+
+const servesExplicitly = (m: Pick<CatalogModel, 'operations'>, operation: string) =>
+  !!m.operations?.includes(operation);
+
+export const bestFitFirst =
+  (operation: string, current: string, residency?: Residency) => (a: ModelEntry, b: ModelEntry) =>
+    Number(b.id === current) - Number(a.id === current) ||
+    Number(fitsOperation(b, operation)) - Number(fitsOperation(a, operation)) ||
+    Number(usable(b)) - Number(usable(a)) ||
+    Number(servesExplicitly(b, operation)) - Number(servesExplicitly(a, operation)) ||
+    Number(withinResidency(b, residency)) - Number(withinResidency(a, residency)) ||
+    Number(!!b.recommended) - Number(!!a.recommended) ||
+    Number(!!b.price) - Number(!!a.price) ||
+    byName(a, b);
+
 const inputPrice = (m: CatalogModel) => (m.price ? m.price.inputPerThousand : Infinity);
 
 export const sortEntries = (list: ModelEntry[], sort: CatalogSort) =>

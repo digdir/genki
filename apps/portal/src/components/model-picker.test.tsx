@@ -54,10 +54,12 @@ const Harness = ({
   models = catalog,
   initial = 'alpha',
   onChange = () => undefined,
+  residency,
 }: {
   models?: CatalogModel[];
   initial?: string;
   onChange?: (id: string) => void;
+  residency?: CatalogModel['residency'];
 }) => {
   const [value, setValue] = useState(initial);
   return (
@@ -65,6 +67,7 @@ const Harness = ({
       models={{ status: 'ready', data: models }}
       value={value}
       service="Rapportassistenten"
+      {...(residency ? { residency } : {})}
       onChange={(id) => {
         setValue(id);
         onChange(id);
@@ -124,14 +127,46 @@ describe('the model picker', () => {
     expect(screen.getByRole('dialog', { name: 'Velg modell' })).toBeTruthy();
   });
 
-  it('lists recommended models first and shows six until asked for more', () => {
+  it('lists the current model first, then recommended models, and shows six until asked for more', () => {
     render(<Harness />);
     const dialog = open();
     expect(names(dialog)).toHaveLength(6);
-    expect(names(dialog)[0]).toBe('zeta');
+    expect(names(dialog).slice(0, 2)).toEqual(['alpha', 'zeta']);
     expect(within(dialog).getByText('8 modeller passer, viser de 6 beste')).toBeTruthy();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Vis 2 til' }));
     expect(names(dialog)).toHaveLength(8);
+  });
+
+  it("ranks models that serve the call, within the service's data location and priced before the rest", () => {
+    render(
+      <Harness
+        initial="mini"
+        residency="eu"
+        models={[
+          model('anthropic', { residency: 'global' }),
+          model('any-call', { operations: [], residency: 'eu' }),
+          model('free-eu', { residency: 'eu' }),
+          model('image', { operations: ['generate-image'] }),
+          model('mini', { price: { inputPerThousand: 0.0076, outputPerThousand: 0.0459 } }),
+          model('priced-eu', { price: { inputPerThousand: 0.02, outputPerThousand: 0.1 } }),
+        ]}
+      />,
+    );
+    expect(names(open())).toEqual(['mini', 'priced-eu', 'free-eu', 'anthropic', 'any-call']);
+  });
+
+  it('marks the current model in the list and does not offer it as a change', () => {
+    const onChange = vi.fn();
+    render(<Harness onChange={onChange} />);
+    const dialog = open();
+    const current = within(dialog).getByRole('radio', { name: /^alpha/ }) as HTMLInputElement;
+    expect(current.checked).toBe(true);
+    expect(within(current.closest('.mp-row') as HTMLElement).getByText('Brukes nå')).toBeTruthy();
+    expect(within(dialog).queryByRole('button', { name: 'Bruk alpha' })).toBeNull();
+    const keep = within(dialog).getByRole('button', { name: 'Velg en annen modell' });
+    expect(keep.getAttribute('aria-disabled')).toBe('true');
+    fireEvent.click(keep);
+    expect(onChange).not.toHaveBeenCalled();
   });
 
   it('gives the price on each row with its unit, kr per 1M tokens', () => {
@@ -266,6 +301,8 @@ describe('the model picker', () => {
     const dialog = screen.getByRole('dialog', { name: 'Choose a model' });
     expect(within(dialog).getByRole('checkbox', { name: 'Fits chat' })).toBeTruthy();
     expect(within(dialog).getByText('8 models fit, showing the best 6')).toBeTruthy();
-    expect(within(dialog).getByRole('button', { name: 'Use alpha' })).toBeTruthy();
+    expect(within(dialog).getByText('In use now')).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole('radio', { name: /^zeta/ }));
+    expect(within(dialog).getByRole('button', { name: 'Use zeta' })).toBeTruthy();
   });
 });

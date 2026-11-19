@@ -499,10 +499,17 @@ describe('Oversikt in live mode', () => {
 
     expect(within(section).getByText('avbrutt')).toBeTruthy();
     expect(within(section).queryByText('ok')).toBeNull();
-    expect(within(section).queryByText('delt')).toBeNull();
     expect(within(section).queryByText('pagar')).toBeNull();
     expect(within(section).getByText('Feilet')).toBeTruthy();
     expect(within(section).getByText('Avbrutt')).toBeTruthy();
+  });
+
+  it('lists a dataset it cannot change as needing follow-up, with a link and no retry', async () => {
+    await open('#/overview');
+
+    const section = await screen.findByRole('region', { name: 'Trenger deg nå' });
+    expect(await within(section).findByRole('link', { name: 'Se datasettet: delt' })).toBeTruthy();
+    expect(within(section).queryByRole('button', { name: /delt/ })).toBeNull();
   });
 });
 

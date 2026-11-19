@@ -254,7 +254,7 @@
   outline-offset: 2px;
 }
 
-@container page (max-width: 671px) {
+@container page (max-width: 1179px) {
   .service-sub {
     grid-template-columns: minmax(0, 1fr);
     gap: 16px;

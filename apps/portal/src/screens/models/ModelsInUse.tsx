@@ -32,6 +32,8 @@ import { useModelEntries } from './data';
 import './models.css';
 
 type Column = 'name' | 'maker' | 'where' | 'used' | 'price' | 'status';
+const usedByShown = 3;
+
 const columns: Column[] = ['name', 'maker', 'where', 'used', 'price', 'status'];
 
 const headKeys: Record<Column, PlainKey> = {
@@ -221,7 +223,17 @@ export const ModelsInUse = ({ api, tenant, tenantName }: ScreenProps) => {
                   {m.usedBy.length
                     ? t('modelsInUse.usedBy', {
                         count: m.usedBy.length,
-                        names: m.usedBy.map((u) => u.name).join(', '),
+                        names: [
+                          m.usedBy
+                            .slice(0, usedByShown)
+                            .map((u) => u.name)
+                            .join(', '),
+                          m.usedBy.length > usedByShown
+                            ? t('modelsInUse.andMore', { count: m.usedBy.length - usedByShown })
+                            : '',
+                        ]
+                          .filter(Boolean)
+                          .join(' '),
                       })
                     : t('modelsInUse.usedByNone')}
                 </Table.Cell>
