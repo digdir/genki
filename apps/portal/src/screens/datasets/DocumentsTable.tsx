@@ -76,7 +76,12 @@ export const DocumentsTable = ({
   const selectable = documents.filter((d) => d.original);
   const allOn = selectable.length > 0 && selectable.every((d) => selected.has(d.id));
   return (
-    <div className={busy ? 'table-scroll docs-table busy' : 'table-scroll docs-table'}>
+    <div
+      className={busy ? 'table-scroll docs-table busy' : 'table-scroll docs-table'}
+      role="region"
+      aria-label={t('datasets.documentsTableRegion')}
+      tabIndex={0}
+    >
       <Table aria-label={t('datasets.documentsTable')} aria-busy={busy || undefined}>
         <TableHead>
           <TableRow>

@@ -12,7 +12,7 @@ import { LiveDatasetDetail } from './LiveDatasetDetail';
 import { LiveNewDataset } from './LiveNewDataset';
 import { datasetHref, detailTabOf } from './model';
 
-const List = ({ api, tenant }: ScreenProps) => {
+const List = ({ api, tenant, tenantName }: ScreenProps) => {
   const t = useT();
   const f = useFormat();
   const [state, retry, pending] = useAsync(
@@ -45,6 +45,7 @@ const List = ({ api, tenant }: ScreenProps) => {
       <div className="stack">
         <DatasetList
           canCreate={canCreate}
+          ownerName={tenantName}
           placeholder={
             <Loading
               label={t('datasets.loading')}
@@ -91,6 +92,7 @@ const List = ({ api, tenant }: ScreenProps) => {
       <DatasetList
         datasets={state.data.map((d) => listItemOf(t, f, d))}
         canCreate={canCreate}
+        ownerName={tenantName}
         pending={pending}
         {...(canCreate ? { onRetry } : {})}
       />

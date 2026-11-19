@@ -63,6 +63,10 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ## API changes
 
+### 2026-11-19: all documents of a dataset in one list
+
+- `GET /tenants/{tenant}/datasets/{id}/documents` takes `status=all`: the failed documents, then the pending ones, then the indexed ones, paged as one list, with `total` over all three. `filters` and `sort` apply to the indexed documents only, so filters leave out the failed and pending ones. The default is still `indexed` (see [datasets.md](datasets.md#listing-a-datasets-documents)).
+
 ### 2026-11-19: environment descriptions, batch run names and the frontend of a run
 
 - `POST /tenants/{tenant}/services/{id}/environments` takes an optional `description` (who uses the environment, at most 200 characters), and `PATCH /tenants/{tenant}/services/{id}/environments/{environment}` with `{ description }` sets or clears it (`null` or empty) with `manage-services` and a `change-reason`. Each environment in the list gives `description` when one is set, it survives promotions and rollbacks, and the history records the change as the new action `described` (see [services.md](services.md#build-and-edit-a-service-from-your-own-admin-ui)).

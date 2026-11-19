@@ -10,12 +10,13 @@ import {
   Select,
 } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ApiError, type ApiClient } from '../../api';
 import type {
   DatasetDetailView,
   DatasetDocument,
   DatasetDocumentsPage,
+  DocumentListStatus,
   DocumentsRequest,
 } from '../../api/datasets';
 import {
@@ -24,6 +25,7 @@ import {
   documentStatusKeys,
   documentsParams,
   documentsViewOf,
+  listsIndexed,
   type DocumentsView,
 } from '../../data/datasets';
 import { parseRoute, useAsync } from '../../hooks';
@@ -43,10 +45,21 @@ const facetLabels: Record<string, PlainKey> = {
   year: 'datasets.facetYear',
   unit: 'datasets.facetUnit',
   orgs_long: 'datasets.facetOrganisation',
+  orgs_short: 'datasets.facetOrganisationShort',
+  title: 'datasets.facetTitle',
+  doc_num: 'datasets.facetDocumentNumber',
+  owner_orgnr: 'datasets.facetOwnerOrgnr',
+  recipient_orgnr: 'datasets.facetRecipientOrgnr',
+  concerned_years: 'datasets.facetConcernedYears',
+};
+
+const readableField = (field: string) => {
+  const words = field.replace(/[_.-]+/g, ' ').trim();
+  return words ? `${words.charAt(0).toUpperCase()}${words.slice(1)}` : field;
 };
 
 export const facetLabel = (t: T, field: string) =>
-  facetLabels[field] ? t(facetLabels[field]) : field;
+  facetLabels[field] ? t(facetLabels[field]) : readableField(field);
 
 export const filtersOf = (
   chosen: Record<string, string>,
@@ -87,6 +100,31 @@ const withoutField = (filters: Record<string, string>, field: string) =>
 
 const sortValue = (sort: DocumentsView['sort']) => (sort ? `${sort.key}-${sort.order}` : '');
 
+const requestOf = (docs: DocumentsView, valueTypes: DatasetDetailView['valueTypes']) => {
+  const indexed = listsIndexed(docs.status);
+  const filters = filtersOf(docs.filters, valueTypes);
+  return {
+    limit: docs.size,
+    offset: (docs.page - 1) * docs.size,
+    status: docs.status,
+    ...(docs.query ? { query: docs.query } : {}),
+    ...(indexed && docs.sort ? { sort: docs.sort } : {}),
+    ...(indexed && Object.keys(filters).length ? { filters } : {}),
+  } satisfies DocumentsRequest;
+};
+
+const loosenings = (docs: DocumentsView) => [
+  ...(docs.status === 'all' ? [] : [{ key: 'status', view: { ...docs, status: 'all' as const } }]),
+  ...Object.keys(docs.filters).map((field) => ({
+    key: `filter-${field}`,
+    view: { ...docs, filters: withoutField(docs.filters, field) },
+  })),
+];
+
+const docInAddress = () => parseRoute(window.location.hash).query.get('doc') ?? undefined;
+
+const addressed = (id: string): DatasetDocument => ({ id, fields: {}, status: 'indexed' });
+
 export const Content = ({
   api,
   tenant,
@@ -106,7 +144,11 @@ export const Content = ({
   const f = useFormat();
   const [docs, setDocs] = useState(viewFromAddress);
   const [typed, setTyped] = useState(docs.query);
-  const [open, setOpen] = useState<DatasetDocument>();
+  const [open, setOpen] = useState<DatasetDocument | undefined>(() => {
+    const id = docInAddress();
+    return id ? addressed(id) : undefined;
+  });
+  const shownDocs = useRef<DatasetDocument[]>([]);
   const [selected, setSelected] = useState<ReadonlyMap<string, DatasetDocument>>(new Map());
   const [asking, setAsking] = useState(false);
   const [downloading, setDownloading] = useState(false);
@@ -121,19 +163,40 @@ export const Content = ({
       const next = viewFromAddress();
       setDocs(next);
       setTyped(next.query);
+      const id = docInAddress();
+      setOpen((current) =>
+        !id
+          ? undefined
+          : current?.id === id
+            ? current
+            : (shownDocs.current.find((d) => d.id === id) ?? addressed(id)),
+      );
     };
     window.addEventListener('hashchange', follow);
     return () => window.removeEventListener('hashchange', follow);
   }, []);
 
-  const show = (next: DocumentsView, push = true) => {
-    setDocs(next);
+  const go = (params: (current: URLSearchParams) => URLSearchParams, push: boolean) => {
     const [path = '/', query = ''] = window.location.hash.replace(/^#/, '').split('?');
-    const search = documentsParams(next, new URLSearchParams(query)).toString();
+    const search = params(new URLSearchParams(query)).toString();
     const target = `#${path}${search ? `?${search}` : ''}`;
     if (target === window.location.hash) return;
     if (push) window.location.hash = target;
     else window.history.replaceState(window.history.state, '', target);
+  };
+
+  const show = (next: DocumentsView, push = true) => {
+    setDocs(next);
+    go((current) => documentsParams(next, current), push);
+  };
+
+  const openDoc = (doc: DatasetDocument | undefined) => {
+    setOpen(doc);
+    go((current) => {
+      if (doc) current.set('doc', doc.id);
+      else current.delete('doc');
+      return current;
+    }, doc !== undefined);
   };
 
   useEffect(() => {
@@ -143,17 +206,8 @@ export const Content = ({
     return () => clearTimeout(timer);
   });
 
-  const indexed = docs.status === 'indexed';
-  const filters = filtersOf(docs.filters, view.valueTypes);
-  const request: DocumentsRequest = {
-    limit: docs.size,
-    offset: (docs.page - 1) * docs.size,
-    status: docs.status,
-    ...(docs.query ? { query: docs.query } : {}),
-    ...(indexed && docs.sort ? { sort: docs.sort } : {}),
-    ...(indexed && Object.keys(filters).length ? { filters } : {}),
-  };
-  const requestKey = JSON.stringify(request);
+  const indexed = listsIndexed(docs.status);
+  const requestKey = JSON.stringify(requestOf(docs, view.valueTypes));
   const [page, retry, pending] = useAsync(
     (signal): Promise<DatasetDocumentsPage | undefined> =>
       endpoint
@@ -174,6 +228,35 @@ export const Content = ({
         : Promise.resolve([]),
     [api, tenant, view.fullId, fields.join(','), endpoint],
   );
+
+  const noMatch =
+    page.status === 'ready' &&
+    !pending &&
+    page.data !== undefined &&
+    page.data.documents.length === 0;
+  const loosenKey = noMatch ? JSON.stringify(loosenings(docs)) : '';
+  const [without] = useAsync(
+    async (signal): Promise<{ key: string; total: number }[]> => {
+      if (!loosenKey) return [];
+      const ways = JSON.parse(loosenKey) as ReturnType<typeof loosenings>;
+      const counted = await Promise.all(
+        ways.map(async ({ key, view: wider }) => {
+          const answer = await api.datasets
+            .documents(
+              tenant,
+              view.id,
+              { ...requestOf(wider, view.valueTypes), limit: 1, offset: 0 },
+              signal,
+            )
+            .catch(() => undefined);
+          return answer?.totalExact ? [{ key, total: answer.total }] : [];
+        }),
+      );
+      return counted.flat();
+    },
+    [api, tenant, view.id, loosenKey],
+  );
+  shownDocs.current = page.status === 'ready' ? (page.data?.documents ?? []) : shownDocs.current;
 
   const refused = page.status === 'error' ? invalidPaths(page.error) : [];
   const dropQuery = refused.includes('query') && docs.query !== '';
@@ -316,7 +399,7 @@ export const Content = ({
   const answer = page.data;
   const counts = answer.statusCounts;
   const narrowed = docs.query !== '' || Object.keys(docs.filters).length > 0;
-  const anyFilter = narrowed || !indexed;
+  const anyFilter = narrowed || docs.status !== 'all';
   if (
     !anyFilter &&
     answer.total === 0 &&
@@ -352,22 +435,27 @@ export const Content = ({
   const canQuery = answer.listing.query || !indexed;
   const sorts = indexed ? documentSorts.filter((s) => answer.listing.sort.includes(s.key)) : [];
   const facetOptions = facets.status === 'ready' ? facets.data : [];
-  const statusLabel = (status: (typeof documentStatuses)[number]) => {
-    const label = t(documentStatusKeys[status]);
-    const count = counts[status];
+  const statusLabel = (status: DocumentListStatus) => {
+    const label = t(status === 'all' ? 'datasets.docFilterAll' : documentStatusKeys[status]);
+    const count =
+      status === 'all'
+        ? counts.indexed === null
+          ? null
+          : counts.indexed + counts.failed + counts.pending
+        : counts[status];
     return count === null
       ? label
       : t('datasets.docOptionCount', { label, amount: f.number(count) });
   };
   const chips = [
-    ...(indexed
+    ...(docs.status === 'all'
       ? []
       : [
           {
             key: 'status',
             name: t('datasets.docStatusLabel'),
             value: t(documentStatusKeys[docs.status]),
-            clear: () => show({ ...docs, status: 'indexed', page: 1 }),
+            clear: () => show({ ...docs, status: 'all', page: 1 }),
           },
         ]),
     ...Object.entries(docs.filters).map(([field, value]) => ({
@@ -381,7 +469,7 @@ export const Content = ({
   ];
   const reset = () => {
     setTyped('');
-    show({ ...docs, query: '', filters: {}, status: 'indexed', page: 1 });
+    show({ ...docs, query: '', filters: {}, status: 'all', page: 1 });
   };
   const from = answer.documents.length ? answer.offset + 1 : 0;
   const to = answer.offset + answer.documents.length;
@@ -403,6 +491,16 @@ export const Content = ({
       ? t('datasets.noMatchStatus')
       : rangeText;
   const pages = Math.max(1, Math.ceil(answer.total / docs.size));
+  const hints = (without.status === 'ready' ? without.data : []).flatMap(({ key, total }) => {
+    const chip = chips.find((c) => c.key === key);
+    if (!chip || total === 0) return [];
+    const filter = t('datasets.docChip', { name: chip.name, value: chip.value });
+    return [
+      docs.query
+        ? t('datasets.withoutFilterQuery', { count: total, filter, query: docs.query })
+        : t('datasets.withoutFilter', { count: total, filter }),
+    ];
+  });
 
   return (
     <div className="stack-sm docs-tab">
@@ -431,15 +529,15 @@ export const Content = ({
               id="docs-status"
               value={docs.status}
               onChange={(e) => {
-                const status = documentStatuses.find((s) => s === e.target.value) ?? 'indexed';
+                const status = documentStatuses.find((s) => s === e.target.value) ?? 'all';
                 show(
-                  status === 'indexed'
+                  listsIndexed(status)
                     ? { ...docs, status, page: 1 }
                     : { ...unsorted(docs), status, filters: {}, page: 1 },
                 );
               }}
             >
-              {documentStatuses.map((s) => (
+              {(['all', ...documentStatuses] as const).map((s) => (
                 <Select.Option key={s} value={s}>
                   {statusLabel(s)}
                 </Select.Option>
@@ -531,7 +629,15 @@ export const Content = ({
             <Heading level={3} data-size="2xs" id="docs-none-h">
               {t('datasets.noMatchTitle')}
             </Heading>
-            <Paragraph data-size="sm">{t('datasets.contentNoMatchText')}</Paragraph>
+            {hints.length ? (
+              hints.map((hint) => (
+                <Paragraph key={hint} data-size="sm">
+                  {hint}
+                </Paragraph>
+              ))
+            ) : (
+              <Paragraph data-size="sm">{t('datasets.contentNoMatchText')}</Paragraph>
+            )}
             <div className="row-wrap">
               {chips.map((chip) => (
                 <Button key={chip.key} variant="secondary" data-size="sm" onClick={chip.clear}>
@@ -570,7 +676,7 @@ export const Content = ({
               documents={answer.documents}
               openId={open?.id}
               busy={pending}
-              onOpen={setOpen}
+              onOpen={openDoc}
               selected={new Set(selected.keys())}
               onSelect={select}
             />
@@ -601,7 +707,7 @@ export const Content = ({
           tenant={tenant}
           dataset={view.id}
           doc={open}
-          onClose={() => setOpen(undefined)}
+          onClose={() => openDoc(undefined)}
         />
       ) : null}
     </div>
