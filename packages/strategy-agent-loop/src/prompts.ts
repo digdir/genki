@@ -20,7 +20,7 @@ export const agentTools: ToolSpec[] = [
   {
     name: 'search',
     description:
-      'Search the document collection using multiple queries. Returns metadata-only results (chunk_id, doc_num, chunk_index, total_chunks, content_length, headers, scores) — NO content. Use read_chunks to fetch content of promising results.',
+      "Search the document collection using multiple queries. Returns metadata-only results (chunk_id, doc_num, chunk_index, total_chunks, page, content_length, headers, scores) — NO content. Use read_chunks to fetch content of promising results. page=N (pages=N-M when a chunk spans several) is the chunk's page in its PDF: cite that page.",
     parameters: {
       type: 'object',
       properties: {
@@ -66,7 +66,7 @@ export const agentTools: ToolSpec[] = [
   {
     name: 'read_chunks',
     description:
-      'Read full content of specific chunks. Use after search to read promising results. Supports reading by chunk IDs or by document + chunk index range.',
+      "Read full content of specific chunks. Use after search to read promising results. Supports reading by chunk IDs or by document + chunk index range. Each chunk's header carries its PDF page as page=N, or pages=N-M when it spans several: cite that page.",
     parameters: {
       type: 'object',
       properties: {
