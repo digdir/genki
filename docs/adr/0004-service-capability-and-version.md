@@ -1,6 +1,6 @@
 # 0004 Service, capability and version
 
-Status: accepted, 2026-10-12 (built; the data version for datasets on the knowledge database, 2026-11-03; sharing changed only by operators, 2026-11-11; service environments partly built, 2026-11-11; internal services built, 2026-11-12; environments in the portal, 2026-11-13; archived services read only, 2026-11-18). Proposed 2026-10-06
+Status: accepted, 2026-10-12 (built; the data version for datasets on the knowledge database, 2026-11-03; sharing changed only by operators, 2026-11-11; service environments partly built, 2026-11-11; internal services built, 2026-11-12; environments in the portal, 2026-11-13; archived services read only, 2026-11-18; hostnames per environment proposed in ADR 0064, 2026-11-19). Proposed 2026-10-06
 
 ## Decision
 
@@ -33,7 +33,7 @@ Defaults for the questions left open in the proposal:
 
 - Promotion is offered, not gated by a passing test set. The evaluation gates on publish (ADR 0003) still apply to every version.
 - An environment has no quota of its own. A key bound to `test` has its own calls per minute like any key.
-- A frontend has one public URL. A separate test deployment is a separate Client bound to `test`.
+- A frontend has one public URL. A separate test deployment is a separate Client bound to `test`. A hosted frontend instead keeps one Client with a hostname per environment (ADR 0064, proposed).
 - Variants follow the environment: all variants of a service run the version the environment points to.
 
 ## Why

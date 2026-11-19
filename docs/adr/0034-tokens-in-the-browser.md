@@ -1,6 +1,6 @@
 # 0034 Tokens in the browser
 
-Status: proposed, 2026-10-16
+Status: proposed, 2026-10-16 (the BFF in the API, for the assistant host first, proposed in ADR 0061, 2026-11-19)
 
 ## Context
 
@@ -17,13 +17,14 @@ A backend-for-frontend (BFF) keeps the tokens on a server and gives the browser 
   - The System Atlas is a same-origin frame of the console that can read the console's session. It counts as console code, and every `innerHTML` in it takes only escaped or console-rendered HTML.
 - **The token that matters in test is a trusted Entra login, not TestID.** A stolen TestID token is worth no more than a fresh TestID login. A trusted Entra login (ADR 0033) has every platform right and can create API keys and clients that keep model access after the token expires and after the person leaves the Entra group. The risk this decision accepts is an XSS against a team member.
 - **Production gets a BFF before real people log in.** It does the code exchange as a confidential client, keeps the tokens server-side, and gives each app origin its own HTTP-only, `Secure`, `SameSite=Lax` cookie with the `__Host-` prefix. The apps call the API through their own origin with that cookie, and the API turns the session into the same principal as a bearer token today, accepted only from the app origin it was created for. External frontends keep using bearer tokens (ADR 0032).
+- **The BFF is built in the API, for the assistant host first** (ADR 0061). The portal, workspace and console move to it later under #41.
 - **Until then the apps keep tokens in `sessionStorage` only,** never in `localStorage` or IndexedDB. `sessionStorage` is per tab, but survives a reload, a duplicated tab and a restored session.
 
 ## Why
 
 A BFF removes the token from the browser, so an XSS bug can act as the person only while the page is open, not take the token away. That matters in production, where the tokens act for real organisations. In test the data is synthetic, and the people whose tokens are worth stealing are a small team. Kunnskapsassistenten already built a BFF, so the pattern and its pitfalls are known: tokens live in the replica that signed the person in, so it needs sticky sessions or a shared session store.
 
-Rejected: tokens in `localStorage` (survives the tab, readable by any script in the origin), and a BFF in test now (cost without matching benefit while the data is synthetic).
+Rejected: tokens in `localStorage` (survives the tab, readable by any script in the origin), and a BFF for the portal, workspace and console in test now (cost without matching benefit while the data is synthetic). A BFF as its own service or in each app's container: ADR 0061 puts it in the API, which already has the session store, content keys and token verifier.
 
 ## Consequences
 
