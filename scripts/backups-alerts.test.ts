@@ -216,7 +216,8 @@ describe.skipIf(!hasAz && !process.env.CI)('backups and alerts in the template',
         containers: { resources?: { cpu?: unknown } }[];
       };
       const total = template.containers.reduce((sum, c) => sum + cpu(c), 0);
-      for (const init of template.initContainers ?? []) expect(cpu(init)).toBeLessThanOrEqual(total);
+      for (const init of template.initContainers ?? [])
+        expect(cpu(init)).toBeLessThanOrEqual(total);
     }
   });
 
