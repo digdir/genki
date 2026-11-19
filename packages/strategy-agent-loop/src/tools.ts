@@ -78,8 +78,15 @@ export interface RetrievalHit {
   id: string;
   document?: string;
   position?: number;
+  page?: number;
   score?: number;
   title?: string;
+}
+
+export interface ReadRequest {
+  chunkIds?: string[];
+  document?: string;
+  chunkRange?: { from?: number | undefined; to?: number | undefined };
 }
 
 export type SearchFailureReason =
@@ -159,7 +166,7 @@ export interface ToolOutcome {
   generated?: string;
   retrieved?: RetrievalHit[];
   search?: SearchMade;
-  read?: { chunks: RetrievalHit[]; auto?: boolean };
+  read?: { chunks: RetrievalHit[]; auto?: boolean; request?: ReadRequest };
   planned?: { queries: string[]; userIntent?: string };
   /** The engine's message when the whole search threw: for the audit log only, never the model. */
   searchError?: string;
@@ -170,6 +177,7 @@ export const retrievalHits = (chunks: ChunkSummary[]): RetrievalHit[] =>
     id: c.chunkId,
     ...(c.document === undefined ? {} : { document: c.document }),
     ...(c.position === undefined ? {} : { position: c.position }),
+    ...(c.page === undefined ? {} : { page: c.page }),
     ...(c.score === undefined ? {} : { score: c.score }),
     ...(c.title === undefined ? {} : { title: c.title }),
   }));
@@ -720,7 +728,14 @@ const read = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome> =>
   );
   return {
     content: formatReadResult(kept, consumed, workspace.readCharsUsed, budgetNote, skippedNote),
-    read: { chunks: retrievalHits(kept) },
+    read: {
+      chunks: retrievalHits(kept),
+      request: {
+        ...(chunkIds?.length ? { chunkIds } : {}),
+        ...(docNum === undefined ? {} : { document: docNum }),
+        ...(chunkRange ? { chunkRange } : {}),
+      },
+    },
   };
 };
 

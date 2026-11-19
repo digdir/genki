@@ -5065,6 +5065,7 @@
                     noAnswerText: { type: 'string', minLength: 1, maxLength: 500 },
                     instructionsInAnswer: { type: 'boolean' },
                     citeBy: { type: 'string', enum: ['document', 'excerpt'] },
+                    sources: { type: 'string', enum: ['cited', 'read'] },
                     search: {
                       type: 'object',
                       properties: {
@@ -7122,7 +7123,7 @@
                           properties: {
                             kind: { type: 'string', const: 'webhook' },
                             url: { type: 'string', format: 'uri' },
-                            secret: { type: 'string', pattern: '^[a-z0-9][a-z0-9._-]*$' },
+                            secret: { type: 'string', pattern: '^[a-z0-9][a-z0-9-]{0,62}$' },
                           },
                           required: ['kind', 'url', 'secret'],
                           additionalProperties: false,

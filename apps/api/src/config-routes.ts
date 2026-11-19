@@ -1,4 +1,5 @@
 import { sourceLinkRules, type Principal } from '@genai/contracts';
+import { tenantSecretNamePattern } from '@genai/composition';
 import type { ActorNames } from './actor-names.js';
 import { testCase, testSet, type TestSet, type TestSetStore } from '@genai/eval';
 import { guardrailSchemas, ruleKinds } from '@genai/guardrails';
@@ -909,6 +910,8 @@ export const registerConfigRoutes = <E extends Env, S extends Schema, B extends 
         ]),
       };
     const secretName = endpointSourceSecret(datasetId);
+    if (source.auth.kind === 'api-key' && !tenantSecretNamePattern.test(secretName))
+      return issues([{ path: 'id', message: t('blocks.secretNameInvalid') }]);
     if (source.auth.kind === 'api-key' && (await sources.secretNames(scope)).includes(secretName))
       return {
         response: problem(c, 409, 'Conflict', [

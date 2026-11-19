@@ -626,6 +626,28 @@ describe('task timeline and the operator tenant list', () => {
     expect((await send(`/tenants/${digdir}/tasks/finnes-ikke/timeline`, 'kari')).status).toBe(404);
   });
 
+  it('a timeline asked for some step types keeps only those and counts the rest, in its own tenant only', async () => {
+    const { send, publish } = setup();
+    const task = (await publish('kari', klarsprak())).headers.get('genai-task');
+
+    const whole = await body<{ steps: { type: string }[] } & Json>(
+      await send(`/tenants/${digdir}/tasks/${task}/timeline`, 'kari'),
+    );
+    const results = await body<{ steps: { type: string }[] } & Json>(
+      await send(`/tenants/${digdir}/tasks/${task}/timeline?types=result,read`, 'kari'),
+    );
+
+    expect(whole).not.toHaveProperty('omittedSteps');
+    expect(results.steps.map((s) => s.type)).toEqual(['result']);
+    expect(results.omittedSteps).toBe(1);
+    expect(
+      (await send(`/tenants/${other}/tasks/${task}/timeline?types=result`, 'ola')).status,
+    ).toBe(404);
+    expect(
+      (await send(`/tenants/${digdir}/tasks/${task}/timeline?types=result`, 'ola')).status,
+    ).toBe(404);
+  });
+
   it('shows tokens and cost on a timeline only with view-usage or to the person who started the task', async () => {
     Object.assign(principals, {
       tove: {
