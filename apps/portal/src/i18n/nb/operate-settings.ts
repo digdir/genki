@@ -73,6 +73,7 @@ const settings = defineNamespace({
   commonReason: 'Hvorfor endrer du dette?',
   commonReasonHelp: 'Vises i loggen sammen med endringen.',
   commonSave: 'Lagre endringene',
+  commonSaving: 'Lagrer ...',
   commonDiscard: 'Forkast',
   commonRefused:
     'Endringene ble ikke lagret: du mangler «{right}». Det du har valgt, står fortsatt.',
@@ -295,6 +296,8 @@ const settings = defineNamespace({
   nextDownload: 'Last ned',
   nextDryRun: 'Kjør prøvekjøring',
   nextApply: 'Bruk endringene',
+  applying: 'Tar i bruk ...',
+  dryRunning: 'Prøvekjører ...',
   prev: 'Forrige',
   restart: 'Start på nytt',
   secretsNeverExported:

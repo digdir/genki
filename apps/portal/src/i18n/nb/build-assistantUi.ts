@@ -190,6 +190,7 @@ export const assistantUi = {
     showing: 'Viser {shown} av {total} tjenester',
     job: 'Jobb',
     start: 'Startes',
+    model: 'Modell',
     jobAnswers: 'Svarer',
     jobDrafts: 'Lager utkast',
     jobRewrites: 'Omskriver',

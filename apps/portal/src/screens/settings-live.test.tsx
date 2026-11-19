@@ -461,6 +461,27 @@ describe('Innstillinger: Vanlige', () => {
     ).toBeNull();
   });
 
+  it('says Lagrer ... while it saves and saves once on a double click', async () => {
+    const { calls, fetch } = platform();
+    await renderLive('#/settings', fetch);
+    fireEvent.change(await screen.findByLabelText('Språk tjenestene svarer på'), {
+      target: { value: 'bokmal' },
+    });
+    fireEvent.change(screen.getByLabelText(/Hvorfor endrer du dette/), {
+      target: { value: 'Vi svarer alltid på bokmål' },
+    });
+    const save = screen.getByRole('button', { name: 'Lagre endringene' });
+
+    fireEvent.click(save);
+    fireEvent.click(save);
+
+    expect(screen.getByRole('button', { name: 'Lagrer ...' })).toBe(save);
+    expect(await screen.findByText(/^Lagret kl\./)).toBeTruthy();
+    expect(
+      calls.filter((c) => c.method === 'PUT' && c.path.endsWith('answers.writtenStandard')),
+    ).toHaveLength(1);
+  });
+
   it('shows a refused save as a refusal and keeps the choice', async () => {
     const { fetch } = platform({
       onWrite: (path) =>

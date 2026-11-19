@@ -74,6 +74,7 @@ const settings = {
   commonReason: 'Why are you changing this?',
   commonReasonHelp: 'Shown in the log with the change.',
   commonSave: 'Save the changes',
+  commonSaving: 'Saving ...',
   commonDiscard: 'Discard',
   commonRefused: 'The changes were not saved: you lack "{right}". What you chose is still here.',
   commonFailed: 'Try again in a moment.',
@@ -295,6 +296,8 @@ const settings = {
   nextDownload: 'Download',
   nextDryRun: 'Run dry run',
   nextApply: 'Apply the changes',
+  applying: 'Applying ...',
+  dryRunning: 'Running a dry run ...',
   prev: 'Previous',
   restart: 'Start over',
   secretsNeverExported:

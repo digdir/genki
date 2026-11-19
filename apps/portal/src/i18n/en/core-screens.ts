@@ -22,6 +22,8 @@ export const overview = {
   badgeReady: 'Ready',
   badgeUnknown: 'Unknown',
   badgeErrorsToday: 'Errors today',
+  badgeNoSource: 'No source',
+  badgeFollowUp: 'Follow-up',
   badgePartial: 'Partial',
   badgeQuality: 'Quality',
   badgeQuota: 'Quota {pct} %',
@@ -36,6 +38,9 @@ export const overview = {
   ingestNoPipeline: 'The dataset has no ingestion that can be started from here. Open the dataset.',
   ingestStartFailed: 'The ingestion did not start: {reason}',
   seeDataset: 'See the dataset',
+  seeDatasetFor: 'See the dataset: {name}',
+  noSourceText: 'has no source yet. Add a source to ingest new content.',
+  followUpText: 'needs follow-up. Open the dataset to see what is missing.',
   seeIngestion: 'See the ingestion',
   datasetsUnknown:
     'We could not check the datasets. Failed ingestions are not shown here until the check works.',

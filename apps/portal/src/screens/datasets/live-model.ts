@@ -12,7 +12,7 @@ import { ApiError } from '../../api/error';
 import type { DatasetStatus } from '../../data/datasets';
 import type { Format, PlainKey, T } from '../../i18n';
 import type { Residency } from '../../types';
-import type { DatasetListItem } from './DatasetList';
+import { needsAttention, type DatasetListItem } from './DatasetList';
 
 export const platformEngine = 'platform-pg';
 
@@ -118,6 +118,12 @@ export const datasetStatus = (
 export const needsSource = (view: Pick<DatasetView, 'source' | 'state'>) =>
   view.state === 'needs-pipeline' || view.source === 'none';
 
+export const lacksSource = (view: DatasetView) =>
+  view.state !== 'external' && !isForeign(view) && !view.lastExecution && needsSource(view);
+
+export const needsFollowUp = (view: DatasetView) =>
+  needsAttention({ status: datasetStatus(view), needsSource: lacksSource(view) });
+
 const noteOf = (t: T, view: DatasetView) => {
   if (isForeign(view)) return undefined;
   const last = view.lastExecution;
@@ -222,9 +228,7 @@ export const listItemOf = (t: T, f: Format, view: DatasetView): DatasetListItem 
             : t('datasets.notYet'),
     usedByText: usedByText(t, view.usedByCount),
     ...(note ? { note } : {}),
-    ...(view.state !== 'external' && !foreign && !view.lastExecution && needsSource(view)
-      ? { needsSource: true }
-      : {}),
+    ...(lacksSource(view) ? { needsSource: true } : {}),
     ...(status === 'Feilet' && !shared ? { canRetry: true } : {}),
   };
 };

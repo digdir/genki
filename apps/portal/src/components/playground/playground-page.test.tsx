@@ -57,9 +57,9 @@ describe('the playground page', () => {
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Prøveområdet' })).toBeTruthy();
     expect(
-      screen
-        .getByRole('button', { name: 'Sammenlign med et annet oppsett' })
-        .getAttribute('aria-disabled'),
+      (await screen.findByRole('button', { name: 'Sammenlign med et annet oppsett' })).getAttribute(
+        'aria-disabled',
+      ),
     ).toBe('true');
   });
 

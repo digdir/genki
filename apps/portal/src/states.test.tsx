@@ -3,7 +3,8 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BusyButton } from './components/BusyButton';
-import { useAsync } from './hooks';
+import { parseRoute, useAsync } from './hooks';
+import { ScreenLoading } from './signed-in-page';
 import { Loading, PageLoading } from './states';
 
 document.getAnimations ??= () => [];
@@ -30,6 +31,22 @@ describe('loading a page or a section', () => {
     await wait(1);
     expect(status.childElementCount).toBeGreaterThan(0);
     expect(container.querySelectorAll('.skeleton-list-row')).toHaveLength(5);
+  });
+
+  it('shows what it is fetching as a visible line above the skeleton', async () => {
+    render(<Loading label="Henter tjenester" />);
+    await wait(300);
+
+    const line = screen.getByText('Henter tjenester ...');
+    expect(line.closest('.visually-hidden')).toBeNull();
+  });
+
+  it('keeps the page title from the menu while a top-level page loads its code', async () => {
+    render(<ScreenLoading route={parseRoute('#/statistics')} />);
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Statistikk' })).toBeTruthy();
+    await wait(300);
+    expect(document.querySelector('.page-loading')).toBeNull();
   });
 
   it('draws a table skeleton under the real column headings', async () => {
