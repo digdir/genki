@@ -173,7 +173,7 @@ describe('the model picker', () => {
     render(<Harness />);
     const dialog = open();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Vis 2 til' }));
-    expect(within(dialog).getByText('7,60 / 45,90 kr per 1M')).toBeTruthy();
+    expect(within(dialog).getByText('inn 7,60 / ut 45,90 kr per 1M tokens')).toBeTruthy();
   });
 
   it('searches by name, maker and operator', () => {

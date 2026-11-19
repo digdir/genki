@@ -46,17 +46,17 @@ describe('model display names', () => {
   const named = (id: string, deployment: string, family?: string) =>
     ({ id, deployment, ...(family ? { family } : {}) }) as unknown as ModelDescription;
 
-  it('adds the deployment only to models whose names collide', () => {
+  it('gives each model a readable name, and adds the deployment only where names collide', () => {
     const names = modelDisplayNames([
       named('a/x', 'chat-1', 'gpt-chat-latest'),
       named('b/y', 'chat-2', 'gpt-chat-latest'),
       named('c/z', 'mini', 'o4-mini'),
       named('d/w', 'plain'),
     ]);
-    expect(names.get('a/x')).toBe('gpt-chat-latest (chat-1)');
-    expect(names.get('b/y')).toBe('gpt-chat-latest (chat-2)');
-    expect(names.get('c/z')).toBe('o4-mini');
-    expect(names.get('d/w')).toBe('d/w');
+    expect(names.get('a/x')).toBe('GPT Chat Latest (chat-1)');
+    expect(names.get('b/y')).toBe('GPT Chat Latest (chat-2)');
+    expect(names.get('c/z')).toBe('o4 Mini');
+    expect(names.get('d/w')).toBe('Plain');
   });
 
   it('falls back to the model id when colliding models share a deployment name', () => {
@@ -64,7 +64,7 @@ describe('model display names', () => {
       named('eu/chat', 'chat', 'gpt-chat-latest'),
       named('us/chat', 'chat', 'gpt-chat-latest'),
     ]);
-    expect(names.get('eu/chat')).toBe('gpt-chat-latest (eu/chat)');
-    expect(names.get('us/chat')).toBe('gpt-chat-latest (us/chat)');
+    expect(names.get('eu/chat')).toBe('GPT Chat Latest (eu/chat)');
+    expect(names.get('us/chat')).toBe('GPT Chat Latest (us/chat)');
   });
 });

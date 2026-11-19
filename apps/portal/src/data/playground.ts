@@ -16,6 +16,7 @@ import type {
 } from '../api/playground';
 import { createFormat, type Format } from '@genai/i18n';
 import { notPricedLabel } from '../format';
+import { isFree, kronerDigits } from '../models';
 import { translator, type PlainKey, type T } from '../i18n';
 import type { CatalogModel } from '../api/models';
 import type { Residency, TimelineStep } from '../types';
@@ -961,15 +962,15 @@ export const workText = (
     : t('playground.workFlow', { strategy: title, flow: name, version: flow.version });
 };
 
-const kroner = { minimumFractionDigits: 2, maximumFractionDigits: 2 };
-
 export const priceText = (model: PlaygroundModelOption, f: Format = nbFormat, t: T = nbT) =>
-  model.price
-    ? t('playground.pricePerMillion', {
-        input: f.number(model.price.inputPerThousand * 1000, kroner),
-        output: f.number(model.price.outputPerThousand * 1000, kroner),
-      })
-    : notPricedLabel(t);
+  isFree(model.price)
+    ? t('modelWords.free')
+    : model.price
+      ? t('playground.pricePerMillion', {
+          input: f.number(model.price.inputPerThousand * 1000, kronerDigits),
+          output: f.number(model.price.outputPerThousand * 1000, kronerDigits),
+        })
+      : notPricedLabel(t);
 
 export type SetupPart = 'model' | 'instructions' | 'knowledge';
 

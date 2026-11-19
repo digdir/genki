@@ -18,6 +18,7 @@ import {
   modelBlockHref,
   statusColor,
   useModelText,
+  whereColor,
   type ModelText,
 } from '../../components/model-text';
 import type { PlainKey } from '../../i18n';
@@ -26,6 +27,7 @@ import {
   catalogSorts,
   compareMax,
   facetValues,
+  isFree,
   matchesQuery,
   modelStatuses,
   noSelection,
@@ -33,7 +35,7 @@ import {
   priceBands,
   residencies,
   sortEntries,
-  unknownMaker,
+  unknownValue,
   usable,
   type CatalogSort,
   type Facet,
@@ -52,6 +54,7 @@ const sortKeys: Record<CatalogSort, PlainKey> = {
 };
 
 const facetKeys: Record<Facet, PlainKey> = {
+  provider: 'modelCatalog.facetProvider',
   maker: 'modelCatalog.facetMaker',
   where: 'modelCatalog.facetWhere',
   use: 'modelCatalog.facetUse',
@@ -59,9 +62,10 @@ const facetKeys: Record<Facet, PlainKey> = {
   status: 'modelCatalog.facetStatus',
 };
 
-const facets: Facet[] = ['maker', 'where', 'use', 'price', 'status'];
+const facets: Facet[] = ['provider', 'maker', 'where', 'use', 'price', 'status'];
 
 const priceKeys: Record<string, PlainKey> = {
+  free: 'modelCatalog.priceFree',
   under10: 'modelCatalog.priceUnder10',
   from10to50: 'modelCatalog.priceFrom10to50',
   over50: 'modelCatalog.priceOver50',
@@ -69,7 +73,8 @@ const priceKeys: Record<string, PlainKey> = {
 };
 
 const facetLabel = (text: ModelText, facet: Facet, value: string) => {
-  if (facet === 'maker') return value === unknownMaker ? text.t('modelWords.unknownMaker') : value;
+  if (facet === 'provider' || facet === 'maker')
+    return value === unknownValue ? text.t('modelWords.unknownMaker') : value;
   if (facet === 'where') return text.where(value as ModelEntry['residency']);
   if (facet === 'use') return text.use(value);
   if (facet === 'price') return text.t(priceKeys[value] ?? 'modelCatalog.priceUnpriced');
@@ -82,7 +87,7 @@ const valuesFor = (facet: Facet, entries: ModelEntry[]): string[] => {
   if (facet === 'status') return [...modelStatuses];
   const seen = [...new Set(entries.flatMap((m) => facetValues(m, facet)))];
   return seen.sort((a, b) =>
-    a === unknownMaker ? 1 : b === unknownMaker ? -1 : a.localeCompare(b),
+    a === unknownValue ? 1 : b === unknownValue ? -1 : a.localeCompare(b),
   );
 };
 
@@ -124,15 +129,23 @@ const ModelCard = ({
   >
     <li>
       <div className="mc-card-top">
-        <ModelMark model={m} text={text} />
+        <ModelMark model={m} />
         <div className="mc-card-name">
           <Heading level={3} data-size="2xs">
             <Link href={modelBlockHref(m.id)}>{text.name(m)}</Link>
           </Heading>
-          <span className="meta">{text.byLine(m)}</span>
+          {text.byLine(m) ? <span className="meta">{text.byLine(m)}</span> : null}
         </div>
       </div>
       <div className="tag-row">
+        <Tag data-size="sm" data-color={whereColor(m.residency)}>
+          {text.dataIn(m.residency)}
+        </Tag>
+        {m.gateway ? (
+          <Tag data-size="sm" data-color="neutral">
+            {text.gateway(m)}
+          </Tag>
+        ) : null}
         {m.recommended ? (
           <Tag data-size="sm" data-color="success">
             {text.t('modelWords.recommended')}
@@ -148,12 +161,18 @@ const ModelCard = ({
         </Tag>
       </div>
       <dl className="mc-facts">
-        <dt>{text.t('modelCatalog.contextWindow')}</dt>
-        <dd>{text.context(m)}</dd>
-        <dt>{text.t('modelCatalog.pricePerMillion')}</dt>
+        <dt>
+          {m.price && !isFree(m.price)
+            ? text.t('modelCatalog.pricePerMillion')
+            : text.t('modelCatalog.price')}
+        </dt>
         <dd>{text.price(m)}</dd>
-        <dt>{text.t('modelCatalog.where')}</dt>
-        <dd>{text.whereLong(m)}</dd>
+        {m.contextWindow ? (
+          <>
+            <dt>{text.t('modelCatalog.contextWindow')}</dt>
+            <dd>{text.context(m)}</dd>
+          </>
+        ) : null}
       </dl>
       <div className="mc-card-foot">
         <Checkbox
@@ -294,10 +313,8 @@ export const ModelCatalog = ({ api, tenant }: ScreenProps) => {
   };
   const rows: CompareRow[] = [
     { label: t('modelWords.rowMaker'), cell: text.maker },
-    {
-      label: t('modelWords.rowOperator'),
-      cell: (m) => text.operator(m) || t('modelWords.notStated'),
-    },
+    { label: t('modelWords.rowOperator'), cell: text.operator },
+    { label: t('modelWords.rowVia'), cell: text.gateway },
     { label: t('modelWords.rowWhere'), cell: (m) => text.where(m.residency) },
     { label: t('modelWords.rowUses'), cell: (m) => text.uses(m).map(text.use).join(', ') },
     { label: t('modelWords.rowContext'), cell: text.context },

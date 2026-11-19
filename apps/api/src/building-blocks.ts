@@ -78,6 +78,8 @@ import type {
 import type { SinkJudge, TraceConnection } from './trace-connections.js';
 import { requireRight, rightRefused, type Right } from './rights.js';
 import { datasetDataLocation } from './residency.js';
+import { makerOf } from './model-identity.js';
+import { modelDisplayNames } from './model-access.js';
 import { pluginBlockOf, pluginEntries } from './external-plugins.js';
 import { actorNameOf, changeReasonOf, isReasonLongEnough, reasonTooShort } from './http.js';
 import { requestLocale, t, translate, translatorFor, type ApiKey } from './i18n/index.js';
@@ -804,16 +806,19 @@ export const createBuildingBlocksModule =
       const catalogModels = new Map(
         visible.filter((i) => i.kind === 'model').map((i) => [i.id, i]),
       );
-      for (const model of deps.models.describe()) {
+      const listedModels = deps.models.describe().filter((model) => {
         const item = catalogModels.get(model.id) ?? deps.catalog.get('model', model.id);
-        if (!model.enabled || !servesModelPort(model)) continue;
-        if (item && !catalogModels.has(model.id)) continue;
+        return model.enabled && servesModelPort(model) && !(item && !catalogModels.has(model.id));
+      });
+      const modelNames = modelDisplayNames(listedModels);
+      for (const model of listedModels) {
+        const item = catalogModels.get(model.id) ?? deps.catalog.get('model', model.id);
         const scope = item?.scope ?? platformScope;
         out.push({
           block: {
             id: model.id,
             kind: 'model',
-            name: model.id,
+            name: modelNames.get(model.id) ?? model.id,
             description: model.family ?? model.deployment,
             publisher: publisherOf(scope, tenant),
             version: String(item?.version ?? 1),
@@ -2249,9 +2254,10 @@ export const createBuildingBlocksModule =
           })),
       );
       const record = governance ? await governance.processorRecord(model.endpoint) : undefined;
+      const maker = makerOf(model);
       return {
         connection: model.endpoint,
-        ...(model.maker ? { maker: model.maker } : {}),
+        ...(maker ? { maker } : {}),
         operations,
         ...(governance
           ? {

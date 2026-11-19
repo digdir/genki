@@ -2,8 +2,6 @@ import { createFormat, type Format } from '@genai/i18n';
 import { useFormat } from '@genai/i18n/react';
 import { useMemo } from 'react';
 import { translator, useT, type PlainKey, type T } from './i18n';
-import { perMillion } from './models';
-import type { ModelPrice } from './types';
 
 const nbFormat = createFormat('nb');
 const nbT = translator('nb');
@@ -48,18 +46,6 @@ export const formatKroner = (
   microNok === null || microNok === undefined
     ? notPricedLabel(t)
     : f.currency(microNok / 1_000_000, { digits: 2 });
-
-export const formatModelPrice = (
-  price: ModelPrice | null | undefined,
-  f: Format = nbFormat,
-  t: T = nbT,
-) =>
-  price
-    ? t('setup.modelPrice', {
-        input: f.number(perMillion(price).input, { maximumFractionDigits: 2 }),
-        output: f.number(perMillion(price).output, { maximumFractionDigits: 2 }),
-      })
-    : t('setup.notPriced');
 
 type StatusColor = 'info' | 'warning' | 'success' | 'danger' | 'neutral';
 

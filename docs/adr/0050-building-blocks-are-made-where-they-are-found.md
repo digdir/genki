@@ -58,6 +58,7 @@ Turned down:
 
 - The routes `#/step-flows` and `#/step-flows/{id}` forward to `/developer/step-flows` and `/developer/step-flows/{id}`.
 - `GET /tenants/{tenant}/building-blocks` lists step types as their own kind, and the model block carries the connection, price and processor-record facts.
+- `GET /models` gives each model a readable name from its family or deployment; the maker from the model name when the catalogue sets none; the operator from the host a gateway deployment names (`aivar:`, `sigma2:`), else the connection's operator, else the connection address; and `gateway: true` when the connection is marked as the gateway. The building-block list and the model block use the same name and maker (#861).
 - The screens are redrawn in Claude Design from this record before they are built; the design is a proposal that can be reworked later.
 - Built: the console models area, with Tilkoblinger, models and API-er in one place, the guided path for a new API, a reason per action and Revisjon in plain words. Revisjon cannot yet tell an approval from a send-back or name the API a binding changed from, since the audit entries carry neither.
 - Not built yet: the portal part (Byggeklosser, the step-flow library and editor in Utviklerverktøy, model facts and model choice per kind).
