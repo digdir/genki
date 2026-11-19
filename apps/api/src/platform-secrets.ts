@@ -1,3 +1,4 @@
+import { maxTenantSecretBytes } from '@genai/composition';
 import type { Context } from 'hono';
 import type { CatalogItem } from './catalog-registry.js';
 import { platformScope } from './config-store.js';
@@ -5,7 +6,7 @@ import { platformSecretPattern } from './operator-models.js';
 import type { PlatformModuleFactory } from './platform-modules.js';
 
 export const platformSecretNamePattern = /^[a-z0-9][a-z0-9._-]{0,62}$/;
-export const maxPlatformSecretLength = 16_384;
+export const maxPlatformSecretLength = maxTenantSecretBytes;
 
 export interface PlatformSecretUser {
   kind: string;

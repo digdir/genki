@@ -429,11 +429,51 @@ describe('Oversikt', () => {
     expectAccessible();
   });
 
-  it('marks the Datasett menu item with the number of ingestions to follow up', async () => {
+  it('marks the Datasett menu item with the number of datasets to follow up', async () => {
     await renderAt('#/overview', withUsage(normalUsage));
 
     const menu = await screen.findByRole('navigation', { name: 'Hovedmeny' });
-    expect(await within(menu).findByLabelText('1 innlesing trenger oppfølging')).toBeTruthy();
+    expect(await within(menu).findByLabelText('2 datasett trenger oppfølging')).toBeTruthy();
+  });
+
+  it('lists a dataset without a source as needing you, as the Datasett filter counts it', async () => {
+    const withoutSource = {
+      features: {
+        datasets: {
+          datasets: [
+            {
+              id: 'arkiv',
+              fullId: '999888777/arkiv',
+              name: 'Arkivet',
+              description: '',
+              scope: '999888777',
+              editable: true,
+              residency: 'norway',
+              effectiveResidency: 'norway',
+              index: { endpoint: 'platform-pg' },
+              facets: [],
+              searchScope: 'tenant',
+              source: 'none',
+              documents: 0,
+              chunks: 0,
+              usedBy: [],
+              lastExecution: null,
+              nextRunAt: null,
+              skipped: [],
+            },
+          ],
+        },
+      },
+    } as Parameters<typeof mockFetch>[4];
+    await renderAt('#/overview', withUsage(normalUsage, withoutSource));
+
+    const attention = await screen.findByRole('region', { name: 'Trenger deg nå' });
+    expect(await within(attention).findByText('Ingen kilde')).toBeTruthy();
+    expect(
+      within(attention).getByRole('link', { name: 'Se datasettet: Arkivet' }).getAttribute('href'),
+    ).toBe('#/datasets/999888777%2Farkiv');
+    const menu = screen.getByRole('navigation', { name: 'Hovedmeny' });
+    expect(await within(menu).findByLabelText('1 datasett trenger oppfølging')).toBeTruthy();
   });
 
   it('shows no Datasett badge for a tenant without datasets', async () => {

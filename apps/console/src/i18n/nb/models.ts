@@ -31,7 +31,7 @@ export const models = defineNamespace({
   colConnection: 'Tilkobling',
   colSource: 'Kilde',
   colResidency: 'Data behandles',
-  colPrice: 'Pris per 1 000 tokens',
+  colPrice: 'Pris per 1M tokens',
   colKinds: 'Type kall og API',
   colCan: 'Kan',
   colActions: 'Handlinger',

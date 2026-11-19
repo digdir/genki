@@ -32,12 +32,19 @@ export interface DatasetOption {
 export const AskChip = ({
   label,
   onAsk,
+  off = false,
 }: {
   label: string;
   onAsk?: ((q: string) => void) | undefined;
+  off?: boolean;
 }) =>
   onAsk ? (
-    <button type="button" className="ask-chip" onClick={() => onAsk(label)}>
+    <button
+      type="button"
+      className="ask-chip"
+      aria-disabled={off || undefined}
+      onClick={() => !off && onAsk(label)}
+    >
       <Icon icon={ChatIcon} size={16} />
       {label}
     </button>

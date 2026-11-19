@@ -452,11 +452,12 @@ describe('Oppsett wired to the draft, dataset and input API', () => {
     expect(edit.getAttribute('aria-expanded')).toBe('true');
   });
 
-  it('offers the suggestions in the empty assistant on Oppsett', async () => {
+  it('shows the empty Byggeassistent on Oppsett without suggestion chips', async () => {
     await openService('#/services/rapportassistenten/setup');
     const assistant = await screen.findByRole('complementary', { name: 'Byggeassistent' });
-    expect(within(assistant).getAllByRole('button').length).toBeGreaterThan(1);
-    expect(within(assistant).getByRole('button', { name: 'Hva koster dette?' })).toBeTruthy();
+    expect(within(assistant).getByText(/Spør om endringer i oppsettet/)).toBeTruthy();
+    expect(within(assistant).queryByRole('button', { name: 'Hva koster dette?' })).toBeNull();
+    expect(within(assistant).queryByRole('button', { name: 'Test tjenesten' })).toBeNull();
   });
 
   it('asks for the file limits only on Inndata', async () => {

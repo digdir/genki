@@ -216,13 +216,16 @@ export const createEvalService = (options: EvalServiceOptions) => {
       };
     },
 
+    /** One paired comparison per metric, in the order asked, on the same two completed runs. */
     compare: async (
       principal: Principal,
       baseline: string,
       candidate: string,
-      metric: string,
+      metrics: string[],
       compare: CompareOptions = {},
     ) => {
+      const asked = [...new Set(metrics.map((m) => m.trim()).filter(Boolean))];
+      if (asked.length === 0) throw new EvalError('name at least one metric to compare');
       const a = await readable(principal, baseline);
       const b = await readable(principal, candidate);
       for (const stored of [a, b])
@@ -230,7 +233,17 @@ export const createEvalService = (options: EvalServiceOptions) => {
           throw new EvalError(
             `eval run ${stored.run.id} is ${runState(stored.run)}, not completed`,
           );
-      return compareRuns(a.run, b.run, metric, compare);
+      let stale: string[] | undefined;
+      const comparisons = asked.map((metric) => {
+        const { staleJudges, ...paired } = compareRuns(a.run, b.run, metric, compare);
+        stale = staleJudges;
+        return { metric, ...paired };
+      });
+      return {
+        allowedDifferent: [...(compare.allowDifferent ?? [])],
+        comparisons,
+        ...(stale ? { staleJudges: stale } : {}),
+      };
     },
   };
 };

@@ -1,4 +1,5 @@
 import {
+  Alert,
   Button,
   Heading,
   Paragraph,
@@ -21,6 +22,7 @@ export type AreaStatus = 'done' | 'changed' | 'missing' | 'optional';
 export interface AreaFact {
   status: AreaStatus;
   summary: string;
+  problems?: string[];
   fromAssistant?: boolean;
 }
 
@@ -140,6 +142,18 @@ export const SetupLayout = ({
           </Heading>
           <Paragraph className="meta">{t(helpKeys[current])}</Paragraph>
         </div>
+        {facts[current].problems?.length ? (
+          <Alert data-color="warning" data-size="sm">
+            <Heading level={3} data-size="2xs">
+              {t('setupList.missingHeading')}
+            </Heading>
+            <ul className="bullets">
+              {facts[current].problems.map((problem) => (
+                <li key={problem}>{problem}</li>
+              ))}
+            </ul>
+          </Alert>
+        ) : null}
         {children}
         <div className="setup-area-foot">
           <span className="meta">{t('setupList.savedNote')}</span>

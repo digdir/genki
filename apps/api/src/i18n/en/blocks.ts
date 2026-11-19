@@ -44,6 +44,11 @@ export const blocks = {
     'The secret «{secret}» is not set up for {hosts}. Ask someone with the right «Manage services» to add the address to the secret.',
   secretHostsRequired: 'Enter the addresses the secret is for, for example https://api.example.no.',
   secretHostInvalid: '«{host}» is not a valid address. Enter for example https://api.example.no.',
+  secretNameInvalid:
+    'A secret name has lowercase letters a-z, digits and hyphens, starts with a letter or digit and is at most 63 characters.',
+  secretTooLarge: 'The secret is too large. It can be at most {max} bytes.',
+  secretLimit: 'The organisation has {max} secrets, which is the most it can have.',
+  secretInUse: 'The secret «{name}» is used by {kind} «{id}».',
   secretNotFound: 'The secret «{name}» does not exist.',
   noTools: 'The server has no tools.',
   toolsLacking: '{lacking} of {total} tools are missing a description or inputSchema: {names}.',

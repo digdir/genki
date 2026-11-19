@@ -192,6 +192,7 @@ export const assistantUi = {
     showing: 'Showing {shown} of {total} services',
     job: 'Job',
     start: 'Started from',
+    model: 'Model',
     jobAnswers: 'Answers',
     jobDrafts: 'Drafts',
     jobRewrites: 'Rewrites',

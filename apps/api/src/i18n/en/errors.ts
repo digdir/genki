@@ -508,6 +508,8 @@ export const qualityErrors = {
   caseChangeValues: 'change is worse, better, new, missing, pending or same',
   compareLimit: 'limit is 1 to 200',
   compareOffset: 'offset is 0 to 100000',
+  compareAllowDifferent:
+    '{field} cannot be allowed to differ: only data, services and servedModels can',
   noVersion: 'no {version} version',
   noTestSetInService: 'no test set {testSet} in the service',
   noCases: 'The test set has no test cases',

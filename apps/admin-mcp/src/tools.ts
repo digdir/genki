@@ -146,6 +146,16 @@ interface TimelineStep {
   model?: string;
   tokens?: number;
   blocks: TimelineBlock[];
+  reads?: { chunks: ReadChunk[]; auto?: true }[];
+  raw?: unknown;
+}
+
+interface ReadChunk {
+  id: string;
+  document?: string;
+  position?: number;
+  page?: number;
+  title?: string;
 }
 
 interface Timeline {
@@ -160,6 +170,7 @@ interface Timeline {
   priced?: boolean;
   erasure?: Erasure;
   steps: TimelineStep[];
+  omittedSteps?: number;
 }
 
 interface Strategy {
@@ -894,7 +905,22 @@ const compactBlock = (b: TimelineBlock) => {
   return undefined;
 };
 
-const compactTimeline = (t: Timeline) => {
+const chunkText = (c: ReadChunk) =>
+  `${c.id} (${[
+    c.title ?? c.document,
+    c.position === undefined ? undefined : `position ${c.position}`,
+    c.page === undefined ? undefined : `page ${c.page}`,
+  ]
+    .filter(Boolean)
+    .join(', ')})`;
+
+const compactReads = (s: TimelineStep) => {
+  const chunks = (s.reads ?? []).flatMap((r) => r.chunks);
+  if (!chunks.length) return undefined;
+  return `    read ${chunks.slice(0, 20).map(chunkText).join('; ')}${chunks.length > 20 ? `; and ${chunks.length - 20} more` : ''}`;
+};
+
+const compactTimeline = (t: Timeline, first = 1) => {
   const cost =
     t.costMicroNok === null || t.priced === false
       ? 'not fully priced'
@@ -911,41 +937,100 @@ const compactTimeline = (t: Timeline) => {
     ]
       .filter(Boolean)
       .join(', ');
-    const blocks = s.blocks.map(compactBlock).filter(Boolean).join('\n');
-    return `${i + 1}. ${s.type}${flags ? ` [${flags}]` : ''}: ${s.title}${detail ? ` (${detail})` : ''}. ${s.summary}${blocks ? `\n${blocks}` : ''}`;
+    const blocks = [...s.blocks.map(compactBlock), compactReads(s)].filter(Boolean).join('\n');
+    return `${first + i}. ${s.type}${flags ? ` [${flags}]` : ''}: ${s.title}${detail ? ` (${detail})` : ''}. ${s.summary}${blocks ? `\n${blocks}` : ''}`;
   });
   const erased = t.erasure
     ? `\n${erasureText(t.erasure)}: input, steps and answer are gone; status, time, tokens and cost remain.`
     : '';
-  return `${head}${erased}\n${steps.join('\n')}`;
+  const omitted = t.omittedSteps ? `\n${t.omittedSteps} steps left out by types, from or to.` : '';
+  return `${head}${erased}\n${steps.join('\n')}${omitted}`;
+};
+
+const stepRange = (t: Timeline, from = 1, to = t.steps.length): Timeline => {
+  const steps = t.steps.slice(from - 1, to);
+  return { ...t, steps, omittedSteps: (t.omittedSteps ?? 0) + t.steps.length - steps.length };
 };
 
 const reasonOf = (result: PromiseSettledResult<unknown>) =>
   result.status === 'rejected' ? messageOf(result.reason) : '';
 
+export const fullRunLimit = 60_000;
+const hitsShown = 20;
+
+const fewerHits = (step: TimelineStep): TimelineStep => {
+  const raw = (step.raw ?? {}) as { retrieval?: { hits?: unknown } };
+  const hits = raw.retrieval?.hits;
+  if (!Array.isArray(hits) || hits.length <= hitsShown) return step;
+  return {
+    ...step,
+    raw: {
+      ...raw,
+      retrieval: {
+        ...raw.retrieval,
+        hits: hits.slice(0, hitsShown),
+        hitsOmitted: hits.length - hitsShown,
+      },
+    },
+  };
+};
+
+export const fullRun = (timeline: Timeline, allHits = false, first = 1) => {
+  const steps = allHits ? timeline.steps : timeline.steps.map(fewerHits);
+  const kept: TimelineStep[] = [];
+  const size = (list: TimelineStep[], omitted: number) =>
+    JSON.stringify({ ...timeline, steps: list, omittedSteps: omitted }, null, 1).length;
+  for (const step of steps) {
+    if (size([...kept, step], steps.length - kept.length - 1) > fullRunLimit) break;
+    kept.push(step);
+  }
+  const cut = steps.length - kept.length;
+  const omitted = (timeline.omittedSteps ?? 0) + cut;
+  const json = JSON.stringify(
+    { ...timeline, steps: kept, ...(omitted ? { omittedSteps: omitted } : {}) },
+    null,
+    1,
+  );
+  return cut
+    ? `${json}\n${cut} steps after step ${first + kept.length - 1} were left out to stay under ${fullRunLimit} characters; ask again with from, to or types.`
+    : json;
+};
+
 const getRun = tool({
   name: 'get_run',
   title: 'Read a run and its timeline',
   description:
-    'Read one service or playground run with its timeline: each step, what it did, model, tokens, time and warnings. Compact by default; full: true gives every detail, which can be very long.',
+    'Read one service or playground run with its timeline: each step, what it did, model, tokens, time and warnings, and for read steps which chunks were read (id, document, position, page). Compact by default. full: true gives the steps as valid JSON, at most 60,000 characters, and says how many steps it left out; search steps keep their top 20 hits unless allHits is true. Narrow it with types (for example ["read", "model"]) and from/to, step numbers counted after the types filter.',
   kind: 'read',
   args: z.strictObject({
     id: z.string().min(1).describe('The run id from list_runs or run_playground'),
     full: z.boolean().optional(),
+    types: z
+      .array(z.string().min(1))
+      .optional()
+      .describe('Only steps of these types, for example ["read", "model"]'),
+    from: z.number().int().min(1).optional().describe('First step number to return'),
+    to: z.number().int().min(1).optional().describe('Last step number to return'),
+    allHits: z.boolean().optional().describe('With full: true, every hit of each search step'),
   }),
-  run: async ({ client }, { id, full }) => {
+  run: async ({ client }, { id, full, types, from, to, allHits }) => {
     const path = `${tenantPath(client.tenant)}/tasks/${segment(id)}`;
     const [run, timeline] = await Promise.allSettled([
       client.request<Record<string, unknown>>('GET', path),
-      client.request<Timeline>('GET', `${path}/timeline`),
+      client.request<Timeline>(
+        'GET',
+        `${path}/timeline`,
+        types?.length ? { query: { types: types.join(',') } } : undefined,
+      ),
     ]);
     if (run.status === 'rejected' && timeline.status === 'rejected') return fail(reasonOf(run));
-    const found = timeline.status === 'fulfilled' ? timeline.value : undefined;
+    const whole = timeline.status === 'fulfilled' ? timeline.value : undefined;
+    const found = whole && (from || to) ? stepRange(whole, from, to) : whole;
     const summary = run.status === 'fulfilled' ? run.value : undefined;
     const body = found
       ? full
-        ? JSON.stringify(found, null, 1).slice(0, 60_000)
-        : compactTimeline(found)
+        ? fullRun(found, allHits, from ?? 1)
+        : compactTimeline(found, from ?? 1)
       : `The timeline is not available: ${reasonOf(timeline)}\n${JSON.stringify(summary, null, 1)}`;
     return {
       text: untrusted(body),

@@ -149,6 +149,7 @@
   overflow-x: auto;
   border: 1px solid var(--ds-color-neutral-border-subtle);
   border-radius: var(--ds-border-radius-md);
+  position: relative;
 }
 
 .ax-table-wrap table {
@@ -323,6 +324,7 @@
   line-height: 1.6;
   white-space: pre;
   background: var(--ds-color-neutral-background-tinted);
+  position: relative;
 }
 
 .ax-call {

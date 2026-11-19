@@ -55,6 +55,22 @@ afterAll(async () => {
   await stopPostgres(container, pools);
 });
 
+describe('postgres pool sizes', () => {
+  it('opens the store pool no larger than the owner pool, also with a login of its own', async () => {
+    const owner = new pg.Pool({ connectionString: container.getConnectionUri(), max: 4 });
+    pools.push(owner);
+    const switched = await openStores(owner, wrapper);
+    const ownLogin = await openStores(owner, wrapper, {
+      runtime: { connectionString: container.getConnectionUri() },
+    });
+
+    expect(switched.runtimePool.options.max).toBe(4);
+    expect(ownLogin.runtimePool.options.max).toBe(4);
+    await switched.close();
+    await ownLogin.close();
+  });
+});
+
 describe('postgres event log', () => {
   it('keeps operator model classifications and replaces them on change', async () => {
     const stores = await openStores(newPool(), wrapper);

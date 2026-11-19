@@ -336,22 +336,14 @@ describe('builder assistant', () => {
     expect(await screen.findByText('Kort svar', { selector: '.area-row-title' })).toBeTruthy();
   });
 
-  it('Forbedre instruksjonene changes the draft only after Bruk forslaget', async () => {
+  it('Forbedre instruksjonene asks the Byggeassistent and leaves the instructions as they are', async () => {
     await open('#/services/soknadsuttrekk/setup');
     openInstructions();
     const before = instructions().value;
     fireEvent.click(screen.getByRole('button', { name: 'Forbedre instruksjonene' }));
-    const apply = await screen.findByRole('button', { name: 'Bruk forslaget' }, slow);
-    expect(screen.getByText('Før')).toBeTruthy();
-    expect(screen.getByText('Etter')).toBeTruthy();
-    expect(instructions().value).toBe(before);
-    fireEvent.click(apply);
-    expect(instructions().value).toMatch(/^Du hjelper Testetaten med å hente opplysninger/);
-    expect(screen.getByText('Brukt i utkastet. Ingenting er publisert.')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Angre' }));
-    expect(instructions().value).toBe(before);
-    fireEvent.click(screen.getByRole('button', { name: 'Forkast' }));
-    expect(screen.queryByRole('button', { name: 'Bruk forslaget' })).toBeNull();
+    const pane = screen.getByRole('complementary', { name: 'Byggeassistent' });
+    expect(await within(pane).findByText('Forbedre instruksjonene', {}, slow)).toBeTruthy();
+    expect(screen.queryByText('Før')).toBeNull();
     expect(instructions().value).toBe(before);
   });
 

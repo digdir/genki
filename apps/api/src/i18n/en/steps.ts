@@ -41,6 +41,8 @@ export const steps = {
   citationsNone: 'Found no citations to add',
   relevance: 'relevance {score}',
   part: 'part {part}',
+  parts: { one: 'part {parts}', other: 'parts {parts}' },
+  pages: { one: 'page {pages}', other: 'pages {pages}' },
   hits: { one: '{count} hit', other: '{count} hits' },
   searches: { one: '{count} search', other: '{count} searches' },
   chunks: { one: '{count} chunk', other: '{count} chunks' },
