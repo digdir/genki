@@ -305,6 +305,50 @@ describe('service definitions', () => {
     ).toBeUndefined();
   });
 
+  it('a service processes data where a content trace sink sends it', () => {
+    const result = validateDefinition(
+      withSpec({
+        model: { primary: 'foundry/gpt-4o', residency: 'global' },
+        knowledge: { datasets: [] },
+      }),
+      plugins,
+    );
+    if (!result.ok) throw new Error(JSON.stringify(result.errors));
+    const spec = (result.definition as ServiceDefinition).spec;
+
+    expect(
+      serviceDataLocation(spec, {
+        ...plugins,
+        traceSink: () => ({ residency: 'global', content: true }),
+      }),
+    ).toBe('global');
+    expect(
+      serviceDataLocation(spec, {
+        ...plugins,
+        traceSink: () => ({ residency: 'global', content: false }),
+      }),
+    ).toBe('norway');
+  });
+
+  it('a service processes data where an agent it calls runs', () => {
+    const result = validateDefinition(
+      withSpec({
+        model: { primary: 'foundry/gpt-4o', residency: 'global' },
+        knowledge: { datasets: [] },
+      }),
+      plugins,
+    );
+    if (!result.ok) throw new Error(JSON.stringify(result.errors));
+    const spec = (result.definition as ServiceDefinition).spec;
+
+    expect(serviceDataLocation(spec, { ...plugins, strategyResidency: () => 'global' })).toBe(
+      'global',
+    );
+    expect(serviceDataLocation(spec, { ...plugins, strategyResidency: () => undefined })).toBe(
+      'norway',
+    );
+  });
+
   it('refuses a reranker that processes data outside the residency the service requires', () => {
     const service = (residency: string) =>
       withSpec({
