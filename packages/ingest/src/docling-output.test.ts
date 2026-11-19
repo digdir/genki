@@ -2,7 +2,7 @@ import { codePointSlice, conversionText } from '@genai/port-knowledge';
 import { describe, expect, it } from 'vitest';
 import { doc } from './docling-document.test-utils.js';
 import { doclingParts } from './docling-parts.js';
-import { readDoclingOutput } from './docling-output.js';
+import { NotDoclingDocument, readDoclingOutput } from './docling-output.js';
 import { textLayerParts } from './text-layer-parts.js';
 
 const slicesBack = (parts: { text: string; start: number | null; end: number | null }[]) => {
@@ -31,5 +31,9 @@ describe('reading Docling output', () => {
     expect(slicesBack(docling)).toEqual(docling.map((p) => p.text));
     expect(textLayer.map((p) => p.text)).toEqual(['Lønn og tilskudd.', 'Neste side.']);
     expect(slicesBack(textLayer)).toEqual(textLayer.map((p) => p.text));
+  });
+
+  it('output that is not JSON is not a DoclingDocument', () => {
+    expect(() => readDoclingOutput(new TextEncoder().encode('{"half'))).toThrow(NotDoclingDocument);
   });
 });

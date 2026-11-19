@@ -797,7 +797,8 @@ export const knowledgeWork = (
             derivation: doclingPartsDerivation,
             derive: () => doclingParts(readDoclingOutput(output)).units,
           };
-        // By its bytes, not its name or media type: an upload in Blob can be application/octet-stream.
+        // By its bytes, not its name or media type: a source can pass on a server's Content-Type,
+        // such as application/octet-stream for a PDF.
         else if (made.name === textLayer.name && looksLikePdf(file.bytes))
           parts = {
             derivation: textLayerPartsDerivation,

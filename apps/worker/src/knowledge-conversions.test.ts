@@ -220,7 +220,7 @@ interface ScenarioOptions {
   now?: () => Date;
   /** The files the folder source lists; PDFs and Markdown when left out. */
   include?: string[];
-  /** The media type a convert job's fetched file carries, as an upload in Blob storage has one. */
+  /** The media type a convert job's fetched file carries, as a source that passes on a server's Content-Type gives it. */
   fetchedMimetype?: string;
 }
 
@@ -3040,6 +3040,23 @@ describe('conversion parts', () => {
     const s = await scenario({ fetchedMimetype: 'application/octet-stream' });
     const pdf = reportOf('opplastet');
     await s.file('opplastet.pdf', pdf);
+
+    await ingest(s);
+    await drain(s);
+
+    const parts = await conversions.find(await sha(pdf), textLayerPartsOnly);
+    expect(parts?.units?.map((u) => u.parts.length)).toEqual([1, 1]);
+  }, 60_000);
+
+  it('a PDF fetched as application/octet-stream that Docling refuses gets text-layer parts', async () => {
+    await clearConvertJobs();
+    const server = await doclingServer(() => recordedAnswer('failure-corrupt'));
+    const s = await scenario({
+      docling: { current: doclingFor(server.url) },
+      fetchedMimetype: 'application/octet-stream',
+    });
+    const pdf = reportOf('avvist-opplastet');
+    await s.file('avvist.pdf', pdf);
 
     await ingest(s);
     await drain(s);
