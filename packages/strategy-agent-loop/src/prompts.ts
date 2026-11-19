@@ -32,7 +32,7 @@ export const agentTools: ToolSpec[] = [
         filter_by: {
           type: 'object',
           description:
-            "Optional structured retrieval filter to constrain document search. When inspect_filters lists doc_num or title, search inside one document by filtering doc_num with the doc_num a hit showed, or title with the words of its title, and leave the title out of the queries. To get one organisation's own document, such as its Prop. 1 S, tildelingsbrev or årsrapport, filter orgs_long with the organisation's name, and check publisher= on the hits.",
+            "Optional structured retrieval filter to constrain document search. When inspect_filters lists doc_num or title, search inside one document by filtering doc_num with the doc_num a hit showed, or title with the words of its title, and leave the title out of the queries. When inspect_filters lists orgs_long, filter it with an organisation's name to get that organisation's own document, such as its Prop. 1 S or årsrapport. orgs_long also matches documents the organisation received, such as the tildelingsbrev its ministry sent it, whose publisher= is that ministry.",
           properties: {
             fields: {
               type: 'array',

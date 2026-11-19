@@ -634,6 +634,7 @@ export const buildEvidenceSummary = (w: Workspace, query: string): EvidenceSumma
       'doc-num': c.document ?? null,
       'chunk-index': c.position ?? null,
       title: c.title ?? null,
+      publisher: c.publisher ?? null,
       metadata: c.headers?.length ? JSON.stringify(c.headers) : null,
       'content-preview': preview(c.content, 500),
       ...(c.matchedQuestions?.length ? { 'matched-questions': c.matchedQuestions } : {}),

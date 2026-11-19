@@ -303,9 +303,9 @@ const detectionHint = (d: SearchDetection) => {
 };
 
 const ownDocumentHint = (hints: SearchDetection[]) => {
-  const field = hints.find((d) => d.kind === 'organisation')?.field;
-  return field
-    ? ` To get that organisation's own document, such as its Prop. 1 S, filter ${field} with its name.`
+  const organisation = hints.find((d) => d.kind === 'organisation');
+  return organisation
+    ? ` For one organisation's own document, such as its Prop. 1 S, filter ${organisation.field} with ${organisation.values.map((v) => JSON.stringify(v)).join(' or ')}.`
     : '';
 };
 

@@ -3,6 +3,7 @@ import {
   baseConfig,
   call,
   chunk,
+  decision,
   readSignal,
   result,
   retrieval,
@@ -100,9 +101,25 @@ describe('telling same-title documents apart', () => {
 
     const search = out.loops[0]?.tools?.find((t) => t.name === 'search');
     expect(JSON.stringify(search?.parameters)).toContain(
-      "To get one organisation's own document, such as its Prop. 1 S, tildelingsbrev or årsrapport, filter orgs_long with the organisation's name",
+      "When inspect_filters lists orgs_long, filter it with an organisation's name to get that organisation's own document, such as its Prop. 1 S or årsrapport. orgs_long also matches documents the organisation received, such as the tildelingsbrev its ministry sent it, whose publisher= is that ministry.",
     );
     expect(search?.description).toContain('publisher=');
+  });
+
+  it('the read tool tells the agent to say whose document it quotes', async () => {
+    const out = await searchThenRead(['c1']);
+
+    const read = out.loops[0]?.tools?.find((t) => t.name === 'read_chunks');
+    expect(read?.description).toContain('say whose document you quote');
+  });
+
+  it('the read evaluator sees the publisher of each chunk it judges', async () => {
+    const out = await searchThenRead(['c1', 'c3']);
+
+    const judged = out.seen.find((s) => s.kind === 'read');
+    const prompt = String(judged?.request.messages.at(-1)?.content);
+    expect(prompt).toContain('"publisher":"Finansdepartementet"');
+    expect(prompt).toContain('"publisher":null');
   });
 
   it("an organisation hint tells the agent to filter for that organisation's own document", async () => {
@@ -140,7 +157,61 @@ describe('telling same-title documents apart', () => {
     });
 
     expect(toolMessages(out.loops[1])[0]).toContain(
-      "To get that organisation's own document, such as its Prop. 1 S, filter orgs_long with its name.",
+      'For one organisation\'s own document, such as its Prop. 1 S, filter orgs_long with "Finansdepartementet".',
     );
+  });
+
+  it('the sufficiency gate sees the publisher of each chunk it weighs', async () => {
+    const out = await run({
+      retrieval: retrieval({}, store()).impl,
+      scripts: {
+        primary: {
+          loop: [
+            () => result('', [call('search', { queries: ['Prop. 1 S Finansdepartementet'] })]),
+            () => result('', [call('read_chunks', { chunk_ids: ['c1', 'c3'] })]),
+            () => result('', [call('generate_response', { query: 'Prop. 1 S' })]),
+          ],
+          read: [() => readSignal('gap-remaining', { scope_assessment: 'ambiguous' })],
+          sufficiency: [() => decision('sufficient', 'finalize')],
+          synth: [() => 'Svar [1].'],
+        },
+      },
+    });
+
+    const weighed = out.seen.find((s) => s.kind === 'sufficiency');
+    const prompt = String(weighed?.request.messages.at(-1)?.content);
+    expect(prompt).toContain('"publisher":"Finansdepartementet"');
+    expect(prompt).toContain('"publisher":null');
+  });
+
+  it("a hint that names only a year says nothing about an organisation's own document", async () => {
+    const r = retrieval({}, store());
+    const detected = retrieval(
+      {
+        search: async (queries, options, signal) => ({
+          ...(await r.impl.search(queries, options, signal)),
+          attribution: {
+            detections: [{ kind: 'year', field: 'title', values: ['2024'], queries, use: 'hint' }],
+          },
+        }),
+      },
+      store(),
+    ).impl;
+
+    const out = await run({
+      retrieval: detected,
+      scripts: {
+        primary: {
+          loop: [
+            () => result('', [call('search', { queries: ['Prop. 1 S 2024'] })]),
+            () => result('Svar.'),
+          ],
+        },
+      },
+    });
+
+    const text = toolMessages(out.loops[1])[0] ?? '';
+    expect(text).toContain('Hint, no filter applied');
+    expect(text).not.toContain("organisation's own document");
   });
 });
