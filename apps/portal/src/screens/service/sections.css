@@ -175,21 +175,20 @@
 }
 
 .dv-filters {
-  display: grid;
-  grid-template-columns: minmax(180px, 2fr) repeat(4, minmax(110px, 1fr));
-  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
   gap: 10px 12px;
 }
 
 .dv-filters > * {
-  min-width: 0;
+  flex: 1 1 auto;
+  min-width: min(100%, 150px);
   margin: 0;
 }
 
-@media (max-width: 899px) {
-  .dv-filters {
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  }
+.dv-filters > .dv-filter-search {
+  flex: 2 1 360px;
 }
 
 .dv-log-question {
@@ -225,10 +224,30 @@
   min-width: 220px;
 }
 
+.dv-keys {
+  min-width: 720px;
+}
+
+.dv-keys th:nth-child(2) {
+  width: 100%;
+}
+
+.dv-keys-region {
+  position: relative;
+}
+
+.dv-keys .tag-row > .ds-tag {
+  width: auto;
+  min-width: 0;
+  max-width: 100%;
+  flex-shrink: 1;
+}
+
 .dv-keys .actions {
   display: flex;
   flex-wrap: nowrap;
   gap: 4px;
+  white-space: nowrap;
 }
 
 .dv-columns {

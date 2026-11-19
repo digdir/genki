@@ -8,12 +8,28 @@ export interface OverrideGroup {
   settings: { key: string; label: string }[];
 }
 
-export const overrideGroups = (catalog: SettingInfo[]): OverrideGroup[] => {
+const prefixOf = (key: string) => (key.includes('.') ? key.slice(0, key.indexOf('.')) : key);
+
+const defined = (t: T, key: string, fallback: string) => {
+  const full = `settingDefs.${key.replace(/[^A-Za-z0-9]+/g, '_')}`;
+  return t.has(full) ? t.template(full) : fallback;
+};
+
+const keyLabel = (t: T, key: string, fallback: string) => defined(t, `${key}_label`, fallback);
+
+const groupLabel = (t: T, prefix: string, category: string) =>
+  defined(t, `group_${prefix}`, category);
+
+export const overrideGroups = (t: T, catalog: SettingInfo[]): OverrideGroup[] => {
   const groups = new Map<string, OverrideGroup>();
   for (const s of catalog.filter((x) => x.settableAt.includes('call'))) {
-    const prefix = s.key.includes('.') ? s.key.slice(0, s.key.indexOf('.')) : s.key;
-    const group = groups.get(prefix) ?? { prefix, label: s.category, settings: [] };
-    group.settings.push({ key: s.key, label: s.description });
+    const prefix = prefixOf(s.key);
+    const group = groups.get(prefix) ?? {
+      prefix,
+      label: groupLabel(t, prefix, s.category),
+      settings: [],
+    };
+    group.settings.push({ key: s.key, label: keyLabel(t, s.key, s.description) });
     groups.set(prefix, group);
   }
   return [...groups.values()];
@@ -21,10 +37,14 @@ export const overrideGroups = (catalog: SettingInfo[]): OverrideGroup[] => {
 
 export const overrideLabel = (t: T, groups: OverrideGroup[], value: string) => {
   if (value.endsWith('.*')) {
-    const group = groups.find((g) => `${g.prefix}.*` === value);
-    return group ? t('serviceOverrides.allAbout', { name: group.label.toLowerCase() }) : value;
+    const prefix = value.slice(0, -2);
+    const name = groups.find((g) => g.prefix === prefix)?.label ?? groupLabel(t, prefix, prefix);
+    return t('serviceOverrides.allAbout', { name: name.toLowerCase() });
   }
-  return groups.flatMap((g) => g.settings).find((s) => s.key === value)?.label ?? value;
+  return (
+    groups.flatMap((g) => g.settings).find((s) => s.key === value)?.label ??
+    keyLabel(t, value, value)
+  );
 };
 
 export const OverridePicker = ({

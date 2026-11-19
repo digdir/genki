@@ -292,7 +292,8 @@ describe('Innstillinger for virksomheten', () => {
 describe('Innstillinger for en tjeneste', () => {
   it('reads effective settings and puts a change in the service draft without a reason', async () => {
     const { calls, fetch } = recording();
-    await renderAt('#/services/vedtaksutkast/settings', fetch);
+    await renderAt('#/services/vedtaksutkast/setup/limits', fetch);
+    fireEvent.click(await screen.findByRole('button', { name: 'Endre grenser' }));
     const region = await grid();
 
     expect(calls.some((c) => c.url.endsWith('/settings/effective?service=vedtaksutkast'))).toBe(
@@ -333,7 +334,8 @@ describe('Innstillinger for en tjeneste', () => {
   });
 
   it('explains inherited values in the legend in words, without a sample digit', async () => {
-    await renderAt('#/services/vedtaksutkast/settings');
+    await renderAt('#/services/vedtaksutkast/setup/limits');
+    fireEvent.click(await screen.findByRole('button', { name: 'Endre grenser' }));
     await grid();
     const legend = document.querySelector('.settings-legend') as HTMLElement;
     expect(legend.textContent).toContain('arvet: verdien kommer fra laget til venstre');
@@ -341,7 +343,8 @@ describe('Innstillinger for en tjeneste', () => {
   });
 
   it('keeps the wide grid inside its own scroll box, so a phone page does not scroll sideways', async () => {
-    await renderAt('#/services/vedtaksutkast/settings');
+    await renderAt('#/services/vedtaksutkast/setup/limits');
+    fireEvent.click(await screen.findByRole('button', { name: 'Endre grenser' }));
     await grid();
     const table = document.querySelector('.settings-table') as HTMLElement;
     expect(table.parentElement?.className).toContain('settings-grid-scroll');
@@ -349,7 +352,8 @@ describe('Innstillinger for en tjeneste', () => {
   });
 
   it('blocks turning off human approval for a high-risk service', async () => {
-    await renderAt('#/services/vedtaksutkast/settings');
+    await renderAt('#/services/vedtaksutkast/setup/limits');
+    fireEvent.click(await screen.findByRole('button', { name: 'Endre grenser' }));
     const side = await open('Menneskelig godkjenning', grid);
     fireEvent.change(within(side).getByLabelText('Verdi'), { target: { value: 'av' } });
     fireEvent.click(within(side).getByRole('button', { name: 'Forhåndsvis endring' }));
