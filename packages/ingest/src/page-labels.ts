@@ -9,13 +9,9 @@ const pageNumber = /^(?:s\.|side|page|sida)?\s*(\d{1,4})(?:\s*(?:av|of|\/)\s*\d{
 /** How many pages away a labelled neighbour may be. */
 const reach = 2;
 
-/**
- * Each unit's label, in the order of `units`: the printed number as a string, or null when the
- * page has none or its neighbours do not agree with it.
- */
+/** Each unit's printed number as a string, or null when it has none its neighbours agree with. */
 export const pageLabels = (units: ConversionUnit[]): (string | null)[] => {
-  // The units hold their parts in seq order, so the first match on a page wins. A part's text is
-  // already whitespace-collapsed and trimmed (`textOf` in docling-walk).
+  // Parts come in seq order, already whitespace-collapsed (`textOf`); the first match wins.
   const printed = new Map<number, number>();
   for (const part of units.flatMap((unit) => unit.parts)) {
     const page = part.regions[0]?.unit;
