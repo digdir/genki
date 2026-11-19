@@ -312,6 +312,15 @@ describe('Oversikt', () => {
     expect(screen.queryByText(/operation-try/)).toBeNull();
   });
 
+  it('never names a service Hjem does not list, such as an archived one, among the failed runs', async () => {
+    onFixedDay();
+    const { fetch } = withFailedRuns([failedRun('r1', 'smoke-throwaway', 'Røyktest', today)]);
+    await renderAt('#/overview', fetch);
+
+    expect(await screen.findByText(/Ingenting trenger deg nå/)).toBeTruthy();
+    expect(screen.queryByText(/Røyktest/)).toBeNull();
+  });
+
   it('counts the failed runs of the last 7 days per service in Mest brukt', async () => {
     onFixedDay();
     const weekAgo = threeDaysAgo;

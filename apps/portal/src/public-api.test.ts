@@ -44,3 +44,21 @@ describe('definition paths', () => {
     ]);
   });
 });
+
+describe('portal surface', () => {
+  it('tells the API every request comes from the portal, so it hides internal services', async () => {
+    const surfaces: (string | undefined)[] = [];
+    const fetch: typeof globalThis.fetch = async (_input, init) => {
+      surfaces.push((init?.headers as Record<string, string> | undefined)?.['genki-surface']);
+      return new Response('{}', { headers: { 'content-type': 'application/json' } });
+    };
+    const api = createApiClient({ baseUrl: '', fetch, token: () => 'kari' });
+
+    await api.listDefinitions('999888777');
+    await api.playground.options('999888777');
+    await api.runPublished('klarsprak', 'Hei');
+    await api.media('/tenants/999888777/files/a');
+
+    expect(surfaces).toEqual(['portal', 'portal', 'portal', 'portal']);
+  });
+});

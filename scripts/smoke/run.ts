@@ -7,6 +7,7 @@ import {
   assessCompletion,
   assessFacets,
   assessHealth,
+  assessInternal,
   assessKeyAdmission,
   assessModels,
   assessOpenapi,
@@ -617,6 +618,17 @@ export const main = async () => {
         record('definitions', 'free', id, assessRefusal(await client.validate(yaml), r.path));
       }
     }
+
+    if (needsGrant('definitions', 'free', 'internal:smoke'))
+      record(
+        'definitions',
+        'free',
+        'internal:smoke',
+        assessInternal(
+          await client.get(`/tenants/${plan.tenant}/definitions/services/${plan.service}`),
+          plan.service,
+        ),
+      );
 
     const published: string[] = [];
     try {

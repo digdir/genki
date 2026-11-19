@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Principal } from '@genai/contracts';
 import { platformModules } from './composition.js';
-import { bootPlatform, digdir, other, readJson } from './testkit.js';
+import { bootPlatform, digdir, files, other, readJson, testService } from './testkit.js';
 
 const person = (subject: string, tenant: string, actions: string[]): Principal => ({
   kind: 'employee',
@@ -16,6 +16,10 @@ const people = {
   bygger: person('bygger', digdir, ['use-services', 'register-building-blocks']),
   leser: person('leser', digdir, ['use-services']),
   ola: person('ola', other, ['use-services', 'manage-services']),
+  owner: {
+    ...person('eier', digdir, ['use-services', 'manage-services']),
+    kind: 'operator',
+  } as Principal,
 };
 
 const hosts = ['https://krok.example.no'];
@@ -92,6 +96,35 @@ describe('deleting a tenant secret', () => {
     expect(platformOwner.status).toBe(404);
     expect(await platform.vault.names(other)).toEqual(['annen']);
     expect(await platform.vault.names('platform')).toEqual(['enhetsregisteret']);
+  });
+
+  it('an operator in the portal cannot delete a secret an internal service uses', async () => {
+    const { platform, send } = await boot();
+    await platform.vault.set(digdir, 'smoke-nokkel', marker, hosts);
+    const service = testService('smoke');
+    const published = await platform.definitions.publish(
+      {
+        ...service,
+        spec: {
+          ...service.spec,
+          purpose: `secret://tenant/${digdir}/smoke-nokkel`,
+          visibility: 'internal',
+        },
+      },
+      'test',
+      'Røyktesten bruker nøkkelen',
+      files,
+    );
+    expect(published.ok).toBe(true);
+
+    const refused = await send(`/tenants/${digdir}/secrets/smoke-nokkel`, 'owner', {
+      method: 'DELETE',
+      reason,
+      headers: { 'genki-surface': 'portal' },
+    });
+
+    expect(refused.status).toBe(409);
+    expect(await platform.vault.names(digdir)).toEqual(['smoke-nokkel']);
   });
 
   it('refuses with 409 a secret a hook still uses and names the hook', async () => {

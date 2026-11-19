@@ -132,14 +132,19 @@ export const ScreenLoading = ({ route }: Pick<ScreenProps, 'route'>) => {
   const t = useT();
   const [area, ...rest] = route.segments;
   const item = rest.length === 0 ? navigation.find((i) => i.path === `/${area}`) : undefined;
-  if (!item) return <PageLoading label={t('common.loading')} shape="detail" />;
+  if (!item)
+    return (
+      <div className="screen-loading">
+        <PageLoading label={t('common.loading')} shape="detail" />
+      </div>
+    );
   return (
-    <>
+    <div className="screen-loading">
       <Heading level={1} data-size="lg">
         {t(item.path === '/playground' ? 'shell.playgroundTitle' : item.label)}
       </Heading>
       <Loading label={t('common.loading')} shape="list" />
-    </>
+    </div>
   );
 };
 

@@ -12,6 +12,7 @@ import { ragConfig } from '@genai/strategy-rag';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import type { Plan } from './assess.ts';
+import { withId } from './client.ts';
 
 const plan = JSON.parse(readFileSync(join(import.meta.dirname, 'plan.json'), 'utf8')) as Plan;
 const yaml = readFileSync(join(import.meta.dirname, 'smoke-service.yaml'), 'utf8');
@@ -137,6 +138,15 @@ describe('smoke service', () => {
 
   it('publishes its throwaway only under the smoke- prefix', () => {
     expect(plan.throwaway).toMatch(/^smoke-/);
+  });
+
+  it('publishes its throwaway as an internal service, so the portal never lists it', () => {
+    const result = validateYaml(withId(yaml, plan.service, plan.throwaway), plugins);
+    if (!result.ok) throw new Error(JSON.stringify(result.errors));
+    const throwaway = result.definition as ServiceDefinition;
+
+    expect(throwaway.metadata.id).toBe(plan.throwaway);
+    expect(throwaway.spec.visibility).toBe('internal');
   });
 
   it('visits the smoke service’s test page, where the playground run happens', () => {
