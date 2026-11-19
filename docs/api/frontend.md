@@ -19,3 +19,14 @@ The rules for these routes are in the [Frontend contract](../frontend-contract.m
    When the person stops the answer, `POST /v1/tasks/{task}/cancel` with the `genai-task` header value. Closing the stream does not stop the run.
 5. `GET /api/conversations` and `GET /api/conversations/{id}` to list and reopen.
 6. `POST /api/feedback` with the `genai-task` header value and `rating: "up"` or `"down"`.
+
+## On genki's assistant host
+
+A page on the assistant host signs in through the BFF (ADR 0061, ADR 0034) and holds no token. The host proxies these routes to the API with its proxy key; the API does not answer them without it.
+
+- `GET /auth/login?next=/path` starts the login; `next` is kept only as a path on the same hostname.
+- `GET /auth/callback` is the redirect URI the Client registers, `https://{hostname}/auth/callback`.
+- `GET /auth/me` and `GET /auth/org`: the name, the chosen organisation and the organisations the person may act for, or `401` when no one is signed in. Never a token.
+- `POST /auth/org` with `{"organisation": "<orgnr>"}` and the hostname's exact `Origin` changes the organisation.
+- `GET /auth/logout` ends the session, revokes the refresh token and ends the login session.
+- `/api/...` with the `__Host-genki_session` cookie reaches the routes above as the signed-in person. A state-changing call needs the hostname's exact `Origin` and a JSON body or the `GenAI-CSRF` header; `401 urn:genai:problem:signed-out` means sign in again.

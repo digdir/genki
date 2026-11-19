@@ -159,6 +159,9 @@ param alertThresholds object = {
 @description('Deploys the generic assistant host (ADR 0061) in its own environment, with its own identity and Key Vault (ADR 0062).')
 param assistantHostEnabled bool = false
 
+@description('Turns on the BFF for the assistant host (ADR 0061): put the same genai-proxy-key in genki\'s and the host\'s Key Vault first.')
+param assistantBffEnabled bool = false
+
 param minReplicas int = 1
 param maxReplicas int = 3
 @description('The API\'s cores and memory a replica.')
@@ -406,6 +409,7 @@ module apps 'modules/containerapps.bicep' = {
     registryServer: infra ? registry!.outputs.loginServer : existingRegistry.properties.loginServer
     keyVaultUri: infra ? vault!.outputs.uri : existingVault.properties.vaultUri
     keyVaultSecretNames: keyVaultSecretNames
+    bffProxyKey: assistantHostEnabled && assistantBffEnabled
     apiImage: apiImage
     apiRevisionSuffix: apiRevisionSuffix
     apiLiveRevision: apiLiveRevision
@@ -505,6 +509,7 @@ module assistantHost 'modules/assistant-host.bicep' = if (assistantHostEnabled) 
     registryName: registryName
     appsImage: appsImage
     apiUpstream: 'https://${apps.outputs.fqdn}'
+    bffProxyKey: assistantBffEnabled
   }
 }
 

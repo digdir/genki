@@ -1570,13 +1570,17 @@
             summary:
               "genki's generic host for a service's assistant, drawn from the service's interface by hostname.",
             description:
-              "A React app that looks up the hostname it is served on, draws the service's name, menu and pages, and after login the assistant the service's layout describes through ui-assembly. It runs no code from the service owner. Login through a BFF in the API is not built yet; locally it uses the dev login.",
+              "A React app that looks up the hostname it is served on, draws the service's name, menu and pages, and after login the assistant the service's layout describes through ui-assembly. It runs no code from the service owner. Login goes through the API's BFF with a host-only session cookie (bffSignIn in bff.ts); locally it uses the dev login.",
             responsibilities: [
               'Look up the hostname and draw the hosted service, or say there is none',
               "Draw the menu and the service's Markdown pages",
               "Draw the assistant from the layout in the reader's language",
             ],
-            files: ['apps/assistant/src/App.tsx', 'apps/assistant/src/host.ts'],
+            files: [
+              'apps/assistant/src/App.tsx',
+              'apps/assistant/src/host.ts',
+              'apps/assistant/src/bff.ts',
+            ],
             input: "The hostname and the person's questions",
             output: 'Host lookups, chat requests',
             edges: [
@@ -1607,6 +1611,13 @@
                 kind: 'http',
                 target: 'http',
                 witness: { file: 'apps/assistant/src/host.ts', contains: '/api/v1/hosts/' },
+              },
+              {
+                to: 'api',
+                label: 'Sign-in through the BFF, with no token in the page',
+                kind: 'http',
+                target: 'http',
+                witness: { file: 'apps/assistant/src/bff.ts', contains: '/auth/me' },
               },
               {
                 to: 'adapter-openai',
@@ -2348,6 +2359,10 @@
               'Compose ports, providers and strategies into a kernel',
               'Mount MCP, /v1, REST, conversation, portal and console routes',
               'Authenticate callers and choose stores',
+              {
+                'Run the BFF for the assistant host':
+                  'login as a confidential client, sessions in Postgres, and a session swapped for a bearer token (ADR 0061)',
+              },
               'Run a published service over a document set, with a cost estimate, a cost cap and a retry list',
               'Keep projects of document selections, and subscriptions that run a service on new documents under a monthly cost cap',
               "Let operators set the maturity of operation kinds and the processor records of model endpoints, and refuse a service's call-operation step at publish unless both allow it (ADR 0047)",
@@ -2362,6 +2377,7 @@
               'apps/api/src/routes/console-routes.ts',
               'apps/api/src/batch-runs.ts',
               'apps/api/src/session-upgrade.ts',
+              'apps/api/src/bff/bff.ts',
               'apps/api/src/projects.ts',
               'apps/api/src/task-export.ts',
               'apps/api/src/operation-governance.ts',

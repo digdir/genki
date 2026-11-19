@@ -26,6 +26,7 @@ import {
   PostgresSinkLabelStore,
   PostgresTestSetStore,
 } from './eval.js';
+import { PostgresBffSessions } from './bff-sessions.js';
 import { PostgresTenantSecrets } from './secrets.js';
 import { PostgresSettingsStore } from './settings.js';
 import { PostgresChangeFeed } from './change-feed.js';
@@ -88,6 +89,7 @@ export {
   PostgresTestSetStore,
 } from './eval.js';
 export { PostgresTenantSecrets } from './secrets.js';
+export { PostgresBffSessions, type BffSessionRow } from './bff-sessions.js';
 export { PostgresSettingsStore } from './settings.js';
 export {
   PostgresApiKeys,
@@ -203,6 +205,7 @@ export const createPostgresStores = async (
     settings: new PostgresSettingsStore(pool, keys),
     adminRecords: await PostgresAdminRecords.open(pool),
     tenantSecrets: new PostgresTenantSecrets(pool, keys),
+    bffSessions: new PostgresBffSessions(pool, keys),
     connections: new PostgresConnections(pool),
     eval: {
       testSets: new PostgresTestSetStore(pool),
