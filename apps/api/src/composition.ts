@@ -1239,7 +1239,7 @@ export const createPlatform = async (input: PlatformInput) => {
     input.evaluators ??
     new Map<string, Evaluator>([
       ['contract', contractAssertions()],
-      ['retrieval', retrievalRecall(10)],
+      ['retrieval', retrievalRecall()],
       ['klarsprak-checklist', klarsprakChecklist()],
       ['nynorsk-reference', nynorskReference()],
     ]);
