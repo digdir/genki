@@ -16,6 +16,7 @@ const store = () =>
     ['c2', chunk(2, { page: 95, pageEnd: 98 })],
     ['c3', chunk(3)],
     ['c4', chunk(4, { document: 'd1', position: 1, page: 68, content: 'Neste side.' })],
+    ['c5', chunk(5, { page: 40, pageEnd: 40 })],
   ]);
 
 const searchLine = (text: string, id: string) =>
@@ -46,6 +47,7 @@ describe('the page the agent sees for each chunk', () => {
     const text = toolMessages(out.loops[1])[0] ?? '';
     expect(searchLine(text, 'c1')).toMatch(/ chunk_index=0\/20 page=67 /);
     expect(searchLine(text, 'c2')).toMatch(/ chunk_index=0\/20 pages=95-98 /);
+    expect(searchLine(text, 'c5')).toMatch(/ chunk_index=0\/20 page=40 /);
   });
 
   it("a read result shows each chunk's page, and its last page when it spans several", async () => {
@@ -107,6 +109,41 @@ describe('the page the agent sees for each chunk', () => {
     expect(documents).toContain('--- pages=95-98 ---\nInnhold i chunk 2.');
     expect(documents).toContain(
       '<untrusted_data kind="source" id="d3" title="Rapport 3">\nInnhold i chunk 3.\n</untrusted_data>',
+    );
+  });
+
+  it("the search and read_chunks descriptions tell the model to cite each chunk's page", async () => {
+    const out = await searchThenRead(['c1']);
+
+    const description = (name: string) =>
+      out.loops[0]?.tools?.find((t) => t.name === name)?.description ?? '';
+    for (const name of ['search', 'read_chunks']) {
+      expect(description(name)).toContain('page=N');
+      expect(description(name)).toContain('pages=N-M');
+      expect(description(name)).toContain('cite that page');
+    }
+  });
+
+  it('the answer model is told to write a page without square brackets, which are kept for citations', async () => {
+    const out = await run({
+      retrieval: retrieval({}, store()).impl,
+      config: { ...baseConfig, strategy: { ...baseConfig.strategy, citeBy: 'excerpt' } },
+      scripts: {
+        primary: {
+          loop: [
+            () => result('', [call('search', { queries: ['omorganiseringer'] })]),
+            () => result('', [call('read_chunks', { chunk_ids: ['c1'] })]),
+            () => result('', [call('generate_response', { query: 'omorganiseringer' })]),
+            () => result('Ferdig.'),
+          ],
+          read: [() => readSignal('support-found')],
+        },
+      },
+    });
+
+    const synth = out.seen.filter((s) => s.kind === 'synth').at(-1);
+    expect(String(synth?.request.messages.at(-1)?.content)).toContain(
+      'Write a page as plain text, such as "s. 67", never as a number in square brackets: [N] is only for citing a source.',
     );
   });
 });
