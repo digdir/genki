@@ -45,6 +45,11 @@ export const blocks = defineNamespace({
     'Skriv adressene hemmeligheten skal brukes mot, for eksempel https://api.example.no.',
   secretHostInvalid:
     '«{host}» er ikke en gyldig adresse. Skriv for eksempel https://api.example.no.',
+  secretNameInvalid:
+    'Navnet på en hemmelighet har små bokstaver a-z, sifre og bindestrek, starter med bokstav eller siffer og er på høyst 63 tegn.',
+  secretTooLarge: 'Hemmeligheten er for stor. Den kan være på høyst {max} byte.',
+  secretLimit: 'Virksomheten har {max} hemmeligheter, som er det meste den kan ha.',
+  secretInUse: 'Hemmeligheten «{name}» brukes av {kind} «{id}».',
   secretNotFound: 'Hemmeligheten «{name}» finnes ikke.',
   noTools: 'Serveren har ingen verktøy.',
   toolsLacking: '{lacking} av {total} verktøy mangler beskrivelse eller inputSchema: {names}.',
