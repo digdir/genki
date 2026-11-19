@@ -346,7 +346,7 @@ describe('searching inside one document', () => {
         ?.filter_by,
     );
     expect(filterBy).toContain(
-      'To search inside one document, filter doc_num with the doc_num a hit showed, or title with the words of its title, and leave the title out of the queries.',
+      'When inspect_filters lists doc_num or title, search inside one document by filtering doc_num with the doc_num a hit showed, or title with the words of its title, and leave the title out of the queries.',
     );
   });
 });

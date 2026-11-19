@@ -62,9 +62,11 @@ const clauseSql = (
   const column = columnOf[field];
   const json = column ? `to_jsonb(${column})` : `d.fields -> ${params.add(field)}`;
   const containsAny = (values: unknown[]) =>
-    column
-      ? `coalesce(${column} = any(${params.add(values.map(String))}::text[]), false)`
-      : `coalesce(${json} @> any (select jsonb_array_elements(${params.add(JSON.stringify(values))}::jsonb)), false)`;
+    column === 'd.id'
+      ? `d.id = any(${params.add(values.map(String))}::text[])`
+      : column
+        ? `coalesce(${column} = any(${params.add(values.map(String))}::text[]), false)`
+        : `coalesce(${json} @> any (select jsonb_array_elements(${params.add(JSON.stringify(values))}::jsonb)), false)`;
   // Every word of one option must match; the options are alternatives.
   const contains = (options: string[]) =>
     `${field === 'title' ? 'd.title_tsv' : `to_tsvector(${config()}::regconfig, ${textOf(json)})`} @@ (${options
@@ -111,22 +113,6 @@ export const filterSql = (
   return parts.length > 0 ? parts.map((p) => `(${p})`).join(' and ') : 'true';
 };
 
-/** A doc_num filter as a condition on the chunks' own doc_id, so the doc_id index finds them. */
-const docIdsSql = (params: Params, filters: Record<string, FilterValue>) => {
-  const value = filters.doc_num;
-  if (value === undefined) return '';
-  return clausesOf(value)
-    .flatMap((clause) =>
-      Array.isArray(clause)
-        ? [clause]
-        : typeof clause === 'string' || typeof clause === 'number'
-          ? [[clause]]
-          : [],
-    )
-    .map((ids) => ` and x.doc_id = any(${params.add(ids.map(String))}::text[])`)
-    .join('');
-};
-
 export interface SearchSql {
   dataset: DatasetConfig;
   profile: Profile;
@@ -159,7 +145,6 @@ export const searchSql = (input: SearchSql) => {
   const config = once(() => params.add(input.config));
   const active = `(select generation from kn_active where dataset = ${dataset})`;
   const where = filterSql(params, input.dataset, input.filters, config);
-  const docIds = docIdsSql(params, input.filters);
   const candidates = params.add(input.candidates);
   const { target, mode } = input.profile;
   const ctes: string[] = [];
@@ -187,10 +172,9 @@ export const searchSql = (input: SearchSql) => {
           order by s desc, first.id limit ${candidates}`;
       }
       const docFilter =
-        docIds +
-        (where === 'true'
+        where === 'true'
           ? ''
-          : ` and exists (select 1 from kn_docs d where d.dataset = x.dataset and d.generation = x.generation and d.id = x.doc_id and ${where})`);
+          : ` and exists (select 1 from kn_docs d where d.dataset = x.dataset and d.generation = x.generation and d.id = x.doc_id and ${where})`;
       return `with m as materialized (
           select ${id} as id, x.tsv from ${table} x
           where x.dataset = ${dataset} and x.generation = ${active} and x.tsv @@ ${q}${docFilter})
@@ -212,7 +196,7 @@ export const searchSql = (input: SearchSql) => {
       ctes.push(`t as (
         select ${id} as id, 0::float8 as s
         from ${table} x ${docJoin('x')}
-        where x.dataset = ${dataset} and x.generation = ${active} and ${where}${docIds}
+        where x.dataset = ${dataset} and x.generation = ${active} and ${where}
         group by ${id} order by s desc, id limit ${candidates})`);
     } else if (mode === 'text') {
       // No vector half fills the list, so some-words matches follow the all-words ones, scored below 1.
@@ -241,7 +225,7 @@ export const searchSql = (input: SearchSql) => {
       select id, max(s) as s from (
         select ${id} as id, (1 - (${distance}))::float8 as s
         from ${table} x ${docJoin('x')}
-        where x.dataset = ${dataset} and x.generation = ${active} and x.vec is not null and ${where}${docIds}
+        where x.dataset = ${dataset} and x.generation = ${active} and x.vec is not null and ${where}
         order by ${distance} limit ${candidates}
       ) nearest group by id)`);
   }

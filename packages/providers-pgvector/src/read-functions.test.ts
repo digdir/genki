@@ -1235,6 +1235,7 @@ interface PlanNode {
   'Actual Rows': number;
   'Actual Loops': number;
   'Rows Removed by Filter'?: number;
+  'Index Name'?: string;
   Plans?: PlanNode[];
 }
 
@@ -1385,6 +1386,104 @@ describe('searching inside one document on the knowledge server', () => {
     expect(await documents(['Tolletaten 2024', 'NAV'])).toEqual(
       new Set(['kudos:toll-2024', 'kudos:nav-2025']),
     );
+  });
+
+  it('a text filter row from an API before options matches any of its words, as before', async () => {
+    const rows = await asReader<{ doc_id: string }>(
+      `select doc_id from kn_search($1, $2, 'chunks', 'text', 'omorganisering', null, null, $3::jsonb, 10, 50, 60)`,
+      [
+        reports.id,
+        reportsGeneration,
+        JSON.stringify([{ field: 'title', op: 'text', terms: 'Tolletaten 2024' }]),
+      ],
+      [reports.id],
+    );
+    expect(new Set(rows.map((r) => r.doc_id))).toEqual(
+      new Set(['kudos:toll-2025', 'kudos:toll-2024']),
+    );
+  });
+
+  describe('with many documents', () => {
+    const manyGeneration = 'g-20261119-mange';
+    const many = dataset('digdir/mange-rapporter', 8, {
+      filters: { doc_num: 'multiselect', title: 'text' },
+    });
+    const one = JSON.stringify([{ field: 'doc_num', op: 'in', values: ['d-17'] }]);
+
+    beforeAll(async () => {
+      await fill(many, manyGeneration, [report('kudos:toll-2025', 'Årsrapport Tolletaten 2025')]);
+      const docs = partitionOf('kn_docs', manyGeneration);
+      const chunks = partitionOf('kn_chunks', manyGeneration);
+      await owner.query(
+        `insert into ${docs} (dataset, generation, id, title, fields, config)
+           select 'digdir/mange-rapporter', $1, 'd-' || n, 'Årsrapport ' || n, '{}', 'norwegian'
+           from generate_series(1, 2000) n`,
+        [manyGeneration],
+      );
+      await owner.query(
+        `insert into ${chunks} (dataset, generation, id, doc_id, position, text, config, vec)
+           select 'digdir/mange-rapporter', $1, 'd-' || d || '-' || p, 'd-' || d, p,
+             'omorganisering av etaten ' || d || ' del ' || p, 'norwegian',
+             (select ('[' || string_agg(sin(d * 15 + p + i)::text, ',') || ']')::halfvec from generate_series(0, 7) i)
+           from generate_series(1, 2000) d, generate_series(0, 14) p`,
+        [manyGeneration],
+      );
+      await owner.query(`analyze ${docs}`);
+      await owner.query(`analyze ${chunks}`);
+    }, 120_000);
+
+    /** The indexes a read function's statement plans, as `Node Type` on `Index Name`. */
+    const indexesOf = async (sql: string) => {
+      const { rows } = await owner.query<{ 'QUERY PLAN': [{ Plan: PlanNode }] }>(
+        `explain (format json) ${sql}`,
+      );
+      const used: string[] = [];
+      const walk = (node: PlanNode) => {
+        if (node['Index Name']) used.push(`${node['Node Type']} on ${node['Index Name']}`);
+        node.Plans?.forEach(walk);
+      };
+      const [explained] = rows;
+      if (explained) walk(explained['QUERY PLAN'][0].Plan);
+      return used;
+    };
+    const searchSql = async (mode: string, vector: string | null) =>
+      (
+        await owner.query<{ sql: string }>(
+          `select kn_search_sql($1, $2, 'chunks', $3, 'omorganisering', $4::halfvec, null, $5::jsonb, 10, 50, 60) as sql`,
+          [many.id, manyGeneration, mode, vector, one],
+        )
+      ).rows[0]?.sql ?? '';
+
+    it("a doc_num filter reads one document's chunks through the doc_id index, and a listing through the documents' key", async () => {
+      const chunksDoc = `${partitionOf('kn_chunks', manyGeneration)}_doc`;
+      const vector = `[${fixtureVector('omorganisering', 8).join(',')}]`;
+      const meaning = await indexesOf(await searchSql('vector', vector));
+      expect(
+        meaning.some((i) => i.endsWith(` on ${chunksDoc}`)),
+        meaning.join('; '),
+      ).toBe(true);
+      expect(
+        meaning.filter((i) => /hnsw|_vec/i.test(i)),
+        meaning.join('; '),
+      ).toEqual([]);
+      const words = await indexesOf(await searchSql('hybrid', null));
+      expect(
+        words.some((i) => i.endsWith(` on ${chunksDoc}`)),
+        words.join('; '),
+      ).toBe(true);
+      const listing = await indexesOf(
+        (
+          await owner.query<{ sql: string }>(
+            `select kn_documents_sql($1, $2, null, $3::jsonb, 10, 0) as sql`,
+            [many.id, manyGeneration, one],
+          )
+        ).rows[0]?.sql ?? '',
+      );
+      expect(
+        listing.some((i) => i.startsWith('Index') && i.endsWith('_pkey')),
+        listing.join('; '),
+      ).toBe(true);
+    });
   });
 });
 

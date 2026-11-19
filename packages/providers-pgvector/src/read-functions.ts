@@ -101,7 +101,9 @@ const createFunctions = [
          json := case f when 'doc_num' then 'to_jsonb(d.id)' when 'title' then 'to_jsonb(d.title)'
                         else format('d.fields -> %L', f) end;
          if c->>'op' in ('in', 'not') and f in ('doc_num', 'title') then
-           select format('coalesce(%s = any(%L::text[]), false)', case f when 'doc_num' then 'd.id' else 'd.title' end,
+           -- d.id is never null, so its condition stays bare: the documents' key finds the document,
+           -- and the chunks' doc_id index its chunks, for the text and the vector half.
+           select format(case f when 'doc_num' then 'd.id = any(%L::text[])' else 'coalesce(d.title = any(%L::text[]), false)' end,
                      coalesce(array_agg(v #>> '{}'), '{}'))
              into part from jsonb_array_elements(c->'values') v;
            if c->>'op' = 'not' then part := 'not ' || part; end if;
@@ -111,12 +113,16 @@ const createFunctions = [
              into part from jsonb_array_elements(c->'values') v;
            if c->>'op' = 'not' then part := 'not ' || part; end if;
          elsif c->>'op' = 'text' then
-           -- Every word of one option must match; the options are alternatives. Rows from an API
-           -- before options came give their words as one option.
-           select string_agg('(' || o || ')', ' | ') into q from (
-             select plainto_tsquery(p_config::regconfig, e #>> '{}')::text o
-             from jsonb_array_elements(coalesce(c->'options', jsonb_build_array(c->'terms'))) e) s
-           where o <> '';
+           -- Every word of one option must match; the options are alternatives. A row from an API
+           -- before options came keeps its meaning then: any of its words.
+           if c ? 'options' then
+             select string_agg('(' || o || ')', ' | ') into q from (
+               select plainto_tsquery(p_config::regconfig, e #>> '{}')::text o
+               from jsonb_array_elements(c->'options') e) s
+             where o <> '';
+           else
+             q := nullif(replace(plainto_tsquery(p_config::regconfig, c->>'terms')::text, ' & ', ' | '), '');
+           end if;
            part := case when q is null then 'false' else format('%s @@ %L::tsquery',
              case f when 'title' then 'd.title_tsv'
                     else format('to_tsvector(%L::regconfig, %s)', p_config, kn_text_sql(json)) end, q) end;
@@ -156,7 +162,6 @@ const createFunctions = [
        cfg text;
        dims integer;
        where_sql text;
-       doc_ids text;
        doc_filter text;
        use_text boolean := p_mode <> 'vector';
        use_vector boolean := p_mode <> 'text' and p_vector is not null;
@@ -177,12 +182,7 @@ const createFunctions = [
        cfg := coalesce(recipe->>'textSearchConfig', 'norwegian');
        dims := coalesce((recipe->'embedding'->>'dimensions')::integer, vector_dims(p_vector));
        where_sql := kn_filter_sql(p_filters, cfg);
-       -- A doc_num filter also names the chunks' own doc_id, so the partition's doc_id index finds them.
-       select coalesce(string_agg(format(' and x.doc_id = any(%L::text[])',
-                (select coalesce(array_agg(v #>> '{}'), '{}') from jsonb_array_elements(c->'values') v)), ''), '')
-         into doc_ids from jsonb_array_elements(coalesce(p_filters, '[]')) c
-         where c->>'field' = 'doc_num' and c->>'op' = 'in';
-       doc_filter := doc_ids || case when where_sql = 'true' then '' else format(
+       doc_filter := case when where_sql = 'true' then '' else format(
          ' and exists (select 1 from kn_docs d where d.dataset = %s and d.generation = %s and d.id = x.doc_id and %s)',
          ds, g, where_sql) end;
        tbl := case p_target when 'chunks' then 'kn_chunks' else 'kn_phrases' end;
@@ -207,9 +207,9 @@ const createFunctions = [
          else
            ctes := ctes || format(
              't as (select %s as id, 0::float8 as s from %s x %s
-                where x.dataset = %s and x.generation = %s and %s%s
+                where x.dataset = %s and x.generation = %s and %s
                 group by %s order by s desc, id limit %s)',
-             id_col, tbl, ${docJoin('x')}, ds, g, where_sql, doc_ids, id_col, p_candidates);
+             id_col, tbl, ${docJoin('x')}, ds, g, where_sql, id_col, p_candidates);
          end if;
        elsif use_text then
          -- Every word must match; quoted words match as a phrase.
@@ -240,9 +240,9 @@ const createFunctions = [
          ctes := ctes || format(
            'v as (select id, max(s) as s from (
               select %s as id, (1 - (%s))::float8 as s from %s x %s
-              where x.dataset = %s and x.generation = %s and x.vec is not null and %s%s
+              where x.dataset = %s and x.generation = %s and x.vec is not null and %s
               order by %s limit %s) nearest group by id)',
-           id_col, dist, tbl, ${docJoin('x')}, ds, g, where_sql, doc_ids, dist, p_candidates);
+           id_col, dist, tbl, ${docJoin('x')}, ds, g, where_sql, dist, p_candidates);
        end if;
        if use_text and use_vector then
          ctes := ctes || format(
