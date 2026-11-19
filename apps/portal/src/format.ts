@@ -2,6 +2,7 @@ import { createFormat, type Format } from '@genai/i18n';
 import { useFormat } from '@genai/i18n/react';
 import { useMemo } from 'react';
 import { translator, useT, type PlainKey, type T } from './i18n';
+import { perMillion } from './models';
 import type { ModelPrice } from './types';
 
 const nbFormat = createFormat('nb');
@@ -55,8 +56,8 @@ export const formatModelPrice = (
 ) =>
   price
     ? t('setup.modelPrice', {
-        input: f.number(price.inputPerThousand, { maximumFractionDigits: 4 }),
-        output: f.number(price.outputPerThousand, { maximumFractionDigits: 4 }),
+        input: f.number(perMillion(price).input, { maximumFractionDigits: 2 }),
+        output: f.number(perMillion(price).output, { maximumFractionDigits: 2 }),
       })
     : t('setup.notPriced');
 

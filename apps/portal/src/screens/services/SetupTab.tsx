@@ -29,13 +29,14 @@ import {
   tools,
   type ModelChoice,
 } from '../../data/services';
-import type {
-  OutputField,
-  OutputFieldType,
-  ServiceDefinition,
-  ServiceSpec,
-  SpecEdit,
-  SpecPatch,
+import {
+  applySpec,
+  type OutputField,
+  type OutputFieldType,
+  type ServiceDefinition,
+  type ServiceSpec,
+  type SpecEdit,
+  type SpecPatch,
 } from '../../data/service-definition';
 import {
   audienceIds,
@@ -82,7 +83,12 @@ import {
   type LanguageMode,
   type SchedulePreset,
 } from '../../data/service-form';
-import { sharedInstructionsOf, withSharedInstructions } from '../../data/service-languages';
+import {
+  languagesOf,
+  sharedInstructionsOf,
+  withSharedInstructions,
+  type AnswerLanguage,
+} from '../../data/service-languages';
 import { kindName } from '../../data/step-operations';
 import { defaultInstructionsOf, strategyFor, takesOf } from '../../data/strategies';
 import { useAsync, type AsyncState } from '../../hooks';
@@ -100,6 +106,7 @@ import { VariantsEditor } from './VariantsEditor';
 import type { ApiClient } from '../../api';
 import { A2aChannel } from '../integrations/A2aChannel';
 import { VariantsList } from '../service/VariantsList';
+import { StrategyRow } from '../service/StrategyPanel';
 import type { SetupArea } from './setup-diff';
 import {
   AskChip,
@@ -398,10 +405,44 @@ export const summaries = (
   };
 };
 
+const promptPath = /^prompts\/[a-z0-9][a-z0-9._/-]*\.md$/;
+
+export const promptFileOf = (text: string, files: Record<string, string>) =>
+  promptPath.test(text) && text in files ? text : undefined;
+
+export const withPromptFiles = (
+  d: ServiceDefinition,
+  files: Record<string, string>,
+): ServiceDefinition => {
+  const file = promptFileOf(sharedInstructionsOf(d.spec), files);
+  return file ? applySpec(d, withSharedInstructions(d.spec, files[file] ?? '')) : d;
+};
+
+export const riskConfirmedFor = (spec: ServiceSpec) =>
+  !!spec.riskConfirmation &&
+  (spec.riskConfirmation.riskClass === undefined ||
+    spec.riskConfirmation.riskClass === spec.riskClass);
+
+export const riskNeedsConfirming = (spec: ServiceSpec) =>
+  (spec.riskClass === 'limited' || spec.riskClass === 'high') && !riskConfirmedFor(spec);
+
+const languageNameKeys: Record<AnswerLanguage, PlainKey> = {
+  nb: 'setupList.languageNb',
+  nn: 'setupList.languageNn',
+  en: 'setupList.languageEn',
+};
+
+const residencyWordKeys: Record<string, PlainKey> = {
+  norway: 'setupList.whereNorway',
+  Norge: 'setupList.whereNorway',
+  eu: 'setupList.whereEu',
+  EU: 'setupList.whereEu',
+  global: 'setupList.whereGlobal',
+};
+
 export const areaSummaries = (
   t: T,
   d: ServiceDefinition,
-  riskConfirmed: boolean,
   catalog?: ModelChoice[],
   datasetNames?: Map<string, string>,
 ): Record<SetupArea, string> => {
@@ -424,20 +465,33 @@ export const areaSummaries = (
     ]
       .filter(Boolean)
       .join(', '),
-    result: outputSummary(t, s),
-    model: sum.model,
+    result: capitalised(outputSummary(t, s)),
+    model: modelAreaSummary(t, s, catalog),
     tools: sum.tools,
     how: sum.how,
     variants: sum.variants,
     channels: sum.start,
     guards: sum.guards,
-    risk: level
-      ? t(riskConfirmed ? 'setupList.riskConfirmedSummary' : 'setupList.riskUnconfirmedSummary', {
-          level,
-        })
-      : t('setup.riskNotSet'),
+    risk: riskNeedsConfirming(s)
+      ? t('setupList.riskRequiredSummary')
+      : level
+        ? riskConfirmedFor(s)
+          ? t('setupList.riskConfirmedSummary', { level })
+          : level
+        : t('setup.riskNotSet'),
     limits: own ? t('setupList.limitsOwn', { count: own }) : t('setupList.limitsDefault'),
   };
+};
+
+const capitalised = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
+
+const modelAreaSummary = (t: T, s: ServiceSpec, catalog?: ModelChoice[]) => {
+  const m =
+    catalog?.find((x) => x.id === s.model.primary) ??
+    modelFor(s.model.primary, s.model.residency, !!catalog);
+  const key = residencyWordKeys[m?.residency ?? m?.where ?? s.model.residency ?? ''];
+  const name = m?.name ?? s.model.primary;
+  return key ? t('setupList.modelAreaSummary', { name, where: t(key) }) : name;
 };
 
 export const modelWord = (t: T, word: string) => labelOf(t, modelWordKeys, word);
@@ -539,6 +593,8 @@ interface Props {
   serviceId: string;
   definition: ServiceDefinition;
   patch: (edit: SpecEdit) => void;
+  files?: Record<string, string>;
+  onFile?: (path: string, text: string) => void;
   onRename: (name: string) => void;
   open: Partial<Record<SectionId, boolean>>;
   onToggle: (id: SectionId) => void;
@@ -569,6 +625,7 @@ interface Props {
   modelNote?: ReactNode;
   inUse?: ServiceDefinition | undefined;
   fileInput?: AsyncState<FileInput | undefined>;
+  assistantOff?: boolean;
 }
 
 const pickClass = (on: boolean) => (on ? 'pick-card picked' : 'pick-card');
@@ -577,6 +634,8 @@ export const SetupTab = ({
   serviceId,
   definition: d,
   patch,
+  files = {},
+  onFile,
   onRename,
   open,
   onToggle,
@@ -607,6 +666,7 @@ export const SetupTab = ({
   modelNote,
   inUse,
   fileInput = { status: 'loading' },
+  assistantOff = false,
 }: Props) => {
   const t = useT();
   const userName = useUserName();
@@ -671,7 +731,13 @@ export const SetupTab = ({
   const datasets = datasetsOf(s);
   const toolRefs = toolRefsOf(s);
   const refuse = refuseTopicsOf(s);
-  const instructions = sharedInstructionsOf(s);
+  const instructionsRef = sharedInstructionsOf(s);
+  const instructionsFile = onFile ? promptFileOf(instructionsRef, files) : undefined;
+  const instructions = instructionsFile ? (files[instructionsFile] ?? '') : instructionsRef;
+  const setInstructions = (text: string) =>
+    instructionsFile && text.trim()
+      ? onFile?.(instructionsFile, text)
+      : patch((cur) => withSharedInstructions(cur.spec, text));
   const publicName = variantsOf(s)[0]?.publicName ?? '';
   const folder = triggerOf(s, 'document-arrives')?.folder;
   const queue = triggerOf(s, 'queue-message')?.queue;
@@ -1116,10 +1182,7 @@ export const SetupTab = ({
                 rows={14}
                 className="instructions-editor"
                 value={instructions}
-                onChange={(e) => {
-                  const text = e.target.value;
-                  patch((cur) => withSharedInstructions(cur.spec, text));
-                }}
+                onChange={(e) => setInstructions(e.target.value)}
               />
               <span className="meta">{t('setup.characters', { count: instructions.length })}</span>
             </>
@@ -1896,22 +1959,40 @@ export const SetupTab = ({
               id="felt-instr"
               rows={6}
               value={instructions}
-              onChange={(e) => {
-                const text = e.target.value;
-                patch((cur) => withSharedInstructions(cur.spec, text));
-              }}
+              onChange={(e) => setInstructions(e.target.value)}
             />
             <div className="area-instr-foot">
               <span className="meta">{t('setup.characters', { count: instructions.length })}</span>
-              {instructionsAssist ? (
-                <div className="area-instr-improve">{instructionsAssist}</div>
+              {ask ? (
+                <div className="area-instr-improve">
+                  <AskChip label={t('setupList.askImprove')} onAsk={ask} off={assistantOff} />
+                </div>
               ) : null}
             </div>
           </Field>
         )}
         {flowOf(s) || s.strategy.id === 'remote-agent' ? null : (
           <details className="area-more">
-            <summary>{t('setupList.moreInstructions')}</summary>
+            <summary>
+              <span>{t('setupList.moreInstructions')}</span>
+              <span className="area-more-facts">
+                <span className="meta">
+                  {t('setupList.languagesFact', {
+                    languages: languagesOf(s)
+                      .map((l) => t(languageNameKeys[l]))
+                      .join(', '),
+                  })}
+                </span>
+                <span className="meta">
+                  {t('setupList.examplesFact', { count: examples.length })}
+                </span>
+                <span className="meta">
+                  {t('setupList.builtInFact', {
+                    count: defaultInstructionsOf(s.strategy.id, t.locale) ? 1 : 0,
+                  })}
+                </span>
+              </span>
+            </summary>
             <div className="stack">{instructionsExtras}</div>
           </details>
         )}
@@ -1986,7 +2067,22 @@ export const SetupTab = ({
             />
           );
         case 'how':
-          return howBody;
+          return api && tenant ? (
+            <div className="stack-sm">
+              <StrategyRow
+                api={api}
+                tenant={tenant}
+                definition={d}
+                service={serviceId}
+                editing={areaEdit === 'how'}
+                onEditing={(on) => setAreaEdit(on ? 'how' : undefined)}
+                readOnly={readOnly}
+              />
+              {areaEdit === 'how' ? <div className="stack area-editor">{howBody}</div> : null}
+            </div>
+          ) : (
+            howBody
+          );
         case 'channels':
           return (
             <>
@@ -2084,16 +2180,18 @@ export const SetupTab = ({
               rows={[
                 {
                   key: 'risk',
-                  title: t('setup.riskProposal', {
-                    level: t(high ? 'setup.riskHigh' : 'setup.riskLimited'),
-                  }),
+                  title: riskLabel(t, s.riskClass ?? '') ?? t('setup.riskNotSet'),
                   text: (high
                     ? [t('setup.riskReasonHigh1'), t('setup.riskReasonHigh2')]
-                    : [t('setup.riskReasonLimited1'), t('setup.riskReasonLimited2')]
+                    : s.riskClass === 'limited'
+                      ? [t('setup.riskReasonLimited1'), t('setup.riskReasonLimited2')]
+                      : s.riskClass === 'minimal'
+                        ? [t('setup.riskMinimalDesc')]
+                        : []
                   ).join(' '),
                   ...(riskConfirmed
                     ? { tag: t('setup.confirmedBy', { name: userName || t('setup.you') }) }
-                    : forbidden
+                    : forbidden || !s.riskClass
                       ? {}
                       : { action: { label: t('setup.confirmRisk'), onClick: onConfirmRisk } }),
                 },

@@ -270,7 +270,7 @@ describe('risk level and v3 checks', () => {
 
   it('lets the user confirm the proposed risk level', async () => {
     await openRisk();
-    expect(screen.getByText('Assistenten foreslår: Begrenset risiko')).toBeTruthy();
+    expect(screen.getAllByText('Begrenset risiko').length).toBeGreaterThan(0);
     expect(
       screen.getByText(/Ansatte bruker resultatene, men tjenesten tar ikke beslutninger om folk\./),
     ).toBeTruthy();
@@ -296,7 +296,12 @@ describe('risk level and v3 checks', () => {
     await openBuilder('#/services/soknadsuttrekk/setup', 'Søknadsuttrekk');
     const table = () =>
       screen.getByRole('radio', { name: /Tabell med kilder/ }) as HTMLInputElement;
-    const way = () => screen.getByRole('combobox', { name: 'Arbeidsmåte' }) as HTMLSelectElement;
+    const way = () => {
+      const open = screen.queryByRole('combobox', { name: 'Arbeidsmåte' });
+      if (open) return open as HTMLSelectElement;
+      fireEvent.click(screen.getByRole('button', { name: /^Bytt (arbeidsmåte|stegflyt)$/ }));
+      return screen.getByRole('combobox', { name: 'Arbeidsmåte' }) as HTMLSelectElement;
+    };
     openArea(/^Sluttresultat/);
     expect(table().disabled).toBe(true);
     openArea(/^Arbeidsmåte/);

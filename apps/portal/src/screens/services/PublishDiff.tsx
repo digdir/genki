@@ -19,6 +19,7 @@ import type { ServiceDefinition } from '../../data/service-definition';
 import { datasetsOf } from '../../data/service-form';
 import type { AsyncState } from '../../hooks';
 import { useT } from '../../i18n';
+import { perMillion } from '../../models';
 import type { ModelPrice, Residency } from '../../types';
 import { describeProblem } from '../service/publish';
 import { changeLabel, changeText, guardName, type ChangeNames } from './setup-change-text';
@@ -152,8 +153,9 @@ export const PublishDiff = ({
     );
   const price = (p: ModelPrice | null | undefined, side: 'in' | 'out') =>
     p
-      ? `${f.number(side === 'in' ? p.inputPerThousand : p.outputPerThousand, {
-          maximumFractionDigits: 4,
+      ? `${f.number(perMillion(p)[side === 'in' ? 'input' : 'output'], {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
         })} kr`
       : t('common.notPriced');
   const where = (m: ModelFacts) =>

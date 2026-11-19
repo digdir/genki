@@ -146,7 +146,6 @@ export const servicesUi = {
     suggestRerun: 'Kjør prøven igjen',
     suggestPrivacy: 'Gjør den strengere på personvern',
     suggestShorter: 'Svar kortere',
-    suggestTest: 'Test tjenesten',
     newServiceName: 'Ny tjeneste',
     metaInUse: 'Versjon {n} i bruk',
     metaNotPublished: 'Ikke publisert',
@@ -165,7 +164,8 @@ export const servicesUi = {
     publishProdInfo:
       'Publiser erstatter versjonen som er i bruk. Du kan rulle tilbake når som helst.',
     noTestsetWarning:
-      'Uten testsett ser du ikke om endringer gjør resultatene dårligere. Merk noen resultater under Test først.',
+      'Uten testsett ser du ikke om endringer gjør resultatene dårligere. Lag et testsett under Kvalitet først.',
+    makeTestSet: 'Lag testsett',
     notAccepted: 'Plattformen godtar ikke utkastet ennå',
     basedOnVersion: 'Bygger på versjon {base}, nyeste er {latest}.',
     refusedByGates: 'Kvalitetskravene stoppet publiseringen. Kjør testsettene for utkastet først.',
