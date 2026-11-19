@@ -110,7 +110,13 @@ param customDomainsStage = readEnvironmentVariable('CUSTOM_DOMAINS_STAGE', 'none
 param existingCertificates = {}
 param createDnsZone = true
 param dnsZoneName = 'genki-test.digdir.cloud'
-param hostedHostnames = []
+// Each hostname moves none, hostnames, certificates, one deploy at a time (infra/README.md, "Hosted hostnames").
+param assistantHostEnabled = true
+param assistantBffEnabled = true
+param assistantHostnameStage = 'none'
+param hostedHostnames = [
+  { subdomain: 'kunnskap', tenant: '312521172', stage: 'none' }
+]
 
 param alertsEnabled = true
 param alertEmails = readEnvironmentVariable('ALERT_EMAILS', '')

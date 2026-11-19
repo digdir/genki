@@ -7,6 +7,7 @@ import {
 } from './hosts.js';
 import type { Server } from 'node:http';
 import { attachSessionUpgrade } from './session-upgrade.js';
+import { mockClientSync } from './mock-clients.js';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { serve } from '@hono/node-server';
@@ -19,7 +20,6 @@ import {
   createTokenVerifier,
   InMemoryClients,
   InMemoryIdentities,
-  oidcAudienceOf,
   serviceAccessPolicy,
   type IdentityTestDataInput,
 } from '@genai/identity';
@@ -239,26 +239,9 @@ const { trusted, mock, mockIssuer } = await loginIssuers({
   ...(trustedEntra ? { trustedEntra } : {}),
   onKeysNotFetched: (fields) => log('login keys not fetched', fields),
 });
-if (mock)
-  mockRegistration = {
-    saved: (client, before) => {
-      const oidc = client.spec.oidc;
-      if (before?.spec.oidc && before.spec.oidc.clientId !== oidc?.clientId)
-        mock.clients.remove(before.spec.oidc.clientId);
-      if (!oidc) return;
-      mock.clients.register({
-        clientId: oidc.clientId,
-        redirectUris: oidc.redirectUris,
-        postLogoutRedirectUris: oidc.postLogoutRedirectUris,
-        audience: oidcAudienceOf(client) ?? oidc.clientId,
-        audiences: [audience],
-        tokenEndpointAuthMethod: 'none',
-      });
-    },
-    removed: (client) => {
-      if (client.spec.oidc) mock.clients.remove(client.spec.oidc.clientId);
-    },
-  };
+let clientSecretOf: (tenant: string, name: string) => Promise<string | undefined> = async () =>
+  undefined;
+if (mock) mockRegistration = mockClientSync(mock.clients, audience, (t, n) => clientSecretOf(t, n));
 const operatorSubjects = operatorSubjectsFrom(process.env);
 const operators = operatorDirectory({
   pids: identityFile.operatorPids,
@@ -827,6 +810,13 @@ if (mock) {
   });
 }
 
+clientSecretOf = (tenant, name) =>
+  platform.vault
+    .resolver({
+      resolve: () => Promise.reject(new Error('the client secret is not set')),
+    })
+    .resolve(`secret://tenant/${tenant}/${name}`)
+    .catch(() => undefined);
 const proxyKey = process.env.GENAI_PROXY_KEY;
 if (proxyKey !== undefined && proxyKey.length < 32)
   log('GENAI_PROXY_KEY is shorter than 32 characters; the BFF trusts no host', {});
@@ -850,13 +840,7 @@ const bff = createBff({
   issuer: ansattportenIssuer,
   altinnResource: resource,
   secrets: {
-    value: (tenant, name) =>
-      platform.vault
-        .resolver({
-          resolve: () => Promise.reject(new Error('the client secret is not set')),
-        })
-        .resolve(`secret://tenant/${tenant}/${name}`)
-        .catch(() => undefined),
+    value: clientSecretOf,
     hosts: (tenant, name) => platform.vault.hosts(tenant, name),
   },
   organisations: async (accessToken) => {

@@ -74,8 +74,12 @@ export const loadPage = async (fetcher: typeof fetch, hostname: string, id: stri
   );
 
 /** The layout the service runs, read as the signed-in person through its first variant. */
-export const loadLayout = async (fetcher: typeof fetch, service: string, token: string) => {
-  const headers = { authorization: `Bearer ${token}`, accept: 'application/json' };
+export const loadLayout = async (
+  fetcher: typeof fetch,
+  service: string,
+  credentials: Record<string, string>,
+) => {
+  const headers = { ...credentials, accept: 'application/json' };
   const models = await found<{ data: { id: string }[] }>(
     await fetcher('/api/v1/models', { headers }),
   );

@@ -6,9 +6,15 @@ export interface SignedIn {
   expiresAt: string;
 }
 
+export type HostSession =
+  | { kind: 'off' }
+  | { kind: 'unavailable' }
+  | { kind: 'signed-out' }
+  | { kind: 'signed-in'; who: SignedIn };
+
 export interface HostSignIn {
-  /** Who is signed in, or undefined when no one is. */
-  current(): Promise<SignedIn | undefined>;
+  /** Whether the host serves the BFF, and who is signed in through it. */
+  session(): Promise<HostSession>;
   signInUrl(next: string): string;
   signOutUrl: string;
   /** Headers for every API call from the page, so a state-changing call passes the CSRF check. */
@@ -16,15 +22,32 @@ export interface HostSignIn {
   chooseOrganisation(orgNumber: string): Promise<SignedIn>;
 }
 
+const isJson = (response: Response) =>
+  /^application\/([a-z0-9.+-]*\+)?json\s*(;|$)/i.test(response.headers.get('content-type') ?? '');
+
+const isSignedIn = (body: unknown): body is SignedIn =>
+  typeof body === 'object' &&
+  body !== null &&
+  typeof (body as SignedIn).expiresAt === 'string' &&
+  Array.isArray((body as SignedIn).organisations);
+
 export const bffSignIn = (fetcher: typeof fetch = fetch): HostSignIn => ({
-  current: async () => {
+  session: async () => {
     const response = await fetcher('/auth/me', {
       credentials: 'same-origin',
       headers: { accept: 'application/json' },
     });
-    if (response.status === 401) return undefined;
-    if (!response.ok) throw new Error(`sign-in answered ${response.status}`);
-    return (await response.json()) as SignedIn;
+    // Without the BFF the host answers its page here, not JSON.
+    if (!isJson(response)) return { kind: 'off' };
+    const body: unknown = await response.json().catch(() => undefined);
+    if (response.status === 401) return { kind: 'signed-out' };
+    if (response.ok && isSignedIn(body)) return { kind: 'signed-in', who: body };
+    if (
+      response.status === 404 &&
+      (body as { code?: unknown } | undefined)?.code === 'bff-not-configured'
+    )
+      return { kind: 'unavailable' };
+    return { kind: 'off' };
   },
   signInUrl: (next) => `/auth/login?next=${encodeURIComponent(next)}`,
   signOutUrl: '/auth/logout',

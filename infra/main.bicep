@@ -195,6 +195,10 @@ param budgetStartDate string = '2026-11-01'
 @description('Turns on the BFF for the assistant host (ADR 0061): put the same genai-proxy-key in genki\'s and the host\'s Key Vault first.')
 param assistantBffEnabled bool = false
 
+@description('The stage of hostnames.assistant on the assistant host, as customDomainsStage: none, hostnames or certificates. A new host starts at none, since Azure binds a name only once its DNS points at the host.')
+@allowed(['none', 'hostnames', 'certificates'])
+param assistantHostnameStage string = customDomainsStage
+
 @description('Hostnames the assistant host serves, each { hostname or subdomain, tenant, stage, apex? }: a subdomain becomes <subdomain>.apps.<dnsZoneName>, stage as customDomainsStage, apex for a zone apex. See infra/README.md, "Hosted hostnames".')
 param hostedHostnames array = []
 
@@ -225,7 +229,7 @@ var hostedNames = map(hostedHostnames, h => union(h, {
 }))
 var assistantNames = empty(hostnames.?assistant ?? '') || empty(platformTenant)
   ? []
-  : [{ hostname: toLower(hostnames.assistant), tenant: platformTenant, stage: customDomainsStage }]
+  : [{ hostname: toLower(hostnames.assistant), tenant: platformTenant, stage: assistantHostnameStage }]
 var servedNames = concat(hostedNames, assistantNames)
 var suffix = uniqueString(resourceGroup().id)
 var allTags = union(tags, { system: 'genki', environment: environmentName })
