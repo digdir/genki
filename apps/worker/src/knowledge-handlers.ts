@@ -361,7 +361,7 @@ export const knowledgeWork = (
    * Makes a record wait on a file's conversion and sends its convert job, or, when the job is
    * already waiting or running, adds the record's organisation to it (ADR 0042, "Jobs"). False
    * when the conversion is already stored. A replacement run sends at its own priority, to start
-   * in the night window.
+   * in the night window, and names the converter when it fills short files (issue 749).
    */
   const waitOn = (
     conversions: StoredConversions,
@@ -369,8 +369,8 @@ export const knowledgeWork = (
     waiter: ConversionWaiter,
     transaction?: RecordTransaction,
     timing: { priority: number; startAfter?: Date } = { priority: convertPriority.run },
+    converter = converterNow(),
   ) => {
-    const converter = converterNow();
     const target = conversionTarget(sha256, converter);
     const key = conversionKey(target);
     return conversions.wait(
@@ -770,6 +770,20 @@ export const knowledgeWork = (
       },
       sendIndex,
     );
+    // In a replacement run, a text-layer conversion is a short file's fill (issue 749): once its
+    // records are indexed with it, the file goes to Docling, with the same records waiting.
+    if (run.replaces && key.converter === textLayer.name && !stored.failure && deps.docling) {
+      const startAfter = heavyWorkStart(deps.heavy.window(), deps.heavy.now?.() ?? new Date());
+      for (const waiter of [...sent, ...busy])
+        await waitOn(
+          conversions,
+          job.data.file,
+          waiter,
+          undefined,
+          { priority: convertPriority.replacement, startAfter },
+          doclingIdentity.name,
+        );
+    }
     // A replacement's new pages reach every document of its pipeline that holds the file, also
     // one written again meanwhile, which ended its wait (ADR 0042, "Conversion").
     if (run.replaces && stored.pages.length > 0) {
@@ -801,8 +815,9 @@ export const knowledgeWork = (
 
   /**
    * A replacement run's first step (ADR 0042, "Conversion"): every record of its dataset whose
-   * files have only a text-layer conversion waits on Docling, with its convert jobs sent for the
-   * night window at the lowest priority. Records are read in pages of 500, by record number.
+   * files have only a text-layer conversion waits on Docling, and every record with a Docling
+   * conversion cut short waits on the text layer first (issue 749), with its convert jobs sent for
+   * the night window at the lowest priority. Records are read in pages of 500, by record number.
    */
   const replace = admittedWork(
     knowledgeReplaceQueue,
@@ -812,34 +827,36 @@ export const knowledgeWork = (
       if (!conversions || !deps.docling) return;
       const { generation } = await datasetOf(deps, run, job.signal);
       const startAfter = heavyWorkStart(deps.heavy.window(), deps.heavy.now?.() ?? new Date());
-      let after = '0';
-      for (;;) {
-        if (await cancelled()) return;
-        const page = await conversions.replaceable(
-          run.dataset,
-          run.pipeline,
-          acceptedConverters,
-          after,
-          500,
-        );
-        const last = page.at(-1);
-        if (!last) return;
-        for (const { record, files } of page) {
-          const waiter = {
-            dataset: run.dataset,
-            record,
-            generation,
-            run: run.id,
-            tenant: job.data.tenant,
-          };
-          for (const file of files)
-            await waitOn(conversions, file.sha256, waiter, undefined, {
-              priority: convertPriority.replacement,
-              startAfter,
-            });
+      const timing = { priority: convertPriority.replacement, startAfter };
+      /** Every record `select` names, page by page, waits on its files' conversion by `converter`. */
+      const waitAll = async (
+        select: typeof conversions.replaceable,
+        converter: string,
+      ): Promise<boolean> => {
+        let after = '0';
+        for (;;) {
+          if (await cancelled()) return false;
+          const page = await select(run.dataset, run.pipeline, acceptedConverters, after, 500);
+          const last = page.at(-1);
+          if (!last) return true;
+          for (const { record, files } of page) {
+            const waiter = {
+              dataset: run.dataset,
+              record,
+              generation,
+              run: run.id,
+              tenant: job.data.tenant,
+            };
+            for (const file of files)
+              await waitOn(conversions, file.sha256, waiter, undefined, timing, converter);
+          }
+          after = last.record;
         }
-        after = last.record;
-      }
+      };
+      // Short files' text-layer jobs first, so pg-boss takes them before the Docling jobs: they
+      // take seconds, and their records are indexed with the fill in the first night (issue 749).
+      if (!(await waitAll(conversions.short.bind(conversions), textLayer.name))) return;
+      await waitAll(conversions.replaceable.bind(conversions), doclingIdentity.name);
     },
     deps.admission,
   );
@@ -873,7 +890,7 @@ export const knowledgeWork = (
 };
 
 export interface ReplacementDeps {
-  conversions: Pick<StoredConversions, 'replaceable'>;
+  conversions: Pick<StoredConversions, 'replaceable' | 'short'>;
   /** The platform server's run records, as the worker starts a replacement run there. */
   runs: {
     startReplacement(
@@ -890,9 +907,10 @@ export interface ReplacementDeps {
 }
 
 /**
- * Sends the replacement run of a run that ended with text-layer files (ADR 0042, "Conversion"),
- * when the worker has a Docling server: one at a time per pipeline, with the sender's admission.
- * A cancelled run, a copy, and a replacement run itself send none.
+ * Sends the replacement run of a run that ended with text-layer files or short Docling files
+ * (ADR 0042, "Conversion"; issue 749), when the worker has a Docling server: one at a time per
+ * pipeline, with the sender's admission. A cancelled run, a copy, and a replacement run itself
+ * send none.
  */
 export const replacementRuns =
   (deps: ReplacementDeps) =>
@@ -900,14 +918,14 @@ export const replacementRuns =
     if (ended.replaces || ended.status === 'cancelled' || ended.pipeline === copyOwner) return;
     const now = deps.now?.() ?? new Date();
     if (deps.lockdown && admissionRefusal(ended, now, true)) return;
-    const left = await deps.conversions.replaceable(
-      ended.dataset,
-      ended.pipeline,
-      acceptedConverters,
-      '0',
-      1,
-    );
-    if (left.length === 0) return;
+    const left = async (select: StoredConversions['replaceable']) =>
+      (await select(ended.dataset, ended.pipeline, acceptedConverters, '0', 1)).length > 0;
+    // Text-layer files to convert with Docling, or Docling files the KUDOS export cut short (issue 749).
+    if (
+      !(await left(deps.conversions.replaceable.bind(deps.conversions))) &&
+      !(await left(deps.conversions.short.bind(deps.conversions)))
+    )
+      return;
     const at = now.toISOString();
     const started = await deps.runs.startReplacement(ended, randomUUID(), at);
     if (!started) return;

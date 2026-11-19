@@ -150,6 +150,11 @@ export interface DocumentRecords {
   writable(generation: string): Promise<boolean>;
   /** Whether the generation already holds the record's current change. */
   held(record: IndexRecord, generation: string): Promise<boolean>;
+  /**
+   * The vectors the generation holds for the record's document, by chunk and phrase text: an index
+   * job embeds only the texts not among them (issue 749). Empty when the generation holds none.
+   */
+  heldVectors(record: IndexRecord, generation: string): Promise<Map<string, number[]>>;
   /** Marks a held record as checked now, without writing it, so its next re-check waits again. */
   touch(record: IndexRecord, generation: string): Promise<void>;
   /**

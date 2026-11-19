@@ -185,6 +185,21 @@ export interface StoredConversions {
     limit: number,
   ): Promise<{ record: string; files: { name: string; sha256: string }[] }[]>;
   /**
+   * A pipeline's records in a dataset after record number `after`, at most `limit`, with files whose
+   * conversions by kept converters all end in empty pages for more than 5 % of their pages, and that
+   * have no conversion by a converter that is replaced: what a replacement run fills from the text
+   * layer and converts with Docling again (issue 749). The KUDOS export stopped Docling at 900 s, and
+   * the seed stored the pages after that empty. Only stored records and those skipped as `no_text`,
+   * in record order.
+   */
+  short(
+    dataset: string,
+    pipeline: string,
+    accepted: readonly AcceptedConverter[],
+    after: string,
+    limit: number,
+  ): Promise<{ record: string; files: { name: string; sha256: string }[] }[]>;
+  /**
    * The records of a pipeline in a dataset, stored or skipped as `no_text`, that hold a file and wait
    * on no conversion: the documents a replacement's new conversion is indexed for, beside those
    * whose wait it ended.

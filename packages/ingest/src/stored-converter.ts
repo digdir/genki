@@ -1,6 +1,38 @@
 import { createHash } from 'node:crypto';
-import type { AcceptedConverter, StoredConversions } from '@genai/port-knowledge';
+import type { AcceptedConverter, StoredConversion, StoredConversions } from '@genai/port-knowledge';
 import { ConversionPending, ConversionRefused, type DocumentConverter } from './converter.js';
+
+const isEmpty = (page: string) => page.trim() === '';
+
+/**
+ * Where a conversion cut short ends: the number of pages up to its last page with text, when the
+ * empty pages after it are more than 5 % of its pages, as `StoredConversions.short` counts them.
+ */
+const cutOf = (pages: readonly string[]) => {
+  const kept = pages.findLastIndex((page) => !isEmpty(page)) + 1;
+  return pages.length - kept > 0.05 * pages.length ? kept : undefined;
+};
+
+/**
+ * The pages of a file's conversion, with the pages after its cut, when it was cut short, taken from
+ * the file's conversion by a later accepted converter, when one is stored: the KUDOS export stopped
+ * Docling at 900 s and the seed stored its pages after that empty, so the text layer fills them
+ * (issue 749). An empty page before the cut stays empty: Docling leaves a page with only its page
+ * number or a picture empty on purpose.
+ */
+const filledPages = async (
+  found: StoredConversion,
+  conversions: Pick<StoredConversions, 'find'>,
+  accepted: readonly AcceptedConverter[],
+) => {
+  const cut = cutOf(found.pages);
+  if (cut === undefined) return found.pages;
+  const later = accepted.slice(accepted.findIndex((a) => a.converter === found.converter) + 1);
+  if (later.length === 0) return found.pages;
+  const filler = await conversions.find(found.sha256, later);
+  if (!filler || filler.failure) return found.pages;
+  return found.pages.map((page, i) => (i >= cut && filler.pages[i] ? filler.pages[i] : page));
+};
 
 /**
  * The converter an index job reads with (ADR 0042, "Ingestion runs"): it never converts, but reads
@@ -25,7 +57,7 @@ export const storedConverter = (
           : 'conversion_failed',
       );
     return {
-      pages: found.pages,
+      pages: await filledPages(found, conversions, accepted),
       converter: { name: found.converter, version: found.version, settings: found.settings },
     };
   };

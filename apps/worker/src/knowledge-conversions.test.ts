@@ -2612,3 +2612,234 @@ describe('replacement runs', () => {
     expect(s.sent.slice(before).filter((j) => j.queue === 'knowledge.index')).toHaveLength(1);
   }, 60_000);
 });
+
+describe('short Docling conversions', () => {
+  /**
+   * A four-page report the KUDOS export cut short: Docling read pages 1 and 2 before its 900 s
+   * timeout and the seed stored pages 3 and 4 empty, while the PDF has text on every page (issue 749).
+   */
+  const shortReport = async (s: Scenario, tag: string, blob: ReturnType<typeof seedContainer>) => {
+    const pdf = pdfBytes([
+      ['Arsrapport 2025', `Innledning (${tag}).`],
+      ['Styring og kontroll i virksomheten.'],
+      ['Annen rapportering', 'Eiendomsforvaltning med 84 lokasjoner.'],
+      ['Vedlegg', 'Sandefjord og Grenland tollsteder ble sammenslatt.'],
+    ]);
+    const file = await sha(pdf);
+    await blob.put(file, [`Innledning fra Docling (${tag}).`, 'Styring fra Docling.', '', '']);
+    await seed(s, file.slice(0, 2));
+    await s.file('rapport.pdf', pdf);
+    return file;
+  };
+
+  /** A Docling conversion of `file` with these pages, stored as a convert job would store it. */
+  const storeDocling = (file: string, pages: string[], version = doclingIdentity.version) =>
+    conversions.store(
+      {
+        sha256: file,
+        converter: doclingIdentity.name,
+        version,
+        settings: doclingIdentity.settings,
+        derivation: doclingPagesDerivation,
+        pages,
+      },
+      async () => null,
+    );
+
+  const shortFiles = async (s: Scenario) =>
+    (await conversions.short(s.dataset.id, 'docs', acceptedConverters, '0', 100)).flatMap((r) =>
+      r.files.map((f) => f.sha256),
+    );
+
+  /** Where `work` goes on in each scenario's sent jobs: after those its fill worked. */
+  const cursor = new WeakMap<Scenario, number>();
+  const filled = async (s: Scenario) => {
+    const run = await fill(s);
+    cursor.set(s, s.sent.length);
+    return run;
+  };
+
+  /** Works the jobs a scenario sent, one at a time and in order as the queue would, up to one `stop` names. */
+  const work = async (
+    s: Scenario,
+    stop: (j: Scenario['sent'][number]) => boolean = () => false,
+  ) => {
+    for (;;) {
+      const at = cursor.get(s) ?? 0;
+      const next = s.sent[at];
+      if (!next || stop(next)) return;
+      cursor.set(s, at + 1);
+      await handler(s.work.knowledge, next.queue)(job(next.queue, next.data));
+      // The queue drops a finished index job, so the next conversion can send it again.
+      if (next.queue === 'knowledge.index')
+        await admin.query(
+          `delete from pgboss.job where name = 'knowledge.index' and data ->> 'record' = $1`,
+          [next.data.record],
+        );
+    }
+  };
+
+  it('a Docling conversion whose empty end is more than 5 % of its pages is short', async () => {
+    await clearConvertJobs();
+    const blob = seedContainer();
+    const s = await scenario({ nativeOutputs: blob.store, now: () => night });
+    const file = await shortReport(s, 'kort', blob);
+    await filled(s);
+
+    expect(await shortFiles(s)).toEqual([file]);
+  }, 60_000);
+
+  it('a Docling conversion whose empty end is 5 % of its pages or less is not short', async () => {
+    await clearConvertJobs();
+    const blob = seedContainer();
+    const s = await scenario({ nativeOutputs: blob.store, now: () => night });
+    const pdf = pdfBytes(Array.from({ length: 20 }, (_, i) => [`Side ${i + 1} (fem-prosent).`]));
+    const file = await sha(pdf);
+    // One empty page of 20 at the end, as a blank back cover: 5 %.
+    await blob.put(file, [...Array.from({ length: 19 }, (_, i) => `Side ${i + 1}.`), '']);
+    await seed(s, file.slice(0, 2));
+    await s.file('rapport.pdf', pdf);
+    await filled(s);
+
+    expect(await shortFiles(s)).toEqual([]);
+  }, 60_000);
+
+  it("a file with a full Docling conversion beside the seed's short one is not short", async () => {
+    await clearConvertJobs();
+    const blob = seedContainer();
+    const s = await scenario({ nativeOutputs: blob.store, now: () => night });
+    const file = await shortReport(s, 'full-beside', blob);
+    await filled(s);
+    await storeDocling(file, ['Side en.', 'Side to.', 'Side tre.', 'Side fire.']);
+
+    expect(await shortFiles(s)).toEqual([]);
+  }, 60_000);
+
+  it('a replacement run sends a text-layer convert job for each short file without a text-layer conversion', async () => {
+    await clearConvertJobs();
+    const docling: { current?: DocumentConverter } = {};
+    const server = await doclingServer(() => doclingRead(['Skal ikke leses ennå.']));
+    const blob = seedContainer();
+    const s = await scenario({ nativeOutputs: blob.store, docling, now: () => night });
+    const file = await shortReport(s, 'tekstlag-jobb', blob);
+    const run = await filled(s);
+
+    docling.current = doclingFor(server.url);
+    const replacement = await replace(s, run);
+    expect(replacement).toBeDefined();
+    await work(s, (j) => j.queue === 'knowledge.convert');
+
+    const converts = s.sent.filter((j) => j.queue === 'knowledge.convert');
+    expect(converts.map((j) => [j.data.file, j.data.converter ?? 'text-layer'])).toEqual([
+      [file, 'text-layer'],
+    ]);
+    expect(server.requests()).toBe(0);
+  }, 60_000);
+
+  it("a short file's text-layer job goes before the replacement run's Docling jobs", async () => {
+    await clearConvertJobs();
+    const docling: { current?: DocumentConverter } = {};
+    const server = await doclingServer(() => doclingRead(['Docling.']));
+    const blob = seedContainer();
+    const s = await scenario({ nativeOutputs: blob.store, docling, now: () => night });
+    const file = await shortReport(s, 'foran', blob);
+    const textOnly = reportOf('bare-tekstlag');
+    await s.file('tekstlag.pdf', textOnly);
+    const run = await filled(s);
+
+    docling.current = doclingFor(server.url);
+    const replacement = await replace(s, run);
+    const [replaceJob] = s.sent.filter((j) => j.queue === 'knowledge.replace');
+    await handler(
+      s.work.knowledge,
+      'knowledge.replace',
+    )(job('knowledge.replace', replaceJob?.data ?? {}));
+
+    // In the order pg-boss takes them: priority first, then the oldest.
+    const { rows } = await admin.query<{ data: Record<string, string> }>(
+      `select data from pgboss.job where name = 'knowledge.convert' and data ->> 'run' = $1
+        order by priority desc, created_on, id`,
+      [replacement?.id],
+    );
+    expect(rows.map((r) => [r.data.file, r.data.converter ?? 'text-layer'])).toEqual([
+      [file, 'text-layer'],
+      [await sha(textOnly), 'docling'],
+    ]);
+  }, 60_000);
+
+  it("a short file's stored text-layer conversion indexes its records and then sends the file to Docling", async () => {
+    await clearConvertJobs();
+    const docling: { current?: DocumentConverter } = {};
+    const server = await doclingServer(() => doclingRead(['Docling.']));
+    const blob = seedContainer();
+    const s = await scenario({ nativeOutputs: blob.store, docling, now: () => night });
+    const file = await shortReport(s, 'kjede', blob);
+    const run = await filled(s);
+    const lastPage = async () =>
+      Math.max(...(await chunks(s.generation)).map((c) => c.page_to ?? 0));
+    expect(await lastPage()).toBe(2);
+
+    docling.current = doclingFor(server.url);
+    await replace(s, run);
+    const isDocling = (j: (typeof s.sent)[number]) =>
+      j.queue === 'knowledge.convert' && j.data.converter === 'docling';
+    await work(s, isDocling);
+
+    const after = s.sent.slice(s.sent.findIndex((j) => j.queue === 'knowledge.replace'));
+    expect(after.map((j) => (isDocling(j) ? 'docling' : j.queue))).toEqual([
+      'knowledge.replace',
+      'knowledge.convert',
+      'knowledge.index',
+      'docling',
+    ]);
+    expect(await lastPage()).toBe(4);
+    expect((await chunks(s.generation)).map((c) => c.text).join(' ')).toContain(
+      'Eiendomsforvaltning med 84 lokasjoner.',
+    );
+    expect(server.requests()).toBe(0);
+    expect((await conversionRows(file)).map((r) => r.converter)).toEqual(['docling', 'text-layer']);
+  }, 60_000);
+
+  it("a Docling refusal of a short file keeps the seed's pages and the text-layer fill", async () => {
+    await clearConvertJobs();
+    const docling: { current?: DocumentConverter } = {};
+    const server = await doclingServer(() => recordedAnswer('partial-timeout'));
+    const blob = seedContainer();
+    const s = await scenario({ nativeOutputs: blob.store, docling, now: () => night });
+    const file = await shortReport(s, 'avvist', blob);
+    const run = await filled(s);
+
+    docling.current = doclingFor(server.url);
+    await replace(s, run);
+    await work(s);
+
+    expect(server.requests()).toBe(1);
+    const failure = (await conversionRows(file)).find((r) => r.version === doclingIdentity.version);
+    expect(failure?.failure).toBe('too_large');
+    const text = (await chunks(s.generation)).map((c) => c.text).join(' ');
+    expect(text).toContain('Innledning fra Docling (avvist).');
+    expect(text).toContain('Sandefjord og Grenland tollsteder ble sammenslatt.');
+  }, 60_000);
+
+  it("a short file's new Docling conversion replaces the seed's in its chunks", async () => {
+    await clearConvertJobs();
+    const docling: { current?: DocumentConverter } = {};
+    const server = await doclingServer(() =>
+      doclingRead(['Ny side en.', 'Ny side to.', 'Ny side tre.', 'Ny side fire.']),
+    );
+    const blob = seedContainer();
+    const s = await scenario({ nativeOutputs: blob.store, docling, now: () => night });
+    await shortReport(s, 'ny-docling', blob);
+    const run = await filled(s);
+
+    docling.current = doclingFor(server.url);
+    await replace(s, run);
+    await work(s);
+
+    const text = (await chunks(s.generation)).map((c) => c.text).join(' ');
+    for (const page of ['Ny side en.', 'Ny side to.', 'Ny side tre.', 'Ny side fire.'])
+      expect(text).toContain(page);
+    expect(text).not.toContain('fra Docling');
+    expect(text).not.toContain('Sandefjord');
+  }, 60_000);
+});
