@@ -42,6 +42,15 @@ export const reservedDomainsFrom = (env: NodeJS.ProcessEnv): string[] => [
 const under = (hostname: string, domain: string) =>
   hostname === domain || hostname.endsWith(`.${domain}`);
 
+export const genkiZones = ['genki.digdir.cloud', 'genki-test.digdir.cloud'];
+
+/** One label under `apps.` in genki's own zone: a name genki assigns to a service. */
+export const isAssignedName = (hostname: string) =>
+  genkiZones.some((zone) => {
+    const suffix = `.apps.${zone}`;
+    return hostname.endsWith(suffix) && !hostname.slice(0, -suffix.length).includes('.');
+  });
+
 export interface HostingRules {
   /** Hostname to the tenant it is opened for. */
   hostnames: ReadonlyMap<string, string>;
@@ -60,7 +69,8 @@ export const hostnameProblems = (
   return (definition.spec.hostnames ?? []).flatMap(({ hostname }, i): ClientIssue[] => {
     const path = `spec.hostnames.${i}.hostname`;
     if (
-      rules.reservedDomains.some((domain) => under(hostname, domain)) ||
+      (!isAssignedName(hostname) &&
+        rules.reservedDomains.some((domain) => under(hostname, domain))) ||
       rules.hostnames.get(hostname) !== tenant
     )
       return [

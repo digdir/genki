@@ -29,4 +29,27 @@ resource verifications 'Microsoft.Network/dnsZones/TXT@2018-05-01' = [for record
   }
 }]
 
+@description('Names genki assigns to hosted services, e.g. kunnskap.apps, all pointing at the assistant host.')
+param hostedLabels array = []
+param hostedTarget string = ''
+param hostedVerificationId string = ''
+
+resource hostedCnames 'Microsoft.Network/dnsZones/CNAME@2018-05-01' = [for label in hostedLabels: {
+  parent: zone
+  name: label
+  properties: {
+    TTL: 300
+    CNAMERecord: { cname: hostedTarget }
+  }
+}]
+
+resource hostedVerifications 'Microsoft.Network/dnsZones/TXT@2018-05-01' = [for label in hostedLabels: {
+  parent: zone
+  name: 'asuid.${label}'
+  properties: {
+    TTL: 300
+    TXTRecords: [{ value: [hostedVerificationId] }]
+  }
+}]
+
 output nameServers array = zone.properties.nameServers

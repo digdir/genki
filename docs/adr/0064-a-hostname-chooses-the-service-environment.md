@@ -12,7 +12,7 @@ genki runs as one installation. A service's `test` and `prod` are environments o
 
 ## Decision
 
-- **Each hostname names one environment.** A hostname claim (ADR 0062) carries `environment`, which must be one of the Client's `spec.environments`. The host draws that environment's interface and sends `GenAI-Environment` with it on every call, and the API refuses a session's call for another environment.
+- **Each hostname names one environment.** A hosted Client's hostname (`spec.hostnames`, ADR 0062) carries `environment`, which must be one of the Client's `spec.environments`. The host draws that environment's interface and sends `GenAI-Environment` with it on every call, and the API refuses a session's call for another environment.
 - **One Client, one login, several hostnames.** A service's `test` and `prod` hostnames belong to the same hosted Client and its Ansattporten client id, so a person has one identity and one set of threads across both, and the client registers both redirect URIs.
 - **A thread remembers its environment.** `conversations` gets `environment`, set when the thread is made and `prod` for threads from before. A host lists the threads of its own environment, and opens another environment's thread read only with a link to its hostname. The API refuses a question or any other write to a thread from a call in another environment (`409 thread_environment`), whether it comes through a session or a bearer token.
 - **A test hostname shows that it is test.** The host draws a banner, «Testversjon», with the version number and a link to the `prod` hostname, on every page of a hostname whose environment is not `prod`.

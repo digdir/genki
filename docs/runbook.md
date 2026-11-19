@@ -206,3 +206,154 @@ From a nightly copy, when the server and its backups are gone: download the newe
 ### Restore drill
 
 `.github/workflows/platform-restore-drill.yml` runs on the first day of each quarter and on demand (`gh workflow run platform-restore-drill.yml`), in test only, in a concurrency group of its own. It restores the platform server as of 10 minutes earlier to `genai-<env>-pg-restore-drill`, writes how long it took to the run's summary, runs the job `genai-<env>-pg-restore-check`, which counts the rows of every table on both servers and fails when a table is missing or the restored server is empty, and deletes the restored server even when a step failed. A drill costs about 5 kr. By hand in the same quarter: restore one uploaded file from the share backup and compare its checksum, and recover a throwaway Key Vault secret. Write the times into issue #44; the target is met while restore plus repointing stays under 4 hours.
+
+## Moving a team's domain to genki
+
+How a service that runs its own frontend today moves its existing hostname to genki's assistant host (ADR 0061), with Kunnskapsassistenten's `qa.kunnskap.digdir.cloud` as the worked example. How hosted hostnames work in the template is in [infra/README.md](../infra/README.md#hosted-hostnames).
+
+The example as it stood on 2026-11-19: the container app `ka-app` in `ka-app-env` (resource group `rg-ka-test-weu`, subscription `Altinn-AI-Assistant`) has `qa.kunnskap.digdir.cloud` bound with a managed certificate. The zone `kunnskap.digdir.cloud` is an Azure DNS zone in the same resource group, delegated from `digdir.cloud`, with `CNAME qa` (TTL 300) to `ka-app`'s generated host name and `TXT asuid.qa` (TTL 3600).
+
+### First, a name in genki's zone
+
+A service can be drawn on a name genki assigns before its own domain moves, and keep it after. For the example, `kunnskap.apps.genki-test.digdir.cloud`:
+
+1. A pull request adds `{ subdomain: 'kunnskap', tenant: '<organisation number>', stage: 'none' }` to `hostedHostnames` in `infra/env/test.bicepparam`. The deploy that follows applies the whole template (the parameter file changed), which writes `CNAME kunnskap.apps` and `TXT asuid.kunnskap.apps` in genki's zone.
+2. Add `kunnskap.apps.genki-test.digdir.cloud` to the service's hosted Client (`spec.hostnames`).
+3. Pull requests set the entry's `stage` to `hostnames`, then `certificates`, each merged and deployed.
+4. Check that `https://kunnskap.apps.genki-test.digdir.cloud/` draws the service and that sign-in works; the Ansattporten client needs `https://kunnskap.apps.genki-test.digdir.cloud/auth/callback` as a redirect URI and the hostname's root as post-logout URI.
+
+Then move the team's own domain with the steps below.
+
+### Before you start
+
+- The assistant host runs in the environment (`assistantHostEnabled`), and the service draws 1:1 on a genki hostname.
+- The service's Client in genki is hosted and has the **same Ansattporten client id** as the old frontend. A thread's owner is the tenant and `issuer|sub` (`userKey` in `packages/conversations/src/routes.ts`), and Ansattporten's `sub` is pairwise per client, so threads stay only if all three match:
+  - the client id: the old app's `ANSATTPORTEN_CLIENT_ID` is the Client's `spec.oidc.clientId`;
+  - the issuer: the old app's `ANSATTPORTEN_ISSUER` is genki's `ANSATTPORTEN_ISSUER` (`https://test.ansattporten.no` on genki-test), character for character, trailing slash included;
+  - the tenant: the organisation the threads are stored under is the one the person lands in on genki. In lockdown that is `PLATFORM_TENANT`, as it was for the old app.
+
+  Compare the values by reading them in the portal or with `az containerapp show ... --query "properties.template.containers[0].env[?name=='ANSATTPORTEN_ISSUER']"` one name at a time; never list all of the app's settings, which include secrets.
+
+- The Ansattporten client has `https://<hostname>/auth/callback` as a redirect URI and `https://<hostname>/` as post-logout URI. The host keeps the old frontend's routes (ADR 0061), so nothing changes for a hostname already registered. The client secret is in genki as the Client's tenant secret (ADR 0061).
+- Azure binds a hostname to one app at a time, so the hostname is down from step 4 until the certificate is bound in step 6, about two deploys. Tell its users first if it has any; Kunnskapsassistenten is not in production and has none, so its swap needs no window and can follow the deploy at once.
+- A hosted assistant that real people use in production needs the BFF first (ADR 0034). A test service such as Kunnskapsassistenten's does not wait for it.
+
+### Steps
+
+1. **Lower the TTLs** of the hostname's records to 300 seconds, so a rollback reaches people in minutes. For the example, `asuid.qa` is at 3600:
+
+   ```sh
+   az network dns record-set txt update --subscription Altinn-AI-Assistant -g rg-ka-test-weu -z kunnskap.digdir.cloud -n asuid.qa --set ttl=300
+   ```
+
+2. **Open the hostname in genki.** A pull request adds it to the environment's parameter file at stage `none`, with the organisation number that owns the service in genki:
+
+   ```bicep
+   param hostedHostnames = [
+     { hostname: 'qa.kunnskap.digdir.cloud', tenant: '<organisation number>', stage: 'none' }
+   ]
+   ```
+
+   Merge and deploy. Then add the hostname to the service's hosted Client in the portal (or `spec.hostnames` through the API). `GET https://api.genki-test.digdir.cloud/v1/hosts/qa.kunnskap.digdir.cloud` now answers the service. The old app still serves the domain.
+
+3. **Add genki's validation record** beside the old one. Read the values from the deploy's output `assistantHost.dnsRecords`. `asuid.qa` gets genki's verification id as a second value, so both apps validate:
+
+   ```sh
+   az network dns record-set txt add-record --subscription Altinn-AI-Assistant -g rg-ka-test-weu -z kunnskap.digdir.cloud -n asuid.qa -v <assistantHost.verificationId>
+   ```
+
+4. **Take the hostname off the old app and point it at genki:**
+
+   ```sh
+   az containerapp hostname delete --subscription Altinn-AI-Assistant -g rg-ka-test-weu -n ka-app --hostname qa.kunnskap.digdir.cloud --yes
+   az network dns record-set cname set-record --subscription Altinn-AI-Assistant -g rg-ka-test-weu -z kunnskap.digdir.cloud -n qa -c <assistantHost.fqdn>
+   ```
+
+   Check with `dig +short qa.kunnskap.digdir.cloud @ns1-03.azure-dns.com` that the zone answers genki's host name.
+
+5. **Bind it without a certificate:** a pull request sets the entry's `stage` to `hostnames`; merge and deploy. `az containerapp hostname list -g <genki's resource group> -n <name>-assistant` shows it with binding `Disabled`.
+
+6. **Bind the certificate:** a pull request sets `stage` to `certificates`; merge and deploy. Azure issues the certificate within minutes; the deploy waits for it.
+
+7. **Verify:**
+   - `curl -sI https://qa.kunnskap.digdir.cloud/` answers from the host (the generic host's page, not the old app's), with a valid certificate for the hostname.
+   - Sign in as a tester who used the old app and see their earlier threads in the list. Ask one tester to open an old thread and send a message.
+   - No new requests reach the old app (its console log in `ka-app-logs`).
+
+An apex hostname works the same way, with `apex: true`, an `A` record at `@` to `assistantHost.staticIp` instead of the CNAME, and `TXT asuid` at the apex.
+
+### Rolling back
+
+Point the CNAME back at the old app's generated host name (`ka-app.greenbeach-1657b6b7.westeurope.azurecontainerapps.io` for the example), set the entry's `stage` to `none` by pull request and deploy, which takes the hostname off genki's host, and bind it to the old app again with its certificate, which is still in the old environment:
+
+```sh
+az containerapp hostname add --subscription Altinn-AI-Assistant -g rg-ka-test-weu -n ka-app --hostname qa.kunnskap.digdir.cloud
+az containerapp hostname bind --subscription Altinn-AI-Assistant -g rg-ka-test-weu -n ka-app --hostname qa.kunnskap.digdir.cloud --environment ka-app-env --certificate mc-ka-app-env-qa-kunnskap-digd-9951
+```
+
+Threads made on genki in between stay in genki. The old app keeps running, without the hostname, until it is retired.
+
+## Retiring a team's old hosting
+
+After a domain has moved, the old frontend's Azure resources are removed once the swap is verified (step 7 above) and the team agrees. Nothing here is done by genki's workflows: a person with rights on the old resource group runs the commands, in this order.
+
+**Who decides** is open: #771's decision 8 (ownership) is not settled on 2026-11-19. Whoever agrees for the team records it in the issue before anything is deleted.
+
+### Kunnskapsassistenten's resources
+
+Found read-only on 2026-11-19, subscription `Altinn-AI-Assistant`:
+
+| Resource                                  | Type                       | Where                                          | Retire                                                                 |
+| ----------------------------------------- | -------------------------- | ---------------------------------------------- | ---------------------------------------------------------------------- |
+| `ka-app`                                  | Container app              | `rg-ka-test-weu`                               | Yes                                                                    |
+| `ka-app-env`                              | Container Apps environment | `rg-ka-test-weu`                               | Yes, after the app and certificate                                     |
+| `mc-ka-app-env-qa-kunnskap-digd-9951`     | Managed certificate        | `ka-app-env`                                   | Yes, goes with the environment                                         |
+| `ka-app-logs`                             | Log Analytics workspace    | `rg-ka-test-weu`                               | Yes, after any logs that must be kept are exported (30 days retention) |
+| `ka-app-id`                               | User-assigned identity     | `rg-ka-test-weu`                               | Yes, after its role assignment                                         |
+| AcrPull for `ka-app-id`                   | Role assignment            | registry `sharedregistryswc`                   | Yes, before the identity                                               |
+| `ka-app` (16 tags)                        | Image repository           | `sharedregistryswc` (`rg-shared-registry-swc`) | Yes                                                                    |
+| `ka-app` (5 tags, last pushed 2026-10-16) | Image repository           | `altinnaicontainers` (`altinn-ai-assistant`)   | Yes, older deploys; the registry's other repositories are not KA's     |
+| `kunnskap.digdir.cloud`                   | DNS zone                   | `rg-ka-test-weu`                               | **No**: keep until moved                                               |
+| The Ansattporten client                   | Samarbeidsportalen         | not Azure                                      | **No**: genki's BFF uses it                                            |
+
+`rg-ka-test-weu` has no other resources and no role assignments of its own. Because the zone stays, the resource group stays too, until the zone has moved.
+
+### Order
+
+Each step is safe to stop after. Run them only after the decision is recorded.
+
+```sh
+SUB=Altinn-AI-Assistant RG=rg-ka-test-weu
+
+# 1. Stop the app, still restorable: proves nothing depends on it.
+az containerapp update --subscription $SUB -g $RG -n ka-app --min-replicas 0 --max-replicas 1
+az containerapp revision list --subscription $SUB -g $RG -n ka-app --query "[?properties.active].name" -o tsv \
+  | xargs -n1 az containerapp revision deactivate --subscription $SUB -g $RG -n ka-app --revision
+
+# 2. Once nothing has missed it: delete the app, then its environment (with the certificate).
+az containerapp delete --subscription $SUB -g $RG -n ka-app --yes
+az containerapp env delete --subscription $SUB -g $RG -n ka-app-env --yes
+
+# 3. The identity's registry grant, then the identity.
+PRINCIPAL=$(az identity show --subscription $SUB -g $RG -n ka-app-id --query principalId -o tsv)
+az role assignment delete --assignee "$PRINCIPAL" --role AcrPull \
+  --scope "$(az acr show --subscription $SUB -n sharedregistryswc --query id -o tsv)"
+az identity delete --subscription $SUB -g $RG -n ka-app-id
+
+# 4. The logs, once exported if needed.
+az monitor log-analytics workspace delete --subscription $SUB -g $RG -n ka-app-logs --yes
+
+# 5. The images.
+az acr repository delete --subscription $SUB -n sharedregistryswc --repository ka-app --yes
+az acr repository delete --subscription $SUB -n altinnaicontainers --repository ka-app --yes
+```
+
+Then:
+
+- Remove `asuid.qa`'s old value (the old environment's verification id) from the zone, and leave genki's.
+- The old app held the Ansattporten client secret and a Typesense key as Container Apps secrets. Deleting the app deletes them; rotate the client secret in Samarbeidsportalen once and put the new value in genki's tenant secret, since a copy lived outside genki.
+- Mark the old frontend's deploy notes as retired in its own repository.
+
+### Moving the DNS zone
+
+The zone stays in `rg-ka-test-weu` until its owner decides where it lives. Azure DNS zones can move to another resource group or subscription with `az resource move`; check that `az network dns zone show ... --query nameServers` is the same before and after, since `digdir.cloud` delegates to those name servers. Once the zone has moved, the empty resource group can be deleted with `az group delete --subscription Altinn-AI-Assistant -n rg-ka-test-weu`.
