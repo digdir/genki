@@ -26,7 +26,7 @@ const maxWidth = (css: string, selector: string) =>
   rule(css, selector)?.match(/max-width:\s*([^;]+);/)?.[1];
 
 const pageWide = (css: string) =>
-  [...css.matchAll(/max-width:\s*(\d+)px/g)].filter(([, px]) => Number(px) > 1000);
+  [...css.matchAll(/max-width:\s*(\d+)px;/g)].filter(([, px]) => Number(px) > 1000);
 
 describe('the width of the page', () => {
   it('gives every service tab the width of the page column that Grensesnitt fills', () => {

@@ -1267,6 +1267,21 @@ describe('platform building block texts', () => {
         description: 'Skrevet av oss',
       });
   });
+
+  it("calls the platform organisation's own step flows its own, and the flows shipped with genki Digdir's", async () => {
+    const { send, store } = await setup({ blockRefs: ['retrieve@1'] });
+    await store.publish(flow('basic-rag', 'Basic RAG', 'Plan queries'), 'test', 'første versjon');
+    await store.publish(flow('egen-flyt', 'Min flyt', 'Skrevet av oss'), 'test', 'første versjon');
+
+    const list = (await json<BuildingBlockList>(await send(`${base}?kind=step_flow`, 'kari'))).data;
+
+    expect(list.find((b) => b.id === 'egen-flyt')?.publisher).toEqual({
+      type: 'own',
+      name: digdir,
+    });
+    expect(list.find((b) => b.id === 'basic-rag')?.publisher.type).toBe('digdir');
+    expect(list.find((b) => b.id === 'retrieve@1')?.publisher.type).toBe('digdir');
+  });
 });
 
 describe('the built-in guardrails and judges', () => {

@@ -15,12 +15,12 @@ import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import type { CatalogModel } from '../api/models';
 import type { AsyncState } from '../hooks';
 import {
+  bestFitFirst,
   compareMax,
   entriesOf,
   fitsOperation,
   matchesQuery,
   pickerVisible,
-  recommendedFirst,
   residencies,
   usable,
 } from '../models';
@@ -85,8 +85,10 @@ export const ModelPicker = ({
   readOnly = false,
   onRetry,
   triggerLabel,
+  residency,
 }: {
   triggerLabel?: string;
+  residency?: Residency;
   models: AsyncState<CatalogModel[]>;
   value: string;
   onChange: (id: string) => void;
@@ -126,7 +128,7 @@ export const ModelPicker = ({
   if (models.status === 'error')
     return <ErrorState error={models.error} headingLevel={3} {...(onRetry ? { onRetry } : {})} />;
 
-  const all = entriesOf(models.data).sort(recommendedFirst);
+  const all = entriesOf(models.data).sort(bestFitFirst(operation, value, residency));
   const chosen = all.find((m) => m.id === value);
   const operationName = text.use(operation).toLocaleLowerCase();
   const fits = all.filter(
@@ -206,15 +208,16 @@ export const ModelPicker = ({
         text={text}
         action={
           readOnly ? null : (
-            <Button
+            <button
               ref={trigger}
-              variant="secondary"
+              type="button"
+              className="mp-change"
               aria-haspopup="dialog"
               {...(triggerLabel ? { 'aria-label': t('modelPicker.change') } : {})}
               onClick={openPanel}
             >
               {triggerLabel ?? t('modelPicker.change')}
-            </Button>
+            </button>
           )
         }
       />
@@ -317,6 +320,11 @@ export const ModelPicker = ({
                           label={
                             <span className="tag-row">
                               <span>{text.name(m)}</span>
+                              {m.id === value ? (
+                                <Tag data-size="sm" data-color="accent">
+                                  {t('modelPicker.current')}
+                                </Tag>
+                              ) : null}
                               {m.recommended ? (
                                 <Tag data-size="sm" data-color="success">
                                   {t('modelWords.recommended')}
@@ -412,10 +420,16 @@ export const ModelPicker = ({
               <Button variant="secondary" onClick={close}>
                 {t('modelPicker.cancel')}
               </Button>
-              <Button variant="primary" onClick={apply}>
-                {t('modelPicker.apply', {
-                  name: pendingModel ? text.name(pendingModel) : pending,
-                })}
+              <Button
+                variant="primary"
+                aria-disabled={pending === value || undefined}
+                onClick={() => pending !== value && apply()}
+              >
+                {pending === value
+                  ? t('modelPicker.pickAnother')
+                  : t('modelPicker.apply', {
+                      name: pendingModel ? text.name(pendingModel) : pending,
+                    })}
               </Button>
             </div>
           </Dialog.Block>

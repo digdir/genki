@@ -64,7 +64,7 @@ describe('side by side columns', () => {
   it('stack by the width of the page column, which the menu narrows, not the window', () => {
     expect(css('app.css')).toMatch(/\.main-inner \{\s*container: page \/ inline-size;/);
     expect(queryHolding(css('screens/service/service.css'), '.service-sub')).toEqual([
-      '@container page (max-width: 671px)',
+      '@container page (max-width: 1179px)',
     ]);
     expect(queryHolding(css('screens/services.css'), '.builder-split')).toEqual([
       '@container page (max-width: 859px)',

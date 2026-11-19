@@ -10,7 +10,7 @@ import {
   TabsTab,
 } from '@digdir/designsystemet-react';
 import { ChevronRightIcon } from '@navikt/aksel-icons';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Icon } from '../../components/Icon';
 import { useT, type PlainKey } from '../../i18n';
 import { areaLabelKeys } from './setup-change-text';
@@ -72,6 +72,13 @@ export const SetupLayout = ({
   const t = useT();
   const [advancedOpen, setAdvancedOpen] = useState(advancedAreas.includes(current));
   const [tried, setTried] = useState(pane === 'try');
+  const side = useRef<HTMLDivElement>(null);
+  const toSide = (to: SidePane) => {
+    if (to === 'try') setTried(true);
+    onPane(to);
+    side.current?.scrollIntoView?.({ block: 'start' });
+    side.current?.focus({ preventScroll: true });
+  };
   useEffect(() => {
     if (advancedAreas.includes(current)) setAdvancedOpen(true);
   }, [current]);
@@ -110,75 +117,91 @@ export const SetupLayout = ({
   };
   return (
     <div className="setup-layout">
-      <nav aria-label={t('setupList.navLabel')} className="setup-nav">
-        <span className="setup-nav-group">{t('setupList.groupBasic')}</span>
-        <ul className="setup-nav-list">{basicAreas.map(item)}</ul>
-        <button
-          type="button"
-          className="setup-nav-toggle"
-          aria-expanded={advancedOpen}
-          onClick={() => setAdvancedOpen((open) => !open)}
-        >
-          <span className={advancedOpen ? 'setup-chevron open' : 'setup-chevron'}>
-            <Icon icon={ChevronRightIcon} />
-          </span>
-          <span className="setup-nav-name">{t('setupList.groupAdvanced')}</span>
-          <span className={missing ? 'setup-nav-count missing' : 'setup-nav-count'}>
-            {missing
-              ? t('setupList.advancedMissing', { count: missing })
-              : t('setupList.advancedInUse', { used, count: advancedAreas.length })}
-          </span>
-        </button>
-        {advancedOpen ? <ul className="setup-nav-list">{advancedAreas.map(item)}</ul> : null}
-      </nav>
+      <div className="setup-grid">
+        <nav aria-label={t('setupList.navLabel')} className="setup-nav">
+          <span className="setup-nav-group">{t('setupList.groupBasic')}</span>
+          <ul className="setup-nav-list">{basicAreas.map(item)}</ul>
+          <button
+            type="button"
+            className="setup-nav-toggle"
+            aria-expanded={advancedOpen}
+            onClick={() => setAdvancedOpen((open) => !open)}
+          >
+            <span className={advancedOpen ? 'setup-chevron open' : 'setup-chevron'}>
+              <Icon icon={ChevronRightIcon} />
+            </span>
+            <span className="setup-nav-name">{t('setupList.groupAdvanced')}</span>
+            <span className={missing ? 'setup-nav-count missing' : 'setup-nav-count'}>
+              {missing
+                ? t('setupList.advancedMissing', { count: missing })
+                : t('setupList.advancedInUse', { used, count: advancedAreas.length })}
+            </span>
+          </button>
+          {advancedOpen ? <ul className="setup-nav-list">{advancedAreas.map(item)}</ul> : null}
+        </nav>
 
-      <section aria-labelledby="setup-area-h" className="setup-area">
-        <div className="setup-area-head">
-          <span className="meta">
-            {t(basicAreas.includes(current) ? 'setupList.groupBasic' : 'setupList.groupAdvanced')}
-          </span>
-          <Heading level={2} data-size="md" id="setup-area-h">
-            {t(areaLabelKeys[current])}
-          </Heading>
-          <Paragraph className="meta">{t(helpKeys[current])}</Paragraph>
-        </div>
-        {facts[current].problems?.length ? (
-          <Alert data-color="warning" data-size="sm">
-            <Heading level={3} data-size="2xs">
-              {t('setupList.missingHeading')}
+        <section aria-labelledby="setup-area-h" className="setup-area">
+          <div className="setup-area-head">
+            <span className="meta">
+              {t(basicAreas.includes(current) ? 'setupList.groupBasic' : 'setupList.groupAdvanced')}
+            </span>
+            <Heading level={2} data-size="md" id="setup-area-h">
+              {t(areaLabelKeys[current])}
             </Heading>
-            <ul className="bullets">
-              {facts[current].problems.map((problem) => (
-                <li key={problem}>{problem}</li>
-              ))}
-            </ul>
-          </Alert>
-        ) : null}
-        {children}
-        <div className="setup-area-foot">
-          <span className="meta">{t('setupList.savedNote')}</span>
-          <Button variant="primary" data-size="sm" onClick={() => pick(next)}>
-            {t('setupList.next', { name: t(areaLabelKeys[next]) })}
-          </Button>
-        </div>
-      </section>
+            <Paragraph className="meta">{t(helpKeys[current])}</Paragraph>
+            <div className="setup-side-jump">
+              <Button variant="secondary" data-size="sm" onClick={() => toSide('assistant')}>
+                {t('setupList.toAssistant')}
+              </Button>
+              <Button variant="tertiary" data-size="sm" onClick={() => toSide('try')}>
+                {t('setupList.toTry')}
+              </Button>
+            </div>
+          </div>
+          {facts[current].problems?.length ? (
+            <Alert data-color="warning" data-size="sm">
+              <Heading level={3} data-size="2xs">
+                {t('setupList.missingHeading')}
+              </Heading>
+              <ul className="bullets">
+                {facts[current].problems.map((problem) => (
+                  <li key={problem}>{problem}</li>
+                ))}
+              </ul>
+            </Alert>
+          ) : null}
+          {children}
+          <div className="setup-area-foot">
+            <span className="meta">{t('setupList.savedNote')}</span>
+            <Button variant="primary" data-size="sm" onClick={() => pick(next)}>
+              {t('setupList.next', { name: t(areaLabelKeys[next]) })}
+            </Button>
+          </div>
+        </section>
 
-      <div className="setup-side" role="region" aria-label={t('setupList.sideLabel')}>
-        <Tabs
-          value={pane}
-          onChange={(v) => {
-            if (v === 'try') setTried(true);
-            onPane(v as SidePane);
-          }}
-          data-size="sm"
+        <div
+          ref={side}
+          tabIndex={-1}
+          className="setup-side"
+          role="region"
+          aria-label={t('setupList.sideLabel')}
         >
-          <TabsList aria-label={t('setupList.sideTabs')}>
-            <TabsTab value="assistant">{t('setupList.tabAssistant')}</TabsTab>
-            <TabsTab value="try">{t('setupList.tabTry')}</TabsTab>
-          </TabsList>
-          <TabsPanel value="assistant">{assistant}</TabsPanel>
-          <TabsPanel value="try">{tried || pane === 'try' ? tryPane : null}</TabsPanel>
-        </Tabs>
+          <Tabs
+            value={pane}
+            onChange={(v) => {
+              if (v === 'try') setTried(true);
+              onPane(v as SidePane);
+            }}
+            data-size="sm"
+          >
+            <TabsList aria-label={t('setupList.sideTabs')}>
+              <TabsTab value="assistant">{t('setupList.tabAssistant')}</TabsTab>
+              <TabsTab value="try">{t('setupList.tabTry')}</TabsTab>
+            </TabsList>
+            <TabsPanel value="assistant">{assistant}</TabsPanel>
+            <TabsPanel value="try">{tried || pane === 'try' ? tryPane : null}</TabsPanel>
+          </Tabs>
+        </div>
       </div>
     </div>
   );

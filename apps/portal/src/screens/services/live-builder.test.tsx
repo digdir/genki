@@ -874,6 +874,26 @@ describe('a new service saved as a draft on the server', () => {
     ).toBeTruthy();
   });
 
+  it('opens a saved draft-only service in the setup layout, with the assistant and Prøv beside it', async () => {
+    const { fetch, id } = await startNamed('Permisjonssvar');
+
+    await elsewhere(fetch, `#/services/${id}/setup`);
+
+    expect(await screen.findByRole('navigation', { name: 'Deler av oppsettet' })).toBeTruthy();
+    const side = screen.getByRole('region', { name: 'Byggeassistent og prøving' });
+    expect(within(side).getByRole('tab', { name: 'Prøv' })).toBeTruthy();
+    expect(side.contains(screen.getByRole('complementary', { name: 'Byggeassistent' }))).toBe(true);
+  });
+
+  it('opens the publish dialog of a draft-only service from /setup/publish', async () => {
+    const { fetch, id } = await startNamed('Permisjonssvar');
+
+    await elsewhere(fetch, `#/services/${id}/setup/publish`);
+
+    expect(await screen.findByRole('dialog', { name: 'Publiser Permisjonssvar' })).toBeTruthy();
+    await waitFor(() => expect(window.location.hash).toBe(`#/services/${id}/setup`));
+  });
+
   it('opens a draft-only service at its setup when the address names a section it does not have', async () => {
     const { fetch, id } = await startNamed('Permisjonssvar');
 

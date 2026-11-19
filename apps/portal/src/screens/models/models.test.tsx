@@ -276,6 +276,13 @@ describe('models in use', () => {
     ).toEqual(['Borealis-27B']);
   });
 
+  it('names three of the services that use a model and counts the rest, so the row stays short', async () => {
+    await at('#/building-blocks/models/in-use');
+    const table = await screen.findByRole('table');
+    const cell = within(table).getByText(/^5 tjenester: /);
+    expect(cell.textContent).toMatch(/^5 tjenester: [^,]+, [^,]+, [^,]+ og 2 til$/);
+  });
+
   it('searches models by the services that use them', async () => {
     await at('#/building-blocks/models/in-use');
     const table = await screen.findByRole('table');
