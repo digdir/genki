@@ -750,6 +750,24 @@ describe('Ferdighet under Byggeklosser', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Klarspråk i brev' })).toBeTruthy();
   });
 
+  it('tells the user when copying a Digdir skill fails and stays on the block', async () => {
+    const base = fetchWith();
+    const fetch: typeof globalThis.fetch = async (input, init) =>
+      init?.method === 'POST' && urlOf(input).includes('/skills/klarsprak-i-brev/copy')
+        ? problem(500)
+        : base(input, init);
+    await renderAt(`${skillPath('klarsprak-i-brev')}?owner=991825827`, fetch);
+    await screen.findByRole('heading', { level: 1, name: 'Klarspråk i brev' });
+    fireEvent.click(screen.getByRole('button', { name: 'Lag en kopi' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('Vi kunne ikke lage en kopi. Prøv igjen om litt.');
+    expect(window.location.hash).toContain('/building-blocks/skill/klarsprak-i-brev');
+    expect(screen.getByRole('heading', { level: 1, name: 'Klarspråk i brev' })).toBeTruthy();
+    expect(
+      (screen.getByRole('button', { name: 'Lag en kopi' }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+  });
+
   it('a skill another organisation shares keeps the read-only editor', async () => {
     await openSkill('skrive-tilsynsrapport', 'Skrive tilsynsrapport', {}, '?owner=999666555');
     expect(
