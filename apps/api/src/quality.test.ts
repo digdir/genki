@@ -941,6 +941,121 @@ describe('eval runs for a service', () => {
     expect(compared.status).toBe(200);
   });
 
+  /** A copy of a finished run under a new id, with its provenance changed. */
+  const copyOf = async (
+    env: Awaited<ReturnType<typeof boot>>,
+    from: string,
+    id: string,
+    provenance: Partial<EvalRun['provenance']>,
+  ) => {
+    const stored = await env.platform.evalStores.runs.get(from);
+    if (!stored) throw new Error('no run');
+    await env.platform.evalStores.runs.save({
+      ...stored,
+      run: { ...stored.run, id, provenance: { ...stored.run.provenance, ...provenance } },
+    });
+    return id;
+  };
+
+  it('two runs on different services and data compare when the request allows those differences', async () => {
+    const env = await boot();
+    const first = await runPublished(env);
+    const other = await copyOf(env, first, 'pg-motor', {
+      services: [`${tenant}/svar-pg@1#y`],
+      data: 'digdir/public-docs-pg',
+    });
+
+    const refused = await env.send(
+      'GET',
+      `/eval-runs/compare?baseline=${first}&candidate=${other}&metric=refusal`,
+    );
+    const allowed = await env.send(
+      'GET',
+      `/eval-runs/compare?baseline=${first}&candidate=${other}&metric=refusal&allowDifferent=data,services`,
+    );
+
+    expect(refused.status).toBe(400);
+    expect(JSON.stringify(refused.body)).toContain('runs differ in data');
+    expect(allowed.status).toBe(200);
+    expect(allowed.body).toMatchObject({
+      allowedDifferent: ['data', 'services'],
+      comparisons: [{ metric: 'refusal', n: 1, difference: 0 }],
+    });
+  });
+
+  it('a comparison still refuses runs on different judges or commits', async () => {
+    const env = await boot();
+    const first = await runPublished(env);
+    const deployed = await copyOf(env, first, 'ny-commit', { commit: 'other-commit' });
+    const judged = await copyOf(env, first, 'ny-dommer', { judges: ['judge:criteria@2+other'] });
+    const all = 'allowDifferent=data,services,servedModels';
+
+    const commit = await env.send(
+      'GET',
+      `/eval-runs/compare?baseline=${first}&candidate=${deployed}&metric=refusal&${all}`,
+    );
+    const judges = await env.send(
+      'GET',
+      `/eval-runs/compare?baseline=${first}&candidate=${judged}&metric=refusal&${all}`,
+    );
+    // Asking to allow them is refused too, even for two runs that do not differ.
+    const askedForCommit = await env.send(
+      'GET',
+      `/eval-runs/compare?baseline=${first}&candidate=${first}&metric=refusal&allowDifferent=commit`,
+    );
+    const askedForJudges = await env.send(
+      'GET',
+      `/eval-runs/compare?baseline=${first}&candidate=${first}&metric=refusal&allowDifferent=judges`,
+    );
+
+    expect(commit.status).toBe(400);
+    expect(JSON.stringify(commit.body)).toContain('runs differ in commit');
+    expect(judges.status).toBe(400);
+    expect(JSON.stringify(judges.body)).toContain('runs differ in judges');
+    expect(askedForCommit.status).toBe(400);
+    expect(JSON.stringify(askedForCommit.body)).toContain('commit cannot be allowed to differ');
+    expect(askedForJudges.status).toBe(400);
+    expect(JSON.stringify(askedForJudges.body)).toContain('judges cannot be allowed to differ');
+  });
+
+  it('a comparison over several metrics answers one paired comparison per metric', async () => {
+    const env = await boot();
+    const first = await runPublished(env);
+    const second = await runPublished(env);
+
+    const compared = await env.send(
+      'GET',
+      `/eval-runs/compare?baseline=${first}&candidate=${second}&metric=judge.criteria,refusal`,
+    );
+
+    expect(compared.status).toBe(200);
+    expect(compared.body.allowedDifferent).toEqual([]);
+    expect(
+      (compared.body.comparisons as { metric: string; n: number }[]).map((c) => [c.metric, c.n]),
+    ).toEqual([
+      ['judge.criteria', 2],
+      ['refusal', 1],
+    ]);
+  });
+
+  it('the compare route refuses an allowDifferent field it does not know', async () => {
+    const env = await boot();
+    const first = await runPublished(env);
+
+    const compared = await env.send(
+      'GET',
+      `/eval-runs/compare?baseline=${first}&candidate=${first}&metric=refusal&allowDifferent=colour`,
+    );
+
+    expect(compared.status).toBe(400);
+    expect(compared.body.errors).toEqual([
+      {
+        path: 'allowDifferent',
+        message: 'colour cannot be allowed to differ: only data, services and servedModels can',
+      },
+    ]);
+  });
+
   it("keeps a test run's own eval task out of Kjøringer, as its answers are", async () => {
     const env = await boot();
     await runPublished(env);

@@ -327,6 +327,7 @@ export const run = async (opts: {
   const loops = seen.filter((s) => s.kind === 'loop').map((s) => s.request);
   return {
     events,
+    parts: parts ?? [],
     audit,
     requests,
     task,

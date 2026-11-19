@@ -49,6 +49,8 @@ export const config = defineNamespace({
     'Noen andre har endret oppføringen siden du åpnet den. Lukk og åpne den på nytt for å se den nyeste versjonen.',
   saveVersion: 'Lagre ny versjon',
   create: 'Opprett',
+  savingVersion: 'Lagrer ...',
+  creating: 'Oppretter ...',
   remove: 'Slett',
   close: 'Lukk',
   versions: 'Versjoner',
@@ -84,8 +86,10 @@ export const config = defineNamespace({
   edit: 'Endre',
   removeCase: 'Fjern',
   saveCase: 'Lagre tilfellet',
+  savingCase: 'Lagrer ...',
   removeReasonLabel: 'Begrunnelse for å fjerne',
   addCase: 'Legg til',
+  addingCase: 'Legger til ...',
   newCase: 'Nytt tilfelle',
   testSetsLoading: 'Henter testsett',
   setInvalid: 'Gi testsettet en id (små bokstaver, tall og bindestrek) og et navn.',
@@ -98,6 +102,7 @@ export const config = defineNamespace({
   nameLabel: 'Navn',
   firstCase: 'Første tilfelle',
   createTestSet: 'Opprett testsettet',
+  creatingTestSet: 'Oppretter ...',
 });
 
 export const sharedServices = defineNamespace({

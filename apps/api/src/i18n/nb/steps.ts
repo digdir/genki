@@ -40,6 +40,8 @@ export const steps = defineNamespace({
   citationsNone: 'Fant ingen kildehenvisninger å legge til',
   relevance: 'relevans {score}',
   part: 'del {part}',
+  parts: { one: 'del {parts}', other: 'deler {parts}' },
+  pages: { one: 'side {pages}', other: 'sider {pages}' },
   hits: { one: '{count} treff', other: '{count} treff' },
   searches: { one: '{count} søk', other: '{count} søk' },
   chunks: { one: '{count} tekstbit', other: '{count} tekstbiter' },

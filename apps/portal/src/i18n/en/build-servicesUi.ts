@@ -150,7 +150,6 @@ export const servicesUi = {
     suggestRerun: 'Run the trial again',
     suggestPrivacy: 'Make it stricter on privacy',
     suggestShorter: 'Answer more briefly',
-    suggestTest: 'Test the service',
     newServiceName: 'New service',
     metaInUse: 'Version {n} in use',
     metaNotPublished: 'Not published',
@@ -168,7 +167,8 @@ export const servicesUi = {
       'Publishing to test makes the version available to those with test access. The version in use does not change.',
     publishProdInfo: 'Publishing replaces the version in use. You can roll back at any time.',
     noTestsetWarning:
-      'Without a test set you cannot see whether changes make the results worse. Mark some results under Test first.',
+      'Without a test set you cannot see whether changes make the results worse. Make a test set under Quality first.',
+    makeTestSet: 'Make a test set',
     notAccepted: 'The platform does not accept the draft yet',
     basedOnVersion: 'Builds on version {base}, the latest is {latest}.',
     refusedByGates:

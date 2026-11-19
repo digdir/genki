@@ -494,6 +494,31 @@
           "x-widget": "select",
           "x-right": "manage-services"
         },
+        "sources": {
+          "type": "string",
+          "enum": ["cited", "read"],
+          "x-label": {
+            "nb": "Kilder som følger svaret",
+            "en": "Sources returned with the answer"
+          },
+          "x-help": {
+            "nb": "Uten fotnoter i svaret følger alt som ble lest.",
+            "en": "An answer without footnotes returns everything read."
+          },
+          "x-enumLabels": {
+            "cited": {
+              "nb": "Bare de svaret viser til",
+              "en": "Only those the answer cites"
+            },
+            "read": {
+              "nb": "Alt som ble lest",
+              "en": "Everything read"
+            }
+          },
+          "x-advanced": true,
+          "x-widget": "select",
+          "x-right": "manage-services"
+        },
         "search": {
           "type": "object",
           "properties": {

@@ -651,6 +651,8 @@ export const qualityMock = (options: QualityMockOptions = {}): MockHandler => {
         const cases = set.cases.filter((c) => !body.cases || body.cases.includes(c.id));
         const version = body.version ?? 'draft';
         const saved = drafts.get(service);
+        if (version === 'draft' && (!saved || saved.deleted))
+          return req.json({ title: 'Tjenesten har ikke noe lagret utkast', status: 404 }, 404);
         const run = {
           ...runOf(service, { ...set, cases }, version),
           ...(version === 'draft' && saved && !saved.deleted
