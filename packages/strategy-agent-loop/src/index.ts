@@ -49,6 +49,7 @@ import {
   chunkIdsToMarkers,
   documentKey,
   dropUnknownMarkers,
+  numberByPublished,
   parseCitations,
   sourcesFirst,
   stripPageMarkers,
@@ -1053,9 +1054,21 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
         if (ctx.signal.aborted) throw error;
       }
     }
-    const published = (
-      settings.sources === 'read' ? outputChunks() : citedOnly(outputChunks(), workspace)
-    ).map(sourceRecord);
+    const publishedChunks =
+      settings.sources === 'read' ? outputChunks() : citedOnly(outputChunks(), workspace);
+    if (!clarification && citeBy !== 'excerpt' && answer && workspace.citations.length) {
+      const numbered = numberByPublished(answer, workspace.citations, publishedChunks, (id) =>
+        workspace.chunks.get(id),
+      );
+      workspace.citations = numbered.citations;
+      workspace.citationIndex = numbered.index;
+      if (numbered.text !== answer) {
+        yield { type: 'kernel.notice', data: { stage: 'answer-discarded', reason: 'renumbered' } };
+        yield { type: 'kernel.part.delta', data: { text: numbered.text } };
+        answer = numbered.text;
+      }
+    }
+    const published = publishedChunks.map(sourceRecord);
     yield {
       type: 'kernel.notice',
       data: {

@@ -9,6 +9,10 @@
       "source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./harness.test-utils": {
+      "source": "./src/harness.test-utils.ts",
+      "types": "./src/harness.test-utils.ts"
     }
   },
   "scripts": {

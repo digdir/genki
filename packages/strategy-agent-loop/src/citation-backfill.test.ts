@@ -310,9 +310,9 @@ describe('an answer after running out of rounds', () => {
     expect(out.notices).toContainEqual(expect.objectContaining({ stage: 'exhausted' }));
     expect(draftIn(out)).toContain(partial);
     expect(out.text).toBe(
-      'Jeg fant bare delvis svargrunnlag: Digdir skal levere en strategi i 2025 [2].',
+      'Jeg fant bare delvis svargrunnlag: Digdir skal levere en strategi i 2025 [1].',
     );
-    expect(out.meta).toEqual({ citations: [{ index: 2, chunkId: 'c2' }] });
+    expect(out.meta).toEqual({ citations: [{ index: 1, chunkId: 'c2' }] });
     expect(out.notices).toContainEqual({ stage: 'citations', action: 'backfill', adopted: true });
   });
 });
@@ -362,7 +362,7 @@ describe('an answer from search snippets alone', () => {
       2,
     );
     expect(r.calls.filter((c) => c.op === 'read')).toHaveLength(1);
-    expect(out.meta).toEqual({ citations: [{ index: 3, chunkId: 'c3' }] });
+    expect(out.meta).toEqual({ citations: [{ index: 1, chunkId: 'c3' }] });
   });
 });
 
@@ -385,6 +385,34 @@ describe('the sources returned with an answer', () => {
     const out = await citingSecond();
 
     expect(out.sources.map((s) => s.chunkId)).toEqual(['c2']);
+  });
+
+  it('numbers each marker by its cited document in the order the sources list them', async () => {
+    const out = await citingSecond();
+
+    expect(out.text).toBe('Svaret er 42 [1].');
+    expect(out.meta).toEqual({ citations: [{ index: 1, chunkId: 'c2' }] });
+  });
+
+  it('streams the renumbered answer as the last text before the result', async () => {
+    const out = await citingSecond();
+    const last = out.events.findLastIndex(
+      (e) =>
+        e.type === 'kernel.notice' && (e.data as { stage?: string }).stage === 'answer-discarded',
+    );
+    const streamed = out.events
+      .slice(last + 1)
+      .flatMap((e) => (e.type === 'kernel.part.delta' ? [(e.data as { text: string }).text] : []))
+      .join('');
+
+    expect(out.notices).toContainEqual({ stage: 'answer-discarded', reason: 'renumbered' });
+    expect(streamed).toBe(out.text);
+  });
+
+  it('keeps the numbering of every document it read when the service lists what it read', async () => {
+    const out = await citingSecond('read');
+
+    expect(out.text).toBe('Svaret er 42 [2].');
   });
 
   it('lists every source it read when the service asks for what it read', async () => {
@@ -443,6 +471,28 @@ describe('adding citations to a draft', () => {
     expect(draftIn(out)).toContain(list);
     expect(out.text).toBe(cited);
     expect(out.meta).toEqual({ citations: [{ index: 1, chunkId: 'c1' }] });
+  });
+
+  it('does not use a rewrite of the same length that changes the wording', async () => {
+    const reworded = list
+      .replace('2019: tildelingsbrev', '2019: tildelingsbrev [1]')
+      .replace('2021: tildelingsbrev', '2021: budsjettbrevet');
+    const out = await uncitedList(reworded);
+
+    expect(reworded.replace(' [1]', '').length).toBe(list.length);
+    expect(out.text).toBe(list);
+    expect(out.notices).toContainEqual({ stage: 'citations', action: 'backfill', adopted: false });
+  });
+
+  it('does not use a rewrite that drops part of the draft', async () => {
+    const shorter = list
+      .replace('2019: tildelingsbrev', '2019: tildelingsbrev [1]')
+      .replace('2022: tildelingsbrev', '2022:');
+    const out = await uncitedList(shorter);
+
+    expect(shorter.replace(' [1]', '').length / list.length).toBeGreaterThan(0.8);
+    expect(out.text).toBe(list);
+    expect(out.notices).toContainEqual({ stage: 'citations', action: 'backfill', adopted: false });
   });
 
   it('does not narrow the answer to what it can cite', async () => {

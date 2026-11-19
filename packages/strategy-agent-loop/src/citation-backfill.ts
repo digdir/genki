@@ -96,10 +96,14 @@ export const settleCitations = (answer: string, workspace: Workspace): CitationS
     : { action: 'keep', reason: 'nothing-retrieved' };
 };
 
-const withoutMarkers = (text: string) => text.replace(/ ?\[\d+\]/g, '').trim();
+const withoutMarkers = (text: string) =>
+  text
+    .replace(/ ?\[\d+\]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 
 export const keepsTheDraft = (cited: string, draft: string) =>
-  withoutMarkers(cited).length >= withoutMarkers(draft).length * 0.8;
+  withoutMarkers(cited) === withoutMarkers(draft);
 
 const citeDraft = async (
   env: ToolEnvironment,
@@ -145,7 +149,7 @@ export const backfillCitations = async (
   }
   const candidates = refusal ? refusalBackfillCandidates(workspace) : backfillCandidates(workspace);
   if (candidates.length === 0) return undefined;
-  if (!refusal && draft?.trim()) return citeDraft(env, draft, candidates);
+  if (!refusal && readFirst.length === 0 && draft?.trim()) return citeDraft(env, draft, candidates);
   const previous = workspace.contextDocs;
   workspace.contextDocs = candidates;
   try {

@@ -1204,6 +1204,10 @@ export class RunMapper {
   }
 
   private discarded(e: Event, ts: number, data: Data) {
+    if (data.reason === 'renumbered') {
+      this.out.push({ kind: 'retract', reason: 'discarded' });
+      return;
+    }
     const uncited = data.reason === 'uncited';
     const text = uncited ? t('steps.discardedUncited') : t('steps.discardedGate');
     this.warn(text);
