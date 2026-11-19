@@ -115,7 +115,8 @@ const refusalOf = (answer: DoclingAnswer) => {
  * Whether a file is a PDF by its first bytes: the header `%PDF-` within its first 1,024 bytes. A
  * KUDOS file is named by its id alone, and a download may come without a media type.
  */
-const looksLikePdf = (bytes: Uint8Array) => {
+/** Whether a file's bytes are a PDF's: `%PDF-` in its first 1,024 bytes, as PDF readers accept. */
+export const looksLikePdf = (bytes: Uint8Array) => {
   const head = Buffer.from(bytes.subarray(0, 1024)).toString('latin1');
   return head.includes('%PDF-');
 };

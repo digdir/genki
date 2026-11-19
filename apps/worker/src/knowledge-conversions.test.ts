@@ -220,6 +220,8 @@ interface ScenarioOptions {
   now?: () => Date;
   /** The files the folder source lists; PDFs and Markdown when left out. */
   include?: string[];
+  /** The media type a convert job's fetched file carries, as an upload in Blob storage has one. */
+  fetchedMimetype?: string;
 }
 
 /** A folder dataset on the knowledge database whose worker stores conversions. */
@@ -302,14 +304,15 @@ const scenario = async (options: ScenarioOptions = {}) => {
         scope,
         s,
       );
-      const fetchError = options.fetchError;
+      const { fetchError, fetchedMimetype } = options;
       const file = listing.file?.bind(listing);
-      if (!fetchError || !file) return listing;
+      if ((!fetchError && !fetchedMimetype) || !file) return listing;
       return Object.assign(listing, {
         file: async (record: unknown, sha256: string) => {
-          const error = fetchError();
+          const error = fetchError?.();
           if (error) throw error;
-          return file(record as never, sha256);
+          const fetched = await file(record as never, sha256);
+          return fetchedMimetype ? { ...fetched, mimetype: fetchedMimetype } : fetched;
         },
       });
     },
@@ -2660,6 +2663,31 @@ const seedParts = (s: Scenario, prefix: string) =>
     knowledgeSeedQueue.name,
   )(job(knowledgeSeedQueue.name, { ...seedBatch(prefix), derivation: 'docling-parts' }));
 
+/**
+ * A DoclingDocument the pages derivation reads and the parts derivation throws on: a paragraph on two
+ * pages whose charspans are numbers, not pairs.
+ */
+const partsBreaking = () => ({
+  ...doclingJson(['', '']),
+  texts: [
+    {
+      self_ref: '#/texts/0',
+      parent: { $ref: '#/body' },
+      children: [],
+      content_layer: 'body',
+      label: 'text',
+      prov: [1, 2].map((page_no) => ({
+        page_no,
+        bbox: { l: 50, t: 500, r: 300, b: 488, coord_origin: 'BOTTOMLEFT' },
+        charspan: 5,
+      })),
+      orig: 'Avsnittet går over to sider.',
+      text: 'Avsnittet går over to sider.',
+    },
+  ],
+  body: { self_ref: '#/body', children: [{ $ref: '#/texts/0' }] },
+});
+
 describe('conversion parts', () => {
   it('a conversion stored before the migration keeps no number and still reads', async () => {
     const file = shaStarting('');
@@ -2886,5 +2914,137 @@ describe('conversion parts', () => {
     const parts = await conversions.find(await sha(pdf), textLayerPartsOnly);
     expect(parts?.units?.map((u) => u.parts.map((p) => p.kind))).toEqual([['text'], ['text']]);
     expect(parts?.units?.[0]?.parts[0]?.text).toContain('Arsrapport 2025');
+  }, 60_000);
+
+  it('a conversion stored before the migration gets a number when stored again', async () => {
+    const file = shaStarting('');
+    await admin.query(
+      `insert into src_conversions (sha256, converter, version, settings_hash, settings,
+         derivation, derivation_version, pages, id)
+       values ($1, 'text-layer', '1', $2, '{}'::jsonb, 'text-layer', 1, array['Gammel side.'], null)`,
+      [file, settingsHash({})],
+    );
+
+    await conversions.store(
+      {
+        sha256: file,
+        converter: 'text-layer',
+        version: '1',
+        settings: {},
+        derivation: textLayerDerivation,
+        pages: ['Ny side.'],
+      },
+      noIndex,
+    );
+
+    const { rows } = await admin.query(`select id from src_conversions where sha256 = $1`, [file]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.id).not.toBeNull();
+  });
+
+  it('a parts derivation that throws on a DoclingDocument stores no refusal and logs its error name', async () => {
+    const blob = seedContainer();
+    const file = shaStarting('f4');
+    await blob.store.put(
+      { sha256: file, ...docling },
+      encoder.encode(JSON.stringify(partsBreaking())),
+      2,
+    );
+    const logged: Record<string, unknown>[] = [];
+    const s = await scenario({ nativeOutputs: blob.store, log: (_, f) => logged.push(f) });
+
+    await seedParts(s, 'f4');
+
+    const { rows } = await admin.query(`select 1 from src_conversions where sha256 = $1`, [file]);
+    expect(rows).toEqual([]);
+    expect(logged.find((f) => f.sha256 === file)).toMatchObject({
+      reason: 'its parts could not be derived: TypeError',
+    });
+  }, 60_000);
+
+  it('a convert job whose parts derivation throws stores the pages and no parts', async () => {
+    await clearConvertJobs();
+    const server = await doclingServer(() => ({
+      status: 200,
+      body: JSON.stringify({
+        status: 'success',
+        errors: [],
+        document: { filename: 'document.pdf', json_content: partsBreaking() },
+      }),
+    }));
+    const logged: { msg: string; fields: Record<string, unknown> }[] = [];
+    const s = await scenario({
+      docling: { current: doclingFor(server.url) },
+      log: (msg, fields) => logged.push({ msg, fields }),
+    });
+    const pdf = reportOf('deler-feiler');
+    const file = await sha(pdf);
+    await s.file('feiler.pdf', pdf);
+
+    await ingest(s);
+    await drain(s);
+
+    expect((await conversions.find(file, acceptedConverters))?.pages).toEqual([
+      'Avsnittet går over to sider.',
+      '',
+    ]);
+    expect(await conversions.find(file, doclingPartsOnly)).toBeUndefined();
+    expect(logged.find((l) => l.msg === 'parts could not be derived')?.fields).toMatchObject({
+      sha256: file,
+      error: 'TypeError',
+    });
+  }, 60_000);
+
+  it("a convert job stores a file's parts before its pages", async () => {
+    await clearConvertJobs();
+    const server = await doclingServer(() => doclingRead(['Først delene.']));
+    const s = await scenario({ docling: { current: doclingFor(server.url) } });
+    const pdf = reportOf('rekkefolge');
+    await s.file('rekkefolge.pdf', pdf);
+
+    await ingest(s);
+    await drain(s);
+
+    const { rows } = await admin.query<{ derivation: string }>(
+      `select derivation from src_conversions where sha256 = $1 and converter = 'docling'
+        order by created_at`,
+      [await sha(pdf)],
+    );
+    expect(rows.map((r) => r.derivation)).toEqual(['docling-parts', 'docling-pages']);
+  }, 60_000);
+
+  it('a file whose only Docling conversion is its parts is still replaced', async () => {
+    await clearConvertJobs();
+    const s = await scenario({ now: () => night });
+    const report = reportOf('bare-deler');
+    await s.file('rapport.pdf', report);
+    const run = await fill(s);
+    await conversions.store(
+      {
+        sha256: await sha(report),
+        ...docling,
+        derivation: doclingPartsDerivation,
+        pages: [],
+        failure: 'conversion_failed',
+      },
+      noIndex,
+    );
+
+    const replacement = await replace(s, run);
+
+    expect(replacement?.replaces).toBe(run);
+  }, 60_000);
+
+  it('a PDF fetched as application/octet-stream gets text-layer parts', async () => {
+    await clearConvertJobs();
+    const s = await scenario({ fetchedMimetype: 'application/octet-stream' });
+    const pdf = reportOf('opplastet');
+    await s.file('opplastet.pdf', pdf);
+
+    await ingest(s);
+    await drain(s);
+
+    const parts = await conversions.find(await sha(pdf), textLayerPartsOnly);
+    expect(parts?.units?.map((u) => u.parts.length)).toEqual([1, 1]);
   }, 60_000);
 });

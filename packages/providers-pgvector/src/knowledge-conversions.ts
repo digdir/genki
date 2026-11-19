@@ -367,15 +367,20 @@ export const knowledgeConversionsOf = (writer: Pool): StoredConversions => ({
           where d.dataset = $1 and d.number > $2::bigint and $5 = any(d.owners)
             and (d.state = 'stored' or (d.state = 'skipped' and d.reason = 'no_text'))
             and f.converts and f.sha256 is not null
+            -- By the accepted derivation too: a file's parts never count as its pages (ADR 0055).
             and exists (
               select 1 from src_conversions c
-                join jsonb_to_recordset($3::jsonb) as a(converter text, kept boolean)
-                  on a.converter = c.converter
+                join jsonb_to_recordset($3::jsonb)
+                  as a(converter text, derivation text, derivation_version integer, kept boolean)
+                  on a.converter = c.converter and a.derivation = c.derivation
+                 and a.derivation_version = c.derivation_version
                where c.sha256 = f.sha256 and c.failure is null and not a.kept)
             and not exists (
               select 1 from src_conversions c
-                join jsonb_to_recordset($3::jsonb) as a(converter text, kept boolean)
-                  on a.converter = c.converter
+                join jsonb_to_recordset($3::jsonb)
+                  as a(converter text, derivation text, derivation_version integer, kept boolean)
+                  on a.converter = c.converter and a.derivation = c.derivation
+                 and a.derivation_version = c.derivation_version
                where c.sha256 = f.sha256 and a.kept)
        ),
        records as (select distinct number from files order by number limit $4)

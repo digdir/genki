@@ -8,8 +8,9 @@ import {
   FileUnreachable,
   indexRecord,
   ingestListing,
-  isPdfFile,
   doclingParts,
+  looksLikePdf,
+  NotDoclingDocument,
   pipelineSpec,
   readDoclingOutput,
   ResponseTooLarge,
@@ -709,14 +710,15 @@ export const knowledgeWork = (
       throw error;
     }
     const target = conversionTarget(sha256, textLayer.name);
-    if (isPdfFile(file))
+    if (looksLikePdf(file.bytes))
       await storeParts(conversions, target, textLayerPartsDerivation, () => textLayerParts(pages));
     await conversions.store({ ...target, derivation: textLayerDerivation, pages }, sendIndex);
   }
 
   /**
    * A file's parts beside its pages (ADR 0055, issue 634), stored before them, so an index job their
-   * pages send finds both. Parts that cannot be derived are stored as a refusal, not derived again.
+   * pages send finds both. Output that is not a `DoclingDocument` is stored as a refusal; a bug in the
+   * derivation stores no parts and is logged, and the pages are stored all the same.
    */
   async function storeParts(
     conversions: StoredConversions,
@@ -728,12 +730,14 @@ export const knowledgeWork = (
     let units: ConversionUnit[] | undefined;
     try {
       units = derive();
-    } catch {
-      // Not the error's message: a parse error quotes the output.
+    } catch (error) {
+      // Its name only: a parse error's message quotes the output.
       deps.log?.('parts could not be derived', {
         sha256: target.sha256,
         derivation: derivation.name,
+        error: (error as Error).name,
       });
+      if (!(error instanceof NotDoclingDocument)) return;
     }
     await conversions.store(
       {
@@ -793,7 +797,8 @@ export const knowledgeWork = (
             derivation: doclingPartsDerivation,
             derive: () => doclingParts(readDoclingOutput(output)).units,
           };
-        else if (made.name === textLayer.name && isPdfFile(file))
+        // By its bytes, not its name or media type: an upload in Blob can be application/octet-stream.
+        else if (made.name === textLayer.name && looksLikePdf(file.bytes))
           parts = {
             derivation: textLayerPartsDerivation,
             derive: () => textLayerParts(conversion.pages),

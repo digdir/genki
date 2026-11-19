@@ -1,4 +1,10 @@
-import { asDoclingDocument, doclingPages, doclingParts, readDoclingOutput } from '@genai/ingest';
+import {
+  asDoclingDocument,
+  doclingPages,
+  doclingParts,
+  NotDoclingDocument,
+  readDoclingOutput,
+} from '@genai/ingest';
 import { knowledgeSeedQueue, queueWork, type QueueWork } from '@genai/jobs';
 import type { NativeOutputEntry, NativeOutputStore, StoredNativeOutput } from '@genai/port-blob';
 import {
@@ -21,8 +27,8 @@ interface Derived {
 
 /**
  * What a seed can store from a converter's output: its pages, or with a derivation named, its parts
- * (ADR 0055). An output parts cannot be derived from is stored as a refusal, so it is not read again;
- * one pages cannot be derived from is skipped, so its file is converted as any other.
+ * (ADR 0055). An output that is not a `DoclingDocument` is stored as a parts refusal, so it is not
+ * read again; any other error, and any output pages cannot be derived from, is skipped.
  */
 const derivations: Record<
   string,
@@ -72,8 +78,12 @@ const derivedOf = (
   try {
     derived = known.derive(found.output);
   } catch (error) {
-    // A parse error's message quotes the output, so a refusal logs only that it was not a document.
-    if (known.refuses) return { reason: 'its output is not a DoclingDocument', refused: true };
+    if (known.refuses && error instanceof NotDoclingDocument)
+      return { reason: 'its output is not a DoclingDocument', refused: true };
+    // A bug in the derivation is not the file's fault: skipped, so a later seed derives it again.
+    // Its name only, as a parse error's message quotes the output.
+    if (known.refuses)
+      return { reason: `its parts could not be derived: ${(error as Error).name}` };
     return { reason: `its output could not be read: ${(error as Error).message}` };
   }
   if (derived.count !== found.meta.pages)
@@ -86,7 +96,7 @@ const derivedOf = (
  * batch's prefix, converter, version and settings that has none yet, as pages or, when the batch names
  * `docling-parts`, as parts (ADR 0055, issue 634), with no fetch and no converter call. A file
  * that cannot be read is skipped and logged, so its file is converted as any other; only an output
- * parts cannot be derived from is stored as a refusal. An error of the Blob service fails the batch,
+ * that is not a `DoclingDocument` is stored, as a parts refusal. An error of the Blob service fails the batch,
  * and its retry skips what it already stored.
  */
 export const seedWork = (deps: SeedDeps): QueueWork =>
