@@ -72,7 +72,7 @@ import {
   type AdminHandler,
   type AdminOutcome,
 } from './admin.js';
-import { rightRefused, seesUsage, type Right } from './rights.js';
+import { rightRefused, rightsOf, seesUsage, type Right } from './rights.js';
 import { backgroundLeases } from './background-lease.js';
 import { interruptedIfAbandoned, shownRun } from './service-eval.js';
 import { changeReasonOf, isReasonLongEnough, reasonTooShort } from './http.js';
@@ -529,9 +529,12 @@ const problem = (
     'content-type': 'application/problem+json',
   });
 
-const secretRightRefused = (c: Context, principal: Principal, tenant: string) =>
-  refusedRight(c, principal, tenant, 'manage-services') &&
-  refusedRight(c, principal, tenant, 'register-building-blocks');
+const secretRightRefused = (c: Context, principal: Principal, tenant: string) => {
+  const held = rightsOf(principal, tenant);
+  return held.has('manage-services') || held.has('register-building-blocks')
+    ? undefined
+    : refusedRight(c, principal, tenant, 'manage-services');
+};
 
 const tooLarge = (c: Context) =>
   c.json({ type: 'about:blank', title: 'The request is too large', status: 413, errors: [] }, 413, {
