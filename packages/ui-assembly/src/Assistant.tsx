@@ -106,8 +106,18 @@ const sourcesTool = {
   inlineSize: '100%',
 } as CSSProperties;
 
-// `compact-filter`: a field's ticks in one column, so the filter fits its narrow panel.
-const oneColumnTicks = { '--genai-filter-checkboxes-columns': '1' } as CSSProperties;
+// The next look's filter beside the threads: 280 wide, a field's ticks in one column so they fit.
+// As wide as its column, which lines its content up at the start and would shrink it to its words.
+const oneColumnTicks = {
+  '--genai-filter-checkboxes-columns': '1',
+  inlineSize: '100%',
+} as CSSProperties;
+
+// The next look's threads 220 wide as dev-navbar draws them, and at most 400, so a reader who drags
+// the panel wider reads more of each thread's name without the list growing past a reading width
+// (kunnskapsassistenten#263, #264). The filter beside them keeps 280, and the threads take a change.
+const threadsWidth = { width: 220, minWidth: 220, maxWidth: 400 };
+const filterWidth = 280;
 
 // The next look's footnote marks, 16 px as dev-kilder-hoyre draws them, and the reader's question
 // a lighter grey than the summaries of Fremgangsmåte, Kilder and the Kildeliste.
@@ -379,8 +389,6 @@ export const AssistantView = ({
   // The next look draws the filter as its own panel beside the threads, in their card
   // (dev-filter-panel; «9 · Filtrering» A), not as a second view of the same panel.
   const filterPanel = next && threadsOn && filterZone === 'primary' && !filtersBeside;
-  // `compact-filter`: that panel 230 wide at every width of the card, and the threads the rest.
-  const compactFilter = filterPanel && a.flags.has('compact-filter');
   const twoViews = threadsOn && filterZone === 'primary' && !filtersBeside && !filterPanel;
 
   const [atEnd, setAtEnd] = useState(true);
@@ -818,9 +826,7 @@ export const AssistantView = ({
     ) : undefined;
 
   // The next look's sizes, the dev-navbar board's at 1720: threads 220, tools 380.
-  const nextPrimary: Partial<ShellPanel> = next
-    ? { size: { width: 220, minWidth: 220 }, ...profileFoot }
-    : {};
+  const nextPrimary: Partial<ShellPanel> = next ? { size: threadsWidth, ...profileFoot } : {};
   const threadsTitle = next ? { title: t('builder.threads') } : {};
 
   const threadsAndFilter = phrase(t, [t('builder.threads'), t('builder.filter')]);
@@ -858,23 +864,23 @@ export const AssistantView = ({
       foot,
       ...nextPrimary,
       ...(next ? { rail: newThreadRail } : {}),
-      // The filter's own panel in the threads' card, 220 + 440 at 1720 as dev-filter-panel draws
-      // it: «Filter», «Gjelder neste spørsmål», and the card's button on its row.
+      // The filter's own panel in the threads' card, as dev-filter-panel draws it: «Filter»,
+      // «Gjelder neste spørsmål», and the card's button on its row. The card is the threads'
+      // width and the filter's, so resizing it changes the threads only.
       ...(filterPanel
         ? {
-            // With `compact-filter`, no narrower than the threads' 220 beside the filter's 230.
-            size: { width: 660, minWidth: compactFilter ? 220 + 230 : 660 },
+            size: {
+              width: threadsWidth.width + filterWidth,
+              minWidth: threadsWidth.minWidth + filterWidth,
+              maxWidth: threadsWidth.maxWidth + filterWidth,
+            },
             companion: {
               label: t('assembly.filterForThread'),
               title: t('builder.filter'),
               subtitle: t('filter.appliesNext'),
-              width: compactFilter ? 230 : 440,
-              ...(compactFilter
-                ? {
-                    keepWidth: true,
-                    children: <div style={oneColumnTicks}>{filter(undefined, 2)}</div>,
-                  }
-                : { children: filter(undefined, 2) }),
+              width: filterWidth,
+              keepWidth: true,
+              children: <div style={oneColumnTicks}>{filter(undefined, 2)}</div>,
             },
           }
         : {}),
@@ -928,8 +934,8 @@ export const AssistantView = ({
       ),
       foot,
       ...nextPrimary,
-      // The menu alone, 220 at 1720 (dev-innstillinger-1), and never wider: the threads' card, 660
-      // with the filter beside them or as the reader dragged it, keeps its width for the way back.
+      // The menu alone, 220 at 1720 (dev-innstillinger-1), and never wider: the threads' card, 500 to
+      // 680 with the filter beside them, as the reader dragged it, keeps its width for the way back.
       size: { width: 220, minWidth: 220, maxWidth: 220 },
     };
 

@@ -1408,8 +1408,8 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
         document
           .querySelector<HTMLElement>('.uib-shell')
           ?.style.getPropertyValue('--uib-shell-primary-width');
-      // The threads with the filter's panel in their card, 220 + 440 (dev-filter-panel).
-      expect(width()).toBe('660px');
+      // The threads with the filter's panel in their card, 220 + 280 (kunnskapsassistenten#263).
+      expect(width()).toBe('500px');
       fireEvent.click(
         within(menu() as HTMLElement).getByRole('link', { name: 'Innstillinger', hidden: true }),
       );
@@ -2059,20 +2059,20 @@ describe('the filter in the next look (dev-filter-panel)', () => {
     ).toBeTruthy();
   });
 
-  describe('with the trial «compact-filter»', () => {
-    const drawTrial = (on: boolean) => {
-      const kept = new Map<string, unknown>([['flags', on ? ['compact-filter'] : []]]);
+  // kunnskapsassistenten#263 and #264: the filter 280 wide by standard, the threads 220 to 400.
+  describe('the threads’ and the filter’s widths', () => {
+    const drawWidths = (flags: string[] = [], layout = nextLayout) => {
+      const kept = new Map<string, unknown>([['flags', flags]]);
       render(
         <Assistant
           api={counted().api}
-          layout={nextLayout}
+          layout={layout}
           service="ka"
           tenant="digdir"
           profile={{
             assistantName: 'KA',
             signedInAs: 'Kari Marie Nordmann',
             corpora: { kudos: { typeField: 'type' } },
-            experiments: [{ id: 'compact-filter', title: 'Smalere filter' }],
           }}
           storage={{
             read: (key) => kept.get(key),
@@ -2087,39 +2087,53 @@ describe('the filter in the next look (dev-filter-panel)', () => {
       screen
         .getByRole('navigation', { name: 'Tråder og filter' })
         .querySelector<HTMLElement>('.uib-shell-box');
-    const edge = () => screen.getByRole('separator', { name: 'Endre bredde på tråder og filter' });
+    const edge = (name = 'Endre bredde på tråder og filter') =>
+      screen.getByRole('separator', { name });
     const columns = () =>
       filterPanel()
         .querySelector<HTMLElement>('[style*="--genai-filter-checkboxes-columns"]')
         ?.style.getPropertyValue('--genai-filter-checkboxes-columns');
     const shown = () => within(filterPanel()).findByRole('checkbox', { name: /^Årsrapport/ });
 
-    it('draws the filter 230 wide, its ticks in one column, and gives the threads the rest of the card', async () => {
-      drawTrial(true);
+    it('draws the filter 280 wide with its ticks in one column, and the threads 220 beside it', async () => {
+      drawWidths();
       await shown();
-      expect(card()?.style.getPropertyValue('--uib-shell-lead-width')).toBe('calc(100% - 230px)');
+      expect(card()?.style.getPropertyValue('--uib-shell-lead-width')).toBe('calc(100% - 280px)');
       expect(columns()).toBe('1');
-      expect(edge().getAttribute('aria-valuenow')).toBe('660');
+      expect(edge().getAttribute('aria-valuenow')).toBe('500');
     });
 
-    it('keeps the filter 230 wide as the card is resized, down to the threads’ 220 beside it', async () => {
-      drawTrial(true);
+    it('lets the reader widen the threads from 220 to 400, the filter staying 280', async () => {
+      drawWidths();
       await shown();
-      expect(edge().getAttribute('aria-valuemin')).toBe('450');
-      fireEvent.keyDown(edge(), { key: 'Home' });
-      expect(edge().getAttribute('aria-valuenow')).toBe('450');
+      expect(edge().getAttribute('aria-valuemin')).toBe('500');
+      fireEvent.keyDown(edge(), { key: 'End' });
+      expect(edge().getAttribute('aria-valuenow')).toBe('680');
       fireEvent.keyDown(edge(), { key: 'ArrowRight', shiftKey: true });
-      expect(edge().getAttribute('aria-valuenow')).toBe('514');
-      expect(card()?.style.getPropertyValue('--uib-shell-lead-width')).toBe('calc(100% - 230px)');
+      expect(edge().getAttribute('aria-valuenow')).toBe('680');
+      fireEvent.keyDown(edge(), { key: 'Home' });
+      expect(edge().getAttribute('aria-valuenow')).toBe('500');
+      expect(card()?.style.getPropertyValue('--uib-shell-lead-width')).toBe('calc(100% - 280px)');
     });
 
-    it('leaves the filter as it was while the trial is off: 440 wide, two columns, the card at least 660', async () => {
-      drawTrial(false);
+    it('draws the same for a reader who had turned on the old trial «compact-filter»', async () => {
+      drawWidths(['compact-filter']);
       await shown();
-      expect(card()?.style.getPropertyValue('--uib-shell-lead-width')).toBe('220px');
-      expect(columns()).toBeUndefined();
-      expect(edge().getAttribute('aria-valuemin')).toBe('660');
-      expect(edge().getAttribute('aria-valuenow')).toBe('660');
+      expect(card()?.style.getPropertyValue('--uib-shell-lead-width')).toBe('calc(100% - 280px)');
+      expect(edge().getAttribute('aria-valuenow')).toBe('500');
+    });
+
+    it('keeps the threads alone between 220 and 400 where there is no filter beside them', async () => {
+      const zones = nextLayout.zones;
+      drawWidths([], {
+        ...nextLayout,
+        zones: { ...zones, primary: zones.primary.filter(({ block }) => block !== 'filter') },
+      });
+      const threads = await screen.findByRole('separator', { name: /^Endre bredde på tråder/ });
+      expect(threads.getAttribute('aria-valuenow')).toBe('220');
+      expect(threads.getAttribute('aria-valuemin')).toBe('220');
+      fireEvent.keyDown(threads, { key: 'End' });
+      expect(threads.getAttribute('aria-valuenow')).toBe('400');
     });
   });
 
