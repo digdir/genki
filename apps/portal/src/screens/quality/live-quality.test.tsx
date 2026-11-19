@@ -54,7 +54,7 @@ const openLive = async (
   render(<App auth={auth} fetch={fetch} live />);
   await screen.findByRole('tab', { name: 'Kvalitet', selected: true });
   const writes = () => calls.filter((c) => c.method !== 'GET');
-  return { calls, writes };
+  return { calls, writes, fetch };
 };
 
 beforeEach(() => {
@@ -601,6 +601,30 @@ describe('live Testsett', () => {
     );
     expect(screen.queryByText('Tjenesten har ikke noe lagret utkast')).toBeNull();
     expect(screen.queryByRole('radio', { name: 'Utkastet' })).toBeNull();
+  });
+
+  it('runs marked test cases on the published version when the draft is published after the page opened', async () => {
+    const { writes, fetch } = await openLive(editor, {
+      drafts: { rapportassistenten: { definition: { kind: 'Service' } } },
+    });
+    await screen.findByText('Hvor mange tilsyn hadde vi i 2025?');
+    await screen.findByRole('radio', { name: 'Utkastet' });
+    await fetch('/api/tenants/999888777/services/rapportassistenten/draft', {
+      method: 'DELETE',
+      headers: { 'change-reason': 'Publisert' },
+    });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Hvor mange tilsyn hadde vi i 2025?' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Kjør det merkede testtilfellet' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Start kjøringen' }));
+    await waitFor(() =>
+      expect(writes().at(-1)).toMatchObject({
+        method: 'POST',
+        path: '/tenants/999888777/services/rapportassistenten/eval-runs',
+        body: { testSet: 'rapport-kjerne', version: 'published', cases: ['tc-1'] },
+      }),
+    );
+    expect(screen.queryByText('Tjenesten har ikke noe lagret utkast')).toBeNull();
+    await waitFor(() => expect(screen.queryByRole('radio', { name: 'Utkastet' })).toBeNull());
   });
 
   it('runs only the test cases marked in the list, and clears the marks', async () => {

@@ -50,7 +50,7 @@ const open = async (
   window.location.hash = `${base}${address}`;
   render(<App auth={auth} fetch={fetch} live {...(languages ? { languages } : {})} />);
   const writes = () => calls.filter((c) => c.method !== 'GET');
-  return { calls, writes };
+  return { calls, writes, fetch };
 };
 
 const ready: Improvement & { service: string } = {
@@ -216,6 +216,26 @@ describe('testing the draft again', () => {
         reason: 'Kjørte Evalueringer på utkastet',
       }),
     );
+  });
+
+  it('runs the published version when the draft is published after the page opened', async () => {
+    const { writes, fetch } = await open('', example);
+    const now_ = await qualityNow();
+    fireEvent.click(await within(now_).findByRole('button', { name: 'Test utkastet på nytt' }));
+    await within(now_).findByRole('heading', { name: /^Kjøre testsettet med 42/ });
+    await fetch('/api/tenants/999888777/services/rapportassistenten/draft', {
+      method: 'DELETE',
+      headers: { 'change-reason': 'Publisert' },
+    });
+    fireEvent.click(within(now_).getByRole('button', { name: 'Start kjøringen' }));
+    await waitFor(() =>
+      expect(writes().at(-1)).toMatchObject({
+        method: 'POST',
+        path: '/tenants/999888777/services/rapportassistenten/eval-runs',
+        body: { testSet: 'rapportassistenten-evalueringer', version: 'published' },
+      }),
+    );
+    expect(screen.queryByText('Tjenesten har ikke noe lagret utkast')).toBeNull();
   });
 
   it('says in the run confirmation that each test case is a paid run, in test cases only', async () => {
