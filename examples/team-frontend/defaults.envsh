@@ -1,0 +1,6 @@
+#!/bin/sh
+export GENKI_UPSTREAM="${GENKI_UPSTREAM:-$GENKI_API_URL}"
+export ALTINN_RESOURCE="${ALTINN_RESOURCE:-urn:altinn:resource:digdir-genai-platform}"
+export GENKI_SERVICE="${GENKI_SERVICE:-}"
+GENKI_UPSTREAM_HOST="${GENKI_UPSTREAM#*://}"
+export GENKI_UPSTREAM_HOST="${GENKI_UPSTREAM_HOST%%[/:]*}"
