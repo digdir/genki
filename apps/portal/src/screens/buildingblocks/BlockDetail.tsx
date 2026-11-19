@@ -24,7 +24,7 @@ import {
   storageLabels,
   versionEventLabels,
 } from '../../data/building-blocks';
-import { useAsync } from '../../hooks';
+import { navigate, useAsync } from '../../hooks';
 import { useT, type T } from '../../i18n';
 import { rightLabel } from '../../Shell';
 import { HeadingSkeleton } from '../../components/Skeleton';
@@ -49,6 +49,7 @@ import { useModelText } from '../../components/model-text';
 import { LinkTabs } from '../../components/LinkTabs';
 import { SyncButton, ToolConnectionSections } from './ToolConnection';
 import { homeHrefs, typeCardHref, typeNames, typeOf } from './block-types';
+import { skillHref } from '../skills/SkillBlockPage';
 
 export type BlockTab = 'about' | 'used-by' | 'versions';
 
@@ -90,8 +91,8 @@ export const priceText = (
   f: { number: (n: number, options?: Intl.NumberFormatOptions) => string },
   perThousand: number,
 ) =>
-  t('blockModel.pricePerThousand', {
-    price: f.number(perThousand, { minimumFractionDigits: 2, maximumFractionDigits: 4 }),
+  t('blockModel.pricePerMillion', {
+    price: f.number(perThousand * 1000, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
   });
 
 const modelCapabilities: Record<
@@ -196,6 +197,7 @@ export const BlockDetail = ({
   services,
   versions,
   tab,
+  copyFrom,
   onRetry,
   onChanged,
 }: {
@@ -205,6 +207,7 @@ export const BlockDetail = ({
   item: CatalogItem;
   services: ServiceRuns[];
   tab: BlockTab;
+  copyFrom?: string;
   versions: Settled<BlockVersion[]>;
   onRetry: () => void;
   onChanged: (flash: Flash) => void;
@@ -254,6 +257,7 @@ export const BlockDetail = ({
   const [reason, setReason] = useState('');
   const [tried, setTried] = useState(false);
   const [problem, setProblem] = useState('');
+  const [copyFailed, setCopyFailed] = useState(false);
   const status = statusLabels[item.status];
   const approver = approverName(t, item.approver);
   const right = rightLabelFor(t, item.kind);
@@ -265,6 +269,17 @@ export const BlockDetail = ({
     setReason('');
     setTried(false);
     setProblem('');
+  };
+
+  const copy = async () => {
+    if (!copyFrom) return;
+    setCopyFailed(false);
+    try {
+      const created = await api.skills.copy(tenant, item.id, copyFrom);
+      navigate(skillHref(created.id).slice(1));
+    } catch {
+      setCopyFailed(true);
+    }
   };
 
   const confirm = async () => {
@@ -435,6 +450,11 @@ export const BlockDetail = ({
                   {t('blocks.requestApproval')}
                 </Button>
               ) : null}
+              {copyFrom ? (
+                <Button variant="secondary" onClick={() => void copy()}>
+                  {t('skills.makeCopy')}
+                </Button>
+              ) : null}
               {ownTool ? (
                 <SyncButton
                   api={api}
@@ -451,10 +471,26 @@ export const BlockDetail = ({
           ) : null}
         </div>
         {lead ? <p className="lead bb-desc">{lead}</p> : null}
+        {item.update && item.status === 'in_use' ? (
+          <p className="bb-update-note">
+            <Tag data-color="info" data-size="sm">
+              {t('blocks.updateAvailable')}
+            </Tag>
+            <Link href={tabHref('versions')}>
+              {t('blocks.updateNotice', { version: item.update.version })}
+            </Link>
+          </p>
+        ) : null}
         {item.required ? <p className="bb-meta">{t('blockTypes.requiredNote')}</p> : null}
       </div>
 
       {!canChange ? <ReadOnlyAlert right={right} /> : null}
+
+      {copyFailed ? (
+        <Alert data-color="danger" role="alert">
+          <Paragraph>{t('skills.copyFailed')}</Paragraph>
+        </Alert>
+      ) : null}
 
       {connection?.lastSync && !connection.lastSync.ok ? (
         <Alert data-color="danger">
@@ -486,74 +522,6 @@ export const BlockDetail = ({
         <Alert data-color="info">
           <Paragraph>{t('blocks.pendingNotice', { approver })}</Paragraph>
         </Alert>
-      ) : null}
-
-      {item.update && item.status === 'in_use' ? (
-        <section aria-labelledby={ids.update} className="bb-update">
-          <div className="bb-title">
-            <Tag data-color="info" data-size="sm">
-              {t('blocks.updateAvailable')}
-            </Tag>
-            <Heading level={2} data-size="xs" id={ids.update}>
-              {t('blocks.updateHeading', {
-                version: item.update.version,
-                date: shortDate(f, item.update.availableFrom),
-              })}
-            </Heading>
-          </div>
-          <Paragraph className="bb-measure">
-            {item.update.notes} {t('blocks.updateBody')}
-          </Paragraph>
-          <div
-            className="table-scroll bb-table-bg"
-            tabIndex={0}
-            role="region"
-            aria-label={t('blocks.scoresBeforeAfter')}
-          >
-            <table className="ds-table bb-table-wide">
-              <thead>
-                <tr>
-                  <th scope="col">{t('blocks.colService')}</th>
-                  <th scope="col">{t('blocks.colScoreNow', { version: item.version })}</th>
-                  <th scope="col">{t('blocks.colScoreWith', { version: item.update.version })}</th>
-                  <th scope="col">{t('blocks.colChange')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {item.update.perService.map((r) => {
-                  const diff =
-                    r.scoreBefore !== null && r.scoreAfter !== null
-                      ? r.scoreAfter - r.scoreBefore
-                      : null;
-                  const name = serviceName(known, r.service);
-                  return (
-                    <tr key={r.service}>
-                      <th scope="row" className="bb-row-head">
-                        <Link href={`#/services/${encodeURIComponent(r.service)}`}>{name}</Link>
-                      </th>
-                      <td className="numeric">{r.scoreBefore ?? '–'}</td>
-                      <td className="numeric">{r.scoreAfter ?? '–'}</td>
-                      <td>
-                        {diff === null ? null : (
-                          <Tag
-                            data-size="sm"
-                            data-color={diff > 0 ? 'success' : diff < 0 ? 'danger' : 'neutral'}
-                          >
-                            {diff > 0
-                              ? `+${diff}`
-                              : diff < 0
-                                ? `−${Math.abs(diff)}`
-                                : t('blocks.noChange')}
-                          </Tag>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </section>
       ) : null}
 
       {canChange ? (
@@ -639,6 +607,74 @@ export const BlockDetail = ({
           ) : (
             <p className="bb-meta">{t('blocks.usedByNoneHere', { tenant: tenantName })}</p>
           )}
+        </section>
+      ) : null}
+
+      {current === 'versions' && item.update && item.status === 'in_use' ? (
+        <section aria-labelledby={ids.update} className="bb-update">
+          <div className="bb-title">
+            <Tag data-color="info" data-size="sm">
+              {t('blocks.updateAvailable')}
+            </Tag>
+            <Heading level={2} data-size="xs" id={ids.update}>
+              {t('blocks.updateHeading', {
+                version: item.update.version,
+                date: shortDate(f, item.update.availableFrom),
+              })}
+            </Heading>
+          </div>
+          <Paragraph className="bb-measure">
+            {item.update.notes} {t('blocks.updateBody')}
+          </Paragraph>
+          <div
+            className="table-scroll bb-table-bg"
+            tabIndex={0}
+            role="region"
+            aria-label={t('blocks.scoresBeforeAfter')}
+          >
+            <table className="ds-table bb-table-wide">
+              <thead>
+                <tr>
+                  <th scope="col">{t('blocks.colService')}</th>
+                  <th scope="col">{t('blocks.colScoreNow', { version: item.version })}</th>
+                  <th scope="col">{t('blocks.colScoreWith', { version: item.update.version })}</th>
+                  <th scope="col">{t('blocks.colChange')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {item.update.perService.map((r) => {
+                  const diff =
+                    r.scoreBefore !== null && r.scoreAfter !== null
+                      ? r.scoreAfter - r.scoreBefore
+                      : null;
+                  const name = serviceName(known, r.service);
+                  return (
+                    <tr key={r.service}>
+                      <th scope="row" className="bb-row-head">
+                        <Link href={`#/services/${encodeURIComponent(r.service)}`}>{name}</Link>
+                      </th>
+                      <td className="numeric">{r.scoreBefore ?? '–'}</td>
+                      <td className="numeric">{r.scoreAfter ?? '–'}</td>
+                      <td>
+                        {diff === null ? null : (
+                          <Tag
+                            data-size="sm"
+                            data-color={diff > 0 ? 'success' : diff < 0 ? 'danger' : 'neutral'}
+                          >
+                            {diff > 0
+                              ? `+${diff}`
+                              : diff < 0
+                                ? `−${Math.abs(diff)}`
+                                : t('blocks.noChange')}
+                          </Tag>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </section>
       ) : null}
 

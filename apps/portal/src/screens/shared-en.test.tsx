@@ -53,7 +53,7 @@ describe('shared services in English', () => {
     expect(fact('Where data is processed')?.textContent).toBe('Norway How data is handled');
   });
 
-  it("shows the model's price per 1,000 tokens in English on the card", async () => {
+  it("shows the model's price per 1M tokens in English on the card", async () => {
     const priced = [{ ...models[0], price: { inputPerThousand: 0.5, outputPerThousand: 1.25 } }];
     const api = {
       sharedServices: () => Promise.resolve([service]),
@@ -63,7 +63,7 @@ describe('shared services in English', () => {
     render(inEnglish(<SharedServices {...props} />));
     expect(
       await screen.findByText(
-        'Processes data in Norway · 0.5 kr in and 1.25 kr out per 1,000 tokens',
+        'Processes data in Norway · 500.00 kr in and 1,250.00 kr out per 1M tokens',
       ),
     ).toBeTruthy();
   });

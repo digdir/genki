@@ -1,6 +1,6 @@
 import { Heading, Skeleton, Table } from '@digdir/designsystemet-react';
 
-export type SkeletonShape = 'list' | 'detail' | 'table' | 'service' | 'form';
+export type SkeletonShape = 'list' | 'detail' | 'table' | 'service' | 'form' | 'cards';
 
 const listWidths: [string, string][] = [
   ['46%', '78%'],
@@ -87,6 +87,22 @@ const TableSkeleton = ({ rows, columns }: { rows: number; columns: number | stri
   );
 };
 
+const CardsSkeleton = ({ rows }: { rows: number }) => (
+  <div className="skeleton-cards">
+    {Array.from({ length: rows }, (_, card) => (
+      <div key={card} className="skeleton-card skeleton-lines">
+        <Bar width={listWidths[card % listWidths.length]?.[0] ?? '40%'} height={16} />
+        <Bar width="60%" height={12} />
+        <Bar width="80%" height={22} />
+        <span className="skeleton-gap" />
+        <Bar width="100%" height={12} />
+        <Bar width="100%" height={12} />
+        <Bar width="100%" height={12} />
+      </div>
+    ))}
+  </div>
+);
+
 const ServiceSkeleton = () => (
   <div className="skeleton-lines skeleton-service">
     <Bar width="30%" height={20} />
@@ -133,6 +149,8 @@ export const ShapeSkeleton = ({
       <ServiceSkeleton />
     ) : shape === 'form' ? (
       <FormSkeleton rows={rows ?? 3} />
+    ) : shape === 'cards' ? (
+      <CardsSkeleton rows={rows ?? 6} />
     ) : (
       <DetailSkeleton />
     )}

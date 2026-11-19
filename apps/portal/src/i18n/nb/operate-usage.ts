@@ -74,7 +74,7 @@ export const usageArea = {
     runs: 'Kjøringer',
     modelCalls: 'Kall til modellen',
     estimatedCost: 'Beregnet kostnad',
-    pricePerThousand: 'Pris per 1 000 tokens',
+    pricePerMillion: 'Pris per 1M tokens',
     modelPrice: '{input} kr inn, {output} kr ut',
     priceUnknown: 'Ukjent',
     processedIn: 'Data behandlet i',

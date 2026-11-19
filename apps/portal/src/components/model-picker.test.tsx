@@ -134,6 +134,13 @@ describe('the model picker', () => {
     expect(names(dialog)).toHaveLength(8);
   });
 
+  it('gives the price on each row with its unit, kr per 1M tokens', () => {
+    render(<Harness />);
+    const dialog = open();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Vis 2 til' }));
+    expect(within(dialog).getByText('7,60 / 45,90 kr per 1M')).toBeTruthy();
+  });
+
   it('searches by name, maker and operator', () => {
     render(<Harness />);
     const dialog = open();

@@ -736,23 +736,46 @@ describe('Ferdighet under Byggeklosser', () => {
     expectAccessible();
   });
 
-  it("someone else's skill is read-only, and Lag en kopi lands on the copy's address", async () => {
+  it("a Digdir skill opens on the one block template, and Lag en kopi lands on the copy's editor", async () => {
     await openSkill('klarsprak-i-brev', 'Klarspråk i brev', {}, '?owner=991825827');
-    expect(
-      screen.getByText(/Denne ferdigheten er laget av Digdir\. Du kan bruke og prøve den/),
-    ).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Publiser' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Når bør tjenester bruke den?' })).toBeNull();
-    expect(
-      (screen.getByRole('textbox', { name: 'Instruksjoner til modellen' }) as HTMLTextAreaElement)
-        .readOnly,
-    ).toBe(true);
-    expect(screen.getByText('Ferdighet · laget av Digdir')).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'Om' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'Brukes av' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'Versjoner' })).toBeTruthy();
+    expect(screen.queryByRole('tab', { name: /^Testsett/ })).toBeNull();
+    expect(screen.queryByRole('textbox', { name: 'Instruksjoner til modellen' })).toBeNull();
     expectAccessible();
     fireEvent.click(screen.getByRole('button', { name: 'Lag en kopi' }));
     await screen.findByRole('button', { name: 'Publiser' });
     expect(window.location.hash).toBe('#/building-blocks/skill/klarsprak-i-brev');
     expect(screen.getByRole('heading', { level: 1, name: 'Klarspråk i brev' })).toBeTruthy();
+  });
+
+  it('tells the user when copying a Digdir skill fails and stays on the block', async () => {
+    const base = fetchWith();
+    const fetch: typeof globalThis.fetch = async (input, init) =>
+      init?.method === 'POST' && urlOf(input).includes('/skills/klarsprak-i-brev/copy')
+        ? problem(500)
+        : base(input, init);
+    await renderAt(`${skillPath('klarsprak-i-brev')}?owner=991825827`, fetch);
+    await screen.findByRole('heading', { level: 1, name: 'Klarspråk i brev' });
+    fireEvent.click(screen.getByRole('button', { name: 'Lag en kopi' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('Vi kunne ikke lage en kopi. Prøv igjen om litt.');
+    expect(window.location.hash).toContain('/building-blocks/skill/klarsprak-i-brev');
+    expect(screen.getByRole('heading', { level: 1, name: 'Klarspråk i brev' })).toBeTruthy();
+    expect(
+      (screen.getByRole('button', { name: 'Lag en kopi' }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+  });
+
+  it('a skill another organisation shares keeps the read-only editor', async () => {
+    await openSkill('skrive-tilsynsrapport', 'Skrive tilsynsrapport', {}, '?owner=999666555');
+    expect(
+      (screen.getByRole('textbox', { name: 'Instruksjoner til modellen' }) as HTMLTextAreaElement)
+        .readOnly,
+    ).toBe(true);
+    expect(screen.queryByRole('button', { name: 'Publiser' })).toBeNull();
+    expectAccessible();
   });
 
   it('creates, edits, tests and publishes a skill through the API paths and shapes', async () => {

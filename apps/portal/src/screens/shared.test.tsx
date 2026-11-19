@@ -147,11 +147,11 @@ describe('Fellestjenester: liste', () => {
     ) as HTMLElement;
     expect(within(felt).getByText(/^Behandler data i Norge · /)).toBeTruthy();
   });
-  it("adds the model's price per 1 000 tokens from /models to the line on each card", async () => {
+  it("adds the model's price per 1M tokens from /models to the line on each card", async () => {
     await renderAt('#/shared-services', withPrices());
     expect(
       within(await cardOf('Klarspråk')).getByText(
-        'Behandler data i Norge · 0,0119 kr inn og 0,0952 kr ut per 1 000 tokens',
+        'Behandler data i Norge · 11,90 kr inn og 95,20 kr ut per 1M tokens',
       ),
     ).toBeTruthy();
   });
@@ -334,9 +334,9 @@ describe('Fellestjenester: detalj', () => {
     ]);
   });
 
-  it("shows the model's price per 1 000 tokens from /models as the Pris fact", async () => {
+  it("shows the model's price per 1M tokens from /models as the Pris fact", async () => {
     await openDetail('klarsprak', 'Klarspråk', withPrices());
-    expect(fact('Pris')?.textContent).toBe('0,0119 kr inn og 0,0952 kr ut per 1 000 tokens');
+    expect(fact('Pris')?.textContent).toBe('11,90 kr inn og 95,20 kr ut per 1M tokens');
   });
 
   it('says the price is not calculated when the model has no price', async () => {
