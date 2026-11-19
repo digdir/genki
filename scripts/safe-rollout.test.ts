@@ -113,12 +113,131 @@ describe('a deploy to genki-test', () => {
     );
   });
 
-  it('stops only API revisions that no label names, and only after the template listed the live one', () => {
-    const cleanup = (job('candidate').steps ?? []).find(
-      (s) => s.name === 'stop unused API revisions',
+  const stepNamed = (jobName: string, name: string) => {
+    const steps = job(jobName).steps ?? [];
+    const at = steps.findIndex((s) => s.name === name);
+    if (at < 0) throw new Error(`no step ${name} in ${jobName}`);
+    return { at, step: steps[at] as Step, steps };
+  };
+
+  it('stops every API revision but the live one before the candidate starts, so the gate runs beside live alone', () => {
+    const {
+      at,
+      step: stop,
+      steps,
+    } = stepNamed('candidate', 'stop every API revision but the live one');
+    expect(at).toBeLessThan(steps.findIndex((s) => s.id === 'deploy'));
+    expect(stop.if).toBe("env.ALTINN_PDP_URL != '' && steps.plan.outputs.live != ''");
+    expect(stop.run).toBe('scripts/stop-unused-revisions.sh "$RG" "$APP" "$LIVE" all-but-live');
+    expect(stop.env?.LIVE).toBe('${{ steps.plan.outputs.live }}');
+    expect(step(job('candidate'), 'deploy').run).toContain(
+      'apiLiveRevision="${{ steps.plan.outputs.live }}" apiPreviousRevision="" ',
     );
-    expect(cleanup?.if).toContain("steps.deploy.outcome == 'success'");
-    expect(cleanup?.run).toContain('grep -qx "${{ steps.plan.outputs.live }}" || exit 0');
+  });
+
+  it('stops the unlabelled ones after users moved, so the old live revision stays as previous for a rollback', () => {
+    const { at, step: stop, steps } = stepNamed('deploy-test', 'stop unused API revisions');
+    expect(at).toBeGreaterThan(steps.findIndex((s) => s.id === 'deploy'));
+    expect(stop.if).toBe(
+      "!cancelled() && steps.deploy.outcome == 'success' && steps.api.outputs.live != ''",
+    );
+    expect(stop.run).toBe('scripts/stop-unused-revisions.sh "$RG" "$APP" "$LIVE"');
+    expect(stop.env?.LIVE).toBe('${{ steps.api.outputs.live }}');
+    expect(stop.env?.APP).toBe('${{ needs.candidate.outputs.app }}');
+    expect(step(job('deploy-test'), 'api').run).toContain('echo "previous=$LIVE"');
+  });
+
+  it('rolls back through the script that starts a stopped previous revision before it moves users', () => {
+    const rollback = workflow('rollback.yml').jobs.api?.steps ?? [];
+    const move = rollback.find((s) => s.name === 'move users to the previous API revision');
+    expect(move?.run).toContain('previous=$(scripts/rollback-api.sh "$RG" | tail -n 1)');
+    expect(move?.run).toContain('[ -n "$previous" ] || {');
+    expect((move as Step & { shell?: string })?.shell).toBe('bash');
+    expect(rollback.some((s) => s.uses?.startsWith('actions/checkout@'))).toBe(true);
+  });
+
+  it.each(['candidate', 'deploy-test'])(
+    'stops the worker before the %s deploy and starts its newest revision after it, whatever the deploy did',
+    (name) => {
+      const steps = job(name).steps ?? [];
+      const deployAt = steps.findIndex((s) => s.id === 'deploy');
+      const stopAt = steps.findIndex((s) => s.run === 'scripts/worker-revisions.sh "$RG" stop');
+      const startAt = steps.findIndex(
+        (s) => s.run === 'scripts/worker-revisions.sh "$RG" start "$DEPLOYMENT"',
+      );
+      expect(stopAt).toBe(deployAt - 1);
+      expect(startAt).toBe(deployAt + 1);
+      expect(steps[startAt]?.if).toMatch(/^always\(\)/);
+      expect(steps[deployAt]?.run).toContain(
+        `--name "${steps[startAt]?.env?.DEPLOYMENT ?? 'none'}"`,
+      );
+    },
+  );
+
+  it('stops and starts the worker the same way when infra applies the template, but not for a what-if', () => {
+    const steps = workflow('infra.yml').jobs.apply?.steps ?? [];
+    const stop = steps.find((s) => s.run === 'scripts/worker-revisions.sh "$RG" stop');
+    const start = steps.find(
+      (s) => s.run === 'scripts/worker-revisions.sh "$RG" start "$DEPLOYMENT"',
+    );
+    expect(start?.env?.DEPLOYMENT).toBe('infra-${{ github.run_id }}-${{ github.run_attempt }}');
+    expect(stop?.if).toBe('${{ !inputs.what-if }}');
+    expect(start?.if).toBe('${{ always() && !inputs.what-if }}');
+    expect(steps.indexOf(start as Step)).toBe(steps.length - 1);
+  });
+});
+
+describe.skipIf(process.platform === 'win32')('stopping unused API revisions', () => {
+  interface Route {
+    revisionName: string;
+    label?: string;
+  }
+  const stop = (traffic: Route[], active: string[], live: string, mode?: string) => {
+    const dir = mkdtempSync(join(tmpdir(), 'revisions-'));
+    const calls = join(dir, 'calls');
+    writeFileSync(calls, '');
+    const names = traffic.map((t) => t.revisionName).join(' ');
+    const labels = traffic
+      .filter((t) => t.label && t.revisionName !== live)
+      .map((t) => t.label)
+      .join(' ');
+    writeFileSync(
+      join(dir, 'az'),
+      [
+        '#!/usr/bin/env bash',
+        'case "$2 $3" in',
+        `  "ingress traffic") case "$*" in *.label*) printf '%s\n' ${labels} ;; *) printf '%s\n' ${names} ;; esac ;;`,
+        `  "revision list") printf '%s\n' ${active.join(' ')} ;;`,
+        '  "revision deactivate") echo "stop ${@: -1}" >> "$CALLS" ;;',
+        '  "revision label") echo "unlabel $(printf \'%s\\n\' "$@" | grep -A1 -x -- --label | tail -1)" >> "$CALLS" ;;',
+        'esac',
+      ].join('\n'),
+    );
+    chmodSync(join(dir, 'az'), 0o755);
+    execFileSync(
+      join(root, 'scripts/stop-unused-revisions.sh'),
+      ['rg', 'genai-test-api', live, ...(mode ? [mode] : [])],
+      { env: { ...process.env, PATH: `${dir}:${process.env.PATH ?? ''}`, CALLS: calls } },
+    );
+    return readFileSync(calls, 'utf8').split('\n').filter(Boolean);
+  };
+  const r3 = { revisionName: 'api--r3', label: 'live' };
+  const r2 = { revisionName: 'api--r2', label: 'previous' };
+
+  it('stops every active revision the traffic list does not name, and keeps live and previous', () => {
+    expect(stop([r3, r2], ['api--r1', 'api--r2', 'api--r3'], 'api--r3')).toEqual(['stop api--r1']);
+  });
+
+  it('stops nothing while the traffic list does not yet name the live revision', () => {
+    expect(stop([r2], ['api--r1', 'api--r2', 'api--r3'], 'api--r3')).toEqual([]);
+  });
+
+  it('before a candidate, takes the other labels off and stops every revision but the live one', () => {
+    expect(stop([r3, r2], ['api--r1', 'api--r2', 'api--r3'], 'api--r3', 'all-but-live')).toEqual([
+      'unlabel previous',
+      'stop api--r1',
+      'stop api--r2',
+    ]);
   });
 });
 
@@ -586,8 +705,10 @@ describe('the rollback workflow', () => {
     expect(Object.keys(rollback.on)).toEqual(['workflow_dispatch']);
     expect(rollback.concurrency?.group).toBe('deploy-test');
     const run = rollback.jobs.api?.steps?.map((s) => s.run ?? '').join('\n');
-    expect(run).toContain('az containerapp revision label swap');
-    expect(run).toContain('--source previous --target live');
+    expect(run).toContain('scripts/rollback-api.sh "$RG"');
+    expect(read('scripts/rollback-api.sh')).toContain(
+      'az containerapp revision label swap -g "$group" -n "$app" --source previous --target live',
+    );
   });
 
   it('keeps the labels and the worker version when infra runs alone', () => {
@@ -707,14 +828,19 @@ describe.skipIf(!hasAz && !process.env.CI)('API revisions in the template', () =
     for (const e of reads) expect(e).toContain("variables('infra')");
   });
 
-  it('runs several revisions of the API only, and only once a live revision is named', () => {
+  it('runs several revisions of the API once a live revision is named, and of the worker only where the parameters ask', () => {
     const modes = Object.fromEntries(
       resources.map((r) => [r.name, r.properties.configuration.activeRevisionsMode]),
     );
     expect(modes["[format('{0}-api', parameters('name'))]"]).toBe(
       "[if(empty(parameters('apiLiveRevision')), 'Single', 'Multiple')]",
     );
-    const others = Object.entries(modes).filter(([name]) => !name.includes("'{0}-api'"));
+    expect(modes["[format('{0}-worker', parameters('name'))]"]).toBe(
+      "[parameters('workerRevisionsMode')]",
+    );
+    const others = Object.entries(modes).filter(
+      ([name]) => !name.includes("'{0}-api'") && !name.includes("'{0}-worker'"),
+    );
     expect(others.length).toBeGreaterThan(0);
     for (const [name, mode] of others) expect({ name, mode }).toEqual({ name, mode: 'Single' });
   });

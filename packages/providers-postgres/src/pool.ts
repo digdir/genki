@@ -34,5 +34,6 @@ export const createPool = (options: PostgresPoolOptions): pg.Pool =>
       ...(options.password === undefined ? {} : { password: options.password }),
       ...(options.ssl === undefined ? {} : { ssl: options.ssl }),
       ...(options.max === undefined ? {} : { max: options.max }),
+      keepAlive: true,
     }),
   );

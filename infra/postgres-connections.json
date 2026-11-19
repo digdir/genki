@@ -1,0 +1,12 @@
+{
+  "reservedConnections": 15,
+  "maxConnections": {
+    "Standard_B1ms": 50,
+    "Standard_B2s": 429,
+    "Standard_B2ms": 859,
+    "Standard_B4ms": 1718,
+    "Standard_D2ds_v5": 859,
+    "Standard_D4ds_v5": 1718,
+    "Standard_D8ds_v5": 3437
+  }
+}
