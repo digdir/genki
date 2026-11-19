@@ -28,7 +28,7 @@ The code follows these standards, and CI refuses a change that breaks them:
 - **Types:** TypeScript in `strict` mode, plus `noUncheckedIndexedAccess` and `exactOptionalPropertyTypes` (`tsconfig.base.json`).
 - **Boundaries:** dependency-cruiser rules in `.dependency-cruiser.cjs` (`npm run boundaries`).
 
-Docker must be running: the Postgres, pgvector and Typesense-writer suites start containers with Testcontainers. While you work, run a part with `npx vitest run <paths>`, plus `npx tsc -b` and `npx eslint <files>`. CI runs the same steps as `npm run check`, with the tests split over four runners, plus a gitleaks secret scan and a Docker image build on every pull request.
+Docker must be running: the Postgres, pgvector and Typesense-writer suites start containers with Testcontainers. While you work, run a part with `npx vitest run <paths>` from the repository root, plus `npx tsc -b` and `npx eslint <files>`. CI runs the same steps as `npm run check`, with the tests split over four runners, plus a gitleaks secret scan and a Docker image build on every pull request.
 
 ## Repository rules
 
