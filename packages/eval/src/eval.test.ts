@@ -576,6 +576,16 @@ describe('retrieval metrics', () => {
     expect(scores['recall@20']).toBe(1);
   });
 
+  it('hit@5 ranks a repeated hit once, as mrr@10 does', async () => {
+    // Two searches of an agent loop: the second repeats the first three hits before e1.
+    const retrieved = [...hitsOf(3), ...hitsOf(3), { chunkId: 'e1' }];
+
+    const scores = await scoresOf(expecting('e1'), { retrieved });
+
+    expect(scores['mrr@10']).toBe(0.25);
+    expect(scores['hit@5']).toBe(1);
+  });
+
   it('document recall is skipped when no expected source names a document', async () => {
     const scores = await retrievalRecall().evaluate(
       expecting('e1'),

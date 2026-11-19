@@ -194,7 +194,7 @@ const matchedRanks = (expected: SourceRef[], hits: SourceRef[]) => {
   return hits.flatMap((_, hit) => (take(hit, new Set()) ? [hit] : []));
 };
 
-/** Recall and hit@5 count places as version 1 did; mrr@10 and binary ndcg@10 rank each hit once. */
+/** Recall counts places as version 1 did; hit@5, mrr@10 and binary ndcg@10 rank each hit once. */
 const rankScores = (
   expected: SourceRef[],
   hits: SourceRef[],
@@ -218,7 +218,7 @@ const rankScores = (
   for (let i = 0; i < Math.min(expected.length, ndcgCut); i += 1) ideal += 1 / Math.log2(i + 2);
   return [
     ...recall,
-    { metric: name('hit@5'), value: hits.slice(0, 5).some(matches) ? 1 : 0 },
+    { metric: name('hit@5'), value: top.slice(0, 5).some(matches) ? 1 : 0 },
     {
       metric: name(`mrr@${ndcgCut}`),
       value: first < 0 ? 0 : 1 / (first + 1),
