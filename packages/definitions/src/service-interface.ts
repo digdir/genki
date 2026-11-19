@@ -51,10 +51,27 @@ const isHttpsLink = (link: string) => {
   }
 };
 
+const isSitePath = (link: string) => {
+  if (!/^\/(?![/\\])[^\\\s]*$/.test(link)) return false;
+  try {
+    return new URL(link.split('{id}').join('0'), 'https://host.invalid').host === 'host.invalid';
+  } catch {
+    return false;
+  }
+};
+
 const link = z
   .string()
   .max(interfaceLimits.url)
   .refine(isHttpsLink, 'must be an https address whose host comes before {id}');
+
+const documentLink = z
+  .string()
+  .max(interfaceLimits.url)
+  .refine(
+    (value) => isHttpsLink(value) || isSitePath(value),
+    "must be an https address whose host comes before {id}, or a path on the host's own site",
+  );
 
 const id = z.string().max(interfaceLimits.id);
 
@@ -78,7 +95,11 @@ const corpus = z.strictObject({
     .optional(),
   typeField: id.optional(),
   documentLinks: z
-    .strictObject({ digits: link.optional(), uuid: link.optional(), any: link.optional() })
+    .strictObject({
+      digits: documentLink.optional(),
+      uuid: documentLink.optional(),
+      any: documentLink.optional(),
+    })
     .optional(),
   about: z
     .strictObject({ idField: id, fields: z.array(id).max(interfaceLimits.aboutFields) })

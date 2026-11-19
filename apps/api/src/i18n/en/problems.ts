@@ -51,6 +51,9 @@ export const problems = {
   entraNotTrusted: 'Your Entra ID login gives no access to this environment',
   entraNotTrustedDetail:
     'Only members of the configured Digdir Entra groups can log in with Entra ID here. Log in with TestID to read, or ask for access.',
+  serviceLocked: 'This assistant is only open to Digdir employees in the test environment',
+  serviceLockedDetail:
+    'Log in with your Digdir account (Entra ID). If you have and still cannot get in, ask the team behind the service for access.',
   unreadableDefinition: 'Unreadable definition',
   invalidDefinition: 'Invalid definition',
   skillsPublishedThrough:

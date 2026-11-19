@@ -145,7 +145,7 @@ export const blocksUi = {
     removeCollection: 'Remove the texts for {key}',
     tooLong: 'At most {max} characters.',
     tooMany: 'At most {max}.',
-    notHttps: 'Must be an https address, with the host before {id}.',
+    notHttps: 'Must be an https address with the host before {id}, or a path that starts with /.',
     unknownKind: 'The kind of field is unknown: “{kind}”.',
     tooLarge: 'The texts are larger than {max} bytes. Shorten them.',
   },

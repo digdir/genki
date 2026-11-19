@@ -146,10 +146,29 @@ describe('the assistant host', () => {
       environment: 'prod',
       name: 'Klarspråkassistenten',
       login: { issuer: null, clientId: 'klarsprak-host' },
+      languages: ['nb', 'en'],
       theme: null,
       menu: shown.menu,
       pages: [{ id: 'om', title: 'Om tjenesten' }],
     });
+  });
+
+  it('offers the languages the service answers in that the host has words for, bokmål when none', async () => {
+    const { call, publish, saveClient } = await boot();
+    const speaking = (languages: string[]) => {
+      const d = service('klarsprak', shown);
+      return { ...d, spec: { ...d.spec, languages } };
+    };
+    const offered = async (languages: string[]) => {
+      expect((await publish(speaking(languages))).ok).toBe(true);
+      expect((await saveClient('klarsprak-host', client())).status).toBe(200);
+      return ((await (await call('/v1/hosts/ka.example.no')).json()) as { languages: string[] })
+        .languages;
+    };
+
+    expect(await offered(['en', 'nb'])).toEqual(['en', 'nb']);
+    expect(await offered(['nn', 'en'])).toEqual(['en']);
+    expect(await offered(['nn'])).toEqual(['nb']);
   });
 
   it('answers the same 404 for every hostname that is not active', async () => {
