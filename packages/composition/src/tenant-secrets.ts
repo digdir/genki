@@ -14,6 +14,15 @@ const catalogSecretPattern = /^secret:\/\/tenant-(\d{9})\/([a-z0-9][a-z0-9._-]*)
 
 export const maxSecretHosts = 20;
 
+export const tenantSecretNamePattern = /^[a-z0-9][a-z0-9-]{0,62}$/;
+export const maxTenantSecretBytes = 16_384;
+export const maxTenantSecrets = 200;
+
+export const secretBytes = (value: string) => Buffer.byteLength(value, 'utf8');
+
+const storedSecretNamePattern = /^[a-z0-9][a-z0-9._-]{0,254}$/;
+const secretOwnerPattern = /^(?:\d{9}|platform)$/;
+
 export type SecretHostsResult = { ok: true; hosts: string[] } | { ok: false; invalid: string };
 
 export const secretHosts = (input: unknown): SecretHostsResult => {
@@ -94,6 +103,9 @@ export class TenantSecretVault {
     value: string,
     hosts?: readonly string[],
   ): Promise<string> {
+    if (!secretOwnerPattern.test(tenant)) throw new Error('invalid secret owner');
+    if (!storedSecretNamePattern.test(name)) throw new Error('invalid secret name');
+    if (secretBytes(value) > maxTenantSecretBytes) throw new Error('secret value too large');
     await this.store.set(tenant, name, value, hosts);
     return TenantSecretVault.ref(tenant, name);
   }

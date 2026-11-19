@@ -334,6 +334,7 @@ import { modelChoice } from './model-choice.js';
 import { modelMatrixModule, releaseGate } from './model-matrix.js';
 import { operatorModelsModule } from './operator-models.js';
 import { platformSecretsModule } from './platform-secrets.js';
+import { secretUses } from './secret-uses.js';
 import { operatorOperationsModule } from './operator-operations.js';
 import {
   describedStepProblems,
@@ -2313,6 +2314,12 @@ export const createPlatform = async (input: PlatformInput) => {
         catalogSkips: input.catalogSkips ?? [],
         hiddenService: (tenant, id) => isHiddenService(definitions, tenant, id),
         names: actorNames(configEntries),
+        secretUses: secretUses({
+          configEntries,
+          catalog: config.catalog,
+          connections,
+          definitions,
+        }),
         eval: {
           kernel,
           evalCapability: evalCapability.descriptor.id,

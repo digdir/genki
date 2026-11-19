@@ -4,10 +4,12 @@ import {
   checkBuiltinConfig,
   hookPoints,
   hookSpec,
+  storedHookSpec,
   parseHookId,
   refusalText,
   runHooks,
   type HookCall,
+  type HookConfig,
   type HookSpec,
 } from '@genai/hooks';
 import type { Context } from 'hono';
@@ -90,6 +92,9 @@ export const hooksModule: PlatformModuleFactory = (deps) => {
   const runtime = deps.hookRuntime;
   const directory = runtime?.directory ?? hookDirectory(deps.configEntries);
   const writes = serialized();
+  const keptSecretName = async (scope: string, secret: string, before?: HookConfig) =>
+    (before?.handler.kind === 'webhook' && before.handler.secret === secret) ||
+    ((await deps.vault?.names(scope)) ?? []).includes(secret);
 
   const handlers: Record<string, AdminHandler> = {
     'platform.hook.save': (input, principal) =>
@@ -103,7 +108,14 @@ export const hooksModule: PlatformModuleFactory = (deps) => {
           return failed(target, 'principal', 'hooks belong to the tenant');
         if (!parseHookId(id).success)
           return failed(target, 'id', 'lowercase letters, digits and -, at most 63 characters');
-        const parsed = hookSpec.safeParse(input.spec);
+        const before = await directory.find(scope, id);
+        const strict = hookSpec.safeParse(input.spec);
+        const stored = strict.success ? undefined : storedHookSpec.safeParse(input.spec);
+        const kept =
+          stored?.success && stored.data.handler.kind === 'webhook'
+            ? await keptSecretName(scope, stored.data.handler.secret, before)
+            : false;
+        const parsed = kept && stored ? stored : strict;
         if (!parsed.success)
           return {
             ok: false,
@@ -118,7 +130,6 @@ export const hooksModule: PlatformModuleFactory = (deps) => {
           const checked = checkBuiltinConfig(spec.handler.id, spec.handler.config);
           if (!checked.ok) return failed(target, 'spec.handler', checked.message);
         }
-        const before = await directory.find(scope, id);
         const ifVersion = typeof input.ifVersion === 'number' ? input.ifVersion : undefined;
         if (ifVersion !== undefined && (before?.version ?? 0) !== ifVersion)
           return { ...failed(target, 'if-match', 'the hook changed; reload'), conflict: true };
