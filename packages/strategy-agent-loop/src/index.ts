@@ -30,6 +30,7 @@ import {
   exhaustionNudge,
   noToolCallHonestMiss,
   noToolCallNudge,
+  readBeforeAnswerNudge,
   searchScaffold,
   smallTalkCheck,
   systemPromptWithDate,
@@ -150,6 +151,7 @@ export const agentLoopConfig = z.strictObject({
   noAnswerText: z.string().min(1).max(500).optional(),
   instructionsInAnswer: z.boolean().optional(),
   citeBy: z.enum(['document', 'excerpt']).optional(),
+  sources: z.enum(['cited', 'read']).optional(),
   search: z
     .strictObject({
       titleOverlapWeight: z.number().min(0).max(20).optional(),
@@ -381,6 +383,26 @@ const onlySaysNothingFound = (text: string) =>
     .split(/(?<=[.!?])\s+/)
     .filter((s) => s.length > 0).length <= 1;
 
+export const answersFromSnippets = (workspace: Workspace, text: string) => {
+  if (blank(text) || soundsLikeRefusal(text)) return false;
+  if (workspace.attached.length || workspace.sourceFactsRead) return false;
+  if (workspace.searches.length === 0 || workspace.readChunkIds().size > 0) return false;
+  const budget = workspace.budget();
+  return (
+    !budget.readsExhausted &&
+    !budget.readCharsExhausted &&
+    workspace.searches.some((s) => s.chunkIds.length > 0)
+  );
+};
+
+export const citedOnly = (chunks: Chunk[], workspace: Workspace): Chunk[] => {
+  if (workspace.citations.length === 0) return chunks;
+  const cited = new Set(
+    workspace.citations.map((c) => documentKey(workspace.chunks.get(c.chunkId) ?? c)),
+  );
+  return chunks.filter((c) => cited.has(documentKey(c)));
+};
+
 interface ExtraTool {
   spec: ToolSpec;
   port: ToolPort;
@@ -558,6 +580,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
     let finalized = false;
     let iteration = 0;
     let lastIteration = 0;
+    let readNudges = 0;
     const reactStarted = Date.now();
 
     for (; iteration < maxIterations && !finalized; iteration += 1) {
@@ -600,6 +623,16 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
           messages = cutOff
             ? [...messages, { role: 'system', content: cutOffToolCallNudge }]
             : [...messages, assistant, { role: 'system', content: noToolCallNudge }];
+          continue;
+        }
+        if (
+          !cutOff &&
+          readNudges < 2 &&
+          iteration < maxIterations - 1 &&
+          answersFromSnippets(workspace, turn.content)
+        ) {
+          readNudges += 1;
+          messages = [...messages, assistant, { role: 'system', content: readBeforeAnswerNudge }];
           continue;
         }
         answer =
@@ -943,6 +976,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
             ),
             settlement.readFirst,
             settlement.refusal,
+            answer,
           );
         } catch (error) {
           if (ctx.signal.aborted) throw error;
@@ -1019,7 +1053,9 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
         if (ctx.signal.aborted) throw error;
       }
     }
-    const published = outputChunks().map(sourceRecord);
+    const published = (
+      settings.sources === 'read' ? outputChunks() : citedOnly(outputChunks(), workspace)
+    ).map(sourceRecord);
     yield {
       type: 'kernel.notice',
       data: {

@@ -194,7 +194,13 @@ export const systemPromptWithDate = (now: Date): string => {
 };
 
 export const exhaustionNudge =
-  '[SYSTEM: You have used all available iterations. Based on everything you have gathered so far, provide your best answer now. If you found partial information, share it. Do not call any more tools.';
+  '[SYSTEM: You have used all available iterations. Based on everything you have gathered so far, provide your best answer now. If you found partial information, share it. Cite each source you read and use by its chunk_id in square brackets, such as [chunk_id]. Do not call any more tools.';
+
+export const readBeforeAnswerNudge =
+  'You answered from the search results without reading any document. Search results are only titles and snippets, not evidence. Read the hits you mean to use with read_chunks, then answer from what you read.';
+
+export const citeDraftPrompt = (context: string, draft: string) =>
+  `Add source references to the draft answer below. Put [N] right after each statement a numbered source supports, where N is that source's number. Keep the draft as it is: the same content, order, wording, list items and language. Do not shorten it, leave items out or add facts. Leave a statement without a reference when no source supports it. Do not mention the sources, the context or this task. Reply with the answer only.\n\nSources:\n${context}\n\nDraft answer:\n${draft}`;
 
 export const exhaustionDefault = 'Could not determine an answer within the iteration limit.';
 
