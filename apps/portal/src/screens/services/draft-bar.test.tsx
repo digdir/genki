@@ -465,3 +465,65 @@ describe('Oppsett wired to the draft, dataset and input API', () => {
     expect(calls.some((c) => c.url.endsWith('/definitions/input-fields'))).toBe(false);
   });
 });
+
+describe('the Prøv pane on Oppsett', () => {
+  const runs = (calls: Call[]) =>
+    calls.filter((c) => c.method === 'POST' && c.url.endsWith('/playground/runs'));
+  const ask = async (question: string) => {
+    fireEvent.click(await screen.findByRole('tab', { name: 'Prøv' }));
+    const field = screen.getByLabelText('Spørsmål til utkastet');
+    fireEvent.change(field, { target: { value: question } });
+    fireEvent.keyDown(field, { key: 'Enter' });
+  };
+
+  it('runs the edited draft, not the version in use, and shows the answer with its sources', async () => {
+    const calls = await openService('#/services/rapportassistenten/setup/purpose', {
+      reply: (url, method) =>
+        method === 'POST' && url.endsWith('/playground/runs')
+          ? Response.json({
+              runId: 'run-1',
+              text: 'Seks uker.',
+              sources: [{ chunkId: 'c1', title: 'Personalhåndboka, Ferie' }],
+              searchNotes: [],
+              timeMs: 10,
+              tokensIn: 1,
+              tokensOut: 1,
+              costNok: null,
+              dataLocation: null,
+              quota: { usedPercent: 0, monthlyTokens: 0 },
+            })
+          : undefined,
+    });
+    fireEvent.change(await screen.findByLabelText('Instruksjoner til tjenesten'), {
+      target: { value: 'Svar på rim.' },
+    });
+    await ask('Hvor mye ferie har jeg?');
+
+    expect(await screen.findByText('Seks uker.')).toBeTruthy();
+    expect(screen.getByText('Personalhåndboka, Ferie')).toBeTruthy();
+    const body = runs(calls)[0]?.body as {
+      setup: { service: { version: unknown; definition: unknown } };
+      input: unknown;
+    };
+    expect(body.setup.service.version).toBe('draft');
+    expect(body.setup.service.definition).toMatchObject({
+      spec: { strategy: { config: { instructions: 'Svar på rim.' } } },
+    });
+    expect(body.input).toEqual({ text: 'Hvor mye ferie har jeg?' });
+  });
+
+  it('shows the error when the run fails and keeps the question', async () => {
+    await openService('#/services/rapportassistenten/setup/purpose', {
+      reply: (url, method) =>
+        method === 'POST' && url.endsWith('/playground/runs')
+          ? Response.json(
+              { type: 'about:blank', title: 'The run failed', status: 502 },
+              { status: 502, headers: { 'content-type': 'application/problem+json' } },
+            )
+          : undefined,
+    });
+    await ask('Hvor mye ferie har jeg?');
+    expect(await screen.findByText('Kunne ikke hente dataene')).toBeTruthy();
+    expect(screen.getByText('Hvor mye ferie har jeg?')).toBeTruthy();
+  });
+});

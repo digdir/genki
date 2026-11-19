@@ -1958,10 +1958,11 @@ export const SetupTab = ({
                   key: ref,
                   title: liveToolName(ref),
                   text: liveToolText(ref),
-                  tag:
-                    inUse && !inUseTools.includes(ref)
-                      ? t('setupList.tagNew')
-                      : t('setupList.tagInUse'),
+                  tag: !inUse
+                    ? undefined
+                    : inUseTools.includes(ref)
+                      ? t('setupList.tagInUse')
+                      : t('setupList.tagNew'),
                   action: {
                     label: t('setup.remove'),
                     aria: t('setupList.removeNamed', { name: liveToolName(ref) }),
@@ -1991,7 +1992,9 @@ export const SetupTab = ({
                 .slice(1)
                 .map((v) => ({
                   key: v.id,
-                  title: v.title?.nb ?? v.id,
+                  title:
+                    (t.locale === 'en' ? v.title?.en || v.title?.nb : v.title?.nb || v.title?.en) ||
+                    v.id,
                   text: v.model ?? '',
                   action: {
                     label: t('setupList.edit'),
