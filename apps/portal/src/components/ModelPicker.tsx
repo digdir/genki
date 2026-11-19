@@ -27,11 +27,9 @@ import {
 import { ErrorState, Loading } from '../states';
 import type { Residency } from '../types';
 import { Icon } from './Icon';
-import { ModelCompare, type CompareRow } from './ModelCompare';
-import { modelBlockHref, useModelText, type ModelText } from './model-text';
+import { ModelCompare, ModelMark, type CompareRow } from './ModelCompare';
+import { modelBlockHref, useModelText, whereColor, type ModelText } from './model-text';
 import './model-picker.css';
-
-const whereColor = (r: Residency) => (r === 'global' ? 'warning' : 'info');
 
 const Chosen = ({
   model,
@@ -45,6 +43,7 @@ const Chosen = ({
   action: ReactNode;
 }) => (
   <div className="mp-chosen">
+    {model ? <ModelMark model={model} /> : null}
     <div className="mp-chosen-text">
       <div className="tag-row">
         <strong className="mp-chosen-name">{model ? text.name(model) : id}</strong>
@@ -66,9 +65,9 @@ const Chosen = ({
       </div>
       {model ? (
         <span className="mp-facts">
-          {model.price
-            ? text.t('modelPicker.facts', { by: text.byLine(model), price: text.price(model) })
-            : `${text.byLine(model)} · ${text.price(model)}`}
+          {[text.byLine(model), text.gateway(model), text.priceWithUnit(model)]
+            .filter(Boolean)
+            .join(' · ')}
         </span>
       ) : null}
     </div>
@@ -170,6 +169,7 @@ export const ModelPicker = ({
 
   const rows: CompareRow[] = [
     { label: t('modelWords.rowMaker'), cell: text.maker },
+    { label: t('modelWords.rowOperator'), cell: text.operator },
     { label: t('modelWords.rowWhere'), cell: (m) => text.where(m.residency) },
     { label: t('modelWords.rowContext'), cell: text.context },
     { label: t('modelWords.rowPrice'), cell: text.price },
@@ -319,7 +319,10 @@ export const ModelPicker = ({
                           onChange={() => setPending(m.id)}
                           label={
                             <span className="tag-row">
-                              <span>{text.name(m)}</span>
+                              <span className="mp-name">
+                                <ModelMark model={m} size="sm" />
+                                <span>{text.name(m)}</span>
+                              </span>
                               {m.id === value ? (
                                 <Tag data-size="sm" data-color="accent">
                                   {t('modelPicker.current')}
@@ -339,7 +342,11 @@ export const ModelPicker = ({
                           }
                           description={
                             <span className="mp-desc">
-                              <span>{text.byLine(m)}</span>
+                              {text.byLine(m) || m.gateway ? (
+                                <span>
+                                  {[text.byLine(m), text.gateway(m)].filter(Boolean).join(' · ')}
+                                </span>
+                              ) : null}
                               <span className="tag-row">
                                 <Tag data-size="sm" data-color={whereColor(m.residency)}>
                                   {text.dataIn(m.residency)}

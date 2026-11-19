@@ -201,8 +201,6 @@ export const setup = {
   improveLabel: 'Let the platform suggest changes to the instructions',
   improveHelp:
     'The platform can suggest better instructions based on feedback and test sets. You accept each suggestion yourself. Applies from the next publication.',
-  modelPrice: 'NOK {input} in and NOK {output} out per 1M tokens',
-  notPriced: 'not priced',
   operationModels: 'Model per operation',
   operationModelsHelp:
     'The flow calls these operations. Choose the model that performs each of them. Where data is processed follows the model.',

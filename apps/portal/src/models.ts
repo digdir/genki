@@ -61,26 +61,39 @@ export const displayName = (m: Pick<CatalogModel, 'id' | 'name'>) => m.name || m
 export const fitsOperation = (m: Pick<CatalogModel, 'operations'>, operation: string) =>
   !m.operations?.length || m.operations.includes(operation);
 
+export const isFree = (price: ModelPrice | null | undefined) =>
+  !!price && price.inputPerThousand === 0 && price.outputPerThousand === 0;
+
+export const kronerDigits = { minimumFractionDigits: 2, maximumFractionDigits: 2 };
+
 export const perMillion = (price: ModelPrice) => ({
   input: price.inputPerThousand * 1000,
   output: price.outputPerThousand * 1000,
 });
 
-export type PriceBand = 'under10' | 'from10to50' | 'over50' | 'unpriced';
-export const priceBands: readonly PriceBand[] = ['under10', 'from10to50', 'over50', 'unpriced'];
+export type PriceBand = 'free' | 'under10' | 'from10to50' | 'over50' | 'unpriced';
+export const priceBands: readonly PriceBand[] = [
+  'free',
+  'under10',
+  'from10to50',
+  'over50',
+  'unpriced',
+];
 
 export const priceBandOf = (m: Pick<CatalogModel, 'price'>): PriceBand => {
   if (!m.price) return 'unpriced';
+  if (isFree(m.price)) return 'free';
   const input = perMillion(m.price).input;
   return input < 10 ? 'under10' : input <= 50 ? 'from10to50' : 'over50';
 };
 
-export type Facet = 'maker' | 'where' | 'use' | 'price' | 'status';
-export const facets: readonly Facet[] = ['maker', 'where', 'use', 'price', 'status'];
-export const unknownMaker = '';
+export type Facet = 'provider' | 'maker' | 'where' | 'use' | 'price' | 'status';
+export const facets: readonly Facet[] = ['provider', 'maker', 'where', 'use', 'price', 'status'];
+export const unknownValue = '';
 
 export const facetValues = (m: ModelEntry, facet: Facet): string[] => {
-  if (facet === 'maker') return [m.maker ?? unknownMaker];
+  if (facet === 'provider') return [m.operator?.name ?? unknownValue];
+  if (facet === 'maker') return [m.maker ?? unknownValue];
   if (facet === 'where') return [m.residency];
   if (facet === 'use') return m.operations?.length ? m.operations : ['chat'];
   if (facet === 'price') return [priceBandOf(m)];
@@ -89,6 +102,7 @@ export const facetValues = (m: ModelEntry, facet: Facet): string[] => {
 
 export type Selection = Record<Facet, string[]>;
 export const noSelection = (): Selection => ({
+  provider: [],
   maker: [],
   where: [],
   use: [],
@@ -153,15 +167,6 @@ export const sortEntries = (list: ModelEntry[], sort: CatalogSort) =>
   });
 
 export const differs = (cells: string[]) => new Set(cells).size > 1;
-
-export const initialsOf = (maker: string | undefined, fallback: string) => {
-  const words = (maker || fallback).split(/[\s/_-]+/).filter(Boolean);
-  const letters =
-    words.length > 1
-      ? `${words[0]?.[0] ?? ''}${words[1]?.[0] ?? ''}`
-      : (words[0] ?? '').slice(0, 2);
-  return letters.toUpperCase();
-};
 
 export const pageOf = <T>(list: T[], page: number, size: number) => {
   const pages = Math.max(1, Math.ceil(list.length / size));

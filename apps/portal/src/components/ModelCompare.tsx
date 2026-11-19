@@ -1,6 +1,7 @@
-import { Avatar, Table, Tag } from '@digdir/designsystemet-react';
+import { Table, Tag } from '@digdir/designsystemet-react';
 import type { CatalogModel } from '../api/models';
-import { differs, initialsOf } from '../models';
+import { differs } from '../models';
+import { MakerMark } from './MakerMark';
 import type { ModelText } from './model-text';
 import './model-picker.css';
 
@@ -9,14 +10,8 @@ export interface CompareRow {
   cell: (m: CatalogModel) => string;
 }
 
-export const ModelMark = ({ model, text }: { model: CatalogModel; text: ModelText }) => (
-  <Avatar
-    aria-hidden
-    variant="square"
-    data-size="sm"
-    data-color="neutral"
-    initials={initialsOf(model.maker, text.name(model))}
-  />
+export const ModelMark = ({ model, size }: { model: CatalogModel; size?: 'sm' | 'md' }) => (
+  <MakerMark maker={model.maker} {...(size ? { size } : {})} />
 );
 
 export const ModelCompare = ({
@@ -45,10 +40,10 @@ export const ModelCompare = ({
             <Table.HeaderCell key={m.id} scope="col">
               {withMarks ? (
                 <span className="mc-head">
-                  <ModelMark model={m} text={text} />
+                  <ModelMark model={m} size="sm" />
                   <span className="mc-head-name">
                     <span>{text.name(m)}</span>
-                    <span className="meta">{text.maker(m)}</span>
+                    {text.byLine(m) ? <span className="meta">{text.byLine(m)}</span> : null}
                   </span>
                 </span>
               ) : (
@@ -61,6 +56,7 @@ export const ModelCompare = ({
       <Table.Body>
         {rows.map((row) => {
           const cells = models.map(row.cell);
+          if (cells.every((cell) => cell === '')) return null;
           const different = differs(cells);
           return (
             <Table.Row key={row.label} className={different ? 'mc-differs' : undefined}>
@@ -76,7 +72,7 @@ export const ModelCompare = ({
               </Table.HeaderCell>
               {cells.map((cell, i) => (
                 <Table.Cell key={models[i]?.id ?? i} className="numeric">
-                  {cell}
+                  {cell || '–'}
                 </Table.Cell>
               ))}
             </Table.Row>

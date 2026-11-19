@@ -46,6 +46,7 @@ import {
 import { SettingsForm } from './SettingsForm';
 import { UseModelInService } from './UseModelInService';
 import { useModelText } from '../../components/model-text';
+import { isFree } from '../../models';
 import { LinkTabs } from '../../components/LinkTabs';
 import { SyncButton, ToolConnectionSections } from './ToolConnection';
 import { homeHrefs, typeCardHref, typeNames, typeOf } from './block-types';
@@ -835,7 +836,9 @@ export const BlockDetail = ({
                 <Heading level={2} data-size="xs" id={ids.price}>
                   {t('blockModel.price')}
                 </Heading>
-                {model.price ? (
+                {isFree(model.price) ? (
+                  <p>{t('modelWords.freeLong')}</p>
+                ) : model.price ? (
                   <>
                     <dl className="kv bb-kv">
                       <div className="bb-kv-row">

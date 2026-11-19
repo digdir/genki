@@ -63,6 +63,12 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ## API changes
 
+### 2026-11-20: readable model names, makers and operators
+
+- `GET /models` answers a readable `name` (`GPT-6 Luna` for `gpt-6-luna`, `Borealis 27B` for `sigma2:borealis-27b`), still with the deployment or id added where two names collide, and the same names reach the playground, the step operations and the builder assistant.
+- `maker` is read from the model name when the model list sets none, and `operator` is the host a gateway deployment names before its colon (`aivar:`, `sigma2:`), else the connection's operator, else one read from the connection address (Azure AI Foundry). New `gateway: true` when the connection is marked as the AI gateway.
+- In `GET /tenants/{tenant}/building-blocks` a model block's `name` is the readable name, decided among the models the tenant sees, and the model block's `maker` is read the same way.
+
 ### 2026-11-19: removing unused step flows, operation kinds and platform secrets
 
 - New `DELETE /tenants/{tenant}/step-flows/{id}` (manage-services, `change-reason`, audited as `platform.step-flow.archive`) archives one of the organisation's own step flows: Stegflyter and Byggeklosser stop listing it, its versions stay, and publishing it again lists it again. It answers `409` with `urn:genai:problem:step-flow-in-use` while the latest version, or a version an environment is pinned to, of a service that is not archived runs it, directly or as a subflow, in any organisation for a Digdir flow. Internal services count. `usedBy` names only services in the caller's own organisation; `otherOrganisations` counts the rest, and `internalServices` the internal ones the caller may not see.

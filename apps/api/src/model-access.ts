@@ -3,6 +3,7 @@ import { INTERNAL_GRANT_PREFIX } from '@genai/identity';
 import { servesModelPort, type ModelDescription } from '@genai/port-model';
 import type { CatalogRegistry } from './catalog-registry.js';
 import { platformScope } from './config-store.js';
+import { nameSource } from './model-identity.js';
 
 export const candidateRelease = 'candidate';
 
@@ -101,7 +102,7 @@ export const modelsForTenant = (
 export const modelDisplayNames = (
   models: Pick<ModelDescription, 'id' | 'family' | 'deployment'>[],
 ): Map<string, string> => {
-  const base = (m: Pick<ModelDescription, 'id' | 'family'>) => m.family ?? m.id;
+  const base = nameSource;
   const groups = Map.groupBy(models, base);
   return new Map(
     models.map((m) => {
