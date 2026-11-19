@@ -10,14 +10,12 @@ import type { TimelineStep } from '../../types';
 const stepName = (step: TimelineStep) =>
   step.model ? `${step.title} · ${step.model}` : step.title;
 
-const unfinished = new Set(['running', 'waiting', 'pending']);
-
 const stepTime = (step: TimelineStep, f: Format, t: T) =>
   step.durationSeconds !== undefined
     ? formatDuration(step.durationSeconds, f, t)
-    : step.state && unfinished.has(step.state)
-      ? ''
-      : t('playground.instantStep');
+    : !step.state || step.state === 'ok'
+      ? t('playground.instantStep')
+      : '';
 
 export const RunTimeline = ({ steps }: { steps: TimelineStep[] }) => {
   const t = useT();
