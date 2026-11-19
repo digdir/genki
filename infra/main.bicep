@@ -192,6 +192,9 @@ param modelsBudgetResourceGroup string = ''
 @description('The first of a month; Azure refuses to change a budget\'s start later.')
 param budgetStartDate string = '2026-11-01'
 
+@description('Turns on the BFF for the assistant host (ADR 0061): put the same genai-proxy-key in genki\'s and the host\'s Key Vault first.')
+param assistantBffEnabled bool = false
+
 @description('Hostnames the assistant host serves, each { hostname or subdomain, tenant, stage, apex? }: a subdomain becomes <subdomain>.apps.<dnsZoneName>, stage as customDomainsStage, apex for a zone apex. See infra/README.md, "Hosted hostnames".')
 param hostedHostnames array = []
 
@@ -496,6 +499,7 @@ module apps 'modules/containerapps.bicep' = {
     registryServer: infra ? registry!.outputs.loginServer : existingRegistry.properties.loginServer
     keyVaultUri: infra ? vault!.outputs.uri : existingVault.properties.vaultUri
     keyVaultSecretNames: keyVaultSecretNames
+    bffProxyKey: assistantHostEnabled && assistantBffEnabled
     apiImage: apiImage
     apiRevisionSuffix: apiRevisionSuffix
     apiLiveRevision: apiLiveRevision
@@ -610,6 +614,7 @@ module assistantHost 'modules/assistant-host.bicep' = if (assistantHostEnabled) 
     appsImage: appsImage
     apiUpstream: 'https://${apps.outputs.fqdn}'
     ansattportenIssuer: ansattportenIssuer
+    bffProxyKey: assistantBffEnabled
     hostedHostnames: servedNames
   }
 }

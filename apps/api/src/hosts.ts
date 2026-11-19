@@ -66,7 +66,7 @@ export interface HostingRules {
 }
 
 /** The tenant a hostname is open to, when it is open to hosting at all. */
-const openedTo = (rules: HostingRules, hostname: string): string | undefined =>
+export const openedTo = (rules: HostingRules, hostname: string): string | undefined =>
   isAssignedName(hostname) ||
   hostname === rules.assistantHostname ||
   !rules.reservedDomains.some((domain) => under(hostname, domain))

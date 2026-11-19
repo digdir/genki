@@ -1,4 +1,10 @@
-import { assistantHostnameFrom, hostedHostnamesFrom, reservedDomainsFrom } from './hosts.js';
+import { createBff, InMemoryBffSessions } from './bff/index.js';
+import {
+  assistantHostnameFrom,
+  hostedHostnamesFrom,
+  hostView,
+  reservedDomainsFrom,
+} from './hosts.js';
 import type { Server } from 'node:http';
 import { attachSessionUpgrade } from './session-upgrade.js';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
@@ -471,6 +477,11 @@ if (environmentTier === 'test')
 
 const processorRecords = processorRecordCheckOf(process.env);
 
+const hosting = {
+  hostnames: hostedHostnamesFrom(process.env),
+  reservedDomains: reservedDomainsFrom(process.env),
+  assistantHostname: assistantHostnameFrom(process.env),
+};
 const platform = await createPlatform({
   platformTenant,
   federatedTokens: federatedAppTokens({
@@ -497,11 +508,7 @@ const platform = await createPlatform({
   verifyPluginsOnBoot: true,
   clients,
   reservedClientIds,
-  hosting: {
-    hostnames: hostedHostnamesFrom(process.env),
-    reservedDomains: reservedDomainsFrom(process.env),
-    assistantHostname: assistantHostnameFrom(process.env),
-  },
+  hosting,
   ...(db ? { webhookDeliveries: db.webhookDeliveries } : {}),
   ...(db ? { traceDeliveries: db.traceDeliveries } : {}),
   ...(db ? { triggerRuns: db.triggerRuns } : {}),
@@ -820,9 +827,53 @@ if (mock) {
   });
 }
 
-const server = serve({ fetch: app.fetch, port }, (info) => {
-  log('api listening', { port: info.port, version, mockLogin: Boolean(mock) });
+const proxyKey = process.env.GENAI_PROXY_KEY;
+if (proxyKey !== undefined && proxyKey.length < 32)
+  log('GENAI_PROXY_KEY is shorter than 32 characters; the BFF trusts no host', {});
+const ansattportenIssuer = trusted.find((t) => t.kind === 'ansattporten')?.issuer;
+const bff = createBff({
+  proxyKey: proxyKey && proxyKey.length >= 32 ? proxyKey : undefined,
+  sessions: db?.bffSessions ?? new InMemoryBffSessions(),
+  clients,
+  rules: hosting,
+  hostActive: async (hostname) =>
+    (await hostView(
+      {
+        clients,
+        definitions: platform.definitions,
+        configEntries: platform.configEntries,
+        rules: hosting,
+        issuer: ansattportenIssuer,
+      },
+      hostname,
+    )) !== undefined,
+  issuer: ansattportenIssuer,
+  altinnResource: resource,
+  secrets: {
+    value: (tenant, name) =>
+      platform.vault
+        .resolver({
+          resolve: () => Promise.reject(new Error('the client secret is not set')),
+        })
+        .resolve(`secret://tenant/${tenant}/${name}`)
+        .catch(() => undefined),
+    hosts: (tenant, name) => platform.vault.hosts(tenant, name),
+  },
+  organisations: async (accessToken) => {
+    const verified = await verifier.verify(accessToken);
+    return [...new Set((verified.principal.authorizedFor ?? []).map((a) => a.org))].map(
+      (orgNumber) => ({ orgNumber }),
+    );
+  },
+  log,
 });
+
+const server = serve(
+  { fetch: (request, env) => bff.handle(request, (r) => app.fetch(r, env)), port },
+  (info) => {
+    log('api listening', { port: info.port, version, mockLogin: Boolean(mock) });
+  },
+);
 attachSessionUpgrade(server as unknown as Server, app, platform.liveSessions);
 
 // A deploy stops this instance: start no new test-set case, let the ones running finish, then go.

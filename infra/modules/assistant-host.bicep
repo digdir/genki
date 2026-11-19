@@ -8,6 +8,8 @@ param apiUpstream string
 param ansattportenIssuer string = ''
 param minReplicas int = 1
 param maxReplicas int = 3
+@description('Reads genai-proxy-key from the host\'s own Key Vault and turns on the BFF routes (ADR 0061).')
+param bffProxyKey bool = false
 
 @description('{ hostname, tenant, stage, apex? } from main.bicep\'s hostedHostnames.')
 param hostedHostnames array = []
@@ -18,6 +20,10 @@ resource identity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' 
 
 resource registry 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = {
   name: registryName
+}
+
+resource hostVault 'Microsoft.KeyVault/vaults@2024-11-01' existing = {
+  name: take('${name}-hostkv', 24)
 }
 
 resource environment 'Microsoft.App/managedEnvironments@2025-02-02-preview' existing = {
@@ -67,6 +73,9 @@ resource host 'Microsoft.App/containerApps@2025-02-02-preview' = {
         })
       }
       registries: [{ server: registry.properties.loginServer, identity: identity.id }]
+      secrets: bffProxyKey
+        ? [{ name: 'genai-proxy-key', keyVaultUrl: '${hostVault.properties.vaultUri}secrets/genai-proxy-key', identity: identity.id }]
+        : []
     }
     template: {
       containers: [
@@ -74,11 +83,14 @@ resource host 'Microsoft.App/containerApps@2025-02-02-preview' = {
           name: 'assistant'
           image: appsImage
           resources: { cpu: json('0.25'), memory: '0.5Gi' }
-          env: [
-            { name: 'APP', value: 'assistant' }
-            { name: 'API_UPSTREAM', value: apiUpstream }
-            { name: 'ANSATTPORTEN_ISSUER', value: ansattportenIssuer }
-          ]
+          env: concat(
+            [
+              { name: 'APP', value: 'assistant' }
+              { name: 'API_UPSTREAM', value: apiUpstream }
+              { name: 'ANSATTPORTEN_ISSUER', value: ansattportenIssuer }
+            ],
+            bffProxyKey ? [{ name: 'GENAI_PROXY_KEY', secretRef: 'genai-proxy-key' }] : []
+          )
           probes: [
             { type: 'Liveness', httpGet: { path: '/healthz', port: 8080 }, periodSeconds: 30 }
             { type: 'Readiness', httpGet: { path: '/healthz', port: 8080 }, periodSeconds: 10 }

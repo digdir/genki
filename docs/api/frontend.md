@@ -28,3 +28,14 @@ genki's assistant host draws a service on a hostname of its own (ADR 0061). It n
 1. `GET /v1/hosts/{hostname}`: the tenant, service, environment, name, menu and page titles, and `login` with `issuer`, `clientId`, `audience` and `altinnResource`. Any hostname that is not active, including one opened to another tenant, gets `404` with `urn:genai:problem:host-not-found`. Cached 60 seconds.
 2. `GET /v1/hosts/{hostname}/pages/{id}`: a page's title and Markdown body.
 3. After login with the named client: `GET /v1/models`, then `GET /v1/models/{id}/interface` for the layout, then the sequence above.
+
+## On genki's assistant host
+
+A page on the assistant host signs in through the BFF (ADR 0061, ADR 0034) and holds no token. The host proxies these routes to the API with its proxy key; the API does not answer them without it.
+
+- `GET /auth/login?next=/path` starts the login; `next` is kept only as a path on the same hostname.
+- `GET /auth/callback` is the redirect URI the Client registers, `https://{hostname}/auth/callback`.
+- `GET /auth/me` and `GET /auth/org`: the name, the chosen organisation and the organisations the person may act for, or `401` when no one is signed in. Never a token.
+- `POST /auth/org` with `{"organisation": "<orgnr>"}` and the hostname's exact `Origin` changes the organisation.
+- `GET /auth/logout` ends the session, revokes the refresh token and ends the login session.
+- `/api/...` with the `__Host-genki_session` cookie reaches the routes above as the signed-in person. A state-changing call needs the hostname's exact `Origin` and a JSON body or the `GenAI-CSRF` header; `401 urn:genai:problem:signed-out` means sign in again.

@@ -78,7 +78,9 @@ describe.skipIf(!hasAz && !process.env.CI)('the assistant host in the template',
       "[format('{0}-hosted-env', parameters('name'))]",
     ]);
     const app = host().find((r) => r.type === 'Microsoft.App/containerApps');
-    expect(JSON.stringify(app?.properties)).toContain('"name":"APP","value":"assistant"');
+    expect(JSON.stringify(app?.properties)).toContain(
+      "createObject('name', 'APP', 'value', 'assistant')",
+    );
     const template = module('assistant-host').properties.template as {
       parameters?: Record<string, { defaultValue?: unknown }>;
     };
@@ -125,5 +127,17 @@ describe.skipIf(!hasAz && !process.env.CI)('the assistant host in the template',
     expect(api).toContain("map(variables('servedNames')");
     const dns = JSON.stringify(module('dns').properties.parameters);
     expect(dns).toMatch(/'assistant-host'\), '[\d-]+'\)\.outputs\.verificationId\.value/);
+  });
+
+  it('the BFF proxy key is off by default and comes from each app’s own Key Vault', () => {
+    expect(main().parameters.assistantBffEnabled?.defaultValue).toBe(false);
+    const app = host().find((r) => r.type === 'Microsoft.App/containerApps');
+    const hostText = JSON.stringify(app?.properties);
+    expect(hostText).toContain("parameters('bffProxyKey')");
+    expect(hostText).toContain("reference(resourceId('Microsoft.KeyVault/vaults'");
+    expect(hostText).not.toContain('keyVaultUri');
+    const apps = JSON.stringify(module('containerapps').properties);
+    expect(apps).toMatch(/genai-proxy-key.*keyVaultUri|keyVaultUri.*genai-proxy-key/);
+    expect(module('containerapps').properties.parameters).toHaveProperty('bffProxyKey');
   });
 });
