@@ -1,0 +1,44 @@
+.overflow-menu {
+  position: relative;
+  display: inline-block;
+}
+
+.overflow-list {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 20;
+  min-width: 200px;
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+  background: var(--ds-color-neutral-background-default);
+  border: 1px solid var(--ds-color-neutral-border-default);
+  border-radius: var(--ds-border-radius-md);
+  box-shadow: var(--ds-shadow-md);
+}
+
+.overflow-item {
+  display: block;
+  width: 100%;
+  padding: 8px 14px;
+  border: 0;
+  background: none;
+  font: inherit;
+  text-align: left;
+  color: var(--ds-color-neutral-text-default);
+  cursor: pointer;
+}
+
+.overflow-item:hover {
+  background: var(--ds-color-neutral-surface-hover);
+}
+
+.overflow-item:focus-visible {
+  outline: 3px solid var(--ds-color-focus-outer);
+  outline-offset: -3px;
+}
+
+.overflow-item[data-danger='true'] {
+  color: var(--ds-color-danger-text-default);
+}

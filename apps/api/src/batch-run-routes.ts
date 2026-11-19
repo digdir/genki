@@ -369,6 +369,7 @@ export const createBatchRunsModule =
                     ...(maxTokens === undefined ? {} : { maxTokens }),
                     ...(concurrency === undefined ? {} : { concurrency }),
                     ...(approval ? { approval } : {}),
+                    ...(data.name === undefined ? {} : { name: data.name }),
                   },
                   reason,
                   { approval: true, ...(name ? { startedByName: name } : {}) },

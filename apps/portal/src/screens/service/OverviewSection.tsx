@@ -4,20 +4,22 @@ import type { ReactNode } from 'react';
 import type { ApiClient } from '../../api';
 import type { DatasetView } from '../../api/datasets';
 import { productionEnvironment } from '../../api/environments';
-import type { ServiceDefinition } from '../../data/service-definition';
+import { asServiceDefinition, type ServiceDefinition } from '../../data/service-definition';
 import { datasetsOf } from '../../data/service-form';
 import { mediaKind } from '../../data/unmasked-input';
 import { usePortalFormat } from '../../format';
 import { useAsync } from '../../hooks';
-import type { PlainKey } from '../../i18n';
+import type { PlainKey, T } from '../../i18n';
 import { rightLabel } from '../../Shell';
 import type { ModelOption, PublishedDefinition, TaskRow } from '../../types';
-import { actorText } from '../log/format';
+import { gateStopReason } from '../quality/QualityOverview';
+import { draftChanges } from '../services/setup-diff';
 import type { VersionItem } from '../services/VersionsTab';
 import {
   dayMs,
   monthCost,
   qualityTrend,
+  runShare,
   runsTrend,
   serviceDays,
   unusedDays,
@@ -27,13 +29,14 @@ import { servicePath } from './sections';
 import './overview.css';
 
 const residencyKeys: Record<string, PlainKey> = {
-  norway: 'serviceOverview.residencyNorway',
-  eu: 'serviceOverview.residencyEu',
-  global: 'serviceOverview.residencyGlobal',
+  norway: 'serviceHealth.residencyNorway',
+  eu: 'serviceHealth.residencyEu',
+  global: 'serviceHealth.residencyGlobal',
 };
 
 const unusedAfterDays = 60;
 const barDays = 14;
+const shownSources = 2;
 
 const settled = <T,>(r: PromiseSettledResult<T>) =>
   r.status === 'fulfilled' ? r.value : undefined;
@@ -42,6 +45,33 @@ const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDat
 
 const matchDataset = (datasets: DatasetView[] | undefined, tenant: string, ref: string) =>
   datasets?.find((d) => d.fullId === ref || d.fullId === `${tenant}/${ref}` || d.id === ref);
+
+export const channelText = (
+  run: Pick<TaskRow, 'channel' | 'actor' | 'frontend'>,
+  t: T,
+  frontendName?: (id: string) => string | undefined,
+) => {
+  switch (run.channel) {
+    case 'interface':
+      return (
+        (run.frontend ? frontendName?.(run.frontend) : undefined) ??
+        (run.actor?.kind === 'api-key' ? run.actor.name : undefined) ??
+        t('serviceHealth.channelInterface')
+      );
+    case 'api-key':
+      return run.actor?.name
+        ? t('serviceHealth.channelApiKey', { name: run.actor.name })
+        : t('serviceHealth.channelApiKeyUnnamed');
+    case 'api':
+      return t('serviceHealth.channelApi');
+    case 'playground':
+      return t('serviceHealth.channelPlayground');
+    case 'batch':
+      return t('serviceHealth.channelBatch');
+    default:
+      return t('serviceHealth.channelTrigger');
+  }
+};
 
 type Tone = 'danger' | 'warning' | 'success' | 'neutral';
 
@@ -53,7 +83,15 @@ interface Need {
   link: { href: string; label: string };
 }
 
-const Bars = ({ values, tone }: { values: number[]; tone: Tone | 'accent' }) => {
+const Bars = ({ values, tone }: { values: number[] | undefined; tone: Tone | 'accent' }) => {
+  if (!values)
+    return (
+      <span className="ov-bars ov-bars-flat" aria-hidden="true">
+        {Array.from({ length: barDays }, (_, i) => (
+          <span key={i} />
+        ))}
+      </span>
+    );
   const max = Math.max(...values, 0) || 1;
   return (
     <span className={`ov-bars ov-bars-${tone}`} aria-hidden="true">
@@ -131,6 +169,24 @@ const SideCard = ({
   </section>
 );
 
+const StepMark = ({ done, label }: { done: boolean; label: string }) =>
+  done ? (
+    <svg width="18" height="18" viewBox="0 0 18 18" role="img" aria-label={label}>
+      <circle cx="9" cy="9" r="8" className="ov-step-done" />
+      <path
+        d="M5 9.2l2.6 2.6L13 6.4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="ov-step-check"
+      />
+    </svg>
+  ) : (
+    <span className="ov-step-open" role="img" aria-label={label} />
+  );
+
 export const OverviewSection = ({
   api,
   tenant,
@@ -149,24 +205,22 @@ export const OverviewSection = ({
   published?: PublishedDefinition;
   now?: () => Date;
 }) => {
-  const { t, f, dateTime, kroner, actor, status } = usePortalFormat();
+  const { t, f, actor, status } = usePortalFormat();
   const today = startOfDay(now());
   const dayOfMonth = today.getDate();
+  const periodStart = new Date(today.getTime() - (barDays - 1) * dayMs).toISOString();
   const href = (section: Parameters<typeof servicePath>[1], rest = '') =>
     `#${servicePath(id, section, rest)}`;
   const name = d.metadata.name || id;
+  const org = tenantName || tenant;
+  const dates = (options: Intl.DateTimeFormatOptions) =>
+    new Intl.DateTimeFormat(intlLocale(f.locale), { timeZone: 'Europe/Oslo', ...options });
+  const dayMonth = (iso: string) => dates({ day: 'numeric', month: 'long' }).format(new Date(iso));
+  const shortDay = (iso: string) =>
+    dates({ day: 'numeric', month: 'short' }).format(new Date(iso)).replace(/\.$/, '');
 
   const [usage] = useAsync(
-    async (signal) => {
-      const [period, day] = await Promise.all([
-        api.usage(tenant, dayOfMonth + 31, signal),
-        api.usage(tenant, 1, signal),
-      ]);
-      return {
-        days: serviceDays(period, id),
-        latency: day.byService.find((s) => s.service === id)?.latency ?? null,
-      };
-    },
+    async (signal) => serviceDays(await api.usage(tenant, dayOfMonth + 31, signal), id),
     [api, tenant, id, dayOfMonth],
   );
   const [failures] = useAsync(
@@ -192,13 +246,23 @@ export const OverviewSection = ({
   );
   const [draft] = useAsync(
     async (signal) => {
-      const [summary, checks] = await Promise.allSettled([
+      const [summary, checks, saved] = await Promise.allSettled([
         api.quality.drafts(tenant, signal),
         api.serviceTabs.draftChecks(tenant, id, signal),
+        api.quality.draft(tenant, id, signal),
       ]);
+      const stopping = settled(checks)?.problems.some((p) => p.path.startsWith('spec.evaluation'));
+      const gates = stopping
+        ? await api
+            .configList(`/tenants/${encodeURIComponent(tenant)}/gates`, signal)
+            .then((r) => r.data)
+            .catch(() => [])
+        : [];
       return {
         summary: settled(summary)?.find((s) => s.id === id && s.latestVersion !== null),
         checks: settled(checks),
+        gates,
+        definition: settled(saved)?.definition,
       };
     },
     [api, tenant, id],
@@ -213,13 +277,42 @@ export const OverviewSection = ({
         api.serviceTabs.sharedWith(tenant, id, signal),
         api.accessPeople.services(tenant, signal),
       ]);
+      const sharedWith = settled(shared);
+      const count = async (by: { actor?: string; frontend?: string } = {}) =>
+        (
+          await api.serviceTabs.taskPage(
+            tenant,
+            { service: id, from: periodStart, ...by, limit: 1, offset: 0 },
+            signal,
+          )
+        ).total;
+      const keyIds = sharedWith?.apiKeys.map((k) => k.id) ?? [];
+      const browserIds =
+        sharedWith?.frontends.filter((fe) => fe.kind !== 'server').map((fe) => fe.id) ?? [];
+      const counted = await Promise.allSettled([
+        count(),
+        ...keyIds.map((k) => count({ actor: `api-key:${k}` })),
+        ...browserIds.map((fe) => count({ frontend: fe })),
+      ]);
+      const total = settled(counted[0] as PromiseSettledResult<number>);
+      const byKey = new Map(
+        keyIds.map((k, i) => [k, settled(counted[i + 1] as PromiseSettledResult<number>)]),
+      );
+      const byFrontend = new Map(
+        browserIds.map((fe, i) => [
+          fe,
+          settled(counted[i + 1 + keyIds.length] as PromiseSettledResult<number>),
+        ]),
+      );
       return {
-        shared: settled(shared),
+        shared: sharedWith,
+        total,
+        byKey,
+        byFrontend,
         selected: settled(access)?.find((s) => s.id === id && s.mode === 'selected'),
-        accessKnown: access.status === 'fulfilled',
       };
     },
-    [api, tenant, id],
+    [api, tenant, id, periodStart],
   );
   const [running] = useAsync(
     async (signal) => {
@@ -239,7 +332,7 @@ export const OverviewSection = ({
     [api, tenant, id],
   );
 
-  const days = usage.status === 'ready' ? usage.data.days : [];
+  const days = usage.status === 'ready' ? usage.data : [];
   const shown = days.slice(-barDays);
   const dayToday = days.at(-1);
   const recentRuns =
@@ -251,11 +344,17 @@ export const OverviewSection = ({
 
   const when = (iso: string) => {
     const day = startOfDay(new Date(iso)).getTime();
-    if (day === today.getTime()) return t('serviceOverview.todayAt', { time: f.time(iso) });
+    if (day === today.getTime()) return t('serviceHealth.todayAt', { time: f.time(iso) });
     if (day === today.getTime() - dayMs)
-      return t('serviceOverview.yesterdayAt', { time: f.time(iso) });
-    return dateTime(iso);
+      return t('serviceHealth.yesterdayAt', { time: f.time(iso) });
+    return `${shortDay(iso)} ${f.time(iso)}`;
   };
+  const recentDay = (iso: string) => {
+    const day = startOfDay(new Date(iso)).getTime();
+    return day === today.getTime() || day === today.getTime() - dayMs ? when(iso) : shortDay(iso);
+  };
+  const clock = (iso: string) =>
+    startOfDay(new Date(iso)).getTime() === today.getTime() ? f.time(iso) : when(iso);
   const percentChange = (change: number | undefined) =>
     change === undefined ? undefined : `${change >= 0 ? '+' : ''}${f.percent(change, 0)}`;
   const seconds = (ms: number) =>
@@ -264,10 +363,14 @@ export const OverviewSection = ({
   const runsTile = (() => {
     if (usage.status === 'error') return { value: notAvailable, sub: '' };
     if (fresh) return { value: f.number(0), sub: t('serviceHealth.noRunsYet') };
-    const change = percentChange(runsTrend(days));
+    const change = runsTrend(days);
     return {
       value: f.number(dayToday?.runs ?? 0),
-      sub: change ? t('serviceHealth.runsTrend', { change }) : t('serviceHealth.runsToday'),
+      sub:
+        change === undefined
+          ? t('serviceHealth.runsToday')
+          : t('serviceHealth.runsTrend', { change: percentChange(change) ?? '' }),
+      tone: (change !== undefined && change >= 0 ? 'success' : 'neutral') as Tone,
     };
   })();
 
@@ -275,7 +378,7 @@ export const OverviewSection = ({
     if (usage.status === 'error') return { value: notAvailable, sub: '', tone: 'neutral' as Tone };
     const runs = dayToday?.runs ?? 0;
     const count = dayToday?.failed ?? 0;
-    if (runs === 0)
+    if (fresh || runs === 0)
       return {
         value: t('serviceHealth.noData'),
         sub: t('serviceHealth.comesWithRuns'),
@@ -290,11 +393,11 @@ export const OverviewSection = ({
     };
   })();
 
-  const latency = usage.status === 'ready' ? usage.data.latency : null;
+  const latency = dayToday?.latency ?? null;
   const latencyTile =
     usage.status === 'error'
       ? { value: notAvailable, sub: '' }
-      : latency
+      : latency && !fresh
         ? {
             value: seconds(latency.p50Ms),
             sub: t('serviceHealth.latencySub', { p95: seconds(latency.p95Ms) }),
@@ -302,25 +405,35 @@ export const OverviewSection = ({
         : { value: t('serviceHealth.noData'), sub: t('serviceHealth.comesWithRuns') };
 
   const month = monthCost(days);
-  const monthName = new Intl.DateTimeFormat(intlLocale(f.locale), {
-    month: 'long',
-    timeZone: 'Europe/Oslo',
-  }).format(today);
+  const monthName = (date: Date) =>
+    new Intl.DateTimeFormat(intlLocale(f.locale), {
+      month: 'long',
+      timeZone: 'Europe/Oslo',
+    }).format(date);
+  const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+  const tileKroner = (microNok: number) =>
+    f.currency(microNok / 1_000_000, {
+      digits: microNok === 0 || microNok >= 100_000_000 ? 0 : 2,
+    });
   const costTile =
-    usage.status === 'error' || !month
+    usage.status === 'error' || (!month && !fresh)
       ? { value: notAvailable, sub: '' }
-      : {
-          value: month.priced
-            ? kroner(month.spent)
-            : t('serviceOverview.costAtLeast', { cost: kroner(month.spent) }),
-          sub:
-            month.change === undefined
-              ? t('serviceHealth.costForecast', { forecast: kroner(month.forecast) })
-              : t('serviceHealth.costTrend', {
-                  change: percentChange(month.change) ?? '',
-                  forecast: kroner(month.forecast),
-                }),
-        };
+      : fresh || !month
+        ? { value: tileKroner(month?.spent ?? 0), sub: t('serviceHealth.costTrials') }
+        : {
+            value: month.priced
+              ? tileKroner(month.spent)
+              : t('serviceOverview.costAtLeast', { cost: tileKroner(month.spent) }),
+            sub:
+              month.change === undefined
+                ? t('serviceHealth.costForecast', { forecast: tileKroner(month.forecast) })
+                : t('serviceHealth.costTrend', {
+                    change: percentChange(month.change) ?? '',
+                    month: monthName(lastMonth),
+                    forecast: tileKroner(month.forecast),
+                  }),
+            tone: (month.change !== undefined && month.change > 0 ? 'warning' : 'neutral') as Tone,
+          };
 
   const trend = quality.status === 'ready' ? quality.data.trend : undefined;
   const qualityTile =
@@ -336,17 +449,23 @@ export const OverviewSection = ({
             value: f.percent(trend.latest.score ?? 0, 0),
             sub: [
               t('serviceHealth.qualitySet', {
-                set: trend.set?.name ?? trend.latest.testSet,
                 version:
                   typeof trend.latest.version === 'number'
                     ? t('serviceHealth.versionN', { n: trend.latest.version })
                     : t('serviceHealth.draft'),
               }),
               trend.previous && typeof trend.previous.version === 'number'
-                ? t('serviceHealth.qualityFrom', {
-                    score: f.percent(trend.previous.score ?? 0, 0),
-                    version: trend.previous.version,
-                  })
+                ? t(
+                    (trend.latest.score ?? 0) > (trend.previous.score ?? 0)
+                      ? 'serviceHealth.qualityUpFrom'
+                      : (trend.latest.score ?? 0) < (trend.previous.score ?? 0)
+                        ? 'serviceHealth.qualityDownFrom'
+                        : 'serviceHealth.qualityFrom',
+                    {
+                      score: f.percent(trend.previous.score ?? 0, 0),
+                      version: trend.previous.version,
+                    },
+                  )
                 : '',
             ]
               .filter(Boolean)
@@ -356,12 +475,11 @@ export const OverviewSection = ({
               : 'warning') as Tone,
           };
 
-  const testedAt = (() => {
+  const lastDraftRun = (() => {
     if (quality.status !== 'ready') return undefined;
-    const tests = quality.data.runs
+    return quality.data.runs
       .filter((r) => r.version === 'draft' && r.endedAt)
-      .sort((a, b) => (b.endedAt ?? '').localeCompare(a.endedAt ?? ''));
-    return tests[0]?.endedAt ?? undefined;
+      .sort((a, b) => (b.endedAt ?? '').localeCompare(a.endedAt ?? ''))[0];
   })();
 
   const needs = (): { items: Need[]; pending: number } => {
@@ -387,21 +505,39 @@ export const OverviewSection = ({
       });
     if (draft.status === 'loading' || quality.status === 'loading') pending += 1;
     else if (draft.status === 'ready' && draft.data.summary) {
-      const changed = draft.data.summary.at;
-      const stale = !testedAt || testedAt < changed;
-      const stopped = draft.data.checks?.problems.some((p) => p.path.startsWith('spec.evaluation'));
-      if (stale || stopped)
+      const { summary } = draft.data;
+      const stale = !lastDraftRun || lastDraftRun.draftRevision !== summary.revision;
+      const stops = draft.data.checks?.problems.filter((p) => p.path.startsWith('spec.evaluation'));
+      const stoppedBy = draft.data.gates.find((g) => stops?.some((p) => p.message.includes(g.id)));
+      if (stale || stops?.length)
         items.push({
           key: 'draft',
           tone: 'warning',
-          title: testedAt
-            ? t('serviceHealth.needDraftChanged')
-            : t('serviceHealth.needDraftUntested'),
+          title: !lastDraftRun
+            ? t('serviceHealth.needDraftUntested')
+            : stale
+              ? t('serviceHealth.needDraftChanged')
+              : t('serviceHealth.needDraftStopped'),
           text: [
-            testedAt
-              ? t('serviceHealth.testedChanged', { tested: when(testedAt), changed: when(changed) })
-              : t('serviceHealth.changedAt', { changed: when(changed) }),
-            stopped ? t('serviceHealth.gateStops') : '',
+            lastDraftRun?.endedAt
+              ? t('serviceHealth.testedChanged', {
+                  tested: clock(lastDraftRun.endedAt),
+                  changed: clock(summary.at),
+                })
+              : t('serviceHealth.changedAt', { changed: clock(summary.at) }),
+            stops?.length === 1 && stoppedBy && quality.status === 'ready'
+              ? t('serviceHealth.gateStops', {
+                  reason: gateStopReason(
+                    t,
+                    f,
+                    stoppedBy,
+                    quality.data.runs,
+                    running.status === 'ready' ? running.data.history?.latest?.version : undefined,
+                  ),
+                })
+              : stops?.length
+                ? t('serviceHealth.gatesStop', { count: stops.length })
+                : '',
           ]
             .filter(Boolean)
             .join(' '),
@@ -438,6 +574,14 @@ export const OverviewSection = ({
   const sources = datasetsOf(d.spec);
   const consent = (published?.definition as ServiceDefinition | undefined)?.spec?.riskConfirmation;
 
+  const changeCount = (() => {
+    if (draft.status !== 'ready' || !draft.data.definition || !latest) return undefined;
+    return draftChanges(
+      asServiceDefinition(latest.definition),
+      asServiceDefinition(draft.data.definition),
+    ).length;
+  })();
+
   const shared = who.status === 'ready' ? who.data.shared : undefined;
   const sharedText =
     !shared || (Array.isArray(shared.tenants) && shared.tenants.length === 0)
@@ -445,16 +589,66 @@ export const OverviewSection = ({
       : shared.tenants === '*'
         ? t('serviceHealth.sharedAll')
         : t('serviceHealth.sharedWith', { count: shared.tenants.length });
+  const total = who.status === 'ready' ? who.data.total : undefined;
+  const keyRuns = (keyId: string) =>
+    who.status === 'ready' ? who.data.byKey.get(keyId) : undefined;
+  const frontendShare = (frontendId: string, kind: string) => {
+    if (kind !== 'server') {
+      const runs = who.status === 'ready' ? who.data.byFrontend.get(frontendId) : undefined;
+      return runs === undefined ? undefined : runShare(runs, total);
+    }
+    const bound = shared?.apiKeys.filter((k) => k.client === frontendId) ?? [];
+    if (!bound.length) return undefined;
+    const counts = bound.map((k) => keyRuns(k.id));
+    if (counts.some((c) => c === undefined)) return undefined;
+    return runShare(
+      counts.reduce((sum: number, c) => sum + (c ?? 0), 0),
+      total,
+    );
+  };
+  const keyLine = (k: { id: string; name: string }) => {
+    const runs = keyRuns(k.id);
+    if (runs === 0) return t('serviceHealth.keyUnused', { name: k.name });
+    const share = runShare(runs, total);
+    return share === undefined
+      ? k.name
+      : t('serviceHealth.keyShare', { name: k.name, share: f.percent(share, 0) });
+  };
 
   const versionsNewest = history ? [...history.versions].reverse() : [];
-  const firstVersion = versionsNewest.at(-1);
   const sets = quality.status === 'ready' ? quality.data.sets.length : 0;
-  const stepState = (done: boolean) => (
-    <span className="visually-hidden">
-      {done ? t('serviceHealth.stepDone') : t('serviceHealth.stepOpen')}
-    </span>
-  );
   const reachable = (shared?.frontends.length ?? 0) + (shared?.apiKeys.length ?? 0);
+  const ownKeys = shared?.apiKeys.filter((k) => !k.client) ?? [];
+  const frontendName = (frontendId: string) =>
+    shared?.frontends.find((fe) => fe.id === frontendId)?.name;
+  const stepLabel = (done: boolean) =>
+    done ? t('serviceHealth.stepDone') : t('serviceHealth.stepOpen');
+
+  const sourceLinks = (() => {
+    const shownRefs = sources.slice(0, shownSources);
+    const rest = sources.length - shownRefs.length;
+    const parts = shownRefs.map((ref) => {
+      const found = matchDataset(known?.datasets, tenant, ref.dataset);
+      return found ? (
+        <Link key={ref.dataset} href={`#/datasets/${encodeURIComponent(found.id)}`}>
+          {found.name}
+        </Link>
+      ) : (
+        <span key={ref.dataset}>{ref.dataset}</span>
+      );
+    });
+    const joined: ReactNode[] = [];
+    parts.forEach((p, i) => {
+      if (i > 0)
+        joined.push(i === parts.length - 1 && rest === 0 ? ` ${t('serviceHealth.and')} ` : ', ');
+      joined.push(p);
+    });
+    if (rest > 0) joined.push(` ${t('serviceHealth.andMore', { count: rest })}`);
+    return joined;
+  })();
+
+  const runsLoading = usage.status === 'loading' || recent.status === 'loading';
+  const tileBars = (values: number[]) => (fresh ? undefined : values);
 
   return (
     <div className="service-overview stack">
@@ -479,9 +673,11 @@ export const OverviewSection = ({
             <Paragraph>{t('serviceHealth.startLead')}</Paragraph>
           </div>
           <ol className="plain-list ov-steps">
-            <li className="ov-step" data-done="true">
-              {stepState(true)}
-              <strong>{t('serviceHealth.stepPublished')}</strong>
+            <li className="ov-step">
+              <span className="ov-step-title">
+                <StepMark done label={stepLabel(true)} />
+                <strong>{t('serviceHealth.stepPublished')}</strong>
+              </span>
               <span className="meta">
                 {t('serviceHealth.stepPublishedBy', {
                   when: when(latest.publishedAt),
@@ -489,24 +685,30 @@ export const OverviewSection = ({
                 })}
               </span>
             </li>
-            <li className="ov-step" data-done={sets > 0 || undefined}>
-              {stepState(sets > 0)}
-              <strong>{t('serviceHealth.stepTestSet')}</strong>
+            <li className="ov-step">
+              <span className="ov-step-title">
+                <StepMark done={sets > 0} label={stepLabel(sets > 0)} />
+                <strong>{t('serviceHealth.stepTestSet')}</strong>
+              </span>
               <span className="meta">{t('serviceHealth.stepTestSetText')}</span>
               <Link href={href('quality')}>{t('serviceHealth.stepTestSetLink')}</Link>
             </li>
-            <li className="ov-step" data-done={reachable > 0 || undefined}>
-              {stepState(reachable > 0)}
-              <strong>{t('serviceHealth.stepReach')}</strong>
+            <li className="ov-step">
+              <span className="ov-step-title">
+                <StepMark done={reachable > 0} label={stepLabel(reachable > 0)} />
+                <strong>{t('serviceHealth.stepReach')}</strong>
+              </span>
               <span className="meta">{t('serviceHealth.stepReachText')}</span>
               <Link href={href('channels')}>{t('service.sectionChannels')}</Link>
             </li>
             <li className="ov-step">
-              {stepState(false)}
-              <strong>{t('serviceHealth.stepAccess')}</strong>
+              <span className="ov-step-title">
+                <StepMark done={false} label={stepLabel(false)} />
+                <strong>{t('serviceHealth.stepAccess')}</strong>
+              </span>
               <span className="meta">
                 {t('serviceHealth.stepAccessText', {
-                  org: tenantName || tenant,
+                  org,
                   right: rightLabel(t, 'use-services'),
                 })}
               </span>
@@ -516,29 +718,18 @@ export const OverviewSection = ({
             </li>
           </ol>
         </section>
-      ) : fresh ? null : (
-        <section
-          aria-labelledby="ov-next"
-          aria-busy={pending > 0 || undefined}
-          className="stack-sm"
-        >
+      ) : fresh || pending > 0 ? null : (
+        <section aria-labelledby="ov-next" className="stack-sm">
           <Heading level={2} data-size="xs" id="ov-next">
-            {t('serviceOverview.needsYou')}
+            {t('serviceHealth.needsYou')}
           </Heading>
-          {items.length || pending ? (
+          {items.length ? (
             <ul className="plain-list ov-needs">
               {items.map((n) => (
                 <li key={n.key} className={`ov-need ov-need-${n.tone}`}>
                   <strong>{n.title}</strong>
                   {n.text ? <span>{n.text}</span> : null}
                   <Link href={n.link.href}>{n.link.label}</Link>
-                </li>
-              ))}
-              {Array.from({ length: pending }, (_, i) => (
-                <li key={`pending-${i}`} className="ov-need">
-                  <Skeleton variant="text" width="70%" />
-                  <Skeleton variant="text" width="90%" />
-                  <Skeleton variant="text" width="40%" />
                 </li>
               ))}
             </ul>
@@ -558,7 +749,7 @@ export const OverviewSection = ({
             {t('serviceHealth.title')}
           </Heading>
           <span className="meta">
-            {usage.status === 'loading'
+            {runsLoading
               ? t('serviceHealth.loading', { name })
               : fresh
                 ? t('serviceHealth.noRunsYet')
@@ -569,42 +760,45 @@ export const OverviewSection = ({
           <Tile
             label={t('serviceHealth.runsToday')}
             href={href('log', '?period=today')}
-            loading={usage.status === 'loading' || recent.status === 'loading'}
+            loading={runsLoading}
             {...runsTile}
-            bars={<Bars values={shown.map((x) => x.runs)} tone="accent" />}
+            bars={<Bars values={tileBars(shown.map((x) => x.runs))} tone="accent" />}
           />
           <Tile
-            label={t('serviceHealth.failShare')}
+            label={fresh ? t('serviceHealth.failShareNew') : t('serviceHealth.failShare')}
             href={href('log', '?status=failed&period=today')}
-            loading={usage.status === 'loading' || failures.status === 'loading'}
+            loading={runsLoading || failures.status === 'loading'}
             {...failTile}
-            bars={<Bars values={shown.map((x) => x.failed)} tone="danger" />}
+            bars={<Bars values={tileBars(shown.map((x) => x.failed))} tone="danger" />}
           />
           <Tile
             label={t('serviceHealth.latency')}
             href={href('log')}
-            loading={usage.status === 'loading'}
+            loading={runsLoading}
             {...latencyTile}
+            bars={<Bars values={tileBars(shown.map((x) => x.latency?.p50Ms ?? 0))} tone="accent" />}
           />
           <Tile
-            label={t('serviceHealth.costIn', { month: monthName })}
+            label={t('serviceHealth.costIn', { month: monthName(today) })}
             href="#/statistics"
-            loading={usage.status === 'loading'}
+            loading={runsLoading}
             {...costTile}
-            bars={<Bars values={shown.map((x) => x.costMicroNok)} tone="accent" />}
+            bars={<Bars values={tileBars(shown.map((x) => x.costMicroNok))} tone="accent" />}
           />
           <Tile
             label={t('serviceHealth.quality')}
             href={href('quality')}
             loading={quality.status === 'loading'}
             {...qualityTile}
-            bars={trend ? <Bars values={trend.points.map(([, s]) => s)} tone="success" /> : null}
+            bars={
+              <Bars values={trend ? trend.points.map(([, s]) => s) : undefined} tone="success" />
+            }
           />
         </div>
       </section>
 
       <div className="ov-columns">
-        <section aria-labelledby="ov-runs" className="stack-sm">
+        <section aria-labelledby="ov-runs" className="stack-sm ov-runs">
           <div className="row-wrap spread">
             <Heading level={2} data-size="xs" id="ov-runs">
               {t('serviceOverview.lastRuns')}
@@ -629,7 +823,7 @@ export const OverviewSection = ({
             <Paragraph data-size="sm">{notAvailable}</Paragraph>
           ) : recentRuns.length ? (
             <div tabIndex={0} role="region" aria-labelledby="ov-runs" className="scroll-x">
-              <Table data-size="sm">
+              <Table data-size="sm" className="ov-run-table">
                 <Table.Head>
                   <Table.Row>
                     <Table.HeaderCell scope="col">{t('serviceOverview.colTime')}</Table.HeaderCell>
@@ -650,13 +844,15 @@ export const OverviewSection = ({
                     const s = status(r.status);
                     return (
                       <Table.Row key={r.id}>
-                        <Table.Cell className="nowrap">{when(r.createdAt)}</Table.Cell>
+                        <Table.Cell className="nowrap numeric">{when(r.createdAt)}</Table.Cell>
                         <Table.Cell>
                           <Link href={href('log', `/${encodeURIComponent(r.id)}`)}>
                             {r.excerpt || t('serviceOverview.openRun')}
                           </Link>
                         </Table.Cell>
-                        <Table.Cell className="meta nowrap">{actorText(r.actor, t)}</Table.Cell>
+                        <Table.Cell className="meta nowrap">
+                          {channelText(r, t, frontendName)}
+                        </Table.Cell>
                         <Table.Cell>
                           <Tag data-size="sm" data-color={s.color}>
                             {s.text}
@@ -692,9 +888,16 @@ export const OverviewSection = ({
               <dt>{t('serviceHealth.version')}</dt>
               <dd>
                 {latest
-                  ? t('serviceHealth.versionPublished', {
+                  ? t('serviceHealth.versionPublishedBy', {
                       version: latest.version,
-                      when: when(latest.publishedAt),
+                      name: actor(latest.publishedBy, latest.publishedByName),
+                      when:
+                        startOfDay(new Date(latest.publishedAt)).getTime() ===
+                        today.getTime() - dayMs
+                          ? t('serviceHealth.yesterday')
+                          : startOfDay(new Date(latest.publishedAt)).getTime() === today.getTime()
+                            ? t('serviceHealth.today')
+                            : dayMonth(latest.publishedAt),
                     })
                   : notAvailable}
               </dd>
@@ -713,36 +916,20 @@ export const OverviewSection = ({
                 ))}
               </dd>
               <dt>{t('serviceOverview.model')}</dt>
-              <dd>
-                <strong>{model?.name ?? primary}</strong>
-                {residencyKey ? (
-                  <span className="meta">
-                    {' '}
-                    {t('serviceHealth.dataIn', { where: t(residencyKey) })}
-                  </span>
-                ) : null}{' '}
+              <dd className="ov-model">
+                <span>
+                  <strong>{model?.name ?? primary}</strong>
+                  {residencyKey ? (
+                    <span className="meta">
+                      {' '}
+                      {t('serviceHealth.dataIn', { where: t(residencyKey) })}
+                    </span>
+                  ) : null}
+                </span>
                 <Link href={href('setup', '/model')}>{t('serviceHealth.changeModel')}</Link>
               </dd>
               <dt>{t('serviceOverview.sources')}</dt>
-              <dd>
-                {sources.length
-                  ? sources.map((ref, i) => {
-                      const found = matchDataset(known?.datasets, tenant, ref.dataset);
-                      return (
-                        <span key={ref.dataset}>
-                          {i > 0 ? ', ' : ''}
-                          {found ? (
-                            <Link href={`#/datasets/${encodeURIComponent(found.id)}`}>
-                              {found.name}
-                            </Link>
-                          ) : (
-                            ref.dataset
-                          )}
-                        </span>
-                      );
-                    })
-                  : t('serviceOverview.noDatasets')}
-              </dd>
+              <dd>{sources.length ? sourceLinks : t('serviceOverview.noDatasets')}</dd>
               {consent?.unmaskedInput?.length ? (
                 <>
                   <dt>{t('unmaskedInput.overviewLabel')}</dt>
@@ -767,7 +954,7 @@ export const OverviewSection = ({
                               ? published.publishedByName
                               : undefined,
                           ),
-                          when: consent.at ? dateTime(consent.at) : '',
+                          when: consent.at ? dayMonth(consent.at) : '',
                         })}
                       </span>
                     ) : null}
@@ -780,15 +967,27 @@ export const OverviewSection = ({
           <SideCard id="ov-who" title={t('serviceHealth.who')} loading={who.status === 'loading'}>
             <ul className="plain-list ov-who">
               {shared?.frontends.length ? (
-                shared.frontends.map((fe) => (
-                  <li key={fe.id}>
-                    <span className="stack-xs">
-                      <strong>{fe.name ?? fe.id}</strong>
-                      <span className="meta">{t('serviceHealth.frontend')}</span>
-                    </span>
-                    <Link href={href('channels')}>{t('serviceHealth.open')}</Link>
-                  </li>
-                ))
+                shared.frontends.map((fe, i) => {
+                  const share = frontendShare(fe.id, fe.kind);
+                  return (
+                    <li key={fe.id}>
+                      <span className="stack-xs">
+                        <strong>{fe.name ?? fe.id}</strong>
+                        <span className="meta">
+                          {share === undefined
+                            ? t('serviceHealth.frontend')
+                            : t(
+                                i === 0
+                                  ? 'serviceHealth.frontendShareOfRuns'
+                                  : 'serviceHealth.frontendShare',
+                                { share: f.percent(share, 0) },
+                              )}
+                        </span>
+                      </span>
+                      <Link href={href('channels')}>{t('serviceHealth.open')}</Link>
+                    </li>
+                  );
+                })
               ) : shared ? (
                 <li>
                   <span className="stack-xs">
@@ -802,20 +1001,18 @@ export const OverviewSection = ({
                 <li>
                   <span className="stack-xs">
                     <strong>
-                      {shared.apiKeys.length
-                        ? t('serviceHealth.keys', { count: shared.apiKeys.length })
+                      {ownKeys.length
+                        ? t('serviceHealth.keys', { count: ownKeys.length })
                         : t('serviceHealth.noKeys')}
                     </strong>
                     <span className="meta">
-                      {shared.apiKeys.length
-                        ? shared.apiKeys.map((k) => k.name).join(', ')
+                      {ownKeys.length
+                        ? ownKeys.map(keyLine).join(', ')
                         : t('serviceHealth.noKeysText')}
                     </span>
                   </span>
                   <Link href={href('channels')}>
-                    {shared.apiKeys.length
-                      ? t('serviceHealth.keysLink')
-                      : t('serviceHealth.makeKey')}
+                    {ownKeys.length ? t('serviceHealth.keysLink') : t('serviceHealth.makeKey')}
                   </Link>
                 </li>
               ) : (
@@ -828,7 +1025,7 @@ export const OverviewSection = ({
                       ? t('serviceOverview.selectedOnly', {
                           count: who.data.selected.members.length,
                         })
-                      : t('serviceHealth.everyone', { org: tenantName || tenant })}
+                      : t('serviceHealth.everyone', { org })}
                   </strong>
                   <span className="meta">
                     {t('serviceHealth.accessText', {
@@ -853,7 +1050,11 @@ export const OverviewSection = ({
             <ol className="plain-list ov-changes">
               {draft.status === 'ready' && draft.data.summary ? (
                 <li data-kind="draft">
-                  <strong>{t('serviceHealth.draftEntry')}</strong>
+                  <strong>
+                    {changeCount === undefined
+                      ? t('serviceHealth.draftEntry')
+                      : t('serviceHealth.draftEntryCount', { count: changeCount })}
+                  </strong>
                   <span className="meta">
                     {t('serviceHealth.draftMeta', {
                       when: when(draft.data.summary.at),
@@ -862,18 +1063,18 @@ export const OverviewSection = ({
                   </span>
                 </li>
               ) : null}
-              {versionsNewest.slice(0, firstVersion && fresh ? 1 : 2).map((v, i) => (
+              {versionsNewest.slice(0, fresh ? 1 : 2).map((v, i) => (
                 <li key={v.version} data-kind={i === 0 ? 'live' : 'earlier'}>
                   <strong>{t('serviceHealth.versionEntry', { version: v.version })}</strong>
                   <span className="meta">
                     {v.reason
                       ? t('serviceHealth.versionMetaReason', {
-                          when: when(v.publishedAt),
+                          when: recentDay(v.publishedAt),
                           who: actor(v.publishedBy, v.publishedByName),
                           reason: v.reason,
                         })
                       : t('serviceHealth.versionMeta', {
-                          when: when(v.publishedAt),
+                          when: recentDay(v.publishedAt),
                           who: actor(v.publishedBy, v.publishedByName),
                         })}
                   </span>

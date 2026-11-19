@@ -14,14 +14,14 @@ export const ChannelsSection = ({
   const { t } = usePortalFormat();
   return (
     <div className="stack">
-      <div className="stack-xs">
-        <Heading level={2} data-size="xs">
-          {t('service.sectionChannels')}
-        </Heading>
-        <Paragraph data-size="sm" className="meta">
-          {t('serviceDev.channelsLead')}
-        </Paragraph>
-      </div>
+      {live ? null : (
+        <div className="stack-xs">
+          <Heading level={2} data-size="md">
+            {t('service.sectionChannels')}
+          </Heading>
+          <Paragraph className="meta dv-lead">{t('serviceDev.channelsLead')}</Paragraph>
+        </div>
+      )}
       {live}
       {modes}
       {editor}

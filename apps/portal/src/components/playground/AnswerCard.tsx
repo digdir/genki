@@ -26,6 +26,7 @@ import {
 import { useT, type T } from '../../i18n';
 import { AnswerMarkdown, type CiteRenderer } from '../AnswerMarkdown';
 import { Icon } from '../Icon';
+import { OverflowMenu } from '../OverflowMenu';
 import { ResultTableView, tableFrom } from '../ResultTable';
 
 const citedOrder = (result: PlaygroundResult) => {
@@ -454,6 +455,19 @@ export const AnswerCard = ({
           <Link href={`#/log?oppgave=${encodeURIComponent(result.runId)}`}>
             {t('playground.openInLog')}
           </Link>
+          <OverflowMenu
+            label={t('playground.answerMore')}
+            trigger={t('playground.answerMoreShort')}
+            items={[
+              {
+                key: 'save',
+                label: t('playground.saveAsTest'),
+                onSelect: onSave,
+                expanded: saveExpanded,
+              },
+              { key: 'call', label: t('common.apiCall'), onSelect: onShowCall },
+            ]}
+          />
         </div>
       )}
       {byModel.length > 1 ? (
@@ -469,20 +483,20 @@ export const AnswerCard = ({
           ))}
         </ul>
       ) : null}
-      <div className="playground-answer-actions">
-        {layout === 'card' ? (
+      {layout === 'card' ? (
+        <div className="playground-answer-actions">
           <Link href={`#/log?oppgave=${encodeURIComponent(result.runId)}`}>
             {t('playground.viewRun')}
           </Link>
-        ) : null}
-        <Button variant="tertiary" data-size="sm" aria-expanded={saveExpanded} onClick={onSave}>
-          {t('playground.saveAsTest')}
-        </Button>
-        <Button variant="tertiary" data-size="sm" onClick={onShowCall}>
-          <Icon icon={CodeIcon} size={18} />
-          {t('common.apiCall')}
-        </Button>
-      </div>
+          <Button variant="tertiary" data-size="sm" aria-expanded={saveExpanded} onClick={onSave}>
+            {t('playground.saveAsTest')}
+          </Button>
+          <Button variant="tertiary" data-size="sm" onClick={onShowCall}>
+            <Icon icon={CodeIcon} size={18} />
+            {t('common.apiCall')}
+          </Button>
+        </div>
+      ) : null}
     </article>
   );
 };

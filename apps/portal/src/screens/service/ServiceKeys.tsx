@@ -8,15 +8,19 @@ import {
   Label,
   Paragraph,
   Select,
+  Table,
   Tag,
   Textfield,
 } from '@digdir/designsystemet-react';
-import { useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { ApiError, type ApiClient } from '../../api';
 import { CopyButton } from '../../components/CopyButton';
 import { useAsync } from '../../hooks';
 import { useT, type T } from '../../i18n';
 import { useFormat } from '@genai/i18n/react';
+import type { Format } from '@genai/i18n';
+import { clock, sameDay, shortDay } from './dev-format';
+import { dayMs } from './overview-model';
 import { ErrorState, Loading } from '../../states';
 import type { ClientView, ServiceKeyView } from '../../types';
 import { OverridePicker, overrideGroups, overrideLabel } from './OverridePicker';
@@ -27,6 +31,64 @@ export const problemText = (error: unknown, t: T) =>
     ? error.problem?.errors?.map((e) => e.message).join(' ') || error.message
     : t('serviceKeys.wrong');
 
+const unusedAfterDays = 60;
+
+const listText = (t: T, items: string[]) =>
+  items.length > 1
+    ? t('serviceDev.and', {
+        first: items.slice(0, -1).join(', '),
+        last: items.at(-1) ?? '',
+      })
+    : (items[0] ?? '');
+
+export interface Revocation {
+  at: string;
+  who?: string | undefined;
+  reason: string;
+}
+
+export const keyRevocations = (
+  rows: {
+    action: string;
+    target: string;
+    at: string;
+    actorName?: string;
+    reason: string;
+    outcome: string;
+  }[],
+  tenant: string,
+) =>
+  new Map(
+    rows
+      .filter((r) => r.action === 'platform.apikeys.revoke' && r.outcome === 'applied')
+      .map((r): [string, Revocation] => [
+        r.target.replace(`api-key:${tenant}/`, ''),
+        { at: r.at, who: r.actorName, reason: r.reason },
+      ]),
+  );
+
+const rootOf = (k: ServiceKeyView, keys: ServiceKeyView[]) => {
+  let at = k;
+  for (let hops = 0; hops < keys.length && at.rotatedFrom; hops += 1) {
+    const before = keys.find((x) => x.id === at.rotatedFrom);
+    if (!before) break;
+    at = before;
+  }
+  return at;
+};
+
+const unusedFor = (k: ServiceKeyView, now: Date) => {
+  const since = k.lastUsedAt ?? k.createdAt;
+  return since ? Math.floor((now.getTime() - Date.parse(since)) / dayMs) : 0;
+};
+
+const lastUsedText = (k: ServiceKeyView, t: T, f: Format, now: Date) =>
+  !k.lastUsedAt
+    ? t('serviceDev.neverUsed')
+    : sameDay(k.lastUsedAt, now)
+      ? t('serviceDev.usedToday', { time: clock(k.lastUsedAt, f) })
+      : shortDay(k.lastUsedAt, f);
+
 export const ServiceKeys = ({
   api,
   tenant,
@@ -34,6 +96,9 @@ export const ServiceKeys = ({
   clients,
   environments = [],
   onFlash,
+  createRequest = 0,
+  onKeys,
+  now = () => new Date(),
 }: {
   api: ApiClient;
   tenant: string;
@@ -41,13 +106,27 @@ export const ServiceKeys = ({
   clients: ClientView[];
   environments?: string[];
   onFlash: (text: string, color?: 'success' | 'info' | 'danger') => void;
+  createRequest?: number;
+  onKeys?: (keys: ServiceKeyView[]) => void;
+  now?: () => Date;
 }) => {
   const t = useT();
   const f = useFormat();
+  const [round, setRound] = useState(0);
   const [state, retry] = useAsync(
     (signal) => api.listServiceKeys(tenant, service, signal),
     [api, tenant, service],
   );
+  const [audit] = useAsync(
+    async (signal) =>
+      keyRevocations(
+        (await api.auditPage(tenant, { limit: 500, offset: 0 }, signal).catch(() => undefined))
+          ?.data ?? [],
+        tenant,
+      ),
+    [api, tenant, round],
+  );
+  const revocations = audit.status === 'ready' ? audit.data : new Map<string, Revocation>();
   const [catalog] = useAsync((signal) => api.settingsCatalog(signal).catch(() => []), [api]);
   const groups = catalog.status === 'ready' ? overrideGroups(catalog.data) : [];
   const [form, setForm] = useState<
@@ -71,6 +150,20 @@ export const ServiceKeys = ({
     id
       ? (clients.find((c) => c.definition.metadata.id === id)?.definition.metadata.name ?? id)
       : undefined;
+
+  const startCreate = () => {
+    setSecret(undefined);
+    setFormError('');
+    setForm({ name: '', client: '', reason: '', overrides: [], environments: [] });
+  };
+
+  useEffect(() => {
+    if (createRequest > 0) startCreate();
+  }, [createRequest]);
+
+  useEffect(() => {
+    if (state.status === 'ready') onKeys?.(state.data);
+  }, [state]);
 
   const create = async () => {
     if (!form) return;
@@ -122,6 +215,7 @@ export const ServiceKeys = ({
       setConfirming(undefined);
       onFlash(t('serviceKeys.revoked', { name: k.name }));
       retry();
+      setRound((r) => r + 1);
     } catch (e) {
       setRevokeError(problemText(e, t));
     }
@@ -129,27 +223,9 @@ export const ServiceKeys = ({
 
   return (
     <section aria-labelledby="fe-keys-h" className="stack-sm">
-      <div className="fe-head">
-        <div className="stack-xs">
-          <Heading level={3} data-size="2xs" id="fe-keys-h">
-            {t('serviceKeys.heading')}
-          </Heading>
-          <Paragraph data-size="sm" className="meta">
-            {t('serviceKeys.intro')}
-          </Paragraph>
-        </div>
-        <Button
-          variant="secondary"
-          data-size="sm"
-          onClick={() => {
-            setSecret(undefined);
-            setFormError('');
-            setForm({ name: '', client: '', reason: '', overrides: [], environments: [] });
-          }}
-        >
-          {t('serviceKeys.create')}
-        </Button>
-      </div>
+      <Heading level={3} data-size="xs" id="fe-keys-h">
+        {t('serviceDev.keysHeading')}
+      </Heading>
       {secret ? (
         <Alert data-color="warning">
           <Heading level={4} data-size="2xs">
@@ -252,180 +328,233 @@ export const ServiceKeys = ({
       ) : null}
       {state.status === 'error' ? <ErrorState error={state.error} onRetry={retry} /> : null}
       {state.status === 'ready' && state.data.length === 0 ? (
-        <div className="fe-empty">
-          <span className="fe-empty-title">{t('serviceKeys.emptyTitle')}</span>
-          <span className="meta">{t('serviceKeys.emptyBody')}</span>
-        </div>
+        <Paragraph data-size="sm" className="meta">
+          {t('serviceDev.keysEmpty')}
+        </Paragraph>
       ) : null}
       {state.status === 'ready' && state.data.length > 0 ? (
-        <ul className="fe-list" aria-label={t('serviceKeys.listLabel')}>
-          {state.data.map((k) => {
-            const active = !k.revokedAt;
-            const client = clientName(k.client);
-            return (
-              <li key={k.id} className={active ? undefined : 'revoked'}>
-                <div className="fe-row">
-                  <span className="stack-xs">
-                    <span className="row-wrap">
-                      <strong>{k.name}</strong>
-                      <Tag data-size="sm" data-color={active ? 'success' : 'neutral'}>
-                        {active ? t('serviceKeys.active') : t('serviceKeys.revokedTag')}
-                      </Tag>
-                    </span>
-                    <span className="meta">
-                      {k.prefix ?? 'gp'}…{k.lastFour ?? ''}
-                      {t(k.createdByName ? 'serviceKeys.createdBy' : 'serviceKeys.created', {
-                        when: k.createdAt
-                          ? f.date(k.createdAt, 'medium')
-                          : t('serviceKeys.unknownDate'),
-                        who: k.createdByName ?? '',
-                      })}
-                      {k.rotatedFrom ? t('serviceKeys.rotated') : ''}
-                    </span>
-                    {!active || k.modelsInLockdown === undefined ? null : (
-                      <span className="meta">
-                        {t(
+        <div tabIndex={0} role="region" aria-labelledby="fe-keys-h" className="scroll-x">
+          <Table data-size="sm" className="dv-keys">
+            <Table.Head>
+              <Table.Row>
+                <Table.HeaderCell scope="col">{t('serviceDev.colKey')}</Table.HeaderCell>
+                <Table.HeaderCell scope="col">{t('serviceDev.colAllowed')}</Table.HeaderCell>
+                <Table.HeaderCell scope="col">{t('serviceDev.colLastUsed')}</Table.HeaderCell>
+                <Table.HeaderCell scope="col">
+                  <span className="visually-hidden">{t('serviceDev.colActions')}</span>
+                </Table.HeaderCell>
+              </Table.Row>
+            </Table.Head>
+            <Table.Body>
+              {state.data
+                .filter((k) => !state.data.some((x) => x.rotatedFrom === k.id))
+                .map((k) => {
+                  const active = !k.revokedAt;
+                  const client = clientName(k.client);
+                  const today = now();
+                  const days = unusedFor(k, today);
+                  const unused = active && days >= unusedAfterDays;
+                  const root = rootOf(k, state.data);
+                  const revocation = revocations.get(k.id);
+                  const madeBy = root.createdByName ?? k.createdByName;
+                  const made = root.createdAt
+                    ? madeBy
+                      ? t('serviceDev.keyMade', { when: shortDay(root.createdAt, f), who: madeBy })
+                      : t('serviceDev.keyMadeAt', { when: shortDay(root.createdAt, f) })
+                    : '';
+                  const revokedText = k.revokedAt
+                    ? revocation?.who
+                      ? t('serviceDev.keyRevokedBy', {
+                          when: shortDay(revocation.at, f),
+                          who: revocation.who,
+                        })
+                      : t('serviceDev.keyRevokedAt', { when: shortDay(k.revokedAt, f) })
+                    : '';
+                  const meta = active
+                    ? [
+                        made,
+                        k.rotatedFrom && k.createdAt
+                          ? t('serviceDev.keyRotated', { when: shortDay(k.createdAt, f) })
+                          : '',
+                        unused ? t('serviceDev.keyUnused', { days }) : '',
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')
+                    : revocation?.reason
+                      ? t('serviceDev.withReason', { text: revokedText, reason: revocation.reason })
+                      : revokedText;
+                  const environmentChip = k.environments?.length
+                    ? t('serviceDev.chipEnvironment', { list: listText(t, k.environments) })
+                    : t('serviceDev.chipAllEnvironments');
+                  const overridesChip = k.allowedOverrides.length
+                    ? t('serviceDev.chipOverrides', {
+                        list: k.allowedOverrides
+                          .map((o) => overrideLabel(t, groups, o).replace(/\.$/, '').toLowerCase())
+                          .join(', '),
+                      })
+                    : t('serviceDev.chipNoOverrides');
+                  const lockdownChip =
+                    k.modelsInLockdown === undefined
+                      ? []
+                      : [
                           k.modelsInLockdown
-                            ? 'serviceKeys.modelsAllowed'
-                            : 'serviceKeys.modelsRefused',
-                        )}
-                      </span>
-                    )}
-                  </span>
-                  <span className="stack-xs fe-row-meta">
-                    <span>
-                      {client
-                        ? t('serviceKeys.clientLine', { client })
-                        : t('serviceKeys.allChannels')}
-                    </span>
-                    {k.environments?.length || environments.length > 1 ? (
-                      <span className="meta">
-                        {k.environments?.length
-                          ? t('serviceKeys.environmentsLine', { list: k.environments.join(', ') })
-                          : t('serviceKeys.allEnvironments')}
-                      </span>
-                    ) : null}
-                    <span className="meta">
-                      {t('serviceKeys.lastUsed', {
-                        when: k.lastUsedAt
-                          ? f.dateTime(k.lastUsedAt, 'medium')
-                          : t('serviceKeys.never'),
-                      })}
-                    </span>
-                    {k.allowedOverrides.length ? (
-                      <span className="tag-row">
-                        <span className="meta">{t('serviceKeys.allowedTo')}</span>
-                        <span
-                          className="tag-row"
-                          role="list"
-                          aria-label={t('serviceKeys.allowedTo')}
-                        >
-                          {k.allowedOverrides.map((o) => (
-                            <Tag key={o} role="listitem" data-size="sm" data-color="neutral">
-                              {overrideLabel(t, groups, o)}
+                            ? t('serviceDev.chipLockdownModels')
+                            : t('serviceDev.chipNoLockdownModels'),
+                        ];
+                  const chips = !active
+                    ? [environmentChip]
+                    : client
+                      ? [
+                          t('serviceDev.chipFrontend', { name: client }),
+                          environmentChip,
+                          overridesChip,
+                          ...lockdownChip,
+                        ]
+                      : [
+                          environmentChip,
+                          t('serviceDev.chipAllChannels'),
+                          overridesChip,
+                          ...lockdownChip,
+                        ];
+                  return (
+                    <Fragment key={k.id}>
+                      <Table.Row className={active ? undefined : 'revoked'}>
+                        <Table.Cell>
+                          <span className="row-wrap dv-key-name">
+                            <strong>{k.name}</strong>
+                            <Tag
+                              data-size="sm"
+                              data-color={!active ? 'neutral' : unused ? 'warning' : 'success'}
+                            >
+                              {active ? t('serviceDev.keyActive') : t('serviceDev.keyRevoked')}
                             </Tag>
-                          ))}
-                        </span>
-                      </span>
-                    ) : (
-                      <span className="meta">{t('serviceKeys.cannotOverride')}</span>
-                    )}
-                  </span>
-                </div>
-                {rotating?.id === k.id ? (
-                  <div
-                    className="fe-form stack-sm"
-                    role="group"
-                    aria-label={t('serviceKeys.rotateLabel', { name: k.name })}
-                  >
-                    <Paragraph data-size="sm">
-                      {t('serviceKeys.rotateWarning', { name: k.name })}
-                    </Paragraph>
-                    <OverridePicker
-                      id={`fe-rotate-overrides-${k.id}`}
-                      groups={groups}
-                      value={rotating.overrides}
-                      onChange={(overrides) => setRotating({ id: k.id, overrides })}
-                    />
-                    <div className="actions">
-                      <Button variant="primary" data-size="sm" onClick={() => void rotate(k)}>
-                        {t('serviceKeys.newKeyButton')}
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        data-size="sm"
-                        onClick={() => setRotating(undefined)}
-                      >
-                        {t('serviceKeys.cancel')}
-                      </Button>
-                    </div>
-                  </div>
-                ) : null}
-                {active && confirming !== k.id && rotating?.id !== k.id ? (
-                  <div className="actions">
-                    <Button
-                      variant="secondary"
-                      data-size="sm"
-                      aria-label={t('serviceKeys.rotateLabel', { name: k.name })}
-                      onClick={() => setRotating({ id: k.id, overrides: [...k.allowedOverrides] })}
-                    >
-                      {t('serviceKeys.rotate')}
-                    </Button>
-                    <Button
-                      variant="tertiary"
-                      data-size="sm"
-                      data-color="danger"
-                      aria-label={t('serviceKeys.revokeLabel', { name: k.name })}
-                      onClick={() => {
-                        setConfirming(k.id);
-                        setRevokeReason('');
-                        setRevokeError('');
-                      }}
-                    >
-                      {t('serviceKeys.revoke')}
-                    </Button>
-                  </div>
-                ) : null}
-                {confirming === k.id ? (
-                  <Alert data-color="danger" data-size="sm">
-                    <Paragraph data-size="sm">
-                      {t('serviceKeys.revokeWarning', { name: k.name })}
-                    </Paragraph>
-                    <Textfield
-                      id={`fe-revoke-${k.id}`}
-                      className="fe-field-md"
-                      data-size="sm"
-                      label={t('serviceKeys.reason')}
-                      value={revokeReason}
-                      error={revokeError || undefined}
-                      onChange={(e) => {
-                        setRevokeReason(e.target.value);
-                        setRevokeError('');
-                      }}
-                    />
-                    <div className="actions">
-                      <Button
-                        variant="primary"
-                        data-color="danger"
-                        data-size="sm"
-                        onClick={() => void revoke(k)}
-                      >
-                        {t('serviceKeys.revokeKey')}
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        data-size="sm"
-                        onClick={() => setConfirming(undefined)}
-                      >
-                        {t('serviceKeys.cancel')}
-                      </Button>
-                    </div>
-                  </Alert>
-                ) : null}
-              </li>
-            );
-          })}
-        </ul>
+                          </span>
+                          <span className="meta">{meta}</span>
+                        </Table.Cell>
+                        <Table.Cell>
+                          <span
+                            className="tag-row"
+                            role="list"
+                            aria-label={t('serviceDev.colAllowed')}
+                          >
+                            {chips.map((c) => (
+                              <Tag key={c} role="listitem" data-size="sm" data-color="neutral">
+                                {c}
+                              </Tag>
+                            ))}
+                          </span>
+                        </Table.Cell>
+                        <Table.Cell className="nowrap">{lastUsedText(k, t, f, today)}</Table.Cell>
+                        <Table.Cell>
+                          {active && confirming !== k.id && rotating?.id !== k.id ? (
+                            <span className="actions nowrap">
+                              <Button
+                                variant="tertiary"
+                                data-size="sm"
+                                aria-label={t('serviceKeys.rotateLabel', { name: k.name })}
+                                onClick={() =>
+                                  setRotating({ id: k.id, overrides: [...k.allowedOverrides] })
+                                }
+                              >
+                                {t('serviceKeys.rotate')}
+                              </Button>
+                              <Button
+                                variant="tertiary"
+                                data-size="sm"
+                                data-color="danger"
+                                aria-label={t('serviceKeys.revokeLabel', { name: k.name })}
+                                onClick={() => {
+                                  setConfirming(k.id);
+                                  setRevokeReason('');
+                                  setRevokeError('');
+                                }}
+                              >
+                                {t('serviceKeys.revoke')}
+                              </Button>
+                            </span>
+                          ) : null}
+                        </Table.Cell>
+                      </Table.Row>
+                      {rotating?.id === k.id || confirming === k.id ? (
+                        <Table.Row>
+                          <Table.Cell colSpan={4}>
+                            {rotating?.id === k.id ? (
+                              <div
+                                className="fe-form stack-sm"
+                                role="group"
+                                aria-label={t('serviceKeys.rotateLabel', { name: k.name })}
+                              >
+                                <Paragraph data-size="sm">
+                                  {t('serviceKeys.rotateWarning', { name: k.name })}
+                                </Paragraph>
+                                <OverridePicker
+                                  id={`fe-rotate-overrides-${k.id}`}
+                                  groups={groups}
+                                  value={rotating.overrides}
+                                  onChange={(overrides) => setRotating({ id: k.id, overrides })}
+                                />
+                                <div className="actions">
+                                  <Button
+                                    variant="primary"
+                                    data-size="sm"
+                                    onClick={() => void rotate(k)}
+                                  >
+                                    {t('serviceKeys.newKeyButton')}
+                                  </Button>
+                                  <Button
+                                    variant="secondary"
+                                    data-size="sm"
+                                    onClick={() => setRotating(undefined)}
+                                  >
+                                    {t('serviceKeys.cancel')}
+                                  </Button>
+                                </div>
+                              </div>
+                            ) : (
+                              <Alert data-color="danger" data-size="sm">
+                                <Paragraph data-size="sm">
+                                  {t('serviceKeys.revokeWarning', { name: k.name })}
+                                </Paragraph>
+                                <Textfield
+                                  id={`fe-revoke-${k.id}`}
+                                  className="fe-field-md"
+                                  data-size="sm"
+                                  label={t('serviceKeys.reason')}
+                                  value={revokeReason}
+                                  error={revokeError || undefined}
+                                  onChange={(e) => {
+                                    setRevokeReason(e.target.value);
+                                    setRevokeError('');
+                                  }}
+                                />
+                                <div className="actions">
+                                  <Button
+                                    variant="primary"
+                                    data-color="danger"
+                                    data-size="sm"
+                                    onClick={() => void revoke(k)}
+                                  >
+                                    {t('serviceKeys.revokeKey')}
+                                  </Button>
+                                  <Button
+                                    variant="secondary"
+                                    data-size="sm"
+                                    onClick={() => setConfirming(undefined)}
+                                  >
+                                    {t('serviceKeys.cancel')}
+                                  </Button>
+                                </div>
+                              </Alert>
+                            )}
+                          </Table.Cell>
+                        </Table.Row>
+                      ) : null}
+                    </Fragment>
+                  );
+                })}
+            </Table.Body>
+          </Table>
+        </div>
       ) : null}
     </section>
   );

@@ -188,6 +188,8 @@ export const serviceUi = {
     addHeading: 'New environment',
     name: 'Name',
     nameDescription: 'Lowercase letters, digits and dashes, for example test.',
+    usedBy: 'Who uses it (optional)',
+    usedByDescription: 'Shown on the card, for example the testers in HR.',
     nameInvalid:
       'The name must start with a lowercase letter and have only lowercase letters, digits and dashes, for example test.',
     nameTaken: 'The service already has the environment {name}.',
@@ -199,6 +201,7 @@ export const serviceUi = {
       'prod goes from version {from} to version {to}, which {name} runs now. Nothing is published, and prod stays pinned at version {to}.',
     promoted: 'prod now runs version {version}.',
     rollback: 'Roll back',
+    moreFor: 'More options for {name}',
     rollbackLabel: 'Roll back {name}',
     rollbackVersion: 'The version {name} should run',
     rollbackOption: 'Version {version}',
@@ -316,6 +319,8 @@ export const serviceUi = {
     ownIntro:
       'Your own websites and apps that use the service. A frontend can call from its own server with an API key, or from the browser where employees sign in with Ansattporten.',
     register: 'Register frontend',
+    openFrontend: 'Details',
+    frontendMissing: 'No frontend has the id {id}. It may have been removed.',
     copySecretNow: 'Copy the secret now',
     secretOnce:
       'It is shown only this once. Use it to check the signature in genai-signature on each notification.',

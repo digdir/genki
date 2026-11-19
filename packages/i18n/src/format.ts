@@ -43,7 +43,7 @@ export const createFormat = (locale: Locale, timeZone = 'Europe/Oslo'): Format =
       toDate(value),
     );
     const part = (type: string) => parts.find((p) => p.type === type)?.value ?? '00';
-    return `${part('hour')}${locale === 'en' ? ':' : '.'}${part('minute')}`;
+    return `${part('hour')}:${part('minute')}`;
   };
   const date = (value: DateInput, style: DateStyle = 'long') =>
     invalid(value)

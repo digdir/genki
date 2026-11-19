@@ -9,6 +9,7 @@ export interface DayFigures {
   failed: number;
   costMicroNok: number;
   priced: boolean;
+  latency: { p50Ms: number; p95Ms: number; runs: number } | null;
 }
 
 export const serviceDays = (report: UsageReport, service: string): DayFigures[] =>
@@ -20,6 +21,7 @@ export const serviceDays = (report: UsageReport, service: string): DayFigures[] 
       failed: u?.failedRequests ?? 0,
       costMicroNok: u?.costMicroNok ?? 0,
       priced: u?.priced !== false && u?.costMicroNok !== null,
+      latency: u?.latency ?? null,
     };
   });
 
@@ -74,7 +76,7 @@ export const completedRuns = (runs: EvalRun[]) =>
 
 export const qualityTrend = (runs: EvalRun[], sets: ServiceTestSet[]) => {
   const done = completedRuns(runs);
-  const latest = done[0];
+  const latest = done.find((r) => typeof r.version === 'number') ?? done[0];
   if (!latest) return undefined;
   const same = done.filter((r) => r.testSet === latest.testSet && typeof r.version === 'number');
   const perVersion = new Map<number, number>();
@@ -94,3 +96,11 @@ export const qualityTrend = (runs: EvalRun[], sets: ServiceTestSet[]) => {
 
 export const unusedDays = (lastUsedAt: string | null | undefined, now: Date) =>
   lastUsedAt ? Math.floor((now.getTime() - Date.parse(lastUsedAt)) / dayMs) : undefined;
+
+export const testedRevision = (runs: EvalRun[]) =>
+  runs
+    .filter((r) => r.version === 'draft' && typeof r.draftRevision === 'number')
+    .sort((a, b) => ended(b).localeCompare(ended(a)))[0];
+
+export const runShare = (part: number | undefined, total: number | undefined) =>
+  part === undefined || !total ? undefined : part / total;

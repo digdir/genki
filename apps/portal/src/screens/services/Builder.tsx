@@ -191,6 +191,7 @@ const areaOfSection: Partial<Record<string, SetupArea>> = {
   model: 'model',
   variants: 'variants',
   guards: 'guards',
+  start: 'channels',
 };
 
 const areaOf = (detail: string | undefined): SetupArea | undefined =>
@@ -1429,8 +1430,6 @@ export const Builder = ({
           when: remoteLatest.publishedAt ? formatDateTime(remoteLatest.publishedAt, f) : '',
         }
       : latest;
-  const publishedBy =
-    shown && remoteLatest?.version === shown.n ? remoteLatest.publishedByName : undefined;
   const status: ServiceStatus = archived
     ? 'Arkivert'
     : lifecycle?.state === 'paused'
@@ -1442,19 +1441,7 @@ export const Builder = ({
           : init.status;
   const meta = live
     ? shown
-      ? [
-          status === 'I bruk'
-            ? t('services.metaInUse', { n: shown.n })
-            : t('services.metaVersion', { n: shown.n }),
-          ...(shown.when
-            ? [
-                publishedBy
-                  ? t('services.metaPublishedBy', { when: shown.when, name: publishedBy })
-                  : t('services.metaPublished', { when: shown.when }),
-              ]
-            : []),
-          ...(draftRevision > 0 ? [t('services.metaUnpublishedDraft')] : []),
-        ].join(' · ')
+      ? ''
       : t(serverDraft ? 'services.metaNotPublishedAuto' : 'services.metaNotPublished')
     : latest
       ? t('services.metaDraftBased', { n: latest.n })
@@ -1632,17 +1619,27 @@ export const Builder = ({
                 service={id}
                 publicName={variantsOf(service.spec)[0]?.publicName ?? ''}
                 onFrontends={setFrontends}
+                frontend={detail}
+                listHref={`#${servicePath(routeId, 'channels')}`}
               />
             )
           }
           modes={
-            <VariantsList
-              service={serviceId}
-              publicName={variantsOf(service.spec)[0]?.publicName ?? ''}
-              variants={variantsOf(service.spec)}
-            />
+            detail ? null : isNew ? (
+              <VariantsList
+                service={serviceId}
+                publicName={variantsOf(service.spec)[0]?.publicName ?? ''}
+                variants={variantsOf(service.spec)}
+              />
+            ) : (
+              <Paragraph data-size="sm">
+                <Link href={`#${servicePath(routeId, 'setup', '/channels')}`}>
+                  {t('serviceDev.channelsInSetup')}
+                </Link>
+              </Paragraph>
+            )
           }
-          editor={setup(['start'])}
+          editor={isNew ? setup(['start']) : null}
         />
       );
     if (section === 'interface')
@@ -1672,7 +1669,7 @@ export const Builder = ({
     if (section === 'environments')
       return <EnvironmentsSection api={api} tenant={tenant} serviceId={id} />;
     if (section === 'versions' || section === 'definition')
-      return live && !isNew ? (
+      return !isNew ? (
         <VersionsSection
           view={versionsView}
           onView={(v) => go(v === 'yaml' ? 'definition' : 'versions')}
@@ -1863,7 +1860,9 @@ export const Builder = ({
           tag={
             draftBar && status === 'I bruk' && liveVersion
               ? t('serviceDraft.versionInUse', { n: liveVersion.version })
-              : undefined
+              : live && shown && status === 'I bruk'
+                ? t('services.metaInUse', { n: shown.n })
+                : undefined
           }
           flash={flash}
           actions={
@@ -1884,7 +1883,7 @@ export const Builder = ({
                   {...(live ? { onCopy: () => void copyService() } : {})}
                 />
               ) : null}
-              {!archived && !(draftBar && section === 'setup') ? (
+              {!archived && !(!isNew && section === 'setup') ? (
                 <Button asChild variant="secondary" data-size="sm">
                   <a href={`#${servicePath(routeId, 'test')}`}>
                     {t('serviceLifecycle.tryService')}

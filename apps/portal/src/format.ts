@@ -8,9 +8,7 @@ const nbFormat = createFormat('nb');
 const nbT = translator('nb');
 
 export const formatDateTime = (iso: string, f: Format = nbFormat) =>
-  f.locale === 'en'
-    ? f.dateTime(iso, 'medium')
-    : `${f.date(iso, 'medium')}, ${f.time(iso).replace('.', ':')}`;
+  f.locale === 'en' ? f.dateTime(iso, 'medium') : `${f.date(iso, 'medium')}, ${f.time(iso)}`;
 const oneDecimal = (f: Format, n: number) => f.number(n, { maximumFractionDigits: 1 });
 export const formatNumber = (n: number, f: Format = nbFormat) => f.number(n);
 export const formatSeconds = (s: number, f: Format = nbFormat, t: T = nbT) =>

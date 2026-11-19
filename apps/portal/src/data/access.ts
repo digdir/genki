@@ -133,4 +133,4 @@ export const accessManagers = [
   },
 ];
 
-export const altinnSync = { lastGoodAt: 'i dag kl. 08.14' };
+export const altinnSync = { lastGoodAt: 'i dag kl. 08:14' };

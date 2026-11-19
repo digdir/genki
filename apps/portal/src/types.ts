@@ -301,8 +301,11 @@ export type UsageSourceId = 'genki' | 'gateway';
 
 export interface TaskActor {
   kind: 'person' | 'api-key' | 'system';
+  id?: string;
   name?: string;
 }
+
+export type RunChannel = 'api-key' | 'interface' | 'api' | 'playground' | 'batch';
 
 export interface TaskRow {
   id: string;
@@ -319,6 +322,8 @@ export interface TaskRow {
   endedAt: string | null;
   usage?: UsageTotals;
   failure?: { code: string; reason: string; step?: string };
+  channel?: RunChannel | null;
+  frontend?: string;
 }
 
 export interface ServiceLifecycleView {
@@ -468,7 +473,10 @@ export interface UsageReport {
   daily: {
     date: string;
     usage: UsageTotals;
-    byService?: Record<string, UsageTotals>;
+    byService?: Record<
+      string,
+      UsageTotals & { latency?: { p50Ms: number; p95Ms: number; runs: number } | null }
+    >;
     byModel?: Record<string, UsageTotals>;
     testing?: UsageTotals;
     ingestion?: UsageTotals;

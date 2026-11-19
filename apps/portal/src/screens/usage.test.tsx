@@ -57,7 +57,7 @@ describe('Forbruk', () => {
     expect(calls.some((c) => /\/tenants\/[^/]+\/usage\?days=190$/.test(c))).toBe(true);
 
     expect(screen.getByRole('heading', { level: 2, name: 'Kvote i oktober' })).toBeTruthy();
-    expect(screen.getByText(/Sist oppdatert i dag kl\. \d\d\.\d\d\./)).toBeTruthy();
+    expect(screen.getByText(/Sist oppdatert i dag kl\. \d\d:\d\d\./)).toBeTruthy();
     const meter = screen.getByRole('meter', { name: 'Brukt av kvoten i oktober' });
     expect(meter.getAttribute('aria-valuetext')).toMatch(/av 50 mill\. tokens brukt/);
     expect(screen.getByText('Beregnet kostnad i oktober')).toBeTruthy();

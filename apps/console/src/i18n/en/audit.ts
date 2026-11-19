@@ -80,6 +80,7 @@ export const audit = {
   actionServiceEnvironmentRemove: 'Removed service environment',
   actionServiceEnvironmentPromote: 'Promoted version to environment',
   actionServiceEnvironmentRollback: 'Rolled back environment',
+  actionServiceEnvironmentDescribe: 'Changed environment description',
   actionSkillShareDecide: 'Decided skill sharing',
   actionRecipeShare: 'Shared a recipe with every organisation',
   actionRecipeUnshare: 'Stopped sharing a recipe',

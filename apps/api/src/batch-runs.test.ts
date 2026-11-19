@@ -574,6 +574,27 @@ describe('batch runs over a document set', () => {
     expect(uncapped.body.errors).toEqual([expect.objectContaining({ path: 'maxCostNok' })]);
   });
 
+  it('keeps the name given at start on the run and in the list, and refuses one over 120 characters', async () => {
+    const env = await boot();
+    const estimate = await estimateFor(env);
+
+    const tooLong = await env.send('POST', base, 'kari', {
+      estimate: estimate.id,
+      maxCostNok: 5,
+      name: 'x'.repeat(121),
+    });
+    expect(tooLong.status).toBe(400);
+    expect(tooLong.body.errors).toEqual([expect.objectContaining({ path: 'name' })]);
+    const run = await runTo(env, {
+      estimate: estimate.id,
+      maxCostNok: 5,
+      name: '  Spørsmål fra HR-postkassen ',
+    });
+    expect(run.name).toBe('Spørsmål fra HR-postkassen');
+    const listed = await env.send('GET', base, 'kari');
+    expect((listed.body.data as { name?: string }[])[0]?.name).toBe('Spørsmål fra HR-postkassen');
+  });
+
   it('runs each document, records output, sources, tokens and cost, and retries the failed one', async () => {
     const env = await boot();
     const estimate = await estimateFor(env);

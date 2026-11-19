@@ -48,7 +48,7 @@ describe('Logg: Kjøringer', () => {
     expect(headers).toEqual(['Tid', 'Kjøring', 'Status', 'Varighet', 'Kostnad']);
     const row = rowOf(/^Rapportassistenten: Hva sier evalueringer/);
     expect(within(row).getByRole('link').getAttribute('href')).toBe('#/log/t1');
-    expect(within(row).getByText('I dag kl. 10.41')).toBeTruthy();
+    expect(within(row).getByText('I dag kl. 10:41')).toBeTruthy();
     expect(within(row).getByText('Fullført')).toBeTruthy();
     expect(within(row).getByText('4,7 s')).toBeTruthy();
     expect(screen.queryByRole('link', { name: /Kunnskapsassistenten/ })).toBeNull();
@@ -440,7 +440,7 @@ describe('opening a run', () => {
     const note = await screen.findByRole('note', {
       name: 'Innholdet i denne kjøringen er slettet',
     });
-    expect(note.textContent).toMatch(/Samtalen ble slettet \d+\. \p{L}+ \d{4} kl\. 18\.41\./u);
+    expect(note.textContent).toMatch(/Samtalen ble slettet \d+\. \p{L}+ \d{4} kl\. 18:41\./u);
     expect(note.textContent).toContain('Bare status, tid, tokens og kostnad er tatt vare på.');
     expect(within(await steps()).getByText('Svaret er slettet')).toBeTruthy();
     expect(screen.queryByRole('region', { name: 'Spørsmålet' })).toBeNull();

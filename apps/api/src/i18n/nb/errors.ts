@@ -655,6 +655,7 @@ export const routeErrors = defineNamespace({
   runFinished: 'kjøringen er allerede ferdig',
   evalRunEndedAs: 'kjøringen er allerede avsluttet som {state}',
   actorFilter: 'actor er me eller en aktør-id fra en kjøring i listen',
+  frontendFilter: 'frontend er id-en til en registrert brukerflate',
   incidentResolved: 'hendelsen er allerede løst',
   quotaRequestPending: 'en forespørsel om kvote venter allerede på en avgjørelse',
   quotaRequestApproved: 'forespørselen om kvote er allerede godkjent',

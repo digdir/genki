@@ -128,7 +128,7 @@ describe('service environments in the portal', () => {
     const post = calls.find((c) => c.method === 'POST' && c.path === environmentsPath);
     expect(post?.body).toEqual({ name: 'test' });
     expect(reasonOf(post)).toBe('Testerne skal prøve nye versjoner');
-    expect(await screen.findByRole('button', { name: 'Fjern test' })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: 'Flere valg for test' })).toBeTruthy();
   });
 
   it('refuses an environment name that is not lowercase letters, digits and dashes before sending it', async () => {
@@ -260,7 +260,8 @@ describe('service environments in the portal', () => {
     });
     render(asManager(<EnvironmentsSection api={api} tenant={tenant} serviceId="klarsprak" />));
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Fjern test' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Flere valg for test' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Fjern test' }));
     expect(calls.some((c) => c.method === 'DELETE')).toBe(false);
     fireEvent.change(screen.getByLabelText('Begrunnelse'), {
       target: { value: 'Testmiljøet trengs ikke lenger' },
@@ -274,6 +275,34 @@ describe('service environments in the portal', () => {
     expect(await screen.findByText(/Tjenesten har bare prod/)).toBeTruthy();
   });
 
+  it('keeps Rull tilbake and Fjern for a non-prod environment in a menu that works by keyboard', async () => {
+    const { api } = platform({
+      [`GET ${definitionPath}`]: history,
+      [`GET ${environmentsPath}`]: staged,
+    });
+    render(asManager(<EnvironmentsSection api={api} tenant={tenant} serviceId="klarsprak" />));
+
+    const more = await screen.findByRole('button', { name: 'Flere valg for test' });
+    expect(screen.queryByRole('button', { name: 'Fjern test' })).toBeNull();
+    expect(more.getAttribute('aria-expanded')).toBe('false');
+    more.focus();
+    fireEvent.click(more);
+
+    expect(more.getAttribute('aria-expanded')).toBe('true');
+    const rollback = screen.getByRole('button', { name: 'Rull tilbake test' });
+    const remove = screen.getByRole('button', { name: 'Fjern test' });
+    expect(document.activeElement).toBe(rollback);
+    fireEvent.keyDown(rollback, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(remove);
+    fireEvent.keyDown(remove, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(rollback);
+    fireEvent.keyDown(rollback, { key: 'Escape' });
+
+    expect(screen.queryByRole('button', { name: 'Fjern test' })).toBeNull();
+    expect(document.activeElement).toBe(more);
+    expect(screen.getByRole('button', { name: 'Rull tilbake prod' })).toBeTruthy();
+  });
+
   it('marks each version with the environments that run it', async () => {
     const { api } = platform({
       [`GET ${definitionPath}`]: history,
@@ -282,11 +311,128 @@ describe('service environments in the portal', () => {
     render(asManager(<Versions api={api} tenant={tenant} serviceId="klarsprak" />));
 
     const versions = await screen.findByRole('list', { name: 'Versjoner' });
-    await waitFor(() => expect(within(versions).getByText('I prod')).toBeTruthy());
+    await waitFor(() => expect(within(versions).getByText('I bruk i prod')).toBeTruthy());
     const items = within(versions).getAllByRole('listitem');
-    expect(within(items[0] as HTMLElement).getByText('I test')).toBeTruthy();
-    expect(within(items[1] as HTMLElement).getByText('I prod')).toBeTruthy();
+    expect(within(items[0] as HTMLElement).getByText('I bruk i test')).toBeTruthy();
+    expect(within(items[1] as HTMLElement).getByText('I bruk i prod')).toBeTruthy();
     expect(within(versions).queryByText('I bruk')).toBeNull();
+  });
+
+  it('sends who uses a new environment with it when the owner says', async () => {
+    const { api, calls } = platform({
+      [`GET ${definitionPath}`]: history,
+      [`GET ${environmentsPath}`]: () => ({
+        latestVersion: 3,
+        environments: [env('prod', 3, true)],
+      }),
+      [`POST ${environmentsPath}`]: staged,
+    });
+    render(asManager(<EnvironmentsSection api={api} tenant={tenant} serviceId="klarsprak" />));
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Legg til miljø' }));
+    fireEvent.change(screen.getByLabelText('Hvem bruker det (valgfritt)'), {
+      target: { value: ' testerne i HR ' },
+    });
+    fireEvent.change(screen.getByLabelText('Begrunnelse'), {
+      target: { value: 'Testerne skal prøve nye versjoner' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Legg til' }));
+
+    await waitFor(() =>
+      expect(calls.find((c) => c.method === 'POST')?.body).toEqual({
+        name: 'test',
+        description: 'testerne i HR',
+      }),
+    );
+  });
+
+  it('says on the card who uses an environment, with its runs today', async () => {
+    const { api } = platform({
+      [`GET ${definitionPath}`]: history,
+      [`GET ${environmentsPath}`]: () => ({
+        latestVersion: 3,
+        environments: [
+          env('prod', 2, false, 1),
+          { ...env('test', 3, true), description: 'testerne i HR' },
+        ],
+      }),
+      [`GET /tenants/${tenant}/tasks`]: () => ({ data: [], total: 14, offset: 0, limit: 1 }),
+    });
+    render(asManager(<EnvironmentsSection api={api} tenant={tenant} serviceId="klarsprak" />));
+
+    const list = await screen.findByRole('list', { name: 'Miljøer' });
+    await waitFor(() =>
+      expect(list.textContent).toContain('14 kjøringer i dag, fra testerne i HR.'),
+    );
+  });
+
+  it('lists the history of the environments newest first', async () => {
+    const { api } = platform({
+      [`GET ${definitionPath}`]: history,
+      [`GET ${environmentsPath}`]: staged,
+      [`GET /tenants/${tenant}/services/klarsprak/environment-history`]: () => ({
+        data: [
+          {
+            environment: 'prod',
+            action: 'promoted',
+            version: 2,
+            previousVersion: 1,
+            from: 'test',
+            at: '2026-11-12T09:14:00Z',
+            by: 'employee:ansattporten:kari',
+            byName: 'Kari Nordmann',
+            reason: 'Testet i HR',
+          },
+          {
+            environment: 'test',
+            action: 'added',
+            version: null,
+            previousVersion: null,
+            at: '2026-10-01T08:00:00Z',
+            by: 'employee:ansattporten:ola',
+            byName: 'Ola Hansen',
+            reason: '',
+          },
+        ],
+        total: 2,
+      }),
+    });
+    render(asManager(<EnvironmentsSection api={api} tenant={tenant} serviceId="klarsprak" />));
+
+    const list = await screen.findByRole('list', { name: 'Historikk' });
+    expect(
+      within(list)
+        .getAllByRole('listitem')
+        .map((li) => li.textContent),
+    ).toEqual([
+      '12. nov 10:14 · prod gikk fra versjon 1 til 2, tatt i bruk av Kari Nordmann: «Testet i HR»',
+      '3. okt 12:00 · test fikk versjon 3 ved publisering',
+      '2. okt 12:00 · test fikk versjon 2 ved publisering',
+      '1. okt 10:00 · test ble lagt til av Ola Hansen',
+    ]);
+  });
+
+  it('keeps Ta i bruk i prod disabled with the reason when prod runs that version', async () => {
+    const { api, calls } = platform({
+      [`GET ${definitionPath}`]: history,
+      [`GET ${environmentsPath}`]: () => ({
+        latestVersion: 3,
+        environments: [env('prod', 3, false, 2), env('test', 3, true)],
+      }),
+    });
+    render(asManager(<EnvironmentsSection api={api} tenant={tenant} serviceId="klarsprak" />));
+
+    const promote = await screen.findByRole('button', {
+      name: 'Ta versjonen test kjører i bruk i prod',
+    });
+    expect(promote.getAttribute('aria-disabled')).toBe('true');
+    expect(promote.getAttribute('aria-describedby')).toBeTruthy();
+    expect(
+      document.getElementById(promote.getAttribute('aria-describedby') ?? '')?.textContent,
+    ).toBe('prod kjører allerede versjon 3.');
+    fireEvent.click(promote);
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(calls.some((c) => c.method === 'POST')).toBe(false);
   });
 
   it('shows the environments without actions to a member who may not manage services', async () => {
@@ -379,11 +525,11 @@ describe('service environments in the portal', () => {
         clients={[]}
         environments={['prod', 'test']}
         onFlash={() => undefined}
+        createRequest={1}
       />,
     );
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Lag API-nøkkel' }));
-    fireEvent.change(screen.getByLabelText('Navn'), { target: { value: 'Testserver' } });
+    fireEvent.change(await screen.findByLabelText('Navn'), { target: { value: 'Testserver' } });
     fireEvent.click(screen.getByRole('checkbox', { name: 'test' }));
     fireEvent.change(screen.getByLabelText('Begrunnelse'), {
       target: { value: 'Testserveren skal bare nå test' },

@@ -289,7 +289,7 @@ export const datasets = defineNamespace({
   howOften: 'Hvor ofte skal datasettet leses inn?',
   scheduleNightlyHelp: 'Kl. 03.00.',
   scheduleWeeklyOption: 'Hver uke',
-  scheduleWeeklyHelp: 'Mandag kl. 03.00.',
+  scheduleWeeklyHelp: 'Mandag kl. 03:00.',
   scheduleManualHelp: 'Med «Les inn på nytt».',
   unsaved: 'Du har endringer som ikke er lagret',
   discard: 'Forkast',

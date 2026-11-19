@@ -174,9 +174,9 @@ export const skills = defineNamespace({
   askExamples: 'Foreslå eksempler som mangler.',
   askFix: 'Rett instruksjonene slik at testtilfellene som feilet, består.',
   budgetExhausted:
-    'Assistenten har brukt opp dagens kvote. Den fornyes kl. 00.00. Ingenting er endret, og du kan skrive selv som vanlig.',
+    'Assistenten har brukt opp dagens kvote. Den fornyes kl. 00:00. Ingenting er endret, og du kan skrive selv som vanlig.',
   budgetExhaustedTokens:
-    'Assistenten har brukt opp dagens kvote på {budget} tokens. Den fornyes kl. 00.00. Ingenting er endret, og du kan skrive selv som vanlig.',
+    'Assistenten har brukt opp dagens kvote på {budget} tokens. Den fornyes kl. 00:00. Ingenting er endret, og du kan skrive selv som vanlig.',
   unavailable: 'Assistenten svarer ikke akkurat nå. Ingenting er endret. Prøv igjen om litt.',
   policyRefused: 'Ikke tillatt hos {tenant}. Regelen: «{rule}». Kan endres av {owner}.',
   cannotPropose: 'Assistenten kunne ikke lage et forslag her.',

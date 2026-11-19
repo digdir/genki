@@ -11,6 +11,7 @@ export type SetupArea =
   | 'tools'
   | 'how'
   | 'variants'
+  | 'channels'
   | 'guards'
   | 'risk'
   | 'limits';
@@ -18,16 +19,17 @@ export type SetupArea =
 export const basicAreas: SetupArea[] = ['purpose', 'sources', 'input', 'result'];
 export const advancedAreas: SetupArea[] = [
   'model',
-  'tools',
   'how',
+  'tools',
   'variants',
+  'channels',
   'guards',
   'risk',
   'limits',
 ];
 export const setupAreas: SetupArea[] = [...basicAreas, ...advancedAreas];
 
-export type ChangeArea = SetupArea | 'channels' | 'quality' | 'other';
+export type ChangeArea = SetupArea | 'quality' | 'other';
 
 export type ChangeTopic =
   | 'name'

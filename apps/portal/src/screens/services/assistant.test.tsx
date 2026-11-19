@@ -481,7 +481,7 @@ describe('builder assistant', () => {
     });
     fireEvent.click(confirm);
     expect(
-      await within(panel).findByText(/Endret av Kari Nordmann i dag kl\. \d\d\.\d\d/),
+      await within(panel).findByText(/Endret av Kari Nordmann i dag kl\. \d\d:\d\d/),
     ).toBeTruthy();
     expect(posts.at(-1)).toEqual({
       url: '/api/tenants/999888777/proposals/cp-risikoscore/approve',

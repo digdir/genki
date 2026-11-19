@@ -18,6 +18,12 @@ const row = (n: number) => ({
   service: 'rapport',
   capability: 'rapport',
   excerpt: `Spørsmål ${n}`,
+  environment: 'prod',
+  actor:
+    n % 2
+      ? { kind: 'person', id: 'employee:mock:ingrid', name: 'Ingrid Berg' }
+      : { kind: 'api-key', id: 'api-key:skey-sak', name: 'Saksbehandling' },
+  channel: n % 2 ? 'api' : 'api-key',
   createdAt: '2026-11-17T10:00:00Z',
   endedAt: '2026-11-17T10:00:02Z',
   ...(n % 10 === 0
@@ -39,7 +45,12 @@ const platform = () => {
       const q = url.searchParams;
       asked.push(q);
       const all = Array.from({ length: 60 }, (_, i) => row(i + 1)).filter(
-        (r) => !q.get('q') || r.excerpt.includes(q.get('q') ?? ''),
+        (r) =>
+          (!q.get('q') || r.excerpt.includes(q.get('q') ?? '')) &&
+          (!q.get('status') || r.status === q.get('status')) &&
+          (!q.get('actor') ||
+            r.actor.id === q.get('actor') ||
+            (q.get('actor') === 'me' && r.actor.id === 'employee:mock:ingrid')),
       );
       const offset = Number(q.get('offset') ?? 0);
       const limit = Number(q.get('limit') ?? 25);
@@ -61,15 +72,17 @@ describe('the Logg page of a service', () => {
     const { api, asked } = platform();
     render(<LogSection api={api} tenant={tenant} id="rapport" runId={undefined} live now={now} />);
 
-    expect(await screen.findByText('1 til 25 av 60')).toBeTruthy();
+    expect(await screen.findByText('1 til 25 av 60 kjøringer i dag. 6 feilet.')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Neste' }));
-    expect(await screen.findByText('26 til 50 av 60')).toBeTruthy();
+    expect(await screen.findByText(/^26 til 50 av 60 kjøringer i dag\./)).toBeTruthy();
     expect(asked.at(-1)?.get('offset')).toBe('25');
 
-    fireEvent.change(screen.getByLabelText('Søk'), { target: { value: 'Spørsmål 5' } });
+    fireEvent.change(screen.getByLabelText('Søk i spørsmål'), { target: { value: 'Spørsmål 5' } });
     await waitFor(() => expect(asked.at(-1)?.get('q')).toBe('Spørsmål 5'));
     expect(asked.at(-1)?.get('offset')).toBe('0');
-    expect(await screen.findByText(/1 til 11 av 11 \(søkte i 60 kjøringer\)/)).toBeTruthy();
+    expect(
+      await screen.findByText(/1 til 11 av 11 kjøringer i dag\..*\(søkte i 60 kjøringer\)/),
+    ).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Spørsmål 50' }).getAttribute('href')).toBe(
       '#/services/rapport/log/t50',
     );
@@ -80,9 +93,9 @@ describe('the Logg page of a service', () => {
     const { api, asked } = platform();
     render(<LogSection api={api} tenant={tenant} id="rapport" runId={undefined} live now={now} />);
 
-    await screen.findByText('1 til 25 av 60');
+    await screen.findByText(/^1 til 25 av 60 /);
     fireEvent.change(screen.getByLabelText('Per side'), { target: { value: '50' } });
-    expect(await screen.findByText('1 til 50 av 60')).toBeTruthy();
+    expect(await screen.findByText(/^1 til 50 av 60 /)).toBeTruthy();
     expect(asked.at(-1)?.get('limit')).toBe('50');
   });
 
@@ -98,7 +111,38 @@ describe('the Logg page of a service', () => {
     expect(within(filters).getByText('Feilet')).toBeTruthy();
 
     fireEvent.click(within(filters).getByRole('button', { name: 'Nullstill' }));
-    await waitFor(() => expect(asked.at(-1)?.get('status')).toBeNull());
-    expect(asked.at(-1)?.get('from')).toBeNull();
+    const page = () => asked.filter((q) => q.get('limit') !== '1').at(-1);
+    await waitFor(() => expect(page()?.get('status')).toBeNull());
+    expect(page()?.get('from')).toBeNull();
+  });
+
+  it('filters the log to my own runs with Fra', async () => {
+    const { api, asked } = platform();
+    render(<LogSection api={api} tenant={tenant} id="rapport" runId={undefined} live now={now} />);
+
+    await screen.findByText(/^1 til 25 av 60 /);
+    fireEvent.change(screen.getByLabelText('Fra'), { target: { value: 'me' } });
+    await waitFor(() => expect(asked.at(-1)?.get('actor')).toBe('me'));
+    expect(await screen.findByText(/^1 til 25 av 30 /)).toBeTruthy();
+    const filters = screen.getByText('Filtre:').parentElement as HTMLElement;
+    expect(within(filters).getByText('Meg')).toBeTruthy();
+  });
+
+  it('filters the log by a person or key seen in the runs', async () => {
+    const { api, asked } = platform();
+    render(<LogSection api={api} tenant={tenant} id="rapport" runId={undefined} live now={now} />);
+
+    await screen.findByText(/^1 til 25 av 60 /);
+    const from = screen.getByLabelText('Fra');
+    expect(
+      within(from)
+        .getAllByRole('option')
+        .map((o) => o.textContent),
+    ).toEqual(['Alle brukerflater og nøkler', 'Meg', 'Ingrid Berg', 'Nøkkel: Saksbehandling']);
+    fireEvent.change(from, { target: { value: 'api-key:skey-sak' } });
+    await waitFor(() => expect(asked.at(-1)?.get('actor')).toBe('api-key:skey-sak'));
+    expect(await screen.findByText(/^1 til 25 av 30 /)).toBeTruthy();
+    expect(within(screen.getByRole('table')).queryByText('Ingrid Berg')).toBeNull();
+    expect(screen.getAllByText('Nøkkel: Saksbehandling').length).toBeGreaterThan(1);
   });
 });

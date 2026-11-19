@@ -32,7 +32,7 @@ describe('document draft', () => {
       'Kontroller innholdet før det sendes. Merket fjernes først når en saksbehandler har godkjent utkastet.',
     );
     expect(article.querySelector('footer')?.textContent).toBe(
-      'Utkast laget med KI av tjenesten Vedtaksutkast, versjon 7, 6. oktober 2026 kl. 09.12. Grunnlag: søknaden og vedleggene i sak 2026/1432 og forskriften § 4.',
+      'Utkast laget med KI av tjenesten Vedtaksutkast, versjon 7, 6. oktober 2026 kl. 09:12. Grunnlag: søknaden og vedleggene i sak 2026/1432 og forskriften § 4.',
     );
     expect(
       within(article).getByText('Testetaten · Saksnummer 2026/1432 · 6. oktober 2026'),

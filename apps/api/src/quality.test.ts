@@ -3567,6 +3567,32 @@ describe('test-set runs on a shared instance', () => {
     expect(cases.started.map((c) => c.input)).toEqual([o1, o2]);
   });
 
+  it('tells who started a running test run, and the caller whether it was them', async () => {
+    const cases = holding();
+    const env = await boot(undefined, { hold: cases.hold });
+    const id = await start(env);
+    await vi.waitFor(() => expect(cases.started.length).toBeGreaterThan(0));
+    const listed = async (who: string) =>
+      (
+        (await env.send('GET', `/tenants/${tenant}/services/svar/eval-runs`, who)).body.data as {
+          id: string;
+          startedBy?: string;
+          startedByYou?: boolean;
+        }[]
+      ).find((r) => r.id === id);
+
+    const byStarter = await listed('kari');
+    const byOther = await listed('erik');
+    await cases.finish(env);
+    const ended = await listed('kari');
+
+    expect(byStarter?.startedBy).toMatch(/^employee:/);
+    expect(byStarter?.startedByYou).toBe(true);
+    expect(byOther?.startedBy).toBe(byStarter?.startedBy);
+    expect(byOther).not.toHaveProperty('startedByYou');
+    expect(ended).not.toHaveProperty('startedBy');
+  });
+
   it('needs manage-services to cancel a run someone else started, and a change reason', async () => {
     const cases = holding();
     const env = await boot(undefined, { hold: cases.hold });

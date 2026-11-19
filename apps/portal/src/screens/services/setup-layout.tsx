@@ -40,6 +40,7 @@ const helpKeys: Record<SetupArea, PlainKey> = {
   tools: 'setupList.helpTools',
   how: 'setupList.helpHow',
   variants: 'setupList.helpVariants',
+  channels: 'setupList.helpChannels',
   guards: 'setupList.helpGuards',
   risk: 'setupList.helpRisk',
   limits: 'setupList.helpLimits',

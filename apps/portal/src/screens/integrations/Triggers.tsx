@@ -7,7 +7,7 @@ import {
   Tag,
   Textfield,
 } from '@digdir/designsystemet-react';
-import { createFormat, type Format } from '@genai/i18n';
+
 import { useFormat } from '@genai/i18n/react';
 import { useState } from 'react';
 import type { ApiClient } from '../../api';
@@ -35,16 +35,15 @@ const weekdayKeys: PlainKey[] = [
 const pad = (n: string) => n.padStart(2, '0');
 
 const nbT = translator('nb');
-const nbFormat = createFormat('nb');
 
-export const describeSchedule = (cron: string, t: T = nbT, f: Format = nbFormat) => {
+export const describeSchedule = (cron: string, t: T = nbT) => {
   const [minute, hour, day, month, weekday, ...rest] = cron.trim().split(/\s+/);
   const plain = (v?: string) => v !== undefined && /^\d+$/.test(v);
   const other = t('integTriggers.scheduleOther', { cron });
   if (rest.length || day !== '*' || month !== '*' || !plain(minute)) return other;
   if (hour === '*' && weekday === '*') return t('integTriggers.everyHour');
   if (!plain(hour)) return other;
-  const time = `${pad(hour ?? '')}${f.locale === 'en' ? ':' : '.'}${pad(minute ?? '')}`;
+  const time = `${pad(hour ?? '')}:${pad(minute ?? '')}`;
   if (weekday === '*')
     return t(Number(hour) < 6 ? 'integTriggers.everyNight' : 'integTriggers.everyDay', { time });
   if (plain(weekday)) {
@@ -54,9 +53,9 @@ export const describeSchedule = (cron: string, t: T = nbT, f: Format = nbFormat)
   return other;
 };
 
-export const triggerName = (tr: TriggerView, t: T = nbT, f: Format = nbFormat) =>
+export const triggerName = (tr: TriggerView, t: T = nbT) =>
   tr.kind === 'schedule'
-    ? describeSchedule(tr.target, t, f)
+    ? describeSchedule(tr.target, t)
     : tr.kind === 'queue-message'
       ? t('integTriggers.queueName', { target: tr.target })
       : t('integTriggers.folderName', { target: tr.target });
@@ -68,8 +67,8 @@ const sourceOf = (tr: TriggerView, t: T) =>
       ? t('integTriggers.sourceQueue', { target: tr.target })
       : t('integTriggers.sourceFolder', { target: tr.target });
 
-export const problemOf = (tr: TriggerView, t: T = nbT, f: Format = nbFormat) =>
-  t('integTriggers.problem', { name: triggerName(tr, t, f) });
+export const problemOf = (tr: TriggerView, t: T = nbT) =>
+  t('integTriggers.problem', { name: triggerName(tr, t) });
 
 const timelineHref = (run: TriggerRunView) =>
   run.task ? `#/log/${encodeURIComponent(run.task)}` : undefined;
@@ -138,7 +137,7 @@ export const Triggers = ({
           <span className="int-sync-badge">{t('connectionSync.attention')}</span>
           <span>
             {t('devTriggers.failedStart', {
-              name: triggerName(tr, t, f),
+              name: triggerName(tr, t),
               at: tr.lastRun ? f.dateTime(tr.lastRun.at, 'medium') : '',
             })}{' '}
             <a href={`#/services/${encodeURIComponent(tr.service)}`}>{tr.serviceName}</a>
@@ -170,7 +169,7 @@ export const Triggers = ({
                 <Table.Row key={tr.id}>
                   <Table.Cell>
                     <span className="stack-xs">
-                      <strong>{triggerName(tr, t, f)}</strong>
+                      <strong>{triggerName(tr, t)}</strong>
                       <span className="meta">{sourceOf(tr, t)}</span>
                     </span>
                   </Table.Cell>
@@ -204,7 +203,7 @@ export const Triggers = ({
                           {t(paused ? 'devTriggers.paused' : 'devTriggers.on')}
                           <span className="visually-hidden">
                             {' '}
-                            {t('devTriggers.activeFor', { name: triggerName(tr, t, f) })}
+                            {t('devTriggers.activeFor', { name: triggerName(tr, t) })}
                           </span>
                         </>
                       }
@@ -234,7 +233,7 @@ export const Triggers = ({
                 ? 'integTriggers.resumeWarning'
                 : 'integTriggers.pauseWarning',
               {
-                name: triggerName(pausing, t, f),
+                name: triggerName(pausing, t),
                 service: pausing.serviceName,
               },
             )}

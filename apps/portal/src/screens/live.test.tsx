@@ -393,8 +393,10 @@ describe('live mode shows only platform data', () => {
   it('shows the real model, knowledge and how Kunnskapsassistenten is exposed', async () => {
     await renderLive('#/services/kunnskapsassistenten/channels', kaPlatform);
 
-    expect(await screen.findByText('/api/mcp')).toBeTruthy();
-    expect(screen.getByRole('heading', { name: /Start og kanaler/ })).toBeTruthy();
+    expect((await screen.findAllByText('/api/mcp')).length).toBeGreaterThan(0);
+    go('#/services/kunnskapsassistenten/setup/channels');
+    expect(await screen.findByRole('heading', { level: 2, name: 'Kanaler' })).toBeTruthy();
+    expect(screen.getByLabelText('Offentlig navn')).toBeTruthy();
     go('#/services/kunnskapsassistenten');
     expect(await screen.findByRole('heading', { level: 2, name: 'I drift' })).toBeTruthy();
     expect((await screen.findAllByText(/gpt-4o-2m-tps/)).length).toBeGreaterThan(0);

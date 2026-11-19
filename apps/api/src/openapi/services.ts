@@ -416,6 +416,20 @@ const EvalRunSummary = z
         'The cases the run was limited to; such a run does not stand for the whole test set',
       ),
     startedAt: z.string(),
+    startedBy: z
+      .string()
+      .optional()
+      .describe(
+        "Who started the run, as <kind>:<issuer>:<subject>; set while it is running or waiting for scores, for a starter of the caller's own tenant",
+      ),
+    startedByName: z
+      .string()
+      .optional()
+      .describe('The name of who started it, when genki knows it'),
+    startedByYou: z
+      .literal(true)
+      .optional()
+      .describe('Set when the caller started the run, and may cancel it with use-services'),
     endedAt: z.string().nullable(),
     score: z
       .number()
@@ -585,6 +599,10 @@ const ServiceEnvironments = z
           .int()
           .nullable()
           .describe('Where a rollback without a version goes'),
+        description: z
+          .string()
+          .optional()
+          .describe('Who uses the environment, such as testerne i HR, when one is set'),
       }),
     ),
     latestVersion: z.number().int(),
@@ -650,6 +668,7 @@ const BatchEstimate = z
 const BatchRun = z
   .object({
     id: z.string(),
+    name: z.string().optional().describe('The name given at start, when one was'),
     service: z.string(),
     version: z.number().int(),
     model: z.string().nullable(),
@@ -1744,7 +1763,7 @@ export const serviceRoutes: RouteConfig[] = [
     method: 'get',
     path: '/tenants/{tenant}/services/{id}/environment-history',
     summary:
-      'Changes to the environments of the service, newest first: added, removed, promoted and rolled back, with who and why. Needs use-services',
+      'Changes to the environments of the service, newest first: added, removed, promoted, rolled back and described, with who and why. Needs use-services',
     request: {
       params: z.object({ tenant, id: service }),
       query: z.object({
@@ -1759,7 +1778,7 @@ export const serviceRoutes: RouteConfig[] = [
             z.object({
               environment: z.string(),
               action: z
-                .enum(['added', 'removed', 'promoted', 'rolled-back', 'changed'])
+                .enum(['added', 'removed', 'promoted', 'rolled-back', 'described', 'changed'])
                 .describe(
                   'changed: a version change saved before changes were recorded, so whether it was a promotion or a rollback is not known',
                 ),
@@ -1795,14 +1814,50 @@ export const serviceRoutes: RouteConfig[] = [
     request: {
       params: z.object({ tenant, id: service }),
       headers: changeReason,
-      body: body(z.object({ name: z.string().describe('Lowercase name such as test') })),
+      body: body(
+        z.object({
+          name: z.string().describe('Lowercase name such as test'),
+          description: z
+            .string()
+            .max(200)
+            .optional()
+            .describe('Who uses the environment, such as testerne i HR'),
+        }),
+      ),
     },
     responses: {
       201: audited(ServiceEnvironments, 'Added'),
-      400: problem('Missing reason, invalid name, prod, or too many environments'),
+      400: problem(
+        'Missing reason, invalid name, prod, too many environments, or a description over 200 characters',
+      ),
       ...tenantErrors,
       404: problem('No published service'),
       409: problem('The environment exists'),
+    },
+  }),
+  createRoute({
+    method: 'patch',
+    path: '/tenants/{tenant}/services/{id}/environments/{environment}',
+    summary:
+      'Set or clear the description of an environment, who uses it. Changes no version. Needs manage-services; audited',
+    request: {
+      params: z.object({ tenant, id: service, environment }),
+      headers: changeReason,
+      body: body(
+        z.object({
+          description: z
+            .string()
+            .max(200)
+            .nullable()
+            .describe('Who uses the environment; null or empty clears it'),
+        }),
+      ),
+    },
+    responses: {
+      200: audited(ServiceEnvironments, 'Described'),
+      400: problem('Missing reason, or a description over 200 characters'),
+      ...tenantErrors,
+      404: problem('No such service or environment'),
     },
   }),
   createRoute({
@@ -1963,12 +2018,17 @@ export const serviceRoutes: RouteConfig[] = [
           maxTokens: z.number().positive().optional(),
           concurrency: z.number().positive().optional(),
           approval: z.string().optional(),
+          name: z
+            .string()
+            .max(120)
+            .optional()
+            .describe('A name for the run, shown in the list, such as Spørsmål fra HR-postkassen'),
         }),
       ),
     },
     responses: {
       202: json(BatchRun, 'Started'),
-      400: problem('Missing estimate or reason'),
+      400: problem('Missing estimate or reason, or a name over 120 characters'),
       ...tenantErrors,
       404: problem('No such estimate'),
       409: problem('The estimate expired, the service changed, or approval is needed'),

@@ -15,10 +15,12 @@ export const serviceEnvironmentsKind = 'service-environments';
 export const productionEnvironment = 'prod';
 export const environmentHeader = 'genai-environment';
 export const maxEnvironments = 5;
+export const maxEnvironmentDescription = 200;
 
 export interface EnvironmentPointer {
   version?: number;
   previousVersion?: number;
+  description?: string;
 }
 
 export type EnvironmentPointers = Record<string, EnvironmentPointer>;
@@ -28,9 +30,16 @@ export interface EnvironmentView {
   version: number | null;
   followsPublishes: boolean;
   previousVersion: number | null;
+  description?: string;
 }
 
-export const environmentActions = ['added', 'removed', 'promoted', 'rolled-back'] as const;
+export const environmentActions = [
+  'added',
+  'removed',
+  'promoted',
+  'rolled-back',
+  'described',
+] as const;
 export type EnvironmentAction = (typeof environmentActions)[number];
 
 export interface EnvironmentChange {
@@ -232,7 +241,16 @@ export const environmentViews = (
       version: pointer.version ?? latestVersion ?? null,
       followsPublishes: pointer.version === undefined,
       previousVersion: pointer.previousVersion ?? null,
+      ...(pointer.description ? { description: pointer.description } : {}),
     }));
+
+const descriptionOf = (value: unknown): string | undefined | false => {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== 'string') return false;
+  const trimmed = value.trim();
+  if (trimmed.length > maxEnvironmentDescription) return false;
+  return trimmed || undefined;
+};
 
 const failed = (
   target: string,
@@ -344,11 +362,18 @@ export const serviceEnvironmentsModule: PlatformModuleFactory = (deps) => {
           );
         if (Object.keys(before).length >= maxEnvironments)
           return failed(target, 'name', t('services.environmentTooMany', { max: maxEnvironments }));
+        const description = descriptionOf(input.description);
+        if (description === false)
+          return failed(
+            target,
+            'description',
+            t('services.environmentDescription', { max: maxEnvironmentDescription }),
+          );
         const prod = pointerOf(before, productionEnvironment) ?? {};
         return {
           ...before,
-          [productionEnvironment]: prod.version === undefined ? { version: latest } : prod,
-          [name]: {},
+          [productionEnvironment]: prod.version === undefined ? { ...prod, version: latest } : prod,
+          [name]: description ? { description } : {},
         };
       },
     ),
@@ -401,9 +426,10 @@ export const serviceEnvironmentsModule: PlatformModuleFactory = (deps) => {
             'from',
             t('services.environmentMissing', { service: String(input.id), environment: from }),
           );
-        const current = pointerOf(before, name)?.version ?? latest;
+        const named = pointerOf(before, name);
+        const current = named?.version ?? latest;
         const version = source.version ?? latest;
-        return { ...before, [name]: { version, previousVersion: current } };
+        return { ...before, [name]: { ...named, version, previousVersion: current } };
       },
     ),
     'platform.service.environments.rollback': change(
@@ -434,8 +460,32 @@ export const serviceEnvironmentsModule: PlatformModuleFactory = (deps) => {
           return failed(target, 'version', t('services.environmentNoVersion', { version }));
         return {
           ...before,
-          [name]: { version, previousVersion: pointer.version ?? latest },
+          [name]: { ...pointer, version, previousVersion: pointer.version ?? latest },
         };
+      },
+    ),
+    'platform.service.environments.describe': change(
+      'described',
+      async ({ target, before, input }) => {
+        const name = String(input.environment ?? '');
+        if (!isEnvironmentName(name)) return failed(target, 'name', t('services.environmentName'));
+        const pointer = pointerOf(before, name);
+        if (!pointer)
+          return failed(
+            target,
+            'environment',
+            t('services.environmentMissing', { service: String(input.id), environment: name }),
+          );
+        const description = descriptionOf(input.description);
+        if (description === false)
+          return failed(
+            target,
+            'description',
+            t('services.environmentDescription', { max: maxEnvironmentDescription }),
+          );
+        const rest: EnvironmentPointer = { ...pointer };
+        delete rest.description;
+        return { ...before, [name]: description ? { ...rest, description } : rest };
       },
     ),
   };
@@ -533,9 +583,19 @@ export const serviceEnvironmentsModule: PlatformModuleFactory = (deps) => {
         perform(
           c,
           'platform.service.environments.add',
-          { environment: (await body(c)).name },
+          await body(c).then(({ name, description }) => ({
+            environment: name,
+            ...(description === undefined ? {} : { description }),
+          })),
           true,
         ),
+      );
+
+      app.patch('/tenants/:tenant/services/:id/environments/:environment', async (c) =>
+        perform(c, 'platform.service.environments.describe', {
+          environment: c.req.param('environment') ?? '',
+          description: (await body(c)).description ?? null,
+        }),
       );
 
       app.delete('/tenants/:tenant/services/:id/environments/:environment', async (c) =>

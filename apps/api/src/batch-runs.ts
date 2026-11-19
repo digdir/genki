@@ -104,6 +104,8 @@ export type BatchRunStatus =
 export type BatchItemStatus =
   'queued' | 'running' | 'succeeded' | 'notFound' | 'failed' | 'skipped';
 
+export const maxBatchName = 120;
+
 export interface BatchCap {
   costMicroNok?: number;
   tokens?: number;
@@ -111,6 +113,7 @@ export interface BatchCap {
 
 export interface BatchRun extends Leased {
   id: string;
+  name?: string;
   service: string;
   version: number;
   model: string | null;
@@ -1271,10 +1274,17 @@ export const batchRuns = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) => 
       maxTokens?: number;
       concurrency?: number;
       approval?: string;
+      name?: unknown;
     },
     reason: string,
     gate: { approval?: boolean; startedByName?: string } = {},
   ) => {
+    if (
+      body.name !== undefined &&
+      (typeof body.name !== 'string' || body.name.trim().length > maxBatchName)
+    )
+      throw new BatchProblem(400, `Navnet er tekst på høyst ${maxBatchName} tegn`, 'name');
+    const name = typeof body.name === 'string' ? body.name.trim() : '';
     const found = await latestOf<BatchEstimate>(batchEstimateKind, tenant, body.estimate);
     const estimate = found?.spec;
     if (!estimate || estimate.service !== service)
@@ -1300,6 +1310,7 @@ export const batchRuns = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) => 
     }
     const run: BatchRun = {
       id: randomUUID(),
+      ...(name ? { name } : {}),
       service,
       version: estimate.version,
       model: estimate.model,

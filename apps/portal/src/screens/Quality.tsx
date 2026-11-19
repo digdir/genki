@@ -8,7 +8,8 @@ import { ErrorState, Loading } from '../states';
 import { TenantGates } from './config/TenantGates';
 import { FeedbackTab, feedbackFrom } from './quality/FeedbackTab';
 import { LiveTestSets } from './quality/LiveTestSets';
-import { QualityPage, qualityAddress } from './quality/QualityPage';
+import { Improvements } from './quality/Improvements';
+import { FeedbackSection, QualityPage, qualityAddress } from './quality/QualityPage';
 import { problemTitle, type Flash, type SetFlash } from './quality/shared';
 import './quality.css';
 
@@ -16,13 +17,15 @@ type View =
   | { kind: 'page' }
   | { kind: 'testsets'; set?: string; run?: string }
   | { kind: 'feedback' }
+  | { kind: 'feedback-all' }
   | { kind: 'gates' };
 
 const oldTabs: Record<string, View['kind']> = {
   testsets: 'testsets',
   ts: 'testsets',
-  feedback: 'feedback',
-  fb: 'feedback',
+  feedback: 'feedback-all',
+  fb: 'feedback-all',
+  proposals: 'feedback',
   gates: 'gates',
 };
 
@@ -33,7 +36,7 @@ const viewFrom = (query: URLSearchParams): View => {
     return { kind: 'testsets', set, ...(run ? { run } : {}) };
   }
   const kind = query.get('view') ?? oldTabs[query.get('tab') ?? ''];
-  return kind === 'testsets' || kind === 'feedback' || kind === 'gates'
+  return kind === 'testsets' || kind === 'feedback' || kind === 'feedback-all' || kind === 'gates'
     ? { kind }
     : { kind: 'page' };
 };
@@ -89,7 +92,7 @@ const AllFeedback = ({
   );
 };
 
-export const Quality = ({ api, tenant, route, id }: ServiceScreenProps) => {
+export const Quality = ({ api, tenant, tenantName, route, id }: ServiceScreenProps) => {
   const { t } = usePortalFormat();
   const address = route.query.toString();
   const view = viewFrom(route.query);
@@ -112,7 +115,13 @@ export const Quality = ({ api, tenant, route, id }: ServiceScreenProps) => {
         ) : null}
       </div>
       {view.kind === 'page' ? (
-        <QualityPage api={api} tenant={tenant} serviceId={id} setFlash={setFlash} />
+        <QualityPage
+          api={api}
+          tenant={tenant}
+          tenantName={tenantName}
+          serviceId={id}
+          setFlash={setFlash}
+        />
       ) : view.kind === 'testsets' ? (
         <LiveTestSets
           key={address}
@@ -124,6 +133,11 @@ export const Quality = ({ api, tenant, route, id }: ServiceScreenProps) => {
           {...(view.run ? { openRun: view.run } : {})}
         />
       ) : view.kind === 'feedback' ? (
+        <>
+          <FeedbackSection api={api} tenant={tenant} serviceId={id} />
+          <Improvements api={api} tenant={tenant} serviceId={id} setFlash={setFlash} />
+        </>
+      ) : view.kind === 'feedback-all' ? (
         <AllFeedback api={api} tenant={tenant} id={id} setFlash={setFlash} />
       ) : (
         <TenantGates api={api} tenant={tenant} />

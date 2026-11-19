@@ -162,7 +162,7 @@ describe('your own failed runs', () => {
     ).closest('li') as HTMLElement;
     expect(within(item).getByText('Steget «finn» feilet.').tagName).toBe('STRONG');
     expect(item.textContent).toContain('Tjenesten feilet underveis.');
-    expect(item.textContent).toContain('I dag kl. 10.14');
+    expect(item.textContent).toContain('I dag kl. 10:14');
     expect(
       within(item)
         .getByRole('link', { name: 'Prøv igjen med Vurdering av måloppnåelse' })

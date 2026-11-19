@@ -549,7 +549,7 @@ const settingDefs = defineNamespace({
   knowledge_switchRetentionDays_label: 'Dager forrige søkemotor beholdes',
   assistant_enabled_label: 'Byggeassistenten er på',
   assistant_dailyTokens_label: 'Tokens per dag for assistenten',
-  assistant_dailyTokens_desc: 'Nullstilles kl. 00.00 norsk tid.',
+  assistant_dailyTokens_desc: 'Nullstilles kl. 00:00 norsk tid.',
   assistant_model_label: 'Modell for byggeassistenten',
   answers_writtenStandard_label: 'Målform i svar',
   answers_writtenStandard_desc:

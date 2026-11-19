@@ -289,13 +289,13 @@ describe('Datasett: søkemotor', () => {
     });
     const flow = await switchSection();
     const warned = await within(flow).findByText(
-      /sluppet inn bare til 15\. november 2026 kl\. 08\.56/,
+      /sluppet inn bare til 15\. november 2026 kl\. 08:56/,
     );
     expect(warned.closest('[data-color="warning"]')).not.toBeNull();
 
     fireEvent.click(within(flow).getByRole('button', { name: 'Slipp inn igjen' }));
 
-    const calm = await within(flow).findByText(/sluppet inn til 16\. november 2026 kl\. 06\.00/);
+    const calm = await within(flow).findByText(/sluppet inn til 16\. november 2026 kl\. 06:00/);
     expect(calm.closest('[data-color="warning"]')).toBeNull();
   });
 

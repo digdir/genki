@@ -30,6 +30,8 @@ export interface TaskQuery {
   from?: string | undefined;
   to?: string | undefined;
   q?: string | undefined;
+  actor?: string | undefined;
+  frontend?: string | undefined;
   limit: number;
   offset: number;
 }
@@ -83,6 +85,28 @@ export interface EvalComparison {
   limit: number;
 }
 
+export type EnvironmentAction =
+  'added' | 'removed' | 'promoted' | 'rolled-back' | 'described' | 'changed';
+
+export interface EnvironmentChange {
+  environment: string;
+  action: EnvironmentAction;
+  version: number | null;
+  previousVersion: number | null;
+  from?: string;
+  at: string;
+  by: string;
+  byName?: string;
+  reason: string;
+}
+
+export interface EnvironmentHistory {
+  data: EnvironmentChange[];
+  total: number;
+}
+
+export type CancelledRun = { id: string; status: 'cancelled' | 'cancelling' };
+
 export interface DraftChecks {
   service: string;
   revision: number;
@@ -91,10 +115,29 @@ export interface DraftChecks {
   hooksSkipped?: true;
 }
 
-export const serviceTabsApi = ({ get, tenantPath }: ApiContext) => {
+export const serviceTabsApi = ({ get, request, tenantPath }: ApiContext) => {
   const service = (tenant: string, id: string) =>
     `${tenantPath(tenant)}/services/${encodeURIComponent(id)}`;
   return {
+    environmentHistory: (
+      tenant: string,
+      id: string,
+      query: { environment?: string; limit?: number } = {},
+      signal?: AbortSignal,
+    ) => {
+      const params = new URLSearchParams();
+      if (query.environment) params.set('environment', query.environment);
+      if (query.limit !== undefined) params.set('limit', String(query.limit));
+      const suffix = params.size ? `?${params}` : '';
+      return get<EnvironmentHistory>(`${service(tenant, id)}/environment-history${suffix}`, signal);
+    },
+    cancelEvalRun: (tenant: string, id: string, runId: string, reason: string) =>
+      request<CancelledRun>(
+        'POST',
+        `${service(tenant, id)}/eval-runs/${encodeURIComponent(runId)}/cancel`,
+        {},
+        { 'change-reason': reason },
+      ),
     failures: async (tenant: string, from: string, signal?: AbortSignal) =>
       (
         await get<{ from: string; data: ServiceFailures[] }>(

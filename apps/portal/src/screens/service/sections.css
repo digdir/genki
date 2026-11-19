@@ -31,3 +31,371 @@
   resize: vertical;
   tab-size: 2;
 }
+
+.dv-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px 24px;
+}
+
+.dv-head > .stack-xs {
+  flex: 1 1 320px;
+  min-width: 0;
+}
+
+.dv-lead {
+  max-width: 70ch;
+  margin: 0;
+}
+
+.dv-versions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  align-items: flex-start;
+}
+
+.dv-version-list {
+  flex: 1 1 300px;
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--ds-color-neutral-border-subtle);
+  border-radius: var(--ds-border-radius-lg);
+  overflow: hidden;
+}
+
+.dv-version-list > li + li {
+  border-top: 1px solid var(--ds-color-neutral-border-subtle);
+}
+
+.dv-version {
+  font: inherit;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 12px 16px;
+  border: 0;
+  border-left: 3px solid transparent;
+  background: var(--ds-color-neutral-background-default);
+  color: var(--ds-color-neutral-text-default);
+  text-align: left;
+  cursor: pointer;
+}
+
+.dv-version:hover {
+  background: var(--ds-color-neutral-background-tinted);
+}
+
+.dv-version[aria-current='true'] {
+  background: var(--ds-color-accent-surface-tinted);
+  border-left-color: var(--ds-color-accent-base-default);
+}
+
+.dv-version:focus-visible {
+  outline: 3px solid var(--ds-color-focus-outer);
+  outline-offset: -3px;
+}
+
+.dv-version .meta,
+.dv-version-reason {
+  font-size: 14px;
+}
+
+.dv-panel {
+  flex: 999 1 420px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  border: 1px solid var(--ds-color-neutral-border-subtle);
+  border-radius: var(--ds-border-radius-lg);
+  padding: 18px 20px;
+}
+
+.dv-panel .row-between {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.dv-summary {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 15px;
+}
+
+.dv-diff {
+  overflow-x: auto;
+  border: 1px solid var(--ds-color-neutral-border-subtle);
+  border-radius: var(--ds-border-radius-md);
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+
+.dv-line {
+  display: flex;
+  white-space: pre;
+}
+
+.dv-add {
+  background: var(--ds-color-success-surface-tinted);
+}
+
+.dv-remove {
+  background: var(--ds-color-danger-surface-tinted);
+}
+
+.dv-n {
+  flex: none;
+  width: 40px;
+  padding-right: 10px;
+  text-align: right;
+  color: var(--ds-color-neutral-text-subtle);
+}
+
+.dv-sign {
+  flex: none;
+  width: 16px;
+}
+
+.dv-gap {
+  padding-left: 50px;
+  color: var(--ds-color-neutral-text-subtle);
+}
+
+.dv-filters {
+  display: grid;
+  grid-template-columns: minmax(180px, 2fr) repeat(4, minmax(110px, 1fr));
+  align-items: end;
+  gap: 10px 12px;
+}
+
+.dv-filters > * {
+  min-width: 0;
+  margin: 0;
+}
+
+@media (max-width: 899px) {
+  .dv-filters {
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  }
+}
+
+.dv-log-question {
+  min-width: 140px;
+}
+
+.dv-log-table :is(th, td) {
+  padding-inline: 8px;
+}
+
+.dv-inline-field {
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dv-keys .meta {
+  display: block;
+  font-size: 14px;
+}
+
+.dv-key-name {
+  gap: 6px 8px;
+}
+
+.dv-keys th,
+.dv-keys td:nth-child(3) {
+  white-space: nowrap;
+}
+
+.dv-keys td:first-child {
+  min-width: 220px;
+}
+
+.dv-keys .actions {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 4px;
+}
+
+.dv-columns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  align-items: flex-start;
+}
+
+.dv-columns > .dv-panel {
+  flex: 1 1 340px;
+}
+
+.dv-frontends {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.dv-frontends > li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dv-frontend-details > summary {
+  font-size: 14px;
+  color: var(--ds-color-accent-text-default);
+  cursor: pointer;
+}
+
+.dv-endpoints {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 8px 16px;
+  margin: 0;
+}
+
+.dv-endpoints > div {
+  display: contents;
+}
+
+.dv-endpoints dt {
+  font-weight: 600;
+}
+
+.dv-endpoints dd {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+}
+
+.env-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.env-card {
+  flex: 1 1 300px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 18px 20px;
+  border: 1px solid var(--ds-color-neutral-border-subtle);
+  border-radius: var(--ds-border-radius-lg);
+}
+
+.env-card .env-runs {
+  font-weight: 600;
+}
+
+.env-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 15px;
+}
+
+.dv-yaml-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  padding: 10px 16px;
+  border: 1px solid var(--ds-color-neutral-border-subtle);
+  border-radius: var(--ds-border-radius-md);
+}
+
+.dv-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--ds-color-neutral-border-default);
+}
+
+.dv-dot-valid {
+  background: var(--ds-color-success-base-default);
+}
+
+.dv-dot-invalid {
+  background: var(--ds-color-danger-base-default);
+}
+
+.dv-yaml {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  align-items: flex-start;
+}
+
+.dv-yaml-editor {
+  flex: 999 1 480px;
+  min-width: 0;
+  display: flex;
+  height: 560px;
+  border: 1px solid var(--ds-color-neutral-border-default);
+  border-radius: var(--ds-border-radius-md);
+  overflow: hidden;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.dv-yaml-gutter {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  padding: 8px 10px 8px 8px;
+  overflow: hidden;
+  text-align: right;
+  color: var(--ds-color-neutral-text-subtle);
+  background: var(--ds-color-neutral-background-tinted);
+  user-select: none;
+}
+
+.dv-yaml-editor textarea {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 8px 12px;
+  border: 0;
+  resize: none;
+  font: inherit;
+  line-height: inherit;
+  white-space: pre;
+  overflow: auto;
+  tab-size: 2;
+  color: var(--ds-color-neutral-text-default);
+  background: var(--ds-color-neutral-background-default);
+}
+
+.dv-yaml-editor textarea:focus-visible {
+  outline: 3px solid var(--ds-color-focus-outer);
+  outline-offset: -3px;
+}
+
+.dv-jump {
+  flex: 1 1 180px;
+  max-width: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}

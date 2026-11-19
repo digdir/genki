@@ -160,6 +160,26 @@ describe('kernel: running a task', () => {
     expect(task.service.configHash).toMatch(/^[0-9a-f]{64}$/);
   });
 
+  it('records the frontend a confined caller came through, and none for a caller who is not', async () => {
+    const echo = strategy('echo', async function* () {
+      yield { type: 'kernel.result', data: [] };
+    });
+    const kernel = kernelWith({ strategies: [echo], capabilities: [capability('ka', 'echo')] });
+    const throughIntranet: Principal = {
+      ...kari,
+      confinedTo: { tenant: kari.tenant ?? '', service: 'ka', client: 'intranettet' },
+    };
+
+    const confined = await kernel.invoke(throughIntranet, 'ka', { parts: [textPart('hei')] });
+    const direct = await kernel.invoke(kari, 'ka', { parts: [textPart('hei')] });
+    await Promise.all([confined.result, direct.result]);
+
+    expect((await kernel.task(throughIntranet, confined.task)).service.frontend).toBe(
+      'intranettet',
+    );
+    expect((await kernel.task(kari, direct.task)).service).not.toHaveProperty('frontend');
+  });
+
   it('records the evaluation context beside a sub-task input, never in it, and never gives it to the strategy', async () => {
     const seen: unknown[] = [];
     const answer = {

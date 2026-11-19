@@ -481,10 +481,7 @@ describe('the live builder and the server draft', () => {
     const header = (
       await screen.findByRole('heading', { level: 1, name: 'Rapportassistenten' })
     ).closest('header') as HTMLElement;
-    const line = await within(header).findByText(
-      /^Versjon 7 i bruk · publisert .* av Kari Nordmann/,
-    );
-    const shown = line.textContent;
+    await within(header).findByText('Versjon 7 i bruk');
 
     for (const [section, tab] of [
       ['interface', 'Grensesnitt'],
@@ -502,7 +499,7 @@ describe('the live builder and the server draft', () => {
           }).textContent,
         ).toBe(tab),
       );
-      expect(within(header).getByText(/^Versjon 7 i bruk · publisert/).textContent).toBe(shown);
+      expect(within(header).getByText('Versjon 7 i bruk')).toBeTruthy();
     }
     expect(header.isConnected).toBe(true);
     expect(
@@ -934,7 +931,7 @@ describe('a new service saved as a draft on the server', () => {
     expect(await screen.findByRole('button', { name: 'Slett utkastet' })).toBeTruthy();
 
     window.location.hash = '#/services/rapportassistenten';
-    await screen.findByText(/upublisert utkast/);
+    await screen.findByText(/^Versjon \d+ i bruk$/);
     expect(screen.queryByRole('button', { name: 'Slett utkastet' })).toBeNull();
   });
 

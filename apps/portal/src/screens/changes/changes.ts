@@ -120,6 +120,7 @@ const actionKeys: Record<string, PlainKey> = {
   'platform.service.environments.remove': 'changes.environmentRemove',
   'platform.service.environments.promote': 'changes.environmentPromote',
   'platform.service.environments.rollback': 'changes.environmentRollback',
+  'platform.service.environments.describe': 'changes.environmentDescribe',
   'platform.service.risk.confirm': 'changes.serviceRiskConfirm',
   'platform.service.share': 'changes.serviceShare',
   'platform.skill.attachment.upload': 'changes.skillAttachmentUpload',

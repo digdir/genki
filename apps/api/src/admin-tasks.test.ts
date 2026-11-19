@@ -150,6 +150,7 @@ const throughAdminTasks = [
   'POST /tenants/:tenant/services/:id/environments',
   'POST /tenants/:tenant/services/:id/environments/:environment/promote',
   'POST /tenants/:tenant/services/:id/environments/:environment/rollback',
+  'PATCH /tenants/:tenant/services/:id/environments/:environment',
   'POST /tenants/:tenant/services/:id/improvements/:pid/decision',
   'POST /tenants/:tenant/services/:id/risk-confirmations',
   'POST /tenants/:tenant/services/:service/api-keys',

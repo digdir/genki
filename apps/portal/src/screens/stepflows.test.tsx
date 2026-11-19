@@ -626,6 +626,30 @@ describe('Stegflyter in Utviklerverktøy', () => {
     expect(within(table).queryByRole('link', { name: 'Høringsoppsummering' })).toBeNull();
   });
 
+  it('shows the Fra andre filter only when another organisation has shared a step flow', async () => {
+    await openHome();
+    await screen.findByRole('table', { name: 'Stegflyter' });
+    expect(screen.getByRole('button', { name: /^Fra andre \d+$/ })).toBeTruthy();
+    cleanup();
+
+    const inner = mockFetch();
+    const ownOnly: typeof globalThis.fetch = async (input, init) => {
+      const response = await inner(input, init);
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (!url.includes('step_flow')) return response;
+      const body = (await response.json()) as { data: { publisher: { type: string } }[] };
+      body.data = body.data.filter((flow) => flow.publisher.type !== 'shared');
+      return new Response(JSON.stringify(body), {
+        status: response.status,
+        headers: { 'content-type': 'application/json' },
+      });
+    };
+    await openHome(ownOnly);
+    await screen.findByRole('table', { name: 'Stegflyter' });
+    expect(screen.queryByRole('button', { name: /^Fra andre/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /^Våre/ })).toBeTruthy();
+  });
+
   it('marks Utviklerverktøy in the menu while a step flow is open', async () => {
     await openService();
     const nav = screen.getByRole('navigation', { name: /hovedmeny|meny/i });

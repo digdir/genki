@@ -9,8 +9,15 @@ import type {
   RunVersion,
   ServiceCase,
 } from '../api/quality';
+import type { CaseChange } from '../api/service-tabs';
 import { changedPaths, setAt, valueAt } from '../definition-path';
 import type { MockHandler } from '../mock';
+import {
+  exampleGates,
+  exampleQualityRunsFor,
+  exampleQualitySetsFor,
+  exampleRunningRunFor,
+} from './quality-example';
 
 interface MockSet {
   id: string;
@@ -28,8 +35,23 @@ export interface QualityMockOptions {
   improveRefused?: boolean;
   drafts?: Record<string, { definition: Record<string, unknown>; files?: Record<string, string> }>;
   published?: (service: string) => Record<string, unknown> | undefined;
+  example?: boolean;
   savedBy?: { by: string; byName: string | null };
 }
+
+const exampleServices = ['rapportassistenten', 'postsortering'];
+const exampleDraftRevision = 3;
+
+const withChangedInstructions = (definition: Record<string, unknown>) => {
+  const copy = structuredClone(definition) as {
+    spec?: { strategy?: { config?: Record<string, unknown> }; evaluation?: unknown };
+  };
+  if (copy.spec) copy.spec.evaluation = { gates: ['ingen-tilbakegang', 'avslag-uten-kilde'] };
+  const config = copy.spec?.strategy?.config;
+  if (config)
+    config.instructions = `${typeof config.instructions === 'string' ? config.instructions : ''}\nVis alltid kilden med dato.`;
+  return copy as Record<string, unknown>;
+};
 
 interface MockDraft {
   base: Record<string, unknown> | undefined;
@@ -89,8 +111,17 @@ export const exampleQualityCandidates = (): (Candidate & { service: string })[] 
 const passes = (c: ServiceCase, i: number) => c.type === 'must_reject' || i % 3 !== 1;
 
 export const qualityMock = (options: QualityMockOptions = {}): MockHandler => {
-  const sets = structuredClone(options.sets ?? exampleQualitySets());
-  const runs = structuredClone(options.runs ?? []);
+  const example = options.example ?? import.meta.env.MODE !== 'test';
+  const versionOfService = (service: string) =>
+    (options.published?.(service)?.metadata as { version?: number } | undefined)?.version ?? 0;
+  const exampleSets = exampleServices.flatMap((s) => exampleQualitySetsFor(s));
+  const exampleRuns = () =>
+    exampleServices.flatMap((s, i) => [
+      ...(i === 1 ? [exampleRunningRunFor(s)] : []),
+      ...exampleQualityRunsFor(s, Math.max(1, versionOfService(s)), exampleDraftRevision - 1),
+    ]);
+  const sets = structuredClone(options.sets ?? (example ? exampleSets : exampleQualitySets()));
+  const runs = structuredClone(options.runs ?? (example ? exampleRuns() : []));
   const candidates = structuredClone(options.candidates ?? exampleQualityCandidates());
   const improvements = structuredClone(options.improvements ?? []);
   const drafts = new Map<string, MockDraft>(
@@ -108,6 +139,24 @@ export const qualityMock = (options: QualityMockOptions = {}): MockHandler => {
       },
     ]),
   );
+  if (example && !options.drafts)
+    for (const service of exampleServices) {
+      const published = options.published?.(service);
+      if (!published) continue;
+      const at = new Date();
+      at.setHours(14, 2, 0, 0);
+      drafts.set(service, {
+        base: published,
+        revision: exampleDraftRevision,
+        definition: withChangedInstructions(published),
+        files: {},
+        deleted: false,
+        at: at.toISOString(),
+        reason: 'La til dato på kildene',
+        by: 'employee:ansattporten:kari',
+        byName: 'Kari Nordmann',
+      });
+    }
   const versionOf = (definition: Record<string, unknown> | undefined) =>
     (definition?.metadata as { version?: number } | undefined)?.version ?? 0;
   const ignored = ['metadata.version'];
@@ -320,6 +369,195 @@ export const qualityMock = (options: QualityMockOptions = {}): MockHandler => {
       drafts.set(service, saved);
       return req.json({ draft: draftView(saved, service), conflicts, applied: true });
     }
+    if (example && rest === 'gates' && req.method === 'GET')
+      return req.json({ data: exampleGates });
+
+    if (
+      example &&
+      parts[0] === 'services' &&
+      parts[1] &&
+      parts[2] === 'draft' &&
+      parts[3] === 'checks' &&
+      parts.length === 4 &&
+      req.method === 'GET'
+    ) {
+      const draft = drafts.get(parts[1]);
+      if (!draft || draft.deleted) return req.notFound();
+      const tested = runs.find(
+        (r) =>
+          r.service === parts[1] &&
+          r.version === 'draft' &&
+          r.status === 'completed' &&
+          r.draftRevision === draft.revision,
+      );
+      const refused = (tested?.metrics?.refusal?.mean ?? 1) < 0.9;
+      const subject = `draft-${parts[1]}-${draft.revision}`;
+      const problems =
+        tested && !refused
+          ? []
+          : [
+              {
+                path: 'spec.evaluation',
+                message: tested
+                  ? `refused by evaluation gates (avslag-uten-kilde); run the test sets with subject ${subject} first`
+                  : `refused by evaluation gates (andel-bestatt, ingen-tilbakegang, avslag-uten-kilde); run the test sets with subject ${subject} first`,
+              },
+            ];
+      return req.json({
+        service: parts[1],
+        revision: draft.revision,
+        ready: problems.length === 0,
+        problems,
+      });
+    }
+
+    if (
+      parts[0] === 'services' &&
+      parts[1] &&
+      parts[2] === 'eval-runs' &&
+      parts[3] === 'compare' &&
+      parts.length === 4 &&
+      req.method === 'GET'
+    ) {
+      const service = parts[1];
+      const q = req.url.searchParams;
+      const own = runs.filter((r) => r.service === service);
+      const candidate = own.find((r) => r.id === q.get('candidate'));
+      if (!candidate) return req.notFound();
+      const wanted = q.get('baseline');
+      const published = versionOfService(service);
+      const baseline =
+        wanted && wanted !== 'published'
+          ? own.find((r) => r.id === wanted)
+          : own
+              .filter(
+                (r) =>
+                  r.testSet === candidate.testSet &&
+                  r.status === 'completed' &&
+                  r.version === published &&
+                  !r.selected,
+              )
+              .sort((a, b) => (b.endedAt ?? '').localeCompare(a.endedAt ?? ''))[0];
+      if (!baseline) return req.notFound();
+      if (baseline.testSet !== candidate.testSet)
+        return req.json(
+          {
+            type: 'urn:genai:problem:eval-compare-invalid',
+            title: 'Kjøringene kan ikke sammenlignes',
+            status: 400,
+            errors: [{ path: 'baseline', message: 'the runs are of different test sets' }],
+          },
+          400,
+        );
+      const set = sets.find((x) => x.id === candidate.testSet);
+      const running = (r: typeof candidate) =>
+        r.status === 'running' || r.status === 'waiting-for-scores';
+      const outcome = (r: EvalCaseResult | undefined) =>
+        r
+          ? { pass: r.pass, score: r.pass ? 1 : 0, ...(r.reason ? { reason: r.reason } : {}) }
+          : null;
+      const rows = (set?.cases ?? []).flatMap((c) => {
+        const b = baseline.cases.find((x) => x.caseId === c.id);
+        const n = candidate.cases.find((x) => x.caseId === c.id);
+        const change: CaseChange | undefined =
+          b && n
+            ? b.pass === n.pass
+              ? 'same'
+              : n.pass
+                ? 'better'
+                : 'worse'
+            : n
+              ? running(baseline)
+                ? 'pending'
+                : 'new'
+              : b
+                ? running(candidate)
+                  ? 'pending'
+                  : 'missing'
+                : running(candidate) || running(baseline)
+                  ? 'pending'
+                  : undefined;
+        return change
+          ? [
+              {
+                case: c.id,
+                input: c.input,
+                type: c.type,
+                split: c.split,
+                change,
+                baseline: outcome(b),
+                candidate: outcome(n),
+              },
+            ]
+          : [];
+      });
+      const counts = Object.fromEntries(
+        (['better', 'worse', 'same', 'new', 'missing', 'pending'] as const).map((k) => [
+          k,
+          rows.filter((r) => r.change === k).length,
+        ]),
+      );
+      const change = q.get('change');
+      const matching = change ? rows.filter((r) => r.change === change) : rows;
+      const limit = Number(q.get('limit') ?? 50);
+      const offset = Number(q.get('offset') ?? 0);
+      const side = (r: typeof candidate) => ({
+        id: r.id,
+        status: r.status,
+        version: r.version,
+        testSetVersion: 1,
+        startedAt: r.startedAt,
+        endedAt: r.endedAt ?? null,
+        score: r.score ?? null,
+        passed: r.cases.filter((x) => x.pass).length,
+        cases: r.cases.length,
+        judges: r.judges ?? [],
+      });
+      return req.json({
+        testSet: candidate.testSet,
+        baseline: { ...side(baseline), published: !wanted || wanted === 'published' },
+        candidate: side(candidate),
+        counts,
+        data: matching.slice(offset, offset + limit),
+        total: matching.length,
+        offset,
+        limit,
+      });
+    }
+
+    if (
+      parts[0] === 'services' &&
+      parts[1] &&
+      parts[2] === 'eval-runs' &&
+      parts[3] &&
+      parts[4] === 'cancel' &&
+      parts.length === 5 &&
+      req.method === 'POST'
+    ) {
+      if (!req.reason) return req.reasonMissing();
+      const found = runs.find((r) => r.id === parts[3] && r.service === parts[1]);
+      if (!found) return req.notFound();
+      if (found.status === 'cancelled') return req.json({ id: found.id, status: 'cancelled' });
+      if (found.status !== 'running' && found.status !== 'waiting-for-scores')
+        return req.json(
+          {
+            type: 'urn:genai:problem:run-finished',
+            title: 'Kjøringen er allerede ferdig',
+            status: 409,
+            errors: [{ path: 'status', message: `the run has already ended as ${found.status}` }],
+          },
+          409,
+        );
+      found.status = 'cancelled';
+      found.endedAt = new Date().toISOString();
+      delete found.current;
+      delete found.endsAt;
+      delete found.startedBy;
+      delete found.startedByName;
+      delete found.startedByYou;
+      return req.json({ id: found.id, status: 'cancelled' });
+    }
+
     if (parts[0] === 'services' && parts.length === 3 && parts[1]) {
       const service = parts[1];
       if (parts[2] === 'draft') {

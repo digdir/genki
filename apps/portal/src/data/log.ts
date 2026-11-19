@@ -479,14 +479,14 @@ const t4Steps: CompactStep[] = [
   {
     type: 'trigger',
     title: 'Etter tidsplan',
-    summary: 'Hver natt kl. 02.00',
+    summary: 'Hver natt kl. 02:00',
     t: 0,
     blocks: [
       {
         kind: 'kv',
         rows: [
           ['Utløser', 'Etter tidsplan'],
-          ['Tidsplan', 'Hver natt kl. 02.00'],
+          ['Tidsplan', 'Hver natt kl. 02:00'],
           ['Forrige kjøring', '5. oktober, fullført'],
         ],
       },
@@ -847,9 +847,17 @@ const excerptOf = (t: TaskTimeline) => {
   return text.length > 90 ? `${text.slice(0, 89)}…` : text;
 };
 
+const channelOfTrigger: Record<string, TaskRow['channel']> = {
+  Chat: 'api',
+  'Fra fagsystem': 'api-key',
+  'Samlet jobb': 'batch',
+  Prøveområdet: 'playground',
+};
+
 const taskRowOf = (t: TaskTimeline, service: string, capability: string): TaskRow => {
   const excerpt = t.erasure ? '' : excerptOf(t);
   return {
+    channel: channelOfTrigger[t.trigger] ?? null,
     id: t.id,
     status: t.status,
     service,
@@ -892,3 +900,87 @@ export const playgroundTasks: TaskRow[] = (
     actor: { kind: 'person', name },
   };
 });
+
+const runQuestions = [
+  'Hva sier evalueringene om digital veiledning siden 2020?',
+  'Hvilke tiltak for klarspråk ble vurdert som vellykkede?',
+  'Finnes det evalueringer av saksbehandlingstid i NAV?',
+  'Hva anbefalte evalueringen av fellesløsningene i 2023?',
+  'Hvor ofte nevnes brukermedvirkning i rapportene?',
+  'Hvilke funn gjentar seg om IT-anskaffelser?',
+  'Hva er hovedfunnene om tilsyn med barnehager?',
+  'Hvilke rapporter handler om kunstig intelligens i staten?',
+];
+
+const runActors = [
+  {
+    channel: 'interface',
+    frontend: 'intranettet',
+    actor: { kind: 'person', id: 'employee:mock:lise', name: 'Lise Dahl' },
+  },
+  { channel: 'api', actor: { kind: 'person', id: 'employee:mock:ola', name: 'Ola Hansen' } },
+  {
+    channel: 'interface',
+    frontend: 'intranettet',
+    actor: { kind: 'person', id: 'employee:mock:per', name: 'Per Olsen' },
+  },
+  {
+    channel: 'api-key',
+    actor: { kind: 'api-key', id: 'api-key:saksbehandling', name: 'Saksbehandling' },
+  },
+  {
+    channel: 'interface',
+    frontend: 'intranettet',
+    actor: { kind: 'person', id: 'employee:mock:nina', name: 'Nina Berg' },
+  },
+  { channel: 'api', actor: { kind: 'person', id: 'employee:mock:ingrid', name: 'Ingrid Berg' } },
+  {
+    channel: 'playground',
+    actor: { kind: 'person', id: 'employee:mock:kari', name: 'Kari Nordmann' },
+  },
+] as const;
+
+const runFailures = [
+  { code: 'deadline_exceeded', reason: 'Søket i rapportene svarte ikke innen 30 sekunder' },
+  { code: 'guardrail', reason: 'Stoppet av vakten: spørsmålet inneholdt et fødselsnummer' },
+];
+
+export const serviceRuns = (service: string, days = 14, perDay = 18): TaskRow[] => {
+  const rows: TaskRow[] = [];
+  const now = Date.now();
+  for (let day = 0; day < days; day += 1)
+    for (let i = 0; i < perDay; i += 1) {
+      const n = day * perDay + i;
+      const start = new Date();
+      start.setDate(start.getDate() - day);
+      start.setHours(8 + Math.floor((i * 9) / perDay), (i * 23 + day * 7) % 60, (i * 13) % 60, 0);
+      if (start.getTime() > now) continue;
+      const who = runActors[n % runActors.length] ?? runActors[0];
+      const failure = n % 13 === 5 ? runFailures[n % 26 === 5 ? 1 : 0] : undefined;
+      const seconds = failure?.code === 'deadline_exceeded' ? 30 : 2.8 + ((n * 7) % 26) / 10;
+      const inputTokens = 2800 + ((n * 337) % 2600);
+      rows.push({
+        id: `${service}-run-${n}`,
+        status: failure ? 'failed' : 'completed',
+        service,
+        serviceName: serviceNames[service] ?? service,
+        excerpt: runQuestions[n % runQuestions.length] ?? '',
+        capability: `999888777/${service}/default`,
+        version: 7,
+        environment: n % 9 === 4 ? 'test' : 'prod',
+        createdAt: start.toISOString(),
+        endedAt: new Date(start.getTime() + seconds * 1000).toISOString(),
+        usage: {
+          inputTokens,
+          outputTokens: 300 + ((n * 41) % 400),
+          requests: 2,
+          costMicroNok: Math.round(inputTokens * 4.5),
+        },
+        actor: { ...who.actor },
+        channel: who.channel,
+        ...('frontend' in who ? { frontend: who.frontend } : {}),
+        ...(failure ? { failure } : {}),
+      });
+    }
+  return rows.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+};

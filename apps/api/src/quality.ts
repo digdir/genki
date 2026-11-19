@@ -169,6 +169,22 @@ export const createQualityModule =
           return isRecord(parsed) ? parsed : {};
         };
         const reasonOf = (c: Context) => changeReasonOf(c)?.trim() ?? '';
+        const starterOf = async (taskId: string, tenant: string) => {
+          const task = await mountDeps.task(taskId).catch(() => undefined);
+          if (!task || task.principal.tenant !== tenant) return undefined;
+          let parts: unknown;
+          try {
+            parts = JSON.parse(task.principal.id);
+          } catch {
+            return undefined;
+          }
+          if (!Array.isArray(parts) || parts.length !== 2) return undefined;
+          const [issuer, subject] = parts.map(String);
+          return {
+            id: task.principal.id,
+            actor: `${task.principal.kind}:${issuer}:${subject}`,
+          };
+        };
 
         const member = async (c: Context, right?: Right) => {
           const principal = await mountDeps.authenticate(c.req.raw);
@@ -816,10 +832,33 @@ export const createQualityModule =
           const runs = await evals.runsOf(guard.tenant, param(c, 'id'));
           const usage = seesUsage(guard.principal, guard.tenant);
           const agreementsOf = await deps.sinkLabels?.agreementsFor(guard.tenant);
+          const caller = JSON.stringify([guard.principal.issuer, guard.principal.subject]);
+          const starters = new Map(
+            await Promise.all(
+              runs
+                .filter((s) => {
+                  const state = runState(s.run);
+                  return s.task && (state === 'running' || state === 'waiting-for-scores');
+                })
+                .map(async (s) => [s.run.id, await starterOf(s.task, guard.tenant)] as const),
+            ),
+          );
+          const names = await actorNames(deps.configEntries).namesOf(
+            [...starters.values()].flatMap((s) => (s ? [s.actor] : [])),
+          );
           return c.json({
             data: runs.map((s) => {
               const summary = runSummary(s.run, isSinkJudge, agreementsOf?.(s.run));
-              return usage ? summary : costless(summary);
+              const starter = starters.get(s.run.id);
+              const name = starter ? names.get(starter.actor) : undefined;
+              const started = starter
+                ? {
+                    startedBy: starter.actor,
+                    ...(name ? { startedByName: name } : {}),
+                    ...(starter.id === caller ? { startedByYou: true as const } : {}),
+                  }
+                : {};
+              return { ...(usage ? summary : costless(summary)), ...started };
             }),
           });
         });
