@@ -64,6 +64,7 @@ if [ "$APP" = assistant ] && [ -n "${GENAI_PROXY_KEY:-}" ]; then
     "$GENAI_PROXY_KEY" >/tmp/genki/bff-api.conf
   cat >/tmp/genki/bff.conf <<'CONF'
 location /auth/ {
+  access_log off;
   proxy_pass __API_SCHEME__://genki_api__API_PATH__/bff$request_uri;
   proxy_ssl_server_name on;
   proxy_ssl_name __API_HOSTNAME__;

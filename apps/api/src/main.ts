@@ -1,4 +1,5 @@
-import { createBff, InMemoryBffSessions } from './bff/index.js';
+import { actingClient, createBff, InMemoryBffSessions } from './bff/index.js';
+import { platformLoginFrom } from './platform-login.js';
 import {
   assistantHostnameFrom,
   hostedHostnamesFrom,
@@ -218,7 +219,17 @@ const clients = notifyingClients(db?.clients ?? new InMemoryClients(), {
   saved: (client, before) => mockRegistration.saved?.(client, before),
   removed: (client) => mockRegistration.removed?.(client),
 });
-const registeredClients = clientRegistry(clients);
+const platformLogin = platformLoginFrom(process.env, audience);
+if (platformLogin)
+  log('platform login for hosted assistants', {
+    hostname: platformLogin.hostname,
+    secret: platformLogin.secret !== undefined,
+    subjectsKept: platformLogin.subjectKeyKept,
+  });
+const registeredClients = clientRegistry(
+  clients,
+  platformLogin && { ...platformLogin, current: actingClient },
+);
 
 const trustedEntra = trustedEntraFrom(process.env, platformTenant, resource);
 if (trustedEntra)
@@ -236,12 +247,23 @@ const { trusted, mock, mockIssuer } = await loginIssuers({
   audience,
   testData,
   registeredClients,
+  platformLoginClients: platformLogin ? [platformLogin.clientId] : [],
+  ...(platformLogin ? { platformLoginKey: platformLogin.subjectKey } : {}),
   ...(trustedEntra ? { trustedEntra } : {}),
   onKeysNotFetched: (fields) => log('login keys not fetched', fields),
 });
 let clientSecretOf: (tenant: string, name: string) => Promise<string | undefined> = async () =>
   undefined;
 if (mock) mockRegistration = mockClientSync(mock.clients, audience, (t, n) => clientSecretOf(t, n));
+if (mock && platformLogin?.secret)
+  mock.clients.register({
+    clientId: platformLogin.clientId,
+    redirectUris: [`https://${platformLogin.hostname}/auth/callback`],
+    postLogoutRedirectUris: [`https://${platformLogin.hostname}/auth/logged-out`],
+    audience,
+    tokenEndpointAuthMethod: 'client_secret_basic',
+    clientSecret: platformLogin.secret,
+  });
 const operatorSubjects = operatorSubjectsFrom(process.env);
 const operators = operatorDirectory({
   pids: identityFile.operatorPids,
@@ -262,6 +284,7 @@ const reservedClientIds = [
   ...(testData.clients ?? []).map((c) => c.clientId),
   ...operatorClientIds(process.env),
   ...employeeClientIds(process.env),
+  ...(platformLogin ? [platformLogin.clientId] : []),
 ];
 const verifier = operators.watch(
   asPlatformResource(
@@ -460,8 +483,10 @@ if (environmentTier === 'test')
 
 const processorRecords = processorRecordCheckOf(process.env);
 
+const hostedHostnames = hostedHostnamesFrom(process.env);
+if (platformLogin) hostedHostnames.delete(platformLogin.hostname);
 const hosting = {
-  hostnames: hostedHostnamesFrom(process.env),
+  hostnames: hostedHostnames,
   reservedDomains: reservedDomainsFrom(process.env),
   assistantHostname: assistantHostnameFrom(process.env),
 };
@@ -492,6 +517,9 @@ const platform = await createPlatform({
   clients,
   reservedClientIds,
   hosting,
+  ...(platformLogin
+    ? { platformLogin: { clientId: platformLogin.clientId, audience: platformLogin.audience } }
+    : {}),
   ...(db ? { webhookDeliveries: db.webhookDeliveries } : {}),
   ...(db ? { traceDeliveries: db.traceDeliveries } : {}),
   ...(db ? { triggerRuns: db.triggerRuns } : {}),
@@ -834,10 +862,12 @@ const bff = createBff({
         configEntries: platform.configEntries,
         rules: hosting,
         issuer: ansattportenIssuer,
+        platformLogin,
       },
       hostname,
     )) !== undefined,
   issuer: ansattportenIssuer,
+  platformLogin,
   altinnResource: resource,
   secrets: {
     value: clientSecretOf,

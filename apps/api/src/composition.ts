@@ -534,6 +534,7 @@ export interface PlatformInput {
   clients?: ClientStore;
   reservedClientIds?: string[];
   hosting?: HostingRules;
+  platformLogin?: { clientId: string; audience: string };
   webhookDeliveries?: WebhookDeliveryStore;
   triggerRuns?: TriggerRunStore;
   gatewayUsage?: UsageReads;
@@ -2317,6 +2318,7 @@ export const createPlatform = async (input: PlatformInput) => {
       rules: hosting,
       issuer: input.endpoints?.issuer,
       altinnResource: input.endpoints?.altinnResource,
+      platformLogin: input.platformLogin,
     });
     app.use('*', clientCors(clients));
     for (const path of [

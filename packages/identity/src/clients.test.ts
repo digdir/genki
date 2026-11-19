@@ -22,6 +22,7 @@ import {
   type RegisteredClient,
   type SigningKey,
   type StoredClient,
+  usesPlatformLogin,
 } from './index.js';
 
 const ISSUER = 'http://ansattporten.test';
@@ -182,6 +183,25 @@ describe('hosted clients', () => {
     ],
   ])('refuses %s', (_, overrides) => {
     expect(checkClient(hosted(overrides), []).ok).toBe(false);
+  });
+
+  it('lets a hosted client leave out oidc and log in through genki’s platform login', () => {
+    const checked = checkClient(hosted({ oidc: undefined }), []);
+    expect(checked.ok).toBe(true);
+    expect(checked.ok && usesPlatformLogin(checked.definition)).toBe(true);
+  });
+
+  it('still needs oidc on a browser client that is not hosted', () => {
+    expect(checkClient(ka({ oidc: undefined }), []).ok).toBe(false);
+  });
+
+  it('refuses an audience on a client that uses the platform login, and says it takes the platform login’s resource', () => {
+    const checked = checkClient(hosted({ oidc: { audience: 'digdir:klarsprak' } } as never), []);
+    expect(checked.ok).toBe(false);
+    expect(!checked.ok && checked.errors).toContainEqual({
+      path: 'spec.oidc.clientId',
+      message: expect.stringContaining('platform login, whose resource it takes'),
+    });
   });
 
   it('lets only a hosted client name a client secret for genki to log in with', () => {

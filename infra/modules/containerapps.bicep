@@ -13,6 +13,8 @@ param keyVaultUri string
 param keyVaultSecretNames array
 @description('Gives the API the assistant host\'s proxy key, genai-proxy-key in Key Vault, which the BFF trusts the forwarded hostname by (ADR 0061).')
 param bffProxyKey bool = false
+@description('Reads platform-login-client-secret from genki\'s Key Vault for the API: the secret of genki\'s own login client (ADR 0061).')
+param platformLoginSecret bool = false
 param apiImage string
 param apiRevisionSuffix string = ''
 param apiLiveRevision string = ''
@@ -209,6 +211,12 @@ var proxyKeySecret = bffProxyKey
   ? [{ name: 'genai-proxy-key', keyVaultUrl: '${keyVaultUri}secrets/genai-proxy-key', identity: identityId }]
   : []
 var proxyKeyEnv = bffProxyKey ? [{ name: 'GENAI_PROXY_KEY', secretRef: 'genai-proxy-key' }] : []
+var platformLoginSecretRef = platformLoginSecret
+  ? [{ name: 'platform-login-client-secret', keyVaultUrl: '${keyVaultUri}secrets/platform-login-client-secret', identity: identityId }]
+  : []
+var platformLoginSecretEnv = platformLoginSecret
+  ? [{ name: 'PLATFORM_LOGIN_CLIENT_SECRET', secretRef: 'platform-login-client-secret' }]
+  : []
 
 var apiAppName = '${name}-api'
 var apiCandidateRevision = empty(apiRevisionSuffix) ? '' : '${apiAppName}--${apiRevisionSuffix}'
@@ -246,7 +254,7 @@ resource api 'Microsoft.App/containerApps@2025-02-02-preview' = {
         traffic: apiTraffic
       }
       registries: [{ server: registryServer, identity: identityId }]
-      secrets: concat(secrets, proxyKeySecret)
+      secrets: concat(secrets, proxyKeySecret, platformLoginSecretRef)
     }
     template: {
       revisionSuffix: empty(apiRevisionSuffix) ? null : apiRevisionSuffix
@@ -255,7 +263,7 @@ resource api 'Microsoft.App/containerApps@2025-02-02-preview' = {
           name: 'api'
           image: apiImage
           resources: { cpu: json(cpu), memory: memory }
-          env: concat([{ name: 'PORT', value: '8080' }, { name: 'APP_VERSION', value: appVersion }, { name: 'DATABASE_POOL_MAX', value: string(apiDatabasePoolMax) }], serverEnv, knowledgeEnv.api, proxyKeyEnv)
+          env: concat([{ name: 'PORT', value: '8080' }, { name: 'APP_VERSION', value: appVersion }, { name: 'DATABASE_POOL_MAX', value: string(apiDatabasePoolMax) }], serverEnv, knowledgeEnv.api, proxyKeyEnv, platformLoginSecretEnv)
           volumeMounts: dataMount
           probes: [
             { type: 'Liveness', httpGet: { path: '/health', port: 8080 }, periodSeconds: 30 }

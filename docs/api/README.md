@@ -71,7 +71,7 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ### 2026-11-19: the host route names the whole login
 
-- `GET /v1/hosts/{hostname}` gives `login.audience` (the hosted Client's `oidc.audience`, or its client id) and `login.altinnResource` (the platform's Altinn resource, or `null`) beside `issuer` and `clientId`, so a host can start the login with nothing else. `GENAI_ASSISTANT_HOSTNAME` names genki's own assistant hostname, the one name under genki's own zones a hosted Client may claim once `GENAI_HOSTED_HOSTNAMES` opens it to the tenant (see [frontend.md](frontend.md#a-hosted-assistant)).
+- `GET /v1/hosts/{hostname}` gives `login.audience` (the hosted Client's `oidc.audience`, or its client id; the API audience for a Client on genki's platform login) and `login.altinnResource` (the platform's Altinn resource, or `null`) beside `issuer` and `clientId`, so a host can start the login with nothing else. `GENAI_ASSISTANT_HOSTNAME` names genki's own assistant hostname, the one name under genki's own zones a hosted Client may claim once `GENAI_HOSTED_HOSTNAMES` opens it to the tenant (see [frontend.md](frontend.md#a-hosted-assistant)).
 
 ### 2026-11-19: ranking metrics and comparisons across engines
 

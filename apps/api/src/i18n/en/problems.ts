@@ -179,6 +179,8 @@ export const problems = {
   hostNotFoundTitle: 'No service on this hostname',
   bffProxyRefused: "The request did not come through the host's proxy",
   bffSignedOut: 'You are signed out. Sign in again.',
+  bffLoggedOutTitle: 'You are signed out',
+  bffLoggedOutBody: 'You can close this tab.',
   bffCsrfRefused: 'The request did not come from this page',
   bffLoginUnavailable: 'Sign-in is not answering now. Try again shortly.',
   bffNotConfigured: 'Sign-in is not set up for this hostname',

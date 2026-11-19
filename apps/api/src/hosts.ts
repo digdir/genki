@@ -139,6 +139,8 @@ export interface HostDeps {
   rules: HostingRules;
   issuer?: string | undefined;
   altinnResource?: string | undefined;
+  /** genki's own login client, for a hosted Client without `oidc` (ADR 0061). */
+  platformLogin?: { clientId: string; audience: string } | undefined;
 }
 
 const resolve = async (
@@ -156,7 +158,14 @@ const resolve = async (
       (c.definition.spec.hostnames ?? []).some((n) => n.hostname === hostname),
   )?.definition;
   const claim = client?.spec.hostnames?.find((n) => n.hostname === hostname);
-  if (!client || !claim || !client.spec.oidc) return undefined;
+  if (!client || !claim) return undefined;
+  const login = client.spec.oidc
+    ? {
+        clientId: client.spec.oidc.clientId,
+        audience: oidcAudienceOf(client) ?? client.spec.oidc.clientId,
+      }
+    : deps.platformLogin;
+  if (!login) return undefined;
   const service = client.spec.service;
   if (await isHiddenService(deps.definitions, tenant, service)) return undefined;
   if ((await lifecycleOf(deps.configEntries, tenant, service)).state === 'archived')
@@ -180,8 +189,8 @@ const resolve = async (
     name: shown.layout.profile?.assistantName ?? definition.metadata.name ?? service,
     login: {
       issuer: deps.issuer ?? null,
-      clientId: client.spec.oidc.clientId,
-      audience: oidcAudienceOf(client) ?? client.spec.oidc.clientId,
+      clientId: login.clientId,
+      audience: login.audience,
       altinnResource: deps.altinnResource ?? null,
     },
     languages: languagesOf(definition.spec.languages),

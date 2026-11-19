@@ -197,7 +197,7 @@ describe.skipIf(!hasAz && !process.env.CI)('hosted hostnames in the template', (
 
   it('binds hosted hostnames to the assistant host only, and keeps the four app hostnames on their apps', () => {
     expect(module('assistant-host').properties.parameters?.hostedHostnames?.value).toBe(
-      "[variables('servedNames')]",
+      "[concat(variables('servedNames'), variables('loginNames'))]",
     );
     const apps = module('containerapps').properties.parameters ?? {};
     expect(apps).not.toHaveProperty('hostedHostnames');
@@ -207,6 +207,28 @@ describe.skipIf(!hasAz && !process.env.CI)('hosted hostnames in the template', (
     expect(JSON.stringify(app?.properties)).toContain('"customDomains":"[map(variables(\'bound\')');
     expect(app?.dependsOn).toEqual(['certificates']);
   });
+
+  it('serves the platform login host on the assistant host at its own stage, and opens it to no tenant', () => {
+    expect(built?.variables?.platformLoginHostname).toBe(
+      "[if(variables('platformLoginOn'), format('login.apps.{0}', parameters('dnsZoneName')), '')]",
+    );
+    expect(built?.variables?.loginNames).toContain("'stage', parameters('platformLoginStage')");
+    expect(built?.variables?.servedNames).not.toContain('loginNames');
+    const apps = module('containerapps').properties.parameters ?? {};
+    expect(apps.platformLoginSecret?.value).toBe("[variables('platformLoginOn')]");
+    const env = apps.identityEnv?.value as Record<string, string>;
+    expect(env.PLATFORM_LOGIN_HOSTNAME).toBe("[variables('platformLoginHostname')]");
+    expect(String(module('dns').properties.parameters?.hostedLabels)).toContain(
+      "createArray('login.apps')",
+    );
+  });
+
+  it('turns the platform login on in test with its client id, starting at stage none', () => {
+    const values = paramValues('test');
+    expect(values.platformLoginClientId?.value).toBe('dde98722-c952-4172-a5d6-10bdf721680f');
+    expect(values.platformLoginStage?.value).toBe('none');
+    expect(values.platformLoginClientId?.value).not.toBe(values.portalClientId?.value);
+  }, 120_000);
 
   it('makes a certificate only at the certificates stage, in the host’s environment, over HTTP for an apex', () => {
     const variables = module('assistant-host').properties.template?.variables ?? {};
