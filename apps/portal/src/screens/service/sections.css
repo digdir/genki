@@ -8,6 +8,7 @@
   white-space: pre;
   border-radius: var(--ds-border-radius-md);
   background: var(--ds-color-neutral-background-tinted);
+  position: relative;
 }
 
 .test-run-result {
@@ -30,6 +31,7 @@
   overflow-x: auto;
   resize: vertical;
   tab-size: 2;
+  position: relative;
 }
 
 .dv-head {
@@ -141,6 +143,7 @@
   font-family: ui-monospace, Menlo, Consolas, monospace;
   font-size: 13.5px;
   line-height: 1.6;
+  position: relative;
 }
 
 .dv-line {
@@ -404,6 +407,8 @@
   tab-size: 2;
   color: var(--ds-color-neutral-text-default);
   background: var(--ds-color-neutral-background-default);
+  position: relative;
+  overscroll-behavior: contain;
 }
 
 .dv-yaml-editor textarea:focus-visible {
