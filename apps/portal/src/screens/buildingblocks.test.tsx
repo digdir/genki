@@ -754,11 +754,13 @@ describe('Byggeklosser: detalj', () => {
     expectAccessible();
   });
 
-  it('shows the update table and test scores on the Om tab of a block with an update', async () => {
+  it('shows the update table under Versjoner and the test scores on the Om tab of a block with an update', async () => {
     await open('#/building-blocks/model/aivar%2Fborealis-27b');
     await screen.findByRole('heading', { level: 1, name: 'Borealis-27B' });
+    expect(screen.getByText('84 av 100')).toBeTruthy();
+    window.location.hash = '#/building-blocks/model/aivar%2Fborealis-27b/versions';
     expect(
-      screen.getByRole('heading', { name: 'Versjon 2.2, tilgjengelig fra 6. okt' }),
+      await screen.findByRole('heading', { name: 'Versjon 2.2, tilgjengelig fra 6. okt' }),
     ).toBeTruthy();
     const table = screen.getByRole('region', { name: 'Poeng før og etter per tjeneste' });
     expect(within(table).getByText('+3')).toBeTruthy();
@@ -767,7 +769,6 @@ describe('Byggeklosser: detalj', () => {
     expect(
       within(table).getByRole('link', { name: 'Rapportassistenten' }).getAttribute('href'),
     ).toBe('#/services/rapportassistenten');
-    expect(screen.getByText('84 av 100')).toBeTruthy();
     expectAccessible();
   });
 
@@ -1879,11 +1880,30 @@ describe('Byggeklosser: modell, verktøy og fart', () => {
       { features: { buildingBlocks: options } },
     );
 
-  it('shows the model price per 1 000 tokens from /models', async () => {
+  it('notes an update in the header and shows its scores per service under Versjoner, not above the tabs', async () => {
+    await renderAt('#/building-blocks/model/aivar%2Fborealis-27b', pricedFetch());
+    const notice = await screen.findByRole('link', { name: 'Se versjon 2.2 under Versjoner' });
+    expect(notice.getAttribute('href')).toBe(
+      '#/building-blocks/model/aivar%2Fborealis-27b/versions',
+    );
+    expect(screen.getByText('Oppdatering tilgjengelig')).toBeTruthy();
+    expect(screen.queryByRole('region', { name: 'Poeng før og etter per tjeneste' })).toBeNull();
+
+    cleanup();
+    await renderAt('#/building-blocks/model/aivar%2Fborealis-27b/versions', pricedFetch());
+    expect(
+      await screen.findByRole('region', { name: 'Poeng før og etter per tjeneste' }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('heading', { level: 2, name: /^Versjon 2\.2, tilgjengelig fra/ }),
+    ).toBeTruthy();
+  });
+
+  it('shows the model price per 1M tokens from /models, the unit the catalogue uses', async () => {
     await renderAt('#/building-blocks/model/aivar%2Fborealis-27b', pricedFetch());
     expect(await screen.findByRole('heading', { level: 2, name: 'Pris' })).toBeTruthy();
-    expect(screen.getByText('0,02 kr per 1 000 tokens')).toBeTruthy();
-    expect(screen.getByText('0,08 kr per 1 000 tokens')).toBeTruthy();
+    expect(screen.getByText('20,00 kr per 1M tokens')).toBeTruthy();
+    expect(screen.getByText('80,00 kr per 1M tokens')).toBeTruthy();
   });
 
   it('shows who made and runs a model from /models and when it was taken into use from the block', async () => {

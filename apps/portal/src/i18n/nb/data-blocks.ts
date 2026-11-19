@@ -184,6 +184,7 @@ export const blocks = defineNamespace({
     'Dommerne i prosjektet til koblingen {connection} kunne ikke leses{status}. Langfuse må ha versjon 4.23.0 eller nyere, og koblingens nøkler må gjelde.',
   pendingNotice:
     'Forespørselen er sendt til {approver}. Du får beskjed på Oversikt når den er behandlet.',
+  updateNotice: 'Se versjon {version} under Versjoner',
   updateHeading: 'Versjon {version}, tilgjengelig fra {date}',
   updateBody:
     'Ingen tjeneste bytter versjon av seg selv. Testsettene er kjørt med den nye versjonen. Prøv den i utkastet til hver tjeneste, og publiser når dere er fornøyde.',
@@ -460,7 +461,7 @@ export const blockModel = defineNamespace({
   price: 'Pris',
   priceIn: 'Tekst inn',
   priceOut: 'Tekst ut',
-  pricePerThousand: '{price} kr per 1 000 tokens',
+  pricePerMillion: '{price} kr per 1M tokens',
   priceNote: 'Prisene er anslått og gjelder også prøvekjøringer.',
   notPriced: 'Prisen er ikke beregnet ennå.',
 });

@@ -230,7 +230,7 @@ export const stepflowsUi = {
     saveFailed: 'Kunne ikke lagre stegflyten. Prøv igjen.',
     sharedWith:
       'Brukes også av {others}. Endringer lagres som v{next}, og de andre tjenestene beholder {current} til de oppdaterer.',
-    sharedNone: 'Endringer lagres som en ny versjon av tjenesten.',
+    sharedNone: 'Endringer lagres som en ny versjon av stegflyten.',
     flowLabel: 'Stegflyt',
     subSuffix: '{name} (delflyt)',
     tabDiagram: 'Diagram',

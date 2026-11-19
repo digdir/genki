@@ -735,3 +735,9 @@ button.flow-card-main {
 .sf-start {
   align-self: flex-start;
 }
+
+.sf-chips [aria-pressed='true'] {
+  background: var(--ds-color-accent-base-default);
+  border-color: var(--ds-color-accent-base-default);
+  color: var(--ds-color-accent-base-contrast-default);
+}

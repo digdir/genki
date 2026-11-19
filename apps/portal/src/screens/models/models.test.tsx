@@ -81,6 +81,38 @@ describe('the model catalogue', () => {
     expect(within(mistral as HTMLElement).getByText('Ikke oppgitt')).toBeTruthy();
   });
 
+  it('names the use cases the platform knows in bokmål, on the card and in the filter', async () => {
+    await at('#/building-blocks/models', [
+      model('lyd', {
+        operations: ['audio-chat', 'edit-image', 'stream-chat', 'summarize-document'],
+      }),
+    ]);
+    const card = (await screen.findByRole('link', { name: 'lyd' })).closest('li') as HTMLElement;
+    for (const label of ['Lydsamtale', 'Bilderedigering', 'Strømmet chat', 'Dokumentoppsummering'])
+      expect(within(card).getByText(label)).toBeTruthy();
+    const filters = screen.getByRole('complementary', { name: 'Filtre' });
+    expect(within(filters).getByRole('checkbox', { name: 'Lydsamtale 1' })).toBeTruthy();
+    expect(within(filters).queryByText(/Audio chat|Summarize document/)).toBeNull();
+  });
+
+  it('shows the filter frame and search at once while the models load, and keeps what was typed', async () => {
+    const { fetch, release } = heldFetch(
+      /\/models\?all=true/,
+      mockFetch(undefined, undefined, catalog),
+    );
+    await renderAt('#/building-blocks/models', fetch);
+    const filters = await screen.findByRole('complementary', { name: 'Filtre' });
+    for (const facet of ['Tilgjengelighet', 'Leverandør', 'Hvor data behandles', 'Bruksområde'])
+      expect(within(filters).getByText(facet)).toBeTruthy();
+    expect(screen.getByRole('status', { name: 'Henter modellene' })).toBeTruthy();
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Søk' }), {
+      target: { value: 'norge' },
+    });
+    await release();
+    expect(await screen.findByRole('link', { name: 'Borealis-27B' })).toBeTruthy();
+    expect(cardNames()).toEqual(['Borealis-27B']);
+  });
+
   it('searches by name, maker or where data is processed', async () => {
     await at('#/building-blocks/models');
     await screen.findByText('Viser 20 av 25 modeller dere kan bruke');
@@ -186,6 +218,15 @@ describe('models in use', () => {
     expect(screen.queryByRole('rowheader')).toBeNull();
     await release();
     expect(await screen.findByRole('link', { name: 'Borealis-27B' })).toBeTruthy();
+  });
+
+  it('lets a keyboard user reach the table scroll box and keeps model names on one line', async () => {
+    await at('#/building-blocks/models/in-use');
+    const box = await screen.findByRole('region', { name: 'Tabell over modellene' });
+    expect(box.tabIndex).toBe(0);
+    expect(within(box).getByRole('table')).toBeTruthy();
+    const name = within(box).getByRole('link', { name: 'Borealis-27B' }).closest('th');
+    expect(name?.classList.contains('mc-nowrap')).toBe(true);
   });
 
   it('pages the table 15 rows at a time', async () => {

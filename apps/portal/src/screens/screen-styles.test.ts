@@ -26,6 +26,15 @@ describe('screen stylesheets', () => {
   });
 });
 
+describe('chip filters', () => {
+  it('fill the pressed chip in the step flow filters, as the building block filters do', () => {
+    const css = new Map(stylesheets).get('stepflows.css') ?? '';
+    expect(css).toMatch(
+      /\.sf-chips \[aria-pressed='true'\] \{[^}]*background: var\(--ds-color-accent-base-default\)/,
+    );
+  });
+});
+
 describe('app.css', () => {
   it('never gives a grid a bare 1fr track, so wide content cannot widen the page on a phone', () => {
     const tracks = [...appCss.matchAll(/grid-template-columns:([^;]+);/g)].map((m) => m[1] ?? '');

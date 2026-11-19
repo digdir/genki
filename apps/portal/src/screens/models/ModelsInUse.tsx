@@ -166,7 +166,12 @@ export const ModelsInUse = ({ api, tenant, tenantName }: ScreenProps) => {
           {t('modelsInUse.usageUnknown')}
         </Alert>
       )}
-      <div className="mc-table-box">
+      <div
+        className="mc-table-box"
+        tabIndex={0}
+        role="region"
+        aria-label={t('modelsInUse.tableRegion')}
+      >
         <Table className="mc-table" aria-busy={pending || undefined}>
           <caption className="visually-hidden">
             {t('modelsInUse.caption', { column: t(sortNameKeys[sort.column]) })}
@@ -194,7 +199,7 @@ export const ModelsInUse = ({ api, tenant, tenantName }: ScreenProps) => {
           <Table.Body>
             {paged.items.map((m) => (
               <Table.Row key={m.id}>
-                <Table.HeaderCell scope="row">
+                <Table.HeaderCell scope="row" className="mc-nowrap">
                   <Link href={modelBlockHref(m.id)}>{text.name(m)}</Link>
                 </Table.HeaderCell>
                 <Table.Cell>

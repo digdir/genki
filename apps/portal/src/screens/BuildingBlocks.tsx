@@ -173,11 +173,13 @@ const DetailPage = ({
   kind,
   id,
   tab,
+  copyFrom,
   onChanged,
 }: ScreenProps & {
   kind: BlockKind;
   id: string;
   tab: BlockTab;
+  copyFrom?: string;
   onChanged: (flash: Flash) => void;
 }) => {
   const t = useT();
@@ -236,6 +238,7 @@ const DetailPage = ({
       services={runs.status === 'ready' ? runs.data : []}
       versions={state.data.versions}
       tab={tab}
+      {...(copyFrom ? { copyFrom } : {})}
       onRetry={retry}
       onChanged={(flash) => {
         onChanged(flash);
@@ -243,6 +246,43 @@ const DetailPage = ({
       }}
     />
   );
+};
+
+const SkillRoute = ({
+  id,
+  view,
+  onChanged,
+  ...props
+}: ScreenProps & { id: string; view: string | undefined; onChanged: (flash: Flash) => void }) => {
+  const t = useT();
+  const owner = props.route.query.get('owner') ?? undefined;
+  const [state] = useAsync(
+    async (signal) => {
+      if (owner === props.tenant) return undefined;
+      const skills = await props.api.skills.list(props.tenant, signal);
+      if (!owner && skills.some((s) => s.id === id && s.owner === props.tenant)) return undefined;
+      return skills.find(
+        (s) =>
+          s.id === id &&
+          s.publisher.type === 'digdir' &&
+          (owner === undefined || s.owner === owner),
+      )?.owner;
+    },
+    [props.api, props.tenant, id, owner],
+  );
+  if (state.status === 'loading') return <Loading label={t('blocks.loadingOne')} shape="detail" />;
+  if (state.status === 'ready' && state.data)
+    return (
+      <DetailPage
+        {...props}
+        kind="skill"
+        id={id}
+        tab={blockTabs[view ?? ''] ?? 'about'}
+        copyFrom={state.data}
+        onChanged={onChanged}
+      />
+    );
+  return <SkillBlockPage {...props} id={id} tab={view} />;
 };
 
 const blockKindList: readonly string[] = [
@@ -339,7 +379,8 @@ export const BuildingBlocks = (props: ScreenProps) => {
     page = id === 'in-use' ? <ModelsInUse {...props} /> : <ModelCatalog {...props} />;
   else if (kind === 'connectors' && !id)
     page = <ConnectorsPage {...props} version={version} onFlash={(next) => show(next)} />;
-  else if (kind === 'skill' && id) page = <SkillBlockPage {...props} id={id} tab={view} />;
+  else if (kind === 'skill' && id)
+    page = <SkillRoute {...props} id={id} view={view} onChanged={(next) => show(next)} />;
   else if (kind && id)
     page = (
       <DetailPage

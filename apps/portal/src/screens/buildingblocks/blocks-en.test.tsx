@@ -90,9 +90,7 @@ describe('building blocks in English', () => {
     );
     expect(screen.getByRole('heading', { name: 'What it is good at' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Where data is processed' })).toBeTruthy();
-    expect(
-      screen.getByRole('heading', { name: /^Version 2\.2, available from \d+ Oct$/ }),
-    ).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'See version 2.2 under Versions' })).toBeTruthy();
     expect(screen.getByRole('tab', { name: 'Versions' })).toBeTruthy();
   });
 
@@ -132,7 +130,7 @@ describe('building blocks in English', () => {
       ),
     );
 
-    expect(await screen.findByText('NOK 0.02 per 1,000 tokens')).toBeTruthy();
+    expect(await screen.findByText('NOK 20.00 per 1M tokens')).toBeTruthy();
     expect(screen.getAllByRole('button', { name: 'Request approval' }).length).toBeGreaterThan(0);
   });
 

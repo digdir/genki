@@ -622,6 +622,7 @@ describe('Stegflyter in Utviklerverktøy', () => {
     const own = screen.getByRole('button', { name: /^Våre/ });
     fireEvent.click(own);
     expect(own.getAttribute('aria-pressed')).toBe('true');
+    expect(own.closest('.sf-chips')).toBeTruthy();
     expect(within(table).getByRole('link', { name: 'Postruting' })).toBeTruthy();
     expect(within(table).queryByRole('link', { name: 'Høringsoppsummering' })).toBeNull();
   });
@@ -671,6 +672,14 @@ describe('Stegflyter in Utviklerverktøy', () => {
   it('opens the editor at #/developer/step-flows/:id', async () => {
     await renderAt('#/developer/step-flows/postruting');
     expect(await screen.findByRole('heading', { level: 1, name: 'Postruting' })).toBeTruthy();
+  });
+
+  it('says a save makes a new version of the step flow, not of a service, when one service uses it', async () => {
+    await renderAt('#/developer/step-flows/postruting');
+    expect(
+      await screen.findByText('Endringer lagres som en ny versjon av stegflyten.'),
+    ).toBeTruthy();
+    expect(screen.queryByText(/ny versjon av tjenesten/)).toBeNull();
   });
 
   it('lists the published versions of a flow under Versjoner in the editor', async () => {
