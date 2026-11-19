@@ -1,6 +1,7 @@
 import type { Pool, PoolClient } from 'pg';
 import { open, seal } from './crypto.js';
 import type { ContentKeys } from './keys.js';
+import { withLease } from './leases.js';
 import { withTenant } from './tenancy.js';
 
 const SCOPE = 'bff-sessions';
@@ -51,40 +52,38 @@ export class PostgresBffSessions {
 
   async get(tenant: string, idHash: string): Promise<BffSessionRow | undefined> {
     const found = await withTenant(this.pool, tenant, (client) =>
-      this.#read(client, tenant, idHash, false),
+      this.#read(client, tenant, idHash),
     );
     return found && this.#open(tenant, idHash, found);
   }
 
-  /** Changes a session under a row lock, so two replicas never refresh the same tokens at once. */
+  /** Changes a session under a lease, so two replicas never refresh the same tokens at once. */
   async update(
     tenant: string,
     idHash: string,
     change: (row: BffSessionRow) => Promise<BffSessionRow | undefined>,
   ): Promise<BffSessionRow | undefined> {
-    return withTenant(this.pool, tenant, async (client) => {
-      const found = await this.#read(client, tenant, idHash, true);
-      const current = found && (await this.#open(tenant, idHash, found, client));
+    return withLease(this.pool, tenant, `bff-session:${idHash}`, async () => {
+      const current = await this.get(tenant, idHash);
       if (!current) return undefined;
       const next = await change(current);
       if (!next) {
-        await client.query('delete from bff_sessions where tenant = $1 and id_hash = $2', [
-          tenant,
-          idHash,
-        ]);
+        await this.delete(tenant, idHash);
         return undefined;
       }
-      const key = await this.keys.get(tenant, SCOPE, false, client);
+      const key = await this.keys.get(tenant, SCOPE, false);
       if (!key) return undefined;
       const sealed = seal(
         key,
         Buffer.from(next.payload),
         rowAad(tenant, idHash, current.hostname, current.client),
       );
-      await client.query(
-        `update bff_sessions set sealed = $3, expires_at = least(expires_at, $4), updated_at = now()
-         where tenant = $1 and id_hash = $2`,
-        [tenant, idHash, sealed, new Date(next.expiresAt)],
+      await withTenant(this.pool, tenant, (client) =>
+        client.query(
+          `update bff_sessions set sealed = $3, expires_at = least(expires_at, $4), updated_at = now()
+           where tenant = $1 and id_hash = $2`,
+          [tenant, idHash, sealed, new Date(next.expiresAt)],
+        ),
       );
       return { ...next, hostname: current.hostname, client: current.client };
     });
@@ -116,22 +115,17 @@ export class PostgresBffSessions {
     }
   }
 
-  async #read(client: PoolClient, tenant: string, idHash: string, lock: boolean) {
+  async #read(client: PoolClient, tenant: string, idHash: string) {
     const found = await client.query<Stored>(
       `select hostname, client, sealed, expires_at from bff_sessions
-       where tenant = $1 and id_hash = $2 and expires_at > now()${lock ? ' for update' : ''}`,
+       where tenant = $1 and id_hash = $2 and expires_at > now()`,
       [tenant, idHash],
     );
     return found.rows[0];
   }
 
-  async #open(
-    tenant: string,
-    idHash: string,
-    row: Stored,
-    db?: PoolClient,
-  ): Promise<BffSessionRow | undefined> {
-    const key = await this.keys.get(tenant, SCOPE, false, db);
+  async #open(tenant: string, idHash: string, row: Stored): Promise<BffSessionRow | undefined> {
+    const key = await this.keys.get(tenant, SCOPE, false);
     if (!key) return undefined;
     try {
       return {
