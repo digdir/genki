@@ -746,3 +746,132 @@ describe('OpenAI model list discovery', () => {
     ]);
   });
 });
+
+describe('what a discovered model is offered for', () => {
+  const deployment = (id: string, model = id) => ({ id, model, status: 'succeeded' });
+
+  const foundry = async (deployments: Record<string, unknown>[], source = 'azure-deployments') => {
+    const server = await fake(() =>
+      source === 'azure-deployments'
+        ? { status: 200, json: { data: deployments } }
+        : { status: 200, json: { object: 'list', data: deployments } },
+    );
+    const r = new ModelRouter({
+      catalog: {
+        endpoints: {
+          foundry: {
+            baseURL: `${server.url}/openai/v1`,
+            auth: { kind: 'api-key', header: 'api-key', secret: 'secret://env/test-key' },
+            families: { openai: '' },
+            discovery: [
+              {
+                source,
+                idPrefix: 'foundry-openai',
+                capabilities: ['stream', 'tools', 'json-schema'],
+                apis: { chat: 'openai/chat-completions@1' },
+              },
+            ],
+          },
+        },
+      },
+      adapters: [openAiChat],
+      sources: [azureDeployments, openAiModels],
+      secrets: envSecrets({ TEST_KEY: 'test-key' }),
+    });
+    await r.refresh();
+    return { r, seen: server.seen };
+  };
+
+  it('a discovered realtime model is not offered for chat', async () => {
+    const { r, seen } = await foundry([deployment('gpt-realtime-2.1')]);
+
+    const model = r.describe().find((m) => m.id === 'foundry-openai/gpt-realtime-2.1');
+    const call = open(r, 'foundry-openai/gpt-realtime-2.1').chat(user('Hei'));
+
+    expect(model).toMatchObject({ operations: [], apis: {}, capabilities: [] });
+    expect(model?.transport).toBeUndefined();
+    expect(r.models().has('foundry-openai/gpt-realtime-2.1')).toBe(false);
+    await expect(call).rejects.toThrow();
+    expect(seen.filter((s) => s.path.includes('chat/completions'))).toEqual([]);
+  });
+
+  it.each([
+    'gpt-image-2.5-flare',
+    'gpt-image-2.5-sunburst',
+    'gpt-realtime-2.1-mini',
+    'gpt-live-1',
+    'gpt-4o-transcribe',
+    'gpt-4o-mini-tts',
+    'whisper',
+    'dall-e-3',
+    'sora-2',
+    'text-embedding-3-large',
+  ])('a discovered %s deployment is not offered for chat', async (name) => {
+    const { r } = await foundry([deployment(name)]);
+
+    expect(r.describe().map((m) => [m.deployment, m.operations])).toEqual([[name, []]]);
+  });
+
+  it('a discovered chat model and the model router are offered for chat as the rule says', async () => {
+    const { r } = await foundry([deployment('gpt-5.6-terra'), deployment('model-router')]);
+
+    expect(r.describe().map((m) => [m.deployment, m.operations, m.capabilities])).toEqual([
+      ['gpt-5.6-terra', ['chat'], ['stream', 'tools', 'json-schema']],
+      ['model-router', ['chat'], ['stream', 'tools', 'json-schema']],
+    ]);
+  });
+
+  it('the model the provider reports decides, not the name the deployment was given', async () => {
+    const { r } = await foundry([
+      deployment('voice-desk', 'gpt-realtime-2.1'),
+      deployment('realtime-helper', 'gpt-5.6-terra'),
+    ]);
+
+    expect(r.describe().map((m) => [m.deployment, m.operations])).toEqual([
+      ['realtime-helper', ['chat']],
+      ['voice-desk', []],
+    ]);
+  });
+
+  it('a non-chat model in an OpenAI-compatible /models list is not offered for chat', async () => {
+    const { r } = await foundry(
+      [{ id: 'gpt-image-2.5-flare' }, { id: 'gpt-5.6-terra' }],
+      'openai-models',
+    );
+
+    expect(r.describe().map((m) => [m.deployment, m.operations])).toEqual([
+      ['gpt-5.6-terra', ['chat']],
+      ['gpt-image-2.5-flare', []],
+    ]);
+  });
+
+  it('reading a long listed model name takes linear time', async () => {
+    const name = `${'-'.repeat(200_000)}x${' '.repeat(200_000)}`;
+    const { url } = await fake(() => ({ status: 200, json: { data: [deployment('d', name)] } }));
+
+    const started = performance.now();
+    const found = await azureDeployments.list({
+      baseURL: url,
+      credential: { kind: 'api-key', key: async () => 'x' },
+      timeoutMs: 5000,
+    });
+
+    expect(found).toHaveLength(1);
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
+
+  it("an operator's binding wins over discovery and survives the next listing", async () => {
+    const { r } = await foundry([deployment('gpt-live-1')]);
+
+    await r.classify('foundry-openai/gpt-live-1', {
+      apis: { chat: 'openai/chat-completions@1' },
+      capabilities: ['stream'],
+    });
+    await r.refresh();
+
+    expect(r.describe()).toMatchObject([
+      { id: 'foundry-openai/gpt-live-1', operations: ['chat'], capabilities: ['stream'] },
+    ]);
+    expect(r.models().has('foundry-openai/gpt-live-1')).toBe(true);
+  });
+});

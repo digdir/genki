@@ -110,6 +110,8 @@ export { authenticatedFetch, authHeaders, shape, type Credential } from '@genai/
 export interface DiscoveredDeployment {
   deployment: string;
   model?: string;
+  /** False when the provider reports a model that does not chat, such as an image or realtime model. */
+  chat?: boolean;
 }
 
 export interface DiscoverySource {
