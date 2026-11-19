@@ -668,6 +668,10 @@ a:not([class^='ds-'], [class*=' ds-']):hover {
   align-items: center;
 }
 
+.screen-loading {
+  display: contents;
+}
+
 .stack {
   display: flex;
   flex-direction: column;
