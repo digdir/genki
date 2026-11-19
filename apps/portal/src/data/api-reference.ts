@@ -555,6 +555,33 @@ export const endpoints: Endpoint[] = [
     },
   },
   {
+    id: 'ds-documents',
+    area: 'datasets',
+    method: 'GET',
+    path: '/api/documents',
+    summary: 'apirefData.ds-documents.summary',
+    desc: 'apirefData.ds-documents.desc',
+    right: 'bruk',
+    params: [
+      ['tenant', 'query', 'text', 'apirefData.ds-facets.p.tenant'],
+      ['dataset-config-key', 'query', 'text', 'apirefData.ds-facets.p.dataset-config-key'],
+      ['filter', 'query', 'text', 'apirefData.ds-documents.p.filter'],
+      ['limit', 'query', 'integer', 'apirefData.ds-documents.p.limit'],
+      ['offset', 'query', 'integer', 'apirefData.ds-documents.p.offset'],
+    ],
+    response: {
+      documents: [
+        {
+          id: 'd-812',
+          title: 'Evaluering av tilskuddsordningen',
+          url: 'https://kudos.dfo.no/dokument/d-812',
+          fields: { dokumenttype: 'Evaluering' },
+        },
+      ],
+      found: 812,
+    },
+  },
+  {
     id: 'inn-catalog',
     area: 'settings',
     method: 'GET',

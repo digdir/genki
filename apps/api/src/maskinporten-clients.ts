@@ -104,6 +104,7 @@ const clientPaths = [
   '/api/datasets',
   '/api/datasets/*',
   '/api/facets',
+  '/api/documents',
   '/api/conversations',
   '/api/conversations/*',
 ];

@@ -108,6 +108,7 @@ describe('client definitions', () => {
     expect(channelOf('/api/conversations/abc')).toBe('conversations');
     expect(channelOf('/tasks/t1/feedback')).toBe('feedback');
     expect(channelOf('/api/facets')).toBe('facets');
+    expect(channelOf('/api/documents')).toBe('facets');
     expect(channelOf('/tenants/991825827/overview')).toBeUndefined();
   });
 
