@@ -176,8 +176,9 @@ const useQualityData = (api: ApiClient, tenant: string, serviceId: string, setFl
   const run = async (set: ServiceTestSet) => {
     if (starting) return;
     setStarting(set.id);
-    const version = seen.current?.draft ? 'draft' : 'published';
     try {
+      const draft = await api.quality.draft(tenant, serviceId).catch(() => undefined);
+      const version = draft ? 'draft' : 'published';
       await api.quality.startRun(
         tenant,
         serviceId,
