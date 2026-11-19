@@ -309,6 +309,7 @@
   }
 
   .uib-filter-row-body {
+    container: uib-filter-row / inline-size;
     padding: 0 var(--genai-filter-row-padding-inline, var(--ds-size-1))
       var(--genai-filter-row-padding-block, var(--ds-size-2));
   }
@@ -322,6 +323,13 @@
     margin: 0;
     padding: 0;
     border: 0;
+  }
+
+  /* One column where two would break the names, as in a filter narrowed beside the chat. */
+  @container uib-filter-row (inline-size < 360px) {
+    .uib-filter-checkboxes {
+      grid-template-columns: repeat(var(--genai-filter-checkboxes-columns, 1), minmax(0, 1fr));
+    }
   }
   .uib-filter-checkboxes[hidden] {
     display: none;

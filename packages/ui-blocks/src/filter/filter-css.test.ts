@@ -27,6 +27,13 @@ describe('the Filter styles', () => {
       'grid-template-columns: repeat(var(--genai-filter-checkboxes-columns, 2), minmax(0, 1fr));',
     );
   });
+
+  it('lay the ticks in one column in a field narrower than 360 px, unless the host sets the columns', () => {
+    expect(rule('.uib-filter-row-body')).toContain('container: uib-filter-row / inline-size;');
+    expect(flat).toContain(
+      '@container uib-filter-row (inline-size < 360px) { .uib-filter-checkboxes { grid-template-columns: repeat(var(--genai-filter-checkboxes-columns, 1), minmax(0, 1fr)); } }',
+    );
+  });
 });
 
 // A `data-color` in the markup is a pin a host's `color` cannot reach: each named here.

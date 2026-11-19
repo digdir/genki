@@ -1145,7 +1145,7 @@ describe('in a host’s preview of a fixed width', () => {
   });
 
   it('fills only its own frame when the frame is too narrow for a panel beside the main column', () => {
-    // The builder's preview: 1280 wide, with the threads and their filter 660 wide beside it.
+    // A 1280 frame with a panel that may go no narrower than 660 beside the main column.
     const { container } = draw(
       {
         frameWidth: 1280,

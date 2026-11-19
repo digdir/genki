@@ -214,6 +214,12 @@ describe('the Shell styles', () => {
     );
   });
 
+  it('centre a folded panel’s button on its rail, however narrow the rail is beside the button', () => {
+    expect(css).toContain(
+      '.uib-shell-side[data-collapsed] > .uib-shell-box > .uib-shell-header { justify-content: center;',
+    );
+  });
+
   it('keep what a rail shows at its bottom out of the top row', () => {
     expect(css).toContain('.uib-shell[data-compact] .uib-shell-rail-foot { display: none; }');
   });

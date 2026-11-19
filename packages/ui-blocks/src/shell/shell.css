@@ -81,11 +81,12 @@
     padding-inline: var(--genai-shell-padding-inline, var(--ds-size-5));
   }
 
+  /* A rail's lone button centred, also when the rail is narrower than button and padding. */
   .uib-shell-side[data-collapsed] > .uib-shell-box > .uib-shell-header {
+    justify-content: center;
     padding-inline: var(--genai-shell-rail-padding-inline, var(--ds-size-3));
   }
 
-  /* `space-between`, not a margin, so a rail's lone button is centred by the rail's padding. */
   .uib-shell-header {
     flex: 0 0 auto;
     display: flex;
