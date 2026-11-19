@@ -1,8 +1,12 @@
 import { randomBytes } from 'node:crypto';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
-import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createPostgresStores, LocalKeyWrapper, withTenant } from '@genai/providers-postgres';
+import {
+  createPool,
+  createPostgresStores,
+  LocalKeyWrapper,
+  withTenant,
+} from '@genai/providers-postgres';
 import { stopPostgres } from '@genai/providers-postgres/testing';
 import { sessionIdHash } from './sessions.js';
 
@@ -11,11 +15,11 @@ const ORG_B = '889640782';
 const wrapper = new LocalKeyWrapper(randomBytes(32));
 
 let container: StartedPostgreSqlContainer;
-const pools: pg.Pool[] = [];
+const pools: ReturnType<typeof createPool>[] = [];
 const opened: { close(): Promise<void> }[] = [];
 
 const open = async () => {
-  const pool = new pg.Pool({ connectionString: container.getConnectionUri() });
+  const pool = createPool({ connectionString: container.getConnectionUri() });
   pools.push(pool);
   const stores = await createPostgresStores(pool, wrapper, { pollMs: 60_000 });
   pools.push(stores.runtimePool);
