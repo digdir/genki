@@ -222,6 +222,7 @@ describe('Fellestjenester: liste', () => {
             version: null,
             riskClass: null,
             residency: 'norway',
+            dataLocation: 'norway' as const,
             model: 'foundry-openai/gpt-4.1',
             exposure: [],
             variants: [],
@@ -245,6 +246,7 @@ describe('Fellestjenester: detalj', () => {
     version: 1,
     riskClass: null,
     residency: 'eu',
+    dataLocation: 'eu' as const,
     model: 'aivar/borealis-27b',
     exposure: [],
     variants: [{ id: 'default', publicName: 'nynorsk__default', aliases: [] }],
@@ -287,6 +289,7 @@ describe('Fellestjenester: detalj', () => {
       version: null,
       riskClass: null,
       residency: 'eu',
+      dataLocation: 'eu' as const,
       exposure: [],
       variants: [],
     };
@@ -365,7 +368,7 @@ describe('Fellestjenester: detalj', () => {
       '#/services/vedtaksutkast',
     );
   });
-  it('takes where data is processed from the service, as Byggeklosser does, not from its model', async () => {
+  it("takes where data is processed from the platform's data location for the service, not from the widest place its rule allows", async () => {
     const tolk = {
       tenant: '991825827',
       id: 'tolk',
@@ -373,7 +376,8 @@ describe('Fellestjenester: detalj', () => {
       purpose: 'Tolker tekst.',
       version: null,
       riskClass: null,
-      residency: 'eu',
+      residency: 'global',
+      dataLocation: 'eu' as const,
       model: 'foundry-openai/gpt-4o-2m-tps',
       exposure: [],
       variants: [],

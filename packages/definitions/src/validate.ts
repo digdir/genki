@@ -130,6 +130,43 @@ const placeWords: Record<Residency, string> = {
 const wider = (actual: Residency, allowed: Residency) =>
   residencies.indexOf(actual) > residencies.indexOf(allowed);
 
+/** Where a service processes data: the widest place of every model, dataset, reranker, agent and trace sink it uses; undefined while one is unknown. */
+export const serviceDataLocation = (
+  spec: ServiceDefinition['spec'],
+  plugins: Pick<
+    PluginSchemas,
+    'models' | 'datasetLocation' | 'rerankerResidency' | 'strategyResidency' | 'traceSink'
+  >,
+): Residency | undefined => {
+  const strategies = [spec.strategy, ...spec.variants.map((v) => variantStrategyOf(spec, v))];
+  const external = strategies.map((s) =>
+    plugins.strategyResidency?.(strategyKey(s.id, s.version), s.config),
+  );
+  const modelIds = [
+    spec.model.primary,
+    spec.model.fallback,
+    ...Object.values(spec.model.roles ?? {}),
+    ...Object.values(spec.model.operations ?? {}),
+    decisionModelOf(spec),
+    ...spec.variants.map(variantModelOf),
+  ].filter((id): id is string => typeof id === 'string' && id !== '');
+  const places: (Residency | undefined)[] = [
+    ...modelIds.map((id) => plugins.models.get(id)?.residency),
+    ...external.filter((r): r is Residency => r !== undefined),
+  ];
+  for (const { dataset } of spec.knowledge.datasets) {
+    const location = plugins.datasetLocation?.(dataset);
+    places.push(location?.stored);
+    if (location?.embedding) places.push(location.embedding.residency);
+  }
+  const reranker = spec.knowledge.reranker;
+  if (reranker) places.push(plugins.rerankerResidency?.(reranker));
+  const traces = plugins.traceSink?.();
+  if (traces?.content) places.push(traces.residency);
+  if (places.length === 0 || places.some((p) => p === undefined)) return undefined;
+  return (places as Residency[]).reduce((a, b) => (wider(b, a) ? b : a));
+};
+
 const residencyProblems = (
   spec: ServiceDefinition['spec'],
   plugins: PluginSchemas,

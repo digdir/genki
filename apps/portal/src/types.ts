@@ -341,6 +341,7 @@ export interface ServiceSummaryView {
   outputKind: string;
   channels: string[];
   model?: { id: string; residency: Residency | null } | null;
+  dataLocation?: Residency | null;
   latestVersion: number | null;
   status: 'active' | 'paused';
   statusReason: string | null;
@@ -373,6 +374,7 @@ export interface SharedService {
   version: number | null;
   riskClass: string | null;
   residency: string | null;
+  dataLocation?: Residency | null;
   model?: string | null;
   exposure: string[];
   variants: { id: string; publicName: string; aliases: string[] }[];

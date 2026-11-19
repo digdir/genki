@@ -93,6 +93,11 @@ const ServiceSummary = z
       .describe(
         "The primary model. Its residency is the model's own, not spec.model.residency, which is the widest the service allows",
       ),
+    dataLocation: residency
+      .nullable()
+      .describe(
+        "Where the service processes data: the widest place of the models, datasets, reranker and agents it uses, from the platform's catalogue. null when one of them is not in it",
+      ),
     latestVersion: z.number().int().nullable(),
     status: z.enum(['active', 'paused']),
     statusReason: z.string().nullable(),
@@ -2990,7 +2995,15 @@ export const serviceRoutes: RouteConfig[] = [
               purpose: z.string(),
               version: z.number().int().nullable(),
               riskClass: z.string().nullable(),
-              residency: z.string().nullable(),
+              residency: z
+                .string()
+                .nullable()
+                .describe('The widest place the service allows, spec.model.residency'),
+              dataLocation: residency
+                .nullable()
+                .describe(
+                  "Where the service processes data: the widest place of the models, datasets, reranker and agents it uses, from the platform's catalogue. null when one of them is not in it",
+                ),
               model: z.string().nullable(),
               exposure: z.array(z.string()),
               storage: z

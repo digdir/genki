@@ -1125,6 +1125,16 @@ describe('the composed platform', () => {
     expect((await app.request('/models')).status).toBe(401);
   });
 
+  it('classifies the shipped text-embedding-3 models as eu, since their deployments are in the EU data zone', () => {
+    const catalog = yaml('models.yaml') as {
+      models: { deployment?: string; residency?: string }[];
+    };
+    const embedders = catalog.models.filter((m) => m.deployment?.startsWith('text-embedding-3'));
+
+    expect(embedders).toHaveLength(3);
+    expect(embedders.map((m) => m.residency)).toEqual(['eu', 'eu', 'eu']);
+  });
+
   it('names the context window and release date of a model where the catalog has them', async () => {
     const catalog = yaml('models.yaml') as { models: Record<string, unknown>[] };
     const { app } = await boot(undefined, {

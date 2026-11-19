@@ -63,7 +63,7 @@ models:
   - id: foundry/text-embedding-3-small
     endpoint: foundry
     deployment: text-embedding-3-small
-    residency: global
+    residency: eu
     apis: { embed: openai/embeddings@1 }
     embed: { dimensions: 1536, maxBatch: 64 }
   - id: colbert

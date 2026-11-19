@@ -450,6 +450,7 @@ export const exampleShared: SharedService[] = [
   version: version as number,
   riskClass: 'minimal',
   residency: 'norway',
+  dataLocation: 'norway' as const,
   model: 'aivar/borealis-27b',
   exposure: ['rest', 'mcp'],
   variants: [{ id: 'default', publicName: `${String(id)}__default`, aliases: [] }],

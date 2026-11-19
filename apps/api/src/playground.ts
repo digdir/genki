@@ -49,6 +49,7 @@ import {
 } from './model-access.js';
 import type { PlatformModuleFactory } from './platform-modules.js';
 import { publicPrice } from './public-models.js';
+import { datasetDataLocation } from './residency.js';
 import { requireRight, rightLabels, type Right } from './rights.js';
 import { strategyTitle } from './schemas.js';
 import { strategyCatalogue, type StrategyEntry } from './strategy-catalogue.js';
@@ -1116,12 +1117,15 @@ export const playgroundModule: PlatformModuleFactory = () => ({
         }),
         datasets: [...deps.knowledge.datasets()]
           .filter(([, d]) => !d.tenants || d.tenants.includes(g.tenant))
-          .map(([id, d]) => ({
-            id,
-            name: d.name ?? id,
-            dataLocation: d.residency,
-            status: verdict(policy, 'dataset', id, d.residency).status,
-          })),
+          .map(([id, d]) => {
+            const dataLocation = datasetDataLocation(deps.plugins, id) ?? d.residency;
+            return {
+              id,
+              name: d.name ?? id,
+              dataLocation,
+              status: verdict(policy, 'dataset', id, dataLocation).status,
+            };
+          }),
         skills,
         blocks: [...deps.plugins.guardrails.keys()].map((id) => ({
           id,

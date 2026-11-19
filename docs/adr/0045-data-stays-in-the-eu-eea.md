@@ -40,6 +40,7 @@ Archive rules are not settled. The new arkivlova, in force from 1 January 2026, 
 
 ## Consequences
 
+- Built: a dataset on an engine genki runs is stored where genki stores its data, `platformDataLocation` in `apps/api/src/residency.ts`, whatever residency it declares; the declared residency still limits which embedding models may embed it. A service's data location, shown by every screen and checked at publish, is the widest place of the models, datasets, reranker, agents and trace sink it uses (`serviceDataLocation` in `packages/definitions/src/validate.ts`).
 - Not built:
   - The refusal of `norway` for datasets on engines genki runs, with a test that a `pgvector` dataset on the `platform` connection cannot be saved as `norway`, and one that a `norway` model can still be published.
   - The connector flow's default. `apps/api/src/connectors.ts` creates connector datasets on `platform-pg` as `norway`; that becomes `eu`. The portal's dataset form still offers "I Norge" for genki's own engines.
@@ -47,5 +48,5 @@ Archive rules are not settled. The new arkivlova, in force from 1 January 2026, 
 - Datasets declared `norway` on genki's own engines are reclassified as `eu` only after their owner accepts it. Kudos, planned for the knowledge server in ADR 0042, is the known case. Until the owner accepts, a `norway` service that uses such a dataset is unpublished rather than widened silently.
 - ADR 0001 now says genki runs in Azure Container Apps in the EU/EEA, with the region set by operations (this record). ADR 0042 keeps the knowledge server in the platform's region.
 - The portal's page on how data is handled says that what genki stores is kept in the EU/EEA. The portal and the console say that a service "only allows processing in Norway", not that it "requires data to stay in Norway".
-- Models deployed as Azure AI Foundry GlobalStandard stay `global`. Operations classifies DataZone deployments in the EU as `eu`, since discovery cannot see a deployment's type; ADR 0021 does not cover DataZone yet. The embedding models stay `global` while indexes embedded through GlobalStandard deployments are in use. A service that needs Claude is `global` until Claude is offered in an EU data zone.
+- Models deployed as Azure AI Foundry GlobalStandard stay `global`. Operations classifies DataZone deployments in the EU as `eu`, since discovery cannot see a deployment's type; ADR 0021 does not cover DataZone yet. The `text-embedding-3` deployments on genki test are DataZone in the EU, so its embedding models are `eu`. A service that needs Claude is `global` until Claude is offered in an EU data zone.
 - Revisit this record when Norway East or Norway West opens for new primary deployments, or when a tenant needs stored data in Norway.
