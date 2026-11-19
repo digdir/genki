@@ -3069,23 +3069,33 @@ describe('short Docling conversions', () => {
     expect(rows.map((r) => r.dataset)).toEqual([a.dataset.id, b.dataset.id].sort());
   }, 60_000);
 
-  it('a conversion stored before blank ends were kept is counted when short files are first asked for', async () => {
+  it('a run that ends while conversions lack their blank end sends a replacement run, and its first job measures them', async () => {
     await clearConvertJobs();
+    const docling: { current?: DocumentConverter } = {};
+    const server = await doclingServer(() => doclingRead(['Docling.']));
     const blob = seedContainer();
-    const s = await scenario({ nativeOutputs: blob.store, now: () => night });
+    const s = await scenario({ nativeOutputs: blob.store, docling, now: () => night });
     const file = await shortReport(s, 'for-kolonnen', blob);
-    await filled(s);
+    const run = await filled(s);
     // As a row the seed stored before the columns were added.
     await admin.query(
       `update src_conversions set page_count = null, blank_end = null where sha256 = $1`,
       [file],
     );
+    // The reconciler's check reads no pages, so an unmeasured conversion is not short yet.
+    expect(await shortFiles(s)).toEqual([]);
 
-    expect(await shortFiles(s)).toEqual([file]);
+    docling.current = doclingFor(server.url);
+    expect(await replace(s, run)).toBeDefined();
+    await work(s, (j) => j.queue === 'knowledge.convert');
+
     const { rows } = await admin.query<{ page_count: number; blank_end: number }>(
       `select page_count, blank_end from src_conversions where sha256 = $1 and converter = 'docling'`,
       [file],
     );
     expect(rows).toEqual([{ page_count: 4, blank_end: 2 }]);
+    expect(s.sent.filter((j) => j.queue === 'knowledge.convert').map((j) => j.data.file)).toEqual([
+      file,
+    ]);
   }, 60_000);
 });

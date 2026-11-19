@@ -209,9 +209,10 @@ export interface StoredConversions {
    * are more than `shortEnd` of its pages. The KUDOS export stopped Docling at 900 s, and the seed
    * stored the pages after that empty. A replacement run fills them from the text layer and converts
    * them again with `current`, the worker's own kept converter, so a file is no longer short once it
-   * has a second kept conversion, refusals included, or its one is `current`'s (issue 749). Reads the
-   * page counts and blank ends kept with each conversion, and first fills them in for conversions
-   * stored before they were kept. Only stored records and those skipped as `no_text`, in record order.
+   * has a second kept conversion, refusals included, or its one is `current`'s (issue 749). Reads only
+   * the page counts and blank ends kept with each conversion, never its pages, so a conversion not yet
+   * measured (`measure`) is not short. Only stored records and those skipped as `no_text`, in record
+   * order.
    */
   short(
     dataset: string,
@@ -221,6 +222,13 @@ export interface StoredConversions {
     limit: number,
     current: ConverterKey,
   ): Promise<{ record: string; files: { name: string; sha256: string }[] }[]>;
+  /** Whether a conversion stored before page counts and blank ends were kept still lacks them. */
+  unmeasured(): Promise<boolean>;
+  /**
+   * Fills in the page count and blank end of every conversion stored before they were kept, 200 at a
+   * time, reading its pages once, and answers how many it measured (issue 749).
+   */
+  measure(): Promise<number>;
   /**
    * The records of a pipeline in a dataset, stored or skipped as `no_text`, that hold a file and wait
    * on no conversion: the documents a replacement's new conversion is indexed for, beside those

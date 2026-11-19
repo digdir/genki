@@ -324,9 +324,12 @@ export const knowledgeConversionsOf = (writer: Pool): StoredConversions => ({
     return byRecord(rows);
   },
 
-  short: async (dataset, pipeline, accepted, after, limit, current) => {
-    // Conversions stored before page counts and blank ends were kept get them first, 200 at a
-    // time, so no batch holds many rows a convert job may be storing (issue 749).
+  unmeasured: async () =>
+    (await writer.query(`select 1 from src_conversions where page_count is null limit 1`)).rows
+      .length > 0,
+
+  measure: async () => {
+    let measured = 0;
     for (;;) {
       const { rowCount } = await writer.query(
         `update src_conversions c
@@ -337,9 +340,12 @@ export const knowledgeConversionsOf = (writer: Pool): StoredConversions => ({
                                     where page_count is null limit 200 for update skip locked))`,
         [blankPage.source],
       );
-      if (!rowCount) break;
+      if (!rowCount) return measured;
+      measured += rowCount;
     }
-    // A file is short when its one kept conversion is cut short and is not the worker's own.
+  },
+
+  short: async (dataset, pipeline, accepted, after, limit, current) => {
     const shortFile = `(select count(*) = 1 and bool_and(c.failure is null and c.page_count > 0
           and c.blank_end > $6::numeric * c.page_count
           and not (c.converter = $7 and c.version = $8 and c.settings_hash = $9))

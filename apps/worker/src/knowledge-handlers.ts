@@ -777,10 +777,7 @@ export const knowledgeWork = (
       },
       sendIndex,
     );
-    // In a replacement run, a text-layer conversion is a short file's fill (issue 749): once its
-    // records' index jobs are sent, the file goes to Docling with the same records waiting, also when
-    // the text layer refused it or a record still waits on another file, whichever run they are in.
-    // A record whose index job was busy keeps its wait, and goes on when the job is tried again.
+    // A replacement run's text-layer fill sends its records on to Docling (issue 749).
     if (run.replaces && key.converter === textLayer.name && deps.docling) {
       const startAfter = heavyWorkStart(deps.heavy.window(), deps.heavy.now?.() ?? new Date());
       for (const waiter of [...sent, ...held])
@@ -869,11 +866,11 @@ export const knowledgeWork = (
           after = last.record;
         }
       };
-      // Short files first, so pg-boss takes their text-layer jobs before the Docling jobs: they take
-      // seconds, and their records are indexed with the fill in the first night (issue 749). A
-      // short file whose text layer is stored, or refused, goes to Docling.
+      // Short files first, so their quick text-layer jobs go before the Docling jobs (issue 749).
       const shortTo = async (sha256: string) =>
         (await conversions.find(sha256, textLayerOnly)) ? doclingIdentity.name : textLayer.name;
+      // Pages are read here once, never in the reconciler (issue 749).
+      await conversions.measure();
       const short: StoredConversions['replaceable'] = (...args) =>
         conversions.short(...args, doclingKey);
       if (!(await waitAll(short, shortTo))) return;
@@ -911,7 +908,7 @@ export const knowledgeWork = (
 };
 
 export interface ReplacementDeps {
-  conversions: Pick<StoredConversions, 'replaceable' | 'short'>;
+  conversions: Pick<StoredConversions, 'replaceable' | 'short' | 'unmeasured'>;
   /** The platform server's run records, as the worker starts a replacement run there. */
   runs: {
     startReplacement(
@@ -941,9 +938,10 @@ export const replacementRuns =
     if (deps.lockdown && admissionRefusal(ended, now, true)) return;
     const left = async (select: StoredConversions['replaceable']) =>
       (await select(ended.dataset, ended.pipeline, acceptedConverters, '0', 1)).length > 0;
-    // Text-layer files to convert with Docling, or Docling files the KUDOS export cut short (issue 749).
+    // Text-layer files, unmeasured conversions, or short Docling files (issue 749).
     if (
       !(await left(deps.conversions.replaceable.bind(deps.conversions))) &&
+      !(await deps.conversions.unmeasured()) &&
       !(await left((...args) => deps.conversions.short(...args, doclingKey)))
     )
       return;

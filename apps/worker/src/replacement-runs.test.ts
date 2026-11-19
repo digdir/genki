@@ -23,6 +23,7 @@ const sender = (lockdown = false) => {
     conversions: {
       replaceable: async () => [{ record: '1', files: [{ name: 'a', sha256: 'a'.repeat(64) }] }],
       short: async () => [],
+      unmeasured: async () => false,
     },
     runs: {
       startReplacement: async (from) => {
