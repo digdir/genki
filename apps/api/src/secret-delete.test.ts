@@ -16,7 +16,10 @@ const people = {
   bygger: person('bygger', digdir, ['use-services', 'register-building-blocks']),
   leser: person('leser', digdir, ['use-services']),
   ola: person('ola', other, ['use-services', 'manage-services']),
-  owner: { ...person('eier', digdir, ['use-services', 'manage-services']), kind: 'operator' },
+  owner: {
+    ...person('eier', digdir, ['use-services', 'manage-services']),
+    kind: 'operator',
+  } as Principal,
 };
 
 const hosts = ['https://krok.example.no'];
