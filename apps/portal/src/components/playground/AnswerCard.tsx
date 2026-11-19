@@ -452,7 +452,7 @@ export const AnswerCard = ({
           {result.dataLocation ? (
             <span>{t('playground.dataRow', { where: t(locationShort[result.dataLocation]) })}</span>
           ) : null}
-          <Link href={`#/log?oppgave=${encodeURIComponent(result.runId)}`}>
+          <Link href={`#/log?run=${encodeURIComponent(result.runId)}`}>
             {t('playground.openInLog')}
           </Link>
           <OverflowMenu
@@ -485,7 +485,7 @@ export const AnswerCard = ({
       ) : null}
       {layout === 'card' ? (
         <div className="playground-answer-actions">
-          <Link href={`#/log?oppgave=${encodeURIComponent(result.runId)}`}>
+          <Link href={`#/log?run=${encodeURIComponent(result.runId)}`}>
             {t('playground.viewRun')}
           </Link>
           <Button variant="tertiary" data-size="sm" aria-expanded={saveExpanded} onClick={onSave}>

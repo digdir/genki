@@ -231,7 +231,7 @@ export const stepflowsUi = {
     saveFailed: 'Could not save the step flow. Try again.',
     sharedWith:
       'Also used by {others}. Changes are saved as v{next}, and the other services keep {current} until they update.',
-    sharedNone: 'Changes are saved as a new version of the service.',
+    sharedNone: 'Changes are saved as a new version of the step flow.',
     flowLabel: 'Step flow',
     subSuffix: '{name} (subflow)',
     tabDiagram: 'Diagram',

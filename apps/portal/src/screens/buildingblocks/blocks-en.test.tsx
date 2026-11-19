@@ -90,14 +90,12 @@ describe('building blocks in English', () => {
     );
     expect(screen.getByRole('heading', { name: 'What it is good at' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Where data is processed' })).toBeTruthy();
-    expect(
-      screen.getByRole('heading', { name: /^Version 2\.2, available from \d+ Oct$/ }),
-    ).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'See version 2.2 under Versions' })).toBeTruthy();
     expect(screen.getByRole('tab', { name: 'Versions' })).toBeTruthy();
   });
 
   it('shows the price and the request for approval of a model the organisation must ask for', async () => {
-    const gpt41 = exampleBlocks.find((b) => b.id === 'gpt41') as CatalogItem;
+    const gpt41 = exampleBlocks.find((b) => b.id === 'foundry-openai/gpt-4.1') as CatalogItem;
     const ctx = {
       tenantPath: (tenant: string) => `/tenants/${tenant}`,
       get: async (path: string) =>
@@ -105,7 +103,7 @@ describe('building blocks in English', () => {
           ? {
               data: [
                 {
-                  id: 'gpt41',
+                  id: 'foundry-openai/gpt-4.1',
                   price: { inputPerThousand: 0.02, outputPerThousand: 0.08 },
                   available: false,
                   reason: 'requires_approval',
@@ -132,7 +130,7 @@ describe('building blocks in English', () => {
       ),
     );
 
-    expect(await screen.findByText('NOK 0.02 per 1,000 tokens')).toBeTruthy();
+    expect(await screen.findByText('NOK 20.00 per 1M tokens')).toBeTruthy();
     expect(screen.getAllByRole('button', { name: 'Request approval' }).length).toBeGreaterThan(0);
   });
 

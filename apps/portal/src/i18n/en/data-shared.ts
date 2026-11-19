@@ -4,7 +4,7 @@ import type { sharedLane as source } from '../nb/data-shared';
 export const sharedLane = {
   sharedServicesMore: {
     lead: 'Ready-made services from Digdir. Use them directly, call them from a system, or add them to one of your services.',
-    pricePerThousandTokens: '{input} kr in and {output} kr out per 1,000 tokens',
+    pricePerMillionTokens: '{input} kr in and {output} kr out per 1M tokens',
     notPriced: 'Not calculated',
     notPricedLine: 'price not calculated',
     priceUnavailable: 'Could not fetch the price',

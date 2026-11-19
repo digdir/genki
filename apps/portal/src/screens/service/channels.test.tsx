@@ -50,11 +50,18 @@ const setting = (key: string, description: string, category: string, call = true
 const catalog = [
   setting('retrieval.topK', 'Antall tekstbiter per søk', 'Søk'),
   setting('retrieval.autoFilter', 'Automatisk filtrering', 'Søk'),
-  setting('answer.language', 'Språket svaret skrives på', 'Svar'),
+  setting('answer.language', 'Svarspråk', 'Svar'),
   setting('model.primary', 'Hovedmodell', 'Modell', false),
 ];
 
-const setup = (service = 'rapportassistenten', { secretsFail = false } = {}) => {
+const setup = (
+  service = 'rapportassistenten',
+  {
+    secretsFail = false,
+    settings = catalog,
+    publicName,
+  }: { secretsFail?: boolean; settings?: unknown[]; publicName?: string } = {},
+) => {
   const calls: Call[] = [];
   const base = mockFetch();
   const fetch: typeof globalThis.fetch = async (input, init) => {
@@ -68,7 +75,7 @@ const setup = (service = 'rapportassistenten', { secretsFail = false } = {}) => 
     if (secretsFail && new URL(url, 'http://test').pathname.endsWith('/secrets'))
       return new Response(JSON.stringify({ title: 'Forbidden', status: 403 }), { status: 403 });
     if (new URL(url, 'http://test').pathname === '/api/settings')
-      return new Response(JSON.stringify({ data: catalog }), {
+      return new Response(JSON.stringify({ data: settings }), {
         headers: { 'content-type': 'application/json' },
       });
     return base(input, init);
@@ -78,7 +85,13 @@ const setup = (service = 'rapportassistenten', { secretsFail = false } = {}) => 
     <RightsProvider value={['manage-services']}>
       <main>
         <h1>Rapportassistenten</h1>
-        <Routed api={api} tenant="999888777" service={service} apiBase="https://api.example.no" />
+        <Routed
+          api={api}
+          tenant="999888777"
+          service={service}
+          apiBase="https://api.example.no"
+          {...(publicName === undefined ? {} : { publicName })}
+        />
       </main>
     </RightsProvider>,
   );
@@ -276,7 +289,7 @@ describe('channels and frontends for a service', () => {
     fireEvent.click(within(picker).getByLabelText('Antall tekstbiter per søk'));
     fireEvent.click(within(picker).getByLabelText('Alt om søk'));
     expect(within(picker).queryByLabelText('Antall tekstbiter per søk')).toBeNull();
-    fireEvent.click(within(picker).getByLabelText('Språket svaret skrives på'));
+    fireEvent.click(within(picker).getByLabelText('Svarspråk'));
     type('Navn', 'Overstyrer');
     type('Begrunnelse', 'Trenger egne søkeinnstillinger');
     fireEvent.click(screen.getByRole('button', { name: 'Lag nøkkel' }));
@@ -295,15 +308,11 @@ describe('channels and frontends for a service', () => {
       within(allowed)
         .getAllByRole('listitem')
         .map((i) => i.textContent),
-    ).toEqual([
-      'Alle miljøer',
-      'Alle kanaler',
-      'Kan overstyre: alt om søk, språket svaret skrives på',
-    ]);
+    ).toEqual(['Alle miljøer', 'Alle kanaler', 'Kan overstyre: alt om søk, svarspråk']);
 
     fireEvent.click(within(keys).getByRole('button', { name: 'Roter Overstyrer' }));
     const rotating = await screen.findByRole('group', { name: 'Roter Overstyrer' });
-    fireEvent.click(within(rotating).getByLabelText('Språket svaret skrives på'));
+    fireEvent.click(within(rotating).getByLabelText('Svarspråk'));
     fireEvent.click(within(rotating).getByRole('button', { name: 'Lag ny nøkkel' }));
     await waitFor(() =>
       expect(
@@ -319,5 +328,70 @@ describe('channels and frontends for a service', () => {
     const rotated = calls.find((c) => c.url.endsWith('/rotate'));
     expect(rotated?.body).toEqual({ allowedOverrides: ['retrieval.*'] });
     expectAccessible();
+  });
+  it('names the model only on the chat endpoint, and falls back to the default name when the public name is empty', async () => {
+    setup('rapportassistenten', { publicName: '' });
+    const endpoints = await screen.findByRole('region', { name: 'Endepunkter' });
+    await within(endpoints).findByText(
+      'POST /v1/chat/completions, model «rapportassistenten__default»',
+    );
+    expect(within(endpoints).queryByText(/«»/)).toBeNull();
+    expect(within(endpoints).queryByText(/cancel, model/)).toBeNull();
+  });
+
+  it('shows overridable settings by their name, never their key or the platform description', async () => {
+    setup('rapportassistenten', {
+      settings: [
+        setting(
+          'retrieval.retrieveTopK',
+          'Chunks fetched by id after merging, before boosting and reranking.',
+          'retrieval',
+        ),
+      ],
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'Lag API-nøkkel' }));
+    const picker = await screen.findByRole('group', {
+      name: /Innstillinger som kan overstyres per kall/,
+    });
+    fireEvent.click(await within(picker).findByLabelText('Treff som hentes (top-k)'));
+    type('Navn', 'Sok');
+    type('Begrunnelse', 'Trenger egne søkeinnstillinger');
+    fireEvent.click(screen.getByRole('button', { name: 'Lag nøkkel' }));
+    await screen.findByLabelText('Den nye nøkkelen');
+    const keys = await screen.findByRole('table');
+    await waitFor(() =>
+      expect(
+        within(keys)
+          .getAllByRole('listitem')
+          .map((i) => i.textContent),
+      ).toContain('Kan overstyre: treff som hentes (top-k)'),
+    );
+  });
+
+  it('gives each overridable group its own name, also when the platform files two groups under one category', async () => {
+    setup('rapportassistenten', {
+      settings: [
+        setting('rag.topK', 'Hits when the service only searches.', 'rerank'),
+        setting('synthesis.contextTopK', 'Chunks kept as grounds for the answer.', 'rerank'),
+      ],
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'Lag API-nøkkel' }));
+    const picker = await screen.findByRole('group', {
+      name: /Innstillinger som kan overstyres per kall/,
+    });
+    fireEvent.click(await within(picker).findByLabelText('Alt om enkelt søk'));
+    fireEvent.click(within(picker).getByLabelText('Alt om svarskriving'));
+    type('Navn', 'To grupper');
+    type('Begrunnelse', 'Prøver to grupper');
+    fireEvent.click(screen.getByRole('button', { name: 'Lag nøkkel' }));
+    await screen.findByLabelText('Den nye nøkkelen');
+    const keys = await screen.findByRole('table');
+    await waitFor(() =>
+      expect(
+        within(keys)
+          .getAllByRole('listitem')
+          .map((i) => i.textContent),
+      ).toContain('Kan overstyre: alt om enkelt søk, alt om svarskriving'),
+    );
   });
 });

@@ -38,6 +38,19 @@ const anyTermQuery = (config: string, text: string) =>
 const allTermsQuery = (config: string, text: string) =>
   `websearch_to_tsquery(${config}::regconfig, ${text})`;
 
+/** The chunk of `<from>.doc` best matching the query words `<from>.tsv` lacks, else its first chunk. */
+export const bestChunk = (query: string, from: string, dataset: string, generation: string) => {
+  const ofDocument = `c.dataset = ${dataset} and c.generation = ${generation} and c.doc_id = ${from}.doc`;
+  return `select b.id from (select coalesce(
+     (select c.id from kn_chunks c where k.q is not null and ${ofDocument} and c.tsv @@ k.q
+       order by ts_rank_cd(c.tsv, k.q) desc, c.position limit 1),
+     (select c.id from kn_chunks c where ${ofDocument} order by c.position limit 1)) as id
+   from (select replace(plainto_tsquery('simple', nullif(string_agg(w, ' '), ''))::text, ' & ', ' | ')::tsquery as q
+     from unnest(tsvector_to_array(to_tsvector('simple', nullif(querytree(${query}), 'T')))) w
+     where not w = any(tsvector_to_array(${from}.tsv))) k offset 0) b
+   where b.id is not null`;
+};
+
 /** The most matches a text search ranks, so a common word does not rank a whole partition. */
 export const textRankCap = 5000;
 
@@ -49,6 +62,9 @@ const bound = (params: Params, element: string, op: '>=' | '<=', value: number |
     ? `(case when jsonb_typeof(${element}) = 'number' then ${element}::numeric end) ${op} ${params.add(value)}::numeric`
     : `(case when jsonb_typeof(${element}) = 'string' then ${element} #>> '{}' end) collate "C" ${op} ${params.add(value)}::text`;
 
+/** A document's id and title are columns of their own, never in its fields. */
+const columnOf: Record<string, string> = { doc_num: 'd.id', title: 'd.title' };
+
 const clauseSql = (
   params: Params,
   kind: FilterKind,
@@ -56,17 +72,27 @@ const clauseSql = (
   clause: FilterClause,
   config: () => string,
 ): string => {
-  const json = `d.fields -> ${params.add(field)}`;
+  const column = columnOf[field];
+  const json = column ? `to_jsonb(${column})` : `d.fields -> ${params.add(field)}`;
   const containsAny = (values: unknown[]) =>
-    `coalesce(${json} @> any (select jsonb_array_elements(${params.add(JSON.stringify(values))}::jsonb)), false)`;
-  const contains = (terms: string[]) =>
-    `to_tsvector(${config()}::regconfig, ${textOf(json)}) @@ ${anyTermQuery(config(), params.add(terms.join(' ')))}`;
+    column === 'd.id'
+      ? `d.id = any(${params.add(values.map(String))}::text[])`
+      : column
+        ? `coalesce(${column} = any(${params.add(values.map(String))}::text[]), false)`
+        : `coalesce(${json} @> any (select jsonb_array_elements(${params.add(JSON.stringify(values))}::jsonb)), false)`;
+  // Every word of one option must match; the options are alternatives.
+  const contains = (options: string[]) =>
+    `${field === 'title' ? 'd.title_tsv' : `to_tsvector(${config()}::regconfig, ${textOf(json)})`} @@ (${options
+      .map((o) => `plainto_tsquery(${config()}::regconfig, ${params.add(o)})`)
+      .join(' || ')})`;
   if (typeof clause === 'boolean' || (typeof clause !== 'object' && kind !== 'text'))
-    return `coalesce(${json} @> ${params.add(JSON.stringify(clause))}::jsonb, false)`;
+    return column
+      ? containsAny([clause])
+      : `coalesce(${json} @> ${params.add(JSON.stringify(clause))}::jsonb, false)`;
   if (typeof clause !== 'object') return contains([String(clause)]);
   if (Array.isArray(clause)) return containsAny(clause);
   if ('not' in clause) return `not ${containsAny(clause.not)}`;
-  if ('contains' in clause) return contains(clause.contains);
+  if ('contains' in clause) return contains(clause.contains.map(String));
   const bounds = [
     ...(clause.gte === undefined ? [] : [bound(params, 'e', '>=', clause.gte)]),
     ...(clause.lte === undefined ? [] : [bound(params, 'e', '<=', clause.lte)]),
@@ -143,20 +169,21 @@ export const searchSql = (input: SearchSql) => {
     const tsvOf = () => docVector(params, input.profile.fields, config);
     const table = target === 'chunks' ? 'kn_chunks' : 'kn_phrases';
     const id = target === 'chunks' ? 'x.id' : 'x.chunk_id';
+    const query = once(() => params.add(input.query));
     // The matches are planned uncapped, so the index finds them; then at most `textRankCap` are read.
     const ranked = (q: string) => {
       if (target === 'docs') {
         const tsv = tsvOf();
+        // Documents are ranked and cut first, so a chunk is picked for at most `candidates` of them.
         return `with m as materialized (
             select d.id as doc, ${tsv} as tsv from kn_docs d
-            where d.dataset = ${dataset} and d.generation = ${active} and ${tsv} @@ ${q} and ${where})
-          select first.id, ts_rank_cd(m.tsv, ${q})::float8 as s from (select doc, tsv from m limit ${textRankCap}) m
-          cross join lateral (
-            select c.id from kn_chunks c
-            where c.dataset = ${dataset} and c.generation = ${active} and c.doc_id = m.doc
-            order by c.position limit 1
-          ) first
-          order by s desc, first.id limit ${candidates}`;
+            where d.dataset = ${dataset} and d.generation = ${active} and ${tsv} @@ ${q} and ${where}),
+          top as (
+            select doc, tsv, ts_rank_cd(tsv, ${q})::float8 as s from (select doc, tsv from m limit ${textRankCap}) m
+            order by s desc, doc limit ${candidates})
+          select best.id, top.s from top
+          cross join lateral (${bestChunk(allTermsQuery(config(), query()), 'top', dataset, active)}) best
+          order by top.s desc, best.id`;
       }
       const docFilter =
         where === 'true'
@@ -187,20 +214,19 @@ export const searchSql = (input: SearchSql) => {
         group by ${id} order by s desc, id limit ${candidates})`);
     } else if (mode === 'text') {
       // No vector half fills the list, so some-words matches follow the all-words ones, scored below 1.
-      const query = params.add(input.query);
-      ctes.push(`t_all as (${ranked(allTermsQuery(config(), query))}),
-        t_any as (${ranked(anyTermQuery(config(), query))}),
+      ctes.push(`t_all as (${ranked(allTermsQuery(config(), query()))}),
+        t_any as (${ranked(anyTermQuery(config(), query()))}),
         t as (select id, s from (
           select id, 1 + s / (1 + s) as s from t_all
           union all
           select id, s / (1 + s) from t_any
           where (select count(*) from t_all) < ${candidates}
-            and strpos(${allTermsQuery(config(), query)}::text, '!') = 0
+            and strpos(${allTermsQuery(config(), query())}::text, '!') = 0
             and id not in (select id from t_all)) u
           order by s desc, id limit ${candidates})`);
     } else {
       // A hybrid profile's text half keeps the all-words matches only: its vector half fills the list.
-      ctes.push(`t as (${ranked(allTermsQuery(config(), params.add(input.query)))})`);
+      ctes.push(`t as (${ranked(allTermsQuery(config(), query()))})`);
     }
   }
   if (vector) {

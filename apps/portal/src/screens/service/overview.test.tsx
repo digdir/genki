@@ -177,6 +177,20 @@ const day = (
   },
 });
 
+const serviceKey = (
+  id: string,
+  name: string,
+  extra: { client?: string; revokedAt?: string; lastUsedAt?: string } = {},
+) => ({
+  id,
+  name,
+  service: 'rapport',
+  client: extra.client ?? null,
+  revokedAt: extra.revokedAt ?? null,
+  createdAt: '2026-11-01T09:00:00Z',
+  lastUsedAt: extra.lastUsedAt ?? '2026-11-17T09:00:00Z',
+});
+
 const health = (
   overrides: {
     latency?: { p50Ms: number; p95Ms: number; runs: number } | null;
@@ -192,6 +206,8 @@ const health = (
     keyTotals?: Record<string, number>;
     checks?: unknown;
     gates?: unknown[];
+    sets?: unknown[];
+    datasets?: unknown[];
   } = {},
 ) => {
   const calls: string[] = [];
@@ -263,7 +279,9 @@ const health = (
         },
       );
     if (path.endsWith('/eval-runs')) return reply({ data: overrides.runs ?? [] });
-    if (path.endsWith('/test-sets')) return reply({ data: [] });
+    if (path.endsWith('/test-sets')) return reply({ data: overrides.sets ?? [] });
+    if (path.endsWith('/datasets') && overrides.datasets)
+      return reply({ data: overrides.datasets });
     if (path.endsWith('/service-drafts')) return reply({ data: overrides.drafts ?? [] });
     if (path.endsWith('/draft/checks') && overrides.checks) return reply(overrides.checks);
     if (path.endsWith('/gates')) return reply({ data: overrides.gates ?? [] });
@@ -291,7 +309,8 @@ const health = (
         offset: 0,
         limit: 6,
       });
-    if (path.endsWith('/api-keys')) return reply({ keys: overrides.keys ?? [] });
+    if (path.endsWith('/api-keys'))
+      return reply({ keys: overrides.keys ?? [serviceKey('k1', 'Saksbehandling')] });
     if (path.endsWith('/access/services')) return reply({ services: [] });
     if (path.endsWith('/lifecycle')) return reply({ state: 'active' });
     if (path.endsWith('/definitions/services/rapport'))
@@ -322,6 +341,17 @@ const health = (
 };
 
 const tile = (name: RegExp) => screen.getByRole('link', { name });
+
+const draftSummary = {
+  id: 'rapport',
+  name: 'Rapportassistenten',
+  purpose: '',
+  outputKind: 'answer',
+  latestVersion: 7,
+  revision: 4,
+  at: '2026-11-17T09:00:00Z',
+  by: 'employee:x:kari',
+};
 
 describe('the Oversikt tab of a published service', () => {
   it('shows the median and 95th percentile latency of the service today', async () => {
@@ -396,7 +426,7 @@ describe('the Oversikt tab of a published service', () => {
   });
 
   it('says a service is not reachable yet when nothing is shared with it', async () => {
-    const { api } = health({ shared: { frontends: [], apiKeys: [], tenants: [] } });
+    const { api } = health({ shared: { frontends: [], apiKeys: [], tenants: [] }, keys: [] });
     render(
       <OverviewSection api={api} tenant={tenant} id="rapport" definition={definition} now={now} />,
     );
@@ -596,6 +626,234 @@ describe('the Oversikt tab of a published service', () => {
     expect(text(need.parentElement)).not.toContain('refused by');
   });
 
+  it('names only a refused gate that the draft run fails, not the first gate the API lists', async () => {
+    const { api } = health({
+      runs: [
+        {
+          id: 'd4',
+          status: 'completed',
+          testSet: 'kjerne',
+          version: 'draft',
+          draftRevision: 4,
+          startedAt: '2026-11-17T10:30:00Z',
+          endedAt: '2026-11-17T10:40:00Z',
+          score: 0.9,
+          passed: 9,
+          total: 10,
+          metrics: { 'judge.criteria': { mean: 0.9, n: 10 }, refusal: { mean: 0.89, n: 9 } },
+        },
+      ],
+      drafts: [draftSummary],
+      checks: {
+        service: 'rapport',
+        revision: 4,
+        ready: false,
+        problems: [
+          {
+            path: 'spec.evaluation',
+            message:
+              'refused by evaluation gates (andel-bestatt, avslag-uten-kilde); run the test sets with subject x first',
+          },
+        ],
+      },
+      gates: [
+        {
+          id: 'andel-bestatt',
+          version: 1,
+          spec: { kind: 'threshold', metric: 'judge.criteria', threshold: 0.8 },
+        },
+        {
+          id: 'avslag-uten-kilde',
+          version: 1,
+          spec: { kind: 'threshold', metric: 'refusal', threshold: 0.9 },
+        },
+      ],
+    });
+    render(
+      <OverviewSection api={api} tenant={tenant} id="rapport" definition={definition} now={now} />,
+    );
+
+    const need = await screen.findByText('Utkastet stoppes av en sperre');
+    await waitFor(() =>
+      expect(text(need.parentElement)).toContain('Avslag uten kilde er 89 %, kravet er 90 %.'),
+    );
+    expect(text(need.parentElement)).not.toContain('kravet er 80 %');
+  });
+
+  it('counts the draft as tested only from a test run that completed', async () => {
+    const { api } = health({
+      runs: [
+        {
+          id: 'd4',
+          status: 'failed',
+          testSet: 'kjerne',
+          version: 'draft',
+          draftRevision: 4,
+          startedAt: '2026-11-13T10:50:00Z',
+          endedAt: '2026-11-13T10:59:00Z',
+          score: null,
+        },
+      ],
+      drafts: [draftSummary],
+    });
+    render(
+      <OverviewSection api={api} tenant={tenant} id="rapport" definition={definition} now={now} />,
+    );
+
+    const need = await screen.findByText('Utkastet er ikke testet');
+    expect(text(need.parentElement)).not.toContain('Testet');
+  });
+
+  it('writes i går in lower case inside the sentence about when the draft was tested and changed', async () => {
+    const { api } = health({
+      runs: [
+        {
+          id: 'd3',
+          status: 'completed',
+          testSet: 'kjerne',
+          version: 'draft',
+          draftRevision: 3,
+          startedAt: '2026-11-13T10:50:00Z',
+          endedAt: '2026-11-13T10:59:00Z',
+          score: 0.9,
+          passed: 9,
+          total: 10,
+        },
+      ],
+      drafts: [{ ...draftSummary, at: '2026-11-16T14:26:00Z' }],
+    });
+    render(
+      <OverviewSection api={api} tenant={tenant} id="rapport" definition={definition} now={now} />,
+    );
+
+    const need = await screen.findByText('Utkastet er endret etter siste test');
+    expect(text(need.parentElement)).toContain('Testet 13. nov 11:59, endret i går 15:26.');
+  });
+
+  it('shows the last day with runs in Andel med feil and Svartid when the service has not run today', async () => {
+    const { api } = health({
+      daily: [
+        day('2026-11-15', 90, 0, 1_000_000, { p50Ms: 2400, p95Ms: 7000, runs: 90 }),
+        day('2026-11-16', 110, 2, 1_000_000, { p50Ms: 1200, p95Ms: 5000, runs: 110 }),
+        day('2026-11-17', 0, 0, 0, null),
+      ],
+      failures: [],
+    });
+    render(
+      <OverviewSection api={api} tenant={tenant} id="rapport" definition={definition} now={now} />,
+    );
+
+    await waitFor(() =>
+      expect(text(tile(/^Andel med feil/))).toContain('Ingen kjøringer i dag. 16. nov: 2 av 110'),
+    );
+    expect(text(tile(/^Andel med feil/))).toContain('1,8 %');
+    expect(text(tile(/^Svartid/))).toContain('1,2 s');
+    expect(text(tile(/^Svartid/))).toContain('Ingen kjøringer i dag. Median 16. nov');
+    expect(screen.queryByText('Kommer med første kjøring')).toBeNull();
+  });
+
+  it('says the test sets have not run instead of asking for a test set when the service has some', async () => {
+    const { api } = health({ sets: [{ id: 'kjerne', name: 'Kjerne', cases: 23 }] });
+    render(
+      <OverviewSection api={api} tenant={tenant} id="rapport" definition={definition} now={now} />,
+    );
+
+    await waitFor(() => expect(text(tile(/^Kvalitet/))).toContain('Testsettet er ikke kjørt ennå'));
+    expect(text(tile(/^Kvalitet/))).not.toContain('Lag et testsett');
+  });
+
+  it('lists the API keys of the service from the same source as Nøkler og kanaler', async () => {
+    const { api } = health({
+      shared: {
+        frontends: [],
+        apiKeys: [{ id: 'org', name: 'Organisasjonsnøkkel', bound: false }],
+        tenants: [],
+      },
+      keys: [
+        serviceKey('k1', 'Saksbehandling'),
+        serviceKey('k9', 'Gammel nøkkel', { revokedAt: '2026-11-02T09:00:00Z' }),
+      ],
+    });
+    render(
+      <OverviewSection api={api} tenant={tenant} id="rapport" definition={definition} now={now} />,
+    );
+
+    const who = await screen.findByRole('region', { name: 'Hvem bruker den' });
+    await waitFor(() => expect(within(who).getByText('Én API-nøkkel')).toBeTruthy());
+    expect(text(who)).toContain('Saksbehandling');
+    expect(text(who)).not.toContain('Organisasjonsnøkkel');
+    expect(text(who)).not.toContain('Gammel nøkkel');
+  });
+
+  it('opens Hele loggen on a period that covers the runs shown above it', async () => {
+    const { api } = health({
+      recent: [
+        run('t1', 'completed', '2026-11-17T13:50:00Z', 'Hva sa tilsynet?'),
+        run('t2', 'completed', '2026-11-16T09:00:00Z', 'Og i fjor?'),
+      ],
+      total: 2,
+    });
+    render(
+      <OverviewSection api={api} tenant={tenant} id="rapport" definition={definition} now={now} />,
+    );
+
+    await screen.findByRole('link', { name: 'Og i fjor?' });
+    expect(screen.getByRole('link', { name: 'Hele loggen' }).getAttribute('href')).toBe(
+      '#/services/rapport/log?period=week',
+    );
+  });
+
+  it('links a source by its alias and calls a source it cannot find an unknown dataset', async () => {
+    const withSources = {
+      ...definition,
+      spec: {
+        ...definition.spec,
+        knowledge: { datasets: [{ dataset: 'kudos-rapporter' }, { dataset: 'borte' }] },
+      },
+    } as unknown as ServiceDefinition;
+    const { api } = health({
+      datasets: [
+        {
+          id: 'digdir/kudos',
+          fullId: 'digdir/kudos',
+          name: 'Kudos-rapporter',
+          aliases: ['kudos-rapporter'],
+          residency: 'norway',
+        },
+      ],
+    });
+    render(
+      <OverviewSection api={api} tenant={tenant} id="rapport" definition={withSources} now={now} />,
+    );
+
+    const live = await screen.findByRole('region', { name: 'I drift' });
+    await waitFor(() =>
+      expect(within(live).getByRole('link', { name: 'Kudos-rapporter' })).toBeTruthy(),
+    );
+    expect(text(live)).toContain('ukjent datasett «borte»');
+  });
+
+  it('says where data is processed from the widest of the model and its sources', async () => {
+    const { api } = health({
+      datasets: [
+        {
+          id: 'tilsyn',
+          fullId: `${tenant}/tilsyn`,
+          name: 'Tilsynsrapporter 2025',
+          aliases: [],
+          residency: 'eu',
+          effectiveResidency: 'global',
+        },
+      ],
+    });
+    render(
+      <OverviewSection api={api} tenant={tenant} id="rapport" definition={definition} now={now} />,
+    );
+
+    const live = await screen.findByRole('region', { name: 'I drift' });
+    await waitFor(() => expect(text(live)).toContain('data behandles i hele verden'));
+  });
+
   it('says the quality is the same as the version before when the score did not change', async () => {
     const versionRun = (version: number, endedAt: string) => ({
       id: `v${version}`,
@@ -623,13 +881,14 @@ describe('the Oversikt tab of a published service', () => {
     const { api } = health({
       shared: {
         frontends: [{ id: 'teams', name: 'Teams-bot', kind: 'server', channels: ['openai'] }],
-        apiKeys: [
-          { id: 'k1', name: 'Saksbehandling', bound: true },
-          { id: 'k2', name: 'Teams', bound: true, client: 'teams' },
-          { id: 'k3', name: 'Intranett-server, gammel', bound: true },
-        ],
+        apiKeys: [],
         tenants: [],
       },
+      keys: [
+        serviceKey('k1', 'Saksbehandling'),
+        serviceKey('k2', 'Teams', { client: 'teams' }),
+        serviceKey('k3', 'Intranett-server, gammel'),
+      ],
       total: 200,
       keyTotals: { 'api-key:k1': 24, 'api-key:k2': 54, 'api-key:k3': 0 },
     });

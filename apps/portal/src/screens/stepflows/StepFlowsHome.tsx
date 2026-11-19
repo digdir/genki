@@ -198,7 +198,7 @@ export const StepFlowsHome = ({ api, tenant }: { api: ApiClient; tenant: string 
                 <Search.Clear onClick={() => setQuery('')} />
               </Search>
             </div>
-            <div role="group" aria-label={t('stepFlowHome.fromLabel')} className="tag-row">
+            <div role="group" aria-label={t('stepFlowHome.fromLabel')} className="tag-row sf-chips">
               {choices.map((choice) => (
                 <Chip.Button
                   key={choice.key}

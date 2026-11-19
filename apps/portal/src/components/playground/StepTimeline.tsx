@@ -1,13 +1,21 @@
+import type { Format } from '@genai/i18n';
 import { useFormat } from '@genai/i18n/react';
 import { useId, useState } from 'react';
 import { timedSteps, timelineBars } from '../../data/playground';
-import { useT } from '../../i18n';
+import { useT, type T } from '../../i18n';
 import { Steps } from '../../screens/log/Steps';
 import { formatDuration } from '../../screens/log/format';
 import type { TimelineStep } from '../../types';
 
 const stepName = (step: TimelineStep) =>
   step.model ? `${step.title} · ${step.model}` : step.title;
+
+const stepTime = (step: TimelineStep, f: Format, t: T) =>
+  step.durationSeconds !== undefined
+    ? formatDuration(step.durationSeconds, f, t)
+    : !step.state || step.state === 'ok'
+      ? t('playground.instantStep')
+      : '';
 
 export const RunTimeline = ({ steps }: { steps: TimelineStep[] }) => {
   const t = useT();
@@ -47,11 +55,7 @@ export const RunTimeline = ({ steps }: { steps: TimelineStep[] }) => {
                     style={{ left: `${left}%`, width: `${width}%` }}
                   />
                 </span>
-                <span className="playground-gantt-time">
-                  {step.durationSeconds === undefined
-                    ? ''
-                    : formatDuration(step.durationSeconds, f, t)}
-                </span>
+                <span className="playground-gantt-time">{stepTime(step, f, t)}</span>
               </button>
             </li>
           ))}

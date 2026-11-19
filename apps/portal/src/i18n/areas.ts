@@ -152,7 +152,7 @@ export const areas = {
     'apirefArea',
     'blocksLane',
   ],
-  integrations: ['serviceUi', 'blocksLane', 'integrationsArea'],
+  integrations: ['serviceUi', 'blocksLane', 'integrationsArea', 'settingsArea'],
   log: ['playgroundUi'],
   onboarding: [],
   playground: ['serviceUi', 'playgroundUi', 'modelsLane'],

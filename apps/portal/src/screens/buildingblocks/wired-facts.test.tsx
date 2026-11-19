@@ -90,7 +90,7 @@ describe('a model block shows the facts the API gives', () => {
   });
 
   it('says no agreement is recorded when the connection has no processor record', async () => {
-    await renderAt('#/building-blocks/model/gpt41');
+    await renderAt('#/building-blocks/model/foundry-openai%2Fgpt-4.1');
     const box = await facts();
     expect(fact(box, 'Tilkobling')).toBe('foundry');
     expect(fact(box, 'Databehandler')).toBe('Ingen avtale registrert');
@@ -113,7 +113,7 @@ describe('a model block shows the facts the API gives', () => {
   });
 
   it('names who made the model under Laget av, right after the type, when the API says', async () => {
-    await renderAt('#/building-blocks/model/gpt41');
+    await renderAt('#/building-blocks/model/foundry-openai%2Fgpt-4.1');
     const box = await facts();
     expect(fact(box, 'Laget av')).toBe('OpenAI');
     const labels = [...box.querySelectorAll('dt')].map((dt) => dt.textContent);

@@ -225,3 +225,29 @@
   align-items: center;
   gap: 12px;
 }
+
+.mc-filter-frame {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.mc-filter-frame li {
+  padding: 12px 0;
+  font-weight: 500;
+  border-bottom: 1px solid var(--ds-color-neutral-border-subtle);
+}
+
+.skeleton-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(268px, 100%), 1fr));
+  gap: 14px;
+}
+
+.skeleton-card {
+  padding: 20px;
+  border: 1px solid var(--ds-color-neutral-border-subtle);
+  border-radius: var(--ds-border-radius-lg);
+}

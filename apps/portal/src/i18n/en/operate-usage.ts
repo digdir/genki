@@ -75,7 +75,7 @@ export const usageArea = {
     runs: 'Runs',
     modelCalls: 'Model calls',
     estimatedCost: 'Estimated cost',
-    pricePerThousand: 'Price per 1,000 tokens',
+    pricePerMillion: 'Price per 1M tokens',
     modelPrice: 'NOK {input} in, NOK {output} out',
     priceUnknown: 'Unknown',
     processedIn: 'Data processed in',

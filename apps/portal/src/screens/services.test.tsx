@@ -164,7 +164,6 @@ describe('builder', () => {
 
   it.each([
     ['/setup', 'Oppsett', undefined, /^Formål og målgruppe/],
-    ['/settings', 'Oppsett', undefined, /Eksporter og importer/],
     ['/quality', 'Kvalitet', undefined, /Testsett/],
     ['/log', 'Utviklerverktøy', 'Logg', /Logg/],
     ['/channels', 'Utviklerverktøy', 'Nøkler og kanaler', /Start og kanaler/],
@@ -187,6 +186,12 @@ describe('builder', () => {
   ])('redirects the old route %s', async (old, target) => {
     await openBuilder(`#/services/rapportassistenten${old}`, 'Rapportassistenten');
     await waitFor(() => expect(window.location.hash).toBe(target));
+  });
+
+  it('opens the old settings address in Oppsett under Grenser og logging', async () => {
+    await openBuilder('#/services/rapportassistenten/settings', 'Rapportassistenten');
+    await waitFor(() => expect(navLink('Oppsett').getAttribute('aria-selected')).toBe('true'));
+    expect(await screen.findByRole('heading', { name: 'Grenser og logging' })).toBeTruthy();
   });
 
   it('opens the shared playground for the conversation service tweak', async () => {

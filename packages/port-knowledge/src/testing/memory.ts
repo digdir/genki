@@ -71,14 +71,18 @@ const clauseMatches = (kind: string, value: unknown, clause: FilterClause): bool
   if (typeof clause === 'boolean') return value === clause;
   if (Array.isArray(clause)) return values.some((v) => (clause as unknown[]).includes(v));
   if (typeof clause !== 'object') {
-    if (kind === 'text')
-      return values.some((v) => tokens(String(v)).includes(String(clause).toLowerCase()));
+    if (kind === 'text') return clauseMatches(kind, value, { contains: [String(clause)] });
     return values.includes(clause);
   }
   if ('not' in clause) return !values.some((v) => (clause.not as unknown[]).includes(v));
+  // Every word of one option must match; the options are alternatives.
   if ('contains' in clause)
-    return clause.contains.some((term) =>
-      values.some((v) => tokens(String(v)).includes(term.toLowerCase())),
+    return clause.contains.some((option) =>
+      values.some((v) => {
+        const held = new Set(tokens(String(v)));
+        const wanted = tokens(String(option));
+        return wanted.length > 0 && wanted.every((t) => held.has(t));
+      }),
     );
   return values.some(
     (v) =>
@@ -96,7 +100,10 @@ const matches = (dataset: Dataset, doc: IndexDocument, filters: Record<string, F
     const kinds = kindsOf(dataset.filters[field] ?? 'select');
     return clauses.every((clause) => {
       const kind = kinds.find((k) => clauseFits(k, clause)) ?? 'select';
-      return clauseMatches(kind, doc.fields[field], clause);
+      // A document's id and title are its own, never in its fields.
+      const value =
+        field === 'doc_num' ? doc.id : field === 'title' ? doc.title : doc.fields[field];
+      return clauseMatches(kind, value, clause);
     });
   });
 

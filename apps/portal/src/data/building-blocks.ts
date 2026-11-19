@@ -406,8 +406,8 @@ const examples: Example[] = [
         type: 'string',
         title: 'Reservemodell',
         description: 'Brukes hvis Borealis ikke svarer innen tidsavbruddet.',
-        default: 'qwen',
-        enum: ['qwen', 'none'],
+        default: 'aivar/qwen3-8',
+        enum: ['aivar/qwen3-8', 'none'],
         enumTitles: ['Qwen3.8-27B', 'Ingen reserve'],
       }),
       timeoutSeconds: property({
@@ -423,7 +423,7 @@ const examples: Example[] = [
     tenantOverrides: { temperature: 0.1 },
   },
   {
-    id: 'qwen',
+    id: 'aivar/qwen3-8',
     kind: 'model',
     name: 'Qwen3.8-27B',
     description: 'Flerspråklig modell som er god til å hente ut felter.',
@@ -439,7 +439,7 @@ const examples: Example[] = [
     scores: [{ service: 'postsortering', testSet: 'Innkommende post', score: 88 }],
   },
   {
-    id: 'gpt41',
+    id: 'foundry-openai/gpt-4.1',
     kind: 'model',
     name: 'GPT-4.1 (Azure OpenAI)',
     description: 'Stor modell for krevende resonnering. Data behandles i Sverige.',
@@ -469,7 +469,7 @@ const examples: Example[] = [
     ),
   },
   {
-    id: 'gpt5',
+    id: 'foundry-openai/gpt-5',
     kind: 'model',
     name: 'GPT-5 (OpenAI)',
     description: 'Nyeste modell fra OpenAI. Data behandles i USA.',
@@ -909,7 +909,7 @@ export const exampleModelFacts: Record<string, BlockFacts> = {
       retentionDays: 0,
     },
   },
-  gpt41: {
+  'foundry-openai/gpt-4.1': {
     connection: 'foundry',
     maker: 'OpenAI',
     operations: [

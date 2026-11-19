@@ -187,6 +187,7 @@ export const blocksLane = {
       "The judges in the project of the connection {connection} could not be read{status}. Langfuse must be version 4.23.0 or later, and the connection's keys must be valid.",
     pendingNotice:
       'The request has been sent to {approver}. You will be notified on Overview when it has been handled.',
+    updateNotice: 'See version {version} under Versions',
     updateHeading: 'Version {version}, available from {date}',
     updateBody:
       'No service switches version by itself. The test sets have been run with the new version. Try it in each service draft, and publish when you are satisfied.',
@@ -462,7 +463,7 @@ export const blocksLane = {
     price: 'Price',
     priceIn: 'Text in',
     priceOut: 'Text out',
-    pricePerThousand: 'NOK {price} per 1,000 tokens',
+    pricePerMillion: 'NOK {price} per 1M tokens',
     priceNote: 'The prices are estimates and also apply to test runs.',
     notPriced: 'The price has not been calculated yet.',
   },

@@ -1019,6 +1019,89 @@ describe("listing a dataset's documents", () => {
     expect(await response.json()).toMatchObject({ errors: [{ path: 'filters' }] });
   });
 
+  const indexedOnly = (knowledge: { open: (...a: never[]) => unknown }, count: number) => {
+    const asked: { limit?: number; offset?: number; filters?: unknown }[] = [];
+    const open = (knowledge.open as (ref: never, ctx: never) => Record<string, unknown>).bind(
+      knowledge,
+    );
+    knowledge.open = ((ref: never, ctx: never) => ({
+      ...open(ref, ctx),
+      documents: async (request: { limit?: number; offset?: number; filters?: unknown }) => {
+        asked.push(request);
+        const all = Array.from({ length: count }, (_, i) => ({ id: `ind-${i}`, fields: {} }));
+        const at = request.offset ?? 0;
+        return { documents: all.slice(at, at + (request.limit ?? 50)), found: count };
+      },
+    })) as never;
+    return asked;
+  };
+
+  it('lists failed, then pending, then indexed documents as one list with status all', async () => {
+    const blobs = new InMemoryBlobStore();
+    const prefix = uploadPrefix(`${digdir}/filer`, digdir);
+    await blobs.put(
+      { tenant: digdir, path: `${prefix}ny.pdf` },
+      new Uint8Array(4),
+      'application/pdf',
+    );
+    const { app, knowledge } = await boot({
+      blobs,
+      ingestion: lastRun({ failed: ['brev-7'] }),
+    });
+    indexedOnly(knowledge as never, 3);
+
+    const answer = await page(app, documentsPath('filer', digdir, '?status=all'));
+
+    expect(answer.status).toBe('all');
+    expect(answer.documents.map((d) => d.status)).toEqual([
+      'failed',
+      'pending',
+      'indexed',
+      'indexed',
+      'indexed',
+    ]);
+    expect(answer).toMatchObject({ total: 5, totalExact: true });
+  });
+
+  it('pages status all across the border between failed and indexed documents', async () => {
+    const { app, knowledge } = await boot({
+      ingestion: lastRun({ failed: ['brev-7', 'brev-8', 'brev-9'] }),
+    });
+    const asked = indexedOnly(knowledge as never, 10);
+
+    const second = await page(app, documentsPath('filer', digdir, '?status=all&limit=2&offset=2'));
+    const third = await page(app, documentsPath('filer', digdir, '?status=all&limit=2&offset=4'));
+
+    expect(second.documents.map((d) => d.id)).toEqual(['brev-9', 'ind-0']);
+    expect(third.documents.map((d) => d.id)).toEqual(['ind-1', 'ind-2']);
+    expect(third.total).toBe(13);
+    expect(asked.every((r) => (r.offset ?? 0) % (r.limit ?? 1) === 0)).toBe(true);
+  });
+
+  it('leaves failed and pending documents out of status all when filters are set', async () => {
+    const { app, knowledge } = await boot({ ingestion: lastRun({ failed: ['brev-7'] }) });
+    const asked = indexedOnly(knowledge as never, 2);
+    const filters = encodeURIComponent(JSON.stringify({ kategori: 'Veiledning' }));
+
+    const answer = await page(
+      app,
+      documentsPath('filer', digdir, `?status=all&filters=${filters}`),
+    );
+
+    expect(answer.documents.map((d) => d.status)).toEqual(['indexed', 'indexed']);
+    expect(answer.statusCounts.failed).toBe(1);
+    expect(asked).toContainEqual(expect.objectContaining({ filters: { kategori: 'Veiledning' } }));
+  });
+
+  it("never shows another owner's failed documents in status all", async () => {
+    const { app, knowledge } = await boot({ ingestion: lastRun({ failed: ['hemmelig-1'] }) });
+    indexedOnly(knowledge as never, 1);
+
+    const answer = await page(app, documentsPath('digdir/felles', digdir, '?status=all'));
+
+    expect(answer.documents.map((d) => d.id)).toEqual(['ind-0']);
+  });
+
   it('gives each listed document its chunk count when the engine keeps it', async () => {
     const { app } = await boot();
 

@@ -36,6 +36,18 @@ const useKeys: Record<string, PlainKey> = {
   transcribe: 'modelWords.useTranscribe',
   speak: 'modelWords.useSpeak',
   realtime: 'modelWords.useRealtime',
+  'audio-chat': 'modelWords.useAudioChat',
+  'batch-chat': 'modelWords.useBatchChat',
+  'edit-image': 'modelWords.useEditImage',
+  'extract-fields': 'modelWords.useExtractFields',
+  'generate-speech': 'modelWords.useSpeak',
+  'live-transcription': 'modelWords.useLiveTranscription',
+  'plain-language': 'modelWords.usePlainLanguage',
+  rerank: 'modelWords.useRerank',
+  'stream-chat': 'modelWords.useStreamChat',
+  summarize: 'modelWords.useSummarize',
+  'summarize-document': 'modelWords.useSummarizeDocument',
+  'transcribe-audio': 'modelWords.useTranscribe',
 };
 
 const capabilityKeys: Record<string, PlainKey> = {
@@ -77,7 +89,7 @@ export const useModelText = () => {
         : where(m.residency),
     status: (s: ModelStatus) => t(statusKeys[s]),
     use: (op: string) => {
-      const key = useKeys[op];
+      const key = Object.hasOwn(useKeys, op) ? useKeys[op] : undefined;
       return key ? t(key) : fallbackWord(op);
     },
     uses: (m: CatalogModel) => (m.operations?.length ? m.operations : ['chat']),
@@ -94,6 +106,11 @@ export const useModelText = () => {
       if (!m.price) return t('modelWords.notPriced');
       const p = perMillion(m.price);
       return t('modelWords.pricePerMillion', { input: kr(p.input), output: kr(p.output) });
+    },
+    priceWithUnit: (m: CatalogModel) => {
+      if (!m.price) return t('modelWords.notPriced');
+      const p = perMillion(m.price);
+      return t('modelWords.pricePerMillionUnit', { input: kr(p.input), output: kr(p.output) });
     },
     context: (m: CatalogModel) =>
       m.contextWindow

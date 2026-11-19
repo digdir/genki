@@ -1,4 +1,9 @@
-import type { DocumentSortKey, DocumentStatus, SortOrder } from '../api/datasets';
+import type {
+  DocumentListStatus,
+  DocumentSortKey,
+  DocumentStatus,
+  SortOrder,
+} from '../api/datasets';
 import type { PlainKey } from '../i18n';
 
 export type DatasetStatus =
@@ -56,6 +61,9 @@ export const defaultDocumentPageSize: DocumentPageSize = 50;
 
 export const documentStatuses: readonly DocumentStatus[] = ['indexed', 'failed', 'pending'];
 
+export const listsIndexed = (status: DocumentListStatus) =>
+  status === 'indexed' || status === 'all';
+
 export const documentStatusKeys: Record<DocumentStatus, PlainKey> = {
   indexed: 'datasets.docStatusIndexed',
   failed: 'datasets.docStatusFailed',
@@ -83,7 +91,7 @@ export interface DocumentsView {
   size: DocumentPageSize;
   query: string;
   sort?: { key: DocumentSortKey; order: SortOrder };
-  status: DocumentStatus;
+  status: DocumentListStatus;
   filters: Record<string, string>;
 }
 
@@ -94,7 +102,7 @@ export const documentsViewOf = (params: URLSearchParams): DocumentsView => {
   const size = Number(params.get('size'));
   const sort = documentSorts.find((s) => s.key === params.get('sort'));
   const order = params.get('order');
-  const status = documentStatuses.find((s) => s === params.get('status')) ?? 'indexed';
+  const status = documentStatuses.find((s) => s === params.get('status')) ?? 'all';
   const filters = Object.fromEntries(
     [...params.entries()]
       .filter(([k, v]) => k.startsWith(filterPrefix) && k.length > filterPrefix.length && v)
@@ -127,7 +135,7 @@ export const documentsParams = (view: DocumentsView, keep: URLSearchParams) => {
     params.set('sort', view.sort.key);
     params.set('order', view.sort.order);
   }
-  if (view.status !== 'indexed') params.set('status', view.status);
+  if (view.status !== 'all') params.set('status', view.status);
   for (const [field, value] of Object.entries(view.filters))
     if (value) params.set(`${filterPrefix}${field}`, value);
   return params;

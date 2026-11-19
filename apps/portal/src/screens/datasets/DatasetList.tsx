@@ -3,8 +3,10 @@ import {
   Alert,
   Button,
   Chip,
-  Fieldset,
+  Field,
   Heading,
+  Input,
+  Label,
   Paragraph,
   Table,
   TableBody,
@@ -13,8 +15,8 @@ import {
   TableHeaderCell,
   TableRow,
   Tag,
-  Textfield,
 } from '@digdir/designsystemet-react';
+import { useFormat } from '@genai/i18n/react';
 import { useEffect, useState, type ReactNode } from 'react';
 import { parseRoute } from '../../hooks';
 import { Icon } from '../../components/Icon';
@@ -44,6 +46,8 @@ export const matchesFilter = (
   (filter === 'own' && !d.shared) ||
   (filter === 'shared' && d.shared) ||
   (filter === 'attention' && needsAttention(d));
+
+const genitive = (name: string) => (/[sxz]$/i.test(name) ? `${name}'` : `${name}s`);
 
 const filterIn = (value: string | null): ListFilter => filters.find((f) => f === value) ?? 'all';
 
@@ -83,8 +87,7 @@ export interface DatasetListItem {
   usedByText?: string | undefined;
 }
 
-const noMatchText = (t: T, total: number, query: string, filter: ListFilter) => {
-  const label = t(filterKeys[filter]);
+const noMatchText = (t: T, total: number, query: string, filter: ListFilter, label: string) => {
   if (query && filter !== 'all')
     return t('datasets.noMatchBoth', { count: total, query, filter: label });
   if (query) return t('datasets.noMatchQuery', { count: total, query });
@@ -97,14 +100,21 @@ export const DatasetList = ({
   onRetry,
   pending = false,
   placeholder,
+  ownerName = '',
 }: {
   datasets?: DatasetListItem[] | undefined;
   canCreate?: boolean;
   onRetry?: (id: string) => Promise<void>;
   pending?: boolean;
   placeholder?: ReactNode;
+  ownerName?: string;
 }) => {
   const t = useT();
+  const { locale } = useFormat();
+  const chipLabel = (f: ListFilter) =>
+    f === 'own' && ownerName
+      ? t('datasets.filterOwnOf', { owner: locale === 'nb' ? genitive(ownerName) : ownerName })
+      : t(filterKeys[f]);
   const [{ query, filter }, setView] = useState(fromAddress);
   const [retrying, setRetrying] = useState<string[]>([]);
   const [retryFailure, setRetryFailure] = useState('');
@@ -165,31 +175,33 @@ export const DatasetList = ({
         ) : null}
       </div>
       <form role="search" className="dataset-filters" onSubmit={(e) => e.preventDefault()}>
-        <Textfield
-          className="dataset-search"
-          label={t('datasets.search')}
-          type="search"
-          value={query}
-          onChange={(e) => show({ query: e.target.value, filter })}
-        />
+        <Field className="dataset-search">
+          <Label htmlFor="dataset-q" className="visually-hidden">
+            {t('datasets.search')}
+          </Label>
+          <Input
+            id="dataset-q"
+            type="search"
+            placeholder={t('datasets.searchPlaceholder')}
+            value={query}
+            onChange={(e) => show({ query: e.target.value, filter })}
+          />
+        </Field>
         {datasets ? (
-          <Fieldset>
-            <Fieldset.Legend>{t('datasets.showLegend')}</Fieldset.Legend>
-            <div className="tag-row">
-              {filters.map((f) => (
-                <Chip.Radio
-                  key={f}
-                  name="datasetfilter"
-                  checked={filter === f}
-                  onChange={() => show({ query, filter: f })}
-                >
-                  {f === 'attention'
-                    ? t('datasets.filterAttentionCount', { count: attention })
-                    : t(filterKeys[f])}
-                </Chip.Radio>
-              ))}
-            </div>
-          </Fieldset>
+          <div role="group" aria-label={t('datasets.showLegend')} className="tag-row dataset-chips">
+            {filters.map((f) => (
+              <Chip.Button
+                key={f}
+                type="button"
+                aria-pressed={filter === f}
+                onClick={() => show({ query, filter: f })}
+              >
+                {f === 'attention'
+                  ? t('datasets.filterAttentionCount', { count: attention })
+                  : chipLabel(f)}
+              </Chip.Button>
+            ))}
+          </div>
         ) : null}
       </form>
       {datasets ? (
@@ -280,7 +292,9 @@ export const DatasetList = ({
           <Heading level={2} data-size="xs">
             {t('datasets.noMatch')}
           </Heading>
-          <Paragraph data-size="sm">{noMatchText(t, all.length, query.trim(), filter)}</Paragraph>
+          <Paragraph data-size="sm">
+            {noMatchText(t, all.length, query.trim(), filter, chipLabel(filter))}
+          </Paragraph>
           <Button
             variant="secondary"
             data-size="sm"

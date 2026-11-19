@@ -337,7 +337,7 @@ export const ModelPicker = ({
                                   {text.dataIn(m.residency)}
                                 </Tag>
                                 <Tag data-size="sm" data-color="neutral">
-                                  {text.price(m)}
+                                  {text.priceWithUnit(m)}
                                 </Tag>
                               </span>
                             </span>

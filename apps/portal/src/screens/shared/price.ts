@@ -32,9 +32,10 @@ export const priceText = (
     model && models.status === 'ready' ? models.data.find((m) => m.id === model)?.price : undefined;
   if (!price)
     return t(inLine ? 'sharedServicesMore.notPricedLine' : 'sharedServicesMore.notPriced');
-  return t('sharedServicesMore.pricePerThousandTokens', {
-    input: f.number(price.inputPerThousand, { maximumFractionDigits: 4 }),
-    output: f.number(price.outputPerThousand, { maximumFractionDigits: 4 }),
+  const money = { minimumFractionDigits: 2, maximumFractionDigits: 2 };
+  return t('sharedServicesMore.pricePerMillionTokens', {
+    input: f.number(price.inputPerThousand * 1000, money),
+    output: f.number(price.outputPerThousand * 1000, money),
   });
 };
 
