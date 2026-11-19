@@ -149,7 +149,7 @@ import {
   type ConfigEntryStore,
 } from './config-store.js';
 import { withDocumentScope } from './document-scope.js';
-import { withModelAdmission } from './lockdown.js';
+import { mayUseModels, withModelAdmission } from './lockdown.js';
 import { outsideRun } from './outside-run.js';
 import { operationGovernance } from './operation-governance.js';
 import {
@@ -643,16 +643,17 @@ export const createRuntime = async (input: RuntimeInput) => {
   if (Object.values(migrated).some((n) => n > 0))
     input.logger?.('model connections moved to the shape of ADR 0048', { ...migrated });
   const learnModelCapabilities = async (actor?: Principal): Promise<LearnResult> => {
+    const system: Principal = {
+      kind: 'agency-system',
+      issuer: 'platform',
+      subject: 'capability-check',
+      tenant: platformTenant,
+      ...(actor ? { actor } : {}),
+    };
     const result = await models
       .learn({
         tenant: platformTenant,
-        principal: withModelAdmission({
-          kind: 'agency-system',
-          issuer: 'platform',
-          subject: 'capability-check',
-          tenant: platformTenant,
-          ...(actor ? { actor } : {}),
-        }),
+        principal: mayUseModels(actor) ? withModelAdmission(system) : system,
         task: 'capability-check',
         signal: new AbortController().signal,
         meter: async () => undefined,

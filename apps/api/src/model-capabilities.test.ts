@@ -1,11 +1,13 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Principal } from '@genai/contracts';
+import { trustedEntraScope } from '@genai/identity';
 import { fakeHttp, type FakeServer } from '@genai/port-model/testing';
 import { translateMessage } from './i18n/index.js';
 import { bootPlatform, digdir, readJson } from './testkit.js';
 
 const people: Record<string, Principal> = {
   drift: { kind: 'operator', issuer: 'test', subject: 'drift' },
+  entra: { kind: 'operator', issuer: 'test', subject: 'entra', scopes: [trustedEntraScope] },
 };
 
 const completion = (content: string) => ({
@@ -43,7 +45,7 @@ afterEach(async () => {
   await Promise.all(servers.splice(0).map((s) => s.close()));
 });
 
-const boot = async () => {
+const boot = async (options: { lockdown?: boolean } = {}) => {
   const gateway = await fakeHttp((body, _attempt, path) => {
     if (path === '/v1/models')
       return { status: 200, json: { object: 'list', data: [{ id: 'able' }, { id: 'plain' }] } };
@@ -53,6 +55,7 @@ const boot = async () => {
   });
   servers.push(gateway);
   const booted = await bootPlatform({
+    ...options,
     people,
     knowledge,
     models: {
@@ -143,5 +146,32 @@ describe('genki finds out what a discovered model can do', () => {
     expect(listed.data.find((m) => m.id === 'gw/able')?.learned).toMatchObject({
       'json-schema': { has: true, by: 'call', at: expect.any(String) },
     });
+  });
+
+  it('the startup capability round is refused in lockdown and records nothing', async () => {
+    const { send, platform, gateway } = await boot({ lockdown: true });
+
+    const result = await platform.learnModelCapabilities();
+    const listed = await readJson<{ data: { id: string; learned?: Record<string, unknown> }[] }>(
+      await send('/operator/models', 'entra'),
+    );
+
+    expect(result.checked).toEqual([]);
+    expect(gateway.seen.filter((r) => r.path !== '/v1/models')).toEqual([]);
+    expect(listed.data.filter((m) => m.learned !== undefined)).toEqual([]);
+  });
+
+  it('an operator refresh in lockdown checks capabilities when the operator may use models', async () => {
+    const { send } = await boot({ lockdown: true });
+
+    const refreshed = await send('/operator/models/refresh', 'entra', {
+      method: 'POST',
+      reason: 'Se hva modellene kan',
+    });
+
+    expect(refreshed.status).toBe(200);
+    expect(
+      (await readJson<{ learned: { checked: unknown[] } }>(refreshed)).learned.checked,
+    ).toContainEqual({ model: 'gw/able', capability: 'json-schema', has: true });
   });
 });
