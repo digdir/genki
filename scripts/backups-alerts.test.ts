@@ -205,6 +205,21 @@ describe.skipIf(!hasAz && !process.env.CI)('backups and alerts in the template',
     );
   });
 
+  it('gives no job init container more CPU than its app containers together', () => {
+    const jobs = inner('containerapps').filter((r) => r.type === 'Microsoft.App/jobs');
+    expect(jobs.length).toBeGreaterThan(0);
+    const cpu = (c: { resources?: { cpu?: unknown } }) =>
+      Number(/[\d.]+/.exec(String(c.resources?.cpu ?? 0))?.[0]);
+    for (const job of jobs) {
+      const template = job.properties.template as unknown as {
+        initContainers?: { resources?: { cpu?: unknown } }[];
+        containers: { resources?: { cpu?: unknown } }[];
+      };
+      const total = template.containers.reduce((sum, c) => sum + cpu(c), 0);
+      for (const init of template.initContainers ?? []) expect(cpu(init)).toBeLessThanOrEqual(total);
+    }
+  });
+
   it('declares db-down, api-latency and worker-jobs, and no longer ingestion or state-register', () => {
     const alerts = inner('alerts');
     const names = text(alerts.map((r) => r.name));
