@@ -1,4 +1,5 @@
 import {
+  blankEndOf,
   blankPage,
   conversionKey,
   settingsHash,
@@ -141,11 +142,12 @@ export const knowledgeConversionsOf = (writer: Pool): StoredConversions => ({
       await lock(client, key);
       await client.query(
         `insert into src_conversions (sha256, converter, version, settings_hash, settings,
-           derivation, derivation_version, pages, output_path, failure)
-         values ($1, $2, $3, $4, $5::jsonb, $6, $7, $8::text[], $9, $10)
+           derivation, derivation_version, pages, output_path, failure, page_count, blank_end)
+         values ($1, $2, $3, $4, $5::jsonb, $6, $7, $8::text[], $9, $10, $11, $12)
          on conflict (sha256, converter, version, settings_hash, derivation, derivation_version)
            do update set pages = excluded.pages, output_path = excluded.output_path,
-                         failure = excluded.failure`,
+                         failure = excluded.failure, page_count = excluded.page_count,
+                         blank_end = excluded.blank_end`,
         [
           conversion.sha256,
           conversion.converter,
@@ -158,6 +160,8 @@ export const knowledgeConversionsOf = (writer: Pool): StoredConversions => ({
           conversion.pages.map((page) => page.replaceAll('\u0000', '')),
           conversion.outputPath ?? null,
           conversion.failure ?? null,
+          conversion.pages.length,
+          blankEndOf(conversion.pages),
         ],
       );
       const { rows } = await client.query<{
@@ -173,13 +177,17 @@ export const knowledgeConversionsOf = (writer: Pool): StoredConversions => ({
       );
       const sent: ConversionWaiter[] = [];
       const busy: ConversionWaiter[] = [];
+      const held: ConversionWaiter[] = [];
       for (const waiter of rows) {
         // A record with another file still converting gets its index job from that conversion.
         const { rows: other } = await client.query(
           `select 1 from src_conversion_waits where dataset = $1 and record = $2::bigint limit 1`,
           [waiter.dataset, waiter.record],
         );
-        if (other.length > 0) continue;
+        if (other.length > 0) {
+          held.push(waiter);
+          continue;
+        }
         if ((await send(waiter, client)) !== null) {
           sent.push(waiter);
           continue;
@@ -193,7 +201,7 @@ export const knowledgeConversionsOf = (writer: Pool): StoredConversions => ({
         );
         busy.push(waiter);
       }
-      return { sent, busy };
+      return { sent, busy, held };
     }),
 
   clear: async (client, dataset, record) => {
@@ -316,14 +324,25 @@ export const knowledgeConversionsOf = (writer: Pool): StoredConversions => ({
     return byRecord(rows);
   },
 
-  short: async (dataset, pipeline, accepted, after, limit) => {
-    // A file is short when every conversion of it by a kept converter, refusals included, is cut
-    // short. Each conversion's pages are read once, and the records are taken in number order up to
-    // `limit` before their files are listed, so a page of records reads only as far as it needs.
-    const shortFile = `(select bool_and(c.failure is null and cardinality(c.pages) > 0
-          and cardinality(c.pages) - (select coalesce(max(o), 0)
-                                        from unnest(c.pages) with ordinality as p(t, o) where t !~ $6)
-              > $7::numeric * cardinality(c.pages))
+  short: async (dataset, pipeline, accepted, after, limit, current) => {
+    // Conversions stored before page counts and blank ends were kept get them first, 200 at a
+    // time, so no batch holds many rows a convert job may be storing (issue 749).
+    for (;;) {
+      const { rowCount } = await writer.query(
+        `update src_conversions c
+            set page_count = cardinality(c.pages),
+                blank_end = cardinality(c.pages) - (select coalesce(max(o), 0)
+                              from unnest(c.pages) with ordinality as p(t, o) where t !~ $1)
+          where c.ctid = any(array(select ctid from src_conversions
+                                    where page_count is null limit 200 for update skip locked))`,
+        [blankPage.source],
+      );
+      if (!rowCount) break;
+    }
+    // A file is short when its one kept conversion is cut short and is not the worker's own.
+    const shortFile = `(select count(*) = 1 and bool_and(c.failure is null and c.page_count > 0
+          and c.blank_end > $6::numeric * c.page_count
+          and not (c.converter = $7 and c.version = $8 and c.settings_hash = $9))
         from src_conversions c
         join kinds a on a.converter = c.converter and a.derivation = c.derivation
          and a.derivation_version = c.derivation_version
@@ -349,7 +368,17 @@ export const knowledgeConversionsOf = (writer: Pool): StoredConversions => ({
          join src_files f on f.dataset = r.dataset and f.document = r.id
         where f.converts and f.sha256 is not null and ${shortFile}
         order by r.number, f.file`,
-      [dataset, after, acceptedJson(accepted), limit, pipeline, blankPage.source, shortEnd],
+      [
+        dataset,
+        after,
+        acceptedJson(accepted),
+        limit,
+        pipeline,
+        shortEnd,
+        current.converter,
+        current.version,
+        settingsHash(current.settings),
+      ],
     );
     return byRecord(rows);
   },

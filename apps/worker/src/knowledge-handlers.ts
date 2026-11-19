@@ -289,6 +289,13 @@ const conversionTarget = (sha256: string, converter?: string): ConversionTarget 
   };
 };
 
+/** Docling as this worker converts with it: a file it has converted or refused is not short. */
+const doclingKey = {
+  converter: doclingIdentity.name,
+  version: doclingIdentity.version,
+  settings: doclingIdentity.settings,
+};
+
 /** The text layer as an accepted converter, to find a file's own text-layer conversion. */
 const textLayerOnly = [{ converter: textLayer.name, derivation: textLayerDerivation, kept: false }];
 
@@ -760,18 +767,7 @@ export const knowledgeWork = (
         ? await deps.nativeOutputs.put(key, stored.output, stored.pages.length)
         : undefined;
     const outputPath = output?.path ?? stored.outputPath;
-    // This replacement run's records waiting on a short file's text layer, read before the store
-    // ends their waits: they go on to Docling (issue 749).
-    const waited =
-      run.replaces && key.converter === textLayer.name && deps.docling
-        ? await (async () => {
-            const { generation } = await datasetOf(deps, run, job.signal);
-            return (await conversions.waiting(key))
-              .filter((w) => w.run === run.id)
-              .map((w) => ({ ...w, generation }));
-          })()
-        : [];
-    const { sent, busy } = await conversions.store(
+    const { sent, busy, held } = await conversions.store(
       {
         ...key,
         derivation: derivationOf(key.converter),
@@ -783,21 +779,19 @@ export const knowledgeWork = (
     );
     // In a replacement run, a text-layer conversion is a short file's fill (issue 749): once its
     // records' index jobs are sent, the file goes to Docling with the same records waiting, also when
-    // the text layer refused it or a record still waits on another file. A record whose index job was
-    // busy keeps its wait, and is sent to Docling when the job is tried again.
+    // the text layer refused it or a record still waits on another file, whichever run they are in.
+    // A record whose index job was busy keeps its wait, and goes on when the job is tried again.
     if (run.replaces && key.converter === textLayer.name && deps.docling) {
       const startAfter = heavyWorkStart(deps.heavy.window(), deps.heavy.now?.() ?? new Date());
-      const stillWaiting = new Set(busy.map((w) => w.record));
-      for (const waiter of waited)
-        if (!stillWaiting.has(waiter.record))
-          await waitOn(
-            conversions,
-            job.data.file,
-            waiter,
-            undefined,
-            { priority: convertPriority.replacement, startAfter },
-            doclingIdentity.name,
-          );
+      for (const waiter of [...sent, ...held])
+        await waitOn(
+          conversions,
+          job.data.file,
+          waiter,
+          undefined,
+          { priority: convertPriority.replacement, startAfter },
+          doclingIdentity.name,
+        );
     }
     // A replacement's new pages reach every document of its pipeline that holds the file, also
     // one written again meanwhile, which ended its wait (ADR 0042, "Conversion").
@@ -880,7 +874,9 @@ export const knowledgeWork = (
       // short file whose text layer is stored, or refused, goes to Docling.
       const shortTo = async (sha256: string) =>
         (await conversions.find(sha256, textLayerOnly)) ? doclingIdentity.name : textLayer.name;
-      if (!(await waitAll(conversions.short.bind(conversions), shortTo))) return;
+      const short: StoredConversions['replaceable'] = (...args) =>
+        conversions.short(...args, doclingKey);
+      if (!(await waitAll(short, shortTo))) return;
       await waitAll(conversions.replaceable.bind(conversions), async () => doclingIdentity.name);
     },
     deps.admission,
@@ -948,7 +944,7 @@ export const replacementRuns =
     // Text-layer files to convert with Docling, or Docling files the KUDOS export cut short (issue 749).
     if (
       !(await left(deps.conversions.replaceable.bind(deps.conversions))) &&
-      !(await left(deps.conversions.short.bind(deps.conversions)))
+      !(await left((...args) => deps.conversions.short(...args, doclingKey)))
     )
       return;
     const at = now.toISOString();

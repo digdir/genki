@@ -109,6 +109,10 @@ const recordMigrations: string[] = [
   `alter table src_conversions add column if not exists failure text`,
   // Files a converter reads get stored conversions; HTML and plain text are read by the index job.
   `alter table src_files add column if not exists converts boolean not null default false`,
+  // Each conversion's page count and blank pages at its end, so short files are found without
+  // reading pages (issue 749); rows stored before are filled when short files are first asked for.
+  `alter table src_conversions add column if not exists page_count integer`,
+  `alter table src_conversions add column if not exists blank_end integer`,
 ];
 
 const migrations: string[] = [

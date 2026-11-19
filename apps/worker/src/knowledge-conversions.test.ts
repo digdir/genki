@@ -2651,9 +2651,13 @@ describe('short Docling conversions', () => {
     );
 
   const shortFiles = async (s: Scenario) =>
-    (await conversions.short(s.dataset.id, 'docs', acceptedConverters, '0', 100)).flatMap((r) =>
-      r.files.map((f) => f.sha256),
-    );
+    (
+      await conversions.short(s.dataset.id, 'docs', acceptedConverters, '0', 100, {
+        converter: doclingIdentity.name,
+        version: doclingIdentity.version,
+        settings: doclingIdentity.settings,
+      })
+    ).flatMap((r) => r.files.map((f) => f.sha256));
 
   /** Where `work` goes on in each scenario's sent jobs: after those its fill worked. */
   const cursor = new WeakMap<Scenario, number>();
@@ -3004,5 +3008,84 @@ describe('short Docling conversions', () => {
         .filter((j) => j.queue === 'knowledge.convert')
         .map((j) => [j.data.file, j.data.converter ?? 'text-layer']),
     ).toEqual([[file, 'docling']]);
+  }, 60_000);
+
+  it('a short file whose new Docling conversion also ends in blank pages is no longer short', async () => {
+    await clearConvertJobs();
+    const blob = seedContainer();
+    const s = await scenario({ nativeOutputs: blob.store, now: () => night });
+    const file = await shortReport(s, 'ny-ogsa-kort', blob);
+    await filled(s);
+    // The worker's Docling read every page, and the last two hold only pictures.
+    await storeDocling(file, ['Ny en.', 'Ny to.', '', '']);
+
+    expect(await shortFiles(s)).toEqual([]);
+  }, 60_000);
+
+  it("a file whose only Docling conversion is the worker's own is not short", async () => {
+    await clearConvertJobs();
+    const s = await scenario({ now: () => night });
+    const pdf = pdfBytes([['Side en (egen).'], ['Side to.'], ['Bilde.'], ['Bilde.']]);
+    const file = await sha(pdf);
+    await s.file('rapport.pdf', pdf);
+    await filled(s);
+    await storeDocling(file, ['Side en.', 'Side to.', '', '']);
+
+    expect(await shortFiles(s)).toEqual([]);
+  }, 60_000);
+
+  it('records of another run waiting on the same text layer are also sent to Docling', async () => {
+    await clearConvertJobs();
+    const docling: { current?: DocumentConverter } = {};
+    const server = await doclingServer(() => doclingRead(['Docling.']));
+    const blob = seedContainer();
+    const a = await scenario({ nativeOutputs: blob.store, docling, now: () => night });
+    const b = await scenario({ nativeOutputs: blob.store, docling, now: () => night });
+    const file = await shortReport(a, 'delt', blob);
+    await shortReport(b, 'delt', blob);
+    const runA = await filled(a);
+    const runB = await filled(b);
+
+    docling.current = doclingFor(server.url);
+    await replace(a, runA);
+    await replace(b, runB);
+    for (const s of [a, b]) {
+      const [replaceJob] = s.sent.filter((j) => j.queue === 'knowledge.replace');
+      await handler(
+        s.work.knowledge,
+        'knowledge.replace',
+      )(job('knowledge.replace', replaceJob?.data ?? {}));
+    }
+    const convert = a.sent.find((j) => j.queue === 'knowledge.convert' && j.data.file === file);
+    await handler(
+      a.work.knowledge,
+      'knowledge.convert',
+    )(job('knowledge.convert', convert?.data ?? {}));
+
+    const { rows } = await admin.query<{ dataset: string }>(
+      `select dataset from src_conversion_waits where key like $1 order by dataset`,
+      [`${file}:docling:%`],
+    );
+    expect(rows.map((r) => r.dataset)).toEqual([a.dataset.id, b.dataset.id].sort());
+  }, 60_000);
+
+  it('a conversion stored before blank ends were kept is counted when short files are first asked for', async () => {
+    await clearConvertJobs();
+    const blob = seedContainer();
+    const s = await scenario({ nativeOutputs: blob.store, now: () => night });
+    const file = await shortReport(s, 'for-kolonnen', blob);
+    await filled(s);
+    // As a row the seed stored before the columns were added.
+    await admin.query(
+      `update src_conversions set page_count = null, blank_end = null where sha256 = $1`,
+      [file],
+    );
+
+    expect(await shortFiles(s)).toEqual([file]);
+    const { rows } = await admin.query<{ page_count: number; blank_end: number }>(
+      `select page_count, blank_end from src_conversions where sha256 = $1 and converter = 'docling'`,
+      [file],
+    );
+    expect(rows).toEqual([{ page_count: 4, blank_end: 2 }]);
   }, 60_000);
 });
