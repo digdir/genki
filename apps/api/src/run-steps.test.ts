@@ -88,6 +88,40 @@ const ragRun = () => {
 };
 
 describe('the run mapper', () => {
+  it('a read step names the document, position and page of each chunk it read', () => {
+    seq = 0;
+    const events = [
+      at(0, 'kernel.task.status', { status: 'running' }),
+      notice(10, {
+        kind: 'read',
+        chunks: [
+          { id: 'c7', document: 'd1', position: 0, page: 1, score: 0.4, title: 'Rapport' },
+          { id: 'c8', document: 'd1', position: 1, page: 2, title: 'Rapport' },
+        ],
+        request: { document: 'd1', chunkRange: { from: 0, to: 1 } },
+      }),
+    ];
+
+    const [manager] = mapRun(events, { details: true }).steps.filter((s) => s.type === 'read');
+    seq = 0;
+    const [starter] = mapRun(events).steps.filter((s) => s.type === 'read');
+
+    expect(manager?.reads).toEqual([
+      {
+        chunks: [
+          { id: 'c7', document: 'd1', position: 0, page: 1, title: 'Rapport' },
+          { id: 'c8', document: 'd1', position: 1, page: 2, title: 'Rapport' },
+        ],
+        request: { document: 'd1', chunkRange: { from: 0, to: 1 } },
+      },
+    ]);
+    expect(manager?.blocks.at(-1)?.items).toEqual([
+      ['Rapport', '2 tekstbiter · deler 1, 2 · sider 1, 2'],
+    ]);
+    expect(starter?.reads?.[0]?.chunks.map((c) => c.id)).toEqual(['c7', 'c8']);
+    expect(starter?.reads?.[0]?.request).toBeUndefined();
+  });
+
   it('shows what a search detected in the query and how it was used', () => {
     seq = 0;
     const steps = mapRun([
