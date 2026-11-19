@@ -60,14 +60,14 @@ describe.skipIf(!hasAz && !process.env.CI)('the assistant host in the template',
   const roles = (resources: Resource[]) =>
     resources.filter((r) => r.type === 'Microsoft.Authorization/roleAssignments');
 
-  it('is off unless an environment turns it on', () => {
+  it('is off unless an environment turns it on, and only test does', () => {
     expect(main().parameters.assistantHostEnabled?.defaultValue).toBe(false);
     expect(module('assistant-host').condition).toBe("[parameters('assistantHostEnabled')]");
     expect(module('assistant-host-infra').condition).toBe(
       "[and(parameters('assistantHostEnabled'), variables('infra'))]",
     );
-    for (const file of ['test', 'prod'])
-      expect(read(`infra/env/${file}.bicepparam`), file).not.toMatch(/assistantHostEnabled/);
+    expect(read('infra/env/test.bicepparam')).toMatch(/^param assistantHostEnabled = true$/m);
+    expect(read('infra/env/prod.bicepparam')).not.toMatch(/assistantHostEnabled/);
   });
 
   it('runs in an environment of its own, with one replica at least', () => {
@@ -104,9 +104,12 @@ describe.skipIf(!hasAz && !process.env.CI)('the assistant host in the template',
     expect(text).not.toMatch(/api-id|Microsoft\.DBforPostgreSQL|keyVaultUri|-kv-/);
   });
 
-  it('binds genki’s own assistant hostname on the host app in the stages the other apps use', () => {
+  it('binds genki’s own assistant hostname on the host app in stages of its own, which follow the other apps’ unless set', () => {
     expect(main().variables?.assistantNames).toContain(
-      "createObject('hostname', toLower(parameters('hostnames').assistant), 'tenant', parameters('platformTenant'), 'stage', parameters('customDomainsStage'))",
+      "createObject('hostname', toLower(parameters('hostnames').assistant), 'tenant', parameters('platformTenant'), 'stage', parameters('assistantHostnameStage'))",
+    );
+    expect(main().parameters.assistantHostnameStage?.defaultValue).toBe(
+      "[parameters('customDomainsStage')]",
     );
     expect(main().variables?.servedNames).toBe(
       "[concat(variables('hostedNames'), variables('assistantNames'))]",

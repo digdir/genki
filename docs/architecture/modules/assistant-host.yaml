@@ -10,14 +10,15 @@ packages:
 summary: genki's generic host for a service's assistant, drawn from the service's interface by hostname.
 description: A React app that looks up the hostname it is served on, draws the service's name, menu
   and pages, and after login the assistant the service's layout describes through ui-assembly. It
-  runs no code from the service owner. It logs in in the browser with the authorization code flow and
-  PKCE against the issuer and client the host route names; the API's BFF (bffSignIn in bff.ts, a
-  host-only session cookie) is built and replaces login.ts once the host switches to it.
+  runs no code from the service owner. Where the host serves the API's BFF it signs in through it
+  (bffSignIn in bff.ts, a host-only session cookie, no token in the page); elsewhere it logs in in the
+  browser with the authorization code flow and PKCE against the issuer and client the host route
+  names (login.ts).
 responsibilities:
   - Look up the hostname and draw the hosted service, or say there is none
   - Draw the menu and the service's Markdown pages
   - Draw the assistant from the layout in the reader's language
-  - Log the person in with the hosted Client's Ansattporten client
+  - Sign the person in through the BFF, or in the browser where the host serves none
 files:
   - apps/assistant/src/App.tsx
   - apps/assistant/src/host.ts

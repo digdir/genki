@@ -279,6 +279,94 @@ describe('the assistant host', () => {
     expect(screen.queryByRole('button', { name: 'Logg ut' })).toBeNull();
   });
 
+  it('signs in through the host’s BFF when it serves one, and comes back to the same address', async () => {
+    const went: string[] = [];
+    const asked: string[] = [];
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL) => {
+      asked.push(String(input));
+      return json({}, 404);
+    });
+    render(
+      <LocaleProvider preference="nb">
+        <App
+          hostname="ka.example.no"
+          path="/?q=1"
+          signIn={browser().signIn}
+          navigate={(to) => went.push(to)}
+          fetcher={genki({
+            '/api/v1/hosts/ka.example.no': () => json(view),
+            '/auth/me': () => json({ code: 'signed-out' }, 401),
+          })}
+        />
+      </LocaleProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Logg inn' }));
+
+    expect(went).toEqual(['/auth/login?next=%2F%3Fq%3D1']);
+    expect(asked).toEqual([]);
+  });
+
+  it('calls genki through the BFF with its CSRF header and no token once the host has signed the person in', async () => {
+    const went: string[] = [];
+    const asked: { url: string; headers: Headers }[] = [];
+    const layout = {
+      version: 1,
+      zones: { primary: [], main: [{ block: 'chat' }], secondary: [] },
+      profile: { assistantName: 'Klarspråkassistenten', suggestions: ['Skriv om dette'] },
+    };
+    const routes: Record<string, () => Response> = {
+      '/api/v1/hosts/ka.example.no': () => json(view),
+      '/auth/me': () =>
+        json({
+          name: 'Kari Nordmann',
+          organisation: '991825827',
+          organisations: [{ orgNumber: '991825827' }],
+          expiresAt: '2026-11-19T18:00:00.000Z',
+        }),
+      '/api/v1/models': () => json({ data: [{ id: 'klarsprak__default' }] }),
+      '/api/v1/models/klarsprak__default/interface': () => json({ layout }),
+    };
+    const fetcher: typeof fetch = async (input, init) => {
+      asked.push({ url: String(input), headers: new Headers(init?.headers) });
+      return (routes[String(input)] ?? (() => json({ data: [] })))();
+    };
+    vi.stubGlobal('fetch', fetcher);
+    render(
+      <LocaleProvider preference="nb">
+        <App
+          hostname="ka.example.no"
+          path="/"
+          signIn={browser().signIn}
+          navigate={(to) => went.push(to)}
+          fetcher={fetcher}
+        />
+      </LocaleProvider>,
+    );
+
+    expect(await screen.findByText('Skriv om dette')).toBeTruthy();
+    const models = asked.find((a) => a.url === '/api/v1/models');
+    expect(models?.headers.get('genai-csrf')).toBe('1');
+    expect(asked.every((a) => a.headers.get('authorization') === null)).toBe(true);
+    expect(asked.some((a) => a.url.includes('openid-configuration'))).toBe(false);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Logg ut' }));
+    expect(went).toEqual(['/auth/logout']);
+  });
+
+  it('offers no sign-in when the BFF has no login set up for the hostname', async () => {
+    draw(
+      '/',
+      genki({
+        '/api/v1/hosts/ka.example.no': () => json(view),
+        '/auth/me': () => json({ code: 'bff-not-configured' }, 404),
+      }),
+    );
+
+    expect(await screen.findByText('Innlogging er ikke satt opp her.')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Logg inn' })).toBeNull();
+  });
+
   it('draws the layout’s texts in the reader’s language, since the blocks take one wording', () => {
     const layout = {
       version: 1,

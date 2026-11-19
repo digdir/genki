@@ -14,16 +14,30 @@ import {
   type HostView,
   type Page,
 } from './host';
-import type { HostLogin, Login, Session } from './login';
+import { bffSignIn, type HostSession, type HostSignIn } from './bff';
+import type { HostLogin, Login } from './login';
 import { useT } from './i18n';
 
 export interface AppProps {
   hostname: string;
   path: string;
-  /** Makes the login for the client the host route names. */
+  /** Makes the browser login for the client the host route names, used only without the BFF. */
   signIn: (login: HostLogin) => Login;
   fetcher?: typeof fetch;
+  bff?: HostSignIn;
+  navigate?: (url: string) => void;
 }
+
+interface Session {
+  name: string;
+  /** What every call to genki carries: the bearer token, or the BFF's CSRF header. */
+  headers: Record<string, string>;
+}
+
+const withToken = (session: { name: string; token: string }): Session => ({
+  name: session.name,
+  headers: { authorization: `Bearer ${session.token}` },
+});
 
 type Loaded<T> =
   { kind: 'loading' } | { kind: 'missing' } | { kind: 'failed' } | { kind: 'ok'; value: T };
@@ -124,8 +138,8 @@ const AssistantPane = ({
   const t = useT();
   const { locale } = useLocale();
   const layout = useLoaded<AssistantLayout>(
-    () => loadLayout(fetcher, host.service, session.token),
-    [host.service, session.token],
+    () => loadLayout(fetcher, host.service, session.headers),
+    [host.service, session],
   );
   const shown = useMemo(
     () => (layout.kind === 'ok' ? inLanguage(layout.value, locale) : undefined),
@@ -139,9 +153,9 @@ const AssistantPane = ({
         tenant: host.tenant,
         profile: profileOf(shown),
         language: locale,
-        headers: () => ({ authorization: `Bearer ${session.token}` }),
+        headers: () => session.headers,
       }),
-    [shown, host.tenant, locale, session.token],
+    [shown, host.tenant, locale, session],
   );
   if (layout.kind === 'loading') return <Spinner aria-label={t('host.loading')} />;
   if (layout.kind === 'failed') return <Alert data-color="danger">{t('host.failed')}</Alert>;
@@ -180,18 +194,47 @@ const useLogin = (view: HostView | undefined, signIn: AppProps['signIn']) =>
     return login?.issuer ? signIn({ ...login, issuer: login.issuer }) : undefined;
   }, [view, signIn]);
 
-export const App = ({ hostname, path, signIn, fetcher = fetch }: AppProps) => {
+const goTo = (url: string) => window.location.assign(url);
+
+export const App = ({
+  hostname,
+  path,
+  signIn,
+  fetcher = fetch,
+  bff: givenBff,
+  navigate = goTo,
+}: AppProps) => {
   const t = useT();
+  const bff = useMemo(() => givenBff ?? bffSignIn(fetcher), [givenBff, fetcher]);
   const host = useLoaded<HostView>(() => loadHost(fetcher, hostname), [hostname]);
-  const login = useLogin(host.kind === 'ok' ? host.value : undefined, signIn);
-  const [session, setSession] = useState<Session>();
+  const hostFound = host.kind === 'ok';
+  const hostSession = useLoaded<HostSession>(
+    async () =>
+      hostFound ? bff.session().catch((): HostSession => ({ kind: 'unavailable' })) : undefined,
+    [bff, hostFound],
+  );
+  const viaBff = hostSession.kind === 'ok' && hostSession.value.kind !== 'off';
+  const login = useLogin(
+    host.kind === 'ok' && hostSession.kind === 'ok' && !viaBff ? host.value : undefined,
+    signIn,
+  );
+  const [browserSession, setSession] = useState<Session>();
+  const bffSession = useMemo<Session | undefined>(
+    () =>
+      hostSession.kind === 'ok' && hostSession.value.kind === 'signed-in'
+        ? { name: hostSession.value.who.name ?? '', headers: bff.headers() }
+        : undefined,
+    [hostSession, bff],
+  );
+  const session = viaBff ? bffSession : browserSession;
   const [at, setAt] = useState(path);
   const [signInFailed, setSignInFailed] = useState(false);
   const [completing, setCompleting] = useState(false);
   useEffect(() => {
     if (!login) return;
     if (!login.isCallback()) {
-      setSession(login.current());
+      const current = login.current();
+      setSession(current && withToken(current));
       return;
     }
     let live = true;
@@ -203,7 +246,7 @@ export const App = ({ hostname, path, signIn, fetcher = fetch }: AppProps) => {
           if (!live) return;
           window.history.replaceState(null, '', returnTo);
           setAt(returnTo);
-          setSession(done);
+          setSession(withToken(done));
         },
         () => {
           if (!live) return;
@@ -217,7 +260,8 @@ export const App = ({ hostname, path, signIn, fetcher = fetch }: AppProps) => {
       live = false;
     };
   }, [login]);
-  if (host.kind === 'loading' || completing) return <Spinner aria-label={t('host.loading')} />;
+  if (host.kind === 'loading' || (hostFound && hostSession.kind !== 'ok') || completing)
+    return <Spinner aria-label={t('host.loading')} />;
   if (host.kind === 'failed')
     return (
       <main className="ah-main">
@@ -236,13 +280,21 @@ export const App = ({ hostname, path, signIn, fetcher = fetch }: AppProps) => {
   const view = host.value;
   const pageId = at.split('?')[0]?.replace(/^\/+|\/+$/g, '') ?? '';
   const onPage = view.pages.some((p) => p.id === pageId);
-  const startSignIn =
-    login &&
-    (() => {
-      setSignInFailed(false);
-      login.start().catch(() => setSignInFailed(true));
-    });
+  const bffState = hostSession.kind === 'ok' ? hostSession.value.kind : 'off';
+  const startSignIn = viaBff
+    ? bffState === 'signed-out'
+      ? () => navigate(bff.signInUrl(at))
+      : undefined
+    : login &&
+      (() => {
+        setSignInFailed(false);
+        login.start().catch(() => setSignInFailed(true));
+      });
   const signOut = () => {
+    if (viaBff) {
+      navigate(bff.signOutUrl);
+      return;
+    }
     setSession(undefined);
     void login?.signOut();
   };
