@@ -333,3 +333,20 @@ describe('a filtered search that finds nothing', () => {
     );
   });
 });
+
+describe('searching inside one document', () => {
+  it('the search tool tells the agent to filter by doc_num or title to search inside one document', async () => {
+    const out = await run({
+      scripts: { primary: { loop: [() => result('Ferdig.')], smallTalk: () => 'QUESTION' } },
+    });
+
+    const search = out.loops[0]?.tools?.find((t) => t.name === 'search');
+    const filterBy = JSON.stringify(
+      (search?.parameters as { properties?: Record<string, unknown> } | undefined)?.properties
+        ?.filter_by,
+    );
+    expect(filterBy).toContain(
+      'To search inside one document, filter doc_num with the doc_num a hit showed, or title with the words of its title, and leave the title out of the queries.',
+    );
+  });
+});

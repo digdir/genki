@@ -249,6 +249,73 @@ describe('pgvector engine', () => {
     expect(fields.hits.map((h) => h.document)).toEqual(['dok-5']);
   });
 
+  describe('searching inside one document', () => {
+    const datasetOptions = {
+      profiles: {
+        content: { target: 'chunks', mode: 'hybrid' },
+        mening: { target: 'chunks', mode: 'vector' },
+        ord: { target: 'chunks', mode: 'text' },
+        setninger: { target: 'phrases', mode: 'hybrid' },
+      },
+    };
+    const dataset = config('pgvector/rapporter', {
+      filters: { doc_num: 'multiselect', title: 'text' },
+      embedding,
+      options: datasetOptions,
+    });
+    const port = () =>
+      openTarget({ adapter: engineWith().adapter, endpoint, embedding, datasetOptions }, dataset);
+    const report = (id: string, title: string): IndexDocument => {
+      const texts = [`Omorganisering i ${title}`, `Overføring av ansatte i ${title}`];
+      return {
+        ...single(
+          id,
+          title,
+          texts,
+          texts.map((t) => fixtureVector(t, embedding.dimensions)),
+        ),
+        phrases: texts.map((t, i) => ({ id: `${id}-p${i}`, chunkId: `${id}-${i}`, text: t })),
+      };
+    };
+
+    beforeAll(async () => {
+      await seed(writerOf(engineWith()), dataset, [
+        report('kudos:toll-2025', 'Årsrapport Tolletaten 2025'),
+        report('kudos:nav-2025', 'Årsrapport NAV 2025'),
+        report('kudos:toll-2024', 'Årsrapport Tolletaten 2024'),
+      ]);
+    });
+
+    it("a doc_num filter returns only that document's chunks", async () => {
+      for (const profile of ['content', 'mening', 'ord', 'setninger']) {
+        const { hits } = await port().search({
+          query: 'omorganisering',
+          profile,
+          filters: { doc_num: ['kudos:nav-2025'] },
+        });
+        expect(hits.length, profile).toBeGreaterThan(0);
+        expect(new Set(hits.map((h) => h.document)), profile).toEqual(new Set(['kudos:nav-2025']));
+      }
+    });
+
+    it('a title filter keeps documents whose title holds every word of one option', async () => {
+      const documents = async (title: string[]) =>
+        new Set(
+          (
+            await port().search({
+              query: 'omorganisering',
+              profile: 'ord',
+              filters: { title: { contains: title } },
+            })
+          ).hits.map((h) => h.document),
+        );
+      expect(await documents(['Årsrapport Tolletaten 2025'])).toEqual(new Set(['kudos:toll-2025']));
+      expect(await documents(['Tolletaten 2024', 'NAV'])).toEqual(
+        new Set(['kudos:toll-2024', 'kudos:nav-2025']),
+      );
+    });
+  });
+
   describe('text search', () => {
     const datasetOptions = { profiles: { ord: { target: 'chunks', mode: 'text' } } };
     const dataset = config('pgvector/ord', { filters: {}, options: datasetOptions });

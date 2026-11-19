@@ -1315,6 +1315,79 @@ const writerTarget =
     };
   };
 
+describe('searching inside one document on the knowledge server', () => {
+  const reports = dataset('digdir/rapporter', 8, {
+    filters: { doc_num: 'multiselect', title: 'text' },
+    options: {
+      profiles: {
+        content: { target: 'chunks', mode: 'hybrid' },
+        mening: { target: 'chunks', mode: 'vector' },
+        ord: { target: 'chunks', mode: 'text' },
+        setninger: { target: 'phrases', mode: 'hybrid' },
+      },
+    },
+  });
+  const reportsGeneration = 'g-20261119-rapporter';
+  const at = routed(reports, reportsGeneration);
+  const report = (id: string, title: string): IndexDocument => {
+    const texts = [`Omorganisering i ${title}`, `Overføring av ansatte i ${title}`];
+    return {
+      id,
+      title,
+      fields: {},
+      chunks: texts.map((text, position) => ({
+        id: `${id}-${position}`,
+        position,
+        text,
+        metadata: {},
+        vector: fixtureVector(text, 8),
+      })),
+      phrases: texts.map((text, i) => ({ id: `${id}-p${i}`, chunkId: `${id}-${i}`, text })),
+    };
+  };
+
+  beforeAll(async () => {
+    await fill(reports, reportsGeneration, [
+      report('kudos:toll-2025', 'Årsrapport Tolletaten 2025'),
+      report('kudos:nav-2025', 'Årsrapport NAV 2025'),
+      report('kudos:toll-2024', 'Årsrapport Tolletaten 2024'),
+    ]);
+  });
+
+  it("a doc_num filter returns only that document's chunks", async () => {
+    const profiles = ['content', 'mening', 'ord', 'setninger'];
+    const results = await connectionOf().search(
+      at,
+      profiles.map((profile) => ({
+        query: 'omorganisering',
+        profile,
+        filters: { doc_num: ['kudos:nav-2025'] },
+      })),
+      signal,
+    );
+    profiles.forEach((profile, i) => {
+      const hits = results[i]?.hits ?? [];
+      expect(hits.length, profile).toBeGreaterThan(0);
+      expect(new Set(hits.map((h) => h.document)), profile).toEqual(new Set(['kudos:nav-2025']));
+    });
+  });
+
+  it('a title filter keeps documents whose title holds every word of one option', async () => {
+    const documents = async (title: string[]) => {
+      const [result] = await connectionOf().search(
+        at,
+        [{ query: 'omorganisering', profile: 'ord', filters: { title: { contains: title } } }],
+        signal,
+      );
+      return new Set(result?.hits.map((h) => h.document));
+    };
+    expect(await documents(['Årsrapport Tolletaten 2025'])).toEqual(new Set(['kudos:toll-2025']));
+    expect(await documents(['Tolletaten 2024', 'NAV'])).toEqual(
+      new Set(['kudos:toll-2024', 'kudos:nav-2025']),
+    );
+  });
+});
+
 indexWriterContract('pgvector on the knowledge server', writerTarget(false));
 indexWriterContract('pgvector on the knowledge server with embedding', writerTarget(true));
 

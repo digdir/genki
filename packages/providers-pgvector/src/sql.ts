@@ -49,6 +49,9 @@ const bound = (params: Params, element: string, op: '>=' | '<=', value: number |
     ? `(case when jsonb_typeof(${element}) = 'number' then ${element}::numeric end) ${op} ${params.add(value)}::numeric`
     : `(case when jsonb_typeof(${element}) = 'string' then ${element} #>> '{}' end) collate "C" ${op} ${params.add(value)}::text`;
 
+/** A document's id and title are columns of their own, never in its fields. */
+const columnOf: Record<string, string> = { doc_num: 'd.id', title: 'd.title' };
+
 const clauseSql = (
   params: Params,
   kind: FilterKind,
@@ -56,17 +59,25 @@ const clauseSql = (
   clause: FilterClause,
   config: () => string,
 ): string => {
-  const json = `d.fields -> ${params.add(field)}`;
+  const column = columnOf[field];
+  const json = column ? `to_jsonb(${column})` : `d.fields -> ${params.add(field)}`;
   const containsAny = (values: unknown[]) =>
-    `coalesce(${json} @> any (select jsonb_array_elements(${params.add(JSON.stringify(values))}::jsonb)), false)`;
-  const contains = (terms: string[]) =>
-    `to_tsvector(${config()}::regconfig, ${textOf(json)}) @@ ${anyTermQuery(config(), params.add(terms.join(' ')))}`;
+    column
+      ? `coalesce(${column} = any(${params.add(values.map(String))}::text[]), false)`
+      : `coalesce(${json} @> any (select jsonb_array_elements(${params.add(JSON.stringify(values))}::jsonb)), false)`;
+  // Every word of one option must match; the options are alternatives.
+  const contains = (options: string[]) =>
+    `${field === 'title' ? 'd.title_tsv' : `to_tsvector(${config()}::regconfig, ${textOf(json)})`} @@ (${options
+      .map((o) => `plainto_tsquery(${config()}::regconfig, ${params.add(o)})`)
+      .join(' || ')})`;
   if (typeof clause === 'boolean' || (typeof clause !== 'object' && kind !== 'text'))
-    return `coalesce(${json} @> ${params.add(JSON.stringify(clause))}::jsonb, false)`;
+    return column
+      ? containsAny([clause])
+      : `coalesce(${json} @> ${params.add(JSON.stringify(clause))}::jsonb, false)`;
   if (typeof clause !== 'object') return contains([String(clause)]);
   if (Array.isArray(clause)) return containsAny(clause);
   if ('not' in clause) return `not ${containsAny(clause.not)}`;
-  if ('contains' in clause) return contains(clause.contains);
+  if ('contains' in clause) return contains(clause.contains.map(String));
   const bounds = [
     ...(clause.gte === undefined ? [] : [bound(params, 'e', '>=', clause.gte)]),
     ...(clause.lte === undefined ? [] : [bound(params, 'e', '<=', clause.lte)]),
@@ -98,6 +109,22 @@ export const filterSql = (
     );
   });
   return parts.length > 0 ? parts.map((p) => `(${p})`).join(' and ') : 'true';
+};
+
+/** A doc_num filter as a condition on the chunks' own doc_id, so the doc_id index finds them. */
+const docIdsSql = (params: Params, filters: Record<string, FilterValue>) => {
+  const value = filters.doc_num;
+  if (value === undefined) return '';
+  return clausesOf(value)
+    .flatMap((clause) =>
+      Array.isArray(clause)
+        ? [clause]
+        : typeof clause === 'string' || typeof clause === 'number'
+          ? [[clause]]
+          : [],
+    )
+    .map((ids) => ` and x.doc_id = any(${params.add(ids.map(String))}::text[])`)
+    .join('');
 };
 
 export interface SearchSql {
@@ -132,6 +159,7 @@ export const searchSql = (input: SearchSql) => {
   const config = once(() => params.add(input.config));
   const active = `(select generation from kn_active where dataset = ${dataset})`;
   const where = filterSql(params, input.dataset, input.filters, config);
+  const docIds = docIdsSql(params, input.filters);
   const candidates = params.add(input.candidates);
   const { target, mode } = input.profile;
   const ctes: string[] = [];
@@ -159,9 +187,10 @@ export const searchSql = (input: SearchSql) => {
           order by s desc, first.id limit ${candidates}`;
       }
       const docFilter =
-        where === 'true'
+        docIds +
+        (where === 'true'
           ? ''
-          : ` and exists (select 1 from kn_docs d where d.dataset = x.dataset and d.generation = x.generation and d.id = x.doc_id and ${where})`;
+          : ` and exists (select 1 from kn_docs d where d.dataset = x.dataset and d.generation = x.generation and d.id = x.doc_id and ${where})`);
       return `with m as materialized (
           select ${id} as id, x.tsv from ${table} x
           where x.dataset = ${dataset} and x.generation = ${active} and x.tsv @@ ${q}${docFilter})
@@ -183,7 +212,7 @@ export const searchSql = (input: SearchSql) => {
       ctes.push(`t as (
         select ${id} as id, 0::float8 as s
         from ${table} x ${docJoin('x')}
-        where x.dataset = ${dataset} and x.generation = ${active} and ${where}
+        where x.dataset = ${dataset} and x.generation = ${active} and ${where}${docIds}
         group by ${id} order by s desc, id limit ${candidates})`);
     } else if (mode === 'text') {
       // No vector half fills the list, so some-words matches follow the all-words ones, scored below 1.
@@ -212,7 +241,7 @@ export const searchSql = (input: SearchSql) => {
       select id, max(s) as s from (
         select ${id} as id, (1 - (${distance}))::float8 as s
         from ${table} x ${docJoin('x')}
-        where x.dataset = ${dataset} and x.generation = ${active} and x.vec is not null and ${where}
+        where x.dataset = ${dataset} and x.generation = ${active} and x.vec is not null and ${where}${docIds}
         order by ${distance} limit ${candidates}
       ) nearest group by id)`);
   }
