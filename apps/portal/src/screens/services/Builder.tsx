@@ -72,13 +72,22 @@ import { ImproveInstructions } from './assistant/ImproveInstructions';
 import { SuggestedTests } from './assistant/SuggestedTests';
 import { proposalKey, useAssistant, type TurnEntry } from './assistant/useAssistant';
 import type { InputOptionLookup } from './InputFormEditor';
-import { areaSummaries, datasetName, modelWord, SetupTab, type SectionId } from './SetupTab';
+import {
+  areaSummaries,
+  datasetName,
+  modelWord,
+  riskConfirmedFor,
+  riskNeedsConfirming,
+  SetupTab,
+  withPromptFiles,
+  type SectionId,
+} from './SetupTab';
 import { TryPane } from './setup-try-pane';
 import { DraftBar, savedByOf, saverOf, type SaveState, type SavedBy } from './DraftBar';
 import { DiscardDialog } from './DiscardDialog';
 import { PublishDiff, type ModelFacts, type TestWarning } from './PublishDiff';
 import { SetupLayout, type AreaFact, type SidePane } from './setup-layout';
-import { changeLabel, changeText, type ChangeNames } from './setup-change-text';
+import { areaLabelKeys, changeLabel, changeText, type ChangeNames } from './setup-change-text';
 import { draftChecks } from './setup-checks';
 import {
   advancedAreas,
@@ -113,7 +122,6 @@ import { QualitySection } from '../service/QualitySection';
 import { BatchSection } from '../batch/BatchSection';
 import {
   availableSections,
-  sectionLabels,
   servicePath,
   subSections,
   tabOf,
@@ -415,7 +423,8 @@ export const Builder = ({
       : t('services.scoreNotRun')
     : scoreText(test.batch.snap);
   const [prohibited, setProhibited] = useState<Record<number, boolean>>({});
-  const riskConfirmed = !!service.spec.riskConfirmation;
+  const riskConfirmed = riskConfirmedFor(service.spec);
+  const riskOpen = riskNeedsConfirming(service.spec);
   const [versions, setVersions] = useState(init.versions);
   const [published, setPublished] = useState<Record<string, boolean>>({});
   const [flash, setFlash] = useState('');
@@ -434,6 +443,10 @@ export const Builder = ({
   const [conflictDraft, setConflictDraft] = useState<ServiceDraft>();
   const [discarding, setDiscarding] = useState(false);
   const [discardedTo, setDiscardedTo] = useState<number>();
+  const discardTrigger = useRef<HTMLElement | null>(null);
+  const discardedAlert = useRef<HTMLDivElement>(null);
+  const wasDiscarding = useRef(false);
+  const discardedNow = useRef(false);
   const [baseline, setBaseline] = useState<{
     version: number;
     definition: Record<string, unknown>;
@@ -456,6 +469,14 @@ export const Builder = ({
     setService(next);
   }, []);
   const patch = useCallback((edit: SpecEdit) => change((d) => applySpec(d, edit)), [change]);
+  const editFile = useCallback((path: string, text: string) => {
+    if (readOnlyRef.current) return;
+    unsaved.current = true;
+    setSaveState('unsaved');
+    editsRef.current += 1;
+    setEdits(editsRef.current);
+    setFiles((current) => ({ ...current, [path]: text }));
+  }, []);
   const replaceWith = (next: ServiceDefinition) =>
     change((d) => renamed({ ...d, spec: next.spec }, next.metadata.name ?? ''));
   const keepRevision = (revision: number) => {
@@ -498,12 +519,26 @@ export const Builder = ({
     if (!detail) window.scrollTo?.(0, 0);
   }, [section, detail]);
 
+  useEffect(() => setDiscardedTo(undefined), [section]);
+
+  useEffect(() => {
+    if (discarding) {
+      wasDiscarding.current = true;
+      return;
+    }
+    if (!wasDiscarding.current) return;
+    wasDiscarding.current = false;
+    const target = discardedNow.current ? discardedAlert.current : discardTrigger.current;
+    discardedNow.current = false;
+    if (target?.isConnected) target.focus();
+  }, [discarding, discardedTo]);
+
   const addressed = route.segments[2];
   useEffect(() => {
     if (!addressed || addressed === section) return;
-    const alias = !(addressed in sectionLabels) && detail ? `/${detail}` : '';
+    const alias = section === routeSection && detail ? `/${detail}` : '';
     window.location.replace(`#${servicePath(routeId, section, alias)}`);
-  }, [addressed, section, routeId, detail]);
+  }, [addressed, section, routeSection, routeId, detail]);
 
   useEffect(() => {
     const target: SectionId | undefined =
@@ -715,7 +750,7 @@ export const Builder = ({
   );
   const rename = (name: string) => change((d) => renameService(d, name, current > 0));
   const confirmRisk = (risk: RiskClass | undefined) =>
-    setService((d) =>
+    change((d) =>
       applySpec(d, {
         riskConfirmation: risk
           ? riskConfirmationFor(risk, riskReasons(high), new Date())
@@ -865,8 +900,14 @@ export const Builder = ({
     [liveVersion],
   );
   const changeList = useMemo(
-    () => (publishedDefinition ? diffDraft(publishedDefinition, service) : []),
-    [publishedDefinition, service],
+    () =>
+      publishedDefinition
+        ? diffDraft(
+            withPromptFiles(publishedDefinition, liveVersion?.files ?? {}),
+            withPromptFiles(service, files),
+          )
+        : [],
+    [publishedDefinition, service, liveVersion, files],
   );
   const hasDraft = draftRevision > 0 || changeList.length > 0;
   const [checks, retryChecks] = useAsync(
@@ -1306,6 +1347,7 @@ export const Builder = ({
     setSaveState('idle');
     setSavedAt(undefined);
     setSavedBy(undefined);
+    discardedNow.current = true;
     setDiscarding(false);
     setDiscardedTo(liveVersion.version);
   };
@@ -1331,7 +1373,7 @@ export const Builder = ({
   const suggestions =
     testKind(id, service) === 'fields'
       ? [t('services.suggestCost'), t('services.suggestRerun'), t('services.suggestPrivacy')]
-      : [t('services.suggestCost'), t('services.suggestShorter'), t('services.suggestTest')];
+      : [t('services.suggestCost'), t('services.suggestShorter')];
   const name = service.metadata.name || t('services.newServiceName');
   const sections = archived
     ? availableSections({ isNew }).filter((s) => archivedSections.includes(s))
@@ -1358,18 +1400,17 @@ export const Builder = ({
     return { name: changeNames.model(mid), residency: found?.residency, price: found?.price };
   };
   const publishedVersion = liveVersion?.version ?? current;
-  const missingAreas = new Set(
-    live
-      ? checkProblems.flatMap((p) => {
-          const area = areaOfPath(p.path);
-          return area ? [area] : [];
-        })
-      : service.spec.riskClass && !riskConfirmed
-        ? ['risk']
-        : [],
-  );
+  const riskProblem = riskOpen ? t('serviceDraft.missingRisk') : undefined;
+  const areaProblems = new Map<SetupArea, string[]>();
+  for (const p of live ? checkProblems : []) {
+    const area = areaOfPath(p.path);
+    if (area)
+      areaProblems.set(area, [...(areaProblems.get(area) ?? []), describeProblem(p, t).message]);
+  }
+  if (riskProblem) areaProblems.set('risk', [...(areaProblems.get('risk') ?? []), riskProblem]);
+  const missingAreas = new Set(areaProblems.keys());
   const changedAreas = new Set<string>(changeList.map((c) => c.area));
-  const areaSummary = areaSummaries(t, service, riskConfirmed, modelCatalog, datasetNames);
+  const areaSummary = areaSummaries(t, service, modelCatalog, datasetNames);
   const optionalArea = (area: SetupArea) =>
     area === 'tools'
       ? toolRefsOf(service.spec).length === 0 && !service.spec.skills?.length
@@ -1390,12 +1431,16 @@ export const Builder = ({
               ? 'optional'
               : 'done',
         summary: areaSummary[area],
+        problems: areaProblems.get(area) ?? [],
         fromAssistant: Object.keys(fromAi).some((key) => areaOfSection[key] === area),
       },
     ]),
   ) as Record<SetupArea, AreaFact>;
   const modelChange = changeList.find((c) => c.topic === 'model');
   const publishHref = `#${servicePath(routeId, 'setup', '/publish')}`;
+  const playgroundHref = isNew
+    ? `#${servicePath(routeId, 'test')}`
+    : `#/playground?service=${encodeURIComponent(id)}`;
   const publishPage = draftBar && canPublish && section === 'setup' && detail === 'publish';
   const draftRuns =
     evalRuns.status === 'ready' && Array.isArray(evalRuns.data)
@@ -1409,11 +1454,23 @@ export const Builder = ({
         ? 'model'
         : 'draft'
       : undefined;
-  const missingText = checkProblems.length
-    ? checkProblems.length === 1 && checkProblems[0]
-      ? t('serviceDraft.missingOne', { section: describeProblem(checkProblems[0], t).section })
-      : t('serviceDraft.missingMany', { count: checkProblems.length })
-    : '';
+  const missingCount = checkProblems.length + (riskProblem ? 1 : 0);
+  const onlyProblem = checkProblems[0];
+  const onlyArea = onlyProblem ? areaOfPath(onlyProblem.path) : undefined;
+  const missingText =
+    missingCount === 0
+      ? ''
+      : missingCount > 1
+        ? t('serviceDraft.missingMany', { count: missingCount })
+        : riskProblem
+          ? riskProblem
+          : t('serviceDraft.missingOne', {
+              section: onlyArea
+                ? t(areaLabelKeys[onlyArea])
+                : onlyProblem
+                  ? describeProblem(onlyProblem, t).section
+                  : '',
+            });
 
   useEffect(() => {
     if (!draftBar) return;
@@ -1471,6 +1528,8 @@ export const Builder = ({
       serviceId={id}
       definition={service}
       patch={patch}
+      files={files}
+      onFile={editFile}
       onRename={rename}
       open={open}
       onToggle={(sid) => setOpen((o) => ({ ...o, [sid]: !o[sid] }))}
@@ -1497,8 +1556,17 @@ export const Builder = ({
       flowCheck={flowCheck}
       operationModels={operationModels}
       api={api}
-      strategy={<StrategyPanel api={api} tenant={tenant} definition={service} patch={patch} />}
+      strategy={
+        <StrategyPanel
+          api={api}
+          tenant={tenant}
+          definition={service}
+          patch={patch}
+          {...(isNew ? {} : { service: id })}
+        />
+      }
       instructionsAssist={improveSlot}
+      assistantOff={assistantOff}
       {...(service.spec.strategy.id === 'remote-agent'
         ? {}
         : {
@@ -1550,7 +1618,7 @@ export const Builder = ({
       applied={Object.fromEntries(Object.keys(assisted).map((k) => [k, true]))}
       typing={typing}
       composer={composer}
-      suggestions={suggestions}
+      suggestions={[]}
       userName={userName}
       tenantName={tenantName}
       assistant={assistant}
@@ -1723,7 +1791,7 @@ export const Builder = ({
               datasets={(service.spec.knowledge?.datasets ?? []).map((d) => d.dataset)}
               files={files}
               version={publishedVersion}
-              playgroundHref={`#${servicePath(routeId, 'test')}`}
+              playgroundHref={playgroundHref}
             />
           }
           pane={sidePane}
@@ -1781,7 +1849,8 @@ export const Builder = ({
     <>
       {hasTestSet ? null : (
         <Alert data-color="warning" data-size="sm">
-          {t('services.noTestsetWarning')}
+          <Paragraph data-size="sm">{t('services.noTestsetWarning')}</Paragraph>
+          <Link href={`#${servicePath(routeId, 'quality')}`}>{t('services.makeTestSet')}</Link>
         </Alert>
       )}
       {invalid ? (
@@ -1885,9 +1954,7 @@ export const Builder = ({
               ) : null}
               {!archived && !(!isNew && section === 'setup') ? (
                 <Button asChild variant="secondary" data-size="sm">
-                  <a href={`#${servicePath(routeId, 'test')}`}>
-                    {t('serviceLifecycle.tryService')}
-                  </a>
+                  <a href={playgroundHref}>{t('serviceLifecycle.tryService')}</a>
                 </Button>
               ) : null}
               {live || !canPublish ? null : (
@@ -1918,10 +1985,8 @@ export const Builder = ({
                   <Button
                     variant="primary"
                     data-size="sm"
-                    aria-disabled={!hasDraft || checkProblems.length > 0 || undefined}
-                    onClick={() =>
-                      hasDraft && checkProblems.length === 0 && go('setup', '/publish')
-                    }
+                    aria-disabled={!hasDraft || missingCount > 0 || undefined}
+                    onClick={() => hasDraft && missingCount === 0 && go('setup', '/publish')}
                   >
                     {t('serviceDraft.publishOpen')}
                   </Button>
@@ -1965,7 +2030,7 @@ export const Builder = ({
           sections={sections}
           current={section}
         />
-        {draftBar && !archived && (section === 'setup' || section === 'interface') ? (
+        {draftBar && !archived ? (
           <DraftBar
             state={saveState}
             version={publishedVersion}
@@ -1997,11 +2062,21 @@ export const Builder = ({
             canEdit={!readOnly}
             changesHref={publishHref}
             onSave={() => void saveDraft()}
-            onDiscard={() => setDiscarding(true)}
+            onDiscard={() => {
+              discardTrigger.current =
+                document.activeElement instanceof HTMLElement ? document.activeElement : null;
+              setDiscarding(true);
+            }}
           />
         ) : null}
         {discardedTo !== undefined ? (
-          <Alert data-color="success" data-size="sm" role="status">
+          <Alert
+            ref={discardedAlert}
+            tabIndex={-1}
+            data-color="success"
+            data-size="sm"
+            role="status"
+          >
             {t('serviceDraft.discarded', { n: discardedTo })}
           </Alert>
         ) : null}
@@ -2217,8 +2292,8 @@ export const Builder = ({
           <PublishDiff
             name={name}
             current={liveVersion.version}
-            published={publishedDefinition}
-            draft={service}
+            published={withPromptFiles(publishedDefinition, liveVersion.files ?? {})}
+            draft={withPromptFiles(service, files)}
             changes={changeList}
             names={changeNames}
             modelFacts={modelFacts}
@@ -2228,10 +2303,10 @@ export const Builder = ({
             testHref={`#${servicePath(routeId, 'quality')}`}
             backHref={`#${servicePath(routeId, 'setup')}`}
             canPublish={canPublish}
-            blocked={
-              check?.status !== 'done' || invalid || checkProblems.length > 0 || unmaskedMissing > 0
+            blocked={check?.status !== 'done' || invalid || missingCount > 0 || unmaskedMissing > 0}
+            blockedReason={
+              riskProblem ?? (check?.status === 'done' ? blockedBy : t('services.checkingDraft'))
             }
-            blockedReason={check?.status === 'done' ? blockedBy : t('services.checkingDraft')}
             onPublish={async (reason) => {
               await doPublish({ reason, include: [] });
               go('setup');
