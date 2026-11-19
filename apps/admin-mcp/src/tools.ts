@@ -975,7 +975,7 @@ const fewerHits = (step: TimelineStep): TimelineStep => {
   };
 };
 
-export const fullRun = (timeline: Timeline, allHits = false) => {
+export const fullRun = (timeline: Timeline, allHits = false, first = 1) => {
   const steps = allHits ? timeline.steps : timeline.steps.map(fewerHits);
   const kept: TimelineStep[] = [];
   const size = (list: TimelineStep[], omitted: number) =>
@@ -992,7 +992,7 @@ export const fullRun = (timeline: Timeline, allHits = false) => {
     1,
   );
   return cut
-    ? `${json}\n${cut} steps after step ${kept.length} were left out to stay under ${fullRunLimit} characters; ask again with from, to or types.`
+    ? `${json}\n${cut} steps after step ${first + kept.length - 1} were left out to stay under ${fullRunLimit} characters; ask again with from, to or types.`
     : json;
 };
 
@@ -1029,7 +1029,7 @@ const getRun = tool({
     const summary = run.status === 'fulfilled' ? run.value : undefined;
     const body = found
       ? full
-        ? fullRun(found, allHits)
+        ? fullRun(found, allHits, from ?? 1)
         : compactTimeline(found, from ?? 1)
       : `The timeline is not available: ${reasonOf(timeline)}\n${JSON.stringify(summary, null, 1)}`;
     return {

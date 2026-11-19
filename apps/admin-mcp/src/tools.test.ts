@@ -615,6 +615,24 @@ describe('reading a run', () => {
     );
   });
 
+  it('get_run full counts the steps it left out from the step the range starts at', async () => {
+    const steps = Array.from({ length: 31 }, (_, i) => searchStep(i));
+
+    const got = await read(run(steps), { full: true, allHits: true, from: 2 });
+    const parsed = json(got.text);
+
+    expect(got.text).toContain(`steps after step ${parsed.steps.length + 1} were left out`);
+  });
+
+  it('get_run compact numbers steps from the range asked for and says how many it left out', async () => {
+    const got = await read(run([readStep, readStep, readStep]), { from: 2 });
+
+    expect(got.text).toContain('2. read: Leste kilder');
+    expect(got.text).toContain('3. read: Leste kilder');
+    expect(got.text).not.toContain('1. read:');
+    expect(got.text).toContain('1 steps left out by types, from or to.');
+  });
+
   it('get_run full keeps the top 20 hits of a search step unless all hits are asked for', async () => {
     const top = json((await read(run([searchStep(1)]), { full: true })).text);
     const all = json((await read(run([searchStep(1)]), { full: true, allHits: true })).text);
