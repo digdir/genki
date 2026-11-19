@@ -93,19 +93,39 @@ const createFunctions = [
   `create or replace function kn_filter_sql(p_filters jsonb, p_config text) returns text
      language plpgsql immutable set search_path = pg_catalog, public as $$
      declare
-       c jsonb; f text; json text; part text; parts text[] := '{}';
+       c jsonb; f text; json text; part text; q text; parts text[] := '{}';
      begin
        for c in select x from jsonb_array_elements(coalesce(p_filters, '[]')) x loop
          f := c->>'field';
-         json := format('d.fields -> %L', f);
-         if c->>'op' in ('in', 'not') then
+         -- A document's id and title are columns of their own, never in its fields.
+         json := case f when 'doc_num' then 'to_jsonb(d.id)' when 'title' then 'to_jsonb(d.title)'
+                        else format('d.fields -> %L', f) end;
+         if c->>'op' in ('in', 'not') and f in ('doc_num', 'title') then
+           -- d.id is never null, so its condition stays bare: the documents' key finds the document,
+           -- and the chunks' doc_id index its chunks, for the text and the vector half.
+           select format(case f when 'doc_num' then 'd.id = any(%L::text[])' else 'coalesce(d.title = any(%L::text[]), false)' end,
+                     coalesce(array_agg(v #>> '{}'), '{}'))
+             into part from jsonb_array_elements(c->'values') v;
+           if c->>'op' = 'not' then part := 'not ' || part; end if;
+         elsif c->>'op' in ('in', 'not') then
            select '(' || coalesce(string_agg(format('d.fields @> %L::jsonb or d.fields @> %L::jsonb',
                      jsonb_build_object(f, v), jsonb_build_object(f, jsonb_build_array(v))), ' or '), 'false') || ')'
              into part from jsonb_array_elements(c->'values') v;
            if c->>'op' = 'not' then part := 'not ' || part; end if;
          elsif c->>'op' = 'text' then
-           part := format('to_tsvector(%L::regconfig, %s) @@ %L::tsquery', p_config, kn_text_sql(json),
-             replace(plainto_tsquery(p_config::regconfig, c->>'terms')::text, ' & ', ' | '));
+           -- Every word of one option must match; the options are alternatives. A row from an API
+           -- before options came keeps its meaning then: any of its words.
+           if c ? 'options' then
+             select string_agg('(' || o || ')', ' | ') into q from (
+               select plainto_tsquery(p_config::regconfig, e #>> '{}')::text o
+               from jsonb_array_elements(c->'options') e) s
+             where o <> '';
+           else
+             q := nullif(replace(plainto_tsquery(p_config::regconfig, c->>'terms')::text, ' & ', ' | '), '');
+           end if;
+           part := case when q is null then 'false' else format('%s @@ %L::tsquery',
+             case f when 'title' then 'd.title_tsv'
+                    else format('to_tsvector(%L::regconfig, %s)', p_config, kn_text_sql(json)) end, q) end;
          elsif c->>'op' = 'int' then
            part := concat_ws(' and ',
              case when c ? 'gte' then format('kn_int(%s) >= %s::bigint', json, (c->>'gte')::bigint) end,
@@ -397,7 +417,7 @@ export const readFunctionMigrations = (reader: string): string[] => [
 
 export type FilterClauseRow =
   | { field: string; op: 'in' | 'not'; values: unknown[] }
-  | { field: string; op: 'text'; terms: string }
+  | { field: string; op: 'text'; terms: string; options: string[] }
   | { field: string; op: 'int'; gte?: number; lte?: number }
   | { field: string; op: 'str'; gte?: string; lte?: string }
   | { field: string; op: 'range'; gte?: number | string; lte?: number | string };
@@ -417,12 +437,18 @@ export const filterRows = (
       const kind = kinds.find((k) => clauseFits(k, clause)) ?? 'select';
       if (typeof clause !== 'object') {
         if (kind === 'text' && typeof clause !== 'boolean')
-          return { field, op: 'text', terms: String(clause) };
+          return { field, op: 'text', terms: String(clause), options: [String(clause)] };
         return { field, op: 'in', values: [clause] };
       }
       if (Array.isArray(clause)) return { field, op: 'in', values: clause };
       if ('not' in clause) return { field, op: 'not', values: clause.not };
-      if ('contains' in clause) return { field, op: 'text', terms: clause.contains.join(' ') };
+      if ('contains' in clause)
+        return {
+          field,
+          op: 'text',
+          terms: clause.contains.join(' '),
+          options: clause.contains.map(String),
+        };
       const integer =
         dataset.valueTypes?.[field] === 'integer' &&
         [clause.gte, clause.lte].every((b) => b === undefined || typeof b === 'number');

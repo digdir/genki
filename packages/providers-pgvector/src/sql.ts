@@ -49,6 +49,9 @@ const bound = (params: Params, element: string, op: '>=' | '<=', value: number |
     ? `(case when jsonb_typeof(${element}) = 'number' then ${element}::numeric end) ${op} ${params.add(value)}::numeric`
     : `(case when jsonb_typeof(${element}) = 'string' then ${element} #>> '{}' end) collate "C" ${op} ${params.add(value)}::text`;
 
+/** A document's id and title are columns of their own, never in its fields. */
+const columnOf: Record<string, string> = { doc_num: 'd.id', title: 'd.title' };
+
 const clauseSql = (
   params: Params,
   kind: FilterKind,
@@ -56,17 +59,27 @@ const clauseSql = (
   clause: FilterClause,
   config: () => string,
 ): string => {
-  const json = `d.fields -> ${params.add(field)}`;
+  const column = columnOf[field];
+  const json = column ? `to_jsonb(${column})` : `d.fields -> ${params.add(field)}`;
   const containsAny = (values: unknown[]) =>
-    `coalesce(${json} @> any (select jsonb_array_elements(${params.add(JSON.stringify(values))}::jsonb)), false)`;
-  const contains = (terms: string[]) =>
-    `to_tsvector(${config()}::regconfig, ${textOf(json)}) @@ ${anyTermQuery(config(), params.add(terms.join(' ')))}`;
+    column === 'd.id'
+      ? `d.id = any(${params.add(values.map(String))}::text[])`
+      : column
+        ? `coalesce(${column} = any(${params.add(values.map(String))}::text[]), false)`
+        : `coalesce(${json} @> any (select jsonb_array_elements(${params.add(JSON.stringify(values))}::jsonb)), false)`;
+  // Every word of one option must match; the options are alternatives.
+  const contains = (options: string[]) =>
+    `${field === 'title' ? 'd.title_tsv' : `to_tsvector(${config()}::regconfig, ${textOf(json)})`} @@ (${options
+      .map((o) => `plainto_tsquery(${config()}::regconfig, ${params.add(o)})`)
+      .join(' || ')})`;
   if (typeof clause === 'boolean' || (typeof clause !== 'object' && kind !== 'text'))
-    return `coalesce(${json} @> ${params.add(JSON.stringify(clause))}::jsonb, false)`;
+    return column
+      ? containsAny([clause])
+      : `coalesce(${json} @> ${params.add(JSON.stringify(clause))}::jsonb, false)`;
   if (typeof clause !== 'object') return contains([String(clause)]);
   if (Array.isArray(clause)) return containsAny(clause);
   if ('not' in clause) return `not ${containsAny(clause.not)}`;
-  if ('contains' in clause) return contains(clause.contains);
+  if ('contains' in clause) return contains(clause.contains.map(String));
   const bounds = [
     ...(clause.gte === undefined ? [] : [bound(params, 'e', '>=', clause.gte)]),
     ...(clause.lte === undefined ? [] : [bound(params, 'e', '<=', clause.lte)]),
