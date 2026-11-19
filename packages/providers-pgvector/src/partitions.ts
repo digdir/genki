@@ -219,22 +219,26 @@ const migrations: string[] = [
 const relationExists = `select to_regclass($1) is not null as applied`;
 const columnExists = `select exists (select 1 from pg_attribute
    where attrelid = to_regclass($1) and attname = $2 and not attisdropped) as applied`;
-const defaultExists = `select exists (select 1 from pg_attrdef d
+const sequenceDefault = `select exists (select 1 from pg_attrdef d
    join pg_attribute a on a.attrelid = d.adrelid and a.attnum = d.adnum
-   where d.adrelid = to_regclass($1) and a.attname = $2) as applied`;
+   where d.adrelid = to_regclass($1) and a.attname = $2
+     -- The default's dependency on its sequence: pg_get_expr would lock the table to print it.
+     and exists (select 1 from pg_depend p
+       where p.classid = 'pg_attrdef'::regclass and p.objid = d.oid
+         and p.refobjid = to_regclass($3))) as applied`;
 
 /**
  * How to tell from the catalog that a schema step is already applied. Even with `if not exists`,
  * `alter table` and `create index` take their table lock before they look, so a step run again
  * waits behind every writer and search; one already applied is skipped instead (issue 634). A
- * step that changes something that exists, such as another default, needs its own check here.
+ * step that matches no check, such as a default other than a sequence's, runs every time.
  */
 const appliedChecks: [RegExp, string][] = [
   [/^create table if not exists (\w+)/, relationExists],
   [/^create (?:unique )?index if not exists (\w+)/, relationExists],
   [/^create sequence if not exists (\w+)/, relationExists],
   [/^alter table (\w+) add column if not exists (\w+)/, columnExists],
-  [/^alter table (\w+) alter column (\w+) set default /, defaultExists],
+  [/^alter table (\w+) alter column (\w+) set default nextval\('(\w+)'\)$/, sequenceDefault],
 ];
 
 /** True when the step's effect is already in the catalog; false for steps that run every time. */
