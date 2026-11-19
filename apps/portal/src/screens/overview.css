@@ -249,6 +249,7 @@
 
 .overview-table-wrap {
   overflow-x: auto;
+  position: relative;
 }
 
 .overview-table {

@@ -7,7 +7,8 @@ What is here:
 - `genki.ts`: login (code flow with PKCE) and the calls to genki: services, a streamed answer with sources, threads and feedback. No dependencies and no imports from the genki repository; copy it.
 - `app.ts`, `index.html`, `styles.css`: one page that logs in, asks, shows the answer as it streams, shows the cited sources and reopens earlier threads.
 - `Dockerfile` and `default.conf.template`: an nginx image that serves the page, writes `/config.json` from the environment, proxies `/genki/` to genki and sets a strict CSP.
-- `genki.test.ts`: the login and streaming rules, against a fake genki.
+- `i18n.ts`: the page's texts in bokmål and English. The page starts in bokmål; its language button, or `?lang=en`, switches, and the login and genki's answers follow.
+- `genki.test.ts`: the login, session, language and streaming rules, against a fake genki.
 
 ## Settings
 

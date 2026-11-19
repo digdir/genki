@@ -1,3 +1,5 @@
+import { text, type Language } from './i18n.js';
+
 export interface Config {
   genkiUrl: string;
   apiBase: string;
@@ -7,6 +9,7 @@ export interface Config {
   postLogoutRedirectUri: string;
   altinnResource: string;
   service?: string;
+  language?: Language;
 }
 
 export interface Session {
@@ -133,7 +136,8 @@ const discover = async (config: Config, deps: Deps): Promise<Discovery> => {
   const response = await deps.fetch(
     viaProxy(config, `${config.issuer}/.well-known/openid-configuration`),
   );
-  if (!response.ok) throw new ApiError(response.status, undefined, 'login is not available');
+  if (!response.ok)
+    throw new ApiError(response.status, undefined, text(config.language, 'loginUnavailable'));
   return (await response.json()) as Discovery;
 };
 
@@ -158,7 +162,7 @@ export const loginUrl = async (config: Config, deps: Deps): Promise<string> => {
     authorization_details: JSON.stringify([
       { type: 'ansattporten:altinn:resource', resource: config.altinnResource },
     ]),
-    ui_locales: 'nb',
+    ui_locales: config.language ?? 'nb',
   }).toString();
   return url.toString();
 };
@@ -170,7 +174,7 @@ export const finishLogin = async (config: Config, deps: Deps, callback: URL): Pr
   deps.storage.removeItem(loginKey(config));
   const code = callback.searchParams.get('code');
   if (!pending || !code || callback.searchParams.get('state') !== pending.state)
-    throw new ApiError(400, 'login_state', 'the login could not be completed; try again');
+    throw new ApiError(400, 'login_state', text(config.language, 'loginFailed'));
   const discovery = await discover(config, deps);
   const response = await deps.fetch(viaProxy(config, discovery.token_endpoint), {
     method: 'POST',
@@ -183,7 +187,8 @@ export const finishLogin = async (config: Config, deps: Deps, callback: URL): Pr
       code_verifier: pending.verifier,
     }),
   });
-  if (!response.ok) throw new ApiError(response.status, 'token', 'the login was refused');
+  if (!response.ok)
+    throw new ApiError(response.status, 'token', text(config.language, 'loginRefused'));
   const tokens = (await response.json()) as {
     access_token: string;
     id_token?: string;
@@ -191,7 +196,7 @@ export const finishLogin = async (config: Config, deps: Deps, callback: URL): Pr
   };
   const claims = tokens.id_token ? decodeJwt(tokens.id_token) : {};
   if (tokens.id_token && claims.nonce !== pending.nonce)
-    throw new ApiError(400, 'login_nonce', 'the login could not be completed; try again');
+    throw new ApiError(400, 'login_nonce', text(config.language, 'loginFailed'));
   const now = deps.now?.() ?? Date.now();
   const session: Session = {
     accessToken: tokens.access_token,
@@ -208,6 +213,9 @@ export const currentSession = (config: Config, deps: Deps): Session | undefined 
   if (!session || session.expiresAt <= (deps.now?.() ?? Date.now())) return undefined;
   return session;
 };
+
+export const forgetSession = (config: Config, deps: Deps) =>
+  deps.storage.removeItem(sessionKey(config));
 
 export const logoutUrl = async (config: Config, deps: Deps): Promise<string> => {
   const session = JSON.parse(deps.storage.getItem(sessionKey(config)) ?? 'null') as Session | null;
@@ -230,7 +238,7 @@ export const citedIndexes = (text: string) => [
 export const sourceFor = (sources: Source[], index: number) =>
   sources.find((s) => s.index === index);
 
-const failure = async (response: Response) => {
+const failure = async (config: Config, response: Response) => {
   const body = (await response.json().catch(() => ({}))) as {
     error?: { message?: string; code?: string } | string;
     code?: string;
@@ -241,7 +249,10 @@ const failure = async (response: Response) => {
   return new ApiError(
     response.status,
     nested?.code ?? body.code,
-    nested?.message ?? body.detail ?? body.title ?? `genki answered ${response.status}`,
+    nested?.message ??
+      body.detail ??
+      body.title ??
+      `${text(config.language, 'genkiFailed')} ${response.status}`,
   );
 };
 
@@ -269,18 +280,19 @@ async function* dataFrames(body: ReadableStream<Uint8Array>): AsyncGenerator<str
 export const genki = (config: Config, deps: Deps, token: () => string | undefined) => {
   const call = async (path: string, init: RequestInit = {}) => {
     const bearer = token();
-    if (!bearer) throw new ApiError(401, 'signed_out', 'log in first');
+    if (!bearer) throw new ApiError(401, 'signed_out', text(config.language, 'signedOut'));
     const response = await deps.fetch(`${config.apiBase}${path}`, {
       ...init,
       headers: {
         accept: 'application/json',
-        'accept-language': 'nb',
+        'accept-language': config.language ?? 'nb',
         authorization: `Bearer ${bearer}`,
         ...(init.body ? { 'content-type': 'application/json' } : {}),
         ...init.headers,
       },
     });
-    if (!response.ok) throw await failure(response);
+    if (response.status === 401) forgetSession(config, deps);
+    if (!response.ok) throw await failure(config, response);
     return response;
   };
 
@@ -354,7 +366,11 @@ export const genki = (config: Config, deps: Deps, token: () => string | undefine
           onEvent({ type: 'sources', sources: frame.sources });
         }
         if (frame.choices?.[0]?.finish_reason === 'error')
-          throw new ApiError(500, frame.error?.code, frame.error?.message ?? 'the answer failed');
+          throw new ApiError(
+            500,
+            frame.error?.code,
+            frame.error?.message ?? text(config.language, 'answerFailed'),
+          );
       }
       return answer;
     },

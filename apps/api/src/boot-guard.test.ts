@@ -123,14 +123,14 @@ describe('booting the API', () => {
     expect(bootProblems({ ...real, LOCKDOWN_SERVICE_GROUPS: serviceGroup })).toEqual([]);
   });
 
-  it('startup refuses lockdown service groups without a service client list', () => {
+  it('starts with lockdown service groups and no service client list, since hosted clients admit them', () => {
     const locked = {
       ...real,
       GENAI_LOCKDOWN: 'true',
       LOCKDOWN_SERVICE_GROUPS: '2a2b2c2d-3e3f-4a4b-8c8d-9e9f0a0b0c0d',
     };
 
-    expect(bootProblems(locked)).toEqual([expect.stringContaining('LOCKDOWN_SERVICE_CLIENT_IDS')]);
+    expect(bootProblems(locked)).toEqual([]);
     expect(bootProblems({ ...locked, LOCKDOWN_SERVICE_CLIENT_IDS: 'ka-web' })).toEqual([]);
   });
 

@@ -15,6 +15,10 @@ server {
   location /genki/ {
     proxy_pass ${GENKI_UPSTREAM}/;
     proxy_ssl_server_name on;
+    proxy_ssl_name ${GENKI_UPSTREAM_HOST};
+    proxy_ssl_verify on;
+    proxy_ssl_verify_depth 3;
+    proxy_ssl_trusted_certificate /etc/ssl/certs/ca-certificates.crt;
     proxy_buffering off;
     proxy_read_timeout 300s;
   }

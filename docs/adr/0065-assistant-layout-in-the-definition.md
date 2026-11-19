@@ -2,7 +2,7 @@
 
 Status: proposed, 2026-11-19
 
-Left: a check of the layout against the block catalogue when a version is published; `GET /v1/models/{id}/interface`; the bounds `available` and `required`; and the theme, menu and pages. Each needs its own change.
+Left: the bounds `available` and `required`, and the theme (ADR 0063). Each needs its own change. The menu and pages are ADR 0061's.
 
 ## Context
 
@@ -15,10 +15,10 @@ The proposal for ADR 0056 in pull request #570 is the prior work this record bui
 ### Where it is stored
 
 - **`spec.interface` is an optional, closed field of a Service definition** (`packages/definitions/src/service-interface.ts`). Its one part now is `layout`. A theme (ADR 0063 as proposed), a menu and pages (ADR 0061 as proposed) are later fields beside it.
-- **It is part of the service.** It is saved in the draft (ADR 0051) through `GET` and `PUT /tenants/{tenant}/services/{id}/draft`, rebased with it, checked by `GET .../draft/checks`, published as a new version with a change reason, and an environment runs the version, and so the interface, it points to (ADR 0004). No new store, route or right.
+- **It is part of the service.** It is saved in the draft (ADR 0051) through `GET` and `PUT /tenants/{tenant}/services/{id}/draft`, rebased with it, checked by `GET .../draft/checks`, published as a new version with a change reason, and an environment runs the version, and so the interface, it points to (ADR 0004). Saving it needs no new store, route or right; the routes that read it are under Consequences.
 - **Reading and writing it needs what the draft needs.** A member of the tenant reads the draft; `manage-services` writes it. A caller from another tenant gets `404`, as for any draft.
 - **Runs ignore it.** No strategy, guardrail or capability reads it, and `definitionSubject` leaves it out, so a change of look alone keeps the eval runs a publishing gate looks up.
-- **Everything in it is public to the service's callers** once a route serves it. An owner puts no secret or personal data in it.
+- **Everything in it is public to the service's callers** once a route serves it, and the name, menu and pages to anyone on a hostname genki hosts. An owner puts no secret or personal data in it.
 
 ### The layout's shape
 
@@ -52,13 +52,16 @@ Turned down:
 - **Keeping it in the browser.** It reaches no other browser, person or host, and has no versions.
 - **The `Client` registration or a config entry per service.** Neither follows the version an environment runs, as ADR 0056's proposal sets out.
 - **Texts in one language.** genki is in bokmål and English, a service names its languages in `spec.languages`, and a hosted assistant follows the person's language.
-- **The catalogue check in `@genai/definitions`.** It would make the definitions package depend on UI code, and a block the catalogue drops would quarantine every version that used it. It comes with the read route, as ADR 0056 proposes, through `PluginSchemas` on publish.
+- **The catalogue check in `@genai/definitions`.** It would make the definitions package depend on UI code, and a block the catalogue drops would quarantine every version that used it. The check is the API's, on publish and validate; the definitions package holds only the list of block ids, kept alike with the builder's by a test.
 - **The bounds `available` and `required` now.** No host draws them yet, and the closed shape can gain them later without a new layout version.
 - **Building on pull request #570 itself.** It stays a proposal, and this record credits it; #570 may be closed when this record makes it obsolete.
 
 ## Consequences
 
 - Built: the shape and its limits, labels in bokmål and English for the schema form, `definitionSubject` leaving out `interface`, the builder saving to and opening from the draft, and the offer for a layout kept in the browser. Tests: `packages/definitions/src/definitions.test.ts` ("a service interface (spec.interface)"), `apps/api/src/service-drafts.test.ts` ("a service's interface in its draft", including refusal for another tenant and for a member without `manage-services`), `apps/api/src/definition-subject.test.ts`, `packages/strategy-builder/src/interface-layout.test.ts` and `apps/portal/src/screens/services/blocks/interface.test.tsx`.
-- Not built: the catalogue check on publish, `GET /v1/models/{id}/interface`, `available` and `required`, the theme, the menu and pages, editing texts per language in the builder, and the builder assistant's rule for links and `x-` values under `/spec/interface`.
-- A publish refuses a layout past a limit, but not yet a block id the catalogue does not hold. A host draws only the blocks it knows, so such a block is not drawn.
+- Built since: the catalogue check on publish and validate (`apps/api/src/interface-catalogue.ts`), which refuses a block the catalogue does not hold, and an `x-` block while a hosted Client draws the service; the list of catalogue blocks is `catalogueBlockIds` in `@genai/definitions`, kept alike with the builder's `blockIds` by `packages/strategy-builder/src/interface-layout.test.ts`. A publish reports refused blocks together with a missing dataset. `GET /v1/models/{id}/interface` answers the interface of the version the caller's environment runs, with `Cache-Control: private, no-store`, to a caller that may invoke the service; a caller that cannot resolve the model gets `404 model_not_found`, and a service with no layout `404 interface_not_found`. `menu` and `pages` in the shape (ADR 0061).
+- Built since: `GET /v1/hosts/{hostname}` and `GET /v1/hosts/{hostname}/pages/{id}` (`apps/api/src/hosts.ts`), public and cached 60 seconds, for a hostname the operator has opened to the tenant in `GENAI_HOSTED_HOSTNAMES` and a hosted Client claims, whose environment points to a version with a layout. Every other hostname or page gets the same `404` with `urn:genai:problem:host-not-found` and `no-store`, so the answer does not tell why.
+- What the public route reveals is decided: only what the page needs before login, the tenant's organisation number, the service id, the environment, the assistant's name, the issuer and OIDC client id (both public in any login redirect), the menu and the page titles. Not the Client's registration id, the version, the layout or its profile, which come after login from the interface route.
+- Tests: `apps/api/src/hosts.test.ts` ("the assistant host", "the interface catalogue", "a service's interface") and `packages/definitions/src/definitions.test.ts`.
+- Not built: `available` and `required`, the theme, editing texts per language in the builder, and the builder assistant's rule for links and `x-` values under `/spec/interface`.
 - A stored interface is a contract from its first publish. Changes to its shape are additive.

@@ -423,6 +423,7 @@ button.flow-card-main {
 
 .scroll-x {
   overflow-x: auto;
+  position: relative;
 }
 
 .reco-table {
@@ -617,6 +618,16 @@ button.flow-card-main {
   width: 100%;
 }
 
+.block-picker[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.block-picker > .stack-sm {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
 .block-picker-list {
   margin: 0;
   padding: 0;
@@ -624,8 +635,11 @@ button.flow-card-main {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  max-height: 50vh;
-  overflow: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  position: relative;
 }
 
 .block-picker-item {
@@ -684,6 +698,7 @@ button.flow-card-main {
 
 .sf-table-box {
   overflow-x: auto;
+  position: relative;
 }
 
 .sf-cell-stack {

@@ -179,6 +179,8 @@ param alertThresholds object = {
   loginKeyFailures: 1
 }
 
+@description('Deploys the generic assistant host (ADR 0061) in its own environment, with its own identity and Key Vault (ADR 0062).')
+param assistantHostEnabled bool = false
 @description('A Service Health alert for the services genki uses. Its rule is scoped to the subscription, where the deploy identity has no role (infra/README.md, "Backups").')
 param serviceHealthAlertEnabled bool = false
 
@@ -570,6 +572,33 @@ module apps 'modules/containerapps.bicep' = {
   }
 }
 
+module assistantHostInfra 'modules/assistant-host-infra.bicep' = if (assistantHostEnabled && infra) {
+  name: 'assistant-host-infra'
+  params: {
+    name: baseName
+    location: location
+    tags: allTags
+    workspaceId: infra
+      ? monitoring!.outputs.workspaceId
+      : resourceId('Microsoft.OperationalInsights/workspaces', '${baseName}-logs')
+    registryName: registryName
+    keyVaultPublicNetworkAccess: keyVaultPublicNetworkAccess
+  }
+}
+
+module assistantHost 'modules/assistant-host.bicep' = if (assistantHostEnabled) {
+  name: 'assistant-host'
+  dependsOn: [assistantHostInfra]
+  params: {
+    name: baseName
+    location: location
+    tags: allTags
+    registryName: registryName
+    appsImage: appsImage
+    apiUpstream: 'https://${apps.outputs.fqdn}'
+  }
+}
+
 module alerts 'modules/alerts.bicep' = if (alertsEnabled && infra) {
   name: 'alerts'
   params: {
@@ -696,5 +725,14 @@ output knowledgeWorkerIdentity object = knowledgeOn
 output knowledgeSetupJobName string = apps.outputs.knowledgeSetupJobName
 output platformBackupJobName string = apps.outputs.platformBackupJobName
 @description('Whether this deploy applied the infrastructure, and the fingerprint it applied: deploy.yml compares the last full deploy\'s fingerprint with its own.')
+output assistantHost object = assistantHostEnabled
+  ? {
+      appName: assistantHost!.outputs.appName
+      fqdn: assistantHost!.outputs.fqdn
+      staticIp: assistantHost!.outputs.staticIp
+      verificationId: assistantHost!.outputs.verificationId
+      vaultName: take('${baseName}-hostkv', 24)
+    }
+  : {}
 output infrastructureDeployed bool = infra
 output infraFingerprint string = infraFingerprint

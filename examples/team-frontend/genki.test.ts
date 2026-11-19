@@ -127,7 +127,9 @@ describe('login', () => {
     await loginUrl(config, deps);
     const pending = pendingLogin(deps);
     const callback = new URL(`http://localhost:5195/callback?code=c1&state=${pending.state}`);
-    await expect(finishLogin(config, deps, callback)).rejects.toThrow(/login/);
+    await expect(finishLogin(config, deps, callback)).rejects.toMatchObject({
+      code: 'login_nonce',
+    });
     expect(currentSession(config, deps)).toBeUndefined();
   });
 });
@@ -223,5 +225,35 @@ describe('calling genki', () => {
       status: 403,
       code: 'forbidden',
     });
+  });
+
+  it('forgets the stored session when genki refuses the token, so the page asks for a new login', async () => {
+    const { deps } = fake(() => json({ error: { message: 'no', code: 'unauthorized' } }, 401));
+    deps.storage.setItem(
+      'team-frontend.session',
+      JSON.stringify({ accessToken: 'at', expiresAt: now() + 60_000 }),
+    );
+    const platform = genki(config, deps, () => currentSession(config, deps)?.accessToken);
+    await expect(platform.threads()).rejects.toMatchObject({ status: 401 });
+    expect(currentSession(config, deps)).toBeUndefined();
+  });
+
+  it('asks genki and the login in the language the page uses', async () => {
+    const english = { ...config, language: 'en' as const };
+    const { deps, calls } = fake((url) =>
+      url.includes('openid') ? json(discovery) : json({ data: [] }),
+    );
+    const login = new URL(await loginUrl(english, deps));
+    await genki(english, deps, () => 'at').services();
+    expect(login.searchParams.get('ui_locales')).toBe('en');
+    expect(new Headers(calls.at(-1)?.init?.headers).get('accept-language')).toBe('en');
+  });
+
+  it('writes its own messages in the language the page uses', async () => {
+    const { deps } = fake(() => json({}));
+    await expect(
+      genki({ ...config, language: 'en' }, deps, () => undefined).threads(),
+    ).rejects.toThrow('Log in first.');
+    await expect(genki(config, deps, () => undefined).threads()).rejects.toThrow('Logg inn først.');
   });
 });

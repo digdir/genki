@@ -125,6 +125,7 @@ export const adminActionRights: Readonly<
   'platform.keypolicy.attach': 'manage-services',
   'platform.clients.save': 'manage-services',
   'platform.clients.remove': 'manage-services',
+  'platform.client.hosted': 'operator',
   'platform.maskinporten-client.save': 'manage-services',
   'platform.maskinporten-client.remove': 'manage-services',
   'platform.trigger.pause': 'manage-services',

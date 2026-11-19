@@ -11,10 +11,44 @@ import {
   type Deps,
   type Source,
 } from './genki.js';
+import { languageOf, text, type Language, type TextKey } from './i18n.js';
 
-const config = (await (await fetch('/config.json')).json()) as Config;
+const languageKey = 'team-frontend.language';
+const storedLanguage = () => {
+  try {
+    return localStorage.getItem(languageKey);
+  } catch {
+    return null;
+  }
+};
+const language: Language = languageOf(
+  new URLSearchParams(location.search).get('lang') ?? storedLanguage(),
+);
+
+const config: Config = {
+  ...((await (await fetch('/config.json')).json()) as Config),
+  language,
+};
 const deps: Deps = { fetch: (...args) => fetch(...args), storage: sessionStorage };
 const element = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+
+document.documentElement.lang = language;
+document.title = text(language, 'title');
+for (const node of document.querySelectorAll<HTMLElement>('[data-text]'))
+  node.textContent = text(language, node.dataset.text as TextKey);
+for (const node of document.querySelectorAll<HTMLElement>('[data-label]'))
+  node.setAttribute('aria-label', text(language, node.dataset.label as TextKey));
+
+element<HTMLButtonElement>('language').addEventListener('click', () => {
+  try {
+    localStorage.setItem(languageKey, language === 'nb' ? 'en' : 'nb');
+  } catch {
+    // Without storage the choice lasts only for this page.
+  }
+  const url = new URL(location.href);
+  url.searchParams.set('lang', language === 'nb' ? 'en' : 'nb');
+  location.assign(url);
+});
 const status = element<HTMLParagraphElement>('status');
 
 const show = (message: string) => {

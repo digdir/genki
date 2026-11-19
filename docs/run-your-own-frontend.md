@@ -4,7 +4,7 @@ Status: preview. The template in `examples/team-frontend` has been run end to en
 
 A service's end users can reach it in two ways ([ADR 0061](adr/0061-genki-hosts-a-services-assistant.md)):
 
-- **The genki host.** genki draws the service's assistant from its published layout, on the service's own hostname, with login handled by genki. No code and no deploy. Use it when the building blocks in the catalogue draw what you need.
+- **The genki host.** genki draws the service's assistant from its published layout, on the service's own hostname. Built so far (#832): the public host lookup, the layout route and `apps/assistant`, which draws the assistant. Not built yet: its login, the BFF that keeps tokens on the server (ADR 0034, proposed), themes and custom hostnames. Use it when the building blocks in the catalogue draw what you need and those parts are in place.
 - **Your own frontend.** You write the code, run it in your own container in your own Azure (or anywhere), and register it in genki as a frontend of your service. People log in with Ansattporten, and your frontend calls genki with their token. This page is about this way.
 
 Start from the template: [`examples/team-frontend`](../examples/team-frontend/README.md). It is plain TypeScript with no dependencies, an nginx image and a Dockerfile.
@@ -100,7 +100,7 @@ The page's CSP allows scripts and styles from its own origin only and connection
 
 - One client id, one service. A thread belongs to the organisation and the person's `issuer|sub`, and Ansattporten's `sub` is per client id, so a new client id or issuer gives every person an empty thread list.
 - Ansattporten TEST gives a public client 5-minute access tokens and no refresh token. When the token runs out, the template asks the person to log in again; a frontend can renew it with `prompt=none` in a hidden frame of its own origin, as genki's workspace does, or use a server of its own.
-- Rate limits, budgets and the service's guardrails apply to your frontend's calls as to every other caller's. A `403` names what is missing: the channel, the origin, the environment or the person's right.
+- Rate limits, budgets and the service's guardrails apply to your frontend's calls as to every other caller's. A call on a channel the registration does not list, or from an origin it does not list, answers `401`, as a missing token does, so check the registration before you ask the person to log in again. A `403` names an environment the frontend may not use or a right the person lacks.
 - genki-test is one environment with synthetic data. Real people do not log in there.
 
 ## Moving to production later
@@ -108,5 +108,5 @@ The page's CSP allows scripts and styles from its own origin only and connection
 Production login is decided in #464, and genki's production environment does not exist yet. What is known now:
 
 - You register a client in Ansattporten's production environment and register its client id in genki's production, as in step 1. The issuer and client id change, so threads from test do not follow (ADR 0061, Consequences).
-- Before real people log in, keep tokens off the browser: run a small server of your own as a confidential client that keeps the tokens and gives the page an `HttpOnly`, `Secure`, `__Host-` session cookie, the rule genki follows for its own apps ([ADR 0034](adr/0034-tokens-in-the-browser.md)). Or move to the genki host, which has that server built in.
+- Before real people log in, keep tokens off the browser: run a small server of your own as a confidential client that keeps the tokens and gives the page an `HttpOnly`, `Secure`, `__Host-` session cookie, the rule genki follows for its own apps ([ADR 0034](adr/0034-tokens-in-the-browser.md)). Or move to the genki host once its BFF, proposed in ADR 0061 and not built yet, is in place.
 - `LOCKDOWN_SERVICE_CLIENT_IDS` is a genki-test setting; production checks the person's Altinn rights for the service.
