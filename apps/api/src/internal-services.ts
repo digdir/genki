@@ -49,7 +49,12 @@ export const internalServiceViewer =
   (caller: (request: Request) => Promise<Principal | undefined>): MiddlewareHandler =>
   async (c, next) => {
     const principal = await caller(c.req.raw);
-    await hidingInternalServicesFrom(principal, next, c.req.header(surfaceHeader));
+    const reads = c.req.method === 'GET' || c.req.method === 'HEAD';
+    await hidingInternalServicesFrom(
+      principal,
+      next,
+      reads ? c.req.header(surfaceHeader) : undefined,
+    );
   };
 
 export type DraftDefinition = (tenant: string, id: string) => Promise<unknown>;

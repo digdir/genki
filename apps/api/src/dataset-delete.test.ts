@@ -18,6 +18,7 @@ import {
   type DatasetDeleteResult,
 } from './dataset-delete.js';
 import { deleteHoldMessage } from './ingestion.js';
+import { internalServiceViewer } from './internal-services.js';
 import { digdir, fakeModels, files, testService } from './testkit.js';
 
 const other = '999888777';
@@ -32,6 +33,13 @@ const principals: Record<string, Principal> = {
     authorizedFor: [{ org: digdir, actions: ['use-services'] }],
   },
   drift: { kind: 'operator', issuer: 'test', subject: 'drift' },
+  owner: {
+    kind: 'operator',
+    issuer: 'test',
+    subject: 'eier',
+    tenant: digdir,
+    authorizedFor: [{ org: digdir }],
+  },
 };
 const embedding = { model: 'fake/embed', dimensions: 8 };
 const reason = 'Datasettet ble satt opp med feil modell';
@@ -121,15 +129,27 @@ const boot = async (
     extensions: platform.extensions,
   });
   const app = new Hono();
+  app.use(
+    '*',
+    internalServiceViewer(
+      async (request) => principals[request.headers.get('authorization')?.slice(7) ?? ''],
+    ),
+  );
   platform.mount(app, admin);
   const call = (
     path: string,
     as: string,
-    init: { method?: string; body?: unknown; reason?: string } = {},
+    init: {
+      method?: string;
+      body?: unknown;
+      reason?: string;
+      headers?: Record<string, string>;
+    } = {},
   ) =>
     app.request(path, {
       method: init.method ?? (init.body === undefined ? 'GET' : 'POST'),
       headers: {
+        ...init.headers,
         authorization: `Bearer ${as}`,
         'content-type': 'application/json',
         ...(init.reason === ''
@@ -233,6 +253,27 @@ const reads = (dataset: string) => ({
 });
 
 describe('deleting a dataset', () => {
+  it('an operator in the portal cannot delete a dataset an internal service uses', async () => {
+    const booted = await boot();
+    await createDataset(booted, 'veiledere');
+    const internal = reads(`${digdir}/veiledere`);
+    const published = await booted.platform.definitions.publish(
+      { ...internal, spec: { ...internal.spec, visibility: 'internal' } },
+      'test',
+      'Røyktesten leser veilederne',
+      files,
+    );
+    expect(published.ok).toBe(true);
+
+    const refused = await booted.call(base('veiledere'), 'owner', {
+      method: 'DELETE',
+      headers: { 'genki-surface': 'portal' },
+    });
+
+    expect(refused.status).toBe(409);
+    expect(await json(refused)).toMatchObject({ type: datasetInUseType });
+  });
+
   it('refuses while a published service reads the dataset, and names it on the dataset', async () => {
     const booted = await boot();
     await createDataset(booted, 'veiledere');
