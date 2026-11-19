@@ -9,7 +9,12 @@ import { TenantGates } from './config/TenantGates';
 import { FeedbackTab, feedbackFrom } from './quality/FeedbackTab';
 import { LiveTestSets } from './quality/LiveTestSets';
 import { Improvements } from './quality/Improvements';
-import { FeedbackSection, QualityPage, qualityAddress } from './quality/QualityPage';
+import {
+  FeedbackProposals,
+  FeedbackSection,
+  QualityPage,
+  qualityAddress,
+} from './quality/QualityPage';
 import { problemTitle, type Flash, type SetFlash } from './quality/shared';
 import './quality.css';
 
@@ -135,6 +140,7 @@ export const Quality = ({ api, tenant, tenantName, route, id }: ServiceScreenPro
       ) : view.kind === 'feedback' ? (
         <>
           <FeedbackSection api={api} tenant={tenant} serviceId={id} />
+          <FeedbackProposals api={api} tenant={tenant} serviceId={id} setFlash={setFlash} />
           <Improvements api={api} tenant={tenant} serviceId={id} setFlash={setFlash} />
         </>
       ) : view.kind === 'feedback-all' ? (

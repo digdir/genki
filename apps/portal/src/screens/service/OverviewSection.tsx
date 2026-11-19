@@ -12,10 +12,11 @@ import { useAsync } from '../../hooks';
 import type { PlainKey, T } from '../../i18n';
 import { rightLabel } from '../../Shell';
 import type { ModelOption, PublishedDefinition, TaskRow } from '../../types';
-import { gateStopReason } from '../quality/QualityOverview';
+import { gateStopReason, gateStops } from '../quality/QualityOverview';
 import { draftChanges } from '../services/setup-diff';
 import type { VersionItem } from '../services/VersionsTab';
 import {
+  completedRuns,
   dayMs,
   monthCost,
   qualityTrend,
@@ -43,8 +44,38 @@ const settled = <T,>(r: PromiseSettledResult<T>) =>
 
 const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
 
-const matchDataset = (datasets: DatasetView[] | undefined, tenant: string, ref: string) =>
-  datasets?.find((d) => d.fullId === ref || d.fullId === `${tenant}/${ref}` || d.id === ref);
+const refusedGates = (message: string) => {
+  const open = message.indexOf('(');
+  const close = message.indexOf(')', open);
+  if (open < 0 || close < 0) return [];
+  return message
+    .slice(open + 1, close)
+    .split(',')
+    .map((g) => g.trim())
+    .filter(Boolean);
+};
+
+const residencyRank = ['norway', 'eu', 'global'];
+
+const widest = (places: (string | undefined)[]) =>
+  places.reduce<string | undefined>(
+    (wide, place) =>
+      place && residencyRank.indexOf(place) > residencyRank.indexOf(wide ?? '') ? place : wide,
+    undefined,
+  );
+
+const matchDataset = (
+  datasets: (DatasetView & { aliases?: string[] })[] | undefined,
+  tenant: string,
+  ref: string,
+) =>
+  datasets?.find(
+    (d) =>
+      d.fullId === ref ||
+      d.fullId === `${tenant}/${ref}` ||
+      d.id === ref ||
+      d.aliases?.includes(ref) === true,
+  );
 
 export const channelText = (
   run: Pick<TaskRow, 'channel' | 'actor' | 'frontend'>,
@@ -267,17 +298,15 @@ export const OverviewSection = ({
     },
     [api, tenant, id],
   );
-  const [keys] = useAsync(
-    async (signal) => (await api.listServiceKeys(tenant, id, signal)).filter((k) => !k.revokedAt),
-    [api, tenant, id],
-  );
   const [who] = useAsync(
     async (signal) => {
-      const [shared, access] = await Promise.allSettled([
+      const [shared, access, listed] = await Promise.allSettled([
         api.serviceTabs.sharedWith(tenant, id, signal),
         api.accessPeople.services(tenant, signal),
+        api.listServiceKeys(tenant, id, signal),
       ]);
       const sharedWith = settled(shared);
+      const keys = settled(listed)?.filter((k) => !k.revokedAt);
       const count = async (by: { actor?: string; frontend?: string } = {}) =>
         (
           await api.serviceTabs.taskPage(
@@ -286,7 +315,7 @@ export const OverviewSection = ({
             signal,
           )
         ).total;
-      const keyIds = sharedWith?.apiKeys.map((k) => k.id) ?? [];
+      const keyIds = keys?.map((k) => k.id) ?? [];
       const browserIds =
         sharedWith?.frontends.filter((fe) => fe.kind !== 'server').map((fe) => fe.id) ?? [];
       const counted = await Promise.allSettled([
@@ -306,6 +335,7 @@ export const OverviewSection = ({
       );
       return {
         shared: sharedWith,
+        keys,
         total,
         byKey,
         byFrontend,
@@ -335,6 +365,10 @@ export const OverviewSection = ({
   const days = usage.status === 'ready' ? usage.data : [];
   const shown = days.slice(-barDays);
   const dayToday = days.at(-1);
+  const quietToday = !dayToday?.runs;
+  const lastRunDay = days.findLast((x) => x.runs > 0);
+  const lastTimedDay = days.findLast((x) => x.latency);
+  const dayName = (date: string) => shortDay(`${date}T12:00:00Z`);
   const recentRuns =
     recent.status === 'ready' ? (recent.data.data ?? []).filter((r) => r.service === id) : [];
   const fresh = recent.status === 'ready' && recent.data.total === 0;
@@ -353,8 +387,13 @@ export const OverviewSection = ({
     const day = startOfDay(new Date(iso)).getTime();
     return day === today.getTime() || day === today.getTime() - dayMs ? when(iso) : shortDay(iso);
   };
-  const clock = (iso: string) =>
-    startOfDay(new Date(iso)).getTime() === today.getTime() ? f.time(iso) : when(iso);
+  const clock = (iso: string) => {
+    const day = startOfDay(new Date(iso)).getTime();
+    if (day === today.getTime()) return f.time(iso);
+    if (day === today.getTime() - dayMs)
+      return t('serviceHealth.yesterdayAtInline', { time: f.time(iso) });
+    return when(iso);
+  };
   const percentChange = (change: number | undefined) =>
     change === undefined ? undefined : `${change >= 0 ? '+' : ''}${f.percent(change, 0)}`;
   const seconds = (ms: number) =>
@@ -378,12 +417,28 @@ export const OverviewSection = ({
     if (usage.status === 'error') return { value: notAvailable, sub: '', tone: 'neutral' as Tone };
     const runs = dayToday?.runs ?? 0;
     const count = dayToday?.failed ?? 0;
-    if (fresh || runs === 0)
+    if (fresh)
       return {
         value: t('serviceHealth.noData'),
         sub: t('serviceHealth.comesWithRuns'),
         tone: 'neutral' as Tone,
       };
+    if (runs === 0)
+      return lastRunDay
+        ? {
+            value: f.percent(lastRunDay.failed / lastRunDay.runs, 1),
+            sub: t('serviceHealth.failedOn', {
+              day: dayName(lastRunDay.date),
+              failed: lastRunDay.failed,
+              runs: lastRunDay.runs,
+            }),
+            tone: 'neutral' as Tone,
+          }
+        : {
+            value: t('serviceHealth.noData'),
+            sub: t('serviceHealth.noRunsToday'),
+            tone: 'neutral' as Tone,
+          };
     return {
       value: f.percent(count / runs, 1),
       sub: topCause
@@ -394,15 +449,29 @@ export const OverviewSection = ({
   })();
 
   const latency = dayToday?.latency ?? null;
+  const earlierLatency = quietToday ? lastTimedDay : undefined;
   const latencyTile =
     usage.status === 'error'
       ? { value: notAvailable, sub: '' }
-      : latency && !fresh
-        ? {
-            value: seconds(latency.p50Ms),
-            sub: t('serviceHealth.latencySub', { p95: seconds(latency.p95Ms) }),
-          }
-        : { value: t('serviceHealth.noData'), sub: t('serviceHealth.comesWithRuns') };
+      : fresh
+        ? { value: t('serviceHealth.noData'), sub: t('serviceHealth.comesWithRuns') }
+        : latency
+          ? {
+              value: seconds(latency.p50Ms),
+              sub: t('serviceHealth.latencySub', { p95: seconds(latency.p95Ms) }),
+            }
+          : earlierLatency?.latency
+            ? {
+                value: seconds(earlierLatency.latency.p50Ms),
+                sub: t('serviceHealth.latencyOn', {
+                  day: dayName(earlierLatency.date),
+                  p95: seconds(earlierLatency.latency.p95Ms),
+                }),
+              }
+            : {
+                value: t('serviceHealth.noData'),
+                sub: t(quietToday ? 'serviceHealth.noRunsToday' : 'serviceHealth.comesWithRuns'),
+              };
 
   const month = monthCost(days);
   const monthName = (date: Date) =>
@@ -442,7 +511,10 @@ export const OverviewSection = ({
       : !trend
         ? {
             value: t('serviceHealth.notMeasured'),
-            sub: t('serviceHealth.makeTestSet'),
+            sub:
+              quality.status === 'ready' && quality.data.sets.length
+                ? t('serviceHealth.setsNotRun', { count: quality.data.sets.length })
+                : t('serviceHealth.makeTestSet'),
             tone: 'warning' as Tone,
           }
         : {
@@ -477,11 +549,11 @@ export const OverviewSection = ({
 
   const lastDraftRun = (() => {
     if (quality.status !== 'ready') return undefined;
-    return quality.data.runs
-      .filter((r) => r.version === 'draft' && r.endedAt)
-      .sort((a, b) => (b.endedAt ?? '').localeCompare(a.endedAt ?? ''))[0];
+    return completedRuns(quality.data.runs).find((r) => r.version === 'draft' && r.endedAt);
   })();
 
+  const publishedVersion =
+    running.status === 'ready' ? running.data.history?.latest?.version : undefined;
   const needs = (): { items: Need[]; pending: number } => {
     const items: Need[] = [];
     let pending = 0;
@@ -508,7 +580,15 @@ export const OverviewSection = ({
       const { summary } = draft.data;
       const stale = !lastDraftRun || lastDraftRun.draftRevision !== summary.revision;
       const stops = draft.data.checks?.problems.filter((p) => p.path.startsWith('spec.evaluation'));
-      const stoppedBy = draft.data.gates.find((g) => stops?.some((p) => p.message.includes(g.id)));
+      const refused = [...new Set(stops?.flatMap((p) => refusedGates(p.message)) ?? [])];
+      const stopping =
+        quality.status === 'ready'
+          ? draft.data.gates.filter(
+              (g) => refused.includes(g.id) && gateStops(g, quality.data.runs, publishedVersion),
+            )
+          : [];
+      const stoppedBy = stopping.length === 1 ? stopping[0] : undefined;
+      const stopCount = stopping.length || refused.length || (stops?.length ?? 0);
       if (stale || stops?.length)
         items.push({
           key: 'draft',
@@ -525,18 +605,12 @@ export const OverviewSection = ({
                   changed: clock(summary.at),
                 })
               : t('serviceHealth.changedAt', { changed: clock(summary.at) }),
-            stops?.length === 1 && stoppedBy && quality.status === 'ready'
+            stoppedBy && quality.status === 'ready'
               ? t('serviceHealth.gateStops', {
-                  reason: gateStopReason(
-                    t,
-                    f,
-                    stoppedBy,
-                    quality.data.runs,
-                    running.status === 'ready' ? running.data.history?.latest?.version : undefined,
-                  ),
+                  reason: gateStopReason(t, f, stoppedBy, quality.data.runs, publishedVersion),
                 })
               : stops?.length
-                ? t('serviceHealth.gatesStop', { count: stops.length })
+                ? t('serviceHealth.gatesStop', { count: stopCount })
                 : '',
           ]
             .filter(Boolean)
@@ -544,9 +618,9 @@ export const OverviewSection = ({
           link: { href: href('quality'), label: t('serviceHealth.testDraft') },
         });
     }
-    if (keys.status === 'loading') pending += 1;
-    else if (keys.status === 'ready') {
-      const idle = keys.data
+    if (who.status === 'loading') pending += 1;
+    else if (who.status === 'ready' && who.data.keys) {
+      const idle = who.data.keys
         .map((k) => ({ k, days: unusedDays(k.lastUsedAt ?? k.createdAt, now()) }))
         .filter((x) => x.days !== undefined && x.days >= unusedAfterDays)
         .sort((a, b) => (b.days ?? 0) - (a.days ?? 0))[0];
@@ -569,9 +643,18 @@ export const OverviewSection = ({
   const primary = d.spec.model.primary;
   const known = running.status === 'ready' ? running.data : undefined;
   const model = known?.models?.find((m) => m.id === primary) as ModelOption | undefined;
-  const residency = known ? (model?.residency ?? d.spec.model.residency) : undefined;
-  const residencyKey = residency ? residencyKeys[residency] : undefined;
   const sources = datasetsOf(d.spec);
+  const sourceDatasets = sources.flatMap((ref) => {
+    const found = matchDataset(known?.datasets, tenant, ref.dataset);
+    return found ? [found] : [];
+  });
+  const residency = known
+    ? widest([
+        model?.residency ?? d.spec.model.residency,
+        ...sourceDatasets.map((ds) => ds.effectiveResidency ?? ds.residency),
+      ])
+    : undefined;
+  const residencyKey = residency ? residencyKeys[residency] : undefined;
   const consent = (published?.definition as ServiceDefinition | undefined)?.spec?.riskConfirmation;
 
   const changeCount = (() => {
@@ -583,6 +666,7 @@ export const OverviewSection = ({
   })();
 
   const shared = who.status === 'ready' ? who.data.shared : undefined;
+  const serviceKeys = who.status === 'ready' ? who.data.keys : undefined;
   const sharedText =
     !shared || (Array.isArray(shared.tenants) && shared.tenants.length === 0)
       ? t('serviceHealth.notShared')
@@ -597,7 +681,7 @@ export const OverviewSection = ({
       const runs = who.status === 'ready' ? who.data.byFrontend.get(frontendId) : undefined;
       return runs === undefined ? undefined : runShare(runs, total);
     }
-    const bound = shared?.apiKeys.filter((k) => k.client === frontendId) ?? [];
+    const bound = serviceKeys?.filter((k) => k.client === frontendId) ?? [];
     if (!bound.length) return undefined;
     const counts = bound.map((k) => keyRuns(k.id));
     if (counts.some((c) => c === undefined)) return undefined;
@@ -617,8 +701,8 @@ export const OverviewSection = ({
 
   const versionsNewest = history ? [...history.versions].reverse() : [];
   const sets = quality.status === 'ready' ? quality.data.sets.length : 0;
-  const reachable = (shared?.frontends.length ?? 0) + (shared?.apiKeys.length ?? 0);
-  const ownKeys = shared?.apiKeys.filter((k) => !k.client) ?? [];
+  const reachable = (shared?.frontends.length ?? 0) + (serviceKeys?.length ?? 0);
+  const ownKeys = serviceKeys?.filter((k) => !k.client) ?? [];
   const frontendName = (frontendId: string) =>
     shared?.frontends.find((fe) => fe.id === frontendId)?.name;
   const stepLabel = (done: boolean) =>
@@ -634,7 +718,7 @@ export const OverviewSection = ({
           {found.name}
         </Link>
       ) : (
-        <span key={ref.dataset}>{ref.dataset}</span>
+        <span key={ref.dataset}>{t('serviceHealth.unknownDataset', { id: ref.dataset })}</span>
       );
     });
     const joined: ReactNode[] = [];
@@ -648,6 +732,11 @@ export const OverviewSection = ({
   })();
 
   const runsLoading = usage.status === 'loading' || recent.status === 'loading';
+  const oldestShown = Math.min(
+    ...recentRuns.map((r) => startOfDay(new Date(r.createdAt)).getTime()),
+  );
+  const daysBack = recentRuns.length ? Math.round((today.getTime() - oldestShown) / dayMs) : 0;
+  const logPeriod = `?period=${daysBack === 0 ? 'today' : daysBack <= 6 ? 'week' : daysBack <= 29 ? 'month' : 'all'}`;
   const tileBars = (values: number[]) => (fresh ? undefined : values);
 
   return (
@@ -658,10 +747,7 @@ export const OverviewSection = ({
         id={id}
         name={name}
         published={published}
-        datasets={sources.flatMap((ref) => {
-          const found = matchDataset(known?.datasets, tenant, ref.dataset);
-          return found ? [found] : [];
-        })}
+        datasets={sourceDatasets}
       />
 
       {fresh && latest ? (
@@ -765,7 +851,9 @@ export const OverviewSection = ({
             bars={<Bars values={tileBars(shown.map((x) => x.runs))} tone="accent" />}
           />
           <Tile
-            label={fresh ? t('serviceHealth.failShareNew') : t('serviceHealth.failShare')}
+            label={
+              fresh || quietToday ? t('serviceHealth.failShareNew') : t('serviceHealth.failShare')
+            }
             href={href('log', '?status=failed&period=today')}
             loading={runsLoading || failures.status === 'loading'}
             {...failTile}
@@ -803,7 +891,7 @@ export const OverviewSection = ({
             <Heading level={2} data-size="xs" id="ov-runs">
               {t('serviceOverview.lastRuns')}
             </Heading>
-            <Link href={href('log')}>{t('serviceHealth.wholeLog')}</Link>
+            <Link href={href('log', logPeriod)}>{t('serviceHealth.wholeLog')}</Link>
           </div>
           {recent.status === 'loading' ? (
             <div
@@ -844,15 +932,13 @@ export const OverviewSection = ({
                     const s = status(r.status);
                     return (
                       <Table.Row key={r.id}>
-                        <Table.Cell className="nowrap numeric">{when(r.createdAt)}</Table.Cell>
+                        <Table.Cell className="numeric">{when(r.createdAt)}</Table.Cell>
                         <Table.Cell>
                           <Link href={href('log', `/${encodeURIComponent(r.id)}`)}>
                             {r.excerpt || t('serviceOverview.openRun')}
                           </Link>
                         </Table.Cell>
-                        <Table.Cell className="meta nowrap">
-                          {channelText(r, t, frontendName)}
-                        </Table.Cell>
+                        <Table.Cell className="meta">{channelText(r, t, frontendName)}</Table.Cell>
                         <Table.Cell>
                           <Tag data-size="sm" data-color={s.color}>
                             {s.text}
@@ -997,7 +1083,7 @@ export const OverviewSection = ({
                   <Link href={href('channels')}>{t('serviceHealth.add')}</Link>
                 </li>
               ) : null}
-              {shared ? (
+              {serviceKeys ? (
                 <li>
                   <span className="stack-xs">
                     <strong>
