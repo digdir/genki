@@ -11,6 +11,8 @@ param identityName string
 param registryServer string
 param keyVaultUri string
 param keyVaultSecretNames array
+@description('Gives the API the assistant host\'s proxy key, genai-proxy-key in Key Vault, which the BFF trusts the forwarded hostname by (ADR 0061).')
+param bffProxyKey bool = false
 param apiImage string
 param apiRevisionSuffix string = ''
 param apiLiveRevision string = ''
@@ -203,6 +205,11 @@ var doclingKeySecret = {
   identity: identityId
 }
 
+var proxyKeySecret = bffProxyKey
+  ? [{ name: 'genai-proxy-key', keyVaultUrl: '${keyVaultUri}secrets/genai-proxy-key', identity: identityId }]
+  : []
+var proxyKeyEnv = bffProxyKey ? [{ name: 'GENAI_PROXY_KEY', secretRef: 'genai-proxy-key' }] : []
+
 var apiAppName = '${name}-api'
 var apiCandidateRevision = empty(apiRevisionSuffix) ? '' : '${apiAppName}--${apiRevisionSuffix}'
 var apiCandidateLabelled = !empty(apiCandidateRevision) && !contains([apiLiveRevision, apiPreviousRevision], apiCandidateRevision)
@@ -239,7 +246,7 @@ resource api 'Microsoft.App/containerApps@2025-02-02-preview' = {
         traffic: apiTraffic
       }
       registries: [{ server: registryServer, identity: identityId }]
-      secrets: secrets
+      secrets: concat(secrets, proxyKeySecret)
     }
     template: {
       revisionSuffix: empty(apiRevisionSuffix) ? null : apiRevisionSuffix
@@ -248,7 +255,7 @@ resource api 'Microsoft.App/containerApps@2025-02-02-preview' = {
           name: 'api'
           image: apiImage
           resources: { cpu: json(cpu), memory: memory }
-          env: concat([{ name: 'PORT', value: '8080' }, { name: 'APP_VERSION', value: appVersion }, { name: 'DATABASE_POOL_MAX', value: string(apiDatabasePoolMax) }], serverEnv, knowledgeEnv.api)
+          env: concat([{ name: 'PORT', value: '8080' }, { name: 'APP_VERSION', value: appVersion }, { name: 'DATABASE_POOL_MAX', value: string(apiDatabasePoolMax) }], serverEnv, knowledgeEnv.api, proxyKeyEnv)
           volumeMounts: dataMount
           probes: [
             { type: 'Liveness', httpGet: { path: '/health', port: 8080 }, periodSeconds: 30 }

@@ -1,6 +1,6 @@
 # 0034 Tokens in the browser
 
-Status: proposed, 2026-10-16 (the BFF in the API, for the assistant host first, proposed in ADR 0061, 2026-11-19)
+Status: proposed, 2026-10-16 (the BFF in the API, for the assistant host first, ADR 0061; built for the assistant host, 2026-11-19)
 
 ## Context
 
@@ -35,3 +35,6 @@ Rejected: tokens in `localStorage` (survives the tab, readable by any script in 
 - Logout today removes the tokens from `sessionStorage` and ends the Ansattporten session on a deliberate logout; it does not revoke a refresh token. Unsaved input kept across re-login is stored per tab, not per person, and is cleared on a deliberate logout.
 - The ID token is used only for the display name and for logout. It grants nothing and the API never accepts it. The console checks the `nonce` like the portal and workspace do.
 - A new script source, inline script or third-party library in the apps weakens this decision until the BFF exists; review the CSP when adding one.
+- The BFF is built for the assistant host as ADR 0061 describes it, in `apps/api/src/bff`, with sessions in `bff_sessions`. It runs in front of the API and only for a request with a valid `GenAI-Proxy-Key`: it swaps the session for the access token as a bearer token, so the API checks the same principal, issuer and `sub` as for a browser token, and drops the cookie, the proxy key and any credential or `genai-acting-for` the page sent. Tests: `apps/api/src/bff/bff.test.ts` and `bff-postgres.test.ts`.
+- Decided here where ADR 0061 is silent: `GET /auth/me` answers the name and organisations, never a token. The non-simple header for a state-changing call without a JSON body is `GenAI-CSRF`. `GET /auth/logout` is refused unless `Sec-Fetch-Dest` is `document` and `Sec-Fetch-Site` is same-origin or none, when the browser sends them, so an image in an answer cannot log anyone out. The login cookie is sealed with the tenant's content key. A refused refresh deletes the session and answers 401; an issuer that does not answer gives 503 and keeps it.
+- The proxy key is off until an operator puts the same `genai-proxy-key` in genki's and the host's Key Vault and sets `assistantBffEnabled`. The portal, workspace and console still keep tokens in `sessionStorage`.

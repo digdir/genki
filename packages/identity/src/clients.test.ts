@@ -184,6 +184,16 @@ describe('hosted clients', () => {
     expect(checkClient(hosted(overrides), []).ok).toBe(false);
   });
 
+  it('lets only a hosted client name a client secret for genki to log in with', () => {
+    const oidc = {
+      clientId: 'ka-local',
+      redirectUris: ['https://ka.example.no/auth/callback'],
+      secret: 'ka-login',
+    };
+    expect(checkClient(hosted({ oidc } as never), []).ok).toBe(true);
+    expect(checkClient(ka({ oidc } as never), []).ok).toBe(false);
+  });
+
   it.each([
     '*.example.no',
     '10.0.0.1',

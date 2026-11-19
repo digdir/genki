@@ -10,8 +10,8 @@ packages:
 summary: genki's generic host for a service's assistant, drawn from the service's interface by hostname.
 description: A React app that looks up the hostname it is served on, draws the service's name, menu
   and pages, and after login the assistant the service's layout describes through ui-assembly. It
-  runs no code from the service owner. Login through a BFF in the API is not built yet; locally it
-  uses the dev login.
+  runs no code from the service owner. Login goes through the API's BFF with a host-only session
+  cookie (bffSignIn in bff.ts); locally it uses the dev login.
 responsibilities:
   - Look up the hostname and draw the hosted service, or say there is none
   - Draw the menu and the service's Markdown pages
@@ -19,6 +19,7 @@ responsibilities:
 files:
   - apps/assistant/src/App.tsx
   - apps/assistant/src/host.ts
+  - apps/assistant/src/bff.ts
 input: The hostname and the person's questions
 output: Host lookups, chat requests
 edges:
@@ -50,6 +51,13 @@ edges:
     witness:
       file: apps/assistant/src/host.ts
       contains: /api/v1/hosts/
+  - to: api
+    label: Sign-in through the BFF, with no token in the page
+    kind: http
+    target: http
+    witness:
+      file: apps/assistant/src/bff.ts
+      contains: /auth/me
   - to: adapter-openai
     label: The service's interface after login
     kind: http

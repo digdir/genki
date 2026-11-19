@@ -91,6 +91,7 @@ export const clientDefinition = z
           audience: z.string().min(1).optional(),
           redirectUris: z.array(webUrl).min(1),
           postLogoutRedirectUris: z.array(webUrl).default([]),
+          secret: slug.optional(),
         })
         .optional(),
       webhook: z
@@ -127,6 +128,12 @@ export const clientDefinition = z
         code: 'custom',
         path: ['spec', 'hostnames'],
         message: 'only a hosted client has hostnames',
+      });
+    if (client.spec.oidc?.secret && !client.spec.hosted)
+      ctx.addIssue({
+        code: 'custom',
+        path: ['spec', 'oidc', 'secret'],
+        message: 'only a hosted client has a client secret, which genki logs in with',
       });
     if (new Set(names.map((n) => n.hostname)).size !== names.length)
       ctx.addIssue({

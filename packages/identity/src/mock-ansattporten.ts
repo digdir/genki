@@ -409,6 +409,7 @@ export const createMockAnsattporten = (options: MockAnsattportenOptions) => {
       token_endpoint: `${options.issuer}/token`,
       userinfo_endpoint: `${options.issuer}/userinfo`,
       end_session_endpoint: `${browser}/logout`,
+      revocation_endpoint: `${options.issuer}/revoke`,
       jwks_uri: `${options.issuer}/jwks.json`,
       scopes_supported: SCOPES,
       response_types_supported: ['code'],
@@ -615,6 +616,16 @@ export const createMockAnsattporten = (options: MockAnsattportenOptions) => {
     )
       return c.json({ error: 'invalid_grant' }, 400);
     return c.json(await tokensFor(issued));
+  });
+
+  app.post('/revoke', async (c) => {
+    const form = await c.req.parseBody();
+    const field = (name: string) => (typeof form[name] === 'string' ? form[name] : undefined);
+    const client = await authenticateClient(c.req.header('authorization'), field);
+    if (!client) return c.json({ error: 'invalid_client' }, 401);
+    const token = field('token') ?? '';
+    if (refreshTokens.get(token)?.clientId === client.clientId) refreshTokens.delete(token);
+    return c.body(null, 200);
   });
 
   app.get('/userinfo', async (c) => {
