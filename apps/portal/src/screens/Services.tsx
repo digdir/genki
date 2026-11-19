@@ -19,13 +19,14 @@ import type { ScreenProps } from '../screen';
 import { rightLabel, useRights } from '../Shell';
 import { EmptyState, ErrorState, Loading } from '../states';
 import { listedServiceCount, rememberServiceNames } from '../listed-services';
+import { modelLabel } from '../models';
 import { StrategyCatalogue } from '../strategy-catalogue';
 import { ServiceLoading } from './service/ServiceLoading';
 import { availableSections, locate } from './service/sections';
 import { Builder, newDraftId, newServiceInit, type BuilderInit } from './services/Builder';
 import { LiveNewService } from './services/LiveNewService';
 import { NewService } from './services/NewService';
-import { ServiceList } from './services/ServiceList';
+import { ServiceList, type ListedService } from './services/ServiceList';
 import { startKeys } from './services/SetupTab';
 import './services.css';
 
@@ -44,11 +45,12 @@ const ListScreen = ({ api, tenant, tenantName, live }: ScreenProps) => {
   const p = usePortalFormat();
   const { t } = p;
   const [state, retry] = useAsync(
-    async (signal): Promise<{ rows: ServiceRow[]; listed?: number }> => {
+    async (signal): Promise<{ rows: ListedService[]; listed?: number }> => {
       if (live) {
-        const [services, drafts] = await Promise.all([
+        const [services, drafts, models] = await Promise.all([
           api.services(tenant, signal),
           api.quality.drafts(tenant, signal),
+          api.listModels({ all: true }, signal).catch(() => []),
         ]);
         const unpublished = drafts
           .filter((d) => d.latestVersion === null)
@@ -66,10 +68,11 @@ const ListScreen = ({ api, tenant, tenantName, live }: ScreenProps) => {
           }));
         const rows = [
           ...unpublished,
-          ...services.data.map((s): ServiceRow => ({
+          ...services.data.map((s): ListedService => ({
             id: s.id,
             name: s.name,
             purpose: s.purpose,
+            ...(s.model ? { model: modelLabel(s.model.id, models) } : {}),
             job: jobOf(s.outputKind),
             start: s.channels
               .filter((key) => startKeys[key])
@@ -93,13 +96,16 @@ const ListScreen = ({ api, tenant, tenantName, live }: ScreenProps) => {
         (d) => d.kind === 'Service' && !serviceRows.some((r) => r.id === d.id),
       );
       const extra = await Promise.all(
-        unknown.map(async (d): Promise<ServiceRow> => {
+        unknown.map(async (d): Promise<ListedService> => {
           const full = await api.getDefinition(tenant, 'Service', d.id, signal);
           const service = asServiceDefinition(full.latest.definition);
           return {
             id: d.id,
             name: service.metadata.name ?? d.id,
             purpose: service.spec.purpose,
+            ...(service.spec.model?.primary
+              ? { model: modelLabel(service.spec.model.primary) }
+              : {}),
             job: jobOf(service.spec.output.kind),
             start: channelKeys
               .filter((key) => channelOn(service.spec, key) && startKeys[key])
@@ -112,7 +118,11 @@ const ListScreen = ({ api, tenant, tenantName, live }: ScreenProps) => {
           };
         }),
       );
-      return { rows: [...serviceRows, ...extra] };
+      const known = serviceRows.map((r): ListedService => {
+        const model = exampleDefinitions[r.id]?.spec.model?.primary;
+        return model ? { ...r, model: modelLabel(model) } : r;
+      });
+      return { rows: [...known, ...extra] };
     },
     [api, tenant, live],
   );

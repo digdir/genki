@@ -403,6 +403,45 @@ describe('service groups in lockdown', () => {
     });
   });
 
+  const hostedAt = (tenant: string, hosted = true): ClientRegistry => ({
+    byClientId: async (clientId) =>
+      clientId === 'hosted-web'
+        ? {
+            clientId,
+            audience: AUDIENCE,
+            tenant,
+            service: 'kunnskapsassistent',
+            client: clientId,
+            hosted,
+          }
+        : undefined,
+  });
+
+  it('in lockdown a hosted client passes without being listed', async () => {
+    const { principal } = await verify(
+      serviceClaims({ client_id: 'hosted-web' }),
+      hostedAt(PLATFORM),
+    );
+
+    expect(principal).toMatchObject({
+      authorizedFor: [{ org: PLATFORM, resource: RESOURCE, actions: ['use-services'] }],
+      scopes: [lockdownServiceScope],
+      confinedTo: { tenant: PLATFORM, service: 'kunnskapsassistent', client: 'hosted-web' },
+    });
+  });
+
+  it('a client that is not hosted and not listed admits no service-group member', async () => {
+    await expect(
+      verify(serviceClaims({ client_id: 'hosted-web' }), hostedAt(PLATFORM, false)),
+    ).rejects.toMatchObject({ code: 'entra_not_trusted' });
+  });
+
+  it('a hosted client outside the platform tenant does not pass lockdown', async () => {
+    await expect(
+      verify(serviceClaims({ client_id: 'hosted-web' }), hostedAt('999999999')),
+    ).rejects.toMatchObject({ code: 'entra_not_trusted' });
+  });
+
   it('a service-group member with an email outside the domain is refused', async () => {
     for (const email of ['kari@example.com', 'kari@digdir.example.evil.example', undefined])
       await expect(verify(serviceClaims({ email }))).rejects.toMatchObject({

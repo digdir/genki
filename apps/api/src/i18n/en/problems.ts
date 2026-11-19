@@ -172,6 +172,7 @@ export const problems = {
   status405: 'The method is not supported here',
   status409: 'Conflict',
   serviceArchivedTitle: 'The service is archived',
+  hostNotFoundTitle: 'No service on this hostname',
   status413: 'The request is too large',
   status415: 'The format is not supported',
   status422: 'The change is invalid',

@@ -1,9 +1,21 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { blocksIn, defaultLayout, fitService, fromTemplate } from '@genai/ui-blocks/builder';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { expectAccessible, go, renderAt } from '../../../test-utils';
-import { keepStart, keptStart, layoutJson, readLayout } from './layoutStore';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import {
+  blocksIn,
+  defaultLayout,
+  fitService,
+  fromTemplate,
+  type AssistantLayout,
+} from '@genai/ui-blocks/builder';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { App } from '../../../App';
+import { createApiClient } from '../../../api';
+import { loadArea } from '../../../i18n/areas';
+import { mockAnsattporten } from '../../../auth';
+import { exampleServices, mockFetch } from '../../../mock';
+import { expectAccessible, go, kari, renderAt } from '../../../test-utils';
+import { InterfaceTab } from './InterfaceTab';
+import { keptStart, layoutJson, readLayout, type BlocksStart } from './layoutStore';
 
 const own = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
 beforeEach(() => {
@@ -19,10 +31,25 @@ afterEach(() => {
 const navLink = (name: string) =>
   within(screen.getByRole('tablist', { name: /^Faner for/ })).getByRole('tab', { name });
 
-const openInterface = async (service = 'rapportassistenten', name = 'Rapportassistenten') => {
-  await renderAt(`#/services/${service}/interface`);
-  await screen.findByRole('heading', { level: 1, name });
+let writes: unknown[] = [];
+const recording = (base = mockFetch()): typeof fetch => {
+  writes = [];
+  return async (input, init) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    if (init?.method === 'PUT' && url.endsWith('/draft'))
+      writes.push(JSON.parse(String(init.body)) as unknown);
+    return base(input, init);
+  };
+};
+
+const openInterface = async (fetch = recording()) => {
+  const auth = mockAnsattporten(kari);
+  await auth.login();
+  window.location.hash = '#/services/rapportassistenten/interface';
+  render(<App auth={auth} fetch={fetch} live />);
+  await screen.findByRole('heading', { level: 1, name: 'Rapportassistenten' });
   await screen.findByRole('group', { name: 'Byggeklosser og maler' });
+  return fetch;
 };
 
 const switchIn = (group: string, name: string) =>
@@ -32,14 +59,11 @@ const switchIn = (group: string, name: string) =>
 
 const next = fromTemplate('knowledge-assistant-next').layout;
 
-// The layout the tab keeps for a service, whichever tenant the mock signs in to.
-const keptFor = (service: string) => {
-  const key = Object.keys(sessionStorage).find(
-    (k) => k.startsWith('genki.blocks.') && k.endsWith(`/${service}`),
-  );
-  const tenant = key?.slice('genki.blocks.'.length, -(service.length + 1));
-  return tenant === undefined ? undefined : keptStart(tenant, service);
-};
+type Saved = { definition: { spec: { interface?: { layout?: AssistantLayout } } } };
+const savedLayout = () => (writes.at(-1) as Saved | undefined)?.definition.spec.interface?.layout;
+
+const keepStart = (tenant: string, service: string, start: BlocksStart) =>
+  sessionStorage.setItem(`genki.blocks.${tenant}/${service}`, JSON.stringify(start));
 
 describe('the Grensesnitt tab', () => {
   it('is on the page of a service that is published, and starts from the next look of Kunnskapsassistenten', async () => {
@@ -78,15 +102,16 @@ describe('the Grensesnitt tab', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'Navn' }), {
       target: { value: 'Rapporthjelpen' },
     });
-    await waitFor(() =>
-      expect(keptFor('rapportassistenten')?.layout.profile).toEqual({
-        assistantName: 'Rapporthjelpen',
-      }),
+    await waitFor(
+      () => expect(savedLayout()?.profile).toEqual({ assistantName: 'Rapporthjelpen' }),
+      {
+        timeout: 3000,
+      },
     );
     expectAccessible();
   });
 
-  it('keeps the layout in this browser when the person goes to another tab and back', async () => {
+  it('keeps the layout when the person goes to another tab and back', async () => {
     await openInterface();
     expect(switchIn('Høyre panel', 'Kilder').checked).toBe(true);
     fireEvent.click(switchIn('Høyre panel', 'Kilder'));
@@ -106,7 +131,7 @@ describe('«Kopier oppsettet»', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Kopier oppsettet' }));
     await screen.findByText('Oppsettet er kopiert som JSON.');
     const copied = readLayout(writeText.mock.calls[0]?.[0] ?? '');
-    expect(copied).toEqual({ layout: keptFor('rapportassistenten')?.layout });
+    expect('layout' in copied && blocksIn(copied.layout, 'main')).toEqual(blocksIn(next, 'main'));
     expect('layout' in copied && copied.layout.template).toBe('knowledge-assistant-next');
   });
 
@@ -116,7 +141,7 @@ describe('«Kopier oppsettet»', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Kopier oppsettet' }));
     await screen.findByText(/Nettleseren lot ikke portalen kopiere/);
     const shown = (screen.getByLabelText('Oppsettet') as HTMLTextAreaElement).value;
-    expect(readLayout(shown)).toEqual({ layout: keptFor('rapportassistenten')?.layout });
+    expect(readLayout(shown)).toMatchObject({ layout: { template: 'knowledge-assistant-next' } });
   });
 });
 
@@ -127,14 +152,14 @@ describe('«Lim inn oppsett»', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Bruk oppsettet' }));
   };
 
-  it('uses a pasted layout that keeps the rules, and keeps it', async () => {
+  it('uses a pasted layout that keeps the rules, and saves it in the draft', async () => {
     await openInterface();
     paste(layoutJson(defaultLayout));
     await screen.findByText('Oppsettet du limte inn, er i bruk.');
     expect(switchIn('Høyre panel', 'Fremgangsmåte').checked).toBe(false);
     expect(switchIn('Innhold', 'Fremgangsmåte').checked).toBe(true);
-    const kept = keptFor('rapportassistenten')?.layout;
-    expect(kept?.zones.main.map((placed) => placed.block)).toEqual(
+    await waitFor(() => expect(savedLayout()).toBeDefined(), { timeout: 3000 });
+    expect(savedLayout()?.zones.main.map((placed) => placed.block)).toEqual(
       defaultLayout.zones.main.map((placed) => placed.block),
     );
   });
@@ -229,21 +254,104 @@ describe('«Lim inn oppsett»', () => {
   });
 });
 
-describe('the layout kept in this browser', () => {
-  it('keeps the blocks the draft cannot back yet with the layout, so they come back after a reload', async () => {
-    await openInterface();
-    const filter = switchIn('Venstre panel', 'Filter');
-    expect(filter.checked).toBe(true);
-    expect(keptFor('rapportassistenten')?.layout.zones.primary.map((p) => p.block)).not.toContain(
-      'filter',
-    );
-    expect(keptFor('rapportassistenten')?.held?.map((h) => h.placed.block)).toContain('filter');
-    cleanup();
-    await openInterface();
+describe('the layout in the draft', () => {
+  it('keeps a block the draft cannot back yet where it was chosen, so it comes back after a reload', async () => {
+    const fetch = await openInterface();
     expect(switchIn('Venstre panel', 'Filter').checked).toBe(true);
-    expect(keptFor('rapportassistenten')?.held?.map((h) => h.placed.block)).toContain('filter');
+    fireEvent.click(switchIn('Høyre panel', 'Kilder'));
+    await waitFor(() => expect(savedLayout()).toBeDefined(), { timeout: 3000 });
+    expect(blocksIn(savedLayout() as AssistantLayout, 'primary')).toContain('filter');
+    cleanup();
+    await openInterface(fetch);
+    expect(switchIn('Venstre panel', 'Filter').checked).toBe(true);
+    expect(switchIn('Høyre panel', 'Kilder').checked).toBe(false);
+  });
+});
+
+const tenant = '999888777';
+const published = () =>
+  structuredClone(
+    exampleServices.find((d) => d.id === 'rapportassistenten')?.latest.definition,
+  ) as Record<string, unknown> & { spec: Record<string, unknown> };
+const withDraftLayout = (layout: unknown) => {
+  const definition = published();
+  definition.spec.interface = { layout };
+  return recording(
+    mockFetch(undefined, undefined, undefined, undefined, {
+      features: { quality: { drafts: { rapportassistenten: { definition } } } },
+    }),
+  );
+};
+const interfaceWrites = () =>
+  writes.filter((w) => (w as Saved).definition.spec.interface !== undefined);
+
+describe('the layout saved in the draft', () => {
+  it('writes nothing to the draft for a layout the person only opened', async () => {
+    await openInterface();
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    expect(interfaceWrites()).toEqual([]);
   });
 
+  it('opens the layout the draft holds, not the template', async () => {
+    const layout = {
+      ...fromTemplate('chat-only').layout,
+      profile: { assistantName: 'Svarhjelpen' },
+    };
+    await openInterface(withDraftLayout(layout));
+    expect(switchIn('Høyre panel', 'Kilder').checked).toBe(false);
+    expect(switchIn('Innhold', 'Chat').checked).toBe(true);
+    fireEvent.click(screen.getByRole('radio', { name: 'Tekster' }));
+    expect((screen.getByRole('textbox', { name: 'Navn' }) as HTMLInputElement).value).toBe(
+      'Svarhjelpen',
+    );
+  });
+
+  it('will not edit a draft layout it cannot show without losing it, and writes nothing', async () => {
+    const layout = {
+      ...fromTemplate('chat-only').layout,
+      profile: { assistantName: { nb: 'Svarhjelpen', en: 'The answer helper' } },
+    };
+    const auth = mockAnsattporten(kari);
+    await auth.login();
+    window.location.hash = '#/services/rapportassistenten/interface';
+    render(<App auth={auth} fetch={withDraftLayout(layout)} live />);
+    expect(await screen.findByText('Byggeren kan ikke endre dette oppsettet')).toBeTruthy();
+    expect(screen.queryByRole('group', { name: 'Byggeklosser og maler' })).toBeNull();
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    expect(interfaceWrites()).toEqual([]);
+  });
+
+  it('offers once to save a layout kept in this browser in the draft', async () => {
+    const chat = fromTemplate('chat-only').layout;
+    keepStart(tenant, 'rapportassistenten', { layout: chat });
+    await openInterface();
+    expect(switchIn('Høyre panel', 'Kilder').checked).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Lagre i utkastet' }));
+    await waitFor(() => expect(savedLayout()).toEqual(chat), { timeout: 3000 });
+    expect(screen.queryByRole('button', { name: 'Lagre i utkastet' })).toBeNull();
+    expect(keptStart(tenant, 'rapportassistenten')).toBeUndefined();
+    expectAccessible();
+  });
+
+  it('forgets a layout kept in this browser when the person discards it, and starts from the template', async () => {
+    keepStart(tenant, 'rapportassistenten', { layout: fromTemplate('chat-only').layout });
+    await openInterface();
+    fireEvent.click(screen.getByRole('button', { name: 'Forkast' }));
+    expect(switchIn('Høyre panel', 'Kilder').checked).toBe(true);
+    expect(keptStart(tenant, 'rapportassistenten')).toBeUndefined();
+    expect(screen.queryByRole('button', { name: 'Lagre i utkastet' })).toBeNull();
+    expect(interfaceWrites()).toEqual([]);
+  });
+
+  it('offers no layout kept in this browser when the draft already holds one', async () => {
+    keepStart(tenant, 'rapportassistenten', { layout: defaultLayout });
+    await openInterface(withDraftLayout(fromTemplate('chat-only').layout));
+    expect(screen.queryByRole('button', { name: 'Lagre i utkastet' })).toBeNull();
+    expect(switchIn('Høyre panel', 'Kilder').checked).toBe(false);
+  });
+});
+
+describe('a layout kept in this browser before drafts held it', () => {
   it('puts a kept held block back where it stood once the draft can back it', () => {
     const [tenant, service] = ['digdir', 'a'];
     const filter = { zone: 'primary' as const, placed: { block: 'filter' as const } };
@@ -298,5 +406,60 @@ describe('the layout kept in this browser', () => {
     expect(keptStart('digdir', 'c')).toBeDefined();
     sessionStorage.setItem('genki.blocks.digdir/d', '{"layout":{"version":1}}');
     expect(keptStart('digdir', 'd')).toBeUndefined();
+  });
+});
+
+describe('the layout when the draft changes under the open tab', () => {
+  beforeAll(() => loadArea('services'));
+  const definitionWith = (layout: AssistantLayout) => {
+    const definition = published();
+    definition.spec.interface = { layout };
+    return definition;
+  };
+  const tab = (
+    definition: Record<string, unknown>,
+    onLayout: (layout: AssistantLayout) => void,
+  ) => (
+    <InterfaceTab
+      api={createApiClient({ baseUrl: '', fetch: mockFetch(), token: () => undefined })}
+      tenant={tenant}
+      service="rapportassistenten"
+      definition={definition}
+      files={{}}
+      narrow={false}
+      onLayout={onLayout}
+      fullscreen={false}
+      backHref="#/services/rapportassistenten/interface"
+      onFullscreen={() => undefined}
+      onExitFullscreen={() => undefined}
+    />
+  );
+
+  it('starts again from the draft when its layout changes elsewhere', async () => {
+    const onLayout = vi.fn();
+    const view = render(
+      tab(definitionWith(fromTemplate('knowledge-assistant-next').layout), onLayout),
+    );
+    await screen.findByRole('group', { name: 'Byggeklosser og maler' });
+    expect(switchIn('Høyre panel', 'Kilder').checked).toBe(true);
+    view.rerender(tab(definitionWith(fromTemplate('chat-only').layout), onLayout));
+    await waitFor(() => expect(switchIn('Høyre panel', 'Kilder').checked).toBe(false));
+    expect(onLayout).not.toHaveBeenCalled();
+  });
+
+  it('does not start again after its own save', async () => {
+    let saved: AssistantLayout | undefined;
+    const onLayout = (layout: AssistantLayout) => {
+      saved = layout;
+    };
+    const view = render(
+      tab(definitionWith(fromTemplate('knowledge-assistant-next').layout), onLayout),
+    );
+    await screen.findByRole('group', { name: 'Byggeklosser og maler' });
+    fireEvent.click(switchIn('Høyre panel', 'Kilder'));
+    await waitFor(() => expect(saved).toBeDefined());
+    fireEvent.click(screen.getByRole('radio', { name: 'Tekster' }));
+    view.rerender(tab(definitionWith(saved as AssistantLayout), onLayout));
+    expect((screen.getByRole('radio', { name: 'Tekster' }) as HTMLInputElement).checked).toBe(true);
   });
 });

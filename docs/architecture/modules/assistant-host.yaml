@@ -1,0 +1,60 @@
+id: assistant-host
+plane: consumers
+name: Assistant host
+note: A hosted service's assistant
+icon: chat
+color: '#74a7ff'
+status: React app
+packages:
+  - '@genai/assistant'
+summary: genki's generic host for a service's assistant, drawn from the service's interface by hostname.
+description: A React app that looks up the hostname it is served on, draws the service's name, menu
+  and pages, and after login the assistant the service's layout describes through ui-assembly. It
+  runs no code from the service owner. Login through a BFF in the API is not built yet; locally it
+  uses the dev login.
+responsibilities:
+  - Look up the hostname and draw the hosted service, or say there is none
+  - Draw the menu and the service's Markdown pages
+  - Draw the assistant from the layout in the reader's language
+files:
+  - apps/assistant/src/App.tsx
+  - apps/assistant/src/host.ts
+input: The hostname and the person's questions
+output: Host lookups, chat requests
+edges:
+  - to: i18n
+    label: Language state and catalogues
+    kind: call
+    target: call
+    witness:
+      file: apps/assistant/src/i18n.ts
+      imports: '@genai/i18n'
+  - to: ui-assembly
+    label: Draws the assistant from the layout
+    kind: call
+    target: call
+    witness:
+      file: apps/assistant/src/App.tsx
+      imports: '@genai/ui-assembly'
+  - to: ui-blocks
+    label: Draws a page's Markdown
+    kind: call
+    target: call
+    witness:
+      file: apps/assistant/src/App.tsx
+      imports: '@genai/ui-blocks'
+  - to: api
+    label: The hosted service and its pages by hostname
+    kind: http
+    target: http
+    witness:
+      file: apps/assistant/src/host.ts
+      contains: /api/v1/hosts/
+  - to: adapter-openai
+    label: The service's interface after login
+    kind: http
+    target: http
+    witness:
+      file: apps/assistant/src/host.ts
+      contains: /interface
+keywords: assistant host hosted hostname menu pages frontend react designsystemet

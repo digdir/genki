@@ -97,6 +97,17 @@ export const catalogErrors = {
   onlyTenantRemovesClients: 'only the tenant or an operator removes its clients',
   noSuchClient: 'no such client',
   noClientFor: 'no client {client} for {service}',
+  hostedInLockdown: 'in lockdown only a platform operator marks a client hosted',
+  hostedClientIdInLockdown:
+    'in lockdown only a platform operator changes the client id of a hosted client',
+  onlyOperatorHosts: 'only a platform operator marks a client hosted',
+  hostnameNotOpen: '{hostnameNotAllowed}: {hostname} is not open to this organisation',
+  hostnameTaken: '{hostname} belongs to the client {id}',
+  hostOwnBlockHosted:
+    "{block} is a host's own block, and genki's assistant host draws only catalogue blocks",
+  unknownInterfaceBlock: 'unknown interface block {block}',
+  hostedServiceOwnBlock:
+    "the service's interface has a host's own block ({block}), which genki's assistant host does not draw",
   riskConfirm:
     'risk class {riskClass} must be confirmed by a person with the publish right before publishing',
   riskConfirmMismatch:
@@ -497,6 +508,8 @@ export const qualityErrors = {
   caseChangeValues: 'change is worse, better, new, missing, pending or same',
   compareLimit: 'limit is 1 to 200',
   compareOffset: 'offset is 0 to 100000',
+  compareAllowDifferent:
+    '{field} cannot be allowed to differ: only data, services and servedModels can',
   noVersion: 'no {version} version',
   noTestSetInService: 'no test set {testSet} in the service',
   noCases: 'The test set has no test cases',

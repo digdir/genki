@@ -227,6 +227,92 @@ const common = {
   },
 };
 
+type Pair = [nb: string, en: string];
+
+const interfaceTexts: Record<string, Pair> = {
+  'profile.assistantName': ['Navnet på assistenten', 'Name of the assistant'],
+  'profile.suggestions': ['Forslag til spørsmål', 'Suggested questions'],
+  'profile.followUps': ['Oppfølgingsspørsmål', 'Follow-up questions'],
+  'profile.settingsNote': ['Merknad under innstillingene', 'Note under the settings'],
+  'profile.corpora.label': ['Navn på samlingen', 'Name of the collection'],
+  'profile.corpora.description': ['Beskrivelse av samlingen', 'Description of the collection'],
+  'profile.corpora.fields.label': ['Navn på feltet', 'Name of the field'],
+  'profile.corpora.fields.heading': ['Overskrift i filteret', 'Heading in the filter'],
+  'profile.corpora.typePlurals': ['Flertall av dokumenttypene', 'Plurals of the document types'],
+  'profile.experiments.title': ['Tittel', 'Title'],
+  'profile.experiments.description': ['Beskrivelse', 'Description'],
+  'profile.experiments.hrefLabel': ['Lenketekst', 'Link text'],
+};
+
+const interfaceFields: Record<string, Pair> = {
+  layout: ['Oppsett', 'Layout'],
+  'layout.version': ['Versjon av oppsettet', 'Layout version'],
+  'layout.template': ['Mal', 'Template'],
+  'layout.look': ['Utseende', 'Look'],
+  'layout.zones': ['Paneler', 'Panels'],
+  'layout.zones.primary': ['Venstre panel', 'Left panel'],
+  'layout.zones.main': ['Innhold', 'Content'],
+  'layout.zones.secondary': ['Høyre panel', 'Right panel'],
+  ...Object.fromEntries(
+    ['primary', 'main', 'secondary'].flatMap((zone): [string, Pair][] => [
+      [`layout.zones.${zone}.block`, ['Byggekloss', 'Building block']],
+      [`layout.zones.${zone}.settings`, ['Valg', 'Options']],
+    ]),
+  ),
+  'layout.profile': ['Tekster', 'Texts'],
+  'layout.profile.corpora': ['Samlinger', 'Collections'],
+  'layout.profile.corpora.fields': ['Felt i filteret', 'Fields in the filter'],
+  'layout.profile.corpora.fields.id': ['Felt', 'Field'],
+  'layout.profile.corpora.fields.kind': ['Slags felt', 'Kind of field'],
+  'layout.profile.corpora.fields.years': ['År som tilbys', 'Years offered'],
+  'layout.profile.corpora.fields.years.first': ['Første år', 'First year'],
+  'layout.profile.corpora.fields.years.last': ['Siste år', 'Last year'],
+  'layout.profile.corpora.typeField': ['Felt for dokumenttype', 'Document type field'],
+  'layout.profile.corpora.documentLinks': ['Lenker til dokumentene', 'Links to the documents'],
+  'layout.profile.corpora.documentLinks.digits': ['Lenke for tallnumre', 'Link for numbers'],
+  'layout.profile.corpora.documentLinks.uuid': ['Lenke for UUID-er', 'Link for UUIDs'],
+  'layout.profile.corpora.documentLinks.any': ['Lenke for andre numre', 'Link for other ids'],
+  'layout.profile.corpora.about': ['Om et dokument', 'About a document'],
+  'layout.profile.corpora.about.idField': ['Felt med nummeret', 'Field with the number'],
+  'layout.profile.corpora.about.fields': ['Felt som vises', 'Fields shown'],
+  'layout.profile.experiments': ['Eksperimenter', 'Experiments'],
+  'layout.profile.experiments.id': ['ID', 'ID'],
+  'layout.profile.experiments.href': ['Lenke', 'Link'],
+  ...Object.fromEntries(
+    Object.entries(interfaceTexts).flatMap(([path, [nb, en]]): [string, Pair][] => [
+      [`layout.${path}`, [nb, en]],
+      [`layout.${path}.nb`, [`${nb} på bokmål`, `${en} in Norwegian Bokmål`]],
+      [`layout.${path}.en`, [`${nb} på engelsk`, `${en} in English`]],
+    ]),
+  ),
+  menu: ['Meny', 'Menu'],
+  'menu.page': ['Side', 'Page'],
+  'menu.href': ['Lenke', 'Link'],
+  pages: ['Sider', 'Pages'],
+  'pages.id': ['Adresse', 'Address'],
+  ...Object.fromEntries(
+    Object.entries({
+      'menu.label': ['Tekst i menyen', 'Text in the menu'],
+      'pages.title': ['Tittel', 'Title'],
+      'pages.body': ['Innhold i Markdown', 'Content in Markdown'],
+    } satisfies Record<string, Pair>).flatMap(([path, [nb, en]]): [string, Pair][] => [
+      [path, [nb, en]],
+      [`${path}.nb`, [`${nb} på bokmål`, `${en} in Norwegian Bokmål`]],
+      [`${path}.en`, [`${nb} på engelsk`, `${en} in English`]],
+    ]),
+  ),
+};
+
+const interfaceLabels = (at: 0 | 1, root: LabelText): Texts => ({
+  'spec.interface': root,
+  ...prefixed(
+    'spec.interface',
+    Object.fromEntries(
+      Object.entries(interfaceFields).map(([path, pair]) => [path, { label: pair[at] }]),
+    ),
+  ),
+});
+
 const serviceNb = {
   'metadata.id': { label: 'ID', help: 'Små bokstaver, tall og bindestrek.' },
   'spec.purpose': {
@@ -565,6 +651,7 @@ const serviceMeta: Record<string, PropertyMeta> = {
   'spec.settings': { ...advanced, 'x-order': 81 },
   'spec.evaluation': { ...advanced, 'x-order': 82 },
   'spec.improve': { ...advanced, 'x-order': 83 },
+  'spec.interface': { ...advanced, 'x-order': 84, 'x-widget': 'code' },
   'spec.availableTo': { ...start, 'x-order': 73, 'x-operator': true, 'x-widget': 'list' },
   'spec.visibility': { ...start, 'x-order': 74, 'x-operator': true },
   'strategy.id': { 'x-widget': 'select' },
@@ -761,8 +848,20 @@ export const commonSchemaLabels: SchemaLabels = {
 };
 
 export const serviceSchemaLabels: SchemaLabels = {
-  nb: serviceNb,
-  en: serviceEn,
+  nb: {
+    ...serviceNb,
+    ...interfaceLabels(0, {
+      label: 'Grensesnitt',
+      help: 'Oppsettet byggeren i fanen Grensesnitt lagrer, publisert med tjenesten.',
+    }),
+  },
+  en: {
+    ...serviceEn,
+    ...interfaceLabels(1, {
+      label: 'Interface',
+      help: 'The layout the builder in the Interface tab saves, published with the service.',
+    }),
+  },
   meta: serviceMeta,
 };
 

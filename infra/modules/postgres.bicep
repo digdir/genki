@@ -29,6 +29,12 @@ param extensions string = 'VECTOR'
 @description('shared_preload_libraries; empty leaves the server default. Static: it takes effect after a restart.')
 param sharedPreloadLibraries string = ''
 
+@description('max_connections; 0 leaves it. Azure keeps the first SKU\'s value through a resize. Static: it takes effect after a restart.')
+param maxConnections int = 0
+
+@description('The maintenance window in UTC; the default is Azure\'s own choice of time.')
+param maintenanceWindow object = { customWindow: 'Disabled', dayOfWeek: 0, startHour: 0, startMinute: 0 }
+
 resource server 'Microsoft.DBforPostgreSQL/flexibleServers@2024-08-01' = {
   name: name
   location: location
@@ -52,6 +58,7 @@ resource server 'Microsoft.DBforPostgreSQL/flexibleServers@2024-08-01' = {
       passwordAuth: 'Disabled'
       tenantId: subscription().tenantId
     }
+    maintenanceWindow: maintenanceWindow
   }
 }
 
@@ -68,12 +75,19 @@ resource preload 'Microsoft.DBforPostgreSQL/flexibleServers/configurations@2024-
   dependsOn: [extensionsConfig]
 }
 
+resource connections 'Microsoft.DBforPostgreSQL/flexibleServers/configurations@2024-08-01' = if (maxConnections > 0) {
+  parent: server
+  name: 'max_connections'
+  properties: { value: string(maxConnections), source: 'user-override' }
+  dependsOn: [extensionsConfig, preload]
+}
+
 @batchSize(1)
 resource databases 'Microsoft.DBforPostgreSQL/flexibleServers/databases@2024-08-01' = [for database in databaseNames: {
   parent: server
   name: database
   properties: { charset: 'UTF8', collation: 'en_US.utf8' }
-  dependsOn: [extensionsConfig, preload]
+  dependsOn: [extensionsConfig, preload, connections]
 }]
 
 resource groupAdmin 'Microsoft.DBforPostgreSQL/flexibleServers/administrators@2024-08-01' = {
@@ -99,6 +113,7 @@ resource admins 'Microsoft.DBforPostgreSQL/flexibleServers/administrators@2024-0
   dependsOn: [groupAdmin]
 }]
 
+output id string = server.id
 output name string = server.name
 output fqdn string = server.properties.fullyQualifiedDomainName
 output databaseName string = databaseNames[0]

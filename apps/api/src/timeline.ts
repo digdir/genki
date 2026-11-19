@@ -31,6 +31,7 @@ export interface TaskTimeline {
   unpricedUnits?: Record<string, number>;
   erasure?: Erasure;
   steps: TimelineStep[];
+  omittedSteps?: number;
   stats: RunStats | Omit<RunStats, UsageStats>;
 }
 
@@ -151,4 +152,16 @@ export const toTimeline = (
         }
       : counts,
   };
+};
+
+export const onlyTypes = (timeline: TaskTimeline, types: string): TaskTimeline => {
+  const wanted = new Set(
+    types
+      .split(',')
+      .map((type) => type.trim())
+      .filter(Boolean),
+  );
+  if (!wanted.size) return timeline;
+  const steps = timeline.steps.filter((step) => wanted.has(step.type));
+  return { ...timeline, steps, omittedSteps: timeline.steps.length - steps.length };
 };

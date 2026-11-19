@@ -109,7 +109,9 @@ export const failureOf = (error: unknown): AnswerFailure => {
   switch (status) {
     case 401:
     case 403:
-      return { kind: 'access' };
+      return error instanceof ApiError && error.code === 'locked-environment'
+        ? { kind: 'access', message: error.message }
+        : { kind: 'access' };
     case 404:
       return /conversation/i.test(error instanceof Error ? error.message : '')
         ? { kind: 'threadGone' }

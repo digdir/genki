@@ -44,15 +44,29 @@ export const managedIdentityTokenSource = (clientId?: string): TokenSource => {
 
 type Env = Record<string, string | undefined>;
 
+const minPoolMax = 3;
+
 export const usesEntraPostgres = (env: Env) => !env.DATABASE_URL && Boolean(env.PGHOST);
+
+const poolMaxFromEnv = (env: Env): { max?: number } => {
+  const value = env.DATABASE_POOL_MAX;
+  if (!value) return {};
+  const max = Number(value);
+  if (!Number.isInteger(max) || max < minPoolMax)
+    throw new Error(
+      `DATABASE_POOL_MAX must be a whole number of at least ${minPoolMax}, not ${value}`,
+    );
+  return { max };
+};
 
 export const postgresSourceFromEnv = (
   env: Env,
   tokens: TokenSource = managedIdentityTokenSource(env.AZURE_CLIENT_ID),
 ): PostgresPoolOptions | undefined => {
-  if (env.DATABASE_URL) return { connectionString: env.DATABASE_URL };
+  if (env.DATABASE_URL) return { connectionString: env.DATABASE_URL, ...poolMaxFromEnv(env) };
   if (!env.PGHOST) return undefined;
   return {
+    ...poolMaxFromEnv(env),
     host: env.PGHOST,
     ...(env.PGPORT ? { port: Number(env.PGPORT) } : {}),
     database: env.PGDATABASE ?? 'genai',

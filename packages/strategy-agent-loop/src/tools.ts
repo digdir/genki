@@ -78,8 +78,15 @@ export interface RetrievalHit {
   id: string;
   document?: string;
   position?: number;
+  page?: number;
   score?: number;
   title?: string;
+}
+
+export interface ReadRequest {
+  chunkIds?: string[];
+  document?: string;
+  chunkRange?: { from?: number | undefined; to?: number | undefined };
 }
 
 export type SearchFailureReason =
@@ -159,7 +166,7 @@ export interface ToolOutcome {
   generated?: string;
   retrieved?: RetrievalHit[];
   search?: SearchMade;
-  read?: { chunks: RetrievalHit[]; auto?: boolean };
+  read?: { chunks: RetrievalHit[]; auto?: boolean; request?: ReadRequest };
   planned?: { queries: string[]; userIntent?: string };
   /** The engine's message when the whole search threw: for the audit log only, never the model. */
   searchError?: string;
@@ -170,6 +177,7 @@ export const retrievalHits = (chunks: ChunkSummary[]): RetrievalHit[] =>
     id: c.chunkId,
     ...(c.document === undefined ? {} : { document: c.document }),
     ...(c.position === undefined ? {} : { position: c.position }),
+    ...(c.page === undefined ? {} : { page: c.page }),
     ...(c.score === undefined ? {} : { score: c.score }),
     ...(c.title === undefined ? {} : { title: c.title }),
   }));
@@ -286,6 +294,10 @@ const pageText = (c: ChunkSummary) => {
   return page ? ` ${page[0]}=${page[1]}` : '';
 };
 
+/** Whose document a chunk is, so same-title documents such as each ministry's Prop. 1 S tell apart (issue 754). */
+const publisherText = (c: ChunkSummary) =>
+  c.publisher ? ` publisher=${JSON.stringify(c.publisher)}` : '';
+
 const detectionHint = (d: SearchDetection) => {
   const names = d.values.map((v) => JSON.stringify(v)).join(', ');
   const them = d.values.length > 1 ? 'them' : 'it';
@@ -298,10 +310,17 @@ const detectionHint = (d: SearchDetection) => {
   return `The query ${what}; ${d.field} can filter on ${them}.`;
 };
 
+const ownDocumentHint = (hints: SearchDetection[]) => {
+  const organisation = hints.find((d) => d.kind === 'organisation');
+  return organisation
+    ? ` For one organisation's own document, such as its Prop. 1 S, filter ${organisation.field} with ${organisation.values.map((v) => JSON.stringify(v)).join(' or ')}.`
+    : '';
+};
+
 const searchHints = (attribution: SearchAttribution | undefined): string => {
   const hints = (attribution?.detections ?? []).filter((d) => d.use === 'hint');
   return hints.length
-    ? `\nHint, no filter applied: ${hints.map(detectionHint).join(' ')} Add filter_by only if the question asks for nothing else; a question about an organisation also needs other organisations' documents.`
+    ? `\nHint, no filter applied: ${hints.map(detectionHint).join(' ')} Add filter_by only if the question asks for nothing else; a question about an organisation also needs other organisations' documents.${ownDocumentHint(hints)}`
     : '';
 };
 
@@ -323,6 +342,7 @@ export const formatSearchMetadataResults = (
       pageText(c) +
       (c.contentLength === undefined ? '' : ` content_length=${c.contentLength}`) +
       (c.title ? ` title="${c.title}"` : '') +
+      publisherText(c) +
       (c.url ? ` url=${c.url}` : '') +
       (c.headers?.length ? ` headers=${JSON.stringify(c.headers)}` : '') +
       (c.rerankScore === undefined ? '' : ` rerank=${fixed(c.rerankScore, 2)}`) +
@@ -368,6 +388,7 @@ export const formatReadResult = (
       `--- chunk_id=${c.chunkId} doc_num=${c.document ?? ''} chunk_index=${c.position ?? ''}` +
       pageText(c) +
       (c.title ? ` title="${c.title}"` : '') +
+      publisherText(c) +
       (c.url ? ` url=${c.url}` : '') +
       ` ---\n${c.content}`,
   );
@@ -707,7 +728,14 @@ const read = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome> =>
   );
   return {
     content: formatReadResult(kept, consumed, workspace.readCharsUsed, budgetNote, skippedNote),
-    read: { chunks: retrievalHits(kept) },
+    read: {
+      chunks: retrievalHits(kept),
+      request: {
+        ...(chunkIds?.length ? { chunkIds } : {}),
+        ...(docNum === undefined ? {} : { document: docNum }),
+        ...(chunkRange ? { chunkRange } : {}),
+      },
+    },
   };
 };
 

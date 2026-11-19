@@ -471,6 +471,7 @@
   overflow-x: auto;
   border: 1px solid var(--ds-color-neutral-border-subtle);
   border-radius: var(--ds-border-radius-lg);
+  position: relative;
 }
 
 .int-table table {
@@ -780,6 +781,7 @@
     gap: var(--ds-size-2);
     overflow-x: auto;
     padding-bottom: var(--ds-size-2);
+    position: relative;
   }
 
   .dev-tools-nav a {

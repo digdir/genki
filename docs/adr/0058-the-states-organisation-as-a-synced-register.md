@@ -42,7 +42,7 @@ The platform keeps a copy of the state's organisation, read from the authorities
 
 - **Operators see it.**
   - **Console:** `GET /operator/state-register` (operators only) gives the dates, the unit count and every difference with both ministries named. The console shows it under Statens organisering, with the NLOD credit to Brønnøysundregistrene and DFØ and links to the licence and both sources.
-  - **Alert:** after two failed nights in a row the worker logs `state register stale`, and the `state-register` log alert in `infra/modules/alerts.bicep` fires. Answers keep the date of the last good sync.
+  - **Alert:** after two failed nights in a row the worker logs `state register stale`, and the `worker-jobs` log alert in `infra/modules/alerts.bicep` fires. Answers keep the date of the last good sync.
 - **Services reach it through a platform-provided tool.** The tool is `state-organisation@1` (`packages/composition/src/state-organisation-tool.ts`). It is the platform's first built-in tool, registered with `ToolRegistry.register` and granted in a service's `spec.tools` like any other. The data is open, so any tenant's service may grant it. A service that does not grant it is not offered it, and the kernel refuses a port it has no grant for. It has three actions:
   - **under** lists the units directly under a unit, or 1 to 3 levels down with `depth`. Without a unit it lists the state's top units: the ministries, SMK, Stortinget, Domstolene and Sametinget.
   - **over** walks a unit up to its top unit, with every level between.

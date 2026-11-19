@@ -533,15 +533,19 @@ describe('login through Ansattporten in live mode', () => {
   });
 });
 
-it('counts the ingest badge in live mode from the datasets whose last ingestion failed', async () => {
+it('shows the Datasett badge on a deep link with the same count as the Trenger oppfølging filter', async () => {
   const auth = mockAnsattporten(kari);
   await auth.login();
-  window.location.hash = '#/overview';
+  window.location.hash = '#/services';
   render(<App auth={auth} fetch={mockFetch()} live />);
   const menu = await screen.findByRole('navigation', { name: 'Hovedmeny' });
   await waitFor(() =>
-    expect(within(menu).getByRole('link', { name: /Datasett/ }).textContent).toBe('Datasett1'),
+    expect(within(menu).getByRole('link', { name: /Datasett/ }).textContent).toBe('Datasett2'),
   );
+
+  await go('#/datasets');
+
+  expect(await screen.findByText('Trenger oppfølging (2)')).toBeTruthy();
 });
 
 it('derives rights from the old read and write actions the same way as the API', () => {
@@ -639,5 +643,72 @@ describe('a locked environment', () => {
 
     expect(await screen.findAllByRole('navigation', { name: 'Hovedmeny' })).toHaveLength(1);
     expect(screen.queryByText(/Låst testmiljø/)).toBeNull();
+  });
+});
+
+describe('the shell on a phone', () => {
+  const wide = window.innerWidth;
+  beforeEach(() => {
+    window.innerWidth = 390;
+  });
+  afterEach(() => {
+    window.innerWidth = wide;
+  });
+
+  const focusable = () =>
+    [...document.querySelectorAll<HTMLElement>('a[href], button')].filter(
+      (el) => el.tabIndex >= 0 && !el.closest('[role="menu"]'),
+    );
+
+  it('shows the brand first and Meny last in the top bar, with no account there', async () => {
+    await renderAt('#/services');
+    const bar = await screen.findByRole('banner');
+    const controls = [...bar.querySelectorAll('a, button')];
+
+    expect(controls[0]?.getAttribute('href')).toBe('#/overview');
+    expect(controls.at(-1)?.textContent).toBe('Meny');
+    expect(within(bar).queryByRole('button', { name: /Brukermeny/ })).toBeNull();
+  });
+
+  it('opens the menu with the navigation right after Meny and the account at its end', async () => {
+    await renderAt('#/services');
+    const toggle = await screen.findByRole('button', { name: 'Meny' });
+
+    fireEvent.click(toggle);
+
+    const nav = screen.getByRole('navigation', { name: 'Hovedmeny' });
+    const order = focusable();
+    const links = within(nav).getAllByRole('link');
+    expect(order[order.indexOf(toggle) + 1]).toBe(links[0]);
+    const account = within(nav).getByRole('button', {
+      name: 'Brukermeny for Kari Nordmann, Testetaten',
+    });
+    expect(order.indexOf(account)).toBeGreaterThan(order.indexOf(links.at(-1) as HTMLElement));
+  });
+
+  it('closes the menu with Escape and puts focus back on Meny', async () => {
+    await renderAt('#/services');
+    const toggle = await screen.findByRole('button', { name: 'Meny' });
+    fireEvent.click(toggle);
+    within(screen.getByRole('navigation', { name: 'Hovedmeny' }))
+      .getAllByRole('link')[0]
+      ?.focus();
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+
+    expect(screen.queryByRole('navigation', { name: 'Hovedmeny' })).toBeNull();
+    expect(document.activeElement).toBe(toggle);
+  });
+
+  it('keeps the menu open while the user menu inside it is open', async () => {
+    await renderAt('#/services');
+    fireEvent.click(await screen.findByRole('button', { name: 'Meny' }));
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Brukermeny for Kari Nordmann, Testetaten' }),
+    );
+
+    expect(screen.getByRole('menu', { name: 'Brukermeny' })).toBeTruthy();
+    expect(screen.getByRole('navigation', { name: 'Hovedmeny' })).toBeTruthy();
   });
 });

@@ -45,6 +45,7 @@ export interface RegisteredClient {
   tenant: string;
   service: string;
   client: string;
+  hosted?: boolean;
 }
 
 export interface ClientRegistry {
@@ -168,7 +169,7 @@ const trustedEntraLogin = (
   issuer: string,
   trusted: TrustedEntra,
   payload: JWTPayload,
-  registered: boolean,
+  registered: RegisteredClient | undefined,
 ): VerifiedIdentity => {
   const claimed = new Set(
     (Array.isArray(payload.groups) ? payload.groups : []).flatMap((g) =>
@@ -182,7 +183,10 @@ const trustedEntraLogin = (
   const clientId = typeof payload.client_id === 'string' ? payload.client_id : undefined;
   const platformClient = clientId !== undefined && trusted.clientIds.includes(clientId);
   const serviceClient =
-    registered && clientId !== undefined && (trusted.serviceClientIds ?? []).includes(clientId);
+    registered !== undefined &&
+    clientId !== undefined &&
+    ((trusted.serviceClientIds ?? []).includes(clientId) ||
+      (registered.hosted === true && registered.tenant === trusted.tenant));
   const grantOf = (): keyof typeof scopeOf | undefined => {
     if (operatorLogin) return registered || platformClient ? 'operator' : undefined;
     if (userLogin && !registered && platformClient) return 'user';
@@ -222,7 +226,7 @@ const trustedEntraLogin = (
 const employee = (
   issuer: Extract<TrustedIssuer, { kind: 'ansattporten' }>,
   payload: JWTPayload,
-  registered: boolean,
+  registered: RegisteredClient | undefined,
 ): VerifiedIdentity => {
   const assurance = assuranceOf(payload.acr);
   if (!assurance) throw new AuthenticationError('insufficient_assurance', 'unknown acr');
@@ -433,7 +437,7 @@ export const createTokenVerifier = (options: TokenVerifierOptions) => ({
     if (issuer.kind === 'ansattporten') {
       if (typeof payload.sub !== 'string')
         throw new AuthenticationError('invalid_token', 'missing sub');
-      const verified = employee(issuer, payload, registered !== undefined);
+      const verified = employee(issuer, payload, registered);
       return registered ? confineToClient(verified, registered) : verified;
     }
     if (issuer.kind === 'entra') return operator(issuer, payload);

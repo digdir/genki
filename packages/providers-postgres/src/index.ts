@@ -69,7 +69,7 @@ export { PostgresWebhookDeliveries } from './webhook-deliveries.js';
 export { PostgresProviderObjects } from './provider-objects.js';
 export { PostgresTriggerRuns } from './trigger-runs.js';
 export { PostgresUsageBuckets } from './usage.js';
-export { PostgresLeaderLease } from './leader-lease.js';
+export { PostgresLeases, type LeaderLease } from './leader-lease.js';
 export { PostgresRateLimiter, type PostgresRateDecision } from './rate-limits.js';
 export {
   PostgresOutsideRunRetention,
@@ -180,7 +180,7 @@ export const createPostgresStores = async (
       ? runtimePoolFor(owner, options.role ?? runtimeRole)
       : 'query' in options.runtime
         ? withClientErrorListener(options.runtime)
-        : createPool(options.runtime);
+        : createPool({ max: owner.options.max, ...options.runtime });
   if (pool.listenerCount('error') === 0) pool.on('error', onError);
   const keys = new ContentKeys(pool, wrapper);
   const log = new PostgresEventLog(pool, keys, options.pollMs, onError);
