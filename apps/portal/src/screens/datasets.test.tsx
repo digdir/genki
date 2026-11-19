@@ -53,9 +53,9 @@ describe('Datasett: delte datasett lest inn utenfor plattformen', () => {
   it('lists a dataset shared with the organisation under the shared filter and not under its own', async () => {
     await renderLive('#/datasets');
     await screen.findByRole('link', { name: 'Kudos' });
-    fireEvent.click(screen.getByRole('radio', { name: 'Delt med dere' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delt med dere' }));
     expect(screen.getByText('Viser 1 av 1 datasett')).toBeTruthy();
-    fireEvent.click(screen.getByRole('radio', { name: 'Egne' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Testetatens egne' }));
     expect(screen.getByText('Viser 0 av 1 datasett')).toBeTruthy();
   });
 

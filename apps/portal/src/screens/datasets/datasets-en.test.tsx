@@ -34,7 +34,7 @@ describe('datasets in English', () => {
     expect(screen.getByText('2 datasets')).toBeTruthy();
     expect(screen.getByRole('columnheader', { name: 'Last ingestion started' })).toBeTruthy();
     expect(screen.getByText('Ready')).toBeTruthy();
-    expect(screen.getByRole('radio', { name: 'Needs attention (1)' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Needs attention (1)' })).toBeTruthy();
     expect(screen.getAllByText('Ingestion failed').length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: 'New dataset' })).toBeTruthy();
   });

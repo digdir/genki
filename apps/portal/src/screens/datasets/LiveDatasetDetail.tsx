@@ -3,7 +3,7 @@ import {
   Button,
   Heading,
   Paragraph,
-  Spinner,
+  Skeleton,
   Tabs,
   Tag,
 } from '@digdir/designsystemet-react';
@@ -23,9 +23,9 @@ import { BackLink } from '../../components/BackLink';
 import { prefetchSignal } from '../../api/cache';
 import { statusColors, statusKeys, type DatasetStatus } from '../../data/datasets';
 import { navigate, useAsync } from '../../hooks';
-import { useT } from '../../i18n';
+import { useT, type PlainKey } from '../../i18n';
 import { useRights } from '../../Shell';
-import { ErrorState, Loading, PageLoading } from '../../states';
+import { ErrorState, Loading } from '../../states';
 import { admissionRunsOutSoon } from './admission';
 import { backoffDelay } from './backoff';
 import { DeleteDataset, LeaveDialog, SourceSettings, Technical } from './DatasetSettings';
@@ -54,6 +54,13 @@ import { Uploads } from './Uploads';
 import './search-engine.css';
 
 export const pollMs = 1500;
+
+const detailTabs = [
+  ['content', 'datasets.tabContent'],
+  ['ingestions', 'datasets.tabIngestions'],
+  ['source', 'datasets.tabSource'],
+  ['used-by', 'datasets.tabUsedBy'],
+] as const satisfies readonly (readonly [DetailTab, PlainKey])[];
 
 const Deleted = ({ name, result }: { name: string; result: DatasetDeleteResult }) => {
   const t = useT();
@@ -115,9 +122,16 @@ export const LiveDatasetDetail = ({
   );
   if (detail.status === 'loading')
     return (
-      <div className="stack">
+      <div className="stack dataset-page">
         <BackLink label={t('datasets.title')} href="#/datasets" />
-        <PageLoading label={t('datasets.loadingOne')} shape="detail" onRetry={retryDetail} />
+        <Skeleton variant="rectangle" width="40%" height={32} aria-hidden="true" />
+        <Tabs
+          value={tab === 'filters' ? 'content' : tab}
+          onChange={(next) => navigate(datasetTabPath(id, next as DetailTab))}
+        >
+          <DatasetTabs />
+        </Tabs>
+        <Loading label={t('datasets.loadingOne')} shape="detail" onRetry={retryDetail} />
       </div>
     );
   if (detail.status === 'error')
@@ -147,6 +161,19 @@ export const LiveDatasetDetail = ({
       tab={tab === 'filters' ? 'content' : tab}
       onTab={(next) => navigate(datasetTabPath(id, next))}
     />
+  );
+};
+
+const DatasetTabs = () => {
+  const t = useT();
+  return (
+    <Tabs.List aria-label={t('datasets.tabsLabel')}>
+      {detailTabs.map(([value, label]) => (
+        <Tabs.Tab key={value} value={value}>
+          {t(label)}
+        </Tabs.Tab>
+      ))}
+    </Tabs.List>
   );
 };
 
@@ -404,7 +431,8 @@ const Loaded = ({
             </Heading>
             <Tag data-color={statusColors[status]}>{t(statusKeys[status])}</Tag>
           </div>
-          <p className="lead">{meta}</p>
+          {view.description ? <Paragraph className="lead">{view.description}</Paragraph> : null}
+          <p className="meta">{meta}</p>
         </div>
         {canEdit && pipeline ? (
           <div className="actions">
@@ -471,8 +499,7 @@ const Loaded = ({
         ) : null}
         {running ? (
           <Alert data-color={latest?.status === 'waiting' ? 'warning' : 'info'} data-size="sm">
-            <span role="status" className="row-wrap">
-              {latest?.status === 'waiting' ? null : <Spinner aria-hidden="true" data-size="xs" />}
+            <span role="status">
               {t(
                 latest?.status === 'queued'
                   ? 'datasets.queuedLeave'
@@ -537,12 +564,7 @@ const Loaded = ({
       </div>
 
       <Tabs value={tab} onChange={(v) => changeTab(v as DetailTab)}>
-        <Tabs.List aria-label={t('datasets.tabsLabel')}>
-          <Tabs.Tab value="content">{t('datasets.tabContent')}</Tabs.Tab>
-          <Tabs.Tab value="ingestions">{t('datasets.tabIngestions')}</Tabs.Tab>
-          <Tabs.Tab value="used-by">{t('datasets.tabUsedBy')}</Tabs.Tab>
-          <Tabs.Tab value="source">{t('datasets.tabSource')}</Tabs.Tab>
-        </Tabs.List>
+        <DatasetTabs />
         <Tabs.Panel value="content">
           {tab === 'content' ? (
             <Content

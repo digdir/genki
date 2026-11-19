@@ -1028,7 +1028,7 @@ describe('live dataset list', () => {
     const { fetch } = recorded();
     await renderLive('#/datasets', fetch);
     await screen.findByRole('table', { name: 'Datasett' });
-    fireEvent.click(screen.getByRole('radio', { name: /Trenger oppfølging/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Trenger oppfølging/ }));
     fireEvent.change(screen.getByRole('searchbox', { name: 'Søk i datasett' }), {
       target: { value: 'nett' },
     });
@@ -1038,7 +1038,7 @@ describe('live dataset list', () => {
       window.dispatchEvent(new HashChangeEvent('hashchange'));
     });
     await waitFor(() =>
-      expect(screen.getByRole('radio', { name: 'Alle' })).toHaveProperty('checked', true),
+      expect(screen.getByRole('button', { name: 'Alle', pressed: true })).toBeTruthy(),
     );
     expect(screen.getByRole('searchbox', { name: 'Søk i datasett' })).toHaveProperty('value', '');
     expect(screen.getByText('3 datasett')).toBeTruthy();
@@ -1048,7 +1048,7 @@ describe('live dataset list', () => {
     const { fetch } = recorded();
     await renderLive('#/datasets', fetch);
     await screen.findByRole('table', { name: 'Datasett' });
-    fireEvent.click(screen.getByRole('radio', { name: 'Trenger oppfølging (2)' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Trenger oppfølging (2)' }));
     const table = screen.getByRole('table', { name: 'Datasett' });
     expect(within(table).getByRole('link', { name: 'Nettsidene til Testetaten' })).toBeTruthy();
     expect(within(table).getByRole('link', { name: 'Veiledere og rundskriv' })).toBeTruthy();
@@ -1089,7 +1089,7 @@ describe('live dataset list', () => {
     const { fetch } = recorded();
     await renderLive('#/datasets', fetch);
     await screen.findByRole('heading', { level: 1, name: 'Datasett' });
-    fireEvent.click(screen.getByRole('radio', { name: 'Egne' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Testetatens egne' }));
     fireEvent.change(screen.getByRole('searchbox', { name: 'Søk i datasett' }), {
       target: { value: 'nett' },
     });
@@ -1100,7 +1100,7 @@ describe('live dataset list', () => {
     const { fetch } = recorded();
     await renderLive('#/datasets?filter=own&q=nett', fetch);
     await screen.findByRole('heading', { level: 1, name: 'Datasett' });
-    expect(screen.getByRole('radio', { name: 'Egne' })).toHaveProperty('checked', true);
+    expect(screen.getByRole('button', { name: 'Testetatens egne', pressed: true })).toBeTruthy();
     expect(screen.getByRole('searchbox', { name: 'Søk i datasett' })).toHaveProperty(
       'value',
       'nett',

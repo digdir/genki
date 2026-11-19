@@ -572,11 +572,11 @@ export const datasetsMock = (options: DatasetsMockOptions = {}): MockHandler => 
       if (offset % limit !== 0)
         return invalid([{ path: 'offset', message: 'offset must be a multiple of limit' }]);
       const raw = params.get('filters');
-      if (status !== 'indexed' && (raw || sort))
+      if ((status === 'failed' || status === 'pending') && (raw || sort))
         return invalid([
           { path: raw ? 'filters' : 'sort', message: 'only query, limit and offset' },
         ]);
-      if (query && status === 'indexed' && !listing.query)
+      if (query && (status === 'indexed' || status === 'all') && !listing.query)
         return invalid([{ path: 'query', message: 'The engine cannot search titles' }]);
       if (sort && !listing.sort.includes(sort))
         return invalid([{ path: 'sort', message: `The engine cannot sort by ${sort}` }]);
@@ -616,16 +616,18 @@ export const datasetsMock = (options: DatasetsMockOptions = {}): MockHandler => 
       const indexedCount = found[dataset.fullId] ?? all.length;
       const statusCounts = { indexed: indexedCount, failed: failed.length, pending: 0 };
       const pool = status === 'failed' ? failed : status === 'pending' ? [] : all;
-      const kept = pool
+      const indexedKept = pool
         .filter(titled)
         .filter((d) => !filters || matches(d, Object.entries(filters)));
       if (sort) {
-        kept.sort((a, b) => sortValue(a, sort).localeCompare(sortValue(b, sort), 'nb'));
-        if (order === 'desc') kept.reverse();
+        indexedKept.sort((a, b) => sortValue(a, sort).localeCompare(sortValue(b, sort), 'nb'));
+        if (order === 'desc') indexedKept.reverse();
       }
+      const head = status === 'all' && !filters ? failed.filter(titled) : [];
+      const kept = [...head, ...indexedKept];
       const total =
-        status === 'indexed' && !filters && !query && dataset.fullId in found
-          ? (found[dataset.fullId] ?? kept.length)
+        (status === 'indexed' || status === 'all') && !filters && !query && dataset.fullId in found
+          ? head.length + (found[dataset.fullId] ?? indexedKept.length)
           : kept.length;
       return json({
         dataset: dataset.fullId,

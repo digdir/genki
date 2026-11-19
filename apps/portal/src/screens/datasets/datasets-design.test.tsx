@@ -9,6 +9,8 @@ import { exampleOrganisations, mockFetch, type FeatureMockOptions } from '../../
 import { exampleDocuments, exampleLiveDatasets } from '../../mock/datasets';
 import { RightsProvider } from '../../Shell';
 import { expectAccessible } from '../../test-utils';
+import { translator } from '../../i18n';
+import { facetLabel } from './Content';
 import { LiveDatasetDetail } from './LiveDatasetDetail';
 
 document.getAnimations ??= () => [];
@@ -150,8 +152,10 @@ describe('dataset Innhold tab', () => {
         .getAllByRole('columnheader')
         .map((h) => h.textContent),
     ).toEqual(['', 'Tittel', 'Type', 'Kilde', 'Biter', 'Status']);
-    expect(screen.getByRole('status').textContent).toBe('1-3 av 3 dokumenter');
-    expect(listings(calls)[0]).toMatch(/\/datasets\/veiledere\/documents\?limit=50&offset=0$/);
+    expect(screen.getByRole('status').textContent).toBe('1-5 av 5 dokumenter');
+    expect(listings(calls)[0]).toMatch(
+      /\/datasets\/veiledere\/documents\?limit=50&offset=0&status=all$/,
+    );
     expectAccessible();
   });
 
@@ -227,7 +231,7 @@ describe('dataset Innhold tab', () => {
     fireEvent.change(screen.getByRole('combobox', { name: 'Per side' }), {
       target: { value: '100' },
     });
-    await waitFor(() => expect(listings(calls).at(-1)).toMatch(/limit=100&offset=0$/));
+    await waitFor(() => expect(listings(calls).at(-1)).toMatch(/limit=100&offset=0&status=all$/));
     expect(window.location.hash).toContain('size=100');
     expect(window.location.hash).not.toContain('page=');
   });
@@ -236,7 +240,7 @@ describe('dataset Innhold tab', () => {
     const { fetch } = searchable(300);
     await renderLive(`${veiledere}/content`, fetch);
     await docsTable();
-    expect(screen.getByText('av 6')).toBeTruthy();
+    expect(screen.getByText('av 7')).toBeTruthy();
     fireEvent.change(screen.getByRole('spinbutton', { name: 'Gå til side' }), {
       target: { value: '5' },
     });
@@ -281,7 +285,7 @@ describe('dataset Innhold tab', () => {
     const { calls, fetch } = recorded();
     await renderLive(`${veiledere}/content?q=tilsyn`, fetch);
     expect(await docsTable()).toBeTruthy();
-    expect(listings(calls).at(-1)).toMatch(/limit=50&offset=0$/);
+    expect(listings(calls).at(-1)).toMatch(/limit=50&offset=0&status=all$/);
     expect(window.location.hash).not.toContain('q=');
   });
 
@@ -294,7 +298,7 @@ describe('dataset Innhold tab', () => {
       within(status)
         .getAllByRole('option')
         .map((o) => o.textContent),
-    ).toEqual(['Lest inn (3)', 'Feilet (2)', 'Venter (0)']);
+    ).toEqual(['Alle (5)', 'Lest inn (3)', 'Feilet (2)', 'Venter (0)']);
     fireEvent.change(status, { target: { value: 'failed' } });
     const row = (await screen.findByRole('button', { name: 'Skannet vedtak 2019.pdf' })).closest(
       'tr',
@@ -376,7 +380,7 @@ describe('dataset Innhold tab', () => {
       within(screen.getByRole('combobox', { name: 'Status' }))
         .getAllByRole('option')
         .map((o) => o.textContent),
-    ).toEqual(['Lest inn', 'Feilet (0)', 'Venter (0)']);
+    ).toEqual(['Alle', 'Lest inn', 'Feilet (0)', 'Venter (0)']);
   });
 
   it('shows the table skeleton with the real column headers while the first page loads', async () => {
@@ -973,9 +977,140 @@ describe("another organisation's dataset", () => {
       fetch,
     );
     await screen.findByRole('heading', { level: 1, name: 'Interne sider hos Annenetaten' });
-    const lead = document.querySelector('.page-head .lead')?.textContent ?? '';
+    const lead = document.querySelector('.page-head .meta')?.textContent ?? '';
     expect(lead).toBe('Delt med dere av en annen virksomhet · 40 dokumenter lest inn');
     expect(screen.queryByRole('button', { name: 'Les inn på nytt' })).toBeNull();
+  });
+});
+
+describe('dataset header and tabs', () => {
+  it('keeps the back link and the tab row while the dataset loads', async () => {
+    const fetch: typeof globalThis.fetch = () => new Promise<Response>(() => undefined);
+    renderDetail(fetch, ['manage-datasets']);
+    expect(screen.getByRole('link', { name: 'Datasett' })).toBeTruthy();
+    expect(
+      within(screen.getByRole('tablist', { name: 'Datasettet' }))
+        .getAllByRole('tab')
+        .map((tab) => tab.textContent),
+    ).toEqual(['Innhold', 'Innlesinger', 'Innstillinger', 'Brukes av']);
+  });
+
+  it('orders the tabs Innhold, Innlesinger, Innstillinger, Brukes av', async () => {
+    const { fetch } = recorded();
+    await renderLive(veiledere, fetch);
+    const tabs = await screen.findByRole('tablist', { name: 'Datasettet' });
+    expect(
+      within(tabs)
+        .getAllByRole('tab')
+        .map((tab) => tab.textContent),
+    ).toEqual(['Innhold', 'Innlesinger', 'Innstillinger', 'Brukes av']);
+  });
+
+  it('shows the dataset description under the title', async () => {
+    const { fetch } = recorded();
+    await renderLive(veiledere, fetch);
+    await screen.findByRole('heading', { level: 1, name: 'Veiledere og rundskriv' });
+    const head = document.querySelector('.page-head') as HTMLElement;
+    expect(
+      within(head).getByText('Veiledere og rundskriv lastet opp av fagavdelingen.'),
+    ).toBeTruthy();
+  });
+});
+
+describe('dataset documents, design details', () => {
+  it('lists all statuses by default and offers Alle in the status filter', async () => {
+    const { fetch } = recorded();
+    await renderLive(veiledere, fetch);
+    const table = await docsTable();
+    expect(screen.getByRole('combobox', { name: 'Status' })).toHaveProperty('value', 'all');
+    expect(within(table).getByRole('button', { name: 'Skannet vedtak 2019.pdf' })).toBeTruthy();
+    expect(within(table).getByRole('button', { name: 'Rundskriv 3-2026' })).toBeTruthy();
+  });
+
+  it('says how many documents match without the filter, and removes it from the no-match state', async () => {
+    const { fetch } = searchable();
+    await renderLive(`${veiledere}/content?status=failed&q=Dokument 00`, fetch);
+    expect(
+      await screen.findByText(
+        'Uten filteret Status: Feilet er det 9 dokumenter som passer «Dokument 00».',
+      ),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Fjern filteret Status' }));
+    expect(await screen.findByRole('button', { name: 'Dokument 001' })).toBeTruthy();
+  });
+
+  it('lets a keyboard user scroll the documents table', async () => {
+    const { fetch } = recorded();
+    await renderLive(veiledere, fetch);
+    await docsTable();
+    expect(screen.getByRole('region', { name: 'Dokumenttabell' }).tabIndex).toBe(0);
+  });
+
+  it('puts the open document in the address and opens it from there', async () => {
+    const { fetch } = recorded();
+    await renderLive(veiledere, fetch);
+    fireEvent.click(await screen.findByRole('button', { name: 'Rundskriv 3-2026' }));
+    await screen.findByRole('dialog', { name: 'Rundskriv 3-2026' });
+    const address = window.location.hash;
+    expect(address).toContain('doc=');
+    cleanup();
+    await renderLive(address, fetch);
+    expect(await screen.findByRole('dialog', { name: 'Rundskriv 3-2026' })).toBeTruthy();
+  });
+
+  it('shows the start of the text without markdown marks', async () => {
+    const { fetch } = recorded({
+      documents: {
+        '999888777/veiledere': [
+          {
+            id: 'tabell',
+            title: 'Budsjett',
+            fields: {},
+            status: 'indexed',
+            excerpt: '# Budsjett 2026\n\n| Post | Beløp |\n|---|---|\n| Drift | 100 |',
+          },
+        ],
+      },
+    });
+    await renderLive(veiledere, fetch);
+    fireEvent.click(await screen.findByRole('button', { name: 'Budsjett' }));
+    const panel = await screen.findByRole('dialog', { name: 'Budsjett' });
+    expect(await within(panel).findByText('Budsjett 2026')).toBeTruthy();
+    expect(within(panel).getByText(/Drift · 100/, { selector: 'p' })).toBeTruthy();
+    expect(panel.textContent).not.toMatch(/#|\|/);
+  });
+
+  it('asks for every filter of a dataset in one facets call', async () => {
+    const { calls, fetch } = recorded();
+    await renderLive(`#/datasets/${encodeURIComponent('digdir/kudos')}`, fetch);
+    await docsTable();
+    await screen.findByRole('combobox', { name: 'Dokumenttype' });
+    expect(calls.filter((c) => c.url.includes('/facets?'))).toHaveLength(1);
+  });
+
+  it('labels the Kudos filters in words, never by their raw field names', () => {
+    const t = translator('nb');
+    expect(['owner_orgnr', 'doc_num', 'concerned_years'].map((f) => facetLabel(t, f))).toEqual([
+      'Eier (org.nr.)',
+      'Dokumentnummer',
+      'Gjelder år',
+    ]);
+    expect(facetLabel(t, 'case_handler')).toBe('Case handler');
+  });
+});
+
+describe('dataset list toolbar', () => {
+  it('shows the filters as pressed buttons and the search with a placeholder', async () => {
+    const { fetch } = recorded();
+    await renderLive('#/datasets', fetch);
+    await screen.findByRole('table', { name: 'Datasett' });
+    expect(screen.getByRole('button', { name: 'Alle', pressed: true })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Testetatens egne' }));
+    expect(screen.getByRole('button', { name: 'Testetatens egne', pressed: true })).toBeTruthy();
+    expect(screen.getByRole('searchbox', { name: 'Søk i datasett' })).toHaveProperty(
+      'placeholder',
+      'Søk i navn og kildetype',
+    );
   });
 });
 

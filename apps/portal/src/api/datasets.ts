@@ -184,6 +184,7 @@ export interface OriginalFile {
 }
 
 export type DocumentStatus = 'indexed' | 'failed' | 'pending';
+export type DocumentListStatus = DocumentStatus | 'all';
 export type DocumentSortKey = 'title' | 'year' | 'updated';
 export type SortOrder = 'asc' | 'desc';
 
@@ -210,7 +211,7 @@ export interface DatasetDocumentsPage {
   found?: number;
   total: number;
   totalExact: boolean;
-  status: DocumentStatus;
+  status: DocumentListStatus;
   statusCounts: { indexed: number | null; failed: number; pending: number };
   listing: DocumentListing;
   query?: string;
@@ -238,7 +239,7 @@ export interface DocumentsRequest {
   filters?: Record<string, unknown>;
   query?: string;
   sort?: { key: DocumentSortKey; order: SortOrder };
-  status?: DocumentStatus;
+  status?: DocumentListStatus;
 }
 
 const documentsQuery = (page: DocumentsRequest) => {

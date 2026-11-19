@@ -23,19 +23,19 @@
 .dataset-filters {
   display: flex;
   flex-wrap: wrap;
-  gap: 16px 24px;
-  align-items: flex-end;
+  gap: 12px;
+  align-items: center;
 }
 
 .dataset-search {
-  flex: 1 1 260px;
-  max-width: 400px;
+  flex: 1 1 280px;
+  min-width: 0;
 }
 
-.dataset-filters fieldset {
-  border: none;
-  margin: 0;
-  padding: 0;
+.dataset-chips [aria-pressed='true'] {
+  background: var(--ds-color-accent-base-default);
+  border-color: var(--ds-color-accent-base-default);
+  color: var(--ds-color-accent-base-contrast-default);
 }
 
 .dataset-page .count {
@@ -797,4 +797,26 @@
 
 .dataset-page .docs-check {
   width: 2.75rem;
+}
+
+.doc-panel .doc-text {
+  overflow-wrap: anywhere;
+}
+
+.doc-panel .doc-text .playground-markdown > * {
+  margin: 0 0 var(--ds-size-2);
+}
+
+.doc-panel .doc-text .playground-markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.doc-panel .doc-text ul,
+.doc-panel .doc-text ol {
+  padding-left: var(--ds-size-5);
+}
+
+.doc-panel .doc-text pre {
+  overflow-x: auto;
+  white-space: pre;
 }

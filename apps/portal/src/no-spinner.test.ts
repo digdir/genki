@@ -13,18 +13,12 @@ beforeAll(async () => {
     .map((file) => [file, fs.readFileSync(new URL(file, here), 'utf8')]);
 });
 
-const awaitingOtherLanes = new Set([
-  'screens/datasets/LiveDatasetDetail.tsx',
-  'screens/services/blocks/TryViewKeeper.tsx',
-]);
-
 describe('spinners in the portal', () => {
   it('shows a spinner only inside a button after a click, through BusyButton', () => {
     expect(sources.length).toBeGreaterThan(100);
     const spinning = sources
       .filter(([, text]) => /<Spinner\b|ds-spinner/.test(text))
-      .map(([file]) => file.replaceAll('\\', '/'))
-      .filter((file) => !awaitingOtherLanes.has(file));
+      .map(([file]) => file.replaceAll('\\', '/'));
     expect(spinning).toEqual([]);
   });
 });
