@@ -141,6 +141,12 @@ a.ds-button {
   height: auto;
 }
 
+@media (max-width: 1599px) {
+  .services-row-model {
+    display: none;
+  }
+}
+
 .services-row-usage {
   flex: 0 1 190px;
   display: flex;

@@ -340,6 +340,7 @@ export interface ServiceSummaryView {
   purpose: string;
   outputKind: string;
   channels: string[];
+  model?: { id: string; residency: Residency | null } | null;
   latestVersion: number | null;
   status: 'active' | 'paused';
   statusReason: string | null;

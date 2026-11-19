@@ -14,6 +14,7 @@ export const states = defineNamespace({
   noAccess: 'Du har ikke tilgang',
   seeUsage: 'Se forbruket',
   couldNotFetch: 'Kunne ikke hente dataene',
+  loadingLine: '{label} ...',
   slow: 'Dette tar lengre tid enn vanlig. Vi henter fortsatt.',
   tooSlowTitle: 'Det tok for lang tid',
   tooSlowText: 'Vi fikk ikke svar innen 30 sekunder.',
