@@ -31,6 +31,23 @@ export interface AcceptedConverter {
   kept: boolean;
 }
 
+/**
+ * What a page with no text holds at most: the characters JavaScript's `\s` matches, written out so
+ * a PostgreSQL regular expression matches the same ones whatever the server's locale (issue 749).
+ */
+export const blankPageClass =
+  '[\\t\\n\\v\\f\\r \\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff]';
+
+/** A page with no text: empty, or only the characters `blankPageClass` names. */
+export const blankPage = new RegExp(`^${blankPageClass}*$`);
+
+/** A conversion cut short: its blank pages after its last page with text are more than 5 % of its pages. */
+export const shortEnd = 0.05;
+
+/** How many pages at a conversion's end are blank: all of them when none has text. */
+export const blankEndOf = (pages: readonly string[]) =>
+  pages.length - (pages.findLastIndex((page) => !blankPage.test(page)) + 1);
+
 export const textLayerDerivation: Derivation = { name: 'text-layer', version: 1 };
 export const doclingPagesDerivation: Derivation = { name: 'docling-pages', version: 1 };
 export const doclingPartsDerivation: Derivation = { name: 'docling-parts', version: 1 };
@@ -151,12 +168,14 @@ export interface StoredConversions {
    * stored before under the same key. A pages conversion ends every wait on its file and converter, and calls
    * `send` in that transaction for each waiting record that waits on nothing else. A record whose
    * index job could not be sent, since one is still queued or running (`send` answered null), keeps
-   * its wait and is answered as `busy`: the convert job is tried again.
+   * its wait and is answered as `busy`: the convert job is tried again. A record that still waits on
+   * another file is answered as `held`: its wait on this file has ended, and that file's conversion
+   * sends its index job. The conversion keeps its page count and its blank end (`blankEndOf`).
    */
   store(
     conversion: StoredConversion,
     send: (waiter: ConversionWaiter, transaction: RecordTransaction) => Promise<unknown>,
-  ): Promise<{ sent: ConversionWaiter[]; busy: ConversionWaiter[] }>;
+  ): Promise<{ sent: ConversionWaiter[]; busy: ConversionWaiter[]; held: ConversionWaiter[] }>;
   /**
    * Ends a record's waits, inside the transaction that writes it, so a wait on a file the record no
    * longer holds, or on a conversion that ended as a dead letter, does not hold its index job back.
@@ -206,6 +225,32 @@ export interface StoredConversions {
     after: string,
     limit: number,
   ): Promise<{ record: string; files: { name: string; sha256: string }[] }[]>;
+  /**
+   * A pipeline's records in a dataset after record number `after`, at most `limit`, with files whose
+   * one conversion by a kept converter is cut short: its blank pages after its last page with text
+   * are more than `shortEnd` of its pages. The KUDOS export stopped Docling at 900 s, and the seed
+   * stored the pages after that empty. A replacement run fills them from the text layer and converts
+   * them again with `current`, the worker's own kept converter, so a file is no longer short once it
+   * has a second kept conversion, refusals included, or its one is `current`'s (issue 749). Reads only
+   * the page counts and blank ends kept with each conversion, never its pages, so a conversion not yet
+   * measured (`measure`) is not short. Only stored records and those skipped as `no_text`, in record
+   * order.
+   */
+  short(
+    dataset: string,
+    pipeline: string,
+    accepted: readonly AcceptedConverter[],
+    after: string,
+    limit: number,
+    current: ConverterKey,
+  ): Promise<{ record: string; files: { name: string; sha256: string }[] }[]>;
+  /** Whether a conversion stored before page counts and blank ends were kept still lacks them. */
+  unmeasured(): Promise<boolean>;
+  /**
+   * Fills in the page count and blank end of every conversion stored before they were kept, 200 at a
+   * time, reading its pages once, and answers how many it measured (issue 749).
+   */
+  measure(): Promise<number>;
   /**
    * The records of a pipeline in a dataset, stored or skipped as `no_text`, that hold a file and wait
    * on no conversion: the documents a replacement's new conversion is indexed for, beside those

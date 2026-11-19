@@ -109,6 +109,9 @@ const recordMigrations: string[] = [
   `alter table src_conversions add column if not exists failure text`,
   // Files a converter reads get stored conversions; HTML and plain text are read by the index job.
   `alter table src_files add column if not exists converts boolean not null default false`,
+  // Page count and blank end per conversion, so short files need no pages (issue 749).
+  `alter table src_conversions add column if not exists page_count integer`,
+  `alter table src_conversions add column if not exists blank_end integer`,
   // A conversion's number, which its units and chunks name (ADR 0055, "Units and storage"). A
   // nullable column, then its sequence as the default, so the seeded table is not rewritten under
   // the lock; rows stored before keep no number. The unique index is built in this transaction.

@@ -1,4 +1,5 @@
 // A document's link from its number: the host's function, then the collection's templates.
+import { isSitePath } from '@genai/ui-blocks';
 import type { CorpusProfile, DocumentIdPattern } from './profile.js';
 
 // Tried in this order, and never built from a profile.
@@ -8,9 +9,10 @@ const patterns: readonly (readonly [DocumentIdPattern, RegExp])[] = [
   ['any', /^/],
 ];
 
-/** The template's address with the number in it, when it is a web address; nothing else. */
+/** The template's address with the number in it, when it is a web address or a path on this site. */
 const filled = (template: string, documentId: string): string | undefined => {
   const url = template.split('{id}').join(encodeURIComponent(documentId));
+  if (isSitePath(template)) return url;
   try {
     const { protocol } = new URL(url);
     return protocol === 'https:' || protocol === 'http:' ? url : undefined;
@@ -19,7 +21,7 @@ const filled = (template: string, documentId: string): string | undefined => {
   }
 };
 
-/** `documentUrl`, else the first of `documentLinks` the number fits; http or https only. */
+/** `documentUrl`, else the first of `documentLinks` the number fits; http, https or this site. */
 export const documentLink = (
   corpus: CorpusProfile | undefined,
   documentId: string,

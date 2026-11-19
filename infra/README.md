@@ -286,6 +286,30 @@ Certificates created outside the template, for example in the Azure portal, go i
 
 Without the DNS zone, create the same CNAME and TXT records wherever `genki-test.digdir.cloud` is hosted.
 
+### Hosted hostnames
+
+A hosted service is served by the assistant host (`<name>-assistant`, ADR 0061) on a name genki assigns in its own zone, `<subdomain>.apps.<zone>` such as `kunnskap.apps.genki-test.digdir.cloud`, or on a custom domain the service owns, such as `qa.kunnskap.digdir.cloud`. Either is added with a pull request to the environment's parameter file, and one entry in `hostedHostnames` does every part:
+
+```bicep
+param hostedHostnames = [
+  { subdomain: 'kunnskap', tenant: '991825827', stage: 'certificates' }
+  { hostname: 'qa.kunnskap.digdir.cloud', tenant: '991825827', stage: 'certificates' }
+  { hostname: 'kunnskap.digdir.cloud', tenant: '991825827', stage: 'hostnames', apex: true }
+]
+```
+
+- **A subdomain is the default.** It is one lowercase DNS label (letters, digits and hyphens, no dots, at most 63 characters) and becomes `<subdomain>.apps.<dnsZoneName>`. genki assigns these names; nothing is claimed in its zone. The template writes the CNAME to the host's generated host name and the `TXT asuid.<subdomain>.apps` record in genki's own DNS zone, as it does for the four app hostnames, so no one else touches DNS. The `apps.` level holds these names alone: no app hostname and no custom domain may sit there. Each name gets its own managed certificate; there is no wildcard.
+- **A custom domain is the option** for a service that has its own: `hostname` instead of `subdomain`.
+- The API gets every entry as `GENAI_HOSTED_HOSTNAMES` (`host=tenant,host=tenant`), which opens the hostname to that organisation: only its hosted Clients may then name it in `spec.hostnames`, and only then does `GET /v1/hosts/{hostname}` answer.
+- The assistant host binds every entry whose `stage` is past `none`, with a managed certificate in `<name>-hosted-env`. The stages are those of `CUSTOM_DOMAINS_STAGE`, per hostname, since a new hostname must be on the app before Azure issues its certificate: `none` (the API only), then `hostnames` once DNS points at the host, then `certificates`. Each step is its own pull request and deploy. The four app hostnames above keep `hostnames` and `CUSTOM_DOMAINS_STAGE` as before.
+- `apex: true` is for a zone apex, which can have no CNAME: an A record to the host environment's static IP, and a certificate validated over HTTP instead of CNAME.
+- The records a custom domain needs are in the output `assistantHost.dnsRecords`: a CNAME to the host's generated host name (an A record to `assistantHost.staticIp` for an apex), and `TXT asuid.<hostname>` with `assistantHost.verificationId`. They go in the owner's DNS zone, which the template does not write. A CAA record on the domain, if any, must allow `digicert.com`.
+- A subdomain's records are written by the deploy that applies the whole template, while its stage is still `none`; move it to `hostnames` in the next pull request.
+- Nothing binds while `assistantHostEnabled` is off, but the API still opens the hostname.
+- `scripts/hosted-hostnames-infra.test.ts` checks every entry in both parameter files: either a subdomain that is one valid label or a lowercase hostname outside genki's own zones, a nine-digit organisation number, a known stage, and no name twice; and that none of the four app hostnames sits under `apps.`.
+
+Removing an entry unbinds the hostname and closes it in the API at the next deploy; the certificate stays in the environment until deleted by hand (`az containerapp env certificate delete`). Moving a team's existing domain is in [docs/runbook.md](../docs/runbook.md#moving-a-teams-domain-to-genki).
+
 ## Login registrations
 
 Register one Ansattporten integration per app and environment: in Ansattporten's test environment for genki-test, in production Ansattporten (`https://ansattporten.no`) for prod. `<zone>` is `genki-test.digdir.cloud` or `genki.digdir.cloud`:

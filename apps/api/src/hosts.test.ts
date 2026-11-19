@@ -64,6 +64,9 @@ const boot = async (options: { lockdown?: boolean } = {}) => {
         ['ka.example.no', digdir],
         ['nynorsk.example.no', digdir],
         ['ola.example.no', other],
+        ['kunnskap.apps.genki-test.digdir.cloud', digdir],
+        ['portal.genki-test.digdir.cloud', digdir],
+        ['a.kunnskap.apps.genki-test.digdir.cloud', digdir],
       ]),
       reservedDomains: defaultReservedDomains,
     },
@@ -146,10 +149,29 @@ describe('the assistant host', () => {
       environment: 'prod',
       name: 'Klarspråkassistenten',
       login: { issuer: null, clientId: 'klarsprak-host' },
+      languages: ['nb', 'en'],
       theme: null,
       menu: shown.menu,
       pages: [{ id: 'om', title: 'Om tjenesten' }],
     });
+  });
+
+  it('offers the languages the service answers in that the host has words for, bokmål when none', async () => {
+    const { call, publish, saveClient } = await boot();
+    const speaking = (languages: string[]) => {
+      const d = service('klarsprak', shown);
+      return { ...d, spec: { ...d.spec, languages } };
+    };
+    const offered = async (languages: string[]) => {
+      expect((await publish(speaking(languages))).ok).toBe(true);
+      expect((await saveClient('klarsprak-host', client())).status).toBe(200);
+      return ((await (await call('/v1/hosts/ka.example.no')).json()) as { languages: string[] })
+        .languages;
+    };
+
+    expect(await offered(['en', 'nb'])).toEqual(['en', 'nb']);
+    expect(await offered(['nn', 'en'])).toEqual(['en']);
+    expect(await offered(['nn'])).toEqual(['nb']);
   });
 
   it('answers the same 404 for every hostname that is not active', async () => {
@@ -217,6 +239,25 @@ describe('the assistant host', () => {
     expect(res.status).toBe(400);
     expect((await errorsOf(res))[0]?.message).toMatch(/^hostname_not_allowed/);
     expect((await call('/v1/hosts/ka.example.no')).status).toBe(404);
+  });
+});
+
+describe('names genki assigns in its own zone', () => {
+  it('a service may take one label under apps. in genki’s zone once opened to it, and no other name there', async () => {
+    const { publish, saveClient } = await boot();
+    expect((await publish(service('klarsprak', shown))).ok).toBe(true);
+    const save = (hostname: string) =>
+      saveClient('klarsprak-host', client({ hostnames: [{ hostname }] }));
+
+    expect((await save('kunnskap.apps.genki-test.digdir.cloud')).status).toBe(200);
+    for (const refused of [
+      'portal.genki-test.digdir.cloud',
+      'a.kunnskap.apps.genki-test.digdir.cloud',
+    ]) {
+      const res = await save(refused);
+      expect(res.status, refused).toBe(400);
+      expect((await errorsOf(res))[0]?.message).toMatch(/^hostname_not_allowed/);
+    }
   });
 });
 

@@ -101,15 +101,23 @@ const embeddingInput = (text: string) => {
 
 /**
  * Embeds a document's chunks and phrases. A text longer than the model takes, such as a long table
- * copied from another engine (#366), is embedded by its start and stored whole.
+ * copied from another engine (#366), is embedded by its start and stored whole. A text with a vector
+ * in `held`, the generation's own for the document, keeps it and is not embedded again (issue 749).
  */
 export const embedIndexDocument = async (
   doc: IndexDocument,
   embedder: EmbeddingPort,
   batchSize = 64,
+  held: ReadonlyMap<string, number[]> = new Map(),
 ): Promise<IndexDocument> => {
-  const texts = [...new Set([...doc.chunks, ...doc.phrases].map((t) => t.text))];
   const vectors = new Map<string, number[]>();
+  for (const { text } of [...doc.chunks, ...doc.phrases]) {
+    const kept = held.get(text);
+    if (kept) vectors.set(text, kept);
+  }
+  const texts = [
+    ...new Set([...doc.chunks, ...doc.phrases].map((t) => t.text).filter((t) => !vectors.has(t))),
+  ];
   // A request ends at `batchSize` inputs or before its bytes pass the budget; each input is under it.
   for (let at = 0; at < texts.length;) {
     const batch: string[] = [];

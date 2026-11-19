@@ -111,6 +111,7 @@ param customDomainsStage = readEnvironmentVariable('CUSTOM_DOMAINS_STAGE', 'none
 param existingCertificates = {}
 param createDnsZone = true
 param dnsZoneName = 'genki-test.digdir.cloud'
+param hostedHostnames = []
 
 param alertsEnabled = true
 param alertEmails = readEnvironmentVariable('ALERT_EMAILS', '')

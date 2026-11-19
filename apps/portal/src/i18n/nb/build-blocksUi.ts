@@ -146,7 +146,7 @@ export const blocksUi = {
     removeCollection: 'Fjern tekstene for {key}',
     tooLong: 'Høyst {max} tegn.',
     tooMany: 'Høyst {max}.',
-    notHttps: 'Må være en https-adresse, med vertsnavnet før {id}.',
+    notHttps: 'Må være en https-adresse med vertsnavnet før {id}, eller en sti som starter med /.',
     unknownKind: 'Felttypen er ukjent: «{kind}».',
     tooLarge: 'Tekstene er større enn {max} byte. Kort dem ned.',
   }),

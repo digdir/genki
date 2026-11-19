@@ -95,11 +95,11 @@ The parts of a file that a reader sees but that carry nothing of their own, such
 _Avoid_: boilerplate, chrome, artefact
 
 **Kept conversion**:
-A stored conversion from a converter a pipeline keeps, such as Docling, which is never converted again unless an upgrade is chosen. One from a converter the pipeline only accepts, such as the text layer, is replaced by a replacement run.
+A stored conversion from a converter a pipeline keeps, such as Docling, which is never converted again unless an upgrade is chosen, or it was cut short: a seeded Docling conversion the export stopped at its timeout is converted again by a replacement run. One from a converter the pipeline only accepts, such as the text layer, is replaced by a replacement run.
 _Avoid_: final conversion, pinned conversion
 
 **Replacement run**:
-A run a pipeline's run sends for the files whose only conversion is one to be replaced, such as the text layer, converting them again in the night window. It is not the pipeline's open run, so the next run does not wait for it.
+A run a pipeline's run sends for the files whose only conversion is one to be replaced, such as the text layer, or whose kept conversions are all cut short, converting them again in the night window. It is not the pipeline's open run, so the next run does not wait for it.
 _Avoid_: upgrade, backfill
 
 **Recipe**:

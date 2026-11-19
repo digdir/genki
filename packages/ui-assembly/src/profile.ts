@@ -4,6 +4,7 @@
 // it that is data (`ProfileData`), which fills what the host's leaves out; without either, the
 // assembly uses genki's names as they come.
 import {
+  isDocumentLink,
   isHttpsLink,
   type AssistantLayout,
   type DocumentFile,
@@ -145,7 +146,7 @@ const corporaOf = (
   ) as AssistantProfile['corpora'];
 };
 
-// A stored layout may not have been checked: only its https links are drawn, as the checks ask.
+// A stored layout may not have been checked: only the links the checks take are drawn.
 const httpsLinks = (data: ProfileData): ProfileData => {
   const corpora = data.corpora && {
     corpora: Object.fromEntries(
@@ -156,7 +157,7 @@ const httpsLinks = (data: ProfileData): ProfileData => {
               ...corpus,
               documentLinks: Object.fromEntries(
                 Object.entries(corpus.documentLinks).filter(
-                  ([, url]) => url !== undefined && isHttpsLink(url),
+                  ([, url]) => url !== undefined && isDocumentLink(url),
                 ),
               ),
             }

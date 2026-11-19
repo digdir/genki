@@ -42,6 +42,15 @@ export const reservedDomainsFrom = (env: NodeJS.ProcessEnv): string[] => [
 const under = (hostname: string, domain: string) =>
   hostname === domain || hostname.endsWith(`.${domain}`);
 
+export const genkiZones = ['genki.digdir.cloud', 'genki-test.digdir.cloud'];
+
+/** One label under `apps.` in genki's own zone: a name genki assigns to a service. */
+export const isAssignedName = (hostname: string) =>
+  genkiZones.some((zone) => {
+    const suffix = `.apps.${zone}`;
+    return hostname.endsWith(suffix) && !hostname.slice(0, -suffix.length).includes('.');
+  });
+
 export interface HostingRules {
   /** Hostname to the tenant it is opened for. */
   hostnames: ReadonlyMap<string, string>;
@@ -60,7 +69,8 @@ export const hostnameProblems = (
   return (definition.spec.hostnames ?? []).flatMap(({ hostname }, i): ClientIssue[] => {
     const path = `spec.hostnames.${i}.hostname`;
     if (
-      rules.reservedDomains.some((domain) => under(hostname, domain)) ||
+      (!isAssignedName(hostname) &&
+        rules.reservedDomains.some((domain) => under(hostname, domain))) ||
       rules.hostnames.get(hostname) !== tenant
     )
       return [
@@ -79,6 +89,18 @@ export const hostnameProblems = (
 
 type Text = string | { nb: string; en: string };
 
+type HostLanguage = 'nb' | 'en';
+
+const hostLanguages: readonly HostLanguage[] = ['nb', 'en'];
+
+/** The service's languages the host's own words come in, in the service's order; bokmål when none do. */
+export const languagesOf = (service: readonly string[] | undefined): HostLanguage[] => {
+  const shared = (service ?? hostLanguages).filter((l): l is HostLanguage =>
+    hostLanguages.includes(l as HostLanguage),
+  );
+  return shared.length > 0 ? shared : ['nb'];
+};
+
 export interface HostView {
   hostname: string;
   tenant: string;
@@ -86,6 +108,8 @@ export interface HostView {
   environment: string;
   name: Text;
   login: { issuer: string | null; clientId: string };
+  languages: HostLanguage[];
+  /** Designsystemet's default (Digdir) theme until a service's own is built (ADR 0063). */
   theme: null;
   menu: ({ label: Text; page: string } | { label: Text; href: string })[];
   pages: { id: string; title: Text }[];
@@ -138,6 +162,7 @@ const resolve = async (
     environment: claim.environment,
     name: shown.layout.profile?.assistantName ?? definition.metadata.name ?? service,
     login: { issuer: deps.issuer ?? null, clientId: client.spec.oidc.clientId },
+    languages: languagesOf(definition.spec.languages),
     theme: null,
     menu: (shown.menu ?? []).map((item) =>
       'page' in item

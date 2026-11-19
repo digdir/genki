@@ -12,6 +12,7 @@ import {
 } from '@genai/port-knowledge';
 import type { Pool, PoolClient } from 'pg';
 import { generationWritable, tryGenerationWrite } from './heavy-work.js';
+import { partitionOf } from './partitions.js';
 import { deleteDocument, replaceDocument, updateDocumentFields } from './knowledge-writer.js';
 import { transaction } from './schema.js';
 
@@ -283,6 +284,26 @@ export const knowledgeRecordsOf = (writer: Pool): DocumentRecords => ({
       [generation, record.id, record.change],
     );
     return rows.length > 0;
+  },
+
+  heldVectors: async (record, generation) => {
+    const { rows: known } = await writer.query(
+      `select 1 from kn_generations where generation = $1 and dataset = $2`,
+      [generation, record.dataset],
+    );
+    const vectors = new Map<string, number[]>();
+    if (known.length === 0) return vectors;
+    // The generation's own tables, which hold its rows before and after it is attached.
+    const { rows } = await writer.query<{ text: string; vec: string }>(
+      `select text, vec::text as vec from ${partitionOf('kn_chunks', generation)}
+        where generation = $2 and doc_id = $1 and vec is not null
+       union all
+       select text, vec::text as vec from ${partitionOf('kn_phrases', generation)}
+        where generation = $2 and doc_id = $1 and vec is not null`,
+      [record.id, generation],
+    );
+    for (const row of rows) vectors.set(row.text, JSON.parse(row.vec) as number[]);
+    return vectors;
   },
 
   touch: async (record, generation) => {
