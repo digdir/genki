@@ -153,6 +153,22 @@ resource postgresConnections 'Microsoft.Insights/metricAlerts@2018-03-01' = {
 
 var consoleLogs = 'ContainerAppConsoleLogs | where ContainerAppName in (\'${apiAppName}\', \'${workerAppName}\')'
 
+var slowByDesignPaths = [
+  '/chat/completions'
+  '/uploads'
+  '/playground/runs'
+  '/definitions/test-run'
+  '/definitions/complete'
+  '/assistant/turns'
+  '/test-runs'
+  '/diagnostics/plan'
+  '/diagnostics/retrieve'
+  '/api/tools/call'
+  '/api/mcp'
+  '/a2a'
+]
+var slowByDesignList = join(map(slowByDesignPaths, path => '\'${path}\''), ', ')
+
 var appLogAlerts = [
   {
     key: 'api-errors'
@@ -193,11 +209,11 @@ var appLogAlerts = [
   {
     key: 'api-latency'
     title: 'API slow'
-    description: 'The API\'s 95th percentile response time was over ${thresholds.latencySeconds} s over 15 minutes, with at least ${thresholds.latencyMinRequests} requests; chat completions and uploads are left out, since they stream or carry files.'
+    description: 'The API\'s 95th percentile response time was over ${thresholds.latencySeconds} s over 15 minutes, with at least ${thresholds.latencyMinRequests} requests; health checks, uploads and routes that wait for a model answer (playground, service calls, assistant, A2A, MCP) are left out.'
     severity: 2
     frequency: 'PT5M'
     window: 'PT15M'
-    query: 'ContainerAppHTTPLogs | where ContainerAppName == \'${apiAppName}\' and StatusCode > 0 and Path !contains \'/chat/completions\' and Path !contains \'/uploads\' | summarize total = count(), p95 = percentile(todouble(RequestDuration), 95) | where total >= ${thresholds.latencyMinRequests} | extend seconds = p95 / 1000.0'
+    query: 'ContainerAppHTTPLogs | where ContainerAppName == \'${apiAppName}\' and StatusCode > 0 and Path != \'/health\' and Path !has_any (${slowByDesignList}) | summarize total = count(), p95 = percentile(todouble(RequestDuration), 95) | where total >= ${thresholds.latencyMinRequests} | extend seconds = p95 / 1000.0'
     measure: 'seconds'
     aggregation: 'Maximum'
     threshold: thresholds.latencySeconds

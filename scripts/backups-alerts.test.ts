@@ -237,9 +237,20 @@ describe.skipIf(!hasAz && !process.env.CI)('backups and alerts in the template',
     expect(logRules).toContain('queue stats');
     expect(logRules).toContain('iff(failures >= {2} or stale > 0 or waiting > 0, 1, 0)');
     expect(text(main.parameters.alertThresholds?.defaultValue)).toContain('"workerFailures":3');
-    expect(logRules).toContain(
-      "Path !contains ''/chat/completions'' and Path !contains ''/uploads''",
-    );
+    const variables = module('alerts').properties.template?.variables ?? {};
+    expect(logRules).toContain("Path != ''/health''");
+    expect(logRules).toContain('Path !has_any (');
+    const slow = text(variables.slowByDesignPaths);
+    for (const route of ['/chat/completions', '/uploads', '/playground/runs', '/a2a', '/api/mcp'])
+      expect(slow).toContain(route);
+    for (const route of ['/tasks', '/models', '/datasets', '/api/facets'])
+      expect(slow).not.toContain(`"${route}"`);
+  });
+
+  it('the API slow alert still counts the conversation list, eval runs and batch runs', () => {
+    const slow = text((module('alerts').properties.template?.variables ?? {}).slowByDesignPaths);
+    for (const route of ['/api/conversations', '/eval-runs', '/batch-runs'])
+      expect(slow).not.toContain(route);
   });
 
   it('switches Failure Anomalies off and tests /health every 5 minutes in test', () => {
