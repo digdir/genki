@@ -634,6 +634,7 @@ export const buildEvidenceSummary = (w: Workspace, query: string): EvidenceSumma
       'doc-num': c.document ?? null,
       'chunk-index': c.position ?? null,
       title: c.title ?? null,
+      publisher: c.publisher ?? null,
       metadata: c.headers?.length ? JSON.stringify(c.headers) : null,
       'content-preview': preview(c.content, 500),
       ...(c.matchedQuestions?.length ? { 'matched-questions': c.matchedQuestions } : {}),
@@ -653,6 +654,7 @@ export const buildEvidenceSummary = (w: Workspace, query: string): EvidenceSumma
     'doc-num': s['doc-num'],
     'chunk-index': s['chunk-index'],
     title: s.title,
+    publisher: s.publisher ?? null,
     headers: s.headers,
     'content-length': s['content-length'],
   });
