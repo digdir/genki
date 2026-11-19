@@ -85,5 +85,6 @@ describe('the in-memory engine searching inside one document', () => {
     expect(await documents({ title: { contains: ['tilskudd 2021', 'opplæring'] } })).toEqual(
       new Set(['dok-2', 'dok-3']),
     );
+    expect(await documents({ title: 'tilskudd til forskning' })).toEqual(new Set(['dok-5']));
   });
 });

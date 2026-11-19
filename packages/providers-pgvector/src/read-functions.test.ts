@@ -1480,7 +1480,11 @@ describe('searching inside one document on the knowledge server', () => {
         ).rows[0]?.sql ?? '',
       );
       expect(
-        listing.some((i) => i.startsWith('Index') && i.endsWith('_pkey')),
+        listing.some(
+          (i) =>
+            i.startsWith('Index') &&
+            i.endsWith(` on ${partitionOf('kn_docs', manyGeneration)}_pkey`),
+        ),
         listing.join('; '),
       ).toBe(true);
     });
