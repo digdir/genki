@@ -1761,6 +1761,25 @@ describe('the filter in the next look (dev-filter-panel)', () => {
   const bars = () =>
     [...document.querySelectorAll('.uib-approach summary')].map((summary) => summary.textContent);
 
+  it('opens the threads and the filter beside the chat at 1280, not over it', async () => {
+    render(
+      <Assistant
+        api={counted().api}
+        layout={nextLayout}
+        service="ka"
+        tenant="digdir"
+        profile={{ assistantName: 'KA' }}
+        frameWidth={1280}
+      />,
+    );
+    const nav = await screen.findByRole('navigation', { name: 'Tråder og filter' });
+    const open = screen.queryByRole('button', { name: 'Vis tråder og filter' });
+    if (open) fireEvent.click(open);
+    await within(filterPanel()).findByRole('checkbox', { name: /^Årsrapport/ });
+    expect(nav.hasAttribute('data-collapsed')).toBe(false);
+    expect(document.querySelector('.uib-shell')?.hasAttribute('data-drawer')).toBe(false);
+  });
+
   it('draws the filter as its own panel in the threads’ card, for the next question', async () => {
     drawNext(counted().api);
     const nav = await screen.findByRole('navigation', { name: 'Tråder og filter' });
@@ -2073,13 +2092,21 @@ describe('the filter in the next look (dev-filter-panel)', () => {
       expect(card()?.style.getPropertyValue('--uib-shell-lead-width')).toBe('calc(100% - 230px)');
     });
 
-    it('leaves the filter as it was while the trial is off: 440 wide, two columns, the card at least 660', async () => {
+    it('draws the filter 440 wide in two columns while the trial is off, the card narrowing it to 450', async () => {
       drawTrial(false);
       await shown();
       expect(card()?.style.getPropertyValue('--uib-shell-lead-width')).toBe('220px');
       expect(columns()).toBeUndefined();
-      expect(edge().getAttribute('aria-valuemin')).toBe('660');
+      expect(edge().getAttribute('aria-valuemin')).toBe('450');
       expect(edge().getAttribute('aria-valuenow')).toBe('660');
+    });
+
+    it('keeps the threads 220 and narrows the filter as the card shrinks to 450, the trial off', async () => {
+      drawTrial(false);
+      await shown();
+      fireEvent.keyDown(edge(), { key: 'Home' });
+      expect(edge().getAttribute('aria-valuenow')).toBe('450');
+      expect(card()?.style.getPropertyValue('--uib-shell-lead-width')).toBe('220px');
     });
   });
 

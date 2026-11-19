@@ -833,8 +833,8 @@ export const AssistantView = ({
       // it: «Filter», «Gjelder neste spørsmål», and the card's button on its row.
       ...(filterPanel
         ? {
-            // With `compact-filter`, no narrower than the threads' 220 beside the filter's 230.
-            size: { width: 660, minWidth: compactFilter ? 220 + 230 : 660 },
+            // No narrower than the threads' 220 beside 230 of filter, so it stays beside the chat.
+            size: { width: 660, minWidth: 220 + 230 },
             companion: {
               label: t('assembly.filterForThread'),
               title: t('builder.filter'),
