@@ -246,7 +246,9 @@ describe('generations as partitions on the knowledge server', () => {
     expect((await indexesOf(table)).filter((n) => n.includes('_r_'))).toHaveLength(1);
   });
 
-  it('the server migration gives up after lock_timeout instead of queueing writes behind it', async () => {
+  it('a server migration with a new step gives up after lock_timeout instead of queueing writes behind it', async () => {
+    // A step not yet applied: the index is built again, which needs a lock writers block.
+    await owner.query(`drop index if exists kn_docs_title_tsv`);
     const holder = await owner.connect();
     try {
       await holder.query('begin');
@@ -319,6 +321,25 @@ describe('generations as partitions on the knowledge server', () => {
 
     expect(took).toHaveLength(1);
     expect(took[0]).toBeGreaterThanOrEqual(0);
+  });
+
+  it('a server migration with nothing new takes no table lock while writers hold every knowledge table', async () => {
+    await migrateKnowledgeServer(owner);
+    const holder = await admin.connect();
+    try {
+      await holder.query('begin');
+      const { rows } = await holder.query<{ name: string }>(
+        `select tablename as name from pg_tables
+          where schemaname = 'public' and (tablename like 'kn\\_%' or tablename like 'src\\_%')`,
+      );
+      // What a writer holds on each table it writes: it blocks every lock DDL takes.
+      await holder.query(`lock table ${rows.map((r) => r.name).join(', ')} in row exclusive mode`);
+
+      await expect(migrateKnowledgeServer(owner, { lockTimeoutMs: 300 })).resolves.toBeUndefined();
+    } finally {
+      await holder.query('rollback');
+      holder.release();
+    }
   });
 
   it('attaching a generation does not scan it', async () => {

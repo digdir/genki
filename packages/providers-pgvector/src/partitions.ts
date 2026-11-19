@@ -216,7 +216,43 @@ const migrations: string[] = [
   ...readFunctionMigrations(knowledgeRoles.reader),
 ];
 
-/** Runs at a worker's first knowledge use; like partition DDL it gives up after `lockTimeoutMs` rather than queue writes behind it. */
+const relationExists = `select to_regclass($1) is not null as applied`;
+const columnExists = `select exists (select 1 from pg_attribute
+   where attrelid = to_regclass($1) and attname = $2 and not attisdropped) as applied`;
+const defaultExists = `select exists (select 1 from pg_attrdef d
+   join pg_attribute a on a.attrelid = d.adrelid and a.attnum = d.adnum
+   where d.adrelid = to_regclass($1) and a.attname = $2) as applied`;
+
+/**
+ * How to tell from the catalog that a schema step is already applied. Even with `if not exists`,
+ * `alter table` and `create index` take their table lock before they look, so a step run again
+ * waits behind every writer and search; one already applied is skipped instead (issue 634). A
+ * step that changes something that exists, such as another default, needs its own check here.
+ */
+const appliedChecks: [RegExp, string][] = [
+  [/^create table if not exists (\w+)/, relationExists],
+  [/^create (?:unique )?index if not exists (\w+)/, relationExists],
+  [/^create sequence if not exists (\w+)/, relationExists],
+  [/^alter table (\w+) add column if not exists (\w+)/, columnExists],
+  [/^alter table (\w+) alter column (\w+) set default /, defaultExists],
+];
+
+/** True when the step's effect is already in the catalog; false for steps that run every time. */
+const applied = async (client: PoolClient, sql: string) => {
+  for (const [pattern, check] of appliedChecks) {
+    const match = pattern.exec(sql);
+    if (!match) continue;
+    const { rows } = await client.query<{ applied: boolean }>(check, match.slice(1));
+    return rows[0]?.applied === true;
+  }
+  return false;
+};
+
+/**
+ * Runs at a worker's first knowledge use; like partition DDL it gives up after `lockTimeoutMs`
+ * rather than queue writes behind it. Only steps not yet applied take a table lock, so a start
+ * with nothing new never waits for writers or searches.
+ */
 export const migrateKnowledgeServer = async (owner: Pool, options: PartitionOptions = {}) => {
   const client = await owner.connect();
   try {
@@ -225,7 +261,7 @@ export const migrateKnowledgeServer = async (owner: Pool, options: PartitionOpti
       `${options.lockTimeoutMs ?? defaultLockTimeoutMs}ms`,
     ]);
     await client.query(`select pg_advisory_xact_lock(hashtext('genai-knowledge-server-migrate'))`);
-    for (const sql of migrations) await client.query(sql);
+    for (const sql of migrations) if (!(await applied(client, sql))) await client.query(sql);
     await client.query('commit');
   } catch (error) {
     await client.query('rollback').catch(() => undefined);
