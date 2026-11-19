@@ -86,7 +86,9 @@ const Endpoints = ({
               <dd>
                 {shown.map((e) => (
                   <code key={e}>
-                    {c === 'openai' ? t('serviceDev.openaiModel', { endpoint: e, model }) : e}
+                    {e.endsWith('/chat/completions')
+                      ? t('serviceDev.openaiModel', { endpoint: e, model })
+                      : e}
                   </code>
                 ))}
               </dd>
@@ -415,7 +417,7 @@ export const ServiceChannels = ({
   const [flash, setFlash] = useState<Flash>();
   const [newSecret, setNewSecret] = useState<{ name: string; value: string }>();
   const [busy, setBusy] = useState(false);
-  const model = publicName ?? `${service}__default`;
+  const model = publicName || `${service}__default`;
 
   const notify = (text: string, color: Flash['color'] = 'success') => setFlash({ text, color });
 

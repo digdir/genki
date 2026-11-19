@@ -134,6 +134,7 @@ export interface SearchSummary {
   'total-chunks': number | null;
   'content-length': number | null;
   title: string | null;
+  publisher?: string;
   headers: string | null;
   'search-types': SearchType[] | null;
   'rerank-score': number | null;
@@ -295,6 +296,7 @@ export class Workspace {
         'total-chunks': null,
         'content-length': c.contentLength ?? null,
         title: c.title ?? null,
+        ...(c.publisher === undefined ? {} : { publisher: c.publisher }),
         headers: headerString(c.headers),
         'search-types': c.searchTypes ?? null,
         'rerank-score': c.rerankScore ?? null,

@@ -343,6 +343,8 @@ const filtersParam = z
 
 export const documentStatuses = ['indexed', 'failed', 'pending'] as const;
 export type DocumentStatus = (typeof documentStatuses)[number];
+export const documentListStatuses = [...documentStatuses, 'all'] as const;
+export type DocumentListStatus = (typeof documentListStatuses)[number];
 
 export const datasetDocumentsQuery = z.object({
   limit: z.coerce.number().int().min(1).max(maxDocumentsLimit).default(50),
@@ -351,7 +353,7 @@ export const datasetDocumentsQuery = z.object({
   query: z.string().trim().max(maxDocumentQueryLength).optional(),
   sort: z.enum(documentSortKeys).optional(),
   order: z.enum(['asc', 'desc']).default('asc'),
-  status: z.enum(documentStatuses).default('indexed'),
+  status: z.enum(documentListStatuses).default('indexed'),
 });
 
 export interface OriginalFile {
@@ -384,7 +386,7 @@ export interface DatasetDocumentsPage {
   found?: number;
   total: number;
   totalExact: boolean;
-  status: DocumentStatus;
+  status: DocumentListStatus;
   statusCounts: DocumentStatusCounts;
   listing: DocumentListing;
   query?: string;
@@ -602,7 +604,7 @@ export const mountDatasetDocuments = <E extends Env, S extends Schema, B extends
     const query = parsed.data.query || undefined;
     if (offset % limit !== 0)
       return invalid(c, [{ path: 'offset', message: t('problems.datasetDocumentsOffsetNotPage') }]);
-    if (status !== 'indexed' && (filters || sort))
+    if ((status === 'failed' || status === 'pending') && (filters || sort))
       return invalid(c, [
         {
           path: filters ? 'filters' : 'sort',
@@ -619,7 +621,7 @@ export const mountDatasetDocuments = <E extends Env, S extends Schema, B extends
         );
       const info = port.info();
       const listing = info.documentListing ?? noListing;
-      if (query && !listing.query && status === 'indexed')
+      if (query && !listing.query && (status === 'indexed' || status === 'all'))
         return invalid(c, [
           { path: 'query', message: t('problems.datasetDocumentsQueryUnsupported') },
         ]);
@@ -665,6 +667,68 @@ export const mountDatasetDocuments = <E extends Env, S extends Schema, B extends
         pending: rest.pending.length,
       };
       const sortView = sort ? { sort: { key: sort, order } } : {};
+      if (status === 'all') {
+        const needle = query?.toLowerCase();
+        const head = filters
+          ? []
+          : [
+              ...rest.failed.map((d) => notIndexedView(d, 'failed')),
+              ...rest.pending.map((d) => notIndexedView(d, 'pending')),
+            ].filter(
+              (d) =>
+                !needle ||
+                d.id.toLowerCase().includes(needle) ||
+                (d.title?.toLowerCase().includes(needle) ?? false),
+            );
+        const shown = head.slice(offset, offset + limit);
+        const need = limit - shown.length;
+        const start = Math.max(0, offset - head.length);
+        const aligned = Math.floor(start / limit) * limit;
+        const list = port.documents.bind(port);
+        const read = (at: number, size: number) =>
+          list({
+            limit: size,
+            offset: at,
+            ...(filters ? { filters: filters as Record<string, never> } : {}),
+            ...(query ? { query } : {}),
+            ...(sort ? { sort: { key: sort, direction: order } } : {}),
+          });
+        const fallback = narrowed ? undefined : (datasetCount ?? undefined);
+        const first =
+          need > 0
+            ? await read(aligned, limit)
+            : fallback === undefined
+              ? await read(0, 1)
+              : undefined;
+        const second =
+          first && need > 0 && start + need > aligned + limit && first.documents.length === limit
+            ? await read(aligned + limit, limit)
+            : undefined;
+        const indexedPart = [...(first?.documents ?? []), ...(second?.documents ?? [])]
+          .slice(start - aligned, start - aligned + need)
+          .map((d) => view(d, kept));
+        const indexedTotal = first?.found ?? fallback;
+        const documents = [...shown, ...indexedPart];
+        const answer: DatasetDocumentsPage = {
+          dataset: item.id,
+          limit,
+          offset,
+          ...(first?.found === undefined ? {} : { found: head.length + first.found }),
+          total:
+            indexedTotal === undefined
+              ? offset + documents.length + (documents.length === limit ? limit : 0)
+              : head.length + indexedTotal,
+          totalExact: indexedTotal !== undefined,
+          status,
+          statusCounts,
+          listing,
+          ...(query ? { query } : {}),
+          ...sortView,
+          ...(filters ? { filters } : {}),
+          documents,
+        };
+        return c.json(answer);
+      }
       if (status !== 'indexed') {
         const needle = query?.toLowerCase();
         const all = rest[status].filter(

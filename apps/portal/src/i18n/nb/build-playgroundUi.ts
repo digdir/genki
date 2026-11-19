@@ -214,8 +214,7 @@ export const playgroundUi = {
     work: 'Arbeidsmåte',
     workFlow: '{strategy} «{flow}», v{version}',
     workFlowShort: '{flow}, v{version}',
-    modelFacts: 'Data i {where} · {price}',
-    pricePerThousand: '{input} / {output} kr',
+    pricePerMillion: '{input}\u00a0kr / {output}\u00a0kr per 1M tokens',
     instructionsLocked:
       'Arbeidsmåten {work} har ingen instruksjoner å bytte ut. Endre stegene i utkastet i stedet.',
     openInLog: 'Åpne i Logg',
@@ -239,7 +238,7 @@ export const playgroundUi = {
       one: 'Kilde: {list}',
       other: 'Kilder: {list}',
     },
-    changeModel: 'modell',
+    changeModel: 'modell {name}',
     changesFromStart: {
       one: '{count} endring fra {start}: {list}.',
       other: '{count} endringer fra {start}: {list}.',
@@ -254,6 +253,7 @@ export const playgroundUi = {
     timelineAnswer: 'Tidslinje for svaret',
     timelineHint: 'Klikk et steg for inn og ut',
     timelineSide: 'Tidslinje {key}: {summary}',
+    instantStep: '<1 ms',
     timelineNoSteps: 'Ingen steg ennå',
     setupOf: 'Oppsett {key}',
     hideSetup: 'Skjul oppsett',

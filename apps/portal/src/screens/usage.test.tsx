@@ -394,7 +394,7 @@ describe('Forbruk', () => {
     expect(row(/^Sum$/)?.textContent).toContain('100 %');
   });
 
-  it('shows the price per 1 000 tokens of each model from the model list', async () => {
+  it('shows the price per 1M tokens of each model from the model list, the unit the catalogue uses', async () => {
     const usage = { inputTokens: 800, outputTokens: 200, requests: 1, costMicroNok: 1_000 };
     const report: UsageReport = {
       ...emptyReport,
@@ -422,11 +422,9 @@ describe('Forbruk', () => {
     );
 
     const region = await table('Fordelt på modell');
-    expect(
-      within(region).getByRole('columnheader', { name: 'Pris per 1 000 tokens' }),
-    ).toBeTruthy();
+    expect(within(region).getByRole('columnheader', { name: 'Pris per 1M tokens' })).toBeTruthy();
     const row = (name: RegExp) => within(region).getByRole('rowheader', { name }).parentElement;
-    expect(row(/GPT-4\.1 mini/)?.textContent).toContain('0,0042 kr inn, 0,0168 kr ut');
+    expect(row(/GPT-4\.1 mini/)?.textContent).toContain('4,20 kr inn, 16,80 kr ut');
     expect(row(/^norsk-7b/)?.textContent).toContain('Pris mangler for modellen norsk-7b');
     expect(row(/old-model/)?.textContent).toContain('Ukjent');
   });

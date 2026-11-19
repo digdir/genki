@@ -2093,10 +2093,10 @@ const documentRoutes: RouteConfig[] = [
           .describe('Sorts indexed documents by a key listing.sort names; others answer 422'),
         order: z.enum(['asc', 'desc']).optional().describe('The sort order, asc by default'),
         status: z
-          .enum(['indexed', 'failed', 'pending'])
+          .enum(['indexed', 'failed', 'pending', 'all'])
           .optional()
           .describe(
-            'Which documents to list, indexed by default; failed and pending take only query, limit and offset',
+            'Which documents to list, indexed by default; failed and pending take only query, limit and offset; all lists failed, then pending, then indexed documents, and filters and sort apply to the indexed ones only, so filters leave out the failed and pending',
           ),
       }),
     },
@@ -2119,7 +2119,7 @@ const documentRoutes: RouteConfig[] = [
                 "All documents that match: found, else the dataset's document count when nothing narrows the list, else an estimate from the pages read",
               ),
             totalExact: z.boolean().describe('False when total is an estimate'),
-            status: z.enum(['indexed', 'failed', 'pending']),
+            status: z.enum(['indexed', 'failed', 'pending', 'all']),
             statusCounts: z
               .object({
                 indexed: z.number().int().nullable(),

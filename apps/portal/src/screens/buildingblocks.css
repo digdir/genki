@@ -415,6 +415,14 @@
   background: var(--ds-color-info-background-tinted);
 }
 
+.bb-update-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
 .bb-table-bg {
   background: var(--ds-color-neutral-background-default);
 }

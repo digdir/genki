@@ -1229,12 +1229,155 @@ describe('text search on the knowledge server', () => {
   });
 });
 
+describe('a metadata hit on the knowledge server', () => {
+  const reports = dataset('digdir/arsrapporter', 0, {
+    options: { profiles: { metadata: { target: 'docs', mode: 'text' } } },
+  });
+  const earlier = 'g-20261119-meta-1';
+  const current = 'g-20261119-meta-2';
+  /** A report whose first pages hold its title, and whose body pages hold what is asked about. */
+  const report = (id: string, title: string, pages: string[]): IndexDocument => ({
+    id,
+    title,
+    fields: {},
+    chunks: pages.map((text, position) => ({
+      id: `${id}-${position}`,
+      position,
+      text,
+      metadata: {},
+    })),
+    phrases: [],
+  });
+  const reportsOf = () => [
+    report('toll', 'Årsrapport Tolletaten 2025', [
+      'Årsrapport Tolletaten 2025',
+      'Innhold: Leders beretning. Tolletaten i 2025. Regnskap',
+      'Tolletaten 2025: tall for 2025, 2025 og 2025 i Tolletaten',
+      'I 2025 ble omorganiseringen av Tolletaten fullført',
+      'Read this or that, or else, or not',
+    ]),
+    report('leer', 'Tolletaten omorganisering', []),
+    report(
+      'lang',
+      'Årsrapport Langtidsplan 2025',
+      Array.from({ length: 60 }, (_, n) => `Side ${n} om planen`),
+    ),
+  ];
+  const search = async (query: string) => {
+    const [result] = await connectionOf().search(
+      routed(reports, current),
+      [{ query, profile: 'metadata' }],
+      signal,
+    );
+    return result?.hits ?? [];
+  };
+  const hitOf = async (query: string) =>
+    (await search(query)).find((h) => h.document === 'toll')?.id;
+
+  beforeAll(async () => {
+    await fill(reports, earlier, reportsOf());
+    await fill(reports, current, reportsOf());
+  });
+
+  it("a metadata hit is the document's chunk that best matches the query", async () => {
+    expect(await hitOf('Tolletaten omorganisering')).toBe('toll-3');
+  });
+
+  it("a metadata hit falls back to the document's first chunk when no chunk matches", async () => {
+    expect(await hitOf('Tolletaten regnskapsprinsipper')).toBe('toll-0');
+  });
+
+  it("a metadata hit whose query holds only the title's words is the document's first chunk", async () => {
+    // Page 2 holds the title's words most often, but the query names only the document.
+    expect(await hitOf('"Årsrapport Tolletaten 2025"')).toBe('toll-0');
+  });
+
+  it('a document without chunks does not hide the some-words matches', async () => {
+    // `leer` holds every word in its title and has no chunk; Tolletaten 2025 holds some of them.
+    expect(await hitOf('Tolletaten omorganisering')).toBe('toll-3');
+  });
+
+  it('a metadata hit ignores a word excluded with -', async () => {
+    expect(await hitOf('Tolletaten -omorganisering')).toBe('toll-0');
+  });
+
+  it('a metadata search lists a document once', async () => {
+    // `or` is an operator to the all-words query and a word to the some-words one.
+    const hits = await search('Tolletaten or omorganisering');
+    expect(hits.filter((h) => h.document === 'toll').map((h) => h.id)).toEqual(['toll-3']);
+  });
+
+  it("a metadata hit with no word beyond the title reads only the document's first chunk", async () => {
+    const { rows } = await owner.query<{ sql: string }>(
+      `select kn_search_sql($1, $2, 'docs', 'text', $3, null, null, '[]', 10, 100, 60) as sql`,
+      [reports.id, current, 'Langtidsplan'],
+    );
+    const client = await owner.connect();
+    try {
+      await client.query('begin');
+      await client.query('set local enable_seqscan = off');
+      const { rows: plan } = await client.query<{ 'QUERY PLAN': [{ Plan: PlanNode }] }>(
+        `explain (analyze, format json) ${rows[0]?.sql ?? ''}`,
+      );
+      let read = 0;
+      const walk = (node: PlanNode & { 'Index Cond'?: string }) => {
+        // The chunk picked per document is looked up by its document id.
+        if (node['Index Cond']?.includes('doc_id'))
+          read +=
+            (node['Actual Rows'] + (node['Rows Removed by Filter'] ?? 0)) * node['Actual Loops'];
+        node.Plans?.forEach(walk);
+      };
+      walk(plan[0]?.['QUERY PLAN'][0].Plan as PlanNode);
+      // Only Langtidsplan matches, and its 60 chunks hold no word beyond its title: one chunk per text pass.
+      expect(read).toBeLessThanOrEqual(2);
+    } finally {
+      await client.query('rollback');
+      client.release();
+    }
+  });
+
+  it("a metadata hit is chosen by the query words the document's title and fields do not hold", async () => {
+    // Page 2 holds the title's words most often; only page 3 holds the word the title lacks.
+    expect(await hitOf('"omorganisering" "Årsrapport Tolletaten 2025"')).toBe('toll-3');
+  });
+
+  it('the docs search reads one partition', async () => {
+    const { rows } = await owner.query<{ sql: string }>(
+      `select kn_search_sql($1, $2, 'docs', 'text', $3, null, null, '[]', 10, 100, 60) as sql`,
+      [reports.id, current, '"omorganisering" "Årsrapport Tolletaten 2025"'],
+    );
+    const client = await owner.connect();
+    try {
+      await client.query('begin');
+      await client.query('set local enable_seqscan = off');
+      const { rows: plan } = await client.query<{ 'QUERY PLAN': [{ Plan: PlanNode }] }>(
+        `explain (format json) ${rows[0]?.sql ?? ''}`,
+      );
+      const read = new Set<string>();
+      const indexes = new Set<string>();
+      const walk = (node: PlanNode & { 'Index Name'?: string }) => {
+        if (node['Relation Name']?.startsWith('kn_')) read.add(node['Relation Name']);
+        if (node['Index Name']) indexes.add(node['Index Name']);
+        node.Plans?.forEach(walk);
+      };
+      walk(plan[0]?.['QUERY PLAN'][0].Plan as PlanNode);
+      const chunks = partitionOf('kn_chunks', current);
+      expect([...read].sort()).toEqual([partitionOf('kn_docs', current), chunks].sort());
+      expect(indexes).toContain(`${chunks}_doc`);
+    } finally {
+      await client.query('rollback');
+      client.release();
+    }
+  });
+});
+
 interface PlanNode {
   'Node Type': string;
   'Relation Name'?: string;
   'Actual Rows': number;
   'Actual Loops': number;
   'Rows Removed by Filter'?: number;
+  'Index Name'?: string;
   Plans?: PlanNode[];
 }
 
@@ -1314,6 +1457,181 @@ const writerTarget =
       dataset: { ...d, options: {}, ...(withEmbedding ? { embedding } : {}) },
     };
   };
+
+describe('searching inside one document on the knowledge server', () => {
+  const reports = dataset('digdir/rapporter', 8, {
+    filters: { doc_num: 'multiselect', title: 'text' },
+    options: {
+      profiles: {
+        content: { target: 'chunks', mode: 'hybrid' },
+        mening: { target: 'chunks', mode: 'vector' },
+        ord: { target: 'chunks', mode: 'text' },
+        setninger: { target: 'phrases', mode: 'hybrid' },
+      },
+    },
+  });
+  const reportsGeneration = 'g-20261119-rapporter';
+  const at = routed(reports, reportsGeneration);
+  const report = (id: string, title: string): IndexDocument => {
+    const texts = [`Omorganisering i ${title}`, `Overføring av ansatte i ${title}`];
+    return {
+      id,
+      title,
+      fields: {},
+      chunks: texts.map((text, position) => ({
+        id: `${id}-${position}`,
+        position,
+        text,
+        metadata: {},
+        vector: fixtureVector(text, 8),
+      })),
+      phrases: texts.map((text, i) => ({ id: `${id}-p${i}`, chunkId: `${id}-${i}`, text })),
+    };
+  };
+
+  beforeAll(async () => {
+    await fill(reports, reportsGeneration, [
+      report('kudos:toll-2025', 'Årsrapport Tolletaten 2025'),
+      report('kudos:nav-2025', 'Årsrapport NAV 2025'),
+      report('kudos:toll-2024', 'Årsrapport Tolletaten 2024'),
+    ]);
+  });
+
+  it("a doc_num filter returns only that document's chunks", async () => {
+    const profiles = ['content', 'mening', 'ord', 'setninger'];
+    const results = await connectionOf().search(
+      at,
+      profiles.map((profile) => ({
+        query: 'omorganisering',
+        profile,
+        filters: { doc_num: ['kudos:nav-2025'] },
+      })),
+      signal,
+    );
+    profiles.forEach((profile, i) => {
+      const hits = results[i]?.hits ?? [];
+      expect(hits.length, profile).toBeGreaterThan(0);
+      expect(new Set(hits.map((h) => h.document)), profile).toEqual(new Set(['kudos:nav-2025']));
+    });
+  });
+
+  it('a title filter keeps documents whose title holds every word of one option', async () => {
+    const documents = async (title: string[]) => {
+      const [result] = await connectionOf().search(
+        at,
+        [{ query: 'omorganisering', profile: 'ord', filters: { title: { contains: title } } }],
+        signal,
+      );
+      return new Set(result?.hits.map((h) => h.document));
+    };
+    expect(await documents(['Årsrapport Tolletaten 2025'])).toEqual(new Set(['kudos:toll-2025']));
+    expect(await documents(['Tolletaten 2024', 'NAV'])).toEqual(
+      new Set(['kudos:toll-2024', 'kudos:nav-2025']),
+    );
+  });
+
+  it('a text filter row from an API before options matches any of its words, as before', async () => {
+    const rows = await asReader<{ doc_id: string }>(
+      `select doc_id from kn_search($1, $2, 'chunks', 'text', 'omorganisering', null, null, $3::jsonb, 10, 50, 60)`,
+      [
+        reports.id,
+        reportsGeneration,
+        JSON.stringify([{ field: 'title', op: 'text', terms: 'Tolletaten 2024' }]),
+      ],
+      [reports.id],
+    );
+    expect(new Set(rows.map((r) => r.doc_id))).toEqual(
+      new Set(['kudos:toll-2025', 'kudos:toll-2024']),
+    );
+  });
+
+  describe('with many documents', () => {
+    const manyGeneration = 'g-20261119-mange';
+    const many = dataset('digdir/mange-rapporter', 8, {
+      filters: { doc_num: 'multiselect', title: 'text' },
+    });
+    const one = JSON.stringify([{ field: 'doc_num', op: 'in', values: ['d-17'] }]);
+
+    beforeAll(async () => {
+      await fill(many, manyGeneration, [report('kudos:toll-2025', 'Årsrapport Tolletaten 2025')]);
+      const docs = partitionOf('kn_docs', manyGeneration);
+      const chunks = partitionOf('kn_chunks', manyGeneration);
+      await owner.query(
+        `insert into ${docs} (dataset, generation, id, title, fields, config)
+           select 'digdir/mange-rapporter', $1, 'd-' || n, 'Årsrapport ' || n, '{}', 'norwegian'
+           from generate_series(1, 2000) n`,
+        [manyGeneration],
+      );
+      await owner.query(
+        `insert into ${chunks} (dataset, generation, id, doc_id, position, text, config, vec)
+           select 'digdir/mange-rapporter', $1, 'd-' || d || '-' || p, 'd-' || d, p,
+             'omorganisering av etaten ' || d || ' del ' || p, 'norwegian',
+             (select ('[' || string_agg(sin(d * 15 + p + i)::text, ',') || ']')::halfvec from generate_series(0, 7) i)
+           from generate_series(1, 2000) d, generate_series(0, 14) p`,
+        [manyGeneration],
+      );
+      await owner.query(`analyze ${docs}`);
+      await owner.query(`analyze ${chunks}`);
+    }, 120_000);
+
+    /** The indexes a read function's statement plans, as `Node Type` on `Index Name`. */
+    const indexesOf = async (sql: string) => {
+      const { rows } = await owner.query<{ 'QUERY PLAN': [{ Plan: PlanNode }] }>(
+        `explain (format json) ${sql}`,
+      );
+      const used: string[] = [];
+      const walk = (node: PlanNode) => {
+        if (node['Index Name']) used.push(`${node['Node Type']} on ${node['Index Name']}`);
+        node.Plans?.forEach(walk);
+      };
+      const [explained] = rows;
+      if (explained) walk(explained['QUERY PLAN'][0].Plan);
+      return used;
+    };
+    const searchSql = async (mode: string, vector: string | null) =>
+      (
+        await owner.query<{ sql: string }>(
+          `select kn_search_sql($1, $2, 'chunks', $3, 'omorganisering', $4::halfvec, null, $5::jsonb, 10, 50, 60) as sql`,
+          [many.id, manyGeneration, mode, vector, one],
+        )
+      ).rows[0]?.sql ?? '';
+
+    it("a doc_num filter reads one document's chunks through the doc_id index, and a listing through the documents' key", async () => {
+      const chunksDoc = `${partitionOf('kn_chunks', manyGeneration)}_doc`;
+      const vector = `[${fixtureVector('omorganisering', 8).join(',')}]`;
+      const meaning = await indexesOf(await searchSql('vector', vector));
+      expect(
+        meaning.some((i) => i.endsWith(` on ${chunksDoc}`)),
+        meaning.join('; '),
+      ).toBe(true);
+      expect(
+        meaning.filter((i) => /hnsw|_vec/i.test(i)),
+        meaning.join('; '),
+      ).toEqual([]);
+      const words = await indexesOf(await searchSql('hybrid', null));
+      expect(
+        words.some((i) => i.endsWith(` on ${chunksDoc}`)),
+        words.join('; '),
+      ).toBe(true);
+      const listing = await indexesOf(
+        (
+          await owner.query<{ sql: string }>(
+            `select kn_documents_sql($1, $2, null, $3::jsonb, 10, 0) as sql`,
+            [many.id, manyGeneration, one],
+          )
+        ).rows[0]?.sql ?? '',
+      );
+      expect(
+        listing.some(
+          (i) =>
+            i.startsWith('Index') &&
+            i.endsWith(` on ${partitionOf('kn_docs', manyGeneration)}_pkey`),
+        ),
+        listing.join('; '),
+      ).toBe(true);
+    });
+  });
+});
 
 indexWriterContract('pgvector on the knowledge server', writerTarget(false));
 indexWriterContract('pgvector on the knowledge server with embedding', writerTarget(true));

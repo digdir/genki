@@ -464,7 +464,7 @@ const UsageView = ({
                 </TableHeaderCell>
                 {group === 'model' ? (
                   <>
-                    <TableHeaderCell scope="col">{t('usage.pricePerThousand')}</TableHeaderCell>
+                    <TableHeaderCell scope="col">{t('usage.pricePerMillion')}</TableHeaderCell>
                     <TableHeaderCell scope="col">{t('usage.processedIn')}</TableHeaderCell>
                   </>
                 ) : null}
@@ -503,11 +503,13 @@ const UsageView = ({
                         : r.price === null
                           ? t('usage.priceMissingFor', { model: r.label })
                           : t('usage.modelPrice', {
-                              input: f.number(r.price.inputPerThousand, {
-                                maximumFractionDigits: 4,
+                              input: f.number(r.price.inputPerThousand * 1000, {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
                               }),
-                              output: f.number(r.price.outputPerThousand, {
-                                maximumFractionDigits: 4,
+                              output: f.number(r.price.outputPerThousand * 1000, {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
                               }),
                             })}
                     </TableCell>

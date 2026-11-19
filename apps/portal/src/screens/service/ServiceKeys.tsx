@@ -128,7 +128,7 @@ export const ServiceKeys = ({
   );
   const revocations = audit.status === 'ready' ? audit.data : new Map<string, Revocation>();
   const [catalog] = useAsync((signal) => api.settingsCatalog(signal).catch(() => []), [api]);
-  const groups = catalog.status === 'ready' ? overrideGroups(catalog.data) : [];
+  const groups = catalog.status === 'ready' ? overrideGroups(t, catalog.data) : [];
   const [form, setForm] = useState<
     | {
         name: string;
@@ -333,7 +333,12 @@ export const ServiceKeys = ({
         </Paragraph>
       ) : null}
       {state.status === 'ready' && state.data.length > 0 ? (
-        <div tabIndex={0} role="region" aria-labelledby="fe-keys-h" className="scroll-x">
+        <div
+          tabIndex={0}
+          role="region"
+          aria-labelledby="fe-keys-h"
+          className="scroll-x dv-keys-region"
+        >
           <Table data-size="sm" className="dv-keys">
             <Table.Head>
               <Table.Row>
@@ -388,9 +393,13 @@ export const ServiceKeys = ({
                     : t('serviceDev.chipAllEnvironments');
                   const overridesChip = k.allowedOverrides.length
                     ? t('serviceDev.chipOverrides', {
-                        list: k.allowedOverrides
-                          .map((o) => overrideLabel(t, groups, o).replace(/\.$/, '').toLowerCase())
-                          .join(', '),
+                        list: [
+                          ...new Set(
+                            k.allowedOverrides.map((o) =>
+                              overrideLabel(t, groups, o).replace(/\.$/, '').toLowerCase(),
+                            ),
+                          ),
+                        ].join(', '),
                       })
                     : t('serviceDev.chipNoOverrides');
                   const lockdownChip =

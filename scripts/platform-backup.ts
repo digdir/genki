@@ -1,4 +1,4 @@
-import { open, stat, writeFile } from 'node:fs/promises';
+import { open, writeFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import pg from 'pg';
 import {
@@ -56,11 +56,14 @@ export const uploadBackup = async (options: {
     authorization: `Bearer ${options.token}`,
     'x-ms-version': blobApiVersion,
   };
-  const { size } = await stat(options.file);
-  if (size === 0) throw new Error('the dump is empty');
   const handle = await open(options.file, 'r');
   const ids: string[] = [];
+  const { size } = await handle.stat().catch(async (error: unknown) => {
+    await handle.close();
+    throw error;
+  });
   try {
+    if (size === 0) throw new Error('the dump is empty');
     const buffer = Buffer.alloc(blockSize);
     for (let offset = 0; offset < size; offset += blockSize) {
       const { bytesRead } = await handle.read(buffer, 0, blockSize, offset);

@@ -406,11 +406,6 @@ export const Environments = ({
                       >
                         {t('serviceEnvironments.promote')}
                       </Button>
-                      {e.version === prod?.version ? (
-                        <span className="meta" id={`env-${e.name}-same`}>
-                          {t('serviceDev.prodAlready', { version: e.version ?? '' })}
-                        </span>
-                      ) : null}
                       <OverflowMenu
                         label={t('serviceEnvironments.moreFor', { name: e.name })}
                         trigger={<MenuElipsisHorizontalIcon aria-hidden />}
@@ -432,6 +427,11 @@ export const Environments = ({
                           },
                         ]}
                       />
+                      {e.version === prod?.version ? (
+                        <span className="meta" id={`env-${e.name}-same`}>
+                          {t('serviceDev.prodAlready', { version: e.version ?? '' })}
+                        </span>
+                      ) : null}
                     </>
                   )}
                 </div>

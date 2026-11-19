@@ -49,7 +49,7 @@ const withChangedInstructions = (definition: Record<string, unknown>) => {
   if (copy.spec) copy.spec.evaluation = { gates: ['ingen-tilbakegang', 'avslag-uten-kilde'] };
   const config = copy.spec?.strategy?.config;
   if (config)
-    config.instructions = `${typeof config.instructions === 'string' ? config.instructions : ''}\nVis alltid kilden med dato.`;
+    config.instructions = `${typeof config.instructions === 'string' ? config.instructions : ''}\nSvar kort, i høyst tre setninger.`;
   return copy as Record<string, unknown>;
 };
 
@@ -651,6 +651,8 @@ export const qualityMock = (options: QualityMockOptions = {}): MockHandler => {
         const cases = set.cases.filter((c) => !body.cases || body.cases.includes(c.id));
         const version = body.version ?? 'draft';
         const saved = drafts.get(service);
+        if (version === 'draft' && (!saved || saved.deleted))
+          return req.json({ title: 'Tjenesten har ikke noe lagret utkast', status: 404 }, 404);
         const run = {
           ...runOf(service, { ...set, cases }, version),
           ...(version === 'draft' && saved && !saved.deleted

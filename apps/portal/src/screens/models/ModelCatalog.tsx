@@ -59,6 +59,8 @@ const facetKeys: Record<Facet, PlainKey> = {
   status: 'modelCatalog.facetStatus',
 };
 
+const facets: Facet[] = ['maker', 'where', 'use', 'price', 'status'];
+
 const priceKeys: Record<string, PlainKey> = {
   under10: 'modelCatalog.priceUnder10',
   from10to50: 'modelCatalog.priceFrom10to50',
@@ -191,11 +193,67 @@ export const ModelCatalog = ({ api, tenant }: ScreenProps) => {
   const [compared, setCompared] = useState<string[]>([]);
   const [view, setView] = useState<'grid' | 'compare'>('grid');
 
+  const tools = (
+    <div className="mc-tools">
+      <div role="search" className="mc-search">
+        <label htmlFor="mc-search-field" className="ds-label">
+          {t('modelCatalog.search')}
+        </label>
+        <Search>
+          <Search.Input
+            id="mc-search-field"
+            placeholder={t('modelCatalog.searchPlaceholder')}
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setLimit(catalogPageSize);
+            }}
+          />
+          <Search.Clear onClick={() => setQuery('')} />
+        </Search>
+      </div>
+      <div className="mc-sort">
+        <label htmlFor="mc-sort" className="ds-label">
+          {t('modelCatalog.sortBy')}
+        </label>
+        <Select id="mc-sort" value={sort} onChange={(e) => setSort(e.target.value as CatalogSort)}>
+          {catalogSorts.map((s) => (
+            <Select.Option key={s} value={s}>
+              {t(sortKeys[s])}
+            </Select.Option>
+          ))}
+        </Select>
+      </div>
+    </div>
+  );
+
   if (state.status === 'loading')
     return (
       <div className="stack">
         <Header text={text} />
-        <Loading label={t('modelWords.loading')} shape="list" rows={6} onRetry={retry} />
+        <div className="mc-layout">
+          <aside aria-labelledby="mc-filters-h" className="mc-filters">
+            <div className="mc-filters-head">
+              <Heading level={2} data-size="xs" id="mc-filters-h">
+                {t('modelCatalog.filters')}
+              </Heading>
+            </div>
+            <ul className="mc-filter-frame">
+              {[t('modelCatalog.availability'), ...facets.map((facet) => t(facetKeys[facet]))].map(
+                (label) => (
+                  <li key={label}>{label}</li>
+                ),
+              )}
+            </ul>
+          </aside>
+          <section aria-labelledby="mc-results-h" className="mc-results">
+            <h2 id="mc-results-h" className="visually-hidden">
+              {t('modelCatalog.results')}
+            </h2>
+            {tools}
+            <Loading label={t('modelWords.loading')} shape="cards" rows={6} onRetry={retry} />
+          </section>
+        </div>
       </div>
     );
   if (state.status === 'error')
@@ -318,7 +376,7 @@ export const ModelCatalog = ({ api, tenant }: ScreenProps) => {
               </Fieldset>
             </Details.Content>
           </Details>
-          {(['maker', 'where', 'use', 'price', 'status'] as const).map((facet) => (
+          {facets.map((facet) => (
             <Details key={facet} defaultOpen={facet !== 'price' && facet !== 'status'}>
               <Details.Summary>{t(facetKeys[facet])}</Details.Summary>
               <Details.Content>
@@ -356,41 +414,7 @@ export const ModelCatalog = ({ api, tenant }: ScreenProps) => {
           <h2 id="mc-results-h" className="visually-hidden">
             {t('modelCatalog.results')}
           </h2>
-          <div className="mc-tools">
-            <div role="search" className="mc-search">
-              <label htmlFor="mc-search-field" className="ds-label">
-                {t('modelCatalog.search')}
-              </label>
-              <Search>
-                <Search.Input
-                  id="mc-search-field"
-                  placeholder={t('modelCatalog.searchPlaceholder')}
-                  value={query}
-                  onChange={(e) => {
-                    setQuery(e.target.value);
-                    setLimit(catalogPageSize);
-                  }}
-                />
-                <Search.Clear onClick={() => setQuery('')} />
-              </Search>
-            </div>
-            <div className="mc-sort">
-              <label htmlFor="mc-sort" className="ds-label">
-                {t('modelCatalog.sortBy')}
-              </label>
-              <Select
-                id="mc-sort"
-                value={sort}
-                onChange={(e) => setSort(e.target.value as CatalogSort)}
-              >
-                {catalogSorts.map((s) => (
-                  <Select.Option key={s} value={s}>
-                    {t(sortKeys[s])}
-                  </Select.Option>
-                ))}
-              </Select>
-            </div>
-          </div>
+          {tools}
           <p role="status" className="mc-count">
             {avail === 'ours'
               ? t('modelCatalog.showingOurs', { shown: shown.length, total: shownAll.length })

@@ -4,13 +4,14 @@ import { useFormat } from '@genai/i18n/react';
 import { useState } from 'react';
 import { ApiError, type ApiClient } from '../../api';
 import type { DatasetDocument, DocumentChunk } from '../../api/datasets';
+import { AnswerMarkdown } from '../../components/AnswerMarkdown';
 import { Icon } from '../../components/Icon';
 import { SidePanel } from '../../components/SidePanel';
 import { documentStatusColors, documentStatusKeys } from '../../data/datasets';
 import { useAsync } from '../../hooks';
 import { useT, type PlainKey, type T } from '../../i18n';
 import { sourceOf, typeOf, unitOf, yearOf } from './DocumentsTable';
-import { reasonText } from './live-model';
+import { readableText, reasonText } from './live-model';
 
 export const firstChunks = 3;
 export const moreChunksStep = 10;
@@ -211,14 +212,19 @@ export const DocumentPanel = ({
             <Heading level={3} data-size="2xs" id="doc-excerpt">
               {t('datasets.textStart')}
             </Heading>
-            <Paragraph data-size="sm" className="doc-excerpt">
-              {gone
-                ? t('datasets.documentNotFound')
-                : (read?.excerpt ??
-                  (detail.status === 'loading'
+            {read?.excerpt && !gone ? (
+              <div className="doc-excerpt doc-text">
+                <AnswerMarkdown text={readableText(read.excerpt)} />
+              </div>
+            ) : (
+              <Paragraph data-size="sm" className="doc-excerpt">
+                {gone
+                  ? t('datasets.documentNotFound')
+                  : detail.status === 'loading'
                     ? t('datasets.loadingExcerpt')
-                    : t('datasets.noExcerpt')))}
-            </Paragraph>
+                    : t('datasets.noExcerpt')}
+              </Paragraph>
+            )}
           </section>
         ) : null}
         {indexed && !gone && (detail.status !== 'ready' || detail.data?.chunks) ? (
@@ -242,7 +248,9 @@ export const DocumentPanel = ({
                 {chunks.map((chunk, i) => (
                   <li key={chunk.id}>
                     <span className="meta">{chunkLabel(t, chunk, i, total)}</span>
-                    <span>{chunk.text}</span>
+                    <div className="doc-text">
+                      <AnswerMarkdown text={readableText(chunk.text)} />
+                    </div>
                   </li>
                 ))}
               </ol>

@@ -1,3 +1,4 @@
+import { intlLocale } from '@genai/i18n';
 import { usedByText } from './used-by-count';
 import type {
   DatasetSourceKind,
@@ -12,7 +13,7 @@ import { ApiError } from '../../api/error';
 import type { DatasetStatus } from '../../data/datasets';
 import type { Format, PlainKey, T } from '../../i18n';
 import type { Residency } from '../../types';
-import type { DatasetListItem } from './DatasetList';
+import { needsAttention, type DatasetListItem } from './DatasetList';
 
 export const platformEngine = 'platform-pg';
 
@@ -118,6 +119,12 @@ export const datasetStatus = (
 export const needsSource = (view: Pick<DatasetView, 'source' | 'state'>) =>
   view.state === 'needs-pipeline' || view.source === 'none';
 
+export const lacksSource = (view: DatasetView) =>
+  view.state !== 'external' && !isForeign(view) && !view.lastExecution && needsSource(view);
+
+export const needsFollowUp = (view: DatasetView) =>
+  needsAttention({ status: datasetStatus(view), needsSource: lacksSource(view) });
+
 const noteOf = (t: T, view: DatasetView) => {
   if (isForeign(view)) return undefined;
   const last = view.lastExecution;
@@ -157,6 +164,20 @@ export const lastSucceeded = (runs: ExecutionView[]) => runs.find((r) => r.statu
 export const countText = (t: T, f: Format, n: number | null | undefined) =>
   n === null || n === undefined ? t('datasets.notAvailable') : f.number(n);
 
+const osloYear = (value: Date) =>
+  new Intl.DateTimeFormat('en', { timeZone: 'Europe/Oslo', year: 'numeric' }).format(value);
+
+export const recentDateTime = (f: Format, iso: string, now: Date) => {
+  const value = new Date(iso);
+  if (Number.isNaN(value.getTime()) || osloYear(value) !== osloYear(now)) return f.dateTime(iso);
+  const day = new Intl.DateTimeFormat(intlLocale(f.locale), {
+    timeZone: 'Europe/Oslo',
+    day: 'numeric',
+    month: 'long',
+  }).format(value);
+  return f.locale === 'en' ? `${day}, ${f.time(value)}` : `${day} kl. ${f.time(value)}`;
+};
+
 export const whenText = (f: Format, iso: string | null | undefined, empty: string) =>
   iso ? f.dateTime(iso) : empty;
 
@@ -184,7 +205,12 @@ export const sharedSourceText = (
           ? t('datasets.sourceSharedWithYou', { source: t(sourceText[view.source]) })
           : t(sourceText[view.source]);
 
-export const listItemOf = (t: T, f: Format, view: DatasetView): DatasetListItem => {
+export const listItemOf = (
+  t: T,
+  f: Format,
+  view: DatasetView,
+  now = new Date(),
+): DatasetListItem => {
   const shared = view.editable === false;
   const foreign = isForeign(view);
   const ownEndpoint = isOwnEndpoint(view);
@@ -218,13 +244,11 @@ export const listItemOf = (t: T, f: Format, view: DatasetView): DatasetListItem 
         : foreign
           ? t('datasets.unknown')
           : view.lastExecution
-            ? f.dateTime(view.lastExecution.startedAt)
+            ? recentDateTime(f, view.lastExecution.startedAt, now)
             : t('datasets.notYet'),
     usedByText: usedByText(t, view.usedByCount),
     ...(note ? { note } : {}),
-    ...(view.state !== 'external' && !foreign && !view.lastExecution && needsSource(view)
-      ? { needsSource: true }
-      : {}),
+    ...(lacksSource(view) ? { needsSource: true } : {}),
     ...(status === 'Feilet' && !shared ? { canRetry: true } : {}),
   };
 };
@@ -331,3 +355,25 @@ export const failureText = (t: T, error: unknown) => {
   const known = statusKeys[error.status];
   return known ? t(known) : t('datasets.somethingWrong');
 };
+
+const tableRule = /^[\s|:-]*$/;
+const dotLeader = /\.{4,}/g;
+
+const readableLine = (line: string) => {
+  const trimmed = line.trim();
+  if (trimmed.length < 2 || !trimmed.startsWith('|') || !trimmed.endsWith('|')) return line;
+  if (tableRule.test(trimmed)) return undefined;
+  return trimmed
+    .split('|')
+    .map((cell) => cell.trim())
+    .filter(Boolean)
+    .join(' · ');
+};
+
+export const readableText = (text: string) =>
+  text
+    .split('\n')
+    .map(readableLine)
+    .filter((line): line is string => line !== undefined)
+    .join('\n')
+    .replace(dotLeader, ' … ');

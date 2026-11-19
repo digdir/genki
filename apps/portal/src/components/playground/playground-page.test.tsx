@@ -23,13 +23,51 @@ afterEach(() => {
 
 const question = 'Hva sier evalueringene om digital veiledning?';
 
-const openPage = async (playground: PlaygroundMockOptions = {}) => {
+const openPage = async (
+  playground: PlaygroundMockOptions = {},
+  wrap: (inner: typeof fetch) => typeof fetch = (inner) => inner,
+) => {
   await renderAt(
     '#/playground',
-    mockFetch(undefined, undefined, undefined, undefined, { features: { playground } }),
+    wrap(mockFetch(undefined, undefined, undefined, undefined, { features: { playground } })),
   );
   return screen.findByRole('complementary', { name: 'Oppsett' });
 };
+
+const promptFile = 'prompts/rapportassistenten.nb.md';
+const promptText = 'Svar saksbehandlere kort. Vis alltid kilden.';
+
+type Stored = {
+  definition: { spec: { strategy: { config?: Record<string, unknown> } } };
+  files?: Record<string, string>;
+};
+
+const withPromptIn = (stored: Stored) => {
+  const strategy = stored.definition.spec.strategy;
+  strategy.config = { ...strategy.config, instructions: promptFile };
+  stored.files = { ...stored.files, [promptFile]: promptText };
+};
+
+const withPromptFile =
+  (puts: { definition: unknown; files: Record<string, string> }[] = []) =>
+  (inner: typeof fetch): typeof fetch =>
+  async (input, init) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    const draftUrl = /\/services\/rapportassistenten\/draft(\?|$)/.test(url);
+    const definitionUrl = /\/definitions\/services\/rapportassistenten$/.test(url);
+    if (draftUrl && init?.method === 'PUT' && typeof init.body === 'string')
+      puts.push(JSON.parse(init.body) as (typeof puts)[number]);
+    const response = await inner(input, init);
+    if (!(draftUrl || definitionUrl) || (init?.method ?? 'GET') !== 'GET' || !response.ok)
+      return response;
+    const body = (await response.json()) as (Stored & { latest?: Stored }) | null;
+    if (body?.latest) withPromptIn(body.latest);
+    else if (body?.definition) withPromptIn(body);
+    return new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  };
 
 const chooseStart = (panel: HTMLElement, label: string) => {
   const select = within(panel).getByRole('combobox', { name: /^Start fra/ });
@@ -57,9 +95,9 @@ describe('the playground page', () => {
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Prøveområdet' })).toBeTruthy();
     expect(
-      screen
-        .getByRole('button', { name: 'Sammenlign med et annet oppsett' })
-        .getAttribute('aria-disabled'),
+      (await screen.findByRole('button', { name: 'Sammenlign med et annet oppsett' })).getAttribute(
+        'aria-disabled',
+      ),
     ).toBe('true');
   });
 
@@ -122,10 +160,42 @@ describe('the playground page', () => {
     expect(runs).toHaveLength(0);
   });
 
-  it('shows the price of each model from the playground options with where its data is processed', async () => {
+  it('shows the price of each model with its unit and where its data is processed', async () => {
     const panel = await openPage();
 
-    expect(within(panel).getByText('Data i Norge · 0,0119 / 0,0952 kr')).toBeTruthy();
+    const facts = within(panel).getByText(/^Data i Norge ·/);
+    expect(facts.textContent).toBe('Data i Norge · 11,90\u00a0kr / 95,20\u00a0kr per 1M tokens');
+  });
+
+  it('shows the instruction text when the service keeps its instructions in a prompt file', async () => {
+    await openPage({}, withPromptFile());
+    const panel = await screen.findByRole('complementary', { name: 'Oppsett' });
+    const instructions = within(panel).getByRole('textbox', { name: 'Instruksjoner' });
+
+    await waitFor(() => expect((instructions as HTMLTextAreaElement).value).toBe(promptText));
+    expect(within(panel).queryByText(/endring fra utkastet/)).toBeNull();
+  });
+
+  it('saves changed instructions into the prompt file and keeps the file reference', async () => {
+    const puts: { definition: unknown; files: Record<string, string> }[] = [];
+    await openPage({}, withPromptFile(puts));
+    const panel = await screen.findByRole('complementary', { name: 'Oppsett' });
+    const instructions = within(panel).getByRole('textbox', { name: 'Instruksjoner' });
+    await waitFor(() => expect((instructions as HTMLTextAreaElement).value).toBe(promptText));
+    fireEvent.change(instructions, { target: { value: 'Svar kort. Vis kilden.' } });
+
+    fireEvent.click(
+      within(panel).getByRole('button', { name: 'Lagre i utkastet til Rapportassistenten' }),
+    );
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: 'Lagre i utkastet' }),
+    );
+    await screen.findByText(/Endringene er lagret i utkastet/);
+
+    expect(puts[0]?.definition).toMatchObject({
+      spec: { strategy: { config: { instructions: promptFile } } },
+    });
+    expect(puts[0]?.files).toEqual({ [promptFile]: 'Svar kort. Vis kilden.' });
   });
 
   it('saves the changes in the service draft only after asking, and never publishes', async () => {
@@ -251,7 +321,7 @@ describe('the playground page', () => {
 
     fireEvent.click(within(sideB).getByRole('button', { name: 'Bruk B i utkastet' }));
     const dialog = screen.getByRole('dialog', { name: 'Lagre i utkastet til Rapportassistenten?' });
-    expect(within(dialog).getByText('modell')).toBeTruthy();
+    expect(within(dialog).getByText('modell Qwen3.8-27B')).toBeTruthy();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Avbryt' }));
     expect(screen.queryByRole('dialog')).toBeNull();
   });
@@ -281,7 +351,7 @@ describe('the playground page', () => {
     fireEvent.click(within(picker).getByRole('radio', { name: /Qwen3\.8-27B/ }));
     fireEvent.click(within(picker).getByRole('button', { name: 'Bruk Qwen3.8-27B' }));
 
-    expect(within(panel).getByText(/^1 endring fra utkastet: modell\.$/)).toBeTruthy();
+    expect(within(panel).getByText(/^1 endring fra utkastet: modell Qwen3\.8-27B\.$/)).toBeTruthy();
     await run();
     expect(runs[0]?.setup.model).toBe('aivar/qwen3-8');
   });
@@ -311,8 +381,30 @@ describe('the playground page', () => {
     expectAccessible();
   });
 
-  it('marks as different only what differs between A and B', async () => {
+  it('gives a step without a duration a time in the timeline instead of a blank', async () => {
     await openPage();
+    await run();
+
+    const timeline = screen.getByRole('region', { name: 'Tidslinje for svaret' });
+    const answer = within(timeline).getByRole('button', { name: /^Svar/ });
+    expect(answer.textContent).toMatch(/<1 ms$/);
+  });
+
+  it('links an answer to its run in Logg with an English query key', async () => {
+    await openPage();
+    const link = await run();
+
+    expect(link.getAttribute('href')).toMatch(/^#\/log\?run=tp\d+$/);
+  });
+
+  it('marks as different only what differs between A and B', async () => {
+    const panel = await openPage();
+    await waitFor(() =>
+      expect(
+        (within(panel).getByRole('textbox', { name: 'Instruksjoner' }) as HTMLTextAreaElement)
+          .value,
+      ).toMatch(/^Svar saksbehandlere/),
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Sammenlign med et annet oppsett' }));
 
     const sideA = screen.getByRole('region', { name: /^Oppsett A:/ });

@@ -1,4 +1,3 @@
-import { Spinner } from '@digdir/designsystemet-react';
 import type { AssistantLayout } from '@genai/ui-blocks/builder';
 import {
   createContext,
@@ -13,6 +12,7 @@ import {
   type ReactNode,
 } from 'react';
 import { createPortal } from 'react-dom';
+import { ShapeSkeleton } from '../../../components/Skeleton';
 import { useT } from '../../../i18n';
 import { draftServiceOf, type RunProblem } from './draftService';
 import type { ReportProblem, TryRun } from './TryView';
@@ -126,10 +126,9 @@ export const TryViewKeeper = ({ children }: { children: ReactNode }) => {
         ? createPortal(
             <Suspense
               fallback={
-                <Spinner
-                  aria-label={t('builderBlocks.tryLoading')}
-                  className="service-preview-empty"
-                />
+                <div role="status" aria-label={t('builderBlocks.tryLoading')} aria-busy="true">
+                  <ShapeSkeleton shape="list" rows={3} />
+                </div>
               }
             >
               <TryView

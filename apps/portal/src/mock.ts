@@ -670,6 +670,13 @@ export const exampleModels: ModelOption[] = [
     capabilities: ['stream', 'tools', 'json-schema'],
   },
   {
+    id: 'foundry-openai/gpt-5',
+    name: 'GPT-5 (OpenAI)',
+    family: 'gpt-5',
+    residency: 'global',
+    capabilities: ['stream', 'tools'],
+  },
+  {
     id: 'foundry-openai/gpt-4o-2m-tps',
     family: 'gpt-4o',
     residency: 'global',

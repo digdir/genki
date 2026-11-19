@@ -342,5 +342,23 @@
 }
 
 .ov-run-table td:nth-child(2) {
+  min-width: 6rem;
   overflow-wrap: anywhere;
+}
+
+.ov-run-table th:last-child,
+.ov-run-table td:last-child {
+  white-space: nowrap;
+}
+
+.ov-run-table :is(th, td) {
+  padding-inline: var(--ds-size-2);
+}
+
+.ov-run-table :is(th, td):first-child {
+  padding-inline-start: 0;
+}
+
+.ov-run-table :is(th, td):last-child {
+  padding-inline-end: 0;
 }

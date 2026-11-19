@@ -218,6 +218,16 @@ describe('testing the draft again', () => {
     );
   });
 
+  it('says in the run confirmation that each test case is a paid run, in test cases only', async () => {
+    await open('', example);
+    const now_ = await qualityNow();
+    fireEvent.click(await within(now_).findByRole('button', { name: 'Test utkastet på nytt' }));
+    const title = await within(now_).findByRole('heading', { name: /^Kjøre testsettet med 42/ });
+    const confirm = title.parentElement as HTMLElement;
+    expect(within(confirm).getByText(/Hvert testtilfelle er en betalt kjøring\.$/)).toBeTruthy();
+    expect(confirm.textContent).not.toMatch(/\bsaker\b/);
+  });
+
   it('says which right is missing instead of offering a run to a reader', async () => {
     const { writes } = await open('', example, {}, undefined, reader);
     const now_ = await qualityNow();
@@ -391,6 +401,13 @@ describe('judges and quality in use', () => {
 });
 
 describe('Tilbakemeldinger and Forslag til forbedringer behind the forslag link', () => {
+  it('lists the proposals the forslag link counts on the page it opens', async () => {
+    await open('?view=feedback', example);
+    expect(
+      await screen.findByRole('heading', { level: 2, name: 'Forslag til testtilfeller' }),
+    ).toBeTruthy();
+  });
+
   it('opens both lists from the link in Testsett, with a way back to Kvalitet', async () => {
     await open('', example);
     const sets = await section('Testsett');

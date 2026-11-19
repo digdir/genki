@@ -492,9 +492,9 @@ describe('the step flow picker', () => {
           new CustomEvent('comboboxbeforeselect', { detail: item, cancelable: true }),
         );
     });
-    expect(
-      screen.getByRole('link', { name: 'Åpne i stegflyt-editoren' }).getAttribute('href'),
-    ).toBe('#/step-flows/postruting');
+    expect(screen.getByRole('link', { name: 'Rediger stegflyten' }).getAttribute('href')).toBe(
+      '#/developer/step-flows/postruting',
+    );
   });
 });
 

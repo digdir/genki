@@ -380,7 +380,8 @@ describe('live settings', () => {
 
   it('publishes a service value as a new version with the reason', async () => {
     const { calls, fetch } = platform();
-    await renderLive('#/services/ka/settings', fetch);
+    await renderLive('#/services/ka/setup/limits', fetch);
+    fireEvent.click(await screen.findByRole('button', { name: 'Endre grenser' }));
     fireEvent.click(
       await within(await grid()).findByRole('button', { name: 'Treff som hentes (top-k)' }),
     );
@@ -410,7 +411,8 @@ describe('live settings', () => {
 describe('Målform i svar', () => {
   it('lets a service inherit or choose its own, and publishes the choice', async () => {
     const { calls, fetch } = platform();
-    await renderLive('#/services/ka/settings', fetch);
+    await renderLive('#/services/ka/setup/limits', fetch);
+    fireEvent.click(await screen.findByRole('button', { name: 'Endre grenser' }));
     const serviceLevel = await screen.findByRole('group', {
       name: 'Målform i svar, Tjeneste: Kunnskapsassistenten',
     });
@@ -459,6 +461,27 @@ describe('Innstillinger: Vanlige', () => {
     expect(
       screen.queryByRole('region', { name: 'Du har endringer som ikke er lagret' }),
     ).toBeNull();
+  });
+
+  it('says Lagrer ... while it saves and saves once on a double click', async () => {
+    const { calls, fetch } = platform();
+    await renderLive('#/settings', fetch);
+    fireEvent.change(await screen.findByLabelText('Språk tjenestene svarer på'), {
+      target: { value: 'bokmal' },
+    });
+    fireEvent.change(screen.getByLabelText(/Hvorfor endrer du dette/), {
+      target: { value: 'Vi svarer alltid på bokmål' },
+    });
+    const save = screen.getByRole('button', { name: 'Lagre endringene' });
+
+    fireEvent.click(save);
+    fireEvent.click(save);
+
+    expect(screen.getByRole('button', { name: 'Lagrer ...' })).toBe(save);
+    expect(await screen.findByText(/^Lagret kl\./)).toBeTruthy();
+    expect(
+      calls.filter((c) => c.method === 'PUT' && c.path.endsWith('answers.writtenStandard')),
+    ).toHaveLength(1);
   });
 
   it('shows a refused save as a refusal and keeps the choice', async () => {

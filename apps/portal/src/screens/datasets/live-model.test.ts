@@ -9,7 +9,15 @@ import { ApiError } from '../../api/error';
 import { createFormat } from '@genai/i18n';
 import { translator } from '../../i18n';
 import { matchesFilter } from './DatasetList';
-import { datasetStatus, executionStatus, failureText, listItemOf, reasonText } from './live-model';
+import {
+  datasetStatus,
+  executionStatus,
+  failureText,
+  listItemOf,
+  readableText,
+  reasonText,
+  recentDateTime,
+} from './live-model';
 
 const view: DatasetView = {
   id: 'digdir/kudos',
@@ -251,5 +259,43 @@ describe('a file skipped for having no readable text', () => {
 
     expect(text).not.toMatch(/tekstgjenkjenning|slått på|text recognition|turned on/i);
     expect(text).toMatch(/skannet|scanned/);
+  });
+});
+
+describe('dates in the dataset list', () => {
+  const now = new Date('2026-11-19T10:00:00Z');
+
+  it('leaves out the year for a date in the current year', () => {
+    expect(recentDateTime(createFormat('nb'), '2026-11-15T01:00:00Z', now)).toBe(
+      '15. november kl. 02:00',
+    );
+    expect(recentDateTime(createFormat('en'), '2026-11-15T01:00:00Z', now)).toBe(
+      '15 November, 02:00',
+    );
+  });
+
+  it('keeps the year for a date in another year', () => {
+    expect(recentDateTime(createFormat('nb'), '2025-11-15T01:00:00Z', now)).toBe(
+      '15. november 2025 kl. 02:00',
+    );
+  });
+});
+
+describe('document text in the panel', () => {
+  it('turns a markdown table into lines of cells and drops the rule row', () => {
+    expect(readableText('| Post | Beløp |\n|---|:--:|\n| Drift | 100 |')).toBe(
+      'Post · Beløp\nDrift · 100',
+    );
+  });
+
+  it('shortens dot leaders in a table of contents', () => {
+    expect(readableText('Innledning.............3')).toBe('Innledning … 3');
+  });
+
+  it('reads a long adversarial line in linear time', () => {
+    const line = `|${' |-'.repeat(50_000)}x`;
+    const started = performance.now();
+    readableText(`${line}\n${'.'.repeat(100_000)}`);
+    expect(performance.now() - started).toBeLessThan(500);
   });
 });

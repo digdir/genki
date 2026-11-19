@@ -58,7 +58,7 @@ if (root && !isSilentCallback(window)) {
       <App
         auth={auth}
         fetch={mock ? mock.mockFetch() : send}
-        live={!mock}
+        live
         languages={navigator.languages}
       />
     </StrictMode>,

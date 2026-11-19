@@ -4,6 +4,7 @@ import {
   detectInsufficientContext,
   numberByDocument,
   numberByExcerpt,
+  pageField,
   type CiteBy,
   parseCitations,
   sourcesFirst,
@@ -280,6 +281,15 @@ export const enforceStrategyQuota = <T extends ChunkSummary>(chunks: T[], quota:
 
 const fixed = (n: number, digits: number) => n.toFixed(digits);
 
+const pageText = (c: ChunkSummary) => {
+  const page = pageField(c);
+  return page ? ` ${page[0]}=${page[1]}` : '';
+};
+
+/** Whose document a chunk is, so same-title documents such as each ministry's Prop. 1 S tell apart (issue 754). */
+const publisherText = (c: ChunkSummary) =>
+  c.publisher ? ` publisher=${JSON.stringify(c.publisher)}` : '';
+
 const detectionHint = (d: SearchDetection) => {
   const names = d.values.map((v) => JSON.stringify(v)).join(', ');
   const them = d.values.length > 1 ? 'them' : 'it';
@@ -292,10 +302,17 @@ const detectionHint = (d: SearchDetection) => {
   return `The query ${what}; ${d.field} can filter on ${them}.`;
 };
 
+const ownDocumentHint = (hints: SearchDetection[]) => {
+  const organisation = hints.find((d) => d.kind === 'organisation');
+  return organisation
+    ? ` For one organisation's own document, such as its Prop. 1 S, filter ${organisation.field} with ${organisation.values.map((v) => JSON.stringify(v)).join(' or ')}.`
+    : '';
+};
+
 const searchHints = (attribution: SearchAttribution | undefined): string => {
   const hints = (attribution?.detections ?? []).filter((d) => d.use === 'hint');
   return hints.length
-    ? `\nHint, no filter applied: ${hints.map(detectionHint).join(' ')} Add filter_by only if the question asks for nothing else; a question about an organisation also needs other organisations' documents.`
+    ? `\nHint, no filter applied: ${hints.map(detectionHint).join(' ')} Add filter_by only if the question asks for nothing else; a question about an organisation also needs other organisations' documents.${ownDocumentHint(hints)}`
     : '';
 };
 
@@ -314,8 +331,10 @@ export const formatSearchMetadataResults = (
     const matched = (c.matchedQuestions ?? []).filter((q) => q.trim() !== '').slice(0, 2);
     return (
       `${i + 1}. chunk_id=${c.chunkId} doc_num=${c.document ?? ''} chunk_index=${c.position ?? ''}/${c.totalChunks ?? '?'}` +
+      pageText(c) +
       (c.contentLength === undefined ? '' : ` content_length=${c.contentLength}`) +
       (c.title ? ` title="${c.title}"` : '') +
+      publisherText(c) +
       (c.url ? ` url=${c.url}` : '') +
       (c.headers?.length ? ` headers=${JSON.stringify(c.headers)}` : '') +
       (c.rerankScore === undefined ? '' : ` rerank=${fixed(c.rerankScore, 2)}`) +
@@ -359,7 +378,9 @@ export const formatReadResult = (
   const blocks = chunks.map(
     (c) =>
       `--- chunk_id=${c.chunkId} doc_num=${c.document ?? ''} chunk_index=${c.position ?? ''}` +
+      pageText(c) +
       (c.title ? ` title="${c.title}"` : '') +
+      publisherText(c) +
       (c.url ? ` url=${c.url}` : '') +
       ` ---\n${c.content}`,
   );

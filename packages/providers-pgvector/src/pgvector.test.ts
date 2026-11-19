@@ -249,6 +249,73 @@ describe('pgvector engine', () => {
     expect(fields.hits.map((h) => h.document)).toEqual(['dok-5']);
   });
 
+  describe('searching inside one document', () => {
+    const datasetOptions = {
+      profiles: {
+        content: { target: 'chunks', mode: 'hybrid' },
+        mening: { target: 'chunks', mode: 'vector' },
+        ord: { target: 'chunks', mode: 'text' },
+        setninger: { target: 'phrases', mode: 'hybrid' },
+      },
+    };
+    const dataset = config('pgvector/rapporter', {
+      filters: { doc_num: 'multiselect', title: 'text' },
+      embedding,
+      options: datasetOptions,
+    });
+    const port = () =>
+      openTarget({ adapter: engineWith().adapter, endpoint, embedding, datasetOptions }, dataset);
+    const report = (id: string, title: string): IndexDocument => {
+      const texts = [`Omorganisering i ${title}`, `Overføring av ansatte i ${title}`];
+      return {
+        ...single(
+          id,
+          title,
+          texts,
+          texts.map((t) => fixtureVector(t, embedding.dimensions)),
+        ),
+        phrases: texts.map((t, i) => ({ id: `${id}-p${i}`, chunkId: `${id}-${i}`, text: t })),
+      };
+    };
+
+    beforeAll(async () => {
+      await seed(writerOf(engineWith()), dataset, [
+        report('kudos:toll-2025', 'Årsrapport Tolletaten 2025'),
+        report('kudos:nav-2025', 'Årsrapport NAV 2025'),
+        report('kudos:toll-2024', 'Årsrapport Tolletaten 2024'),
+      ]);
+    });
+
+    it("a doc_num filter returns only that document's chunks", async () => {
+      for (const profile of ['content', 'mening', 'ord', 'setninger']) {
+        const { hits } = await port().search({
+          query: 'omorganisering',
+          profile,
+          filters: { doc_num: ['kudos:nav-2025'] },
+        });
+        expect(hits.length, profile).toBeGreaterThan(0);
+        expect(new Set(hits.map((h) => h.document)), profile).toEqual(new Set(['kudos:nav-2025']));
+      }
+    });
+
+    it('a title filter keeps documents whose title holds every word of one option', async () => {
+      const documents = async (title: string[]) =>
+        new Set(
+          (
+            await port().search({
+              query: 'omorganisering',
+              profile: 'ord',
+              filters: { title: { contains: title } },
+            })
+          ).hits.map((h) => h.document),
+        );
+      expect(await documents(['Årsrapport Tolletaten 2025'])).toEqual(new Set(['kudos:toll-2025']));
+      expect(await documents(['Tolletaten 2024', 'NAV'])).toEqual(
+        new Set(['kudos:toll-2024', 'kudos:nav-2025']),
+      );
+    });
+  });
+
   describe('text search', () => {
     const datasetOptions = { profiles: { ord: { target: 'chunks', mode: 'text' } } };
     const dataset = config('pgvector/ord', { filters: {}, options: datasetOptions });
@@ -367,6 +434,66 @@ describe('pgvector engine', () => {
           expect(read).toBeLessThan(15_000);
         }
       });
+    });
+  });
+
+  describe('a metadata hit', () => {
+    const datasetOptions = { profiles: { metadata: { target: 'docs', mode: 'text' } } };
+    const dataset = config('pgvector/arsrapporter', { filters: {}, options: datasetOptions });
+    const search = async (query: string) =>
+      (
+        await openTarget(
+          { adapter: engineWith().adapter, endpoint, datasetOptions },
+          dataset,
+        ).search({ query, profile: 'metadata' })
+      ).hits;
+    const hitOf = async (query: string) =>
+      (await search(query)).find((h) => h.document === 'toll')?.id;
+
+    beforeAll(async () => {
+      await seed(writerOf(engineWith()), dataset, [
+        single('toll', 'Årsrapport Tolletaten 2025', [
+          'Årsrapport Tolletaten 2025',
+          'Innhold: Leders beretning. Tolletaten i 2025. Regnskap',
+          'Tolletaten 2025: tall for 2025, 2025 og 2025 i Tolletaten',
+          'I 2025 ble omorganiseringen av Tolletaten fullført',
+          'Read this or that, or else, or not',
+        ]),
+        single('leer', 'Tolletaten omorganisering', []),
+      ]);
+    });
+
+    it("a metadata hit is the document's chunk that best matches the query", async () => {
+      expect(await hitOf('Tolletaten omorganisering')).toBe('toll-3');
+    });
+
+    it("a metadata hit falls back to the document's first chunk when no chunk matches", async () => {
+      expect(await hitOf('Tolletaten regnskapsprinsipper')).toBe('toll-0');
+    });
+
+    it("a metadata hit whose query holds only the title's words is the document's first chunk", async () => {
+      // Page 2 holds the title's words most often, but the query names only the document.
+      expect(await hitOf('"Årsrapport Tolletaten 2025"')).toBe('toll-0');
+    });
+
+    it('a document without chunks does not hide the some-words matches', async () => {
+      // `leer` holds every word in its title and has no chunk; Tolletaten 2025 holds some of them.
+      expect(await hitOf('Tolletaten omorganisering')).toBe('toll-3');
+    });
+
+    it('a metadata hit ignores a word excluded with -', async () => {
+      expect(await hitOf('Tolletaten -omorganisering')).toBe('toll-0');
+    });
+
+    it('a metadata search lists a document once', async () => {
+      // `or` is an operator to the all-words query and a word to the some-words one.
+      const hits = await search('Tolletaten or omorganisering');
+      expect(hits.filter((h) => h.document === 'toll').map((h) => h.id)).toEqual(['toll-3']);
+    });
+
+    it("a metadata hit is chosen by the query words the document's title and fields do not hold", async () => {
+      // Page 2 holds the title's words most often; only page 3 holds the word the title lacks.
+      expect(await hitOf('"omorganisering" "Årsrapport Tolletaten 2025"')).toBe('toll-3');
     });
   });
 

@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { mockFetch } from '../mock';
-import { expectAccessible, failingFetch, go, renderAt } from '../test-utils';
+import { expectAccessible, failingFetch, go, renderAt, renderLive } from '../test-utils';
 import { parseYaml } from '../yaml';
 import { openArea, setupNav } from './services/setup-areas.test-utils';
 
@@ -70,10 +70,10 @@ describe('service list', () => {
     const { calls, fetch } = recording();
     await renderAt('#/services', fetch);
     await screen.findByRole('heading', { level: 1, name: 'Tjenester' });
+    expect(
+      (await screen.findByRole('link', { name: 'Rapportassistenten' })).getAttribute('href'),
+    ).toBe('#/services/rapportassistenten');
     expect(calls.some((c) => /\/tenants\/[^/]+\/definitions$/.test(c.url))).toBe(true);
-    expect(screen.getByRole('link', { name: 'Rapportassistenten' }).getAttribute('href')).toBe(
-      '#/services/rapportassistenten',
-    );
     expect(screen.getByRole('link', { name: 'Postsortering' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Ny tjeneste' })).toBeTruthy();
 
@@ -86,6 +86,34 @@ describe('service list', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Nullstill søk og filter' }));
     expect(screen.getByRole('link', { name: 'Rapportassistenten' })).toBeTruthy();
     expectAccessible();
+  });
+
+  it('names the model of each service in the list, from the service summary', async () => {
+    const summary = {
+      id: 'tolk',
+      name: 'Tolk',
+      purpose: 'Tolker tekst.',
+      outputKind: 'answer',
+      channels: [],
+      model: { id: 'aivar/borealis-27b', residency: 'norway' },
+      latestVersion: 1,
+      status: 'active',
+      statusReason: null,
+      lifecycle: 'active',
+      updatedAt: '2026-10-07T10:00:00Z',
+      updatedBy: 'kari.nordmann@testetaten.example.no',
+      warnings: [],
+      runsThisWeek: 3,
+    };
+    await renderLive('#/services', {}, (url, method) =>
+      method === 'GET' && /\/tenants\/[^/]+\/services$/.test(url)
+        ? Response.json({ data: [summary] })
+        : undefined,
+    );
+
+    const row = (await screen.findByRole('link', { name: 'Tolk' })).closest('li') as HTMLElement;
+    const model = within(row).getByText('Modell', { selector: 'dt' }).nextElementSibling;
+    expect(model?.textContent).toMatch(/borealis/i);
   });
 
   it('shows an error with retry when the list cannot be loaded', async () => {
@@ -164,7 +192,6 @@ describe('builder', () => {
 
   it.each([
     ['/setup', 'Oppsett', undefined, /^Formål og målgruppe/],
-    ['/settings', 'Oppsett', undefined, /Eksporter og importer/],
     ['/quality', 'Kvalitet', undefined, /Testsett/],
     ['/log', 'Utviklerverktøy', 'Logg', /Logg/],
     ['/channels', 'Utviklerverktøy', 'Nøkler og kanaler', /Start og kanaler/],
@@ -187,6 +214,12 @@ describe('builder', () => {
   ])('redirects the old route %s', async (old, target) => {
     await openBuilder(`#/services/rapportassistenten${old}`, 'Rapportassistenten');
     await waitFor(() => expect(window.location.hash).toBe(target));
+  });
+
+  it('opens the old settings address in Oppsett under Grenser og logging', async () => {
+    await openBuilder('#/services/rapportassistenten/settings', 'Rapportassistenten');
+    await waitFor(() => expect(navLink('Oppsett').getAttribute('aria-selected')).toBe('true'));
+    expect(await screen.findByRole('heading', { name: 'Grenser og logging' })).toBeTruthy();
   });
 
   it('opens the shared playground for the conversation service tweak', async () => {
@@ -265,7 +298,7 @@ describe('risk level and v3 checks', () => {
 
   it('lets the user confirm the proposed risk level', async () => {
     await openRisk();
-    expect(screen.getByText('Assistenten foreslår: Begrenset risiko')).toBeTruthy();
+    expect(screen.getAllByText('Begrenset risiko').length).toBeGreaterThan(0);
     expect(
       screen.getByText(/Ansatte bruker resultatene, men tjenesten tar ikke beslutninger om folk\./),
     ).toBeTruthy();
@@ -291,7 +324,12 @@ describe('risk level and v3 checks', () => {
     await openBuilder('#/services/soknadsuttrekk/setup', 'Søknadsuttrekk');
     const table = () =>
       screen.getByRole('radio', { name: /Tabell med kilder/ }) as HTMLInputElement;
-    const way = () => screen.getByRole('combobox', { name: 'Arbeidsmåte' }) as HTMLSelectElement;
+    const way = () => {
+      const open = screen.queryByRole('combobox', { name: 'Arbeidsmåte' });
+      if (open) return open as HTMLSelectElement;
+      fireEvent.click(screen.getByRole('button', { name: /^Bytt (arbeidsmåte|stegflyt)$/ }));
+      return screen.getByRole('combobox', { name: 'Arbeidsmåte' }) as HTMLSelectElement;
+    };
     openArea(/^Sluttresultat/);
     expect(table().disabled).toBe(true);
     openArea(/^Arbeidsmåte/);
