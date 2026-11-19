@@ -35,6 +35,7 @@ import {
   errorFromStatus,
   type BuiltInApi,
   type DeploymentConfig,
+  type DiscoveredDeployment,
   type DiscoverySource,
   type ModelAdapter,
   type ModelConnection,
@@ -370,7 +371,7 @@ export class ModelRouter implements PortProvider<ModelPort> {
     const sources = new Map((this.options.sources ?? []).map((s) => [s.kind, s]));
     const discovered = new Map<string, Route>();
     const failed: RefreshResult['failed'] = [];
-    const listed = new Map<string, Promise<{ deployment: string; model?: string }[]>>();
+    const listed = new Map<string, Promise<DiscoveredDeployment[]>>();
     const staticPairs = new Set(
       [...this.#static.values()].map((r) => `${r.model.endpoint}/${r.model.deployment}`),
     );
@@ -400,23 +401,22 @@ export class ModelRouter implements PortProvider<ModelPort> {
         const apis = rule.apis ?? defaultBindings(Object.keys(endpoint.families), this.#apis) ?? {};
         const prefix = rule.idPrefix ?? name;
         try {
-          for (const found of await (listed.get(key) as Promise<
-            { deployment: string; model?: string }[]
-          >)) {
+          for (const found of await (listed.get(key) as Promise<DiscoveredDeployment[]>)) {
             if (!matches(found.deployment, rule.include, rule.exclude)) continue;
             if (staticPairs.has(`${name}/${found.deployment}`)) continue;
             const slug = modelSlug(found.deployment);
             if (!slug) continue;
             const id = `${prefix.toLowerCase()}/${slug}`;
             if (discovered.has(id)) continue;
+            const chats = found.chat !== false;
             discovered.set(id, {
               model: {
                 id,
                 endpoint: name,
                 deployment: found.deployment,
                 residency: 'global',
-                capabilities: rule.capabilities,
-                apis,
+                capabilities: chats ? rule.capabilities : [],
+                apis: chats ? apis : {},
                 ...(rule.maker ? { maker: rule.maker } : {}),
                 ...(rule.releaseDates?.[found.deployment]
                   ? { releaseDate: rule.releaseDates[found.deployment] }
@@ -425,7 +425,7 @@ export class ModelRouter implements PortProvider<ModelPort> {
               },
               ...(found.model ? { family: found.model } : {}),
               origin: 'discovered',
-              apis,
+              apis: chats ? apis : {},
             });
           }
         } catch (error) {
