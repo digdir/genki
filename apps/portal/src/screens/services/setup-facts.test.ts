@@ -46,8 +46,8 @@ describe('setup summaries', () => {
       strategy: { id: 'agent-loop', config: {} },
       knowledge: { datasets: [{ dataset: 'digdir/kudos' }], reranker: 'colbert' },
     });
-    expect(summaries(t, c).knowledge).toBe('digdir/kudos · omrangering med ColBERT');
-    expect(summaries(en, c).knowledge).toBe('digdir/kudos · reranked with ColBERT');
+    expect(summaries(t, c).knowledge).toBe('Kudos-rapporter · omrangering med ColBERT');
+    expect(summaries(en, c).knowledge).toBe('Kudos-rapporter · reranked with ColBERT');
   });
 });
 

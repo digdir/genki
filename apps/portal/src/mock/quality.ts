@@ -49,7 +49,7 @@ const withChangedInstructions = (definition: Record<string, unknown>) => {
   if (copy.spec) copy.spec.evaluation = { gates: ['ingen-tilbakegang', 'avslag-uten-kilde'] };
   const config = copy.spec?.strategy?.config;
   if (config)
-    config.instructions = `${typeof config.instructions === 'string' ? config.instructions : ''}\nVis alltid kilden med dato.`;
+    config.instructions = `${typeof config.instructions === 'string' ? config.instructions : ''}\nSvar kort, i høyst tre setninger.`;
   return copy as Record<string, unknown>;
 };
 

@@ -97,7 +97,7 @@ describe('building blocks in English', () => {
   });
 
   it('shows the price and the request for approval of a model the organisation must ask for', async () => {
-    const gpt41 = exampleBlocks.find((b) => b.id === 'gpt41') as CatalogItem;
+    const gpt41 = exampleBlocks.find((b) => b.id === 'foundry-openai/gpt-4.1') as CatalogItem;
     const ctx = {
       tenantPath: (tenant: string) => `/tenants/${tenant}`,
       get: async (path: string) =>
@@ -105,7 +105,7 @@ describe('building blocks in English', () => {
           ? {
               data: [
                 {
-                  id: 'gpt41',
+                  id: 'foundry-openai/gpt-4.1',
                   price: { inputPerThousand: 0.02, outputPerThousand: 0.08 },
                   available: false,
                   reason: 'requires_approval',

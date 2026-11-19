@@ -443,7 +443,7 @@ export const questions: Record<JobId, string[]> = {
 
 const wordMime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
-const exampleDatasetRef = 'kudos-rapporter';
+const exampleDatasetRef = 'digdir/kudos';
 
 const toolRef = (id: string) => tools.find((t) => t.id === id)?.ref ?? id;
 
@@ -798,8 +798,8 @@ export const exampleMessages: Record<string, ChatMessage[]> = {
     },
     {
       role: 'assistant',
-      text: 'Vil du prøve noen spørsmål? Testen ligger under fanen Test.',
-      actions: [['a-gotest', 'Åpne testen']],
+      text: 'Vil du prøve noen spørsmål? Prøven ligger under fanen Prøv.',
+      actions: [['a-gotest', 'Åpne prøven']],
     },
   ],
 };
@@ -1457,7 +1457,7 @@ export const chatTurn = (draft: Record<string, unknown>, message: string): Assis
   if (/kjør|prøv|test/.test(t))
     return turn(
       'trn_c2',
-      'Åpne fanen Test og prøv tjenesten der. Prøven bruker utkastet, ikke versjonen som er i bruk.',
+      'Åpne fanen Prøv og prøv tjenesten der. Prøven bruker utkastet, ikke versjonen som er i bruk.',
     );
   if (/personvern|strengere|anonym/.test(t)) {
     const ref = tools.find((x) => x.id === 'anonymise')?.ref ?? 'anonymise';

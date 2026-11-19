@@ -175,7 +175,7 @@ describe('Byggeklosser: oversikt etter type', () => {
     await screen.findByRole('link', { name: 'Grafsøk' });
     expect(screen.queryByRole('button', { name: /^Ta i bruk/ })).toBeNull();
     cleanup();
-    await openAsViewer('#/building-blocks/model/qwen');
+    await openAsViewer('#/building-blocks/model/aivar%2Fqwen3-8');
     await screen.findByRole('heading', { level: 1, name: 'Qwen3.8-27B' });
     expect(screen.getByText(/Du kan se byggeklossen, men ikke endre den/)).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Ta i bruk hos oss' })).toBeNull();
@@ -709,7 +709,7 @@ describe('Byggeklosser: koblinger', () => {
 
 describe('Byggeklosser: detalj', () => {
   it('the read-only alert names only the right this block needs', async () => {
-    await openAsViewer('#/building-blocks/model/qwen');
+    await openAsViewer('#/building-blocks/model/aivar%2Fqwen3-8');
     await screen.findByRole('heading', { level: 1, name: 'Qwen3.8-27B' });
     expect(screen.getByText(/trenger du rettigheten «Administrere tjenester»\./)).toBeTruthy();
     expect(screen.queryByText(/Administrere datasett/)).toBeNull();
@@ -739,7 +739,7 @@ describe('Byggeklosser: detalj', () => {
   });
 
   it('a not-allowed block shows the policy text and who can change it', async () => {
-    await open('#/building-blocks/model/gpt5');
+    await open('#/building-blocks/model/foundry-openai%2Fgpt-5');
     await screen.findByRole('heading', { level: 1, name: 'GPT-5 (OpenAI)' });
     const alert = screen
       .getByText(
@@ -904,7 +904,7 @@ describe('Byggeklosser: detalj', () => {
   });
 
   it('Ta i bruk hos oss shows the access list and logs the reason', async () => {
-    await open('#/building-blocks/model/qwen');
+    await open('#/building-blocks/model/aivar%2Fqwen3-8');
     await screen.findByRole('heading', { level: 1, name: 'Qwen3.8-27B' });
     fireEvent.click(screen.getByRole('button', { name: 'Ta i bruk hos oss' }));
     expect(
@@ -921,7 +921,7 @@ describe('Byggeklosser: detalj', () => {
   });
 
   it('previews the reason in the body of the adopt call', async () => {
-    await open('#/building-blocks/model/qwen');
+    await open('#/building-blocks/model/aivar%2Fqwen3-8');
     await screen.findByRole('heading', { level: 1, name: 'Qwen3.8-27B' });
     fireEvent.click(screen.getByRole('button', { name: 'Ta i bruk hos oss' }));
     fireEvent.change(screen.getByLabelText('Begrunnelse'), {
@@ -974,7 +974,7 @@ describe('Byggeklosser: detalj', () => {
             headers: { 'content-type': 'application/problem+json' },
           })
         : inner(input, init);
-    await renderAt('#/building-blocks/model/qwen', failing);
+    await renderAt('#/building-blocks/model/aivar%2Fqwen3-8', failing);
     await screen.findByRole('heading', { level: 1, name: 'Qwen3.8-27B' });
     fireEvent.click(screen.getByRole('button', { name: 'Ta i bruk hos oss' }));
     fireEvent.change(screen.getByLabelText('Begrunnelse'), {
@@ -988,7 +988,7 @@ describe('Byggeklosser: detalj', () => {
   });
 
   it('a block that needs approval explains who approves and sends the request', async () => {
-    await open('#/building-blocks/model/gpt41');
+    await open('#/building-blocks/model/foundry-openai%2Fgpt-4.1');
     await screen.findByRole('heading', { level: 1, name: 'GPT-4.1 (Azure OpenAI)' });
     expect(screen.getByText(/Digdir må godkjenne at Testetaten tar modellen i bruk/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Be om godkjenning' }));
@@ -1003,7 +1003,7 @@ describe('Byggeklosser: detalj', () => {
 
 describe('Byggeklosser: versjoner og overlevering', () => {
   it('shows an empty text when a block has no versions', async () => {
-    await open('#/building-blocks/model/qwen/versions', { versions: {} });
+    await open('#/building-blocks/model/aivar%2Fqwen3-8/versions', { versions: {} });
     await screen.findByRole('heading', { level: 1, name: 'Qwen3.8-27B' });
     expect(
       await screen.findByText('Ingen versjoner eller endringer er registrert ennå.'),
@@ -1030,7 +1030,7 @@ describe('Byggeklosser: versjoner og overlevering', () => {
     let fail = true;
     const ok = blocksFetch();
     const broken = failingFetch(/\/versions$/, 503, ok);
-    await renderAt('#/building-blocks/model/qwen/versions', (input, init) =>
+    await renderAt('#/building-blocks/model/aivar%2Fqwen3-8/versions', (input, init) =>
       fail ? broken(input, init) : ok(input, init),
     );
     await screen.findByRole('heading', { level: 1, name: 'Qwen3.8-27B' });
