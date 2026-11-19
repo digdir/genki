@@ -418,7 +418,7 @@ describe('the live builder and the server draft', () => {
     expect(published?.body).toMatchObject({
       definition: { spec: { strategy: { config: { instructions: after } } } },
     });
-    expect(draftWrites(calls, 'DELETE')[0]?.body).toEqual({ revision: 1 });
+    expect(draftWrites(calls, 'DELETE')[0]?.body).toEqual({ revision: 2 });
   });
 
   it('saves edits to the server draft with the revision it last saw', async () => {
@@ -440,6 +440,7 @@ describe('the live builder and the server draft', () => {
 
   it('lets the service allow instruction proposals from Arbeidsmåte', async () => {
     const { calls } = await openService('#/services/rapportassistenten/setup/how');
+    fireEvent.click(await screen.findByRole('button', { name: /^Bytt (arbeidsmåte|stegflyt)$/ }));
     const toggle = await screen.findByRole('switch', {
       name: /La plattformen foreslå endringer i instruksjonene/,
     });
@@ -560,13 +561,13 @@ describe('the live builder and the server draft', () => {
     );
   });
 
-  it('offers Prøv tjenesten in the header, leading to the test of the service', async () => {
+  it('offers Prøv tjenesten in the header, leading to the service in Prøveområdet', async () => {
     await openService('#/services/rapportassistenten');
     const header = (
       await screen.findByRole('heading', { level: 1, name: 'Rapportassistenten' })
     ).closest('header') as HTMLElement;
     expect(within(header).getByRole('link', { name: 'Prøv tjenesten' }).getAttribute('href')).toBe(
-      '#/services/rapportassistenten/test',
+      '#/playground?service=rapportassistenten',
     );
   });
 
@@ -695,7 +696,7 @@ describe('the live builder when the draft is outdated', () => {
     const warning = await within(dialog).findByText('Utkastet bygger på en eldre versjon');
     const alert = warning.closest('[role="alert"]') as HTMLElement;
     expect(within(alert).getByText('Modell')).toBeTruthy();
-    expect(publishes(calls)[0]?.body).toMatchObject({ draftRevision: 1 });
+    expect(publishes(calls)[0]?.body).toMatchObject({ draftRevision: 2 });
 
     fireEvent.click(within(alert).getByRole('button', { name: 'Oppdater utkastet' }));
     expect(await within(dialog).findByText(/Utkastet er oppdatert/)).toBeTruthy();
@@ -703,7 +704,7 @@ describe('the live builder when the draft is outdated', () => {
     await publishIn(dialog);
     await waitFor(() => expect(publishes(calls)).toHaveLength(2));
     expect(publishes(calls)[1]?.body).toMatchObject({
-      draftRevision: 2,
+      draftRevision: 3,
       definition: {
         spec: {
           model: { primary: 'aivar/qwen3-8' },
@@ -728,7 +729,7 @@ describe('the live builder when the draft is outdated', () => {
     expect(await within(dialog).findByText(/Utkastet er oppdatert/)).toBeTruthy();
     const saved = calls.filter((c) => c.method === 'PUT' && c.url.endsWith('/draft')).at(-1);
     expect(saved?.body).toMatchObject({
-      revision: 2,
+      revision: 3,
       definition: { spec: { strategy: { config: { instructions: 'Svar utfyllende.' } } } },
     });
     fireEvent.click(within(dialog).getByRole('link', { name: 'Fortsett å redigere' }));

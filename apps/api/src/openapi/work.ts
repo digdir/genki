@@ -1665,26 +1665,42 @@ const evalRoutes: RouteConfig[] = [
   createRoute({
     method: 'get',
     path: '/eval-runs/compare',
-    summary: 'Paired bootstrap comparison of two evaluation runs on one metric',
+    summary: 'Paired bootstrap comparison of two evaluation runs, one per metric',
     description: described(
       'Access to the tenant of both runs; an operator needs a support session',
       notAudited,
     ),
     request: {
       headers: readHeaders,
-      query: z.object({ baseline: z.string(), candidate: z.string(), metric: z.string() }),
+      query: z.object({
+        baseline: z.string(),
+        candidate: z.string(),
+        metric: z.string().openapi({
+          description: 'One metric or a comma list, such as `recall@10,mrr@10,ndcg@10`',
+        }),
+        allowDifferent: z.string().optional().openapi({
+          description:
+            'A comma list of what the runs may differ in: `data`, `services`, `servedModels`. A commit or judges never may',
+        }),
+      }),
     },
     responses: {
       200: json(
         z.object({
-          n: z.number().int(),
-          meanBaseline: z.number(),
-          meanCandidate: z.number(),
-          difference: z.number(),
-          ci: z.tuple([z.number(), z.number()]),
+          allowedDifferent: z.array(z.enum(['data', 'services', 'servedModels'])),
+          comparisons: z.array(
+            z.object({
+              metric: z.string(),
+              n: z.number().int(),
+              meanBaseline: z.number(),
+              meanCandidate: z.number(),
+              difference: z.number(),
+              ci: z.tuple([z.number(), z.number()]),
+            }),
+          ),
           staleJudges: staleJudgesField,
         }),
-        'Comparison',
+        'One paired comparison per metric, in the order asked',
       ),
       ...evalProblems,
       400: problem('The runs cannot be compared'),

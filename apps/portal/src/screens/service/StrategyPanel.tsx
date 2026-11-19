@@ -1,4 +1,4 @@
-import { Alert, Button, Heading, Link, Paragraph, Tag } from '@digdir/designsystemet-react';
+import { Alert, Button, Heading, Link, Paragraph } from '@digdir/designsystemet-react';
 import { Fragment } from 'react';
 import type { ApiClient } from '../../api';
 import type { ServiceDefinition, SpecEdit } from '../../data/service-definition';
@@ -51,17 +51,26 @@ const flowVersion = (ref: unknown) => {
   return m ? Number(m[1]) : undefined;
 };
 
+const flowHref = (flow: string, service?: string) =>
+  flow
+    ? `#/developer/step-flows/${encodeURIComponent(flow)}${
+        service ? `?service=${encodeURIComponent(service)}` : ''
+      }`
+    : '#/developer/step-flows';
+
 const FlowPicker = ({
   api,
   tenant,
   id,
   value,
+  service,
   onSet,
 }: {
   api: ApiClient;
   tenant: string;
   id: string;
   value: unknown;
+  service?: string | undefined;
   onSet: (value: unknown) => void;
 }) => {
   const t = useT();
@@ -128,8 +137,8 @@ const FlowPicker = ({
         {...(current ? {} : { error: t('serviceStrategy.flowRequired') })}
         onChange={(v) => onSet(v || undefined)}
       />
-      <Link href={chosen ? `#/step-flows/${encodeURIComponent(chosen)}` : '#/step-flows'}>
-        {t('serviceStrategy.openEditor')}
+      <Link href={flowHref(chosen, service)}>
+        {chosen ? t('serviceStrategy.openEditor') : t('serviceStrategy.openFlows')}
       </Link>
     </div>
   );
@@ -165,12 +174,14 @@ const FlowSummary = ({
   tenant,
   flow,
   pinned,
+  service,
   onUpdate,
 }: {
   api: ApiClient;
   tenant: string;
   flow: string;
   pinned: number | undefined;
+  service?: string | undefined;
   onUpdate: (version: number) => void;
 }) => {
   const t = useT();
@@ -192,9 +203,7 @@ const FlowSummary = ({
     [api, tenant, flow, pinned],
   );
   const link = (
-    <Link href={`#/step-flows/${encodeURIComponent(flow)}`}>
-      {t('serviceStrategy.openFlow', { flow })}
-    </Link>
+    <Link href={flowHref(flow, service)}>{t('serviceStrategy.openFlow', { flow })}</Link>
   );
   if (state.status === 'loading') return <p className="meta">{t('serviceStrategy.flowLoading')}</p>;
   if (state.status === 'error')
@@ -245,6 +254,7 @@ export interface WayOfWorkingProps {
   idPrefix?: string;
   showSteps?: boolean;
   label?: string;
+  service?: string | undefined;
 }
 
 export const WayOfWorkingEditor = ({
@@ -259,6 +269,7 @@ export const WayOfWorkingEditor = ({
   idPrefix = 'strategi',
   showSteps = true,
   label,
+  service,
 }: WayOfWorkingProps) => {
   const t = useT();
   const fmt = useFormat();
@@ -294,10 +305,11 @@ export const WayOfWorkingEditor = ({
         tenant={tenant}
         id={`${idPrefix}-flow`}
         value={p.value}
+        service={service}
         onSet={p.onChange}
       />
     ),
-    [api, tenant, idPrefix],
+    [api, tenant, idPrefix, service],
   );
   const temperatureNote = (path: string) => {
     const rule = modelOf?.parameters?.temperature;
@@ -331,14 +343,9 @@ export const WayOfWorkingEditor = ({
       ) : null}
       {strategy && showSteps ? (
         <section aria-labelledby={`${idPrefix}-h`} className="stack-sm">
-          <div className="row-wrap">
-            <Heading level={3} data-size="2xs" id={`${idPrefix}-h`}>
-              {strategy.name}
-            </Heading>
-            <Tag data-size="sm" data-color="neutral">
-              {strategy.id}@1
-            </Tag>
-          </div>
+          <Heading level={3} data-size="2xs" id={`${idPrefix}-h`}>
+            {strategy.name}
+          </Heading>
           <Paragraph data-size="sm">{strategy.description}</Paragraph>
           <PipelineSteps steps={strategy.pipeline} />
         </section>
@@ -370,6 +377,7 @@ export const WayOfWorkingEditor = ({
                 tenant={tenant}
                 id={`${idPrefix}-flow`}
                 value={readPath(config, ['flow'])}
+                service={service}
                 onSet={(v) => setValue(['flow'], v)}
               />
             ) : (
@@ -400,6 +408,7 @@ export const WayOfWorkingEditor = ({
           tenant={tenant}
           flow={flow}
           pinned={flowVersion(readPath(config, ['flow']))}
+          service={service}
           onUpdate={(version) => setValue(['flow'], `${flow}@${version}`)}
         />
       ) : null}
@@ -421,20 +430,102 @@ export const PipelineSteps = ({ steps }: { steps: PlatformStrategy['pipeline'] }
   ) : null;
 };
 
+export const StrategyRow = ({
+  api,
+  tenant,
+  definition: d,
+  service,
+  editing,
+  onEditing,
+  readOnly,
+}: {
+  api: ApiClient;
+  tenant: string;
+  definition: ServiceDefinition;
+  service: string;
+  editing: boolean;
+  onEditing: (on: boolean) => void;
+  readOnly: boolean;
+}) => {
+  const t = useT();
+  const sid = d.spec.strategy.id;
+  const strategy = strategyFor(sid, t);
+  const ref = sid === 'step-flow' ? readPath(d.spec.strategy.config, ['flow']) : undefined;
+  const flow = flowId(ref);
+  const pinned = flowVersion(ref);
+  const [facts] = useAsync(
+    async (signal) => {
+      if (!flow) return undefined;
+      const def = await api.getDefinition(tenant, 'StepFlow', flow, signal);
+      const shown =
+        pinned === undefined || pinned === def.latest.version
+          ? def.latest
+          : await api.getVersion(tenant, 'StepFlow', flow, pinned, signal);
+      const meta = (shown.definition.metadata ?? {}) as Raw;
+      const spec = (shown.definition.spec ?? {}) as Raw;
+      return {
+        name: typeof meta.name === 'string' && meta.name ? meta.name : flow,
+        version: shown.version,
+        steps: Array.isArray(spec.steps) ? spec.steps.length : 0,
+      };
+    },
+    [api, tenant, flow, pinned],
+  );
+  const known = facts.status === 'ready' ? facts.data : undefined;
+  const title = flow ? (known?.name ?? flow) : (strategy?.name ?? t('serviceStrategy.notChosen'));
+  const text = flow
+    ? known
+      ? t('serviceStrategy.flowRow', { version: known.version, count: known.steps })
+      : facts.status === 'error'
+        ? t('serviceStrategy.flowMissing', { flow })
+        : t('serviceStrategy.flowLoading')
+    : (strategy?.description ?? '');
+  return (
+    <div className="stack-sm">
+      <ul className="area-rows">
+        <li>
+          <span className="area-row-text">
+            <span className="area-row-title">{title}</span>
+            {text ? <span className="meta">{text}</span> : null}
+          </span>
+          {readOnly ? null : (
+            <button
+              type="button"
+              className="link-button area-row-action"
+              aria-expanded={editing}
+              onClick={() => onEditing(!editing)}
+            >
+              {flow ? t('serviceStrategy.switchFlow') : t('serviceStrategy.switchWay')}
+            </button>
+          )}
+        </li>
+      </ul>
+      {flow ? (
+        <Link href={flowHref(flow, service)} className="align-start">
+          {t('serviceStrategy.openEditor')}
+        </Link>
+      ) : null}
+    </div>
+  );
+};
+
 export const StrategyPanel = ({
   api,
   tenant,
   definition: d,
   patch,
+  service,
 }: {
   api: ApiClient;
   tenant: string;
   definition: ServiceDefinition;
   patch: (edit: SpecEdit) => void;
+  service?: string | undefined;
 }) => (
   <WayOfWorkingEditor
     api={api}
     tenant={tenant}
+    service={service}
     raw={d.spec.strategy.id}
     sid={d.spec.strategy.id}
     config={d.spec.strategy.config}

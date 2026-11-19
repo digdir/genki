@@ -119,7 +119,7 @@ describe('features the design lacks keep their place on the service page', () =>
       within(pane)
         .getByRole('link', { name: 'Åpne i Prøveområdet med tidslinje' })
         .getAttribute('href'),
-    ).toBe('#/services/rapportassistenten/test');
+    ).toBe('#/playground?service=rapportassistenten');
     expect(within(pane).queryByRole('button', { name: /Sammenlign/ })).toBeNull();
     expect(within(pane).queryByRole('combobox', { name: 'Svarspråk' })).toBeNull();
 
