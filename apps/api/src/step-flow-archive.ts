@@ -14,6 +14,7 @@ import { changeReasonOf, isReasonLongEnough, reasonTooShort } from './http.js';
 import { t } from './i18n/index.js';
 import { hidesInternalServices, seeingInternalServices } from './internal-services.js';
 import type { PlatformModuleFactory } from './platform-modules.js';
+import { environmentsOf } from './service-environments.js';
 import { lifecycleOf } from './service-lifecycle.js';
 
 export const stepFlowArchiveKind = 'step-flow-archive';
@@ -55,7 +56,7 @@ const split = (ref: string) => {
   return { id: ref.slice(0, at), version: Number(ref.slice(at + 1)) };
 };
 
-/** Every published, not archived service in any tenant that runs the flow, directly or as a subflow. */
+/** Every not archived service whose latest or environment-pinned version runs the flow, directly or as a subflow. */
 export const flowUsers = (
   deps: {
     definitions: Pick<DefinitionStore, 'list' | 'get' | 'capabilities'>;
@@ -99,7 +100,20 @@ export const flowUsers = (
         const definition = latest.definition as ServiceDefinition;
         if ((await lifecycleOf(deps.configEntries, tenant, entry.id)).state === 'archived')
           continue;
-        if (await reaches(flowUsesOf(definition.spec).map((u) => u.flow)))
+        const pinned = Object.values(
+          await environmentsOf(deps.configEntries, tenant, entry.id),
+        ).flatMap((p) =>
+          p.version !== undefined && p.version !== latest.version ? [p.version] : [],
+        );
+        const versions = [latest];
+        for (const version of new Set(pinned)) {
+          const found = await definitions.get('Service', tenant, entry.id, version);
+          if (found) versions.push(found);
+        }
+        const flows = versions.flatMap((v) =>
+          flowUsesOf((v.definition as ServiceDefinition).spec).map((u) => u.flow),
+        );
+        if (await reaches(flows))
           users.push({ tenant, service: entry.id, internal: isInternalService(definition) });
       }
     }

@@ -80,6 +80,29 @@ describe('deleting a platform secret', () => {
     expect(await platform.vault.names('platform')).toEqual(['smoke-nokkel']);
   });
 
+  it('refuses with 409 a platform secret a model endpoint names', async () => {
+    const { platform, remove, send } = await boot();
+    await platform.vault.set('platform', 'lab-nokkel', marker);
+    const saved = await send('/operator/model-endpoints', 'drift', {
+      body: {
+        id: 'lab',
+        families: { openai: '' },
+        baseURL: 'https://modell.example.no/v1',
+        auth: { kind: 'api-key', secret: 'secret://platform/lab-nokkel' },
+      },
+      reason: 'Ny tilkobling til laben',
+    });
+    expect(saved.status, await saved.clone().text()).toBeLessThan(300);
+
+    const refused = await remove('lab-nokkel');
+
+    expect(refused.status).toBe(409);
+    expect(await refused.json()).toMatchObject({
+      usedBy: [{ kind: 'model-endpoint', id: 'lab' }],
+    });
+    expect(await platform.vault.names('platform')).toEqual(['lab-nokkel']);
+  });
+
   it('refuses with 409 a platform secret an operator hook names', async () => {
     const { platform, remove, send } = await boot();
     await platform.vault.set('platform', 'krok-nokkel', marker);

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Principal } from '@genai/contracts';
-import { bootPlatform, digdir, other, readJson, testService } from './testkit.js';
+import { bootPlatform, digdir, files, other, readJson, testService } from './testkit.js';
 
 const person = (subject: string, tenant: string, actions: string[]): Principal => ({
   kind: 'employee',
@@ -162,6 +162,35 @@ describe('archiving a step flow', () => {
     expect(body).not.toContain(other);
     expect(body).not.toContain('annen');
     expect(JSON.parse(body)).toMatchObject({ usedBy: [], otherOrganisations: 1 });
+  });
+
+  it("a step flow is not archived while a service's pinned production version runs it", async () => {
+    const { publish, archive, configEntries, platform } = await boot();
+    await publish(flow('festet'));
+    await publish(usingFlow('svarer', 'festet@1'));
+    await configEntries.append({
+      kind: 'service-environments',
+      scope: digdir,
+      id: 'svarer',
+      version: 1,
+      spec: { environments: { prod: { version: 1 } } },
+      deleted: false,
+      by: 'employee:test:eier',
+      at: '2026-11-19T10:00:00Z',
+      reason: 'Fester produksjon',
+    });
+    const later = await platform.definitions.publish(
+      testService('svarer'),
+      'test',
+      'Bytter til instruksjoner',
+      files,
+    );
+    expect(later.ok).toBe(true);
+
+    const refused = await archive('festet');
+
+    expect(refused.status).toBe(409);
+    expect(await refused.json()).toMatchObject({ usedBy: [{ tenant: digdir, service: 'svarer' }] });
   });
 
   it('lets an archived service stop holding on to its step flow', async () => {

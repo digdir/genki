@@ -1751,7 +1751,7 @@ export const serviceRoutes: RouteConfig[] = [
     method: 'delete',
     path: '/tenants/{tenant}/step-flows/{id}',
     summary:
-      "Archive one of the organisation's own step flows: Stegflyter and Byggeklosser stop listing it, its versions stay so runs and history keep working, and publishing it again lists it again. Refused while any published, not archived service runs it, directly or as a subflow, internal services included. Needs manage-services; audited",
+      "Archive one of the organisation's own step flows: Stegflyter and Byggeklosser stop listing it, its versions stay so runs and history keep working, and publishing it again lists it again. Refused while the latest version, or a version an environment is pinned to, of any service that is not archived runs it, directly or as a subflow, internal services included. Needs manage-services; audited",
     request: {
       params: z.object({ tenant, id: z.string().openapi({ param: { name: 'id', in: 'path' } }) }),
       headers: changeReason,
