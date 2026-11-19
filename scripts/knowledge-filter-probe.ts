@@ -81,6 +81,10 @@ interface Plan extends SampleSpec {
   queriesFile?: string;
   /** Earlier output with the same query vectors and filters: its exact lists are used, not searched again. */
   exactFile?: string[];
+  /** Only the queries `exactFile` holds a list for: exact search over a large filter can take minutes a query. */
+  knownOnly?: boolean;
+  /** Print each query's plan for the first question (no search runs), instead of measuring. */
+  explainOnly?: boolean;
   candidates: number;
   k: number;
   /** Unset: the server's own, as search runs. */
@@ -202,6 +206,34 @@ const main = async () => {
         const from = (where: string) =>
           `from kn_chunks x join kn_docs d on d.dataset = ${ds} and d.generation = ${g} and d.id = x.doc_id
              where x.dataset = ${ds} and x.generation = ${g} and x.vec is not null and ${where}`;
+        // An exact ranking reads the filter's documents first, then each one's chunks by the doc index, as
+        // `kn_search` does: joined plainly, the planner may rank every chunk of the generation before filtering.
+        const exactFrom = (where: string) =>
+          where === 'true'
+            ? from(where)
+            : `from (select d.id from kn_docs d where d.dataset = ${ds} and d.generation = ${g} and ${where}) m
+                 cross join lateral (select x.id, x.vec from kn_chunks x where x.dataset = ${ds}
+                   and x.generation = ${g} and x.doc_id = m.id and x.vec is not null offset 0) x`;
+        const truthSql = (where: string) =>
+          `select n.id from (select x.id, (1 - (${dist()}))::float8 as s ${exactFrom(where)}) n
+             order by n.s desc, n.id limit ${plan.k}`;
+        const sideSql = (side: Side, where: string) => {
+          if (side.search === 'exact')
+            return `select n.id from (select x.id, (1 - (${dist()}))::float8 as s ${exactFrom(where)}
+               order by s desc, x.id limit ${plan.candidates}) n order by n.s desc, n.id`;
+          return `select n.id from (select x.id, ${dist()} as d ${from(where)}
+             order by ${dist()} limit ${plan.candidates}) n order by n.d, n.id`;
+        };
+        const sideSettings = (side: Side) =>
+          c.query(
+            `select set_config('hnsw.ef_search', $1, true), set_config('hnsw.max_scan_tuples', $2, true),
+                    set_config('hnsw.scan_mem_multiplier', $3, true)`,
+            [
+              String(side.efSearch ?? server['hnsw.ef_search']),
+              String(side.maxScanTuples ?? server['hnsw.max_scan_tuples']),
+              String(side.scanMemMultiplier ?? server['hnsw.scan_mem_multiplier']),
+            ],
+          );
         const reset = () =>
           c.query(
             `select set_config('hnsw.ef_search', $1, true), set_config('hnsw.max_scan_tuples', $2, true),
@@ -225,17 +257,36 @@ const main = async () => {
                 ).rows[0]?.sql ?? 'false');
           // Truth: every distance under the filter computed. Ordered by score, as `kn_search` ranks a small filter,
           // so the HNSW index cannot serve it and the filter's own indexes still can.
+          const asked = plan.knownOnly
+            ? queries.filter((q) => stored.has(`${f.name}\u0000${q.id}`))
+            : queries;
+          if (plan.explainOnly) {
+            const q = asked[0];
+            if (!q) continue;
+            const show = async (name: string, sql: string) =>
+              print({
+                filter: f.name,
+                explain: name,
+                plan: (await c.query<{ 'QUERY PLAN': string }>(`explain ${sql}`, [q.vec])).rows.map(
+                  (r) => r['QUERY PLAN'],
+                ),
+              });
+            await show('truth', truthSql(where));
+            for (const side of plan.sides) {
+              if (side.search === 'kn_search') continue;
+              await sideSettings(side);
+              await show(side.name, sideSql(side, where));
+            }
+            await reset();
+            continue;
+          }
           const truth = new Map<string, string[]>();
-          for (const q of queries) {
+          for (const q of asked) {
             const known = stored.get(`${f.name}\u0000${q.id}`);
             if (known) truth.set(q.id, known.slice(0, plan.k));
             else {
               const start = process.hrtime.bigint();
-              const { rows } = await c.query<{ id: string }>(
-                `select n.id from (select x.id, (1 - (${dist()}))::float8 as s ${from(where)}) n
-                   order by n.s desc, n.id limit ${plan.k}`,
-                [q.vec],
-              );
+              const { rows } = await c.query<{ id: string }>(truthSql(where), [q.vec]);
               truth.set(
                 q.id,
                 rows.map((r) => r.id),
@@ -271,23 +322,9 @@ const main = async () => {
                 ef: effective['hnsw.ef_search'],
               };
             }
-            await c.query(
-              `select set_config('hnsw.ef_search', $1, true), set_config('hnsw.max_scan_tuples', $2, true),
-                      set_config('hnsw.scan_mem_multiplier', $3, true)`,
-              [
-                String(side.efSearch ?? server['hnsw.ef_search']),
-                String(side.maxScanTuples ?? server['hnsw.max_scan_tuples']),
-                String(side.scanMemMultiplier ?? server['hnsw.scan_mem_multiplier']),
-              ],
-            );
-            const order = side.search === 'exact' ? 'n.s desc, n.id' : 'n.d, n.id';
-            const inner = side.search === 'exact' ? 's desc, id' : dist();
+            await sideSettings(side);
             const start = process.hrtime.bigint();
-            const { rows } = await c.query<{ id: string }>(
-              `select n.id from (select x.id, ${dist()} as d, (1 - (${dist()}))::float8 as s ${from(where)}
-                 order by ${inner} limit ${plan.candidates}) n order by ${order}`,
-              [vec],
-            );
+            const { rows } = await c.query<{ id: string }>(sideSql(side, where), [vec]);
             return { ids: rows.map((r) => r.id), took: ms(start), ef: null };
           };
 
@@ -299,7 +336,7 @@ const main = async () => {
             repeat: [] as number[],
             exactPath: 0,
           }));
-          for (const [i, q] of queries.entries()) {
+          for (const [i, q] of asked.entries()) {
             const exact = truth.get(q.id) ?? [];
             // Sides take turns going first, so no side always finds the pages cached.
             const order = results.map((_, j) => results[(i + j) % results.length]);

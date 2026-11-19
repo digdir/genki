@@ -149,16 +149,19 @@ const settingsAround = async (filters: unknown[], g = generation) => {
   }
 };
 
-/** The plan of the statement `kn_search_sql` builds for this filter. */
-const planOf = async (filters: unknown[]) => {
+/** The plan of the statement `kn_search_sql` builds for this filter; `join` sets how the planner may join. */
+const planOf = async (filters: unknown[], join: 'index' | 'any join' = 'index') => {
   const client = await owner.connect();
   try {
     await client.query('begin');
+    // On Kudos the planner guesses the same ~1,400 documents for every type value and, for a large guess, ranks
+    // every chunk of the generation before it filters. Here nested loops are made dear to the same effect.
+    if (join === 'any join') await client.query('set local enable_nestloop = off');
     const { rows } = await client.query<{ sql: string }>(
       `select kn_search_sql($1, $2, 'chunks', 'vector', 'x', $3::halfvec, null, $4::jsonb, 10, 50, 60) as sql`,
       [vectors.id, generation, JSON.stringify(queryVector), JSON.stringify(filters)],
     );
-    await client.query('set local enable_seqscan = off');
+    if (join === 'index') await client.query('set local enable_seqscan = off');
     const plan = await client.query<{ 'QUERY PLAN': string }>(`explain ${rows[0]?.sql ?? ''}`);
     return plan.rows.map((r) => r['QUERY PLAN']).join('\n');
   } finally {
@@ -225,6 +228,14 @@ describe('filtered vector search on the knowledge server', () => {
     expect(await planOf(typeIs('sjelden'))).not.toContain(
       `${partitionOf('kn_chunks', generation)}_vec`,
     );
+  });
+
+  it("an exact ranking reads only the chunks of the filter's documents", async () => {
+    // The ranking reads the chunks as `x`; the hits are fetched afterwards as `c`.
+    const chunks = partitionOf('kn_chunks', generation);
+    const plan = await planOf(typeIs('sjelden'), 'any join');
+    expect(plan).toContain(`Index Scan using ${chunks}_doc on ${chunks} x`);
+    expect(plan).not.toContain(`Seq Scan on ${chunks} x`);
   });
 
   it('a filter that keeps more chunks than the threshold searches the HNSW index', async () => {

@@ -165,6 +165,7 @@ const createFunctions = (filtered: FilteredSearch) => [
        g text := quote_literal(p_generation);
        recipe jsonb;
        matched integer;
+       filtered_chunks text;
        exact boolean := false;
        cfg text;
        dims integer;
@@ -245,12 +246,17 @@ const createFunctions = (filtered: FilteredSearch) => [
          -- The cast matches the partition's HNSW index on vec::halfvec(N).
          dist := format('x.vec::halfvec(%s) <=> %L::halfvec(%s)', dims, p_vector::text, dims);
          -- An index scan drops the rows a filter rejects and stops at hnsw.max_scan_tuples, so a rare value
-         -- comes back short (issue 800). A filter keeping few chunks is ranked exactly; the count stops one
-         -- past the threshold and leaves out vec, so the chunks' doc index answers it.
+         -- comes back short (issue 800). A filter keeping few chunks is ranked exactly. The count and the exact
+         -- ranking read the filter's documents first and then each one's chunks by the doc index: joined
+         -- plainly, the planner may read every chunk of the generation when it guesses the filter large.
+         -- The count stops one past the threshold.
          if where_sql <> 'true' then
-           execute format('select count(*)::int from (select 1 from %s x %s
-               where x.dataset = %s and x.generation = %s and %s limit %s) n',
-             tbl, ${docJoin('x')}, ds, g, where_sql, ${Math.trunc(filtered.exactChunks) + 1}) into matched;
+           filtered_chunks := format('(select d.id from kn_docs d where d.dataset = %s and d.generation = %s and %s) m
+               cross join lateral (select %s as id, x.vec from %s x
+                 where x.dataset = %s and x.generation = %s and x.doc_id = m.id and x.vec is not null offset 0) x',
+             ds, g, where_sql, id_col, tbl, ds, g);
+           execute format('select count(*)::int from (select 1 from %s limit %s) n',
+             filtered_chunks, ${Math.trunc(filtered.exactChunks) + 1}) into matched;
            exact := matched <= ${Math.trunc(filtered.exactChunks)};
            if not exact then
              -- For this read's transaction only, and never below the server's own.
@@ -262,14 +268,21 @@ const createFunctions = (filtered: FilteredSearch) => [
                        ${Number(filtered.scanMemMultiplier)})::text, true);
            end if;
          end if;
-         -- Ordering by the score, not the distance, keeps the HNSW index out of an exact ranking.
-         ctes := ctes || format(
-           'v as (select id, max(s) as s from (
-              select %s as id, (1 - (%s))::float8 as s from %s x %s
-              where x.dataset = %s and x.generation = %s and x.vec is not null and %s
-              order by %s limit %s) nearest group by id)',
-           id_col, dist, tbl, ${docJoin('x')}, ds, g, where_sql,
-           case when exact then 's desc, id' else dist end, p_candidates);
+         if exact then
+           -- Ordering by the score, not the distance, keeps the HNSW index out of an exact ranking.
+           ctes := ctes || format(
+             'v as (select id, max(s) as s from (
+                select x.id, (1 - (%s))::float8 as s from %s
+                order by s desc, x.id limit %s) nearest group by id)',
+             dist, filtered_chunks, p_candidates);
+         else
+           ctes := ctes || format(
+             'v as (select id, max(s) as s from (
+                select %s as id, (1 - (%s))::float8 as s from %s x %s
+                where x.dataset = %s and x.generation = %s and x.vec is not null and %s
+                order by %s limit %s) nearest group by id)',
+             id_col, dist, tbl, ${docJoin('x')}, ds, g, where_sql, dist, p_candidates);
+         end if;
        end if;
        if use_text and use_vector then
          ctes := ctes || format(
