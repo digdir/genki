@@ -27,13 +27,30 @@ const chosenVariant = (spec: Record<string, unknown>, variant: string | undefine
   return { list, index, own: found && typeof found !== 'string' ? record(found) : undefined };
 };
 
-export const instructionsIn = (definition: Record<string, unknown>, variant?: string) => {
+const promptFile = /^prompts\/[a-z0-9][a-z0-9._/-]*\.md$/;
+
+type Files = Record<string, string>;
+
+const fileOf = (value: unknown, files: Files) =>
+  typeof value === 'string' && promptFile.test(value) && value in files ? value : undefined;
+
+const rawInstructions = (definition: Record<string, unknown>, variant: string | undefined) => {
   const spec = record(definition.spec);
   const { own } = chosenVariant(spec, variant);
   const override = record(own?.overrides).instructions;
   if (typeof override === 'string') return override;
   const strategy = own?.strategy ? record(own.strategy) : record(spec.strategy);
-  const text = record(strategy.config).instructions;
+  return record(strategy.config).instructions;
+};
+
+export const instructionsIn = (
+  definition: Record<string, unknown>,
+  variant?: string,
+  files: Files = {},
+) => {
+  const text = rawInstructions(definition, variant);
+  const file = fileOf(text, files);
+  if (file) return files[file] ?? '';
   return typeof text === 'string' ? text : '';
 };
 
@@ -65,11 +82,16 @@ export const withPlaygroundChanges = (
   definition: Record<string, unknown>,
   setup: PlaygroundSetup,
   changes: SetupChange[],
-): Record<string, unknown> => {
+  files: Files = {},
+): { definition: Record<string, unknown>; files: Files } => {
   const variant = setup.service?.variant;
   let current = definition;
-  if (changes.some((c) => c.kind === 'instructions') && setup.instructions !== undefined)
-    current = withInstructionsIn(current, variant, setup.instructions);
+  let nextFiles = files;
+  if (changes.some((c) => c.kind === 'instructions') && setup.instructions !== undefined) {
+    const file = fileOf(rawInstructions(definition, variant), files);
+    if (file) nextFiles = { ...files, [file]: setup.instructions };
+    else current = withInstructionsIn(current, variant, setup.instructions);
+  }
   let service = asServiceDefinition(current);
   if (changes.some((c) => c.kind === 'model')) {
     const spec = record(current.spec);
@@ -92,7 +114,7 @@ export const withPlaygroundChanges = (
       .map((c) => ({ dataset: c.id }));
     service = applySpec(service, (d) => withDatasets(d.spec, [...kept, ...added]));
   }
-  return service as unknown as Record<string, unknown>;
+  return { definition: service as unknown as Record<string, unknown>, files: nextFiles };
 };
 
 export const draftSetupOf = (definition: Record<string, unknown>) => {
@@ -108,14 +130,14 @@ export const startDefinition = async (
   tenant: string,
   ref: PlaygroundServiceRef,
   signal?: AbortSignal,
-) => {
-  if (ref.definition) return record(ref.definition);
-  if (ref.version === 'draft') {
-    const draft = await api.quality.draft(tenant, ref.id, signal);
-    if (draft) return draft.definition;
-    return (await api.getDefinition(tenant, 'Service', ref.id, signal)).latest.definition;
-  }
-  return (await api.getVersion(tenant, 'Service', ref.id, ref.version, signal)).definition;
+): Promise<{ definition: Record<string, unknown>; files: Files }> => {
+  if (ref.definition) return { definition: record(ref.definition), files: {} };
+  const found =
+    ref.version === 'draft'
+      ? ((await api.quality.draft(tenant, ref.id, signal)) ??
+        (await api.getDefinition(tenant, 'Service', ref.id, signal)).latest)
+      : await api.getVersion(tenant, 'Service', ref.id, ref.version, signal);
+  return { definition: found.definition, files: found.files ?? {} };
 };
 
 export const baseKeyOf = (ref: PlaygroundServiceRef | undefined) =>
@@ -137,9 +159,9 @@ export const useBaseInstructions = (
       const key = baseKeyOf(ref);
       if (key in bases) continue;
       startDefinition(api, tenant, { id: ref.id, version: ref.version }, controller.signal).then(
-        (definition) =>
+        ({ definition, files }) =>
           !controller.signal.aborted &&
-          setBases((b) => ({ ...b, [key]: instructionsIn(definition, ref.variant) })),
+          setBases((b) => ({ ...b, [key]: instructionsIn(definition, ref.variant, files) })),
         () => undefined,
       );
     }
@@ -170,8 +192,8 @@ export const saveInDraft = async (
     api.quality.openDraft(tenant, id, reason),
   ]);
   const current = opened ?? found.latest;
-  const next = withPlaygroundChanges(current.definition, setup, changes);
-  const stamped = forTenant(asServiceDefinition(next), {
+  const next = withPlaygroundChanges(current.definition, setup, changes, current.files ?? {});
+  const stamped = forTenant(asServiceDefinition(next.definition), {
     tenant,
     id,
     version: found.latest.version + 1,
@@ -181,7 +203,7 @@ export const saveInDraft = async (
     id,
     {
       definition: stamped as unknown as Record<string, unknown>,
-      files: current.files ?? {},
+      files: next.files,
       revision: opened?.revision ?? 0,
     },
     reason,

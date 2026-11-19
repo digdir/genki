@@ -109,6 +109,11 @@
   flex: 1 1 220px;
 }
 
+.playground-send {
+  display: flex;
+  gap: 8px;
+}
+
 .playground-grow-sm {
   flex: 1 1 180px;
 }
@@ -280,7 +285,22 @@
   flex: 1 1 16rem;
   flex-direction: column;
   min-width: 0;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
+}
+
+@media (max-width: 640px) {
+  .playground-side-title {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+
+  .playground-side-title h2 {
+    flex-basis: calc(100% - 38px);
+  }
+
+  .playground-side-title > .ds-button {
+    margin-inline-start: 38px;
+  }
 }
 
 .playground-source-actions {
@@ -595,7 +615,8 @@
 
 .playground-setup {
   box-sizing: border-box;
-  flex: 0 1 320px;
+  flex: 1 1 320px;
+  max-width: 100%;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -714,6 +735,7 @@
 
 .playground-gantt-time {
   text-align: right;
+  white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
 
@@ -783,6 +805,22 @@
   flex: 1;
   margin: 0;
   min-width: 0;
+  overflow-wrap: break-word;
+}
+
+@media (max-width: 640px) {
+  .playground-side-title {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+
+  .playground-side-title h2 {
+    flex-basis: calc(100% - 38px);
+  }
+
+  .playground-side-title > .ds-button {
+    margin-inline-start: 38px;
+  }
 }
 
 .playground-side-badge {
@@ -886,27 +924,26 @@
 }
 
 .playground-compare-note {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 14px;
+  margin: 0;
 }
 
 .playground-model-box {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 0 8px;
   padding: 8px 10px;
   border: 1px solid var(--ds-color-neutral-border-default);
   border-radius: var(--ds-border-radius-md);
 }
 
 .playground-model-text {
-  flex: 1 1 160px;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
+  display: contents;
+}
+
+.playground-model-text .playground-subtle {
+  grid-column: 1 / -1;
+  grid-row: 2;
 }
 
 .playground-model-text strong {
@@ -1030,4 +1067,22 @@
   margin: 0;
   font-size: 14px;
   color: var(--ds-color-neutral-text-subtle);
+}
+
+.playground-setup .ds-details > summary {
+  min-height: 0;
+  padding-block: 8px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.playground-meta-row .overflow-menu > .ds-button {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ds-color-accent-text-subtle);
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: underline;
 }

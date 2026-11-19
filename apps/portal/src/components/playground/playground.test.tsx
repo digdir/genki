@@ -97,7 +97,6 @@ describe('Prøveområde', () => {
     expect(screen.getByText(/Søkemerknad:/).closest('p')?.textContent).toContain(
       '3 dokumenter ble hoppet over i søket',
     );
-    expect(screen.getByText(/Denne økten: 1 kjøring ·/)).toBeTruthy();
     expectAccessible();
   });
 
@@ -107,6 +106,7 @@ describe('Prøveområde', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Sammenlign med et annet oppsett' }));
     expect(screen.getByRole('heading', { level: 1, name: 'Sammenlign to oppsett' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Vis API-kall' })).toBeNull();
     const sideA = screen.getByRole('region', { name: /^Oppsett A:\s*Rapportassistenten/ });
     const sideB = screen.getByRole('region', { name: /^Oppsett B:\s*Rapportassistenten/ });
     expect(within(sideA).queryByText('Ulikt')).not.toBeNull();
@@ -134,7 +134,6 @@ describe('Prøveområde', () => {
     expect((question as HTMLTextAreaElement).value).toBe(
       'Hva sier evalueringene om digital veiledning?',
     );
-    expect(screen.getByText(/Denne økten: 2 kjøringer/)).toBeTruthy();
     expectAccessible();
 
     fireEvent.click(screen.getByRole('button', { name: 'Avslutt sammenligning' }));
@@ -275,7 +274,6 @@ describe('Prøveområde', () => {
       await screen.findByRole('heading', { name: 'Vi fikk ikke svar fra modellen' }),
     ).toBeTruthy();
     expect(screen.getByText(/Borealis-27B svarte ikke\./)).toBeTruthy();
-    expect(screen.getByText(/Kjøringer teller med i kvoten/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Prøv igjen' }));
     expect(await screen.findByRole('link', { name: 'Åpne i Logg' })).toBeTruthy();
     expect(runs).toHaveLength(2);
@@ -344,11 +342,18 @@ describe('Prøveområde', () => {
     expectAccessible();
   });
 
-  it('Vis API-kall shows the run call the API has', async () => {
-    await openPage();
-    const [showCall] = screen.getAllByRole('button', { name: 'Vis API-kall' });
-    if (showCall) fireEvent.click(showCall);
-    const panel = screen.getByRole('dialog', { name: 'Kjør oppsettet' });
+  it('Vis API-kall sits in the Mer menu on the answer, not in the setup panel', async () => {
+    const input = await openPage();
+    expect(screen.queryByRole('button', { name: 'Vis API-kall' })).toBeNull();
+    expect(screen.queryByText(/Denne økten|teller med i kvoten til/)).toBeNull();
+
+    fireEvent.change(input, { target: { value: 'Hva sier evalueringene om digital veiledning?' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await screen.findByRole('link', { name: 'Åpne i Logg' });
+    expect(within(setupPanel()).queryByRole('button', { name: 'Vis API-kall' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Mer om svaret' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Vis API-kall' }));
+    const panel = screen.getByRole('dialog', { name: 'Kjør på nytt' });
     expect(within(panel).getByText('/tenants/999888777/playground/runs')).toBeTruthy();
     expect(within(panel).queryByText('Ikke bestemt')).toBeNull();
     expect(within(panel).getByText(/Administrere tjenester/)).toBeTruthy();
