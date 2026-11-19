@@ -312,7 +312,13 @@ describe('the playground page', () => {
   });
 
   it('marks as different only what differs between A and B', async () => {
-    await openPage();
+    const panel = await openPage();
+    await waitFor(() =>
+      expect(
+        (within(panel).getByRole('textbox', { name: 'Instruksjoner' }) as HTMLTextAreaElement)
+          .value,
+      ).toMatch(/^Svar saksbehandlere/),
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Sammenlign med et annet oppsett' }));
 
     const sideA = screen.getByRole('region', { name: /^Oppsett A:/ });
