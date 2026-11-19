@@ -76,6 +76,31 @@ describe('Postgres with Entra ID', () => {
   });
 });
 
+describe('the platform database pool size', () => {
+  const tokens: TokenSource = async () => ({ token: 'entra', expiresOnTimestamp: minutes(60) });
+
+  it('caps each pool at DATABASE_POOL_MAX, with Entra ID or a connection string', () => {
+    expect(
+      postgresSourceFromEnv({ PGHOST: 'pg.example', DATABASE_POOL_MAX: '4' }, tokens),
+    ).toMatchObject({ host: 'pg.example', max: 4 });
+    expect(
+      postgresSourceFromEnv(
+        { DATABASE_URL: 'postgres://db/genai', DATABASE_POOL_MAX: '4' },
+        tokens,
+      ),
+    ).toEqual({ connectionString: 'postgres://db/genai', max: 4 });
+    expect(postgresSourceFromEnv({ PGHOST: 'pg.example' }, tokens)).not.toHaveProperty('max');
+  });
+
+  it('refuses a pool size the two listening connections would fill, or one that is not a whole number', () => {
+    for (const value of ['2', '0', '-5', '4.5', 'ten'])
+      expect(
+        () => postgresSourceFromEnv({ PGHOST: 'pg.example', DATABASE_POOL_MAX: value }, tokens),
+        value,
+      ).toThrow('DATABASE_POOL_MAX');
+  });
+});
+
 describe('knowledge server settings', () => {
   const tokens: TokenSource = async () => ({
     token: 'entra',

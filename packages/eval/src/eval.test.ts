@@ -278,8 +278,8 @@ describe('evaluators', () => {
     ).toBeUndefined();
   });
 
-  it('scores recall at k and whether citations are inside what was retrieved', async () => {
-    const recall = retrievalRecall(3);
+  it('scores recall by chunk or by document and position, and whether citations are inside what was retrieved', async () => {
+    const recall = retrievalRecall();
     const c = caseOf({
       id: 'r',
       expected: { sources: [{ chunkId: 'c1' }, { document: 'd7', position: 2 }] },
@@ -304,9 +304,10 @@ describe('evaluators', () => {
       ctx,
     );
 
-    expect(values(scores)['recall@3']).toBe(0.5);
+    expect(values(scores)['recall@1']).toBe(0);
+    expect(values(scores)['recall@5']).toBe(1);
     expect(values(scores)['citations-grounded']).toBeCloseTo(2 / 3);
-    expect(values(answerOnly)).toEqual({ 'recall@3': 'n/a', 'citations-grounded': 'n/a' });
+    expect(values(answerOnly)).toMatchObject({ 'recall@10': 'n/a', 'citations-grounded': 'n/a' });
   });
 
   const judge = (reply: string, family = 'anthropic'): JudgeModel & { prompts: string[] } => {
@@ -407,6 +408,293 @@ describe('evaluators', () => {
   });
 });
 
+describe('retrieval metrics', () => {
+  /** `n` hits, rank 1 first; a rank in `at` gets that chunk id, the others `x<rank>`. */
+  const hitsOf = (n: number, at: Record<number, string> = {}) =>
+    Array.from({ length: n }, (_, i) => ({ chunkId: at[i + 1] ?? `x${i + 1}` }));
+  const expecting = (...chunkIds: string[]) =>
+    caseOf({ id: 'r', expected: { sources: chunkIds.map((chunkId) => ({ chunkId })) } });
+  const scoresOf = async (c: TestCase, o: Partial<Observation>) =>
+    values(await retrievalRecall().evaluate(c, observation(o), ctx));
+
+  it('the retrieval evaluator scores recall at 1, 5, 10 and 20 from the same ranked hits', async () => {
+    const scores = await scoresOf(expecting('e1', 'e2'), {
+      retrieved: hitsOf(25, { 3: 'e1', 15: 'e2' }),
+    });
+
+    expect(scores).toMatchObject({
+      'recall@1': 0,
+      'recall@5': 0.5,
+      'recall@10': 0.5,
+      'recall@20': 1,
+    });
+  });
+
+  it('mrr@10 is one over the rank of the first expected source, and 0 when none is in the top 10', async () => {
+    const first = await scoresOf(expecting('e1'), { retrieved: hitsOf(20, { 1: 'e1' }) });
+    const fourth = await scoresOf(expecting('e1', 'e2'), {
+      retrieved: hitsOf(20, { 4: 'e2', 7: 'e1' }),
+    });
+    const eleventh = await scoresOf(expecting('e1'), { retrieved: hitsOf(20, { 11: 'e1' }) });
+
+    expect(first['mrr@10']).toBe(1);
+    expect(fourth['mrr@10']).toBe(0.25);
+    expect(eleventh['mrr@10']).toBe(0);
+  });
+
+  it('ndcg@10 is 1 when the expected sources lead the hits and less when they come later', async () => {
+    const leading = await scoresOf(expecting('e1', 'e2'), {
+      retrieved: hitsOf(10, { 1: 'e2', 2: 'e1' }),
+    });
+    const third = await scoresOf(expecting('e1'), { retrieved: hitsOf(10, { 3: 'e1' }) });
+    const later = await scoresOf(expecting('e1', 'e2'), {
+      retrieved: hitsOf(10, { 2: 'e1', 3: 'e2' }),
+    });
+    const outside = await scoresOf(expecting('e1'), { retrieved: hitsOf(20, { 11: 'e1' }) });
+
+    expect(leading['ndcg@10']).toBe(1);
+    expect(third['ndcg@10']).toBeCloseTo(0.5);
+    expect(later['ndcg@10']).toBeCloseTo(
+      (1 / Math.log2(3) + 1 / Math.log2(4)) / (1 + 1 / Math.log2(3)),
+    );
+    expect(outside['ndcg@10']).toBe(0);
+  });
+
+  it('hit@5 is 1 when any expected source is in the top 5', async () => {
+    const fifth = await scoresOf(expecting('e1', 'e2'), {
+      retrieved: hitsOf(10, { 5: 'e2', 9: 'e1' }),
+    });
+    const sixth = await scoresOf(expecting('e1', 'e2'), { retrieved: hitsOf(10, { 6: 'e2' }) });
+
+    expect(fifth['hit@5']).toBe(1);
+    expect(sixth['hit@5']).toBe(0);
+  });
+
+  it('a case without expected sources is skipped for every retrieval metric', async () => {
+    const o = {
+      retrieved: hitsOf(10, { 1: 'e1' }),
+      returned: hitsOf(10, { 1: 'e1' }),
+      citations: [{ chunkId: 'e1' }],
+    };
+    const cases = [
+      caseOf({ id: 'answer-only', grounding: 'answer-only' }),
+      caseOf({ id: 'refusal', grounding: 'refusal-expected' }),
+      caseOf({ id: 'none', expected: { sources: [] } }),
+    ];
+
+    for (const c of cases) {
+      const scores = await retrievalRecall().evaluate(c, observation(o), ctx);
+      const retrieval = scores.filter((s) => s.metric !== 'citations-grounded');
+      expect(retrieval.map((s) => s.metric).sort()).toEqual(
+        [
+          'recall@1',
+          'recall@5',
+          'recall@10',
+          'recall@20',
+          'hit@5',
+          'mrr@10',
+          'ndcg@10',
+          'document-recall@10',
+          'returned-recall@1',
+          'returned-recall@5',
+          'returned-recall@10',
+          'returned-hit@5',
+          'returned-mrr@10',
+          'returned-ndcg@10',
+        ].sort(),
+      );
+      for (const s of retrieval) {
+        expect(s.applicable).toBe(false);
+        expect(s.reason).toBe(`grounding is ${c.grounding} with 0 expected sources`);
+      }
+    }
+  });
+
+  it('a hit already ranked earlier takes no new rank', async () => {
+    const byId = await scoresOf(expecting('e1'), {
+      retrieved: [{ chunkId: 'x1' }, { chunkId: 'x1' }, { chunkId: 'x2' }, { chunkId: 'e1' }],
+    });
+    const byPlace = await scoresOf(expecting('e1'), {
+      retrieved: [
+        { document: 'd1', position: 0 },
+        { document: 'd1', position: 0 },
+        { document: 'd1', position: 1 },
+        { chunkId: 'e1' },
+      ],
+    });
+
+    expect(byId['mrr@10']).toBeCloseTo(1 / 3);
+    expect(byPlace['mrr@10']).toBeCloseTo(1 / 3);
+  });
+
+  it('an expected source counts once in ndcg@10 however many hits match it', async () => {
+    const wholeDocument = caseOf({ id: 'd', expected: { sources: [{ document: 'd1' }] } });
+
+    const leading = await scoresOf(wholeDocument, {
+      retrieved: [
+        { chunkId: 'a', document: 'd1', position: 0 },
+        { chunkId: 'b', document: 'd1', position: 1 },
+      ],
+    });
+    const second = await scoresOf(wholeDocument, {
+      retrieved: [
+        { chunkId: 'x', document: 'd9', position: 0 },
+        { chunkId: 'a', document: 'd1', position: 0 },
+        { chunkId: 'b', document: 'd1', position: 1 },
+      ],
+    });
+
+    expect(leading['ndcg@10']).toBe(1);
+    expect(second['ndcg@10']).toBeCloseTo(1 / Math.log2(3));
+  });
+
+  it('ndcg@10 does not depend on the order the expected sources are listed in', async () => {
+    const wholeFirst = caseOf({
+      id: 'w',
+      expected: { sources: [{ document: 'd1' }, { document: 'd1', position: 3 }] },
+    });
+    const placeFirst = caseOf({
+      id: 'p',
+      expected: { sources: [{ document: 'd1', position: 3 }, { document: 'd1' }] },
+    });
+    const retrieved = [
+      { chunkId: 'a', document: 'd1', position: 3 },
+      { chunkId: 'b', document: 'd1', position: 5 },
+    ];
+
+    expect((await scoresOf(wholeFirst, { retrieved }))['ndcg@10']).toBe(1);
+    expect((await scoresOf(placeFirst, { retrieved }))['ndcg@10']).toBe(1);
+  });
+
+  it('recall@10 counts a repeated hit as a place in the top 10, as version 1 did', async () => {
+    // Two searches of an agent loop that share their first three hits.
+    const retrieved = [...hitsOf(3), ...hitsOf(10, { 10: 'e1' })];
+
+    const scores = await scoresOf(expecting('e1'), { retrieved });
+
+    expect(scores['recall@10']).toBe(0);
+    expect(scores['recall@20']).toBe(1);
+  });
+
+  it('hit@5 ranks a repeated hit once, as mrr@10 does', async () => {
+    // Two searches of an agent loop: the second repeats the first three hits before e1.
+    const retrieved = [...hitsOf(3), ...hitsOf(3), { chunkId: 'e1' }];
+
+    const scores = await scoresOf(expecting('e1'), { retrieved });
+
+    expect(scores['mrr@10']).toBe(0.25);
+    expect(scores['hit@5']).toBe(1);
+  });
+
+  it('document recall is skipped when no expected source names a document', async () => {
+    const scores = await retrievalRecall().evaluate(
+      expecting('e1'),
+      observation({ retrieved: hitsOf(10, { 1: 'e1' }) }),
+      ctx,
+    );
+
+    const documents = scores.find((s) => s.metric === 'document-recall@10');
+    expect(documents).toMatchObject({
+      applicable: false,
+      reason: 'the expected sources name no document',
+    });
+    expect(values(scores)['recall@1']).toBe(1);
+  });
+
+  it('the returned metrics score the sources the service returned, in their order', async () => {
+    const scores = await scoresOf(expecting('e1', 'e2'), {
+      retrieved: hitsOf(20, { 3: 'e1', 12: 'e2' }),
+      returned: hitsOf(10, { 1: 'e1', 6: 'e2' }),
+    });
+    const nothingBack = await scoresOf(expecting('e1'), {
+      retrieved: hitsOf(10, { 1: 'e1' }),
+      returned: [],
+    });
+
+    expect(scores).toMatchObject({
+      'mrr@10': 1 / 3,
+      'returned-recall@1': 0.5,
+      'returned-recall@5': 0.5,
+      'returned-recall@10': 1,
+      'returned-hit@5': 1,
+      'returned-mrr@10': 1,
+      'returned-ndcg@10': (1 + 1 / Math.log2(7)) / (1 + 1 / Math.log2(3)),
+    });
+    expect(scores).not.toHaveProperty('returned-recall@20');
+    expect(nothingBack).toMatchObject({ 'returned-recall@10': 0, 'returned-mrr@10': 0 });
+  });
+
+  it('the returned metrics are skipped when the run returned no sources', async () => {
+    const scores = await retrievalRecall().evaluate(
+      expecting('e1'),
+      observation({ retrieved: hitsOf(10, { 1: 'e1' }) }),
+      ctx,
+    );
+
+    const returned = scores.filter((s) => s.metric.startsWith('returned-'));
+    expect(returned).toHaveLength(6);
+    for (const s of returned) {
+      expect(s.applicable).toBe(false);
+      expect(s.reason).toBe('the run returned no sources');
+    }
+    expect(values(scores)['recall@1']).toBe(1);
+  });
+
+  it('document recall counts an expected document or its earlier id among the first ten distinct documents', async () => {
+    const c = caseOf({
+      id: 'docs',
+      expected: {
+        sources: [
+          { document: 'uuid-1', earlierDocument: '377252', position: 4 },
+          { document: 'uuid-2', position: 0 },
+          { document: 'uuid-2', position: 7 },
+        ],
+      },
+    });
+    const retrieved = [
+      // Many chunks of one document count as one document.
+      ...Array.from({ length: 12 }, (_, i) => ({ chunkId: `a${i}`, document: 'd0', position: i })),
+      { chunkId: 'b', document: 'd1', position: 0 },
+      // The index names the first expected document by its earlier id, at another chunk.
+      { chunkId: 'c', document: '377252', position: 9 },
+      ...Array.from({ length: 8 }, (_, i) => ({
+        chunkId: `y${i}`,
+        document: `e${i}`,
+        position: 0,
+      })),
+      // The eleventh distinct document is past the cut-off.
+      { chunkId: 'z', document: 'uuid-2', position: 0 },
+    ];
+
+    const scores = await scoresOf(c, { retrieved });
+
+    expect(scores['document-recall@10']).toBe(0.5);
+  });
+
+  it('recall@10 reads the search notices before the returned sources, as it does today', async () => {
+    const parts: Part[] = [
+      {
+        mime: 'application/vnd.genai.sources+json',
+        body: { kind: 'json', json: { sources: [{ chunkId: 'e1' }, { chunkId: 'x1' }] } },
+      },
+    ];
+    const events = [
+      {
+        type: 'kernel.notice',
+        data: { kind: 'retrieval', hits: [{ id: 'x1' }, { id: 'e1' }] },
+      },
+    ] as Event[];
+
+    const scores = values(
+      await retrievalRecall().evaluate(expecting('e1'), defaultObserve(parts, events), ctx),
+    );
+
+    expect(scores['recall@1']).toBe(0);
+    expect(scores['mrr@10']).toBe(0.5);
+    expect(scores['returned-recall@1']).toBe(1);
+  });
+});
+
 const kari: Principal = { kind: 'employee', issuer: 'test', subject: 'kari', tenant: '991825827' };
 
 const descriptor = (id: string) => ({
@@ -495,7 +783,7 @@ const answerCapability: Capability = {
   grants: [{ port: 'model', ref: model }],
 };
 
-const evaluators: Evaluator[] = [contractAssertions(), retrievalRecall(3)];
+const evaluators: Evaluator[] = [contractAssertions(), retrievalRecall()];
 
 describe('eval runner', () => {
   it('runs train and validation k times, never the holdout, and annotates every task', async () => {
@@ -511,7 +799,7 @@ describe('eval runner', () => {
 
     expect(run.results.map((r) => `${r.case}#${r.repeat}`)).toEqual(['a#0', 'b#0', 'a#1', 'b#1']);
     expect(run.metrics['answer-pattern']).toMatchObject({ mean: 0.5, n: 2 });
-    expect(run.metrics['recall@3']?.mean).toBe(0.5);
+    expect(run.metrics['recall@10']?.mean).toBe(0.5);
     expect(run.metrics['citations-grounded']?.mean).toBe(1);
     expect(run.byTag.broker?.['answer-pattern']?.mean).toBe(1);
     expect(run.provenance).toMatchObject({

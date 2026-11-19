@@ -49,6 +49,9 @@ param customDomainsStage string
 param existingCertificates object = {}
 param minReplicas int
 param maxReplicas int
+param apiDatabasePoolMax int
+param workerDatabasePoolMax int
+param workerRevisionsMode string
 param cpu string
 param memory string
 param workerCpu string
@@ -242,7 +245,7 @@ resource api 'Microsoft.App/containerApps@2025-02-02-preview' = {
           name: 'api'
           image: apiImage
           resources: { cpu: json(cpu), memory: memory }
-          env: concat([{ name: 'PORT', value: '8080' }, { name: 'APP_VERSION', value: appVersion }], serverEnv, knowledgeEnv.api)
+          env: concat([{ name: 'PORT', value: '8080' }, { name: 'APP_VERSION', value: appVersion }, { name: 'DATABASE_POOL_MAX', value: string(apiDatabasePoolMax) }], serverEnv, knowledgeEnv.api)
           volumeMounts: dataMount
           probes: [
             { type: 'Liveness', httpGet: { path: '/health', port: 8080 }, periodSeconds: 30 }
@@ -269,7 +272,7 @@ resource worker 'Microsoft.App/containerApps@2025-02-02-preview' = {
     environmentId: environment.id
     workloadProfileName: 'Consumption'
     configuration: {
-      activeRevisionsMode: 'Single'
+      activeRevisionsMode: workerRevisionsMode
       registries: [{ server: registryServer, identity: identityId }]
       secrets: concat(secrets, [doclingKeySecret])
     }
@@ -280,7 +283,7 @@ resource worker 'Microsoft.App/containerApps@2025-02-02-preview' = {
             name: 'worker'
             image: workerImage
             resources: { cpu: json(workerCpu), memory: workerMemory }
-            env: concat([{ name: 'APP_VERSION', value: empty(workerVersion) ? appVersion : workerVersion }], serverEnv, knowledgeEnv.worker, doclingEnv, [
+            env: concat([{ name: 'APP_VERSION', value: empty(workerVersion) ? appVersion : workerVersion }, { name: 'DATABASE_POOL_MAX', value: string(workerDatabasePoolMax) }], serverEnv, knowledgeEnv.worker, doclingEnv, [
               { name: 'NODE_OPTIONS', value: '--max-old-space-size=${workerHeapMb}' }
             ])
             volumeMounts: dataMount

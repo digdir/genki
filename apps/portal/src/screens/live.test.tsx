@@ -438,10 +438,10 @@ describe('live service page', () => {
   it('shows Kunnskapsassistenten as an agent with its budget, not as a step flow', async () => {
     await renderLive('#/services/kunnskapsassistenten/how-it-works', kaPlatform);
 
+    fireEvent.click(await screen.findByRole('button', { name: 'Bytt arbeidsmåte' }));
     expect(
       await screen.findByRole('heading', { level: 3, name: 'Agent (søker selv)' }),
     ).toBeTruthy();
-    expect(screen.getByText('agent-loop@1')).toBeTruthy();
     fireEvent.click(await screen.findByLabelText('Vis avanserte innstillinger'));
     expect((screen.getByLabelText(/Flest søk/) as HTMLInputElement).value).toBe('4');
     expect((screen.getByLabelText(/Flest dokumenter som leses/) as HTMLInputElement).value).toBe(
@@ -490,8 +490,9 @@ describe('live service page', () => {
   ])('maps strategy %#: %s', async (strategy, name, field, value) => {
     await renderLive('#/services/kunnskapsassistenten/setup/how', serviceWith(strategy));
 
+    fireEvent.click(await screen.findByRole('button', { name: /^Bytt (arbeidsmåte|stegflyt)$/ }));
     expect(await screen.findByRole('heading', { level: 3, name })).toBeTruthy();
-    expect(screen.getByText(`${strategy.id}@1`)).toBeTruthy();
+    expect(screen.queryByText(`${strategy.id}@1`)).toBeNull();
     expect(
       ((await screen.findByLabelText(new RegExp(`^${field}`))) as HTMLInputElement).value,
     ).toBe(value);
@@ -525,6 +526,7 @@ describe('live service page', () => {
     };
     await renderLive('#/services/kunnskapsassistenten/setup/how', fetch);
 
+    fireEvent.click(await screen.findByRole('button', { name: 'Bytt arbeidsmåte' }));
     expect(await screen.findByText(/støtter ikke temperatur/)).toBeTruthy();
   });
 

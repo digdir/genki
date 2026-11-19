@@ -63,6 +63,11 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ## API changes
 
+### 2026-11-19: ranking metrics and comparisons across engines
+
+- The `retrieval` evaluator scores `recall@1`, `recall@5`, `recall@20`, `hit@5`, `mrr@10`, `ndcg@10` and `document-recall@10` beside `recall@10` and `citations-grounded`, from the hits the run's searches reported, and `returned-recall@1`, `returned-recall@5`, `returned-recall@10`, `returned-hit@5`, `returned-mrr@10` and `returned-ndcg@10` from the sources a run returned (see [work.md](work.md#two-kinds-of-evaluation-run)). `recall@10` keeps its values.
+- `GET /eval-runs/compare` takes `metric` as a comma list and `allowDifferent` (`data`, `services`, `servedModels`). Its answer changes shape: `{ allowedDifferent, comparisons: [{ metric, n, meanBaseline, meanCandidate, difference, ci }], staleJudges? }` instead of one comparison at the top level.
+
 ### 2026-11-19: all documents of a dataset in one list
 
 - `GET /tenants/{tenant}/datasets/{id}/documents` takes `status=all`: the failed documents, then the pending ones, then the indexed ones, paged as one list, with `total` over all three. `filters` and `sort` apply to the indexed documents only, so filters leave out the failed and pending ones. The default is still `indexed` (see [datasets.md](datasets.md#listing-a-datasets-documents)).

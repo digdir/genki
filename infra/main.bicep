@@ -158,6 +158,15 @@ param alertThresholds object = {
 
 param minReplicas int = 1
 param maxReplicas int = 3
+@description('Most connections each of an API replica\'s two pools opens to the platform database (DATABASE_POOL_MAX).')
+@minValue(3)
+param apiDatabasePoolMax int = 10
+@description('Most connections each of the worker\'s two pools opens to the platform database (DATABASE_POOL_MAX).')
+@minValue(3)
+param workerDatabasePoolMax int = 10
+@description('Multiple lets the deploy stop the old worker revision before the new one starts (scripts/worker-revisions.sh).')
+@allowed(['Single', 'Multiple'])
+param workerRevisionsMode string = 'Single'
 @description('The API\'s cores and memory a replica.')
 param cpu string = '0.5'
 param memory string = '1Gi'
@@ -166,6 +175,7 @@ param workerCpu string = '2'
 @description('In whole Gi: the worker\'s heap is three quarters of it.')
 param workerMemory string = '4Gi'
 
+var postgresConnections = loadJsonContent('postgres-connections.json')
 var baseName = '${namePrefix}-${environmentName}'
 var suffix = uniqueString(resourceGroup().id)
 var allTags = union(tags, { system: 'genki', environment: environmentName })
@@ -471,6 +481,9 @@ module apps 'modules/containerapps.bicep' = {
     knowledgeSetup: knowledgeSetup
     minReplicas: minReplicas
     maxReplicas: maxReplicas
+    apiDatabasePoolMax: apiDatabasePoolMax
+    workerDatabasePoolMax: workerDatabasePoolMax
+    workerRevisionsMode: workerRevisionsMode
     cpu: cpu
     memory: memory
     workerCpu: workerCpu
@@ -493,6 +506,8 @@ module alerts 'modules/alerts.bicep' = if (alertsEnabled && infra) {
     emails: alertEmails
     healthCheckFrequencySeconds: healthCheckFrequencySeconds
     thresholds: alertThresholds
+    postgresServerId: infra ? postgres!.outputs.id : ''
+    postgresUserConnections: postgresConnections.maxConnections[postgresSkuName] - postgresConnections.reservedConnections
   }
 }
 
