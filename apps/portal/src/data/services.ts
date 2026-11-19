@@ -443,7 +443,7 @@ export const questions: Record<JobId, string[]> = {
 
 const wordMime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
-const exampleDatasetRef = 'digdir/kudos';
+const exampleDatasetRef = 'eksempel:kudos-rapporter';
 
 const toolRef = (id: string) => tools.find((t) => t.id === id)?.ref ?? id;
 
@@ -607,7 +607,7 @@ const reportAssistant = example('answers', 'Rapportassistenten', (s) => ({
 
 export const exampleDatasets: Record<string, { name: string; meta: string }> = {
   [exampleDatasetRef]: { name: 'Kudos-rapporter', meta: '48 312 dokumenter' },
-  'veiledere-og-rundskriv': { name: 'Veiledere og rundskriv', meta: '612 dokumenter' },
+  'eksempel:veiledere-og-rundskriv': { name: 'Veiledere og rundskriv', meta: '612 dokumenter' },
 };
 
 export const exampleDefinitions: Record<string, ServiceDefinition> = {

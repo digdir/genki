@@ -40,6 +40,7 @@ export interface DatasetView {
   id: string;
   fullId: string;
   name: string;
+  aliases?: string[];
   description?: string;
   scope?: string;
   editable?: boolean;
