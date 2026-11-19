@@ -653,6 +653,8 @@ export const definitionErrors = defineNamespace({
   modelNoTools: 'Modellen «{id}» kan ikke bruke verktøy.',
   unknownModel: 'Modellen «{id}» finnes ikke i plattformen.',
   modelLacks: 'Modellen «{id}» mangler {capabilities}, som oppsettet {strategy} trenger.',
+  modelLacksChecked:
+    'Modellen «{id}» mangler {capabilities}, som oppsettet {strategy} trenger. Genki sjekket {checked} {date}.',
   tooManyEvents: 'Kjøringen ble stoppet fordi den laget mer enn {count} hendelser.',
   firstVariantChat: 'Den første varianten er standard og må kunne brukes i chat.',
   onlyFlowTable: 'Bare arbeidsmåten Fast stegflyt kan lage en tabell.',

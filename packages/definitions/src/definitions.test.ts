@@ -616,6 +616,39 @@ describe('service definitions', () => {
     ]);
   });
 
+  it('names the capabilities a check found missing, and when, in the refusal', () => {
+    const checked = {
+      ...plugins,
+      models: new Map([
+        ...plugins.models,
+        [
+          'aivar/borealis',
+          {
+            residency: 'norway' as const,
+            capabilities: ['stream', 'tools'],
+            checked: { 'json-schema': '2026-11-19T08:00:00.000Z' },
+          },
+        ],
+      ]),
+      modelNeeds: new Map([['single-call@1', ['json-schema']]]),
+    };
+    const result = validateDefinition(
+      withSpec({
+        variants: [
+          { id: 'default' },
+          {
+            id: 'short',
+            strategy: { id: 'single-call', version: 1, config: { instructions: 'x' } },
+          },
+        ],
+      }),
+      checked,
+    );
+    expect(result.ok ? [] : result.errors.map((e) => e.message)).toEqual([
+      'model aivar/borealis lacks json-schema, which single-call needs; checked json-schema on 2026-11-19',
+    ]);
+  });
+
   it('lets a service run by an external agent leave out the model, while every other strategy must name one', () => {
     const external = example('ekstern-agent.yaml');
     const spec = external.spec as { model: Record<string, unknown> };

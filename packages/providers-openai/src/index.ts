@@ -2,6 +2,7 @@ import {
   authenticatedFetch,
   authHeaders,
   errorFromStatus,
+  listedCapabilities,
   ModelError,
   rejectedParameter,
   type ChatChunk,
@@ -476,9 +477,11 @@ export const openAiModels: DiscoverySource = {
     });
     if (!response.ok) throw new Error(`listing models failed with HTTP ${response.status}`);
     const body = (await response.json()) as { data?: unknown };
-    return (Array.isArray(body.data) ? (body.data as { id?: unknown }[]) : []).flatMap((m) =>
-      typeof m?.id === 'string' && m.id ? [listed(m.id)] : [],
-    );
+    return (Array.isArray(body.data) ? (body.data as { id?: unknown }[]) : []).flatMap((m) => {
+      if (typeof m?.id !== 'string' || !m.id) return [];
+      const found = listedCapabilities(m);
+      return [{ ...listed(m.id), ...(found.length > 0 ? { capabilities: found } : {}) }];
+    });
   },
 };
 

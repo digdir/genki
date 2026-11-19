@@ -648,6 +648,8 @@ export const definitionErrors = {
   modelNoTools: 'model {id} cannot call tools',
   unknownModel: 'unknown model {id}',
   modelLacks: 'model {id} lacks {capabilities}, which {strategy} needs',
+  modelLacksChecked:
+    'model {id} lacks {capabilities}, which {strategy} needs; checked {checked} on {date}',
   tooManyEvents: 'task emitted more than {count} events',
   firstVariantChat: 'the first variant is the default and must be a chat variant',
   onlyFlowTable: 'only a step flow can produce a table',

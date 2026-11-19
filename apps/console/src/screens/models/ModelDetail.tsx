@@ -25,7 +25,13 @@ import { useT, type PlainKey } from '../../i18n';
 import { operationName } from '../../model-operations';
 import { EmptyState } from '../../states';
 import { useTenantNames } from '../../tenant-names';
-import type { Capability, ModelClassification, OperatorModel, Residency } from '../../types';
+import type {
+  Capability,
+  CapabilityCheck,
+  ModelClassification,
+  OperatorModel,
+  Residency,
+} from '../../types';
 import { DialogError, ReasonDialog, TableRegion, VisuallyHidden } from '../../ui';
 import {
   boundOf,
@@ -58,6 +64,32 @@ const capabilities = Object.keys(capabilityLabel) as Capability[];
 const detailOf = (error: unknown) =>
   error instanceof ApiError ? (error.problem?.errors ?? []).map((e) => e.message) : [];
 
+const LearnedHint = ({ model }: { model: OperatorModel }) => {
+  const t = useT();
+  const f = useFormat();
+  const checks = Object.entries(model.learned ?? {}) as [Capability, CapabilityCheck][];
+  const lacking = checks.filter(([, check]) => !check.has);
+  const learned = checks.filter(([, check]) => check.has).length;
+  const latest = lacking
+    .map(([, check]) => check.at)
+    .sort()
+    .at(-1);
+  const lines = [
+    ...(lacking.length > 0 && latest
+      ? [
+          t('models.capabilitiesLacking', {
+            capabilities: lacking.map(([c]) => t(capabilityLabel[c]).toLowerCase()).join(', '),
+            date: f.date(new Date(latest), 'short'),
+          }),
+        ]
+      : []),
+    ...(learned > 0 && model.capabilities.length > learned
+      ? [t('models.capabilitiesSetHint')]
+      : []),
+  ];
+  return lines.length > 0 ? <span className="meta">{lines.join(' ')}</span> : null;
+};
+
 export const ModelDetail = ({ api, data, done, id }: AreaProps & { id: string }) => {
   const t = useT();
   const f = useFormat();
@@ -81,6 +113,15 @@ export const ModelDetail = ({ api, data, done, id }: AreaProps & { id: string })
   const families = familiesOf(data.connections?.find((c) => c.id === model.endpoint));
   const bound = Object.entries(boundOf(model));
   const apiOf = (apiId: string) => data.apis?.find((a) => a.id === apiId);
+  const capabilityText = (c: Capability) => {
+    const check = model.learned?.[c];
+    const label = t(capabilityLabel[c]);
+    if (!check?.has) return label;
+    return t(check.by === 'listing' ? 'models.capabilityListed' : 'models.capabilityLearned', {
+      capability: label,
+      date: f.date(new Date(check.at), 'short'),
+    });
+  };
   const open = (next: Change) => {
     setResidency(model.residency);
     setChosen(model.capabilities);
@@ -198,11 +239,12 @@ export const ModelDetail = ({ api, data, done, id }: AreaProps & { id: string })
           <dt>{t('models.colCan')}</dt>
           <dd>
             <span className="actions-row">
-              {model.capabilities.map((c) => t(capabilityLabel[c])).join(', ') || '–'}
+              {model.capabilities.map((c) => capabilityText(c)).join(', ') || '–'}
               <Button variant="tertiary" data-size="sm" onClick={() => open('capabilities')}>
                 {t('models.change')} <VisuallyHidden>{t('models.colCan')}</VisuallyHidden>
               </Button>
             </span>
+            <LearnedHint model={model} />
           </dd>
           <dt>{t('models.colPrice')}</dt>
           <dd>

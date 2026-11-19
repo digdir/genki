@@ -40,7 +40,12 @@ export interface PluginSchemas {
   blocks: Set<string>;
   models: Map<
     string,
-    { residency: (typeof residencies)[number]; capabilities: string[]; operations?: string[] }
+    {
+      residency: (typeof residencies)[number];
+      capabilities: string[];
+      operations?: string[];
+      checked?: Record<string, string>;
+    }
   >;
   settings?: SettingDefinition[];
   retrieval?: z.ZodType;
@@ -532,9 +537,17 @@ const checkService = (definition: ServiceDefinition, plugins: PluginSchemas): Va
       (c) => !model.capabilities.includes(c) && !(c === 'tools' && spec.tools.length > 0),
     );
     if (missing.length > 0) {
+      const checked = missing.filter((c) => model.checked?.[c]);
+      const on = checked
+        .map((c) => model.checked?.[c] ?? '')
+        .sort()
+        .at(-1)
+        ?.slice(0, 10);
       errors.push({
         path,
-        message: `model ${id} lacks ${missing.join(', ')}, which ${strategy.id} needs`,
+        message: `model ${id} lacks ${missing.join(', ')}, which ${strategy.id} needs${
+          checked.length > 0 ? `; checked ${checked.join(', ')} on ${on}` : ''
+        }`,
       });
     }
   }

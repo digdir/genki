@@ -63,6 +63,12 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ## API changes
 
+### 2026-11-20: genki checks what discovered models can do
+
+- `POST /operator/models/refresh` also checks the capabilities of discovered models that their discovery rule does not name, with at most 12 small synthetic model calls through the gate, and answers `learned` with `checked` (model, capability, `has`), `calls`, `deferred` (checks left over the cap) and the priced `usage`. The audit `result` carries the same.
+- `GET /operator/models` answers `learned` per model: each capability genki checked, with `has`, `at` and `by` (`listing` or `call`). It is absent once an operator sets the capabilities, which then win.
+- A definition whose model lacks what its strategy needs is refused as before; when genki checked a missing capability, the message ends `; checked <capabilities> on <YYYY-MM-DD>`.
+
 ### 2026-11-19: removing unused step flows, operation kinds and platform secrets
 
 - New `DELETE /tenants/{tenant}/step-flows/{id}` (manage-services, `change-reason`, audited as `platform.step-flow.archive`) archives one of the organisation's own step flows: Stegflyter and Byggeklosser stop listing it, its versions stay, and publishing it again lists it again. It answers `409` with `urn:genai:problem:step-flow-in-use` while the latest version, or a version an environment is pinned to, of a service that is not archived runs it, directly or as a subflow, in any organisation for a Digdir flow. Internal services count. `usedBy` names only services in the caller's own organisation; `otherOrganisations` counts the rest, and `internalServices` the internal ones the caller may not see.

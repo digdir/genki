@@ -12,10 +12,19 @@ export const models = defineNamespace({
   discoveredNote:
     'En modell som er funnet automatisk, står som <strong>Globalt</strong> til noen i driftsteamet har bekreftet hvor den kjører. Tjenester som bare tillater behandling i Norge eller EU, kan bare velge modeller som er satt til det.',
   refresh: 'Hent modeller på nytt',
-  refreshText: 'Genki spør hver tilkobling etter modellene den har. Nye modeller blir kandidater.',
+  refreshText:
+    'Genki spør hver tilkobling etter modellene den har. Nye modeller blir kandidater. Genki sjekker også hva modellene kan, med opptil 12 små kall som koster litt.',
   refreshed: 'Modellene er hentet på nytt. Endringen er logget i Revisjon.',
   discovered: { one: 'Fant {count} modell.', other: 'Fant {count} modeller.' },
   providersFailed: 'Disse leverandørene svarte ikke:',
+  learnedCalls: {
+    one: 'Genki sjekket hva modellene kan, med {count} lite kall.',
+    other: 'Genki sjekket hva modellene kan, med {count} små kall.',
+  },
+  learnedDeferred: {
+    one: '{count} sjekk venter til neste gang modellene hentes.',
+    other: '{count} sjekker venter til neste gang modellene hentes.',
+  },
   loading: 'Henter modeller',
   noneTitle: 'Ingen modeller funnet',
   noneText: 'Sjekk tilkoblingene, og hent modellene på nytt.',
@@ -63,6 +72,10 @@ export const models = defineNamespace({
   residencyText:
     'Tjenester som krever behandling i Norge eller EU, kan bare bruke modeller som er satt til det.',
   capabilitiesTitle: 'Endre hva {model} kan',
+  capabilityLearned: '{capability} (sjekket av Genki {date})',
+  capabilityListed: '{capability} (oppgitt av tilkoblingen {date})',
+  capabilitiesLacking: 'Genki sjekket {capabilities} {date}, og modellen kunne det ikke.',
+  capabilitiesSetHint: 'Resten er satt i oppsettet for tilkoblingen.',
   setPrice: 'Sett pris',
   priceText: '{input} kr inn, {output} kr ut',
   unpriced: 'Ikke priset',

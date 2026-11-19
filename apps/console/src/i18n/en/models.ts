@@ -13,8 +13,17 @@ export const models = {
   discoveredNote:
     'A model found automatically is marked <strong>Global</strong> until someone in the operations team has confirmed where it runs. Services that only allow processing in Norway or the EU can only choose models set to that.',
   refresh: 'Fetch models again',
-  refreshText: 'Genki asks each connection for the models it has. New models become candidates.',
+  refreshText:
+    'Genki asks each connection for the models it has. New models become candidates. Genki also checks what the models can do, with up to 12 small calls that cost a little.',
   refreshed: 'The models have been fetched again. The change is logged in Audit.',
+  learnedCalls: {
+    one: 'Genki checked what the models can do, with {count} small call.',
+    other: 'Genki checked what the models can do, with {count} small calls.',
+  },
+  learnedDeferred: {
+    one: '{count} check waits until the models are fetched again.',
+    other: '{count} checks wait until the models are fetched again.',
+  },
   discovered: { one: 'Found {count} model.', other: 'Found {count} models.' },
   providersFailed: 'These providers did not answer:',
   loading: 'Loading models',
@@ -64,6 +73,10 @@ export const models = {
   residencyText:
     'Services that require processing in Norway or the EU can only use models set to that.',
   capabilitiesTitle: 'Change what {model} can do',
+  capabilityLearned: '{capability} (checked by Genki on {date})',
+  capabilityListed: '{capability} (stated by the connection on {date})',
+  capabilitiesLacking: 'Genki checked {capabilities} on {date}, and the model could not do that.',
+  capabilitiesSetHint: 'The rest is set in the configuration of the connection.',
   setPrice: 'Set price',
   priceText: 'NOK {input} in, NOK {output} out',
   unpriced: 'Not priced',
