@@ -1,6 +1,6 @@
 # 0055 Conversion parts
 
-Status: proposed, 2026-11-13 (units and places for every format, 2026-11-13; documents with more than one file, 2026-11-13; citation links to the source's own copy of a file, 2026-11-13; a row's last unit, Docling's labels and the fetched URL as the link, after a check against the export and the code, 2026-11-16; charspans for a region's span and lone page numbers as furniture, the derivation built as a function, 2026-11-18; a table's `html` left until a screen shows tables, 2026-11-19)
+Status: proposed, 2026-11-13 (units and places for every format, 2026-11-13; documents with more than one file, 2026-11-13; citation links to the source's own copy of a file, 2026-11-13; a row's last unit, Docling's labels and the fetched URL as the link, after a check against the export and the code, 2026-11-16; charspans for a region's span and lone page numbers as furniture, the derivation built as a function, 2026-11-18; a table's `html` left until a screen shows tables, 2026-11-19; printed page labels built, lone page numbers at a page's edge among them, 2026-11-19)
 
 Left: a table's `html` until a screen shows tables (issue 632), drawing a cited box on the page image, printed page labels in roman numerals, heading levels from a PDF's outline, joining a table that continues on the next page, and a check of reading order. Parts for formats other than PDF are built later, each in an issue of its own; this record says what they become (Formats, below). How an answer quotes the words it rests on is recorded in ADR 0052 when it is built (Citations, below).
 
@@ -128,7 +128,7 @@ On the Docling export seeded into stored conversions (Docling 2.123.1), 13 Novem
 | Parts marked furniture                                        | 15.0 and 17.4 %                                                                         | same                                              |
 | Pages with a character outside the BMP                        | 0.05 and 0.16 %                                                                         | same                                              |
 | Tables with merged cells                                      | 26 %                                                                                    | same                                              |
-| Pages with a printed label kept by the rule                   | 70.5 and 66.2 %                                                                         | same                                              |
+| Pages with a printed label kept by the rule                   | 70.5 and 66.2 %; 73.7 % in the first with lone edge numbers, as `docling-parts` reads   | same                                              |
 | Pages with a running title left in the body                   | 4.8 and 7.3 %                                                                           | same                                              |
 | Stored, one row per page (pglz)                               | 2,872 bytes a page: 7.3 GB for 2.55 million pages, a lower bound (below)                | 300 files, 18,199 pages, PostgreSQL 17            |
 | Stored, one row per part (pglz)                               | 6,238 bytes a page: 15.9 GB                                                             | same                                              |
