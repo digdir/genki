@@ -1732,6 +1732,26 @@ export const accessRoutes: RouteConfig[] = [
     },
   }),
   createRoute({
+    method: 'delete',
+    path: '/operator/secrets/{name}',
+    summary: 'Delete a platform secret that nothing uses (operators, audited without the value)',
+    description:
+      'A secret still named by a catalog entry, a configuration entry such as an operator hook, or the latest version of a definition in any organisation, internal services included, answers 409 with `urn:genai:problem:platform-secret-in-use` and each use in `usedBy`.',
+    request: {
+      params: z.object({ name: pathParam('name', 'enhetsregisteret') }),
+      headers: reason,
+    },
+    responses: {
+      204: { description: 'Removed' },
+      400: problem('Missing reason'),
+      401: unauthorized,
+      403: operatorOnly,
+      404: problem('No such platform secret is stored'),
+      409: problem('The secret is still in use; `usedBy` lists each use'),
+      503: problem('The platform cannot check what uses the secret, so nothing is deleted'),
+    },
+  }),
+  createRoute({
     method: 'get',
     path: '/operator/secrets',
     summary:

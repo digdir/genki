@@ -58,6 +58,7 @@ import {
 import type { Context, Env, Hono, Schema } from 'hono';
 import { stringify as toYaml } from 'yaml';
 import { actorOf, type AdminHandler, type AdminOutcome } from './admin.js';
+import { isFlowArchived } from './step-flow-archive.js';
 import { tenantServiceUses, type BlockReference, type ServiceUse } from './block-usage.js';
 import {
   appendVersion,
@@ -953,6 +954,11 @@ export const createBuildingBlocksModule =
           const history = await deps.definitions.versions(entry.kind, owner, entry.id);
           const latest = history.at(-1);
           if (!latest) continue;
+          if (
+            entry.kind === 'StepFlow' &&
+            (await isFlowArchived(deps.configEntries, owner, entry.id, latest.version))
+          )
+            continue;
           const kind: BlockKind = entry.kind === 'Skill' ? 'skill' : 'step_flow';
           const definition = latest.definition as SkillDefinition | StepFlowDefinition;
           const spec = definition.spec as {

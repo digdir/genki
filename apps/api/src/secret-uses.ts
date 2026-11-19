@@ -3,6 +3,7 @@ import type { DefinitionStore } from '@genai/definitions';
 import type { ConnectionRegistry } from '@genai/providers-mcp-client';
 import type { CatalogRegistry } from './catalog-registry.js';
 import { connectorMappingKind, connectorSecretName } from './connectors.js';
+import { seeingInternalServices } from './internal-services.js';
 
 export interface SecretUse {
   kind: string;
@@ -10,7 +11,8 @@ export interface SecretUse {
 }
 
 const refers = (value: unknown, refs: Set<string>, name: string, key = ''): boolean => {
-  if (typeof value === 'string') return refs.has(value) || (/secret/i.test(key) && value === name);
+  if (typeof value === 'string')
+    return refs.has(value) || (name !== '' && /secret/i.test(key) && value === name);
   if (Array.isArray(value)) return value.some((v) => refers(v, refs, name, key));
   if (value && typeof value === 'object')
     return Object.entries(value).some(([k, v]) => refers(v, refs, name, k));
@@ -57,3 +59,37 @@ export const secretUses =
       `${a.kind}/${a.id}`.localeCompare(`${b.kind}/${b.id}`),
     );
   };
+
+export const platformSecretUses =
+  (sources: {
+    configEntries: ConfigEntryStore;
+    catalog: Pick<CatalogRegistry, 'list'>;
+    definitions: Pick<DefinitionStore, 'list' | 'get' | 'capabilities'>;
+    platformTenant: string;
+    platformScope: string;
+  }) =>
+  (name: string): Promise<SecretUse[]> =>
+    seeingInternalServices(async () => {
+      const refs = new Set([`secret://platform/${name}`]);
+      const uses = new Map<string, SecretUse>();
+      const add = (kind: string, id: string) => uses.set(`${kind}/${id}`, { kind, id });
+      for (const entry of await sources.configEntries.latest()) {
+        if (entry.deleted) continue;
+        const bare = entry.scope === sources.platformScope ? name : '';
+        if (refers(entry.spec, refs, bare)) add(entry.kind, entry.id);
+      }
+      for (const item of sources.catalog.list())
+        if (refers(item.spec, refs, '')) add(item.kind, item.id);
+      const tenants = new Set([
+        sources.platformTenant,
+        ...(await sources.definitions.capabilities()).map((c) => c.service.tenant),
+      ]);
+      for (const tenant of tenants)
+        for (const { kind, id } of await sources.definitions.list(tenant)) {
+          const latest = await sources.definitions.get(kind, tenant, id);
+          if (latest && refers(latest.definition, refs, '')) add(kind, `${tenant}/${id}`);
+        }
+      return [...uses.values()].sort((a, b) =>
+        `${a.kind}/${a.id}`.localeCompare(`${b.kind}/${b.id}`),
+      );
+    });

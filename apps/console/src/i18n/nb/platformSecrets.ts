@@ -21,6 +21,13 @@ export const platformSecrets = defineNamespace({
   replace: 'Bytt verdi',
   setLabel: 'Sett verdi for {name}',
   replaceLabel: 'Bytt verdi for {name}',
+  delete: 'Slett',
+  deleteLabel: 'Slett {name}',
+  deleteTitle: 'Slette {name}?',
+  deleteText:
+    'Ingenting bruker hemmeligheten. Verdien slettes for godt og kan ikke hentes tilbake.',
+  deleteFailed: 'Vi fikk ikke slettet hemmeligheten',
+  deleted: '{name} er slettet.',
   noneTitle: 'Ingen plattformhemmeligheter',
   noneText: 'Legg til en hemmelighet her, eller nevn en i en tilkobling.',
   addTitle: 'Ny plattformhemmelighet',

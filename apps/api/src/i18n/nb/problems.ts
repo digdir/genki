@@ -203,4 +203,18 @@ export const problems = defineNamespace({
     'Arbeidsmåten {strategy} har ikke ett felt for instruksjoner, så prøveområdet kan ikke bytte dem ut. Endre stegene i et utkast i stedet.',
   playgroundDatasetNotAvailable:
     'Datasettet {dataset} finnes ikke, eller virksomheten har ikke tilgang til det.',
+  stepFlowNotFound: 'Fant ikke stegflyten {id}',
+  stepFlowInUseTitle: 'Stegflyten er i bruk',
+  stepFlowUsedBy: 'Tjenesten {tenant}/{service} bruker stegflyten',
+  stepFlowUsedByInternal: '{count} interne tjenester bruker stegflyten',
+  stepFlowUsedByOthers: '{count} tjenester hos andre virksomheter bruker stegflyten',
+  operationKindNotFound: 'Fant ikke typen kall {kind}',
+  operationKindBuiltIn: 'Typen kall {kind} er innebygd og kan ikke slettes',
+  operationKindInUseTitle: 'Typen kall er i bruk',
+  operationKindDescribedBy: 'API-et {descriptor} beskriver typen kall',
+  platformSecretNotFound: 'Fant ikke plattformhemmeligheten {name}',
+  platformSecretInUseTitle: 'Plattformhemmeligheten er i bruk',
+  platformSecretUsedBy: '{kind} {id} bruker plattformhemmeligheten',
+  platformSecretUsesUnknown:
+    'Genki kan ikke sjekke hva som bruker plattformhemmeligheten, så den slettes ikke',
 });

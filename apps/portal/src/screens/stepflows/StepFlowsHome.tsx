@@ -1,6 +1,8 @@
 import {
+  Alert,
   Button,
   Chip,
+  Dialog,
   Heading,
   Link,
   Paragraph,
@@ -12,6 +14,8 @@ import { intlLocale, type Format } from '@genai/i18n';
 import { useFormat } from '@genai/i18n/react';
 import { useId, useState } from 'react';
 import type { ApiClient } from '../../api';
+import { ApiError } from '../../api/error';
+import { reasonProblem, ReasonField } from '../../components/ReasonField';
 import type { CatalogItem } from '../../api/building-blocks';
 import { useAsync } from '../../hooks';
 import { useT } from '../../i18n';
@@ -41,7 +45,88 @@ export const stepCount = (t: ReturnType<typeof useT>, count: number) => {
     : t('stepFlowHome.steps', { count });
 };
 
-const FlowRow = ({ flow }: { flow: CatalogItem }) => {
+const ArchiveFlow = ({
+  api,
+  tenant,
+  flow,
+  onClose,
+  onArchived,
+}: {
+  api: ApiClient;
+  tenant: string;
+  flow: CatalogItem;
+  onClose: () => void;
+  onArchived: () => void;
+}) => {
+  const t = useT();
+  const headingId = useId();
+  const [reason, setReason] = useState('');
+  const [tried, setTried] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [failure, setFailure] = useState('');
+  const confirm = async () => {
+    setTried(true);
+    if (busy || reasonProblem(reason, t)) return;
+    setBusy(true);
+    setFailure('');
+    try {
+      await api.buildingBlocks.archiveFlow(tenant, flow.id, reason.trim());
+      onArchived();
+    } catch (error) {
+      setFailure(
+        error instanceof ApiError && error.status === 409
+          ? t('stepFlowHome.archiveInUse')
+          : t('stepFlowHome.archiveFailed'),
+      );
+      setBusy(false);
+    }
+  };
+  return (
+    <Dialog
+      open
+      modal
+      onClose={onClose}
+      aria-labelledby={headingId}
+      closeButton={t('common.close')}
+    >
+      <div className="stack-sm">
+        <Heading level={2} data-size="xs" id={headingId}>
+          {t('stepFlowHome.archiveTitle', { name: flow.name })}
+        </Heading>
+        <Paragraph>{t('stepFlowHome.archiveText')}</Paragraph>
+        <ReasonField value={reason} onChange={setReason} showError={tried} rows={1} />
+        <div aria-live="polite">
+          {failure ? (
+            <Alert data-color="danger" data-size="sm" role="alert">
+              {failure}
+            </Alert>
+          ) : null}
+        </div>
+        <div className="actions">
+          <Button variant="secondary" onClick={onClose}>
+            {t('common.cancel')}
+          </Button>
+          <Button
+            variant="primary"
+            data-color="danger"
+            aria-disabled={busy || undefined}
+            onClick={() => void confirm()}
+          >
+            {busy ? t('stepFlowHome.archiving') : t('stepFlowHome.archive')}
+          </Button>
+        </div>
+      </div>
+    </Dialog>
+  );
+};
+
+const FlowRow = ({
+  flow,
+  onArchive,
+}: {
+  flow: CatalogItem;
+  onArchive: ((flow: CatalogItem) => void) | undefined;
+}) => {
   const t = useT();
   const f = useFormat();
   const current = currentVersion(flow);
@@ -83,7 +168,20 @@ const FlowRow = ({ flow }: { flow: CatalogItem }) => {
             ))}
           </ul>
         ) : (
-          <span className="sf-none">{t('stepFlowHome.noServices')}</span>
+          <span className="sf-cell-stack">
+            <span className="sf-none">{t('stepFlowHome.noServices')}</span>
+            {onArchive && flow.publisher.type === 'own' ? (
+              <Button
+                variant="tertiary"
+                data-size="sm"
+                className="align-start"
+                aria-label={t('stepFlowHome.archiveLabel', { name: flow.name })}
+                onClick={() => onArchive(flow)}
+              >
+                {t('stepFlowHome.archive')}
+              </Button>
+            ) : null}
+          </span>
         )}
       </Table.Cell>
     </Table.Row>
@@ -102,6 +200,8 @@ export const StepFlowsHome = ({ api, tenant }: { api: ApiClient; tenant: string 
   const canCreate = useRights().has('manage-services');
   const [query, setQuery] = useState('');
   const [from, setFrom] = useState<From>('all');
+  const [archiving, setArchiving] = useState<CatalogItem | undefined>();
+  const [archivedName, setArchivedName] = useState('');
   const [state, retry, pending] = useAsync(
     async (signal) =>
       (await api.buildingBlocks.list(tenant, { kind: 'step_flow' }, signal)).data.filter(
@@ -177,6 +277,26 @@ export const StepFlowsHome = ({ api, tenant }: { api: ApiClient; tenant: string 
   return (
     <div className="stack">
       {head}
+      <div aria-live="polite">
+        {archivedName ? (
+          <Alert data-color="success" data-size="sm">
+            {t('stepFlowHome.archived', { name: archivedName })}
+          </Alert>
+        ) : null}
+      </div>
+      {archiving ? (
+        <ArchiveFlow
+          api={api}
+          tenant={tenant}
+          flow={archiving}
+          onClose={() => setArchiving(undefined)}
+          onArchived={() => {
+            setArchivedName(archiving.name);
+            setArchiving(undefined);
+            retry();
+          }}
+        />
+      ) : null}
       {flows.length === 0 ? (
         <EmptyState title={t('stepFlowHome.emptyTitle')}>
           <Paragraph>{t('stepFlowHome.emptyBody')}</Paragraph>
@@ -239,7 +359,11 @@ export const StepFlowsHome = ({ api, tenant }: { api: ApiClient; tenant: string 
                 </Table.Head>
                 <Table.Body>
                   {shown.map((flow) => (
-                    <FlowRow key={flow.id} flow={flow} />
+                    <FlowRow
+                      key={flow.id}
+                      flow={flow}
+                      onArchive={canCreate ? setArchiving : undefined}
+                    />
                   ))}
                 </Table.Body>
               </Table>

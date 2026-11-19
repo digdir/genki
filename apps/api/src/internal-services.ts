@@ -45,6 +45,9 @@ export const hidingInternalServicesFrom = <T>(
     work,
   );
 
+export const seeingInternalServices = <T>(work: () => T): T =>
+  viewer.run({ hides: false, signedIn: true, internal: new Map() }, work);
+
 export const internalServiceViewer =
   (caller: (request: Request) => Promise<Principal | undefined>): MiddlewareHandler =>
   async (c, next) => {
