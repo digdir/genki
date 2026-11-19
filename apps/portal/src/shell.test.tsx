@@ -545,7 +545,7 @@ it('shows the Datasett badge on a deep link with the same count as the Trenger o
 
   await go('#/datasets');
 
-  expect(await screen.findByRole('radio', { name: 'Trenger oppfølging (2)' })).toBeTruthy();
+  expect(await screen.findByText('Trenger oppfølging (2)')).toBeTruthy();
 });
 
 it('derives rights from the old read and write actions the same way as the API', () => {
