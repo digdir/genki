@@ -213,7 +213,7 @@ var appLogAlerts = [
     severity: 2
     frequency: 'PT5M'
     window: 'PT15M'
-    query: 'ContainerAppHTTPLogs | where ContainerAppName == \'${apiAppName}\' and StatusCode > 0 and Path != \'/health\' and Path !has_any (${slowByDesignList}) | summarize total = count(), p95 = percentile(todouble(RequestDuration), 95) | where total >= ${thresholds.latencyMinRequests} | extend seconds = p95 / 1000.0'
+    query: 'ContainerAppHTTPLogs | where ContainerAppName == \'${apiAppName}\' and StatusCode > 0 and Path != \'/health\' and not(Path has_any (${slowByDesignList})) | summarize total = count(), p95 = percentile(todouble(RequestDuration), 95) | where total >= ${thresholds.latencyMinRequests} | extend seconds = p95 / 1000.0'
     measure: 'seconds'
     aggregation: 'Maximum'
     threshold: thresholds.latencySeconds

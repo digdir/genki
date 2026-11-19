@@ -239,7 +239,7 @@ describe.skipIf(!hasAz && !process.env.CI)('backups and alerts in the template',
     expect(text(main.parameters.alertThresholds?.defaultValue)).toContain('"workerFailures":3');
     const variables = module('alerts').properties.template?.variables ?? {};
     expect(logRules).toContain("Path != ''/health''");
-    expect(logRules).toContain('Path !has_any (');
+    expect(logRules).toContain('not(Path has_any (');
     const slow = text(variables.slowByDesignPaths);
     for (const route of ['/chat/completions', '/uploads', '/playground/runs', '/a2a', '/api/mcp'])
       expect(slow).toContain(route);
