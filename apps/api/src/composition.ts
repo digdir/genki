@@ -154,6 +154,7 @@ import { datasetDeleteModule } from './dataset-delete.js';
 import { datasetSearchModule } from './dataset-search.js';
 import { datasetReaderCounts, datasetReaders } from './dataset-readers.js';
 import { datasetUploadsModule } from './dataset-uploads.js';
+import { documentOriginals } from './document-originals.js';
 import { type ApiLog } from './failure-log.js';
 import {
   indexIngestionBackend,
@@ -2628,6 +2629,10 @@ export const createPlatform = async (input: PlatformInput) => {
             (await boundServiceReads(principal, names))
           );
         },
+        originalFile: documentOriginals(
+          blobStore,
+          (dataset) => config.catalog.get('dataset', dataset)?.scope,
+        ),
         status: async (dataset) => {
           const item = config.catalog.get('dataset', dataset);
           if (!item) return 'configured';

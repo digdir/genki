@@ -27,6 +27,7 @@ interface Resource {
 }
 interface Built {
   parameters: Record<string, { defaultValue?: unknown }>;
+  variables?: Record<string, string>;
   resources: Resource[];
 }
 
@@ -102,18 +103,15 @@ describe.skipIf(!hasAz && !process.env.CI)('the assistant host in the template',
   });
 
   it('binds genki’s own assistant hostname on the host app in the stages the other apps use', () => {
-    const app = host().find((r) => r.type === 'Microsoft.App/containerApps');
-    const ingress = JSON.stringify(app?.properties);
-    expect(ingress).toContain('"customDomains":"[if(variables(\'bound\')');
-    const certificate = host().find(
-      (r) => r.type === 'Microsoft.App/managedEnvironments/managedCertificates',
+    expect(main().variables?.assistantNames).toContain(
+      "createObject('hostname', toLower(parameters('hostnames').assistant), 'tenant', parameters('platformTenant'), 'stage', parameters('customDomainsStage'))",
     );
-    expect(certificate?.condition).toBe(
-      "[and(variables('bound'), equals(parameters('customDomainsStage'), 'certificates'))]",
+    expect(main().variables?.servedNames).toBe(
+      "[concat(variables('hostedNames'), variables('assistantNames'))]",
     );
-    expect(JSON.stringify(module('assistant-host').properties.parameters)).toContain(
-      "parameters('customDomainsStage')",
-    );
+    expect(module('assistant-host').properties.parameters?.hostedHostnames).toEqual({
+      value: "[variables('servedNames')]",
+    });
     expect(read('infra/env/test.bicepparam')).toMatch(
       /assistant: 'assistant\.genki-test\.digdir\.cloud'/,
     );
@@ -124,7 +122,7 @@ describe.skipIf(!hasAz && !process.env.CI)('the assistant host in the template',
     expect(api).toContain(
       `"GENAI_ASSISTANT_HOSTNAME":"[if(parameters('assistantHostEnabled'), coalesce(tryGet(parameters('hostnames'), 'assistant'), ''), '')]"`,
     );
-    expect(api).toContain(`"GENAI_HOSTED_HOSTNAMES":"[parameters('hostedHostnames')]"`);
+    expect(api).toContain("map(variables('servedNames')");
     const dns = JSON.stringify(module('dns').properties.parameters);
     expect(dns).toMatch(/'assistant-host'\), '[\d-]+'\)\.outputs\.verificationId\.value/);
   });

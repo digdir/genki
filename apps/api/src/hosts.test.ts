@@ -72,6 +72,9 @@ const boot = async (
         ['ola.example.no', other],
         ['assistant.genki-test.digdir.cloud', digdir],
         ['annen.genki-test.digdir.cloud', digdir],
+        ['kunnskap.apps.genki-test.digdir.cloud', digdir],
+        ['portal.genki-test.digdir.cloud', digdir],
+        ['a.kunnskap.apps.genki-test.digdir.cloud', digdir],
       ]),
       reservedDomains: defaultReservedDomains,
       assistantHostname: options.assistantHostname,
@@ -161,10 +164,29 @@ describe('the assistant host', () => {
         audience: 'klarsprak-host',
         altinnResource: null,
       },
+      languages: ['nb', 'en'],
       theme: null,
       menu: shown.menu,
       pages: [{ id: 'om', title: 'Om tjenesten' }],
     });
+  });
+
+  it('offers the languages the service answers in that the host has words for, bokmål when none', async () => {
+    const { call, publish, saveClient } = await boot();
+    const speaking = (languages: string[]) => {
+      const d = service('klarsprak', shown);
+      return { ...d, spec: { ...d.spec, languages } };
+    };
+    const offered = async (languages: string[]) => {
+      expect((await publish(speaking(languages))).ok).toBe(true);
+      expect((await saveClient('klarsprak-host', client())).status).toBe(200);
+      return ((await (await call('/v1/hosts/ka.example.no')).json()) as { languages: string[] })
+        .languages;
+    };
+
+    expect(await offered(['en', 'nb'])).toEqual(['en', 'nb']);
+    expect(await offered(['nn', 'en'])).toEqual(['en']);
+    expect(await offered(['nn'])).toEqual(['nb']);
   });
 
   it('answers the same 404 for every hostname that is not active', async () => {
@@ -301,6 +323,56 @@ describe('the assistant host', () => {
     expect(res.status).toBe(400);
     expect((await errorsOf(res))[0]?.message).toMatch(/^hostname_not_allowed/);
     expect((await call('/v1/hosts/ka.example.no')).status).toBe(404);
+  });
+});
+
+describe('names genki assigns in its own zone', () => {
+  it('a service may take one label under apps. in genki’s zone once opened to it, and no other name there', async () => {
+    const { publish, saveClient } = await boot();
+    expect((await publish(service('klarsprak', shown))).ok).toBe(true);
+    const save = (hostname: string) =>
+      saveClient('klarsprak-host', client({ hostnames: [{ hostname }] }));
+
+    expect((await save('kunnskap.apps.genki-test.digdir.cloud')).status).toBe(200);
+    for (const refused of [
+      'portal.genki-test.digdir.cloud',
+      'a.kunnskap.apps.genki-test.digdir.cloud',
+    ]) {
+      const res = await save(refused);
+      expect(res.status, refused).toBe(400);
+      expect((await errorsOf(res))[0]?.message).toMatch(/^hostname_not_allowed/);
+    }
+  });
+
+  it('answers a hosted page for an assigned apps. name opened to the tenant', async () => {
+    const { call, publish, saveClient } = await boot();
+    expect((await publish(service('klarsprak', shown))).ok).toBe(true);
+    const hostname = 'kunnskap.apps.genki-test.digdir.cloud';
+    expect((await saveClient('klarsprak-host', client({ hostnames: [{ hostname }] }))).status).toBe(
+      200,
+    );
+
+    const res = await call(`/v1/hosts/${hostname}`);
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ tenant: digdir, service: 'klarsprak' });
+    expect((await call(`/v1/hosts/${hostname}/pages/om`)).status).toBe(200);
+  });
+
+  it('answers the same 404 for an apps. name no operator has opened', async () => {
+    const { call, publish, saveClient } = await boot();
+    expect((await publish(service('klarsprak', shown))).ok).toBe(true);
+    const opened = 'kunnskap.apps.genki-test.digdir.cloud';
+    expect(
+      (await saveClient('klarsprak-host', client({ hostnames: [{ hostname: opened }] }))).status,
+    ).toBe(200);
+
+    const res = await call('/v1/hosts/annet.apps.genki-test.digdir.cloud');
+
+    expect(res.status).toBe(404);
+    expect((await res.json()) as { type: string }).toMatchObject({
+      type: 'urn:genai:problem:host-not-found',
+    });
   });
 });
 

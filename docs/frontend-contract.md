@@ -478,4 +478,4 @@ It makes real model calls, so run it on a cheap service.
 
 ## Example (repository only)
 
-For contributors. `examples/frontend-minimal` is a small HTML page with a tiny server that uses the client. `examples/frontend-minimal/server.test.ts` runs it against a fake platform.
+For contributors. `examples/frontend-minimal` is a small HTML page with a tiny server that uses the client. `examples/frontend-minimal/server.test.ts` runs it against a fake platform. `examples/team-frontend` is a `browser` frontend with Ansattporten login, a Dockerfile and its own copy of the calls; see [Run your own frontend](run-your-own-frontend.md).

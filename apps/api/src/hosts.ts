@@ -48,6 +48,15 @@ export const assistantHostnameFrom = (env: NodeJS.ProcessEnv): string | undefine
 const under = (hostname: string, domain: string) =>
   hostname === domain || hostname.endsWith(`.${domain}`);
 
+export const genkiZones = ['genki.digdir.cloud', 'genki-test.digdir.cloud'];
+
+/** One label under `apps.` in genki's own zone: a name genki assigns to a service. */
+export const isAssignedName = (hostname: string) =>
+  genkiZones.some((zone) => {
+    const suffix = `.apps.${zone}`;
+    return hostname.endsWith(suffix) && !hostname.slice(0, -suffix.length).includes('.');
+  });
+
 export interface HostingRules {
   /** Hostname to the tenant it is opened for. */
   hostnames: ReadonlyMap<string, string>;
@@ -56,9 +65,13 @@ export interface HostingRules {
   assistantHostname?: string | undefined;
 }
 
-const isReserved = (rules: HostingRules, hostname: string) =>
-  hostname !== rules.assistantHostname &&
-  rules.reservedDomains.some((domain) => under(hostname, domain));
+/** The tenant a hostname is open to, when it is open to hosting at all. */
+const openedTo = (rules: HostingRules, hostname: string): string | undefined =>
+  isAssignedName(hostname) ||
+  hostname === rules.assistantHostname ||
+  !rules.reservedDomains.some((domain) => under(hostname, domain))
+    ? rules.hostnames.get(hostname)
+    : undefined;
 
 export const hostnameNotAllowed = 'hostname_not_allowed';
 
@@ -71,7 +84,7 @@ export const hostnameProblems = (
   const { tenant, id } = definition.metadata;
   return (definition.spec.hostnames ?? []).flatMap(({ hostname }, i): ClientIssue[] => {
     const path = `spec.hostnames.${i}.hostname`;
-    if (isReserved(rules, hostname) || rules.hostnames.get(hostname) !== tenant)
+    if (openedTo(rules, hostname) !== tenant)
       return [
         { path, message: `${hostnameNotAllowed}: ${hostname} is not open to this organisation` },
       ];
@@ -88,6 +101,18 @@ export const hostnameProblems = (
 
 type Text = string | { nb: string; en: string };
 
+type HostLanguage = 'nb' | 'en';
+
+const hostLanguages: readonly HostLanguage[] = ['nb', 'en'];
+
+/** The service's languages the host's own words come in, in the service's order; bokmål when none do. */
+export const languagesOf = (service: readonly string[] | undefined): HostLanguage[] => {
+  const shared = (service ?? hostLanguages).filter((l): l is HostLanguage =>
+    hostLanguages.includes(l as HostLanguage),
+  );
+  return shared.length > 0 ? shared : ['nb'];
+};
+
 export interface HostView {
   hostname: string;
   tenant: string;
@@ -100,6 +125,8 @@ export interface HostView {
     audience: string;
     altinnResource: string | null;
   };
+  languages: HostLanguage[];
+  /** Designsystemet's default (Digdir) theme until a service's own is built (ADR 0063). */
   theme: null;
   menu: ({ label: Text; page: string } | { label: Text; href: string })[];
   pages: { id: string; title: Text }[];
@@ -120,8 +147,7 @@ const resolve = async (
 ): Promise<{ view: HostView; shown: ServiceInterface } | undefined> => {
   const hostname = asked.toLowerCase();
   if (!isHostname(hostname)) return undefined;
-  if (isReserved(deps.rules, hostname)) return undefined;
-  const tenant = deps.rules.hostnames.get(hostname);
+  const tenant = openedTo(deps.rules, hostname);
   if (!tenant) return undefined;
   const client = (await deps.clients.list(tenant)).find(
     (c) =>
@@ -158,6 +184,7 @@ const resolve = async (
       audience: oidcAudienceOf(client) ?? client.spec.oidc.clientId,
       altinnResource: deps.altinnResource ?? null,
     },
+    languages: languagesOf(definition.spec.languages),
     theme: null,
     menu: (shown.menu ?? []).map((item) =>
       'page' in item

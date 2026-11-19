@@ -117,12 +117,12 @@ describe('the Tekster panel', () => {
     type('Andre nummer', 'http://regler.example/{id}');
     await waitFor(() =>
       expect(descriptionOf(screen.getByRole('textbox', { name: 'Andre nummer' }))).toContain(
-        'Må være en https-adresse, med vertsnavnet før {id}.',
+        'Må være en https-adresse med vertsnavnet før {id}, eller en sti som starter med /.',
       ),
     );
     expect(
       descriptionOf(screen.getByRole('textbox', { name: 'Nummer med bare sifre' })),
-    ).not.toContain('https-adresse, med');
+    ).not.toContain('https-adresse med');
     type('Andre nummer', 'https://regler.example/dok/{id}');
     await waitFor(() =>
       expect(descriptionOf(screen.getByRole('textbox', { name: 'Andre nummer' }))).not.toContain(

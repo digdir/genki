@@ -96,8 +96,6 @@ param altinnPeopleMaskinportenClientId = altinnPeopleClient
 param altinnPeopleMaskinportenScope = readEnvironmentVariable('ALTINN_PEOPLE_MASKINPORTEN_SCOPE', '')
 param operatorSubjects = readEnvironmentVariable('OPERATOR_SUBJECTS', '')
 param platformTenant = readEnvironmentVariable('PLATFORM_TENANT', '')
-var hostingTenant = readEnvironmentVariable('PLATFORM_TENANT', '')
-param hostedHostnames = empty(hostingTenant) ? '' : 'assistant.genki-test.digdir.cloud=${hostingTenant}'
 param portalClientId = readEnvironmentVariable('PORTAL_CLIENT_ID', '')
 param workspaceClientId = readEnvironmentVariable('WORKSPACE_CLIENT_ID', '')
 param consoleClientId = readEnvironmentVariable('CONSOLE_CLIENT_ID', '')
@@ -114,6 +112,7 @@ param customDomainsStage = readEnvironmentVariable('CUSTOM_DOMAINS_STAGE', 'none
 param existingCertificates = {}
 param createDnsZone = true
 param dnsZoneName = 'genki-test.digdir.cloud'
+param hostedHostnames = []
 
 param alertsEnabled = true
 param alertEmails = readEnvironmentVariable('ALERT_EMAILS', '')

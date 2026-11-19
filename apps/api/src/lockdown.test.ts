@@ -61,6 +61,15 @@ const principals: Record<string, Principal> = {
     scopes: [lockdownServiceScope],
     confinedTo: { tenant: digdir, service: 'klarsprak', client: 'ka-web' },
   },
+  testIdThroughFrontend: {
+    kind: 'employee',
+    issuer: 'test',
+    subject: 'testid-subject',
+    tenant: digdir,
+    client: 'ka-web',
+    authorizedFor: [{ org: digdir, actions: ['use-services'] }],
+    confinedTo: { tenant: digdir, service: 'klarsprak', client: 'ka-web' },
+  },
   unconfinedEmployee: {
     kind: 'employee',
     issuer: 'test',
@@ -208,6 +217,7 @@ const boot = async (lockdown: boolean) => {
       lockdown,
       loginRefusal: async (request) =>
         request.headers.get('authorization')?.includes('.') ? 'entra_not_trusted' : undefined,
+      platformClientIds: ['portal-web'],
     },
   });
   platform.mount(app, admin);
@@ -983,6 +993,62 @@ describe('lockdown', () => {
     for (const res of [...written, ...read]) expect(res.status).toBeGreaterThanOrEqual(400);
     expect(model.seen.length).toBe(seen);
     expect(ingestion.jobs).toEqual([]);
+  });
+
+  it("tells a person a service's frontend does not let in that the assistant is for Digdir employees, in their language", async () => {
+    const { app, chat, model, send } = await boot(true);
+    await registerServiceClient(send);
+    const seen = model.seen.length;
+
+    const refused = await chat('testIdThroughFrontend');
+    const inEnglish = await app.request('/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer testIdThroughFrontend',
+        'content-type': 'application/json',
+        'accept-language': 'en',
+      },
+      body: JSON.stringify({
+        model: 'klarsprak__default',
+        messages: [{ role: 'user', content: 'hei' }],
+      }),
+    });
+
+    expect(refused.status).toBe(403);
+    expect(await json(refused)).toEqual({
+      type: lockedEnvironmentType,
+      status: 403,
+      title: 'Denne assistenten er bare åpen for ansatte i Digdir i testmiljøet',
+      detail: expect.stringContaining('Logg inn med Digdir-kontoen din (Entra ID)'),
+    });
+    expect(await json(inEnglish)).toMatchObject({
+      title: 'This assistant is only open to Digdir employees in the test environment',
+      detail: expect.stringContaining('Log in with your Digdir account (Entra ID)'),
+    });
+    expect(model.seen.length).toBe(seen);
+  });
+
+  it("tells an Entra login refused through a service's frontend that the assistant is for Digdir employees, and a platform login the plain words", async () => {
+    const { app } = await boot(true);
+    const login = (client: string) =>
+      app.request(`/v1/models`, {
+        headers: {
+          authorization: `Bearer ${new UnsecuredJWT({ acr: 'entraid', sub: 'outsider', client_id: client }).encode()}`,
+        },
+      });
+
+    const throughService = await login('ka-web');
+    const throughPortal = await login('portal-web');
+
+    expect(throughService.status).toBe(403);
+    expect(await json(throughService)).toMatchObject({
+      type: entraNotTrustedType,
+      title: 'Denne assistenten er bare åpen for ansatte i Digdir i testmiljøet',
+    });
+    expect(await json(throughPortal)).toMatchObject({
+      type: entraNotTrustedType,
+      title: expect.stringContaining('Entra ID-innloggingen din'),
+    });
   });
 
   it('gives a service-group scope without a confining client no models and no changes', async () => {

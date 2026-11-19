@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="nb">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Egen brukerflate</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script type="module" src="/app.js"></script>
+  </head>
+  <body>
+    <header>
+      <h1 data-text="title"></h1>
+      <span id="who"></span>
+      <button id="language" type="button" data-text="switchLanguage"></button>
+      <button id="login" type="button" data-text="login" hidden></button>
+      <button id="logout" type="button" data-text="logout" hidden></button>
+    </header>
+    <p id="status" role="status"></p>
+    <main id="chat" hidden>
+      <nav data-label="threads">
+        <button id="new" type="button" data-text="newThread"></button>
+        <ul id="threads"></ul>
+      </nav>
+      <section>
+        <form id="ask">
+          <select id="service" data-label="service"></select>
+          <input id="question" data-label="question" required />
+          <button data-text="ask"></button>
+        </form>
+        <p><small data-text="aiNotice"></small></p>
+        <div id="answer" aria-live="polite"></div>
+        <ol id="sources" data-label="sources"></ol>
+      </section>
+    </main>
+  </body>
+</html>

@@ -101,6 +101,7 @@ export type PlatformOptions = Authentication & {
   now?: () => Date;
   lockdown?: boolean;
   loginRefusal?: (request: Request) => Promise<string | undefined>;
+  platformClientIds?: readonly string[];
 };
 
 const withoutApiKeys = (caller: Caller): Authenticator => ({
@@ -187,7 +188,13 @@ export const createApp = (version: string, options: AppOptions = {}) => {
     const { caller, auth } = authentication;
     app.use('*', internalServiceViewer(caller));
     if (options.platform.loginRefusal)
-      app.use('*', refuseUntrustedEntra(options.platform.loginRefusal));
+      app.use(
+        '*',
+        refuseUntrustedEntra(
+          options.platform.loginRefusal,
+          new Set(options.platform.platformClientIds ?? []),
+        ),
+      );
     if (lockdown) app.use('*', refuseLockedRoutes(caller));
     app.use('*', refuseOutsideTestRunnerScope(caller));
     app.use('*', requireChangeReason(caller));

@@ -691,6 +691,7 @@ const app = createApp(version, {
       const checked = await authenticator.check(request);
       return checked.ok ? undefined : checked.code;
     },
+    platformClientIds: [...operatorClientIds(process.env), ...employeeClientIds(process.env)],
   },
 });
 platform.mount(app, admin);

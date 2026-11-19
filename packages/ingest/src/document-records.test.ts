@@ -358,4 +358,94 @@ describe('the index job', () => {
 
     expect(written.map((d) => d.url)).toEqual(['https://kudos.dfo.no/dokument/a']);
   });
+  describe('stored vectors', () => {
+    const record = {
+      number: '5',
+      dataset: 'digdir/kudos',
+      id: 'kudos:a',
+      record: { uuid: 'a' },
+      state: null,
+      change: 1,
+      gone: 0,
+    };
+    type Written = { chunks: { text: string; position: number; vector?: number[] }[] };
+
+    /** Indexes `text` once, with the vectors `held` as the generation's, and answers what it embedded and wrote. */
+    const index = async (text: string, held: Map<string, number[]>) => {
+      const embedded: string[] = [];
+      const written: Written[] = [];
+      const records = {
+        find: async () => record,
+        heldVectors: async () => held,
+        replace: async (_r: unknown, _g: string, result: { document?: Written }) => {
+          if (result.document) written.push(result.document);
+          return true;
+        },
+        fail: async () => undefined,
+        writable: async () => true,
+      } as unknown as DocumentRecords;
+      await indexRecord({
+        records,
+        listing: {
+          deletes: 'listed',
+          load: async () => ({
+            key: 'kudos:a',
+            docNum: 'kudos:a',
+            texts: [text],
+            stored: () => ({ id: 'kudos:a', title: 'A' }),
+            storedChunks: (chunks) => chunks.map((c) => ({ ...c })),
+          }),
+        },
+        dataset: 'digdir/kudos',
+        run: 'run-1',
+        record: '5',
+        generation: 'g-1',
+        chunking: {
+          strategy: { kind: 'header-based' },
+          minimumLength: 1,
+          maximumLength: 4000,
+          metadataStyle: 'pr',
+        },
+        embedder: {
+          info: () => ({ id: 'fake', dimensions: 2 }),
+          embed: async (inputs: string[]) => {
+            embedded.push(...inputs);
+            return { vectors: inputs.map((t) => [t.length, embedded.length]) };
+          },
+        } as unknown as EmbeddingPort,
+      });
+      const [doc] = written;
+      if (!doc) throw new Error('nothing written');
+      return { embedded, doc };
+    };
+    const vectorsOf = (doc: Written) =>
+      new Map(doc.chunks.map((c) => [c.text, c.vector as number[]]));
+
+    it('a re-indexed document embeds only the chunk texts its generation does not hold for it', async () => {
+      const first = await index('# Innledning\n\nFørste del.\n\n# Drift\n\nAndre del.', new Map());
+      const again = await index(
+        '# Innledning\n\nFørste del.\n\n# Drift\n\nAndre del.\n\n# Annen rapportering\n\nEiendomsforvaltning.',
+        vectorsOf(first.doc),
+      );
+
+      expect(again.embedded).toHaveLength(1);
+      expect(again.embedded[0]).toContain('Eiendomsforvaltning.');
+      for (const chunk of first.doc.chunks)
+        expect(again.doc.chunks.find((c) => c.text === chunk.text)?.vector).toEqual(chunk.vector);
+    });
+
+    it('a held vector is reused when its chunk moved to another position', async () => {
+      const first = await index('# Drift\n\nAndre del.', new Map());
+      const again = await index(
+        '# Innledning\n\nFørste del.\n\n# Drift\n\nAndre del.',
+        vectorsOf(first.doc),
+      );
+
+      const [held] = first.doc.chunks;
+      const moved = again.doc.chunks.find((c) => c.text === held?.text);
+      expect(moved?.position).not.toBe(held?.position);
+      expect(moved?.vector).toEqual(held?.vector);
+      expect(again.embedded).toHaveLength(1);
+    });
+  });
 });

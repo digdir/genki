@@ -1234,7 +1234,14 @@ export const accessRoutes: RouteConfig[] = [
             audience: z.string(),
             altinnResource: z.string().nullable(),
           }),
-          theme: z.null(),
+          languages: z
+            .array(z.enum(['nb', 'en']))
+            .describe(
+              "The service's languages the host's own words come in, in the service's order; bokmål when none do",
+            ),
+          theme: z
+            .null()
+            .describe("Designsystemet's default (Digdir) theme, until a service's own is built"),
           menu: z.array(z.record(z.string(), z.unknown())),
           pages: z.array(z.object({ id: z.string(), title: z.unknown() })),
         }),
