@@ -7,11 +7,14 @@ import {
   fromTemplate,
   type AssistantLayout,
 } from '@genai/ui-blocks/builder';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../../../App';
+import { createApiClient } from '../../../api';
+import { loadArea } from '../../../i18n/areas';
 import { mockAnsattporten } from '../../../auth';
 import { exampleServices, mockFetch } from '../../../mock';
 import { expectAccessible, go, kari, renderAt } from '../../../test-utils';
+import { InterfaceTab } from './InterfaceTab';
 import { keptStart, layoutJson, readLayout, type BlocksStart } from './layoutStore';
 
 const own = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
@@ -403,5 +406,60 @@ describe('a layout kept in this browser before drafts held it', () => {
     expect(keptStart('digdir', 'c')).toBeDefined();
     sessionStorage.setItem('genki.blocks.digdir/d', '{"layout":{"version":1}}');
     expect(keptStart('digdir', 'd')).toBeUndefined();
+  });
+});
+
+describe('the layout when the draft changes under the open tab', () => {
+  beforeAll(() => loadArea('services'));
+  const definitionWith = (layout: AssistantLayout) => {
+    const definition = published();
+    definition.spec.interface = { layout };
+    return definition;
+  };
+  const tab = (
+    definition: Record<string, unknown>,
+    onLayout: (layout: AssistantLayout) => void,
+  ) => (
+    <InterfaceTab
+      api={createApiClient({ baseUrl: '', fetch: mockFetch(), token: () => undefined })}
+      tenant={tenant}
+      service="rapportassistenten"
+      definition={definition}
+      files={{}}
+      narrow={false}
+      onLayout={onLayout}
+      fullscreen={false}
+      backHref="#/services/rapportassistenten/interface"
+      onFullscreen={() => undefined}
+      onExitFullscreen={() => undefined}
+    />
+  );
+
+  it('starts again from the draft when its layout changes elsewhere', async () => {
+    const onLayout = vi.fn();
+    const view = render(
+      tab(definitionWith(fromTemplate('knowledge-assistant-next').layout), onLayout),
+    );
+    await screen.findByRole('group', { name: 'Byggeklosser og maler' });
+    expect(switchIn('Høyre panel', 'Kilder').checked).toBe(true);
+    view.rerender(tab(definitionWith(fromTemplate('chat-only').layout), onLayout));
+    await waitFor(() => expect(switchIn('Høyre panel', 'Kilder').checked).toBe(false));
+    expect(onLayout).not.toHaveBeenCalled();
+  });
+
+  it('does not start again after its own save', async () => {
+    let saved: AssistantLayout | undefined;
+    const onLayout = (layout: AssistantLayout) => {
+      saved = layout;
+    };
+    const view = render(
+      tab(definitionWith(fromTemplate('knowledge-assistant-next').layout), onLayout),
+    );
+    await screen.findByRole('group', { name: 'Byggeklosser og maler' });
+    fireEvent.click(switchIn('Høyre panel', 'Kilder'));
+    await waitFor(() => expect(saved).toBeDefined());
+    fireEvent.click(screen.getByRole('radio', { name: 'Tekster' }));
+    view.rerender(tab(definitionWith(saved as AssistantLayout), onLayout));
+    expect((screen.getByRole('radio', { name: 'Tekster' }) as HTMLInputElement).checked).toBe(true);
   });
 });
