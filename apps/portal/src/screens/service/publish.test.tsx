@@ -146,8 +146,9 @@ describe('publishing the draft in live mode', () => {
     window.location.hash = '#/services/klarsprak';
     render(<App auth={auth} fetch={fetch} live />);
     await screen.findByRole('heading', { level: 1, name: 'Klarspråk' });
-    expect(await screen.findByText('Ingen endringer å publisere')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Publiser' })).toBeNull();
+    expect(
+      (await screen.findByRole('button', { name: 'Publiser ...' })).getAttribute('aria-disabled'),
+    ).toBe('true');
   });
 
   it('names the next version on the publish page and goes back to Oppsett without publishing', async () => {

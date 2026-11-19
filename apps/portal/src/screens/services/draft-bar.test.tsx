@@ -104,7 +104,9 @@ describe('the draft bar on Oppsett for an existing service', () => {
     ).toBeTruthy();
     expect(within(bar()).getByText('Det du ser er versjon 7, som er i drift.')).toBeTruthy();
     expect(within(bar()).queryByRole('button', { name: 'Forkast endringer' })).toBeNull();
-    expect(screen.getByText('Ingen endringer å publisere')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Publiser ...' }).getAttribute('aria-disabled')).toBe(
+      'true',
+    );
   });
 
   it('autosaves after a short pause, not on every keystroke, and then counts the changes', async () => {
@@ -116,7 +118,7 @@ describe('the draft bar on Oppsett for an existing service', () => {
     expect(within(bar()).getByText('Ulagrede endringer')).toBeTruthy();
     expect(draftWrites(calls, 'PUT')).toHaveLength(0);
 
-    await waitFor(() => expect(within(bar()).getByText(/^Utkast, lagret/)).toBeTruthy(), {
+    await waitFor(() => expect(within(bar()).getByText(/^Utkast lagret/)).toBeTruthy(), {
       timeout: 3000,
     });
     expect(draftWrites(calls, 'PUT')).toHaveLength(1);
@@ -124,7 +126,7 @@ describe('the draft bar on Oppsett for an existing service', () => {
       definition: { spec: { strategy: { config: { instructions: 'Svar kort og høflig.' } } } },
     });
     expect(
-      within(bar()).getByText('1 endring siden versjon 7. Ikke i drift før du publiserer.'),
+      within(bar()).getByText('1 endring siden versjon 7. Versjon 7 er i bruk til du publiserer.'),
     ).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Publiser ...' })).toBeTruthy();
   });
@@ -149,7 +151,7 @@ describe('the draft bar on Oppsett for an existing service', () => {
 
     failing = false;
     fireEvent.click(within(bar()).getByRole('button', { name: 'Lagre' }));
-    expect(await within(bar()).findByText(/^Utkast, lagret/, {}, { timeout: 3000 })).toBeTruthy();
+    expect(await within(bar()).findByText(/^Utkast lagret/, {}, { timeout: 3000 })).toBeTruthy();
     expect(draftWrites(calls, 'PUT').length).toBeGreaterThanOrEqual(2);
   });
 
@@ -190,7 +192,7 @@ describe('the draft bar on Oppsett for an existing service', () => {
 
   it('a tab switch sends no request for the definition', async () => {
     const calls = await openService('#/services/rapportassistenten/setup');
-    await screen.findByText(/^Versjon 7 i bruk · publisert/);
+    await screen.findByText('Versjon 7 i bruk');
     await new Promise((resolve) => setTimeout(resolve, 50));
     const reads = () =>
       calls.filter(
@@ -320,5 +322,208 @@ describe('a new service', () => {
     expect(screen.getByRole('button', { name: 'Bekreft risikonivå' })).toBeTruthy();
     expect(screen.queryByRole('region', { name: 'Utkast' })).toBeNull();
     expect(screen.queryByRole('navigation', { name: 'Deler av oppsettet' })).toBeNull();
+  });
+});
+
+describe('Oppsett wired to the draft, dataset and input API', () => {
+  it('says who saved the draft last when it was someone else, in the bar and the discard dialog', async () => {
+    await openService('#/services/rapportassistenten/setup', {
+      draft: withInstructions('Svar kort.'),
+    });
+    expect(await within(bar()).findByText(/Lagret av Per Hansen\./)).toBeTruthy();
+    fireEvent.click(within(bar()).getByRole('button', { name: 'Forkast endringer' }));
+    const dialog = await screen.findByRole('alertdialog');
+    expect(within(dialog).getByText(/^Sist endret av Per Hansen, /)).toBeTruthy();
+  });
+
+  it('names who saved over the draft and shows the difference on a conflict', async () => {
+    await openService('#/services/rapportassistenten/setup/purpose', {
+      draft: withInstructions('Svar kort.'),
+      reply: (url, method) =>
+        method === 'PUT' && url.endsWith('/rapportassistenten/draft')
+          ? Response.json(
+              { type: 'about:blank', title: 'Conflict', status: 409 },
+              { status: 409, headers: { 'content-type': 'application/problem+json' } },
+            )
+          : undefined,
+    });
+    await within(bar()).findByText(/Lagret av Per Hansen\./);
+    fireEvent.change(instructions(), { target: { value: 'Svar langt.' } });
+    expect(
+      await within(bar()).findByText(/^Per Hansen lagret kl\. /, {}, { timeout: 3000 }),
+    ).toBeTruthy();
+    fireEvent.click(within(bar()).getByRole('button', { name: 'Se forskjellen' }));
+    expect(within(bar()).getAllByRole('listitem').length).toBeGreaterThan(0);
+  });
+
+  it('lists datasets from the dataset list with their document count, update date and owner', async () => {
+    await openService('#/services/rapportassistenten/setup/sources');
+    fireEvent.change(await screen.findByLabelText('Datasett'), { target: { value: 'e' } });
+    const hits = await screen.findByRole('list', { name: 'Treff' });
+    const row = (name: string) => within(hits).getByText(name).closest('li') as HTMLElement;
+    await waitFor(() => expect(within(hits).getByText('Veiledere og rundskriv')).toBeTruthy());
+    expect(
+      within(row('Kudos-rapporter')).getByText(
+        '48 312 dokumenter · fra Digitaliseringsdirektoratet',
+      ),
+    ).toBeTruthy();
+    expect(within(row('Kudos-rapporter')).getByText('Fellesdatasett')).toBeTruthy();
+    expect(
+      within(row('Veiledere og rundskriv')).getByText('6 dokumenter · oppdatert 7. oktober 2026'),
+    ).toBeTruthy();
+    expect(
+      within(row('Nettsidene til Testetaten')).getByText(
+        '1 240 dokumenter · ingen innlesing registrert i genki',
+      ),
+    ).toBeTruthy();
+  });
+
+  it('says so when the dataset list does not know the owner or the document count', async () => {
+    await openService('#/services/rapportassistenten/setup/sources', {
+      reply: (url, method) =>
+        method === 'GET' && /\/tenants\/[^/]+\/datasets$/.test(url)
+          ? Response.json({
+              data: [
+                {
+                  id: 'ukjent',
+                  fullId: '123456789/ukjent',
+                  name: 'Ukjent eier',
+                  scope: '123456789',
+                  source: 'upload',
+                  documents: null,
+                  chunks: null,
+                  lastExecution: null,
+                  nextRunAt: null,
+                  updatedAt: null,
+                  owner: { tenant: '123456789', name: null },
+                },
+              ],
+            })
+          : undefined,
+    });
+    fireEvent.change(await screen.findByLabelText('Datasett'), { target: { value: 'ukjent' } });
+    const hits = await screen.findByRole('list', { name: 'Treff' });
+    expect(
+      await within(hits).findByText(
+        'Antall dokumenter ukjent · fra en virksomhet genki ikke har navnet til',
+      ),
+    ).toBeTruthy();
+  });
+
+  it('shows the file limits the platform reports for the draft under Inndata', async () => {
+    const calls = await openService('#/services/rapportassistenten/setup/input');
+    fireEvent.click(await screen.findByRole('checkbox', { name: /^Filer/ }));
+    expect(await screen.findByRole('combobox', { name: 'Største fil' })).toBeTruthy();
+    await waitFor(() =>
+      expect(
+        (screen.getByRole('combobox', { name: 'Største fil' }) as HTMLSelectElement)
+          .selectedOptions[0]?.textContent,
+      ).toBe('2 MB'),
+    );
+    expect(
+      (screen.getByRole('combobox', { name: 'Antall filer' }) as HTMLSelectElement)
+        .selectedOptions[0]?.textContent,
+    ).toBe('Opptil 5');
+    expect(
+      calls.some((c) => c.method === 'POST' && c.url.endsWith('/definitions/input-fields')),
+    ).toBe(true);
+  });
+
+  it('offers only the file types the platform reads at run time under Inndata', async () => {
+    await openService('#/services/rapportassistenten/setup/input');
+    fireEvent.click(await screen.findByRole('checkbox', { name: /^Filer/ }));
+    const types = (await screen.findByRole('combobox', { name: 'Filtyper' })) as HTMLSelectElement;
+    expect([...types.options].map((o) => o.textContent)).toEqual(['Tekst, Markdown, CSV og JSON']);
+  });
+
+  it('says which model the version in use has when the draft changes it', async () => {
+    await openService('#/services/rapportassistenten/setup/model', {
+      draft: withSpec({ model: { ...published.spec.model, primary: 'foundry-openai/gpt-4.1' } }),
+    });
+    expect(await screen.findByText(/^Endret i utkastet\. Versjon 7 i bruk har /)).toBeTruthy();
+  });
+
+  it('shows Grenser og logging as rows, with the full settings behind Endre grenser', async () => {
+    await openService('#/services/rapportassistenten/setup/limits');
+    expect(await screen.findByText('Logging av spørsmål')).toBeTruthy();
+    const edit = screen.getByRole('button', { name: 'Endre grenser' });
+    expect(edit.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(edit);
+    expect(edit.getAttribute('aria-expanded')).toBe('true');
+  });
+
+  it('offers the suggestions in the empty assistant on Oppsett', async () => {
+    await openService('#/services/rapportassistenten/setup');
+    const assistant = await screen.findByRole('complementary', { name: 'Byggeassistent' });
+    expect(within(assistant).getAllByRole('button').length).toBeGreaterThan(1);
+    expect(within(assistant).getByRole('button', { name: 'Hva koster dette?' })).toBeTruthy();
+  });
+
+  it('asks for the file limits only on Inndata', async () => {
+    const calls = await openService('#/services/rapportassistenten/setup');
+    await screen.findByRole('navigation', { name: 'Deler av oppsettet' });
+    expect(calls.some((c) => c.url.endsWith('/definitions/input-fields'))).toBe(false);
+  });
+});
+
+describe('the Prøv pane on Oppsett', () => {
+  const runs = (calls: Call[]) =>
+    calls.filter((c) => c.method === 'POST' && c.url.endsWith('/playground/runs'));
+  const ask = async (question: string) => {
+    fireEvent.click(await screen.findByRole('tab', { name: 'Prøv' }));
+    const field = screen.getByLabelText('Spørsmål til utkastet');
+    fireEvent.change(field, { target: { value: question } });
+    fireEvent.keyDown(field, { key: 'Enter' });
+  };
+
+  it('runs the edited draft, not the version in use, and shows the answer with its sources', async () => {
+    const calls = await openService('#/services/rapportassistenten/setup/purpose', {
+      reply: (url, method) =>
+        method === 'POST' && url.endsWith('/playground/runs')
+          ? Response.json({
+              runId: 'run-1',
+              text: 'Seks uker.',
+              sources: [{ chunkId: 'c1', title: 'Personalhåndboka, Ferie' }],
+              searchNotes: [],
+              timeMs: 10,
+              tokensIn: 1,
+              tokensOut: 1,
+              costNok: null,
+              dataLocation: null,
+              quota: { usedPercent: 0, monthlyTokens: 0 },
+            })
+          : undefined,
+    });
+    fireEvent.change(await screen.findByLabelText('Instruksjoner til tjenesten'), {
+      target: { value: 'Svar på rim.' },
+    });
+    await ask('Hvor mye ferie har jeg?');
+
+    expect(await screen.findByText('Seks uker.')).toBeTruthy();
+    expect(screen.getByText('Personalhåndboka, Ferie')).toBeTruthy();
+    const body = runs(calls)[0]?.body as {
+      setup: { service: { version: unknown; definition: unknown } };
+      input: unknown;
+    };
+    expect(body.setup.service.version).toBe('draft');
+    expect(body.setup.service.definition).toMatchObject({
+      spec: { strategy: { config: { instructions: 'Svar på rim.' } } },
+    });
+    expect(body.input).toEqual({ text: 'Hvor mye ferie har jeg?' });
+  });
+
+  it('shows the error when the run fails and keeps the question', async () => {
+    await openService('#/services/rapportassistenten/setup/purpose', {
+      reply: (url, method) =>
+        method === 'POST' && url.endsWith('/playground/runs')
+          ? Response.json(
+              { type: 'about:blank', title: 'The run failed', status: 502 },
+              { status: 502, headers: { 'content-type': 'application/problem+json' } },
+            )
+          : undefined,
+    });
+    await ask('Hvor mye ferie har jeg?');
+    expect(await screen.findByText('Kunne ikke hente dataene')).toBeTruthy();
+    expect(screen.getByText('Hvor mye ferie har jeg?')).toBeTruthy();
   });
 });

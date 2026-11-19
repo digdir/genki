@@ -28,6 +28,7 @@ export interface QualityMockOptions {
   improveRefused?: boolean;
   drafts?: Record<string, { definition: Record<string, unknown>; files?: Record<string, string> }>;
   published?: (service: string) => Record<string, unknown> | undefined;
+  savedBy?: { by: string; byName: string | null };
 }
 
 interface MockDraft {
@@ -38,6 +39,8 @@ interface MockDraft {
   deleted: boolean;
   at: string;
   reason: string;
+  by: string;
+  byName: string | null;
 }
 
 export const exampleQualitySets = (): MockSet[] => [
@@ -101,6 +104,7 @@ export const qualityMock = (options: QualityMockOptions = {}): MockHandler => {
         deleted: false,
         at: '2026-10-07T10:00:00Z',
         reason: 'Forbedringsforslag godkjent',
+        ...(options.savedBy ?? { by: 'employee:991825827:per', byName: 'Per Hansen' }),
       },
     ]),
   );
@@ -113,6 +117,8 @@ export const qualityMock = (options: QualityMockOptions = {}): MockHandler => {
     files: d.files,
     at: d.at,
     reason: d.reason,
+    by: d.by,
+    byName: d.byName,
     baseVersion: versionOf(d.base),
     latestVersion: versionOf(options.published?.(service)),
   });
@@ -149,7 +155,9 @@ export const qualityMock = (options: QualityMockOptions = {}): MockHandler => {
   const writeDraft = (
     service: string,
     revision: number | undefined,
-    next: Omit<MockDraft, 'revision' | 'at' | 'base'> & { base?: MockDraft['base'] },
+    next: Omit<MockDraft, 'revision' | 'at' | 'base' | 'by' | 'byName'> & {
+      base?: MockDraft['base'];
+    },
   ) => {
     const found = drafts.get(service);
     const current = found?.revision ?? 0;
@@ -161,6 +169,8 @@ export const qualityMock = (options: QualityMockOptions = {}): MockHandler => {
       base: next.base ?? base,
       revision: current + 1,
       at: new Date().toISOString(),
+      by: 'employee:991825827:kari',
+      byName: 'Kari Nordmann',
     };
     drafts.set(service, saved);
     return undefined;
@@ -401,7 +411,14 @@ export const qualityMock = (options: QualityMockOptions = {}): MockHandler => {
         )
           return req.json({ title: 'Ugyldig forespørsel', status: 400 }, 400);
         const cases = set.cases.filter((c) => !body.cases || body.cases.includes(c.id));
-        const run = runOf(service, { ...set, cases }, body.version ?? 'draft');
+        const version = body.version ?? 'draft';
+        const saved = drafts.get(service);
+        const run = {
+          ...runOf(service, { ...set, cases }, version),
+          ...(version === 'draft' && saved && !saved.deleted
+            ? { draftRevision: saved.revision }
+            : {}),
+        };
         runs.unshift(run);
         return req.json({ id: run.id }, 202);
       }

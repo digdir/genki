@@ -142,3 +142,54 @@ describe('the table output editor in English', () => {
     expect(problems[1]?.key).toBe('The key "x" is already in use. Keys must be unique.');
   });
 });
+
+describe('the setup rows', () => {
+  const withTools = (tools: string[]) => applySpec(exampleTemplate('answers'), { tools });
+
+  it('tags no tool before the service has a version in use', () => {
+    render(
+      <SetupHarness
+        sections={[]}
+        area="tools"
+        initial={withTools(['rag@1', 'enhetsregisteret@1'])}
+      />,
+    );
+    expect(screen.queryByText('I bruk')).toBeNull();
+    expect(screen.queryByText('Nytt')).toBeNull();
+  });
+
+  it('tags a tool I bruk only when the version in use has it, and Nytt otherwise', () => {
+    render(
+      <SetupHarness
+        sections={[]}
+        area="tools"
+        inUse={withTools(['rag@1'])}
+        initial={withTools(['rag@1', 'enhetsregisteret@1'])}
+      />,
+    );
+    expect(screen.getAllByText('I bruk')).toHaveLength(1);
+    expect(screen.getAllByText('Nytt')).toHaveLength(1);
+  });
+
+  it('names a variant in the screen language, falling back to the other language', () => {
+    render(
+      inEnglish(
+        <SetupHarness
+          sections={[]}
+          area="variants"
+          initial={applySpec(exampleTemplate('answers'), {
+            variants: [
+              { id: 'default' },
+              { id: 'short', title: { nb: '', en: 'Short answer' } },
+              { id: 'long', title: { nb: 'Langt svar', en: '' } },
+              { id: 'plain' },
+            ],
+          })}
+        />,
+      ),
+    );
+    expect(screen.getByText('Short answer')).toBeTruthy();
+    expect(screen.getByText('Langt svar')).toBeTruthy();
+    expect(screen.getByText('plain')).toBeTruthy();
+  });
+});

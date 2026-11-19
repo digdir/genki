@@ -124,6 +124,20 @@ export const exampleLiveDatasets: DatasetDetailView[] = [
   },
 ];
 
+const ownerNames: Record<string, string> = {
+  '999888777': 'Testetaten',
+  digdir: 'Digitaliseringsdirektoratet',
+};
+
+const ownerFacts = (viewer: string, d: DatasetDetailView) => {
+  const tenant = d.scope === 'platform' ? 'digdir' : (d.scope ?? viewer);
+  const succeeded = d.lastExecution?.status === 'succeeded' ? d.lastExecution.endedAt : null;
+  return {
+    owner: { tenant, name: ownerNames[tenant] ?? null },
+    updatedAt: d.scope === viewer ? succeeded : null,
+  };
+};
+
 const examplePipelines: Record<string, PipelineView[]> = {
   '999888777/veiledere': [
     {
@@ -471,6 +485,7 @@ export const datasetsMock = (options: DatasetsMockOptions = {}): MockHandler => 
           .map(({ skipped: _, usedBy, ...d }) => ({
             ...d,
             documents: d.documents ?? (d.state === 'external' ? null : (found[d.fullId] ?? null)),
+            ...ownerFacts(decodeURIComponent(list[1] ?? ''), d),
             usedByCount: usedBy?.length ?? 0,
           })),
       });
@@ -642,7 +657,8 @@ export const datasetsMock = (options: DatasetsMockOptions = {}): MockHandler => 
     if (foreign(tenant, dataset) && (area || method !== 'GET')) return notFound();
 
     if (!area) {
-      if (method === 'GET') return json(seenBy(tenant, dataset));
+      if (method === 'GET')
+        return json({ ...seenBy(tenant, dataset), ...ownerFacts(tenant, dataset) });
       if (method === 'PUT') {
         const change = request.body<DatasetChange>();
         const empty = (['name', 'description'] as const).filter((k) => change[k] === '');

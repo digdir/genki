@@ -142,7 +142,7 @@ export const SetupLayout = ({
         {children}
         <div className="setup-area-foot">
           <span className="meta">{t('setupList.savedNote')}</span>
-          <Button variant="tertiary" data-size="sm" onClick={() => pick(next)}>
+          <Button variant="primary" data-size="sm" onClick={() => pick(next)}>
             {t('setupList.next', { name: t(areaLabelKeys[next]) })}
           </Button>
         </div>

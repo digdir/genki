@@ -106,6 +106,8 @@ export const changeText = (t: T, c: DraftChange, names: ChangeNames): string => 
         }),
         { name: subject },
       );
+    case 'files':
+      return t(c.kind === 'removed' ? 'serviceDraft.changeFilesOff' : 'serviceDraft.changeFilesOn');
     case 'input':
       return t('serviceDraft.changeInput');
     case 'output':

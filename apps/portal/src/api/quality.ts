@@ -44,6 +44,7 @@ export interface EvalRun {
   status: 'running' | 'waiting-for-scores' | 'completed' | 'failed' | 'interrupted' | (string & {});
   testSet: string;
   version: RunVersion;
+  draftRevision?: number;
   model?: string;
   selected?: string[];
   startedAt: string;
@@ -221,6 +222,8 @@ export interface ServiceDraft {
   files: Record<string, string>;
   at: string;
   reason: string;
+  by?: string;
+  byName?: string | null;
   baseVersion?: number;
   latestVersion?: number;
 }

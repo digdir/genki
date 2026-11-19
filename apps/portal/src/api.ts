@@ -118,6 +118,18 @@ export interface PublishedRunResult {
   attachments: Attachment[];
 }
 
+export interface FileLimit {
+  accepts: string[];
+  maxBytes: number;
+  maxCount: number;
+}
+
+export interface FileInput {
+  documents: FileLimit | null;
+  media: FileLimit | null;
+  maxRequestBytes: number;
+}
+
 export interface DraftRunResult {
   ok: true;
   task: string;
@@ -847,6 +859,14 @@ export const createApiClient = ({
           { definition },
         )
       ).fields,
+    draftFileInput: async (tenant: string, definition: unknown) =>
+      (
+        await sendJson<{ files?: FileInput }>(
+          'POST',
+          `${tenantPath(tenant)}/definitions/input-fields`,
+          { definition },
+        )
+      ).files,
     audit: async (tenant: string, signal?: AbortSignal) =>
       (await get<{ data: AuditRow[] }>(`${tenantPath(tenant)}/audit`, signal)).data,
     auditPage: async (

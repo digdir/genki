@@ -1,4 +1,4 @@
-import { CodeIcon } from '@navikt/aksel-icons';
+import { CodeIcon, PaperplaneIcon, SparklesIcon } from '@navikt/aksel-icons';
 import { Button, Chip, Field, Label, Tag, Textarea } from '@digdir/designsystemet-react';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { AssistantProposal, AssistantTurn, ProposalDecision } from '../../api/assistant';
@@ -45,6 +45,7 @@ interface Props {
   onShow: (id: string) => void;
   onUndo: (id: string) => void;
   onAction: (id: string) => void;
+  side?: boolean;
 }
 
 const exampleResponse = (message: ChatMessage, cardFor: Props['cardFor']): AssistantTurn => ({
@@ -91,6 +92,7 @@ export const AssistantPanel = ({
   onShow,
   onUndo,
   onAction,
+  side = false,
 }: Props) => {
   const t = useT();
   const log = useRef<HTMLDivElement>(null);
@@ -178,7 +180,7 @@ export const AssistantPanel = ({
     <aside aria-label={t('assistant.title')} className="assistant">
       <div className="assistant-head">
         <h2 className="assistant-title">{t('assistant.title')}</h2>
-        <span className="meta">{t('assistant.tagline')}</span>
+        {side ? null : <span className="meta">{t('assistant.tagline')}</span>}
       </div>
       <AssistantBanner
         availability={availability}
@@ -189,13 +191,34 @@ export const AssistantPanel = ({
         {assistant.announce}
       </div>
       <div ref={log} aria-live={streaming ? 'off' : 'polite'} className="assistant-log">
+        {side && messages.length === 0 ? (
+          <div className="assistant-intro">
+            <span aria-hidden="true" className="assistant-intro-icon">
+              <Icon icon={SparklesIcon} size={16} />
+            </span>
+            <div className="stack-xs">
+              <p>{t('assistant.sideIntro')}</p>
+              {off ? null : (
+                <div className="tag-row">
+                  {suggestions.map((s) => (
+                    <Chip.Button key={s} data-size="sm" onClick={() => onSend(s)}>
+                      {s}
+                    </Chip.Button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        ) : null}
         {messages.map((m, i) => {
           const user = m.role === 'user';
           const entry = m.turn ? entries[m.turn] : undefined;
           const showCall = !user && !entry?.streaming;
           return (
             <div key={i} className={user ? 'msg msg-user' : 'msg msg-assistant'}>
-              <span className="msg-who">{user ? userName : t('assistant.assistantName')}</span>
+              <span className={side ? 'visually-hidden' : 'msg-who'}>
+                {user ? userName : t('assistant.assistantName')}
+              </span>
               {entry ? turnBody(entry) : <div className="msg-text">{m.text}</div>}
               {(m.cards ?? []).map((id) => {
                 const card = cardFor(id);
@@ -289,7 +312,7 @@ export const AssistantPanel = ({
         ) : null}
       </div>
       <div className="assistant-compose">
-        {off ? null : (
+        {off || side ? null : (
           <div className="tag-row">
             {suggestions.map((s) => (
               <Chip.Button key={s} data-size="sm" onClick={() => onSend(s)}>
@@ -298,14 +321,19 @@ export const AssistantPanel = ({
             ))}
           </div>
         )}
-        <form onSubmit={submit} className="compose-form">
+        <form onSubmit={submit} className={side ? 'compose-form compose-box' : 'compose-form'}>
           <Field className="compose-field">
-            <Label htmlFor="til-assistenten" data-size="sm">
+            <Label
+              htmlFor="til-assistenten"
+              data-size="sm"
+              className={side ? 'visually-hidden' : undefined}
+            >
               {t('assistant.composerLabel')}
             </Label>
             <Textarea
               id="til-assistenten"
-              rows={2}
+              rows={side ? 1 : 2}
+              {...(side ? { placeholder: t('assistant.sidePlaceholder') } : {})}
               value={composer}
               disabled={off}
               onChange={(e) => onComposer(e.target.value)}
@@ -317,13 +345,25 @@ export const AssistantPanel = ({
               }}
             />
           </Field>
-          <Button
-            variant="primary"
-            type="submit"
-            aria-disabled={pending || streaming || off || undefined}
-          >
-            {t('assistant.send')}
-          </Button>
+          {side ? (
+            <Button
+              variant="tertiary"
+              icon
+              type="submit"
+              aria-label={t('assistant.send')}
+              aria-disabled={pending || streaming || off || undefined}
+            >
+              <Icon icon={PaperplaneIcon} size={20} />
+            </Button>
+          ) : (
+            <Button
+              variant="primary"
+              type="submit"
+              aria-disabled={pending || streaming || off || undefined}
+            >
+              {t('assistant.send')}
+            </Button>
+          )}
         </form>
       </div>
       {call ? <MessageApiCall call={call} onClose={() => setCall(null)} /> : null}

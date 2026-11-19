@@ -53,6 +53,8 @@ export interface DatasetView {
   chunks: number | null;
   lastExecution: LastExecution | null;
   nextRunAt: string | null;
+  updatedAt?: string | null;
+  owner?: { tenant: string; name: string | null };
   usedByCount?: number;
   searchScope?: SearchScope;
   valueTypes?: Record<string, 'string' | 'integer'>;

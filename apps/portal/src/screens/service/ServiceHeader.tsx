@@ -11,10 +11,12 @@ export const ServiceHeader = ({
   meta,
   flash,
   actions,
+  tag,
 }: {
   name: string;
   status: ServiceStatus;
   meta: string;
+  tag?: string | undefined;
   flash: string;
   actions: ReactNode;
 }) => {
@@ -28,7 +30,7 @@ export const ServiceHeader = ({
             {name}
           </Heading>
           <Tag data-size="sm" data-color={statusColor[status]}>
-            {t(statusKeys[status])}
+            {tag ?? t(statusKeys[status])}
           </Tag>
         </div>
         <div className="service-actions">
@@ -38,7 +40,7 @@ export const ServiceHeader = ({
           {actions}
         </div>
       </div>
-      <p className="meta service-meta">{meta}</p>
+      {meta ? <p className="meta service-meta">{meta}</p> : null}
     </header>
   );
 };
