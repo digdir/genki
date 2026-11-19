@@ -124,6 +124,7 @@ export interface ServiceSpec {
   batch?: { enabled: boolean };
   evaluation?: { testSets?: string[]; gates?: string[] };
   improve?: { allow?: string[] };
+  interface?: { layout?: unknown };
 }
 
 export interface ServiceDefinition {

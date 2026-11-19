@@ -52,9 +52,17 @@ export const blocksUi = {
     frameLeft: 'Left panel',
     frameMain: 'Content',
     frameRight: 'Right panel',
+    keptTitle: 'A layout in this browser is not saved',
+    keptText:
+      'Before layouts were saved in the draft, the portal kept them only in the browser. Save it in the draft to keep it, or discard it and start from the template.',
+    keptSave: 'Save in the draft',
+    keptDiscard: 'Discard',
+    foreignTitle: 'The builder cannot change this layout',
+    foreignText:
+      'The layout in the draft has texts in several languages, a host’s own blocks or something else the builder cannot show without losing it. Change it in the definition (YAML).',
     transferTitle: 'The layout as JSON',
     transferHelp:
-      'The portal keeps the layout only in this browser, until the tab is closed. Copy it to take it to another browser or to a host.',
+      'The layout is saved in the service draft and published with the next version. Copy it to take it to another service or to a host.',
     copyLayout: 'Copy the layout',
     pasteLayout: 'Paste a layout',
     copied: 'The layout is copied as JSON.',

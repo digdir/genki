@@ -140,6 +140,7 @@ import { describeProblem, publishDraft, type PublishProblem } from '../service/p
 import { VersionsSection } from '../service/VersionsSection';
 import { EnvironmentsSection } from '../service/EnvironmentsSection';
 import { LanguageInstructionTabs } from './LanguageInstructionTabs';
+import type { AssistantLayout } from '@genai/ui-blocks/builder';
 import { InterfaceTab } from './blocks/InterfaceTab';
 import { TryViewKeeper } from './blocks/TryViewKeeper';
 import { UnmaskedInputConsent } from './UnmaskedInputConsent';
@@ -469,6 +470,10 @@ export const Builder = ({
     setService(next);
   }, []);
   const patch = useCallback((edit: SpecEdit) => change((d) => applySpec(d, edit)), [change]);
+  const writeLayout = useCallback(
+    (layout: AssistantLayout) => patch((d) => ({ interface: { ...d.spec.interface, layout } })),
+    [patch],
+  );
   const editFile = useCallback((path: string, text: string) => {
     if (readOnlyRef.current) return;
     unsaved.current = true;
@@ -1726,6 +1731,7 @@ export const Builder = ({
           definition={definition}
           files={files}
           narrow={narrow}
+          onLayout={readOnly ? undefined : writeLayout}
           fullscreen={detail === 'preview'}
           backHref={`#${servicePath(routeId, 'interface')}`}
           adding={adding}
