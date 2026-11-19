@@ -335,7 +335,7 @@ const channelPaths = {
   rest: ['GET /api/tools/openapi.json', 'POST /api/tools/call/{tool}'],
   conversations: ['GET /api/conversations', 'POST /api/conversations'],
   feedback: ['POST /api/feedback'],
-  facets: ['GET /api/facets', 'GET /api/datasets'],
+  facets: ['GET /api/facets', 'GET /api/datasets', 'GET /api/datasets/{id}/documents/{doc}/file'],
 };
 
 export const registerFrontendRoutes = <E extends Env, S extends Schema, B extends string>(

@@ -653,6 +653,40 @@ export const frontendRoutes: RouteConfig[] = [
   }),
   createRoute({
     method: 'get',
+    path: '/api/datasets/{id}/documents/{doc}/file',
+    summary:
+      "Open a document's file: its uploaded original, or a redirect to its source's address (302)",
+    description:
+      'Same access as `/api/datasets/{id}`. An uploaded original is only for callers of the organisation that owns the dataset, or a frontend of its service; a PDF is inline, anything else an attachment. With `Accept: application/json` the answer says what the file is instead of sending it.',
+    request: {
+      params: idParam.extend({
+        doc: z.string().openapi({ param: { name: 'doc', in: 'path' }, example: '4711' }),
+      }),
+    },
+    responses: {
+      200: json(
+        z.discriminatedUnion('kind', [
+          z.object({
+            kind: z.literal('original'),
+            mediaType: z.string(),
+            name: z.string(),
+          }),
+          z.object({
+            kind: z.literal('source'),
+            url: z.string().describe('http or https, without credentials or a fragment'),
+            mediaType: z.string().nullable().describe('null when the address does not show it'),
+          }),
+        ]),
+        'What the file is (Accept: application/json), or the file itself',
+      ),
+      302: { description: "The source's own address, in Location" },
+      401: frontendProblem('Invalid or missing credentials'),
+      404: frontendProblem('dataset_not_found, document_not_found or document_file_not_found'),
+      502: frontendProblem('document_unavailable'),
+    },
+  }),
+  createRoute({
+    method: 'get',
     path: '/api/facets',
     summary: 'Facet values to build filters',
     request: {

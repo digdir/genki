@@ -33,12 +33,20 @@ describe('a document’s link from its number', () => {
     expect(documentLink(any, '1234')).toBe('https://kudos.dfo.no/documents/1234');
   });
 
-  it('makes a link only of an http or https address', () => {
+  it('makes a link only of an http or https address, or a path on this site', () => {
     const bad = (template: string) => documentLink({ documentLinks: { any: template } }, '1');
     expect(bad('javascript:alert({id})')).toBeUndefined();
     expect(bad('data:text/html,{id}')).toBeUndefined();
-    expect(bad('/documents/{id}')).toBeUndefined();
+    expect(bad('//example.org/{id}')).toBeUndefined();
+    expect(bad('documents/{id}')).toBeUndefined();
+    expect(bad('/documents/{id}')).toBe('/documents/1');
     expect(bad('http://example.org/{id}')).toBe('http://example.org/1');
+  });
+
+  it("keeps a link on the host's own site there, whatever the number holds", () => {
+    const own = { documentLinks: { any: '/{id}' } };
+    expect(documentLink(own, '/evil.example/x')).toBe('/%2Fevil.example%2Fx');
+    expect(documentLink(own, '\\\\evil.example')).toBe('/%5C%5Cevil.example');
   });
 
   it('keeps the host’s function first, and takes the templates where it gives no link', () => {

@@ -1598,8 +1598,21 @@ describe('a service interface (spec.interface)', () => {
     ).not.toEqual([]);
   });
 
+  it("takes a document link on the host's own site, which opens under any hostname", () => {
+    const any = '/api/datasets/kudos/documents/{id}/file';
+    expect(
+      errorsOf(withLayout({ profile: { corpora: { kudos: { documentLinks: { any } } } } })),
+    ).toEqual([]);
+  });
+
   it('refuses a document link that is not https or lets the number choose the host', () => {
-    for (const digits of ['http://kudos.dfo.no/{id}', 'https://{id}.example.no/'])
+    for (const digits of [
+      'http://kudos.dfo.no/{id}',
+      'https://{id}.example.no/',
+      '//kudos.dfo.no/{id}',
+      '/\\kudos.dfo.no/{id}',
+      'dokument/{id}',
+    ])
       expect(
         errorsOf(withLayout({ profile: { corpora: { kudos: { documentLinks: { digits } } } } })),
       ).not.toEqual([]);
