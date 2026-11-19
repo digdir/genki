@@ -96,7 +96,7 @@ const ServiceSummary = z
     dataLocation: residency
       .nullable()
       .describe(
-        "Where the service processes data: the widest place of the models, datasets, reranker and agents it uses, from the platform's catalogue. null when one of them is not in it",
+        "Where the service processes data: the widest place of the models, datasets, reranker and agents it uses, and of the trace sink when it receives content, from the platform's catalogue. null when one of them is not in it",
       ),
     latestVersion: z.number().int().nullable(),
     status: z.enum(['active', 'paused']),
@@ -3002,7 +3002,7 @@ export const serviceRoutes: RouteConfig[] = [
               dataLocation: residency
                 .nullable()
                 .describe(
-                  "Where the service processes data: the widest place of the models, datasets, reranker and agents it uses, from the platform's catalogue. null when one of them is not in it",
+                  "Where the service processes data: the widest place of the models, datasets, reranker and agents it uses, and of the trace sink when it receives content, from the platform's catalogue. null when one of them is not in it",
                 ),
               model: z.string().nullable(),
               exposure: z.array(z.string()),
