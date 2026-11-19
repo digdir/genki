@@ -402,6 +402,10 @@ export const createApiClient = ({
           headers: { 'change-reason': reason },
         },
       ),
+    deleteKind: (kind: string, reason: string) =>
+      call<unknown>('DELETE', `/operator/operation-kinds/${encodeURIComponent(kind)}`, {
+        headers: { 'change-reason': reason },
+      }),
     operationDescriptors: async (signal?: AbortSignal) =>
       (
         await call<{ data: OperationDescriptor[] }>('GET', '/operator/operation-descriptors', {
@@ -1061,6 +1065,10 @@ export const createApiClient = ({
     saveSecret: (name: string, value: string, reason: string) =>
       call<unknown>('PUT', `/operator/secrets/${encodeURIComponent(name)}`, {
         body: { value },
+        headers: { 'change-reason': reason },
+      }),
+    deleteSecret: (name: string, reason: string) =>
+      call<unknown>('DELETE', `/operator/secrets/${encodeURIComponent(name)}`, {
         headers: { 'change-reason': reason },
       }),
     audit: (tenant: string, session: string, signal?: AbortSignal) =>

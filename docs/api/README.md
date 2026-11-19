@@ -63,6 +63,12 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ## API changes
 
+### 2026-11-19: removing unused step flows, operation kinds and platform secrets
+
+- New `DELETE /tenants/{tenant}/step-flows/{id}` (manage-services, `change-reason`, audited as `platform.step-flow.archive`) archives one of the organisation's own step flows: Stegflyter and Byggeklosser stop listing it, its versions stay, and publishing it again lists it again. It answers `409` with `urn:genai:problem:step-flow-in-use` while the latest version, or a version an environment is pinned to, of a service that is not archived runs it, directly or as a subflow, in any organisation for a Digdir flow. Internal services count. `usedBy` names only services in the caller's own organisation; `otherOrganisations` counts the rest, and `internalServices` the internal ones the caller may not see.
+- New `DELETE /operator/operation-kinds/{kind}` (operators, `change-reason`, audited as `platform.operations.kind.delete`) deletes a kind that is not built in and that no descriptor describes; `409` with `urn:genai:problem:operation-kind-built-in` or `urn:genai:problem:operation-kind-in-use`.
+- New `DELETE /operator/secrets/{name}` (operators, `change-reason`, audited as `platform.platform-secret.delete` without the value) deletes a stored platform secret nothing names; `409` with `urn:genai:problem:platform-secret-in-use` and `usedBy` while a catalog entry, a configuration entry such as an operator hook, or a definition in any organisation, internal services included, names it. It answers `503` and deletes nothing when the platform cannot check the uses.
+
 ### 2026-11-19: the host route names the whole login
 
 - `GET /v1/hosts/{hostname}` gives `login.audience` (the hosted Client's `oidc.audience`, or its client id) and `login.altinnResource` (the platform's Altinn resource, or `null`) beside `issuer` and `clientId`, so a host can start the login with nothing else. `GENAI_ASSISTANT_HOSTNAME` names genki's own assistant hostname, the one name under genki's own zones a hosted Client may claim once `GENAI_HOSTED_HOSTNAMES` opens it to the tenant (see [frontend.md](frontend.md#a-hosted-assistant)).

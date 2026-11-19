@@ -373,7 +373,7 @@ export const mockFetch = (
   const searchEngines = searchEnginesMock();
   let demos: Promise<ReturnType<typeof demosMock>> | undefined;
   const schemaFixtures = fixtureSchemaFetch();
-  const secrets = new Set<string>(['foundry-key', 'local-model-key']);
+  const secrets = new Set<string>(['foundry-key', 'local-model-key', 'gammel-testnokkel']);
   const secretChanges = new Map<string, string>([['foundry-key', '2026-10-01T09:30:00Z']]);
 
   const tenantName = (org: string) => tenantList.find((t) => t.orgNumber === org)?.name ?? org;
@@ -760,6 +760,17 @@ export const mockFetch = (
       secrets.add(name);
       secretChanges.set(name, new Date().toISOString());
       record('alle', 'Lagret hemmelighet', name, reason);
+      return new Response(null, { status: 204 });
+    }
+    if (secret && method === 'DELETE') {
+      const name = decodeURIComponent(secret[1] ?? '');
+      const used = (configs.get(endpointKey) ?? []).some((entry) =>
+        JSON.stringify(entry.spec ?? {}).includes(`secret://platform/${name}"`),
+      );
+      if (used) return json({ title: 'Plattformhemmeligheten er i bruk', status: 409 }, 409);
+      if (!secrets.delete(name)) return notFound();
+      secretChanges.delete(name);
+      record('alle', 'Slettet hemmelighet', name, reason);
       return new Response(null, { status: 204 });
     }
     if (endpoint && (method === 'POST' || (method === 'PUT' && endpoint[1]))) {

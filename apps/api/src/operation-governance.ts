@@ -26,22 +26,32 @@ import { callOperationModel, callOperationRef } from '@genai/strategy-step-flow'
 import type { Context } from 'hono';
 import { actorOf, AdminRefused, refusedBy, routeOnlyActions } from './admin.js';
 import { changeReasonOf, isReasonLongEnough, reasonTooShort } from './http.js';
+import { t } from './i18n/index.js';
 import type { MountDeps, PlatformModuleFactory } from './platform-modules.js';
 
 export const maturityAction = 'platform.operations.maturity';
 export const processorRecordAction = 'platform.operations.processor-record';
+export const kindDeleteAction = 'platform.operations.kind.delete';
+export const operationKindInUseType = 'urn:genai:problem:operation-kind-in-use';
+export const operationKindBuiltInType = 'urn:genai:problem:operation-kind-built-in';
 
-type Status = 400 | 401 | 403 | 404;
+type Status = 400 | 401 | 403 | 404 | 409;
 
 const titles: Record<Status, string> = {
   400: 'Invalid request',
   401: 'Unauthorized',
   403: 'Forbidden',
   404: 'Not found',
+  409: 'Conflict',
 };
 
-const problem = (c: Context, status: Status, errors: ValidationError[] = []) =>
-  c.json({ type: 'about:blank', title: titles[status], status, errors }, status, {
+const problem = (
+  c: Context,
+  status: Status,
+  errors: ValidationError[] = [],
+  extra: { type?: string; title?: string; usedBy?: { kind: string; id: string }[] } = {},
+) =>
+  c.json({ type: 'about:blank', title: titles[status], status, errors, ...extra }, status, {
     'content-type': 'application/problem+json',
   });
 
@@ -278,7 +288,7 @@ const processorView = (endpoint: string, entry: ConfigEntry<ProcessorRecord> | u
 
 export const operationGovernanceModule: PlatformModuleFactory = (deps) => ({
   id: 'operation-governance',
-  handlers: routeOnlyActions([maturityAction, processorRecordAction]),
+  handlers: routeOnlyActions([maturityAction, processorRecordAction, kindDeleteAction]),
   mount: (app, mounted: MountDeps) => {
     const operator = async (c: Context) => {
       const principal = await mounted.authenticate(c.req.raw);
@@ -394,6 +404,63 @@ export const operationGovernanceModule: PlatformModuleFactory = (deps) => ({
       );
       if ('response' in done) return done.response;
       return c.json({ ...maturityView(done.value, descriptors), step });
+    });
+
+    app.delete('/operator/operation-kinds/:kind', async (c) => {
+      const guard = await operator(c);
+      if ('response' in guard) return guard.response;
+      const { governance, descriptors } = guard.operations;
+      const kind = c.req.param('kind') ?? '';
+      if (!isReasonLongEnough(reasonOf(c)))
+        return problem(c, 400, [{ path: 'change-reason', message: reasonTooShort }]);
+      if (builtInKinds.includes(kind))
+        return problem(
+          c,
+          409,
+          [{ path: 'kind', message: t('problems.operationKindBuiltIn', { kind }) }],
+          {
+            type: operationKindBuiltInType,
+          },
+        );
+      await descriptors.refresh();
+      const describing = descriptors.list().filter((d) => d.operation === kind);
+      if (describing.length > 0)
+        return problem(
+          c,
+          409,
+          describing.map((d) => ({
+            path: 'descriptors',
+            message: t('problems.operationKindDescribedBy', { descriptor: d.id }),
+          })),
+          {
+            type: operationKindInUseType,
+            title: t('problems.operationKindInUseTitle'),
+            usedBy: describing.map((d) => ({ kind: 'descriptor', id: d.id })),
+          },
+        );
+      const listed = (await governance.maturities()).find((m) => m.kind === kind);
+      if (!listed)
+        return problem(c, 404, [
+          { path: 'kind', message: t('problems.operationKindNotFound', { kind }) },
+        ]);
+      const done = await audited(c, guard.principal, kindDeleteAction, { kind }, async () => {
+        await appendVersion<MaturityRecord>(deps.configEntries, {
+          kind: maturityEntryKind,
+          scope: governance.tier,
+          id: kind,
+          spec: { maturity: listed.maturity },
+          deleted: true,
+          by: actorOf(guard.principal.actor ?? guard.principal),
+          reason: reasonOf(c),
+        });
+        return {
+          value: undefined,
+          target: `operation-kind:${kind}`,
+          audit: { before: { maturity: listed.maturity }, environment: governance.tier },
+        };
+      });
+      if ('response' in done) return done.response;
+      return c.body(null, 204);
     });
 
     app.get('/operator/processor-records', async (c) => {

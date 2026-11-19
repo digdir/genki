@@ -201,4 +201,18 @@ export const problems = {
     'The {strategy} way of working has no single instructions field, so the playground cannot replace them. Change the steps in a draft instead.',
   playgroundDatasetNotAvailable:
     'The dataset {dataset} does not exist, or the organisation has no access to it.',
+  stepFlowNotFound: 'No step flow {id}',
+  stepFlowInUseTitle: 'The step flow is in use',
+  stepFlowUsedBy: 'The service {tenant}/{service} uses the step flow',
+  stepFlowUsedByInternal: '{count} internal services use the step flow',
+  stepFlowUsedByOthers: '{count} services in other organisations use the step flow',
+  operationKindNotFound: 'No operation kind {kind}',
+  operationKindBuiltIn: 'The operation kind {kind} is built in and cannot be deleted',
+  operationKindInUseTitle: 'The operation kind is in use',
+  operationKindDescribedBy: 'The API {descriptor} describes the operation kind',
+  platformSecretNotFound: 'No platform secret {name}',
+  platformSecretInUseTitle: 'The platform secret is in use',
+  platformSecretUsedBy: '{kind} {id} uses the platform secret',
+  platformSecretUsesUnknown:
+    'Genki cannot check what uses the platform secret, so it is not deleted',
 } satisfies Translation<typeof source>;

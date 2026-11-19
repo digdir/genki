@@ -723,6 +723,20 @@ describe('Modeller: APIs and the guided path', () => {
     expect(await screen.findByText(/Bildegenerering er i produksjon/)).toBeTruthy();
   });
 
+  it('an operator deletes a kind no API describes, with a reason, and the kind leaves the list', async () => {
+    await signedIn('#/models?tab=apis');
+    const button = await screen.findByRole('button', { name: /^Slett / });
+    const label = button.getAttribute('aria-label') ?? '';
+
+    fireEvent.click(button);
+    const deleting = await dialog(/^Slette typen /);
+    giveReason(deleting, 'Typen ble bare brukt i en test');
+    fireEvent.click(within(deleting).getByRole('button', { name: 'Slett' }));
+
+    expect(await screen.findByText(/er slettet\.$/)).toBeTruthy();
+    await waitFor(() => expect(screen.queryByRole('button', { name: label })).toBeNull());
+  });
+
   it('try is offered only in a test environment', async () => {
     const base = mockFetch();
     await signedIn('#/models?api=openai/generate-image@1&step=try', async (input, init) => {

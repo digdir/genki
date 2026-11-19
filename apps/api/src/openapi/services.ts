@@ -1753,6 +1753,42 @@ export const serviceRoutes: RouteConfig[] = [
     },
   }),
   createRoute({
+    method: 'delete',
+    path: '/tenants/{tenant}/step-flows/{id}',
+    summary:
+      "Archive one of the organisation's own step flows: Stegflyter and Byggeklosser stop listing it, its versions stay so runs and history keep working, and publishing it again lists it again. Refused while the latest version, or a version an environment is pinned to, of any service that is not archived runs it, directly or as a subflow, internal services included. Needs manage-services; audited",
+    request: {
+      params: z.object({ tenant, id: z.string().openapi({ param: { name: 'id', in: 'path' } }) }),
+      headers: changeReason,
+    },
+    responses: {
+      200: audited(
+        z.object({ id: z.string(), archived: z.literal(true), version: z.number().int() }),
+        'Archived',
+      ),
+      400: problem('Missing reason'),
+      ...tenantErrors,
+      404: problem('No such step flow in the organisation, or it is already archived'),
+      409: {
+        description:
+          "urn:genai:problem:step-flow-in-use: services still run the step flow. usedBy names those in the caller's own organisation it may see; otherOrganisations counts services elsewhere and internalServices the internal ones it may not see",
+        content: {
+          'application/problem+json': {
+            schema: z.object({
+              type: z.literal('urn:genai:problem:step-flow-in-use'),
+              title: z.string(),
+              status: z.literal(409),
+              errors: z.array(z.object({ path: z.string(), message: z.string() })),
+              usedBy: z.array(z.object({ tenant: z.string(), service: z.string() })),
+              otherOrganisations: z.number().int().optional(),
+              internalServices: z.number().int().optional(),
+            }),
+          },
+        },
+      },
+    },
+  }),
+  createRoute({
     method: 'get',
     path: '/tenants/{tenant}/services/{id}/environments',
     summary:

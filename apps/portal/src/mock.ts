@@ -1027,6 +1027,9 @@ export const mockFetch = (
       });
     if (path === '/settings') return json({ data: exampleSettingsCatalog });
     if (/^\/tenants\/[^/]+\/settings\/effective$/.test(path)) return json(exampleEffective);
+    const archivedFlow = /^\/tenants\/[^/]+\/step-flows\/([^/]+)$/.exec(path);
+    if (archivedFlow && init?.method === 'DELETE')
+      return json({ id: decodeURIComponent(archivedFlow[1] ?? ''), archived: true, version: 1 });
     if (/^\/tenants\/[^/]+\/settings\/[^/]+$/.test(path) && init?.method === 'DELETE')
       return json({ task: 'mock', value: null });
     if (/^\/tenants\/[^/]+\/settings\/[^/]+$/.test(path) && init?.method === 'PUT') {

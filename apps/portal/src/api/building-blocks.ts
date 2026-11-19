@@ -433,6 +433,13 @@ export const buildingBlocksApi = (ctx: ApiContext) => {
       const list = await ctx.get<BuildingBlockList>(at(tenant, suffix), signal);
       return { ...list, data: list.data.map(readable) };
     },
+    archiveFlow: (tenant: string, id: string, reason: string) =>
+      ctx.request<{ id: string; archived: true; version: number }>(
+        'DELETE',
+        `${ctx.tenantPath(tenant)}/step-flows/${encodeURIComponent(id)}`,
+        {},
+        reasonHeader(reason),
+      ),
     get: async (tenant: string, block: Ref, signal?: AbortSignal) =>
       readable(await ctx.get<CatalogItem>(at(tenant, blockPath(block)), signal)),
     versions: async (tenant: string, block: Ref, signal?: AbortSignal) =>

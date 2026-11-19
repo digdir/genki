@@ -324,6 +324,7 @@ import { defaultReservedDomains, registerHostRoutes, type HostingRules } from '.
 import { hostedByGenki, interfaceCatalogueProblems } from './interface-catalogue.js';
 import { triggersModule } from './triggers.js';
 import { lifecycleOf, pausedMessage, serviceLifecycleModule } from './service-lifecycle.js';
+import { stepFlowArchiveModule } from './step-flow-archive.js';
 import { batchTasksOf } from './batch-runs.js';
 import { archivedPublishRefusal } from './archived-services.js';
 import {
@@ -338,7 +339,7 @@ import { modelChoice } from './model-choice.js';
 import { modelMatrixModule, releaseGate } from './model-matrix.js';
 import { operatorModelsModule } from './operator-models.js';
 import { platformSecretsModule } from './platform-secrets.js';
-import { secretUses } from './secret-uses.js';
+import { platformSecretUses, secretUses } from './secret-uses.js';
 import { operatorOperationsModule } from './operator-operations.js';
 import {
   describedStepProblems,
@@ -418,6 +419,7 @@ export const platformModules: PlatformModuleFactory[] = [
   maskinportenClientsModule,
   triggersModule,
   serviceLifecycleModule,
+  stepFlowArchiveModule,
   serviceEnvironmentsModule,
   operatorModelsModule,
   platformSecretsModule,
@@ -2349,6 +2351,13 @@ export const createPlatform = async (input: PlatformInput) => {
           catalog: config.catalog,
           connections,
           definitions,
+        }),
+        platformSecretUses: platformSecretUses({
+          configEntries,
+          catalog: config.catalog,
+          definitions,
+          platformTenant,
+          platformScope,
         }),
         eval: {
           kernel,

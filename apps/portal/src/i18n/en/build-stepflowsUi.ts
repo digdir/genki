@@ -415,5 +415,14 @@ export const stepflowsUi = {
     noVersions: 'No published versions yet.',
     versionsFailed: 'We could not load the versions.',
     notShown: 'The publisher does not share the steps of this flow, so it cannot be shown here.',
+    archive: 'Archive',
+    archiveLabel: 'Archive {name}',
+    archiveTitle: 'Archive {name}?',
+    archiveText:
+      'The step flow disappears from Step flows and Building blocks. Its versions stay in the history, and if someone publishes it again, it shows again.',
+    archiving: 'Archiving',
+    archived: '{name} is archived.',
+    archiveInUse: 'A service uses the step flow, so it cannot be archived.',
+    archiveFailed: 'We could not archive the step flow. Try again.',
   },
 } satisfies Translation<typeof source>;

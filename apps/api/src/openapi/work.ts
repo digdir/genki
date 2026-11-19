@@ -2595,6 +2595,29 @@ const qualityRoutes: RouteConfig[] = [
     },
   }),
   createRoute({
+    method: 'delete',
+    path: '/operator/operation-kinds/{kind}',
+    summary: 'Delete an operation kind that is not built in and that no descriptor describes',
+    description: described(
+      operator,
+      audited,
+      'The kind stops being listed in this environment and starts again in test if a descriptor describes it later. Models bind a kind only through a descriptor, so a kind without one has no users.',
+    ),
+    request: {
+      params: z.object({ kind: pathParam('kind', 'compose') }),
+      headers: operatorWriteHeaders,
+    },
+    responses: {
+      204: { description: 'Deleted' },
+      400: problem('Missing change reason'),
+      ...operatorOnly,
+      404: problem('The kind is not listed'),
+      409: problem(
+        'urn:genai:problem:operation-kind-built-in: the kind is built in. urn:genai:problem:operation-kind-in-use: descriptors still describe it; `usedBy` lists them',
+      ),
+    },
+  }),
+  createRoute({
     method: 'get',
     path: '/operator/operation-descriptors',
     summary: 'The bundled and uploaded operation descriptors, with operation@1 on their fixtures',

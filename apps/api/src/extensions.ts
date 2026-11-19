@@ -445,6 +445,13 @@ export const adminExtensions = (deps: {
       audit: { scope: 'platform', name },
     };
   },
+  'platform.platform-secret.delete': async (input, principal) => {
+    const name = String(input.name ?? '');
+    const target = `secret:platform/${name}`;
+    if (principal.kind !== 'operator')
+      return refused(target, 'only operators delete platform secrets');
+    return { ok: true, value: { removed: name }, target, audit: { scope: 'platform', name } };
+  },
   'platform.secrets.set': async (input, principal) => {
     const name = String(input.name ?? '');
     const target = `secret:${input.tenant}/${name}`;
@@ -482,6 +489,8 @@ export const adminExtensions = (deps: {
   },
 });
 
+export const platformSecretInUseType = 'urn:genai:problem:platform-secret-in-use';
+
 export interface EvalDeps {
   kernel: Kernel;
   evalCapability: string;
@@ -506,6 +515,7 @@ export interface ExtensionRouteDeps {
   hiddenService?: (tenant: string, service: string) => Promise<boolean>;
   names?: Pick<ActorNames, 'namesOf'>;
   secretUses?: (tenant: string, name: string) => Promise<{ kind: string; id: string }[]>;
+  platformSecretUses?: (name: string) => Promise<{ kind: string; id: string }[]>;
 }
 
 const param = (c: Context, name: string) => c.req.param(name) ?? '';
@@ -521,7 +531,7 @@ const textOf = (value: unknown) => (typeof value === 'string' && value.trim() ? 
 
 const problem = (
   c: Context,
-  status: 400 | 401 | 403 | 404 | 409,
+  status: 400 | 401 | 403 | 404 | 409 | 503,
   title: string,
   errors: unknown[] = [],
 ) =>
@@ -879,6 +889,46 @@ export const mountExtensions = <E extends Env, S extends Schema, B extends strin
       );
     },
   );
+
+  app.delete('/operator/secrets/:name', async (c) => {
+    const principal = await who(c);
+    if (!principal) return problem(c, 401, 'Unauthorized');
+    if (principal.kind !== 'operator') return problem(c, 403, 'Forbidden');
+    const name = param(c, 'name');
+    if (!(await deps.vault.names('platform')).includes(name))
+      return problem(c, 404, 'Not found', [
+        { path: 'name', message: t('problems.platformSecretNotFound', { name }) },
+      ]);
+    if (!deps.platformSecretUses)
+      return problem(c, 503, t('problems.platformSecretUsesUnknown'), [
+        { path: 'name', message: t('problems.platformSecretUsesUnknown') },
+      ]);
+    const uses = await deps.platformSecretUses(name);
+    if (uses.length > 0)
+      return c.json(
+        {
+          type: platformSecretInUseType,
+          title: t('problems.platformSecretInUseTitle'),
+          status: 409,
+          errors: uses.map((use) => ({
+            path: 'name',
+            message: t('problems.platformSecretUsedBy', { kind: use.kind, id: use.id }),
+          })),
+          usedBy: uses,
+        },
+        409,
+        { 'content-type': 'application/problem+json' },
+      );
+    const acting = { ...principal, tenant: deps.platformTenant ?? defaultPlatformTenant };
+    const response = await performed(
+      c,
+      acting,
+      'platform.platform-secret.delete',
+      { tenant: acting.tenant, name },
+      () => deps.vault.delete('platform', name),
+    );
+    return response.status === 200 ? c.body(null, 204) : response;
+  });
 
   app.post('/operator/tenants', async (c) => {
     const principal = await who(c);
