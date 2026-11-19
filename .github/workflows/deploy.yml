@@ -175,6 +175,18 @@ jobs:
           state=$(scripts/infra-state.sh infra/env/test.bicepparam "$RG" "$FORCE_INFRASTRUCTURE")
           echo "$state" >> "$GITHUB_OUTPUT"
           echo "Candidate deploy applies the whole template: $(sed -n 's/^infrastructure=//p' <<< "$state")" >> "$GITHUB_STEP_SUMMARY"
+      - name: stop every API revision but the live one
+        if: env.ALTINN_PDP_URL != '' && steps.plan.outputs.live != ''
+        env:
+          RG: ${{ vars.AZURE_RESOURCE_GROUP }}
+          APP: ${{ steps.plan.outputs.app }}
+          LIVE: ${{ steps.plan.outputs.live }}
+        run: scripts/stop-unused-revisions.sh "$RG" "$APP" "$LIVE" all-but-live
+      - name: stop the worker before its new revision starts
+        if: env.ALTINN_PDP_URL != ''
+        env:
+          RG: ${{ vars.AZURE_RESOURCE_GROUP }}
+        run: scripts/worker-revisions.sh "$RG" stop
       - id: deploy
         if: env.ALTINN_PDP_URL != ''
         run: |
@@ -182,13 +194,19 @@ jobs:
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
             --name "genki-${{ github.run_id }}-${{ github.run_attempt }}-candidate" \
             --parameters infra/env/test.bicepparam \
-            --parameters apiImage="${{ steps.plan.outputs.image }}" apiRevisionSuffix="${{ steps.plan.outputs.suffix }}" apiLiveRevision="${{ steps.plan.outputs.live }}" apiPreviousRevision="${{ steps.plan.outputs.previous }}" workerImage="${{ steps.plan.outputs.worker }}" appsImage="${{ steps.plan.outputs.apps }}" doclingImage="${{ steps.plan.outputs.docling }}" appVersion="${{ steps.plan.outputs.version }}" workerVersion="${{ steps.plan.outputs.worker_version }}" \
+            --parameters apiImage="${{ steps.plan.outputs.image }}" apiRevisionSuffix="${{ steps.plan.outputs.suffix }}" apiLiveRevision="${{ steps.plan.outputs.live }}" apiPreviousRevision="" workerImage="${{ steps.plan.outputs.worker }}" appsImage="${{ steps.plan.outputs.apps }}" doclingImage="${{ steps.plan.outputs.docling }}" appVersion="${{ steps.plan.outputs.version }}" workerVersion="${{ steps.plan.outputs.worker_version }}" \
               deployInfrastructure="${{ steps.infra.outputs.infrastructure }}" infraFingerprint="${{ steps.infra.outputs.fingerprint }}" \
             --query properties.outputs > outputs.json
           {
             echo "revision=$(jq -r .apiCandidateRevision.value outputs.json)"
             echo "url=$(jq -r .apiCandidateUrl.value outputs.json)"
           } >> "$GITHUB_OUTPUT"
+      - name: start the worker's newest revision
+        if: always() && env.ALTINN_PDP_URL != ''
+        env:
+          RG: ${{ vars.AZURE_RESOURCE_GROUP }}
+          DEPLOYMENT: genki-${{ github.run_id }}-${{ github.run_attempt }}-candidate
+        run: scripts/worker-revisions.sh "$RG" start "$DEPLOYMENT"
       - name: candidate health
         if: steps.deploy.outcome == 'success'
         run: |
@@ -198,16 +216,6 @@ jobs:
             sleep 5
           done
           echo "the candidate revision did not report ${{ github.sha }} with its models found: $body; users keep ${{ steps.plan.outputs.live }}"; exit 1
-      - name: stop unused API revisions
-        if: steps.deploy.outcome == 'success' && steps.plan.outputs.live != ''
-        run: |
-          rg="${{ vars.AZURE_RESOURCE_GROUP }}"
-          app="${{ steps.plan.outputs.app }}"
-          keep=$(az containerapp ingress traffic show -g "$rg" -n "$app" --query '[].revisionName' -o tsv)
-          echo "$keep" | grep -qx "${{ steps.plan.outputs.live }}" || exit 0
-          for revision in $(az containerapp revision list -g "$rg" -n "$app" --query '[?properties.active].name' -o tsv); do
-            echo "$keep" | grep -qx "$revision" || az containerapp revision deactivate -g "$rg" -n "$app" --revision "$revision"
-          done
       - name: api skipped
         if: env.ALTINN_PDP_URL == ''
         run: |
@@ -336,6 +344,10 @@ jobs:
             echo "live=$LIVE" >> "$GITHUB_OUTPUT"
             echo "previous=$PREVIOUS" >> "$GITHUB_OUTPUT"
           fi
+      - name: stop the worker before its new revision starts
+        env:
+          RG: ${{ vars.AZURE_RESOURCE_GROUP }}
+        run: scripts/worker-revisions.sh "$RG" stop
       - id: deploy
         env:
           FORCE_INFRASTRUCTURE: ${{ inputs.infrastructure && needs.candidate.outputs.infrastructure != 'true' }}
@@ -386,6 +398,12 @@ jobs:
             --parameters apiImage="${{ needs.candidate.outputs.image }}" apiRevisionSuffix="${{ needs.candidate.outputs.suffix }}" apiLiveRevision="${{ steps.api.outputs.live }}" apiPreviousRevision="${{ steps.api.outputs.previous }}" workerImage="${{ needs.build.outputs.worker }}" appsImage="${{ needs.build.outputs.apps }}" doclingImage="${{ needs.build.outputs.docling }}" appVersion="${{ needs.candidate.outputs.version }}" \
             --query properties.outputs.apiUrl.value -o tsv)
           echo "url=$url" >> "$GITHUB_OUTPUT"
+      - name: start the worker's newest revision
+        if: always()
+        env:
+          RG: ${{ vars.AZURE_RESOURCE_GROUP }}
+          DEPLOYMENT: genki-${{ github.run_id }}-${{ github.run_attempt }}
+        run: scripts/worker-revisions.sh "$RG" start "$DEPLOYMENT"
       - name: smoke
         if: needs.candidate.outputs.revision != ''
         run: |
@@ -395,6 +413,13 @@ jobs:
             sleep 5
           done
           echo "health check did not report ${{ github.sha }} with its models found: $body; roll back with the rollback workflow"; exit 1
+      - name: stop unused API revisions
+        if: "!cancelled() && steps.deploy.outcome == 'success' && steps.api.outputs.live != ''"
+        env:
+          RG: ${{ vars.AZURE_RESOURCE_GROUP }}
+          APP: ${{ needs.candidate.outputs.app }}
+          LIVE: ${{ steps.api.outputs.live }}
+        run: scripts/stop-unused-revisions.sh "$RG" "$APP" "$LIVE"
       - name: rollback note
         if: steps.api.outputs.previous != ''
         run: |

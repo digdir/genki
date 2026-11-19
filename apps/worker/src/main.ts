@@ -109,7 +109,7 @@ import {
   platformId,
   PostgresDefinitionStore,
   PostgresJobRunRecords,
-  PostgresLeaderLease,
+  PostgresLeases,
   postgresSourceFromEnv,
   workerRole,
 } from '@genai/providers-postgres';
@@ -806,7 +806,8 @@ const paused = async (binding: TriggerBinding) => {
 
 const pricedModels = runtime.prices as Record<string, TokenPrice | undefined>;
 
-const lease = db ? new PostgresLeaderLease(db.pool, 'genai-worker-triggers') : undefined;
+const leases = db ? new PostgresLeases(db.pool) : undefined;
+const lease = leases?.lease('genai-worker-triggers');
 const reportError = (error: unknown) => log('worker sync failed', { error: String(error) });
 const worker = createWorker({
   runtime,
@@ -865,7 +866,7 @@ const stopFollowingChanges = db
     })
   : undefined;
 
-const retentionLease = db ? new PostgresLeaderLease(db.pool, 'genai-worker-retention') : undefined;
+const retentionLease = leases?.lease('genai-worker-retention');
 const sinkAccess = db
   ? traceSinkAccess({
       configEntries: db.configEntries,
@@ -930,7 +931,7 @@ const retention = db
 log('retention', { scheduled: retention?.next()?.toISOString() ?? null });
 
 // Norges Bank's USD/NOK rate, read once a day through the egress guard, shows a judge's reported cost in kroner.
-const rateLease = db ? new PostgresLeaderLease(db.pool, 'genai-worker-exchange-rate') : undefined;
+const rateLease = leases?.lease('genai-worker-exchange-rate');
 const rateGuard = exchangeRateGuard();
 const exchangeRate = db
   ? scheduleUsdNok({
@@ -953,7 +954,7 @@ if (db)
     .catch((error: unknown) => log('usd/nok rate failed', { error: String(error) }));
 
 // The state's organisation (ADR 0058): Enhetsregisteret nightly, on one replica under a lease.
-const stateLease = db ? new PostgresLeaderLease(db.pool, 'genai-worker-state-register') : undefined;
+const stateLease = leases?.lease('genai-worker-state-register');
 const stateJob = db
   ? {
       configEntries: db.configEntries,
@@ -977,9 +978,7 @@ if (stateJob)
     (error: unknown) => log('state register sync failed', { error: String(error) }),
   );
 
-const sweepLease = db
-  ? new PostgresLeaderLease(db.pool, 'genai-worker-provider-objects')
-  : undefined;
+const sweepLease = leases?.lease('genai-worker-provider-objects');
 const providerObjectSweep = db
   ? scheduleProviderObjectSweep({
       store: db.providerObjects,
@@ -1001,9 +1000,7 @@ const providerObjectSweep = db
     })
   : undefined;
 
-const stoppedRunsLease = db
-  ? new PostgresLeaderLease(db.pool, 'genai-worker-stopped-runs')
-  : undefined;
+const stoppedRunsLease = leases?.lease('genai-worker-stopped-runs');
 const stoppedRunTasks = db?.tasks.withLease({ instance: `sweep:${randomUUID()}` });
 const failStopped = async () => {
   if (!db || !stoppedRunTasks || !(await stoppedRunsLease?.tryAcquire())) return;
@@ -1021,9 +1018,7 @@ const stoppedRunSweep = db
   : undefined;
 
 // Ends runs whose jobs have ended, starts queued runs and applies send-backs (ADR 0042, "Jobs").
-const knowledgeRunsLease = db
-  ? new PostgresLeaderLease(db.pool, 'genai-worker-knowledge-runs')
-  : undefined;
+const knowledgeRunsLease = leases?.lease('genai-worker-knowledge-runs');
 const sendReplacement =
   docling && knowledgeWriter && knowledgeRunRecords
     ? replacementRuns({
