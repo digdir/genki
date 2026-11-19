@@ -98,6 +98,8 @@ export interface PgvectorEngineOptions {
   textSearchMs?: number;
   /** A VACUUM after a run's end failed; the run has already committed, so it does not fail. */
   onVacuumError?: (error: unknown) => void;
+  /** The knowledge server's migrations ran at this process's first knowledge use, in `ms`. */
+  onServerMigrated?: (ms: number) => void;
 }
 
 export interface PgvectorEngine {
@@ -435,10 +437,16 @@ export const pgvectorEngine = (options: PgvectorEngineOptions): PgvectorEngine =
   let serverReady: Promise<void> | undefined;
   const knowledgeServerReady = () => {
     if (!owner) return Promise.resolve();
-    serverReady ??= migrateKnowledgeServer(owner).catch((error: unknown) => {
-      serverReady = undefined;
-      throw error;
-    });
+    if (!serverReady) {
+      const started = performance.now();
+      serverReady = migrateKnowledgeServer(owner).then(
+        () => options.onServerMigrated?.(Math.round(performance.now() - started)),
+        (error: unknown) => {
+          serverReady = undefined;
+          throw error;
+        },
+      );
+    }
     return serverReady;
   };
   const followedFilters = new Map<string, string>();

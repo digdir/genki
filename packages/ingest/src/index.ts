@@ -29,3 +29,5 @@ export * from './stored-converter.js';
 export * from './docling-pages.js';
 export * from './docling.js';
 export * from './docling-parts.js';
+export * from './docling-output.js';
+export * from './text-layer-parts.js';

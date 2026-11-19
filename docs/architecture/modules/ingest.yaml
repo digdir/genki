@@ -36,6 +36,8 @@ files:
   - packages/ingest/src/stored-converter.ts
   - packages/ingest/src/docling-pages.ts
   - packages/ingest/src/docling-parts.ts
+  - packages/ingest/src/docling-output.ts
+  - packages/ingest/src/text-layer-parts.ts
   - packages/ingest/src/docling-walk.ts
   - packages/ingest/src/docling.ts
 input: Source config

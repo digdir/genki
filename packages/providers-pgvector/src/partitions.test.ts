@@ -261,6 +261,66 @@ describe('generations as partitions on the knowledge server', () => {
     await migrateKnowledgeServer(owner);
   });
 
+  it('the migration adds the conversion number without rewriting src_conversions', async () => {
+    // As the knowledge server was before: no number and no units, with seeded rows in it.
+    await owner.query(`drop table if exists src_conversion_units`);
+    await owner.query(`alter table src_conversions drop column if exists id`);
+    await owner.query(
+      `insert into src_conversions (sha256, converter, version, settings_hash, derivation,
+         derivation_version, pages)
+       select 'migrated-' || i, 'docling', '2.123.1', 'h', 'docling-pages', 1, array['Side ' || i]
+         from generate_series(1, 200) i`,
+    );
+    const fileNode = async () =>
+      (
+        await admin.query<{ node: string }>(
+          `select pg_relation_filenode('src_conversions') as node`,
+        )
+      ).rows[0]?.node;
+    const before = await fileNode();
+
+    await migrateKnowledgeServer(owner);
+
+    expect(await fileNode()).toBe(before);
+    const { rows } = await admin.query(
+      `select count(*)::int as stored, count(id)::int as numbered from src_conversions
+        where sha256 like 'migrated-%'`,
+    );
+    expect(rows[0]).toEqual({ stored: 200, numbered: 0 });
+    const numbered = await admin.query<{ id: string | null }>(
+      `insert into src_conversions (sha256, converter, version, settings_hash, derivation,
+         derivation_version, pages)
+       values ('migrated-new', 'docling', '2.123.1', 'h', 'docling-parts', 1, '{}') returning id`,
+    );
+    expect(numbered.rows[0]?.id).not.toBeNull();
+    await admin.query(`delete from src_conversions where sha256 like 'migrated-%'`);
+  });
+
+  it('the migration runs twice without error', async () => {
+    await migrateKnowledgeServer(owner);
+    await expect(migrateKnowledgeServer(owner)).resolves.toBeUndefined();
+    const { rows } = await admin.query(
+      `select to_regclass('src_conversion_units') is not null as units,
+              to_regclass('src_conversions_id') is not null as numbers`,
+    );
+    expect(rows[0]).toEqual({ units: true, numbers: true });
+  });
+
+  it('the worker logs how long the knowledge server migration took', async () => {
+    const took: number[] = [];
+    const engine = pgvectorEngine({
+      pool: admin,
+      knowledge: worker.pools,
+      onServerMigrated: (ms) => took.push(ms),
+    });
+
+    await engine.followCatalog([]);
+    await engine.followCatalog([]);
+
+    expect(took).toHaveLength(1);
+    expect(took[0]).toBeGreaterThanOrEqual(0);
+  });
+
   it('attaching a generation does not scan it', async () => {
     const d = dataset('digdir/attach', 8);
     const writer = writerFor();
