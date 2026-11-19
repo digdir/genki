@@ -13,7 +13,10 @@ export const Log = ({ api, tenant, route, live }: ScreenProps) => {
   const [, first, second] = route.segments;
   const tab = first === 'changes' || route.query.get('tab') === 'changes' ? 'changes' : 'runs';
   const path = first === 'runs' ? second : first;
-  const runId = tab === 'changes' ? undefined : (path ?? route.query.get('oppgave') ?? undefined);
+  const runId =
+    tab === 'changes'
+      ? undefined
+      : (path ?? route.query.get('run') ?? route.query.get('oppgave') ?? undefined);
   const filters = parseRunFilters(route.query);
   const runQuery = runFiltersQuery(filters);
 

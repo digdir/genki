@@ -579,6 +579,12 @@ describe('search notes and links to a run', () => {
     expect(await screen.findByRole('heading', { level: 1, name: /^Vedtaksutkast/ })).toBeTruthy();
   });
 
+  it('the log opens a run from ?run=', async () => {
+    await renderAt('#/log?run=t2');
+
+    expect(await screen.findByRole('heading', { level: 1, name: /^Vedtaksutkast/ })).toBeTruthy();
+  });
+
   it('opens a run started in the playground, without a link to a service', async () => {
     await renderAt('#/log?oppgave=tp7');
 

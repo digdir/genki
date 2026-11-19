@@ -1,7 +1,5 @@
-import { CodeIcon } from '@navikt/aksel-icons';
 import {
   Alert,
-  Button,
   Checkbox,
   Details,
   Field,
@@ -22,8 +20,9 @@ import type { CatalogModel } from '../../api/models';
 import type { PlaygroundOptions, PlaygroundSetup } from '../../api/playground';
 import {
   changesLine,
-  modelFactsText,
+  locationShort,
   modelOf,
+  priceText,
   setupFromStart,
   shortModelName,
   strategyOf,
@@ -41,7 +40,6 @@ import type { PlaygroundStrategy } from '../../api/playground';
 import type { AnswerLanguage } from '../../data/service-languages';
 import type { AsyncState } from '../../hooks';
 import { useT } from '../../i18n';
-import { Icon } from '../Icon';
 import { ModelPicker } from '../ModelPicker';
 import { AnswerLanguagePicker } from './AnswerLanguagePicker';
 import { SaveToDraft } from './SaveToDraft';
@@ -104,7 +102,10 @@ export const SetupModel = ({
       <div className="playground-model-box">
         <span className="playground-model-text">
           <strong>{shortModelName(model.name)}</strong>
-          <span className="playground-subtle">{modelFactsText(model, f, t)}</span>
+          <span className="playground-subtle">
+            {t('playground.dataRow', { where: t(locationShort[model.dataLocation]) })} ·{' '}
+            {priceText(model, f, t)}
+          </span>
         </span>
         <ModelPicker
           models={models}
@@ -188,10 +189,8 @@ export const PageSetup = ({
   models,
   tenantName,
   answerLanguage,
-  sessionText,
   onChange,
   onAnswerLanguage,
-  onShowCall,
   api,
   tenant,
   base,
@@ -206,10 +205,8 @@ export const PageSetup = ({
   models: AsyncState<CatalogModel[]>;
   tenantName: string;
   answerLanguage: AnswerLanguage | '';
-  sessionText: string;
   onChange: (next: PlaygroundSetup) => void;
   onAnswerLanguage: (value: AnswerLanguage | '') => void;
-  onShowCall: () => void;
 }) => {
   const t = useT();
   const id = useId();
@@ -354,11 +351,6 @@ export const PageSetup = ({
             {...(onSaved ? { onSaved } : {})}
           />
         ) : null}
-        <span>{sessionText}</span>
-        <Button variant="tertiary" data-size="sm" onClick={onShowCall}>
-          <Icon icon={CodeIcon} size={18} />
-          {t('common.apiCall')}
-        </Button>
       </div>
     </aside>
   );

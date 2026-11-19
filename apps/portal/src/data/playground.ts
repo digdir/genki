@@ -464,12 +464,68 @@ const source = (chunkId: string, title: string, document: string, page: number, 
 
 const decimal = (n: number) => n.toFixed(2).replace('.', ',');
 
+type StepLanguage = 'nb' | 'en';
+
+const stepWords = {
+  nb: {
+    trigger: 'Spørsmål i prøveområdet',
+    received: 'Oppgaven ble mottatt',
+    plan: 'Planla søket',
+    planned: (n: number, list: string) => `Genererte ${n} søk: ${list}`,
+    searches: 'Søk',
+    search: 'Søk',
+    hits: (n: number) => `${n} treff`,
+    best: 'Beste treff',
+    relevance: (n: string) => `relevans ${n}`,
+    note: 'Søkemerknad',
+    skipped: (n: number) => `${n} dokumenter hoppet over`,
+    skippedBy: 'Søkemotoren hoppet over',
+    read: (n: number) => `Leste ${n} tekstbiter`,
+    from: (n: number) => `fra ${n} ${n === 1 ? 'dokument' : 'dokumenter'}`,
+    readFile: 'Leste filen',
+    pages: '4 sider',
+    model: 'Modellkall',
+    modelLabel: 'Modell',
+    inOut: (i: string, o: string) => `${i} inn, ${o} ut`,
+    answer: 'Svar',
+    withSources: (n: number) => `Svar med ${n} ${n === 1 ? 'kilde' : 'kilder'}`,
+    delivered: 'Svaret ble levert',
+  },
+  en: {
+    trigger: 'Question in the playground',
+    received: 'The task was received',
+    plan: 'Planned the search',
+    planned: (n: number, list: string) =>
+      `Generated ${n} ${n === 1 ? 'search' : 'searches'}: ${list}`,
+    searches: 'Searches',
+    search: 'Search',
+    hits: (n: number) => `${n} hits`,
+    best: 'Best hits',
+    relevance: (n: string) => `relevance ${n}`,
+    note: 'Search note',
+    skipped: (n: number) => `${n} documents skipped`,
+    skippedBy: 'The search engine skipped',
+    read: (n: number) => `Read ${n} chunks`,
+    from: (n: number) => `from ${n} ${n === 1 ? 'document' : 'documents'}`,
+    readFile: 'Read the file',
+    pages: '4 pages',
+    model: 'Model call',
+    modelLabel: 'Model',
+    inOut: (i: string, o: string) => `${i} in, ${o} out`,
+    answer: 'Answer',
+    withSources: (n: number) => `Answer with ${n} ${n === 1 ? 'source' : 'sources'}`,
+    delivered: 'The answer was delivered',
+  },
+};
+
 const exampleSteps = (
   result: PlaygroundResult,
   question: string,
   modelName: string,
   extract: boolean,
+  language: StepLanguage,
 ): { steps: TimelineStep[]; stats: RunStats } => {
+  const w = stepWords[language];
   const total = result.timeMs / 1000;
   const sources = result.sources;
   const documents = new Set(sources.map((s) => s.title ?? s.chunkId)).size;
@@ -477,8 +533,8 @@ const exampleSteps = (
     {
       id: 'e0',
       type: 'trigger',
-      title: 'Spørsmål i prøveområdet',
-      summary: 'Oppgaven ble mottatt',
+      title: w.trigger,
+      summary: w.received,
       at: 0,
       blocks: question ? [{ kind: 'quote', text: question }] : [],
     },
@@ -489,30 +545,30 @@ const exampleSteps = (
       {
         id: 'e1',
         type: 'plan',
-        title: 'Planla søket',
-        summary: `Genererte ${queries.length} søk: ${queries.map((q) => `«${q}»`).join(', ')}`,
+        title: w.plan,
+        summary: w.planned(queries.length, queries.map((q) => `«${q}»`).join(', ')),
         at: 0.1,
         durationSeconds: 0.4,
         tokens: 220,
         model: modelName,
-        blocks: [{ kind: 'list', label: 'Søk', items: queries }],
+        blocks: [{ kind: 'list', label: w.searches, items: queries }],
         raw: { kind: 'plan', queries },
       },
       {
         id: 'e2',
         type: 'search',
-        title: 'Søk',
-        summary: `«${queries[0]}» · ${sources.length * 4 + 2} treff`,
+        title: w.search,
+        summary: `«${queries[0]}» · ${w.hits(sources.length * 4 + 2)}`,
         at: 0.5,
         durationSeconds: 0.3,
         blocks: [
           { kind: 'quote', text: queries[0] ?? '' },
           {
             kind: 'list',
-            label: 'Beste treff',
+            label: w.best,
             items: sources.map((s): [string, string] => [
               sourceTitle(s),
-              s.score === undefined ? '' : `relevans ${decimal(s.score)}`,
+              s.score === undefined ? '' : w.relevance(decimal(s.score)),
             ]),
           },
         ],
@@ -523,14 +579,14 @@ const exampleSteps = (
       steps.push({
         id: 'e3',
         type: 'searchnote',
-        title: 'Søkemerknad',
-        summary: `${result.searchNotes.length} dokumenter hoppet over`,
+        title: w.note,
+        summary: w.skipped(result.searchNotes.length),
         at: 0.8,
         warning: true,
         blocks: [
           {
             kind: 'list',
-            label: 'Søkemotoren hoppet over',
+            label: w.skippedBy,
             items: result.searchNotes.map((n): [string, string] => [n.document, n.reason]),
           },
         ],
@@ -538,8 +594,8 @@ const exampleSteps = (
     steps.push({
       id: 'e4',
       type: 'read',
-      title: `Leste ${sources.length * 3} tekstbiter`,
-      summary: `fra ${documents} ${documents === 1 ? 'dokument' : 'dokumenter'}`,
+      title: w.read(sources.length * 3),
+      summary: w.from(documents),
       at: 0.8,
       durationSeconds: 0.2,
       blocks: [],
@@ -549,8 +605,8 @@ const exampleSteps = (
     steps.push({
       id: 'e4',
       type: 'read',
-      title: 'Leste filen',
-      summary: '4 sider',
+      title: w.readFile,
+      summary: w.pages,
       at: 0.1,
       durationSeconds: 0.5,
       blocks: [],
@@ -560,8 +616,8 @@ const exampleSteps = (
     {
       id: 'e5',
       type: 'model',
-      title: 'Modellkall',
-      summary: `${modelName} · ${formatCount(result.tokensIn)} inn, ${formatCount(result.tokensOut)} ut`,
+      title: w.model,
+      summary: `${modelName} · ${w.inOut(formatCount(result.tokensIn), formatCount(result.tokensOut))}`,
       at: modelAt,
       durationSeconds: Math.round((total - modelAt) * 10) / 10,
       tokens: result.tokensIn + result.tokensOut,
@@ -570,8 +626,8 @@ const exampleSteps = (
         {
           kind: 'kv',
           rows: [
-            ['Modell', modelName],
-            ['Tokens', `${formatCount(result.tokensIn)} inn, ${formatCount(result.tokensOut)} ut`],
+            [w.modelLabel, modelName],
+            ['Tokens', w.inOut(formatCount(result.tokensIn), formatCount(result.tokensOut))],
           ],
         },
       ],
@@ -579,10 +635,8 @@ const exampleSteps = (
     {
       id: 'e6',
       type: 'result',
-      title: 'Svar',
-      summary: sources.length
-        ? `Svar med ${sources.length} ${sources.length === 1 ? 'kilde' : 'kilder'}`
-        : 'Svaret ble levert',
+      title: w.answer,
+      summary: sources.length ? w.withSources(sources.length) : w.delivered,
       at: total,
       blocks: [],
     },
@@ -614,6 +668,7 @@ export const exampleResult = (
   setup: PlaygroundSetup,
   input: PlaygroundInput,
   runId = `tp${++runCounter}`,
+  language: StepLanguage = 'nb',
 ): PlaygroundResult => {
   const model = modelOf(options, setup.model);
   const facts = modelFacts[setup.model] ?? { pricePer1k: 0.1, seconds: 3 };
@@ -703,7 +758,7 @@ export const exampleResult = (
   };
   return {
     ...base,
-    ...exampleSteps(base, question, modelName, setup.output === 'fields'),
+    ...exampleSteps(base, question, modelName, setup.output === 'fields', language),
   };
 };
 
@@ -716,8 +771,9 @@ const chunksOf = (text: string, size = 40) => {
 export const exampleStreamEvents = (
   options: PlaygroundOptions,
   request: PlaygroundRunRequest,
+  language: StepLanguage = 'nb',
 ): PlaygroundStreamEvent[] => {
-  const response = exampleRun(options, request);
+  const response = exampleRun(options, request, language);
   const { compare, quota, ...first } = response;
   const runs: ['setup' | 'compareWith', PlaygroundResult][] = [
     ['setup', first],
@@ -755,10 +811,11 @@ export const sseOf = (events: PlaygroundStreamEvent[]) =>
 export const exampleRun = (
   options: PlaygroundOptions,
   request: PlaygroundRunRequest,
+  language: StepLanguage = 'nb',
 ): PlaygroundRunResponse => ({
-  ...exampleResult(options, request.setup, request.input),
+  ...exampleResult(options, request.setup, request.input, undefined, language),
   ...(request.compareWith
-    ? { compare: exampleResult(options, request.compareWith, request.input) }
+    ? { compare: exampleResult(options, request.compareWith, request.input, undefined, language) }
     : {}),
   quota: options.quota,
 });
@@ -818,7 +875,9 @@ const startModel = (options: PlaygroundOptions, setup: PlaygroundSetup) =>
   variantOf(options, setup)?.model ?? versionOf(options, setup)?.version.setup.model;
 
 export type SetupChange =
-  { kind: 'model' } | { kind: 'instructions' } | { kind: 'dataset'; id: string; on: boolean };
+  | { kind: 'model'; to: string }
+  | { kind: 'instructions' }
+  | { kind: 'dataset'; id: string; on: boolean };
 
 export const instructionsChanged = (setup: PlaygroundSetup, base: string | undefined) =>
   setup.instructions !== undefined &&
@@ -835,7 +894,9 @@ export const changedFromStart = (
   const model = startModel(options, setup);
   const before = found.version.setup.datasets;
   return [
-    ...(model !== undefined && model !== setup.model ? [{ kind: 'model' as const }] : []),
+    ...(model !== undefined && model !== setup.model
+      ? [{ kind: 'model' as const, to: setup.model }]
+      : []),
     ...(instructionsChanged(setup, base) ? [{ kind: 'instructions' as const }] : []),
     ...setup.datasets
       .filter((d) => !before.includes(d))
@@ -848,7 +909,7 @@ export const changedFromStart = (
 
 export const changeText = (options: PlaygroundOptions, change: SetupChange, t: T = nbT) =>
   change.kind === 'model'
-    ? t('playground.changeModel')
+    ? t('playground.changeModel', { name: shortModelName(modelOf(options, change.to).name) })
     : change.kind === 'instructions'
       ? t('playground.changeInstructions')
       : t(change.on ? 'playground.changeDatasetOn' : 'playground.changeDatasetOff', {
@@ -900,19 +961,15 @@ export const workText = (
     : t('playground.workFlow', { strategy: title, flow: name, version: flow.version });
 };
 
+const kroner = { minimumFractionDigits: 2, maximumFractionDigits: 2 };
+
 export const priceText = (model: PlaygroundModelOption, f: Format = nbFormat, t: T = nbT) =>
   model.price
-    ? t('playground.pricePerThousand', {
-        input: f.number(model.price.inputPerThousand, { maximumFractionDigits: 4 }),
-        output: f.number(model.price.outputPerThousand, { maximumFractionDigits: 4 }),
+    ? t('playground.pricePerMillion', {
+        input: f.number(model.price.inputPerThousand * 1000, kroner),
+        output: f.number(model.price.outputPerThousand * 1000, kroner),
       })
     : notPricedLabel(t);
-
-export const modelFactsText = (model: PlaygroundModelOption, f: Format = nbFormat, t: T = nbT) =>
-  t('playground.modelFacts', {
-    where: t(locationShort[model.dataLocation]),
-    price: priceText(model, f, t),
-  });
 
 export type SetupPart = 'model' | 'instructions' | 'knowledge';
 

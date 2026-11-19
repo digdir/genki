@@ -216,8 +216,7 @@ export const playgroundUi = {
     work: 'Way of working',
     workFlow: '{strategy} “{flow}”, v{version}',
     workFlowShort: '{flow}, v{version}',
-    modelFacts: 'Data in {where} · {price}',
-    pricePerThousand: 'NOK {input} / {output}',
+    pricePerMillion: 'NOK\u00a0{input} / NOK\u00a0{output} per 1M tokens',
     instructionsLocked:
       'The way of working {work} has no instructions to replace. Change the steps in the draft instead.',
     openInLog: 'Open in the Log',
@@ -241,7 +240,7 @@ export const playgroundUi = {
       one: 'Source: {list}',
       other: 'Sources: {list}',
     },
-    changeModel: 'model',
+    changeModel: 'model {name}',
     changesFromStart: {
       one: '{count} change from {start}: {list}.',
       other: '{count} changes from {start}: {list}.',
@@ -256,6 +255,7 @@ export const playgroundUi = {
     timelineAnswer: 'Timeline of the answer',
     timelineHint: 'Click a step to see what went in and out',
     timelineSide: 'Timeline {key}: {summary}',
+    instantStep: '<1 ms',
     timelineNoSteps: 'No steps yet',
     setupOf: 'Setup {key}',
     hideSetup: 'Hide setup',

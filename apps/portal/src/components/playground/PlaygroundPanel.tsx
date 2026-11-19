@@ -1,4 +1,4 @@
-import { CodeIcon, XMarkIcon } from '@navikt/aksel-icons';
+import { XMarkIcon } from '@navikt/aksel-icons';
 import {
   Alert,
   Button,
@@ -1079,20 +1079,22 @@ export const PlaygroundPanel = ({
           }}
         />
       </Field>
-      {page && !comparing && messages.some((m) => !m.setups.b) ? (
-        <Button variant="secondary" type="button" onClick={newConversation}>
-          {t('playground.newConversation')}
-        </Button>
-      ) : null}
-      <BusyButton
-        variant="primary"
-        type="submit"
-        busy={busy}
-        busyLabel={page ? t('playground.runningShort') : t('playground.sending')}
-        aria-disabled={draft ? true : undefined}
-      >
-        {page ? t(comparing ? 'playground.runBoth' : 'playground.run') : t('playground.send')}
-      </BusyButton>
+      <div className="playground-send">
+        {page && !comparing && messages.some((m) => !m.setups.b) ? (
+          <Button variant="secondary" type="button" onClick={newConversation}>
+            {t('playground.newConversation')}
+          </Button>
+        ) : null}
+        <BusyButton
+          variant="primary"
+          type="submit"
+          busy={busy}
+          busyLabel={page ? t('playground.runningShort') : t('playground.sending')}
+          aria-disabled={draft ? true : undefined}
+        >
+          {page ? t(comparing ? 'playground.runBoth' : 'playground.run') : t('playground.send')}
+        </BusyButton>
+      </div>
     </form>
   );
 
@@ -1124,9 +1126,6 @@ export const PlaygroundPanel = ({
       </span>
     </div>
   );
-  const showCall = () =>
-    setCall({ title: t('playground.callRun'), body: callBody(currentInput()) });
-
   if (page && b) {
     const compared = messages.findLast((m) => m.setups.b);
     const sides = { a, b };
@@ -1178,15 +1177,9 @@ export const PlaygroundPanel = ({
         <div className="playground-compare-ask">
           {threadFoot}
           {inputPart}
-          <div className="playground-compare-note">
-            <span className="playground-subtle">
-              {t('playground.compareCostNote')} {sessionText}
-            </span>
-            <Button variant="tertiary" data-size="sm" onClick={showCall}>
-              <Icon icon={CodeIcon} size={18} />
-              {t('common.apiCall')}
-            </Button>
-          </div>
+          <p className="playground-subtle playground-compare-note">
+            {t('playground.compareCostNote')}
+          </p>
         </div>
         {callPanel}
       </section>
@@ -1210,13 +1203,11 @@ export const PlaygroundPanel = ({
             models={pickerModels}
             tenantName={tenantName}
             answerLanguage={answerLanguage}
-            sessionText={sessionText}
             onChange={(next) => {
               setA(next);
               remember(next, null);
             }}
             onAnswerLanguage={setAnswerLanguage}
-            onShowCall={showCall}
           />
           <section aria-label={t('playground.conversation')} className="playground-conversation">
             {shown.length === 0 && !busy ? (
