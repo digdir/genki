@@ -26,12 +26,12 @@ import type {
   DiscoveryRule,
   ModelApi,
   ModelEndpointInput,
-  ModelPrice,
   OperatorModel,
   Residency,
 } from '../../types';
 import { DialogError, ReasonDialog, SidePanel } from '../../ui';
 import { apisFor, familiesOf } from './area-data';
+import { fromPerMillion, priceInputText } from './prices';
 import { reasonError, ReasonField } from './reason-field';
 
 export const residencyLabel: Record<Residency, PlainKey> = {
@@ -869,12 +869,8 @@ export const PriceDialog = ({
   const [shown, setShown] = useState<string | undefined>();
   if (model && shown !== model.id) {
     setShown(model.id);
-    setInput(
-      model.price ? f.number(model.price.inputPerThousand, { maximumFractionDigits: 6 }) : '',
-    );
-    setOutput(
-      model.price ? f.number(model.price.outputPerThousand, { maximumFractionDigits: 6 }) : '',
-    );
+    setInput(model.price ? priceInputText(model.price.inputPerThousand, f) : '');
+    setOutput(model.price ? priceInputText(model.price.outputPerThousand, f) : '');
   }
   return (
     <ReasonDialog
@@ -888,14 +884,13 @@ export const PriceDialog = ({
       }}
       onConfirm={async (reason) => {
         if (!model) return;
-        const price = {
-          inputPerThousand: parsePrice(input),
-          outputPerThousand: parsePrice(output),
-        };
-        if (price.inputPerThousand === undefined || price.outputPerThousand === undefined)
+        const perMillionIn = parsePrice(input);
+        const perMillionOut = parsePrice(output);
+        if (perMillionIn === undefined || perMillionOut === undefined)
           throw new DialogError(t('endpoints.priceInvalid'));
-        await api.setModelPrice(model.id, price as ModelPrice, reason);
-        onSaved({ ...model, price: price as ModelPrice });
+        const price = fromPerMillion(perMillionIn, perMillionOut);
+        await api.setModelPrice(model.id, price, reason);
+        onSaved({ ...model, price });
       }}
     >
       <Textfield
