@@ -61,8 +61,8 @@ param consoleClientId string = ''
 param consoleIssuer string = ansattportenIssuer
 param consoleTokenEndpoint string = ''
 
-@description('Custom hostnames: api, portal, workspace, console. Empty strings use the generated Container Apps hostnames.')
-param hostnames object = { api: '', portal: '', workspace: '', console: '' }
+@description('Custom hostnames: api, portal, workspace, console, and assistant for the assistant host. Empty strings use the generated Container Apps hostnames.')
+param hostnames object = { api: '', portal: '', workspace: '', console: '', assistant: '' }
 
 @description('none: no custom domains. hostnames: add them without certificates (DNS must exist). certificates: managed certificates, run after hostnames.')
 @allowed(['none', 'hostnames', 'certificates'])
@@ -223,6 +223,10 @@ var assignedNames = filter(hostedHostnames, h => !empty(h.?subdomain ?? ''))
 var hostedNames = map(hostedHostnames, h => union(h, {
   hostname: toLower(empty(h.?subdomain ?? '') ? h.hostname : '${h.subdomain}.apps.${dnsZoneName}')
 }))
+var assistantNames = empty(hostnames.?assistant ?? '') || empty(platformTenant)
+  ? []
+  : [{ hostname: toLower(hostnames.assistant), tenant: platformTenant, stage: customDomainsStage }]
+var servedNames = concat(hostedNames, assistantNames)
 var suffix = uniqueString(resourceGroup().id)
 var allTags = union(tags, { system: 'genki', environment: environmentName })
 var postgresServerName = '${baseName}-pg-${suffix}'
@@ -523,7 +527,8 @@ module apps 'modules/containerapps.bicep' = {
       OPERATOR_SUBJECTS: operatorSubjects
       PLATFORM_TENANT: platformTenant
       EMPLOYEE_CLIENT_IDS: join(filter([portalClientId, workspaceClientId, consoleClientId], id => !empty(id)), ',')
-      GENAI_HOSTED_HOSTNAMES: join(map(hostedNames, h => '${h.hostname}=${h.tenant}'), ',')
+      GENAI_HOSTED_HOSTNAMES: join(map(servedNames, h => '${h.hostname}=${h.tenant}'), ',')
+      GENAI_ASSISTANT_HOSTNAME: assistantHostEnabled ? (hostnames.?assistant ?? '') : ''
     }
     webSettings: {
       ansattportenIssuer: ansattportenIssuer
@@ -608,8 +613,9 @@ module assistantHost 'modules/assistant-host.bicep' = if (assistantHostEnabled) 
     registryName: registryName
     appsImage: appsImage
     apiUpstream: 'https://${apps.outputs.fqdn}'
+    ansattportenIssuer: ansattportenIssuer
     bffProxyKey: assistantBffEnabled
-    hostedHostnames: hostedNames
+    hostedHostnames: servedNames
   }
 }
 
@@ -700,6 +706,16 @@ resource platformBackupLock 'Microsoft.Authorization/locks@2020-05-01' = if (loc
 
 var zoneSuffix = '.${dnsZoneName}'
 var zoneApps = filter(['api', 'portal', 'workspace', 'console'], app => !empty(hostnames[app]) && endsWith(hostnames[app], zoneSuffix))
+var assistantInZone = assistantHostEnabled && endsWith(hostnames.?assistant ?? '', zoneSuffix)
+var assistantRecords = assistantInZone
+  ? [
+      {
+        label: replace(hostnames.assistant, zoneSuffix, '')
+        target: assistantHost!.outputs.fqdn
+        verificationId: assistantHost!.outputs.verificationId
+      }
+    ]
+  : []
 
 module dns 'modules/dns.bicep' = if (createDnsZone && !empty(dnsZoneName) && infra) {
   name: 'dns'
@@ -711,6 +727,7 @@ module dns 'modules/dns.bicep' = if (createDnsZone && !empty(dnsZoneName) && inf
       label: replace(hostnames[app], zoneSuffix, '')
       target: apps.outputs.defaultFqdns[app]
     }]
+    otherRecords: assistantRecords
     hostedLabels: assistantHostEnabled ? map(assignedNames, h => '${toLower(h.subdomain)}.apps') : []
     hostedTarget: assistantHostEnabled ? assistantHost!.outputs.fqdn : ''
     hostedVerificationId: assistantHostEnabled ? assistantHost!.outputs.verificationId : ''

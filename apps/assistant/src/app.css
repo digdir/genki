@@ -30,11 +30,24 @@ body {
 }
 
 .ah-language {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: var(--ds-size-3);
   margin-inline-start: auto;
+}
+
+.ah-language > legend {
+  float: inline-start;
+  margin-inline-end: var(--ds-size-2);
 }
 
 .ah-main {
   padding: var(--ds-size-6);
+}
+
+.ah-main.ah-assistant {
+  padding: 0;
 }
 
 .ah-page {

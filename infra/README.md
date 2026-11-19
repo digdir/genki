@@ -268,6 +268,7 @@ Development mode is off: the image sets `NODE_ENV=production`, and the API refus
 | `portal.genki-test.digdir.cloud`    | `genai-test-portal`    |
 | `workspace.genki-test.digdir.cloud` | `genai-test-workspace` |
 | `console.genki-test.digdir.cloud`   | `genai-test-console`   |
+| `assistant.genki-test.digdir.cloud` | `genai-test-assistant` |
 
 `genki-test.digdir.cloud` is delegated to an Azure DNS zone the team controls. The template creates the zone (`createDnsZone`) with, per host name:
 
@@ -285,6 +286,8 @@ Custom domains are added in three runs, because Azure only issues a managed cert
 Certificates created outside the template, for example in the Azure portal, go in `existingCertificates` in the parameter file, by app. The certificates stage then binds them as they are and creates none of its own; Azure allows only one managed certificate per host name in an environment. genki-test uses this.
 
 Without the DNS zone, create the same CNAME and TXT records wherever `genki-test.digdir.cloud` is hosted.
+
+`assistant.genki-test.digdir.cloud` is the assistant host's (ADR 0061), bound only while `assistantHostEnabled` is on. Its app runs in its own environment, `<name>-hosted-env`, so its `TXT asuid.assistant` record carries that environment's verification id (output `assistantHost.verificationId`), and its managed certificate is created in that environment. It follows the same `CUSTOM_DOMAINS_STAGE` runs, bound on the host alongside the hosted hostnames below. The template sets `GENAI_ASSISTANT_HOSTNAME` on the API to it and opens it to `PLATFORM_TENANT` in `GENAI_HOSTED_HOSTNAMES`; it is not an entry in `hostedHostnames`.
 
 ### Hosted hostnames
 
@@ -320,7 +323,9 @@ Register one Ansattporten integration per app and environment: in Ansattporten's
 | Workspace | `https://workspace.<zone>/callback` | `https://workspace.<zone>/` |
 | Console   | `https://console.<zone>/callback`   | `https://console.<zone>/`   |
 
-Each asks for `openid profile`, the API audience `digdir:genai`, and `authorization_details` of type `ansattporten:altinn:resource` for the environment's Altinn resource: `urn:altinn:resource:digdir-genai-platform-test` in test, `urn:altinn:resource:digdir-genai-platform` in prod. Put the client ids in `PORTAL_CLIENT_ID`, `WORKSPACE_CLIENT_ID` and `CONSOLE_CLIENT_ID` of the matching GitHub environment.
+A service drawn by the assistant host logs in with its own Ansattporten client, the one its hosted Client names, registered with `https://<hostname>/auth/callback` and `https://<hostname>/` (for genki-test's own name, `https://assistant.genki-test.digdir.cloud/auth/callback`). It asks for `openid profile`, the Client's audience (its `oidc.audience`, or its client id) and the same `authorization_details`.
+
+The three apps each ask for `openid profile`, the API audience `digdir:genai`, and `authorization_details` of type `ansattporten:altinn:resource` for the environment's Altinn resource: `urn:altinn:resource:digdir-genai-platform-test` in test, `urn:altinn:resource:digdir-genai-platform` in prod. Put the client ids in `PORTAL_CLIENT_ID`, `WORKSPACE_CLIENT_ID` and `CONSOLE_CLIENT_ID` of the matching GitHub environment.
 
 The decision point needs, per environment, the Altinn resource, a Maskinporten client owned by Digdir with the scope `altinn:authorization/authorize`, and an Altinn subscription key: in tt02 and Maskinporten test for genki-test, in Altinn production (`https://platform.altinn.no`) and production Maskinporten (`https://maskinporten.no/`) for prod. Issues #42 and #43 describe them.
 

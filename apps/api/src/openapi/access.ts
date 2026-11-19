@@ -1228,7 +1228,12 @@ export const accessRoutes: RouteConfig[] = [
           service: z.string(),
           environment: z.string(),
           name: z.unknown(),
-          login: z.object({ issuer: z.string().nullable(), clientId: z.string() }),
+          login: z.object({
+            issuer: z.string().nullable(),
+            clientId: z.string(),
+            audience: z.string(),
+            altinnResource: z.string().nullable(),
+          }),
           languages: z
             .array(z.enum(['nb', 'en']))
             .describe(

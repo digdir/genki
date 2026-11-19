@@ -1,5 +1,10 @@
 import { createBff, InMemoryBffSessions } from './bff/index.js';
-import { hostedHostnamesFrom, hostView, reservedDomainsFrom } from './hosts.js';
+import {
+  assistantHostnameFrom,
+  hostedHostnamesFrom,
+  hostView,
+  reservedDomainsFrom,
+} from './hosts.js';
 import type { Server } from 'node:http';
 import { attachSessionUpgrade } from './session-upgrade.js';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
@@ -475,6 +480,7 @@ const processorRecords = processorRecordCheckOf(process.env);
 const hosting = {
   hostnames: hostedHostnamesFrom(process.env),
   reservedDomains: reservedDomainsFrom(process.env),
+  assistantHostname: assistantHostnameFrom(process.env),
 };
 const platform = await createPlatform({
   platformTenant,

@@ -4,6 +4,8 @@ param tags object
 param registryName string
 param appsImage string
 param apiUpstream string
+@description('The issuer the browser logs in with, which the host\'s CSP lets it reach.')
+param ansattportenIssuer string = ''
 param minReplicas int = 1
 param maxReplicas int = 3
 @description('Reads genai-proxy-key from the host\'s own Key Vault and turns on the BFF routes (ADR 0061).')
@@ -85,6 +87,7 @@ resource host 'Microsoft.App/containerApps@2025-02-02-preview' = {
             [
               { name: 'APP', value: 'assistant' }
               { name: 'API_UPSTREAM', value: apiUpstream }
+              { name: 'ANSATTPORTEN_ISSUER', value: ansattportenIssuer }
             ],
             bffProxyKey ? [{ name: 'GENAI_PROXY_KEY', secretRef: 'genai-proxy-key' }] : []
           )

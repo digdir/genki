@@ -106,6 +106,7 @@ param hostnames = {
   portal: 'portal.genki-test.digdir.cloud'
   workspace: 'workspace.genki-test.digdir.cloud'
   console: 'console.genki-test.digdir.cloud'
+  assistant: 'assistant.genki-test.digdir.cloud'
 }
 param customDomainsStage = readEnvironmentVariable('CUSTOM_DOMAINS_STAGE', 'none')
 param existingCertificates = {}

@@ -5,7 +5,7 @@ import {
   type ClientDefinition,
   type ClientStore,
 } from '@genai/identity';
-import type { HostingRules } from '../hosts.js';
+import { openedTo, type HostingRules } from '../hosts.js';
 import { t } from '../i18n/index.js';
 import { codeChallenge, createOidc, randomValue, TokenRefused, type Oidc } from './oidc.js';
 import {
@@ -161,10 +161,8 @@ export const createBff = (deps: BffDeps) => {
   const log = deps.log ?? (() => undefined);
 
   const hostOf = async (hostname: string): Promise<Host | undefined> => {
-    const tenant = deps.rules.hostnames.get(hostname);
+    const tenant = openedTo(deps.rules, hostname);
     if (!tenant) return undefined;
-    if (deps.rules.reservedDomains.some((d) => hostname === d || hostname.endsWith(`.${d}`)))
-      return undefined;
     const client = (await deps.clients.list(tenant)).find(
       (c) =>
         c.definition.metadata.tenant === tenant &&

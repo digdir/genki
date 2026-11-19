@@ -27,6 +27,7 @@ interface Resource {
 }
 interface Built {
   parameters: Record<string, { defaultValue?: unknown }>;
+  variables?: Record<string, string>;
   resources: Resource[];
 }
 
@@ -101,6 +102,31 @@ describe.skipIf(!hasAz && !process.env.CI)('the assistant host in the template',
     expect(vault.properties.template?.variables?.secretsUser).toBe(secretsUser);
     const text = JSON.stringify(host());
     expect(text).not.toMatch(/api-id|Microsoft\.DBforPostgreSQL|keyVaultUri|-kv-/);
+  });
+
+  it('binds genki’s own assistant hostname on the host app in the stages the other apps use', () => {
+    expect(main().variables?.assistantNames).toContain(
+      "createObject('hostname', toLower(parameters('hostnames').assistant), 'tenant', parameters('platformTenant'), 'stage', parameters('customDomainsStage'))",
+    );
+    expect(main().variables?.servedNames).toBe(
+      "[concat(variables('hostedNames'), variables('assistantNames'))]",
+    );
+    expect(module('assistant-host').properties.parameters?.hostedHostnames).toEqual({
+      value: "[variables('servedNames')]",
+    });
+    expect(read('infra/env/test.bicepparam')).toMatch(
+      /assistant: 'assistant\.genki-test\.digdir\.cloud'/,
+    );
+  });
+
+  it('opens the assistant hostname on the API only while the host runs, and verifies it against the host’s own environment', () => {
+    const api = JSON.stringify(module('containerapps').properties.parameters);
+    expect(api).toContain(
+      `"GENAI_ASSISTANT_HOSTNAME":"[if(parameters('assistantHostEnabled'), coalesce(tryGet(parameters('hostnames'), 'assistant'), ''), '')]"`,
+    );
+    expect(api).toContain("map(variables('servedNames')");
+    const dns = JSON.stringify(module('dns').properties.parameters);
+    expect(dns).toMatch(/'assistant-host'\), '[\d-]+'\)\.outputs\.verificationId\.value/);
   });
 
   it('the BFF proxy key is off by default and comes from each app’s own Key Vault', () => {

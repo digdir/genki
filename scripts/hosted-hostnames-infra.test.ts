@@ -191,13 +191,13 @@ describe.skipIf(!hasAz && !process.env.CI)('hosted hostnames in the template', (
       string
     >;
     expect(env.GENAI_HOSTED_HOSTNAMES).toBe(
-      "[join(map(variables('hostedNames'), lambda('h', format('{0}={1}', lambdaVariables('h').hostname, lambdaVariables('h').tenant))), ',')]",
+      "[join(map(variables('servedNames'), lambda('h', format('{0}={1}', lambdaVariables('h').hostname, lambdaVariables('h').tenant))), ',')]",
     );
   });
 
   it('binds hosted hostnames to the assistant host only, and keeps the four app hostnames on their apps', () => {
     expect(module('assistant-host').properties.parameters?.hostedHostnames?.value).toBe(
-      "[variables('hostedNames')]",
+      "[variables('servedNames')]",
     );
     const apps = module('containerapps').properties.parameters ?? {};
     expect(apps).not.toHaveProperty('hostedHostnames');

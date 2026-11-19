@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { LocaleProvider } from '@genai/i18n/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
 import { hostnameOf, inLanguage, isPageLink } from './host';
+import { browserLogin, type HostLogin } from './login';
 
 document.getAnimations ??= () => [];
 
@@ -13,7 +14,12 @@ const view = {
   service: 'klarsprak',
   environment: 'prod',
   name: { nb: 'Klarspråkassistenten', en: 'The plain language assistant' },
-  login: { issuer: null, clientId: 'klarsprak-host' },
+  login: {
+    issuer: 'https://login.example.no',
+    clientId: 'klarsprak-host',
+    audience: 'aud-ka',
+    altinnResource: 'urn:altinn:resource:ka',
+  },
   menu: [
     { label: 'Om', page: 'om' },
     { label: { nb: 'Hjelp', en: 'Help' }, href: 'https://example.no/hjelp' },
@@ -29,17 +35,52 @@ const genki =
   async (input) =>
     (routes[String(input)] ?? (() => json({ code: 'host_not_found' }, 404)))();
 
-const draw = (path: string, fetcher: typeof fetch, local = false, locale: 'nb' | 'en' = 'nb') =>
+const memory = () => {
+  const kept = new Map<string, string>();
+  return {
+    getItem: (key: string) => kept.get(key) ?? null,
+    setItem: (key: string, value: string) => void kept.set(key, value),
+    removeItem: (key: string) => void kept.delete(key),
+  };
+};
+
+const jwt = (claims: Record<string, unknown>) =>
+  `x.${btoa(JSON.stringify(claims)).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '')}.x`;
+
+const browser = (at = 'https://ka.example.no/') => {
+  const went: string[] = [];
+  const storage = memory();
+  const location = { url: new URL(at) };
+  const signIn = (login: HostLogin) =>
+    browserLogin({
+      ...login,
+      fetch: (input, init) => globalThis.fetch(input, init),
+      storage,
+      location: () => location.url,
+      navigate: (to) => went.push(to),
+    });
+  return { went, storage, location, signIn };
+};
+
+const draw = (
+  path: string,
+  fetcher: typeof fetch,
+  locale: 'nb' | 'en' = 'nb',
+  signIn = browser().signIn,
+) =>
   render(
     <LocaleProvider preference={locale}>
-      <App hostname="ka.example.no" path={path} local={local} fetcher={fetcher} />
+      <App hostname="ka.example.no" path={path} signIn={signIn} fetcher={fetcher} />
     </LocaleProvider>,
   );
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 describe('the assistant host', () => {
-  it('draws the service’s name and menu, and a sign-in notice where sign-in is not built', async () => {
+  it('draws the service’s name and menu, and a sign-in button', async () => {
     draw('/', genki({ '/api/v1/hosts/ka.example.no': () => json(view) }));
 
     const name = await screen.findByRole('link', { name: 'Klarspråkassistenten' });
@@ -49,12 +90,19 @@ describe('the assistant host', () => {
     const help = screen.getByRole('link', { name: 'Hjelp' });
     expect(help.getAttribute('target')).toBe('_blank');
     expect(help.getAttribute('rel')).toBe('noopener noreferrer');
-    expect(screen.getByText('Innlogging med Ansattporten kommer snart.')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Logg inn lokalt' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Logg inn' })).toBeTruthy();
+  });
+
+  it('offers no sign-in where genki names no issuer', async () => {
+    const without = { ...view, login: { ...view.login, issuer: null } };
+    draw('/', genki({ '/api/v1/hosts/ka.example.no': () => json(without) }));
+
+    expect(await screen.findByText('Innlogging er ikke satt opp her.')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Logg inn' })).toBeNull();
   });
 
   it('follows the person’s language in the service’s texts', async () => {
-    draw('/', genki({ '/api/v1/hosts/ka.example.no': () => json(view) }), false, 'en');
+    draw('/', genki({ '/api/v1/hosts/ka.example.no': () => json(view) }), 'en');
 
     expect(await screen.findByRole('link', { name: 'The plain language assistant' })).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Help' })).toBeTruthy();
@@ -114,21 +162,121 @@ describe('the assistant host', () => {
     expect(performance.now() - started).toBeLessThan(100);
   });
 
-  it('logs in through the dev login when it runs locally', async () => {
+  it('starts no login on a hostname genki does not answer for, such as one opened to another tenant', async () => {
     const asked: string[] = [];
-    const fetcher: typeof fetch = async (input, init) => {
-      asked.push(`${init?.method ?? 'GET'} ${String(input)}`);
-      if (String(input) === '/api/v1/hosts/ka.example.no') return json(view);
-      if (String(input) === '/api/mock/dev-login') return json({ name: 'Kari', token: 't' });
-      return json({ data: [] });
+    const notHere: typeof fetch = async (input) => {
+      asked.push(String(input));
+      return json({ type: 'urn:genai:problem:host-not-found', status: 404 }, 404);
     };
-    draw('/', fetcher, true);
+    vi.stubGlobal('fetch', notHere);
+    draw('/', notHere);
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Logg inn lokalt' }));
+    expect(
+      await screen.findByRole('heading', { name: 'Her er det ingen assistent.' }),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Logg inn' })).toBeNull();
+    expect(asked).toEqual(['/api/v1/hosts/ka.example.no']);
+  });
 
-    expect(await screen.findByText('Tjenesten har ikke noe oppsett for assistenten.')).toBeTruthy();
-    expect(asked).toContain('POST /api/mock/dev-login');
+  it('sends the person to the issuer with the host’s client, PKCE and its own callback', async () => {
+    const at = browser('https://ka.example.no/?q=1');
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL) =>
+      String(input) === 'https://login.example.no/.well-known/openid-configuration'
+        ? json({
+            issuer: 'https://login.example.no',
+            authorization_endpoint: 'https://login.example.no/authorize',
+            token_endpoint: 'https://login.example.no/token',
+          })
+        : json({}, 404),
+    );
+    draw('/', genki({ '/api/v1/hosts/ka.example.no': () => json(view) }), 'nb', at.signIn);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Logg inn' }));
+
+    await vi.waitFor(() => expect(at.went).toHaveLength(1));
+    const authorize = new URL(at.went[0] ?? '');
+    expect(authorize.origin + authorize.pathname).toBe('https://login.example.no/authorize');
+    const q = authorize.searchParams;
+    expect(q.get('client_id')).toBe('klarsprak-host');
+    expect(q.get('redirect_uri')).toBe('https://ka.example.no/auth/callback');
+    expect(q.get('resource')).toBe('aud-ka');
+    expect(q.get('response_type')).toBe('code');
+    expect(q.get('code_challenge_method')).toBe('S256');
+    expect(JSON.parse(q.get('authorization_details') ?? '[]')).toEqual([
+      { type: 'ansattporten:altinn:resource', resource: 'urn:altinn:resource:ka' },
+    ]);
+    expect(q.get('code_challenge')).toMatch(/^[\w-]{43}$/);
+    const pending = JSON.parse(at.storage.getItem('assistant.klarsprak-host.login') ?? '{}');
+    expect(q.get('state')).toBe(pending.state);
+    expect(q.get('nonce')).toBe(pending.nonce);
+    expect(pending.returnTo).toBe('/?q=1');
+  });
+
+  it('draws the service’s layout once the callback has exchanged the code', async () => {
+    const at = browser('https://ka.example.no/auth/callback?code=c1&state=s1');
+    at.storage.setItem(
+      'assistant.klarsprak-host.login',
+      JSON.stringify({ state: 's1', verifier: 'v1', nonce: 'n1', returnTo: '/' }),
+    );
+    const posted: string[] = [];
+    const asked: string[] = [];
+    const layout = {
+      version: 1,
+      zones: { primary: [], main: [{ block: 'chat' }], secondary: [] },
+      profile: { assistantName: 'Klarspråkassistenten', suggestions: ['Skriv om dette'] },
+    };
+    const token = jwt({ sub: 'kari', exp: 4_102_444_800 });
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      asked.push(`${url} ${new Headers(init?.headers).get('authorization') ?? ''}`);
+      if (url === '/api/v1/hosts/ka.example.no') return json(view);
+      if (url.endsWith('/.well-known/openid-configuration'))
+        return json({
+          issuer: 'https://login.example.no',
+          authorization_endpoint: 'https://login.example.no/authorize',
+          token_endpoint: 'https://login.example.no/token',
+        });
+      if (url === 'https://login.example.no/token') {
+        posted.push(String(init?.body));
+        return json({ access_token: token, id_token: jwt({ nonce: 'n1', name: 'Kari Nordmann' }) });
+      }
+      if (url === '/api/v1/models') return json({ data: [{ id: 'klarsprak__default' }] });
+      if (url === '/api/v1/models/klarsprak__default/interface') return json({ layout });
+      return json({ data: [] });
+    });
+    draw('/auth/callback?code=c1&state=s1', globalThis.fetch, 'nb', at.signIn);
+
+    expect(await screen.findByText('Skriv om dette')).toBeTruthy();
+    const body = new URLSearchParams(posted[0]);
+    expect(body.get('code')).toBe('c1');
+    expect(body.get('code_verifier')).toBe('v1');
+    expect(body.get('redirect_uri')).toBe('https://ka.example.no/auth/callback');
+    expect(asked).toContain(`/api/v1/models Bearer ${token}`);
     expect(screen.getByRole('button', { name: 'Logg ut' })).toBeTruthy();
+    expect(at.storage.getItem('assistant.klarsprak-host.login')).toBeNull();
+  });
+
+  it('refuses a callback whose state is not the one it sent', async () => {
+    const at = browser('https://ka.example.no/auth/callback?code=c1&state=forged');
+    at.storage.setItem(
+      'assistant.klarsprak-host.login',
+      JSON.stringify({ state: 's1', verifier: 'v1', nonce: 'n1', returnTo: '/' }),
+    );
+    const asked: string[] = [];
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL) => {
+      asked.push(String(input));
+      return json({}, 404);
+    });
+    draw(
+      '/auth/callback?code=c1&state=forged',
+      genki({ '/api/v1/hosts/ka.example.no': () => json(view) }),
+      'nb',
+      at.signIn,
+    );
+
+    expect(await screen.findByText('Innloggingen mislyktes. Prøv igjen.')).toBeTruthy();
+    expect(asked).toEqual([]);
+    expect(screen.queryByRole('button', { name: 'Logg ut' })).toBeNull();
   });
 
   it('draws the layout’s texts in the reader’s language, since the blocks take one wording', () => {

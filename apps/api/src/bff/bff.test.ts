@@ -65,6 +65,8 @@ const setup = async (options: { secretHosts?: string[] } = {}) => {
     ['nynorsk-host', 'nynorsk.example.no'],
     ['ola-host', 'ola.example.no'],
     ['twin-host', 'twin-a.example.no'],
+    ['apps-host', 'kunnskap.apps.genki-test.digdir.cloud'],
+    ['zone-host', 'annen.genki-test.digdir.cloud'],
   ] as const)
     mock.clients.register({
       clientId: id,
@@ -80,6 +82,8 @@ const setup = async (options: { secretHosts?: string[] } = {}) => {
     hosted(ORG_A, 'nynorsk-host', 'nynorsk.example.no'),
     hosted(ORG_B, 'ola-host', 'ola.example.no'),
     hosted(ORG_A, 'twin-host', 'twin-a.example.no', ['twin-b.example.no']),
+    hosted(ORG_A, 'apps-host', 'kunnskap.apps.genki-test.digdir.cloud'),
+    hosted(ORG_A, 'zone-host', 'annen.genki-test.digdir.cloud'),
   ])
     await clients.save({ definition, version: 1, updatedAt: '', updatedBy: 'test' });
   const secrets: ClientSecrets = {
@@ -118,6 +122,8 @@ const setup = async (options: { secretHosts?: string[] } = {}) => {
         ['ola.example.no', ORG_B],
         ['twin-a.example.no', ORG_A],
         ['twin-b.example.no', ORG_A],
+        ['kunnskap.apps.genki-test.digdir.cloud', ORG_A],
+        ['annen.genki-test.digdir.cloud', ORG_A],
       ]),
       reservedDomains: defaultReservedDomains,
     },
@@ -363,6 +369,20 @@ describe('the BFF in front of the API', () => {
       s.api,
     );
     expect(s.seen.at(-1)?.headers.get('authorization')).toBeNull();
+  });
+
+  it('signs in on a hostname by the same rule the host lookup uses: an assigned apps. name, never another name in genki’s zones', async () => {
+    const assigned = await s.bff.handle(
+      s.via('/bff/auth/login', { host: 'kunnskap.apps.genki-test.digdir.cloud' }),
+      s.api,
+    );
+    expect(assigned.status).toBe(302);
+    expect(assigned.headers.get('location')).toMatch(/^https?:\/\/[^/]+\/authorize\?/);
+    const reserved = await s.bff.handle(
+      s.via('/bff/auth/login', { host: 'annen.genki-test.digdir.cloud' }),
+      s.api,
+    );
+    expect(reserved.status).not.toBe(302);
   });
 
   it('trusts no forwarded host without the proxy key', async () => {

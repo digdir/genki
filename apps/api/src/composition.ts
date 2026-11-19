@@ -2313,6 +2313,7 @@ export const createPlatform = async (input: PlatformInput) => {
       configEntries,
       rules: hosting,
       issuer: input.endpoints?.issuer,
+      altinnResource: input.endpoints?.altinnResource,
     });
     app.use('*', clientCors(clients));
     for (const path of [

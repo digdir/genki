@@ -45,7 +45,13 @@ const client = (spec: Record<string, unknown> = {}) => ({
   },
 });
 
-const boot = async (options: { lockdown?: boolean } = {}) => {
+const boot = async (
+  options: {
+    lockdown?: boolean;
+    assistantHostname?: string;
+    endpoints?: { issuer: string; altinnResource: string };
+  } = {},
+) => {
   const keys = new InMemoryTenantApiKeys();
   const configEntries = new InMemoryConfigEntryStore();
   const platform = await createPlatform({
@@ -64,13 +70,17 @@ const boot = async (options: { lockdown?: boolean } = {}) => {
         ['ka.example.no', digdir],
         ['nynorsk.example.no', digdir],
         ['ola.example.no', other],
+        ['assistant.genki-test.digdir.cloud', digdir],
+        ['annen.genki-test.digdir.cloud', digdir],
         ['kunnskap.apps.genki-test.digdir.cloud', digdir],
         ['portal.genki-test.digdir.cloud', digdir],
         ['a.kunnskap.apps.genki-test.digdir.cloud', digdir],
       ]),
       reservedDomains: defaultReservedDomains,
+      assistantHostname: options.assistantHostname,
     },
     ...(options.lockdown ? { lockdown: { configuredKeys: new Set<string>() } } : {}),
+    ...(options.endpoints ? { endpoints: options.endpoints } : {}),
     authenticate: async (request) => {
       const person =
         principals[request.headers.get('authorization')?.replace(/^Bearer /, '') ?? ''];
@@ -148,7 +158,12 @@ describe('the assistant host', () => {
       service: 'klarsprak',
       environment: 'prod',
       name: 'Klarspråkassistenten',
-      login: { issuer: null, clientId: 'klarsprak-host' },
+      login: {
+        issuer: null,
+        clientId: 'klarsprak-host',
+        audience: 'klarsprak-host',
+        altinnResource: null,
+      },
       languages: ['nb', 'en'],
       theme: null,
       menu: shown.menu,
@@ -230,6 +245,75 @@ describe('the assistant host', () => {
     expect(forged.status).toBe(404);
   });
 
+  it('names what a hosted client asks for at login: the issuer, its audience and the Altinn resource', async () => {
+    const { call, publish, saveClient } = await boot({
+      endpoints: {
+        issuer: 'https://login.example.no',
+        altinnResource: 'urn:altinn:resource:digdir-genai-platform',
+      },
+    });
+    expect((await publish(service('klarsprak', shown))).ok).toBe(true);
+    const withAudience = client({
+      oidc: {
+        clientId: 'klarsprak-host',
+        audience: 'digdir:klarsprak',
+        redirectUris: ['https://ka.example.no/auth/callback'],
+      },
+    });
+    expect((await saveClient('klarsprak-host', withAudience)).status).toBe(200);
+
+    expect(await (await call('/v1/hosts/ka.example.no')).json()).toMatchObject({
+      login: {
+        issuer: 'https://login.example.no',
+        clientId: 'klarsprak-host',
+        audience: 'digdir:klarsprak',
+        altinnResource: 'urn:altinn:resource:digdir-genai-platform',
+      },
+    });
+  });
+
+  it('genki’s own assistant hostname is the one name in its zones a hosted client may claim', async () => {
+    const { call, publish, saveClient } = await boot({
+      assistantHostname: 'assistant.genki-test.digdir.cloud',
+    });
+    expect((await publish(service('klarsprak', shown))).ok).toBe(true);
+    const on = (hostname: string) =>
+      client({
+        oidc: { clientId: 'klarsprak-host', redirectUris: [`https://${hostname}/auth/callback`] },
+        hostnames: [{ hostname }],
+      });
+
+    const elsewhere = await saveClient('klarsprak-host', on('annen.genki-test.digdir.cloud'));
+    expect(elsewhere.status).toBe(400);
+    expect((await errorsOf(elsewhere))[0]?.message).toMatch(/^hostname_not_allowed/);
+
+    expect(
+      (await saveClient('klarsprak-host', on('assistant.genki-test.digdir.cloud'))).status,
+    ).toBe(200);
+    expect((await call('/v1/hosts/assistant.genki-test.digdir.cloud')).status).toBe(200);
+    expect((await call('/v1/hosts/annen.genki-test.digdir.cloud')).status).toBe(404);
+  });
+
+  it('genki’s own assistant hostname stays closed while no operator opens it to the tenant', async () => {
+    const { call, publish, saveClient } = await boot({
+      assistantHostname: 'assistant.genki-test.digdir.cloud',
+    });
+    expect((await publish(service('klarsprak', shown, other))).ok).toBe(true);
+    const claim = client({
+      oidc: {
+        clientId: 'klarsprak-host',
+        redirectUris: ['https://assistant.genki-test.digdir.cloud/auth/callback'],
+      },
+      hostnames: [{ hostname: 'assistant.genki-test.digdir.cloud' }],
+    });
+
+    const res = await saveClient('klarsprak-host', claim, 'ola', other);
+
+    expect(res.status).toBe(400);
+    expect((await errorsOf(res))[0]?.message).toMatch(/^hostname_not_allowed/);
+    expect((await call('/v1/hosts/assistant.genki-test.digdir.cloud')).status).toBe(404);
+  });
+
   it('a tenant cannot claim a hostname opened to another tenant', async () => {
     const { call, publish, saveClient } = await boot();
     expect((await publish(service('klarsprak', shown, other))).ok).toBe(true);
@@ -258,6 +342,37 @@ describe('names genki assigns in its own zone', () => {
       expect(res.status, refused).toBe(400);
       expect((await errorsOf(res))[0]?.message).toMatch(/^hostname_not_allowed/);
     }
+  });
+
+  it('answers a hosted page for an assigned apps. name opened to the tenant', async () => {
+    const { call, publish, saveClient } = await boot();
+    expect((await publish(service('klarsprak', shown))).ok).toBe(true);
+    const hostname = 'kunnskap.apps.genki-test.digdir.cloud';
+    expect((await saveClient('klarsprak-host', client({ hostnames: [{ hostname }] }))).status).toBe(
+      200,
+    );
+
+    const res = await call(`/v1/hosts/${hostname}`);
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ tenant: digdir, service: 'klarsprak' });
+    expect((await call(`/v1/hosts/${hostname}/pages/om`)).status).toBe(200);
+  });
+
+  it('answers the same 404 for an apps. name no operator has opened', async () => {
+    const { call, publish, saveClient } = await boot();
+    expect((await publish(service('klarsprak', shown))).ok).toBe(true);
+    const opened = 'kunnskap.apps.genki-test.digdir.cloud';
+    expect(
+      (await saveClient('klarsprak-host', client({ hostnames: [{ hostname: opened }] }))).status,
+    ).toBe(200);
+
+    const res = await call('/v1/hosts/annet.apps.genki-test.digdir.cloud');
+
+    expect(res.status).toBe(404);
+    expect((await res.json()) as { type: string }).toMatchObject({
+      type: 'urn:genai:problem:host-not-found',
+    });
   });
 });
 
