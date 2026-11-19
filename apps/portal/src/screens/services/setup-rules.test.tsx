@@ -164,6 +164,26 @@ describe('what Oppsett says is missing', () => {
     expect(screen.queryByText('Risikonivået må bekreftes før publisering')).toBeNull();
   });
 
+  it('counts an unconfirmed high risk the check already reports as one missing thing, listed once', async () => {
+    await openService('#/services/rapportassistenten/setup/risk', {
+      draft: withSpec({ riskClass: 'high', riskConfirmation: undefined }),
+      reply: checks([
+        {
+          path: 'spec.riskConfirmation',
+          message:
+            'risk class high must be confirmed by a person with the publish right before publishing',
+        },
+      ]),
+    });
+    const missing = await screen.findByRole('heading', { name: 'Dette mangler før publisering' });
+    const list = within(missing.parentElement as HTMLElement).getByRole('list');
+    expect(within(list).getAllByRole('listitem')).toHaveLength(1);
+    expect(
+      await screen.findByText('Risiko og KI-forordningen mangler før publisering'),
+    ).toBeTruthy();
+    expect(screen.queryByText(/ting mangler før publisering/)).toBeNull();
+  });
+
   it('leaves a minimal risk without a confirmation as done', async () => {
     await openService('#/services/rapportassistenten/setup', {
       draft: withSpec({ riskClass: 'minimal', riskConfirmation: undefined }),
@@ -251,7 +271,7 @@ describe('Formål og målgruppe', () => {
   it('sums up Språk og eksempler when closed and offers no Nynorsk tab', async () => {
     await openService('#/services/rapportassistenten/setup/purpose');
     const more = (await screen.findByText('Språk og eksempler')).closest('details') as HTMLElement;
-    expect(within(more).getByText('Språk: bokmål, English')).toBeTruthy();
+    expect(within(more).getByText('Språk: bokmål, engelsk')).toBeTruthy();
     expect(within(more).getByText(/^Eksempler på godt resultat: \d+$/)).toBeTruthy();
     expect(within(more).getByText(/^Innebygde instruksjoner: \d$/)).toBeTruthy();
     fireEvent.click(within(more).getByText('Språk og eksempler'));

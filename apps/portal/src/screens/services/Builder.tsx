@@ -534,11 +534,17 @@ export const Builder = ({
   }, [discarding, discardedTo]);
 
   const addressed = route.segments[2];
+  const unshownArea =
+    isNew &&
+    section === 'setup' &&
+    !!detail &&
+    (setupAreas as string[]).includes(detail) &&
+    !Object.values(areaOfSection).includes(detail as SetupArea);
   useEffect(() => {
-    if (!addressed || addressed === section) return;
-    const alias = section === routeSection && detail ? `/${detail}` : '';
+    if (!addressed || (addressed === section && !unshownArea)) return;
+    const alias = section === routeSection && detail && !unshownArea ? `/${detail}` : '';
     window.location.replace(`#${servicePath(routeId, section, alias)}`);
-  }, [addressed, section, routeSection, routeId, detail]);
+  }, [addressed, section, routeSection, routeId, detail, unshownArea]);
 
   useEffect(() => {
     const target: SectionId | undefined =
@@ -1400,7 +1406,8 @@ export const Builder = ({
     return { name: changeNames.model(mid), residency: found?.residency, price: found?.price };
   };
   const publishedVersion = liveVersion?.version ?? current;
-  const riskProblem = riskOpen ? t('serviceDraft.missingRisk') : undefined;
+  const riskChecked = live && checkProblems.some((p) => areaOfPath(p.path) === 'risk');
+  const riskProblem = riskOpen && !riskChecked ? t('serviceDraft.missingRisk') : undefined;
   const areaProblems = new Map<SetupArea, string[]>();
   for (const p of live ? checkProblems : []) {
     const area = areaOfPath(p.path);

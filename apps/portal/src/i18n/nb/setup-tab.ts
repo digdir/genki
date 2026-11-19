@@ -374,7 +374,7 @@ export const setupList = defineNamespace({
   builtInFact: 'Innebygde instruksjoner: {count}',
   languageNb: 'bokmål',
   languageNn: 'nynorsk',
-  languageEn: 'English',
+  languageEn: 'engelsk',
   missingHeading: 'Dette mangler før publisering',
   riskRequiredSummary: 'Kreves før publisering',
   modelAreaSummary: '{name} · {where}',
