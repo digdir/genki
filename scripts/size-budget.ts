@@ -11,6 +11,7 @@ export const budgets: Record<string, number> = {
   portal: 400_000,
   console: 380_000,
   workspace: 200_000,
+  assistant: 260_000,
   docs: 300_000,
 };
 

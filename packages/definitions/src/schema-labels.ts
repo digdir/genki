@@ -285,6 +285,22 @@ const interfaceFields: Record<string, Pair> = {
       [`layout.${path}.en`, [`${nb} på engelsk`, `${en} in English`]],
     ]),
   ),
+  menu: ['Meny', 'Menu'],
+  'menu.page': ['Side', 'Page'],
+  'menu.href': ['Lenke', 'Link'],
+  pages: ['Sider', 'Pages'],
+  'pages.id': ['Adresse', 'Address'],
+  ...Object.fromEntries(
+    Object.entries({
+      'menu.label': ['Tekst i menyen', 'Text in the menu'],
+      'pages.title': ['Tittel', 'Title'],
+      'pages.body': ['Innhold i Markdown', 'Content in Markdown'],
+    } satisfies Record<string, Pair>).flatMap(([path, [nb, en]]): [string, Pair][] => [
+      [path, [nb, en]],
+      [`${path}.nb`, [`${nb} på bokmål`, `${en} in Norwegian Bokmål`]],
+      [`${path}.en`, [`${nb} på engelsk`, `${en} in English`]],
+    ]),
+  ),
 };
 
 const interfaceLabels = (at: 0 | 1, root: LabelText): Texts => ({

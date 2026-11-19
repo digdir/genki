@@ -10,6 +10,7 @@ import {
   createMockAnsattporten,
   createSigningKey,
   createTokenVerifier,
+  isHostname,
   InMemoryApiKeys,
   InMemoryClients,
   keyGrantPolicy,
@@ -117,6 +118,99 @@ describe('client definitions', () => {
     const all = await clients.list();
     expect(originAllowed(all, 'http://localhost:5177')).toBe(true);
     expect(originAllowed(all, 'http://localhost:5178')).toBe(false);
+  });
+});
+
+describe('hosted clients', () => {
+  const hosted = (overrides: Partial<ClientDefinition['spec']> = {}) =>
+    ka({
+      hosted: true,
+      environments: ['test', 'prod'],
+      hostnames: [
+        { hostname: 'test.kunnskap.digdir.cloud', environment: 'test' },
+        { hostname: 'kunnskap.digdir.cloud', environment: 'prod' },
+      ],
+      allowedOrigins: [],
+      ...overrides,
+    });
+
+  it('keeps a hosted client’s origins to its hostnames’ origins', () => {
+    const checked = checkClient(hosted({ allowedOrigins: ['https://elsewhere.example.no'] }), []);
+    if (!checked.ok) throw new Error(JSON.stringify(checked.errors));
+    expect(checked.definition.spec.allowedOrigins).toEqual([
+      'https://test.kunnskap.digdir.cloud',
+      'https://kunnskap.digdir.cloud',
+    ]);
+  });
+
+  it('names prod for a hostname that names no environment', () => {
+    const checked = checkClient(
+      hosted({ environments: undefined, hostnames: [{ hostname: 'ka.example.no' }] as never }),
+      [],
+    );
+    if (!checked.ok) throw new Error(JSON.stringify(checked.errors));
+    expect(checked.definition.spec.hostnames).toEqual([
+      { hostname: 'ka.example.no', environment: 'prod' },
+    ]);
+  });
+
+  it.each([
+    ['a hosted client without hostnames', { hostnames: [] }],
+    ['a hosted server client', { kind: 'server' as const, oidc: undefined }],
+    ['hostnames on a client that is not hosted', { hosted: false }],
+    [
+      'a hostname listed twice',
+      {
+        hostnames: [
+          { hostname: 'ka.example.no', environment: 'prod' },
+          { hostname: 'ka.example.no', environment: 'test' },
+        ],
+      },
+    ],
+    [
+      'an environment the client may not use',
+      { hostnames: [{ hostname: 'ka.example.no', environment: 'qa' }] },
+    ],
+    [
+      'more than four hostnames',
+      {
+        hostnames: ['a', 'b', 'c', 'd', 'e'].map((x) => ({
+          hostname: `${x}.example.no`,
+          environment: 'prod',
+        })),
+      },
+    ],
+  ])('refuses %s', (_, overrides) => {
+    expect(checkClient(hosted(overrides), []).ok).toBe(false);
+  });
+
+  it.each([
+    '*.example.no',
+    '10.0.0.1',
+    'KA.example.no',
+    'ka.example.no:443',
+    'localhost',
+    'ka..example.no',
+    '-ka.example.no',
+    `${'a'.repeat(63)}.${'b'.repeat(63)}.${'c'.repeat(63)}.${'d'.repeat(60)}.no`,
+  ])('refuses %s as a hostname', (name) => {
+    expect(isHostname(name)).toBe(false);
+  });
+
+  it('refuses a hostname longer than 253 characters before reading its labels', () => {
+    const name = (top: string) => `${'a'.repeat(63)}.${'b'.repeat(63)}.${'c'.repeat(63)}.${top}`;
+    expect(name('d'.repeat(61))).toHaveLength(253);
+    expect(isHostname(name('d'.repeat(61)))).toBe(true);
+    expect(isHostname(name('d'.repeat(62)))).toBe(false);
+  });
+
+  it('reads the hardest 253-character hostname in linear time', () => {
+    const dashes = `a${'-'.repeat(62)}`;
+    const hard = `${[dashes, dashes, dashes].join('.')}.${'a'.repeat(61)}`;
+    expect(hard).toHaveLength(253);
+    const started = performance.now();
+    expect(isHostname(hard)).toBe(false);
+    expect(performance.now() - started).toBeLessThan(1_000);
   });
 });
 

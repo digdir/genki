@@ -174,6 +174,7 @@ export const problems = defineNamespace({
   status405: 'Metoden støttes ikke her',
   status409: 'Konflikt',
   serviceArchivedTitle: 'Tjenesten er arkivert',
+  hostNotFoundTitle: 'Ingen tjeneste på dette vertsnavnet',
   status413: 'Forespørselen er for stor',
   status415: 'Formatet støttes ikke',
   status422: 'Endringen er ugyldig',

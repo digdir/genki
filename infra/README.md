@@ -6,19 +6,20 @@ Bicep for genki's Azure environments: test (`env/test.bicepparam`, `genki-test.d
 
 ## What gets created (one resource group per environment)
 
-| Resource                                   | Notes                                                                                                                                                             |
-| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Virtual network                            | `apps` subnet (/23, delegated to Container Apps), `postgres` subnet (delegated to Postgres Flexible Server)                                                       |
-| Container Apps environment                 | The six container apps below, the shared `data` volume, managed certificates                                                                                      |
-| Container registry (Basic)                 | No admin user; the apps pull with their identity (AcrPull), the deploy identity pushes (AcrPush)                                                                  |
-| Key Vault                                  | RBAC only, purge protection; the apps read secrets with Key Vault Secrets User                                                                                    |
-| Postgres Flexible Server 17                | Private networking only, Entra ID auth only (no passwords), database `genai`                                                                                      |
-| Storage account with the file share `data` | Mounted at `/data` in the API and worker: uploads and other blobs (`BLOB_DIR=/data/blobs`)                                                                        |
-| Blob container `conversions`               | In the same account: converters' native output (ADR 0042), blob versioning, earlier versions deleted 30 days after they were written, the knowledge worker writes |
-| Log Analytics and Application Insights     | The environment's managed OpenTelemetry agent sends traces and logs to Application Insights                                                                       |
-| Alerts (`alertsEnabled`)                   | Action group `<name>-alerts`, an availability test on the API's `/health`, the alert rules and the budgets, see the [runbook](../docs/runbook.md#alerts)          |
-| Backups (`backupsEnabled`)                 | A Recovery Services vault for the share `data`, the nightly database copy's job, identity and storage account, see [Backups](#backups)                            |
-| DNS zone (optional, `createDnsZone`)       | `genki-test.digdir.cloud` or `genki.digdir.cloud` with a CNAME and a validation TXT record per host name                                                          |
+| Resource                                     | Notes                                                                                                                                                                              |
+| -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Virtual network                              | `apps` subnet (/23, delegated to Container Apps), `postgres` subnet (delegated to Postgres Flexible Server)                                                                        |
+| Container Apps environment                   | The six container apps below, the shared `data` volume, managed certificates                                                                                                       |
+| Container registry (Basic)                   | No admin user; the apps pull with their identity (AcrPull), the deploy identity pushes (AcrPush)                                                                                   |
+| Key Vault                                    | RBAC only, purge protection; the apps read secrets with Key Vault Secrets User                                                                                                     |
+| Postgres Flexible Server 17                  | Private networking only, Entra ID auth only (no passwords), database `genai`                                                                                                       |
+| Storage account with the file share `data`   | Mounted at `/data` in the API and worker: uploads and other blobs (`BLOB_DIR=/data/blobs`)                                                                                         |
+| Blob container `conversions`                 | In the same account: converters' native output (ADR 0042), blob versioning, earlier versions deleted 30 days after they were written, the knowledge worker writes                  |
+| Log Analytics and Application Insights       | The environment's managed OpenTelemetry agent sends traces and logs to Application Insights                                                                                        |
+| Alerts (`alertsEnabled`)                     | Action group `<name>-alerts`, an availability test on the API's `/health`, the alert rules and the budgets, see the [runbook](../docs/runbook.md#alerts)                           |
+| Backups (`backupsEnabled`)                   | A Recovery Services vault for the share `data`, the nightly database copy's job, identity and storage account, see [Backups](#backups)                                             |
+| Assistant host (`assistantHostEnabled`, off) | `<name>-assistant` in its own environment `<name>-hosted-env`, identity `<name>-assistant-id` with AcrPull only, Key Vault `<name>-hostkv` for the host alone (ADR 0061, ADR 0062) |
+| DNS zone (optional, `createDnsZone`)         | `genki-test.digdir.cloud` or `genki.digdir.cloud` with a CNAME and a validation TXT record per host name                                                                           |
 
 From `KNOWLEDGE_SERVER_STAGE=server` on, also the environment's knowledge server in a network of its own, the knowledge identities and the principals job: see [Knowledge server](#knowledge-server).
 

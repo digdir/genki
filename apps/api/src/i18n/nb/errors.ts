@@ -94,6 +94,18 @@ export const catalogErrors = defineNamespace({
   onlyTenantChangesClients: 'bare virksomheten eller en operatør endrer klientene',
   clientOtherTenant: 'klienten tilhører en annen virksomhet',
   onlyTenantRemovesClients: 'bare virksomheten eller en operatør fjerner klientene',
+  hostedInLockdown:
+    'i låst modus er det bare en plattformoperatør som bestemmer om genki er vert for en klient',
+  hostedClientIdInLockdown:
+    'i låst modus er det bare en plattformoperatør som endrer klient-id-en til en klient genki er vert for',
+  onlyOperatorHosts: 'bare en plattformoperatør bestemmer om genki er vert for en klient',
+  hostnameNotOpen: '{hostnameNotAllowed}: {hostname} er ikke åpnet for denne virksomheten',
+  hostnameTaken: '{hostname} tilhører klienten {id}',
+  hostOwnBlockHosted:
+    '{block} er vertens egen blokk, og genkis assistentvert tegner bare blokker fra katalogen',
+  unknownInterfaceBlock: 'ukjent grensesnittblokk {block}',
+  hostedServiceOwnBlock:
+    'grensesnittet til tjenesten har vertens egen blokk ({block}), som genkis assistentvert ikke tegner',
   noSuchClient: 'klienten finnes ikke',
   noClientFor: 'ingen klient {client} for {service}',
   riskConfirm:

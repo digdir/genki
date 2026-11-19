@@ -34,10 +34,12 @@ import {
   type KeyViewContext,
   type TenantApiKeys,
 } from './routes/portal-routes.js';
-import { rightRefused, type Right } from './rights.js';
+import { isOperator, rightRefused, type Right } from './rights.js';
 import type { Webhooks } from './webhooks.js';
 import { changeReasonOf, isReasonLongEnough, reasonTooShort } from './http.js';
 import { t } from './i18n/index.js';
+import { defaultReservedDomains, hostnameProblems, type HostingRules } from './hosts.js';
+import { hostedServiceProblems } from './interface-catalogue.js';
 
 export interface ClientListener {
   saved?(client: ClientDefinition, before?: ClientDefinition): void | Promise<void>;
@@ -72,6 +74,7 @@ export const clientRegistry = (clients: ClientStore): ClientRegistry => ({
       tenant: definition.metadata.tenant,
       service: definition.spec.service,
       client: definition.metadata.id,
+      hosted: definition.spec.hosted === true,
     };
   },
 });
@@ -139,6 +142,8 @@ export interface FrontendDeps {
   clients: ClientStore;
   definitions: DefinitionStore;
   reservedClientIds?: string[];
+  hosting?: HostingRules;
+  locked?: boolean;
   now?: () => Date;
 }
 
@@ -160,6 +165,17 @@ export const saveClient = async (
       ok: false,
       errors: [{ path: 'spec.service', message: `no service ${checked.definition.spec.service}` }],
     };
+  if (checked.definition.spec.hosted) {
+    const problems = [
+      ...hostnameProblems(
+        checked.definition,
+        await deps.clients.list(tenant),
+        deps.hosting ?? { hostnames: new Map(), reservedDomains: defaultReservedDomains },
+      ),
+      ...(await hostedServiceProblems(deps.definitions, tenant, checked.definition.spec.service)),
+    ];
+    if (problems.length > 0) return { ok: false, errors: problems };
+  }
   const before = await deps.clients.get(tenant, id);
   const client: StoredClient = {
     definition: checked.definition,
@@ -173,11 +189,40 @@ export const saveClient = async (
 
 export const webhookTestAction = 'platform.clients.webhook-test';
 
+export const hostedAction = 'platform.client.hosted';
+
+const lockdownProblems = (
+  definition: { spec?: { hosted?: unknown; oidc?: { clientId?: unknown } } },
+  before: ClientDefinition | undefined,
+) => {
+  const wasHosted = before?.spec.hosted === true;
+  return [
+    ...((definition.spec?.hosted === true) !== wasHosted
+      ? [
+          {
+            path: 'principal',
+            message: 'in lockdown only a platform operator marks a client hosted',
+          },
+        ]
+      : []),
+    ...(wasHosted && definition.spec?.oidc?.clientId !== before?.spec.oidc?.clientId
+      ? [
+          {
+            path: 'principal',
+            message:
+              'in lockdown only a platform operator changes the client id of a hosted client',
+          },
+        ]
+      : []),
+  ];
+};
+
 export const frontendAdminHandlers = (deps: FrontendDeps): Record<string, AdminHandler> => ({
   [webhookTestAction]: routeOnly,
   'platform.clients.save': async (input, principal) => {
     const definition = (input.definition ?? {}) as {
       metadata?: { tenant?: unknown; id?: unknown };
+      spec?: { hosted?: unknown; oidc?: { clientId?: unknown } };
     };
     const target = `client:${input.tenant}/${String(definition.metadata?.id ?? '')}`;
     if (!forTenant(principal, input.tenant))
@@ -188,6 +233,11 @@ export const frontendAdminHandlers = (deps: FrontendDeps): Record<string, AdminH
         errors: [{ path: 'metadata.tenant', message: 'the client belongs to another tenant' }],
         target,
       };
+    if (deps.locked && !isOperator(principal)) {
+      const before = await deps.clients.get(input.tenant, String(definition.metadata?.id ?? ''));
+      const problems = lockdownProblems(definition, before?.definition);
+      if (problems.length > 0) return { ok: false, errors: problems, target };
+    }
     const saved = await saveClient(deps, definition, actorOf(principal));
     if (!saved.ok) return { ok: false, errors: saved.errors, target };
     return {
@@ -195,6 +245,43 @@ export const frontendAdminHandlers = (deps: FrontendDeps): Record<string, AdminH
       value: saved.client,
       target,
       audit: { after: saved.client.definition.spec },
+    };
+  },
+  [hostedAction]: async (input, principal) => {
+    const id = String(input.id ?? '');
+    const target = `client:${input.tenant}/${id}`;
+    if (!isOperator(principal))
+      return refused(target, 'only a platform operator marks a client hosted');
+    const before = await deps.clients.get(input.tenant, id);
+    if (!before) return { ok: false, errors: [{ path: 'id', message: 'no such client' }], target };
+    const spec: Record<string, unknown> = { ...before.definition.spec };
+    delete spec.hosted;
+    delete spec.hostnames;
+    const definition = {
+      ...before.definition,
+      spec:
+        input.hosted === true
+          ? {
+              ...spec,
+              hosted: true,
+              hostnames: input.hostnames ?? before.definition.spec.hostnames,
+            }
+          : spec,
+    };
+    const saved = await saveClient(deps, definition, actorOf(principal));
+    if (!saved.ok) return { ok: false, errors: saved.errors, target };
+    const { spec: after } = saved.client.definition;
+    return {
+      ok: true,
+      value: saved.client,
+      target,
+      audit: {
+        before: {
+          hosted: before.definition.spec.hosted ?? false,
+          hostnames: before.definition.spec.hostnames ?? [],
+        },
+        after: { hosted: after.hosted ?? false, hostnames: after.hostnames ?? [] },
+      },
     };
   },
   'platform.clients.remove': async (input, principal) => {
@@ -350,6 +437,20 @@ export const registerFrontendRoutes = <E extends Env, S extends Schema, B extend
     const outcome = await perform(c, g.principal, 'platform.clients.save', {
       tenant: g.tenant,
       definition,
+    });
+    if (!outcome.ok) return outcome.response;
+    return c.json(await view(outcome.value as StoredClient));
+  });
+
+  app.put('/tenants/:tenant/clients/:id/hosted', async (c) => {
+    const g = await guard(c);
+    if (g instanceof Response) return g;
+    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const outcome = await perform(c, g.principal, hostedAction, {
+      tenant: g.tenant,
+      id: c.req.param('id') ?? '',
+      hosted: body.hosted === true,
+      ...(body.hostnames === undefined ? {} : { hostnames: body.hostnames }),
     });
     if (!outcome.ok) return outcome.response;
     return c.json(await view(outcome.value as StoredClient));

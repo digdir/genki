@@ -200,6 +200,7 @@ export const changes = defineNamespace({
   taskReviewApprove: 'godkjente tabellen',
   taskReviewEdit: 'rettet i tabellen',
   clientsRemove: 'fjernet klienten',
+  clientHosted: 'endret om genki er vert for klienten',
   clientsSave: 'lagret klienten',
   datasetEnrichmentApply: 'tok i bruk berikelsen av',
   datasetEnrichmentRevert: 'rullet tilbake berikelsen av',

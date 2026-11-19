@@ -178,6 +178,12 @@ export const decodeEntities = (text: string) =>
  */
 export type CiteRenderer = (n: number, key: string) => ReactNode | undefined;
 
+/** Whether links are drawn, or which addresses become links; `true` draws http and https. */
+export type Links = boolean | ((href: string) => boolean);
+
+const linked = (links: Links, href: string) =>
+  typeof links === 'function' ? links(href) : links && /^https?:\/\//i.test(href);
+
 const citation = (n: number, key: string, cite: CiteRenderer): ReactNode =>
   cite(n, key) ?? `[${n}]`;
 
@@ -185,7 +191,7 @@ const markup = (
   part: string,
   cite: CiteRenderer,
   k: string,
-  links: boolean,
+  links: Links,
   leaf: Leaf,
 ): ReactNode => {
   if (part.startsWith('\\')) return part.slice(1);
@@ -201,7 +207,7 @@ const markup = (
     );
   if (part.startsWith('<http')) {
     const href = part.slice(1, -1);
-    if (!links) return href;
+    if (!linked(links, href)) return href;
     return (
       <a key={k} href={href} target="_blank" rel="noopener noreferrer">
         {href}
@@ -213,7 +219,7 @@ const markup = (
   if (link) {
     const href = decodeEntities(link[2] ?? '');
     const label = inline(link[1] ?? '', cite, k, links, leaf);
-    return links && /^https?:\/\//i.test(href) ? (
+    return linked(links, href) ? (
       <a key={k} href={href} target="_blank" rel="noopener noreferrer">
         {label}
       </a>
@@ -305,7 +311,7 @@ export const inline = (
   text: string,
   cite: CiteRenderer,
   key = 'i',
-  links = true,
+  links: Links = true,
   leaf: Leaf = plain,
 ): ReactNode[] => {
   const footnotes = new Set<number>();
@@ -392,7 +398,7 @@ const wordsOf = (cell: string) => inlineText(cell).trim();
 export const renderBlocks = (
   text: string,
   cite: CiteRenderer,
-  links: boolean,
+  links: Links,
   leaf: Leaf,
   gap?: Gap,
   options: BlockOptions = {},
@@ -548,7 +554,7 @@ export const Markdown = ({
   cite?: CiteRenderer;
   className?: string;
   /** Whether a link is drawn as one; in a quotation it is text, whatever its syntax. */
-  links?: boolean;
+  links?: Links;
   /** Search hits to wrap in `<mark>`; without it the text is drawn as it always was. */
   highlight?: MarkdownHighlight | undefined;
 } & BlockOptions) => {

@@ -1626,6 +1626,61 @@ describe('a service interface (spec.interface)', () => {
     expect(errorsOf(withLayout(changed))).not.toEqual([]);
   });
 
+  describe('menu and pages', () => {
+    const about = { id: 'om-prosjektet', title: 'Om prosjektet', body: '# Om\n\nTekst.' };
+    const withPages = (changed: Record<string, unknown>) =>
+      withSpec({ interface: { layout, pages: [about], ...changed } });
+
+    it('holds a menu of pages and https or mailto links, with texts per language', () => {
+      expect(
+        errorsOf(
+          withPages({
+            menu: [
+              { label: { nb: 'Om prosjektet', en: 'About the project' }, page: 'om-prosjektet' },
+              { label: 'Skjema', href: 'https://forms.office.com/r/abc' },
+              { label: 'Kontakt', href: 'mailto:ka@digdir.no' },
+            ],
+          }),
+        ),
+      ).toEqual([]);
+    });
+
+    it.each([
+      'http://example.no',
+      'javascript:alert(1)',
+      'data:text/html,x',
+      'https://a:b@example.no',
+    ])('refuses a menu link that is not https or mailto: %s', (href) => {
+      expect(errorsOf(withPages({ menu: [{ label: 'Lenke', href }] }))).not.toEqual([]);
+    });
+
+    it('refuses a menu item for a page the interface does not have', () => {
+      expect(
+        errorsOf(withPages({ menu: [{ label: 'Endringslogg', page: 'endringslogg' }] })),
+      ).not.toEqual([]);
+    });
+
+    it('refuses two pages with one id, and a page at one of the host’s own addresses', () => {
+      expect(errorsOf(withPages({ pages: [about, about] }))).not.toEqual([]);
+      expect(errorsOf(withPages({ pages: [{ ...about, id: 'innstillinger' }] }))).not.toEqual([]);
+      expect(errorsOf(withPages({ pages: [{ ...about, id: 'Om prosjektet' }] }))).not.toEqual([]);
+    });
+
+    it('refuses more than 12 menu items or pages, a page over 32 KiB and pages over 128 KiB', () => {
+      const pages = (n: number, size: number) =>
+        range(n).map((i) => ({ id: `side-${i}`, title: `Side ${i}`, body: 'x'.repeat(size) }));
+      expect(errorsOf(withPages({ pages: pages(13, 1) }))).not.toEqual([]);
+      expect(
+        errorsOf(
+          withPages({ menu: range(13).map(() => ({ label: 'Om', page: 'om-prosjektet' })) }),
+        ),
+      ).not.toEqual([]);
+      expect(errorsOf(withPages({ pages: pages(1, 32 * 1024) }))).not.toEqual([]);
+      expect(errorsOf(withPages({ pages: pages(4, 30 * 1024) }))).toEqual([]);
+      expect(errorsOf(withPages({ pages: pages(5, 30 * 1024) }))).not.toEqual([]);
+    });
+  });
+
   it('refuses an interface over 256 KiB, and takes one just under', () => {
     const settings = (n: number) =>
       Object.fromEntries(range(32).map((i) => [`x-${i}`, 'x'.repeat(n)]));

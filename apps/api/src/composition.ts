@@ -318,6 +318,8 @@ import { definitionCompletionModule } from './definition-completion.js';
 import { skillsModule } from './skills.js';
 import { createKeyPoliciesModule } from './key-policies.js';
 import { maskinportenClientsModule } from './maskinporten-clients.js';
+import { defaultReservedDomains, registerHostRoutes, type HostingRules } from './hosts.js';
+import { hostedByGenki, interfaceCatalogueProblems } from './interface-catalogue.js';
 import { triggersModule } from './triggers.js';
 import { lifecycleOf, pausedMessage, serviceLifecycleModule } from './service-lifecycle.js';
 import { batchTasksOf } from './batch-runs.js';
@@ -527,6 +529,7 @@ export interface PlatformInput {
   serviceRequirement?: (tenant: string, service: string) => ServiceRequirementShape;
   clients?: ClientStore;
   reservedClientIds?: string[];
+  hosting?: HostingRules;
   webhookDeliveries?: WebhookDeliveryStore;
   triggerRuns?: TriggerRunStore;
   gatewayUsage?: UsageReads;
@@ -1194,6 +1197,10 @@ export const createPlatform = async (input: PlatformInput) => {
   };
   const taskStore = input.tasks ?? new InMemoryTaskStore();
   const clients = input.clients ?? new InMemoryClients();
+  const hosting: HostingRules = input.hosting ?? {
+    hostnames: new Map(),
+    reservedDomains: defaultReservedDomains,
+  };
   const webhooks = createWebhooks({
     clients,
     secrets: vault.resolver(input.secrets),
@@ -1626,10 +1633,17 @@ export const createPlatform = async (input: PlatformInput) => {
       return problems.length > 0 ? problems : undefined;
     }
     if (d.kind === 'Service') {
-      const unsearchable = missingDatasetProblems(
+      const blockProblems = interfaceCatalogueProblems(
         d,
-        (s) => plugins.datasetNeeds?.has(strategyKey(s.id, s.version)) ?? false,
+        await hostedByGenki(clients, d.metadata.tenant, d.metadata.id),
       );
+      const unsearchable = [
+        ...blockProblems,
+        ...missingDatasetProblems(
+          d,
+          (s) => plugins.datasetNeeds?.has(strategyKey(s.id, s.version)) ?? false,
+        ),
+      ];
       if (unsearchable.length > 0) return unsearchable;
       const flowOf = (flowRef: string) => flowIn(d.metadata.tenant, flowRef);
       for (const flowRef of new Set(flowUsesOf(d.spec).map((u) => u.flow))) {
@@ -1950,7 +1964,11 @@ export const createPlatform = async (input: PlatformInput) => {
       c.req.path.startsWith('/api/tools/call/') ||
       c.req.path === '/v1/chat/completions');
   const serviceLimitsGate: MiddlewareHandler = async (c, next) => {
-    if (c.req.path === '/v1/models' || /^\/v1\/models\/[^/]+\/schema$/.test(c.req.path))
+    if (
+      c.req.path === '/v1/models' ||
+      /^\/v1\/models\/[^/]+\/(?:schema|interface)$/.test(c.req.path) ||
+      c.req.path.startsWith('/v1/hosts/')
+    )
       return next();
     const caller = await callerOf(c.req.raw);
     const tenant = caller?.principal.tenant;
@@ -2275,6 +2293,8 @@ export const createPlatform = async (input: PlatformInput) => {
     ...frontendAdminHandlers({
       clients,
       definitions,
+      hosting,
+      locked: input.lockdown !== undefined,
       ...(input.reservedClientIds ? { reservedClientIds: input.reservedClientIds } : {}),
     }),
     ...consoleAdminExtensions(consoleDeps),
@@ -2286,6 +2306,13 @@ export const createPlatform = async (input: PlatformInput) => {
     app: Hono<E, S, B>,
     admin?: Admin,
   ) => {
+    registerHostRoutes(app, {
+      clients,
+      definitions,
+      configEntries,
+      rules: hosting,
+      issuer: input.endpoints?.issuer,
+    });
     app.use('*', clientCors(clients));
     for (const path of [
       '/v1/*',
@@ -2503,6 +2530,16 @@ export const createPlatform = async (input: PlatformInput) => {
         },
         filterIssues: async (principal, entry, filters) =>
           askFilterIssues(knowledge, principal, entry, filters),
+        serviceInterface: async (entry) => {
+          const [tenant, service] = entry.capability.split('/');
+          const found =
+            tenant && service
+              ? await definitions.get('Service', tenant, service, entry.version)
+              : undefined;
+          const shown = (found?.definition as Pick<ServiceDefinition, 'spec'> | undefined)?.spec
+            .interface;
+          return shown?.layout ? { ...shown } : undefined;
+        },
         serviceSchema: async (entry) => {
           const [tenant, service] = entry.capability.split('/');
           const found =
