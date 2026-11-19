@@ -38,13 +38,7 @@ const anyTermQuery = (config: string, text: string) =>
 const allTermsQuery = (config: string, text: string) =>
   `websearch_to_tsquery(${config}::regconfig, ${text})`;
 
-/**
- * The chunk of document `<from>.doc` that best matches the query's words its matched text (`<from>.tsv`) does not hold:
- * a title's words are on its cover too, so only the other words find the page that answers.
- * With no such word, or no chunk holding one, it is the document's first chunk, read through the doc_id index alone.
- * A document without chunks gives no row, since a null id would empty the `not in` of the some-words pass;
- * `offset 0` keeps that check from computing the chunk twice.
- */
+/** The chunk of `<from>.doc` best matching the query words `<from>.tsv` lacks, else its first chunk. */
 export const bestChunk = (query: string, from: string, dataset: string, generation: string) => {
   const ofDocument = `c.dataset = ${dataset} and c.generation = ${generation} and c.doc_id = ${from}.doc`;
   return `select b.id from (select coalesce(
