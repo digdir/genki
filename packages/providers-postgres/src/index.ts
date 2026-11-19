@@ -42,7 +42,9 @@ import {
 
 export {
   createPool,
+  defaultConnectionTimeoutMs,
   entraPostgresScope,
+  isPoolExhausted,
   type PasswordProvider,
   type PostgresPoolOptions,
 } from './pool.js';

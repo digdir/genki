@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import type { ErasureReason } from '@genai/kernel';
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 import type { KeyWrapper } from './crypto.js';
 
 const CACHE_MS = 30_000;
@@ -13,26 +13,33 @@ export class ContentKeys {
     private readonly wrapper: KeyWrapper,
   ) {}
 
-  async get(tenant: string, scope: string, create: boolean): Promise<Buffer | undefined> {
+  async get(
+    tenant: string,
+    scope: string,
+    create: boolean,
+    db: Pool | PoolClient = this.pool,
+  ): Promise<Buffer | undefined> {
     const id = `${tenant}\u0000${scope}`;
     const cached = this.#cache.get(id);
     if (cached && cached.until > Date.now()) return cached.key;
 
+    const inTransaction = db !== this.pool;
     if (create) {
       const wrapped = await this.wrapper.wrap(randomBytes(32));
-      await this.pool.query(
+      await db.query(
         'insert into content_keys (tenant, scope, wrapped) values ($1, $2, $3) on conflict do nothing',
         [tenant, scope, wrapped],
       );
     }
-    const found = await this.pool.query<{ wrapped: Buffer }>(
+    const found = await db.query<{ wrapped: Buffer }>(
       'select wrapped from content_keys where tenant = $1 and scope = $2',
       [tenant, scope],
     );
     const row = found.rows[0];
     if (!row) return undefined;
     const key = await this.wrapper.unwrap(row.wrapped);
-    this.#cache.set(id, { key, until: Date.now() + CACHE_MS });
+    // A key created in a transaction may still roll back, so only a committed one is cached.
+    if (!(create && inTransaction)) this.#cache.set(id, { key, until: Date.now() + CACHE_MS });
     return key;
   }
 

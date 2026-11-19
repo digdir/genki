@@ -170,6 +170,7 @@ export const problems = defineNamespace({
   serviceIdTaken: 'Id-en er allerede i bruk.',
   operatorOnlySettingTitle: 'Bare Digdir endrer denne grensen for en virksomhet',
   uploadRequestTooLarge: 'Forespørselen er større enn {size} MB. Send filene i flere forespørsler.',
+  databaseBusy: 'Databasen har ingen ledig tilkobling akkurat nå. Prøv igjen om litt.',
   status400: 'Forespørselen kan ikke leses',
   status401: 'Du er ikke logget inn',
   status403: 'Ingen tilgang',

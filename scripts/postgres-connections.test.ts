@@ -123,11 +123,13 @@ describe.skipIf(!hasAz && !process.env.CI)('connections to the platform database
     (environment, phase) => fits([environment, phase]),
   );
 
-  it('counts at most 33 of the B2s server’s 414 user connections in test, in every phase', () => {
+  it('every phase of a test deploy fits the B2s server’s user connections at the new pool sizes', () => {
     expect(setting('test', 'postgresSkuName')).toBe('Standard_B2s');
+    expect(setting('test', 'apiDatabasePoolMax')).toBe(10);
+    expect(setting('test', 'workerDatabasePoolMax')).toBe(10);
     expect(userConnections('test')).toBe(414);
     for (const phase of Object.keys(phases) as Phase[])
-      expect(worstCase('test', phase), phase).toBe(33);
+      expect(worstCase('test', phase), phase).toBe(101);
   });
 
   it('sets the platform server’s max_connections from the table, since Azure keeps the first SKU’s value', () => {

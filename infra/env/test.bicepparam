@@ -16,8 +16,6 @@ param endpointsSubnetPrefix = '10.40.3.0/27'
 param resourceLocksEnabled = false
 param minReplicas = 1
 param maxReplicas = 2
-param apiDatabasePoolMax = 3
-param workerDatabasePoolMax = 4
 param workerRevisionsMode = 'Multiple'
 
 // Test's own knowledge server (ADR 0042). Small to start (8 GiB, 64 GB): compute moves up or down with a short

@@ -64,7 +64,7 @@ export class PostgresBffSessions {
   ): Promise<BffSessionRow | undefined> {
     return withTenant(this.pool, tenant, async (client) => {
       const found = await this.#read(client, tenant, idHash, true);
-      const current = found && (await this.#open(tenant, idHash, found));
+      const current = found && (await this.#open(tenant, idHash, found, client));
       if (!current) return undefined;
       const next = await change(current);
       if (!next) {
@@ -74,7 +74,7 @@ export class PostgresBffSessions {
         ]);
         return undefined;
       }
-      const key = await this.keys.get(tenant, SCOPE, false);
+      const key = await this.keys.get(tenant, SCOPE, false, client);
       if (!key) return undefined;
       const sealed = seal(
         key,
@@ -125,8 +125,13 @@ export class PostgresBffSessions {
     return found.rows[0];
   }
 
-  async #open(tenant: string, idHash: string, row: Stored): Promise<BffSessionRow | undefined> {
-    const key = await this.keys.get(tenant, SCOPE, false);
+  async #open(
+    tenant: string,
+    idHash: string,
+    row: Stored,
+    db?: PoolClient,
+  ): Promise<BffSessionRow | undefined> {
+    const key = await this.keys.get(tenant, SCOPE, false, db);
     if (!key) return undefined;
     try {
       return {
