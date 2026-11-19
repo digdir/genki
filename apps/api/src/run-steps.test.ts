@@ -534,6 +534,17 @@ describe('the run mapper', () => {
     });
   });
 
+  it('replaces a renumbered answer without a warning step', () => {
+    const mapper = new RunMapper({ details: true });
+    const changes = [
+      notice(0, { stage: 'answer-discarded', reason: 'renumbered' }),
+      at(1, 'kernel.part.delta', { text: 'Svar [1].' }),
+    ].flatMap((e) => mapper.push(e));
+
+    expect(changes).toContainEqual({ kind: 'retract', reason: 'discarded' });
+    expect(mapper.steps.filter((s) => s.type === 'note')).toEqual([]);
+  });
+
   it('shows a clarification as the result', () => {
     seq = 0;
     const steps = mapRun([
