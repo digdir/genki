@@ -68,7 +68,7 @@ describe('agent-loop strategy', () => {
     expect(out.sources[0]).toMatchObject({ chunkId: 'attached:abc:0', title: 'brev.txt' });
   });
 
-  it('finalizes by synthesis as soon as read signals cover every claim, citing what it read', async () => {
+  it('finalizes by synthesis as soon as read signals cover every claim, numbering markers by the cited sources', async () => {
     const out = await run({
       scripts: {
         primary: {
@@ -86,15 +86,14 @@ describe('agent-loop strategy', () => {
 
     expect(out.task.status).toBe('completed');
     expect(out.loops).toHaveLength(2);
-    expect(out.text).toBe('Digdir skal digitalisere [3] og samordne [3][2].');
+    expect(out.text).toBe('Digdir skal digitalisere [2] og samordne [2][1].');
     expect(out.meta).toEqual({
       citations: [
-        { index: 2, chunkId: 'c2' },
-        { index: 3, chunkId: 'c3' },
+        { index: 1, chunkId: 'c2' },
+        { index: 2, chunkId: 'c3' },
       ],
     });
     expect(out.sources.map((s) => [s.chunkId, s.title, s.url])).toEqual([
-      ['c1', 'Rapport 1', 'https://kudos.dfo.no/d1'],
       ['c2', 'Rapport 2', 'https://kudos.dfo.no/d2'],
       ['c3', 'Rapport 3', 'https://kudos.dfo.no/d3'],
     ]);
@@ -992,6 +991,11 @@ describe('agent-loop strategy', () => {
   });
 });
 
+const readSources = {
+  ...baseConfig,
+  strategy: { ...baseConfig.strategy, sources: 'read' as const },
+};
+
 describe('agent-loop sources, as headless-rag publishes them', () => {
   it("a source carries its chunk's page, page range, PDF address and heading path", async () => {
     const pdf = 'https://kudos.dfo.no/dokument/d1/filer/f1.pdf';
@@ -1082,6 +1086,7 @@ describe('agent-loop sources, as headless-rag publishes them', () => {
   it('publishes a chunk the reranker added once the answer was numbered against it', async () => {
     const r = retrieval();
     const out = await run({
+      config: readSources,
       retrieval: {
         ...r.impl,
         rerank: async (_query, chunks) => [...chunks, chunk(5)],

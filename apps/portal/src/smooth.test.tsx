@@ -209,6 +209,7 @@ describe('a smooth portal', () => {
 
   const logRuns = /\/tasks\?from=[^&]+&to=[^&]+$/;
   const logTestRuns = /\/tasks\?from=[^&]+&to=[^&]+&origin=playground$/;
+  const datasetList = /\/datasets$/;
   const prefetched: [string, string, string, RegExp[]][] = [
     [
       'Oversikt',
@@ -218,19 +219,19 @@ describe('a smooth portal', () => {
         /\/overview$/,
         /\/usage\?days=\d+$/,
         /\/settings\/effective$/,
-        /\/datasets$/,
+        datasetList,
         /\/tasks\?status=failed&from=[^&]+&limit=500$/,
         /\/audit$/,
         /\/service-drafts$/,
       ],
     ],
-    ['Datasett', '#/developer', '#/datasets', [/\/datasets$/, /\/catalog\?kind=dataset$/]],
+    ['Datasett', '#/developer', '#/datasets', [datasetList, /\/catalog\?kind=dataset$/]],
     ['Innstillinger', '#/developer', '#/settings', [/\/settings$/, /\/settings\/effective$/]],
     ['Logg', '#/developer', '#/log', [logRuns, logTestRuns, /\/services$/]],
   ];
 
   it.each(prefetched)(
-    'resting the pointer on %s loads its requests before the click and the screen reuses them',
+    'resting the pointer on %s loads the requests the menu has not made yet, and the screen reuses them',
     async (link, from, to, requests) => {
       const api = recording();
       await renderLiveAt(from, api.fetch);
@@ -240,7 +241,9 @@ describe('a smooth portal', () => {
 
       await hover(link);
       const hovered = requests.map((r) => api.gets(r));
-      requests.forEach((_, i) => expect(hovered[i]).toBe((before[i] ?? 0) + 1));
+      requests.forEach((r, i) =>
+        expect(hovered[i]).toBe(r === datasetList ? 1 : (before[i] ?? 0) + 1),
+      );
 
       await go(to);
       await settle();

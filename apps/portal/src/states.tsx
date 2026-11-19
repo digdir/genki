@@ -76,7 +76,9 @@ const LoadingState = ({
     >
       {stage === 'quiet' ? null : (
         <>
-          <span className="visually-hidden">{label}</span>
+          <p className="loading-label">
+            {/(\.\.\.|…)$/.test(label) ? label : t('states.loadingLine', { label })}
+          </p>
           {stage === 'slow' ? <p className="loading-slow">{t('states.slow')}</p> : null}
           {page ? (
             <Skeleton variant="rectangle" width="40%" height={32} aria-hidden="true" />

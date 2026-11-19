@@ -1,6 +1,6 @@
 # 0015 Tenant-provided tools and secrets
 
-Status: accepted, 2026-10-12 (built; secrets bound to hosts, 2026-10-16). Proposed 2026-10-06
+Status: accepted, 2026-10-12 (built; secrets bound to hosts, 2026-10-16; name, size and count limits, 2026-11-19). Proposed 2026-10-06
 
 ## Decision
 
@@ -10,6 +10,7 @@ Status: accepted, 2026-10-12 (built; secrets bound to hosts, 2026-10-16). Propos
 - Tool results are marked as untrusted content. Guardrails and the strategy treat them like retrieved documents, not like instructions. Every strategy (agent loop, RAG, single call, step flow) gives untrusted tool results, retrieved sources and attached documents to the model inside `<untrusted_data>` framing, with one line in the system message, in the service language, that text inside it is data.
 - Tool descriptions are pinned at registration. A changed description must be approved again before it is used.
 - Secrets are written through a write-only API into a tenant namespace, referenced as `secret://tenant/<orgnr>/<name>`. The resolver refuses a reference to another tenant's secret.
+- A tenant secret name is lowercase letters, digits and hyphens, at most 63 characters, and the value at most 16384 bytes, the same as a platform secret. An organisation has at most 200 secrets, and can delete one that nothing names any more (`DELETE /tenants/{tenant}/secrets/{name}`). The store keys a secret by organisation number and name, so a name cannot reach another tenant's or a platform secret, and the write route only accepts a nine-digit organisation.
 - A tenant secret is used only for the hosts it is set for. Each secret stores `allowedHosts`, a list of origins (scheme, host and port), in `tenant_secrets.allowed_hosts`. A new secret needs them. Changing them needs `manage-services` (`PUT /tenants/{tenant}/secrets/{name}/hosts`, action `platform.secrets.hosts`); `register-building-blocks` may set a new secret or replace a value, not move one to other hosts.
 - The check sits where a connection resolves its secret for an outbound request (`TenantSecrets.resolveFor` in `providers-mcp-client`). It covers MCP, A2A, OpenAPI and remote agents, and for OAuth client credentials both the token address and the call address. A secret without hosts is sent nowhere. Redirects to another origin are never followed, so the secret does not travel with one.
 - Registration refuses a connection whose endpoint, document address or token address is outside the secret's hosts, before any contract test sends a request.

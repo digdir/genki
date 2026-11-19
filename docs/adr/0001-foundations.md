@@ -1,8 +1,8 @@
 # 0001 Foundations
 
-Status: accepted, 2026-10-12 (partly built; hosting region left to operations, 2026-10-30). Proposed 2026-10-06
+Status: accepted, 2026-10-12 (partly built; hosting region left to operations, 2026-10-30; one environment, 2026-11-19). Proposed 2026-10-06
 
-Not built yet: a running production. `infra/env/prod.bicepparam` and the `deploy-prod` job exist, gated on `PROD_READY`. A test environment in Azure is deployed from `main` with the workflows in `.github/workflows`.
+Not built yet: production logins and rights. There is one genki environment (decided 2026-11-11): genki-test becomes production when issue #464 moves it to production Ansattporten and Altinn. `infra/env/prod.bicepparam` and the `deploy-prod` job exist, gated on `PROD_READY`. A test environment in Azure is deployed from `main` with the workflows in `.github/workflows`.
 
 ## Decision
 

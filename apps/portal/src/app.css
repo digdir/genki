@@ -41,6 +41,10 @@ a:not([class^='ds-'], [class*=' ds-']):hover {
   :root {
     --page-pad: 16px;
   }
+
+  .main h1.ds-heading {
+    font-size: var(--ds-heading-sm-font-size);
+  }
 }
 
 :root .ds-dialog {
@@ -301,8 +305,18 @@ a:not([class^='ds-'], [class*=' ds-']):hover {
 }
 
 .narrow-nav {
+  position: relative;
   border-top: 1px solid var(--ds-color-neutral-border-subtle);
   padding: 8px 12px 12px;
+  max-height: calc(100dvh - var(--header-height));
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+.narrow-account {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--ds-color-neutral-border-subtle);
 }
 
 .narrow-nav a {
@@ -545,7 +559,8 @@ a:not([class^='ds-'], [class*=' ds-']):hover {
 }
 
 /* Fixed, so the sidebar's scroll area does not clip it; Shell places it above the button. */
-.sidebar-account .popover {
+.sidebar-account .popover,
+.narrow-account .popover {
   position: fixed;
   top: auto;
   right: auto;
@@ -796,6 +811,12 @@ a:not([class^='ds-'], [class*=' ds-']):hover {
 
 .state.loading:empty {
   padding: 0;
+}
+
+.loading-label {
+  margin: 0;
+  font-size: var(--ds-font-size-3);
+  color: var(--ds-color-neutral-text-subtle);
 }
 
 .loading-slow {
@@ -1214,15 +1235,6 @@ code {
 @media (max-width: 559px) {
   .header-bar {
     gap: 8px;
-  }
-
-  .header-bar .brand .brand-text {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip: rect(0 0 0 0);
-    white-space: nowrap;
   }
 
   .header-bar .popover-anchor:has(.org-button) {

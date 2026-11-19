@@ -28,6 +28,11 @@ const nb = {
     help: 'Et utdrag gir én fotnote per avsnitt svaret bygger på.',
     values: { document: 'Et dokument', excerpt: 'Et utdrag' },
   },
+  sources: {
+    label: 'Kilder som følger svaret',
+    help: 'Uten fotnoter i svaret følger alt som ble lest.',
+    values: { cited: 'Bare de svaret viser til', read: 'Alt som ble lest' },
+  },
   search: { label: 'Søk' },
   'search.titleOverlapWeight': { label: 'Vekt på treff i tittelen' },
   'search.strategyQuota': { label: 'Treff sikret per søkemåte' },
@@ -74,6 +79,11 @@ const en: Record<keyof typeof nb, LabelText> = {
     help: 'An excerpt gives one footnote per passage the answer rests on.',
     values: { document: 'A document', excerpt: 'An excerpt' },
   },
+  sources: {
+    label: 'Sources returned with the answer',
+    help: 'An answer without footnotes returns everything read.',
+    values: { cited: 'Only those the answer cites', read: 'Everything read' },
+  },
   search: { label: 'Search' },
   'search.titleOverlapWeight': { label: 'Weight of matches in the title' },
   'search.strategyQuota': { label: 'Results kept per search method' },
@@ -103,6 +113,7 @@ export const agentLoopSchemaLabels: SchemaLabels = {
     evaluatorTemperature: { 'x-advanced': true },
     noToolCallRetry: { 'x-advanced': true },
     citeBy: { 'x-advanced': true },
+    sources: { 'x-advanced': true },
   },
   titles: { 'agent-loop': { nb: 'Agent (søker selv)', en: 'Agent (searches by itself)' } },
 };

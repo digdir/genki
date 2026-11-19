@@ -37,5 +37,6 @@ Prompts and answers are personal data and are probably case documents under offe
 ## Consequences
 
 - Content stays out of event rows in Postgres from the start, before the schema is fixed.
+- Backups outlive an erasure: the platform database's point-in-time restore keeps 35 days and its nightly copies 12 weeks, immutable (docs/runbook.md, "Backups"), with the keys erasure deleted. After a restore the nightly purge erases again what has expired; a conversation deleted by hand since the restore point comes back and must be deleted again.
 - The legal basis, retention periods and archive duties must be confirmed with the DPO and legal before KA traffic reaches the platform.
 - [ADR 0042](0042-the-knowledge-database.md), proposed, withdraws a document from a dataset in the knowledge database on request: from every generation, the shared caches and the converters' native output in Blob storage at once, and from the server's 7-day backups after that, with a log on the platform server that is applied again after a restore. Its tombstone keeps only a keyed hash of the document's id, and the Docling client asks the host to keep nothing.

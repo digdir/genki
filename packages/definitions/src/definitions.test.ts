@@ -1535,3 +1535,112 @@ describe('decisions', () => {
     ).toBe(false);
   });
 });
+
+describe('a service interface (spec.interface)', () => {
+  const range = (n: number) => Array.from({ length: n }, (_, i) => i);
+  const layout = {
+    version: 1,
+    template: 'knowledge-assistant-next',
+    look: 'next',
+    zones: {
+      primary: [{ block: 'threads' }],
+      main: [{ block: 'chat', settings: { feedback: true, followUps: false } }],
+      secondary: [{ block: 'sources' }],
+    },
+    profile: {
+      assistantName: { nb: 'Kunnskapsassistenten', en: 'The knowledge assistant' },
+      suggestions: ['Hva handler dokumentene om?'],
+      corpora: {
+        kudos: {
+          label: 'Kudos',
+          fields: [{ id: 'type', label: { nb: 'Dokumenttyper', en: 'Document types' } }],
+          documentLinks: { digits: 'https://kudos.dfo.no/documents/{id}' },
+        },
+      },
+    },
+  };
+  const withLayout = (changed: Record<string, unknown>) =>
+    withSpec({ interface: { layout: { ...layout, ...changed } } });
+
+  it('is optional, and a service with none is valid as before', () => {
+    expect(errorsOf(withSpec({}))).toEqual([]);
+    expect(errorsOf(withSpec({ interface: {} }))).toEqual([]);
+  });
+
+  it('holds a layout whose texts are one wording or one per language, bokmål and English', () => {
+    expect(errorsOf(withLayout({}))).toEqual([]);
+    expect(
+      errorsOf(withLayout({ profile: { assistantName: { nb: 'Kunnskapsassistenten' } } })),
+    ).not.toEqual([]);
+  });
+
+  it('keeps a host’s own x- block and an x- setting, which only a host that runs its own code draws', async () => {
+    const zones = {
+      ...layout.zones,
+      secondary: [{ block: 'x-ka-glossary', settings: { 'x-source': 'begrepskatalogen' } }],
+    };
+    const store = new InMemoryDefinitionStore(plugins);
+    const definition = withLayout({ zones });
+    const published = await store.publish(definition, 'kari', 'eget oppsett', filesFor(definition));
+    if (!published.ok) throw new Error(JSON.stringify(published.errors));
+    expect(
+      (published.version.definition as ServiceDefinition).spec.interface?.layout?.zones.secondary,
+    ).toEqual(zones.secondary);
+  });
+
+  it('is closed: a part or a key it does not know is refused', () => {
+    expect(errorsOf(withSpec({ interface: { layout, colours: {} } }))).not.toEqual([]);
+    expect(errorsOf(withLayout({ zones: { ...layout.zones, top: [] } }))).not.toEqual([]);
+    expect(errorsOf(withLayout({ profile: { tagline: 'Hei' } }))).not.toEqual([]);
+    expect(errorsOf(withLayout({ version: 2 }))).not.toEqual([]);
+    expect(
+      errorsOf(withLayout({ zones: { ...layout.zones, main: [{ block: 'Chat' }] } })),
+    ).not.toEqual([]);
+  });
+
+  it('refuses a document link that is not https or lets the number choose the host', () => {
+    for (const digits of ['http://kudos.dfo.no/{id}', 'https://{id}.example.no/'])
+      expect(
+        errorsOf(withLayout({ profile: { corpora: { kudos: { documentLinks: { digits } } } } })),
+      ).not.toEqual([]);
+  });
+
+  it.each([
+    ['blocks in a zone', { zones: { ...layout.zones, main: Array(17).fill({ block: 'x-a' }) } }],
+    ['a name', { profile: { assistantName: 'x'.repeat(81) } }],
+    ['a name in English', { profile: { assistantName: { nb: 'a', en: 'x'.repeat(81) } } }],
+    ['suggestions', { profile: { suggestions: Array(7).fill('Hei') } }],
+    ['a suggestion', { profile: { suggestions: ['x'.repeat(201)] } }],
+    [
+      'settings on a block',
+      {
+        zones: {
+          ...layout.zones,
+          main: [
+            { block: 'chat', settings: Object.fromEntries(range(33).map((i) => [`x-${i}`, true])) },
+          ],
+        },
+      },
+    ],
+  ])('refuses a layout past its limit for %s', (_, changed) => {
+    expect(errorsOf(withLayout(changed))).not.toEqual([]);
+  });
+
+  it('refuses an interface over 256 KiB, and takes one just under', () => {
+    const settings = (n: number) =>
+      Object.fromEntries(range(32).map((i) => [`x-${i}`, 'x'.repeat(n)]));
+    const big = (n: number) => ({
+      ...layout,
+      profile: undefined,
+      zones: {
+        primary: range(16).map((i) => ({ block: `x-p${i}`, settings: settings(n) })),
+        main: range(16).map((i) => ({ block: `x-m${i}`, settings: settings(n) })),
+        secondary: range(16).map((i) => ({ block: `x-s${i}`, settings: settings(n) })),
+      },
+    });
+    expect(errorsOf(withSpec({ interface: { layout: big(150) } }))).toEqual([]);
+    expect(errorsOf(withSpec({ interface: { layout: big(180) } })).map((e) => e.message)).toContain(
+      `at most ${256 * 1024} bytes as JSON`,
+    );
+  });
+});

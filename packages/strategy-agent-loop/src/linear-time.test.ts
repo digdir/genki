@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { normaliseCitationMarkers } from '@genai/port-model';
 import { dropUnknownMarkers, stripSourceLists } from './citations.js';
+import { keepsTheDraft } from './citation-backfill.js';
 import { stripCodeFences } from './structured.js';
 import { searchFailures } from './tools.js';
 
@@ -30,6 +31,13 @@ describe('answer cleanup on adversarial input', () => {
     expect(quickly(() => dropUnknownMarkers(' ['.repeat(50_000), index))).toBeLessThan(1000);
     expect(quickly(() => dropUnknownMarkers(` [${'1'.repeat(100_000)}`, index))).toBeLessThan(1000);
     expect(dropUnknownMarkers('Svar [1] og [7].', index)).toBe('Svar [1] og.');
+  });
+
+  it('compares a cited answer with its draft in linear time', () => {
+    expect(
+      quickly(() => keepsTheDraft(' ['.repeat(50_000), ` [${'1'.repeat(100_000)}`)),
+    ).toBeLessThan(1000);
+    expect(keepsTheDraft('Svar [1] og mer [2].', 'Svar og mer.')).toBe(true);
   });
 
   it('strips code fences in linear time', () => {

@@ -32,7 +32,22 @@ export interface TimelineStep {
   model?: string;
   iteration?: number;
   warning?: true;
+  reads?: StepRead[];
   raw?: unknown;
+}
+
+export interface ReadChunk {
+  id: string;
+  document?: string;
+  position?: number;
+  page?: number;
+  title?: string;
+}
+
+export interface StepRead {
+  chunks: ReadChunk[];
+  auto?: true;
+  request?: { chunkIds?: string[]; document?: string; chunkRange?: { from?: number; to?: number } };
 }
 
 export interface ModelTokens {
@@ -68,6 +83,7 @@ export interface HitView {
   id: string;
   document?: string;
   position?: number;
+  page?: number;
   score?: number;
   title?: string;
 }
@@ -282,6 +298,7 @@ const hitsOf = (value: unknown): HitView[] =>
     if (!id) return [];
     const document = str(r.document);
     const position = num(r.position);
+    const page = num(r.page);
     const score = num(r.score);
     const title = str(r.title);
     return [
@@ -289,6 +306,7 @@ const hitsOf = (value: unknown): HitView[] =>
         id,
         ...(document ? { document } : {}),
         ...(position === undefined ? {} : { position }),
+        ...(page === undefined ? {} : { page }),
         ...(score === undefined ? {} : { score }),
         ...(title ? { title } : {}),
       },
@@ -334,6 +352,39 @@ const hitMeta = (h: HitView) =>
   ]
     .filter(Boolean)
     .join(' · ');
+
+const listed = (values: number[]) => [...new Set(values)].sort((a, b) => a - b).join(', ');
+
+const readMeta = (chunks: HitView[]) => {
+  const parts = chunks.flatMap((c) => (c.position === undefined ? [] : [c.position + 1]));
+  const pages = chunks.flatMap((c) => (c.page === undefined ? [] : [c.page]));
+  return [
+    counted('steps.chunks', chunks.length),
+    parts.length ? t('steps.parts', { parts: listed(parts), count: new Set(parts).size }) : '',
+    pages.length ? t('steps.pages', { pages: listed(pages), count: new Set(pages).size }) : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+};
+
+const readRequest = (value: unknown): StepRead['request'] => {
+  const r = record(value);
+  const chunkIds = strings(r.chunkIds);
+  const document = str(r.document);
+  const range = record(r.chunkRange);
+  const from = num(range.from);
+  const to = num(range.to);
+  const chunkRange = {
+    ...(from === undefined ? {} : { from }),
+    ...(to === undefined ? {} : { to }),
+  };
+  if (!chunkIds.length && !document) return undefined;
+  return {
+    ...(chunkIds.length ? { chunkIds } : {}),
+    ...(document ? { document } : {}),
+    ...(Object.keys(chunkRange).length ? { chunkRange } : {}),
+  };
+};
 
 const textOf = (parts: Part[]) =>
   parts
@@ -852,11 +903,11 @@ export class RunMapper {
     const chunks = hitsOf(data.chunks);
     this.remember(chunks);
     this.chunksRead += chunks.length;
-    const perDocument = new Map<string, number>();
+    const perDocument = new Map<string, HitView[]>();
     for (const c of chunks) {
       const doc = c.title ?? c.document ?? c.id;
       if (c.document) this.documents.add(c.document);
-      perDocument.set(doc, (perDocument.get(doc) ?? 0) + 1);
+      perDocument.set(doc, [...(perDocument.get(doc) ?? []), c]);
     }
     const open = this.openOf('read', 'search');
     const auto = data.auto === true;
@@ -871,12 +922,18 @@ export class RunMapper {
     const block: TimelineBlock = {
       kind: 'list',
       label: auto ? t('steps.readAuto') : t('steps.readDocuments'),
-      items: [...perDocument].map((entry): [string, string] => [
-        entry[0],
-        counted('steps.chunks', entry[1]),
-      ]),
+      items: [...perDocument].map(([doc, read]): [string, string] => [doc, readMeta(read)]),
     };
     step.blocks = [...step.blocks, block];
+    const request = readRequest(data.request);
+    step.reads = [
+      ...(step.reads ?? []),
+      {
+        chunks: chunks.map(({ score: _score, ...chunk }) => chunk),
+        ...(auto ? { auto: true as const } : {}),
+        ...(this.details && request ? { request } : {}),
+      },
+    ];
     const summary = t('steps.readSummary', {
       chunks: counted('steps.chunks', chunks.length),
       documents: counted('steps.documents', perDocument.size),
@@ -1204,6 +1261,10 @@ export class RunMapper {
   }
 
   private discarded(e: Event, ts: number, data: Data) {
+    if (data.reason === 'renumbered') {
+      this.out.push({ kind: 'retract', reason: 'discarded' });
+      return;
+    }
     const uncited = data.reason === 'uncited';
     const text = uncited ? t('steps.discardedUncited') : t('steps.discardedGate');
     this.warn(text);

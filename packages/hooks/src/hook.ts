@@ -31,39 +31,53 @@ export const refusablePoints: readonly HookPoint[] = [
 
 const hookId = z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}$/, 'lowercase letters, digits and -');
 
-export const hookHandler = z.discriminatedUnion('kind', [
-  z.strictObject({
-    kind: z.literal('webhook'),
-    url: z.url({ protocol: /^https$/ }),
-    secret: z.string().regex(/^[a-z0-9][a-z0-9._-]*$/, 'the name of a secret in the vault'),
-  }),
-  z.strictObject({
-    kind: z.literal('builtin'),
-    id: z.string().min(1),
-    config: z.record(z.string(), z.unknown()).default({}),
-  }),
-]);
+const handlerWith = (secret: z.ZodString) =>
+  z.discriminatedUnion('kind', [
+    z.strictObject({
+      kind: z.literal('webhook'),
+      url: z.url({ protocol: /^https$/ }),
+      secret,
+    }),
+    z.strictObject({
+      kind: z.literal('builtin'),
+      id: z.string().min(1),
+      config: z.record(z.string(), z.unknown()).default({}),
+    }),
+  ]);
 
-export const hookSpec = z
-  .strictObject({
-    name: z.string().trim().min(1).max(120),
-    point: z.enum(hookPoints),
-    mode: z.enum(hookModes).default('observe'),
-    failure: z.enum(hookFailureModes).default('open'),
-    timeoutMs: z.number().int().min(50).max(10_000).default(2000),
-    order: z.number().int().min(0).max(1000).default(100),
-    enabled: z.boolean().default(true),
-    services: z.array(z.string().min(1)).optional(),
-    handler: hookHandler,
-  })
-  .refine((h) => h.mode === 'enforce' || h.failure === 'open', {
-    path: ['failure'],
-    message: 'only an enforcing hook can fail closed',
-  })
-  .refine((h) => h.mode !== 'enforce' || refusablePoints.includes(h.point), {
-    path: ['mode'],
-    message: 'this point cannot be refused; use observe or annotate',
-  });
+const newSecretName = z
+  .string()
+  .regex(/^[a-z0-9][a-z0-9-]{0,62}$/, 'lowercase letters, digits and -, at most 63 characters');
+const storedSecretName = z
+  .string()
+  .regex(/^[a-z0-9][a-z0-9._-]*$/, 'the name of a secret in the vault');
+
+export const hookHandler = handlerWith(newSecretName);
+
+const specWith = (handler: ReturnType<typeof handlerWith>) =>
+  z
+    .strictObject({
+      name: z.string().trim().min(1).max(120),
+      point: z.enum(hookPoints),
+      mode: z.enum(hookModes).default('observe'),
+      failure: z.enum(hookFailureModes).default('open'),
+      timeoutMs: z.number().int().min(50).max(10_000).default(2000),
+      order: z.number().int().min(0).max(1000).default(100),
+      enabled: z.boolean().default(true),
+      services: z.array(z.string().min(1)).optional(),
+      handler,
+    })
+    .refine((h) => h.mode === 'enforce' || h.failure === 'open', {
+      path: ['failure'],
+      message: 'only an enforcing hook can fail closed',
+    })
+    .refine((h) => h.mode !== 'enforce' || refusablePoints.includes(h.point), {
+      path: ['mode'],
+      message: 'this point cannot be refused; use observe or annotate',
+    });
+
+export const hookSpec = specWith(hookHandler);
+export const storedHookSpec = specWith(handlerWith(storedSecretName));
 
 export type HookSpec = z.output<typeof hookSpec>;
 export type HookSpecInput = z.input<typeof hookSpec>;

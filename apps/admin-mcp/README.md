@@ -132,7 +132,7 @@ Flags are on only for the exact value `true`.
 | `publish_definition`   | Validates, then publishes the next version with a `reason` of at least 10 characters                                                       | Writes      |
 | `run_playground`       | Runs a published version or an unsaved `yaml`, optionally next to a second setup in `compareWith`, and returns answer, sources, cost, time | Costs money |
 | `list_runs`            | Recent service runs or playground runs (`origin`), filtered by `service` or `status`                                                       | Reads       |
-| `get_run`              | One run with its timeline, compact by default; `full: true` gives the whole timeline as JSON                                               | Reads       |
+| `get_run`              | One run with its timeline, compact by default; `full: true` gives the steps as JSON; read steps name the chunks they read                  | Reads       |
 | `explain_run`          | A diagnosis of a run: where it failed, a search that found nothing or sources never read, warnings, and where the time went                | Reads       |
 | `evaluate_change`      | Runs a test set on an unsaved `yaml` and on the published version, and says which cases it fixed or broke and whether that is chance       | Costs money |
 
@@ -142,7 +142,7 @@ Details worth knowing:
 - `validate_definition`, `publish_definition` and `run_playground` take the prompt files in `files`, path to text, as `get_service` returns them.
 - When validation says `unknown model`, the error lists the models the organisation may use.
 - `run_playground` takes `variant`, `model` (for example `local/echo` to test for free), `output: fields` for services that extract fields, and `documentPath`, a file of at most 10 MB under the folder the server was started in, sent as the input document. Nothing is saved, but the run can be read back with `get_run`.
-- `get_run` with `full: true` is cut at 60,000 characters.
+- `get_run` with `full: true` gives valid JSON of at most 60,000 characters: it leaves out whole steps from the end and says how many, and search steps keep their top 20 hits unless `allHits: true`. `types` (for example `["read", "model"]`) keeps only those steps, and `from` and `to` pick a range of step numbers, counted after `types`.
 - `explain_run` uses the search attribution when you may see it (operators in a support session); otherwise it judges retrieval from the timeline and says so.
 - `evaluate_change` never touches the saved draft. It waits up to `waitSeconds` (default 120); if the runs are not done, it returns their ids, and you call it again with `runs`. With few cases, "no detectable difference" is the honest answer. The publish gates still decide what may be published.
 - The server is built on the official MCP SDK (`@modelcontextprotocol/server`). It speaks protocol version `2026-07-28` and falls back to `2025-11-25` and older for clients that ask for them.

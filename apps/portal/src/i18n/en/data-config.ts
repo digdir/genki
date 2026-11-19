@@ -50,6 +50,8 @@ export const config = {
     'Someone else has changed the entry since you opened it. Close it and open it again to see the latest version.',
   saveVersion: 'Save new version',
   create: 'Create',
+  savingVersion: 'Saving ...',
+  creating: 'Creating ...',
   remove: 'Delete',
   close: 'Close',
   versions: 'Versions',
@@ -85,8 +87,10 @@ export const config = {
   edit: 'Edit',
   removeCase: 'Remove',
   saveCase: 'Save the case',
+  savingCase: 'Saving ...',
   removeReasonLabel: 'Reason for removing',
   addCase: 'Add',
+  addingCase: 'Adding ...',
   newCase: 'New case',
   testSetsLoading: 'Fetching test sets',
   setInvalid: 'Give the test set an id (lower-case letters, digits and hyphens) and a name.',
@@ -99,6 +103,7 @@ export const config = {
   nameLabel: 'Name',
   firstCase: 'First case',
   createTestSet: 'Create the test set',
+  creatingTestSet: 'Creating ...',
 } satisfies Translation<typeof configSource>;
 
 export const sharedServices = {

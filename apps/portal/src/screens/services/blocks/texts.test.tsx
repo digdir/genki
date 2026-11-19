@@ -4,7 +4,7 @@ import { fromTemplate, type AssistantLayout, type ProfileData } from '@genai/ui-
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { useBlocksState } from './BlocksStep';
 import { definition, fakeClient, answered } from './draft.test-utils';
-import { keepStart, keptStart, layoutJson, readLayout } from './layoutStore';
+import { draftStart, layoutJson, readLayout } from './layoutStore';
 import type { Collection } from './profileEdit';
 import { ServicePreview } from './ServicePreview';
 import { TemplatesPanel } from './TemplatesPanel';
@@ -216,13 +216,13 @@ describe('the words kept with the layout', () => {
     expect(readLayout(layoutJson(layout))).toEqual({ layout });
   });
 
-  it('are kept past a limit, as typed, so a reload does not lose the layout', () => {
+  it('are opened from the draft past a limit, as typed, so a reload does not lose the layout', () => {
     const layout = {
       ...fromTemplate('chat-only').layout,
       profile: { assistantName: 'x'.repeat(81) },
     };
-    keepStart('digdir', 'a', { layout });
-    expect(keptStart('digdir', 'a')?.layout.profile).toEqual({ assistantName: 'x'.repeat(81) });
+    const start = draftStart(layout);
+    expect(start !== 'foreign' && start?.layout.profile).toEqual({ assistantName: 'x'.repeat(81) });
     // A pasted layout past a limit is still refused, with why.
     expect(readLayout(layoutJson(layout))).toMatchObject({ problem: 'breaks-rules' });
   });

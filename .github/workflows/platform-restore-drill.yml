@@ -1,0 +1,101 @@
+name: platform-restore-drill
+
+# Restores the platform database to a throwaway server, times it, compares row counts with the source and deletes
+# the server again (docs/runbook.md, "Restore drill"). Run as the deploy identity, so nobody needs Azure access.
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 06:00 UTC on the first day of each quarter.
+    - cron: '0 6 1 1,4,7,10 *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: platform-restore-drill-test
+  cancel-in-progress: false
+
+jobs:
+  drill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    environment: test
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      RG: ${{ vars.AZURE_RESOURCE_GROUP }}
+      BASE: genai-test
+    steps:
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Find the platform server
+        id: server
+        run: |
+          az config set extension.use_dynamic_install=yes_without_prompt extension.dynamic_install_allow_preview=true --only-show-errors
+          server=$(az postgres flexible-server list -g "$RG" \
+            --query "[?starts_with(name, '$BASE-pg-') && name != '$BASE-pg-restore-drill'].name | [0]" -o tsv)
+          if [ -z "$server" ]; then
+            echo "::error::No platform server in $RG."
+            exit 1
+          fi
+          echo "Platform server: $server"
+          echo "name=$server" >> "$GITHUB_OUTPUT"
+
+      - name: Restore drill
+        env:
+          SERVER: ${{ steps.server.outputs.name }}
+        run: |
+          drill="$BASE-pg-restore-drill"
+          restore_time=$(date -u -d '10 minutes ago' +%Y-%m-%dT%H:%M:%SZ)
+          echo "Restoring $SERVER as of $restore_time to $drill"
+          start=$SECONDS
+          az postgres flexible-server restore -g "$RG" -n "$drill" --source-server "$SERVER" --restore-time "$restore_time" \
+            --vnet "$BASE-vnet" --subnet postgres \
+            --private-dns-zone "$SERVER.private.postgres.database.azure.com" -o none
+          elapsed=$((SECONDS - start))
+          state=$(az postgres flexible-server show -g "$RG" -n "$drill" --query state -o tsv)
+          echo "Restore took ${elapsed} s ($((elapsed / 60)) min $((elapsed % 60)) s); $drill is $state" | tee -a "$GITHUB_STEP_SUMMARY"
+          [ "$state" = Ready ] || { echo "::error::$drill is $state, not Ready"; exit 1; }
+
+      - name: Compare row counts
+        run: |
+          job="$BASE-pg-restore-check"
+          execution=$(az containerapp job start -g "$RG" -n "$job" --query name -o tsv)
+          echo "Started $execution"
+          status=Running
+          for _ in $(seq 1 70); do
+            status=$(az containerapp job execution show -g "$RG" -n "$job" --job-execution-name "$execution" --query properties.status -o tsv)
+            case "$status" in Succeeded | Failed | Stopped | Degraded) break ;; esac
+            sleep 10
+          done
+          echo "Execution $execution: $status"
+          workspace=$(az monitor log-analytics workspace list -g "$RG" --query "[0].customerId" -o tsv)
+          rows=""
+          for _ in $(seq 1 20); do
+            rows=$(az monitor log-analytics query -w "$workspace" --timespan PT2H -o tsv \
+              --analytics-query "ContainerAppConsoleLogs | where ContainerGroupName startswith '$execution' | order by TimeGenerated asc | project Log" 2>/dev/null || true)
+            [ -n "$rows" ] && break
+            sleep 30
+          done
+          if [ -n "$rows" ]; then
+            echo "$rows"
+          else
+            echo "::warning::No log found for $execution; see the job's execution history in the Azure portal."
+          fi
+          echo "Row counts: $status" >> "$GITHUB_STEP_SUMMARY"
+          [ "$status" = Succeeded ] || { echo "::error::The row count check ended $status"; exit 1; }
+
+      - name: Delete the restored server
+        if: always()
+        run: |
+          drill="$BASE-pg-restore-drill"
+          if az postgres flexible-server show -g "$RG" -n "$drill" -o none 2>/dev/null; then
+            az postgres flexible-server delete -g "$RG" -n "$drill" --yes
+            echo "Deleted $drill"
+          fi

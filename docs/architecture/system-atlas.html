@@ -4070,6 +4070,374 @@
                           },
                           additionalProperties: false,
                         },
+                        interface: {
+                          type: 'object',
+                          properties: {
+                            layout: {
+                              type: 'object',
+                              properties: {
+                                version: { type: 'number', const: 1 },
+                                template: { type: 'string', pattern: '^[a-z][a-z0-9-]{0,63}$' },
+                                look: { type: 'string', pattern: '^[a-z][a-z0-9-]{0,63}$' },
+                                zones: {
+                                  type: 'object',
+                                  properties: {
+                                    primary: {
+                                      maxItems: 16,
+                                      type: 'array',
+                                      items: {
+                                        type: 'object',
+                                        properties: {
+                                          block: {
+                                            type: 'string',
+                                            pattern: '^[a-z][a-z0-9-]{0,63}$',
+                                          },
+                                          settings: {
+                                            type: 'object',
+                                            propertyNames: {
+                                              type: 'string',
+                                              pattern: '^[a-zA-Z][a-zA-Z0-9-]{0,63}$',
+                                            },
+                                            additionalProperties: {
+                                              anyOf: [
+                                                { type: 'boolean' },
+                                                { type: 'string', maxLength: 1000 },
+                                              ],
+                                            },
+                                          },
+                                        },
+                                        required: ['block'],
+                                        additionalProperties: false,
+                                      },
+                                    },
+                                    main: {
+                                      maxItems: 16,
+                                      type: 'array',
+                                      items: {
+                                        type: 'object',
+                                        properties: {
+                                          block: {
+                                            type: 'string',
+                                            pattern: '^[a-z][a-z0-9-]{0,63}$',
+                                          },
+                                          settings: {
+                                            type: 'object',
+                                            propertyNames: {
+                                              type: 'string',
+                                              pattern: '^[a-zA-Z][a-zA-Z0-9-]{0,63}$',
+                                            },
+                                            additionalProperties: {
+                                              anyOf: [
+                                                { type: 'boolean' },
+                                                { type: 'string', maxLength: 1000 },
+                                              ],
+                                            },
+                                          },
+                                        },
+                                        required: ['block'],
+                                        additionalProperties: false,
+                                      },
+                                    },
+                                    secondary: {
+                                      maxItems: 16,
+                                      type: 'array',
+                                      items: {
+                                        type: 'object',
+                                        properties: {
+                                          block: {
+                                            type: 'string',
+                                            pattern: '^[a-z][a-z0-9-]{0,63}$',
+                                          },
+                                          settings: {
+                                            type: 'object',
+                                            propertyNames: {
+                                              type: 'string',
+                                              pattern: '^[a-zA-Z][a-zA-Z0-9-]{0,63}$',
+                                            },
+                                            additionalProperties: {
+                                              anyOf: [
+                                                { type: 'boolean' },
+                                                { type: 'string', maxLength: 1000 },
+                                              ],
+                                            },
+                                          },
+                                        },
+                                        required: ['block'],
+                                        additionalProperties: false,
+                                      },
+                                    },
+                                  },
+                                  required: ['primary', 'main', 'secondary'],
+                                  additionalProperties: false,
+                                },
+                                profile: {
+                                  type: 'object',
+                                  properties: {
+                                    assistantName: {
+                                      anyOf: [
+                                        { type: 'string', maxLength: 80 },
+                                        {
+                                          type: 'object',
+                                          properties: {
+                                            nb: { type: 'string', maxLength: 80 },
+                                            en: { type: 'string', maxLength: 80 },
+                                          },
+                                          required: ['nb', 'en'],
+                                          additionalProperties: false,
+                                        },
+                                      ],
+                                    },
+                                    suggestions: {
+                                      maxItems: 6,
+                                      type: 'array',
+                                      items: {
+                                        anyOf: [
+                                          { type: 'string', maxLength: 200 },
+                                          {
+                                            type: 'object',
+                                            properties: {
+                                              nb: { type: 'string', maxLength: 200 },
+                                              en: { type: 'string', maxLength: 200 },
+                                            },
+                                            required: ['nb', 'en'],
+                                            additionalProperties: false,
+                                          },
+                                        ],
+                                      },
+                                    },
+                                    followUps: {
+                                      maxItems: 6,
+                                      type: 'array',
+                                      items: {
+                                        anyOf: [
+                                          { type: 'string', maxLength: 200 },
+                                          {
+                                            type: 'object',
+                                            properties: {
+                                              nb: { type: 'string', maxLength: 200 },
+                                              en: { type: 'string', maxLength: 200 },
+                                            },
+                                            required: ['nb', 'en'],
+                                            additionalProperties: false,
+                                          },
+                                        ],
+                                      },
+                                    },
+                                    corpora: {
+                                      type: 'object',
+                                      propertyNames: { type: 'string', maxLength: 128 },
+                                      additionalProperties: {
+                                        type: 'object',
+                                        properties: {
+                                          label: {
+                                            anyOf: [
+                                              { type: 'string', maxLength: 80 },
+                                              {
+                                                type: 'object',
+                                                properties: {
+                                                  nb: { type: 'string', maxLength: 80 },
+                                                  en: { type: 'string', maxLength: 80 },
+                                                },
+                                                required: ['nb', 'en'],
+                                                additionalProperties: false,
+                                              },
+                                            ],
+                                          },
+                                          description: {
+                                            anyOf: [
+                                              { type: 'string', maxLength: 500 },
+                                              {
+                                                type: 'object',
+                                                properties: {
+                                                  nb: { type: 'string', maxLength: 500 },
+                                                  en: { type: 'string', maxLength: 500 },
+                                                },
+                                                required: ['nb', 'en'],
+                                                additionalProperties: false,
+                                              },
+                                            ],
+                                          },
+                                          fields: {
+                                            maxItems: 30,
+                                            type: 'array',
+                                            items: {
+                                              type: 'object',
+                                              properties: {
+                                                id: { type: 'string', maxLength: 128 },
+                                                label: {
+                                                  anyOf: [
+                                                    { type: 'string', maxLength: 80 },
+                                                    {
+                                                      type: 'object',
+                                                      properties: {
+                                                        nb: { type: 'string', maxLength: 80 },
+                                                        en: { type: 'string', maxLength: 80 },
+                                                      },
+                                                      required: ['nb', 'en'],
+                                                      additionalProperties: false,
+                                                    },
+                                                  ],
+                                                },
+                                                heading: {
+                                                  anyOf: [
+                                                    { type: 'string', maxLength: 80 },
+                                                    {
+                                                      type: 'object',
+                                                      properties: {
+                                                        nb: { type: 'string', maxLength: 80 },
+                                                        en: { type: 'string', maxLength: 80 },
+                                                      },
+                                                      required: ['nb', 'en'],
+                                                      additionalProperties: false,
+                                                    },
+                                                  ],
+                                                },
+                                                kind: { type: 'string', enum: ['year'] },
+                                                years: {
+                                                  type: 'object',
+                                                  properties: {
+                                                    first: {
+                                                      type: 'integer',
+                                                      minimum: -9007199254740991,
+                                                      maximum: 9007199254740991,
+                                                    },
+                                                    last: {
+                                                      type: 'integer',
+                                                      minimum: -9007199254740991,
+                                                      maximum: 9007199254740991,
+                                                    },
+                                                  },
+                                                  additionalProperties: false,
+                                                },
+                                              },
+                                              required: ['id', 'label'],
+                                              additionalProperties: false,
+                                            },
+                                          },
+                                          typePlurals: {
+                                            type: 'object',
+                                            propertyNames: { type: 'string', maxLength: 128 },
+                                            additionalProperties: {
+                                              anyOf: [
+                                                { type: 'string', maxLength: 128 },
+                                                {
+                                                  type: 'object',
+                                                  properties: {
+                                                    nb: { type: 'string', maxLength: 128 },
+                                                    en: { type: 'string', maxLength: 128 },
+                                                  },
+                                                  required: ['nb', 'en'],
+                                                  additionalProperties: false,
+                                                },
+                                              ],
+                                            },
+                                          },
+                                          typeField: { type: 'string', maxLength: 128 },
+                                          documentLinks: {
+                                            type: 'object',
+                                            properties: {
+                                              digits: { type: 'string', maxLength: 500 },
+                                              uuid: { type: 'string', maxLength: 500 },
+                                              any: { type: 'string', maxLength: 500 },
+                                            },
+                                            additionalProperties: false,
+                                          },
+                                          about: {
+                                            type: 'object',
+                                            properties: {
+                                              idField: { type: 'string', maxLength: 128 },
+                                              fields: {
+                                                maxItems: 10,
+                                                type: 'array',
+                                                items: { type: 'string', maxLength: 128 },
+                                              },
+                                            },
+                                            required: ['idField', 'fields'],
+                                            additionalProperties: false,
+                                          },
+                                        },
+                                        additionalProperties: false,
+                                      },
+                                    },
+                                    experiments: {
+                                      maxItems: 10,
+                                      type: 'array',
+                                      items: {
+                                        type: 'object',
+                                        properties: {
+                                          id: { type: 'string', maxLength: 128 },
+                                          title: {
+                                            anyOf: [
+                                              { type: 'string', maxLength: 80 },
+                                              {
+                                                type: 'object',
+                                                properties: {
+                                                  nb: { type: 'string', maxLength: 80 },
+                                                  en: { type: 'string', maxLength: 80 },
+                                                },
+                                                required: ['nb', 'en'],
+                                                additionalProperties: false,
+                                              },
+                                            ],
+                                          },
+                                          description: {
+                                            anyOf: [
+                                              { type: 'string', maxLength: 500 },
+                                              {
+                                                type: 'object',
+                                                properties: {
+                                                  nb: { type: 'string', maxLength: 500 },
+                                                  en: { type: 'string', maxLength: 500 },
+                                                },
+                                                required: ['nb', 'en'],
+                                                additionalProperties: false,
+                                              },
+                                            ],
+                                          },
+                                          href: { type: 'string', maxLength: 500 },
+                                          hrefLabel: {
+                                            anyOf: [
+                                              { type: 'string', maxLength: 80 },
+                                              {
+                                                type: 'object',
+                                                properties: {
+                                                  nb: { type: 'string', maxLength: 80 },
+                                                  en: { type: 'string', maxLength: 80 },
+                                                },
+                                                required: ['nb', 'en'],
+                                                additionalProperties: false,
+                                              },
+                                            ],
+                                          },
+                                        },
+                                        required: ['id', 'title'],
+                                        additionalProperties: false,
+                                      },
+                                    },
+                                    settingsNote: {
+                                      anyOf: [
+                                        { type: 'string', maxLength: 1000 },
+                                        {
+                                          type: 'object',
+                                          properties: {
+                                            nb: { type: 'string', maxLength: 1000 },
+                                            en: { type: 'string', maxLength: 1000 },
+                                          },
+                                          required: ['nb', 'en'],
+                                          additionalProperties: false,
+                                        },
+                                      ],
+                                    },
+                                  },
+                                  additionalProperties: false,
+                                },
+                              },
+                              required: ['version', 'zones'],
+                              additionalProperties: false,
+                            },
+                          },
+                          additionalProperties: false,
+                        },
                       },
                       required: ['purpose', 'riskClass', 'input', 'output', 'strategy', 'model'],
                       additionalProperties: false,
@@ -4697,6 +5065,7 @@
                     noAnswerText: { type: 'string', minLength: 1, maxLength: 500 },
                     instructionsInAnswer: { type: 'boolean' },
                     citeBy: { type: 'string', enum: ['document', 'excerpt'] },
+                    sources: { type: 'string', enum: ['cited', 'read'] },
                     search: {
                       type: 'object',
                       properties: {
@@ -6754,7 +7123,7 @@
                           properties: {
                             kind: { type: 'string', const: 'webhook' },
                             url: { type: 'string', format: 'uri' },
-                            secret: { type: 'string', pattern: '^[a-z0-9][a-z0-9._-]*$' },
+                            secret: { type: 'string', pattern: '^[a-z0-9][a-z0-9-]{0,62}$' },
                           },
                           required: ['kind', 'url', 'secret'],
                           additionalProperties: false,

@@ -44,7 +44,7 @@ Coding agents such as Claude Code and Copilot have no direct way to work on genk
 
 - A person running the portal's dev server on port 5173 at the same time as logging in must stop it, or point `ADMIN_MCP_REDIRECT_URI` at another callback registered for the client.
 - Built with this record: the server and its tools in `apps/admin-mcp`, tested against the API in `contract.test.ts`, playground runs in the task routes, and the skill in `.claude/skills/genki-admin`. The browser login is tested against a fake provider, and has been used against genki-test's Ansattporten. The prototype's change sets and chat page are not carried over.
-- What the tools return reaches the coding agent's transcript and its model provider, including user questions and document text from runs. `get_run` is compact by default to limit this; `full: true` gives the whole timeline.
+- What the tools return reaches the coding agent's transcript and its model provider, including user questions and document text from runs. `get_run` is compact by default to limit this; `full: true` gives the timeline as JSON up to 60,000 characters, and `types`, `from` and `to` narrow it to the steps asked for.
 - The server is built on the official MCP SDK (`@modelcontextprotocol/server`, pinned) and speaks protocol version 2026-07-28, falling back to 2025-11-25 and older.
 - Not built yet: confirmation through MCP elicitation, and MCP resources and prompts. The run timeline does not show the effective instructions a model got, so a prompt change cannot be verified from it.
 - A playground run stays out of the default task list, the overview and the usage by service, so Logg and the numbers people already read do not change.

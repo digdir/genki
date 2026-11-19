@@ -139,6 +139,7 @@ import {
 } from './knowledge-handlers.js';
 import { conversionRunJobs, openWorkerJobs } from './knowledge-jobs.js';
 import { platformWork } from './platform-work.js';
+import { startQueueStats } from './queue-stats.js';
 import { reconcileKnowledgeRuns } from './reconciler.js';
 import { runProgress } from './run-progress.js';
 import { scheduleUsagePolls, usagePollWork, type PolledSource } from './usage-poll.js';
@@ -615,6 +616,15 @@ const nightWindowTimer = nightWindow
     )
   : undefined;
 const jobs = workerJobs?.platform ?? new InMemoryJobQueue();
+const queueStats = workerJobs
+  ? startQueueStats(
+      () => [
+        { server: 'platform', jobs: workerJobs.platform },
+        ...(workerJobs.knowledge ? [{ server: 'knowledge', jobs: workerJobs.knowledge }] : []),
+      ],
+      log,
+    )
+  : undefined;
 if (!workerJobs) await workQueues(jobs, work);
 await scheduleUsagePolls(jobs, polledSources);
 log('jobs', {
@@ -1097,6 +1107,7 @@ const knowledgeReconciler = knowledgeRunRecords
   : undefined;
 
 const stop = () => {
+  queueStats?.stop();
   knowledgeProgress.stop();
   retention?.stop();
   exchangeRate?.stop();
