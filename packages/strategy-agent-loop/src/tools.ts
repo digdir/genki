@@ -4,6 +4,7 @@ import {
   detectInsufficientContext,
   numberByDocument,
   numberByExcerpt,
+  pageField,
   type CiteBy,
   parseCitations,
   sourcesFirst,
@@ -280,6 +281,11 @@ export const enforceStrategyQuota = <T extends ChunkSummary>(chunks: T[], quota:
 
 const fixed = (n: number, digits: number) => n.toFixed(digits);
 
+const pageText = (c: ChunkSummary) => {
+  const page = pageField(c);
+  return page ? ` ${page[0]}=${page[1]}` : '';
+};
+
 const detectionHint = (d: SearchDetection) => {
   const names = d.values.map((v) => JSON.stringify(v)).join(', ');
   const them = d.values.length > 1 ? 'them' : 'it';
@@ -314,6 +320,7 @@ export const formatSearchMetadataResults = (
     const matched = (c.matchedQuestions ?? []).filter((q) => q.trim() !== '').slice(0, 2);
     return (
       `${i + 1}. chunk_id=${c.chunkId} doc_num=${c.document ?? ''} chunk_index=${c.position ?? ''}/${c.totalChunks ?? '?'}` +
+      pageText(c) +
       (c.contentLength === undefined ? '' : ` content_length=${c.contentLength}`) +
       (c.title ? ` title="${c.title}"` : '') +
       (c.url ? ` url=${c.url}` : '') +
@@ -359,6 +366,7 @@ export const formatReadResult = (
   const blocks = chunks.map(
     (c) =>
       `--- chunk_id=${c.chunkId} doc_num=${c.document ?? ''} chunk_index=${c.position ?? ''}` +
+      pageText(c) +
       (c.title ? ` title="${c.title}"` : '') +
       (c.url ? ` url=${c.url}` : '') +
       ` ---\n${c.content}`,

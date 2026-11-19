@@ -20,7 +20,7 @@ export const agentTools: ToolSpec[] = [
   {
     name: 'search',
     description:
-      'Search the document collection using multiple queries. Returns metadata-only results (chunk_id, doc_num, chunk_index, total_chunks, content_length, headers, scores) — NO content. Use read_chunks to fetch content of promising results.',
+      'Search the document collection using multiple queries. Returns metadata-only results (chunk_id, doc_num, chunk_index, total_chunks, page, content_length, headers, scores) — NO content. Use read_chunks to fetch content of promising results. page=N (pages=N-M when a chunk spans several) is the chunk\'s page in its PDF: cite that page as plain text, such as "s. 67", never in square brackets.',
     parameters: {
       type: 'object',
       properties: {
@@ -66,7 +66,7 @@ export const agentTools: ToolSpec[] = [
   {
     name: 'read_chunks',
     description:
-      'Read full content of specific chunks. Use after search to read promising results. Supports reading by chunk IDs or by document + chunk index range.',
+      'Read full content of specific chunks. Use after search to read promising results. Supports reading by chunk IDs or by document + chunk index range. Each chunk\'s header carries its PDF page as page=N, or pages=N-M when it spans several: cite that page as plain text, such as "s. 67", never in square brackets.',
     parameters: {
       type: 'object',
       properties: {
@@ -143,11 +143,12 @@ export const agentTools: ToolSpec[] = [
   },
 ];
 
-export const citationInstruction =
-  'When making claims based on the provided sources, cite them using [N] notation where N is the source number. Every factual claim should have at least one citation. Place citations immediately after the relevant statement.';
+const pageRule =
+  'Write a page as plain text, such as "s. 67", never as a number in square brackets: [N] is only for citing a source.';
 
-export const excerptCitationInstruction =
-  "Each excerpt in the context has its own number. When making claims based on the provided sources, cite the excerpt the claim rests on using [N] notation, where N is that excerpt's number. Cite the excerpt, not the document as a whole: when two sentences rest on different excerpts, each cites its own, even when the excerpts come from the same document. Every factual claim should have at least one citation. Place citations immediately after the relevant statement.";
+export const citationInstruction = `When making claims based on the provided sources, cite them using [N] notation where N is the source number. Every factual claim should have at least one citation. Place citations immediately after the relevant statement. ${pageRule}`;
+
+export const excerptCitationInstruction = `Each excerpt in the context has its own number. When making claims based on the provided sources, cite the excerpt the claim rests on using [N] notation, where N is that excerpt's number. Cite the excerpt, not the document as a whole: when two sentences rest on different excerpts, each cites its own, even when the excerpts come from the same document. Every factual claim should have at least one citation. Place citations immediately after the relevant statement. ${pageRule}`;
 
 export const ambiguityInstruction =
   'If the sources contain multiple plausible values, labels, or interpretations, do not hide the ambiguity. Compare the user’s wording to the source labels, preserve the source terminology, and explicitly mention ambiguity when the question is underspecified. Do not silently collapse distinct source labels into one concept. Do not merge or arithmetic-combine values from different labels, sentences, or chunks unless the source explicitly states that they belong together. If one label is clearly the closest semantic match, use it and state that label in the answer. If different chunks describe different scopes or definitions, explain that difference instead of producing a single blended number.';
