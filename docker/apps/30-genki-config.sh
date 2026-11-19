@@ -2,8 +2,8 @@
 set -eu
 
 case "${APP:-}" in
-  portal | workspace | console) ;;
-  *) echo "Set APP to portal, workspace or console" >&2; exit 1 ;;
+  portal | workspace | console | assistant) ;;
+  *) echo "Set APP to portal, workspace, console or assistant" >&2; exit 1 ;;
 esac
 case "${API_UPSTREAM:-}" in
   http://* | https://*) ;;

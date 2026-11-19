@@ -192,6 +192,7 @@ const throughAdminTasks = [
   'PUT /tenants/:tenant/building-blocks/:kind/:id/settings',
   'PUT /tenants/:tenant/catalog/:kind/:id',
   'PUT /tenants/:tenant/clients/:id',
+  'PUT /tenants/:tenant/clients/:id/hosted',
   'PUT /tenants/:tenant/connectors/:id/credentials',
   'PUT /tenants/:tenant/datasets/:dataset/pipelines/:id',
   'PUT /tenants/:tenant/datasets/:id',

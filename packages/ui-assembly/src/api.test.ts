@@ -705,6 +705,12 @@ describe('the host’s credentials', () => {
     expect(failureOf(error)).toEqual({ kind: 'access' });
   });
 
+  it('tells a refusal by a locked environment in genki’s own words', () => {
+    const locked = new ApiError(403, 'Testmiljøet er låst.', 'locked-environment');
+    expect(failureOf(locked)).toEqual({ kind: 'access', message: 'Testmiljøet er låst.' });
+    expect(failureOf(new ApiError(403, 'Forbidden', 'other'))).toEqual({ kind: 'access' });
+  });
+
   it('stops at a new thread refused with 401, without sending the question', async () => {
     const sent = genki((url) => url.endsWith('/api/conversations'));
     const error = await ask(withHeaders(bearer)).catch((e: unknown) => e);

@@ -18,3 +18,4 @@ export * from './settings/index.js';
 export * from './answer-actions/index.js';
 export * from './builder/index.js';
 export { nb as uiBlocksNb, en as uiBlocksEn } from './catalogues.js';
+export { Markdown, type Links } from './markdown/Markdown.js';

@@ -33,7 +33,7 @@ COPY --from=build --chown=node:node /out/ ./
 USER node
 
 FROM build AS apps-build
-RUN for app in portal workspace console; do \
+RUN for app in portal workspace console assistant; do \
       (cd "apps/$app" && npx vite build --outDir "/web/$app") || exit 1; \
     done
 RUN find /web -type f \( -name '*.js' -o -name '*.css' -o -name '*.svg' -o -name '*.html' \) \

@@ -47,6 +47,7 @@ const actionKeys: Record<string, PlainKey> = {
   'platform.task.review.approve': 'changes.taskReviewApprove',
   'platform.task.review.edit': 'changes.taskReviewEdit',
   'platform.clients.remove': 'changes.clientsRemove',
+  'platform.client.hosted': 'changes.clientHosted',
   'platform.clients.save': 'changes.clientsSave',
   'platform.dataset.enrichment.apply': 'changes.datasetEnrichmentApply',
   'platform.dataset.enrichment.revert': 'changes.datasetEnrichmentRevert',

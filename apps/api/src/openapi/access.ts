@@ -1180,6 +1180,72 @@ export const accessRoutes: RouteConfig[] = [
     },
   }),
   createRoute({
+    method: 'put',
+    path: '/tenants/{tenant}/clients/{id}/hosted',
+    summary:
+      "Mark a client hosted by genki's assistant host, or not (platform operator in a support session, audited)",
+    request: {
+      params: z.object({ tenant, id: pathParam('id', 'kunnskapsassistenten-web') }),
+      headers: reason,
+      body: body(
+        z.object({
+          hosted: z.boolean(),
+          hostnames: z
+            .array(z.object({ hostname: z.string(), environment: z.string().optional() }))
+            .optional(),
+        }),
+      ),
+    },
+    responses: {
+      200: json(Client, 'Saved'),
+      400: invalid,
+      401: unauthorized,
+      403: problem('Not a platform operator'),
+      404: problem('No such client, or no support session for this tenant'),
+    },
+  }),
+  createRoute({
+    method: 'get',
+    path: '/v1/hosts/{hostname}',
+    summary:
+      "What genki's assistant host draws on a hostname before anyone logs in (public, cached 60 seconds)",
+    request: { params: z.object({ hostname: pathParam('hostname', 'kunnskap.digdir.cloud') }) },
+    responses: {
+      200: json(
+        z.object({
+          hostname: z.string(),
+          tenant: z.string(),
+          service: z.string(),
+          environment: z.string(),
+          name: z.unknown(),
+          login: z.object({ issuer: z.string().nullable(), clientId: z.string() }),
+          theme: z.null(),
+          menu: z.array(z.record(z.string(), z.unknown())),
+          pages: z.array(z.object({ id: z.string(), title: z.unknown() })),
+        }),
+        'The hosted service',
+      ),
+      404: problem('urn:genai:problem:host-not-found: the hostname is not active'),
+    },
+  }),
+  createRoute({
+    method: 'get',
+    path: '/v1/hosts/{hostname}/pages/{id}',
+    summary: "One page of a hosted service's menu, in Markdown (public, cached 60 seconds)",
+    request: {
+      params: z.object({
+        hostname: pathParam('hostname', 'kunnskap.digdir.cloud'),
+        id: pathParam('id', 'om'),
+      }),
+    },
+    responses: {
+      200: json(z.object({ id: z.string(), title: z.unknown(), body: z.unknown() }), 'The page'),
+      404: problem(
+        'urn:genai:problem:host-not-found: the hostname is not active or has no such page',
+      ),
+    },
+  }),
+  createRoute({
     method: 'post',
     path: '/tenants/{tenant}/clients/{id}/webhook/test',
     summary:

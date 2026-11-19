@@ -2,6 +2,8 @@ import { z } from 'zod';
 
 export const INTERFACE_MAX_BYTES = 256 * 1024;
 export const PROFILE_MAX_BYTES = 32 * 1024;
+export const PAGE_MAX_BYTES = 32 * 1024;
+export const PAGES_MAX_BYTES = 128 * 1024;
 
 /** The limits of `@genai/ui-blocks`' `profileLimits`, kept alike by a test in `@genai/strategy-builder`. */
 export const interfaceLimits = {
@@ -20,6 +22,8 @@ export const interfaceLimits = {
   blocksPerZone: 16,
   settingsPerBlock: 32,
   setting: 1_000,
+  menuItems: 12,
+  pages: 12,
 } as const;
 
 const bytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).length;
@@ -110,6 +114,18 @@ export const interfaceBlockId = z
   .string()
   .regex(/^[a-z][a-z0-9-]{0,63}$/, 'must be lowercase letters, digits and dashes');
 
+export const catalogueBlockIds: readonly string[] = [
+  'projects',
+  'threads',
+  'settings',
+  'chat',
+  'filter',
+  'approach',
+  'sources',
+  'document-view',
+  'notes',
+];
+
 const placed = z.strictObject({
   block: interfaceBlockId,
   settings: z
@@ -138,8 +154,70 @@ export const assistantLayout = z.strictObject({
   profile: profile.optional(),
 });
 
+/** A page's id, which is also its address on the host: `/{id}`. */
+export const interfacePageId = z
+  .string()
+  .regex(/^[a-z][a-z0-9-]{0,63}$/, 'must be lowercase letters, digits and dashes');
+
+const isMenuLink = (value: string) => {
+  if (value.startsWith('mailto:')) return /^mailto:[^\s/?#@]+@[^\s/?#@]+$/.test(value);
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && url.username === '' && url.password === '';
+  } catch {
+    return false;
+  }
+};
+
+const menuItem = z.union([
+  z.strictObject({ label: text(interfaceLimits.name), page: interfacePageId }),
+  z.strictObject({
+    label: text(interfaceLimits.name),
+    href: z.string().max(interfaceLimits.url).refine(isMenuLink, 'must be an https or mailto link'),
+  }),
+]);
+
+const pageText = z.union([z.string(), z.strictObject({ nb: z.string(), en: z.string() })]);
+
+const page = z.strictObject({
+  id: interfacePageId,
+  title: text(interfaceLimits.name),
+  body: pageText.refine(
+    (body) => bytes(body) <= PAGE_MAX_BYTES,
+    `at most ${PAGE_MAX_BYTES} bytes as JSON`,
+  ),
+});
+
+const reserved = new Set(['api', 'auth', 'assets', 'innstillinger', 'callback', 'theme']);
+
 export const serviceInterface = z
-  .strictObject({ layout: assistantLayout.optional() })
-  .refine((i) => bytes(i) <= INTERFACE_MAX_BYTES, `at most ${INTERFACE_MAX_BYTES} bytes as JSON`);
+  .strictObject({
+    layout: assistantLayout.optional(),
+    menu: z.array(menuItem).max(interfaceLimits.menuItems).optional(),
+    pages: z
+      .array(page)
+      .max(interfaceLimits.pages)
+      .refine(
+        (pages) => bytes(pages) <= PAGES_MAX_BYTES,
+        `at most ${PAGES_MAX_BYTES} bytes as JSON`,
+      )
+      .refine(
+        (pages) => new Set(pages.map((p) => p.id)).size === pages.length,
+        'page ids must differ',
+      )
+      .refine(
+        (pages) => pages.every((p) => !reserved.has(p.id)),
+        "a page id must not be one of the host's own addresses",
+      )
+      .optional(),
+  })
+  .refine((i) => bytes(i) <= INTERFACE_MAX_BYTES, `at most ${INTERFACE_MAX_BYTES} bytes as JSON`)
+  .refine(
+    (i) =>
+      (i.menu ?? []).every(
+        (item) => !('page' in item) || (i.pages ?? []).some((p) => p.id === item.page),
+      ),
+    { message: 'a menu item names a page the interface does not have', path: ['menu'] },
+  );
 
 export type ServiceInterface = z.output<typeof serviceInterface>;

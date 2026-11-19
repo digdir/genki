@@ -205,6 +205,7 @@ export const changes = {
   taskReviewApprove: 'approved the table',
   taskReviewEdit: 'corrected the table',
   clientsRemove: 'removed the client',
+  clientHosted: 'changed whether genki hosts the client',
   clientsSave: 'saved the client',
   datasetEnrichmentApply: 'applied the enrichment of',
   datasetEnrichmentRevert: 'reverted the enrichment of',

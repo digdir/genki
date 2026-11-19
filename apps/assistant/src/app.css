@@ -1,0 +1,46 @@
+body {
+  margin: 0;
+  background: var(--ds-color-neutral-background-default);
+  color: var(--ds-color-neutral-text-default);
+  font-family: Inter, system-ui, sans-serif;
+}
+
+.ah-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ds-size-4);
+  padding: var(--ds-size-3) var(--ds-size-6);
+  border-bottom: 1px solid var(--ds-color-neutral-border-subtle);
+}
+
+.ah-name {
+  font-weight: 600;
+  color: inherit;
+  text-decoration: none;
+}
+
+.ah-menu {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ds-size-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ah-language {
+  margin-inline-start: auto;
+}
+
+.ah-main {
+  padding: var(--ds-size-6);
+}
+
+.ah-page {
+  max-width: 44rem;
+}
+
+.ah-signin {
+  max-width: 36rem;
+}
