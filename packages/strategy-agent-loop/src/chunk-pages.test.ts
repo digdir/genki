@@ -120,30 +120,36 @@ describe('the page the agent sees for each chunk', () => {
     for (const name of ['search', 'read_chunks']) {
       expect(description(name)).toContain('page=N');
       expect(description(name)).toContain('pages=N-M');
-      expect(description(name)).toContain('cite that page');
+      expect(description(name)).toContain(
+        'cite that page as plain text, such as "s. 67", never in square brackets',
+      );
     }
   });
 
   it('the answer model is told to write a page without square brackets, which are kept for citations', async () => {
-    const out = await run({
-      retrieval: retrieval({}, store()).impl,
-      config: { ...baseConfig, strategy: { ...baseConfig.strategy, citeBy: 'excerpt' } },
-      scripts: {
-        primary: {
-          loop: [
-            () => result('', [call('search', { queries: ['omorganiseringer'] })]),
-            () => result('', [call('read_chunks', { chunk_ids: ['c1'] })]),
-            () => result('', [call('generate_response', { query: 'omorganiseringer' })]),
-            () => result('Ferdig.'),
-          ],
-          read: [() => readSignal('support-found')],
+    const prompt = async (citeBy: 'document' | 'excerpt') => {
+      const out = await run({
+        retrieval: retrieval({}, store()).impl,
+        config: { ...baseConfig, strategy: { ...baseConfig.strategy, citeBy } },
+        scripts: {
+          primary: {
+            loop: [
+              () => result('', [call('search', { queries: ['omorganiseringer'] })]),
+              () => result('', [call('read_chunks', { chunk_ids: ['c1'] })]),
+              () => result('', [call('generate_response', { query: 'omorganiseringer' })]),
+              () => result('Ferdig.'),
+            ],
+            read: [() => readSignal('support-found')],
+          },
         },
-      },
-    });
+      });
+      const synth = out.seen.filter((s) => s.kind === 'synth').at(-1);
+      return String(synth?.request.messages.at(-1)?.content);
+    };
 
-    const synth = out.seen.filter((s) => s.kind === 'synth').at(-1);
-    expect(String(synth?.request.messages.at(-1)?.content)).toContain(
-      'Write a page as plain text, such as "s. 67", never as a number in square brackets: [N] is only for citing a source.',
-    );
+    const rule =
+      'Write a page as plain text, such as "s. 67", never as a number in square brackets: [N] is only for citing a source.';
+    expect(await prompt('excerpt')).toContain(rule);
+    expect(await prompt('document')).toContain(rule);
   });
 });
