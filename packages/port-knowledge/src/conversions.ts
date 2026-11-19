@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import type { ConversionUnit } from './parts.js';
 import type { RecordTransaction } from './records.js';
 
 /**
@@ -33,6 +34,19 @@ export interface AcceptedConverter {
 export const textLayerDerivation: Derivation = { name: 'text-layer', version: 1 };
 export const doclingPagesDerivation: Derivation = { name: 'docling-pages', version: 1 };
 export const doclingPartsDerivation: Derivation = { name: 'docling-parts', version: 1 };
+export const textLayerPartsDerivation: Derivation = { name: 'text-layer-parts', version: 1 };
+
+/**
+ * The derivations stored as parts, a unit a row, beside the pages derivations (ADR 0055). Until a
+ * pipeline asks for them (issue 635), storing one ends no wait: the waits are for pages.
+ */
+export const partsDerivations: readonly Derivation[] = [
+  doclingPartsDerivation,
+  textLayerPartsDerivation,
+];
+
+export const isPartsDerivation = (derivation: Derivation) =>
+  partsDerivations.some((d) => d.name === derivation.name);
 
 /**
  * The converters every pipeline accepts, in order: Docling, any version and settings, kept (the
@@ -46,7 +60,13 @@ export const acceptedConverters: AcceptedConverter[] = [
 export interface StoredConversion extends ConverterKey {
   sha256: string;
   derivation: Derivation;
+  /** Empty for a parts derivation, whose text is in its units. */
   pages: string[];
+  /**
+   * A parts derivation's units in unit order, each with the parts that start in it (ADR 0055,
+   * "Units and storage"); absent for a pages derivation and for a refusal.
+   */
+  units?: ConversionUnit[];
   /** Where the converter's native output lies in the Blob container, when it has one. */
   outputPath?: string;
   /**
@@ -99,6 +119,7 @@ export interface StoredConversions {
    * The conversion a document reads: of the first accepted converter the file has one from, the
    * newest with that converter's derivation (ADR 0042, "Which conversion a document reads"). A
    * conversion with pages comes before any refusal, so a Docling refusal never hides a text layer.
+   * A parts derivation comes with its units.
    */
   find(
     sha256: string,
@@ -126,7 +147,8 @@ export interface StoredConversions {
     transaction?: RecordTransaction,
   ): Promise<boolean>;
   /**
-   * Stores a conversion under the same lock, ends every wait on its file and converter, and calls
+   * Stores a conversion under the same lock, with its units in the same transaction, replacing any
+   * stored before under the same key. A pages conversion ends every wait on its file and converter, and calls
    * `send` in that transaction for each waiting record that waits on nothing else. A record whose
    * index job could not be sent, since one is still queued or running (`send` answered null), keeps
    * its wait and is answered as `busy`: the convert job is tried again.

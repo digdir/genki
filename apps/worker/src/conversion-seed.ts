@@ -1,29 +1,47 @@
-import { doclingPages, type DoclingDocument } from '@genai/ingest';
+import { asDoclingDocument, doclingPages, doclingParts, readDoclingOutput } from '@genai/ingest';
 import { knowledgeSeedQueue, queueWork, type QueueWork } from '@genai/jobs';
 import type { NativeOutputEntry, NativeOutputStore, StoredNativeOutput } from '@genai/port-blob';
 import {
   doclingPagesDerivation,
+  doclingPartsDerivation,
   settingsHash,
+  type ConversionUnit,
   type ConversionWaiter,
   type Derivation,
   type RecordTransaction,
   type StoredConversions,
 } from '@genai/port-knowledge';
 
-/** The converters a seed can store, each with the derivation that makes its pages. */
-const derivations: Record<string, { derivation: Derivation; pages(output: unknown): string[] }> = {
+interface Derived {
+  pages: string[];
+  units?: ConversionUnit[];
+  /** Its pages or units, to check against meta.json. */
+  count: number;
+}
+
+/**
+ * What a seed can store from a converter's output: its pages, or with a derivation named, its parts
+ * (ADR 0055). An output parts cannot be derived from is stored as a refusal, so it is not read again;
+ * one pages cannot be derived from is skipped, so its file is converted as any other.
+ */
+const derivations: Record<
+  string,
+  { derivation: Derivation; derive(output: Uint8Array): Derived; refuses: boolean }
+> = {
   docling: {
     derivation: doclingPagesDerivation,
-    pages: (output) => {
-      const document = output as Partial<DoclingDocument> & { schema_name?: unknown };
-      if (
-        document.schema_name !== 'DoclingDocument' ||
-        !document.body ||
-        !Array.isArray(document.texts) ||
-        !document.pages
-      )
-        throw new Error('not a DoclingDocument');
-      return doclingPages(document as DoclingDocument);
+    refuses: false,
+    derive: (output) => {
+      const pages = doclingPages(asDoclingDocument(JSON.parse(new TextDecoder().decode(output))));
+      return { pages, count: pages.length };
+    },
+  },
+  'docling:docling-parts': {
+    derivation: doclingPartsDerivation,
+    refuses: true,
+    derive: (output) => {
+      const { units } = doclingParts(readDoclingOutput(output));
+      return { pages: [], units, count: units.length };
     },
   },
 };
@@ -38,41 +56,46 @@ export interface SeedDeps {
   bound?: () => void;
 }
 
-/** Why a listed output cannot be seeded, or its pages. */
-const pagesOf = (
+/** Why a listed output cannot be seeded, its refusal, or what it derives. */
+const derivedOf = (
   entry: NativeOutputEntry,
   found: StoredNativeOutput | undefined,
-  derive: (output: unknown) => string[],
-): { pages: string[] } | { reason: string } => {
+  known: (typeof derivations)[string],
+): Derived | { reason: string; refused?: boolean } => {
   if (!found) return { reason: 'its output or meta.json is missing' };
   const meta = found.meta as Partial<StoredNativeOutput['meta']> | null;
   if (!meta?.settings || typeof meta.settings !== 'object' || typeof meta.pages !== 'number')
     return { reason: 'its meta.json has no settings or pages' };
   if (settingsHash(meta.settings) !== entry.settingsHash)
     return { reason: 'its meta.json settings do not match its path' };
-  let pages: string[];
+  let derived: Derived;
   try {
-    pages = derive(JSON.parse(new TextDecoder().decode(found.output)));
+    derived = known.derive(found.output);
   } catch (error) {
+    // A parse error's message quotes the output, so a refusal logs only that it was not a document.
+    if (known.refuses) return { reason: 'its output is not a DoclingDocument', refused: true };
     return { reason: `its output could not be read: ${(error as Error).message}` };
   }
-  if (pages.length !== found.meta.pages)
-    return { reason: `it has ${pages.length} pages, its meta.json ${found.meta.pages}` };
-  return { pages };
+  if (derived.count !== found.meta.pages)
+    return { reason: `it has ${derived.count} pages, its meta.json ${found.meta.pages}` };
+  return derived;
 };
 
 /**
  * A seed batch (ADR 0042, issue 474): stores a conversion for each native output in Blob under the
- * batch's prefix, converter, version and settings that has none yet. A file that cannot be read is
- * skipped and logged, never stored as a failure, so its file is converted as any other; an error
- * of the Blob service fails the batch, and its retry skips what it already stored.
+ * batch's prefix, converter, version and settings that has none yet, as pages or, when the batch names
+ * `docling-parts`, as parts (ADR 0055, issue 634), with no fetch and no converter call. A file
+ * that cannot be read is skipped and logged, so its file is converted as any other; only an output
+ * parts cannot be derived from is stored as a refusal. An error of the Blob service fails the batch,
+ * and its retry skips what it already stored.
  */
 export const seedWork = (deps: SeedDeps): QueueWork =>
   queueWork(knowledgeSeedQueue, async (job) => {
     deps.bound?.();
     const { prefix, converter, version, settings } = job.data;
-    const known = derivations[converter];
-    if (!known) throw new Error(`no derivation makes pages from ${converter}`);
+    const derivation = 'derivation' in job.data ? job.data.derivation : undefined;
+    const known = derivations[derivation ? `${converter}:${derivation}` : converter];
+    if (!known) throw new Error(`no derivation makes ${derivation ?? 'pages'} from ${converter}`);
     const entries = (await deps.outputs.files(prefix)).filter(
       (e) => e.converter === converter && e.version === version && e.settingsHash === settings,
     );
@@ -82,6 +105,7 @@ export const seedWork = (deps: SeedDeps): QueueWork =>
     );
     let seeded = 0;
     let skipped = 0;
+    let refused = 0;
     for (const entry of entries) {
       if (already.has(entry.sha256)) continue;
       job.signal.throwIfAborted();
@@ -97,8 +121,8 @@ export const seedWork = (deps: SeedDeps): QueueWork =>
         if (!fileFault) throw error;
         damaged = `its output or meta.json is damaged: ${(error as Error).message}`;
       }
-      const result = damaged ? { reason: damaged } : pagesOf(entry, found, known.pages);
-      if ('reason' in result) {
+      const result = damaged ? { reason: damaged } : derivedOf(entry, found, known);
+      if ('reason' in result && !result.refused) {
         skipped += 1;
         deps.log?.('a seed skipped a file', {
           prefix,
@@ -107,19 +131,44 @@ export const seedWork = (deps: SeedDeps): QueueWork =>
         });
         continue;
       }
+      const stored = {
+        sha256: entry.sha256,
+        converter,
+        version,
+        settings: (found as StoredNativeOutput).meta.settings,
+        derivation: known.derivation,
+        outputPath: entry.path,
+      };
+      if ('reason' in result) {
+        refused += 1;
+        deps.log?.('a seed stored a refusal', {
+          prefix,
+          sha256: entry.sha256,
+          derivation: known.derivation.name,
+          reason: result.reason,
+        });
+        await deps.conversions.store(
+          { ...stored, pages: [], failure: 'conversion_failed' },
+          deps.sendIndex,
+        );
+        continue;
+      }
       await deps.conversions.store(
         {
-          sha256: entry.sha256,
-          converter,
-          version,
-          settings: (found as StoredNativeOutput).meta.settings,
-          derivation: known.derivation,
+          ...stored,
           pages: result.pages,
-          outputPath: entry.path,
+          ...(result.units ? { units: result.units } : {}),
         },
         deps.sendIndex,
       );
       seeded += 1;
     }
-    deps.log?.('a seed batch ended', { prefix, seeded, skipped, already: already.size });
+    deps.log?.('a seed batch ended', {
+      prefix,
+      derivation: known.derivation.name,
+      seeded,
+      skipped,
+      refused,
+      already: already.size,
+    });
   }) as QueueWork;

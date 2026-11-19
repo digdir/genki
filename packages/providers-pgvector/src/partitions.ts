@@ -109,6 +109,29 @@ const recordMigrations: string[] = [
   `alter table src_conversions add column if not exists failure text`,
   // Files a converter reads get stored conversions; HTML and plain text are read by the index job.
   `alter table src_files add column if not exists converts boolean not null default false`,
+  // A conversion's number, which its units and chunks name (ADR 0055, "Units and storage"). A
+  // nullable column, then its sequence as the default, so the seeded table is not rewritten under
+  // the lock; rows stored before keep no number. The unique index is built in this transaction.
+  `alter table src_conversions add column if not exists id bigint`,
+  `create sequence if not exists src_conversions_id_seq owned by src_conversions.id`,
+  `alter table src_conversions alter column id set default nextval('src_conversions_id_seq')`,
+  `create unique index if not exists src_conversions_id on src_conversions (id)`,
+  // A parts conversion's parts, one row per unit: a page of a PDF.
+  `create table if not exists src_conversion_units (
+     conversion bigint not null references src_conversions (id) on delete cascade,
+     unit integer not null,
+     kind text not null,
+     label text,
+     width real,
+     height real,
+     text_start integer,
+     text_end integer,
+     unit_to integer not null,
+     seq_from integer not null,
+     seq_to integer not null,
+     parts jsonb not null,
+     primary key (conversion, unit)
+   )`,
 ];
 
 const migrations: string[] = [
@@ -182,8 +205,8 @@ const migrations: string[] = [
   `grant select, insert, update, delete on kn_docs, kn_chunks, kn_phrases to ${knowledgeRoles.writer}`,
   `grant select on kn_generations to ${knowledgeRoles.writer}`,
   `grant update (recipe, data_version) on kn_generations to ${knowledgeRoles.writer}`,
-  `grant select, insert, update, delete on src_changes, src_documents, src_files, src_tombstones, kn_applied, src_conversions, src_conversion_waits, src_conversion_keys to ${knowledgeRoles.writer}`,
-  `grant usage, select on sequence src_documents_number_seq to ${knowledgeRoles.writer}`,
+  `grant select, insert, update, delete on src_changes, src_documents, src_files, src_tombstones, kn_applied, src_conversions, src_conversion_waits, src_conversion_keys, src_conversion_units to ${knowledgeRoles.writer}`,
+  `grant usage, select on sequence src_documents_number_seq, src_conversions_id_seq to ${knowledgeRoles.writer}`,
   // Functions are executable by PUBLIC when created; the reader reaches data only through the read functions.
   `revoke execute on function kn_int(jsonb), kn_text(jsonb) from public`,
   `grant execute on function kn_int(jsonb), kn_text(jsonb) to ${knowledgeRoles.writer}`,

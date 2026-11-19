@@ -8,10 +8,14 @@ import {
   FileUnreachable,
   indexRecord,
   ingestListing,
+  isPdfFile,
+  doclingParts,
   pipelineSpec,
+  readDoclingOutput,
   ResponseTooLarge,
   storedConverter,
   textLayer,
+  textLayerParts,
   type DocumentConverter,
   throttledEmbedder,
   EmbeddingPauses,
@@ -43,9 +47,13 @@ import {
 import {
   acceptedConverters,
   conversionKey,
+  doclingPartsDerivation,
   GenerationBusy,
   textLayerDerivation,
+  textLayerPartsDerivation,
   type ConversionTarget,
+  type ConversionUnit,
+  type Derivation,
   type ConversionWaiter,
   type ConverterKey,
   type StoredConversions,
@@ -700,8 +708,41 @@ export const knowledgeWork = (
       if (refusalOf(error)) return;
       throw error;
     }
+    const target = conversionTarget(sha256, textLayer.name);
+    if (isPdfFile(file))
+      await storeParts(conversions, target, textLayerPartsDerivation, () => textLayerParts(pages));
+    await conversions.store({ ...target, derivation: textLayerDerivation, pages }, sendIndex);
+  }
+
+  /**
+   * A file's parts beside its pages (ADR 0055, issue 634), stored before them, so an index job their
+   * pages send finds both. Parts that cannot be derived are stored as a refusal, not derived again.
+   */
+  async function storeParts(
+    conversions: StoredConversions,
+    target: ConversionTarget,
+    derivation: Derivation,
+    derive: () => ConversionUnit[],
+    outputPath?: string,
+  ) {
+    let units: ConversionUnit[] | undefined;
+    try {
+      units = derive();
+    } catch {
+      // Not the error's message: a parse error quotes the output.
+      deps.log?.('parts could not be derived', {
+        sha256: target.sha256,
+        derivation: derivation.name,
+      });
+    }
     await conversions.store(
-      { ...conversionTarget(sha256, textLayer.name), derivation: textLayerDerivation, pages },
+      {
+        ...target,
+        derivation,
+        pages: [],
+        ...(units ? { units } : { failure: 'conversion_failed' }),
+        ...(outputPath ? { outputPath } : {}),
+      },
       sendIndex,
     );
   }
@@ -716,6 +757,8 @@ export const knowledgeWork = (
       throw new Error(`this worker keeps no stored conversions with ${key.converter}`);
     if (await cancelled()) return;
     let stored: { pages: string[]; output?: Uint8Array; outputPath?: string; failure?: string };
+    // Parts made from this conversion, when it is new: Docling's from its output, a PDF's text layer's from its pages.
+    let parts: { derivation: Derivation; derive: () => ConversionUnit[] } | undefined;
     // A conversion stored by an earlier try is not made again: only its waits are ended. A file
     // stored as unreachable is fetched again, by every try. Only this version and settings count:
     // a seeded Docling conversion is another's.
@@ -744,6 +787,17 @@ export const knowledgeWork = (
           pages: conversion.pages,
           ...(conversion.output ? { output: conversion.output } : {}),
         };
+        const output = conversion.output;
+        if (made.name === doclingIdentity.name && output)
+          parts = {
+            derivation: doclingPartsDerivation,
+            derive: () => doclingParts(readDoclingOutput(output)).units,
+          };
+        else if (made.name === textLayer.name && isPdfFile(file))
+          parts = {
+            derivation: textLayerPartsDerivation,
+            derive: () => textLayerParts(conversion.pages),
+          };
       } catch (error) {
         const failure =
           error instanceof FetchFailed ? fetchRefusalOf(error.cause) : refusalOf(error);
@@ -760,6 +814,7 @@ export const knowledgeWork = (
         ? await deps.nativeOutputs.put(key, stored.output, stored.pages.length)
         : undefined;
     const outputPath = output?.path ?? stored.outputPath;
+    if (parts) await storeParts(conversions, key, parts.derivation, parts.derive, outputPath);
     const { sent, busy } = await conversions.store(
       {
         ...key,

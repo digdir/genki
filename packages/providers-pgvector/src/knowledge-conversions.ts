@@ -1,7 +1,10 @@
 import {
   conversionKey,
+  isPartsDerivation,
+  partsDerivations,
   settingsHash,
   type AcceptedConverter,
+  type ConversionUnit,
   type ConversionWaiter,
   type RecordTransaction,
   type StoredConversion,
@@ -35,6 +38,7 @@ const acceptedJson = (accepted: readonly AcceptedConverter[]) =>
   );
 
 interface ConversionRow {
+  id: string | null;
   sha256: string;
   converter: string;
   version: string;
@@ -57,12 +61,56 @@ const toConversion = (row: ConversionRow): StoredConversion => ({
   ...(row.failure ? { failure: row.failure } : {}),
 });
 
+interface UnitRow {
+  unit: number;
+  kind: ConversionUnit['kind'];
+  label: string | null;
+  width: number | null;
+  height: number | null;
+  text_start: number | null;
+  text_end: number | null;
+  unit_to: number;
+  seq_from: number;
+  seq_to: number;
+  parts: ConversionUnit['parts'];
+}
+
+const toUnit = (row: UnitRow): ConversionUnit => ({
+  unit: row.unit,
+  kind: row.kind,
+  label: row.label,
+  width: row.width,
+  height: row.height,
+  textStart: row.text_start,
+  textEnd: row.text_end,
+  unitTo: row.unit_to,
+  seqFrom: row.seq_from,
+  seqTo: row.seq_to,
+  parts: row.parts,
+});
+
+/** PostgreSQL refuses U+0000 in text and jsonb, and converters read it out of some PDFs (issue 532). */
+const withoutNul = <T>(value: T): T => {
+  if (typeof value === 'string') return value.replaceAll('\u0000', '') as T;
+  if (Array.isArray(value)) return value.map(withoutNul) as T;
+  if (value && typeof value === 'object')
+    return Object.fromEntries(
+      Object.entries(value).map(([key, inner]) => [key, withoutNul(inner)]),
+    ) as T;
+  return value;
+};
+
+/** Units a statement: a long report's parts stay well under a statement's size. */
+const unitBatch = 200;
+
+const partsNames = partsDerivations.map((d) => d.name);
+
 /** Stored conversions on the knowledge server, as the worker's writer role reaches them (ADR 0042). */
 export const knowledgeConversionsOf = (writer: Pool): StoredConversions => ({
   find: async (sha256, accepted) => {
     const { rows } = await writer.query<ConversionRow>(
-      `select c.sha256, c.converter, c.version, c.settings, c.derivation, c.derivation_version,
-              c.pages, c.output_path, c.failure
+      `select c.id::text, c.sha256, c.converter, c.version, c.settings, c.derivation,
+              c.derivation_version, c.pages, c.output_path, c.failure
          from src_conversions c
          join jsonb_to_recordset($2::jsonb)
            as a(rank integer, converter text, derivation text, derivation_version integer)
@@ -74,7 +122,16 @@ export const knowledgeConversionsOf = (writer: Pool): StoredConversions => ({
         limit 1`,
       [sha256, acceptedJson(accepted)],
     );
-    return rows[0] ? toConversion(rows[0]) : undefined;
+    const row = rows[0];
+    if (!row) return undefined;
+    const found = toConversion(row);
+    if (!row.id || row.failure || !isPartsDerivation(found.derivation)) return found;
+    const units = await writer.query<UnitRow>(
+      `select unit, kind, label, width, height, text_start, text_end, unit_to, seq_from, seq_to, parts
+         from src_conversion_units where conversion = $1::bigint order by unit`,
+      [row.id],
+    );
+    return { ...found, units: units.rows.map(toUnit) };
   },
 
   missing: async (client, record, accepted) => {
@@ -105,8 +162,16 @@ export const knowledgeConversionsOf = (writer: Pool): StoredConversions => ({
         `select 1 from src_conversions
           where sha256 = $1 and converter = $2 and version = $3 and settings_hash = $4
             and failure is distinct from 'unreachable'
+            -- Waits are for pages until a pipeline asks for parts (issue 635).
+            and derivation <> all($5::text[])
           limit 1`,
-        [target.sha256, target.converter, target.version, settingsHash(target.settings)],
+        [
+          target.sha256,
+          target.converter,
+          target.version,
+          settingsHash(target.settings),
+          partsNames,
+        ],
       );
       if (rows.length > 0) return false;
       await client.query(
@@ -126,13 +191,16 @@ export const knowledgeConversionsOf = (writer: Pool): StoredConversions => ({
     transaction(writer, async (client) => {
       const key = conversionKey(conversion);
       await lock(client, key);
-      await client.query(
+      const { rows: stored } = await client.query<{ id: string }>(
         `insert into src_conversions (sha256, converter, version, settings_hash, settings,
            derivation, derivation_version, pages, output_path, failure)
          values ($1, $2, $3, $4, $5::jsonb, $6, $7, $8::text[], $9, $10)
          on conflict (sha256, converter, version, settings_hash, derivation, derivation_version)
            do update set pages = excluded.pages, output_path = excluded.output_path,
-                         failure = excluded.failure`,
+                         failure = excluded.failure,
+                         -- A row stored before the migration gets its number when stored again.
+                         id = coalesce(src_conversions.id, nextval('src_conversions_id_seq'))
+         returning id::text`,
         [
           conversion.sha256,
           conversion.converter,
@@ -147,6 +215,22 @@ export const knowledgeConversionsOf = (writer: Pool): StoredConversions => ({
           conversion.failure ?? null,
         ],
       );
+      const id = stored[0]?.id;
+      await client.query(`delete from src_conversion_units where conversion = $1::bigint`, [id]);
+      const units = withoutNul(conversion.units ?? []);
+      for (let at = 0; at < units.length; at += unitBatch)
+        await client.query(
+          `insert into src_conversion_units (conversion, unit, kind, label, width, height,
+             text_start, text_end, unit_to, seq_from, seq_to, parts)
+           select $1::bigint, u.unit, u.kind, u.label, u."width", u."height", u."textStart",
+                  u."textEnd", u."unitTo", u."seqFrom", u."seqTo", u.parts
+             from jsonb_to_recordset($2::jsonb) as u(unit integer, kind text, label text,
+               "width" real, "height" real, "textStart" integer, "textEnd" integer,
+               "unitTo" integer, "seqFrom" integer, "seqTo" integer, parts jsonb)`,
+          [id, JSON.stringify(units.slice(at, at + unitBatch))],
+        );
+      // Parts end no wait: the waits are for pages until a pipeline asks for parts (issue 635).
+      if (isPartsDerivation(conversion.derivation)) return { sent: [], busy: [] };
       const { rows } = await client.query<{
         dataset: string;
         record: string;
