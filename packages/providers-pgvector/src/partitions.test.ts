@@ -324,7 +324,7 @@ describe('generations as partitions on the knowledge server', () => {
     expect(took[0]).toBeGreaterThanOrEqual(0);
   });
 
-  it("a column whose default is not the migration's gets the migration's default again", async () => {
+  it("a column whose default does not use the migration's sequence gets the migration's default again", async () => {
     await owner.query(`alter table src_conversions alter column id set default 42`);
 
     await migrateKnowledgeServer(owner);
