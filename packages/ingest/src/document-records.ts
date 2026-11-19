@@ -310,7 +310,15 @@ const writeRecord = async (
     indexed.url || !document.url ? indexed : { ...indexed, url: document.url },
     listedNames(document, record),
   );
-  const written = options.embedder ? await embedIndexDocument(doc, options.embedder) : doc;
+  // Chunks whose text the generation already holds for the document keep their vectors (issue 749).
+  const written = options.embedder
+    ? await embedIndexDocument(
+        doc,
+        options.embedder,
+        undefined,
+        await options.records.heldVectors(record, options.generation),
+      )
+    : doc;
   applied(await options.records.replace(record, options.generation, { document: written }));
   options.onStored?.(written.chunks.length);
   return 'stored';

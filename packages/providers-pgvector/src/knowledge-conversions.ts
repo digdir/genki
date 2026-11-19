@@ -1,6 +1,9 @@
 import {
+  blankEndOf,
+  blankPage,
   conversionKey,
   settingsHash,
+  shortEnd,
   type AcceptedConverter,
   type ConversionWaiter,
   type RecordTransaction,
@@ -33,6 +36,17 @@ const acceptedJson = (accepted: readonly AcceptedConverter[]) =>
       kept: a.kept,
     })),
   );
+
+/** Files listed row by row, grouped by their record in the order the rows come. */
+const byRecord = (rows: { record: string; name: string; sha256: string }[]) => {
+  const files = new Map<string, { name: string; sha256: string }[]>();
+  for (const row of rows)
+    files.set(row.record, [
+      ...(files.get(row.record) ?? []),
+      { name: row.name, sha256: row.sha256 },
+    ]);
+  return [...files].map(([record, list]) => ({ record, files: list }));
+};
 
 interface ConversionRow {
   sha256: string;
@@ -128,11 +142,12 @@ export const knowledgeConversionsOf = (writer: Pool): StoredConversions => ({
       await lock(client, key);
       await client.query(
         `insert into src_conversions (sha256, converter, version, settings_hash, settings,
-           derivation, derivation_version, pages, output_path, failure)
-         values ($1, $2, $3, $4, $5::jsonb, $6, $7, $8::text[], $9, $10)
+           derivation, derivation_version, pages, output_path, failure, page_count, blank_end)
+         values ($1, $2, $3, $4, $5::jsonb, $6, $7, $8::text[], $9, $10, $11, $12)
          on conflict (sha256, converter, version, settings_hash, derivation, derivation_version)
            do update set pages = excluded.pages, output_path = excluded.output_path,
-                         failure = excluded.failure`,
+                         failure = excluded.failure, page_count = excluded.page_count,
+                         blank_end = excluded.blank_end`,
         [
           conversion.sha256,
           conversion.converter,
@@ -145,6 +160,8 @@ export const knowledgeConversionsOf = (writer: Pool): StoredConversions => ({
           conversion.pages.map((page) => page.replaceAll('\u0000', '')),
           conversion.outputPath ?? null,
           conversion.failure ?? null,
+          conversion.pages.length,
+          blankEndOf(conversion.pages),
         ],
       );
       const { rows } = await client.query<{
@@ -160,13 +177,17 @@ export const knowledgeConversionsOf = (writer: Pool): StoredConversions => ({
       );
       const sent: ConversionWaiter[] = [];
       const busy: ConversionWaiter[] = [];
+      const held: ConversionWaiter[] = [];
       for (const waiter of rows) {
         // A record with another file still converting gets its index job from that conversion.
         const { rows: other } = await client.query(
           `select 1 from src_conversion_waits where dataset = $1 and record = $2::bigint limit 1`,
           [waiter.dataset, waiter.record],
         );
-        if (other.length > 0) continue;
+        if (other.length > 0) {
+          held.push(waiter);
+          continue;
+        }
         if ((await send(waiter, client)) !== null) {
           sent.push(waiter);
           continue;
@@ -180,7 +201,7 @@ export const knowledgeConversionsOf = (writer: Pool): StoredConversions => ({
         );
         busy.push(waiter);
       }
-      return { sent, busy };
+      return { sent, busy, held };
     }),
 
   clear: async (client, dataset, record) => {
@@ -300,13 +321,72 @@ export const knowledgeConversionsOf = (writer: Pool): StoredConversions => ({
         order by f.number, f.name`,
       [dataset, after, acceptedJson(accepted), limit, pipeline],
     );
-    const byRecord = new Map<string, { name: string; sha256: string }[]>();
-    for (const row of rows)
-      byRecord.set(row.record, [
-        ...(byRecord.get(row.record) ?? []),
-        { name: row.name, sha256: row.sha256 },
-      ]);
-    return [...byRecord].map(([record, files]) => ({ record, files }));
+    return byRecord(rows);
+  },
+
+  unmeasured: async () =>
+    (await writer.query(`select 1 from src_conversions where page_count is null limit 1`)).rows
+      .length > 0,
+
+  measure: async () => {
+    let measured = 0;
+    for (;;) {
+      const { rowCount } = await writer.query(
+        `update src_conversions c
+            set page_count = cardinality(c.pages),
+                blank_end = cardinality(c.pages) - (select coalesce(max(o), 0)
+                              from unnest(c.pages) with ordinality as p(t, o) where t !~ $1)
+          where c.ctid = any(array(select ctid from src_conversions
+                                    where page_count is null limit 200 for update skip locked))`,
+        [blankPage.source],
+      );
+      if (!rowCount) return measured;
+      measured += rowCount;
+    }
+  },
+
+  short: async (dataset, pipeline, accepted, after, limit, current) => {
+    const shortFile = `(select count(*) = 1 and bool_and(c.failure is null and c.page_count > 0
+          and c.blank_end > $6::numeric * c.page_count
+          and not (c.converter = $7 and c.version = $8 and c.settings_hash = $9))
+        from src_conversions c
+        join kinds a on a.converter = c.converter and a.derivation = c.derivation
+         and a.derivation_version = c.derivation_version
+       where c.sha256 = f.sha256 and a.kept) is true`;
+    const { rows } = await writer.query<{ record: string; name: string; sha256: string }>(
+      `with kinds as (
+         select * from jsonb_to_recordset($3::jsonb)
+           as a(converter text, derivation text, derivation_version integer, kept boolean)
+       ),
+       records as (
+         select d.dataset, d.id, d.number
+           from src_documents d
+          where d.dataset = $1 and d.number > $2::bigint and $5 = any(d.owners)
+            and (d.state = 'stored' or (d.state = 'skipped' and d.reason = 'no_text'))
+            and exists (
+              select 1 from src_files f
+               where f.dataset = d.dataset and f.document = d.id
+                 and f.converts and f.sha256 is not null and ${shortFile})
+          order by d.number limit $4
+       )
+       select r.number::text as record, f.file as name, f.sha256
+         from records r
+         join src_files f on f.dataset = r.dataset and f.document = r.id
+        where f.converts and f.sha256 is not null and ${shortFile}
+        order by r.number, f.file`,
+      [
+        dataset,
+        after,
+        acceptedJson(accepted),
+        limit,
+        pipeline,
+        shortEnd,
+        current.converter,
+        current.version,
+        settingsHash(current.settings),
+      ],
+    );
+    return byRecord(rows);
   },
 
   holding: async (dataset, pipeline, sha256) => {
