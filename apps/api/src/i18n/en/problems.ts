@@ -168,6 +168,7 @@ export const problems = {
   operatorOnlySettingTitle: 'Only Digdir changes this limit for an organisation',
   uploadRequestTooLarge:
     'The request is larger than {size} MB. Send the files in several requests.',
+  databaseBusy: 'The database has no free connection right now. Try again shortly.',
   status400: 'The request cannot be read',
   status401: 'You are not signed in',
   status403: 'No access',

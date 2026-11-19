@@ -1,8 +1,35 @@
-import { describe, expect, it } from 'vitest';
-import { buildTimeOf, createApp } from './app.js';
+import { describe, expect, it, vi } from 'vitest';
+import { buildTimeOf, createApp, databaseBusyType } from './app.js';
 
 describe('api', () => {
   const app = createApp('test');
+
+  it('answers 503 with a problem when the database pool has no free connection', async () => {
+    const starved = createApp('test');
+    starved.get('/starved', () => {
+      throw new Error('timeout exceeded when trying to connect');
+    });
+
+    const res = await starved.request('/starved');
+
+    expect(res.status).toBe(503);
+    expect(res.headers.get('content-type')).toBe('application/problem+json');
+    expect(res.headers.get('retry-after')).toBe('5');
+    expect(await res.json()).toMatchObject({ type: databaseBusyType, status: 503 });
+  });
+
+  it('still answers 500 for any other unhandled error', async () => {
+    const failing = createApp('test');
+    failing.get('/failing', () => {
+      throw new Error('something else');
+    });
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const res = await failing.request('/failing');
+    quiet.mockRestore();
+
+    expect(res.status).toBe(500);
+  });
 
   it('answers health with its version', async () => {
     const res = await app.request('/health');

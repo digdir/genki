@@ -13,7 +13,16 @@ export interface PostgresPoolOptions {
   password?: PasswordProvider;
   ssl?: boolean | { rejectUnauthorized: boolean };
   max?: number;
+  connectionTimeoutMillis?: number;
 }
+
+export const defaultConnectionTimeoutMs = 10_000;
+
+const poolTimeoutMessage = 'timeout exceeded when trying to connect';
+
+/** True for pg-pool's error when no connection came within `connectionTimeoutMillis`. */
+export const isPoolExhausted = (error: unknown): boolean =>
+  error instanceof Error && error.message === poolTimeoutMessage;
 
 export const withClientErrorListener = (pool: pg.Pool): pg.Pool => {
   // A client the pool is closing can still get a server error, which crashes the process without a listener.
@@ -34,6 +43,7 @@ export const createPool = (options: PostgresPoolOptions): pg.Pool =>
       ...(options.password === undefined ? {} : { password: options.password }),
       ...(options.ssl === undefined ? {} : { ssl: options.ssl }),
       ...(options.max === undefined ? {} : { max: options.max }),
+      connectionTimeoutMillis: options.connectionTimeoutMillis ?? defaultConnectionTimeoutMs,
       keepAlive: true,
     }),
   );

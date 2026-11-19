@@ -57,6 +57,7 @@ const tenantTables = [
   'api_key_policies',
   'provider_objects',
   'bff_sessions',
+  'request_leases',
 ];
 
 const publishedTables = { definition_versions: 'tenant', config_entries: 'scope' };
@@ -496,6 +497,14 @@ const migrations: string[] = [
    )`,
   `create index if not exists bff_sessions_expiry on bff_sessions (expires_at)`,
   ...tenantIsolation('bff_sessions'),
+  `create table if not exists request_leases (
+     tenant text not null,
+     name text not null,
+     holder text not null,
+     until timestamptz not null,
+     primary key (tenant, name)
+   )`,
+  ...tenantIsolation('request_leases'),
   `do $$
      declare previous text := current_setting('app.platform_access', true);
      begin
