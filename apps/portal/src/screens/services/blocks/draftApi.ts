@@ -115,6 +115,27 @@ export const sourcesOf = (sources: readonly PlaygroundSource[]): Source[] => {
   return [...documents.values()];
 };
 
+// The excerpt each [N] cites, as `markersOf` in @genai/adapter-openai: only when citing excerpts.
+const markersOf = (
+  result: PlaygroundResult,
+): { marker: string; chunkId: string; documentId: string }[] | undefined => {
+  if (result.citeBy !== 'excerpt') return undefined;
+  const documentOf = new Map(result.sources.map((s) => [s.chunkId, s.document]));
+  const cited = [...(result.citations ?? [])].sort((a, b) => a.index - b.index);
+  const markers = cited.flatMap((c) =>
+    documentOf.has(c.chunkId)
+      ? [
+          {
+            marker: String(c.index),
+            chunkId: c.chunkId,
+            documentId: c.document ?? documentOf.get(c.chunkId) ?? c.chunkId,
+          },
+        ]
+      : [],
+  );
+  return markers.length ? markers : undefined;
+};
+
 const answerTextOf = (result: PlaygroundResult) =>
   result.clarification?.question ?? result.text ?? '';
 
@@ -494,10 +515,12 @@ export const createDraftApi = ({
             const noAnswer = event.result.noAnswer === true;
             // Kept with the collection's links, so the thread opened again links as the answer did.
             const corpus = corpusProfile(params.dataset?.key);
+            const markers = markersOf(event.result);
             answer = {
               text,
               status: 'complete',
               sources: sources.map((s, at) => sourceFromWire(s, corpus, at)),
+              ...(markers ? { markers } : {}),
               noAnswer,
               created: now(),
             };
@@ -509,6 +532,7 @@ export const createDraftApi = ({
                 conversationId: id,
                 sources,
                 citations: [],
+                ...(markers ? { markers } : {}),
                 noAnswer,
               },
             };

@@ -112,7 +112,10 @@ export interface PlaygroundResult {
   csv?: string;
   noAnswer?: true;
   sources: (SourceRecord & { score?: number })[];
-  citations?: { index: number; chunkId: string }[];
+  /** `document` is the cited excerpt's document, when the strategy names it. */
+  citations?: { index: number; chunkId: string; document?: string }[];
+  /** `excerpt` when each `[N]` names one excerpt; left out, `[N]` names the N-th document. */
+  citeBy?: 'excerpt';
   clarification?: { question: string; options: string[] };
   byModel: { model: string; inputTokens: number; outputTokens: number; costNok: number }[];
   steps: TimelineStep[];
@@ -546,13 +549,17 @@ const citationsOf = (parts: Part[]) =>
     const citations = p.meta?.citations;
     return Array.isArray(citations)
       ? citations.flatMap((c) => {
-          const { index, chunkId } = record(c);
+          const { index, chunkId, document } = record(c);
           return typeof index === 'number' && typeof chunkId === 'string'
-            ? [{ index, chunkId }]
+            ? [{ index, chunkId, ...(typeof document === 'string' ? { document } : {}) }]
             : [];
         })
       : [];
   });
+
+// The first cited part says, as `markersOf` in @genai/adapter-openai reads it.
+const citesExcerpts = (parts: Part[]) =>
+  parts.find((p) => Array.isArray(p.meta?.citations))?.meta?.citeBy === 'excerpt';
 
 const clarificationOf = (parts: Part[]) => {
   const json = parts.find((p) => p.mime === sourcesMime && p.body.kind === 'json');
@@ -900,6 +907,7 @@ export const playgroundModule: PlatformModuleFactory = () => ({
           return score === undefined ? source : { ...source, score };
         }),
         ...(citations.length ? { citations } : {}),
+        ...(citations.length && citesExcerpts(run.parts) ? { citeBy: 'excerpt' as const } : {}),
         ...(clarification ? { clarification } : {}),
         byModel: run.usage.byModel.map((m) => ({
           model: m.model,

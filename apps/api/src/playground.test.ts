@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Hono } from 'hono';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parse as parseYaml } from 'yaml';
 import type { Principal } from '@genai/contracts';
 import {
@@ -309,6 +309,42 @@ describe('the playground', () => {
     });
     expect(body.runId).not.toBe(body.compare?.runId);
     expect(typeof body.timeMs).toBe('number');
+  });
+
+  it('says when the answer cites excerpts, with the document of each cited excerpt, as chat does', async () => {
+    const { platform, run } = await boot();
+    const runDraft = platform.drafts.run.bind(platform.drafts);
+    const cites = (citeBy?: 'excerpt') =>
+      vi.spyOn(platform.drafts, 'run').mockImplementationOnce(async (input) => {
+        const outcome = await runDraft(input);
+        if (!outcome.ok) return outcome;
+        return {
+          ...outcome,
+          sources: [{ chunkId: 'c7', title: 'Årsrapport', document: 'd1', text: 'Ventetid.' }],
+          parts: [
+            {
+              mime: 'text/plain',
+              body: { kind: 'text', text: 'Ventetiden gikk ned [1].' },
+              meta: {
+                citations: [{ index: 1, chunkId: 'c7', ...(citeBy ? { document: 'd1' } : {}) }],
+                ...(citeBy ? { citeBy } : {}),
+              },
+            },
+          ],
+        };
+      });
+
+    cites('excerpt');
+    const byExcerpt = await run({ setup: own('Svar på bokmål.'), input: { text: 'Hei' } });
+    cites();
+    const byDocument = await run({ setup: own('Svar på bokmål.'), input: { text: 'Hei' } });
+
+    expect(byExcerpt.body).toMatchObject({
+      citeBy: 'excerpt',
+      citations: [{ index: 1, chunkId: 'c7', document: 'd1' }],
+    });
+    expect(byDocument.body).toMatchObject({ citations: [{ index: 1, chunkId: 'c7' }] });
+    expect(byDocument.body).not.toHaveProperty('citeBy');
   });
 
   it('a failed model call answers a 502 problem, stores nothing and is not counted', async () => {
