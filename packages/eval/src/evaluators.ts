@@ -180,20 +180,30 @@ const ranked = <T extends SourceRef>(hits: T[]) =>
 
 const ndcgCut = 10;
 
-/**
- * Recall at each cut-off, hit@5, mrr@10 and binary ndcg@10 of one ranked list. An expected source
- * counts once, at the first hit that matches it; the best order has every expected source first.
- */
+/** The ranks that get an expected source of their own, best first, freeing one where needed. */
+const matchedRanks = (expected: SourceRef[], hits: SourceRef[]) => {
+  const owner: number[] = expected.map(() => -1);
+  const take = (hit: number, seen: Set<number>): boolean =>
+    expected.some((source, e) => {
+      if (seen.has(e) || !sameSource(source, hits[hit] as SourceRef)) return false;
+      seen.add(e);
+      if (owner[e] !== -1 && !take(owner[e] as number, seen)) return false;
+      owner[e] = hit;
+      return true;
+    });
+  return hits.flatMap((_, hit) => (take(hit, new Set()) ? [hit] : []));
+};
+
+/** Recall and hit@5 count places as version 1 did; mrr@10 and binary ndcg@10 rank each hit once. */
 const rankScores = (
   expected: SourceRef[],
   hits: SourceRef[],
   cutOffs: readonly number[],
   name: (metric: string) => string,
 ) => {
-  const list = ranked(hits);
   const matches = (hit: SourceRef) => expected.some((e) => sameSource(e, hit));
   const recall = cutOffs.map((k) => {
-    const top = list.slice(0, k);
+    const top = hits.slice(0, k);
     const found = expected.filter((e) => top.some((r) => sameSource(e, r))).length;
     return {
       metric: name(`recall@${k}`),
@@ -201,20 +211,14 @@ const rankScores = (
       details: { found, expected: expected.length },
     };
   });
-  const first = list.slice(0, ndcgCut).findIndex(matches);
-  const unmatched = [...expected];
-  let dcg = 0;
-  list.slice(0, ndcgCut).forEach((hit, i) => {
-    const at = unmatched.findIndex((e) => sameSource(e, hit));
-    if (at < 0) return;
-    unmatched.splice(at, 1);
-    dcg += 1 / Math.log2(i + 2);
-  });
+  const top = ranked(hits).slice(0, ndcgCut);
+  const first = top.findIndex(matches);
+  const dcg = matchedRanks(expected, top).reduce((sum, i) => sum + 1 / Math.log2(i + 2), 0);
   let ideal = 0;
   for (let i = 0; i < Math.min(expected.length, ndcgCut); i += 1) ideal += 1 / Math.log2(i + 2);
   return [
     ...recall,
-    { metric: name('hit@5'), value: list.slice(0, 5).some(matches) ? 1 : 0 },
+    { metric: name('hit@5'), value: hits.slice(0, 5).some(matches) ? 1 : 0 },
     {
       metric: name(`mrr@${ndcgCut}`),
       value: first < 0 ? 0 : 1 / (first + 1),
@@ -263,10 +267,7 @@ const returnedMetrics = [
   `ndcg@${ndcgCut}`,
 ].map(returnedName);
 
-/**
- * Scores the search hits a run reported, before any reranker, under today's names, and the sources it
- * returned, in their order, as `returned-*`; both from the same matching (`sameSource`).
- */
+/** Scores the search hits a run reported under today's names, and the sources it returned as `returned-*`. */
 export const retrievalRecall = (): Evaluator => {
   const self: Evaluator = {
     id: 'retrieval',

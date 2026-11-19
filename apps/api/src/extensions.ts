@@ -524,7 +524,7 @@ const problem = (
     'content-type': 'application/problem+json',
   });
 
-/** What two compared runs may differ in when asked; a commit or a judge never may (ADR 0003). */
+/** What this route lets two runs differ in when asked; a commit or judges never (ADR 0003). */
 const mayDiffer = new Set<string>(['data', 'services', 'servedModels'] satisfies ComparableField[]);
 
 export const mountExtensions = <E extends Env, S extends Schema, B extends string>(

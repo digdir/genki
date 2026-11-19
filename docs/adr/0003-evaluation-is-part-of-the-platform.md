@@ -9,7 +9,7 @@ Status: accepted, 2026-10-12 (built; component comparisons partly built, 2026-10
 - Test sets are versioned records owned by a tenant, with cases split into train, validation and holdout. Optimisers never see the holdout split.
 - Scores and feedback are `kernel.score` and `kernel.feedback` events on the task they judge, added with `Kernel.annotate`.
 - Publishing gates live in the service definition. A version with a failing gate cannot be published to production.
-- Every result records the code version, the data, the served model and the judge, so only like is compared with like. A comparison may be asked to allow two runs to differ in data, services or served models, which is how two search engines or two versions of a service are compared on the same test set; it never allows a different code version or judges (`GET /eval-runs/compare` with `allowDifferent`, tested by `two runs on different services and data compare when the request allows those differences` and `a comparison still refuses runs on different judges or commits`).
+- Every result records the code version, the data, the served model and the judge, so only like is compared with like. `GET /eval-runs/compare` may be asked (`allowDifferent`) to compare two runs that differ in data, services or served models, which is how two search engines or two versions of a service are compared on the same test set; it never compares runs on a different code version or judges (tested by `two runs on different services and data compare when the request allows those differences` and `a comparison still refuses runs on different judges or commits`). A publishing gate's no-regression comparison sets its own allowances.
 
 ## Component comparisons
 

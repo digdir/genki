@@ -18,7 +18,7 @@ export interface ObservedDecision {
 
 export interface Observation {
   answer: string;
-  /** Every hit the run reported, search hits (before any reranker) first. */
+  /** Every hit the run reported: its search notices first, then the sources it returned. */
   retrieved: ObservedSource[];
   /** The sources the run returned, in their order; left out when it returned no sources part. */
   returned?: ObservedSource[];

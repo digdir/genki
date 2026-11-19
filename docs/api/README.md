@@ -65,7 +65,7 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ### 2026-11-19: ranking metrics and comparisons across engines
 
-- The `retrieval` evaluator scores `recall@1`, `recall@5`, `recall@20`, `hit@5`, `mrr@10`, `ndcg@10` and `document-recall@10` beside `recall@10` and `citations-grounded`, from the search hits before any reranker, and `returned-recall@1`, `returned-recall@5`, `returned-recall@10`, `returned-hit@5`, `returned-mrr@10` and `returned-ndcg@10` from the sources a run returned (see [work.md](work.md#two-kinds-of-evaluation-run)). `recall@10` keeps its values.
+- The `retrieval` evaluator scores `recall@1`, `recall@5`, `recall@20`, `hit@5`, `mrr@10`, `ndcg@10` and `document-recall@10` beside `recall@10` and `citations-grounded`, from the hits the run's searches reported, and `returned-recall@1`, `returned-recall@5`, `returned-recall@10`, `returned-hit@5`, `returned-mrr@10` and `returned-ndcg@10` from the sources a run returned (see [work.md](work.md#two-kinds-of-evaluation-run)). `recall@10` keeps its values.
 - `GET /eval-runs/compare` takes `metric` as a comma list and `allowDifferent` (`data`, `services`, `servedModels`). Its answer changes shape: `{ allowedDifferent, comparisons: [{ metric, n, meanBaseline, meanCandidate, difference, ci }], staleJudges? }` instead of one comparison at the top level.
 
 ### 2026-11-19: environment descriptions, batch run names and the frontend of a run

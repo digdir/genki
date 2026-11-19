@@ -548,6 +548,49 @@ describe('retrieval metrics', () => {
     expect(second['ndcg@10']).toBeCloseTo(1 / Math.log2(3));
   });
 
+  it('ndcg@10 does not depend on the order the expected sources are listed in', async () => {
+    const wholeFirst = caseOf({
+      id: 'w',
+      expected: { sources: [{ document: 'd1' }, { document: 'd1', position: 3 }] },
+    });
+    const placeFirst = caseOf({
+      id: 'p',
+      expected: { sources: [{ document: 'd1', position: 3 }, { document: 'd1' }] },
+    });
+    const retrieved = [
+      { chunkId: 'a', document: 'd1', position: 3 },
+      { chunkId: 'b', document: 'd1', position: 5 },
+    ];
+
+    expect((await scoresOf(wholeFirst, { retrieved }))['ndcg@10']).toBe(1);
+    expect((await scoresOf(placeFirst, { retrieved }))['ndcg@10']).toBe(1);
+  });
+
+  it('recall@10 counts a repeated hit as a place in the top 10, as version 1 did', async () => {
+    // Two searches of an agent loop that share their first three hits.
+    const retrieved = [...hitsOf(3), ...hitsOf(10, { 10: 'e1' })];
+
+    const scores = await scoresOf(expecting('e1'), { retrieved });
+
+    expect(scores['recall@10']).toBe(0);
+    expect(scores['recall@20']).toBe(1);
+  });
+
+  it('document recall is skipped when no expected source names a document', async () => {
+    const scores = await retrievalRecall().evaluate(
+      expecting('e1'),
+      observation({ retrieved: hitsOf(10, { 1: 'e1' }) }),
+      ctx,
+    );
+
+    const documents = scores.find((s) => s.metric === 'document-recall@10');
+    expect(documents).toMatchObject({
+      applicable: false,
+      reason: 'the expected sources name no document',
+    });
+    expect(values(scores)['recall@1']).toBe(1);
+  });
+
   it('the returned metrics score the sources the service returned, in their order', async () => {
     const scores = await scoresOf(expecting('e1', 'e2'), {
       retrieved: hitsOf(20, { 3: 'e1', 12: 'e2' }),
@@ -618,7 +661,7 @@ describe('retrieval metrics', () => {
     expect(scores['document-recall@10']).toBe(0.5);
   });
 
-  it('recall@10 reads the hits from before the reranker, as it does today', async () => {
+  it('recall@10 reads the search notices before the returned sources, as it does today', async () => {
     const parts: Part[] = [
       {
         mime: 'application/vnd.genai.sources+json',
