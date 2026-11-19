@@ -858,3 +858,150 @@ describe('the fields a profile chooses', () => {
     expect(await reads.loadFields('kudos')).toEqual([{ ...year, integer: true }]);
   });
 });
+
+// «Dokumentene som blir med»: the documents a filter keeps, from genki's `/api/documents`.
+describe('the documents in scope', () => {
+  const fields = [
+    { id: 'type', label: 'Dokumenttyper' },
+    { id: 'orgs_long', label: 'Virksomheter' },
+    { id: 'concerned_years', label: 'År', kind: 'year' as const, integer: true },
+  ];
+  const kudos = createGenkiApi({
+    baseUrl: '/genki',
+    tenant: 'digdir',
+    profile: {
+      corpora: {
+        kudos: {
+          typeField: 'type',
+          organisationField: 'orgs_long',
+          documentUrl: (id) => `https://kudos.example/dokument/${id}`,
+        },
+      },
+    },
+  });
+
+  it('asks for the selection’s documents in genki’s filter shape, with the limit', async () => {
+    const fetch = vi.fn(async (_url: string) => Response.json({ documents: [], found: 0 }));
+    vi.stubGlobal('fetch', fetch);
+    await kudos.loadDocuments?.(
+      { type: ['Årsrapport'], concerned_years: ['2024'] },
+      'kudos',
+      fields,
+      50,
+    );
+    const url = new URL(fetch.mock.calls[0]?.[0] ?? '', 'http://host');
+    expect(url.pathname).toBe('/genki/api/documents');
+    expect(url.searchParams.get('tenant')).toBe('digdir');
+    expect(url.searchParams.get('dataset-config-key')).toBe('kudos');
+    expect(url.searchParams.get('limit')).toBe('50');
+    expect(JSON.parse(url.searchParams.get('filter') ?? '')).toEqual({
+      fields: [
+        {
+          field: 'type',
+          type: 'multiselect',
+          'value-type': 'string',
+          'selected-options': ['Årsrapport'],
+        },
+        {
+          field: 'concerned_years',
+          type: 'multiselect',
+          'value-type': 'integer',
+          'selected-options': [2024],
+        },
+      ],
+    });
+  });
+
+  it('names each document’s organisation and year by the profile’s fields, a period for several years, and links it', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({
+          documents: [
+            {
+              id: '42',
+              title: 'Årsrapport 2023',
+              url: 'https://kudos.dfo.no/dokument/42',
+              fields: { type: 'Årsrapport', orgs_long: ['Digdir'], concerned_years: [2023] },
+            },
+            {
+              id: '43',
+              fields: {
+                type: ['Statusrapport'],
+                orgs_long: ['NIVA', 'NILU'],
+                concerned_years: [2021, 2019, 2020],
+              },
+            },
+          ],
+          found: 2,
+        }),
+      ),
+    );
+    expect(await kudos.loadDocuments?.({}, 'kudos', fields, 50)).toEqual({
+      documents: [
+        {
+          id: '42',
+          title: 'Årsrapport 2023',
+          organisation: 'Digdir',
+          year: '2023',
+          href: 'https://kudos.dfo.no/dokument/42',
+          included: true,
+        },
+        {
+          id: '43',
+          title: '43',
+          organisation: 'NIVA, NILU',
+          year: '2019–2021',
+          href: 'https://kudos.example/dokument/43',
+          included: true,
+        },
+      ],
+      found: 2,
+    });
+  });
+
+  it('asks for a field with more than 100 chosen as the values left out, as a question does', async () => {
+    const fetch = vi.fn(async (_url: string) => Response.json({ documents: [] }));
+    vi.stubGlobal('fetch', fetch);
+    const names = Array.from({ length: 150 }, (_, i) => `Virksomhet ${i + 1}`);
+    await kudos.loadDocuments?.({ orgs_long: names.slice(0, 101) }, 'kudos', fields, 50, [
+      {
+        id: 'orgs_long',
+        label: 'Virksomheter',
+        options: names.map((value) => ({ value, count: 1 })),
+      },
+    ]);
+    const url = new URL(fetch.mock.calls[0]?.[0] ?? '', 'http://host');
+    expect(JSON.parse(url.searchParams.get('filter') ?? '')).toEqual({
+      fields: [
+        {
+          field: 'orgs_long',
+          type: 'not-in-set',
+          'value-type': 'string',
+          'selected-options': names.slice(101),
+        },
+      ],
+    });
+  });
+
+  it('links a document by the layout’s address for its kind of number when genki gives none', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => Response.json({ documents: [{ id: '42', title: 'Årsrapport 2023' }] })),
+    );
+    const layout = {
+      ...emptyLayout,
+      profile: {
+        corpora: { kudos: { documentLinks: { digits: 'https://kudos.example/d/{id}' } } },
+      },
+    };
+    const reads = createGenkiApi({
+      baseUrl: '/genki',
+      tenant: 'digdir',
+      profile: profileOf(layout),
+    });
+    expect((await reads.loadDocuments?.({}, 'kudos', fields, 50))?.documents).toEqual([
+      { id: '42', title: 'Årsrapport 2023', href: 'https://kudos.example/d/42', included: true },
+    ]);
+  });
+});
