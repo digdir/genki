@@ -373,13 +373,15 @@ describe('pgvector engine', () => {
   describe('a metadata hit', () => {
     const datasetOptions = { profiles: { metadata: { target: 'docs', mode: 'text' } } };
     const dataset = config('pgvector/arsrapporter', { filters: {}, options: datasetOptions });
-    const hitOf = async (query: string) => {
-      const { hits } = await openTarget(
-        { adapter: engineWith().adapter, endpoint, datasetOptions },
-        dataset,
-      ).search({ query, profile: 'metadata' });
-      return hits.find((h) => h.document === 'toll')?.id;
-    };
+    const search = async (query: string) =>
+      (
+        await openTarget(
+          { adapter: engineWith().adapter, endpoint, datasetOptions },
+          dataset,
+        ).search({ query, profile: 'metadata' })
+      ).hits;
+    const hitOf = async (query: string) =>
+      (await search(query)).find((h) => h.document === 'toll')?.id;
 
     beforeAll(async () => {
       await seed(writerOf(engineWith()), dataset, [
@@ -388,6 +390,7 @@ describe('pgvector engine', () => {
           'Innhold: Leders beretning. Tolletaten i 2025. Regnskap',
           'Tolletaten 2025: tall for 2025, 2025 og 2025 i Tolletaten',
           'I 2025 ble omorganiseringen av Tolletaten fullført',
+          'Read this or that, or else, or not',
         ]),
       ]);
     });
@@ -398,7 +401,21 @@ describe('pgvector engine', () => {
 
     it("a metadata hit falls back to the document's first chunk when no chunk matches", async () => {
       expect(await hitOf('Tolletaten regnskapsprinsipper')).toBe('toll-0');
+    });
+
+    it("a metadata hit whose query holds only the title's words is the document's first chunk", async () => {
+      // Page 2 holds every word of the query, but the query names only the document.
       expect(await hitOf('"Årsrapport Tolletaten 2025"')).toBe('toll-0');
+    });
+
+    it('a metadata hit ignores a word excluded with -', async () => {
+      expect(await hitOf('Tolletaten -omorganisering')).toBe('toll-0');
+    });
+
+    it('a metadata search lists a document once', async () => {
+      // `or` is an operator to the all-words query and a word to the some-words one.
+      const hits = await search('Tolletaten or omorganisering');
+      expect(hits.filter((h) => h.document === 'toll').map((h) => h.id)).toEqual(['toll-3']);
     });
 
     it("a metadata hit is chosen by the query words the document's title and fields do not hold", async () => {

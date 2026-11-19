@@ -39,8 +39,10 @@ const hitSelect = `c.id, c.text, c.doc_id, c.position, c.metadata, d.title, d.ur
 const docJoin = (alias: string) =>
   `'join kn_docs d on d.dataset = ' || ds || ' and d.generation = ' || g || ' and d.id = ${alias}.doc_id'`;
 
-/** A text search's ranked matches for the tsquery literal in `q`: the matches are planned uncapped, then at most `textRankCap` are read. */
-/** For the docs target, documents are ranked and cut first, then each gets the chunk that best matches the query (`bestChunk`). */
+/**
+ * A text search's ranked matches for the tsquery literal in `q`: the matches are planned uncapped, then at most `textRankCap` are read.
+ * For the docs target, documents are ranked and cut first, then each gets the chunk that best matches the query (`bestChunk`).
+ */
 const rankedSql = (q: string) => `case when p_target = 'docs' then format(
              'with m as materialized (select d.id as doc, %2$s as tsv from kn_docs d
                 where d.dataset = %3$s and d.generation = %4$s and %2$s @@ %1$s and %5$s),

@@ -41,17 +41,21 @@ const allTermsQuery = (config: string, text: string) =>
 /**
  * The chunk of document `<from>.doc` that best matches the query's words its matched text (`<from>.tsv`) does not hold:
  * a title's words are on its cover too, so only the other words find the page that answers.
- * With no such word, or no chunk holding one, it is the document's first chunk.
+ * With no such word, or no chunk holding one, it is the document's first chunk, read through the doc_id index alone.
+ * A document without chunks gives no row, since a null id would empty the `not in` of the some-words pass;
+ * `offset 0` keeps that check from computing the chunk twice.
  */
-export const bestChunk = (query: string, from: string, dataset: string, generation: string) =>
-  `select c.id from kn_chunks c
-   cross join (select nullif(string_agg(w, ' '), '') as words
+export const bestChunk = (query: string, from: string, dataset: string, generation: string) => {
+  const ofDocument = `c.dataset = ${dataset} and c.generation = ${generation} and c.doc_id = ${from}.doc`;
+  return `select b.id from (select coalesce(
+     (select c.id from kn_chunks c where k.q is not null and ${ofDocument} and c.tsv @@ k.q
+       order by ts_rank_cd(c.tsv, k.q) desc, c.position limit 1),
+     (select c.id from kn_chunks c where ${ofDocument} order by c.position limit 1)) as id
+   from (select replace(plainto_tsquery('simple', nullif(string_agg(w, ' '), ''))::text, ' & ', ' | ')::tsquery as q
      from unnest(tsvector_to_array(to_tsvector('simple', nullif(querytree(${query}), 'T')))) w
-     where not w = any(tsvector_to_array(${from}.tsv))) k
-   where c.dataset = ${dataset} and c.generation = ${generation} and c.doc_id = ${from}.doc
-   order by coalesce(ts_rank_cd(c.tsv, replace(plainto_tsquery('simple', k.words)::text, ' & ', ' | ')::tsquery), 0) desc,
-     c.position
-   limit 1`;
+     where not w = any(tsvector_to_array(${from}.tsv))) k offset 0) b
+   where b.id is not null`;
+};
 
 /** The most matches a text search ranks, so a common word does not rank a whole partition. */
 export const textRankCap = 5000;
