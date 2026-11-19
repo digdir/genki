@@ -13,8 +13,8 @@ const rule = (selector: string) => {
 describe('the Welcome styles', () => {
   it('centre a suggestion’s icon on its first line, whatever the icon’s size', () => {
     expect(rule('.uib-welcome-suggestion')).toContain('align-items: start;');
-    expect(rule('.uib-welcome-suggestion-icon')).toContain(
-      'margin-block-start: var( --genai-welcome-suggestion-icon-offset, calc((1lh - var(--ds-icon-size)) / 2) );',
+    expect(rule('.uib-welcome-suggestion-icon')).toMatch(
+      /margin-block-start: calc\( \( var\(--genai-welcome-suggestion-line-height, 1lh\) - var\(--genai-welcome-suggestion-icon-size, var\(--ds-icon-size\)\) \) \/ 2 \);/,
     );
   });
 });
