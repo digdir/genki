@@ -654,6 +654,7 @@ export const buildEvidenceSummary = (w: Workspace, query: string): EvidenceSumma
     'doc-num': s['doc-num'],
     'chunk-index': s['chunk-index'],
     title: s.title,
+    publisher: s.publisher ?? null,
     headers: s.headers,
     'content-length': s['content-length'],
   });

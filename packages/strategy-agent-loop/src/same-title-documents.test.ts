@@ -184,6 +184,28 @@ describe('telling same-title documents apart', () => {
     expect(prompt).toContain('"publisher":null');
   });
 
+  it('the sufficiency gate sees the publisher of a hit it has not read', async () => {
+    const out = await run({
+      retrieval: retrieval({}, store()).impl,
+      scripts: {
+        primary: {
+          loop: [
+            () => result('', [call('search', { queries: ['Prop. 1 S Finansdepartementet'] })]),
+            () => result('', [call('read_chunks', { chunk_ids: ['c2'] })]),
+            () => result('', [call('generate_response', { query: 'Prop. 1 S' })]),
+          ],
+          read: [() => readSignal('gap-remaining', { scope_assessment: 'ambiguous' })],
+          sufficiency: [() => decision('sufficient', 'finalize')],
+          synth: [() => 'Svar [1].'],
+        },
+      },
+    });
+
+    const weighed = out.seen.find((s) => s.kind === 'sufficiency');
+    const prompt = String(weighed?.request.messages.at(-1)?.content);
+    expect(prompt).toMatch(/"chunk-id":"c1"[^}]*"publisher":"Finansdepartementet"/);
+  });
+
   it("a hint that names only a year says nothing about an organisation's own document", async () => {
     const r = retrieval({}, store());
     const detected = retrieval(
