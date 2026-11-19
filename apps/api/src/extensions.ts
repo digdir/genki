@@ -25,6 +25,7 @@ import {
   recordFeedback,
   reviewCandidate,
   type CandidateStore,
+  type ComparableField,
   type TestCaseCandidate,
   type EvalRunStore,
   type FeedbackStore,
@@ -537,6 +538,9 @@ const tooLarge = (c: Context) =>
     'content-type': 'application/problem+json',
   });
 
+/** What this route lets two runs differ in when asked; a commit or judges never (ADR 0003). */
+const mayDiffer = new Set<string>(['data', 'services', 'servedModels'] satisfies ComparableField[]);
+
 export const mountExtensions = <E extends Env, S extends Schema, B extends string>(
   app: Hono<E, S, B>,
   deps: ExtensionRouteDeps,
@@ -987,13 +991,26 @@ export const mountExtensions = <E extends Env, S extends Schema, B extends strin
       (await hiddenRun(c.req.query('candidate') ?? ''))
     )
       return problem(c, 404, 'Not found');
+    const allowDifferent = (c.req.query('allowDifferent') ?? '')
+      .split(',')
+      .map((field) => field.trim())
+      .filter(Boolean);
+    const refused = allowDifferent.find((field) => !mayDiffer.has(field));
+    if (refused !== undefined)
+      return problem(c, 400, 'Invalid request', [
+        {
+          path: 'allowDifferent',
+          message: `${refused} cannot be allowed to differ: only data, services and servedModels can`,
+        },
+      ]);
     try {
       return c.json(
         await evalService.compare(
           actingFor(c, principal),
           c.req.query('baseline') ?? '',
           c.req.query('candidate') ?? '',
-          c.req.query('metric') ?? '',
+          (c.req.query('metric') ?? '').split(','),
+          { allowDifferent: [...new Set(allowDifferent)] as ComparableField[] },
         ),
       );
     } catch (error) {

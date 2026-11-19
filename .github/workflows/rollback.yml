@@ -24,14 +24,16 @@ jobs:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: move users to the previous API revision
+        env:
+          RG: ${{ vars.AZURE_RESOURCE_GROUP }}
+        shell: bash
         run: |
-          rg="${{ vars.AZURE_RESOURCE_GROUP }}"
-          app=$(az containerapp list -g "$rg" --query "[?ends_with(name, '-api')].name | [0]" -o tsv)
-          previous=$(az containerapp ingress traffic show -g "$rg" -n "$app" --query "[?label=='previous'].revisionName | [0]" -o tsv)
-          if [ -z "$previous" ]; then echo "No API revision is labelled previous, so there is nothing to roll back to."; exit 1; fi
-          az containerapp revision label swap -g "$rg" -n "$app" --source previous --target live
-          traffic=$(az containerapp ingress traffic show -g "$rg" -n "$app" -o table)
+          previous=$(scripts/rollback-api.sh "$RG" | tail -n 1)
+          [ -n "$previous" ] || { echo "The rollback named no revision."; exit 1; }
+          app=$(az containerapp list -g "$RG" --query "[?ends_with(name, '-api')].name | [0]" -o tsv)
+          traffic=$(az containerapp ingress traffic show -g "$RG" -n "$app" -o table)
           echo "$traffic"
           {
             echo "### API rolled back to \`$previous\`"

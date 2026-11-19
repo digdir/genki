@@ -88,6 +88,7 @@ export const LanguageInstructionTabs = ({
     [api, tenant],
   );
   const languages = languagesOf(d.spec);
+  const shown = answerLanguages.filter((l) => l !== 'nn' || languages.includes('nn'));
   const byLanguage = instructionsByLanguageOf(d.spec);
   const houseStyle = houseStyleOf(d.spec);
   const serviceTexts = languageInstructionsOf(d.spec);
@@ -248,7 +249,7 @@ export const LanguageInstructionTabs = ({
   return (
     <Tabs value={tab} onChange={(v) => setTab(v as Tab)}>
       <TabsList aria-label={t('languageTabs.tabsLabel')}>
-        {(['shared', ...answerLanguages] as Tab[]).map((id) => (
+        {(['shared', ...shown] as Tab[]).map((id) => (
           <TabsTab key={id} value={id}>
             {t(tabKeys[id])}
           </TabsTab>
@@ -258,7 +259,7 @@ export const LanguageInstructionTabs = ({
         {perLanguage ? <p className="meta">{t('languageTabs.sharedUnused')}</p> : null}
         {shared}
       </TabsPanel>
-      {answerLanguages.map((l) => (
+      {shown.map((l) => (
         <TabsPanel key={l} value={l}>
           {panel(l)}
         </TabsPanel>

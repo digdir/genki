@@ -119,6 +119,7 @@ interface Numberable {
   document?: string;
   url?: string;
   title?: string | undefined;
+  publisher?: string | undefined;
   page?: number;
   pageEnd?: number;
   content: string;
@@ -157,7 +158,7 @@ export const numberByDocument = <C extends Numberable>(docs: C[]) => {
       .map((g, i) => {
         const first = g[0] as C;
         const text = g.map((c) => pageLine(c) + stripPageMarkers(c.content)).join('\n\n');
-        return `[${i + 1}] ${untrustedData('source', text, { id: documentKey(first), title: first.title })}`;
+        return `[${i + 1}] ${untrustedData('source', text, { id: documentKey(first), title: first.title, publisher: first.publisher })}`;
       })
       .join('\n\n'),
     index: new Map(ordered.map((g, i) => [i + 1, (g[0] as C).chunkId])) as CitationIndex,
@@ -173,7 +174,7 @@ export const numberByExcerpt = <C extends Numberable>(docs: C[]) => {
     context: ordered
       .map(
         (c, i) =>
-          `[${i + 1}] ${untrustedData('source', stripPageMarkers(c.content), { id: documentKey(c), title: c.title, ...pageAttribute(c) })}`,
+          `[${i + 1}] ${untrustedData('source', stripPageMarkers(c.content), { id: documentKey(c), title: c.title, publisher: c.publisher, ...pageAttribute(c) })}`,
       )
       .join('\n\n'),
     index: new Map(ordered.map((c, i) => [i + 1, c.chunkId])) as CitationIndex,

@@ -18,6 +18,10 @@ param healthCheckFrequencySeconds int
 
 param thresholds object
 
+param postgresServerId string
+
+param postgresUserConnections int
+
 resource insights 'Microsoft.Insights/components@2020-02-02' existing = {
   name: insightsName
 }
@@ -77,6 +81,36 @@ resource apiDown 'Microsoft.Insights/metricAlerts@2018-03-01' = {
       componentId: insights.id
       failedLocationCount: 2
     }
+    actions: [{ actionGroupId: group.id }]
+  }
+}
+
+resource postgresConnections 'Microsoft.Insights/metricAlerts@2018-03-01' = {
+  name: '${name}-postgres-connections'
+  location: 'global'
+  tags: tags
+  properties: {
+    description: 'The platform database had more than 80 % of its ${postgresUserConnections} user connections open; see docs/runbook.md, "Database connections".'
+    severity: 2
+    enabled: true
+    scopes: [postgresServerId]
+    evaluationFrequency: 'PT5M'
+    windowSize: 'PT5M'
+    criteria: {
+      'odata.type': 'Microsoft.Azure.Monitor.SingleResourceMultipleMetricCriteria'
+      allOf: [
+        {
+          criterionType: 'StaticThresholdCriterion'
+          name: 'active-connections'
+          metricNamespace: 'Microsoft.DBforPostgreSQL/flexibleServers'
+          metricName: 'active_connections'
+          operator: 'GreaterThan'
+          threshold: postgresUserConnections * 8 / 10
+          timeAggregation: 'Maximum'
+        }
+      ]
+    }
+    autoMitigate: true
     actions: [{ actionGroupId: group.id }]
   }
 }

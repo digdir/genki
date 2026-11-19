@@ -89,4 +89,19 @@ describe.skipIf(!hasAz && !process.env.CI)('the worker in the template', () => {
     );
     expect(container('api')).not.toContain('NODE_OPTIONS');
   });
+
+  it('caps the API and worker database pools from their parameters, at 3 and 4 in test', () => {
+    expect(main().parameters.apiDatabasePoolMax?.defaultValue).toBe(10);
+    expect(main().parameters.workerDatabasePoolMax?.defaultValue).toBe(10);
+    expect(read('infra/env/test.bicepparam')).toMatch(/^param apiDatabasePoolMax = 3$/m);
+    expect(read('infra/env/test.bicepparam')).toMatch(/^param workerDatabasePoolMax = 4$/m);
+    expect(main().parameters.workerRevisionsMode?.defaultValue).toBe('Single');
+    expect(read('infra/env/test.bicepparam')).toMatch(/^param workerRevisionsMode = 'Multiple'$/m);
+    expect(container('api')).toContain(
+      "createObject('name', 'DATABASE_POOL_MAX', 'value', string(parameters('apiDatabasePoolMax')))",
+    );
+    expect(container('worker')).toContain(
+      "createObject('name', 'DATABASE_POOL_MAX', 'value', string(parameters('workerDatabasePoolMax')))",
+    );
+  });
 });
