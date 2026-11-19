@@ -49,6 +49,17 @@ describe('setup summaries', () => {
     expect(summaries(t, c).knowledge).toBe('digdir/kudos · omrangering med ColBERT');
     expect(summaries(en, c).knowledge).toBe('digdir/kudos · reranked with ColBERT');
   });
+
+  it('show the ref of a live dataset without API names, never an example name', () => {
+    const c = definition({
+      strategy: { id: 'agent-loop', config: {} },
+      knowledge: { datasets: [{ dataset: 'digdir/kudos' }] },
+    });
+    expect(summaries(t, c).knowledge).toBe('digdir/kudos');
+    expect(summaries(t, c, undefined, new Map([['digdir/kudos', 'Kudos']])).knowledge).toBe(
+      'Kudos',
+    );
+  });
 });
 
 describe('who and numbers shown for versions', () => {

@@ -56,7 +56,7 @@ describe('the title, back link, tabs and buttons show while the data loads', () 
   });
 
   it('a building block shows the back link and its tabs while it loads', async () => {
-    await whileDataLoads('#/building-blocks/model/qwen');
+    await whileDataLoads('#/building-blocks/model/aivar%2Fqwen3-8');
 
     expect(loading('Henter byggeklossen')).toBeTruthy();
     expect(
