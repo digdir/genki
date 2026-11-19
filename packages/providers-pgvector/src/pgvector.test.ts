@@ -370,6 +370,43 @@ describe('pgvector engine', () => {
     });
   });
 
+  describe('a metadata hit', () => {
+    const datasetOptions = { profiles: { metadata: { target: 'docs', mode: 'text' } } };
+    const dataset = config('pgvector/arsrapporter', { filters: {}, options: datasetOptions });
+    const hitOf = async (query: string) => {
+      const { hits } = await openTarget(
+        { adapter: engineWith().adapter, endpoint, datasetOptions },
+        dataset,
+      ).search({ query, profile: 'metadata' });
+      return hits.find((h) => h.document === 'toll')?.id;
+    };
+
+    beforeAll(async () => {
+      await seed(writerOf(engineWith()), dataset, [
+        single('toll', 'Årsrapport Tolletaten 2025', [
+          'Årsrapport Tolletaten 2025',
+          'Innhold: Leders beretning. Tolletaten i 2025. Regnskap',
+          'Tolletaten 2025: tall for 2025, 2025 og 2025 i Tolletaten',
+          'I 2025 ble omorganiseringen av Tolletaten fullført',
+        ]),
+      ]);
+    });
+
+    it("a metadata hit is the document's chunk that best matches the query", async () => {
+      expect(await hitOf('Tolletaten omorganisering')).toBe('toll-3');
+    });
+
+    it("a metadata hit falls back to the document's first chunk when no chunk matches", async () => {
+      expect(await hitOf('Tolletaten regnskapsprinsipper')).toBe('toll-0');
+      expect(await hitOf('"Årsrapport Tolletaten 2025"')).toBe('toll-0');
+    });
+
+    it("a metadata hit is chosen by the query words the document's title and fields do not hold", async () => {
+      // Page 2 holds the title's words most often; only page 3 holds the word the title lacks.
+      expect(await hitOf('"omorganisering" "Årsrapport Tolletaten 2025"')).toBe('toll-3');
+    });
+  });
+
   describe('the VACUUM workaround for pgvector 0.8.2', () => {
     const vacuums = async () => {
       await pool.query('select pg_stat_force_next_flush()');

@@ -1,5 +1,5 @@
 import { clauseFits, kindsOf, type DatasetConfig, type FilterValue } from '@genai/port-knowledge';
-import { textRankCap } from './sql.js';
+import { bestChunk, textRankCap } from './sql.js';
 
 /** SQLSTATE a read function raises when this server does not hold the generation it was asked for. */
 export const notReadyCode = 'KN503';
@@ -40,14 +40,16 @@ const docJoin = (alias: string) =>
   `'join kn_docs d on d.dataset = ' || ds || ' and d.generation = ' || g || ' and d.id = ${alias}.doc_id'`;
 
 /** A text search's ranked matches for the tsquery literal in `q`: the matches are planned uncapped, then at most `textRankCap` are read. */
+/** For the docs target, documents are ranked and cut first, then each gets the chunk that best matches the query (`bestChunk`). */
 const rankedSql = (q: string) => `case when p_target = 'docs' then format(
              'with m as materialized (select d.id as doc, %2$s as tsv from kn_docs d
-                where d.dataset = %3$s and d.generation = %4$s and %2$s @@ %1$s and %5$s)
-              select first.id, ts_rank_cd(m.tsv, %1$s)::float8 as s from (select doc, tsv from m limit ${textRankCap}) m
-              cross join lateral (select c.id from kn_chunks c
-                where c.dataset = %3$s and c.generation = %4$s and c.doc_id = m.doc order by c.position limit 1) first
-              order by s desc, first.id limit %6$s',
-             ${q}, tsv, ds, g, where_sql, p_candidates)
+                where d.dataset = %3$s and d.generation = %4$s and %2$s @@ %1$s and %5$s),
+              top as (select doc, tsv, ts_rank_cd(tsv, %1$s)::float8 as s from (select doc, tsv from m limit ${textRankCap}) m
+                order by s desc, doc limit %6$s)
+              select best.id, top.s from top
+              cross join lateral (${bestChunk('%7$s', 'top', '%3$s', '%4$s').replaceAll("'", "''")}) best
+              order by top.s desc, best.id',
+             ${q}, tsv, ds, g, where_sql, p_candidates, q)
            else format(
              'with m as materialized (select %2$s as id, x.tsv from %3$s x
                 where x.dataset = %4$s and x.generation = %5$s and x.tsv @@ %1$s%6$s)

@@ -38,6 +38,21 @@ const anyTermQuery = (config: string, text: string) =>
 const allTermsQuery = (config: string, text: string) =>
   `websearch_to_tsquery(${config}::regconfig, ${text})`;
 
+/**
+ * The chunk of document `<from>.doc` that best matches the query's words its matched text (`<from>.tsv`) does not hold:
+ * a title's words are on its cover too, so only the other words find the page that answers.
+ * With no such word, or no chunk holding one, it is the document's first chunk.
+ */
+export const bestChunk = (query: string, from: string, dataset: string, generation: string) =>
+  `select c.id from kn_chunks c
+   cross join (select nullif(string_agg(w, ' '), '') as words
+     from unnest(tsvector_to_array(to_tsvector('simple', nullif(querytree(${query}), 'T')))) w
+     where not w = any(tsvector_to_array(${from}.tsv))) k
+   where c.dataset = ${dataset} and c.generation = ${generation} and c.doc_id = ${from}.doc
+   order by coalesce(ts_rank_cd(c.tsv, replace(plainto_tsquery('simple', k.words)::text, ' & ', ' | ')::tsquery), 0) desc,
+     c.position
+   limit 1`;
+
 /** The most matches a text search ranks, so a common word does not rank a whole partition. */
 export const textRankCap = 5000;
 
@@ -143,20 +158,21 @@ export const searchSql = (input: SearchSql) => {
     const tsvOf = () => docVector(params, input.profile.fields, config);
     const table = target === 'chunks' ? 'kn_chunks' : 'kn_phrases';
     const id = target === 'chunks' ? 'x.id' : 'x.chunk_id';
+    const query = once(() => params.add(input.query));
     // The matches are planned uncapped, so the index finds them; then at most `textRankCap` are read.
     const ranked = (q: string) => {
       if (target === 'docs') {
         const tsv = tsvOf();
+        // Documents are ranked and cut first, so a chunk is picked for at most `candidates` of them.
         return `with m as materialized (
             select d.id as doc, ${tsv} as tsv from kn_docs d
-            where d.dataset = ${dataset} and d.generation = ${active} and ${tsv} @@ ${q} and ${where})
-          select first.id, ts_rank_cd(m.tsv, ${q})::float8 as s from (select doc, tsv from m limit ${textRankCap}) m
-          cross join lateral (
-            select c.id from kn_chunks c
-            where c.dataset = ${dataset} and c.generation = ${active} and c.doc_id = m.doc
-            order by c.position limit 1
-          ) first
-          order by s desc, first.id limit ${candidates}`;
+            where d.dataset = ${dataset} and d.generation = ${active} and ${tsv} @@ ${q} and ${where}),
+          top as (
+            select doc, tsv, ts_rank_cd(tsv, ${q})::float8 as s from (select doc, tsv from m limit ${textRankCap}) m
+            order by s desc, doc limit ${candidates})
+          select best.id, top.s from top
+          cross join lateral (${bestChunk(allTermsQuery(config(), query()), 'top', dataset, active)}) best
+          order by top.s desc, best.id`;
       }
       const docFilter =
         where === 'true'
@@ -187,20 +203,19 @@ export const searchSql = (input: SearchSql) => {
         group by ${id} order by s desc, id limit ${candidates})`);
     } else if (mode === 'text') {
       // No vector half fills the list, so some-words matches follow the all-words ones, scored below 1.
-      const query = params.add(input.query);
-      ctes.push(`t_all as (${ranked(allTermsQuery(config(), query))}),
-        t_any as (${ranked(anyTermQuery(config(), query))}),
+      ctes.push(`t_all as (${ranked(allTermsQuery(config(), query()))}),
+        t_any as (${ranked(anyTermQuery(config(), query()))}),
         t as (select id, s from (
           select id, 1 + s / (1 + s) as s from t_all
           union all
           select id, s / (1 + s) from t_any
           where (select count(*) from t_all) < ${candidates}
-            and strpos(${allTermsQuery(config(), query)}::text, '!') = 0
+            and strpos(${allTermsQuery(config(), query())}::text, '!') = 0
             and id not in (select id from t_all)) u
           order by s desc, id limit ${candidates})`);
     } else {
       // A hybrid profile's text half keeps the all-words matches only: its vector half fills the list.
-      ctes.push(`t as (${ranked(allTermsQuery(config(), params.add(input.query)))})`);
+      ctes.push(`t as (${ranked(allTermsQuery(config(), query()))})`);
     }
   }
   if (vector) {
