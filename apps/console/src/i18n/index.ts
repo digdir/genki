@@ -18,12 +18,14 @@ import { connections as enConnections } from './en/connections';
 import { apis as enApis } from './en/apis';
 import { diagnostics as enDiagnostics } from './en/diagnostics';
 import { endpoints as enEndpoints } from './en/endpoints';
+import { datasetSearch as enDatasetSearch } from './en/datasetSearch';
 import { engineSwitch as enEngineSwitch } from './en/engineSwitch';
 import { models as enModels } from './en/models';
 import { modelOperations as enModelOperations } from './en/modelOperations';
 import { modelParameters as enModelParameters } from './en/modelParameters';
 import { onboarding as enOnboarding } from './en/onboarding';
 import { operations as enOperations } from './en/operations';
+import { platformSecrets as enPlatformSecrets } from './en/platformSecrets';
 import { policies as enPolicies } from './en/policies';
 import { quality as enQuality } from './en/quality';
 import { qualityMatrix as enQualityMatrix } from './en/qualityMatrix';
@@ -33,6 +35,7 @@ import { searchEngines as enSearchEngines } from './en/searchEngines';
 import { settings as enSettings } from './en/settings';
 import { sharedServices as enSharedServices } from './en/sharedServices';
 import { stateRegister as enStateRegister } from './en/stateRegister';
+import { demos as enDemos } from './en/demos';
 import { shell as enShell } from './en/shell';
 import { support as enSupport } from './en/support';
 import { supportAccess as enSupportAccess } from './en/supportAccess';
@@ -49,6 +52,7 @@ import { common } from './nb/common';
 import { config } from './nb/config';
 import { connections } from './nb/connections';
 import { apis } from './nb/apis';
+import { datasetSearch } from './nb/datasetSearch';
 import { engineSwitch } from './nb/engineSwitch';
 import { diagnostics } from './nb/diagnostics';
 import { endpoints } from './nb/endpoints';
@@ -57,6 +61,7 @@ import { modelOperations } from './nb/modelOperations';
 import { modelParameters } from './nb/modelParameters';
 import { onboarding } from './nb/onboarding';
 import { operations } from './nb/operations';
+import { platformSecrets } from './nb/platformSecrets';
 import { policies } from './nb/policies';
 import { quality } from './nb/quality';
 import { qualityMatrix } from './nb/qualityMatrix';
@@ -66,6 +71,7 @@ import { searchEngines } from './nb/searchEngines';
 import { settings } from './nb/settings';
 import { sharedServices } from './nb/sharedServices';
 import { stateRegister } from './nb/stateRegister';
+import { demos } from './nb/demos';
 import { shell } from './nb/shell';
 import { support } from './nb/support';
 import { supportAccess } from './nb/supportAccess';
@@ -83,6 +89,7 @@ export const nb = defineCatalogue({
   common,
   config,
   connections,
+  datasetSearch,
   apis,
   diagnostics,
   endpoints,
@@ -92,6 +99,7 @@ export const nb = defineCatalogue({
   modelParameters,
   onboarding,
   operations,
+  platformSecrets,
   policies,
   quality,
   qualityMatrix,
@@ -101,6 +109,7 @@ export const nb = defineCatalogue({
   settings,
   sharedServices,
   stateRegister,
+  demos,
   shell,
   support,
   supportAccess,
@@ -119,6 +128,7 @@ export const en = {
   common: enCommon,
   config: enConfig,
   connections: enConnections,
+  datasetSearch: enDatasetSearch,
   apis: enApis,
   diagnostics: enDiagnostics,
   endpoints: enEndpoints,
@@ -128,6 +138,7 @@ export const en = {
   modelParameters: enModelParameters,
   onboarding: enOnboarding,
   operations: enOperations,
+  platformSecrets: enPlatformSecrets,
   policies: enPolicies,
   quality: enQuality,
   qualityMatrix: enQualityMatrix,
@@ -137,6 +148,7 @@ export const en = {
   settings: enSettings,
   sharedServices: enSharedServices,
   stateRegister: enStateRegister,
+  demos: enDemos,
   shell: enShell,
   support: enSupport,
   supportAccess: enSupportAccess,

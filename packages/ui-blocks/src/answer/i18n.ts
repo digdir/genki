@@ -7,6 +7,7 @@ export const nbAnswer = defineNamespace({
   saidUnnamed: 'KI-assistenten svarte:',
   footnote: 'Utdrag {n}: {title}',
   footnoteDocument: 'Kilde {n}: {title}',
+  footnoteEach: 'Fotnote {n}: {title}',
   sourceLost: 'Kilden kom ikke fram',
   sourceLostNote: '(kilden kom ikke fram)',
   writing: 'Skriver svar …',
@@ -47,9 +48,6 @@ export const nbAnswer = defineNamespace({
   regenerate: 'Generer på nytt',
   closingQuestion: 'Er det noe mer jeg kan hjelpe deg med?',
   sourcesUsed: 'Kilder brukt i svaret',
-  // The `plain` answer's bar, as the dev boards draw it: «Kilder · 3 brukt i svaret».
-  sourcesUsedLead: 'Kilder',
-  sourcesUsedCount: '· {count} brukt i svaret',
   excerptInSources: '{label} i Kilder',
   table: 'Tabell',
   tableNumber: 'Tabell {n}',
@@ -58,6 +56,11 @@ export const nbAnswer = defineNamespace({
   copyHeading: 'Kilder',
   copyPage: '{title}, s. {page}',
   copyPart: '{title}, «{part}»',
+  references: 'Kildeliste',
+  referenceFootnotes: { one: 'Fotnote', other: 'Fotnoter' },
+  referencePages: { one: 'Side {pages}', other: 'Side {pages}' },
+  copyReferences: 'Kopier kildeliste',
+  referencesCopied: 'Kopiert',
 });
 
 export const enAnswer = {
@@ -65,6 +68,7 @@ export const enAnswer = {
   saidUnnamed: 'The AI assistant answered:',
   footnote: 'Excerpt {n}: {title}',
   footnoteDocument: 'Source {n}: {title}',
+  footnoteEach: 'Footnote {n}: {title}',
   sourceLost: 'The source never arrived',
   sourceLostNote: '(the source never arrived)',
   writing: 'Writing the answer …',
@@ -106,8 +110,6 @@ export const enAnswer = {
   regenerate: 'Generate again',
   closingQuestion: 'Is there anything else I can help you with?',
   sourcesUsed: 'Sources used in the answer',
-  sourcesUsedLead: 'Sources',
-  sourcesUsedCount: '· {count} used in the answer',
   excerptInSources: '{label} in Sources',
   table: 'Table',
   tableNumber: 'Table {n}',
@@ -119,6 +121,11 @@ export const enAnswer = {
   copyHeading: 'Sources',
   copyPage: '{title}, p. {page}',
   copyPart: '{title}, “{part}”',
+  references: 'Reference list',
+  referenceFootnotes: { one: 'Footnote', other: 'Footnotes' },
+  referencePages: { one: 'Page {pages}', other: 'Pages {pages}' },
+  copyReferences: 'Copy reference list',
+  referencesCopied: 'Copied',
 } satisfies Translation<typeof nbAnswer>;
 
 /**

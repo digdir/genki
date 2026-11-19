@@ -54,7 +54,7 @@ const open = async (
   await auth.login();
   window.location.hash = base;
   render(<App auth={auth} fetch={fetch} live />);
-  await screen.findByRole('heading', { name: 'Samlet jobb' });
+  await screen.findByRole('heading', { name: 'Batch' });
   return {
     writes: () => calls.filter((c) => c.method !== 'GET'),
     starts: () => calls.filter((c) => c.method === 'POST' && /\/batch-runs$/.test(c.path)),
@@ -92,14 +92,20 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('Samlet jobb', () => {
-  it('is reachable from the service navigation and explains an empty list', async () => {
+  it('belongs to the Utviklerverktøy tab of the service and explains an empty list', async () => {
     await open();
-    const nav = screen.getByRole('navigation', { name: 'Tjenesten' });
+    const nav = screen.getByRole('tablist', { name: /^Faner for/ });
     expect(
-      within(nav).getByRole('link', { name: 'Samlet jobb' }).getAttribute('aria-current'),
-    ).toBe('page');
+      within(nav).getByRole('tab', { name: 'Utviklerverktøy' }).getAttribute('aria-selected'),
+    ).toBe('true');
     expect(await screen.findByRole('heading', { name: 'Ingen samlede jobber ennå' })).toBeTruthy();
     expectAccessible();
+  });
+
+  it('offers one Ny samlet jobb button when there are no jobs yet', async () => {
+    await open();
+    await screen.findByRole('heading', { name: 'Ingen samlede jobber ennå' });
+    expect(screen.getAllByRole('button', { name: 'Ny samlet jobb' })).toHaveLength(1);
   });
 
   it('chooses documents, takes the inputs, measures the cost and starts with a stop limit', async () => {
@@ -316,11 +322,31 @@ describe('Samlet jobb', () => {
     expect(await screen.findByText(/^Jobben ble avbrutt/)).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Tilbake til jobbene' }));
-    await screen.findByRole('heading', { name: 'Tidligere jobber' });
-    const table = await screen.findByRole('table');
+    const jobs = await screen.findByRole('region', { name: 'Samlede jobber' });
+    const table = within(jobs).getByRole('table');
     expect(within(table).getByText('Kudos: Årsrapport, 2024')).toBeTruthy();
-    expect(within(table).getByText('Kari Nordmann')).toBeTruthy();
     expect(within(table).getByText('Avbrutt')).toBeTruthy();
+    expect(
+      within(table).getByRole('link', { name: 'Se jobben: Kudos: Årsrapport, 2024' }),
+    ).toBeTruthy();
+  });
+
+  it('names a job when it starts and lists it by that name', async () => {
+    const { starts } = await open({ stayRunning: true });
+    await chooseAnnualReports();
+    await toCost();
+    fireEvent.change(screen.getByLabelText('Navn på jobben (valgfritt)'), {
+      target: { value: ' Spørsmål fra HR-postkassen ' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Neste' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Start jobben' }));
+
+    await waitFor(() =>
+      expect(starts().at(-1)).toMatchObject({ body: { name: 'Spørsmål fra HR-postkassen' } }),
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Tilbake til jobbene' }));
+    const jobs = await screen.findByRole('region', { name: 'Samlede jobber' });
+    expect(within(jobs).getByText('Spørsmål fra HR-postkassen')).toBeTruthy();
   });
 
   it('shows jobs but not the setup to someone who cannot manage services', async () => {
@@ -331,9 +357,7 @@ describe('Samlet jobb', () => {
         organisations: [{ orgNumber: '999888777', name: 'Testetaten', actions: ['use-services'] }],
       },
     );
-    const section = screen
-      .getByRole('heading', { name: 'Samlet jobb' })
-      .closest('.batch') as HTMLElement;
+    const section = screen.getByRole('heading', { name: 'Batch' }).closest('.batch') as HTMLElement;
     expect(
       within(section).getByText('Du trenger rettigheten «Administrere tjenester».'),
     ).toBeTruthy();

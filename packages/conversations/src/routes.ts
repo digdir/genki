@@ -1,6 +1,6 @@
 import { Hono, type Context } from 'hono';
-import type { Principal } from '@genai/contracts';
-import { activeBranch } from './branches.js';
+import type { Principal, TaskStatus } from '@genai/contracts';
+import { activeBranch, activeLeaf } from './branches.js';
 import {
   normalizeTags,
   type Conversation,
@@ -27,12 +27,31 @@ export type AgentSelector = (
   requested?: string,
 ) => Promise<AgentChoice>;
 
+export interface TurnRun {
+  status: TaskStatus;
+  createdAt: number;
+  deadlineMs?: number;
+}
+
+export type RunState = 'running' | 'failed' | 'cancelled';
+
 export interface ConversationRoutesOptions {
   store: ConversationStore;
   auth: ConversationAuthenticator;
   selectAgent: AgentSelector;
   onDeleted?: (owner: Owner, id: string) => Promise<void>;
+  /** The run a stored question names, read as the caller; throws or gives none if it may not. */
+  runOf?: (caller: ConversationCaller, task: string) => Promise<TurnRun | undefined>;
+  now?: () => number;
 }
+
+const runStateOf = (run: TurnRun, now: number): RunState => {
+  if (run.status === 'cancelled') return 'cancelled';
+  if (run.status === 'failed' || run.status === 'interrupted') return 'failed';
+  // A completed run's answer may still be on its way to the store.
+  const pastDeadline = run.deadlineMs !== undefined && now > run.createdAt + run.deadlineMs;
+  return pastDeadline ? 'failed' : 'running';
+};
 
 const maxPageSize = 100;
 
@@ -109,6 +128,7 @@ const publicMessage = (m: Message, diagnostics: boolean) => ({
   ...(m.markers?.length ? { markers: m.markers } : {}),
   ...(diagnostics && m.diagnostics !== undefined ? { diagnostics: m.diagnostics } : {}),
   ...(m.task === undefined ? {} : { task: m.task }),
+  ...(m.stopped ? { stopped: true } : {}),
   ...(m.attachments?.length ? { attachments: m.attachments } : {}),
   ...(m.input ? { input: m.input } : {}),
 });
@@ -170,8 +190,17 @@ export const conversationRoutes = ({
   auth,
   selectAgent,
   onDeleted,
+  runOf,
+  now = () => Date.now(),
 }: ConversationRoutesOptions) => {
   const app = new Hono();
+
+  const unansweredRun = async (who: ConversationCaller, messages: Message[]) => {
+    const last = activeLeaf(messages);
+    if (!runOf || last?.role !== 'user' || last.task === undefined) return undefined;
+    const run = await runOf(who, last.task).catch(() => undefined);
+    return run && { message: last.id, runState: runStateOf(run, now()) };
+  };
 
   const caller = async (c: Context) => {
     const found = await auth.authenticate(c.req.raw);
@@ -235,18 +264,22 @@ export const conversationRoutes = ({
 
   app.get('/api/conversations/:id', async (c) => {
     try {
-      const { owner } = await caller(c);
+      const { caller: who, owner } = await caller(c);
       const id = c.req.param('id');
       const conversation = await store.get(owner, id);
       const messages = conversation && (await store.messages(owner, id));
       if (!conversation || !messages)
         throw new HttpError(404, 'Conversation not found', undefined, 'conversation_not_found');
       const diagnostics = c.req.query('include_diagnostics') === 'true';
+      const unanswered = await unansweredRun(who, messages);
       return c.json({
         conversation: publicConversation(conversation),
         messages: (c.req.query('branches') === 'all' ? messages : activeBranch(messages))
           .filter((m) => m.role !== 'system')
-          .map((m) => publicMessage(m, diagnostics)),
+          .map((m) => ({
+            ...publicMessage(m, diagnostics),
+            ...(m.id === unanswered?.message ? { runState: unanswered.runState } : {}),
+          })),
       });
     } catch (error) {
       return fail(c, error, 'Failed to get conversation');

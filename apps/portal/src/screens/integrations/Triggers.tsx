@@ -1,29 +1,26 @@
-import { Alert, Button, Paragraph, Textfield } from '@digdir/designsystemet-react';
-import { createFormat, type Format } from '@genai/i18n';
+import {
+  Alert,
+  Button,
+  Paragraph,
+  Switch,
+  Table,
+  Tag,
+  Textfield,
+} from '@digdir/designsystemet-react';
+
 import { useFormat } from '@genai/i18n/react';
 import { useState } from 'react';
 import type { ApiClient } from '../../api';
 import type { TriggerRunView, TriggerView } from '../../api/triggers';
 import { reasonProblem } from '../../components/ReasonField';
-import { navigate, useAsync } from '../../hooks';
 import { translator, useT, type PlainKey, type T } from '../../i18n';
 import { useRights } from '../../Shell';
 import { problemText } from '../service/ServiceKeys';
-import type { ItemStatus } from '../../data/integrations';
-import { ItemList, type ItemRowData } from './ItemList';
 
-type Flash = (text: string, color?: 'success' | 'info' | 'danger') => void;
-
-const kindKeys: Record<TriggerView['kind'], PlainKey> = {
+export const kindKeys: Record<TriggerView['kind'], PlainKey> = {
   'document-arrives': 'integTriggers.kindDocument',
   'queue-message': 'integTriggers.kindQueue',
   schedule: 'integTriggers.kindSchedule',
-};
-
-const statusIds: Record<TriggerView['status'], ItemStatus> = {
-  active: 'Aktiv',
-  failing: 'Feiler',
-  paused: 'Satt på pause',
 };
 
 const weekdayKeys: PlainKey[] = [
@@ -38,16 +35,15 @@ const weekdayKeys: PlainKey[] = [
 const pad = (n: string) => n.padStart(2, '0');
 
 const nbT = translator('nb');
-const nbFormat = createFormat('nb');
 
-export const describeSchedule = (cron: string, t: T = nbT, f: Format = nbFormat) => {
+export const describeSchedule = (cron: string, t: T = nbT) => {
   const [minute, hour, day, month, weekday, ...rest] = cron.trim().split(/\s+/);
   const plain = (v?: string) => v !== undefined && /^\d+$/.test(v);
   const other = t('integTriggers.scheduleOther', { cron });
   if (rest.length || day !== '*' || month !== '*' || !plain(minute)) return other;
   if (hour === '*' && weekday === '*') return t('integTriggers.everyHour');
   if (!plain(hour)) return other;
-  const time = `${pad(hour ?? '')}${f.locale === 'en' ? ':' : '.'}${pad(minute ?? '')}`;
+  const time = `${pad(hour ?? '')}:${pad(minute ?? '')}`;
   if (weekday === '*')
     return t(Number(hour) < 6 ? 'integTriggers.everyNight' : 'integTriggers.everyDay', { time });
   if (plain(weekday)) {
@@ -57,9 +53,9 @@ export const describeSchedule = (cron: string, t: T = nbT, f: Format = nbFormat)
   return other;
 };
 
-export const triggerName = (tr: TriggerView, t: T = nbT, f: Format = nbFormat) =>
+export const triggerName = (tr: TriggerView, t: T = nbT) =>
   tr.kind === 'schedule'
-    ? describeSchedule(tr.target, t, f)
+    ? describeSchedule(tr.target, t)
     : tr.kind === 'queue-message'
       ? t('integTriggers.queueName', { target: tr.target })
       : t('integTriggers.folderName', { target: tr.target });
@@ -71,33 +67,40 @@ const sourceOf = (tr: TriggerView, t: T) =>
       ? t('integTriggers.sourceQueue', { target: tr.target })
       : t('integTriggers.sourceFolder', { target: tr.target });
 
-const countText = (tr: TriggerView, t: T, f: Format) =>
-  tr.nextRunAt
-    ? t('integTriggers.nextRun', { at: f.dateTime(tr.nextRunAt, 'medium') })
-    : t('integTriggers.runs7d', { count: tr.runs7d });
-
-export const problemOf = (tr: TriggerView, t: T = nbT, f: Format = nbFormat) =>
-  t('integTriggers.problem', { name: triggerName(tr, t, f) });
+export const problemOf = (tr: TriggerView, t: T = nbT) =>
+  t('integTriggers.problem', { name: triggerName(tr, t) });
 
 const timelineHref = (run: TriggerRunView) =>
   run.task ? `#/log/${encodeURIComponent(run.task)}` : undefined;
+
+const runProblems: [RegExp, PlainKey][] = [
+  [/is not published|not published|unpublished/i, 'devTriggers.problemNotPublished'],
+  [/time(d)? ?out|deadline/i, 'devTriggers.problemTimeout'],
+  [/quota|budget|limit reached|429/i, 'devTriggers.problemQuota'],
+  [/forbidden|unauthori[sz]ed|\b40[13]\b|not allowed/i, 'devTriggers.problemAccess'],
+  [/not found|\b404\b|no such/i, 'devTriggers.problemMissing'],
+];
+
+export const runProblemText = (error: string, t: T) =>
+  t(runProblems.find(([pattern]) => pattern.test(error))?.[1] ?? 'devTriggers.problemOther');
+
+const lastRunTag = (tr: TriggerView): { key: PlainKey; color: 'danger' | 'success' | 'warning' } =>
+  tr.status === 'failing'
+    ? { key: 'devTriggers.lastFailed', color: 'danger' }
+    : tr.lastRun?.outcome === 'failed'
+      ? { key: 'devTriggers.runFailed', color: 'warning' }
+      : { key: 'devTriggers.lastDone', color: 'success' };
 
 export const Triggers = ({
   api,
   tenant,
   triggers,
-  open,
-  onToggle,
   onChanged,
-  onFlash,
 }: {
   api: ApiClient;
   tenant: string;
   triggers: TriggerView[];
-  open: string | undefined;
-  onToggle: (id: string) => void;
   onChanged: () => void;
-  onFlash: Flash;
 }) => {
   const t = useT();
   const f = useFormat();
@@ -106,7 +109,7 @@ export const Triggers = ({
   const [pausing, setPausing] = useState<TriggerView>();
   const [reason, setReason] = useState('');
   const [reasonError, setReasonError] = useState('');
-  const runs = useRuns(api, tenant, open);
+  const [saved, setSaved] = useState<Record<string, string>>({});
 
   const togglePause = async () => {
     if (!pausing) return;
@@ -115,11 +118,10 @@ export const Triggers = ({
     const resume = pausing.status === 'paused';
     try {
       await api.triggers.pause(tenant, pausing.id, !resume, reason.trim());
-      onFlash(
-        t(resume ? 'integTriggers.resumed' : 'integTriggers.paused', {
-          name: triggerName(pausing, t, f),
-        }),
-      );
+      setSaved((all) => ({
+        ...all,
+        [pausing.id]: t(resume ? 'devTriggers.savedOn' : 'devTriggers.savedPaused'),
+      }));
       setPausing(undefined);
       onChanged();
     } catch (e) {
@@ -127,118 +129,102 @@ export const Triggers = ({
     }
   };
 
-  const items: ItemRowData[] = triggers.map((tr) => {
-    const last = tr.lastRun;
-    const href = last ? timelineHref(last) : undefined;
-    const error: ItemRowData['error'] =
-      tr.status === 'failing' && last
-        ? {
-            what: t('integTriggers.failedToStart'),
-            why: t('integTriggers.failedToStartWhy'),
-            code: last.error ?? t('common.unknown'),
-            color: 'danger',
-            actions: [
-              {
-                label: t('integTriggers.goToService'),
-                variant: 'primary',
-                onClick: () => navigate(`#/services/${encodeURIComponent(tr.service)}`),
-              },
-            ],
-          }
-        : last?.outcome === 'failed' && href
-          ? {
-              what: t('integrations.lastRunFailed'),
-              why: t('integTriggers.triggerWorks'),
-              code: last.error ?? t('common.unknown'),
-              color: 'info',
-              actions: [
-                {
-                  label: t('integTriggers.seeRun'),
-                  variant: 'secondary',
-                  onClick: () => navigate(href),
-                },
-              ],
-            }
-          : undefined;
-    const paused = tr.status === 'paused';
-    const loaded = open === tr.id ? runs : undefined;
-    return {
-      id: tr.id,
-      name: triggerName(tr, t, f),
-      status: statusIds[tr.status],
-      sub: t('integrations.triggerSub', { kind: t(kindKeys[tr.kind]), service: tr.serviceName }),
-      metaLabel: t('integrations.lastEvent'),
-      meta: `${
-        last
-          ? t(last.outcome === 'failed' ? 'integTriggers.lastFailed' : 'integTriggers.lastAt', {
-              at: f.dateTime(last.at, 'medium'),
-            })
-          : t('integrations.noneYet')
-      } · ${countText(tr, t, f)}`,
-      ...(error ? { error } : {}),
-      rows: [
-        { k: t('integrations.rowType'), v: t(kindKeys[tr.kind]) },
-        { k: t('integrations.rowSource'), v: sourceOf(tr, t) },
-        { k: t('integrations.rowStarts'), v: tr.serviceName },
-        ...(paused && tr.pausedAt
-          ? [{ k: t('integTriggers.pausedAt'), v: f.dateTime(tr.pausedAt, 'medium') }]
-          : []),
-      ],
-      ...(loaded
-        ? {
-            events: loaded.map((r) => {
-              const link = timelineHref(r);
-              return {
-                when: f.dateTime(r.at, 'medium'),
-                text: `${
-                  r.code === 'quota_exhausted'
-                    ? t('integTriggers.runQuota')
-                    : (r.error ??
-                      t(
-                        r.outcome === 'completed'
-                          ? 'integTriggers.runCompleted'
-                          : 'taskStatus.failed',
-                      ))
-                }${
-                  r.costMicroNok === undefined
-                    ? ''
-                    : t('integTriggers.runCost', {
-                        cost: f.currency(r.costMicroNok / 1_000_000, { digits: 2 }),
-                      })
-                }`,
-                status: r.outcome === 'completed' ? 'Fullført' : 'Feilet',
-                ...(link ? { href: link, link: t('integTriggers.seeRun') } : {}),
-              };
-            }),
-          }
-        : {}),
-      actions: canManage
-        ? [
-            {
-              label: paused ? t('integrations.startAgain') : t('integrations.pause'),
-              variant: 'secondary',
-              onClick: () => {
-                setPausing(tr);
-                setReason('');
-                setReasonError('');
-              },
-            },
-          ]
-        : [],
-    };
-  });
-
+  const failing = triggers.filter((tr) => tr.status === 'failing');
   return (
     <div className="stack-md">
-      <ItemList
-        items={items}
-        open={open}
-        onToggle={onToggle}
-        empty={{
-          title: t('integrations.noTriggers'),
-          text: t('integrations.noTriggersText'),
-        }}
-      />
+      {failing.map((tr) => (
+        <Alert key={tr.id} data-color="danger" data-size="sm" className="int-sync-attention">
+          <span className="int-sync-badge">{t('connectionSync.attention')}</span>
+          <span>
+            {t('devTriggers.failedStart', {
+              name: triggerName(tr, t),
+              at: tr.lastRun ? f.dateTime(tr.lastRun.at, 'medium') : '',
+            })}{' '}
+            <a href={`#/services/${encodeURIComponent(tr.service)}`}>{tr.serviceName}</a>
+          </span>
+        </Alert>
+      ))}
+      <div
+        className="table-scroll int-scroll"
+        tabIndex={0}
+        role="region"
+        aria-label={t('devTriggers.tableLabel')}
+      >
+        <Table className="dev-table" data-size="sm">
+          <Table.Head>
+            <Table.Row>
+              <Table.HeaderCell scope="col">{t('devTriggers.when')}</Table.HeaderCell>
+              <Table.HeaderCell scope="col">{t('devTriggers.starts')}</Table.HeaderCell>
+              <Table.HeaderCell scope="col">{t('devTriggers.lastRun')}</Table.HeaderCell>
+              <Table.HeaderCell scope="col">{t('devTriggers.active')}</Table.HeaderCell>
+            </Table.Row>
+          </Table.Head>
+          <Table.Body>
+            {triggers.map((tr) => {
+              const last = tr.lastRun;
+              const tag = lastRunTag(tr);
+              const href = last ? timelineHref(last) : undefined;
+              const paused = tr.status === 'paused';
+              return (
+                <Table.Row key={tr.id}>
+                  <Table.Cell>
+                    <span className="stack-xs">
+                      <strong>{triggerName(tr, t)}</strong>
+                      <span className="meta">{sourceOf(tr, t)}</span>
+                    </span>
+                  </Table.Cell>
+                  <Table.Cell>
+                    <a href={`#/services/${encodeURIComponent(tr.service)}`}>{tr.serviceName}</a>
+                  </Table.Cell>
+                  <Table.Cell>
+                    {last ? (
+                      <span className="stack-xs">
+                        <Tag data-size="sm" data-color={tag.color}>
+                          {t(tag.key)}
+                        </Tag>
+                        {href ? (
+                          <a href={href}>{f.dateTime(last.at, 'medium')}</a>
+                        ) : (
+                          <span className="meta">{f.dateTime(last.at, 'medium')}</span>
+                        )}
+                        {last.outcome === 'failed' && last.error ? (
+                          <span className="meta">{runProblemText(last.error, t)}</span>
+                        ) : null}
+                      </span>
+                    ) : (
+                      <span className="meta">{t('devTriggers.notRunYet')}</span>
+                    )}
+                  </Table.Cell>
+                  <Table.Cell>
+                    <Switch
+                      data-size="sm"
+                      label={
+                        <>
+                          {t(paused ? 'devTriggers.paused' : 'devTriggers.on')}
+                          <span className="visually-hidden">
+                            {' '}
+                            {t('devTriggers.activeFor', { name: triggerName(tr, t) })}
+                          </span>
+                        </>
+                      }
+                      checked={!paused}
+                      disabled={!canManage}
+                      onChange={() => {
+                        setPausing(tr);
+                        setReason('');
+                        setReasonError('');
+                      }}
+                    />
+                    <span role="status" className="dev-msg-ok">
+                      {saved[tr.id]}
+                    </span>
+                  </Table.Cell>
+                </Table.Row>
+              );
+            })}
+          </Table.Body>
+        </Table>
+      </div>
       {pausing ? (
         <Alert data-color="warning" data-size="sm">
           <Paragraph data-size="sm">
@@ -247,7 +233,7 @@ export const Triggers = ({
                 ? 'integTriggers.resumeWarning'
                 : 'integTriggers.pauseWarning',
               {
-                name: triggerName(pausing, t, f),
+                name: triggerName(pausing, t),
                 service: pausing.serviceName,
               },
             )}
@@ -275,12 +261,4 @@ export const Triggers = ({
       ) : null}
     </div>
   );
-};
-
-const useRuns = (api: ApiClient, tenant: string, id: string | undefined) => {
-  const [state] = useAsync(
-    async (signal) => (id ? api.triggers.runs(tenant, id, signal) : []),
-    [api, tenant, id],
-  );
-  return state.status === 'ready' ? state.data : undefined;
 };

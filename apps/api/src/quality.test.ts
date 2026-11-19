@@ -41,6 +41,7 @@ import {
   maxResumes,
   progressed,
   quotaStopMessage,
+  serviceEvalCancelKind,
   serviceEvalResumeKind,
   runSummary,
   waitingForScores,
@@ -67,6 +68,7 @@ const people: Record<string, Principal> = {
     kind: 'employee',
     issuer: 'test',
     subject: 'kari',
+    email: 'kari@digdir.no',
     tenant,
     authorizedFor: [{ org: tenant }],
   },
@@ -74,6 +76,13 @@ const people: Record<string, Principal> = {
     kind: 'employee',
     issuer: 'test',
     subject: 'erik',
+    tenant,
+    authorizedFor: [{ org: tenant, actions: ['use-services'] }],
+  },
+  kariReader: {
+    kind: 'employee',
+    issuer: 'test',
+    subject: 'kari',
     tenant,
     authorizedFor: [{ org: tenant, actions: ['use-services'] }],
   },
@@ -339,7 +348,7 @@ const boot = async (prices?: Record<string, ModelPrice>, options: BootOptions = 
     );
     return { 'support-session': opened.ok ? (opened.value as { id: string }).id : '' };
   };
-  return { platform, send, settled, optimiserPrompts, judgePrompts, supportSession };
+  return { platform, admin, send, settled, optimiserPrompts, judgePrompts, supportSession };
 };
 
 const services = `/tenants/${tenant}/services/svar`;
@@ -932,6 +941,121 @@ describe('eval runs for a service', () => {
     expect(compared.status).toBe(200);
   });
 
+  /** A copy of a finished run under a new id, with its provenance changed. */
+  const copyOf = async (
+    env: Awaited<ReturnType<typeof boot>>,
+    from: string,
+    id: string,
+    provenance: Partial<EvalRun['provenance']>,
+  ) => {
+    const stored = await env.platform.evalStores.runs.get(from);
+    if (!stored) throw new Error('no run');
+    await env.platform.evalStores.runs.save({
+      ...stored,
+      run: { ...stored.run, id, provenance: { ...stored.run.provenance, ...provenance } },
+    });
+    return id;
+  };
+
+  it('two runs on different services and data compare when the request allows those differences', async () => {
+    const env = await boot();
+    const first = await runPublished(env);
+    const other = await copyOf(env, first, 'pg-motor', {
+      services: [`${tenant}/svar-pg@1#y`],
+      data: 'digdir/public-docs-pg',
+    });
+
+    const refused = await env.send(
+      'GET',
+      `/eval-runs/compare?baseline=${first}&candidate=${other}&metric=refusal`,
+    );
+    const allowed = await env.send(
+      'GET',
+      `/eval-runs/compare?baseline=${first}&candidate=${other}&metric=refusal&allowDifferent=data,services`,
+    );
+
+    expect(refused.status).toBe(400);
+    expect(JSON.stringify(refused.body)).toContain('runs differ in data');
+    expect(allowed.status).toBe(200);
+    expect(allowed.body).toMatchObject({
+      allowedDifferent: ['data', 'services'],
+      comparisons: [{ metric: 'refusal', n: 1, difference: 0 }],
+    });
+  });
+
+  it('a comparison still refuses runs on different judges or commits', async () => {
+    const env = await boot();
+    const first = await runPublished(env);
+    const deployed = await copyOf(env, first, 'ny-commit', { commit: 'other-commit' });
+    const judged = await copyOf(env, first, 'ny-dommer', { judges: ['judge:criteria@2+other'] });
+    const all = 'allowDifferent=data,services,servedModels';
+
+    const commit = await env.send(
+      'GET',
+      `/eval-runs/compare?baseline=${first}&candidate=${deployed}&metric=refusal&${all}`,
+    );
+    const judges = await env.send(
+      'GET',
+      `/eval-runs/compare?baseline=${first}&candidate=${judged}&metric=refusal&${all}`,
+    );
+    // Asking to allow them is refused too, even for two runs that do not differ.
+    const askedForCommit = await env.send(
+      'GET',
+      `/eval-runs/compare?baseline=${first}&candidate=${first}&metric=refusal&allowDifferent=commit`,
+    );
+    const askedForJudges = await env.send(
+      'GET',
+      `/eval-runs/compare?baseline=${first}&candidate=${first}&metric=refusal&allowDifferent=judges`,
+    );
+
+    expect(commit.status).toBe(400);
+    expect(JSON.stringify(commit.body)).toContain('runs differ in commit');
+    expect(judges.status).toBe(400);
+    expect(JSON.stringify(judges.body)).toContain('runs differ in judges');
+    expect(askedForCommit.status).toBe(400);
+    expect(JSON.stringify(askedForCommit.body)).toContain('commit cannot be allowed to differ');
+    expect(askedForJudges.status).toBe(400);
+    expect(JSON.stringify(askedForJudges.body)).toContain('judges cannot be allowed to differ');
+  });
+
+  it('a comparison over several metrics answers one paired comparison per metric', async () => {
+    const env = await boot();
+    const first = await runPublished(env);
+    const second = await runPublished(env);
+
+    const compared = await env.send(
+      'GET',
+      `/eval-runs/compare?baseline=${first}&candidate=${second}&metric=judge.criteria,refusal`,
+    );
+
+    expect(compared.status).toBe(200);
+    expect(compared.body.allowedDifferent).toEqual([]);
+    expect(
+      (compared.body.comparisons as { metric: string; n: number }[]).map((c) => [c.metric, c.n]),
+    ).toEqual([
+      ['judge.criteria', 2],
+      ['refusal', 1],
+    ]);
+  });
+
+  it('the compare route refuses an allowDifferent field it does not know', async () => {
+    const env = await boot();
+    const first = await runPublished(env);
+
+    const compared = await env.send(
+      'GET',
+      `/eval-runs/compare?baseline=${first}&candidate=${first}&metric=refusal&allowDifferent=colour`,
+    );
+
+    expect(compared.status).toBe(400);
+    expect(compared.body.errors).toEqual([
+      {
+        path: 'allowDifferent',
+        message: 'colour cannot be allowed to differ: only data, services and servedModels can',
+      },
+    ]);
+  });
+
   it("keeps a test run's own eval task out of Kjøringer, as its answers are", async () => {
     const env = await boot();
     await runPublished(env);
@@ -1009,6 +1133,40 @@ describe('eval runs for a service', () => {
 
     expect(run.body).toMatchObject({ status: 'completed', version: 'draft', passed: 3, total: 3 });
     expect(await env.platform.definitions.versions('Service', tenant, 'svar')).toHaveLength(1);
+  });
+
+  it('records the revision of the saved draft a run tested, and none for an unsaved definition', async () => {
+    const env = await boot();
+    const draft = structuredClone(service);
+    draft.spec.strategy.config.instructions = better;
+    await env.send('PUT', `${services}/draft`, 'kari', { definition: draft });
+    const saved = await env.send('PUT', `${services}/draft`, 'kari', {
+      definition: draft,
+      revision: 1,
+    });
+    expect(saved.body.revision).toBe(2);
+
+    const onDraft = await env.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+      version: 'draft',
+    });
+    const inline = await env.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+      version: 'draft',
+      definition: draft,
+    });
+    await env.settled();
+    const runOf = async (id: unknown) =>
+      (await env.send('GET', `/tenants/${tenant}/eval-runs/${String(id)}`)).body;
+    const listed = (await env.send('GET', `${services}/eval-runs`)).body.data as {
+      id: string;
+      draftRevision?: number;
+    }[];
+
+    expect(await runOf(onDraft.body.id)).toMatchObject({ version: 'draft', draftRevision: 2 });
+    expect((await runOf(inline.body.id)).draftRevision).toBeUndefined();
+    expect(listed.find((r) => r.id === onDraft.body.id)?.draftRevision).toBe(2);
+    expect(listed.find((r) => r.id === inline.body.id)?.draftRevision).toBeUndefined();
   });
 
   it('another tenant cannot read the runs', async () => {
@@ -2189,7 +2347,7 @@ describe('Langfuse judges on a run', () => {
       (stored?.run.usage?.answers.inputTokens ?? 0) + (stored?.run.usage?.judges?.inputTokens ?? 0),
     );
     expect(usage.status).toBe(200);
-    expect(JSON.stringify(usage.body)).not.toContain('4321');
+    expect(JSON.stringify(usage.body)).not.toMatch(/(?<![\w-])4321(?![\w-])/);
     // The run keeps the rate it shows the cost with, and only those who see usage see either.
     expect(stored?.run.usage?.usdNok).toEqual({ rate: 9.2826, date: '2026-10-29' });
     expect(
@@ -2201,7 +2359,7 @@ describe('Langfuse judges on a run', () => {
       sinkJudges: [{ reported: { inputTokens: 4321, costUsd: 0.0123 } }],
     });
     expect(unseen.status).toBe(200);
-    expect(JSON.stringify(unseen.body)).not.toContain('4321');
+    expect(JSON.stringify(unseen.body)).not.toMatch(/(?<![\w-])4321(?![\w-])/);
     expect(JSON.stringify(unseen.body)).not.toContain('9.2826');
   });
 
@@ -2576,6 +2734,37 @@ describe('Langfuse judges on a run', () => {
       sinkOthers: { inputTokens: 4321, outputTokens: 987, costUsd: 0.0123, unread: 0 },
     });
     expect(await summaryFor('erik')).not.toHaveProperty('sinkOthers');
+  });
+
+  it('ends a run cancelled while it waits for scores as cancelled, with no error', async () => {
+    const { env, langfuse, adopt } = await judged();
+    expect((await adopt(judgeRule)).status).toBe(200);
+    langfuse.hooks.firstItem = () => {
+      langfuse.hooks.paused = { 'dommer-1': 'Evaluator paused.' };
+    };
+    const started = await env.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+      trace: true,
+    });
+    const id = String(started.body.id);
+    const read = async () => (await env.platform.evalStores.runs.get(id))?.run;
+    await vi.waitFor(async () => expect((await read())?.status).toBe('waiting-for-scores'), {
+      timeout: 10_000,
+    });
+
+    const cancelled = await env.send(
+      'POST',
+      `${services}/eval-runs/${id}/cancel`,
+      'kari',
+      {},
+      { 'change-reason': encodeURIComponent('Feil testsett valgt') },
+    );
+    await env.settled();
+    const run = await read();
+
+    expect([200, 202]).toContain(cancelled.status);
+    expect(run?.status).toBe('cancelled');
+    expect(run).not.toHaveProperty('error');
   });
 
   it("refuses a Langfuse judge's metric in Kvalitetskrav, naming the rule", async () => {
@@ -3340,8 +3529,9 @@ describe('test-set runs on a shared instance', () => {
     const second = await start(env);
     const theirs = await start(env, 'ola', other);
 
-    await vi.waitFor(() =>
-      expect(cases.started).toEqual([
+    await vi.waitFor(() => expect(cases.started).toHaveLength(2));
+    expect(cases.started).toEqual(
+      expect.arrayContaining([
         { tenant, input: o1 },
         { tenant: other, input: o1 },
       ]),
@@ -3451,6 +3641,121 @@ describe('test-set runs on a shared instance', () => {
     expect(run).toMatchObject({ status: 'failed', error: quotaStopMessage, finished: 2, total: 3 });
     expect(run.cases.map((c) => c.caseId)).toEqual(['o1', 'o2']);
   });
+
+  const cancel = (
+    env: Awaited<ReturnType<typeof boot>>,
+    id: string,
+    who = 'kari',
+    reason = 'Feil testsett valgt',
+    at = tenant,
+    service = 'svar',
+  ) =>
+    env.send(
+      'POST',
+      `/tenants/${at}/services/${service}/eval-runs/${id}/cancel`,
+      who,
+      {},
+      reason ? { 'change-reason': encodeURIComponent(reason) } : {},
+    );
+  const cancelAudits = async (env: Awaited<ReturnType<typeof boot>>) =>
+    (await env.admin.audit(tenant)).filter((a) => a.action === 'platform.eval-run.cancel');
+
+  it('cancels a running test run for the person who started it, keeps finished cases and starts no further case', async () => {
+    const cases = holding();
+    const env = await boot(undefined, {
+      ...{ evalSlots: { perInstance: 4, perTenant: 4, perRun: 1 } },
+      hold: cases.hold,
+    });
+    const id = await start(env);
+    await cases.release(o1);
+    await vi.waitFor(async () => expect((await read(env, id)).finished).toBe(1));
+    await vi.waitFor(() => expect(cases.started).toHaveLength(2));
+
+    const cancelled = await cancel(env, id, 'kariReader');
+    await cases.finish(env);
+    const run = await read(env, id);
+
+    expect([200, 202]).toContain(cancelled.status);
+    expect(cancelled.body).toMatchObject({ id });
+    expect(run).toMatchObject({ status: 'cancelled', finished: 1, total: 3 });
+    expect(run).not.toHaveProperty('error');
+    expect(cases.started.map((c) => c.input)).toEqual([o1, o2]);
+  });
+
+  it('tells who started a running test run, and the caller whether it was them', async () => {
+    const cases = holding();
+    const env = await boot(undefined, { hold: cases.hold });
+    const id = await start(env);
+    await vi.waitFor(() => expect(cases.started.length).toBeGreaterThan(0));
+    const listed = async (who: string) =>
+      (
+        (await env.send('GET', `/tenants/${tenant}/services/svar/eval-runs`, who)).body.data as {
+          id: string;
+          startedBy?: string;
+          startedByYou?: boolean;
+        }[]
+      ).find((r) => r.id === id);
+
+    const byStarter = await listed('kari');
+    const byOther = await listed('erik');
+    await cases.finish(env);
+    const ended = await listed('kari');
+
+    expect(byStarter?.startedBy).toMatch(/^employee:/);
+    expect(byStarter?.startedByYou).toBe(true);
+    expect(byOther?.startedBy).toBe(byStarter?.startedBy);
+    expect(byOther).not.toHaveProperty('startedByYou');
+    expect(ended).not.toHaveProperty('startedBy');
+  });
+
+  it('needs manage-services to cancel a run someone else started, and a change reason', async () => {
+    const cases = holding();
+    const env = await boot(undefined, { hold: cases.hold });
+    const id = await start(env);
+
+    const reader = await cancel(env, id, 'erik');
+    const unreasoned = await cancel(env, id, 'kari', '');
+    await cases.finish(env);
+
+    expect(reader.status).toBe(403);
+    expect(reader.body.errors).toEqual([{ path: 'right', message: 'manage-services' }]);
+    expect(unreasoned.status).toBe(400);
+    expect((await read(env, id)).status).toBe('completed');
+    expect(await cancelAudits(env)).toHaveLength(0);
+  });
+
+  it('answers a cancelled run again without a new audit entry, and refuses a run that has ended', async () => {
+    const cases = holding();
+    const env = await boot(undefined, { hold: cases.hold });
+    const id = await start(env);
+    await vi.waitFor(() => expect(cases.started.length).toBeGreaterThan(0));
+
+    await cancel(env, id);
+    await cases.finish(env);
+    const again = await cancel(env, id);
+    const done = await start(env);
+    await env.settled();
+    const ended = await cancel(env, done);
+
+    expect(again).toMatchObject({ status: 200, body: { id, status: 'cancelled' } });
+    expect(await cancelAudits(env)).toHaveLength(1);
+    expect(ended.status).toBe(409);
+    expect(ended.body.type).toBe('urn:genai:problem:run-finished');
+  });
+
+  it("never cancels another organisation's test run", async () => {
+    const cases = holding();
+    const env = await boot(undefined, { hold: cases.hold, otherTenant: true });
+    const id = await start(env);
+
+    const fromOther = await cancel(env, id, 'ola', 'Feil testsett valgt', other, 'svar-to');
+    const intoOurs = await cancel(env, id, 'ola');
+    await cases.finish(env);
+
+    expect(fromOther.status).toBe(404);
+    expect(intoOurs.status).toBe(404);
+    expect((await read(env, id)).status).toBe('completed');
+  });
 });
 
 describe('a test-set run across a deploy', () => {
@@ -3528,6 +3833,85 @@ describe('a test-set run across a deploy', () => {
     });
     expect(run.cases.map((c) => c.caseId)).toEqual(['o1', 'o2', 'l1']);
     expect(run.cost).toBeGreaterThan(running.cost ?? 0);
+  });
+
+  it('settles a run cancelled while its instance was gone as cancelled, never taking it up again', async () => {
+    const stores = shared();
+    const before = await boot(prices, {
+      ...stores,
+      holdLocked: true,
+      leases: { instance: 'before', now: () => t0 },
+    });
+    const id = await start(before);
+    await vi.waitFor(async () => expect((await read(before, id)).finished).toBe(2), {
+      timeout: 5000,
+    });
+    await stores.store.append({
+      kind: serviceEvalCancelKind,
+      scope: tenant,
+      id,
+      version: 1,
+      spec: { run: id },
+      deleted: false,
+      by: 'employee:test:kari',
+      at: t0.toISOString(),
+      reason: 'Feil testsett valgt',
+    });
+    const later = asked();
+    const after = await boot(prices, {
+      ...stores,
+      hold: later.hold,
+      leases: { instance: 'after', now: () => new Date(t0.getTime() + 10 * 60_000) },
+    });
+
+    const run = await read(after, id);
+    await after.settled();
+
+    expect(run).toMatchObject({ status: 'cancelled', finished: 2, total: 3 });
+    expect(later.seen).toEqual([]);
+    expect(await stores.store.history(serviceEvalResumeKind, tenant, id)).toContainEqual(
+      expect.objectContaining({ deleted: true }),
+    );
+  });
+
+  it('ends an abandoned run that was cancelled while waiting for scores as cancelled, with no error', async () => {
+    const stores = shared();
+    const before = await boot(prices, {
+      ...stores,
+      holdLocked: true,
+      leases: { instance: 'before', now: () => t0 },
+    });
+    const id = await start(before);
+    await vi.waitFor(async () => expect((await read(before, id)).finished).toBe(2), {
+      timeout: 5000,
+    });
+    const stored = await stores.evalStores.runs.get(id);
+    if (!stored) throw new Error('the run was not stored');
+    await stores.evalStores.runs.save({
+      ...stored,
+      run: { ...stored.run, status: 'waiting-for-scores' },
+    });
+    await stores.store.append({
+      kind: serviceEvalCancelKind,
+      scope: tenant,
+      id,
+      version: 1,
+      spec: { run: id },
+      deleted: false,
+      by: 'employee:test:kari',
+      at: t0.toISOString(),
+      reason: 'Feil testsett valgt',
+    });
+    const after = await boot(prices, {
+      ...stores,
+      leases: { instance: 'after', now: () => new Date(t0.getTime() + 10 * 60_000) },
+    });
+
+    const run = await read(after, id);
+    await after.settled();
+
+    expect(run).toMatchObject({ status: 'cancelled', finished: 2, total: 3 });
+    expect(run).not.toHaveProperty('error');
   });
 
   it('hands a run over when the instance stops: lets the case in flight finish, starts no new one, and the next instance takes it up', async () => {
@@ -3650,6 +4034,7 @@ describe('a test-set run across a deploy', () => {
     const { principal } = kept[0]?.spec as { principal: Principal };
     expect(principal).not.toHaveProperty('name');
     expect(principal).not.toHaveProperty('orgNames');
+    expect(principal).not.toHaveProperty('email');
   });
 
   it('takes a run up once when two requests on one instance find it left at the same time', async () => {
@@ -4196,5 +4581,260 @@ describe('a test run as the portal shows it', () => {
     const both = progressed(second, { done: 2, total: 3 }, undefined, finishedCase('o1'), rank);
     // Each notice brings only the case just finished; the run keeps them in test-set order.
     expect(both.results.map((r) => r.case)).toEqual(['o1', 'o2']);
+  });
+});
+
+describe('comparing two test runs case by case', () => {
+  const compare = `${services}/eval-runs/compare`;
+
+  const runDraft = async (env: Awaited<ReturnType<typeof boot>>) => {
+    const draft = structuredClone(service);
+    draft.spec.strategy.config.instructions = better;
+    const started = await env.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+      version: 'draft',
+      definition: draft,
+    });
+    await env.settled();
+    return String(started.body.id);
+  };
+
+  const copyRun = async (
+    env: Awaited<ReturnType<typeof boot>>,
+    from: string,
+    id: string,
+    change: (run: EvalRun) => EvalRun = (run) => run,
+    where: { tenant?: string; service?: string } = {},
+  ) => {
+    const stored = await env.platform.evalStores.runs.get(from);
+    if (!stored) throw new Error('no run');
+    await env.platform.evalStores.runs.save({
+      ...stored,
+      ...where,
+      run: change({ ...stored.run, id }),
+    });
+  };
+
+  it('compares a draft run with the run of the published version by default, with counts per change', async () => {
+    const env = await boot();
+    const published = await runPublished(env);
+    const draft = await runDraft(env);
+
+    const compared = await env.send('GET', `${compare}?candidate=${draft}`);
+
+    expect(compared.status).toBe(200);
+    expect(compared.body).toMatchObject({
+      testSet: 'svar-frister',
+      baseline: { id: published, version: 1, published: true, passed: 1, cases: 3 },
+      candidate: { id: draft, version: 'draft', passed: 3, cases: 3, score: 1 },
+      counts: { better: 2, worse: 0, same: 1, new: 0, missing: 0, pending: 0 },
+      total: 3,
+      offset: 0,
+      limit: 50,
+    });
+    const data = compared.body.data as { case: string; change: string }[];
+    expect(data.map((c) => [c.case, c.change])).toEqual([
+      ['o1', 'better'],
+      ['l1', 'better'],
+      ['o2', 'same'],
+    ]);
+    expect(data[0]).toMatchObject({
+      input: 'Når er fristen for søknad?',
+      type: 'criteria',
+      split: 'open',
+      baseline: { pass: false, score: 0, reason: 'Vurdert.' },
+      candidate: { pass: true, score: 1 },
+    });
+  });
+
+  it('marks a case worse when the candidate fails what the baseline passed, against a named baseline run', async () => {
+    const env = await boot();
+    const published = await runPublished(env);
+    const draft = await runDraft(env);
+
+    const compared = await env.send('GET', `${compare}?candidate=${published}&baseline=${draft}`);
+
+    expect(compared.body.baseline).toMatchObject({ id: draft, published: false });
+    expect(compared.body.counts).toMatchObject({ worse: 2, better: 0, same: 1 });
+  });
+
+  it('names a case only one run has as new or missing, and as pending while the other run still runs', async () => {
+    const env = await boot(undefined, { leases: { staleAfterMs: Number.MAX_SAFE_INTEGER } });
+    const published = await runPublished(env);
+    const shifted = (run: EvalRun): EvalRun => ({
+      ...run,
+      results: run.results
+        .filter((r) => r.case !== 'o2')
+        .concat(run.results.filter((r) => r.case === 'o1').map((r) => ({ ...r, case: 'n1' }))),
+    });
+    await copyRun(env, published, 'ny', shifted);
+    await copyRun(env, published, 'pagar', (run) => ({
+      ...shifted(run),
+      status: 'running',
+      progress: { done: 3, total: 4 },
+      owner: 'en-annen-instans',
+      heartbeatAt: '2026-10-12T10:00:00Z',
+    }));
+
+    const done = await env.send('GET', `${compare}?candidate=ny&baseline=${published}`);
+    const running = await env.send('GET', `${compare}?candidate=pagar&baseline=${published}`);
+
+    expect(done.body.counts).toMatchObject({ new: 1, missing: 1, same: 2, pending: 0 });
+    expect(running.body.counts).toMatchObject({ new: 1, missing: 0, same: 2, pending: 1 });
+    expect(running.body.candidate).toMatchObject({ status: 'running', score: null, endedAt: null });
+  });
+
+  it('the default baseline skips a newer run of only one split', async () => {
+    const env = await boot();
+    const published = await runPublished(env);
+    await copyRun(env, published, 'bare-apne', (run) => ({
+      ...run,
+      endedAt: '2999-01-01T00:00:00Z',
+      tested: { ...run.tested, version: 1, split: 'open' },
+      results: run.results.filter((r) => r.split !== 'holdout'),
+    }));
+    const draft = await runDraft(env);
+
+    const compared = await env.send('GET', `${compare}?candidate=${draft}`);
+
+    expect(compared.body.baseline).toMatchObject({ id: published });
+    expect(compared.body.counts).toMatchObject({ new: 0 });
+  });
+
+  it('leaves out a case outside the split of the run that lacks it, instead of calling it new or missing', async () => {
+    const env = await boot();
+    const published = await runPublished(env);
+    await copyRun(env, published, 'bare-apne', (run) => ({
+      ...run,
+      tested: { ...run.tested, version: 1, split: 'open' },
+      results: run.results.filter((r) => r.split !== 'holdout'),
+    }));
+
+    const asCandidate = await env.send(
+      'GET',
+      `${compare}?candidate=bare-apne&baseline=${published}`,
+    );
+    const asBaseline = await env.send(
+      'GET',
+      `${compare}?candidate=${published}&baseline=bare-apne`,
+    );
+
+    for (const res of [asCandidate, asBaseline]) {
+      expect((res.body.data as { case: string }[]).map((c) => c.case)).not.toContain('l1');
+      expect(res.body.counts).toMatchObject({ new: 0, missing: 0, same: 2 });
+    }
+  });
+
+  it('pages the cases and filters them by change, while the counts cover every case', async () => {
+    const env = await boot();
+    await runPublished(env);
+    const draft = await runDraft(env);
+
+    const first = await env.send('GET', `${compare}?candidate=${draft}&change=better&limit=1`);
+    const second = await env.send(
+      'GET',
+      `${compare}?candidate=${draft}&change=better&limit=1&offset=1`,
+    );
+
+    expect(first.body).toMatchObject({ total: 2, limit: 1, offset: 0 });
+    expect((first.body.data as { case: string }[]).map((c) => c.case)).toEqual(['o1']);
+    expect((second.body.data as { case: string }[]).map((c) => c.case)).toEqual(['l1']);
+    expect(first.body.counts).toMatchObject({ better: 2, same: 1 });
+  });
+
+  it('refuses a missing candidate, an unknown change and a page out of range', async () => {
+    const env = await boot();
+    const published = await runPublished(env);
+
+    const missing = await env.send('GET', compare);
+    const change = await env.send('GET', `${compare}?candidate=${published}&change=kanskje`);
+    const limit = await env.send('GET', `${compare}?candidate=${published}&limit=201`);
+    const offset = await env.send('GET', `${compare}?candidate=${published}&offset=-1`);
+
+    for (const res of [missing, change, limit, offset]) {
+      expect(res.status).toBe(400);
+      expect(res.body.type).toBe('urn:genai:problem:eval-compare-invalid');
+    }
+  });
+
+  it('answers 404 when the published version has no completed run of the test set', async () => {
+    const env = await boot();
+    const draft = await runDraft(env);
+    await copyRun(env, draft, 'utvalgt', (run) => ({
+      ...run,
+      tested: { ...run.tested, version: 1, selected: ['o1'] },
+    }));
+
+    const compared = await env.send('GET', `${compare}?candidate=${draft}`);
+
+    expect(compared.status).toBe(404);
+    expect(compared.body.title).toBe('Versjonen i bruk har ingen fullført kjøring av testsettet');
+  });
+
+  it('has the problem title in English too', async () => {
+    const env = await boot();
+    const draft = await runDraft(env);
+
+    const compared = await env.send('GET', `${compare}?candidate=${draft}`);
+
+    expect(translateMessage(String(compared.body.title), 'en')).toBe(
+      'The version in use has no completed run of the test set',
+    );
+  });
+
+  it('refuses to compare runs of different test sets', async () => {
+    const env = await boot();
+    const published = await runPublished(env);
+    await copyRun(env, published, 'annet-sett', (run) => ({
+      ...run,
+      testSet: { ...run.testSet, id: 'svar-andre' },
+    }));
+
+    const compared = await env.send('GET', `${compare}?candidate=annet-sett&baseline=${published}`);
+
+    expect(compared.status).toBe(400);
+    expect(compared.body.type).toBe('urn:genai:problem:eval-runs-not-comparable');
+  });
+
+  it('never compares with a run of another service in the tenant', async () => {
+    const env = await boot();
+    const published = await runPublished(env);
+    await copyRun(env, published, 'annen-tjeneste', undefined, { service: 'annen' });
+
+    const asBaseline = await env.send(
+      'GET',
+      `${compare}?candidate=${published}&baseline=annen-tjeneste`,
+    );
+    const asCandidate = await env.send('GET', `${compare}?candidate=annen-tjeneste`);
+
+    expect(asBaseline.status).toBe(404);
+    expect(asCandidate.status).toBe(404);
+  });
+
+  it('never compares with or shows a run of another tenant', async () => {
+    const env = await boot(undefined, { otherTenant: true });
+    const published = await runPublished(env);
+    await copyRun(env, published, 'deres', undefined, { tenant: other, service: 'svar' });
+
+    const theirBaseline = await env.send('GET', `${compare}?candidate=${published}&baseline=deres`);
+    const ours = await env.send(
+      'GET',
+      `/tenants/${other}/services/svar/eval-runs/compare?candidate=${published}`,
+      'ola',
+    );
+    const notMember = await env.send('GET', `${compare}?candidate=${published}`, 'ola');
+
+    expect(theirBaseline.status).toBe(404);
+    expect(ours.status).toBe(404);
+    expect([403, 404]).toContain(notMember.status);
+  });
+
+  it('lets any member of the tenant compare, and nobody who is not logged in', async () => {
+    const env = await boot();
+    await runPublished(env);
+    const draft = await runDraft(env);
+
+    expect((await env.send('GET', `${compare}?candidate=${draft}`, 'erik')).status).toBe(200);
+    expect((await env.send('GET', `${compare}?candidate=${draft}`, 'ingen')).status).toBe(401);
   });
 });

@@ -1,3 +1,4 @@
+import type { AuditRow } from './api';
 import type { ClientSpec, ClientView, ServiceKeyView } from './types';
 
 const reply = (body: unknown, status = 200) =>
@@ -36,9 +37,129 @@ export const exampleClients: ClientView[] = [
 
 const mockKey = 'gp_mocktjeneste_4b1d9e2a7c3f';
 
-export const clientMock = (initial: ClientView[] = exampleClients) => {
+const at = (now: Date, hours: number, minutes: number) => {
+  const d = new Date(now);
+  d.setHours(hours, minutes, 0, 0);
+  return d.toISOString();
+};
+
+const exampleTeamsBot = (now = new Date()): ClientView => ({
+  definition: {
+    apiVersion: 'genai/v1',
+    kind: 'Client',
+    metadata: { tenant: '999888777', id: 'teams-bot', name: 'Teams-bot' },
+    spec: {
+      service: 'rapportassistenten',
+      kind: 'server',
+      channels: ['rest', 'feedback'],
+      allowedOrigins: [],
+      webhook: {
+        url: 'https://teams-bot.testetaten.example.no/genki',
+        secret: 'teams-bot-webhook',
+        events: ['task.completed'],
+      },
+    },
+  },
+  version: 1,
+  updatedAt: '2026-10-20T09:00:00Z',
+  updatedBy: 'employee:ansattporten:ola',
+  deliveries: [
+    { id: 'd-teams-1', event: 'task.completed', at: at(now, 14, 5), ok: true, status: 200 },
+  ],
+});
+
+const serviceKey = (key: Partial<ServiceKeyView> & Pick<ServiceKeyView, 'id' | 'name'>) => ({
+  prefix: 'gp_mock',
+  lastFour: '3f2a',
+  scopes: ['query'],
+  datasets: [],
+  agents: [],
+  createdAt: null,
+  expiresAt: null,
+  revokedAt: null,
+  service: 'rapportassistenten',
+  client: null,
+  lastUsedAt: null,
+  rotatedFrom: null,
+  allowedOverrides: [],
+  ...key,
+});
+
+export const exampleServiceKeys = (now = new Date()): ServiceKeyView[] => [
+  serviceKey({
+    id: 'saksbehandling',
+    name: 'Saksbehandling',
+    environments: ['prod'],
+    allowedOverrides: ['answers.writtenStandard'],
+    createdAt: '2026-11-01T09:00:00Z',
+    createdBy: 'employee:ansattporten:ola',
+    createdByName: 'Ola Hansen',
+    rotatedFrom: 'skey-saksbehandling',
+    lastUsedAt: at(now, 13, 51),
+  }),
+  serviceKey({
+    id: 'skey-saksbehandling',
+    name: 'Saksbehandling',
+    environments: ['prod'],
+    allowedOverrides: ['answers.writtenStandard'],
+    createdAt: '2026-10-14T08:00:00Z',
+    createdBy: 'employee:ansattporten:ola',
+    createdByName: 'Ola Hansen',
+    revokedAt: '2026-11-01T09:00:00Z',
+  }),
+  serviceKey({
+    id: 'skey-intranett',
+    name: 'Intranett-chat',
+    client: 'intranettet',
+    environments: ['prod', 'test'],
+    createdAt: '2026-10-02T11:00:00Z',
+    createdBy: 'employee:ansattporten:kari',
+    createdByName: 'Kari Nordmann',
+    lastUsedAt: at(now, 14, 7),
+  }),
+  serviceKey({
+    id: 'skey-intranett-server',
+    name: 'Intranett-server, gammel',
+    allowedOverrides: ['answers.writtenStandard', 'retrieval.retrieveTopK'],
+    createdAt: '2026-08-20T10:00:00Z',
+    createdBy: 'employee:ansattporten:kari',
+    createdByName: 'Kari Nordmann',
+    lastUsedAt: '2026-09-15T12:00:00Z',
+  }),
+  serviceKey({
+    id: 'skey-pilot-hr',
+    name: 'Pilot HR',
+    environments: ['test'],
+    createdAt: '2026-06-02T10:00:00Z',
+    createdBy: 'employee:ansattporten:ola',
+    createdByName: 'Ola Hansen',
+    lastUsedAt: '2026-09-29T14:00:00Z',
+    revokedAt: '2026-09-30T08:00:00Z',
+  }),
+];
+
+export const exampleKeyAudit: AuditRow[] = [
+  {
+    task: 'audit-key-pilot-hr',
+    tenant: '999888777',
+    action: 'platform.apikeys.revoke',
+    actor: 'employee:ansattporten:ola',
+    actorName: 'Ola Hansen',
+    at: '2026-09-30T08:00:00Z',
+    outcome: 'applied',
+    target: 'api-key:999888777/skey-pilot-hr',
+    reason: 'Piloten er over',
+  },
+];
+
+const example = import.meta.env.MODE !== 'test';
+
+export const clientMock = (
+  initial: ClientView[] = example ? [...exampleClients, exampleTeamsBot()] : exampleClients,
+  initialKeys: ServiceKeyView[] = example ? exampleServiceKeys() : [],
+) => {
   let clients = structuredClone(initial);
-  let keys: ServiceKeyView[] = [];
+  let keys: ServiceKeyView[] = structuredClone(initialKeys);
 
   return (path: string, url: URL, init: RequestInit | undefined, needsReason: () => boolean) => {
     const method = init?.method ?? 'GET';
@@ -54,7 +175,13 @@ export const clientMock = (initial: ClientView[] = exampleClients) => {
         ),
         endpoints: {
           mcp: ['POST /api/mcp'],
-          openai: ['GET /v1/models', 'POST /v1/chat/completions'],
+          openai: [
+            'GET /v1/models',
+            'GET /v1/sessions',
+            'POST /v1/chat/completions',
+            'POST /v1/tasks/{task}/cancel',
+            'GET /v1/tasks/{task}/media/{id}',
+          ],
           rest: ['GET /api/tools/openapi.json', 'POST /api/tools/call/{tool}'],
           conversations: ['GET /api/conversations', 'POST /api/conversations'],
           feedback: ['POST /api/feedback'],
@@ -149,6 +276,7 @@ export const clientMock = (initial: ClientView[] = exampleClients) => {
         ...old,
         id: `${old.id}-r`,
         rotatedFrom: old.id,
+        createdAt: new Date().toISOString(),
         lastUsedAt: null,
         allowedOverrides: chosen ?? old.allowedOverrides,
       };

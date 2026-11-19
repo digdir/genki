@@ -29,6 +29,7 @@ import {
   defaultSettingsSchema,
   emptyTenantBlocks,
   exampleBlocks,
+  exampleModelFacts,
   exampleSecretHosts,
   exampleSecretNames,
   exampleVersions,
@@ -342,6 +343,11 @@ export const buildingBlocksMock = (options: BuildingBlocksMockOptions = {}): Moc
         inUse: items.filter((i) => i.status === 'in_use').length,
         catalog: items.length,
         byKind,
+        required: Object.fromEntries(
+          blockKinds
+            .map((k) => [k.kind, items.filter((i) => i.kind === k.kind && i.required).length])
+            .filter(([, n]) => n),
+        ),
       },
     };
   };
@@ -572,6 +578,7 @@ export const buildingBlocksMock = (options: BuildingBlocksMockOptions = {}): Moc
         tenantOverrides: {},
         settingsVersion: 0,
         right: 'manage-services',
+        ...(input.residency ? { residency: input.residency } : {}),
       };
       items = [...items.filter((i) => keyOf(i) !== keyOf(item)), item];
       versions[keyOf(item)] = [{ source: 'publisher', version: '1' }];
@@ -606,7 +613,8 @@ export const buildingBlocksMock = (options: BuildingBlocksMockOptions = {}): Moc
     if (!first || !second) return undefined;
     const item = items.find((i) => i.kind === first && i.id === second);
     if (!item) return problem(req, 404, 'Not found');
-    if (!third && req.method === 'GET') return req.json(item);
+    if (!third && req.method === 'GET')
+      return req.json(item.kind === 'model' ? { ...item, ...exampleModelFacts[item.id] } : item);
     if (third === 'versions' && req.method === 'GET')
       return req.json({ data: versions[keyOf(item)] ?? [] });
     if (third === 'adopt' && req.method === 'POST') {

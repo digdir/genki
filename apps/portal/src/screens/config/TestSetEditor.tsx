@@ -12,6 +12,7 @@ import {
 } from '@digdir/designsystemet-react';
 import { useRef, useState } from 'react';
 import { ApiError, type ApiClient } from '../../api';
+import { BusyButton } from '../../components/BusyButton';
 import { useAsync } from '../../hooks';
 import { useT, type PlainKey, type T } from '../../i18n';
 import { ErrorState, Loading } from '../../states';
@@ -60,6 +61,7 @@ const CaseForm = ({
   fixedId,
   busy,
   submitLabel,
+  busyLabel,
   onSubmit,
   onCancel,
 }: {
@@ -67,6 +69,7 @@ const CaseForm = ({
   fixedId: boolean;
   busy: boolean;
   submitLabel: string;
+  busyLabel: string;
   onSubmit: (draft: CaseDraft, reason: string) => void;
   onCancel?: () => void;
 }) => {
@@ -149,9 +152,9 @@ const CaseForm = ({
         onChange={(e) => setReason(e.target.value)}
       />
       <div className="row-wrap">
-        <Button data-size="sm" loading={busy} onClick={() => !busy && submit()}>
+        <BusyButton data-size="sm" busy={busy} busyLabel={busyLabel} onClick={() => submit()}>
           {submitLabel}
-        </Button>
+        </BusyButton>
         {onCancel ? (
           <Button variant="secondary" data-size="sm" onClick={onCancel}>
             {t('config.cancel')}
@@ -280,6 +283,7 @@ const SetCases = ({
                 fixedId
                 busy={busy}
                 submitLabel={t('config.saveCase')}
+                busyLabel={t('config.savingCase')}
                 onSubmit={(d, r) => void save(d, r)}
                 onCancel={() => setEditing(undefined)}
               />
@@ -318,6 +322,7 @@ const SetCases = ({
           fixedId={false}
           busy={busy}
           submitLabel={t('config.addCase')}
+          busyLabel={t('config.addingCase')}
           onSubmit={(d, r) => void save(d, r)}
           onCancel={() => setEditing(undefined)}
         />
@@ -351,6 +356,7 @@ export const TestSetEditor = ({
   const [state, retry] = useAsync(
     (signal) => api.listTestSets(tenant, serviceId, signal),
     [api, tenant, serviceId, round],
+    { keepPreviousFor: `${tenant}/${serviceId}` },
   );
   const [open, setOpen] = useState<string>();
   const [creating, setCreating] = useState(false);
@@ -360,7 +366,8 @@ export const TestSetEditor = ({
   const [failed, setFailed] = useState<string>();
   const [flash, setFlash] = useState('');
 
-  if (state.status === 'loading') return <Loading label={t('config.testSetsLoading')} />;
+  if (state.status === 'loading')
+    return <Loading label={t('config.testSetsLoading')} shape="list" onRetry={retry} />;
   if (state.status === 'error') return <ErrorState error={state.error} onRetry={retry} />;
   const changed = (message: string) => {
     setFlash(message);
@@ -462,6 +469,7 @@ export const TestSetEditor = ({
             fixedId={false}
             busy={busy}
             submitLabel={t('config.createTestSet')}
+            busyLabel={t('config.creatingTestSet')}
             onSubmit={(d, r) => void create(d, r)}
             onCancel={() => setCreating(false)}
           />

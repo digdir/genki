@@ -17,6 +17,8 @@ const datasetSubPaths = new Set([
   'enrichment',
   'fields',
   'uploads',
+  'search',
+  'documents',
 ]);
 const catalogSubPaths = new Set(['versions']);
 
@@ -27,7 +29,7 @@ export const decodedIdFamilies: readonly DecodedIdFamily[] = [
   { prefix: ['tenants', anyTenant, 'catalog', new Set(catalogKinds)], subPaths: catalogSubPaths },
   {
     prefix: ['tenants', anyTenant, 'building-blocks', new Set(blockKinds)],
-    subPaths: new Set(['adopt', 'approval-requests', 'settings', 'versions']),
+    subPaths: new Set(['adopt', 'approval-requests', 'definition', 'settings', 'versions']),
   },
   { prefix: ['operator', 'knowledge', 'endpoints'], subPaths: new Set() },
   { prefix: ['operator', 'model-endpoints'], subPaths: new Set(['processor-record']) },

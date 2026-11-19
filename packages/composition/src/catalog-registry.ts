@@ -151,9 +151,15 @@ const registryOnly: Partial<Record<CatalogKind, string[]>> = {
   'model-endpoint': ['sharing'],
   'knowledge-endpoint': ['sharing'],
   'rerank-endpoint': ['sharing'],
-  dataset: ['facets'],
+  dataset: ['facets', 'searchScope'],
   model: ['release'],
 };
+
+export const datasetSearchScopes = ['tenant', 'all'] as const;
+export type DatasetSearchScope = (typeof datasetSearchScopes)[number];
+
+const openToAll = (kind: CatalogKind, spec: Record<string, unknown>) =>
+  kind === 'dataset' && spec.searchScope === 'all';
 
 const omit = (spec: Record<string, unknown>, keys: string[]) =>
   Object.fromEntries(Object.entries(spec).filter(([k]) => !keys.includes(k)));
@@ -303,7 +309,8 @@ export class CatalogRegistry {
         continue;
       }
       const tenantScoped = slot.scope !== platformScope;
-      const item = { id: slot.id, ...spec, ...(tenantScoped ? { tenants: [slot.scope] } : {}) };
+      const ownOnly = tenantScoped && !openToAll(slot.kind, slot.spec);
+      const item = { id: slot.id, ...spec, ...(ownOnly ? { tenants: [slot.scope] } : {}) };
       if (group === 'models') out.models.models.push(item);
       else if (group === 'knowledge') out.knowledge.datasets.push(item);
       else out.rerank.rerankers.push(item);
@@ -370,7 +377,7 @@ export class CatalogRegistry {
     return this.list()
       .filter((item) => {
         if (item.scope === tenant) return true;
-        if (item.scope !== platformScope) return false;
+        if (item.scope !== platformScope) return openToAll(item.kind, item.spec);
         if (isEndpoint(item.kind))
           return this.sharedWith(this.sharingOf(item.kind, item.id), tenant);
         if (item.kind === 'dataset') {
@@ -380,7 +387,12 @@ export class CatalogRegistry {
         if (item.kind === 'model') return item.spec.release !== 'candidate';
         return item.kind !== 'price';
       })
-      .map((item) => (item.scope === platformScope ? withoutConnectionInputs(item) : item));
+      .map((item) => {
+        if (item.scope === platformScope) return withoutConnectionInputs(item);
+        if (item.scope === tenant) return item;
+        const { kind, id, scope, origin, version, spec } = item;
+        return { kind, id, scope, origin, version, spec };
+      });
   }
 
   qualify(scope: string, id: string) {
@@ -425,6 +437,16 @@ export class CatalogRegistry {
           });
       }
     }
+    if (
+      out.searchScope !== undefined &&
+      (kind !== 'dataset' ||
+        scope === platformScope ||
+        !(datasetSearchScopes as readonly unknown[]).includes(out.searchScope))
+    )
+      errors.push({
+        path: 'spec.searchScope',
+        message: "searchScope is 'tenant' or 'all', and only on an organisation's own dataset",
+      });
     if (out.allowedHosts !== undefined) {
       if (kind !== 'model-endpoint' || scope !== platformScope)
         errors.push({
@@ -440,6 +462,15 @@ export class CatalogRegistry {
           path: 'spec.allowedHosts',
           message: 'a list of at most 20 host names, each with an optional port',
         });
+    }
+    if (out.gateway !== undefined) {
+      if (kind !== 'model-endpoint' || scope !== platformScope)
+        errors.push({
+          path: 'spec.gateway',
+          message: 'only the operator sets gateway, and only on a model connection',
+        });
+      else if (typeof out.gateway !== 'boolean')
+        errors.push({ path: 'spec.gateway', message: 'gateway must be true or false' });
     }
     for (const [field, schema] of [
       ['settings', connectionSettings],
@@ -499,6 +530,7 @@ export class CatalogRegistry {
       const hostProblem = publicHost(out.baseURL);
       if (hostProblem) errors.push({ path: 'spec.baseURL', message: hostProblem });
       const auth = record(out.auth);
+      if (kind === 'knowledge-endpoint' && out.auth === undefined) return { spec: out, errors };
       if (auth.kind !== 'api-key' && auth.kind !== 'bearer')
         errors.push({ path: 'spec.auth.kind', message: 'tenant endpoints use api-key or bearer' });
       else {

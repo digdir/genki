@@ -77,6 +77,8 @@ export const connectors = defineNamespace({
   syncNow: 'Synkroniser nå',
   changePassword: 'Bytt passord',
   rightManageDatasets: 'Administrere datasett',
+  pollFailing:
+    'Vi får ikke oppdatert statusen akkurat nå. Vi prøver igjen av oss selv, sjeldnere for hvert forsøk.',
   listHeading: 'Koblinger',
   networksOpen: 'Private nett Digdir har åpnet for virksomheten: {networks}.',
   networksNone: 'Ingen private nett er åpnet. Databaser på private nett må åpnes av Digdir.',
@@ -150,6 +152,7 @@ export const connectorApproval = defineNamespace({
   testing: 'Tester tilkoblingen …',
   cancel: 'Avbryt',
   reject: 'Avvis forslaget',
+  rejecting: 'Avviser …',
 });
 
 export const connectorsLane = { connectors, connectorApproval } as const;

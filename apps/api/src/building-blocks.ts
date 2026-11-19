@@ -1,3 +1,5 @@
+import { syncFailureMessage } from './sync-errors.js';
+import { actorNames, type ActorNames } from './actor-names.js';
 import type { Principal } from '@genai/contracts';
 import {
   adoptionKind,
@@ -26,8 +28,8 @@ import {
   runState,
   type StoredRun,
 } from '@genai/eval';
-import { type SecretResolver, type Strategy } from '@genai/kernel';
-import { residencies, servesModelPort, type Residency } from '@genai/port-model';
+import { type Maturity, type SecretResolver, type Strategy } from '@genai/kernel';
+import { builtInOperations, residencies, servesModelPort, type Residency } from '@genai/port-model';
 import {
   A2aClient,
   jsonRpcInterface,
@@ -173,9 +175,12 @@ export interface BuildingBlock {
   publisher: BlockPublisher;
   version: string;
   latestVersion?: string;
+  versionAt?: string;
   update?: BlockUpdate;
   dataLocation: DataLocation | null;
+  residency?: DataLocation;
   status: BlockStatus;
+  required?: true;
   policyBlock?: PolicyBlock;
   approver?: string;
   capabilities: string[];
@@ -196,7 +201,12 @@ export interface BuildingBlock {
 
 export interface BuildingBlockList {
   data: BuildingBlock[];
-  counts: { inUse: number; catalog: number; byKind: Record<BlockKind, number> };
+  counts: {
+    inUse: number;
+    catalog: number;
+    byKind: Record<BlockKind, number>;
+    required: Partial<Record<BlockKind, number>>;
+  };
 }
 
 export type BlockEvent =
@@ -283,6 +293,7 @@ export interface RegistrationInput {
   documentUrl?: string;
   operations?: string[];
   writes?: boolean;
+  residency?: Residency;
 }
 
 export interface ContractTestResult {
@@ -329,6 +340,7 @@ export interface RegistrationResult {
   contractTests: ContractTestResult[];
   synced: boolean;
   syncError?: string;
+  syncErrorCode?: string;
   changedBy: { by: string; at: string; reason: string };
   writesApproval?: { request: string; state: ApprovalState };
 }
@@ -391,6 +403,7 @@ interface Source {
   >;
   owner?: string;
   latest?: { version: number; at: string; reason: string };
+  versionDates?: Record<string, string>;
   /** Why the tenant cannot take it in use, whatever its policy says. */
   refused?: string;
   uses(ref: BlockReference): boolean;
@@ -624,6 +637,54 @@ export interface BuildingBlocksModule extends PlatformModule {
   checkPublish(definition: unknown): Promise<ValidationError[]>;
 }
 
+const builtinGuardrails: Record<string, { name: () => string; text: () => string }> = {
+  'pii-before-model': {
+    name: () => t('blocks.guardPiiBeforeModel'),
+    text: () => t('blocks.guardPiiBeforeModelText'),
+  },
+  'pii-out-of-log': {
+    name: () => t('blocks.guardPiiOutOfLog'),
+    text: () => t('blocks.guardPiiOutOfLogText'),
+  },
+  'require-sources': {
+    name: () => t('blocks.guardRequireSources'),
+    text: () => t('blocks.guardRequireSourcesText'),
+  },
+  language: { name: () => t('blocks.guardLanguage'), text: () => t('blocks.guardLanguageText') },
+  'refuse-topics': {
+    name: () => t('blocks.guardRefuseTopics'),
+    text: () => t('blocks.guardRefuseTopicsText'),
+  },
+  'human-approval': {
+    name: () => t('blocks.guardHumanApproval'),
+    text: () => t('blocks.guardHumanApprovalText'),
+  },
+  'purpose-check': {
+    name: () => t('blocks.guardPurposeCheck'),
+    text: () => t('blocks.guardPurposeCheckText'),
+  },
+};
+
+const builtinJudges: Record<string, { name: () => string; text: () => string }> = {
+  'answer-quality': {
+    name: () => t('blocks.judgeAnswerQuality'),
+    text: () => t('blocks.judgeAnswerQualityText'),
+  },
+  'pairwise-preference': {
+    name: () => t('blocks.judgePairwisePreference'),
+    text: () => t('blocks.judgePairwisePreferenceText'),
+  },
+  [criteriaJudgeId]: {
+    name: () => t('blocks.judgeCriteria'),
+    text: () => t('blocks.judgeCriteriaText'),
+  },
+};
+
+const sharedWith = (availableTo: unknown, owner: string, tenant: string) =>
+  availableTo === '*' ||
+  (Array.isArray(availableTo) &&
+    (availableTo.includes(tenant) || (owner === tenant && availableTo.length > 0)));
+
 export const createBuildingBlocksModule =
   (options: BuildingBlocksOptions = {}) =>
   (deps: ModuleDeps): BuildingBlocksModule => {
@@ -720,7 +781,8 @@ export const createBuildingBlocksModule =
       return found.flat();
     };
 
-    const sources = async (tenant: string): Promise<Source[]> => {
+    const sources = async (tenant: string, only?: string): Promise<Source[]> => {
+      const wants = (kind: string) => only === undefined || only === kind;
       const out: Source[] = [];
       const shown = deps.catalog.visibleTo(tenant);
       const visible =
@@ -778,7 +840,10 @@ export const createBuildingBlocksModule =
               settingsSchema: settingsOf(),
             },
             uses: (ref) => ref.kind === 'dataset' && sameDataset(ref.id, item.id, tenant),
-            history: async () => fromEntries(await deps.catalog.history('dataset', item.id)),
+            history: async () =>
+              item.scope === tenant || item.scope === platformScope
+                ? fromEntries(await deps.catalog.history('dataset', item.id))
+                : [],
           });
         }
         if (item.kind === 'knowledge-endpoint') {
@@ -809,7 +874,7 @@ export const createBuildingBlocksModule =
           });
         }
       }
-      for (const state of await deps.connections.list(tenant)) {
+      for (const state of wants('tool') ? await deps.connections.list(tenant) : []) {
         const connection = state.connection;
         const ownTimeout = Math.max(1, Math.round((connection.timeoutMs ?? 10_000) / 1000));
         out.push({
@@ -820,7 +885,8 @@ export const createBuildingBlocksModule =
             description: connection.endpoint,
             publisher: { type: 'own', name: tenant },
             version: connection.version,
-            dataLocation: null,
+            dataLocation: locationOf(state.residency),
+            ...(state.residency ? { residency: state.residency } : {}),
             capabilities: state.tools.map((t) =>
               t.description ? `${t.name}: ${t.description}` : t.name,
             ),
@@ -881,7 +947,7 @@ export const createBuildingBlocksModule =
         });
       }
       const definitionOwners = [...new Set([tenant, deps.platformTenant])];
-      for (const owner of definitionOwners) {
+      for (const owner of wants('skill') || wants('step_flow') ? definitionOwners : []) {
         for (const entry of await deps.definitions.list(owner)) {
           if (entry.kind === 'Service') continue;
           const history = await deps.definitions.versions(entry.kind, owner, entry.id);
@@ -920,6 +986,9 @@ export const createBuildingBlocksModule =
               settingsSchema: settingsOf(),
             },
             latest: { version: latest.version, at: latest.publishedAt, reason: latest.reason },
+            versionDates: Object.fromEntries(
+              history.map((v) => [String(v.version), v.publishedAt]),
+            ),
             uses: (ref) => ref.kind === kind && ref.id === entry.id,
             history: async () =>
               history.map((v) => ({
@@ -956,8 +1025,8 @@ export const createBuildingBlocksModule =
           block: {
             id,
             kind: 'guardrail',
-            name: id,
-            description: '',
+            name: builtinGuardrails[id]?.name() ?? id,
+            description: builtinGuardrails[id]?.text() ?? '',
             publisher: digdir,
             version: '1',
             dataLocation: null,
@@ -972,7 +1041,11 @@ export const createBuildingBlocksModule =
         for (const entry of await deps.configEntries.latest({ kind: 'guardrail-rule', scope })) {
           if (entry.deleted) continue;
           const ruleId = scope === platformScope ? entry.id : entry.id.slice(scope.length + 1);
-          const spec = (entry.spec as { spec?: { kind?: string; message?: string } }).spec ?? {};
+          const stored = entry.spec as {
+            spec?: { kind?: string; message?: string };
+            mandatory?: unknown;
+          };
+          const spec = stored.spec ?? {};
           const id = `custom-rules/${ruleId}`;
           out.push({
             block: {
@@ -986,6 +1059,9 @@ export const createBuildingBlocksModule =
               capabilities: spec.kind ? [spec.kind] : [],
               permissions: [],
               settingsSchema: settingsOf(),
+              ...(scope === platformScope && stored.mandatory === true
+                ? { required: true as const }
+                : {}),
             },
             uses: (ref) => ref.kind === 'guardrail' && ref.id === id,
             history: async () =>
@@ -995,7 +1071,7 @@ export const createBuildingBlocksModule =
       }
       const judgeIds = new Set<string>(['answer-quality', 'pairwise-preference']);
       // A sink's judge is listed from its connection below, not from the runs it scored.
-      for (const stored of await deps.evalStores.runs.list({ tenant }))
+      for (const stored of wants('judge') ? await deps.evalStores.runs.list({ tenant }) : [])
         // One block per evaluator, whichever model judged a run; a sink's judges have their own.
         for (const judge of stored.run.provenance.judges)
           if (!deps.traceSinks?.isSinkJudge?.(judge)) judgeIds.add(evaluatorOfJudge(judge));
@@ -1006,8 +1082,8 @@ export const createBuildingBlocksModule =
           block: {
             id,
             kind: 'judge',
-            name: id,
-            description: '',
+            name: builtinJudges[id]?.name() ?? id,
+            description: builtinJudges[id]?.text() ?? '',
             publisher: digdir,
             version:
               bundled?.version ?? (id === criteriaJudgeId ? criteriaJudgePrompt('').version : '1'),
@@ -1020,7 +1096,7 @@ export const createBuildingBlocksModule =
           history: async () => [],
         });
       }
-      for (const judge of await sinkJudges(tenant)) {
+      for (const judge of wants('judge') ? await sinkJudges(tenant) : []) {
         const unread = judge.refused?.reason === 'unreadable';
         out.push({
           block: {
@@ -1074,10 +1150,10 @@ export const createBuildingBlocksModule =
           names: Set<string>;
         }
       >();
-      for (const compiled of await deps.definitions.capabilities()) {
-        if (compiled.service.tenant === tenant) continue;
-        const availableTo = compiled.capability.descriptor.availableTo;
-        if (availableTo !== '*' && !(Array.isArray(availableTo) && availableTo.includes(tenant)))
+      for (const compiled of wants('shared_service') ? await deps.definitions.capabilities() : []) {
+        if (
+          !sharedWith(compiled.capability.descriptor.availableTo, compiled.service.tenant, tenant)
+        )
           continue;
         const key = `${compiled.service.tenant}/${compiled.service.id}`;
         const known = shared.get(key);
@@ -1137,9 +1213,9 @@ export const createBuildingBlocksModule =
     const sharedToolNames = async (tenant: string) => {
       const names = new Map<string, string>();
       for (const compiled of await deps.definitions.capabilities()) {
-        if (compiled.service.tenant === tenant) continue;
-        const availableTo = compiled.capability.descriptor.availableTo;
-        if (availableTo !== '*' && !(Array.isArray(availableTo) && availableTo.includes(tenant)))
+        if (
+          !sharedWith(compiled.capability.descriptor.availableTo, compiled.service.tenant, tenant)
+        )
           continue;
         const key = `${compiled.service.tenant}/${compiled.service.id}`;
         for (const name of [compiled.publicName, ...compiled.aliases]) names.set(name, key);
@@ -1281,9 +1357,11 @@ export const createBuildingBlocksModule =
       const request = pending.find(
         (r) => r.kind === block.kind && r.block === block.id && r.state === 'pending',
       );
+      const versionAt = source.versionDates?.[version];
       return {
         ...block,
         version,
+        ...(versionAt ? { versionAt } : {}),
         ...(latestVersion ? { latestVersion } : {}),
         ...(update ? { update } : {}),
         status,
@@ -1313,7 +1391,7 @@ export const createBuildingBlocksModule =
     };
 
     const find = async (tenant: string, kind: string, id: string) => {
-      const source = (await sources(tenant)).find(
+      const source = (await sources(tenant, kind)).find(
         (s) => s.block.kind === kind && s.block.id === id,
       );
       if (!source) return undefined;
@@ -1346,15 +1424,53 @@ export const createBuildingBlocksModule =
           (!filter.publisher || b.publisher.type === filter.publisher),
       );
       const byKind = Object.fromEntries(blockKinds.map((k) => [k, 0])) as Record<BlockKind, number>;
-      for (const b of all) byKind[b.kind] += 1;
+      const required: Partial<Record<BlockKind, number>> = {};
+      for (const b of all) {
+        byKind[b.kind] += 1;
+        if (b.required) required[b.kind] = (required[b.kind] ?? 0) + 1;
+      }
       return {
         data,
         counts: {
           inUse: all.filter((b) => b.status === 'in_use').length,
           catalog: all.length,
           byKind,
+          required,
         },
       };
+    };
+
+    const flowDefinition = async (tenant: string, id: string) => {
+      if (id.includes('@')) return undefined;
+      const shown = (await sources(tenant, 'step_flow')).some(
+        (s) => s.block.kind === 'step_flow' && s.block.id === id,
+      );
+      if (!shown) return undefined;
+      for (const owner of new Set([tenant, deps.platformTenant])) {
+        const latest = (await deps.definitions.versions('StepFlow', owner, id)).at(-1);
+        if (latest)
+          return {
+            id,
+            owner,
+            version: latest.version,
+            publishedAt: latest.publishedAt,
+            yaml: toYaml(latest.definition),
+            definition: latest.definition,
+          };
+      }
+      return undefined;
+    };
+
+    const adopted = async (tenant: string, kind: string, id: string) => {
+      const history = await deps.configEntries.history(adoptionKind, tenant, keyOf(kind, id));
+      const latest = history.at(-1);
+      if (!latest || latest.deleted || (latest.spec as AdoptionSpec).status !== 'in_use')
+        return undefined;
+      const made = history.findLast((e) => {
+        const event = (e.spec as Partial<AdoptionSpec>).event;
+        return event === 'adopted' || event === 'approved';
+      });
+      return made ? { at: made.at, by: made.by } : undefined;
     };
 
     const versions = async (tenant: string, kind: string, id: string) => {
@@ -2103,6 +2219,39 @@ export const createBuildingBlocksModule =
     const secretNames = async (tenant: string) =>
       options.secretNames ? options.secretNames(tenant) : [];
 
+    const modelFacts = async (id: string): Promise<ModelFacts> => {
+      const model = deps.models.describe().find((m) => m.id === id);
+      if (!model) return {};
+      const governance = deps.operations?.governance;
+      const operations = await Promise.all(
+        Object.entries(model.apis)
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(async ([operation, api]) => ({
+            operation,
+            api,
+            ...(builtInKinds.includes(operation) ? { builtIn: true as const } : {}),
+            ...(governance ? { maturity: (await governance.maturityOf(operation)).maturity } : {}),
+          })),
+      );
+      const record = governance ? await governance.processorRecord(model.endpoint) : undefined;
+      return {
+        connection: model.endpoint,
+        ...(model.maker ? { maker: model.maker } : {}),
+        operations,
+        ...(governance
+          ? {
+              processor: record
+                ? {
+                    recorded: true,
+                    subProcessors: record.spec.subProcessors,
+                    retentionDays: record.spec.retention.days,
+                  }
+                : { recorded: false },
+            }
+          : {}),
+      };
+    };
+
     const secretHosts = async (ref: string) => [
       ...((await options.secrets?.hostsFor?.(ref)) ?? []),
     ];
@@ -2119,6 +2268,10 @@ export const createBuildingBlocksModule =
         mountRoutes(app, mount, {
           list,
           find,
+          adopted,
+          modelFacts,
+          names: actorNames(deps.configEntries),
+          flowDefinition,
           versions,
           requests,
           contractTest,
@@ -2137,6 +2290,17 @@ export const createBuildingBlocksModule =
     };
   };
 
+const builtInKinds: readonly string[] = [...builtInOperations, 'embed', 'rerank'];
+
+interface ModelFacts {
+  connection?: string;
+  maker?: string;
+  operations?: { operation: string; api: string; builtIn?: true; maturity?: Maturity }[];
+  processor?:
+    | { recorded: true; subProcessors: { name: string; location: string }[]; retentionDays: number }
+    | { recorded: false };
+}
+
 interface Reads {
   list(
     tenant: string,
@@ -2148,6 +2312,27 @@ interface Reads {
   ): Promise<BuildingBlockList>;
   find(tenant: string, kind: string, id: string): Promise<{ block: BuildingBlock } | undefined>;
   versions(tenant: string, kind: string, id: string): Promise<BlockVersion[] | undefined>;
+  adopted(
+    tenant: string,
+    kind: string,
+    id: string,
+  ): Promise<{ at: string; by: string } | undefined>;
+  names: Pick<ActorNames, 'namesOf'>;
+  modelFacts(id: string): Promise<ModelFacts>;
+  flowDefinition(
+    tenant: string,
+    id: string,
+  ): Promise<
+    | {
+        id: string;
+        owner: string;
+        version: number;
+        publishedAt: string;
+        yaml: string;
+        definition: unknown;
+      }
+    | undefined
+  >;
   requests(scope?: string): Promise<ApprovalRequest[]>;
   contractTest(
     tenant: string,
@@ -2269,6 +2454,8 @@ const mountRoutes = <E extends Env, S extends Schema, B extends string>(
   const registrationInput = (raw: Record<string, unknown>): RegistrationInput | string => {
     const type = raw.type as RegistrationType;
     if (!registrationTypes.includes(type)) return 'type';
+    if (raw.residency !== undefined && !residencies.includes(raw.residency as Residency))
+      return 'residency';
     const auth = (raw.auth ?? undefined) as RegistrationAuth | undefined;
     return {
       type,
@@ -2285,6 +2472,7 @@ const mountRoutes = <E extends Env, S extends Schema, B extends string>(
         ? { operations: raw.operations.filter((o): o is string => typeof o === 'string') }
         : {}),
       ...(typeof raw.writes === 'boolean' ? { writes: raw.writes } : {}),
+      ...(raw.residency === undefined ? {} : { residency: raw.residency as Residency }),
     };
   };
 
@@ -2302,7 +2490,10 @@ const mountRoutes = <E extends Env, S extends Schema, B extends string>(
     if (typeof input === 'string')
       return {
         response: problem(c, 400, 'Invalid request', [
-          { path: 'type', message: `must be one of ${registrationTypes.join(', ')}` },
+          {
+            path: input,
+            message: `must be one of ${(input === 'type' ? registrationTypes : residencies).join(', ')}`,
+          },
         ]),
       };
     return { input };
@@ -2378,6 +2569,7 @@ const mountRoutes = <E extends Env, S extends Schema, B extends string>(
       tenant: guard.tenant,
       reason,
       connection,
+      ...(input.residency ? { residency: input.residency } : {}),
     });
     c.header('genai-task', registered.task);
     if (!registered.ok) {
@@ -2395,6 +2587,9 @@ const mountRoutes = <E extends Env, S extends Schema, B extends string>(
       id,
     });
     const value = registered.value as { id: string; version: string };
+    const syncCode = synced.ok
+      ? undefined
+      : ((await deps.connections.get(guard.tenant, id))?.lastSync?.code ?? 'unknown');
     const writesRequest = wantsWrites
       ? await deps.admin.perform(guard.principal, 'platform.block.request', {
           tenant: guard.tenant,
@@ -2413,7 +2608,9 @@ const mountRoutes = <E extends Env, S extends Schema, B extends string>(
       version: value.version,
       contractTests: report.results,
       synced: synced.ok,
-      ...(synced.ok ? {} : { syncError: synced.errors.map((e) => e.message).join('; ') }),
+      ...(syncCode === undefined
+        ? {}
+        : { syncErrorCode: syncCode, syncError: syncFailureMessage(syncCode) }),
       changedBy: {
         by: actorOf(guard.principal.actor ?? guard.principal),
         at: new Date().toISOString(),
@@ -2450,7 +2647,23 @@ const mountRoutes = <E extends Env, S extends Schema, B extends string>(
     const guard = await member(c);
     if (guard.response) return guard.response;
     const found = await reads.find(guard.tenant, param(c, 'kind'), param(c, 'id'));
-    return found ? c.json(found.block) : problem(c, 404, 'Not found');
+    if (!found) return problem(c, 404, 'Not found');
+    const adopted = await reads.adopted(guard.tenant, param(c, 'kind'), param(c, 'id'));
+    const name = adopted ? (await reads.names.namesOf([adopted.by])).get(adopted.by) : undefined;
+    const facts = found.block.kind === 'model' ? await reads.modelFacts(found.block.id) : {};
+    return c.json({
+      ...found.block,
+      ...facts,
+      ...(adopted ? { adoptedAt: adopted.at } : {}),
+      ...(name ? { adoptedByName: name } : {}),
+    });
+  });
+
+  app.get(`${base}/step_flow/:id/definition`, async (c) => {
+    const guard = await member(c);
+    if (guard.response) return guard.response;
+    const found = await reads.flowDefinition(guard.tenant, param(c, 'id'));
+    return found ? c.json(found) : problem(c, 404, 'Not found');
   });
 
   app.get(`${base}/:kind/:id/versions`, async (c) => {
@@ -2583,12 +2796,10 @@ const mountRoutes = <E extends Env, S extends Schema, B extends string>(
       },
       async (request) => {
         if (!grantsWrites(request)) return;
-        const state = await deps.connections.get(request.tenant, request.block);
-        if (state)
-          await deps.connections.save({
-            ...state,
-            connection: { ...state.connection, writes: true },
-          });
+        await deps.connections.update(request.tenant, request.block, (state) => ({
+          ...state,
+          connection: { ...state.connection, writes: true },
+        }));
       },
     );
     const request = decided.ok ? decided.value : undefined;
@@ -2605,6 +2816,7 @@ const mountRoutes = <E extends Env, S extends Schema, B extends string>(
         for (const tool of synced?.pending ?? []) {
           const method = tool.call?.method;
           if (typeof method !== 'string' || method.toLowerCase() === 'get') continue;
+          if (synced?.revoked?.includes(tool.remoteName)) continue;
           await deps.admin.perform(actor, 'platform.tools.approve', {
             tenant: request.tenant,
             reason,

@@ -1,18 +1,8 @@
-import {
-  Button,
-  Field,
-  Heading,
-  Label,
-  Paragraph,
-  Spinner,
-  Table,
-  Tag,
-  Textarea,
-  Textfield,
-  ValidationMessage,
-} from '@digdir/designsystemet-react';
+import { Heading, Paragraph, Table, Tag, Textfield } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
 import { useEffect, useRef, useState } from 'react';
+import { ApiError, type ApiClient } from '../../api';
+import { BusyButton } from '../../components/BusyButton';
 import { CopyButton } from '../../components/CopyButton';
 import { useT, type PlainKey, type T } from '../../i18n';
 import { rightLabel, useRights, useUserName } from '../../Shell';
@@ -42,8 +32,6 @@ const typeKeys = {
   boolean: 'apiref.typeBoolean',
 } as const satisfies Record<ParamType, PlainKey>;
 
-const statusText: Record<number, string> = { 201: 'Created', 202: 'Accepted', 204: 'No Content' };
-
 export const curlFor = (ep: Endpoint, values: Record<string, string>, t: T, body?: unknown) => {
   const reasonHeader = ep.params.some((p) => p[0] === 'change-reason');
   return [
@@ -71,7 +59,6 @@ const exampleValues = (tenant: string): Record<string, string> => ({
 interface TryResult {
   status: string;
   color: 'success' | 'danger' | 'warning';
-  time: string;
   note: string;
   body: string;
 }
@@ -91,12 +78,25 @@ const CodeBlock = ({ label, code }: { label: string; code: string }) => {
   );
 };
 
+const failureOf = (error: unknown, t: T): TryResult => {
+  if (!(error instanceof ApiError))
+    return { status: t('apiref.tryNoAnswer'), color: 'danger', note: '', body: '' };
+  return {
+    status: `${error.status} ${error.problem?.title ?? ''}`.trim(),
+    color: error.status === 403 || error.status === 401 ? 'warning' : 'danger',
+    note: error.status === 403 ? t('apiref.tryRefused') : '',
+    body: error.problem ? J(error.problem) : '',
+  };
+};
+
 const TryPanel = ({
   ep,
+  api,
   tenant,
   tenantName,
 }: {
   ep: Endpoint;
+  api: Pick<ApiClient, 'getJson'>;
   tenant: string;
   tenantName: string;
 }) => {
@@ -110,60 +110,55 @@ const TryPanel = ({
   const [values, setValues] = useState<Record<string, string>>(() =>
     Object.fromEntries(pathParams.map((p) => [p[0], defaults[p[0]] ?? ''])),
   );
-  const [body, setBody] = useState(ep.body !== undefined ? J(ep.body) : '');
-  const [bodyErr, setBodyErr] = useState('');
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<TryResult | undefined>();
-  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  useEffect(() => () => clearTimeout(timer.current), []);
+  const alive = useRef(true);
+  useEffect(
+    () => () => {
+      alive.current = false;
+    },
+    [],
+  );
 
-  const send = () => {
+  if (ep.method !== 'GET')
+    return (
+      <section aria-labelledby="prov-h" className="ar-try">
+        <Heading level={5} data-size="2xs" id="prov-h">
+          {t('apiref.tryHeading')}
+        </Heading>
+        <Paragraph data-size="sm">{t('apiref.tryReadOnly')}</Paragraph>
+      </section>
+    );
+
+  const send = async () => {
     if (sending) return;
-    if (ep.body !== undefined) {
-      try {
-        JSON.parse(body);
-      } catch {
-        setBodyErr(t('apiref.invalidJson'));
-        return;
-      }
-    }
     const missing = pathParams.find((p) => !(values[p[0]] ?? '').trim());
     if (missing) {
       setResult({
         status: t('apiref.invalidRequest'),
         color: 'danger',
-        time: '',
         note: t('apiref.fillIn', { name: missing[0] ?? '' }),
-        body: J({ title: 'Invalid request', errors: [{ path: missing[0], message: 'required' }] }),
+        body: '',
       });
       return;
     }
     setSending(true);
     setResult(undefined);
-    timer.current = setTimeout(() => {
-      setSending(false);
-      if (ep.right === 'digdir')
-        setResult({
-          status: t('apirefData.std.e1.title'),
-          color: 'danger',
-          time: '38 ms',
-          note: t('apiref.forbiddenNote'),
-          body: J({ title: 'Forbidden', status: 403 }),
-        });
-      else
-        setResult({
-          status: `${ep.status ?? 200} ${statusText[ep.status ?? 200] ?? 'OK'}`,
-          color: 'success',
-          time: '184 ms',
-          note: '',
-          body: J(ep.response),
-        });
-    }, 900);
+    let next: TryResult;
+    try {
+      const body = await api.getJson(fillPath(ep.path, values));
+      next = { status: '200 OK', color: 'success', note: '', body: J(body) };
+    } catch (error) {
+      next = failureOf(error, t);
+    }
+    if (!alive.current) return;
+    setSending(false);
+    setResult(next);
   };
 
   return (
     <section aria-labelledby="prov-h" className="ar-try">
-      <Heading level={3} data-size="2xs" id="prov-h">
+      <Heading level={5} data-size="2xs" id="prov-h">
         {t('apiref.tryHeading')}
       </Heading>
       <Paragraph data-size="sm">
@@ -187,36 +182,15 @@ const TryPanel = ({
           onChange={(e) => setValues({ ...values, [p[0]]: e.target.value })}
         />
       ))}
-      {ep.body !== undefined ? (
-        <Field data-size="sm">
-          <Label htmlFor="prov-body">{t('apiref.bodyLabel')}</Label>
-          <Textarea
-            id="prov-body"
-            rows={6}
-            spellCheck={false}
-            className="ar-try-body"
-            value={body}
-            aria-invalid={bodyErr ? true : undefined}
-            onChange={(e) => {
-              setBody(e.target.value);
-              setBodyErr('');
-            }}
-          />
-          {bodyErr ? <ValidationMessage>{bodyErr}</ValidationMessage> : null}
-        </Field>
-      ) : null}
       <div className="actions">
-        <Button data-size="sm" aria-disabled={sending || undefined} onClick={send}>
+        <BusyButton
+          data-size="sm"
+          busy={sending}
+          busyLabel={t('apiref.sending')}
+          onClick={() => void send()}
+        >
           {t('apiref.send')}
-        </Button>
-        <span role="status" className="row-wrap">
-          {sending ? (
-            <>
-              <Spinner aria-hidden data-size="xs" />
-              {t('apiref.sending')}
-            </>
-          ) : null}
-        </span>
+        </BusyButton>
       </div>
       {result ? (
         <div className="stack-sm">
@@ -224,12 +198,13 @@ const TryPanel = ({
             <Tag data-size="sm" data-color={result.color}>
               {result.status}
             </Tag>
-            <span className="meta">{result.time}</span>
           </div>
           {result.note ? <Paragraph data-size="sm">{result.note}</Paragraph> : null}
-          <pre tabIndex={0} aria-label={t('apiref.response')} className="code ar-try-res">
-            <code>{result.body}</code>
-          </pre>
+          {result.body ? (
+            <pre tabIndex={0} aria-label={t('apiref.response')} className="code ar-try-res">
+              <code>{result.body}</code>
+            </pre>
+          ) : null}
         </div>
       ) : null}
     </section>
@@ -238,10 +213,12 @@ const TryPanel = ({
 
 export const EndpointDetail = ({
   ep,
+  api,
   tenant,
   tenantName,
 }: {
   ep: Endpoint;
+  api: Pick<ApiClient, 'getJson'>;
   tenant: string;
   tenantName: string;
 }) => {
@@ -258,7 +235,7 @@ export const EndpointDetail = ({
     <article aria-labelledby="ep-h" className="ar-detail">
       <div className="stack-sm">
         <span className="meta">{t(`apiref.area.${ep.area}`)}</span>
-        <Heading level={2} data-size="sm" id="ep-h">
+        <Heading level={4} data-size="sm" id="ep-h">
           {t(ep.summary)}
         </Heading>
         <p className="api-line">
@@ -304,7 +281,7 @@ export const EndpointDetail = ({
         ))}
       </div>
       <div className="stack-sm">
-        <Heading level={3} data-size="2xs">
+        <Heading level={5} data-size="2xs">
           {t('apiref.errors')}
         </Heading>
         <dl className="ar-errors">
@@ -316,7 +293,7 @@ export const EndpointDetail = ({
           ))}
         </dl>
       </div>
-      <TryPanel key={ep.id} ep={ep} tenant={tenant} tenantName={tenantName} />
+      <TryPanel key={ep.id} ep={ep} api={api} tenant={tenant} tenantName={tenantName} />
     </article>
   );
 };

@@ -1,10 +1,19 @@
 import type { SkippedDocument } from '@genai/ingest';
 import type { IndexWriterRouter } from '@genai/port-knowledge';
 import type { CatalogItem } from './catalog-registry.js';
+import { endpointSourceEngine } from './endpoint-source.js';
 import type { Execution, ExecutionStatus, IngestionService, Pipeline } from './ingestion.js';
 
 export type DatasetSource =
-  'website' | 'upload' | 'kudos' | 'folder' | 'database' | 'parquet' | 'episerver' | 'none';
+  | 'website'
+  | 'upload'
+  | 'kudos'
+  | 'folder'
+  | 'database'
+  | 'parquet'
+  | 'episerver'
+  | 'endpoint'
+  | 'none';
 
 export type DatasetState =
   'needs-pipeline' | 'configured' | 'running' | 'ready' | 'degraded' | 'external';
@@ -13,6 +22,7 @@ export type PipelineState = 'disabled' | 'failed' | 'running' | 'ready' | 'confi
 
 export interface LastExecution {
   status: ExecutionStatus;
+  startedBy?: string;
   startedAt: string;
   endedAt: string | null;
   stored: number | null;
@@ -26,6 +36,7 @@ export interface DatasetStatus {
   chunks: number | null;
   lastExecution: LastExecution | null;
   nextRunAt: string | null;
+  updatedAt: string | null;
 }
 
 export interface DatasetStatusDeps {
@@ -38,13 +49,17 @@ export interface DatasetStatusDeps {
 
 const lastOf = (execution: Execution): LastExecution => ({
   status: execution.status,
+  startedBy: execution.startedBy,
   startedAt: execution.startedAt,
   endedAt: execution.endedAt ?? null,
   stored: execution.report?.stored ?? null,
   skipped: execution.report?.skipped ?? null,
 });
 
-const countsOf = async (deps: DatasetStatusDeps, dataset: string) => {
+export const writerCounts = async (
+  deps: Pick<DatasetStatusDeps, 'writers' | 'countable'>,
+  dataset: string,
+) => {
   if (!deps.writers?.supports(dataset)) return undefined;
   try {
     const route = deps.writers.open(dataset, { signal: AbortSignal.timeout(5000) });
@@ -74,8 +89,9 @@ export const datasetState = (pipelines: PipelineState[]): DatasetState => {
   return 'configured';
 };
 
-const latestOf = (executions: Execution[]) =>
-  [...executions].sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
+/** A pipeline's latest run; a replacement run converts in the background and is not one. */
+export const latestOf = (executions: Execution[]) =>
+  executions.filter((r) => !r.replaces).sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
 
 export const publicDatasetState = async (
   ingestion: Pick<IngestionService, 'list' | 'executions'>,
@@ -113,25 +129,34 @@ export const datasetStatus = async (
     const documents = await deps.documentCount?.(item).catch(() => undefined);
     return {
       state: 'external',
-      source: 'none',
+      source: engine === endpointSourceEngine ? 'endpoint' : 'none',
       documents: documents ?? null,
       chunks: null,
       lastExecution: null,
       nextRunAt: null,
+      updatedAt: null,
       skipped: [],
     };
   }
-  const counts = await countsOf(deps, item.id);
+  const counts = await writerCounts(deps, item.id);
+  const found = counts ? undefined : await deps.documentCount?.(item).catch(() => undefined);
   return {
     state: datasetState(pipelines.map((p, i) => pipelineState(p, latestOf(perPipeline[i] ?? [])))),
     source: main?.spec.source.kind ?? 'none',
-    documents: counts?.documents ?? null,
+    documents: counts?.documents ?? found ?? null,
     chunks: counts?.chunks ?? null,
     lastExecution: last ? lastOf(last) : null,
     nextRunAt: next.sort()[0] ?? null,
+    updatedAt: lastSucceededAt(perPipeline.flat()) ?? null,
     skipped: last?.report?.skippedDocuments ?? [],
   };
 };
+
+const lastSucceededAt = (runs: Execution[]) =>
+  runs
+    .flatMap((run) => (run.status === 'succeeded' && run.endedAt ? [run.endedAt] : []))
+    .sort()
+    .at(-1);
 
 export const lastImportAt = async (
   ingestion: Pick<IngestionService, 'list' | 'executions'>,
@@ -140,9 +165,5 @@ export const lastImportAt = async (
   const runs = await Promise.all(
     (await ingestion.list(item.scope, item.id)).map((p) => ingestion.executions(item.id, p.id)),
   );
-  return runs
-    .flat()
-    .flatMap((run) => (run.status === 'succeeded' && run.endedAt ? [run.endedAt] : []))
-    .sort()
-    .at(-1);
+  return lastSucceededAt(runs.flat());
 };

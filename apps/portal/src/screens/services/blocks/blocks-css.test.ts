@@ -63,6 +63,11 @@ describe('the Grensesnitt tab’s stylesheet', () => {
     );
   });
 
+  it('keeps the Grensesnitt tab in the page column of the other service tabs; only the full-screen preview widens it', () => {
+    expect(css).not.toMatch(/\.main-inner:has\([^)]*\.blocks-split/);
+    expect(rule('.main-inner:has(.blocks-fullscreen)')).toBe('max-width: none;');
+  });
+
   it('makes the place to grab an edge wider than its line, for a mouse and a finger', () => {
     expect(rule('.blocks-resize')).toContain('position: relative;');
     expect(rule('.blocks-resize')).toContain('touch-action: none;');

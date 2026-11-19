@@ -3,74 +3,160 @@ import {
   Alert,
   Button,
   Chip,
-  Fieldset,
+  Field,
   Heading,
+  Input,
+  Label,
+  Paragraph,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeaderCell,
+  TableRow,
   Tag,
-  Textfield,
 } from '@digdir/designsystemet-react';
-import { useState } from 'react';
+import { useFormat } from '@genai/i18n/react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { parseRoute } from '../../hooks';
 import { Icon } from '../../components/Icon';
-import {
-  sourceKeys,
-  statusColors,
-  statusKeys,
-  type DatasetDetails,
-  type DatasetStatus,
-} from '../../data/datasets';
+import { statusColors, statusKeys, type DatasetStatus } from '../../data/datasets';
 import { navigate } from '../../hooks';
-import { useT, type Format, type T } from '../../i18n';
-import { count, datasetHref } from './model';
+import { useT, type T } from '../../i18n';
+import { datasetHref } from './model';
 
-const filters = ['alle', 'Klar', 'Innlesing pågår', 'Delvis lest inn', 'Feilet'] as const;
+const filters = ['all', 'own', 'shared', 'attention'] as const;
+type ListFilter = (typeof filters)[number];
 
-export const matchesFilter = (filter: (typeof filters)[number], status: DatasetStatus) =>
-  filter === 'alle' || status === filter || (filter === 'Klar' && status === 'Utenfor plattformen');
+const filterKeys = {
+  all: 'datasets.filterAll',
+  own: 'datasets.filterOwn',
+  shared: 'datasets.filterShared',
+  attention: 'datasets.filterAttention',
+} as const;
 
-export const sourceOf = (t: T, d: DatasetDetails) =>
-  d.source === 'shared' && d.owner
-    ? t('datasets.sharedBy', { owner: d.owner })
-    : t(sourceKeys[d.source]);
+export const needsAttention = (d: { status: DatasetStatus; needsSource?: boolean }) =>
+  d.status === 'Feilet' || d.status === 'Delvis lest inn' || d.needsSource === true;
+
+export const matchesFilter = (
+  filter: ListFilter,
+  d: Pick<DatasetListItem, 'status' | 'shared' | 'needsSource'>,
+) =>
+  filter === 'all' ||
+  (filter === 'own' && !d.shared) ||
+  (filter === 'shared' && d.shared) ||
+  (filter === 'attention' && needsAttention(d));
+
+const genitive = (name: string) => (/[sxz]$/i.test(name) ? `${name}'` : `${name}s`);
+
+const filterIn = (value: string | null): ListFilter => filters.find((f) => f === value) ?? 'all';
+
+const fromAddress = () => {
+  const query = parseRoute(window.location.hash).query;
+  return { query: query.get('q') ?? '', filter: filterIn(query.get('filter')) };
+};
+
+const keepInAddress = (query: string, filter: ListFilter) => {
+  const route = parseRoute(window.location.hash);
+  const params = new URLSearchParams(route.query);
+  if (query) params.set('q', query);
+  else params.delete('q');
+  if (filter === 'all') params.delete('filter');
+  else params.set('filter', filter);
+  const search = params.toString();
+  window.history.replaceState(
+    window.history.state,
+    '',
+    `#${route.path}${search ? `?${search}` : ''}`,
+  );
+};
 
 export interface DatasetListItem {
   id: string;
   name: string;
   description: string;
   status: DatasetStatus;
+  shared: boolean;
   sourceText: string;
   docsText: string;
   lastText: string;
+  subText?: string;
+  note?: string;
+  needsSource?: boolean;
+  canRetry?: boolean;
+  usedByText?: string | undefined;
 }
 
-export const listItemFor = (t: T, f: Format, d: DatasetDetails): DatasetListItem => ({
-  id: d.id,
-  name: d.name,
-  description: d.description,
-  status: d.status,
-  sourceText: sourceOf(t, d),
-  docsText: count(f, d.docs),
-  lastText:
-    d.status === 'Feilet'
-      ? t('datasets.lastFailed', { last: d.last, lastOk: d.lastOk.toLowerCase() })
-      : d.last,
-});
+const noMatchText = (t: T, total: number, query: string, filter: ListFilter, label: string) => {
+  if (query && filter !== 'all')
+    return t('datasets.noMatchBoth', { count: total, query, filter: label });
+  if (query) return t('datasets.noMatchQuery', { count: total, query });
+  return t('datasets.noMatchFilter', { count: total, filter: label });
+};
 
 export const DatasetList = ({
   datasets,
   canCreate = true,
+  onRetry,
+  pending = false,
+  placeholder,
+  ownerName = '',
 }: {
-  datasets: DatasetListItem[];
+  datasets?: DatasetListItem[] | undefined;
   canCreate?: boolean;
+  onRetry?: (id: string) => Promise<void>;
+  pending?: boolean;
+  placeholder?: ReactNode;
+  ownerName?: string;
 }) => {
   const t = useT();
-  const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState<(typeof filters)[number]>('alle');
+  const { locale } = useFormat();
+  const chipLabel = (f: ListFilter) =>
+    f === 'own' && ownerName
+      ? t('datasets.filterOwnOf', { owner: locale === 'nb' ? genitive(ownerName) : ownerName })
+      : t(filterKeys[f]);
+  const [{ query, filter }, setView] = useState(fromAddress);
+  const [retrying, setRetrying] = useState<string[]>([]);
+  const [retryFailure, setRetryFailure] = useState('');
+  useEffect(() => {
+    const follow = () => {
+      if (parseRoute(window.location.hash).path === '/datasets') setView(fromAddress());
+    };
+    window.addEventListener('hashchange', follow);
+    return () => window.removeEventListener('hashchange', follow);
+  }, []);
+  const show = (next: { query: string; filter: ListFilter }) => {
+    setView(next);
+    keepInAddress(next.query, next.filter);
+  };
   const q = query.trim().toLowerCase();
-  const rows = datasets.filter(
+  const all = datasets ?? [];
+  const rows = all.filter(
     (d) =>
-      matchesFilter(filter, d.status) &&
-      (!q || `${d.name} ${d.description}`.toLowerCase().includes(q)),
+      matchesFilter(filter, d) &&
+      (!q || `${d.name} ${d.description} ${d.sourceText}`.toLowerCase().includes(q)),
   );
-  const failing = datasets.filter((d) => d.status === 'Feilet' || d.status === 'Delvis lest inn');
+  const attention = all.filter(needsAttention).length;
+  const showUse = all.some((d) => d.usedByText !== undefined);
+  const filtered = q !== '' || filter !== 'all';
+
+  const retry = async (d: DatasetListItem) => {
+    if (!onRetry || retrying.includes(d.id)) return;
+    setRetryFailure('');
+    setRetrying((ids) => [...ids, d.id]);
+    try {
+      await onRetry(d.id);
+    } catch (error) {
+      setRetryFailure(
+        t('datasets.retryFailed', {
+          name: d.name,
+          problem: error instanceof Error && error.message ? error.message : '',
+        }).trim(),
+      );
+    } finally {
+      setRetrying((ids) => ids.filter((id) => id !== d.id));
+    }
+  };
 
   return (
     <div className="stack dataset-page">
@@ -88,83 +174,131 @@ export const DatasetList = ({
           </Button>
         ) : null}
       </div>
-      {failing.length > 0 ? (
-        <Alert data-color="warning">
-          {t('datasets.needFollowUp', {
-            count: failing.length,
-            names: failing.map((d) => d.name).join(t('datasets.nameJoin')),
-          })}
-        </Alert>
-      ) : null}
-      <div className="dataset-filters">
-        <Textfield
-          className="dataset-search"
-          label={t('datasets.search')}
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-        <Fieldset>
-          <Fieldset.Legend>{t('datasets.statusLegend')}</Fieldset.Legend>
-          <div className="tag-row">
+      <form role="search" className="dataset-filters" onSubmit={(e) => e.preventDefault()}>
+        <Field className="dataset-search">
+          <Label htmlFor="dataset-q" className="visually-hidden">
+            {t('datasets.search')}
+          </Label>
+          <Input
+            id="dataset-q"
+            type="search"
+            placeholder={t('datasets.searchPlaceholder')}
+            value={query}
+            onChange={(e) => show({ query: e.target.value, filter })}
+          />
+        </Field>
+        {datasets ? (
+          <div role="group" aria-label={t('datasets.showLegend')} className="tag-row dataset-chips">
             {filters.map((f) => (
-              <Chip.Radio
+              <Chip.Button
                 key={f}
-                name="statusfilter"
-                checked={filter === f}
-                onChange={() => setFilter(f)}
+                type="button"
+                aria-pressed={filter === f}
+                onClick={() => show({ query, filter: f })}
               >
-                {f === 'alle' ? t('datasets.filterAll') : t(statusKeys[f])}
-              </Chip.Radio>
+                {f === 'attention'
+                  ? t('datasets.filterAttentionCount', { count: attention })
+                  : chipLabel(f)}
+              </Chip.Button>
             ))}
           </div>
-        </Fieldset>
-      </div>
-      <p aria-live="polite" className="meta count">
-        {t('datasets.showing', { shown: rows.length, total: datasets.length })}
-      </p>
-      {rows.length > 0 ? (
-        <ul className="dataset-rows" aria-label={t('datasets.title')}>
-          {rows.map((d) => (
-            <li key={d.id}>
-              <div className="dataset-row-main">
-                <div className="tag-row">
-                  <a className="dataset-row-name" href={datasetHref(d.id)}>
-                    {d.name}
-                  </a>
-                  <Tag data-size="sm" data-color={statusColors[d.status]}>
-                    {t(statusKeys[d.status])}
-                  </Tag>
-                </div>
-                <span className="meta dataset-row-desc">{d.description}</span>
-              </div>
-              <dl className="dataset-row-facts">
-                <div>
-                  <dt>{t('datasets.factSource')}</dt>
-                  <dd>{d.sourceText}</dd>
-                </div>
-                <div>
-                  <dt>{t('datasets.factDocuments')}</dt>
-                  <dd className="numeric">{d.docsText}</dd>
-                </div>
-                <div>
-                  <dt>{t('datasets.factLastIngestion')}</dt>
-                  <dd>{d.lastText}</dd>
-                </div>
-              </dl>
-            </li>
-          ))}
-        </ul>
+        ) : null}
+      </form>
+      {datasets ? (
+        <p role="status" className="meta count">
+          {filtered
+            ? t('datasets.showing', { shown: rows.length, total: datasets.length })
+            : t('datasets.countAll', { count: datasets.length })}
+        </p>
+      ) : null}
+      {retryFailure ? (
+        <Alert data-color="danger" data-size="sm" role="alert">
+          {retryFailure}
+        </Alert>
+      ) : null}
+      {!datasets ? (
+        placeholder
+      ) : rows.length > 0 ? (
+        <div className="table-scroll" role="region" aria-label={t('datasets.title')} tabIndex={0}>
+          <Table
+            className="dataset-table"
+            aria-label={t('datasets.title')}
+            aria-busy={pending || undefined}
+          >
+            <TableHead>
+              <TableRow>
+                <TableHeaderCell scope="col">{t('datasets.columnDataset')}</TableHeaderCell>
+                <TableHeaderCell scope="col">{t('datasets.columnStatus')}</TableHeaderCell>
+                <TableHeaderCell scope="col" className="numeric right">
+                  {t('datasets.factDocuments')}
+                </TableHeaderCell>
+                <TableHeaderCell scope="col">{t('datasets.columnLastStarted')}</TableHeaderCell>
+                {showUse ? (
+                  <TableHeaderCell scope="col">{t('datasetUse.label')}</TableHeaderCell>
+                ) : null}
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {rows.map((d) => {
+                const busy = retrying.includes(d.id);
+                return (
+                  <TableRow key={d.id}>
+                    <TableCell>
+                      <span className="dataset-cell-name">
+                        <a className="dataset-row-name" href={datasetHref(d.id)}>
+                          {d.name}
+                        </a>
+                        <span className="meta">{d.subText ?? d.sourceText}</span>
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <span className="dataset-cell-status">
+                        <span className="row-wrap">
+                          <Tag data-size="sm" data-color={statusColors[d.status]}>
+                            {t(statusKeys[d.status])}
+                          </Tag>
+                          {d.canRetry && onRetry ? (
+                            <Button
+                              variant="secondary"
+                              data-size="sm"
+                              aria-label={t('datasets.retryNamed', { name: d.name })}
+                              aria-disabled={busy || undefined}
+                              onClick={() => void retry(d)}
+                            >
+                              {busy ? t('datasets.starting') : t('common.tryAgain')}
+                            </Button>
+                          ) : null}
+                        </span>
+                        {d.note ? <span className="meta">{d.note}</span> : null}
+                      </span>
+                    </TableCell>
+                    <TableCell className="numeric right">{d.docsText}</TableCell>
+                    <TableCell>{d.lastText}</TableCell>
+                    {showUse ? (
+                      <TableCell
+                        className={d.usedByText === t('datasetUse.none') ? 'meta' : undefined}
+                      >
+                        {d.usedByText}
+                      </TableCell>
+                    ) : null}
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </div>
       ) : (
         <div className="dataset-no-rows">
-          <span className="dataset-no-rows-title">{t('datasets.noMatch')}</span>
+          <Heading level={2} data-size="xs">
+            {t('datasets.noMatch')}
+          </Heading>
+          <Paragraph data-size="sm">
+            {noMatchText(t, all.length, query.trim(), filter, chipLabel(filter))}
+          </Paragraph>
           <Button
             variant="secondary"
             data-size="sm"
-            onClick={() => {
-              setQuery('');
-              setFilter('alle');
-            }}
+            onClick={() => show({ query: '', filter: 'all' })}
           >
             {t('datasets.resetFilters')}
           </Button>

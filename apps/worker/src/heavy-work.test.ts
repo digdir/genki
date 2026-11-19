@@ -1,4 +1,5 @@
 import {
+  convertPriority,
   InMemoryJobQueue,
   knowledgeBuildQueue,
   knowledgeCheckQueue,
@@ -62,7 +63,7 @@ const deps = (overrides: Partial<HeavyDeps> = {}, at = day) => {
   const worked: string[] = [];
   const concurrency: Record<string, number | undefined> = {};
   const stopped: string[] = [];
-  const retimed: { queues: string[]; startAfter: Date }[] = [];
+  const retimed: { queues: string[]; startAfter: Date; priority?: number }[] = [];
   const scheduled: { queue: string; cron: string; tz: string }[] = [];
   const d: HeavyDeps = {
     server: server(),
@@ -82,8 +83,12 @@ const deps = (overrides: Partial<HeavyDeps> = {}, at = day) => {
           stopped.push(queue.name);
         };
       },
-      retime: async (queues: QueueDefinition[], startAfter: Date) => {
-        retimed.push({ queues: queues.map((q) => q.name), startAfter });
+      retime: async (queues: QueueDefinition[], startAfter: Date, options = {}) => {
+        retimed.push({
+          queues: queues.map((q) => q.name),
+          startAfter,
+          ...(options.priority === undefined ? {} : { priority: options.priority }),
+        });
         return 0;
       },
       schedule: async (queue: QueueDefinition, cron: string, _data, options) => {
@@ -194,10 +199,34 @@ describe('heavy work waits for the night window', () => {
     await window.tick();
     setting = 'always';
     await window.tick();
-    expect(t.retimed).toEqual([
+    expect(t.retimed.filter((r) => r.queues.includes('knowledge.build'))).toEqual([
       { queues: ['knowledge.build', 'knowledge.fill'], startAfter: new Date(nextStart) },
       { queues: ['knowledge.build', 'knowledge.fill'], startAfter: day },
     ]);
+  });
+
+  it("a change of the night window moves waiting replacement convert jobs, and leaves a run's own convert jobs as they are", async () => {
+    let setting = 'always';
+    const t = deps({ window: () => setting });
+    const window = heavyWindow(t.deps, {
+      build: noop(knowledgeBuildQueue),
+      fill: noop(knowledgeFillQueue),
+    });
+    await window.tick();
+    setting = '01:00-06:00';
+    await window.tick();
+    // Only the lowest priority, which only a replacement run's convert jobs are sent at.
+    expect(t.retimed.filter((r) => r.queues.includes('knowledge.convert'))).toEqual([
+      { queues: ['knowledge.convert'], startAfter: day, priority: convertPriority.replacement },
+      {
+        queues: ['knowledge.convert'],
+        startAfter: new Date(nextStart),
+        priority: convertPriority.replacement,
+      },
+    ]);
+    expect(convertPriority.replacement).toBeLessThan(
+      Math.min(convertPriority.upload, convertPriority.run, convertPriority.candidate),
+    );
   });
 
   it("the worker stops taking heavy jobs at the window's end", async () => {

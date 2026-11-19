@@ -443,7 +443,7 @@ export const questions: Record<JobId, string[]> = {
 
 const wordMime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
-const exampleDatasetRef = 'kudos-rapporter';
+const exampleDatasetRef = 'eksempel:kudos-rapporter';
 
 const toolRef = (id: string) => tools.find((t) => t.id === id)?.ref ?? id;
 
@@ -607,7 +607,7 @@ const reportAssistant = example('answers', 'Rapportassistenten', (s) => ({
 
 export const exampleDatasets: Record<string, { name: string; meta: string }> = {
   [exampleDatasetRef]: { name: 'Kudos-rapporter', meta: '48 312 dokumenter' },
-  'veiledere-og-rundskriv': { name: 'Veiledere og rundskriv', meta: '612 dokumenter' },
+  'eksempel:veiledere-og-rundskriv': { name: 'Veiledere og rundskriv', meta: '612 dokumenter' },
 };
 
 export const exampleDefinitions: Record<string, ServiceDefinition> = {
@@ -798,8 +798,8 @@ export const exampleMessages: Record<string, ChatMessage[]> = {
     },
     {
       role: 'assistant',
-      text: 'Vil du prøve noen spørsmål? Testen ligger under fanen Test.',
-      actions: [['a-gotest', 'Åpne testen']],
+      text: 'Vil du prøve noen spørsmål? Prøven ligger under fanen Prøv.',
+      actions: [['a-gotest', 'Åpne prøven']],
     },
   ],
 };
@@ -817,7 +817,7 @@ export const exampleVersions: Record<string, VersionRow[]> = {
   soknadsuttrekk: [
     {
       n: 1,
-      when: '3. oktober kl. 14.20',
+      when: '3. oktober kl. 14:20',
       who: 'Kari Nordmann',
       state: 'I test',
       score: '7 av 10 riktige på prøven',
@@ -830,7 +830,7 @@ export const exampleVersions: Record<string, VersionRow[]> = {
   rapportassistenten: [
     {
       n: 3,
-      when: '1. oktober kl. 09.42',
+      when: '1. oktober kl. 09:42',
       who: 'Kari Nordmann',
       state: 'I bruk',
       score: 'Testsett: 46 av 50 (92 %)',
@@ -838,7 +838,7 @@ export const exampleVersions: Record<string, VersionRow[]> = {
     },
     {
       n: 2,
-      when: '24. september kl. 14.05',
+      when: '24. september kl. 14:05',
       who: 'Kari Nordmann',
       state: 'Tidligere',
       score: 'Testsett: 43 av 50 (86 %)',
@@ -846,7 +846,7 @@ export const exampleVersions: Record<string, VersionRow[]> = {
     },
     {
       n: 1,
-      when: '19. august kl. 11.02',
+      when: '19. august kl. 11:02',
       who: 'Kari Nordmann',
       state: 'Tidligere',
       score: 'Ingen testsett',
@@ -1457,7 +1457,7 @@ export const chatTurn = (draft: Record<string, unknown>, message: string): Assis
   if (/kjør|prøv|test/.test(t))
     return turn(
       'trn_c2',
-      'Åpne fanen Test og prøv tjenesten der. Prøven bruker utkastet, ikke versjonen som er i bruk.',
+      'Åpne fanen Prøv og prøv tjenesten der. Prøven bruker utkastet, ikke versjonen som er i bruk.',
     );
   if (/personvern|strengere|anonym/.test(t)) {
     const ref = tools.find((x) => x.id === 'anonymise')?.ref ?? 'anonymise';

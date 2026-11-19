@@ -89,7 +89,8 @@ export class FileSystemBlobStore implements BlobStore {
       );
       return nested.flat();
     };
-    const files = await walk(metaRoot);
+    const folder = prefix.slice(0, Math.max(prefix.lastIndexOf('/'), 0));
+    const files = await walk(join(metaRoot, ...folder.split('/').filter(Boolean)));
     const infos = await Promise.all(
       files.map(async (f) => JSON.parse(await readFile(f, 'utf8')) as BlobInfo),
     );

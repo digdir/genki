@@ -9,10 +9,10 @@ import {
   Label,
   Paragraph,
   Select,
-  Spinner,
   Tag,
   ValidationMessage,
 } from '@digdir/designsystemet-react';
+import { BusyButton } from '../../components/BusyButton';
 import { useEffect, useId, useState } from 'react';
 import { ApiError, type ApiClient } from '../../api';
 import type {
@@ -27,7 +27,8 @@ import type {
   RegistrationType,
   TenantSecretName,
 } from '../../api/building-blocks';
-import { Crumbs } from '../../components/Crumbs';
+import { BackLink } from '../../components/BackLink';
+import { DataLocationTag } from '../../components/DataLocationTag';
 import { ReasonField, reasonProblem } from '../../components/ReasonField';
 import {
   authOptions,
@@ -37,6 +38,7 @@ import {
   registrationTypes,
 } from '../../data/building-blocks';
 import { navigate } from '../../hooks';
+import type { Residency } from '../../types';
 import { useT, type PlainKey, type T } from '../../i18n';
 import { rightLabel } from '../../Shell';
 import { refusalOf } from '../../states';
@@ -57,7 +59,16 @@ interface Form {
   tokenUrl: string;
   clientId: string;
   scope: string;
+  residency: RegistrationResidency;
 }
+
+export type RegistrationResidency = Residency;
+
+export const residencyOptions: { value: RegistrationResidency; label: PlainKey }[] = [
+  { value: 'norway', label: 'blockRegister.residencyNorway' },
+  { value: 'eu', label: 'blockRegister.residencyEu' },
+  { value: 'global', label: 'blockRegister.residencyGlobal' },
+];
 
 const emptyForm: Form = {
   type: 'mcp',
@@ -72,6 +83,7 @@ const emptyForm: Form = {
   tokenUrl: '',
   clientId: '',
   scope: '',
+  residency: 'norway',
 };
 
 const needsUrl = (type: RegistrationType) =>
@@ -82,6 +94,12 @@ const usesSecret = (form: Form) =>
   form.type !== 'skill_package' &&
   (form.auth === 'api-key' || form.auth === 'oauth-client-credentials');
 const httpsUrl = /^https:\/\/.+/;
+
+const typeShort: Partial<Record<RegistrationType, string>> = {
+  mcp: 'MCP',
+  openapi: 'API',
+  a2a: 'A2A',
+};
 
 const authOf = (form: Form): RegistrationAuth =>
   form.auth === 'api-key'
@@ -110,6 +128,7 @@ export const agentCardUrl = (address: string) => {
 const toDraft = (form: Form): RegistrationInput => ({
   type: form.type,
   name: form.name.trim(),
+  ...(form.type === 'skill_package' ? {} : { residency: form.residency }),
   ...(needsUrl(form.type)
     ? { endpoint: form.type === 'a2a' ? agentCardUrl(form.url) : form.url.trim() }
     : {}),
@@ -212,6 +231,8 @@ export const RegisterBlock = ({
 }) => {
   const t = useT();
   const ids = {
+    residency: useId(),
+    residencyHelp: useId(),
     name: useId(),
     url: useId(),
     urlHelp: useId(),
@@ -323,6 +344,17 @@ export const RegisterBlock = ({
   const passed = !!result && result.every((test) => test.passed);
   const failures = result?.filter((test) => !test.passed).length ?? 0;
   const typeInfo = registrationTypes.find((rt) => rt.type === form.type);
+  const toolCount =
+    form.type === 'openapi' && operations ? operations.filter(selected).length : undefined;
+  const previewMeta = [
+    t('blockRegister.previewConnected', {
+      tenant: tenantName,
+      type: typeShort[form.type] ?? t(typeInfo?.label ?? 'blocks.kindOneTool'),
+    }),
+    toolCount === undefined ? '' : t('blockRegister.previewTools', { count: toolCount }),
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   const runTest = async () => {
     if (testing) return;
@@ -385,21 +417,14 @@ export const RegisterBlock = ({
     change({ file: { name: file.name, content } });
   };
 
-  const crumbs = (
-    <Crumbs
-      items={[
-        { label: t('blocks.title'), href: '#/building-blocks' },
-        { label: t('blocks.addOwn') },
-      ]}
-    />
-  );
+  const crumbs = <BackLink label={t('blocks.title')} href="#/building-blocks" />;
 
   if (!canRegister)
     return (
       <div className="stack">
         {crumbs}
         <Heading level={1} data-size="md">
-          {t('blocks.addOwn')}
+          {t('blockPages.register')}
         </Heading>
         <Alert data-color="info">
           <Paragraph>
@@ -414,7 +439,7 @@ export const RegisterBlock = ({
       {crumbs}
       <div className="bb-intro">
         <Heading level={1} data-size="md">
-          {t('blocks.addOwn')}
+          {t('blockPages.register')}
         </Heading>
         <p className="lead">{t('blocks.registerLead', { tenant: tenantName })}</p>
       </div>
@@ -424,34 +449,31 @@ export const RegisterBlock = ({
           {t('blocks.whatToAdd')}
         </legend>
         <div className="bb-types">
-          {registrationTypes.map((rt) => (
-            <label key={rt.type} className={`bb-type${form.type === rt.type ? ' selected' : ''}`}>
-              <input
-                className="ds-input"
-                type="radio"
-                name="bb-reg-type"
-                checked={form.type === rt.type}
-                onChange={() => {
-                  change({
-                    type: rt.type,
-                    ...(authUnavailableKey(rt.type, form.auth)
-                      ? { auth: defaultAuthFor(rt.type) }
-                      : {}),
-                  });
-                  setTried(false);
-                }}
-              />
-              <span className="bb-type-text">
-                <span className="bb-strong">{t(rt.label)}</span>
-                <span className="bb-meta">{t(rt.description)}</span>
-                {rt.notDecided ? (
-                  <Tag data-size="sm" data-color="warning" className="bb-start">
-                    {t('blocks.apiNotDecided')}
-                  </Tag>
-                ) : null}
-              </span>
-            </label>
-          ))}
+          {registrationTypes
+            .filter((rt) => !rt.notDecided)
+            .map((rt) => (
+              <label key={rt.type} className={`bb-type${form.type === rt.type ? ' selected' : ''}`}>
+                <input
+                  className="ds-input"
+                  type="radio"
+                  name="bb-reg-type"
+                  checked={form.type === rt.type}
+                  onChange={() => {
+                    change({
+                      type: rt.type,
+                      ...(authUnavailableKey(rt.type, form.auth)
+                        ? { auth: defaultAuthFor(rt.type) }
+                        : {}),
+                    });
+                    setTried(false);
+                  }}
+                />
+                <span className="bb-type-text">
+                  <span className="bb-strong">{t(rt.label)}</span>
+                  <span className="bb-meta">{t(rt.description)}</span>
+                </span>
+              </label>
+            ))}
         </div>
       </fieldset>
 
@@ -689,22 +711,35 @@ export const RegisterBlock = ({
               })}
             </Fieldset>
           ) : null}
+          {form.type === 'skill_package' ? null : (
+            <Field>
+              <Label htmlFor={ids.residency}>{t('blockRegister.residency')}</Label>
+              <span className="bb-help" id={ids.residencyHelp}>
+                {t('blockRegister.residencyHelp')}
+              </span>
+              <Select
+                id={ids.residency}
+                aria-describedby={ids.residencyHelp}
+                value={form.residency}
+                onChange={(e) => change({ residency: e.target.value as RegistrationResidency })}
+              >
+                {residencyOptions.map((o) => (
+                  <Select.Option key={o.value} value={o.value}>
+                    {t(o.label)}
+                  </Select.Option>
+                ))}
+              </Select>
+            </Field>
+          )}
           <div className="actions">
-            <Button
+            <BusyButton
               variant="secondary"
-              aria-disabled={testing || undefined}
+              busy={testing}
+              busyLabel={t('blocks.runningContract')}
               onClick={() => void runTest()}
             >
               {result ? t('blocks.runContractAgain') : t('blocks.runContract')}
-            </Button>
-            <span role="status" className="bb-status">
-              {testing ? (
-                <>
-                  <Spinner aria-hidden="true" data-size="xs" />
-                  {t('blocks.runningContract')}
-                </>
-              ) : null}
-            </span>
+            </BusyButton>
           </div>
           {result && !testing ? (
             <div className={`bb-result ${passed ? 'passed' : 'failed'}`}>
@@ -741,15 +776,29 @@ export const RegisterBlock = ({
             </div>
           </section>
           <section aria-labelledby={ids.manifest} className="stack-sm">
-            <div className="bb-stack-xs">
-              <Heading level={2} data-size="xs" id={ids.manifest}>
-                {t('blocks.manifest')}
-              </Heading>
-              <span className="bb-meta">{t('blocks.manifestNote')}</span>
+            <Heading level={2} data-size="xs" id={ids.manifest}>
+              {t('blockRegister.previewTitle')}
+            </Heading>
+            <div className="bb-boxed stack-xs">
+              <div className="bb-row-head">
+                <strong>{draft.name || t('blockRegister.previewUnnamed')}</strong>
+                {form.type === 'skill_package' ? null : (
+                  <DataLocationTag location={form.residency} />
+                )}
+              </div>
+              <span className="bb-meta">{previewMeta}</span>
+              {form.type === 'openapi' && operations?.length ? (
+                <ul className="bb-list">
+                  {operations.filter(selected).map((tool) => (
+                    <li key={tool.name}>
+                      {t(tool.readOnly ? 'blockRegister.toolReads' : 'blockRegister.toolChanges', {
+                        name: tool.description ?? tool.name,
+                      })}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
             </div>
-            <pre className="bb-manifest" tabIndex={0} aria-label={t('blocks.manifest')}>
-              <code>{preview?.manifest ?? ''}</code>
-            </pre>
           </section>
         </div>
       </div>

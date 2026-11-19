@@ -9,6 +9,7 @@ import type {
   PlaygroundServiceVersion,
   PlaygroundSetup,
   PlaygroundSource,
+  PlaygroundStrategy,
   PlaygroundVariant,
   PlaygroundStreamEvent,
   RunStats,
@@ -16,6 +17,7 @@ import type {
 import { createFormat, type Format } from '@genai/i18n';
 import { notPricedLabel } from '../format';
 import { translator, type PlainKey, type T } from '../i18n';
+import type { CatalogModel } from '../api/models';
 import type { Residency, TimelineStep } from '../types';
 
 const nbFormat = createFormat('nb');
@@ -27,12 +29,31 @@ export const decisionQuestion =
   'Eksempel IL søker om 120 000 kr til nytt øvingslokale. Alle vilkår er oppfylt. Lag et vedtak.';
 export const phoneQuestion = 'Hva står det i årsrapporten om ventetid på telefon?';
 
-const draftOf = (setup: PlaygroundServiceVersion['setup'], version: number) => ({
+const draftOf = (
+  setup: PlaygroundServiceVersion['setup'],
+  version: number,
+  strategy: PlaygroundStrategy,
+) => ({
   latestVersion: version - 1,
   versions: [
-    { version, draft: true, inUse: false, setup },
-    { version: version - 1, draft: false, inUse: true, setup },
+    { version, draft: true, inUse: false, setup, strategy },
+    { version: version - 1, draft: false, inUse: true, setup, strategy },
   ],
+});
+
+const agentLoop: PlaygroundStrategy = {
+  id: 'agent-loop',
+  version: 1,
+  title: { nb: 'Agent (søker selv)', en: 'Agent (searches by itself)' },
+  takesInstructions: true,
+};
+
+const stepFlow = (id: string, version: number, nb: string, en: string): PlaygroundStrategy => ({
+  id: 'step-flow',
+  version: 1,
+  title: { nb: 'Fast stegflyt', en: 'Fixed step flow' },
+  takesInstructions: false,
+  flow: { ref: `${id}@${version}`, id, version, title: { nb, en } },
 });
 
 export const examplePlaygroundOptions: PlaygroundOptions = {
@@ -45,12 +66,13 @@ export const examplePlaygroundOptions: PlaygroundOptions = {
       ...draftOf(
         {
           model: 'aivar/borealis-27b',
-          datasets: ['digdir/kudos', '999888777/nettsider'],
+          datasets: ['digdir/kudos'],
           skills: [],
           blocks: ['hybridsok', 'rangering', 'personvernfilter', 'kildekrav'],
           output: 'text',
         },
-        4,
+        8,
+        agentLoop,
       ),
     },
     {
@@ -65,6 +87,7 @@ export const examplePlaygroundOptions: PlaygroundOptions = {
           output: 'fields',
         },
         2,
+        stepFlow('les-soknad', 2, 'Les søknaden', 'Read the application'),
       ),
     },
     {
@@ -79,17 +102,31 @@ export const examplePlaygroundOptions: PlaygroundOptions = {
           output: 'fields',
         },
         6,
+        stepFlow('postsortering-flyt', 1, 'Sorter posten', 'Sort the mail'),
       ),
     },
   ],
   models: [
-    { id: 'aivar/borealis-27b', name: 'Borealis-27B', dataLocation: 'norway', status: 'allowed' },
-    { id: 'aivar/qwen3-8', name: 'Qwen3.8-27B', dataLocation: 'norway', status: 'allowed' },
+    {
+      id: 'aivar/borealis-27b',
+      name: 'Borealis-27B',
+      dataLocation: 'norway',
+      status: 'allowed',
+      price: { inputPerThousand: 0.0119, outputPerThousand: 0.0952 },
+    },
+    {
+      id: 'aivar/qwen3-8',
+      name: 'Qwen3.8-27B',
+      dataLocation: 'norway',
+      status: 'allowed',
+      price: { inputPerThousand: 0.0076, outputPerThousand: 0.0459 },
+    },
     {
       id: 'foundry-openai/gpt-4.1',
       name: 'GPT-4.1 (Azure OpenAI)',
       dataLocation: 'eu',
       status: 'requires_approval',
+      price: { inputPerThousand: 0.0184, outputPerThousand: 0.0736 },
       policy: {
         block: 'foundry-openai/gpt-4.1',
         rule: 'Data behandles i EU/EØS, men ikke i Norge. Digdir må godkjenne at Testetaten tar modellen i bruk før den kan prøves her.',
@@ -102,6 +139,7 @@ export const examplePlaygroundOptions: PlaygroundOptions = {
       name: 'GPT-5 (OpenAI)',
       dataLocation: 'global',
       status: 'not_allowed',
+      price: null,
       policy: {
         block: 'openai/gpt-5',
         rule: 'Regelen er at data skal behandles i Norge eller EU/EØS. GPT-5 behandler data i USA. Regelen er plattforminnstillingen «Tillatt datalagring», som Digdir eier. Digdir kan endre den, og administratorer hos dere kan be Digdir om et unntak. Det gjelder også i prøveområdet.',
@@ -426,12 +464,68 @@ const source = (chunkId: string, title: string, document: string, page: number, 
 
 const decimal = (n: number) => n.toFixed(2).replace('.', ',');
 
+type StepLanguage = 'nb' | 'en';
+
+const stepWords = {
+  nb: {
+    trigger: 'Spørsmål i prøveområdet',
+    received: 'Oppgaven ble mottatt',
+    plan: 'Planla søket',
+    planned: (n: number, list: string) => `Genererte ${n} søk: ${list}`,
+    searches: 'Søk',
+    search: 'Søk',
+    hits: (n: number) => `${n} treff`,
+    best: 'Beste treff',
+    relevance: (n: string) => `relevans ${n}`,
+    note: 'Søkemerknad',
+    skipped: (n: number) => `${n} dokumenter hoppet over`,
+    skippedBy: 'Søkemotoren hoppet over',
+    read: (n: number) => `Leste ${n} tekstbiter`,
+    from: (n: number) => `fra ${n} ${n === 1 ? 'dokument' : 'dokumenter'}`,
+    readFile: 'Leste filen',
+    pages: '4 sider',
+    model: 'Modellkall',
+    modelLabel: 'Modell',
+    inOut: (i: string, o: string) => `${i} inn, ${o} ut`,
+    answer: 'Svar',
+    withSources: (n: number) => `Svar med ${n} ${n === 1 ? 'kilde' : 'kilder'}`,
+    delivered: 'Svaret ble levert',
+  },
+  en: {
+    trigger: 'Question in the playground',
+    received: 'The task was received',
+    plan: 'Planned the search',
+    planned: (n: number, list: string) =>
+      `Generated ${n} ${n === 1 ? 'search' : 'searches'}: ${list}`,
+    searches: 'Searches',
+    search: 'Search',
+    hits: (n: number) => `${n} hits`,
+    best: 'Best hits',
+    relevance: (n: string) => `relevance ${n}`,
+    note: 'Search note',
+    skipped: (n: number) => `${n} documents skipped`,
+    skippedBy: 'The search engine skipped',
+    read: (n: number) => `Read ${n} chunks`,
+    from: (n: number) => `from ${n} ${n === 1 ? 'document' : 'documents'}`,
+    readFile: 'Read the file',
+    pages: '4 pages',
+    model: 'Model call',
+    modelLabel: 'Model',
+    inOut: (i: string, o: string) => `${i} in, ${o} out`,
+    answer: 'Answer',
+    withSources: (n: number) => `Answer with ${n} ${n === 1 ? 'source' : 'sources'}`,
+    delivered: 'The answer was delivered',
+  },
+};
+
 const exampleSteps = (
   result: PlaygroundResult,
   question: string,
   modelName: string,
   extract: boolean,
+  language: StepLanguage,
 ): { steps: TimelineStep[]; stats: RunStats } => {
+  const w = stepWords[language];
   const total = result.timeMs / 1000;
   const sources = result.sources;
   const documents = new Set(sources.map((s) => s.title ?? s.chunkId)).size;
@@ -439,8 +533,8 @@ const exampleSteps = (
     {
       id: 'e0',
       type: 'trigger',
-      title: 'Spørsmål i prøveområdet',
-      summary: 'Oppgaven ble mottatt',
+      title: w.trigger,
+      summary: w.received,
       at: 0,
       blocks: question ? [{ kind: 'quote', text: question }] : [],
     },
@@ -451,30 +545,30 @@ const exampleSteps = (
       {
         id: 'e1',
         type: 'plan',
-        title: 'Planla søket',
-        summary: `Genererte ${queries.length} søk: ${queries.map((q) => `«${q}»`).join(', ')}`,
+        title: w.plan,
+        summary: w.planned(queries.length, queries.map((q) => `«${q}»`).join(', ')),
         at: 0.1,
         durationSeconds: 0.4,
         tokens: 220,
         model: modelName,
-        blocks: [{ kind: 'list', label: 'Søk', items: queries }],
+        blocks: [{ kind: 'list', label: w.searches, items: queries }],
         raw: { kind: 'plan', queries },
       },
       {
         id: 'e2',
         type: 'search',
-        title: 'Søk',
-        summary: `«${queries[0]}» · ${sources.length * 4 + 2} treff`,
+        title: w.search,
+        summary: `«${queries[0]}» · ${w.hits(sources.length * 4 + 2)}`,
         at: 0.5,
         durationSeconds: 0.3,
         blocks: [
           { kind: 'quote', text: queries[0] ?? '' },
           {
             kind: 'list',
-            label: 'Beste treff',
+            label: w.best,
             items: sources.map((s): [string, string] => [
               sourceTitle(s),
-              s.score === undefined ? '' : `relevans ${decimal(s.score)}`,
+              s.score === undefined ? '' : w.relevance(decimal(s.score)),
             ]),
           },
         ],
@@ -485,14 +579,14 @@ const exampleSteps = (
       steps.push({
         id: 'e3',
         type: 'searchnote',
-        title: 'Søkemerknad',
-        summary: `${result.searchNotes.length} dokumenter hoppet over`,
+        title: w.note,
+        summary: w.skipped(result.searchNotes.length),
         at: 0.8,
         warning: true,
         blocks: [
           {
             kind: 'list',
-            label: 'Søkemotoren hoppet over',
+            label: w.skippedBy,
             items: result.searchNotes.map((n): [string, string] => [n.document, n.reason]),
           },
         ],
@@ -500,8 +594,8 @@ const exampleSteps = (
     steps.push({
       id: 'e4',
       type: 'read',
-      title: `Leste ${sources.length * 3} tekstbiter`,
-      summary: `fra ${documents} ${documents === 1 ? 'dokument' : 'dokumenter'}`,
+      title: w.read(sources.length * 3),
+      summary: w.from(documents),
       at: 0.8,
       durationSeconds: 0.2,
       blocks: [],
@@ -511,8 +605,8 @@ const exampleSteps = (
     steps.push({
       id: 'e4',
       type: 'read',
-      title: 'Leste filen',
-      summary: '4 sider',
+      title: w.readFile,
+      summary: w.pages,
       at: 0.1,
       durationSeconds: 0.5,
       blocks: [],
@@ -522,8 +616,8 @@ const exampleSteps = (
     {
       id: 'e5',
       type: 'model',
-      title: 'Modellkall',
-      summary: `${modelName} · ${formatCount(result.tokensIn)} inn, ${formatCount(result.tokensOut)} ut`,
+      title: w.model,
+      summary: `${modelName} · ${w.inOut(formatCount(result.tokensIn), formatCount(result.tokensOut))}`,
       at: modelAt,
       durationSeconds: Math.round((total - modelAt) * 10) / 10,
       tokens: result.tokensIn + result.tokensOut,
@@ -532,8 +626,8 @@ const exampleSteps = (
         {
           kind: 'kv',
           rows: [
-            ['Modell', modelName],
-            ['Tokens', `${formatCount(result.tokensIn)} inn, ${formatCount(result.tokensOut)} ut`],
+            [w.modelLabel, modelName],
+            ['Tokens', w.inOut(formatCount(result.tokensIn), formatCount(result.tokensOut))],
           ],
         },
       ],
@@ -541,10 +635,8 @@ const exampleSteps = (
     {
       id: 'e6',
       type: 'result',
-      title: 'Svar',
-      summary: sources.length
-        ? `Svar med ${sources.length} ${sources.length === 1 ? 'kilde' : 'kilder'}`
-        : 'Svaret ble levert',
+      title: w.answer,
+      summary: sources.length ? w.withSources(sources.length) : w.delivered,
       at: total,
       blocks: [],
     },
@@ -576,6 +668,7 @@ export const exampleResult = (
   setup: PlaygroundSetup,
   input: PlaygroundInput,
   runId = `tp${++runCounter}`,
+  language: StepLanguage = 'nb',
 ): PlaygroundResult => {
   const model = modelOf(options, setup.model);
   const facts = modelFacts[setup.model] ?? { pricePer1k: 0.1, seconds: 3 };
@@ -665,7 +758,7 @@ export const exampleResult = (
   };
   return {
     ...base,
-    ...exampleSteps(base, question, modelName, setup.output === 'fields'),
+    ...exampleSteps(base, question, modelName, setup.output === 'fields', language),
   };
 };
 
@@ -678,8 +771,9 @@ const chunksOf = (text: string, size = 40) => {
 export const exampleStreamEvents = (
   options: PlaygroundOptions,
   request: PlaygroundRunRequest,
+  language: StepLanguage = 'nb',
 ): PlaygroundStreamEvent[] => {
-  const response = exampleRun(options, request);
+  const response = exampleRun(options, request, language);
   const { compare, quota, ...first } = response;
   const runs: ['setup' | 'compareWith', PlaygroundResult][] = [
     ['setup', first],
@@ -717,10 +811,11 @@ export const sseOf = (events: PlaygroundStreamEvent[]) =>
 export const exampleRun = (
   options: PlaygroundOptions,
   request: PlaygroundRunRequest,
+  language: StepLanguage = 'nb',
 ): PlaygroundRunResponse => ({
-  ...exampleResult(options, request.setup, request.input),
+  ...exampleResult(options, request.setup, request.input, undefined, language),
   ...(request.compareWith
-    ? { compare: exampleResult(options, request.compareWith, request.input) }
+    ? { compare: exampleResult(options, request.compareWith, request.input, undefined, language) }
     : {}),
   quota: options.quota,
 });
@@ -729,3 +824,238 @@ export const quotaTokensText = (tokens: number, f: Format = nbFormat, t: T = nbT
   tokens >= 1_000_000
     ? t('playground.quotaMillions', { value: formatCount(tokens / 1_000_000, f) })
     : t('playground.quotaTokens', { value: formatCount(tokens, f) });
+
+const versionKeyOf = (v: { version: number; draft: boolean }) =>
+  v.draft ? 'draft' : String(v.version);
+
+export const emptyStart = '';
+
+export const startKeyOf = (setup: PlaygroundSetup) =>
+  setup.service
+    ? `${encodeURIComponent(setup.service.id)}/${String(setup.service.version)}`
+    : emptyStart;
+
+export const startChoices = (options: PlaygroundOptions, t: T = nbT) => [
+  ...options.services.flatMap((service) =>
+    service.versions.map((version) => ({
+      key: `${encodeURIComponent(service.id)}/${versionKeyOf(version)}`,
+      label: version.draft
+        ? t('playground.startDraft', { name: service.name })
+        : t('playground.startVersion', { name: service.name, version: version.version }),
+    })),
+  ),
+  { key: emptyStart, label: t('playground.startEmpty') },
+];
+
+export const startLabel = (options: PlaygroundOptions, setup: PlaygroundSetup, t: T = nbT) =>
+  startChoices(options, t).find((c) => c.key === startKeyOf(setup))?.label ??
+  t('playground.startEmpty');
+
+export const setupFromStart = (
+  options: PlaygroundOptions,
+  key: string,
+  current: PlaygroundSetup,
+): PlaygroundSetup => {
+  const [id, version] = key.split('/');
+  const service = id ? options.services.find((s) => s.id === decodeURIComponent(id)) : undefined;
+  const chosen = service?.versions.find((v) => versionKeyOf(v) === version);
+  const fromService = service && chosen ? serviceSetup(options, service.id, chosen) : undefined;
+  return (
+    fromService ?? {
+      model: current.model,
+      datasets: [],
+      skills: [],
+      blocks: options.defaultBlocks ?? [],
+      output: 'text',
+    }
+  );
+};
+
+const startModel = (options: PlaygroundOptions, setup: PlaygroundSetup) =>
+  variantOf(options, setup)?.model ?? versionOf(options, setup)?.version.setup.model;
+
+export type SetupChange =
+  | { kind: 'model'; to: string }
+  | { kind: 'instructions' }
+  | { kind: 'dataset'; id: string; on: boolean };
+
+export const instructionsChanged = (setup: PlaygroundSetup, base: string | undefined) =>
+  setup.instructions !== undefined &&
+  setup.instructions.trim() !== '' &&
+  setup.instructions !== (base ?? '');
+
+export const changedFromStart = (
+  options: PlaygroundOptions,
+  setup: PlaygroundSetup,
+  base?: string,
+): SetupChange[] => {
+  const found = versionOf(options, setup);
+  if (!found) return [];
+  const model = startModel(options, setup);
+  const before = found.version.setup.datasets;
+  return [
+    ...(model !== undefined && model !== setup.model
+      ? [{ kind: 'model' as const, to: setup.model }]
+      : []),
+    ...(instructionsChanged(setup, base) ? [{ kind: 'instructions' as const }] : []),
+    ...setup.datasets
+      .filter((d) => !before.includes(d))
+      .map((id) => ({ kind: 'dataset' as const, id, on: true })),
+    ...before
+      .filter((d) => !setup.datasets.includes(d))
+      .map((id) => ({ kind: 'dataset' as const, id, on: false })),
+  ];
+};
+
+export const changeText = (options: PlaygroundOptions, change: SetupChange, t: T = nbT) =>
+  change.kind === 'model'
+    ? t('playground.changeModel', { name: shortModelName(modelOf(options, change.to).name) })
+    : change.kind === 'instructions'
+      ? t('playground.changeInstructions')
+      : t(change.on ? 'playground.changeDatasetOn' : 'playground.changeDatasetOff', {
+          name: nameIn(options.datasets, change.id),
+        });
+
+export const startWord = (options: PlaygroundOptions, setup: PlaygroundSetup, t: T = nbT) => {
+  const found = versionOf(options, setup);
+  if (!found) return t('playground.startEmpty').toLowerCase();
+  return found.version.draft
+    ? t('playground.fromDraft')
+    : t('playground.fromVersion', { version: found.version.version });
+};
+
+export const changesLine = (
+  options: PlaygroundOptions,
+  setup: PlaygroundSetup,
+  base: string | undefined,
+  t: T = nbT,
+) => {
+  const changes = changedFromStart(options, setup, base);
+  return changes.length
+    ? t('playground.changesFromStart', {
+        count: changes.length,
+        start: startWord(options, setup, t),
+        list: changes.map((c) => changeText(options, c, t)).join(', '),
+      })
+    : undefined;
+};
+
+export const strategyOf = (options: PlaygroundOptions, setup: PlaygroundSetup) =>
+  variantOf(options, setup)?.strategy ?? versionOf(options, setup)?.version.strategy;
+
+export const takesInstructions = (options: PlaygroundOptions, setup: PlaygroundSetup) =>
+  strategyOf(options, setup)?.takesInstructions !== false;
+
+export const workText = (
+  strategy: PlaygroundStrategy,
+  language: 'nb' | 'en',
+  t: T = nbT,
+  short = false,
+) => {
+  const title = strategy.title[language];
+  const flow = strategy.flow;
+  if (!flow) return title;
+  const name = flow.title[language];
+  return short
+    ? t('playground.workFlowShort', { flow: name, version: flow.version })
+    : t('playground.workFlow', { strategy: title, flow: name, version: flow.version });
+};
+
+const kroner = { minimumFractionDigits: 2, maximumFractionDigits: 2 };
+
+export const priceText = (model: PlaygroundModelOption, f: Format = nbFormat, t: T = nbT) =>
+  model.price
+    ? t('playground.pricePerMillion', {
+        input: f.number(model.price.inputPerThousand * 1000, kroner),
+        output: f.number(model.price.outputPerThousand * 1000, kroner),
+      })
+    : notPricedLabel(t);
+
+export type SetupPart = 'model' | 'instructions' | 'knowledge';
+
+const sameList = (x: string[], y: string[]) =>
+  x.length === y.length && x.every((v) => y.includes(v));
+
+export const effectiveInstructions = (setup: PlaygroundSetup, base: string | undefined) =>
+  setup.instructions !== undefined && setup.instructions.trim() !== ''
+    ? setup.instructions
+    : (base ?? '');
+
+export const setupDifferences = (
+  a: PlaygroundSetup,
+  b: PlaygroundSetup,
+  baseA?: string,
+  baseB?: string,
+): SetupPart[] => [
+  ...(a.model === b.model ? [] : ['model' as const]),
+  ...(effectiveInstructions(a, baseA) === effectiveInstructions(b, baseB)
+    ? []
+    : ['instructions' as const]),
+  ...(sameList(a.datasets, b.datasets) ? [] : ['knowledge' as const]),
+];
+
+export const sentenceCount = (text: string) => {
+  let count = 0;
+  let open = false;
+  for (const char of text) {
+    if (char === '.' || char === '!' || char === '?') {
+      if (open) count += 1;
+      open = false;
+    } else if (char.trim()) open = true;
+  }
+  return count + (open ? 1 : 0);
+};
+
+export const pickerModelsOf = (
+  options: PlaygroundOptions,
+  catalog: CatalogModel[] = [],
+  t: T = nbT,
+): CatalogModel[] =>
+  options.models.map((m) => {
+    const known = catalog.find((c) => c.id === m.id);
+    const name = known?.name ?? m.name;
+    return {
+      capabilities: [],
+      ...known,
+      id: m.id,
+      name: m.candidate ? t('playground.candidateName', { name }) : name,
+      residency: known?.residency ?? m.dataLocation,
+      available: m.status === 'allowed',
+      ...(m.status === 'allowed' ? {} : { reason: m.status }),
+    };
+  });
+
+export interface TimelineBar {
+  step: TimelineStep;
+  left: number;
+  width: number;
+}
+
+export const timelineBars = (steps: TimelineStep[]): TimelineBar[] => {
+  const total = Math.max(0, ...steps.map((s) => s.at + (s.durationSeconds ?? 0)));
+  const share = (n: number) => (total > 0 ? Math.min(100, (n / total) * 100) : 0);
+  return steps.map((step) => {
+    const left = share(Math.max(0, step.at));
+    return {
+      step,
+      left,
+      width: Math.max(1, Math.min(100 - left, share(step.durationSeconds ?? 0))),
+    };
+  });
+};
+
+export const timedSteps = (steps: TimelineStep[]) =>
+  steps.filter((s) => (s.durationSeconds ?? 0) > 0);
+
+export const withInstructions = (setup: PlaygroundSetup, text: string): PlaygroundSetup => {
+  const next = { ...setup };
+  delete next.instructions;
+  return text.trim() || setup.service ? { ...next, instructions: text } : next;
+};
+
+export const runnableSetup = (setup: PlaygroundSetup): PlaygroundSetup => {
+  if (setup.instructions === undefined || setup.instructions.trim()) return setup;
+  const next = { ...setup };
+  delete next.instructions;
+  return next;
+};

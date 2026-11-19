@@ -1,0 +1,37 @@
+title: Se forbruk og kostnad
+language: nb-NO
+voice: nb-NO-PernilleNeural
+viewport: [1280, 720]
+start: https://portal.genki-test.digdir.cloud/#/statistics
+signedIn: true
+ready: Forbruk over tid
+steps:
+  - say: Under Statistikk ser virksomheten hva KI-tjenestene bruker, og hva det koster, uten å vente på fakturaen.
+    hold: 1
+  - say: Øverst står månedens beregnede kostnad og hva den ventes å bli ved slutten av måneden.
+    do:
+      - [find, text, Beregnet kostnad i, hover]
+    hold: 1
+  - say: Her ser dere også hvor stor del av dataene som ble behandlet i Norge, ut fra hvor hver modell kjører.
+    do:
+      - [find, text, Behandlet i Norge, hover]
+    hold: 1
+  - say: Grafen viser forbruket over tid. Vi ser på de siste seks månedene.
+    do:
+      - [select, '.usage-chart-head select', six]
+      - [find, role, heading, hover, --name, Forbruk over tid]
+    hold: 1.5
+  - say: Tabellen fordeler tokens og kostnad på hver tjeneste, så dere ser hvilke tjenester som bruker mest.
+    do:
+      - [find, role, heading, hover, --name, Fordelt på tjeneste]
+    hold: 1
+  - say: Vi kan også fordele på modell. Da ser dere hva hver modell koster, og hvor den behandler dataene.
+    do:
+      - [find, role, radio, click, --name, Modell, --exact]
+      - [find, role, heading, hover, --name, Fordelt på modell]
+    hold: 1.5
+  - say: Tallene kan lastes ned som regneark eller JSON, for egen rapportering og budsjett.
+    do:
+      - [find, role, button, hover, --name, Eksporter]
+  - say: Kostnaden er et anslag ut fra prisen per modell. Når kvoten er brukt opp, stopper nye kjøringer, så regningen aldri løper løpsk.
+    hold: 2

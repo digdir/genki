@@ -14,6 +14,7 @@ const item = (over: Partial<DatasetListItem>): DatasetListItem => ({
   name: 'Veiledere',
   description: 'Veiledere for søkere',
   status: 'Klar',
+  shared: false,
   sourceText: 'Opplastede filer',
   docsText: '12',
   lastText: '1. oktober',
@@ -30,10 +31,11 @@ describe('datasets in English', () => {
       ),
     );
     expect(screen.getByRole('heading', { level: 1, name: 'Datasets' })).toBeTruthy();
-    expect(screen.getByText('1 dataset needs attention: Nettsider.')).toBeTruthy();
-    expect(screen.getByText('Showing 2 of 2 datasets')).toBeTruthy();
-    expect(screen.getAllByText('Ready').length).toBeGreaterThan(1);
-    expect(screen.getAllByText('Failed').length).toBeGreaterThan(0);
+    expect(screen.getByText('2 datasets')).toBeTruthy();
+    expect(screen.getByRole('columnheader', { name: 'Last ingestion started' })).toBeTruthy();
+    expect(screen.getByText('Ready')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Needs attention (1)' })).toBeTruthy();
+    expect(screen.getAllByText('Ingestion failed').length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: 'New dataset' })).toBeTruthy();
   });
 

@@ -1,5 +1,5 @@
-/* The building blocks step and its preview use the whole column, wherever they are shown. */
-.main-inner:has(.blocks-split, .blocks-fullscreen) {
+/* Only the full-screen preview widens the page; the split keeps the service page's column. */
+.main-inner:has(.blocks-fullscreen) {
   max-width: none;
 }
 

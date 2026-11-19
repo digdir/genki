@@ -37,10 +37,9 @@ const recording = (base: typeof globalThis.fetch = mockFetch()) => {
 };
 
 const newFlow = async (fetch?: typeof globalThis.fetch) => {
-  await renderAt('#/step-flows', fetch);
-  await screen.findByRole('heading', { level: 1, name: 'Stegflyter' });
-  fireEvent.click(screen.getByRole('button', { name: 'Ny stegflyt' }));
-  await screen.findByRole('heading', { level: 1, name: 'Arbeidsmåte' });
+  await renderAt('#/developer/step-flows', fetch);
+  fireEvent.click(await screen.findByRole('link', { name: 'Ny stegflyt' }));
+  await screen.findByRole('heading', { level: 1, name: 'Ny stegflyt' });
 };
 
 const addStep = (name: RegExp) => {
@@ -63,11 +62,13 @@ const addImageStep = async () => {
 };
 
 describe('a new step flow', () => {
-  it('opens under the step flows breadcrumb, not under a new service', async () => {
+  it('opens with a back link to the step flows, not under a new service', async () => {
     await newFlow();
-    const crumbs = screen.getByRole('navigation', { name: 'Brødsmuler' });
-    expect(within(crumbs).getByRole('link', { name: 'Stegflyter' })).toBeTruthy();
-    expect(within(crumbs).queryByText('Ny tjeneste')).toBeNull();
+    expect(screen.queryByRole('navigation', { name: 'Brødsmuler' })).toBeNull();
+    expect(screen.getByRole('link', { name: 'Stegflyter' }).getAttribute('href')).toBe(
+      '#/developer/step-flows',
+    );
+    expect(screen.queryByRole('link', { name: 'Ny tjeneste' })).toBeNull();
   });
 
   it('a new flow that was never saved is saved as v1', async () => {
@@ -184,7 +185,6 @@ const workspace = (rights: PortalRight[], fetch: typeof globalThis.fetch = mockF
           tenant="999888777"
           query={new URLSearchParams()}
           flowId="svar-med-kilder"
-          library={false}
         />
       </SchemaFormProvider>
     </RightsProvider>,

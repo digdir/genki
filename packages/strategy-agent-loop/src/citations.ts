@@ -119,8 +119,32 @@ interface Numberable {
   document?: string;
   url?: string;
   title?: string | undefined;
+  publisher?: string | undefined;
+  page?: number;
+  pageEnd?: number;
   content: string;
 }
+
+/** A chunk's PDF page as the agent is shown it: `page` 67, or `pages` 67-69 when it spans several. */
+export const pageField = (c: {
+  page?: number;
+  pageEnd?: number;
+}): ['page' | 'pages', string] | undefined =>
+  c.page === undefined
+    ? undefined
+    : c.pageEnd !== undefined && c.pageEnd > c.page
+      ? ['pages', `${c.page}-${c.pageEnd}`]
+      : ['page', String(c.page)];
+
+const pageLine = (c: Numberable) => {
+  const page = pageField(c);
+  return page ? `--- ${page[0]}=${page[1]} ---\n` : '';
+};
+
+const pageAttribute = (c: Numberable) => {
+  const page = pageField(c);
+  return page ? { [page[0]]: page[1] } : {};
+};
 
 export const documentKey = (c: { chunkId: string; document?: string; url?: string }) =>
   c.document || c.url || c.chunkId;
@@ -133,8 +157,8 @@ export const numberByDocument = <C extends Numberable>(docs: C[]) => {
     context: ordered
       .map((g, i) => {
         const first = g[0] as C;
-        const text = g.map((c) => stripPageMarkers(c.content)).join('\n\n');
-        return `[${i + 1}] ${untrustedData('source', text, { id: documentKey(first), title: first.title })}`;
+        const text = g.map((c) => pageLine(c) + stripPageMarkers(c.content)).join('\n\n');
+        return `[${i + 1}] ${untrustedData('source', text, { id: documentKey(first), title: first.title, publisher: first.publisher })}`;
       })
       .join('\n\n'),
     index: new Map(ordered.map((g, i) => [i + 1, (g[0] as C).chunkId])) as CitationIndex,
@@ -150,7 +174,7 @@ export const numberByExcerpt = <C extends Numberable>(docs: C[]) => {
     context: ordered
       .map(
         (c, i) =>
-          `[${i + 1}] ${untrustedData('source', stripPageMarkers(c.content), { id: documentKey(c), title: c.title })}`,
+          `[${i + 1}] ${untrustedData('source', stripPageMarkers(c.content), { id: documentKey(c), title: c.title, publisher: c.publisher, ...pageAttribute(c) })}`,
       )
       .join('\n\n'),
     index: new Map(ordered.map((c, i) => [i + 1, c.chunkId])) as CitationIndex,

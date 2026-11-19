@@ -12,8 +12,10 @@ import type { Residency } from '@genai/port-model';
 import type { Env, Hono, Schema } from 'hono';
 import type { Admin } from './admin.js';
 import { configAdminHandlers, ingestionTarget, registerConfigRoutes } from './config-routes.js';
+import type { EndpointSourceDeps } from './endpoint-source.js';
 import { connectorConnectionOf } from './connectors.js';
 import type { DatasetReader } from './dataset-readers.js';
+import { actorNames } from './actor-names.js';
 import { platformScope, type ConfigEntryStore } from './config-store.js';
 import {
   InMemoryExecutionStore,
@@ -103,6 +105,8 @@ export const createConfigurables = (
     testSets: TestSetStore;
     testSetTaken?: (tenant: string, id: string) => Promise<boolean>;
     usedBy?: (dataset: string) => Promise<DatasetReader[]>;
+    usedByCounts?: (tenant: string) => Promise<Map<string, number>>;
+    endpointSources?: EndpointSourceDeps;
   }) => {
     const { catalog } = deps;
     const ingestion = new IngestionService({
@@ -133,6 +137,9 @@ export const createConfigurables = (
       ...(deps.routers.writers ? { writers: deps.routers.writers } : {}),
       ...(deps.embeddingResidency ? { embeddingResidency: deps.embeddingResidency } : {}),
       ...(deps.usedBy ? { usedBy: deps.usedBy } : {}),
+      ...(deps.usedByCounts ? { usedByCounts: deps.usedByCounts } : {}),
+      ...(deps.endpointSources ? { endpointSources: deps.endpointSources } : {}),
+      names: actorNames(store),
       documentCount: cachedDocumentCount(deps.routers.knowledge),
       connectorConnection: connectorConnectionOf(store),
       ...(input.gateProblem ? { gateProblem: input.gateProblem } : {}),

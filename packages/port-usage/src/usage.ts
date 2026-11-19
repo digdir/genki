@@ -38,39 +38,56 @@ export interface UsageSource {
   usage(query: UsageQuery): Promise<{ rows: UsageRow[]; next: string | null }>;
 }
 
-/** The query of `GET /v1/usage` in docs/api/gateway.md. */
-export interface GatewayUsageQuery extends UsageQuery {
-  groupBy?: string[];
-  subject?: string;
-  org?: string;
+export const gatewayGroupFields = ['provider', 'requestModel', 'responseModel'] as const;
+export type GatewayGroupField = (typeof gatewayGroupFields)[number];
+
+export const usageAttributes = ['usage.org', 'usage.client'] as const;
+export type UsageAttribute = (typeof usageAttributes)[number];
+
+export type GatewayGroupBy =
+  { field: GatewayGroupField } | { field: 'attributes'; key: UsageAttribute };
+
+export interface GatewayUsageRequest {
+  timeRange: { from: string; to: string };
+  bucketSeconds: number;
+  groupBy?: GatewayGroupBy[];
+  filters?: {
+    httpStatus?: number[];
+    attributes?: Partial<Record<UsageAttribute, string>>;
+  };
 }
 
-export interface GatewayUsageRow {
-  start: string;
-  closed: boolean;
-  model?: string;
-  provider?: string;
-  subject?: UsageSubject;
+export type GatewayGroupKey = GatewayGroupField | UsageAttribute;
+
+export type GatewayGroup = Partial<Record<GatewayGroupKey, string | null>>;
+
+export interface GatewayUsageFigures {
+  requests: number;
   inputTokens: number;
   outputTokens: number;
-  cachedInputTokens: number;
+  totalTokens: number;
+  cacheReadTokens: number;
   cacheWriteTokens: number;
-  requests: number;
-  unpricedRequests: number;
-  cost: Money;
+  cost: number;
 }
 
-export interface GatewayUsagePage {
-  from: string;
-  to: string;
-  bucket: UsageBucket;
-  data: GatewayUsageRow[];
-  next: string | null;
+export interface GatewayUsageGroup extends GatewayUsageFigures {
+  group: GatewayGroup;
 }
 
-/** The usage route of a gateway, as genki's contract describes it. */
+export interface GatewayUsageBucket extends GatewayUsageGroup {
+  start: string;
+}
+
+export interface GatewayUsageAnswer {
+  timeRange: { from: string; to: string };
+  bucketSeconds: number;
+  buckets: GatewayUsageBucket[];
+  groups: GatewayUsageGroup[];
+}
+
 export interface UsageGateway {
-  query(query: GatewayUsageQuery): Promise<GatewayUsagePage>;
+  query(request: GatewayUsageRequest): Promise<GatewayUsageAnswer>;
 }
 
 export interface ProblemError {
@@ -90,89 +107,145 @@ export class UsageGatewayError extends Error {
   }
 }
 
-export const subjectKinds = ['org', 'team', 'service', 'user', 'apiKey', 'genki'] as const;
-
-export const kindsWithOrg = ['team', 'service', 'user'];
-
 const orgNumber = /^\d{9}$/;
 const hourMs = 3_600_000;
 const dayMs = 24 * hourMs;
-const maxSpanMs: Record<UsageBucket, number> = { hour: 31 * dayMs, day: 400 * dayMs };
+
+export const minBucketSeconds = 3600;
+export const maxRangeMs = 31 * dayMs;
 
 export const bucketMs = (bucket: UsageBucket) => (bucket === 'hour' ? hourMs : dayMs);
 
 export const startOfHour = (at: Date) => new Date(Math.floor(at.getTime() / hourMs) * hourMs);
 
-export const subjectText = (subject: UsageSubject) => `${subject.kind}:${subject.id}`;
+export const endOfHour = (at: Date) => new Date(Math.ceil(at.getTime() / hourMs) * hourMs);
 
-export const parseSubject = (text: string): UsageSubject | undefined => {
-  const at = text.indexOf(':');
-  if (at <= 0) return undefined;
-  return { kind: text.slice(0, at), id: text.slice(at + 1) };
-};
+export const rfc3339 = (at: Date) => at.toISOString().replace('.000Z', 'Z');
 
-/** The 400 problems of a usage query, by field, or none for a valid one. */
-export const queryProblems = (query: GatewayUsageQuery): ProblemError[] => {
+export const requestProblems = (request: GatewayUsageRequest): ProblemError[] => {
   const problems: ProblemError[] = [];
-  const step = bucketMs(query.bucket);
-  const from = query.from.getTime();
-  const to = query.to.getTime();
-  if (!['hour', 'day'].includes(query.bucket))
-    problems.push({ path: 'bucket', message: 'must be hour or day' });
-  if (Number.isNaN(from) || from % step !== 0)
-    problems.push({ path: 'from', message: 'must be on a bucket boundary in UTC' });
-  if (Number.isNaN(to) || to % step !== 0 || to <= from)
-    problems.push({ path: 'to', message: 'must be a bucket boundary after from' });
-  else if (to - from > (maxSpanMs[query.bucket] ?? 0))
-    problems.push({ path: 'to', message: `is too far after from for ${query.bucket} buckets` });
-  const groups = query.groupBy ?? [];
-  const kinds = groups.filter((g) => g === 'subject' || subjectKinds.some((k) => k === g));
-  if (groups.some((g) => !['model', 'provider', 'subject', ...subjectKinds].includes(g)))
-    problems.push({ path: 'groupBy', message: 'takes model, provider, subject or a subject kind' });
-  else if (kinds.length > 1)
-    problems.push({ path: 'groupBy', message: 'takes subject or one subject kind, not both' });
-  if (query.subject !== undefined) {
-    const subject = parseSubject(query.subject);
-    if (!subject || !subjectKinds.some((k) => k === subject.kind) || !subject.id)
-      problems.push({ path: 'subject', message: 'must be <kind>:<id> with a known kind' });
-    else if (kindsWithOrg.includes(subject.kind) && !orgNumber.test(query.org ?? ''))
-      problems.push({ path: 'org', message: `is required with ${subject.kind} in subject` });
+  const from = Date.parse(request.timeRange?.from ?? '');
+  const to = Date.parse(request.timeRange?.to ?? '');
+  if (!Number.isInteger(request.bucketSeconds) || request.bucketSeconds < minBucketSeconds)
+    problems.push({ path: 'bucketSeconds', message: `must be at least ${minBucketSeconds}` });
+  if (Number.isNaN(from)) problems.push({ path: 'timeRange.from', message: 'must be a time' });
+  if (Number.isNaN(to)) problems.push({ path: 'timeRange.to', message: 'must be a time' });
+  else if (!Number.isNaN(from) && (to - from < hourMs || to - from > maxRangeMs))
+    problems.push({ path: 'timeRange', message: 'must be between 1 hour and 31 days' });
+  for (const [i, group] of (request.groupBy ?? []).entries()) {
+    const known =
+      group.field === 'attributes'
+        ? usageAttributes.includes(group.key)
+        : gatewayGroupFields.includes(group.field);
+    if (!known) problems.push({ path: `groupBy.${i}`, message: 'is not a field it groups by' });
   }
-  if (query.org !== undefined && !orgNumber.test(query.org))
-    problems.push({ path: 'org', message: 'must be an organisation number of 9 digits' });
+  for (const key of Object.keys(request.filters?.attributes ?? {}))
+    if (!usageAttributes.some((a) => a === key))
+      problems.push({ path: `filters.attributes.${key}`, message: 'is not an attribute' });
   return problems;
 };
 
-/** The organisation a row's owner belongs to, or none for a key or a row without an owner. */
 export const organisationOf = (subject: UsageSubject | undefined): string | undefined => {
   if (!subject) return undefined;
   if (subject.kind === 'org' || subject.kind === 'genki')
     return orgNumber.test(subject.id) ? subject.id : undefined;
-  if (kindsWithOrg.includes(subject.kind) && subject.org && orgNumber.test(subject.org))
-    return subject.org;
+  if (subject.org && orgNumber.test(subject.org)) return subject.org;
   return undefined;
 };
 
-export const toUsageRow = (source: string, row: GatewayUsageRow): UsageRow => ({
-  source,
-  start: new Date(row.start).toISOString(),
-  closed: row.closed,
-  ...(row.model === undefined ? {} : { model: row.model }),
-  ...(row.subject === undefined ? {} : { subject: row.subject }),
-  inputTokens: row.inputTokens,
-  outputTokens: row.outputTokens,
-  cachedInputTokens: row.cachedInputTokens,
-  cacheWriteTokens: row.cacheWriteTokens,
-  requests: row.requests,
-  unpricedRequests: row.unpricedRequests,
-  cost: row.cost,
-});
+export interface GatewaySourceOptions {
+  genkiClients?: readonly string[];
+  now?: () => Date;
+  settleMs?: number;
+}
 
-/** A gateway as a usage source: hourly or daily rows grouped by model and owner. */
-export const gatewayUsageSource = (id: string, gateway: UsageGateway): UsageSource => ({
-  id,
-  usage: async (query) => {
-    const page = await gateway.query({ ...query, groupBy: ['model', 'subject'] });
-    return { rows: page.data.map((row) => toUsageRow(id, row)), next: page.next };
-  },
-});
+export const usageGroupBy: GatewayGroupBy[] = [
+  { field: 'requestModel' },
+  { field: 'attributes', key: 'usage.org' },
+  { field: 'attributes', key: 'usage.client' },
+];
+
+const subjectOf = (
+  group: GatewayGroup,
+  genkiClients: ReadonlySet<string>,
+): UsageSubject | undefined => {
+  const org = group['usage.org'];
+  if (!org || !orgNumber.test(org)) return undefined;
+  const client = group['usage.client'];
+  return client && genkiClients.has(client)
+    ? { kind: 'genki', id: org, org }
+    : { kind: 'org', id: org };
+};
+
+const rowKey = (row: UsageRow) =>
+  [row.start, row.model ?? '', row.subject?.kind ?? '', row.subject?.id ?? ''].join('\u0000');
+
+export const rangePieces = (from: Date, to: Date, bucket: UsageBucket) => {
+  const step = bucketMs(bucket);
+  const longest = Math.floor(maxRangeMs / step) * step;
+  const pieces: { from: Date; to: Date }[] = [];
+  for (let at = from.getTime(); at < to.getTime(); at += longest)
+    pieces.push({ from: new Date(at), to: new Date(Math.min(at + longest, to.getTime())) });
+  return pieces;
+};
+
+export const gatewayUsageSource = (
+  id: string,
+  gateway: UsageGateway,
+  options: GatewaySourceOptions = {},
+): UsageSource => {
+  const genkiClients = new Set(options.genkiClients ?? []);
+  const now = options.now ?? (() => new Date());
+  const settleMs = options.settleMs ?? 20 * 60_000;
+  return {
+    id,
+    usage: async (query) => {
+      const step = bucketMs(query.bucket);
+      const rows = new Map<string, UsageRow>();
+      const dollars = new Map<string, number>();
+      const from = startOfHour(query.from);
+      const to = endOfHour(query.to);
+      for (const piece of rangePieces(from, to, query.bucket)) {
+        const answer = await gateway.query({
+          timeRange: { from: rfc3339(piece.from), to: rfc3339(piece.to) },
+          bucketSeconds: step / 1000,
+          groupBy: usageGroupBy,
+          filters: { httpStatus: [200] },
+        });
+        for (const bucket of answer.buckets) {
+          const startMs = Date.parse(bucket.start);
+          const subject = subjectOf(bucket.group, genkiClients);
+          const model = bucket.group.requestModel;
+          const row: UsageRow = {
+            source: id,
+            start: new Date(startMs).toISOString(),
+            closed: startMs + step + settleMs <= now().getTime(),
+            ...(model ? { model } : {}),
+            ...(subject ? { subject } : {}),
+            inputTokens: 0,
+            outputTokens: 0,
+            cachedInputTokens: 0,
+            cacheWriteTokens: 0,
+            requests: 0,
+            unpricedRequests: 0,
+            cost: { currency: 'USD', micros: 0 },
+          };
+          const sum = rows.get(rowKey(row)) ?? row;
+          sum.inputTokens += bucket.inputTokens;
+          sum.outputTokens += bucket.outputTokens;
+          sum.cachedInputTokens += bucket.cacheReadTokens;
+          sum.cacheWriteTokens += bucket.cacheWriteTokens;
+          sum.requests += bucket.requests;
+          const key = rowKey(row);
+          dollars.set(key, (dollars.get(key) ?? 0) + bucket.cost);
+          sum.cost.micros = Math.round((dollars.get(key) ?? 0) * 1_000_000);
+          rows.set(key, sum);
+        }
+      }
+      return {
+        rows: [...rows.values()].sort((a, b) => rowKey(a).localeCompare(rowKey(b))),
+        next: null,
+      };
+    },
+  };
+};

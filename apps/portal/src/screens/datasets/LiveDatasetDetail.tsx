@@ -1,496 +1,75 @@
-import { ChevronDownIcon, ChevronLeftIcon, PlayIcon } from '@navikt/aksel-icons';
 import {
   Alert,
   Button,
-  Chip,
-  Field,
-  Fieldset,
   Heading,
-  Label,
   Paragraph,
-  Select,
-  Spinner,
+  Skeleton,
   Tabs,
   Tag,
-  Textarea,
-  Textfield,
 } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError, type ApiClient } from '../../api';
 import {
+  isOpen,
   skippedCount,
   skippedOf,
   type DatasetDeleteResult,
   type DatasetDetailView,
   type ExecutionView,
   type ExecutionsView,
-  type PipelineSource,
-  type PipelineView,
-  type Schedule,
-  type SkippedDocument,
 } from '../../api/datasets';
-import { ApiCallLink } from '../../components/ApiCall';
-import { datasetRunCall } from '../../data/api-calls';
-import { Icon } from '../../components/Icon';
-import { PlaygroundPanel } from '../../components/playground/PlaygroundPanel';
-import { reasonProblem, ReasonField } from '../../components/ReasonField';
-import {
-  kudosDocumentTypes,
-  statusColors,
-  statusKeys,
-  type DatasetStatus,
-} from '../../data/datasets';
-import { useAsync } from '../../hooks';
-import { useT } from '../../i18n';
+import { BackLink } from '../../components/BackLink';
+import { prefetchSignal } from '../../api/cache';
+import { statusColors, statusKeys, type DatasetStatus } from '../../data/datasets';
+import { navigate, useAsync } from '../../hooks';
+import { useT, type PlainKey } from '../../i18n';
 import { useRights } from '../../Shell';
 import { ErrorState, Loading } from '../../states';
 import { admissionRunsOutSoon } from './admission';
-import type { DetailTab } from './DatasetDetail';
+import { backoffDelay } from './backoff';
+import { DeleteDataset, LeaveDialog, SourceSettings, Technical } from './DatasetSettings';
+import { CancelDialog, Run, RunTable, scheduleLine, Skipped } from './Ingestions';
+import { Content } from './Content';
 import {
   refusalText,
   countText,
   datasetStatus,
-  executionStatus,
+  isOwnEndpoint,
+  ownEndpointText,
+  runDatasetStatus,
   externalSourceText,
-  fromGlobs,
-  reasonText,
-  residencyText,
   scheduleText,
+  isForeign,
   sharedSourceText,
   sourceText,
-  toGlobs,
-  whenText,
   failureText,
+  lastSucceeded,
+  uploadAccept,
 } from './live-model';
+import { datasetTabPath, type DetailTab } from './model';
 import { SearchEngine } from './SearchEngine';
+import { UsedBy } from './UsedBy';
 import { Uploads } from './Uploads';
 import './search-engine.css';
 
-const years = ['2010', '2015', '2018', '2020', '2022', '2024'];
-
 export const pollMs = 1500;
 
-const Skipped = ({ list }: { list: SkippedDocument[] }) => {
-  const t = useT();
-  return (
-    <ul aria-label={t('datasets.skipped')} className="skipped-list">
-      {list.map((s) => (
-        <li key={s.document}>
-          <strong className="wrap">{s.document}</strong>
-          <span>{reasonText(t, s.reason)}</span>
-        </li>
-      ))}
-    </ul>
-  );
-};
-
-const Run = ({
-  run,
-  open,
-  onToggle,
-}: {
-  run: ExecutionView;
-  open: boolean;
-  onToggle: () => void;
-}) => {
-  const t = useT();
-  const f = useFormat();
-  const status = executionStatus(t, run);
-  const skipped = skippedOf(run);
-  const running = run.status === 'running';
-  return (
-    <li id={`run-${run.id}`} className={open ? 'run open' : 'run'}>
-      <button type="button" className="run-toggle" aria-expanded={open} onClick={onToggle}>
-        <span className="run-when">
-          <strong>{f.dateTime(run.startedAt)}</strong>
-          <span className="meta">
-            {run.endedAt
-              ? t('datasets.finishedAt', { when: f.dateTime(run.endedAt) })
-              : t('datasets.stillRunning')}
-          </span>
-        </span>
-        <Tag data-size="sm" data-color={status.color}>
-          {running ? <Spinner aria-hidden="true" data-size="2xs" /> : null}
-          {status.text}
-        </Tag>
-        <span className="run-counts numeric">
-          <span>{t('datasets.storedCount', { amount: f.number(run.report?.stored ?? 0) })}</span>
-          <span>{t('datasets.skippedCount', { amount: f.number(skippedCount(run)) })}</span>
-        </span>
-        <span className={open ? 'chevron up' : 'chevron'}>
-          <Icon icon={ChevronDownIcon} size={18} />
-        </span>
-      </button>
-      {open ? (
-        <div className="run-body">
-          {running ? <p className="meta">{t('datasets.runningSelfUpdates')}</p> : null}
-          {run.status === 'failed' ? (
-            <div className="run-error fatal">
-              <strong>{t('datasets.ingestionFailed')}</strong>
-              <p className="why">{t('datasets.nothingChanged')}</p>
-              {run.error ? (
-                <span className="code">
-                  {t('datasets.technicalMessage', { message: run.error })}
-                </span>
-              ) : null}
-            </div>
-          ) : null}
-          {skipped.length > 0 ? <Skipped list={skipped} /> : null}
-          {!running && run.status !== 'failed' && skipped.length === 0 ? (
-            <p className="no-errors">{t('datasets.noneSkipped')}</p>
-          ) : null}
-          {run.report?.failed.length ? (
-            <p className="meta">
-              {t('datasets.documentsFailed', {
-                count: run.report.failed.length,
-                names: run.report.failed.join(', '),
-              })}
-            </p>
-          ) : null}
-        </div>
-      ) : null}
-    </li>
-  );
-};
-
-interface SourceForm {
-  name: string;
-  description: string;
-  sitemap: string;
-  include: string;
-  exclude: string;
-  types: string[];
-  fromYear: string;
-  schedule: Schedule;
-  reason: string;
-}
-
-const formOf = (view: DatasetDetailView, pipeline: PipelineView | undefined): SourceForm => {
-  const source = pipeline?.spec.source;
-  return {
-    name: view.name,
-    description: view.description ?? '',
-    sitemap: source?.kind === 'website' ? source.sitemap : '',
-    include: source?.kind === 'website' ? fromGlobs(source.include) : '',
-    exclude: source?.kind === 'website' ? fromGlobs(source.exclude) : '',
-    types: source?.kind === 'kudos' ? source.types : [],
-    fromYear: source?.kind === 'kudos' && source.since ? source.since.slice(0, 4) : defaultFromYear,
-    schedule: pipeline?.spec.schedule ?? 'none',
-    reason: '',
-  };
-};
-
-const defaultFromYear = '2020';
-
-/**
- * A source with no start date lists every year, so the year the form shows by default is not
- * written unless the person picks another; a later one would be refused as a narrowing.
- */
-const kudosSourceFrom = (
-  form: SourceForm,
-  current: Extract<PipelineSource, { kind: 'kudos' }>,
-): PipelineSource => {
-  const next: Extract<PipelineSource, { kind: 'kudos' }> = { ...current, types: form.types };
-  if (current.since || form.fromYear !== defaultFromYear) next.since = `${form.fromYear}-01-01`;
-  return next;
-};
-
-const sourceFrom = (form: SourceForm, current: PipelineSource): PipelineSource =>
-  current.kind === 'website'
-    ? {
-        kind: 'website',
-        sitemap: form.sitemap.trim(),
-        include: toGlobs(form.include),
-        exclude: toGlobs(form.exclude),
-      }
-    : current.kind === 'kudos'
-      ? kudosSourceFrom(form, current)
-      : current;
-
-const SourceSettings = ({
-  api,
-  tenant,
-  view,
-  pipeline,
-  onSaved,
-}: {
-  api: ApiClient;
-  tenant: string;
-  view: DatasetDetailView;
-  pipeline: PipelineView | undefined;
-  onSaved: (text: string) => void;
-}) => {
-  const t = useT();
-  const tRef = useRef(t);
-  tRef.current = t;
-  const [form, setForm] = useState(() => formOf(view, pipeline));
-  const [tried, setTried] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [failure, setFailure] = useState('');
-  const set = (patch: Partial<SourceForm>) => setForm((f) => ({ ...f, ...patch }));
-  const source = pipeline?.spec.source;
-
-  const save = async () => {
-    setTried(true);
-    if (reasonProblem(form.reason, t) || !form.name.trim()) return;
-    setBusy(true);
-    setFailure('');
-    const reason = form.reason.trim();
-    try {
-      if (form.name.trim() !== view.name || form.description.trim() !== (view.description ?? ''))
-        await api.datasets.rename(
-          tenant,
-          view.id,
-          { name: form.name.trim(), description: form.description.trim() },
-          reason,
-        );
-      if (pipeline && source) {
-        const spec = {
-          ...pipeline.spec,
-          name: form.name.trim(),
-          source: sourceFrom(form, source),
-          schedule: source.kind === 'upload' ? ('none' as const) : form.schedule,
-        };
-        if (JSON.stringify(spec) !== JSON.stringify(pipeline.spec))
-          await api.datasets.savePipeline(tenant, view.id, pipeline.id, spec, reason);
-      }
-      setForm((f) => ({ ...f, reason: '' }));
-      setTried(false);
-      onSaved(tRef.current('datasets.changesSaved'));
-    } catch (error) {
-      setFailure(failureText(tRef.current, error));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <section aria-labelledby="kilde-h" className="source-card">
-      <h2 id="kilde-h" className="card-title">
-        {t('datasets.tabSource')}
-      </h2>
-      <Textfield
-        label={t('datasets.name')}
-        value={form.name}
-        error={tried && !form.name.trim() ? t('datasets.nameProblem') : undefined}
-        onChange={(e) => set({ name: e.target.value })}
-      />
-      <Textfield
-        label={t('datasets.description')}
-        multiline
-        rows={2}
-        value={form.description}
-        onChange={(e) => set({ description: e.target.value })}
-      />
-      <dl className="source-dl">
-        <div>
-          <dt>{t('datasets.factSource')}</dt>
-          <dd>{t(sourceText[view.source])}</dd>
-        </div>
-      </dl>
-      {source?.kind === 'website' ? (
-        <>
-          <Textfield
-            type="url"
-            label={t('datasets.sitemapLabel')}
-            value={form.sitemap}
-            onChange={(e) => set({ sitemap: e.target.value })}
-          />
-          <Field>
-            <Label htmlFor="kilde-med">{t('datasets.includeOnly')}</Label>
-            <Field.Description>{t('datasets.includeHelp')}</Field.Description>
-            <Textarea
-              id="kilde-med"
-              rows={3}
-              value={form.include}
-              onChange={(e) => set({ include: e.target.value })}
-            />
-          </Field>
-          <Field>
-            <Label htmlFor="kilde-utelat">{t('datasets.exclude')}</Label>
-            <Textarea
-              id="kilde-utelat"
-              rows={3}
-              value={form.exclude}
-              onChange={(e) => set({ exclude: e.target.value })}
-            />
-          </Field>
-        </>
-      ) : null}
-      {source?.kind === 'kudos' ? (
-        <>
-          <Fieldset>
-            <Fieldset.Legend>{t('datasets.documentTypes')}</Fieldset.Legend>
-            <Fieldset.Description>{t('datasets.noTypeMeansAll')}</Fieldset.Description>
-            <div className="tag-row">
-              {kudosDocumentTypes.map((type) => (
-                <Chip.Checkbox
-                  key={type}
-                  checked={form.types.includes(type)}
-                  onChange={() =>
-                    set({
-                      types: form.types.includes(type)
-                        ? form.types.filter((x) => x !== type)
-                        : [...form.types, type],
-                    })
-                  }
-                >
-                  {type}
-                </Chip.Checkbox>
-              ))}
-            </div>
-          </Fieldset>
-          <Field className="year-field">
-            <Label htmlFor="kilde-fra-ar">{t('datasets.fromYear')}</Label>
-            <Select
-              id="kilde-fra-ar"
-              value={form.fromYear}
-              onChange={(e) => set({ fromYear: e.target.value })}
-            >
-              {years.map((y) => (
-                <Select.Option key={y} value={y}>
-                  {y}
-                </Select.Option>
-              ))}
-            </Select>
-          </Field>
-        </>
-      ) : null}
-      {source && source.kind !== 'upload' ? (
-        <Field className="schedule-field">
-          <Label htmlFor="kilde-tidsplan">{t('datasets.update')}</Label>
-          <Select
-            id="kilde-tidsplan"
-            value={form.schedule}
-            onChange={(e) => set({ schedule: e.target.value as Schedule })}
-          >
-            <Select.Option value="daily">{t(scheduleText.daily)}</Select.Option>
-            <Select.Option value="weekly">{t(scheduleText.weekly)}</Select.Option>
-            <Select.Option value="none">{t(scheduleText.none)}</Select.Option>
-          </Select>
-        </Field>
-      ) : null}
-      <ReasonField value={form.reason} onChange={(reason) => set({ reason })} showError={tried} />
-      <div aria-live="polite">
-        {failure ? (
-          <Alert data-color="danger" data-size="sm" role="alert">
-            {t('datasets.changesNotSaved', { problem: failure })}
-          </Alert>
-        ) : null}
-      </div>
-      <Button
-        variant="primary"
-        data-size="sm"
-        className="align-start"
-        aria-disabled={busy ? true : undefined}
-        onClick={() => !busy && void save()}
-      >
-        {busy ? t('datasets.saving') : t('common.save')}
-      </Button>
-    </section>
-  );
-};
-
-const DeleteDataset = ({
-  api,
-  tenant,
-  view,
-  onDeleted,
-}: {
-  api: ApiClient;
-  tenant: string;
-  view: DatasetDetailView;
-  onDeleted: (result: DatasetDeleteResult) => void;
-}) => {
-  const t = useT();
-  const tRef = useRef(t);
-  tRef.current = t;
-  const readers = view.usedBy ?? [];
-  const blocked = readers.length > 0;
-  const [confirming, setConfirming] = useState(false);
-  const [reason, setReason] = useState('');
-  const [tried, setTried] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [failure, setFailure] = useState('');
-
-  const confirm = async () => {
-    setTried(true);
-    if (blocked || busy || reasonProblem(reason, t)) return;
-    setBusy(true);
-    setFailure('');
-    try {
-      onDeleted(await api.datasets.remove(tenant, view.id, reason.trim()));
-    } catch (error) {
-      setFailure(failureText(tRef.current, error));
-      setBusy(false);
-    }
-  };
-
-  return (
-    <section aria-labelledby="slett-h" className="source-card">
-      <h2 id="slett-h" className="card-title">
-        {t('datasets.deleteTitle')}
-      </h2>
-      <p className="meta">{t('datasets.deleteIntro')}</p>
-      <div className="tag-row used-by">
-        <span className="meta">{t('datasets.usedBy')}</span>
-        {readers.map((r) => (
-          <span key={`${r.kind}:${r.tenant}/${r.id}`} className="ds-tag" data-color="accent">
-            {r.kind === 'service' ? r.name : t('datasets.readerAdoption', { tenant: r.tenant })}
-          </span>
-        ))}
-        {readers.length === 0 ? <span>{t('datasets.noServicesYet')}</span> : null}
-      </div>
-      {blocked ? (
-        <Alert data-color="info" data-size="sm">
-          {t('datasets.deleteBlocked')}
-        </Alert>
-      ) : null}
-      {confirming ? (
-        <>
-          <p>{t('datasets.deleteConfirmText', { name: view.name })}</p>
-          <ReasonField value={reason} onChange={setReason} showError={tried} />
-          <div aria-live="polite">
-            {failure ? (
-              <Alert data-color="danger" data-size="sm" role="alert">
-                {t('datasets.deleteFailed', { problem: failure })}
-              </Alert>
-            ) : null}
-          </div>
-          <div className="row-wrap">
-            <Button
-              variant="primary"
-              data-color="danger"
-              data-size="sm"
-              aria-disabled={blocked || busy ? true : undefined}
-              onClick={() => void confirm()}
-            >
-              {busy ? t('datasets.deleting') : t('datasets.deleteConfirm')}
-            </Button>
-            <Button variant="tertiary" data-size="sm" onClick={() => setConfirming(false)}>
-              {t('common.cancel')}
-            </Button>
-          </div>
-        </>
-      ) : (
-        <Button
-          variant="secondary"
-          data-color="danger"
-          data-size="sm"
-          className="align-start"
-          onClick={() => setConfirming(true)}
-        >
-          {t('datasets.deleteDataset')}
-        </Button>
-      )}
-    </section>
-  );
-};
+const detailTabs = [
+  ['content', 'datasets.tabContent'],
+  ['ingestions', 'datasets.tabIngestions'],
+  ['source', 'datasets.tabSource'],
+  ['used-by', 'datasets.tabUsedBy'],
+] as const satisfies readonly (readonly [DetailTab, PlainKey])[];
 
 const Deleted = ({ name, result }: { name: string; result: DatasetDeleteResult }) => {
   const t = useT();
   const f = useFormat();
+  const endpoint = result.removed.endpoint
+    ? t(result.removed.secret ? 'datasets.deletedEndpointAndKey' : 'datasets.deletedEndpoint', {
+        endpoint: result.removed.endpoint,
+      })
+    : '';
   const kept = result.kept.knowledgeRecords
     ? t('datasets.deletedKeptRecords')
     : result.kept.generations.length
@@ -501,10 +80,7 @@ const Deleted = ({ name, result }: { name: string; result: DatasetDeleteResult }
       : t('datasets.deletedNothingKept');
   return (
     <div className="stack dataset-page">
-      <a href="#/datasets" className="back-link">
-        <Icon icon={ChevronLeftIcon} size={18} />
-        {t('datasets.title')}
-      </a>
+      <BackLink label={t('datasets.title')} href="#/datasets" />
       <Heading level={1} data-size="md">
         {t('datasets.deletedTitle', { name })}
       </Heading>
@@ -515,6 +91,7 @@ const Deleted = ({ name, result }: { name: string; result: DatasetDeleteResult }
             uploads: f.number(result.removed.uploads.length),
             generations: f.number(result.removed.generations.length),
           })}
+          {endpoint ? ` ${endpoint}` : ''}
         </p>
         <p className="alert-text">{kept}</p>
       </Alert>
@@ -525,74 +102,38 @@ const Deleted = ({ name, result }: { name: string; result: DatasetDeleteResult }
   );
 };
 
-const Facets = ({
-  api,
-  tenant,
-  view,
-}: {
-  api: ApiClient;
-  tenant: string;
-  view: DatasetDetailView;
-}) => {
-  const t = useT();
-  const f = useFormat();
-  const fields = view.facets ?? [];
-  const [values] = useAsync(
-    (signal) =>
-      fields.length ? api.facets(view.fullId, tenant, fields, signal) : Promise.resolve([]),
-    [api, tenant, view.fullId, fields.join(',')],
-  );
-  if (fields.length === 0) return <p className="meta">{t('datasets.noFiltersLive')}</p>;
-  const found = values.status === 'ready' ? values.data : [];
-  return (
-    <div className="facet-grid">
-      {fields.map((field) => {
-        const options = found.find((x) => x.field === field)?.options ?? [];
-        return (
-          <section key={field} className="facet-card" aria-label={field}>
-            <h3 className="facet-name">{field}</h3>
-            {options.length ? (
-              <ul aria-label={t('datasets.valuesFor', { name: field })} className="facet-values">
-                {options.map((o) => (
-                  <li key={o.value}>
-                    <span>{o.value}</span>
-                    <span className="numeric right">{f.number(o.count)}</span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <span className="meta">
-                {values.status === 'loading'
-                  ? t('datasets.loadingValues')
-                  : t('datasets.valuesUnavailable')}
-              </span>
-            )}
-          </section>
-        );
-      })}
-    </div>
-  );
-};
-
 export const LiveDatasetDetail = ({
   api,
   tenant,
   tenantName,
   id,
-  initialTab,
+  tab,
 }: {
   api: ApiClient;
   tenant: string;
   tenantName: string;
   id: string;
-  initialTab: DetailTab;
+  tab: DetailTab;
 }) => {
   const t = useT();
   const [detail, retryDetail] = useAsync(
     (signal) => api.datasets.get(tenant, id, signal),
     [api, tenant, id],
   );
-  if (detail.status === 'loading') return <Loading label={t('datasets.loadingOne')} />;
+  if (detail.status === 'loading')
+    return (
+      <div className="stack dataset-page">
+        <BackLink label={t('datasets.title')} href="#/datasets" />
+        <Skeleton variant="rectangle" width="40%" height={32} aria-hidden="true" />
+        <Tabs
+          value={tab === 'filters' ? 'content' : tab}
+          onChange={(next) => navigate(datasetTabPath(id, next as DetailTab))}
+        >
+          <DatasetTabs />
+        </Tabs>
+        <Loading label={t('datasets.loadingOne')} shape="detail" onRetry={retryDetail} />
+      </div>
+    );
   if (detail.status === 'error')
     return detail.error instanceof ApiError && detail.error.status === 404 ? (
       <>
@@ -617,8 +158,22 @@ export const LiveDatasetDetail = ({
       tenant={tenant}
       tenantName={tenantName}
       initial={detail.data}
-      initialTab={initialTab}
+      tab={tab === 'filters' ? 'content' : tab}
+      onTab={(next) => navigate(datasetTabPath(id, next))}
     />
+  );
+};
+
+const DatasetTabs = () => {
+  const t = useT();
+  return (
+    <Tabs.List aria-label={t('datasets.tabsLabel')}>
+      {detailTabs.map(([value, label]) => (
+        <Tabs.Tab key={value} value={value}>
+          {t(label)}
+        </Tabs.Tab>
+      ))}
+    </Tabs.List>
   );
 };
 
@@ -627,28 +182,37 @@ const Loaded = ({
   tenant,
   tenantName,
   initial,
-  initialTab,
+  tab,
+  onTab,
 }: {
   api: ApiClient;
   tenant: string;
   tenantName: string;
   initial: DatasetDetailView;
-  initialTab: DetailTab;
+  tab: DetailTab;
+  onTab: (tab: DetailTab) => void;
 }) => {
   const t = useT();
   const f = useFormat();
   const tRef = useRef(t);
   tRef.current = t;
   const [view, setView] = useState(initial);
-  const [tab, setTab] = useState<DetailTab>(initialTab);
-  const [trying, setTrying] = useState(false);
+  const uploadInput = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
   const [openRun, setOpenRun] = useState<string>();
   const [runs, setRuns] = useState<ExecutionsView>();
+  const [runsError, setRunsError] = useState<unknown>();
+  const [pollFailures, setPollFailures] = useState(0);
   const [flash, setFlash] = useState('');
   const [failure, setFailure] = useState('');
   const [finished, setFinished] = useState<ExecutionView>();
   const [deleted, setDeleted] = useState<DatasetDeleteResult>();
-  const watching = useRef(initial.lastExecution?.status === 'running');
+  const [askCancel, setAskCancel] = useState<ExecutionView>();
+  const [dirty, setDirty] = useState(false);
+  const [leaving, setLeaving] = useState<string>();
+  const [formKey, setFormKey] = useState(0);
+  const onDirty = useCallback((next: boolean) => setDirty(next), []);
+  const watching = useRef(isOpen(initial.lastExecution));
   const rights = useRights();
   const editable = view.editable !== false;
   const canEdit = editable && rights.has('manage-datasets');
@@ -657,42 +221,89 @@ const Loaded = ({
     [api, tenant, view.id, editable],
   );
   const pipeline = pipelines.status === 'ready' ? pipelines.data[0] : undefined;
-  useEffect(() => setTab(initialTab), [initialTab]);
+  const ownEndpoint = isOwnEndpoint(view);
+  const [engine] = useAsync(
+    (signal) =>
+      ownEndpoint
+        ? api.searchEngines.datasetEngine(tenant, view.fullId, signal)
+        : Promise.resolve(undefined),
+    [api, tenant, view.fullId, ownEndpoint],
+  );
+  const endpointHost =
+    engine.status === 'ready' && engine.data?.engine.engine === 'http-search'
+      ? engine.data.engine.runsAt
+      : undefined;
+
+  useEffect(() => {
+    if (initial.source === 'upload' && initial.editable !== false)
+      void api.datasets.uploads(tenant, initial.id, prefetchSignal()).catch(() => undefined);
+  }, [api, tenant, initial.id, initial.source, initial.editable]);
+
+  useEffect(() => {
+    if (!dirty) return;
+    const guard = (event: MouseEvent) => {
+      const link = (event.target as Element | null)?.closest?.('a[href^="#"]');
+      if (!link || event.defaultPrevented) return;
+      event.preventDefault();
+      setLeaving(link.getAttribute('href') ?? undefined);
+    };
+    document.addEventListener('click', guard, true);
+    return () => document.removeEventListener('click', guard, true);
+  }, [dirty]);
+
+  const changeTab = (next: DetailTab) => {
+    if (next === tab) return;
+    if (dirty) setLeaving(`#${datasetTabPath(view.fullId, next)}`);
+    else onTab(next);
+  };
 
   const refresh = useCallback(async () => {
     if (!pipeline) return;
     const next = await api.datasets.executions(tenant, view.id, pipeline.id);
     setRuns(next);
     const latest = next.data[0];
-    if (latest && latest.status !== 'running' && watching.current) {
+    if (latest && !isOpen(latest) && watching.current) {
       watching.current = false;
       setFinished(latest);
       setOpenRun(latest.id);
       setView(await api.datasets.get(tenant, view.id));
     }
-    if (latest?.status === 'running') watching.current = true;
+    if (isOpen(latest)) watching.current = true;
   }, [api, tenant, view.id, pipeline]);
 
-  useEffect(() => {
-    void refresh().catch(() => undefined);
+  const load = useCallback(async () => {
+    try {
+      await refresh();
+      setRunsError(undefined);
+      setPollFailures(0);
+    } catch (error) {
+      setRunsError(error);
+      setPollFailures((n) => n + 1);
+    }
   }, [refresh]);
 
-  const running = runs?.data[0]?.status === 'running';
   useEffect(() => {
-    if (!running) return;
-    const timer = setInterval(() => void refresh().catch(() => undefined), pollMs);
-    return () => clearInterval(timer);
-  }, [running, refresh]);
+    void load();
+  }, [load]);
 
-  const run = async () => {
+  const running = isOpen(runs?.data[0]);
+  const polling = running || (runsError !== undefined && watching.current);
+  useEffect(() => {
+    if (!polling) return;
+    const timer = setTimeout(() => void load(), backoffDelay(pollMs, pollFailures));
+    return () => clearTimeout(timer);
+  }, [polling, load, pollFailures, runs]);
+
+  const run = async (before?: () => Promise<unknown>) => {
     if (!pipeline || running) return;
     setFailure('');
     setFlash('');
     setFinished(undefined);
     try {
-      await api.datasets.execute(tenant, view.id, pipeline.id, 'Manuell innlesing fra portalen');
+      await before?.();
+      await api.datasets.execute(tenant, view.id, pipeline.id, tRef.current('datasets.runReason'));
       watching.current = true;
-      await refresh();
+      await load();
     } catch (error) {
       setFailure(
         error instanceof ApiError &&
@@ -704,9 +315,28 @@ const Loaded = ({
     }
   };
 
-  const cancel = async () => {
-    const execution = runs?.data.find((r) => r.status === 'running');
-    if (!pipeline || !execution) return;
+  const uploadAndRun = async (files: File[]) => {
+    if (!files.length || uploading) return;
+    setUploading(true);
+    try {
+      await run(async () => {
+        const result = await api.datasets.upload(
+          tenant,
+          view.id,
+          files,
+          tRef.current('datasets.uploadReason', { name: view.name }),
+        );
+        if (result.uploaded.length === 0) throw new Error(tRef.current('datasets.noneUploaded'));
+      });
+    } finally {
+      setUploading(false);
+      if (uploadInput.current) uploadInput.current.value = '';
+    }
+  };
+
+  const cancel = async (execution: ExecutionView) => {
+    setAskCancel(undefined);
+    if (!pipeline) return;
     setFailure('');
     setFlash('');
     try {
@@ -715,10 +345,10 @@ const Loaded = ({
         view.id,
         pipeline.id,
         execution.id,
-        'Avbrutt fra portalen',
+        tRef.current('datasets.cancelReason'),
       );
       setFlash(tRef.current('datasets.ingestionCancelled'));
-      await refresh();
+      await load();
     } catch (error) {
       setFailure(failureText(tRef.current, error));
     }
@@ -749,7 +379,7 @@ const Loaded = ({
         admitted.id,
         tRef.current('datasets.readmitReason'),
       );
-      await refresh();
+      await load();
     } catch (error) {
       setReadmitFailure(refusalText(tRef.current, error));
     } finally {
@@ -758,33 +388,41 @@ const Loaded = ({
   };
 
   const latest = runs?.data[0];
-  const lastOk = runs?.data.find((r) => r.status === 'succeeded');
   const status: DatasetStatus =
-    view.state === 'external'
-      ? datasetStatus(view)
-      : latest
-        ? latest.status === 'running'
-          ? 'Innlesing pågår'
-          : latest.status === 'failed'
-            ? 'Feilet'
-            : latest.status === 'cancelled'
-              ? 'Delvis lest inn'
-              : 'Klar'
-        : datasetStatus(view);
+    view.state !== 'external' && latest
+      ? runDatasetStatus({ status: latest.status, skipped: skippedCount(latest) })
+      : datasetStatus(view);
   const nextRun = runs?.nextRunAt !== undefined ? runs.nextRunAt : view.nextRunAt;
+  const failedRun = latest?.status === 'failed' ? latest : undefined;
   const skippedNow = finished
     ? skippedOf(finished).length
       ? skippedOf(finished)
       : (view.skipped ?? [])
     : [];
+  const lastStarted = latest?.startedAt ?? view.lastExecution?.startedAt;
+  const lastOk = lastSucceeded(runs?.data ?? []);
+  const meta = [
+    sharedSourceText(t, view, endpointHost),
+    ...(isForeign(view)
+      ? []
+      : [
+          ownEndpoint
+            ? t('datasets.lastEndpoint')
+            : view.state === 'external'
+              ? t('datasets.lastExternal')
+              : failedRun && lastOk
+                ? t('datasets.metaLastOk', { when: f.dateTime(lastOk.startedAt) })
+                : lastStarted
+                  ? t('datasets.metaLast', { when: f.dateTime(lastStarted) })
+                  : t('datasets.metaNotYet'),
+        ]),
+    ...(view.documents !== null ? [t('datasets.metaDocuments', { count: view.documents })] : []),
+  ].join(' · ');
 
   if (deleted) return <Deleted name={view.name} result={deleted} />;
   return (
     <div className="stack dataset-page">
-      <a href="#/datasets" className="back-link">
-        <Icon icon={ChevronLeftIcon} size={18} />
-        {t('datasets.title')}
-      </a>
+      <BackLink label={t('datasets.title')} href="#/datasets" />
       <div className="page-head">
         <div className="page-head-text">
           <div className="row-wrap">
@@ -792,47 +430,83 @@ const Loaded = ({
               {view.name}
             </Heading>
             <Tag data-color={statusColors[status]}>{t(statusKeys[status])}</Tag>
-            <Tag data-color="neutral">{sharedSourceText(t, view)}</Tag>
           </div>
-          {view.description ? <p className="lead">{view.description}</p> : null}
+          {view.description ? <Paragraph className="lead">{view.description}</Paragraph> : null}
+          <p className="meta">{meta}</p>
         </div>
-        <div className="actions">
-          <Button variant="secondary" aria-pressed={trying} onClick={() => setTrying((x) => !x)}>
-            <Icon icon={PlayIcon} />
-            {t('datasets.try')}
-          </Button>
-          {canEdit && pipeline ? (
-            <>
-              <Button
-                variant="secondary"
-                aria-disabled={running || undefined}
-                onClick={() => void run()}
-              >
-                {t('datasets.runNow')}
-              </Button>
-              {running ? (
-                <Button variant="secondary" data-color="danger" onClick={() => void cancel()}>
-                  {t('datasets.cancelIngestion')}
+        {canEdit && pipeline ? (
+          <div className="actions">
+            <Button
+              variant="secondary"
+              aria-disabled={running || uploading || undefined}
+              onClick={() => void run()}
+            >
+              {t('datasets.runNow')}
+            </Button>
+            {view.source === 'upload' ? (
+              <>
+                <Button
+                  variant="primary"
+                  aria-disabled={running || uploading || undefined}
+                  onClick={() => !running && !uploading && uploadInput.current?.click()}
+                >
+                  {uploading ? t('datasets.uploadingFiles') : t('datasets.uploadFiles')}
                 </Button>
-              ) : null}
-              <ApiCallLink
-                call={{
-                  ...datasetRunCall(tenant, view.id, pipeline.id),
-                  action: t('datasets.apiRunAction', { name: view.name }),
-                  right: t('rights.manageDatasets'),
-                  endpoint: 'ds-pipeline-run',
-                }}
-              />
-            </>
-          ) : null}
-        </div>
+                <input
+                  ref={uploadInput}
+                  type="file"
+                  multiple
+                  hidden
+                  accept={uploadAccept}
+                  aria-label={t('datasets.chooseFilesToUpload')}
+                  onChange={(e) => void uploadAndRun([...(e.currentTarget.files ?? [])])}
+                />
+              </>
+            ) : null}
+          </div>
+        ) : null}
       </div>
       <div aria-live="polite" className="stack-sm">
+        {failedRun ? (
+          <Alert data-color="danger">
+            <Heading level={2} data-size="2xs">
+              {t('datasets.failedAt', { when: f.dateTime(failedRun.startedAt) })}
+            </Heading>
+            <p className="alert-text">
+              {failedRun.error
+                ? `${t('datasets.failedCause', { message: failedRun.error.replace(/[.\s]*$/, '.') })} `
+                : ''}
+              {lastOk
+                ? t('datasets.servicesUseFrom', { when: f.date(lastOk.startedAt) })
+                : t('datasets.nothingChanged')}
+              {pipeline?.spec.source.kind === 'website'
+                ? ` ${t('datasets.failedWebsiteHelp')}`
+                : ''}
+            </p>
+            {canEdit && pipeline ? (
+              <div className="row-wrap">
+                <Button variant="secondary" data-size="sm" onClick={() => void run()}>
+                  {t('common.tryAgain')}
+                </Button>
+                {pipeline.spec.source.kind === 'website' ? (
+                  <a href={`#${datasetTabPath(view.fullId, 'source')}`}>
+                    {t('datasets.changeAddress')}
+                  </a>
+                ) : null}
+              </div>
+            ) : null}
+          </Alert>
+        ) : null}
         {running ? (
-          <Alert data-color="info" data-size="sm">
-            <span role="status" className="row-wrap">
-              <Spinner aria-hidden="true" data-size="xs" />
-              {t('datasets.runningLeave')}
+          <Alert data-color={latest?.status === 'waiting' ? 'warning' : 'info'} data-size="sm">
+            <span role="status">
+              {t(
+                latest?.status === 'queued'
+                  ? 'datasets.queuedLeave'
+                  : latest?.status === 'waiting'
+                    ? 'datasets.waitingLeave'
+                    : 'datasets.runningLeave',
+              )}
             </span>
           </Alert>
         ) : null}
@@ -877,66 +551,36 @@ const Loaded = ({
             {skippedNow.length ? <Skipped list={skippedNow} /> : null}
           </Alert>
         ) : null}
-        {finished?.status === 'failed' ? (
-          <Alert data-color="danger">
-            <Heading level={2} data-size="2xs">
-              {t('datasets.ingestionFailed')}
-            </Heading>
-            <p className="alert-text">{t('datasets.nothingChanged')}</p>
-          </Alert>
-        ) : null}
         {failure ? (
           <Alert data-color="danger" data-size="sm" role="alert">
             {t('datasets.couldNotStart', { problem: failure })}
           </Alert>
         ) : null}
         {flash ? (
-          <Alert data-color="success" data-size="sm">
+          <Alert data-color="success" data-size="sm" role="status">
             {flash}
           </Alert>
         ) : null}
       </div>
-      <dl className="facts">
-        {[
-          [t('datasets.factDocuments'), countText(t, f, view.documents)],
-          [t('datasets.factChunks'), countText(t, f, view.chunks)],
-          [
-            t('datasets.factLastOk'),
-            view.state === 'external'
-              ? t('datasets.lastExternal')
-              : lastOk?.endedAt
-                ? f.dateTime(lastOk.endedAt)
-                : view.lastExecution?.status === 'succeeded'
-                  ? whenText(
-                      f,
-                      view.lastExecution.endedAt ?? view.lastExecution.startedAt,
-                      t('datasets.notYet'),
-                    )
-                  : t('datasets.notYet'),
-          ],
-          [
-            t('datasets.factNext'),
-            view.state === 'external'
-              ? t('datasets.nextExternal')
-              : whenText(f, nextRun, t('datasets.scheduleNone')),
-          ],
-          [t('datasets.factProcessed'), residencyText(t, view.effectiveResidency)],
-        ].map(([l, v]) => (
-          <div key={l}>
-            <dt>{l}</dt>
-            <dd className="fact-text">{v}</dd>
-          </div>
-        ))}
-      </dl>
 
-      <Tabs value={tab} onChange={(v) => setTab(v as DetailTab)}>
-        <Tabs.List aria-label={t('datasets.tabsLabel')}>
-          <Tabs.Tab value="ingestions">{t('datasets.tabIngestions')}</Tabs.Tab>
-          <Tabs.Tab value="filters">{t('datasets.tabFilters')}</Tabs.Tab>
-          <Tabs.Tab value="source">{t('datasets.tabSource')}</Tabs.Tab>
-        </Tabs.List>
+      <Tabs value={tab} onChange={(v) => changeTab(v as DetailTab)}>
+        <DatasetTabs />
+        <Tabs.Panel value="content">
+          {tab === 'content' ? (
+            <Content
+              api={api}
+              tenant={tenant}
+              view={view}
+              canUpload={canEdit && view.source === 'upload' && !!pipeline}
+              canManage={canEdit}
+              onUpload={() => uploadInput.current?.click()}
+            />
+          ) : null}
+        </Tabs.Panel>
         <Tabs.Panel value="ingestions">
-          {!editable ? (
+          {ownEndpoint ? (
+            <p className="meta">{t('datasets.endpointIngestions')}</p>
+          ) : !editable ? (
             <p className="meta">
               {view.state === 'external'
                 ? t('datasets.externalIngestions')
@@ -944,43 +588,106 @@ const Loaded = ({
             </p>
           ) : pipelines.status === 'error' ? (
             <ErrorState error={pipelines.error} onRetry={retryPipelines} headingLevel={3} />
-          ) : !runs || runs.data.length === 0 ? (
-            <p className="meta">{t('datasets.noIngestions')}</p>
+          ) : runsError !== undefined && !runs ? (
+            <ErrorState error={runsError} onRetry={() => void load()} headingLevel={3} />
+          ) : pipelines.status === 'loading' || (pipeline && !runs) ? (
+            <Loading
+              label={t('datasets.loadingRuns')}
+              shape="list"
+              headingLevel={3}
+              onRetry={retryPipelines}
+            />
           ) : (
-            <ol className="runs" aria-label={t('datasets.tabIngestions')}>
-              {runs.data.map((r) => (
-                <Run
-                  key={r.id}
-                  run={r}
-                  open={openRun === r.id}
-                  onToggle={() => setOpenRun(openRun === r.id ? undefined : r.id)}
-                />
-              ))}
-            </ol>
+            <section className="stack-sm" aria-labelledby="runs-h">
+              <Heading level={2} data-size="xs" id="runs-h">
+                {t('datasets.tabIngestions')}
+              </Heading>
+              {pipeline ? (
+                <Paragraph data-size="sm">{scheduleLine(t, f, pipeline, nextRun)}</Paragraph>
+              ) : null}
+              {!runs || runs.data.length === 0 ? (
+                <p className="meta">{t('datasets.noIngestions')}</p>
+              ) : (
+                <>
+                  {runsError !== undefined ? (
+                    <Alert data-color="warning" data-size="sm">
+                      <Paragraph data-size="sm">
+                        {polling ? t('datasets.runsRetrying') : t('datasets.runsStale')}
+                      </Paragraph>
+                      {polling ? null : (
+                        <Button variant="secondary" data-size="sm" onClick={() => void load()}>
+                          {t('common.tryAgain')}
+                        </Button>
+                      )}
+                    </Alert>
+                  ) : null}
+                  {pipeline?.spec.source.kind === 'website' ? (
+                    <RunTable
+                      runs={runs.data}
+                      {...(canEdit ? { onCancel: (r: ExecutionView) => setAskCancel(r) } : {})}
+                    />
+                  ) : (
+                    <ol className="runs" aria-label={t('datasets.tabIngestions')}>
+                      {runs.data.map((r) => (
+                        <Run
+                          key={r.id}
+                          run={r}
+                          open={openRun === r.id}
+                          onToggle={() => setOpenRun(openRun === r.id ? undefined : r.id)}
+                          {...(canEdit && isOpen(r) ? { onCancel: () => setAskCancel(r) } : {})}
+                        />
+                      ))}
+                    </ol>
+                  )}
+                </>
+              )}
+            </section>
           )}
         </Tabs.Panel>
-        <Tabs.Panel value="filters">
-          <div className="stack-sm">
-            <p className="meta panel-intro">{t('datasets.filtersIntro')}</p>
-            <Facets api={api} tenant={tenant} view={view} />
-          </div>
+        <Tabs.Panel value="used-by">
+          <UsedBy
+            api={api}
+            tenant={tenant}
+            readers={view.usedBy ?? []}
+            documents={countText(t, f, view.documents)}
+          />
         </Tabs.Panel>
         <Tabs.Panel value="source">
-          <div className="source-grid">
-            {canEdit ? (
-              <SourceSettings
-                key={`${view.name}-${pipeline?.version ?? 0}`}
-                api={api}
-                tenant={tenant}
-                view={view}
-                pipeline={pipeline}
-                onSaved={(text) => {
-                  setFlash(text);
-                  retryPipelines();
-                  void api.datasets.get(tenant, view.id).then(setView, () => undefined);
-                }}
-              />
-            ) : (
+          {canEdit && pipelines.status === 'loading' ? (
+            <Loading
+              label={t('datasets.loadingOne')}
+              shape="form"
+              headingLevel={3}
+              onRetry={retryPipelines}
+            />
+          ) : canEdit ? (
+            <SourceSettings
+              key={`${view.name}-${pipeline?.version ?? 0}-${formKey}`}
+              api={api}
+              tenant={tenant}
+              tenantName={tenantName}
+              view={view}
+              pipeline={pipeline}
+              onDirty={onDirty}
+              onSaved={(text) => {
+                setFlash(text);
+                retryPipelines();
+                void api.datasets.get(tenant, view.id).then(setView, () => undefined);
+              }}
+            >
+              {view.source === 'upload' ? (
+                <Uploads
+                  api={api}
+                  tenant={tenant}
+                  dataset={view.id}
+                  datasetName={view.name}
+                  canEdit={canEdit}
+                  onUploaded={() => setFlash(t('datasets.filesUploaded'))}
+                />
+              ) : null}
+            </SourceSettings>
+          ) : (
+            <div className="stack">
               <section aria-labelledby="kilde-h" className="source-card">
                 <h2 id="kilde-h" className="card-title">
                   {t('datasets.factSource')}
@@ -989,9 +696,13 @@ const Loaded = ({
                   <div>
                     <dt>{t('datasets.factSource')}</dt>
                     <dd>
-                      {view.state === 'external'
-                        ? externalSourceText(t, view)
-                        : t(sourceText[view.source])}
+                      {ownEndpoint
+                        ? ownEndpointText(t, endpointHost)
+                        : view.state === 'external'
+                          ? externalSourceText(t, view)
+                          : isForeign(view)
+                            ? t('datasets.unknown')
+                            : t(sourceText[view.source])}
                     </dd>
                   </div>
                   {pipeline ? (
@@ -1009,45 +720,59 @@ const Loaded = ({
                   </Alert>
                 ) : null}
               </section>
-            )}
-            {view.source === 'upload' ? (
-              <Uploads
-                api={api}
-                tenant={tenant}
-                dataset={view.id}
-                datasetName={view.name}
-                canEdit={canEdit}
-                onUploaded={() => setFlash(t('datasets.filesUploaded'))}
-              />
-            ) : null}
+              {view.source === 'upload' ? (
+                <Uploads
+                  api={api}
+                  tenant={tenant}
+                  dataset={view.id}
+                  datasetName={view.name}
+                  canEdit={false}
+                  onUploaded={() => undefined}
+                />
+              ) : null}
+            </div>
+          )}
+          <div className="stack dataset-settings-after">
+            <Technical view={view}>
+              {(open) =>
+                open ? (
+                  <SearchEngine
+                    api={api}
+                    tenant={tenant}
+                    tenantName={tenantName}
+                    datasetId={view.fullId}
+                    datasetName={view.name}
+                    docs={countText(t, f, view.documents)}
+                    chunks={countText(t, f, view.chunks)}
+                    canEdit={canEdit}
+                  />
+                ) : null
+              }
+            </Technical>
             {canEdit ? (
               <DeleteDataset api={api} tenant={tenant} view={view} onDeleted={setDeleted} />
             ) : null}
           </div>
-          <SearchEngine
-            api={api}
-            tenant={tenant}
-            tenantName={tenantName}
-            datasetId={view.fullId}
-            datasetName={view.name}
-            docs={countText(t, f, view.documents)}
-            chunks={countText(t, f, view.chunks)}
-            canEdit={canEdit}
-          />
         </Tabs.Panel>
       </Tabs>
-      {trying ? (
-        <div className="dataset-try-sheet">
-          <PlaygroundPanel
-            layout="side"
-            context="dataset"
-            name={view.fullId}
-            api={api}
-            tenant={tenant}
-            tenantName={tenantName}
-            onClose={() => setTrying(false)}
-          />
-        </div>
+      {askCancel ? (
+        <CancelDialog
+          run={askCancel}
+          onKeep={() => setAskCancel(undefined)}
+          onCancel={() => void cancel(askCancel)}
+        />
+      ) : null}
+      {leaving ? (
+        <LeaveDialog
+          onStay={() => setLeaving(undefined)}
+          onLeave={() => {
+            const target = leaving;
+            setLeaving(undefined);
+            setDirty(false);
+            setFormKey((k) => k + 1);
+            window.location.hash = target;
+          }}
+        />
       ) : null}
     </div>
   );

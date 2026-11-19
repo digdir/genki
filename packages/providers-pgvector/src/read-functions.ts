@@ -1,4 +1,5 @@
 import { clauseFits, kindsOf, type DatasetConfig, type FilterValue } from '@genai/port-knowledge';
+import { bestChunk, textRankCap } from './sql.js';
 
 /** SQLSTATE a read function raises when this server does not hold the generation it was asked for. */
 export const notReadyCode = 'KN503';
@@ -38,6 +39,26 @@ const hitSelect = `c.id, c.text, c.doc_id, c.position, c.metadata, d.title, d.ur
 const docJoin = (alias: string) =>
   `'join kn_docs d on d.dataset = ' || ds || ' and d.generation = ' || g || ' and d.id = ${alias}.doc_id'`;
 
+/**
+ * A text search's ranked matches for the tsquery literal in `q`: the matches are planned uncapped, then at most `textRankCap` are read.
+ * For the docs target, documents are ranked and cut first, then each gets the chunk that best matches the query (`bestChunk`).
+ */
+const rankedSql = (q: string) => `case when p_target = 'docs' then format(
+             'with m as materialized (select d.id as doc, %2$s as tsv from kn_docs d
+                where d.dataset = %3$s and d.generation = %4$s and %2$s @@ %1$s and %5$s),
+              top as (select doc, tsv, ts_rank_cd(tsv, %1$s)::float8 as s from (select doc, tsv from m limit ${textRankCap}) m
+                order by s desc, doc limit %6$s)
+              select best.id, top.s from top
+              cross join lateral (${bestChunk('%7$s', 'top', '%3$s', '%4$s').replaceAll("'", "''")}) best
+              order by top.s desc, best.id',
+             ${q}, tsv, ds, g, where_sql, p_candidates, q)
+           else format(
+             'with m as materialized (select %2$s as id, x.tsv from %3$s x
+                where x.dataset = %4$s and x.generation = %5$s and x.tsv @@ %1$s%6$s)
+              select id, max(ts_rank_cd(m.tsv, %1$s))::float8 as s from (select id, tsv from m limit ${textRankCap}) m
+              group by id order by s desc, id limit %7$s',
+             ${q}, id_col, tbl, ds, g, doc_filter, p_candidates) end`;
+
 const createFunctions = [
   // `app.datasets` is a JSON array of the dataset ids the router allowed, set once per read transaction.
   `create or replace function kn_allowed(p_dataset text) returns void
@@ -76,19 +97,39 @@ const createFunctions = [
   `create or replace function kn_filter_sql(p_filters jsonb, p_config text) returns text
      language plpgsql immutable set search_path = pg_catalog, public as $$
      declare
-       c jsonb; f text; json text; part text; parts text[] := '{}';
+       c jsonb; f text; json text; part text; q text; parts text[] := '{}';
      begin
        for c in select x from jsonb_array_elements(coalesce(p_filters, '[]')) x loop
          f := c->>'field';
-         json := format('d.fields -> %L', f);
-         if c->>'op' in ('in', 'not') then
+         -- A document's id and title are columns of their own, never in its fields.
+         json := case f when 'doc_num' then 'to_jsonb(d.id)' when 'title' then 'to_jsonb(d.title)'
+                        else format('d.fields -> %L', f) end;
+         if c->>'op' in ('in', 'not') and f in ('doc_num', 'title') then
+           -- d.id is never null, so its condition stays bare: the documents' key finds the document,
+           -- and the chunks' doc_id index its chunks, for the text and the vector half.
+           select format(case f when 'doc_num' then 'd.id = any(%L::text[])' else 'coalesce(d.title = any(%L::text[]), false)' end,
+                     coalesce(array_agg(v #>> '{}'), '{}'))
+             into part from jsonb_array_elements(c->'values') v;
+           if c->>'op' = 'not' then part := 'not ' || part; end if;
+         elsif c->>'op' in ('in', 'not') then
            select '(' || coalesce(string_agg(format('d.fields @> %L::jsonb or d.fields @> %L::jsonb',
                      jsonb_build_object(f, v), jsonb_build_object(f, jsonb_build_array(v))), ' or '), 'false') || ')'
              into part from jsonb_array_elements(c->'values') v;
            if c->>'op' = 'not' then part := 'not ' || part; end if;
          elsif c->>'op' = 'text' then
-           part := format('to_tsvector(%L::regconfig, %s) @@ %L::tsquery', p_config, kn_text_sql(json),
-             replace(plainto_tsquery(p_config::regconfig, c->>'terms')::text, ' & ', ' | '));
+           -- Every word of one option must match; the options are alternatives. A row from an API
+           -- before options came keeps its meaning then: any of its words.
+           if c ? 'options' then
+             select string_agg('(' || o || ')', ' | ') into q from (
+               select plainto_tsquery(p_config::regconfig, e #>> '{}')::text o
+               from jsonb_array_elements(c->'options') e) s
+             where o <> '';
+           else
+             q := nullif(replace(plainto_tsquery(p_config::regconfig, c->>'terms')::text, ' & ', ' | '), '');
+           end if;
+           part := case when q is null then 'false' else format('%s @@ %L::tsquery',
+             case f when 'title' then 'd.title_tsv'
+                    else format('to_tsvector(%L::regconfig, %s)', p_config, kn_text_sql(json)) end, q) end;
          elsif c->>'op' = 'int' then
            part := concat_ws(' and ',
              case when c ? 'gte' then format('kn_int(%s) >= %s::bigint', json, (c->>'gte')::bigint) end,
@@ -125,10 +166,13 @@ const createFunctions = [
        cfg text;
        dims integer;
        where_sql text;
+       doc_filter text;
        use_text boolean := p_mode <> 'vector';
        use_vector boolean := p_mode <> 'text' and p_vector is not null;
        match_all boolean := btrim(p_query) = '*';
        q text;
+       q_any text;
+       ranked text;
        tsv text;
        tbl text;
        id_col text;
@@ -142,41 +186,54 @@ const createFunctions = [
        cfg := coalesce(recipe->>'textSearchConfig', 'norwegian');
        dims := coalesce((recipe->'embedding'->>'dimensions')::integer, vector_dims(p_vector));
        where_sql := kn_filter_sql(p_filters, cfg);
-       if use_text then
-         if not match_all then
-           q := format('%L::tsquery', replace(plainto_tsquery(cfg::regconfig, p_query)::text, ' & ', ' | '));
-         end if;
+       doc_filter := case when where_sql = 'true' then '' else format(
+         ' and exists (select 1 from kn_docs d where d.dataset = %s and d.generation = %s and d.id = x.doc_id and %s)',
+         ds, g, where_sql) end;
+       tbl := case p_target when 'chunks' then 'kn_chunks' else 'kn_phrases' end;
+       id_col := case p_target when 'chunks' then 'x.id' else 'x.chunk_id' end;
+       tsv := case
+         when p_fields is null then 'd.tsv'
+         when p_fields = array['title'] then 'd.title_tsv'
+         else format('to_tsvector(%L::regconfig, concat_ws('' '', %s))', cfg,
+           (select string_agg(case when f = 'title' then 'coalesce(d.title, '''')'
+                                   else kn_text_sql(format('d.fields -> %L', f)) end, ', ')
+              from unnest(p_fields) f))
+       end;
+       if use_text and match_all then
          if p_target = 'docs' then
-           tsv := case
-             when p_fields is null then 'd.tsv'
-             when p_fields = array['title'] then 'd.title_tsv'
-             else format('to_tsvector(%L::regconfig, concat_ws('' '', %s))', cfg,
-               (select string_agg(case when f = 'title' then 'coalesce(d.title, '''')'
-                                       else kn_text_sql(format('d.fields -> %L', f)) end, ', ')
-                  from unnest(p_fields) f))
-           end;
            ctes := ctes || format(
-             't as (select first.id, %s as s from kn_docs d
+             't as (select first.id, 0::float8 as s from kn_docs d
                 cross join lateral (select c.id from kn_chunks c
                   where c.dataset = %s and c.generation = %s and c.doc_id = d.id order by c.position limit 1) first
-                where d.dataset = %s and d.generation = %s and %s and %s
+                where d.dataset = %s and d.generation = %s and %s
                 order by s desc, first.id limit %s)',
-             case when match_all then '0::float8' else format('ts_rank_cd(%s, %s)::float8', tsv, q) end,
-             ds, g, ds, g,
-             case when match_all then 'true' else format('%s @@ %s', tsv, q) end,
-             where_sql, p_candidates);
+             ds, g, ds, g, where_sql, p_candidates);
          else
-           tbl := case p_target when 'chunks' then 'kn_chunks' else 'kn_phrases' end;
-           id_col := case p_target when 'chunks' then 'x.id' else 'x.chunk_id' end;
            ctes := ctes || format(
-             't as (select %s as id, max(%s) as s from %s x %s
-                where x.dataset = %s and x.generation = %s and %s and %s
+             't as (select %s as id, 0::float8 as s from %s x %s
+                where x.dataset = %s and x.generation = %s and %s
                 group by %s order by s desc, id limit %s)',
-             id_col,
-             case when match_all then '0::float8' else format('ts_rank_cd(x.tsv, %s)::float8', q) end,
-             tbl, ${docJoin('x')}, ds, g,
-             case when match_all then 'true' else format('x.tsv @@ %s', q) end,
-             where_sql, id_col, p_candidates);
+             id_col, tbl, ${docJoin('x')}, ds, g, where_sql, id_col, p_candidates);
+         end if;
+       elsif use_text then
+         -- Every word must match; quoted words match as a phrase.
+         q := format('%L::tsquery', websearch_to_tsquery(cfg::regconfig, p_query)::text);
+         ranked := ${rankedSql('q')};
+         -- A text profile, with no vector half to fill the list, adds some-words matches below the all-words ones.
+         if p_mode = 'text' then
+           q_any := format('%L::tsquery', replace(plainto_tsquery(cfg::regconfig, p_query)::text, ' & ', ' | '));
+           ctes := ctes || format(
+             't_all as (%s), t_any as (%s),
+              t as (select id, s from (
+                select id, 1 + s / (1 + s) as s from t_all
+                union all
+                select id, s / (1 + s) from t_any
+                where (select count(*) from t_all) < %s and strpos(%s::text, ''!'') = 0
+                  and id not in (select id from t_all)) u
+                order by s desc, id limit %s)',
+             ranked, ${rankedSql('q_any')}, p_candidates, q, p_candidates);
+         else
+           ctes := ctes || format('t as (%s)', ranked);
          end if;
        end if;
        if use_vector then
@@ -364,7 +421,7 @@ export const readFunctionMigrations = (reader: string): string[] => [
 
 export type FilterClauseRow =
   | { field: string; op: 'in' | 'not'; values: unknown[] }
-  | { field: string; op: 'text'; terms: string }
+  | { field: string; op: 'text'; terms: string; options: string[] }
   | { field: string; op: 'int'; gte?: number; lte?: number }
   | { field: string; op: 'str'; gte?: string; lte?: string }
   | { field: string; op: 'range'; gte?: number | string; lte?: number | string };
@@ -384,12 +441,18 @@ export const filterRows = (
       const kind = kinds.find((k) => clauseFits(k, clause)) ?? 'select';
       if (typeof clause !== 'object') {
         if (kind === 'text' && typeof clause !== 'boolean')
-          return { field, op: 'text', terms: String(clause) };
+          return { field, op: 'text', terms: String(clause), options: [String(clause)] };
         return { field, op: 'in', values: [clause] };
       }
       if (Array.isArray(clause)) return { field, op: 'in', values: clause };
       if ('not' in clause) return { field, op: 'not', values: clause.not };
-      if ('contains' in clause) return { field, op: 'text', terms: clause.contains.join(' ') };
+      if ('contains' in clause)
+        return {
+          field,
+          op: 'text',
+          terms: clause.contains.join(' '),
+          options: clause.contains.map(String),
+        };
       const integer =
         dataset.valueTypes?.[field] === 'integer' &&
         [clause.gte, clause.lte].every((b) => b === undefined || typeof b === 'number');

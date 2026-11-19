@@ -65,6 +65,7 @@ describe('the status of a dataset', () => {
       chunks: 0,
       lastExecution: null,
       nextRunAt: null,
+      updatedAt: null,
       skipped: [],
     });
 
@@ -109,18 +110,32 @@ describe('the status of a dataset', () => {
       chunks: 2,
       lastExecution: {
         status: 'succeeded',
+        startedBy: 'kari',
         startedAt: '2026-10-07T10:00:00.000Z',
         endedAt: '2026-10-07T10:00:00.000Z',
         stored: 2,
         skipped: 1,
       },
       nextRunAt: '2026-10-08T01:00:00.000Z',
+      updatedAt: '2026-10-07T10:00:00.000Z',
       skipped: [{ document: 'c.pdf', reason: 'unsupported_type' }],
     });
     expect(await datasetStatus({ ...deps, countable: () => false }, item)).toMatchObject({
       documents: null,
       chunks: null,
     });
+  });
+
+  it('reads the document count from the search engine for a shared dataset genki cannot count in its own store', async () => {
+    const { ingestion } = boot();
+    const shared: CatalogItem = { ...item, id: 'digdir/kudos', scope: 'platform' };
+
+    const status = await datasetStatus(
+      { ingestion, countable: () => false, documentCount: async () => 4210 },
+      shared,
+    );
+
+    expect(status).toMatchObject({ documents: 4210, chunks: null });
   });
 
   it('reports a dataset on a search engine the platform does not write to as ingested outside the platform, with the document count read from the engine', async () => {
@@ -139,6 +154,7 @@ describe('the status of a dataset', () => {
       chunks: null,
       lastExecution: null,
       nextRunAt: null,
+      updatedAt: null,
       skipped: [],
     });
     expect(

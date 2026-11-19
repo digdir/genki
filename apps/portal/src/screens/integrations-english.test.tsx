@@ -1,5 +1,4 @@
 // @vitest-environment jsdom
-import { createFormat } from '@genai/i18n';
 import { inEnglish } from '@genai/i18n/react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
@@ -7,9 +6,12 @@ import { createApiClient } from '../api';
 import { parseRoute } from '../hooks';
 import { translator } from '../i18n';
 import { mockFetch } from '../mock';
+import { exampleTracing } from '../mock/devtools';
+import { RightsProvider } from '../Shell';
 import '../test-utils';
 import { Integrations } from './Integrations';
 import { CallFromCode } from './integrations/CallFromCode';
+import { TracingPage } from './integrations/TracingPage';
 import { describeSchedule } from './integrations/Triggers';
 
 beforeAll(() => {
@@ -27,39 +29,40 @@ const api = createApiClient({ baseUrl: '/api', fetch: mockFetch(), token: () => 
 const overview = (hash: string, live = false) =>
   render(
     inEnglish(
-      <Integrations
-        api={api}
-        tenant="999888777"
-        tenantName="Testetaten"
-        route={parseRoute(hash)}
-        live={live}
-      />,
+      <RightsProvider value={['manage-services']}>
+        <Integrations
+          api={api}
+          tenant="999888777"
+          tenantName="Testetaten"
+          route={parseRoute(hash)}
+          live={live}
+        />
+      </RightsProvider>,
     ),
   );
 
 describe('integrations in English', () => {
   it('names schedules in plain English', () => {
     const t = translator('en');
-    const f = createFormat('en');
-    expect(describeSchedule('0 2 * * *', t, f)).toBe('Every night at 02:00');
-    expect(describeSchedule('30 7 * * *', t, f)).toBe('Every day at 07:30');
-    expect(describeSchedule('0 7 * * 1', t, f)).toBe('Every Monday at 07:00');
-    expect(describeSchedule('0 * * * *', t, f)).toBe('Every hour');
-    expect(describeSchedule('*/5 * * * *', t, f)).toBe('Schedule "*/5 * * * *"');
+    expect(describeSchedule('0 2 * * *', t)).toBe('Every night at 02:00');
+    expect(describeSchedule('30 7 * * *', t)).toBe('Every day at 07:30');
+    expect(describeSchedule('0 7 * * 1', t)).toBe('Every Monday at 07:00');
+    expect(describeSchedule('0 * * * *', t)).toBe('Every hour');
+    expect(describeSchedule('*/5 * * * *', t)).toBe('Schedule "*/5 * * * *"');
   });
 
-  it('shows statuses and the follow-up warning in English', () => {
+  it('shows the systems and their status in English', async () => {
     overview('#/integrations');
-    expect(screen.getByText('2 integrations need follow-up')).toBeTruthy();
-    expect(screen.getAllByText('Failing').length).toBeGreaterThan(0);
+    expect(await screen.findByText('Waiting for approval')).toBeTruthy();
+    expect(screen.getByText('MCP server')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Connect a system' })).toBeTruthy();
   });
 
-  it('shows the connect dialog and its problems in English', () => {
+  it('shows the connect dialog and its problems in English', async () => {
     overview('#/integrations');
-    fireEvent.click(screen.getByRole('button', { name: 'Connect a system' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Connect a system' }));
     fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
-    expect(screen.getAllByText('Enter the name of the system.').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Write the name of the system.').length).toBeGreaterThan(0);
   });
 
   it('shows live frontends and triggers in English', async () => {
@@ -74,13 +77,20 @@ describe('integrations in English', () => {
 
   it('shows keys, hooks and tracing in English', async () => {
     overview('#/integrations?tab=keys');
-    expect(await screen.findByRole('button', { name: 'Create API key' })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: 'New API key' })).toBeTruthy();
     cleanup();
     overview('#/integrations?tab=hooks');
-    expect(await screen.findByRole('heading', { name: 'From the platform' })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: 'New hook' })).toBeTruthy();
     cleanup();
-    overview('#/integrations?tab=tracing');
-    expect(screen.getByText('Where is Langfuse hosted?')).toBeTruthy();
+    const withTracing = createApiClient({
+      baseUrl: '/api',
+      fetch: mockFetch(undefined, undefined, undefined, undefined, {
+        features: { devtools: { tracing: exampleTracing } },
+      }),
+      token: () => 'test',
+    });
+    render(inEnglish(<TracingPage api={withTracing} tenant="999888777" />));
+    expect(await screen.findByRole('heading', { name: 'What is traced' })).toBeTruthy();
   });
 
   it('explains calling a service from code in English', () => {

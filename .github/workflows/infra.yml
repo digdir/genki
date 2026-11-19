@@ -35,6 +35,9 @@ jobs:
       ANSATTPORTEN_ISSUER: ${{ vars.ANSATTPORTEN_ISSUER }}
       ALTINN_PDP_URL: ${{ vars.ALTINN_PDP_URL }}
       ALTINN_PDP_MASKINPORTEN_CLIENT_ID: ${{ vars.ALTINN_PDP_MASKINPORTEN_CLIENT_ID }}
+      ALTINN_PEOPLE_URL: ${{ vars.ALTINN_PEOPLE_URL }}
+      ALTINN_PEOPLE_MASKINPORTEN_CLIENT_ID: ${{ vars.ALTINN_PEOPLE_MASKINPORTEN_CLIENT_ID }}
+      ALTINN_PEOPLE_MASKINPORTEN_SCOPE: ${{ vars.ALTINN_PEOPLE_MASKINPORTEN_SCOPE }}
       MASKINPORTEN_ISSUER: ${{ vars.MASKINPORTEN_ISSUER }}
       MASKINPORTEN_TOKEN_URL: ${{ vars.MASKINPORTEN_TOKEN_URL }}
       OPERATOR_SUBJECTS: ${{ vars.OPERATOR_SUBJECTS }}
@@ -102,9 +105,26 @@ jobs:
           else
             echo "version=bootstrap" >> "$GITHUB_OUTPUT"
           fi
+      # Recorded in the deploy's outputs, so deploy.yml can tell whether the infrastructure changed since.
+      - id: fingerprint
+        env:
+          RG: ${{ vars.AZURE_RESOURCE_GROUP }}
+          ENVIRONMENT: ${{ inputs.environment }}
+        run: scripts/infra-state.sh "infra/env/$ENVIRONMENT.bicepparam" "$RG" true | grep '^fingerprint=' >> "$GITHUB_OUTPUT"
+      - name: stop the worker before its new revision starts
+        if: ${{ !inputs.what-if }}
+        env:
+          RG: ${{ vars.AZURE_RESOURCE_GROUP }}
+        run: scripts/worker-revisions.sh "$RG" stop
       - run: |
           az deployment group ${{ inputs.what-if && 'what-if' || 'create' }} \
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
-            --name "infra-${{ github.run_id }}" \
+            --name "infra-${{ github.run_id }}-${{ github.run_attempt }}" \
             --parameters infra/env/${{ inputs.environment }}.bicepparam \
-            --parameters apiImage="${{ steps.current.outputs.api }}" workerImage="${{ steps.current.outputs.worker }}" appsImage="${{ steps.current.outputs.apps }}" doclingImage="${{ steps.current.outputs.docling }}" appVersion="${{ steps.current.outputs.version }}" workerVersion="${{ steps.current.outputs.worker_version }}" apiRevisionSuffix="${{ steps.current.outputs.suffix }}" apiLiveRevision="${{ steps.current.outputs.live }}" apiPreviousRevision="${{ steps.current.outputs.previous }}"
+            --parameters apiImage="${{ steps.current.outputs.api }}" workerImage="${{ steps.current.outputs.worker }}" appsImage="${{ steps.current.outputs.apps }}" doclingImage="${{ steps.current.outputs.docling }}" appVersion="${{ steps.current.outputs.version }}" workerVersion="${{ steps.current.outputs.worker_version }}" apiRevisionSuffix="${{ steps.current.outputs.suffix }}" apiLiveRevision="${{ steps.current.outputs.live }}" apiPreviousRevision="${{ steps.current.outputs.previous }}" infraFingerprint="${{ steps.fingerprint.outputs.fingerprint }}"
+      - name: start the worker's newest revision
+        if: ${{ always() && !inputs.what-if }}
+        env:
+          RG: ${{ vars.AZURE_RESOURCE_GROUP }}
+          DEPLOYMENT: infra-${{ github.run_id }}-${{ github.run_attempt }}
+        run: scripts/worker-revisions.sh "$RG" start "$DEPLOYMENT"

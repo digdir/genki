@@ -1,15 +1,14 @@
-import { Alert, Button, Chip, Heading, Paragraph, Tabs, Tag } from '@digdir/designsystemet-react';
-import { useEffect, useMemo, useState } from 'react';
+import { Alert, Button, Heading } from '@digdir/designsystemet-react';
+import { useEffect, useState } from 'react';
 import type { ApiClient } from '../../api';
-import { Crumbs } from '../../components/Crumbs';
-import { serviceOfFlow, strategies, type Flow, type Strategy } from '../../data/stepflows';
+import { BackLink } from '../../components/BackLink';
+import type { Flow } from '../../data/stepflows';
 import { NotAvailable } from '../../components/NotAvailable';
-import { useAsync } from '../../hooks';
 import { useT } from '../../i18n';
-import { EmptyState, ErrorState } from '../../states';
+import { ErrorState } from '../../states';
 import { FlowEditor, type Flash } from './FlowEditor';
-import { analyse, countSteps, flowName, versionLabel } from './model';
-import { StrategyView } from './StrategyView';
+import { FlowVersions } from './FlowVersions';
+import { flowName } from './model';
 import { UseInService } from './UseInService';
 
 export interface WorkspaceProps {
@@ -19,114 +18,23 @@ export interface WorkspaceProps {
   setFlows: (update: (flows: Record<string, Flow>) => Record<string, Flow>) => void;
   liveError?: { error: unknown; retry: () => void } | undefined;
   service?: { id: string; name: string } | undefined;
-  initialView: 'flow' | 'lib';
   initialFlow: string;
-  live?: boolean;
-  initialStrategy: Strategy['id'];
   initialTab: 'diagram' | 'yaml';
   initialOverlay: boolean;
 }
 
-const Library = ({
-  api,
-  tenant,
-  flows,
-  liveError,
-  onOpen,
-  onNew,
-}: {
-  api: ApiClient;
-  tenant: string;
-  flows: Record<string, Flow>;
-  liveError: WorkspaceProps['liveError'];
-  onOpen: (id: string) => void;
-  onNew: () => void;
-}) => {
-  const t = useT();
-  const [using, setUsing] = useState<Flow>();
-  const [operations] = useAsync((signal) => api.stepOperations(tenant, signal), [api, tenant]);
-  const ops = { operations: operations.status === 'ready' ? operations.data : undefined };
-  return (
-    <div className="stack-md">
-      <div className="page-head">
-        <div className="stack-xs">
-          <Heading level={1} data-size="md">
-            {t('stepflows.libraryTitle')}
-          </Heading>
-          <p className="lead">{t('stepflows.libraryLead')}</p>
-        </div>
-        <Button onClick={onNew}>{t('stepflows.newFlow')}</Button>
-      </div>
-      {liveError ? <ErrorState error={liveError.error} onRetry={liveError.retry} /> : null}
-      {Object.keys(flows).length === 0 && !liveError ? (
-        <EmptyState title={t('stepflows.emptyTitle')}>
-          <Paragraph>{t('stepflows.emptyText')}</Paragraph>
-        </EmptyState>
-      ) : null}
-      <ul className="flow-library">
-        {Object.values(flows).map((f) => {
-          const errors = analyse(f, flows, {}, t, ops).errors.size;
-          return (
-            <li key={f.id}>
-              <div className="row-wrap spread">
-                <Heading level={2} data-size="2xs">
-                  {flowName(f, t)}
-                </Heading>
-                <span className="tag-row">
-                  {f.sub ? (
-                    <Tag data-size="sm" data-color="neutral">
-                      {t('stepflows.controlSub')}
-                    </Tag>
-                  ) : null}
-                  <Tag data-size="sm" data-color={errors ? 'danger' : 'success'}>
-                    {errors ? t('stepflows.withErrors', { count: errors }) : t('stepflows.valid')}
-                  </Tag>
-                </span>
-              </div>
-              <p className="small">{f.desc || t('stepflows.newFlowDesc')}</p>
-              <dl className="kv small-kv">
-                <dt>{t('stepflows.dtVersion')}</dt>
-                <dd>
-                  {t('stepflows.versionChanged', {
-                    version: versionLabel(f, t),
-                    changed: f.changed,
-                  })}
-                </dd>
-                <dt>{t('stepflows.dtSteps')}</dt>
-                <dd>{t('stepflows.stepCount', { count: countSteps(f.steps) })}</dd>
-                <dt>{t('stepflows.usedBy')}</dt>
-                <dd>{f.usedBy.join(', ') || t('stepflows.usedByNone')}</dd>
-              </dl>
-              <div className="actions push-down">
-                <Button
-                  variant="secondary"
-                  data-size="sm"
-                  aria-label={t('stepflows.openLabel', { name: flowName(f, t) })}
-                  onClick={() => onOpen(f.id)}
-                >
-                  {t('stepflows.open')}
-                </Button>
-                {f.unsaved ? null : (
-                  <Button
-                    variant="tertiary"
-                    data-size="sm"
-                    aria-label={t('stepflows.useLabel', { name: flowName(f, t) })}
-                    onClick={() => setUsing(f)}
-                  >
-                    {t('stepflows.useInService')}
-                  </Button>
-                )}
-              </div>
-            </li>
-          );
-        })}
-      </ul>
-      {using ? (
-        <UseInService api={api} tenant={tenant} flow={using} onClose={() => setUsing(undefined)} />
-      ) : null}
-    </div>
-  );
-};
+export const blankFlow = (id: string, changed: string): Flow => ({
+  id,
+  name: '',
+  desc: '',
+  version: 1,
+  draft: true,
+  unsaved: true,
+  changed,
+  usedBy: [],
+  input: [['sporsmal', 'tekst']],
+  steps: [],
+});
 
 export const Workspace = ({
   api,
@@ -135,182 +43,106 @@ export const Workspace = ({
   setFlows,
   liveError,
   service,
-  initialView,
   initialFlow,
-  initialStrategy,
   initialTab,
   initialOverlay,
-  live = false,
 }: WorkspaceProps) => {
   const t = useT();
-  const [view, setView] = useState(initialView);
   const [fid, setFid] = useState(initialFlow);
-  const [strategy, setStrategy] = useState(initialStrategy);
   const [flash, setFlash] = useState<Flash>();
-  const [editorKey, setEditorKey] = useState(0);
+  const [using, setUsing] = useState(false);
   useEffect(() => setFid(initialFlow), [initialFlow]);
   const flow = flows[fid] ?? Object.values(flows)[0];
-  const serviceName =
-    service?.name ?? (flow ? serviceOfFlow[flow.id] : undefined) ?? t('stepflows.newService');
-  const current = useMemo(
-    () => strategies.find((s) => s.id === strategy) ?? strategies[0],
-    [strategy],
-  );
 
-  const openFlow = (id: string) => {
-    setFid(id);
-    setView('flow');
-    setEditorKey((k) => k + 1);
-  };
+  const flashArea = (
+    <div aria-live="polite" className="flash-area">
+      {flash ? (
+        <Alert data-color={flash.color} data-size="sm">
+          {flash.text}
+        </Alert>
+      ) : null}
+    </div>
+  );
+  const back = service ? (
+    <BackLink
+      label={t('stepFlowHome.backToService', { service: service.name })}
+      href={`#/services/${encodeURIComponent(service.id)}`}
+    />
+  ) : (
+    <BackLink label={t('stepflows.crumbFlows')} href="#/developer/step-flows" />
+  );
+  const flowView = flow ? (
+    <div className="stack-md">
+      <div className="stack-sm">
+        {back}
+        <div className="sf-home-head">
+          <Heading level={1} data-size="lg">
+            {flow.unsaved ? t('stepFlowHome.newFlow') : flowName(flow, t)}
+          </Heading>
+          {!flow.unsaved ? (
+            <Button onClick={() => setUsing(true)}>
+              {service ? t('stepFlowHome.pinHere') : t('stepFlowHome.useInService')}
+            </Button>
+          ) : null}
+        </div>
+      </div>
+      <FlowEditor
+        key={flow.id}
+        api={api}
+        tenant={tenant}
+        flows={flows}
+        flow={flow}
+        {...(service ? { serviceName: service.name, serviceId: service.id } : {})}
+        showPicker={false}
+        initialTab={initialTab}
+        initialOverlay={initialOverlay}
+        {...(flow.unsaved
+          ? {}
+          : {
+              versions: (
+                <FlowVersions api={api} tenant={tenant} id={flow.id} name={flowName(flow, t)} />
+              ),
+            })}
+        onPickFlow={setFid}
+        onChange={(next, previousId) => {
+          const renamed = previousId && previousId !== next.id ? previousId : undefined;
+          setFlows((all) => ({
+            ...Object.fromEntries(Object.entries(all).filter(([id]) => id !== renamed)),
+            [next.id]: next,
+          }));
+          if (renamed) setFid(next.id);
+        }}
+        onFlash={setFlash}
+      />
+    </div>
+  ) : (
+    <div className="stack-md">
+      {back}
+      <Heading level={1} data-size="lg">
+        {t('stepFlowHome.title')}
+      </Heading>
+      <NotAvailable>
+        {service ? t('stepflows.noFlowForService', { name: service.name }) : t('stepflows.noFlows')}
+      </NotAvailable>
+    </div>
+  );
+  const useDialog =
+    using && flow ? (
+      <UseInService
+        api={api}
+        tenant={tenant}
+        flow={flow}
+        {...(service ? { service: service.id } : {})}
+        onClose={() => setUsing(false)}
+      />
+    ) : null;
 
   return (
     <div className="stack-md stepflows">
-      <Tabs
-        value={view}
-        onChange={(v) => {
-          setView(v as 'flow' | 'lib');
-          setFlash(undefined);
-        }}
-      >
-        <Tabs.List aria-label={t('stepflows.viewLabel')}>
-          <Tabs.Tab value="flow">{t('stepflows.tabInService')}</Tabs.Tab>
-          <Tabs.Tab value="lib">{t('stepflows.tabLibrary')}</Tabs.Tab>
-        </Tabs.List>
-        <div aria-live="polite" className="flash-area">
-          {flash ? (
-            <Alert data-color={flash.color} data-size="sm">
-              {flash.text}
-            </Alert>
-          ) : null}
-        </div>
-        <Tabs.Panel value="lib">
-          {view === 'lib' ? (
-            <Library
-              api={api}
-              tenant={tenant}
-              flows={flows}
-              liveError={liveError}
-              onOpen={openFlow}
-              onNew={() => {
-                const id = `ny-flyt-${Object.keys(flows).length}`;
-                setFlows((all) => ({
-                  ...all,
-                  [id]: {
-                    id,
-                    name: '',
-                    desc: '',
-                    version: 1,
-                    draft: true,
-                    unsaved: true,
-                    changed: t('stepflows.newFlowChanged'),
-                    usedBy: [],
-                    input: [['sporsmal', 'tekst']],
-                    steps: [],
-                  },
-                }));
-                openFlow(id);
-              }}
-            />
-          ) : null}
-        </Tabs.Panel>
-        <Tabs.Panel value="flow">
-          {view === 'flow' && flow && current ? (
-            <div className="stack-md">
-              <Crumbs
-                items={
-                  service || serviceOfFlow[flow.id]
-                    ? [
-                        { label: t('stepflows.crumbServices'), href: '#/services' },
-                        {
-                          label: serviceName,
-                          href: service
-                            ? `#/services/${encodeURIComponent(service.id)}`
-                            : '#/services',
-                        },
-                        { label: t('stepflows.strategyTitle') },
-                      ]
-                    : [
-                        { label: t('stepflows.crumbFlows'), href: '#/step-flows' },
-                        { label: flowName(flow, t) },
-                      ]
-                }
-              />
-              <div className="stack-xs">
-                <Heading level={1} data-size="md" id="strategi-h">
-                  {t('stepflows.strategyTitle')}
-                </Heading>
-                <div role="radiogroup" aria-labelledby="strategi-h" className="tag-row">
-                  {strategies
-                    .filter((s) => !live || s.id === 'stegflyt')
-                    .map((s) => (
-                      <Chip.Radio
-                        key={s.id}
-                        name="strategi"
-                        value={s.id}
-                        checked={strategy === s.id}
-                        onChange={() => {
-                          setStrategy(s.id);
-                          setFlash(undefined);
-                        }}
-                      >
-                        {s.name}
-                        {s.isNew ? ' ' : null}
-                        {s.isNew ? (
-                          <Tag data-size="sm" data-color="info" className="chip-tag">
-                            {t('stepflows.isNew')}
-                          </Tag>
-                        ) : null}
-                      </Chip.Radio>
-                    ))}
-                </div>
-                <p className="meta">{t('stepflows.strategyNote')}</p>
-              </div>
-              {current.id === 'stegflyt' ? (
-                <FlowEditor
-                  key={`${flow.id}-${editorKey}`}
-                  api={api}
-                  tenant={tenant}
-                  flows={flows}
-                  flow={flow}
-                  {...(service ? { serviceName: service.name, serviceId: service.id } : {})}
-                  showPicker
-                  initialTab={initialTab}
-                  initialOverlay={initialOverlay}
-                  onPickFlow={setFid}
-                  onChange={(next, previousId) => {
-                    const renamed = previousId && previousId !== next.id ? previousId : undefined;
-                    setFlows((all) => ({
-                      ...Object.fromEntries(Object.entries(all).filter(([id]) => id !== renamed)),
-                      [next.id]: next,
-                    }));
-                    if (renamed) setFid(next.id);
-                  }}
-                  onFlash={setFlash}
-                />
-              ) : live ? null : (
-                <StrategyView
-                  key={current.id}
-                  strategy={current}
-                  onFlash={setFlash}
-                  onUse={(id) => setStrategy(id)}
-                />
-              )}
-            </div>
-          ) : null}
-          {view === 'flow' && !flow ? (
-            <div className="stack-md">
-              <Heading level={1} data-size="md">
-                {t('stepflows.strategyTitle')}
-              </Heading>
-              <NotAvailable>
-                {service
-                  ? t('stepflows.noFlowForService', { name: service.name })
-                  : t('stepflows.noFlows')}
-              </NotAvailable>
-            </div>
-          ) : null}
-        </Tabs.Panel>
-      </Tabs>
+      {flashArea}
+      {liveError ? <ErrorState error={liveError.error} onRetry={liveError.retry} /> : null}
+      {flowView}
+      {useDialog}
     </div>
   );
 };

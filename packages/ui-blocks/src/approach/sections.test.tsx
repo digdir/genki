@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
-// The `sections` variant: the dev boards' card over the answer (dev-fremgangsmate-1 and -2), Card
-// and Details as Designsystemet draws them, the filter first when given, then «Prosess».
+// The `sections` variant: the dev boards' card, the filter first when given, then «Prosess».
 import { cleanup, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { Approach, type ApproachProps, type ApproachStep } from './Approach.js';

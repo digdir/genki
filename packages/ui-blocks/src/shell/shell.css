@@ -354,9 +354,7 @@
     --dsc-button-size: var(--genai-shell-rail-button-size, var(--ds-size-11));
   }
 
-  /* Beside a title, the button is centred on the title's line, not the title on the button: the
-     titles keep their one line across the panels, and the button stands half its extra height
-     above it. Moved, not resized, so nothing under the row moves. A rail has no title. */
+  /* Beside a title, the button is centred on the title's line, moved and not resized. */
   .uib-shell[data-frame='cards']
     > .uib-shell-side:not([data-collapsed])
     .uib-shell-header
@@ -636,9 +634,7 @@
     white-space: nowrap;
   }
 
-  /* Three or more (dev-verktoy-3): a button as wide as the panel, on the tinted ground. Neutral,
-     not the host's family: Designsystemet's colours carry meaning, and this is navigation, not the
-     page's main action. Every state is named, so none falls back to the Button's accent. */
+  /* Three or more (dev-verktoy-3): a button as wide as the panel, neutral in every state. */
   .uib-shell-tools-trigger {
     --dsc-button-background: var(
       --genai-shell-tools-trigger-background,

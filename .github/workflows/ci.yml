@@ -30,7 +30,7 @@ jobs:
       - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
       - id: scope
         env:
-          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || '' }}
+          BASE: ${{ github.event.pull_request.base.sha || '' }}
         run: node scripts/ci-scope.ts $BASE
 
   static:
@@ -75,7 +75,7 @@ jobs:
       - id: changed
         if: needs.scope.outputs.tests == 'changed'
         env:
-          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          BASE: ${{ github.event.pull_request.base.sha }}
         run: |
           if git merge-base --is-ancestor "$BASE" HEAD; then
             echo "since=$BASE" >> "$GITHUB_OUTPUT"
@@ -127,10 +127,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+      # Only HEAD's history: the full fetch brings every branch, and one false positive there failed every pull request.
       - name: gitleaks
         run: >-
           docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.28.0
-          git /repo --redact --no-banner --exit-code 1
+          git /repo --log-opts=HEAD --redact --no-banner --exit-code 1
 
   image:
     needs: scope

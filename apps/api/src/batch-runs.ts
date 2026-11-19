@@ -18,7 +18,7 @@ import {
   type Leased,
   type LeaseOptions,
 } from './background-lease.js';
-import { appendVersion, type ConfigEntry } from './config-store.js';
+import { appendVersion, type ConfigEntry, type ConfigEntryStore } from './config-store.js';
 import type { ServiceRunOutcome } from './draft-runner.js';
 import { notFoundOf } from './not-found.js';
 import type { ModuleDeps } from './platform-modules.js';
@@ -104,6 +104,8 @@ export type BatchRunStatus =
 export type BatchItemStatus =
   'queued' | 'running' | 'succeeded' | 'notFound' | 'failed' | 'skipped';
 
+export const maxBatchName = 120;
+
 export interface BatchCap {
   costMicroNok?: number;
   tokens?: number;
@@ -111,6 +113,7 @@ export interface BatchCap {
 
 export interface BatchRun extends Leased {
   id: string;
+  name?: string;
   service: string;
   version: number;
   model: string | null;
@@ -161,6 +164,13 @@ const legacyFailureCode = (item: Pick<BatchItem, 'error' | 'errorCode'>) => {
   const found = legacyFailureTexts.find(([pattern]) => pattern.test(item.error as string));
   return found ? { errorCode: found[1] } : {};
 };
+
+export const batchTasksOf = async (store: ConfigEntryStore, tenant: string) =>
+  new Set(
+    (await store.latest({ kind: batchItemKind, scope: tenant }))
+      .map((entry) => (entry.spec as Partial<BatchItem>).task)
+      .filter((task): task is string => typeof task === 'string'),
+  );
 
 export interface BatchItem {
   run: string;
@@ -1264,10 +1274,17 @@ export const batchRuns = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) => 
       maxTokens?: number;
       concurrency?: number;
       approval?: string;
+      name?: unknown;
     },
     reason: string,
     gate: { approval?: boolean; startedByName?: string } = {},
   ) => {
+    if (
+      body.name !== undefined &&
+      (typeof body.name !== 'string' || body.name.trim().length > maxBatchName)
+    )
+      throw new BatchProblem(400, `Navnet er tekst på høyst ${maxBatchName} tegn`, 'name');
+    const name = typeof body.name === 'string' ? body.name.trim() : '';
     const found = await latestOf<BatchEstimate>(batchEstimateKind, tenant, body.estimate);
     const estimate = found?.spec;
     if (!estimate || estimate.service !== service)
@@ -1293,6 +1310,7 @@ export const batchRuns = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) => 
     }
     const run: BatchRun = {
       id: randomUUID(),
+      ...(name ? { name } : {}),
       service,
       version: estimate.version,
       model: estimate.model,

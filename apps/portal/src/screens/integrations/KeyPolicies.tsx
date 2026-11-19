@@ -73,7 +73,7 @@ export const KeyPolicies = ({
   const f = useFormat();
   const canManage = useRights().has('manage-services');
   const [tick, setTick] = useState(0);
-  const [state, retry] = useAsync(
+  const [state, retry, pending] = useAsync(
     async (signal) => {
       const [policies, access] = await Promise.all([
         api.keyPolicies.list(tenant, signal),
@@ -82,6 +82,7 @@ export const KeyPolicies = ({
       return { policies, keys: (access?.keys ?? []).filter((k) => !k.service && !k.revokedAt) };
     },
     [api, tenant, tick],
+    { keepPreviousFor: tenant },
   );
   const [open, setOpen] = useState<string>();
   const [form, setForm] = useState<Form>();
@@ -93,8 +94,44 @@ export const KeyPolicies = ({
   const [chooseReason, setChooseReason] = useState('');
   const [chooseError, setChooseError] = useState('');
 
-  if (state.status === 'loading') return <Loading label={t('integPolicies.loading')} />;
-  if (state.status === 'error') return <ErrorState error={state.error} onRetry={retry} />;
+  const intro = (
+    <div className="int-intro">
+      <div className="stack-xs int-intro-text">
+        <Heading level={2} data-size="xs" id="kp-h">
+          {t('integPolicies.heading')}
+        </Heading>
+        <Paragraph data-size="sm" className="meta">
+          {t('integPolicies.intro')}
+        </Paragraph>
+      </div>
+      {canManage ? (
+        <Button
+          variant="primary"
+          aria-disabled={state.status !== 'ready' || undefined}
+          onClick={() => {
+            if (state.status !== 'ready') return;
+            setSaveError('');
+            setForm(emptyForm);
+          }}
+        >
+          {t('integPolicies.create')}
+        </Button>
+      ) : (
+        <span className="meta">{needsRight('manage-services', t)}</span>
+      )}
+    </div>
+  );
+  if (state.status !== 'ready')
+    return (
+      <section aria-labelledby="kp-h" className="stack-md">
+        {intro}
+        {state.status === 'loading' ? (
+          <Loading label={t('integPolicies.loading')} shape="list" onRetry={retry} />
+        ) : (
+          <ErrorState error={state.error} onRetry={retry} />
+        )}
+      </section>
+    );
 
   const { policies, keys } = state.data;
   const nameOfPolicy = (id: string | undefined) => policies.find((p) => p.id === id)?.name;
@@ -236,30 +273,9 @@ export const KeyPolicies = ({
 
   return (
     <section aria-labelledby="kp-h" className="stack-md">
-      <div className="int-intro">
-        <div className="stack-xs int-intro-text">
-          <Heading level={2} data-size="xs" id="kp-h">
-            {t('integPolicies.heading')}
-          </Heading>
-          <Paragraph data-size="sm" className="meta">
-            {t('integPolicies.intro')}
-          </Paragraph>
-        </div>
-        {canManage ? (
-          <Button
-            variant="primary"
-            onClick={() => {
-              setSaveError('');
-              setForm(emptyForm);
-            }}
-          >
-            {t('integPolicies.create')}
-          </Button>
-        ) : (
-          <span className="meta">{needsRight('manage-services', t)}</span>
-        )}
-      </div>
+      {intro}
       <ItemList
+        busy={pending}
         items={items}
         open={open}
         onToggle={(id) => setOpen(open === id ? undefined : id)}

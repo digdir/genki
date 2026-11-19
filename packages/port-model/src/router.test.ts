@@ -730,6 +730,37 @@ describe('model discovery', () => {
     expect(source.calls).toBe(1);
   });
 
+  it('describes the context window and release date a catalog model or discovery rule gives', async () => {
+    const a = recording('proto-a');
+    const one = discoveringCatalog.endpoints.one;
+    const router = new ModelRouter({
+      catalog: {
+        endpoints: {
+          one: {
+            ...one,
+            discovery: [{ ...one.discovery[0], releaseDates: { 'gpt-5-mini': '2025-08-07' } }],
+          },
+        },
+        models: [
+          {
+            ...discoveringCatalog.models[0],
+            contextWindow: 128_000,
+            releaseDate: '2024-05-13',
+          },
+        ],
+      },
+      adapters: [a.adapter],
+      secrets: envSecrets({ KEY_A: 'k' }),
+      sources: [listing([{ deployment: 'gpt-4o-prod' }, { deployment: 'gpt-5-mini' }])],
+    });
+    await router.refresh();
+
+    expect(router.describe().map((m) => [m.id, m.contextWindow, m.releaseDate])).toEqual([
+      ['a/pinned', 128_000, '2024-05-13'],
+      ['one/gpt-5-mini', undefined, '2025-08-07'],
+    ]);
+  });
+
   it('routes a discovered model to its endpoint with the deployment name', async () => {
     const { router, b } = setup();
     await router.refresh();
@@ -782,6 +813,25 @@ describe('model discovery', () => {
 
     expect(result.failed.map((f) => f.endpoint)).toEqual(['one', 'two']);
     expect([...router.models().keys()]).toEqual(['a/pinned']);
+  });
+
+  it('keeps the models it found before when a later listing fails', async () => {
+    let down = false;
+    const source = {
+      kind: 'stub-listing',
+      async list() {
+        if (down) throw new Error('listing timed out');
+        return [{ deployment: 'gpt-5-mini', model: 'gpt-5-mini' }];
+      },
+    };
+    const { router } = setup(source as ReturnType<typeof listing>);
+    await router.refresh();
+
+    down = true;
+    const result = await router.refresh();
+
+    expect(result.failed.map((f) => f.endpoint)).toEqual(['one', 'two']);
+    expect(router.models().has('one/gpt-5-mini')).toBe(true);
   });
 
   it('refuses a discovery source nobody registered and a listing endpoint that does not exist', () => {

@@ -37,11 +37,13 @@ export const navigation: NavGroup[] = [
     group: 'shell.groupPlatform',
     items: [
       { path: '/models', label: 'shell.pageModels' },
+      { path: '/platform-secrets', label: 'shell.pagePlatformSecrets' },
       { path: '/catalog', label: 'shell.pageCatalog' },
       { path: '/building-blocks', label: 'shell.pageBuildingBlocks' },
       { path: '/search-engines', label: 'shell.pageSearchEngines' },
       { path: '/state-register', label: 'shell.pageStateRegister' },
       { path: '/shared-services', label: 'shell.pageSharedServices' },
+      { path: '/demos', label: 'shell.pageDemos' },
       { path: '/settings', label: 'shell.pageSettings' },
       { path: '/quality', label: 'shell.pageQuality' },
       { path: '/quality-matrix', label: 'shell.pageQualityMatrix' },

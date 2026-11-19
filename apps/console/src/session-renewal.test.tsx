@@ -48,6 +48,7 @@ const ansattporten = (provider: Provider = {}) => {
   const silentlyAuthorized: URL[] = [];
   let nonce: string | undefined;
   let issued = 0;
+  let lastRefresh: string | undefined;
   const refreshTokens = [...(provider.refreshTokens ?? [])];
   const fetch: typeof globalThis.fetch = async (input, init) => {
     const url = String(input);
@@ -60,11 +61,12 @@ const ansattporten = (provider: Provider = {}) => {
       });
     if (url === tokenEndpoint) {
       const form = new URLSearchParams(String(init?.body));
-      if (form.get('grant_type') === 'refresh_token' && form.get('refresh_token') !== `r${issued}`)
+      if (form.get('grant_type') === 'refresh_token' && form.get('refresh_token') !== lastRefresh)
         return Response.json({ error: 'invalid_grant' }, { status: 400 });
       issued++;
       const silent = form.get('code') === 'silent';
       const refresh = refreshTokens.shift();
+      lastRefresh = refresh;
       return Response.json({
         access_token: accessToken(
           `Ola Drift ${issued}`,
@@ -233,7 +235,9 @@ describe('keeping the operator signed in', () => {
 
 describe('renewing the Ansattporten token', () => {
   it('renews with the refresh token when Ansattporten issues one, and keeps the rotated one', async () => {
-    const provider = ansattporten({ refreshTokens: ['r1', 'r2', 'r3'] });
+    const provider = ansattporten({
+      refreshTokens: ['refresh-token-one', 'refresh-token-two', 'refresh-token-three'],
+    });
     await provider.signIn();
 
     expect((await provider.auth.renew?.())?.name).toBe('Ola Drift');
@@ -244,15 +248,15 @@ describe('renewing the Ansattporten token', () => {
       .map((r) => new URLSearchParams(String(r.init?.body)));
     expect(grants.map((g) => [g.get('grant_type'), g.get('refresh_token')])).toEqual([
       ['authorization_code', null],
-      ['refresh_token', 'r1'],
-      ['refresh_token', 'r2'],
+      ['refresh_token', 'refresh-token-one'],
+      ['refresh_token', 'refresh-token-two'],
     ]);
     expect(provider.silentlyAuthorized).toHaveLength(0);
     expect(provider.auth.current()).not.toHaveProperty('refreshToken');
   });
 
   it('never sends the refresh token anywhere but the token endpoint', async () => {
-    const provider = ansattporten({ refreshTokens: ['r1', 'r2'] });
+    const provider = ansattporten({ refreshTokens: ['refresh-token-one', 'refresh-token-two'] });
     await provider.signIn();
     await provider.auth.renew?.();
     await provider.auth.logout();
@@ -266,8 +270,8 @@ describe('renewing the Ansattporten token', () => {
     ];
     expect(elsewhere.length).toBeGreaterThan(0);
     for (const sent of elsewhere) {
-      expect(sent).not.toContain('r1');
-      expect(sent).not.toContain('r2');
+      expect(sent).not.toContain('refresh-token-one');
+      expect(sent).not.toContain('refresh-token-two');
     }
   });
 

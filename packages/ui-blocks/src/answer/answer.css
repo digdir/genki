@@ -85,6 +85,14 @@
     text-decoration: none;
     vertical-align: var(--genai-answer-footnote-raise, 0.25rem);
   }
+  /* The footnote Sources shows whole, filled as on hover. */
+  .uib-answer-mark[aria-current='true'] {
+    background: var(
+      --genai-answer-footnote-current-background,
+      var(--ds-color-accent-base-default)
+    );
+    color: var(--genai-answer-footnote-current-color, var(--ds-color-accent-base-contrast-default));
+  }
   /* Not while focused, where Designsystemet's own two rings take the shadow. */
   .uib-answer-mark:not(:focus-visible) {
     box-shadow: inset 0 0 0
@@ -249,18 +257,40 @@
     overflow: visible;
   }
 
-  /* The counted box's bar on the family's tint, over a plain box (dev-kilder-hoyre). */
-  .uib-answer-sources-used-card[data-counted] > .uib-answer-sources-used {
-    --dsc-details-summary-background: var(
-      --genai-answer-sources-used-bar-background,
-      var(--ds-color-surface-tinted)
-    );
+  .uib-answer-references-card {
+    margin-block: var(--genai-answer-references-spacing, var(--ds-size-8));
   }
-
-  /* «Kilder · 3 brukt i svaret»: the count after the name, quieter. */
-  .uib-answer-sources-used-count {
-    color: var(--genai-answer-sources-used-count-color, var(--ds-color-text-subtle));
-    font-weight: var(--genai-answer-sources-used-count-font-weight, var(--ds-font-weight-regular));
+  /* One grid for the whole list, so the footnote column is as wide in every row. */
+  .uib-answer-references-list {
+    display: grid;
+    grid-template-columns:
+      fit-content(var(--genai-answer-references-footnotes-max-width, var(--ds-size-22)))
+      minmax(0, 1fr);
+    column-gap: var(--genai-answer-references-column-gap, var(--ds-size-6));
+    row-gap: var(--genai-answer-references-row-gap, var(--ds-size-5));
+    align-items: start;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    font-size: var(--genai-answer-references-font-size, var(--ds-body-xs-font-size));
+    line-height: var(--genai-answer-references-line-height, var(--ds-body-xs-line-height));
+  }
+  .uib-answer-references-row {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
+  }
+  .uib-answer-references-footnotes {
+    font-weight: var(--genai-answer-references-footnotes-font-weight, var(--ds-font-weight-medium));
+    font-variant-numeric: tabular-nums;
+  }
+  /* An address is one long word. */
+  .uib-answer-references-reference {
+    overflow-wrap: anywhere;
+  }
+  .uib-answer-references-divider {
+    margin-block: var(--genai-answer-references-divider-spacing, var(--ds-size-6))
+      var(--genai-answer-references-divider-spacing-end, var(--ds-size-4));
   }
 
   /* The row under the answer: «Generer på nytt», then the app's own row. The app's row fills

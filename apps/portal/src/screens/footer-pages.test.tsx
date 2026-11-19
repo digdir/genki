@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { App } from '../App';
 import { mockAnsattporten } from '../auth';
@@ -31,58 +31,74 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('footer pages', () => {
-  it('links the user guide to the real portal screens', async () => {
+  it('shows Pris og vilkår to someone who is signed in, not a missing page', async () => {
+    await open('#/about/price-and-terms');
+    expect(await screen.findByRole('heading', { level: 1, name: 'Pris og vilkår' })).toBeTruthy();
+    expect(screen.queryByText('Fant ikke siden')).toBeNull();
+  });
+
+  it('Kom i gang promises no way to limit access under Tilgang, which cannot restrict anyone', async () => {
+    await open('#/onboarding');
+    await screen.findByRole('heading', { level: 1, name: 'Kom i gang' });
+
+    expect(await screen.findByText(/kan alle i virksomheten med «Bruke tjenester»/)).toBeTruthy();
+    expect(screen.queryByText(/begrense det under Tilgang/)).toBeNull();
+  });
+
+  it("Kom i gang shows the four steps ticked from the organisation's real data", async () => {
     await open('#/onboarding');
     expect(await screen.findByRole('heading', { level: 1, name: 'Kom i gang' })).toBeTruthy();
-    const targets = Object.fromEntries(
-      [
-        'Oversikt',
-        'Tjenester',
-        'Datasett',
-        'Byggeklosser',
-        'Fellestjenester',
-        'Prøveområdet',
-        'Kall en tjeneste fra kode',
-        'API-referansen',
-        'Statistikk',
-        'Logg',
-        'Tilgang',
-        'Innstillinger',
-      ].map((name) => [
-        name,
-        screen
-          .getAllByRole('link', { name })
-          .map((a) => a.getAttribute('href'))
-          .find((href) => href !== null && document.querySelector(`main a[href="${href}"]`)),
-      ]),
+
+    expect(
+      await screen.findByRole('heading', { level: 2, name: /1. Legg til en kilde \(gjort\)/ }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('heading', { level: 2, name: /2. Lag tjenesten \(gjort\)/ }),
+    ).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Se datasettene' }).getAttribute('href')).toBe(
+      '#/datasets',
     );
-    expect(targets).toMatchObject({
-      Oversikt: '#/overview',
-      Tjenester: '#/services',
-      Datasett: '#/datasets',
-      Byggeklosser: '#/building-blocks',
-      Fellestjenester: '#/shared-services',
-      Prøveområdet: '#/playground',
-      'Kall en tjeneste fra kode': '#/developer/api/code',
-      'API-referansen': '#/api-reference',
-      Statistikk: '#/statistics',
-      Logg: '#/log',
-      Tilgang: '#/access',
-      Innstillinger: '#/settings',
-    });
+    expect(screen.getByRole('link', { name: 'Slik behandles data' }).getAttribute('href')).toBe(
+      '#/data-handling',
+    );
     expectAccessible();
   });
 
-  it('shows the API health and version on the status page', async () => {
-    await open('#/status', health([up('1.4.2')]));
+  it('says a missing page is not found and links to Oversikt', async () => {
+    await open('#/docs');
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Fant ikke siden' })).toBeTruthy();
+    expect(screen.getByText('Adressen «#/docs» finnes ikke, eller siden er flyttet.')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Gå til Oversikt' }).getAttribute('href')).toBe(
+      '#/overview',
+    );
+  });
+
+  it('shows what Driftsstatus checks, that the API answers, and the version', async () => {
+    await open('#/developer/status', health([up('1.4.2')]));
     expect(await screen.findByText('1.4.2')).toBeTruthy();
-    expect(screen.getByText('Svarer')).toBeTruthy();
+    const check = screen.getByText('API-et svarer').closest('li') as HTMLElement;
+    expect(within(check).getByText('Virker')).toBeTruthy();
     expect(screen.getByText('Versjon')).toBeTruthy();
   });
 
+  it('shows a commit version as its short hash', async () => {
+    await open('#/developer/status', health([up('a3f9c12d4e5f60718293a4b5c6d7e8f901234567')]));
+    expect(await screen.findByText('a3f9c12')).toBeTruthy();
+  });
+
+  it('checks again when the person presses Sjekk nå', async () => {
+    let version = '1.0.0';
+    await open('#/developer/status', health([() => up(version)()]));
+    expect(await screen.findByText('1.0.0')).toBeTruthy();
+    version = '1.0.1';
+    fireEvent.click(screen.getByRole('button', { name: 'Sjekk nå' }));
+    expect(await screen.findByText('1.0.1')).toBeTruthy();
+  });
+
   it('says the API does not answer and checks again on request', async () => {
-    await open('#/status', health([down, down, up('2.0.0')]));
-    expect(await screen.findByText(/API-et svarer ikke akkurat nå/)).toBeTruthy();
+    await open('#/developer/status', health([down, down, up('2.0.0')]));
+    expect(await screen.findByText('Vi fikk ikke kontakt med API-et')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Sjekk igjen' }));
     expect(await screen.findByText('2.0.0')).toBeTruthy();
   });
@@ -95,9 +111,9 @@ describe('footer pages', () => {
   });
 
   it('shows the footer pages in English when the language is English', async () => {
-    await open('#/status', health([up('dev')]), ['en']);
-    expect(await screen.findByRole('heading', { level: 1, name: 'Service status' })).toBeTruthy();
-    expect(await screen.findByText('Answering')).toBeTruthy();
+    await open('#/developer/status', health([up('dev')]), ['en']);
+    expect(await screen.findByRole('heading', { level: 1, name: 'Developer tools' })).toBeTruthy();
+    expect(await screen.findByText('Everything works')).toBeTruthy();
     cleanup();
     await open('#/contact', mockFetch(), ['en']);
     expect(

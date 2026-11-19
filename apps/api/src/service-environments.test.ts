@@ -7,6 +7,7 @@ import { envSecrets } from '@genai/kernel';
 import { fakeHttp, type FakeServer } from '@genai/port-model/testing';
 import { createAdmin } from './admin.js';
 import { createPlatform } from './composition.js';
+import { environmentEvents } from './service-environments.js';
 import { InMemoryTenantApiKeys } from './routes/portal-routes.js';
 
 const digdir = '991825827';
@@ -25,6 +26,13 @@ const people: Record<string, Principal> = {
     subject: 'lise',
     tenant: digdir,
     authorizedFor: [{ org: digdir, actions: ['use-services'] }],
+  },
+  ola: {
+    kind: 'employee',
+    issuer: 'test',
+    subject: 'ola',
+    tenant: '999888777',
+    authorizedFor: [{ org: '999888777' }],
   },
 };
 
@@ -205,6 +213,79 @@ describe('adding test', () => {
     expect((await call(environments, { body: { name: 'prod' }, reason })).status).toBe(400);
     expect((await call(environments, { body: { name: 'Test!' }, reason })).status).toBe(400);
     expect((await addTest()).status).toBe(409);
+  });
+});
+
+describe('describing an environment', () => {
+  const listed = async (call: (path: string) => Response | Promise<Response>, path: string) =>
+    ((await (await call(path)).json()) as { environments: Record<string, unknown>[] }).environments;
+
+  it('keeps the description given when test is added, through promotions and rollbacks', async () => {
+    const { call, publish, environments } = await boot();
+    await publish('Første.');
+    await call(environments, { body: { name: 'test', description: ' testerne i HR ' }, reason });
+    await publish('Andre.');
+    await call(`${environments}/test/rollback`, { body: { version: 1 }, reason });
+
+    expect((await listed(call, environments))[1]).toMatchObject({
+      name: 'test',
+      version: 1,
+      description: 'testerne i HR',
+    });
+  });
+
+  it('changes and clears the description with manage-services and a reason, and records it in the history', async () => {
+    const { call, publish, environments, addTest } = await boot();
+    await publish('Første.');
+    await addTest();
+    const path = `${environments}/test`;
+
+    expect(
+      (await call(path, { method: 'PATCH', body: { description: 'HR' }, as: 'lise', reason }))
+        .status,
+    ).toBe(403);
+    expect((await call(path, { method: 'PATCH', body: { description: 'HR' } })).status).toBe(400);
+    expect(
+      (await call(path, { method: 'PATCH', body: { description: 'HR' }, reason })).status,
+    ).toBe(200);
+    expect((await listed(call, environments))[1]?.description).toBe('HR');
+    expect(
+      (await call(path, { method: 'PATCH', body: { description: null }, reason })).status,
+    ).toBe(200);
+    expect((await listed(call, environments))[1]).not.toHaveProperty('description');
+    const history = (await (
+      await call(`/tenants/${digdir}/services/svar/environment-history`)
+    ).json()) as { data: { action: string }[] };
+    expect(history.data.slice(0, 2).map((e) => e.action)).toEqual(['described', 'described']);
+  });
+
+  it('refuses a description over 200 characters, and one for an environment the service does not have', async () => {
+    const { call, publish, environments } = await boot();
+    await publish('Første.');
+    const long = 'x'.repeat(201);
+
+    expect(
+      (await call(environments, { body: { name: 'test', description: long }, reason })).status,
+    ).toBe(400);
+    expect(
+      (await call(`${environments}/test`, { method: 'PATCH', body: { description: 'HR' }, reason }))
+        .status,
+    ).toBe(404);
+  });
+
+  it("never lets one organisation describe another's environment", async () => {
+    const { call, publish, environments, addTest } = await boot();
+    await publish('Første.');
+    await addTest();
+
+    const res = await call(`${environments}/test`, {
+      method: 'PATCH',
+      body: { description: 'HR' },
+      as: 'ola',
+      reason,
+    });
+    expect(res.status).toBe(404);
+    expect((await listed(call, environments))[1]).not.toHaveProperty('description');
   });
 });
 
@@ -594,5 +675,100 @@ describe('runs and usage per environment', () => {
       ]),
     );
     expect(testUsage).toMatchObject({ environment: 'test', totals: { runs: 1 } });
+  });
+});
+
+describe('environment history', () => {
+  const history = async (
+    call: (path: string, init?: { as?: string }) => Response | Promise<Response>,
+    query = '',
+    as = 'kari',
+  ) => {
+    const res = await call(`/tenants/${digdir}/services/svar/environment-history${query}`, { as });
+    return {
+      status: res.status,
+      body: (await res.json()) as { data: Record<string, unknown>[]; total: number },
+    };
+  };
+
+  it('lists additions, promotions and rollbacks per environment, newest first, with who and why', async () => {
+    const { call, publish, environments, addTest } = await boot();
+    await publish('Første.');
+    await addTest();
+    await publish('Andre.');
+    await call(`${environments}/prod/promote`, { body: {}, reason });
+    await call(`${environments}/prod/rollback`, { body: {}, reason: 'Andre versjon svarte feil' });
+
+    const { status, body } = await history(call, '', 'lise');
+
+    expect(status).toBe(200);
+    expect(body.total).toBe(3);
+    expect(body.data).toEqual([
+      expect.objectContaining({
+        environment: 'prod',
+        action: 'rolled-back',
+        version: 1,
+        previousVersion: 2,
+        by: 'employee:test:kari',
+        reason: 'Andre versjon svarte feil',
+      }),
+      expect.objectContaining({
+        environment: 'prod',
+        action: 'promoted',
+        from: 'test',
+        version: 2,
+        previousVersion: 1,
+        reason,
+      }),
+      expect.objectContaining({ environment: 'test', action: 'added', version: null }),
+    ]);
+    expect(body.data[0]?.at).toEqual(expect.any(String));
+  });
+
+  it('filters the history to one environment and pages it with limit', async () => {
+    const { call, publish, environments, addTest } = await boot();
+    await publish('Første.');
+    await addTest();
+    await publish('Andre.');
+    await call(`${environments}/prod/promote`, { body: {}, reason });
+    await call(`${environments}/prod/rollback`, { body: {}, reason });
+
+    const prod = await history(call, '?environment=prod&limit=1');
+    const invalid = await history(call, '?environment=__proto__');
+
+    expect(prod.body.total).toBe(2);
+    expect(prod.body.data.map((e) => e.action)).toEqual(['rolled-back']);
+    expect(invalid.status).toBe(400);
+  });
+
+  it("never shows one organisation's environment history to another", async () => {
+    const { call, publish, addTest } = await boot();
+    await publish('Første.');
+    await addTest();
+
+    expect((await history(call, '', 'ola')).status).toBe(404);
+  });
+
+  it('infers what changed from versions saved before changes were recorded', () => {
+    const at = '2026-11-01T10:00:00.000Z';
+    const saved = (environments: unknown, deleted = false) => ({
+      spec: { environments },
+      deleted,
+      at,
+      by: 'employee:test:kari',
+      reason,
+    });
+
+    const events = environmentEvents([
+      saved({ prod: { version: 1 }, test: {} }),
+      saved({ prod: { version: 2, previousVersion: 1 }, test: {} }),
+      saved({ prod: {} }, true),
+    ]);
+
+    expect(events.map((e) => [e.environment, e.action, e.version])).toEqual([
+      ['test', 'removed', null],
+      ['prod', 'changed', 2],
+      ['test', 'added', null],
+    ]);
   });
 });

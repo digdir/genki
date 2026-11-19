@@ -4,8 +4,10 @@ import type { runs as source } from '../nb/runs.js';
 export const runs = {
   taskStatusOneOf: 'status is one of {values}',
   failModel: 'We did not get a response from the model.',
+  failModelUnavailable: 'The model the service uses is not available right now.',
   failStrategy: 'The service failed along the way.',
   originBuilder: 'The builder (draft)',
+  originTrial: 'Trial run in the builder (draft)',
   originPlayground: 'The playground (draft)',
   originSkillTest: 'Skill test (draft)',
   originAssistant: 'The builder assistant',
@@ -16,6 +18,7 @@ export const runs = {
   failMisconfigured: 'The service is set up incorrectly.',
   failCancelled: 'The run was cancelled.',
   failInterrupted: 'The run was interrupted when the platform restarted.',
+  failServerStopped: 'The server stopped during the run. Try again.',
   stepFailedReason: 'The step "{step}" failed. {reason}',
   skipUnsupportedType: 'The file type cannot be searched',
   skipOutsideAccess: 'Outside what the service has access to',

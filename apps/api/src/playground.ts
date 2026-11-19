@@ -1,4 +1,5 @@
 import { invalidInputProblem, type SourceRecord } from '@genai/adapter-openai';
+import { sharedRecipeFinder } from '@genai/composition';
 import { failureReason } from './failures.js';
 import { requestLocale, t } from './i18n/index.js';
 import {
@@ -7,6 +8,8 @@ import {
   type InputField,
   type Part,
   type Principal,
+  type UiText,
+  type UsagePrice,
 } from '@genai/contracts';
 import { BlobError } from '@genai/port-blob';
 import { TABLE_MIME } from '@genai/strategy-step-flow';
@@ -45,7 +48,10 @@ import {
   withCandidateTrial,
 } from './model-access.js';
 import type { PlatformModuleFactory } from './platform-modules.js';
+import { publicPrice } from './public-models.js';
 import { requireRight, rightLabels, type Right } from './rights.js';
+import { strategyTitle } from './schemas.js';
+import { strategyCatalogue, type StrategyEntry } from './strategy-catalogue.js';
 import { environmentsOf, environmentViews, productionEnvironment } from './service-environments.js';
 
 export type PlaygroundOutput = 'text' | 'fields';
@@ -146,6 +152,7 @@ export interface PlaygroundRefusal {
 }
 
 export const playgroundUnavailableType = 'urn:genai:problem:playground-unavailable';
+export const definitionOutdatedType = 'urn:genai:problem:definition-outdated';
 
 export interface PlaygroundUnavailable {
   type: typeof playgroundUnavailableType;
@@ -174,10 +181,26 @@ export interface PlaygroundVersionSetup {
   output: PlaygroundOutput;
 }
 
+export interface PlaygroundFlow {
+  ref: string;
+  id: string;
+  version: number;
+  title: UiText;
+}
+
+export interface PlaygroundStrategy {
+  id: string;
+  version: number;
+  title: UiText;
+  takesInstructions: boolean;
+  flow?: PlaygroundFlow;
+}
+
 export interface PlaygroundVariant {
   id: string;
   title?: string;
   model?: string;
+  strategy?: PlaygroundStrategy;
 }
 
 export interface PlaygroundServiceVersion {
@@ -186,6 +209,7 @@ export interface PlaygroundServiceVersion {
   inUse: boolean;
   environments?: string[];
   setup: PlaygroundVersionSetup;
+  strategy?: PlaygroundStrategy;
   variants?: PlaygroundVariant[];
   inputFields?: InputField[];
 }
@@ -213,6 +237,7 @@ export interface PlaygroundOptions {
     status: ModelStatus;
     policy?: PlaygroundPolicy;
     candidate?: true;
+    price: UsagePrice | null;
   }[];
   datasets: { id: string; name: string; dataLocation: Residency; status: ModelStatus }[];
   skills: { id: string; name: string; version: number; ref: string }[];
@@ -268,7 +293,12 @@ const setupSchema = z.strictObject({
     })
     .optional(),
   model: z.string().min(1).optional(),
-  datasets: z.array(z.string().min(1)).optional(),
+  datasets: z
+    .array(z.string().min(1))
+    .optional()
+    .describe(
+      "The datasets to search; with a service, they replace the version's datasets for this run only",
+    ),
   skills: z.array(z.string().min(1)).optional(),
   blocks: z
     .array(
@@ -278,7 +308,13 @@ const setupSchema = z.strictObject({
       ]),
     )
     .optional(),
-  instructions: z.string().min(1).optional(),
+  instructions: z
+    .string()
+    .min(1)
+    .optional()
+    .describe(
+      'With a service, replaces the instructions of the strategy the chosen variant runs, for this run only',
+    ),
   fields: z.array(field).min(1).optional(),
   output: z.enum(['text', 'fields']),
 });
@@ -426,6 +462,29 @@ const versionSetup = (definition: unknown): PlaygroundVersionSetup => {
   };
 };
 
+const strategyRefOf = (value: unknown) => {
+  const ref = record(value);
+  const id = text(ref.id);
+  const version = Number(ref.version);
+  return id && Number.isInteger(version) ? { id, version, config: record(ref.config) } : undefined;
+};
+
+const takesInstructionsIn =
+  (catalogue: StrategyEntry[]) => (strategy: { id: string; version: number }) =>
+    catalogue.some(
+      (s) =>
+        s.id === strategy.id && s.version === strategy.version && s.takes.instructions !== 'no',
+    );
+
+const chosenVariant = (spec: Record<string, unknown>, variant: string | undefined) => {
+  const list = Array.isArray(spec.variants) && spec.variants.length ? spec.variants : ['default'];
+  const index =
+    variant === undefined
+      ? 0
+      : list.findIndex((v) => (typeof v === 'string' ? v : record(v).id) === variant);
+  return { list, index };
+};
+
 const ownerName = (owner: string) => (owner.toLowerCase() === 'digdir' ? 'Digdir' : owner);
 
 const policyFrom = (
@@ -440,7 +499,7 @@ const policyFrom = (
   link: rule?.match.residency ? '#/settings' : link,
 });
 
-const verdict = (
+export const verdict = (
   policy: BlockPolicy,
   kind: BlockKind,
   id: string,
@@ -538,6 +597,132 @@ export const playgroundModule: PlatformModuleFactory = () => ({
       return { principal: scoped, tenant, operator: principal.kind === 'operator' };
     };
 
+    const sharedFlow = sharedRecipeFinder(
+      deps.configEntries,
+      () => deps.definitions,
+      deps.platformTenant,
+      'shared-once',
+    );
+
+    const flowTitle = async (tenant: string, id: string, version: number): Promise<UiText> => {
+      const own = record((await deps.definitions.get('StepFlow', tenant, id, version))?.definition);
+      const flow = Object.keys(own).length ? own : record(await sharedFlow(tenant, id, version));
+      const recipe = record(record(flow.spec).recipe).title;
+      const nb = text(record(recipe).nb);
+      const en = text(record(recipe).en);
+      if (nb && en) return { nb, en };
+      const name = text(record(flow.metadata).name) ?? id;
+      return { nb: name, en: name };
+    };
+
+    const describeStrategy = async (
+      tenant: string,
+      value: unknown,
+      takes: (strategy: { id: string; version: number }) => boolean,
+    ): Promise<PlaygroundStrategy | undefined> => {
+      const ref = strategyRefOf(value);
+      if (!ref) return undefined;
+      const flowRef = ref.id === 'step-flow' ? text(ref.config.flow) : undefined;
+      const at = flowRef?.lastIndexOf('@') ?? -1;
+      const flowId = flowRef && at > 0 ? flowRef.slice(0, at) : undefined;
+      const flowVersion = flowRef ? Number(flowRef.slice(at + 1)) : NaN;
+      const flow =
+        flowRef && flowId && Number.isInteger(flowVersion)
+          ? {
+              ref: flowRef,
+              id: flowId,
+              version: flowVersion,
+              title: await flowTitle(tenant, flowId, flowVersion),
+            }
+          : undefined;
+      return {
+        id: ref.id,
+        version: ref.version,
+        title: strategyTitle(ref.id) ?? { nb: ref.id, en: ref.id },
+        takesInstructions: takes(ref),
+        ...(flow ? { flow } : {}),
+      };
+    };
+
+    const datasetRefused = (tenant: string, ids: string[], known: Set<string>) => {
+      const index = ids.findIndex((id) => {
+        if (known.has(id)) return false;
+        const dataset = deps.knowledge.datasets().get(id);
+        return !dataset || (dataset.tenants !== undefined && !dataset.tenants.includes(tenant));
+      });
+      return index < 0
+        ? undefined
+        : {
+            ok: false as const,
+            path: `datasets[${index}]`,
+            message: t('problems.playgroundDatasetNotAvailable', { dataset: ids[index] ?? '' }),
+          };
+    };
+
+    const withOverrides = (
+      tenant: string,
+      definition: Record<string, unknown>,
+      setup: PlaygroundSetup,
+    ):
+      | { ok: true; definition: Record<string, unknown> }
+      | { ok: false; path: string; message: string } => {
+      let spec = record(definition.spec);
+      if (setup.datasets) {
+        const declared = (
+          Array.isArray(record(spec.knowledge).datasets)
+            ? (record(spec.knowledge).datasets as unknown[])
+            : []
+        ).map(record);
+        const refused = datasetRefused(tenant, setup.datasets, new Set(datasetIds(spec)));
+        if (refused) return refused;
+        spec = {
+          ...spec,
+          knowledge: {
+            ...record(spec.knowledge),
+            datasets: setup.datasets.map(
+              (dataset) => declared.find((d) => d.dataset === dataset) ?? { dataset },
+            ),
+          },
+        };
+      }
+      if (setup.instructions !== undefined) {
+        const { list, index } = chosenVariant(spec, setup.service?.variant);
+        const variant = index < 0 ? undefined : list[index];
+        const own = variant && typeof variant !== 'string' ? record(variant) : undefined;
+        const ownStrategy = own && strategyRefOf(own.strategy);
+        const strategy = ownStrategy ?? strategyRefOf(spec.strategy);
+        if (
+          !strategy ||
+          !takesInstructionsIn(strategyCatalogue(deps.plugins.strategies))(strategy)
+        ) {
+          const id = strategy?.id ?? '';
+          const title = strategyTitle(id)?.[requestLocale()] ?? id;
+          return {
+            ok: false,
+            path: 'instructions',
+            message: t('problems.playgroundInstructionsNotSingle', { strategy: title }),
+          };
+        }
+        const replaced = (value: unknown) => {
+          const ref = record(value);
+          return { ...ref, config: { ...record(ref.config), instructions: setup.instructions } };
+        };
+        if (own) {
+          const overrides = record(own.overrides);
+          const changed = {
+            ...own,
+            ...(ownStrategy ? { strategy: replaced(own.strategy) } : {}),
+            ...('instructions' in overrides
+              ? { overrides: { ...overrides, instructions: setup.instructions } }
+              : {}),
+          };
+          spec = { ...spec, variants: list.map((v, i) => (i === index ? changed : v)) };
+        }
+        if (!ownStrategy) spec = { ...spec, strategy: replaced(spec.strategy) };
+      }
+      return { ok: true, definition: { ...definition, spec } };
+    };
+
     const modelResidency = (id: string) => deps.models.models().get(id)?.residency;
     const datasetResidency = (id: string) => deps.knowledge.datasets().get(id)?.residency;
 
@@ -619,23 +804,25 @@ export const playgroundModule: PlatformModuleFactory = () => ({
             } catch (error) {
               return { ok: false, path: 'service.definition', message: (error as Error).message };
             }
-          return {
-            ok: true,
-            definition: withModel(record(parsed), setup.model),
-            files: setup.service.files ?? {},
-          };
+          const changed = withOverrides(tenant, withModel(record(parsed), setup.model), setup);
+          if (!changed.ok) return changed;
+          return { ok: true, definition: changed.definition, files: setup.service.files ?? {} };
         }
         const found = await deps.definitions.get('Service', tenant, id, version);
         if (!found)
           return { ok: false, path: 'service', message: `no version ${version} of ${id}` };
-        return {
-          ok: true,
-          definition: withModel(structuredClone(record(found.definition)), setup.model),
-          files: found.files,
-        };
+        const changed = withOverrides(
+          tenant,
+          withModel(structuredClone(record(found.definition)), setup.model),
+          setup,
+        );
+        if (!changed.ok) return changed;
+        return { ok: true, definition: changed.definition, files: found.files };
       }
       if (!setup.model) return { ok: false, path: 'model', message: 'choose a model or a service' };
       const datasets = setup.datasets ?? [];
+      const refused = datasetRefused(tenant, datasets, new Set());
+      if (refused) return refused;
       const instructions =
         setup.instructions ??
         (setup.output === 'fields'
@@ -824,6 +1011,7 @@ export const playgroundModule: PlatformModuleFactory = () => ({
         deps.evalStores.testSets.list(g.tenant),
         quotaOf(g.tenant),
       ]);
+      const takes = takesInstructionsIn(strategyCatalogue(deps.plugins.strategies));
       const unordered = await Promise.all(
         listed
           .filter((d) => d.kind === 'Service')
@@ -848,7 +1036,20 @@ export const playgroundModule: PlatformModuleFactory = () => ({
                       g.tenant,
                       v.definition,
                     );
-                    const variants = variantsIn(v.definition, requestLocale());
+                    const spec = record(record(v.definition).spec);
+                    const rawVariants = Array.isArray(spec.variants) ? spec.variants : [];
+                    const variants = await Promise.all(
+                      variantsIn(v.definition, requestLocale()).map(async (variant) => {
+                        const raw = rawVariants
+                          .map(record)
+                          .find((r) => r.id === variant.id)?.strategy;
+                        const strategy = raw
+                          ? await describeStrategy(g.tenant, raw, takes)
+                          : undefined;
+                        return strategy ? { ...variant, strategy } : variant;
+                      }),
+                    );
+                    const strategy = await describeStrategy(g.tenant, spec.strategy, takes);
                     const environments = pointers
                       .filter((p) => p.version === v.version)
                       .map((p) => p.name);
@@ -858,6 +1059,7 @@ export const playgroundModule: PlatformModuleFactory = () => ({
                       inUse: environments.includes(productionEnvironment),
                       ...(environments.length ? { environments } : {}),
                       setup: versionSetup(v.definition),
+                      ...(strategy ? { strategy } : {}),
                       ...(variants.length ? { variants } : {}),
                       ...(fields.length ? { inputFields: fields } : {}),
                     };
@@ -909,6 +1111,7 @@ export const playgroundModule: PlatformModuleFactory = () => ({
             status: v.status,
             ...(v.policy ? { policy: v.policy } : {}),
             ...(isCandidate(deps.catalog, m.id) ? { candidate: true } : {}),
+            price: publicPrice(deps.prices, m.id),
           };
         }),
         datasets: [...deps.knowledge.datasets()]
@@ -1054,16 +1257,62 @@ export const playgroundModule: PlatformModuleFactory = () => ({
         ...(onEvent ? { onEvent } : {}),
       });
 
+    const modelPath = /^spec\.(model($|\.)|variants\[\d+\]\.(model|strategy)$)/;
+    const datasetPath = /^spec\.(knowledge($|\.)|variants\[\d+\]\.filters($|\.))/;
+
+    const outdatedOf = async (
+      g: Guarded,
+      outcome: DraftRunFailure,
+      name: PlaygroundSetupName,
+      setup: PlaygroundSetup | undefined,
+    ) => {
+      const chosen = setup?.service;
+      if (outcome.status !== 422 || !chosen || chosen.version === 'draft') return undefined;
+      if (outcome.errors.some((e) => e.path === 'variant' || e.path.startsWith('parts')))
+        return undefined;
+      if (setup?.model && outcome.errors.some((e) => modelPath.test(e.path))) return undefined;
+      if (setup?.datasets && outcome.errors.some((e) => datasetPath.test(e.path))) return undefined;
+      if (setup?.instructions && outcome.errors.some((e) => e.path.includes('instructions')))
+        return undefined;
+      const version = chosen.version;
+      const latest =
+        (await deps.definitions.versions('Service', g.tenant, chosen.id)).at(-1)?.version ??
+        version;
+      const first = outcome.errors[0];
+      const params = {
+        service: chosen.id,
+        version,
+        latest,
+        problem: first ? (first.path ? `${first.path}: ${first.message}` : first.message) : '',
+      };
+      return {
+        type: definitionOutdatedType,
+        title:
+          latest > version
+            ? t('problems.definitionOutdated', params)
+            : t('problems.definitionOutdatedNewest', params),
+        status: 422 as const,
+        setup: name,
+        service: chosen.id,
+        version,
+        latestVersion: latest,
+        errors: outcome.errors.map((e) => ({ ...e, path: `${name}.${e.path}` })),
+      };
+    };
+
     const failureOf = async (
       g: Guarded,
       outcome: DraftRunFailure,
       name: PlaygroundSetupName,
+      setup?: PlaygroundSetup,
     ): Promise<{
       status: DraftRunFailure['status'];
       body: unknown;
       headers: Record<string, string>;
     }> => {
       const headers: Record<string, string> = { 'content-type': 'application/problem+json' };
+      const outdated = await outdatedOf(g, outcome, name, setup);
+      if (outdated) return { status: 422, body: outdated, headers };
       if (outcome.status === 400)
         return { status: 400, body: invalidInputProblem(outcome.errors), headers };
       if (outcome.quota) {
@@ -1125,7 +1374,12 @@ export const playgroundModule: PlatformModuleFactory = () => ({
         await deps.blobs.delete({ tenant: g.tenant, path: uploaded });
       for (const [i, outcome] of outcomes.entries()) {
         if (outcome.ok) continue;
-        const failed = await failureOf(g, outcome, definitions[i]?.name ?? 'setup');
+        const failed = await failureOf(
+          g,
+          outcome,
+          definitions[i]?.name ?? 'setup',
+          definitions[i]?.setup,
+        );
         return c.json(failed.body, failed.status, failed.headers);
       }
       const results = await Promise.all(
@@ -1198,7 +1452,7 @@ export const playgroundModule: PlatformModuleFactory = () => ({
                     result: await resultOf(outcome, d.setup.output, details, mapper),
                   });
                 else {
-                  const failed = await failureOf(g, outcome, d.name);
+                  const failed = await failureOf(g, outcome, d.name, d.setup);
                   if (failed.status === 429) refusal ??= failed;
                   send('failed', { setup: d.name, problem: failed.body });
                 }

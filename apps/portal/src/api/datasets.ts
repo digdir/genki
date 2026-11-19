@@ -3,7 +3,8 @@ import { ApiError } from './error';
 import type { Problem, Residency } from '../types';
 
 export type DatasetSourceKind =
-  'website' | 'upload' | 'kudos' | 'folder' | 'database' | 'parquet' | 'none';
+  'website' | 'upload' | 'kudos' | 'folder' | 'database' | 'parquet' | 'endpoint' | 'none';
+export type SearchScope = 'tenant' | 'all';
 export type Schedule = 'none' | 'daily' | 'weekly';
 export type SkipReason =
   | 'unsupported_type'
@@ -19,18 +20,27 @@ export interface SkippedDocument {
   reason: SkipReason;
 }
 
+export type ExecutionStatus =
+  'queued' | 'running' | 'waiting' | 'succeeded' | 'failed' | 'cancelled';
+
+export const openStatuses: readonly ExecutionStatus[] = ['queued', 'running', 'waiting'];
+
+export const isOpen = (run: { status: ExecutionStatus } | null | undefined) =>
+  !!run && openStatuses.includes(run.status);
+
 export interface LastExecution {
-  status: string;
+  status: ExecutionStatus;
   startedAt: string;
-  endedAt?: string | null;
-  stored: number;
-  skipped: number;
+  endedAt: string | null;
+  stored: number | null;
+  skipped: number | null;
 }
 
 export interface DatasetView {
   id: string;
   fullId: string;
   name: string;
+  aliases?: string[];
   description?: string;
   scope?: string;
   editable?: boolean;
@@ -44,6 +54,11 @@ export interface DatasetView {
   chunks: number | null;
   lastExecution: LastExecution | null;
   nextRunAt: string | null;
+  updatedAt?: string | null;
+  owner?: { tenant: string; name: string | null };
+  usedByCount?: number;
+  searchScope?: SearchScope;
+  valueTypes?: Record<string, 'string' | 'integer'>;
 }
 
 export interface DatasetReader {
@@ -51,6 +66,9 @@ export interface DatasetReader {
   tenant: string;
   id: string;
   name: string;
+  addedAt?: string;
+  addedBy?: string;
+  addedByName?: string;
 }
 
 export interface DatasetDetailView extends DatasetView {
@@ -60,12 +78,24 @@ export interface DatasetDetailView extends DatasetView {
 
 export interface DatasetDeleteResult {
   deleted: string;
-  removed: { catalogEntry: true; pipelines: string[]; uploads: string[]; generations: string[] };
+  removed: {
+    catalogEntry: true;
+    pipelines: string[];
+    uploads: string[];
+    generations: string[];
+    endpoint?: string;
+    secret?: string;
+  };
   kept: { knowledgeRecords: boolean; generations: string[] };
 }
 
 export type PipelineSource =
-  | { kind: 'website'; sitemap: string; include: string[]; exclude: string[] }
+  | {
+      kind: 'website';
+      sitemap: string;
+      include: string[];
+      exclude: string[];
+    }
   | { kind: 'upload' }
   | { kind: 'kudos'; types: string[]; since?: string; orgs?: string[] };
 
@@ -83,10 +113,11 @@ export interface PipelineView {
 
 export interface ExecutionView {
   id: string;
-  status: 'running' | 'succeeded' | 'failed' | 'cancelled' | (string & {});
+  status: ExecutionStatus;
   startedAt: string;
   endedAt?: string;
   startedBy?: string;
+  startedByName?: string;
   error?: string;
   /** In lockdown, on a queued or running run not being cancelled: when its admission runs out. */
   admissionRunsOutAt?: string;
@@ -116,12 +147,129 @@ export interface UploadResult {
   skipped: { name: string; reason: SkipReason }[];
 }
 
+export type EndpointAuth = { kind: 'api-key'; apiKey: string; header?: string } | { kind: 'none' };
+
+export interface EndpointSource {
+  url: string;
+  auth: EndpointAuth;
+}
+
 export interface NewDatasetSpec {
   name: string;
   description?: string;
   endpoint: string;
   residency: Residency;
   embedding?: { model: string; dimensions: number };
+  searchScope?: SearchScope;
+}
+
+export interface NewEndpointDataset {
+  name: string;
+  description?: string;
+  residency: Residency;
+  searchScope: SearchScope;
+  endpointSource: EndpointSource;
+}
+
+export interface DatasetChange {
+  name?: string;
+  description?: string;
+  searchScope?: SearchScope;
+}
+
+export interface OriginalFile {
+  name: string;
+  size: number;
+  type: string;
+}
+
+export type DocumentStatus = 'indexed' | 'failed' | 'pending';
+export type DocumentListStatus = DocumentStatus | 'all';
+export type DocumentSortKey = 'title' | 'year' | 'updated';
+export type SortOrder = 'asc' | 'desc';
+
+export interface DatasetDocument {
+  id: string;
+  title?: string;
+  url?: string;
+  fields: Record<string, unknown>;
+  original?: OriginalFile;
+  status: DocumentStatus;
+  chunkCount?: number;
+  reason?: SkipReason;
+}
+
+export interface DocumentListing {
+  query: boolean;
+  sort: DocumentSortKey[];
+}
+
+export interface DatasetDocumentsPage {
+  dataset: string;
+  limit: number;
+  offset: number;
+  found?: number;
+  total: number;
+  totalExact: boolean;
+  status: DocumentListStatus;
+  statusCounts: { indexed: number | null; failed: number; pending: number };
+  listing: DocumentListing;
+  query?: string;
+  sort?: { key: DocumentSortKey; order: SortOrder };
+  filters?: Record<string, unknown>;
+  documents: DatasetDocument[];
+}
+
+export interface DocumentChunk {
+  id: string;
+  position?: number;
+  page?: number;
+  pageEnd?: number;
+  text: string;
+}
+
+export interface DatasetDocumentDetail extends DatasetDocument {
+  excerpt?: string;
+  chunks?: DocumentChunk[];
+}
+
+export interface DocumentsRequest {
+  limit: number;
+  offset: number;
+  filters?: Record<string, unknown>;
+  query?: string;
+  sort?: { key: DocumentSortKey; order: SortOrder };
+  status?: DocumentListStatus;
+}
+
+const documentsQuery = (page: DocumentsRequest) => {
+  const params: [string, string][] = [
+    ['limit', String(page.limit)],
+    ['offset', String(page.offset)],
+  ];
+  if (page.filters) params.push(['filters', JSON.stringify(page.filters)]);
+  if (page.query) params.push(['query', page.query]);
+  if (page.sort) params.push(['sort', page.sort.key], ['order', page.sort.order]);
+  if (page.status && page.status !== 'indexed') params.push(['status', page.status]);
+  return params.map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
+};
+
+export interface DatasetSearchHit {
+  id: string;
+  document?: string;
+  title?: string;
+  url?: string;
+  page?: number;
+  score: number;
+  text: string;
+  fields: Record<string, unknown>;
+}
+
+export interface DatasetSearchAnswer {
+  dataset: string;
+  limit: number;
+  found?: number;
+  hits: DatasetSearchHit[];
 }
 
 export const skippedOf = (execution: ExecutionView): SkippedDocument[] => {
@@ -162,12 +310,8 @@ export const datasetsApi = (ctx: ApiContext) => {
         spec,
         reasonHeader(reason),
       ),
-    rename: (
-      tenant: string,
-      id: string,
-      change: { name: string; description?: string },
-      reason: string,
-    ) => ctx.request<DatasetView>('PUT', dataset(tenant, id), change, reasonHeader(reason)),
+    rename: (tenant: string, id: string, change: DatasetChange, reason: string) =>
+      ctx.request<DatasetView>('PUT', dataset(tenant, id), change, reasonHeader(reason)),
     remove: (tenant: string, id: string, reason: string) =>
       ctx.request<DatasetDeleteResult>('DELETE', dataset(tenant, id), {}, reasonHeader(reason)),
     pipelines: async (tenant: string, id: string, signal?: AbortSignal) =>
@@ -247,6 +391,44 @@ export const datasetsApi = (ctx: ApiContext) => {
       if (!response.ok) throw await failed(response);
       return (await response.json()) as UploadResult;
     },
+    documents: (tenant: string, id: string, page: DocumentsRequest, signal?: AbortSignal) =>
+      ctx.get<DatasetDocumentsPage>(
+        `${dataset(tenant, id)}/documents?${documentsQuery(page)}`,
+        signal,
+      ),
+    document: (
+      tenant: string,
+      id: string,
+      doc: string,
+      signal?: AbortSignal,
+      chunks?: { from: number; to: number },
+    ) =>
+      ctx.get<DatasetDocumentDetail>(
+        `${dataset(tenant, id)}/documents/${enc(doc)}${
+          chunks ? `?chunks=${chunks.from}-${chunks.to}` : ''
+        }`,
+        signal,
+      ),
+    createEndpoint: (tenant: string, input: NewEndpointDataset, reason: string) =>
+      ctx.request<DatasetView>('POST', base(tenant), input, reasonHeader(reason)),
+    original: async (tenant: string, id: string, name: string) => {
+      if (!ctx.send) throw new Error('downloads need a raw sender');
+      const response = await ctx.send(
+        'GET',
+        `${dataset(tenant, id)}/uploads/${enc(name)}`,
+        undefined,
+      );
+      if (!response.ok) throw await failed(response);
+      return response.blob();
+    },
+    search: (
+      tenant: string,
+      id: string,
+      body: { query: string; filters?: Record<string, unknown>; limit?: number },
+    ) =>
+      ctx.query
+        ? ctx.query<DatasetSearchAnswer>('POST', `${dataset(tenant, id)}/search`, body)
+        : ctx.request<DatasetSearchAnswer>('POST', `${dataset(tenant, id)}/search`, body),
     removeUpload: (tenant: string, id: string, name: string, reason: string) =>
       ctx.request<unknown>(
         'DELETE',

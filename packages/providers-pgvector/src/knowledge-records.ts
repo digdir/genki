@@ -406,9 +406,10 @@ export const knowledgeRecordsOf = (writer: Pool): DocumentRecords => ({
           generation: string;
           id: string;
           fields: Record<string, unknown>;
+          url: string | null;
           applied: string;
         }>(
-          `select d.generation, d.id, d.fields, a.change::text as applied
+          `select d.generation, d.id, d.fields, d.url, a.change::text as applied
              from kn_docs d join kn_applied a on a.generation = d.generation and a.id = d.id
             where d.dataset = $1 and d.generation = any($2) and d.id = any($3)`,
           [dataset, generations, ids],
@@ -425,7 +426,11 @@ export const knowledgeRecordsOf = (writer: Pool): DocumentRecords => ({
             ...d,
             next: fill({ id: r.id, record: r.record, fields: d.fields }),
           }));
-          if (filled.every((d) => sameFields(d.fields, d.next))) {
+          // A fill that gives no url leaves the column as it is.
+          const same = (d: (typeof filled)[number]) =>
+            sameFields(d.fields, d.next.fields) &&
+            (d.next.url === undefined || d.next.url === d.url);
+          if (filled.every(same)) {
             result.unchanged += 1;
             continue;
           }
@@ -437,8 +442,7 @@ export const knowledgeRecordsOf = (writer: Pool): DocumentRecords => ({
           for (const d of filled) {
             const target = locked.find((l) => l.generation === d.generation);
             if (!target) continue;
-            if (!sameFields(d.fields, d.next))
-              await updateDocumentFields(client, target, r.id, d.next);
+            if (!same(d)) await updateDocumentFields(client, target, r.id, d.next);
             await client.query(
               `update kn_applied set change = $3, applied_at = now() where generation = $1 and id = $2`,
               [d.generation, r.id, change],

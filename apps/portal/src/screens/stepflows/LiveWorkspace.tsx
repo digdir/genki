@@ -3,14 +3,14 @@ import { SchemaFormProvider } from '@genai/schema-forms';
 import { useEffect, useState } from 'react';
 import type { ApiClient } from '../../api';
 import type { CatalogItem } from '../../api/building-blocks';
+import { BackLink } from '../../components/BackLink';
+import { HeadingSkeleton } from '../../components/Skeleton';
 import {
   exampleFlows,
   flowQueryIds,
   registerBlocks,
   serviceOfFlow,
-  strategies,
   type Flow,
-  type Strategy,
 } from '../../data/stepflows';
 import { blockDefFromSchema } from '../../data/step-blocks';
 import { formatDate } from '../../format';
@@ -19,7 +19,7 @@ import { useAsync } from '../../hooks';
 import { useT } from '../../i18n';
 import { Loading } from '../../states';
 import { fromDefinition } from './model';
-import { Workspace } from './Workspace';
+import { blankFlow, Workspace } from './Workspace';
 import '../stepflows.css';
 
 const designFlows = () => Object.fromEntries(exampleFlows.map((f) => [f.id, structuredClone(f)]));
@@ -75,17 +75,16 @@ export const withCatalogText = (
   };
 };
 
-const strategyIds = strategies.map((s) => s.id);
-
 export interface LiveWorkspaceProps {
   api: ApiClient;
   tenant: string;
   query: URLSearchParams;
   flowId?: string | undefined;
   service?: { id: string; name: string } | undefined;
-  library: boolean;
   live?: boolean;
 }
+
+export const newFlowId = 'ny-flyt';
 
 export const LiveWorkspace = ({
   api,
@@ -93,7 +92,6 @@ export const LiveWorkspace = ({
   query,
   flowId,
   service,
-  library,
   live = false,
 }: LiveWorkspaceProps) => {
   const t = useT();
@@ -102,14 +100,11 @@ export const LiveWorkspace = ({
     (signal) => loadLiveFlows(api, tenant, live, f, t, signal),
     [api, tenant, live, f, t],
   );
-  const [flows, setFlows] = useState<Record<string, Flow>>(() => (live ? {} : designFlows()));
-
-  useEffect(() => {
-    if (state.status !== 'ready') return;
-    setFlows((all) => ({ ...all, ...Object.fromEntries(state.data.map((f) => [f.id, f])) }));
-  }, [state]);
-
-  if (state.status === 'loading') return <Loading label={t('stepflows.loading')} />;
+  const creating = flowId === 'new';
+  const [flows, setFlows] = useState<Record<string, Flow>>(() => ({
+    ...(live ? {} : designFlows()),
+    ...(creating ? { [newFlowId]: blankFlow(newFlowId, t('stepflows.newFlowChanged')) } : {}),
+  }));
 
   const flyt = query.get('flyt') ?? '';
   const byService =
@@ -117,12 +112,26 @@ export const LiveWorkspace = ({
       ? Object.keys(serviceOfFlow).find((id) => serviceOfFlow[id] === service.name)
       : undefined;
   const initialFlow =
+    (creating ? newFlowId : '') ||
     flowQueryIds[flyt] ||
     (flowId && (flowQueryIds[flowId] ?? flowId)) ||
     byService ||
     'svar-med-kilder';
-  const strategi = query.get('strategi') ?? '';
   const visning = query.get('visning');
+
+  useEffect(() => {
+    if (state.status !== 'ready') return;
+    setFlows((all) => ({ ...all, ...Object.fromEntries(state.data.map((f) => [f.id, f])) }));
+  }, [state]);
+
+  if (state.status === 'loading')
+    return (
+      <div className="stack-md stepflows">
+        <BackLink label={t('stepflows.crumbFlows')} href="#/developer/step-flows" />
+        <HeadingSkeleton label={t('stepflows.loading')} />
+        <Loading label={t('stepflows.loading')} shape="detail" onRetry={retry} />
+      </div>
+    );
 
   return (
     <SchemaFormProvider fetchJson={api.getJson} routeParams={{ tenant }}>
@@ -133,14 +142,7 @@ export const LiveWorkspace = ({
         setFlows={setFlows}
         liveError={state.status === 'error' ? { error: state.error, retry } : undefined}
         service={service}
-        live={live}
-        initialView={visning === 'bibliotek' || (library && !visning) ? 'lib' : 'flow'}
         initialFlow={initialFlow}
-        initialStrategy={
-          strategyIds.includes(strategi as Strategy['id'])
-            ? (strategi as Strategy['id'])
-            : 'stegflyt'
-        }
         initialTab={visning === 'yaml' ? 'yaml' : 'diagram'}
         initialOverlay={query.get('testkjoring') === 'true' || query.get('testkjoring') === '1'}
       />

@@ -8,6 +8,9 @@ param deployPrincipalId = readEnvironmentVariable('DEPLOY_PRINCIPAL_ID', '')
 param appIdentityIsPostgresAdmin = true
 param minReplicas = 1
 param maxReplicas = 2
+param apiDatabasePoolMax = 3
+param workerDatabasePoolMax = 4
+param workerRevisionsMode = 'Multiple'
 
 // Test's own knowledge server (ADR 0042). Small to start (8 GiB, 64 GB): compute moves up or down with a short
 // restart, the disk only grows. Autogrow took the disk to 128 GB in November 2026, and the template follows it,
@@ -27,17 +30,25 @@ param knowledgePostgresGeoRedundantBackup = 'Disabled'
 param knowledgePostgresHighAvailability = 'Disabled'
 param knowledgeAddressPrefix = '10.43.0.0/24'
 
-param keyVaultSecretNames = [
-  'content-master-key'
-  'altinn-pdp-maskinporten-key'
-  'altinn-subscription-key'
-  'foundry-openai-key'
-  'foundry-claude-key'
-  'typesense-key'
-  'colbert-api-key'
-  'langfuse-public-key'
-  'langfuse-secret-key'
-]
+// The people source's secrets join only once its variables are set, so a deploy never names a secret not yet in Key Vault.
+var altinnPeople = readEnvironmentVariable('ALTINN_PEOPLE_URL', '')
+var altinnPeopleClient = readEnvironmentVariable('ALTINN_PEOPLE_MASKINPORTEN_CLIENT_ID', '')
+
+param keyVaultSecretNames = concat(
+  [
+    'content-master-key'
+    'altinn-pdp-maskinporten-key'
+    'altinn-subscription-key'
+    'foundry-openai-key'
+    'foundry-claude-key'
+    'typesense-key'
+    'colbert-api-key'
+    'langfuse-public-key'
+    'langfuse-secret-key'
+  ],
+  empty(altinnPeople) ? [] : ['access-person-key-secret'],
+  empty(altinnPeople) || empty(altinnPeopleClient) ? [] : ['altinn-people-maskinporten-key']
+)
 
 // An unset variable comes as an empty value here too.
 var langfuseContent = readEnvironmentVariable('LANGFUSE_INSTANCE_RECEIVES_CONTENT', '')
@@ -60,6 +71,10 @@ param appEnv = {
   LOCKDOWN_SERVICE_CLIENT_IDS: readEnvironmentVariable('LOCKDOWN_SERVICE_CLIENT_IDS', '')
   LOCKDOWN_ENTRA_EMAIL_DOMAIN: readEnvironmentVariable('LOCKDOWN_ENTRA_EMAIL_DOMAIN', 'digdir.no')
   OPERATOR_CLIENT_IDS: readEnvironmentVariable('OPERATOR_CLIENT_IDS', '')
+  GATEWAY_USAGE_URL: 'https://api.aivar.no'
+  GATEWAY_USAGE_APP_CLIENT_ID: '334f8fa1-437e-4b84-bceb-f320fb60f3ed'
+  GATEWAY_USAGE_APP_TENANT: '008e560f-08af-4cec-a056-b35447503991'
+  GATEWAY_USAGE_APP_SCOPE: 'api://3eca282e-8b4d-49d6-991f-79849dffd652/.default'
 }
 
 param ansattportenIssuer = readEnvironmentVariable('ANSATTPORTEN_ISSUER', '')
@@ -68,6 +83,9 @@ param altinnPdpUrl = readEnvironmentVariable('ALTINN_PDP_URL', '')
 param altinnPdpMaskinportenClientId = readEnvironmentVariable('ALTINN_PDP_MASKINPORTEN_CLIENT_ID', '')
 param maskinportenIssuer = readEnvironmentVariable('MASKINPORTEN_ISSUER', '')
 param maskinportenTokenUrl = readEnvironmentVariable('MASKINPORTEN_TOKEN_URL', '')
+param altinnPeopleUrl = altinnPeople
+param altinnPeopleMaskinportenClientId = altinnPeopleClient
+param altinnPeopleMaskinportenScope = readEnvironmentVariable('ALTINN_PEOPLE_MASKINPORTEN_SCOPE', '')
 param operatorSubjects = readEnvironmentVariable('OPERATOR_SUBJECTS', '')
 param platformTenant = readEnvironmentVariable('PLATFORM_TENANT', '')
 param portalClientId = readEnvironmentVariable('PORTAL_CLIENT_ID', '')

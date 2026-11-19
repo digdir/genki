@@ -62,6 +62,9 @@ export const endpoints = defineNamespace({
   federatedApp: 'Genkis egen identitet (føderert app)',
   federatedAppDescription:
     'Genki logger inn med sin administrerte identitet gjennom en flerleietaker-app. Ingen hemmelighet lagres.',
+  gateway: 'Dette er KI-gatewayen',
+  gatewayDescription:
+    'Hvert modellkall sender genki-tenant med organisasjonsnummeret til virksomheten kallet gjelder, så gatewayen fører bruken på riktig virksomhet.',
   appClientId: 'Appens klient-ID',
   appClientIdDescription: 'Klient-ID-en til flerleietaker-appen.',
   resourceTenant: 'Leietaker for tjenesten',
@@ -99,12 +102,11 @@ export const endpoints = defineNamespace({
   chatApiDefault: 'Standard for tilkoblingen',
   saveModel: 'Lagre modell',
   priceTitle: 'Sett pris for {model}',
-  priceText:
-    'Prisen brukes til å beregne kostnaden virksomhetene ser. Oppgi kroner per 1 000 tokens.',
+  priceText: 'Prisen brukes til å beregne kostnaden virksomhetene ser. Oppgi kroner per 1M tokens.',
   savePrice: 'Lagre pris',
-  priceInvalid: 'Skriv begge prisene som tall, for eksempel 0,02.',
-  priceIn: 'Inn (kr per 1 000 tokens)',
-  priceOut: 'Ut (kr per 1 000 tokens)',
+  priceInvalid: 'Skriv begge prisene som tall, for eksempel 2,5.',
+  priceIn: 'Inn (kr per 1M tokens)',
+  priceOut: 'Ut (kr per 1M tokens)',
   stillInUse: 'Tilkoblingen er fortsatt i bruk. Gi tjenestene under en annen modell først.',
   processorMissingHint: 'Bare prøving med oppdiktede data',
   processorTitle: 'Databehandler for {id}',

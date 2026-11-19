@@ -39,7 +39,7 @@ afterEach(() => {
 
 describe('public start page', () => {
   it('puts the sections in the agreed order: build, architecture, price and data, access, community', async () => {
-    open('#/?landing=new');
+    open('#/');
 
     await screen.findByRole('heading', { level: 1, name: nb('about.heroTitle') });
     expect(
@@ -57,7 +57,7 @@ describe('public start page', () => {
   });
 
   it('has one primary action, Be om tilgang, in the hero and after the steps', async () => {
-    open('#/?landing=new');
+    open('#/');
     await screen.findByRole('heading', { level: 1 });
 
     const primary = [...main().querySelectorAll('.ds-button[data-variant="primary"]')];
@@ -67,10 +67,10 @@ describe('public start page', () => {
   });
 
   it('says each key fact once: where data is processed, price, GitHub and Ansattporten', async () => {
-    open('#/?landing=new');
+    open('#/');
     await screen.findByRole('heading', { level: 1 });
 
-    expect(within(main()).getAllByText(nb('dataHandling.processingToday'))).toHaveLength(1);
+    expect(within(main()).getAllByText(nb('about.residencyStatement'))).toHaveLength(1);
     expect(within(main()).getAllByText(nb('about.factCost'))).toHaveLength(1);
     expect(
       [...main().querySelectorAll('a')].filter((a) => a.href === 'https://github.com/digdir/genki')
@@ -81,7 +81,7 @@ describe('public start page', () => {
   });
 
   it('shows at most six cards and no more than one Ikke bestemt tag', async () => {
-    open('#/?landing=new');
+    open('#/');
     await screen.findByRole('heading', { level: 1 });
 
     expect(main().querySelectorAll('.ds-card').length).toBeLessThanOrEqual(6);
@@ -90,7 +90,7 @@ describe('public start page', () => {
   });
 
   it('restores the shared services and the three examples from the old start page', async () => {
-    open('#/?landing=new');
+    open('#/');
     await screen.findByRole('heading', { level: 1 });
 
     const build = screen.getByRole('region', { name: 'Hva dere kan lage' });
@@ -99,7 +99,7 @@ describe('public start page', () => {
   });
 
   it('links price and terms, data handling and status to their own public pages', async () => {
-    open('#/?landing=new');
+    open('#/');
     await screen.findByRole('heading', { level: 1 });
 
     const tiles = screen.getByRole('region', { name: 'Pris, vilkår og data' });
@@ -111,7 +111,7 @@ describe('public start page', () => {
   });
 
   it('lists the four access steps and names the access manager in step three', async () => {
-    open('#/?landing=new');
+    open('#/');
     await screen.findByRole('heading', { level: 1 });
 
     const access = screen.getByRole('region', { name: 'Slik får dere tilgang' });
@@ -121,20 +121,20 @@ describe('public start page', () => {
   });
 
   it('signs in from the line for agencies that already have access', async () => {
-    open('#/?landing=new');
+    open('#/');
     const access = await screen.findByRole('region', { name: 'Slik får dere tilgang' });
 
     fireEvent.click(within(access).getByRole('button', { name: 'Logg inn' }));
 
     expect(
       await screen.findByRole('button', {
-        name: 'Handler for Testetaten, org.nr. 999 888 777. Bytt virksomhet',
+        name: 'Brukermeny for Kari Nordmann, Testetaten',
       }),
     ).toBeTruthy();
   });
 
   it('shows the Norwegian-only line under the hero buttons on English pages only', async () => {
-    open('#/?landing=new', ['en']);
+    open('#/', ['en']);
     await screen.findByRole('heading', {
       level: 1,
       name: 'Genki: generative AI for public agencies',
@@ -146,13 +146,13 @@ describe('public start page', () => {
     ).toBeTruthy();
 
     cleanup();
-    open('#/?landing=new');
+    open('#/');
     await screen.findByRole('heading', { level: 1 });
     expect(screen.queryByText(nb('about.nbOnly'))).toBeNull();
   });
 
   it('gives the start page and the price page their own document titles', async () => {
-    open('#/?landing=new');
+    open('#/');
     await screen.findByRole('heading', { level: 1 });
     const start = document.title;
 
@@ -164,11 +164,16 @@ describe('public start page', () => {
     expect(document.title).toBe('Pris og vilkår | Genki');
   });
 
-  it('opens the price and terms page without signing in, with the open questions tagged', async () => {
+  it('opens the price and terms page without signing in, with how use is counted, the free trial and the terms', async () => {
     open('#/about/price-and-terms');
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Pris og vilkår' })).toBeTruthy();
-    expect(within(main()).getAllByText('Ikke bestemt')).toHaveLength(2);
+    expect(
+      within(main())
+        .getAllByRole('heading', { level: 2 })
+        .map((h) => h.textContent),
+    ).toEqual(['Slik regnes bruken', 'Gratis under utprøving', 'Vilkår']);
+    expect(within(main()).getByText(nb('about.priceLede'))).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Slik behandles data' }).getAttribute('href')).toBe(
       '#/data-handling',
     );
@@ -176,7 +181,7 @@ describe('public start page', () => {
   });
 
   it('has one footer that carries the source line', async () => {
-    open('#/?landing=new');
+    open('#/');
     await screen.findByRole('heading', { level: 1 });
 
     const footers = screen.getAllByRole('contentinfo');
@@ -187,7 +192,7 @@ describe('public start page', () => {
 
 describe('public header', () => {
   it('shows four sections, search, more and sign in on wide screens', async () => {
-    open('#/?landing=new');
+    open('#/');
 
     const nav = await screen.findByRole('navigation', { name: 'Om Genki' });
     expect(
@@ -202,7 +207,7 @@ describe('public header', () => {
   });
 
   it('keeps For utviklere, GitHub, theme and language in the more menu', async () => {
-    open('#/?landing=new');
+    open('#/');
     const header = within(await screen.findByRole('banner'));
     fireEvent.click(header.getByRole('button', { name: 'Mer' }));
     const menu = within(document.querySelector('.ds-dropdown') as HTMLElement);
@@ -218,7 +223,7 @@ describe('public header', () => {
   });
 
   it('names the language switch with its visible text, in the language it switches to', async () => {
-    open('#/?landing=new');
+    open('#/');
     const header = within(await screen.findByRole('banner'));
     fireEvent.click(header.getByRole('button', { name: 'Mer' }));
 
@@ -237,7 +242,7 @@ describe('public header', () => {
   });
 
   it('shows only the brand, the menu and sign in on narrow screens, the rest in the menu', async () => {
-    open('#/?landing=new', undefined, 375);
+    open('#/', undefined, 375);
     const header = within(await screen.findByRole('banner'));
 
     expect(header.queryByRole('navigation', { name: 'Om Genki' })).toBeNull();
@@ -255,7 +260,7 @@ describe('public header', () => {
   });
 
   it('marks the public root neutral so headings use neutral text', async () => {
-    open('#/?landing=new');
+    open('#/');
     await screen.findByRole('heading', { level: 1 });
 
     expect(document.querySelector('.about-site')?.getAttribute('data-color')).toBe('neutral');

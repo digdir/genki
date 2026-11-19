@@ -13,6 +13,7 @@ import {
   InMemoryClients,
   InMemoryIdentities,
   oidcAudienceOf,
+  serviceAccessPolicy,
   type IdentityTestDataInput,
 } from '@genai/identity';
 import {
@@ -41,7 +42,10 @@ import { FileSystemBlobStore } from '@genai/port-blob';
 import type { PolicyDecisionPoint } from '@genai/kernel';
 import { documentConverterFrom, phraseArchiveFrom } from './document-converter.js';
 import { evalSlotLimitsFromEnv, shutdownGraceFromEnv } from './eval-slots.js';
+import { drainBeforeExit } from './shutdown.js';
 import { createAdmin, platformActor } from './admin.js';
+import { createAccessPeopleModule, peopleSourceFrom, selectedPeople } from './access-people.js';
+import { draftServices } from './access-draft-services.js';
 import { InMemoryTenantApiKeys, type TenantApiKeys } from './routes/portal-routes.js';
 import type { PriceSpec } from '@genai/contracts';
 import { postgresKeyPolicies, postgresTenantKeys } from './tenant-keys.js';
@@ -58,12 +62,13 @@ import {
   ownedByPlatformTenant,
   platformTenantFrom,
   keepRunningOnRejection,
+  tenantSampleRate,
 } from '@genai/composition';
-import { createApp } from './app.js';
+import { buildTimeOf, createApp } from './app.js';
 import { defaultSlowRequestMs } from './request-timing.js';
 import { sharedLimiter } from './rate-limit.js';
 import { kernelTaskReader } from './timeline.js';
-import { followChanges } from './change-feed.js';
+import { followChanges, refreshEverywhere } from './change-feed.js';
 import { postgresTaskIndex, postgresTenantDirectory } from './postgres-adapters.js';
 import { loadCatalog } from './catalogs.js';
 import {
@@ -82,6 +87,7 @@ import {
 import { withoutUnknownVariantModels } from './seed-variants.js';
 import { readTestSets, seedTestSets, testSetsOfServices } from './seed-test-sets.js';
 import { readPipelineSeeds, seedPipelines } from './pipeline-seeds.js';
+import { readDemoSeeds, seedDemos } from './demos.js';
 import { operatorDirectory, operatorSubjectsFrom, splitOperators } from './operators.js';
 import { altinnPdpFrom, withPdpActions } from './altinn-pdp.js';
 import { federatedAppTokens, gatewayUsageConfigFromEnv } from '@genai/providers-ai-gateway';
@@ -344,7 +350,12 @@ const traces = process.env.TRACES_ENDPOINT
         content: tracesContent(process.env),
         ...(process.env.TRACES_ENVIRONMENT ? { environment: process.env.TRACES_ENVIRONMENT } : {}),
       },
-      { secrets, tasks: async (id) => (await tasks.get(id))?.task, serviceName: 'genai-api' },
+      {
+        secrets,
+        tasks: async (id) => (await tasks.get(id))?.task,
+        serviceName: 'genai-api',
+        sampleRateFor: (tenant) => tenantSampleRate(settings)(tenant),
+      },
     )
   : undefined;
 const traceResidency = residencies.includes(process.env.TRACES_RESIDENCY as Residency)
@@ -428,6 +439,8 @@ const phraseArchive = phraseArchiveFrom(process.env, log);
 log('document converter', { converter: process.env.DOCUMENT_CONVERTER ?? 'local' });
 
 const configEntries = db?.configEntries ?? new InMemoryConfigEntryStore();
+const accessPeople = peopleSourceFrom(process.env, testData, resource);
+log('altinn people', { kind: accessPeople.kind });
 const admitClients = admitMaskinportenClients(
   maskinportenClientRegistry(configEntries),
   trusted.filter((t) => t.kind === 'maskinporten').map((t) => t.issuer),
@@ -463,6 +476,9 @@ const platform = await createPlatform({
     assertion: managedIdentityTokenSource(process.env.AZURE_CLIENT_ID),
   }),
   appVersion: version,
+  ...(process.env.DEMO_RECORDER_KEY_SHA256
+    ? { demoRecorderKeyDigest: process.env.DEMO_RECORDER_KEY_SHA256 }
+    : {}),
   tracing: {
     ...(process.env.LANGFUSE_BASE_URL ? { instance: process.env.LANGFUSE_BASE_URL } : {}),
     instanceReceivesContent: process.env.LANGFUSE_INSTANCE_RECEIVES_CONTENT === 'true',
@@ -471,7 +487,11 @@ const platform = await createPlatform({
   ...(lockdown ? { lockdown: { configuredKeys } } : {}),
   environmentTier,
   processorRecords,
-  modules: [...platformModules, createDefinitionSourcesModule(definitionSources, platformTenant)],
+  modules: [
+    ...platformModules,
+    createDefinitionSourcesModule(definitionSources, platformTenant),
+    createAccessPeopleModule(accessPeople),
+  ],
   settings,
   verifyPluginsOnBoot: true,
   clients,
@@ -582,11 +602,19 @@ const platform = await createPlatform({
       }
     : {}),
   policy: allowWorker(
-    altinnPolicy({
-      altinn: altinnPdp.authorization,
-      identities,
-      requirementFor: () => serviceRequirement(resource),
-    }),
+    serviceAccessPolicy(
+      altinnPolicy({
+        altinn: altinnPdp.authorization,
+        identities,
+        requirementFor: () => serviceRequirement(resource),
+      }),
+      {
+        selectedFor: selectedPeople(configEntries),
+        identities,
+        key: accessPeople.key,
+        draftServiceOf: draftServices.of,
+      },
+    ),
   ),
   authenticate: platformCaller(authenticator, {
     isOperator: operators.isOperator,
@@ -603,15 +631,27 @@ const platform = await createPlatform({
 const admin = createAdmin({
   platformTenant,
   store: platform.definitions,
+  lifecycle: platform.lifecycle,
   plugins: platform.plugins,
   settings,
-  models: platform.models,
+  models: {
+    describe: () => platform.models.describe(),
+    refresh: () =>
+      refreshEverywhere(platform.modelDiscovery, db?.changes, (error) =>
+        log('model refresh not announced to other replicas', { error: String(error) }),
+      ),
+    classify: platform.models.classify.bind(platform.models),
+  },
   extensions: platform.extensions,
   tenants: () => platform.directory.list(),
   names: actorNames(configEntries),
   ...(db ? { records: db.adminRecords } : {}),
 });
+const builtAt = buildTimeOf(process.env.APP_BUILT_AT);
 const app = createApp(version, {
+  ...(builtAt ? { builtAt } : {}),
+  ...(process.env.GENAI_ENV ? { environment: process.env.GENAI_ENV } : {}),
+  modelDiscovery: platform.modelDiscovery.state,
   requestTiming: {
     write: (entry) => log('request', { ...entry }),
     slowMs: Number(process.env.SLOW_REQUEST_MS) || defaultSlowRequestMs,
@@ -631,12 +671,14 @@ const app = createApp(version, {
     tenantDirectory: () => platform.directory.list(),
     organisationName: (orgNumber) =>
       (testData.organisations ?? []).find((o) => o.orgno === orgNumber)?.name,
+    registeredName: async (orgNumber) => (await platform.organization(orgNumber))?.name,
     tenantQuota: platform.quota,
     tenantGate: platform.tenantGate,
     registered: platform.registered,
     caller: platform.caller,
     lifecycle: platform.lifecycle,
     drafts: platform.serviceDrafts,
+    unmaskedInput: platform.unmaskedInput,
     names: actorNames(configEntries),
     lockdown,
     loginRefusal: async (request) => {
@@ -694,6 +736,11 @@ for (const unreadable of pipelineSeeds.unreadable) log('pipeline seed unreadable
 for (const outcome of await seedPipelines(platform.ingestion, pipelineSeeds.seeds))
   if (outcome.state !== 'present') log(`pipeline ${outcome.state}`, outcome);
 
+const demoSeeds = readDemoSeeds(join(import.meta.dirname, '..', '..', '..', 'demos'));
+for (const unreadable of demoSeeds.unreadable) log('demo seed unreadable', unreadable);
+for (const outcome of await seedDemos(configEntries, demoSeeds.seeds))
+  if (outcome.state !== 'present') log(`demo ${outcome.state}`, outcome);
+
 const clientsDir = join(configDir, 'clients');
 for (const file of existsSync(clientsDir)
   ? readdirSync(clientsDir).filter((f) => f.endsWith('.yaml'))
@@ -727,7 +774,7 @@ if (db)
     catalog: platform.catalog,
     descriptors: platform.descriptors,
     definitions: platform,
-    models: platform.models,
+    models: platform.modelDiscovery,
     toolConnections: platform.toolConnections,
   });
 if (mock) {
@@ -777,10 +824,17 @@ let stopping = false;
 const stop = (signal: string) => {
   if (stopping) process.exit(1);
   stopping = true;
-  log('api stopping', { signal, casesInFlight: platform.evalSlots.inFlight(), shutdownGraceMs });
-  const deadline = new Promise<void>((resolve) => setTimeout(resolve, shutdownGraceMs).unref());
-  void Promise.race([platform.evalSlots.drain(), deadline]).finally(() => {
-    log('api stopped', { casesInFlight: platform.evalSlots.inFlight() });
+  log('api stopping', {
+    signal,
+    casesInFlight: platform.evalSlots.inFlight(),
+    runsInFlight: platform.kernel.running(),
+    shutdownGraceMs,
+  });
+  void drainBeforeExit(platform.kernel, platform.evalSlots, shutdownGraceMs).finally(() => {
+    log('api stopped', {
+      casesInFlight: platform.evalSlots.inFlight(),
+      runsInFlight: platform.kernel.running(),
+    });
     server.close();
     process.exit(0);
   });

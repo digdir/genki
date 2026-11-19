@@ -2,6 +2,8 @@ import { translator, type Locale, type T } from './i18n';
 import { tenantLabel } from './tenant-names';
 import type {
   AuditEntry,
+  DatasetSearchAnswer,
+  DatasetSearchRequest,
   ModelClassification,
   ModelPrice,
   OperatorModel,
@@ -60,6 +62,7 @@ import type {
   KnowledgeEndpointItem,
   KnowledgeEngine,
   StoredSecret,
+  PlatformSecret,
   AccessRequest,
   AnswerSource,
   BlockApprovalRequest,
@@ -91,6 +94,90 @@ export interface StateRegisterView {
     accountsMinistry?: string;
     accountsMinistryName?: string;
   }[];
+}
+
+export type DemoApp = 'portal' | 'console' | 'workspace';
+export type DemoAudience = 'municipality' | 'state-agency' | 'internal';
+
+export type RecordingStatus = 'queued' | 'running' | 'recorded' | 'failed' | 'cancelled';
+export type RecorderMode = 'job' | 'workflow';
+
+export interface DemoRecording {
+  id: string;
+  demo: string;
+  demoVersion: number;
+  genkiVersion: string;
+  status: RecordingStatus;
+  steps: number;
+  narrated: boolean;
+  voice?: string;
+  startedAt: string;
+  finishedAt?: string;
+  seconds?: number;
+  files: { name: string; size: number; contentType: string }[];
+  failure?: { step: number; command?: string; message: string };
+  requestedBy?: string;
+  upTo?: number;
+  cancelledBy?: string;
+}
+
+export interface DemoStep {
+  say: string;
+  do?: string[][];
+  hold?: number;
+}
+
+export interface DemoSpec {
+  title: string;
+  description: string;
+  audience: DemoAudience[];
+  language: string;
+  voice: string;
+  viewport?: [number, number];
+  app: DemoApp;
+  path: string;
+  signedIn?: boolean;
+  ready?: string;
+  steps: DemoStep[];
+}
+
+export interface Demo extends DemoSpec {
+  id: string;
+  version: number;
+  updatedBy?: string;
+  updatedAt: string;
+  latest?: DemoRecording;
+  recorded?: DemoRecording;
+  open?: DemoRecording;
+}
+
+export interface DemoLibrary {
+  genkiVersion: string | null;
+  recorder?: RecorderMode;
+  data: Demo[];
+}
+
+export interface DemoDetail extends Demo {
+  genkiVersion: string | null;
+  recorder?: RecorderMode;
+  recordings: DemoRecording[];
+}
+
+export interface DemoSettings {
+  voice: string;
+  viewport: [number, number];
+  tenant: string | null;
+  login: string;
+  retentionDays: number;
+  writerDailyTokens: number;
+}
+
+export interface DemoSettingsView extends DemoSettings {
+  version: number;
+  updatedBy?: string;
+  updatedAt?: string;
+  recorder: RecorderMode;
+  sample?: { recording: string; file: string };
 }
 
 export class ApiError extends Error {
@@ -477,6 +564,51 @@ export const createApiClient = ({
       ),
     openSupportSession: (tenant: string, reason: string, minutes = 30) =>
       call<SupportSession>('POST', '/support-sessions', { body: { tenant, reason, minutes } }),
+    demos: (signal?: AbortSignal) => call<DemoLibrary>('GET', '/operator/demos', { signal }),
+    demo: (id: string, signal?: AbortSignal) =>
+      call<DemoDetail>('GET', `/operator/demos/${encodeURIComponent(id)}`, { signal }),
+    saveDemo: (id: string, spec: DemoSpec, reason: string, version?: number) =>
+      call<Demo>('PUT', `/operator/demos/${encodeURIComponent(id)}`, {
+        body: spec,
+        headers: {
+          'change-reason': reason,
+          ...(version === undefined ? {} : { 'if-match': String(version) }),
+        },
+      }),
+    requestRecording: (id: string, reason: string, upTo?: number) =>
+      call<DemoRecording>('POST', `/operator/demos/${encodeURIComponent(id)}/recordings`, {
+        body: upTo === undefined ? {} : { upTo },
+        headers: { 'change-reason': reason },
+      }),
+    recording: (id: string, signal?: AbortSignal) =>
+      call<DemoRecording>('GET', `/operator/recordings/${encodeURIComponent(id)}`, { signal }),
+    cancelRecording: (id: string, reason: string) =>
+      call<DemoRecording>('POST', `/operator/recordings/${encodeURIComponent(id)}/cancel`, {
+        headers: { 'change-reason': reason },
+      }),
+    demoSettings: (signal?: AbortSignal) =>
+      call<DemoSettingsView>('GET', '/operator/demo-settings', { signal }),
+    saveDemoSettings: (settings: DemoSettings, reason: string, version: number) =>
+      call<DemoSettingsView>('PUT', '/operator/demo-settings', {
+        body: settings,
+        headers: { 'change-reason': reason, 'if-match': String(version) },
+      }),
+    demoFile: async (recording: string, name: string, signal?: AbortSignal) => {
+      const bearer = token();
+      const response = await send(
+        `${baseUrl}/operator/recordings/${encodeURIComponent(recording)}/files/${encodeURIComponent(name)}`,
+        {
+          headers: bearer ? { authorization: `Bearer ${bearer}` } : {},
+          ...(signal ? { signal } : {}),
+        },
+      );
+      if (!response.ok)
+        throw new ApiError(
+          response.status,
+          (await response.json().catch(() => undefined)) as Problem | undefined,
+        );
+      return response.blob();
+    },
     stateRegister: (signal?: AbortSignal) =>
       call<StateRegisterView>('GET', '/operator/state-register', { signal }),
     sharedServices: async (signal?: AbortSignal) =>
@@ -748,6 +880,9 @@ export const createApiClient = ({
           signal,
         })
       ).data,
+    /** Searches a dataset directly, as a service's search does; `base` is the dataset's path. */
+    datasetSearch: (base: string, body: DatasetSearchRequest, signal?: AbortSignal) =>
+      call<DatasetSearchAnswer>('POST', `${base}/search`, { body, signal }),
     /** `base` is a dataset's path: `/operator/datasets/{id}` or `/tenants/{org}/datasets/{id}`. */
     datasetEngine: (base: string, signal?: AbortSignal) =>
       call<DatasetEngine>('GET', `${base}/engine`, { signal }),
@@ -921,6 +1056,8 @@ export const createApiClient = ({
         body: price,
         headers: { 'change-reason': reason },
       }),
+    platformSecrets: async (signal?: AbortSignal) =>
+      (await call<{ data: PlatformSecret[] }>('GET', '/operator/secrets', { signal })).data,
     saveSecret: (name: string, value: string, reason: string) =>
       call<unknown>('PUT', `/operator/secrets/${encodeURIComponent(name)}`, {
         body: { value },

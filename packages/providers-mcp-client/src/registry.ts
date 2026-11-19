@@ -65,6 +65,9 @@ export interface PinnedTool {
   description: string;
   input: JSONSchema;
   call?: Record<string, unknown>;
+  since?: string;
+  approvedAt?: string;
+  approvedBy?: string;
 }
 
 export const protocolOf = (connection: Connection): ConnectionProtocol =>
@@ -81,6 +84,12 @@ export interface ConnectionState {
   connection: Connection;
   tools: PinnedTool[];
   pending: PinnedTool[];
+  connectedAt?: string;
+  connectedBy?: string;
+  residency?: 'norway' | 'eu' | 'global';
+  synced?: boolean;
+  revoked?: string[];
+  lastSync?: { at: string; ok: boolean; code?: string; attempts?: number; failingSince?: string };
 }
 
 export class RegistrationError extends Error {
@@ -139,6 +148,11 @@ export interface ConnectionRegistry {
   get(tenant: string, id: string): Promise<ConnectionState | undefined>;
   list(tenant: string): Promise<ConnectionState[]>;
   save(state: ConnectionState): Promise<void>;
+  update(
+    tenant: string,
+    id: string,
+    change: (state: ConnectionState) => ConnectionState,
+  ): Promise<ConnectionState | undefined>;
 }
 
 export class InMemoryConnections implements ConnectionRegistry {
@@ -172,5 +186,14 @@ export class InMemoryConnections implements ConnectionRegistry {
       this.#key(state.connection.tenant, state.connection.id),
       structuredClone(state),
     );
+  }
+
+  async update(tenant: string, id: string, change: (state: ConnectionState) => ConnectionState) {
+    const key = this.#key(tenant, id);
+    const state = this.#states.get(key);
+    if (!state) return undefined;
+    const next = change(structuredClone(state));
+    this.#states.set(key, structuredClone(next));
+    return structuredClone(next);
   }
 }

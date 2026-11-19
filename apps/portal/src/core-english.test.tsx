@@ -12,10 +12,8 @@ import { translator } from './i18n';
 import { exampleOrganisations, mockFetch } from './mock';
 import { NoAccess } from './screens/NoAccess';
 import { DataHandlingContent } from './screens/DataHandling';
-import { Startside } from './screens/Startside';
 import { requestProblems } from './screens/Unregistered';
 import { needsRight, rightLabel } from './Shell';
-import { expectAccessible } from './test-utils';
 
 document.getAnimations ??= () => [];
 
@@ -93,26 +91,6 @@ describe('shared helpers in English', () => {
 });
 
 describe('screens in English', () => {
-  it('presents the front page in English', () => {
-    render(inEnglish(<Startside onLogin={() => undefined} busy={false} failed />));
-    expect(
-      screen.getByRole('heading', {
-        level: 1,
-        name: 'Generative AI for public organisations, run by Digdir',
-      }),
-    ).toBeTruthy();
-    const anchors = screen.getByRole('navigation', { name: 'On this page' });
-    expect(
-      within(anchors)
-        .getAllByRole('link')
-        .map((a) => a.textContent),
-    ).toEqual(['Shared services', 'Examples', 'Price and terms', 'Data', 'Documentation']);
-    expect(screen.getByRole('alert').textContent).toBe('Sign-in failed. Try again.');
-    expect(screen.getByRole('link', { name: 'See prices' })).toBeTruthy();
-    expect(document.body.textContent).toContain('Today the models run in Azure');
-    expectAccessible();
-  });
-
   it('shows the data handling page in English', () => {
     render(inEnglish(<DataHandlingContent />));
     expect(screen.getByRole('heading', { level: 1, name: 'How data is handled' })).toBeTruthy();
@@ -127,7 +105,7 @@ describe('screens in English', () => {
     expect(screen.getByRole('textbox').textContent).toContain('give me the right "Use services"');
     expect(screen.getByText('Manage datasets')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Check again' }));
-    expect(screen.getByText('Checking Altinn')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Checking Altinn' })).toBeTruthy();
   });
 
   it('shows the signed-in portal shell and overview in English', async () => {
@@ -145,8 +123,8 @@ describe('screens in English', () => {
     ).toEqual(['Overview', 'Services', 'Shared services']);
     expect(screen.getByRole('link', { name: 'Skip to main content' })).toBeTruthy();
     expect(await screen.findByRole('heading', { level: 2, name: 'Latest changes' })).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: /open user menu/ }));
-    expect(screen.getByRole('link', { name: 'Profile' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Log out' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /User menu for/ }));
+    expect(screen.getByRole('menuitem', { name: 'Profile' })).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: 'Log out' })).toBeTruthy();
   });
 });

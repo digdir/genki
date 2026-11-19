@@ -1,0 +1,31 @@
+.data-handling {
+  max-width: 960px;
+}
+
+.data-handling .lede {
+  font-size: var(--ds-font-size-4);
+  line-height: 1.5;
+  max-width: 62ch;
+}
+
+.data-handling-subprocessors {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-size-4);
+  margin: 0;
+}
+
+.data-handling-subprocessors dt {
+  font-weight: 600;
+}
+
+.data-handling-subprocessors dd {
+  margin: 0;
+}
+
+@media print {
+  body:has(.data-handling) :is(nav, header, footer, aside):not(.data-handling *),
+  .data-handling-pdf {
+    display: none !important;
+  }
+}

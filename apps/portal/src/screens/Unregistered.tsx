@@ -9,7 +9,6 @@ import {
   Label,
   Link,
   Paragraph,
-  Spinner,
   Tag,
   Textarea,
   Textfield,
@@ -24,6 +23,8 @@ import {
   type OrganisationAccessStatus,
 } from '../api/onboarding';
 import { ApiCallLink } from '../components/ApiCall';
+import { BusyButton } from '../components/BusyButton';
+import { Loading } from '../states';
 import { useFormat } from '@genai/i18n/react';
 import { useAsync } from '../hooks';
 import { translator, useT, type T } from '../i18n';
@@ -352,10 +353,14 @@ const RequestForm = ({
           }}
         />
         <div className="actions">
-          <Button variant="primary" type="submit" aria-disabled={sending || undefined}>
-            {sending ? t('unregistered.sending') : t('unregistered.send')}
-          </Button>
-          {sending ? <Spinner aria-hidden data-size="sm" /> : null}
+          <BusyButton
+            variant="primary"
+            type="submit"
+            busy={sending}
+            busyLabel={t('unregistered.sending')}
+          >
+            {t('unregistered.send')}
+          </BusyButton>
         </div>
       </form>
     </>
@@ -391,6 +396,7 @@ export const Unregistered = ({
   const [state] = useAsync(
     (signal) => statusOf(api, organisation.orgNumber, signal),
     [api, organisation.orgNumber, tick],
+    { keepPreviousFor: organisation.orgNumber },
   );
   const ready = state.status === 'ready' ? state.data : undefined;
   const own = ready?.latest && !writing ? ready.latest : undefined;
@@ -412,7 +418,7 @@ export const Unregistered = ({
       </div>
       <div aria-live="polite" className="access-request-status">
         {state.status === 'loading' ? (
-          <Spinner aria-label={t('unregistered.loadingRequests')} />
+          <Loading label={t('unregistered.loadingRequests')} shape="list" rows={1} />
         ) : null}
         {own ? (
           <OwnRequest

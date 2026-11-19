@@ -31,6 +31,7 @@ export class EgressError extends Error {
   constructor(
     readonly code: EgressErrorCode,
     message: string,
+    readonly status?: number,
   ) {
     super(message);
     this.name = 'EgressError';
@@ -54,6 +55,7 @@ export interface EgressRequest {
   body?: string;
   timeoutMs?: number;
   maxResponseBytes?: number;
+  maxRedirects?: number;
 }
 
 export interface EgressResponse {
@@ -210,7 +212,7 @@ export class EgressGuard {
         defaultPort(next) !== defaultPort(url)
       )
         throw new EgressError('redirect_refused', 'redirects to another host are not followed');
-      if (hop >= (this.options.maxRedirects ?? 3))
+      if (hop >= (init.maxRedirects ?? this.options.maxRedirects ?? 3))
         throw new EgressError('redirect_refused', 'too many redirects');
       url = next;
     }

@@ -139,6 +139,22 @@ const Model = z
         max_count: z.number().int(),
       })
       .optional(),
+    _media: z
+      .object({
+        accepts: z.array(z.string()),
+        max_bytes: z.number().int(),
+        max_count: z.number().int(),
+      })
+      .optional()
+      .describe('Audio and image types the service takes as `input_audio` or `image_url` parts.'),
+    _files: z
+      .object({
+        accepts: z.array(z.string()),
+        max_bytes: z.number().int(),
+        max_count: z.number().int(),
+      })
+      .optional()
+      .describe('File types a step of the service takes, sent as `file` parts.'),
     status: z.literal('paused').optional(),
     status_reason: z.string().optional(),
   })
@@ -199,6 +215,14 @@ const Source = z
       .array(z.string())
       .optional()
       .describe('When the service cites excerpts: the markers that cite this document.'),
+    version: z.string().optional().describe('The document version, when known.'),
+    published_at: z.string().optional().describe('The publish date, when known.'),
+    publisher: z
+      .string()
+      .optional()
+      .describe(
+        "The organisation that published the document, several joined with a comma. Present only when the document's fields name one; on Kudos stored in the knowledge database, the publisher, or the owners when Kudos lists none; Kudos served from Typesense has none.",
+      ),
   })
   .passthrough()
   .openapi('Source');
@@ -211,7 +235,9 @@ const ChatRequest = z
     messages: z
       .array(z.object({ role: z.enum(['system', 'user', 'assistant']), content: z.unknown() }))
       .optional()
-      .describe('Required unless the service has an input form and `input` is sent.'),
+      .describe(
+        'Required unless the service has an input form and `input` is sent. The last user message may be a list of parts: `text`, `input_audio` and `image_url` for the types in `_media`, and `{ "type": "file", "file": { "filename", "file_data": "data:<type>;base64,..." } }` for the types in `_files`, which reach a step flow as `{{input.files.N}}`.',
+      ),
     input: z
       .record(z.string(), z.unknown())
       .optional()
@@ -332,7 +358,24 @@ const StoredMessage = z
       .describe(
         'Assistant messages from a service that cites excerpts: the markers as the answer gave them, so `[N]` resolves to one excerpt (ADR 0052). Messages stored before markers were kept have none.',
       ),
-    task: z.string().optional().describe('Assistant messages: the task id to send as feedback.'),
+    task: z
+      .string()
+      .optional()
+      .describe(
+        'Assistant messages: the task id to send as feedback. User messages: the run that answers it.',
+      ),
+    stopped: z
+      .literal(true)
+      .optional()
+      .describe(
+        'Assistant messages whose run was cancelled: `text` is what the run had made by then, without sources. A stopped answer is left out of the history later questions get.',
+      ),
+    runState: z
+      .enum(['running', 'failed', 'cancelled'])
+      .optional()
+      .describe(
+        "The last question on the active branch, with no answer stored after it: `running` while its run goes on, or completed with its answer on the way to the store, until the service's deadline; `failed` when no answer will come; `cancelled` when the run was cancelled. Only for the key or signed-in person that asked.",
+      ),
     attachments: z.array(z.string()).optional(),
     input: z.record(z.string(), z.unknown()).optional().describe('User messages: the form values.'),
   })
@@ -400,7 +443,37 @@ export const frontendRoutes: RouteConfig[] = [
       404: v1Error('model_not_found, agent_not_found, conversation_not_found'),
       409: v1Error('version_not_found'),
       413: v1Error('document_too_large, request_too_large'),
+      415: v1Error('unsupported_document_type'),
       503: v1Error('service_paused'),
+    },
+  }),
+  createRoute({
+    method: 'post',
+    path: '/v1/tasks/{task}/cancel',
+    summary: 'Stop a run the caller started through /v1',
+    description:
+      'Stops the run whose `genai-task` header the caller got from a streamed `POST /v1/chat/completions`, or a live session, on whichever instance runs it. When the run belongs to a conversation, its turn is stored as stopped. Closing the stream does not stop a run.',
+    request: {
+      params: z.object({
+        task: z.string().openapi({ param: { name: 'task', in: 'path' } }),
+      }),
+    },
+    responses: {
+      200: json(
+        z.object({ id: z.string(), object: z.literal('task'), status: z.literal('cancelled') }),
+        'The run is stopped. Sending it again answers the same.',
+      ),
+      202: json(
+        z.object({ id: z.string(), object: z.literal('task'), status: z.string() }),
+        'The stop is recorded and has not landed yet: another instance runs it, or the instance that ran it has stopped.',
+      ),
+      401: v1Error('Invalid or missing credentials'),
+      404: v1Error(
+        'task_not_found: no such run, another caller or organisation started it, or its conversation belongs to another `X-User-Id`',
+      ),
+      409: v1Error(
+        'run_finished when the run has completed or failed; run_not_cancellable when it was not started through /v1',
+      ),
     },
   }),
   createRoute({

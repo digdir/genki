@@ -39,12 +39,7 @@ export interface ComposerProps {
   placeholder?: string | undefined;
   /** The field's accessible name, for a host that names it itself. «Spørsmål til {name}» unless given. */
   label?: string | undefined;
-  /**
-   * `stacked`, the default, puts the field over its buttons. `inline` is the dev-chat boards': one
-   * row with «+» to upload at the start and send, an arrow up, at the end; a question longer than
-   * a line goes over the buttons in full width. Its send button is neutral until there is
-   * something to send, and nothing is drawn for an upload that is not there yet.
-   */
+  /** `stacked`, the default, puts the field over its buttons; `inline` is the dev-chat boards' one row. */
   variant?: 'stacked' | 'inline' | undefined;
   /** What the assistant is called, in the field's name and the disclaimer. */
   assistantName?: string | undefined;
@@ -149,9 +144,7 @@ export const Composer = ({
   const inline = variant === 'inline';
   useComposerShortcut(field, shortcut);
 
-  // Inline, a question longer than a line goes over the buttons in full width. It stays there
-  // until it is shorter than when it went, so a question that fits the full width but not the
-  // row does not jump back and forth. A new line always goes.
+  // Inline, a question longer than a line goes over the buttons until it is shorter than when it went.
   const [wrapAt, setWrapAt] = useState<number>();
   const wrapped =
     inline && (value.includes('\n') || (wrapAt !== undefined && value.length >= wrapAt));
@@ -266,8 +259,7 @@ export const Composer = ({
       }
     : {};
 
-  // The upload button: at the start of the row inline, before the field in reading order too;
-  // with the controls under the field when stacked.
+  // The upload button: at the start of the row inline, with the controls under the field when stacked.
   const attach =
     unavailable && !inline ? (
       <Button
@@ -412,8 +404,7 @@ export const Composer = ({
             <Button
               aria-label={t('composer.send')}
               className="uib-composer-send"
-              // Inline, with nothing to send it is neutral and quiet, as the dev-chat boards draw
-              // it, and the action's colour when there is.
+              // Inline, neutral until there is something to send.
               data-color={inline && sendBlocked ? 'neutral' : actionColor}
               // Blocked, not disabled: it stays in the tab order, as genki's screens keep it.
               aria-disabled={sendBlocked || undefined}

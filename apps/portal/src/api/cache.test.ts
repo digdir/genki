@@ -31,6 +31,28 @@ describe('the stale-while-revalidate cache for page loads', () => {
     expect(await cache.load('k', 't', api.fetcher, page())).toBe('new');
   });
 
+  it('still shows an answer from an hour ago at once and refreshes it in the background', async () => {
+    let time = 0;
+    const cache = createResponseCache({ now: () => time });
+    const api = source('old', 'new');
+
+    await cache.load('k', 't', api.fetcher, page());
+    time = 60 * 60_000;
+    expect(await cache.load('k', 't', api.fetcher, page())).toBe('old');
+    await settle();
+    expect(await cache.load('k', 't', api.fetcher, page())).toBe('new');
+  });
+
+  it('waits for a fresh answer when the cached one is from another working day', async () => {
+    let time = 0;
+    const cache = createResponseCache({ now: () => time });
+    const api = source('old', 'new');
+
+    await cache.load('k', 't', api.fetcher, page());
+    time = 13 * 60 * 60_000;
+    expect(await cache.load('k', 't', api.fetcher, page())).toBe('new');
+  });
+
   it('does not refetch when a page reloads itself after a background refresh', async () => {
     const cache = createResponseCache();
     const api = source('a', 'b');

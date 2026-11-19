@@ -2,6 +2,7 @@ import { connectorsLane } from './connectors';
 import { blocksLane } from './data-blocks';
 import { configLane } from './data-config';
 import { datasetsLane } from './data-datasets';
+import { modelsLane } from './data-models';
 import { skillsLane } from './data-skills';
 
 export const data = {
@@ -10,4 +11,5 @@ export const data = {
   ...connectorsLane,
   ...configLane,
   ...datasetsLane,
+  ...modelsLane,
 } as const;

@@ -59,6 +59,7 @@ export const services = {
   connectorName: 'Connector for {service}',
   seedReason: 'Loaded from the local configuration',
   archivedByTenant: 'The service is archived and cannot be run.',
+  archivedReadOnly: 'The service is archived and can only be read. Restore it to change it.',
   pausedByTenant: 'The service is paused. Reason: {reason}',
   variantAnswer: 'Answers with sources',
   variantDefault: 'Default',
@@ -72,6 +73,7 @@ export const services = {
   environmentName:
     'The environment name must use lowercase letters, digits and dashes and start with a letter.',
   environmentExists: 'The service already has the environment {environment}.',
+  environmentDescription: 'The description is text of at most {max} characters.',
   environmentProdFixed: 'prod always exists and cannot be added or removed.',
   environmentTooMany: 'A service can have at most {max} environments.',
   environmentSame: 'An environment cannot be promoted to itself.',
@@ -84,4 +86,5 @@ export const services = {
     'The service has only prod. Publish an earlier version again instead of promoting or rolling back.',
   environmentPinNotAllowed:
     'Version {version} does not run in any environment this key or frontend may use.',
+  costBasisRecentRuns: "the average of the owner's runs in the last 30 days, rounded",
 } satisfies Translation<typeof source>;

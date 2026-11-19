@@ -33,8 +33,7 @@ const wrappersOf = (selector: string) => {
 };
 
 describe('the portal styles', () => {
-  // Unlayered, the ring beats every layer, and a block that draws its focus on a frame, as the
-  // Composer does, shows a second ring on the field inside it.
+  // Unlayered, the ring would beat every layer and double a block's own focus.
   it('draw the fallback focus ring under Designsystemet’s and the blocks’ own focus', () => {
     expect(wrappersOf(':focus-visible')).toEqual([['@layer ds.base']]);
   });

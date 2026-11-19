@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { z } from 'zod';
 import { describe, expect, it, vi } from 'vitest';
 import type { Principal, Ref } from '@genai/contracts';
 import {
@@ -46,6 +47,8 @@ import {
 } from './building-blocks.js';
 import type { CatalogRegistry } from './catalog-registry.js';
 import { InMemoryConfigEntryStore, platformScope } from './config-store.js';
+import { actorNames } from './actor-names.js';
+import { operationGovernance } from '@genai/composition';
 import { adminExtensions, TenantDirectory, TenantSecretVault } from './extensions.js';
 import { localeMiddleware } from './i18n/index.js';
 import type { ModuleDeps } from './platform-modules.js';
@@ -76,6 +79,7 @@ const people: Record<string, Principal> = {
     authorizedFor: [{ org: digdir, actions: ['use-services'] }],
   },
   operator: { kind: 'operator', issuer: 'test', subject: 'drift', tenant: digdir },
+  ola: { kind: 'employee', issuer: 'test', subject: 'ola', tenant: '999888777' },
 };
 
 const agentCard = {
@@ -154,11 +158,22 @@ const setup = async ({
   blockRefs = [] as string[],
   catalog = undefined as unknown as CatalogRegistry | undefined,
   access = undefined as Access | undefined,
+  tools = [] as string[],
+  guardrails = [] as string[],
+  governed = false,
 } = {}) => {
   const runs = new InMemoryEvalRunStore();
   const blockSet = new Set(blockRefs);
   const store = new InMemoryDefinitionStore({
     ...plugins,
+    ...(tools.length > 0
+      ? {
+          tools: new Map(tools.map((t) => [t, z.unknown()])),
+          models: new Map([
+            ['foundry/gpt-4o', { residency: 'norway', capabilities: ['stream', 'tools'] }],
+          ]),
+        }
+      : {}),
     blocks: blockSet,
     settings: settingDefinitions,
   });
@@ -198,11 +213,15 @@ const setup = async ({
         history: async () => [],
       } as unknown as CatalogRegistry),
     definitions: store,
-    plugins: { ...plugins, guardrails: new Map(), blocks: blockSet },
+    plugins: {
+      ...plugins,
+      guardrails: new Map(guardrails.map((g) => [g, z.unknown()])),
+      blocks: blockSet,
+    },
     configEntries,
     models: {
       describe: () => [
-        model('foundry/gpt-4o', 'norway'),
+        { ...model('foundry/gpt-4o', 'norway'), maker: 'OpenAI' },
         model('azure/gpt-41', 'eu'),
         model('openai/gpt-5', 'global'),
       ],
@@ -211,6 +230,7 @@ const setup = async ({
     engines: () => [],
     evalStores: { runs },
     connections,
+    ...(governed ? { operations: { governance: operationGovernance(configEntries, 'test') } } : {}),
   } as unknown as ModuleDeps;
   let ids = 0;
   const blocks = createBuildingBlocksModule({
@@ -303,6 +323,28 @@ describe('building blocks API', () => {
 
     expect((await raw.send(`${base}/secrets`, 'erik')).status).toBe(403);
     expect((await acting.send(`${base}/secrets`, 'erik')).status).toBe(200);
+  });
+
+  it('a model block page builds only model blocks, without listing tool connections or trace judges', async () => {
+    const { send, connections, runs } = await setup();
+    let asked = 0;
+    const list = connections.list.bind(connections);
+    connections.list = async (...args: Parameters<typeof list>) => {
+      asked += 1;
+      return list(...args);
+    };
+    const listRuns = runs.list.bind(runs);
+    let runLists = 0;
+    runs.list = async (...args: Parameters<typeof listRuns>) => {
+      runLists += 1;
+      return listRuns(...args);
+    };
+
+    const res = await send(`${base}/model/${enc('azure/gpt-41')}`, 'kari');
+
+    expect(res.status).toBe(200);
+    expect(asked).toBe(0);
+    expect(runLists).toBe(1);
   });
 
   it('a model outside the tenant residencies is not_allowed with the policy text', async () => {
@@ -451,6 +493,28 @@ describe('building blocks API', () => {
         reason: 'Trenger lange dokumenter',
       }),
     );
+  });
+
+  it('names when and by whom the organisation took a model into use, also after a settings change', async () => {
+    const { send, configEntries } = await setup();
+    await actorNames(configEntries).remember(people.kari as Principal, 'Kari Nordmann');
+    const model = `${base}/model/${enc('foundry/gpt-4o')}`;
+    const before = await json<Record<string, unknown>>(await send(model, 'kari'));
+    await send(`${model}/adopt`, 'kari', { body: {}, reason: 'Trenger norsk lagring' });
+    const changed = await send(`${model}/settings`, 'kari', {
+      method: 'PUT',
+      body: { settings: { enabled: true } },
+      reason: 'Bekrefter at den er på',
+    });
+
+    const after = await json<Record<string, unknown>>(await send(model, 'kari'));
+
+    expect(changed.status).toBe(200);
+    expect(before).not.toHaveProperty('adoptedAt');
+    expect(after).toMatchObject({
+      adoptedAt: '2026-10-07T10:00:00.000Z',
+      adoptedByName: 'Kari Nordmann',
+    });
   });
 
   it('settings changes are versioned and report affected services', async () => {
@@ -722,6 +786,32 @@ describe('building blocks API', () => {
     });
   });
 
+  it('keeps the residency given at registration and shows it as where the tool processes data', async () => {
+    const { send, vault } = await setup();
+    await vault.set(digdir, 'saks-api', 'verdi', ['https://api.example.no']);
+    const input = {
+      type: 'openapi',
+      name: 'Saks-API',
+      endpoint: 'https://api.example.no/v1',
+      document: JSON.stringify(openApiDocument),
+      auth: { kind: 'api-key', secret: 'saks-api' },
+    };
+
+    const wrong = await send(base, 'kari', {
+      body: { ...input, residency: 'mars' },
+      reason: 'Nytt REST-verktøy',
+    });
+    const registered = await send(base, 'kari', {
+      body: { ...input, residency: 'eu' },
+      reason: 'Nytt REST-verktøy',
+    });
+    const block = await json<Record<string, unknown>>(await send(`${base}/tool/saks-api`, 'kari'));
+
+    expect(wrong.status).toBe(400);
+    expect(registered.status).toBe(201);
+    expect(block).toMatchObject({ residency: 'eu', dataLocation: 'eu' });
+  });
+
   it('write operations from OpenAPI stay off until Digdir approves them, while read operations work at once', async () => {
     const { send, connections, vault } = await setup();
     await vault.set(digdir, 'saks-api', 'verdi', ['https://api.example.no']);
@@ -760,6 +850,38 @@ describe('building blocks API', () => {
     expect(decided.status).toBe(200);
     expect(after?.connection.writes).toBe(true);
     expect(after?.tools.map((t) => t.name)).toEqual(['saks-api.hentsak', 'saks-api.slettsak']);
+  });
+
+  it('a write grant never approves a tool the organisation revoked', async () => {
+    const { send, connections, vault } = await setup();
+    await vault.set(digdir, 'saks-api', 'verdi', ['https://api.example.no']);
+    const registered = await json<RegistrationResult>(
+      await send(base, 'kari', {
+        body: {
+          type: 'openapi',
+          name: 'Saks-API',
+          endpoint: 'https://api.example.no/v1',
+          document: JSON.stringify(openApiDocument),
+          auth: { kind: 'api-key', secret: 'saks-api' },
+          operations: ['hentSak', 'slettSak'],
+          writes: true,
+        },
+        reason: 'Saks-API med sletting',
+      }),
+    );
+    const before = await connections.get(digdir, 'saks-api');
+    if (before) await connections.save({ ...before, revoked: ['slettSak'] });
+
+    await send(
+      `/operator/building-blocks/approval-requests/${registered.writesApproval?.request}/decision`,
+      'operator',
+      { body: { approve: true }, reason: 'Sletting er avklart med virksomheten' },
+    );
+    const after = await connections.get(digdir, 'saks-api');
+
+    expect(after?.connection.writes).toBe(true);
+    expect(after?.tools.map((t) => t.name)).toEqual(['saks-api.hentsak']);
+    expect(after?.pending.map((t) => t.name)).toEqual(['saks-api.slettsak']);
   });
 
   it('registering a tool connection directly keeps OpenAPI writes off unless an operator registers it', async () => {
@@ -1147,6 +1269,111 @@ describe('platform building block texts', () => {
   });
 });
 
+describe('the built-in guardrails and judges', () => {
+  it('have a name and a description in the language asked for, not their id', async () => {
+    const { send } = await setup({ guardrails: ['pii-before-model'] });
+
+    const read = async (kind: string, language: string) =>
+      (
+        await json<{ data: { id: string; name: string; description: string }[] }>(
+          await send(`${base}?kind=${kind}`, 'kari', { language }),
+        )
+      ).data;
+
+    expect((await read('guardrail', 'nb')).find((b) => b.id === 'pii-before-model')).toMatchObject({
+      name: 'Personopplysninger før modellen',
+      description: expect.stringContaining('fødselsnumre'),
+    });
+    expect((await read('judge', 'en')).find((b) => b.id === 'answer-quality')).toMatchObject({
+      name: 'Answer quality',
+      description: expect.stringContaining('correct'),
+    });
+  });
+});
+
+describe("the organisation's own shared services", () => {
+  it('lists its own shared service with the services that use it, and leaves out services it has not shared', async () => {
+    const { send, store } = await setup({ tools: ['veileder__default@1'] });
+    const shared = klarsprak({ id: 'veileder' });
+    await store.publish(
+      { ...shared, spec: { ...shared.spec, availableTo: '*' } },
+      'test',
+      'deles med alle',
+      files,
+    );
+    const user = klarsprak({ id: 'bruker' });
+    const published = await store.publish(
+      { ...user, spec: { ...user.spec, tools: ['veileder__default@1'] } },
+      'test',
+      'bruker veilederen',
+      files,
+    );
+    expect(published.ok ? [] : published.errors).toEqual([]);
+
+    const listed = await json<{ data: { id: string; usedBy: { id: string }[] }[] }>(
+      await send(`${base}?kind=shared_service`, 'kari'),
+    );
+
+    expect(listed.data.map((b) => b.id)).toEqual([`${digdir}/veileder`]);
+    expect(listed.data[0]?.usedBy.map((u) => u.id)).toEqual(['bruker']);
+  });
+});
+
+describe('a shared step flow definition', () => {
+  const flow = (tenant: string, id: string, name: string) => ({
+    apiVersion: 'genai/v1' as const,
+    kind: 'StepFlow' as const,
+    metadata: { tenant, id, name },
+    spec: { purpose: 'Henter svar', steps: [{ id: 'hent', block: 'retrieve@1' }] },
+  });
+  const other = '999888777';
+
+  it('gives any member the latest version of a platform step flow, for its diagram and YAML', async () => {
+    const { send, store } = await setup({ blockRefs: ['retrieve@1'] });
+    await store.publish(flow(digdir, 'basic-rag', 'Basic RAG'), 'test', 'første versjon');
+    await store.publish(flow(digdir, 'basic-rag', 'Basic RAG 2'), 'test', 'andre versjon');
+
+    const ownRead = await send(`${base}/step_flow/basic-rag/definition`, 'erik');
+    const otherRead = await send(
+      `/tenants/${other}/building-blocks/step_flow/basic-rag/definition`,
+      'ola',
+    );
+
+    for (const res of [ownRead, otherRead]) {
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({
+        id: 'basic-rag',
+        owner: digdir,
+        version: 2,
+        publishedAt: expect.any(String),
+        yaml: expect.stringContaining('name: Basic RAG 2'),
+        definition: { kind: 'StepFlow', metadata: { id: 'basic-rag', name: 'Basic RAG 2' } },
+      });
+    }
+  });
+
+  it("never gives one organisation's own step flow to another", async () => {
+    const { send, store } = await setup({ blockRefs: ['retrieve@1'] });
+    await store.publish(flow(other, 'egen-flyt', 'Egen flyt'), 'test', 'første versjon');
+
+    const theirs = await send(`${base}/step_flow/egen-flyt/definition`, 'kari');
+    const owners = await send(
+      `/tenants/${other}/building-blocks/step_flow/egen-flyt/definition`,
+      'ola',
+    );
+    const stepBlock = await send(`${base}/step_flow/retrieve@1/definition`, 'kari');
+    const outsider = await send(
+      `/tenants/${other}/building-blocks/step_flow/egen-flyt/definition`,
+      'kari',
+    );
+
+    expect(theirs.status).toBe(404);
+    expect(owners.status).toBe(200);
+    expect(stepBlock.status).toBe(404);
+    expect(outsider.status).toBe(404);
+  });
+});
+
 describe('block usage', () => {
   it('console usage is unchanged after extracting block-usage', async () => {
     const withBlocks = { ...plugins, blocks: new Set(['retrieve@1', 'summarise@1']) };
@@ -1477,5 +1704,119 @@ describe('building-block settings at run time', () => {
       default: 5,
       maximum: 5,
     });
+  });
+});
+
+describe('facts a building block page shows', () => {
+  const entry = (kind: string, scope: string, id: string, spec: unknown) => ({
+    kind,
+    scope,
+    id,
+    version: 1,
+    spec,
+    deleted: false,
+    by: 'drift',
+    at: '2026-10-07T08:00:00Z',
+    reason: 'Satt opp for testen',
+  });
+  const flow = (name: string) => ({
+    apiVersion: 'genai/v1' as const,
+    kind: 'StepFlow' as const,
+    metadata: { tenant: digdir, id: 'svarflyt', name },
+    spec: { purpose: 'Henter svar', steps: [{ id: 'hent', block: 'retrieve@1' }] },
+  });
+
+  it('dates the version a step flow is on even when no update is waiting', async () => {
+    const { send, store } = await setup({ blockRefs: ['retrieve@1'] });
+    await store.publish(flow('Svarflyt'), 'test', 'første versjon');
+    await store.publish(flow('Svarflyt 2'), 'test', 'andre versjon');
+    const published = (await store.versions('StepFlow', digdir, 'svarflyt')).at(-1)?.publishedAt;
+
+    const block = await json<BuildingBlock>(await send(`${base}/step_flow/svarflyt`, 'kari'));
+
+    expect(block).toMatchObject({ version: '2', versionAt: published });
+    expect(block.update).toBeUndefined();
+  });
+
+  it('marks a guardrail rule the platform made mandatory as required and counts it, never a tenant rule', async () => {
+    const { send, configEntries } = await setup();
+    const rule = { kind: 'regex', pattern: '\\d{11}', action: 'block', message: 'Fødselsnummer' };
+    await configEntries.append(
+      entry('guardrail-rule', platformScope, 'fnr', { spec: rule, mandatory: true }),
+    );
+    await configEntries.append(entry('guardrail-rule', platformScope, 'navn', { spec: rule }));
+    await configEntries.append(
+      entry('guardrail-rule', digdir, `${digdir}/egen`, { spec: rule, mandatory: true }),
+    );
+
+    const list = await json<BuildingBlockList>(await send(`${base}?kind=guardrail`, 'kari'));
+
+    expect(list.counts.required).toEqual({ guardrail: 1 });
+    expect(list.data.filter((b) => b.required).map((b) => b.id)).toEqual(['custom-rules/fnr']);
+  });
+
+  it('names the connection and maker of a model, the API and maturity of each call type, and whether the connection has a processor record', async () => {
+    const { send, configEntries } = await setup({ governed: true });
+    await configEntries.append(
+      entry('operation-maturity', 'test', 'chat', { maturity: 'production' }),
+    );
+    await configEntries.append(
+      entry('processor-record', platformScope, 'foundry', {
+        agreement: 'Databehandleravtale 2026-04',
+        subProcessors: [{ name: 'Microsoft', location: 'Norge' }],
+        retention: { days: 0 },
+      }),
+    );
+
+    const block = await json<Record<string, unknown>>(
+      await send(`${base}/model/${enc('foundry/gpt-4o')}`, 'erik'),
+    );
+
+    expect(block.connection).toBe('foundry');
+    expect(block.maker).toBe('OpenAI');
+    expect(block.operations).toEqual([
+      {
+        operation: 'chat',
+        api: 'openai/chat-completions@1',
+        builtIn: true,
+        maturity: 'production',
+      },
+    ]);
+    expect(block.processor).toEqual({
+      recorded: true,
+      subProcessors: [{ name: 'Microsoft', location: 'Norge' }],
+      retentionDays: 0,
+    });
+    expect(JSON.stringify(block)).not.toContain('Databehandleravtale');
+  });
+
+  it('says a model has no processor record when none is recorded, and gives no maturity or processor fact without operation governance', async () => {
+    const governed = await setup({ governed: true });
+    const plain = await setup();
+
+    const recorded = await json<Record<string, unknown>>(
+      await governed.send(`${base}/model/${enc('azure/gpt-41')}`, 'kari'),
+    );
+    const ungoverned = await json<Record<string, unknown>>(
+      await plain.send(`${base}/model/${enc('azure/gpt-41')}`, 'kari'),
+    );
+
+    expect(recorded.processor).toEqual({ recorded: false });
+    expect(recorded.maker).toBeUndefined();
+    expect(recorded.operations).toEqual([
+      { operation: 'chat', api: 'openai/chat-completions@1', builtIn: true, maturity: 'test' },
+    ]);
+    expect(ungoverned.processor).toBeUndefined();
+    expect(ungoverned.operations).toEqual([
+      { operation: 'chat', api: 'openai/chat-completions@1', builtIn: true },
+    ]);
+  });
+
+  it('gives model facts only to a member of the tenant asked for', async () => {
+    const { send } = await setup({ governed: true });
+
+    const res = await send(`${base}/model/${enc('foundry/gpt-4o')}`, 'ola');
+
+    expect(res.status).toBe(404);
   });
 });

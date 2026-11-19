@@ -387,6 +387,7 @@ describe('the list of service drafts', () => {
         revision: 1,
         at: '2026-11-03T11:00:00.000Z',
         by: 'employee:test:kari',
+        trialRuns7d: 0,
       },
       expect.objectContaining({ id: 'svar', name: 'Svar', latestVersion: 1 }),
     ]);
@@ -432,6 +433,26 @@ describe('the list of service drafts', () => {
   });
 });
 
+describe('who saved a draft last', () => {
+  it('names who saved the draft last on the saved and the opened draft', async () => {
+    const env = await boot();
+    await env.remember('kari', 'Kari Nordmann');
+
+    const saved = await env.saveDraft({ purpose: 'Svarer grundig' });
+
+    const expected = { by: 'employee:test:kari', byName: 'Kari Nordmann' };
+    expect(saved.body).toMatchObject(expected);
+    expect(await env.draft()).toMatchObject(expected);
+  });
+
+  it('gives a null name when genki does not know who saved the draft', async () => {
+    const env = await boot();
+    await env.saveDraft({ purpose: 'Svarer grundig' });
+
+    expect(await env.draft()).toMatchObject({ by: 'employee:test:kari', byName: null });
+  });
+});
+
 describe('three-way merge of a draft', () => {
   it('keeps nested changes from both sides and reports a value changed on both', () => {
     const conflicts: DraftConflict[] = [];
@@ -449,5 +470,39 @@ describe('three-way merge of a draft', () => {
     const conflicts: DraftConflict[] = [];
     expect(mergeThreeWay({ a: 1, b: 1 }, { b: 1 }, { a: 1, b: 2 }, conflicts)).toEqual({ b: 2 });
     expect(conflicts).toEqual([]);
+  });
+});
+
+describe('checking a draft before it is published', () => {
+  it('runs the publish checks on the saved draft and says it is ready, without publishing it', async () => {
+    const env = await boot();
+    await env.saveDraft({ purpose: 'Svarer grundig' });
+
+    const checked = await env.send('GET', `${env.draftPath}/checks`);
+
+    expect(checked.status).toBe(200);
+    expect(checked.body).toMatchObject({ service: 'svar', ready: true, problems: [] });
+    expect((await env.latest()).purpose).toBe('Svarer kort på spørsmål');
+  });
+
+  it('lists what would stop the draft from publishing', async () => {
+    const env = await boot();
+    await env.saveDraft({ riskClass: 'high' as never });
+
+    const checked = await env.send('GET', `${env.draftPath}/checks`);
+
+    expect(checked.body.ready).toBe(false);
+    expect((checked.body.problems as { path: string }[]).length).toBeGreaterThan(0);
+    expect((await env.latest()).riskClass).toBe('minimal');
+  });
+
+  it('answers 404 without a draft, and never checks the draft of another organisation', async () => {
+    const env = await boot();
+    await env.saveDraft({ purpose: 'Svarer grundig' });
+
+    const none = await env.send('GET', `/tenants/${digdir}/services/finnes-ikke/draft/checks`);
+    const outsider = await env.send('GET', `${env.draftPath}/checks`, undefined, 'ola');
+
+    expect([none.status, outsider.status]).toEqual([404, 404]);
   });
 });

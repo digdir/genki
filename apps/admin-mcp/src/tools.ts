@@ -186,6 +186,8 @@ interface CatalogModel {
   capabilities: string[];
   operations?: string[];
   price: { inputPerThousand: number; outputPerThousand: number } | null;
+  available?: boolean;
+  reason?: string;
 }
 
 const minimumReason = 10;
@@ -521,7 +523,7 @@ const listModels = tool({
         `${tenantPath(client.tenant)}/playground/options`,
       ),
       client
-        .request<{ data: CatalogModel[] }>('GET', '/models')
+        .request<{ data: CatalogModel[] }>('GET', '/models?all=true')
         .then((r) => r.data)
         .catch(() => [] as CatalogModel[]),
     ]);
@@ -535,13 +537,15 @@ const listModels = tool({
         price: known?.price ?? null,
         capabilities: known?.capabilities ?? [],
         operations: known?.operations ?? ['chat'],
+        available: known?.available ?? true,
+        ...(known?.reason ? { reason: known.reason } : {}),
       };
     });
     return {
       text: models
         .map(
           (m) =>
-            `- ${m.id}: ${m.status.replace('_', ' ')}, data in ${m.dataLocation ?? 'unknown'}, serves ${m.operations.join(', ')}, ${m.price ? `${m.price.inputPerThousand} kr in / ${m.price.outputPerThousand} kr out per 1,000 tokens` : 'not priced'}`,
+            `- ${m.id}: ${m.status.replace('_', ' ')}${m.available ? '' : ` (not available: ${(m.reason ?? 'unknown').replace('_', ' ')})`}, data in ${m.dataLocation ?? 'unknown'}, serves ${m.operations.join(', ')}, ${m.price ? `${m.price.inputPerThousand} kr in / ${m.price.outputPerThousand} kr out per 1,000 tokens` : 'not priced'}`,
         )
         .join('\n'),
       data: { models },
@@ -1233,12 +1237,91 @@ const evaluateChange = tool({
   },
 });
 
+interface SearchHit {
+  id: string;
+  document?: string;
+  title?: string;
+  url?: string;
+  position?: number;
+  page?: number;
+  pageEnd?: number;
+  score: number;
+  text: string;
+  fields: Record<string, unknown>;
+}
+
+type SearchAnswer = {
+  dataset: string;
+  profile: string;
+  filters: Record<string, unknown>;
+  limit: number;
+  found?: number;
+  warning?: string;
+  tookMs: number;
+  hits: SearchHit[];
+};
+
+/** A dataset id such as digdir/kudos: each part a valid segment, the slash kept encoded. */
+const datasetSegment = (id: string) => id.split('/').map(segment).join('%2F');
+
+const placeOf = (hit: SearchHit) =>
+  [
+    hit.position === undefined ? undefined : `chunk ${hit.position}`,
+    hit.page === undefined
+      ? undefined
+      : hit.pageEnd === undefined
+        ? `page ${hit.page}`
+        : `pages ${hit.page}-${hit.pageEnd}`,
+  ]
+    .filter(Boolean)
+    .join(', ');
+
+const searchDataset = tool({
+  name: 'search_dataset',
+  title: 'Search a dataset',
+  description:
+    'Search one dataset in this organisation\'s catalogue the way a service run searches it, and see the raw hits: chunk, document, score, page, fields and text. No chat model is called; a vector search embeds the query, which counts against the organisation\'s usage. Use it to check a filter or a query before changing a service. Filters take the shape a run takes, on the dataset\'s declared fields, for example {"owner_orgnr": "991825827"}. A filter that matches nothing gives no hits.',
+  kind: 'read',
+  args: z.strictObject({
+    dataset: z.string().min(1).describe('The dataset id, such as digdir/kudos'),
+    query: z.string().min(1).max(2000),
+    filters: z.record(z.string(), z.unknown()).optional(),
+    profile: z.string().min(1).optional().describe("One of the dataset's search profiles"),
+    limit: z.number().int().min(1).max(100).optional().describe('How many hits, 10 by default'),
+  }),
+  run: async ({ client }, { dataset, ...body }) => {
+    const answer = await client.request<SearchAnswer>(
+      'POST',
+      `${tenantPath(client.tenant)}/datasets/${datasetSegment(dataset)}/search`,
+      { body },
+    );
+    const head = answer.hits.length
+      ? `${answer.hits.length}${answer.found === undefined ? '' : ` of ${answer.found}`} hits from ${answer.dataset} (${answer.profile}) in ${answer.tookMs} ms.`
+      : `No hits in ${answer.dataset} (${answer.profile}) in ${answer.tookMs} ms.`;
+    const filters = Object.keys(answer.filters).length
+      ? `\nFilters: ${JSON.stringify(answer.filters)}`
+      : '';
+    const warning = answer.warning ? `\nWarning: ${answer.warning}` : '';
+    const hits = answer.hits
+      .map(
+        (h, i) =>
+          `${i + 1}. ${h.score.toFixed(3)} ${h.title ?? h.document ?? h.id}${placeOf(h) ? `, ${placeOf(h)}` : ''}\n   ${short(h.text, 300)}\n   fields: ${short(h.fields, 300)}`,
+      )
+      .join('\n');
+    return {
+      text: `${head}${filters}${warning}${hits ? `\n${untrusted(hits)}` : ''}`,
+      data: answer,
+    };
+  },
+});
+
 export const adminTools: Tool[] = [
   listServices,
   getService,
   newServiceTemplate,
   describeStrategy,
   listModels,
+  searchDataset,
   validateDefinition,
   publishDefinition,
   runPlayground,

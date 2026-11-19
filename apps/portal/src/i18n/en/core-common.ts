@@ -20,6 +20,7 @@ export const common = {
   delete: 'Delete',
   copy: 'Copy',
   copied: 'Copied',
+  copyFailed: 'Could not copy. Select the text and copy it yourself.',
   yes: 'Yes',
   no: 'No',
   search: 'Search',

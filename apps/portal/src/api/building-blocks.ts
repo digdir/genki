@@ -99,10 +99,13 @@ export interface CatalogItem {
   description: string;
   publisher: { type: 'digdir' | 'own' | 'shared'; name: string };
   version: string;
+  versionAt?: string;
   latestVersion?: string;
   update?: BlockUpdate;
   dataLocation: DataLocation | null;
+  residency?: Residency;
   status: BlockStatus;
+  required?: true;
   policyBlock?: { rule: string; ownedBy: string; text: string };
   approver?: string;
   capabilities: string[];
@@ -132,7 +135,12 @@ export interface SinkJudgeInfo {
 
 export interface BuildingBlockList {
   data: CatalogItem[];
-  counts: { inUse: number; catalog: number; byKind: Record<BlockKind, number> };
+  counts: {
+    inUse: number;
+    catalog: number;
+    byKind: Record<BlockKind, number>;
+    required?: Partial<Record<BlockKind, number>>;
+  };
 }
 
 export type BlockEvent =
@@ -198,6 +206,7 @@ export interface RegistrationInput {
   documentUrl?: string;
   operations?: string[];
   writes?: boolean;
+  residency?: Residency;
 }
 
 export interface TenantSecretName {
@@ -394,11 +403,6 @@ export const blockPath = (block: Pick<CatalogItem, 'kind' | 'id'>, rest = '') =>
 
 export const blockHref = (block: Pick<CatalogItem, 'kind' | 'id'>) =>
   `#/building-blocks${blockPath(block)}`;
-
-export const flowEditorHref = (block: Pick<CatalogItem, 'kind' | 'id'>) =>
-  block.kind === 'step_flow' && !block.id.includes('@')
-    ? `#/step-flows/${encodeURIComponent(block.id)}`
-    : undefined;
 
 export const changeOf = (result: BlockChangeResult): LoggedChange | undefined =>
   result.block.changedBy;

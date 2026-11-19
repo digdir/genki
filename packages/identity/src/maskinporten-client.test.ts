@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Principal } from '@genai/contracts';
-import { exportJWK, generateKeyPair, SignJWT, createLocalJWKSet } from 'jose';
+import { decodeJwt, exportJWK, generateKeyPair, SignJWT, createLocalJWKSet } from 'jose';
 import {
   clientGrants,
   createMockMaskinporten,
@@ -103,6 +103,30 @@ describe('Maskinporten token client', () => {
     expect(failed.map((r) => r.status)).toEqual(['rejected', 'rejected', 'rejected']);
     expect(tokensAfter).toEqual(['mp-token', 'mp-token', 'mp-token']);
     expect(calls).toBe(2);
+  });
+
+  it('asks for a system user token for one organisation with authorization details in the grant', async () => {
+    const client = await generateKeyPair('RS256', { extractable: true });
+    const details = [
+      {
+        type: 'urn:altinn:systemuser',
+        systemuser_org: { authority: 'iso6523-actorid-upis', ID: `0192:${DIGDIR}` },
+      },
+    ];
+    let grant: Record<string, unknown> = {};
+    const tokens = maskinportenTokens({
+      issuer: MP,
+      clientId: 'genki-people',
+      scope: 'altinn:accessmanagement/enduser:connections:toothers.read',
+      privateKey: { ...(await exportJWK(client.privateKey)), alg: 'RS256' },
+      authorizationDetails: details,
+      fetch: async (_url, init) => {
+        grant = decodeJwt(new URLSearchParams(String(init?.body)).get('assertion') ?? '');
+        return Response.json({ access_token: 'mp-token', expires_in: 120 });
+      },
+    });
+    await tokens.token();
+    expect(grant.authorization_details).toEqual(details);
   });
 });
 

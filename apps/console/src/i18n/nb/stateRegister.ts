@@ -21,4 +21,12 @@ export const stateRegister = defineNamespace({
   kindMismatch: 'Avvik',
   kindBudgetBooking: 'Budsjettføring',
   kindNotInRegister: 'Uten departement i registeret',
+  creditBefore: 'Inneholder data under ',
+  creditLicence: 'norsk lisens for offentlige data (NLOD)',
+  creditLicenceUrl: 'https://data.norge.no/nlod/no/2.0',
+  creditBy: ' tilgjengeliggjort av ',
+  creditRegister: 'Brønnøysundregistrene',
+  creditAnd: ' og ',
+  creditAccounts: 'Direktoratet for forvaltning og økonomistyring (DFØ)',
+  creditAfter: '.',
 });

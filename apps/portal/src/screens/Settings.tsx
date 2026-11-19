@@ -1,5 +1,6 @@
 import {
   Alert,
+  Button,
   Field,
   Heading,
   Label,
@@ -9,9 +10,9 @@ import {
   TabsPanel,
   TabsTab,
 } from '@digdir/designsystemet-react';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useT } from '../i18n';
-import { Crumbs } from '../components/Crumbs';
+import { BackLink } from '../components/BackLink';
 import { useInServicePage } from './service/context';
 import {
   exampleDatasetNames,
@@ -23,14 +24,17 @@ import {
 } from '../data/settings';
 import { navigate, useAsync } from '../hooks';
 import type { ScreenProps, SettingsContext } from '../screen';
+import { useRights } from '../Shell';
 import { ErrorState, Loading } from '../states';
 import { mergeRows, type Ctx } from './settings/model';
 import { settingLabel } from './settings/text';
 import { SettingPanel, type LogEntry } from './settings/SettingPanel';
 import { SettingsGrid } from './settings/SettingsGrid';
+import { AllSettingsTable } from './settings/AllSettingsTable';
 import { LiveTransfer } from './settings/LiveTransfer';
 import { Transfer } from './settings/Transfer';
 import { WrittenStandard, writtenStandardRow } from './settings/WrittenStandard';
+import { CommonSettings } from './settings/CommonSettings';
 import './settings.css';
 
 interface Loaded {
@@ -58,11 +62,27 @@ const View = ({
   const serviceNames = live ? [] : exampleServiceNames;
   const datasetNames = live ? [] : exampleDatasetNames;
   const [rows, setRows] = useState(loaded.rows);
-  const [panel, setPanel] = useState<string>();
+  const [panel, setPanelState] = useState(route.query.get('setting') ?? undefined);
+  const setPanel = (next?: string) => {
+    setPanelState(next);
+    const [path = '', search = ''] = window.location.hash.replace(/^#/, '').split('?');
+    const query = new URLSearchParams(search);
+    if (next) query.set('setting', next);
+    else query.delete('setting');
+    window.history.replaceState(
+      window.history.state,
+      '',
+      `#${path}${query.size ? `?${query.toString()}` : ''}`,
+    );
+  };
   const [log, setLog] = useState<LogEntry[]>([]);
   const [flash, setFlash] = useState('');
   const [draftMsg, setDraftMsg] = useState('');
   const tab = route.query.get('tab') === 'transfer' ? 'transfer' : 'grid';
+  const tenantTab = route.segments[1] === 'all' ? 'all' : 'common';
+  const [dirty, setDirty] = useState(false);
+  const [leaving, setLeaving] = useState<string>();
+  const onDirty = useCallback((next: boolean) => setDirty(next), []);
   const ctx: Ctx = {
     kind: context.kind,
     target: loaded.target,
@@ -77,23 +97,12 @@ const View = ({
       : context.kind === 'dataset'
         ? `/datasets/${encodeURIComponent(context.id)}/settings`
         : '/settings';
-  const crumbs =
+  const back =
     context.kind === 'service'
-      ? [
-          { label: t('settings.crumbServices'), href: '#/services' },
-          { label: loaded.target, href: `#/services/${encodeURIComponent(context.id)}` },
-          { label: t('settings.crumbSettings') },
-        ]
+      ? { label: loaded.target, href: `#/services/${encodeURIComponent(context.id)}` }
       : context.kind === 'dataset'
-        ? [
-            { label: t('settings.crumbDatasets'), href: '#/datasets' },
-            { label: loaded.target, href: `#/datasets/${encodeURIComponent(context.id)}` },
-            { label: t('settings.crumbSettings') },
-          ]
-        : [
-            { label: t('settings.crumbOverview'), href: '#/overview' },
-            { label: t('settings.crumbSettings') },
-          ];
+        ? { label: loaded.target, href: `#/datasets/${encodeURIComponent(context.id)}` }
+        : undefined;
   const title = t('settings.titleTenant', {
     name: context.kind === 'tenant' ? tenantName : loaded.target,
   });
@@ -108,7 +117,133 @@ const View = ({
         ? { label: t('settings.targetDataset'), list: datasetNames, area: 'datasets' }
         : undefined;
   const selected = rows.find((r) => r.id === panel);
-  const standard = context.kind === 'dataset' ? undefined : writtenStandardRow(rows);
+  const standard = context.kind === 'service' ? writtenStandardRow(rows) : undefined;
+  const panelView = selected ? (
+    <SettingPanel
+      key={selected.id}
+      api={api}
+      live={live}
+      tenant={tenant}
+      serviceId={context.kind === 'service' ? context.id : undefined}
+      datasetId={context.kind === 'dataset' ? context.id : undefined}
+      setting={selected}
+      ctx={ctx}
+      names={{ services: serviceNames, datasets: datasetNames }}
+      draftVersion={loaded.draftVersion}
+      log={log.filter((l) => l.id === selected.id)}
+      onClose={() => setPanel()}
+      onSaved={(row, entry, kind, what) => {
+        setRows((all) => all.map((r) => (r.id === row.id ? row : r)));
+        setLog((all) => [entry, ...all]);
+        if (kind === 'draft') {
+          setFlash('');
+          setDraftMsg(t('settings.draftSaved', { version: loaded.draftVersion }));
+        } else setFlash(t('settings.savedFlash', { label: settingLabel(t, row), what }));
+      }}
+    />
+  ) : null;
+  const transfer = live ? (
+    <LiveTransfer api={api} tenant={tenant} tenantName={tenantName} onFlash={setFlash} />
+  ) : (
+    <Transfer rows={rows} tenantName={tenantName} onFlash={setFlash} />
+  );
+  const flashView = (
+    <div aria-live="polite" className="settings-flash">
+      {flash ? (
+        <Alert data-color="success" data-size="sm">
+          {flash}
+        </Alert>
+      ) : null}
+    </div>
+  );
+
+  if (context.kind === 'tenant') {
+    const hashFor = (v: string) => (v === 'all' ? '#/settings/all' : '#/settings');
+    return (
+      <div className="settings-page stack">
+        <div className="settings-header">
+          <div className="settings-title">
+            <Heading level={1} data-size="md">
+              {t('settings.heading')}
+            </Heading>
+            <p className="lead">{t('settings.introOrganisation', { name: tenantName })}</p>
+          </div>
+        </div>
+        <Tabs
+          value={tenantTab}
+          onChange={(v) => {
+            if (v === tenantTab) return;
+            if (dirty) {
+              setLeaving(hashFor(v));
+              return;
+            }
+            setFlash('');
+            navigate(hashFor(v));
+          }}
+        >
+          <TabsList aria-label={t('settings.tenantTabsLabel')}>
+            <TabsTab value="common">{t('settings.tabCommon')}</TabsTab>
+            <TabsTab value="all">{t('settings.tabAll')}</TabsTab>
+          </TabsList>
+          {leaving ? (
+            <Alert data-color="warning" data-size="sm" role="alert">
+              {t('settings.leaveAsk')}
+              <div className="actions">
+                <Button
+                  data-size="sm"
+                  variant="primary"
+                  onClick={() => {
+                    setLeaving(undefined);
+                    setDirty(false);
+                    navigate(leaving);
+                  }}
+                >
+                  {t('settings.leaveGo')}
+                </Button>
+                <Button data-size="sm" variant="secondary" onClick={() => setLeaving(undefined)}>
+                  {t('settings.leaveStay')}
+                </Button>
+              </div>
+            </Alert>
+          ) : null}
+          {flashView}
+          <TabsPanel value="common">
+            {tenantTab === 'common' ? (
+              <CommonSettings
+                api={api}
+                tenant={tenant}
+                live={live}
+                rows={rows}
+                onSaved={setRows}
+                onDirty={onDirty}
+              />
+            ) : null}
+          </TabsPanel>
+          <TabsPanel value="all">
+            {tenantTab === 'all' ? (
+              <div className="stack">
+                <p>{t('settings.allIntro')}</p>
+                <AllSettingsTable
+                  rows={rows}
+                  categories={loaded.categories}
+                  ctx={ctx}
+                  selected={panel}
+                  onOpen={setPanel}
+                />
+                <section aria-labelledby="settings-transfer-h" className="stack-sm">
+                  <Heading level={2} data-size="xs" id="settings-transfer-h">
+                    {t('settings.transferHeading')}
+                  </Heading>
+                  {transfer}
+                </section>
+              </div>
+            ) : null}
+          </TabsPanel>
+        </Tabs>
+        {panelView}
+      </div>
+    );
+  }
 
   return (
     <div className="settings-page stack">
@@ -120,7 +255,7 @@ const View = ({
           </a>
         </Alert>
       ) : null}
-      {embedded ? null : <Crumbs items={crumbs} />}
+      {embedded || !back ? null : <BackLink label={back.label} href={back.href} />}
       <div className="settings-header">
         <div className="settings-title">
           {embedded ? null : (
@@ -158,13 +293,7 @@ const View = ({
           <TabsTab value="grid">{t('settings.tabGrid')}</TabsTab>
           <TabsTab value="transfer">{t('settings.tabTransfer')}</TabsTab>
         </TabsList>
-        <div aria-live="polite" className="settings-flash">
-          {flash ? (
-            <Alert data-color="success" data-size="sm">
-              {flash}
-            </Alert>
-          ) : null}
-        </div>
+        {flashView}
         <TabsPanel value="grid">
           {standard ? (
             <WrittenStandard
@@ -190,38 +319,47 @@ const View = ({
             onOpen={setPanel}
           />
         </TabsPanel>
-        <TabsPanel value="transfer">
-          {live ? (
-            <LiveTransfer api={api} tenant={tenant} tenantName={tenantName} onFlash={setFlash} />
-          ) : (
-            <Transfer rows={rows} tenantName={tenantName} onFlash={setFlash} />
-          )}
+        <TabsPanel value="transfer">{transfer}</TabsPanel>
+      </Tabs>
+      {panelView}
+    </div>
+  );
+};
+
+const TenantSettingsLoading = ({
+  tenantName,
+  tab,
+  onRetry,
+}: {
+  tenantName: string;
+  tab: 'common' | 'all';
+  onRetry: () => void;
+}) => {
+  const t = useT();
+  return (
+    <div className="settings-page stack">
+      <div className="settings-header">
+        <div className="settings-title">
+          <Heading level={1} data-size="md">
+            {t('settings.heading')}
+          </Heading>
+          <p className="lead">{t('settings.introOrganisation', { name: tenantName })}</p>
+        </div>
+      </div>
+      <Tabs
+        value={tab}
+        onChange={(v) => {
+          if (v !== tab) navigate(v === 'all' ? '/settings/all' : '/settings');
+        }}
+      >
+        <TabsList aria-label={t('settings.tenantTabsLabel')}>
+          <TabsTab value="common">{t('settings.tabCommon')}</TabsTab>
+          <TabsTab value="all">{t('settings.tabAll')}</TabsTab>
+        </TabsList>
+        <TabsPanel value={tab}>
+          <Loading label={t('settings.loading')} shape="form" onRetry={onRetry} />
         </TabsPanel>
       </Tabs>
-      {selected ? (
-        <SettingPanel
-          key={selected.id}
-          api={api}
-          live={live}
-          tenant={tenant}
-          serviceId={context.kind === 'service' ? context.id : undefined}
-          datasetId={context.kind === 'dataset' ? context.id : undefined}
-          setting={selected}
-          ctx={ctx}
-          names={{ services: serviceNames, datasets: datasetNames }}
-          draftVersion={loaded.draftVersion}
-          log={log.filter((l) => l.id === selected.id)}
-          onClose={() => setPanel(undefined)}
-          onSaved={(row, entry, kind, what) => {
-            setRows((all) => all.map((r) => (r.id === row.id ? row : r)));
-            setLog((all) => [entry, ...all]);
-            if (kind === 'draft') {
-              setFlash('');
-              setDraftMsg(t('settings.draftSaved', { version: loaded.draftVersion }));
-            } else setFlash(t('settings.savedFlash', { label: settingLabel(t, row), what }));
-          }}
-        />
-      ) : null}
     </div>
   );
 };
@@ -231,11 +369,15 @@ export const Settings = (props: ScreenProps & { context: SettingsContext }) => {
   const t = useT();
   const embedded = useInServicePage();
   const id = context.kind === 'tenant' ? '' : context.id;
+  const canExport = useRights().has('manage-services');
   const [state, retry] = useAsync(
     async (signal): Promise<Loaded> => {
-      const catalog = await api.settingsCatalog(signal);
+      if (context.kind === 'tenant' && live && canExport)
+        api.exportTenant(tenant, signal).catch(() => undefined);
+      const catalogLoad = api.settingsCatalog(signal);
       if (context.kind === 'service') {
-        const [effective, definition] = await Promise.all([
+        const [catalog, effective, definition] = await Promise.all([
+          catalogLoad,
           api.effectiveSettings(tenant, id, signal),
           api.getDefinition(tenant, 'Service', id, signal).catch(() => undefined),
         ]);
@@ -257,7 +399,10 @@ export const Settings = (props: ScreenProps & { context: SettingsContext }) => {
         };
       }
       if (context.kind === 'dataset') {
-        const dataset = await api.getDataset(id, signal).catch(() => undefined);
+        const [catalog, dataset] = await Promise.all([
+          catalogLoad,
+          api.getDataset(id, signal).catch(() => undefined),
+        ]);
         const name =
           (live ? undefined : nameFromSlug(exampleDatasetNames, id)) ?? dataset?.name ?? id;
         return {
@@ -268,9 +413,10 @@ export const Settings = (props: ScreenProps & { context: SettingsContext }) => {
           norwayOnly: false,
         };
       }
-      const effective = live
-        ? await api.tenantEffectiveSettings(tenant, signal).catch(() => undefined)
-        : undefined;
+      const [catalog, effective] = await Promise.all([
+        catalogLoad,
+        live ? api.tenantEffectiveSettings(tenant, signal) : undefined,
+      ]);
       return {
         ...mergeRows(catalog, effective, '', live),
         target: '',
@@ -281,7 +427,16 @@ export const Settings = (props: ScreenProps & { context: SettingsContext }) => {
     },
     [api, tenant, context.kind, id, live],
   );
-  if (state.status === 'loading') return <Loading label={t('settings.loading')} />;
+  if (state.status === 'loading')
+    return context.kind === 'tenant' ? (
+      <TenantSettingsLoading
+        tenantName={props.tenantName}
+        tab={props.route.segments[1] === 'all' ? 'all' : 'common'}
+        onRetry={retry}
+      />
+    ) : (
+      <Loading label={t('settings.loading')} shape="form" onRetry={retry} />
+    );
   if (state.status === 'error')
     return (
       <div className="stack">
@@ -290,6 +445,18 @@ export const Settings = (props: ScreenProps & { context: SettingsContext }) => {
             {t('settings.heading')}
           </Heading>
         )}
+        {context.kind === 'tenant' ? (
+          <>
+            <Heading level={2} data-size="xs">
+              {t('settings.loadFailedTitle')}
+            </Heading>
+            <p>
+              {props.route.segments[1] === 'all'
+                ? t('settings.loadFailedNoDefaults')
+                : t('settings.loadFailedNoForm')}
+            </p>
+          </>
+        ) : null}
         <ErrorState error={state.error} onRetry={retry} />
       </div>
     );

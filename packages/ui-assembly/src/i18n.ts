@@ -26,8 +26,7 @@ const nbAssembly = defineNamespace({
   filterForThread: 'Filter for tråden',
   // The next look's secondary panel, as the dev-verktoy boards name it: «Skjul verktøypanelet».
   toolsPanel: 'Verktøypanelet',
-  // The next look's question field, as the dev-chat boards name it: on a new thread and in a
-  // conversation.
+  // The next look's question field, on a new thread and in a conversation.
   fieldStart: 'Still et spørsmål',
   fieldStartPlaceholder: 'Skriv her …',
   fieldFollowUp: 'Spør videre',

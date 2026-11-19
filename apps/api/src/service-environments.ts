@@ -4,6 +4,7 @@ import { environmentNamePattern, type ClientStore } from '@genai/identity';
 import type { Context } from 'hono';
 import { enterTenant } from './access.js';
 import { actorOf, type AdminHandler, type AdminOutcome } from './admin.js';
+import { actorNames } from './actor-names.js';
 import { appendVersion, serialized, type ConfigEntryStore } from './config-store.js';
 import { changeReasonOf, isReasonLongEnough, reasonTooShort } from './http.js';
 import { t } from './i18n/index.js';
@@ -14,10 +15,12 @@ export const serviceEnvironmentsKind = 'service-environments';
 export const productionEnvironment = 'prod';
 export const environmentHeader = 'genai-environment';
 export const maxEnvironments = 5;
+export const maxEnvironmentDescription = 200;
 
 export interface EnvironmentPointer {
   version?: number;
   previousVersion?: number;
+  description?: string;
 }
 
 export type EnvironmentPointers = Record<string, EnvironmentPointer>;
@@ -27,6 +30,33 @@ export interface EnvironmentView {
   version: number | null;
   followsPublishes: boolean;
   previousVersion: number | null;
+  description?: string;
+}
+
+export const environmentActions = [
+  'added',
+  'removed',
+  'promoted',
+  'rolled-back',
+  'described',
+] as const;
+export type EnvironmentAction = (typeof environmentActions)[number];
+
+export interface EnvironmentChange {
+  action: EnvironmentAction;
+  environment: string;
+  from?: string;
+}
+
+export interface EnvironmentEvent {
+  environment: string;
+  action: EnvironmentAction | 'changed';
+  version: number | null;
+  previousVersion: number | null;
+  from?: string;
+  at: string;
+  by: string;
+  reason: string;
 }
 
 export type EnvironmentChoice =
@@ -132,6 +162,72 @@ export const chooseEnvironment = async (
   return { ok: true, ...(ran ? { name: ran } : {}) };
 };
 
+const savedPointers = (spec: unknown, deleted: boolean): EnvironmentPointers => {
+  const saved = (spec as { environments?: unknown } | undefined)?.environments;
+  if (deleted || typeof saved !== 'object' || saved === null) return unconfigured();
+  return {
+    ...unconfigured(),
+    ...Object.fromEntries(
+      Object.entries(saved as EnvironmentPointers).filter(([name]) => isEnvironmentName(name)),
+    ),
+  };
+};
+
+const recordedChange = (spec: unknown): EnvironmentChange | undefined => {
+  const change = (spec as { change?: Partial<EnvironmentChange> } | undefined)?.change;
+  return change &&
+    environmentActions.includes(change.action as EnvironmentAction) &&
+    isEnvironmentName(change.environment)
+    ? (change as EnvironmentChange)
+    : undefined;
+};
+
+export const environmentEvents = (
+  history: { spec: unknown; deleted: boolean; at: string; by: string; reason: string }[],
+): EnvironmentEvent[] => {
+  const events: EnvironmentEvent[] = [];
+  let before = unconfigured();
+  for (const entry of history) {
+    const after = savedPointers(entry.spec, entry.deleted);
+    const stamp = { at: entry.at, by: entry.by, reason: entry.reason };
+    const change = recordedChange(entry.spec);
+    const event = (
+      environment: string,
+      action: EnvironmentEvent['action'],
+      from?: string,
+    ): EnvironmentEvent => {
+      const pointer = pointerOf(after, environment);
+      return {
+        environment,
+        action,
+        version: action === 'removed' ? null : (pointer?.version ?? null),
+        previousVersion:
+          action === 'removed'
+            ? (pointerOf(before, environment)?.version ?? null)
+            : (pointer?.previousVersion ?? null),
+        ...(from ? { from } : {}),
+        ...stamp,
+      };
+    };
+    if (change) events.push(event(change.environment, change.action, change.from));
+    else
+      for (const name of new Set([...Object.keys(before), ...Object.keys(after)])) {
+        const was = pointerOf(before, name);
+        const now = pointerOf(after, name);
+        if (!was && now) events.push(event(name, 'added'));
+        else if (was && !now) events.push(event(name, 'removed'));
+        else if (
+          was?.version !== undefined &&
+          now?.version !== undefined &&
+          was.version !== now.version
+        )
+          events.push(event(name, 'changed'));
+      }
+    before = after;
+  }
+  return events.reverse();
+};
+
 export const environmentViews = (
   pointers: EnvironmentPointers,
   latestVersion: number | undefined,
@@ -145,7 +241,16 @@ export const environmentViews = (
       version: pointer.version ?? latestVersion ?? null,
       followsPublishes: pointer.version === undefined,
       previousVersion: pointer.previousVersion ?? null,
+      ...(pointer.description ? { description: pointer.description } : {}),
     }));
+
+const descriptionOf = (value: unknown): string | undefined | false => {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== 'string') return false;
+  const trimmed = value.trim();
+  if (trimmed.length > maxEnvironmentDescription) return false;
+  return trimmed || undefined;
+};
 
 const failed = (
   target: string,
@@ -187,6 +292,7 @@ export const serviceEnvironmentsModule: PlatformModuleFactory = (deps) => {
   const writes = serialized();
 
   const change = (
+    kind: EnvironmentAction,
     action: (input: {
       tenant: string;
       id: string;
@@ -216,7 +322,16 @@ export const serviceEnvironmentsModule: PlatformModuleFactory = (deps) => {
           kind: serviceEnvironmentsKind,
           scope: tenant,
           id,
-          spec: { environments: after },
+          spec: {
+            environments: after,
+            change: {
+              action: kind,
+              environment: String(input.environment ?? ''),
+              ...(kind === 'promoted'
+                ? { from: input.from === undefined ? 'test' : String(input.from) }
+                : {}),
+            },
+          },
           deleted: onlyProd,
           by: actorOf(principal.actor ?? principal),
           reason,
@@ -231,76 +346,94 @@ export const serviceEnvironmentsModule: PlatformModuleFactory = (deps) => {
   };
 
   const handlers: Record<string, AdminHandler> = {
-    'platform.service.environments.add': change(async ({ target, latest, before, input }) => {
-      const name = input.environment;
-      if (name === productionEnvironment)
-        return failed(target, 'name', t('services.environmentProdFixed'));
-      if (!isEnvironmentName(name)) return failed(target, 'name', t('services.environmentName'));
-      if (pointerOf(before, name))
-        return failed(
-          target,
-          'state',
-          t('services.environmentExists', { environment: name }),
-          true,
-        );
-      if (Object.keys(before).length >= maxEnvironments)
-        return failed(target, 'name', t('services.environmentTooMany', { max: maxEnvironments }));
-      const prod = pointerOf(before, productionEnvironment) ?? {};
-      return {
-        ...before,
-        [productionEnvironment]: prod.version === undefined ? { version: latest } : prod,
-        [name]: {},
-      };
-    }),
-    'platform.service.environments.remove': change(async ({ target, latest, before, input }) => {
-      const name = String(input.environment ?? '');
-      if (name === productionEnvironment)
-        return failed(target, 'name', t('services.environmentProdFixed'));
-      if (!isEnvironmentName(name)) return failed(target, 'name', t('services.environmentName'));
-      if (!pointerOf(before, name))
-        return failed(
-          target,
-          'environment',
-          t('services.environmentMissing', { service: String(input.id), environment: name }),
-        );
-      const after = Object.fromEntries(Object.entries(before).filter(([key]) => key !== name));
-      const prodVersion = pointerOf(after, productionEnvironment)?.version;
-      if (Object.keys(after).length > 1) return after;
-      if (prodVersion !== undefined && prodVersion !== latest)
-        return failed(
-          target,
-          'state',
-          t('services.environmentProdBehind', { version: prodVersion }),
-          true,
-        );
-      return { [productionEnvironment]: {} };
-    }),
-    'platform.service.environments.promote': change(async ({ target, latest, before, input }) => {
-      const name = String(input.environment ?? '');
-      const from = input.from === undefined ? 'test' : String(input.from);
-      if (!isEnvironmentName(name)) return failed(target, 'name', t('services.environmentName'));
-      if (!isEnvironmentName(from)) return failed(target, 'name', t('services.environmentName'));
-      if (Object.keys(before).length === 1)
-        return failed(target, 'state', t('services.environmentOnlyProd'), true);
-      if (!pointerOf(before, name))
-        return failed(
-          target,
-          'environment',
-          t('services.environmentMissing', { service: String(input.id), environment: name }),
-        );
-      if (from === name) return failed(target, 'from', t('services.environmentSame'));
-      const source = pointerOf(before, from);
-      if (!source)
-        return failed(
-          target,
-          'from',
-          t('services.environmentMissing', { service: String(input.id), environment: from }),
-        );
-      const current = pointerOf(before, name)?.version ?? latest;
-      const version = source.version ?? latest;
-      return { ...before, [name]: { version, previousVersion: current } };
-    }),
+    'platform.service.environments.add': change(
+      'added',
+      async ({ target, latest, before, input }) => {
+        const name = input.environment;
+        if (name === productionEnvironment)
+          return failed(target, 'name', t('services.environmentProdFixed'));
+        if (!isEnvironmentName(name)) return failed(target, 'name', t('services.environmentName'));
+        if (pointerOf(before, name))
+          return failed(
+            target,
+            'state',
+            t('services.environmentExists', { environment: name }),
+            true,
+          );
+        if (Object.keys(before).length >= maxEnvironments)
+          return failed(target, 'name', t('services.environmentTooMany', { max: maxEnvironments }));
+        const description = descriptionOf(input.description);
+        if (description === false)
+          return failed(
+            target,
+            'description',
+            t('services.environmentDescription', { max: maxEnvironmentDescription }),
+          );
+        const prod = pointerOf(before, productionEnvironment) ?? {};
+        return {
+          ...before,
+          [productionEnvironment]: prod.version === undefined ? { ...prod, version: latest } : prod,
+          [name]: description ? { description } : {},
+        };
+      },
+    ),
+    'platform.service.environments.remove': change(
+      'removed',
+      async ({ target, latest, before, input }) => {
+        const name = String(input.environment ?? '');
+        if (name === productionEnvironment)
+          return failed(target, 'name', t('services.environmentProdFixed'));
+        if (!isEnvironmentName(name)) return failed(target, 'name', t('services.environmentName'));
+        if (!pointerOf(before, name))
+          return failed(
+            target,
+            'environment',
+            t('services.environmentMissing', { service: String(input.id), environment: name }),
+          );
+        const after = Object.fromEntries(Object.entries(before).filter(([key]) => key !== name));
+        const prodVersion = pointerOf(after, productionEnvironment)?.version;
+        if (Object.keys(after).length > 1) return after;
+        if (prodVersion !== undefined && prodVersion !== latest)
+          return failed(
+            target,
+            'state',
+            t('services.environmentProdBehind', { version: prodVersion }),
+            true,
+          );
+        return { [productionEnvironment]: {} };
+      },
+    ),
+    'platform.service.environments.promote': change(
+      'promoted',
+      async ({ target, latest, before, input }) => {
+        const name = String(input.environment ?? '');
+        const from = input.from === undefined ? 'test' : String(input.from);
+        if (!isEnvironmentName(name)) return failed(target, 'name', t('services.environmentName'));
+        if (!isEnvironmentName(from)) return failed(target, 'name', t('services.environmentName'));
+        if (Object.keys(before).length === 1)
+          return failed(target, 'state', t('services.environmentOnlyProd'), true);
+        if (!pointerOf(before, name))
+          return failed(
+            target,
+            'environment',
+            t('services.environmentMissing', { service: String(input.id), environment: name }),
+          );
+        if (from === name) return failed(target, 'from', t('services.environmentSame'));
+        const source = pointerOf(before, from);
+        if (!source)
+          return failed(
+            target,
+            'from',
+            t('services.environmentMissing', { service: String(input.id), environment: from }),
+          );
+        const named = pointerOf(before, name);
+        const current = named?.version ?? latest;
+        const version = source.version ?? latest;
+        return { ...before, [name]: { ...named, version, previousVersion: current } };
+      },
+    ),
     'platform.service.environments.rollback': change(
+      'rolled-back',
       async ({ tenant, id, target, latest, before, input }) => {
         const name = String(input.environment ?? '');
         if (!isEnvironmentName(name)) return failed(target, 'name', t('services.environmentName'));
@@ -327,8 +460,32 @@ export const serviceEnvironmentsModule: PlatformModuleFactory = (deps) => {
           return failed(target, 'version', t('services.environmentNoVersion', { version }));
         return {
           ...before,
-          [name]: { version, previousVersion: pointer.version ?? latest },
+          [name]: { ...pointer, version, previousVersion: pointer.version ?? latest },
         };
+      },
+    ),
+    'platform.service.environments.describe': change(
+      'described',
+      async ({ target, before, input }) => {
+        const name = String(input.environment ?? '');
+        if (!isEnvironmentName(name)) return failed(target, 'name', t('services.environmentName'));
+        const pointer = pointerOf(before, name);
+        if (!pointer)
+          return failed(
+            target,
+            'environment',
+            t('services.environmentMissing', { service: String(input.id), environment: name }),
+          );
+        const description = descriptionOf(input.description);
+        if (description === false)
+          return failed(
+            target,
+            'description',
+            t('services.environmentDescription', { max: maxEnvironmentDescription }),
+          );
+        const rest: EnvironmentPointer = { ...pointer };
+        delete rest.description;
+        return { ...before, [name]: description ? { ...rest, description } : rest };
       },
     ),
   };
@@ -392,13 +549,53 @@ export const serviceEnvironmentsModule: PlatformModuleFactory = (deps) => {
         });
       });
 
+      app.get('/tenants/:tenant/services/:id/environment-history', async (c) => {
+        const guard = await entered(c, 'use-services');
+        if ('response' in guard) return guard.response;
+        const id = c.req.param('id') ?? '';
+        if ((await latestVersionOf(deps.definitions, guard.tenant, id)) === undefined)
+          return problem(c, 404, 'Not found');
+        const environment = c.req.query('environment');
+        if (environment !== undefined && !isEnvironmentName(environment))
+          return problem(c, 400, 'Invalid request', [
+            { path: 'environment', message: t('services.environmentName') },
+          ]);
+        const limit = Number(c.req.query('limit') ?? 50);
+        if (!Number.isInteger(limit) || limit < 1 || limit > 200)
+          return problem(c, 400, 'Invalid request', [
+            { path: 'limit', message: 'limit is 1 to 200' },
+          ]);
+        const events = environmentEvents(
+          await entries.history(serviceEnvironmentsKind, guard.tenant, id),
+        ).filter((e) => environment === undefined || e.environment === environment);
+        const shown = events.slice(0, limit);
+        const names = await actorNames(entries).namesOf([...new Set(shown.map((e) => e.by))]);
+        return c.json({
+          data: shown.map((e) => {
+            const byName = names.get(e.by);
+            return byName ? { ...e, byName } : e;
+          }),
+          total: events.length,
+        });
+      });
+
       app.post('/tenants/:tenant/services/:id/environments', async (c) =>
         perform(
           c,
           'platform.service.environments.add',
-          { environment: (await body(c)).name },
+          await body(c).then(({ name, description }) => ({
+            environment: name,
+            ...(description === undefined ? {} : { description }),
+          })),
           true,
         ),
+      );
+
+      app.patch('/tenants/:tenant/services/:id/environments/:environment', async (c) =>
+        perform(c, 'platform.service.environments.describe', {
+          environment: c.req.param('environment') ?? '',
+          description: (await body(c)).description ?? null,
+        }),
       );
 
       app.delete('/tenants/:tenant/services/:id/environments/:environment', async (c) =>

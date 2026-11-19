@@ -1,3 +1,4 @@
+import type { BlockFacts } from '../api/blocks';
 import type {
   BlockKind,
   BlockScore,
@@ -106,13 +107,6 @@ export const extensionPointLabel = (
   const found = extensionPoints.find((p) => p.value === point);
   return found ? t(found.label) : point;
 };
-
-export const publisherOptions = [
-  { value: 'all', label: 'blocks.publisherAll' },
-  { value: 'digdir', label: 'blocks.publisherDigdir' },
-  { value: 'own', label: 'blocks.publisherOwn' },
-  { value: 'shared', label: 'blocks.publisherShared' },
-] as const satisfies readonly { value: string; label: PlainKey }[];
 
 export type StatusColor = 'success' | 'info' | 'warning' | 'danger';
 
@@ -308,8 +302,9 @@ type Example = Omit<
 > &
   Partial<Pick<CatalogItem, 'permissions' | 'settingsSchema' | 'tenantOverrides'>> & {
     usedBy?: string[];
+    pins?: Record<string, number>;
     scores?: { service: string; testSet: string; score: number }[];
-    versions?: { version: string; publishedAt: string; notes: string }[];
+    versions?: { version: string; publishedAt: string; notes: string; by?: string }[];
   };
 
 const exampleRun = '2026-10-06T05:00:00Z';
@@ -319,7 +314,7 @@ const userOf = (id: string): BlockUser => ({
   name: exampleServices.find((s) => s.id === id)?.name ?? id,
 });
 
-const block = ({ versions: _v, usedBy, scores, ...b }: Example): CatalogItem => ({
+const block = ({ versions: _v, usedBy, pins, scores, ...b }: Example): CatalogItem => ({
   ...b,
   permissions: b.permissions ?? defaultPermissions,
   settingsSchema: b.settingsSchema ?? defaultSettingsSchema,
@@ -331,12 +326,15 @@ const block = ({ versions: _v, usedBy, scores, ...b }: Example): CatalogItem => 
     run: `run-${b.id}-${s.service}`,
     at: exampleRun,
   })),
-  usedBy: (usedBy ?? []).map(userOf),
+  usedBy: (usedBy ?? []).map((id) => {
+    const pinned = pins?.[id];
+    return pinned === undefined ? userOf(id) : { ...userOf(id), version: pinned };
+  }),
 });
 
 const examples: Example[] = [
   {
-    id: 'borealis',
+    id: 'aivar/borealis-27b',
     kind: 'model',
     name: 'Borealis-27B',
     description: 'Norsk språkmodell fra AIVAR, driftet i Norge.',
@@ -408,8 +406,8 @@ const examples: Example[] = [
         type: 'string',
         title: 'Reservemodell',
         description: 'Brukes hvis Borealis ikke svarer innen tidsavbruddet.',
-        default: 'qwen',
-        enum: ['qwen', 'none'],
+        default: 'aivar/qwen3-8',
+        enum: ['aivar/qwen3-8', 'none'],
         enumTitles: ['Qwen3.8-27B', 'Ingen reserve'],
       }),
       timeoutSeconds: property({
@@ -425,7 +423,7 @@ const examples: Example[] = [
     tenantOverrides: { temperature: 0.1 },
   },
   {
-    id: 'qwen',
+    id: 'aivar/qwen3-8',
     kind: 'model',
     name: 'Qwen3.8-27B',
     description: 'Flerspråklig modell som er god til å hente ut felter.',
@@ -441,7 +439,7 @@ const examples: Example[] = [
     scores: [{ service: 'postsortering', testSet: 'Innkommende post', score: 88 }],
   },
   {
-    id: 'gpt41',
+    id: 'foundry-openai/gpt-4.1',
     kind: 'model',
     name: 'GPT-4.1 (Azure OpenAI)',
     description: 'Stor modell for krevende resonnering. Data behandles i Sverige.',
@@ -471,7 +469,7 @@ const examples: Example[] = [
     ),
   },
   {
-    id: 'gpt5',
+    id: 'foundry-openai/gpt-5',
     kind: 'model',
     name: 'GPT-5 (OpenAI)',
     description: 'Nyeste modell fra OpenAI. Data behandles i USA.',
@@ -497,7 +495,7 @@ const examples: Example[] = [
     name: 'Kudos-rapporter',
     description: 'Evalueringer, årsrapporter og utredninger fra Kudos.',
     publisher: publishers.own,
-    version: 'Lest inn i dag kl. 05.00',
+    version: 'Lest inn i dag kl. 05:00',
     dataLocation: 'norway',
     status: 'in_use',
     usedBy: ['rapportassistenten'],
@@ -687,7 +685,7 @@ const examples: Example[] = [
     ),
   },
   {
-    id: 'sk-vedtak',
+    id: 'skrive-vedtaksbrev',
     kind: 'skill',
     name: 'Skrive vedtaksbrev',
     description: 'Oppbygging, faste formuleringer og klagerett for vedtak fra Testetaten.',
@@ -703,7 +701,7 @@ const examples: Example[] = [
     ],
   },
   {
-    id: 'sk-klar',
+    id: 'klarsprak-i-brev',
     kind: 'skill',
     name: 'Klarspråk i brev',
     description: 'Retningslinjer for klart språk i brev til innbyggere.',
@@ -753,6 +751,7 @@ const examples: Example[] = [
     version: '3.2',
     dataLocation: 'norway',
     status: 'in_use',
+    required: true,
     usedBy: allServices,
     capabilities: [
       'Finner fødselsnummer, D-nummer, navn og adresser',
@@ -799,16 +798,22 @@ const examples: Example[] = [
     ],
   },
   {
-    id: 'sf-vedtak',
+    id: 'postruting',
     kind: 'step_flow',
-    name: 'Vedtaksforberedelse',
-    description: 'Leser søknaden, henter regelverk, vurderer vilkår og skriver utkast.',
+    name: 'Postruting',
+    description: 'Klassifiserer innkommende post og sender klager til klageenheten.',
     publisher: publishers.own,
     version: '2',
+    versionAt: '2026-11-11T08:00:00Z',
     dataLocation: 'norway',
     status: 'in_use',
     usedBy: ['vedtaksutkast'],
-    capabilities: ['5 steg', 'Saksbehandler godkjenner før noe sendes'],
+    pins: { vedtaksutkast: 2 },
+    versions: [
+      { version: '2', publishedAt: '2026-11-11', notes: 'Klager går til klageenheten.' },
+      { version: '1', publishedAt: '2026-10-20', notes: 'Første versjon.' },
+    ],
+    capabilities: ['Klassifiser', 'velg-mottaker', 'til-klage', 'til-arkiv'],
   },
   {
     id: 'sf-hoering',
@@ -816,54 +821,64 @@ const examples: Example[] = [
     name: 'Høringsoppsummering',
     description: 'Grupperer høringssvar etter tema og oppsummerer hvert tema.',
     publisher: publishers.eksempeldirektoratet,
-    version: '1.0',
+    version: '1',
+    versionAt: '2026-10-02T08:00:00Z',
     dataLocation: 'norway',
     status: 'available',
-    capabilities: ['4 steg', 'Viser hvilke høringssvar hvert tema bygger på'],
+    capabilities: ['Hent høringssvar', 'Grupper etter tema', 'Oppsummer hvert tema', 'Vis kildene'],
   },
   {
-    id: 'fs-trans',
+    id: '991825827/transkribering',
     kind: 'shared_service',
     name: 'Transkribering',
     description: 'Gjør om lydopptak til tekst, med hvem som snakker.',
     publisher: publishers.digdir,
-    version: '2.0',
+    version: '2',
     dataLocation: 'norway',
     status: 'in_use',
     usedBy: ['motereferat'],
     capabilities: ['Bokmål, nynorsk og engelsk', 'Skiller mellom de som snakker'],
   },
   {
-    id: 'fs-klar',
+    id: '991825827/klarsprak',
     kind: 'shared_service',
     name: 'Klarspråk',
     description: 'Skriver om tekst til klart språk.',
     publisher: publishers.digdir,
-    version: '2.3',
+    version: '3',
+    versions: [
+      {
+        version: '3',
+        publishedAt: '2026-11-04',
+        notes: 'Kortere setninger i vedtak.',
+        by: 'kari.nordmann@digdir.no',
+      },
+      { version: '2', publishedAt: '2026-09-29', notes: 'Ny modell.' },
+    ],
     dataLocation: 'norway',
     status: 'in_use',
     usedBy: ['vedtaksutkast'],
     capabilities: ['Beholder fagbegreper', 'Viser hva som er endret'],
   },
   {
-    id: 'fs-nyn',
+    id: '991825827/nynorsk',
     kind: 'shared_service',
     name: 'Bokmål til nynorsk',
     description: 'Omset tekst frå bokmål til nynorsk.',
     publisher: publishers.digdir,
-    version: '1.8',
+    version: '1',
     dataLocation: 'norway',
     status: 'in_use',
     usedBy: ['nettsider-nynorsk'],
     capabilities: ['Følgjer rettskrivinga frå 2012', 'Kan bruke ordlista til verksemda'],
   },
   {
-    id: 'fs-anon',
+    id: '991825827/anonymisering',
     kind: 'shared_service',
     name: 'Anonymisering',
     description: 'Fjerner personopplysninger fra dokumenter før deling.',
     publisher: publishers.digdir,
-    version: '1.0',
+    version: '1',
     dataLocation: 'norway',
     status: 'available',
     isNew: true,
@@ -876,6 +891,35 @@ const examples: Example[] = [
 
 export const exampleBlocks: CatalogItem[] = examples.map(block);
 
+export const exampleModelFacts: Record<string, BlockFacts> = {
+  'aivar/borealis-27b': {
+    connection: 'aivar',
+    operations: [
+      {
+        operation: 'chat',
+        api: 'openai/chat-completions@1',
+        builtIn: true,
+        maturity: 'production',
+      },
+      { operation: 'generate-image', api: 'openai/images@1', maturity: 'test' },
+    ],
+    processor: {
+      recorded: true,
+      subProcessors: [{ name: 'AIVAR', location: 'Norge' }],
+      retentionDays: 0,
+    },
+  },
+  'foundry-openai/gpt-4.1': {
+    connection: 'foundry',
+    maker: 'OpenAI',
+    operations: [
+      { operation: 'chat', api: 'openai/responses@1', builtIn: true, maturity: 'production' },
+      { operation: 'plain-language', api: 'openai/plain-language@1', maturity: 'production' },
+    ],
+    processor: { recorded: false },
+  },
+};
+
 export const exampleVersions: Record<string, BlockVersion[]> = Object.fromEntries(
   examples
     .filter((e) => e.versions)
@@ -885,6 +929,7 @@ export const exampleVersions: Record<string, BlockVersion[]> = Object.fromEntrie
         source: 'publisher',
         version: v.version,
         at: `${v.publishedAt}T08:00:00Z`,
+        ...(v.by ? { by: v.by } : {}),
         reason: v.notes,
       })),
     ]),
@@ -905,8 +950,6 @@ export const emptyTenantBlocks = (): CatalogItem[] =>
           }
         : { ...b, scores: [] },
     );
-
-export const emptyStateSuggestions = ['borealis', 'hybrid', 'pii'];
 
 export const exampleProposal: CatalogProposal = {
   id: 'brreg',
@@ -1001,6 +1044,17 @@ export const builderProposals: CatalogProposal[] = [
       { name: 'Testlesing: 50 søknader lest uten feil.', passed: true },
       { name: 'Leser ikke tabellen saksbehandler_notat.', passed: true },
     ],
+    item: block({
+      id: 'kobling-fagsystem',
+      kind: 'dataset',
+      name: 'Kobling til fagsystemet',
+      description: 'Leser avsluttede søknader fra fagsystemet.',
+      publisher: publishers.own,
+      version: '1',
+      dataLocation: null,
+      status: 'available',
+      capabilities: [],
+    }),
   },
   {
     id: 'cp-risikoscore',

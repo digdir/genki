@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useTransition } from 'react';
 import { flushSync } from 'react-dom';
 import { markPageLoad, onRefreshed } from './api/cache';
 
@@ -22,9 +22,18 @@ export const useAsync = <T>(
   const [attempt, setAttempt] = useState(0);
   const [refreshed, setRefreshed] = useState(0);
   const silent = useRef(false);
+  const retried = useRef(false);
+  const shown = useRef(state);
   const shownFor = useRef<unknown>(none);
   useLayoutEffect(() => {
-    const keep = keepPreviousFor !== none && shownFor.current === keepPreviousFor;
+    shown.current = state;
+  });
+  useLayoutEffect(() => {
+    const again = retried.current;
+    retried.current = false;
+    const keep =
+      (keepPreviousFor !== none && shownFor.current === keepPreviousFor) ||
+      (again && shown.current.status === 'ready');
     shownFor.current = keepPreviousFor;
     const controller = new AbortController();
     const quiet = silent.current;
@@ -66,7 +75,10 @@ export const useAsync = <T>(
       setTimeout(() => controller.abort(), 0);
     };
   }, [...deps, keepPreviousFor, attempt, refreshed]);
-  const retry = useCallback(() => setAttempt((n) => n + 1), []);
+  const retry = useCallback(() => {
+    retried.current = true;
+    setAttempt((n) => n + 1);
+  }, []);
   return [state, retry, pending] as const;
 };
 
@@ -133,6 +145,7 @@ const restoreScroll = (top: number) => {
 
 export const useRoute = () => {
   const [route, setRoute] = useState(() => parseRoute(window.location.hash));
+  const [pending, startNavigation] = useTransition();
   useEffect(() => {
     window.history.scrollRestoration = 'manual';
     let current = entryIndex() ?? 0;
@@ -151,7 +164,8 @@ export const useRoute = () => {
         restoring = scrollPositions.get(idx) ?? 0;
         traversal = true;
       }
-      setRoute(parseRoute(window.location.hash));
+      const next = parseRoute(window.location.hash);
+      startNavigation(() => setRoute(next));
     };
     window.addEventListener('hashchange', update);
     return () => window.removeEventListener('hashchange', update);
@@ -159,7 +173,20 @@ export const useRoute = () => {
   useLayoutEffect(() => {
     if (restoring !== undefined) restoreScroll(restoring);
   }, [route]);
-  return route;
+  return [route, pending] as const;
+};
+
+export const useDelayed = (active: boolean, delayMs: number) => {
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    if (!active) {
+      setShown(false);
+      return;
+    }
+    const timer = setTimeout(() => setShown(true), delayMs);
+    return () => clearTimeout(timer);
+  }, [active, delayMs]);
+  return active && shown;
 };
 
 export const NARROW_QUERY = '(max-width: 759px)';

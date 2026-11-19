@@ -1,0 +1,38 @@
+import type { Translation } from '@genai/i18n';
+import type { sharedLane as source } from '../nb/data-shared';
+
+export const sharedLane = {
+  sharedServicesMore: {
+    lead: 'Ready-made services from Digdir. Use them directly, call them from a system, or add them to one of your services.',
+    pricePerMillionTokens: '{input} kr in and {output} kr out per 1M tokens',
+    notPriced: 'Not calculated',
+    notPricedLine: 'price not calculated',
+    priceUnavailable: 'Could not fetch the price',
+    priceUnavailableLine: 'could not fetch the price',
+    stored: 'Stored',
+    price: 'Price',
+    languages: 'Languages',
+    notStatedYet: 'Not stated yet',
+    orgNumber: 'Organisation number {org}',
+    fileType: 'The file must be one of these types: {types}.',
+    fileTooBig: 'The file is larger than {size}.',
+    pickAudio: 'Choose an audio file first.',
+    noAudioYet: 'This service does not take audio files from here yet.',
+    writeFirst: 'Write or paste a text first.',
+    writeOrUpload: 'Write or paste a text first, or upload a document.',
+    pasteOrDocument: 'Paste up to 20,000 characters, or upload a document.',
+    tooLongNoFile: 'The text is longer than 20,000 characters. Shorten it and try again.',
+    chooseFile: 'Choose file',
+    noFileChosen: 'No file chosen',
+    perRuns: 'About {price} kr per 1,000 runs (estimated, for {basis})',
+    perRunsLine: 'about {price} kr per 1,000 runs',
+    keepsNoText: 'The text is not stored. The run is logged for {days} days without its text.',
+    keepsText: 'The text is stored with the run for {days} days.',
+    langNb: 'Bokmål',
+    langNn: 'Nynorsk',
+    langEn: 'English',
+    andList: '{first} and {last}',
+    languagesSame: '{input} in, the same written standard out',
+    languagesTo: '{input} in, {output} out',
+  },
+} satisfies Translation<typeof source>;

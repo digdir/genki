@@ -196,7 +196,7 @@ describe('a table with a source in each cell', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Godkjenn tabellen' }));
 
     expect(
-      await screen.findByText(/^Godkjent av Per Hansen 8\. oktober 2026 kl\. 11\.20\./),
+      await screen.findByText(/^Godkjent av Per Hansen 8\. oktober 2026 kl\. 11:20\./),
     ).toBeTruthy();
     expect(approved()).toBe(1);
     expect(flashes.at(-1)).toMatch(/^Tabellen er godkjent\./);

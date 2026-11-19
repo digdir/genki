@@ -400,6 +400,7 @@ describe('login with Entra ID through Ansattporten', () => {
     expect(asked).toEqual([{ url: '/api/me', authorization: `Bearer ${entraAccess}` }]);
     expect(session).toEqual({
       name: 'lise@digdir.example',
+      email: 'lise@digdir.example',
       organisations: [
         {
           orgNumber: '312521172',
@@ -411,6 +412,43 @@ describe('login with Entra ID through Ansattporten', () => {
     });
   });
 
+  const signInWith = async (access: string) => {
+    issued = { access_token: access, token_type: 'Bearer' };
+    try {
+      const { client, navigated, returnFromAnsattporten } = setup({
+        organisations: api().organisations,
+      });
+      void client.login();
+      await vi.waitFor(() => expect(navigated).toHaveLength(1));
+      returnFromAnsattporten({ code: 'abc' });
+      return await client.login();
+    } finally {
+      issued = undefined;
+    }
+  };
+
+  it('uses the name claim as the name, never the login email, and keeps the email apart', async () => {
+    const session = await signInWith(
+      jwt({ exp: 4_000_000_000, email: 'lise@digdir.example', name: 'Lise Dahl' }),
+    );
+
+    expect(session.name).toBe('Lise Dahl');
+    expect(session.email).toBe('lise@digdir.example');
+  });
+
+  it('builds the name from the given and family name before falling back to the email', async () => {
+    const session = await signInWith(
+      jwt({
+        exp: 4_000_000_000,
+        email: 'lise@digdir.example',
+        given_name: 'Lise',
+        family_name: 'Dahl',
+      }),
+    );
+
+    expect(session.name).toBe('Lise Dahl');
+  });
+
   it('reports why the API refuses an Entra login', async () => {
     const { organisations } = api(403, {
       title: 'Entra ID-innloggingen din gir ikke tilgang til dette miljøet',
@@ -419,6 +457,56 @@ describe('login with Entra ID through Ansattporten', () => {
     });
 
     await expect(signIn(organisations)).rejects.toThrow(/oppsatte Entra-gruppene/);
+  });
+
+  const numberOnly = jwt({
+    exp: 4_000_000_000,
+    authorization_details: [
+      {
+        type: 'ansattporten:altinn:resource',
+        resource,
+        authorized_parties: [
+          { orgno: { ID: '0192:312521172' }, name: '312521172', actions: ['read'] },
+        ],
+      },
+    ],
+  });
+
+  it('takes the organisation name from /me when the token party has only a number', async () => {
+    const { asked, organisations } = api();
+    issued = { access_token: numberOnly, token_type: 'Bearer' };
+    try {
+      const { client, navigated, returnFromAnsattporten } = setup({ organisations });
+      void client.login();
+      await vi.waitFor(() => expect(navigated).toHaveLength(1));
+      returnFromAnsattporten({ code: 'abc' });
+      const session = await client.login();
+
+      expect(asked).toHaveLength(1);
+      expect(session.organisations).toEqual([
+        { orgNumber: '312521172', name: 'Plattformen', actions: ['read'] },
+      ]);
+    } finally {
+      issued = undefined;
+    }
+  });
+
+  it('keeps the login working with the number when /me cannot name the organisation', async () => {
+    const { organisations } = api(503, { title: 'Utilgjengelig' });
+    issued = { access_token: numberOnly, token_type: 'Bearer' };
+    try {
+      const { client, navigated, returnFromAnsattporten } = setup({ organisations });
+      void client.login();
+      await vi.waitFor(() => expect(navigated).toHaveLength(1));
+      returnFromAnsattporten({ code: 'abc' });
+      const session = await client.login();
+
+      expect(session.organisations).toEqual([
+        { orgNumber: '312521172', name: '312521172', actions: ['read'] },
+      ]);
+    } finally {
+      issued = undefined;
+    }
   });
 
   it('does not ask the API when the token lists the organisations', async () => {

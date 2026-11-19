@@ -105,114 +105,19 @@ export const people: Person[] = [
   },
 ];
 
-export interface Group {
-  name: string;
-  members: string[];
-}
-
-export const groups: Record<string, Group> = {
-  tilskudd: { name: 'Saksbehandlere tilskudd', members: ['per', 'ola', 'sara'] },
-  komm: { name: 'Kommunikasjon', members: ['line', 'tor'] },
-  utv: { name: 'Utviklere', members: ['jonas', 'kari'] },
-  nyn: { name: 'Prosjekt nynorsk', members: [] },
-};
-
-export interface Resource {
+export interface ExampleService {
   id: string;
-  kind: 'service' | 'dataset';
   name: string;
   tag: string;
-  mode: 'all' | 'selected';
-  who: string[];
-  locked?: string;
 }
 
-export const resources: Resource[] = [
-  {
-    id: 'rapportassistenten',
-    kind: 'service',
-    name: 'Rapportassistenten',
-    tag: 'I bruk',
-    mode: 'all',
-    who: [],
-  },
-  {
-    id: 'vedtaksutkast',
-    kind: 'service',
-    name: 'Vedtaksutkast',
-    tag: 'I bruk',
-    mode: 'selected',
-    who: ['g:tilskudd'],
-  },
-  {
-    id: 'soknadsuttrekk',
-    kind: 'service',
-    name: 'Søknadsuttrekk',
-    tag: 'I bruk',
-    mode: 'selected',
-    who: ['g:tilskudd', 'p:ingrid'],
-  },
-  {
-    id: 'nettsider-nynorsk',
-    kind: 'service',
-    name: 'Nettsider på nynorsk',
-    tag: 'I bruk',
-    mode: 'selected',
-    who: ['g:komm'],
-  },
-  {
-    id: 'horingsoppsummering',
-    kind: 'service',
-    name: 'Høringsoppsummering',
-    tag: 'I test',
-    mode: 'selected',
-    who: ['p:per', 'p:ahmed'],
-  },
-  {
-    id: 'motereferat',
-    kind: 'service',
-    name: 'Møtereferat',
-    tag: 'Utkast',
-    mode: 'selected',
-    who: [],
-  },
-  {
-    id: 'kudos',
-    kind: 'dataset',
-    name: 'Kudos-rapporter',
-    tag: 'Åpne data',
-    mode: 'all',
-    who: [],
-    locked: 'Rapportene i Kudos er offentlige. Alle med «Bruke tjenester» kan søke i dem.',
-  },
-  {
-    id: 'tilsyn',
-    kind: 'dataset',
-    name: 'Tilsynsrapporter 2025',
-    tag: '',
-    mode: 'selected',
-    who: ['g:tilskudd', 'p:kari'],
-  },
-  { id: 'web', kind: 'dataset', name: 'Nettsidene til Testetaten', tag: '', mode: 'all', who: [] },
-  { id: 'veil', kind: 'dataset', name: 'Veiledere og rundskriv', tag: '', mode: 'all', who: [] },
-  {
-    id: 'stats',
-    kind: 'dataset',
-    name: 'Statsbudsjettet 2026',
-    tag: 'Delt av Eksempeldirektoratet',
-    mode: 'all',
-    who: [],
-    locked:
-      'Datasettet eies av Eksempeldirektoratet, som har delt det med alle statlige virksomheter.',
-  },
-  {
-    id: 'hor',
-    kind: 'dataset',
-    name: 'Høring 2026/7',
-    tag: '',
-    mode: 'selected',
-    who: ['p:per', 'p:ahmed', 'p:tor'],
-  },
+export const exampleServices: ExampleService[] = [
+  { id: 'rapportassistenten', name: 'Rapportassistenten', tag: 'I bruk' },
+  { id: 'vedtaksutkast', name: 'Vedtaksutkast', tag: 'I bruk' },
+  { id: 'soknadsuttrekk', name: 'Søknadsuttrekk', tag: 'I bruk' },
+  { id: 'nettsider-nynorsk', name: 'Nettsider på nynorsk', tag: 'I bruk' },
+  { id: 'horingsoppsummering', name: 'Høringsoppsummering', tag: 'I test' },
+  { id: 'motereferat', name: 'Møtereferat', tag: 'Utkast' },
 ];
 
 export const accessManagers = [
@@ -228,4 +133,4 @@ export const accessManagers = [
   },
 ];
 
-export const altinnSync = { fetchedAt: 'i dag kl. 10.52', lastGoodAt: 'i dag kl. 08.14' };
+export const altinnSync = { lastGoodAt: 'i dag kl. 08:14' };

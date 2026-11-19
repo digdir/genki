@@ -2,15 +2,14 @@ import { createFormat, type Format } from '@genai/i18n';
 import { useFormat } from '@genai/i18n/react';
 import { useMemo } from 'react';
 import { translator, useT, type PlainKey, type T } from './i18n';
+import { perMillion } from './models';
 import type { ModelPrice } from './types';
 
 const nbFormat = createFormat('nb');
 const nbT = translator('nb');
 
 export const formatDateTime = (iso: string, f: Format = nbFormat) =>
-  f.locale === 'en'
-    ? f.dateTime(iso, 'medium')
-    : `${f.date(iso, 'medium')}, ${f.time(iso).replace('.', ':')}`;
+  f.locale === 'en' ? f.dateTime(iso, 'medium') : `${f.date(iso, 'medium')}, ${f.time(iso)}`;
 const oneDecimal = (f: Format, n: number) => f.number(n, { maximumFractionDigits: 1 });
 export const formatNumber = (n: number, f: Format = nbFormat) => f.number(n);
 export const formatSeconds = (s: number, f: Format = nbFormat, t: T = nbT) =>
@@ -18,6 +17,8 @@ export const formatSeconds = (s: number, f: Format = nbFormat, t: T = nbT) =>
 export const formatOre = (n: number, f: Format = nbFormat, t: T = nbT) =>
   t('common.ore', { value: oneDecimal(f, n) });
 export const formatDate = (iso: string, f: Format = nbFormat) => f.date(iso, 'medium');
+export const isTrialService = (id: string) => id.startsWith('platform/');
+
 export const serviceLabel = (id: string, title?: string) => {
   if (title) return title;
   const parts = id.split('/');
@@ -55,8 +56,8 @@ export const formatModelPrice = (
 ) =>
   price
     ? t('setup.modelPrice', {
-        input: f.number(price.inputPerThousand, { maximumFractionDigits: 4 }),
-        output: f.number(price.outputPerThousand, { maximumFractionDigits: 4 }),
+        input: f.number(perMillion(price).input, { maximumFractionDigits: 2 }),
+        output: f.number(perMillion(price).output, { maximumFractionDigits: 2 }),
       })
     : t('setup.notPriced');
 

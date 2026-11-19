@@ -106,3 +106,24 @@ describe('which clients an employee login may come through', () => {
     });
   });
 });
+
+describe('the email of an employee login', () => {
+  it('keeps the email claim of an Ansattporten login in lower case, and none when the token has none', async () => {
+    const withEmail = await verifier().verify(
+      await sign({ client_id: 'genki-portal', email: 'Kari@Digdir.no' }),
+    );
+    const without = await verifier().verify(await sign({ client_id: 'genki-portal' }));
+
+    expect(withEmail.principal.email).toBe('kari@digdir.no');
+    expect(without.principal.email).toBeUndefined();
+  });
+
+  it('leaves out an email claim that is not an address', async () => {
+    for (const email of ['kari', 'kari @digdir.no', 42, ['kari@digdir.no']]) {
+      const { principal } = await verifier().verify(
+        await sign({ client_id: 'genki-portal', email }),
+      );
+      expect(principal.email).toBeUndefined();
+    }
+  });
+});

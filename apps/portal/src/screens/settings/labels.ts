@@ -94,7 +94,7 @@ export const settingLabels: Record<string, { label: string; cat: string; desc?: 
   'assistant.dailyTokens': {
     label: 'Tokens per dag for assistenten',
     cat: 'Assistent',
-    desc: 'Nullstilles kl. 00.00 norsk tid.',
+    desc: 'Nullstilles kl. 00:00 norsk tid.',
   },
   'assistant.model': { label: 'Modell for byggeassistenten', cat: 'Assistent' },
   'answers.writtenStandard': {

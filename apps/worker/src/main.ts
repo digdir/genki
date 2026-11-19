@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
@@ -43,6 +44,7 @@ import {
   assistantCapabilityPrefix,
   costOf,
   deleteSinkTraces,
+  failStoppedRuns,
   InMemoryTriggerRuns,
   monthlyModelQuota,
   monthlyQuotaGate,
@@ -66,9 +68,11 @@ import {
   InMemoryTaskStore,
   type EventLog,
 } from '@genai/kernel';
+import { workerTraceDeps } from './traces.js';
 import {
   copyListing,
   copyOwner,
+  doclingConverter,
   knowledgeListingOf,
   kudosClient,
   kudosProd,
@@ -105,7 +109,7 @@ import {
   platformId,
   PostgresDefinitionStore,
   PostgresJobRunRecords,
-  PostgresLeaderLease,
+  PostgresLeases,
   postgresSourceFromEnv,
   workerRole,
 } from '@genai/providers-postgres';
@@ -126,7 +130,13 @@ import {
 import { buildWork, checkWork, finishRun, heavyWindow, type HeavyDeps } from './heavy-work.js';
 import { dropWork } from './knowledge-drop.js';
 import { fieldsWork } from './knowledge-fields.js';
-import { indexConcurrencyOf, knowledgePoolSizeOf, knowledgeWork } from './knowledge-handlers.js';
+import {
+  convertConcurrencyOf,
+  indexConcurrencyOf,
+  knowledgePoolSizeOf,
+  knowledgeWork,
+  replacementRuns,
+} from './knowledge-handlers.js';
 import { conversionRunJobs, openWorkerJobs } from './knowledge-jobs.js';
 import { platformWork } from './platform-work.js';
 import { reconcileKnowledgeRuns } from './reconciler.js';
@@ -178,6 +188,17 @@ log('storage', { kind: db ? 'postgres' : 'memory' });
 const knowledgeSource = db ? knowledgeSourceFromEnv(process.env, 'worker') : undefined;
 // Read at start, so a bad value stops the worker before it takes a job.
 const indexConcurrency = indexConcurrencyOf(process.env);
+const convertConcurrency = convertConcurrencyOf(process.env);
+// Docling, when DOCLING_URL names a server (ADR 0042, issue 477): convert jobs ask it first, and the
+// text layer reads what it refuses. Without it, the text layer converts. A URL without its key
+// stops the worker at start (`workerBootProblems`).
+const docling = process.env.DOCLING_URL
+  ? doclingConverter({
+      url: process.env.DOCLING_URL,
+      credential: { kind: 'api-key', key: async () => process.env.DOCLING_API_KEY ?? '' },
+    })
+  : undefined;
+log('document converter', { converter: docling ? 'docling' : 'text-layer', convertConcurrency });
 const knowledgeServer = knowledgeSource
   ? openKnowledgePools({ ...knowledgeSource, max: knowledgePoolSizeOf(indexConcurrency) }, 'worker')
   : undefined;
@@ -360,7 +381,8 @@ const heavyDeps: HeavyDeps | undefined = knowledgeServer?.pools.owner
       queue: {
         send: (queue, data, options) => openedKnowledge().send(queue, data, options),
         work: (queue, handler, options) => openedKnowledge().work(queue, handler, options),
-        retime: (queues, startAfter) => openedKnowledge().retime(queues, startAfter),
+        retime: (queues, startAfter, options) =>
+          openedKnowledge().retime(queues, startAfter, options),
         schedule: (queue, cron, data, options) =>
           openedKnowledge().schedule(queue, cron, data, options),
       },
@@ -406,8 +428,10 @@ const knowledgeHandlers =
           serveAlso: (queue, key, tenant, options) =>
             openedKnowledge().serveAlso?.(queue, key, tenant, options) ?? Promise.resolve(),
         },
-        // Stored conversions with the text layer, while no Docling host is configured (ADR 0042).
+        // Stored conversions, with Docling when the worker has a server (ADR 0042).
         conversions: knowledgeConversionsOf(knowledgeWriter),
+        convertConcurrency,
+        ...(docling ? { docling } : {}),
         // A PDF page the text layer cannot read is left empty and logged; the rest of the file is kept.
         converter: createLocalConverter({
           onUnreadablePage: (page) => log('a PDF page could not be read', { ...page }),
@@ -623,7 +647,7 @@ const traces = process.env.TRACES_ENDPOINT
         content: tracesContent(process.env),
         ...(process.env.TRACES_ENVIRONMENT ? { environment: process.env.TRACES_ENVIRONMENT } : {}),
       },
-      { secrets, tasks: async (id) => (await tasks.get(id))?.task, serviceName: 'genai-worker' },
+      workerTraceDeps({ secrets, tasks: async (id) => (await tasks.get(id))?.task, settings }),
     )
   : undefined;
 log('traces', { enabled: Boolean(traces) });
@@ -782,7 +806,8 @@ const paused = async (binding: TriggerBinding) => {
 
 const pricedModels = runtime.prices as Record<string, TokenPrice | undefined>;
 
-const lease = db ? new PostgresLeaderLease(db.pool, 'genai-worker-triggers') : undefined;
+const leases = db ? new PostgresLeases(db.pool) : undefined;
+const lease = leases?.lease('genai-worker-triggers');
 const reportError = (error: unknown) => log('worker sync failed', { error: String(error) });
 const worker = createWorker({
   runtime,
@@ -836,12 +861,12 @@ const stopFollowingChanges = db
       },
       descriptors: runtime.descriptors,
       definitions: { sync: following.run },
-      models: runtime.models,
+      models: runtime.modelDiscovery,
       toolConnections: { reload: loadToolConnections },
     })
   : undefined;
 
-const retentionLease = db ? new PostgresLeaderLease(db.pool, 'genai-worker-retention') : undefined;
+const retentionLease = leases?.lease('genai-worker-retention');
 const sinkAccess = db
   ? traceSinkAccess({
       configEntries: db.configEntries,
@@ -906,7 +931,7 @@ const retention = db
 log('retention', { scheduled: retention?.next()?.toISOString() ?? null });
 
 // Norges Bank's USD/NOK rate, read once a day through the egress guard, shows a judge's reported cost in kroner.
-const rateLease = db ? new PostgresLeaderLease(db.pool, 'genai-worker-exchange-rate') : undefined;
+const rateLease = leases?.lease('genai-worker-exchange-rate');
 const rateGuard = exchangeRateGuard();
 const exchangeRate = db
   ? scheduleUsdNok({
@@ -929,7 +954,7 @@ if (db)
     .catch((error: unknown) => log('usd/nok rate failed', { error: String(error) }));
 
 // The state's organisation (ADR 0058): Enhetsregisteret nightly, on one replica under a lease.
-const stateLease = db ? new PostgresLeaderLease(db.pool, 'genai-worker-state-register') : undefined;
+const stateLease = leases?.lease('genai-worker-state-register');
 const stateJob = db
   ? {
       configEntries: db.configEntries,
@@ -953,9 +978,7 @@ if (stateJob)
     (error: unknown) => log('state register sync failed', { error: String(error) }),
   );
 
-const sweepLease = db
-  ? new PostgresLeaderLease(db.pool, 'genai-worker-provider-objects')
-  : undefined;
+const sweepLease = leases?.lease('genai-worker-provider-objects');
 const providerObjectSweep = db
   ? scheduleProviderObjectSweep({
       store: db.providerObjects,
@@ -977,10 +1000,34 @@ const providerObjectSweep = db
     })
   : undefined;
 
-// Ends runs whose jobs have ended, starts queued runs and applies send-backs (ADR 0042, "Jobs").
-const knowledgeRunsLease = db
-  ? new PostgresLeaderLease(db.pool, 'genai-worker-knowledge-runs')
+const stoppedRunsLease = leases?.lease('genai-worker-stopped-runs');
+const stoppedRunTasks = db?.tasks.withLease({ instance: `sweep:${randomUUID()}` });
+const failStopped = async () => {
+  if (!db || !stoppedRunTasks || !(await stoppedRunsLease?.tryAcquire())) return;
+  const failed = await failStoppedRuns({ tasks: stoppedRunTasks, events: db.log });
+  if (failed.length > 0) log('runs failed after their server stopped', { tasks: failed });
+};
+const stoppedRunSweep = db
+  ? setInterval(
+      () =>
+        void failStopped().catch((error: unknown) =>
+          log('stopped run sweep failed', { error: String(error) }),
+        ),
+      60_000,
+    )
   : undefined;
+
+// Ends runs whose jobs have ended, starts queued runs and applies send-backs (ADR 0042, "Jobs").
+const knowledgeRunsLease = leases?.lease('genai-worker-knowledge-runs');
+const sendReplacement =
+  docling && knowledgeWriter && knowledgeRunRecords
+    ? replacementRuns({
+        conversions: knowledgeConversionsOf(knowledgeWriter),
+        runs: knowledgeRunRecords,
+        knowledge: { send: (queue, data, options) => openedKnowledge().send(queue, data, options) },
+        lockdown,
+      })
+    : undefined;
 let reconciling = false;
 const reconcileKnowledge = async () => {
   // A pass may wait minutes for a VACUUM's lock; the next tick does not start a second one.
@@ -1018,6 +1065,19 @@ const reconcilePass = async (
       return spec?.maxDocumentFailures ?? 10;
     },
   });
+  // A run that ended with text-layer files sends its replacement run, once Docling runs (issue 477).
+  if (sendReplacement)
+    for (const ended of pass.ended)
+      try {
+        const replacement = await sendReplacement(ended);
+        if (replacement)
+          log('knowledge replacement run', { run: replacement.id, sender: ended.id });
+      } catch (error) {
+        log('a replacement run could not be sent', {
+          sender: ended.id,
+          error: error instanceof Error ? error.name : typeof error,
+        });
+      }
   if (pass.sentBack + pass.ended.length + pass.started.length + pass.dropped > 0)
     log('knowledge runs reconciled', {
       sentBack: pass.sentBack,
@@ -1042,6 +1102,7 @@ const stop = () => {
   exchangeRate?.stop();
   stateRegister?.stop();
   providerObjectSweep?.stop();
+  if (stoppedRunSweep) clearInterval(stoppedRunSweep);
   if (knowledgeReconciler) clearInterval(knowledgeReconciler);
   if (nightWindowTimer) clearInterval(nightWindowTimer);
   stopFollowingChanges?.();

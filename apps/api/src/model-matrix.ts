@@ -16,9 +16,9 @@ import type { CatalogRegistry } from './catalog-registry.js';
 import { appendVersion, platformScope, type ConfigEntry } from './config-store.js';
 import { draftCapabilityPrefix, evalCapabilityId } from './draft-runner.js';
 import { changeReasonOf, isReasonLongEnough, reasonTooShort } from './http.js';
-import { candidateRelease, isCandidate, triesCandidates } from './model-access.js';
+import { candidateRelease, isCandidate, modelsNamedIn, triesCandidates } from './model-access.js';
 import type { MountDeps, PlatformModuleFactory } from './platform-modules.js';
-import { serviceEval, type Outcome } from './service-eval.js';
+import { maxResumes, serviceEval } from './service-eval.js';
 
 export type MatrixStatus = 'queued' | 'running' | 'succeeded' | 'failed';
 
@@ -35,6 +35,8 @@ export interface MatrixScore {
   total: number;
 }
 
+type MatrixSide = 'current' | 'candidate';
+
 export interface MatrixRow {
   tenant: string;
   service: string;
@@ -44,6 +46,8 @@ export interface MatrixRow {
   cases: number;
   current: MatrixScore | null;
   candidate: MatrixScore | null;
+  version?: number;
+  progress?: { side: MatrixSide; passed: string[]; failed: string[] };
 }
 
 export interface MatrixRun extends Leased {
@@ -59,6 +63,8 @@ export interface MatrixRun extends Leased {
   tokens: { input: number; output: number };
   rows: MatrixRow[];
   error?: string;
+  admitted?: boolean;
+  resumes?: number;
 }
 
 interface Planned {
@@ -98,11 +104,30 @@ const messageOf = (error: unknown) => (error instanceof Error ? error.message : 
 const points = (score: MatrixScore | null | undefined) =>
   score?.score == null ? null : Math.round(score.score * 100);
 
-const scoreOf = (outcome: Outcome): MatrixScore => ({
-  score: outcome.score,
-  passed: outcome.passed,
-  total: outcome.total,
-});
+const scoreOf = (progress: { passed: string[]; failed: string[] }): MatrixScore => {
+  const total = progress.passed.length + progress.failed.length;
+  return {
+    score: total ? progress.passed.length / total : null,
+    passed: progress.passed.length,
+    total,
+  };
+};
+
+const sides: MatrixSide[] = ['current', 'candidate'];
+
+const finishedOf = (row: MatrixRow, side: MatrixSide) =>
+  row.progress?.side === side ? [...row.progress.passed, ...row.progress.failed] : [];
+
+const casesDone = (run: MatrixRun) =>
+  run.rows.reduce(
+    (n, row) =>
+      n +
+      sides.filter((side) => row[side] !== null).length * row.cases +
+      (row.progress ? row.progress.passed.length + row.progress.failed.length : 0),
+    0,
+  );
+
+export const resumedMessage = 'Tatt opp igjen etter en omstart';
 
 const modelSpec = (definition: Record<string, unknown>) =>
   record(record(definition.spec).model) as {
@@ -111,13 +136,6 @@ const modelSpec = (definition: Record<string, unknown>) =>
     residency?: Residency;
     roles?: Record<string, string>;
   };
-
-const modelsIn = (definition: Record<string, unknown>) => {
-  const model = modelSpec(definition);
-  return [model.primary, model.fallback, ...Object.values(model.roles ?? {})].filter(
-    (m): m is string => typeof m === 'string',
-  );
-};
 
 const withModel = (definition: Record<string, unknown>, current: string, model: string) => {
   const copy = structuredClone(definition);
@@ -165,7 +183,10 @@ export const releaseGate = (
       return { allow: false, reason: 'a candidate model is tried only in draft runs' };
     const gate = catalog();
     if (
-      (action === 'use:model' || action === 'use:decision' || action === 'use:described') &&
+      (action === 'use:model' ||
+        action === 'use:decision' ||
+        action === 'use:described' ||
+        action === 'use:rerank') &&
       gate &&
       isCandidate(gate, resource.id) &&
       !trial
@@ -198,12 +219,30 @@ export const runView = (run: MatrixRun) => ({
   costNok: run.cost === null ? null : run.cost / 1_000_000,
   testSets: run.rows.length,
   done: run.rows.filter((r) => r.candidate !== null).length,
+  casesDone: casesDone(run),
+  casesTotal: run.rows.reduce((n, row) => n + row.cases * sides.length, 0),
+  ...(run.resumes ? { resumed: run.resumes } : {}),
   ...(run.error ? { error: run.error } : {}),
+});
+
+const rowView = (row: MatrixRow) => ({
+  tenant: row.tenant,
+  service: row.service,
+  name: row.name,
+  testSet: row.testSet,
+  testSetVersion: row.testSetVersion,
+  cases: row.cases,
+  current: row.current,
+  candidate: row.candidate,
 });
 
 export const createModelMatrixModule =
   (
-    options: { onBackground?: (work: Promise<void>) => void; leases?: LeaseOptions } = {},
+    options: {
+      onBackground?: (work: Promise<void>) => void;
+      leases?: LeaseOptions;
+      resumeEveryMs?: number;
+    } = {},
   ): PlatformModuleFactory =>
   (deps) => {
     const evals = serviceEval(deps, options.leases);
@@ -227,10 +266,57 @@ export const createModelMatrixModule =
         ...(ifVersion === undefined ? {} : { ifVersion }),
       });
 
-    const settled = async (entry: ConfigEntry<MatrixRun>) => {
+    const latestOf = async (id: string) =>
+      (await deps.configEntries.history(matrixRunKind, platformScope, id)).at(-1)?.spec as
+        MatrixRun | undefined;
+
+    const resume = async (entry: ConfigEntry<MatrixRun>): Promise<MatrixRun | undefined> => {
+      const run = entry.spec;
+      if (run.admitted === undefined || run.rows.some((row) => row.version === undefined))
+        return undefined;
+      if ((run.resumes ?? 0) >= maxResumes) return undefined;
+      if (deps.evalSlots?.draining()) return run;
+      const planned: (Planned | undefined)[] = [];
+      for (const row of run.rows) {
+        if (row.candidate !== null) {
+          planned.push(undefined);
+          continue;
+        }
+        const set = await deps.evalStores.testSets.get(row.tenant, row.testSet, row.testSetVersion);
+        const found = await deps.definitions.get('Service', row.tenant, row.service, row.version);
+        if (!set || !found) return undefined;
+        planned.push({
+          tenant: row.tenant,
+          service: row.service,
+          name: row.name,
+          set,
+          definition: structuredClone(found.definition) as unknown as Record<string, unknown>,
+          files: { ...found.files },
+          version: found.version,
+        });
+      }
+      const claimed: MatrixRun = {
+        ...run,
+        resumes: (run.resumes ?? 0) + 1,
+        released: false,
+        ...leases.stamp(),
+      };
+      try {
+        await save('platform:restart', claimed, resumedMessage, entry.version);
+      } catch {
+        return (await latestOf(run.id)) ?? run;
+      }
+      const { done } = await execute(run.by, run.admitted, claimed, planned, resumedMessage, false);
+      background(done);
+      return claimed;
+    };
+
+    const settled = async (entry: ConfigEntry<MatrixRun>): Promise<MatrixRun> => {
       const run = entry.spec;
       if (run.status !== 'queued' && run.status !== 'running') return run;
       if (!leases.abandoned(`matrix/${run.id}`, run, run.startedAt)) return run;
+      const resumed = await resume(entry).catch(() => undefined);
+      if (resumed) return resumed;
       const failed: MatrixRun = {
         ...run,
         status: 'failed',
@@ -346,76 +432,124 @@ export const createModelMatrixModule =
       };
     };
 
-    const execute = async (
-      principal: Principal,
+    const withCase = (
       run: MatrixRun,
-      planned: Planned[],
+      index: number,
+      side: MatrixSide,
+      result: { caseId: string; pass: boolean },
+    ): MatrixRun => ({
+      ...run,
+      rows: run.rows.map((row, i) => {
+        if (i !== index) return row;
+        const progress =
+          row.progress?.side === side ? row.progress : { side, passed: [], failed: [] };
+        if (finishedOf(row, side).includes(result.caseId)) return row;
+        return {
+          ...row,
+          progress: {
+            ...progress,
+            ...(result.pass
+              ? { passed: [...progress.passed, result.caseId] }
+              : { failed: [...progress.failed, result.caseId] }),
+          },
+        };
+      }),
+    });
+
+    const sideDone = (run: MatrixRun, index: number, side: MatrixSide): MatrixRun => ({
+      ...run,
+      rows: run.rows.map((row, i) => {
+        if (i !== index) return row;
+        const next: MatrixRow = {
+          ...row,
+          [side]: scoreOf(row.progress?.side === side ? row.progress : { passed: [], failed: [] }),
+        };
+        delete next.progress;
+        return next;
+      }),
+    });
+
+    const execute = async (
+      actor: string,
+      admitted: boolean,
+      run: MatrixRun,
+      planned: (Planned | undefined)[],
       reason: string,
+      write = true,
     ) => {
-      const actor = actorOf(principal.actor ?? principal);
-      const lease = leases.hold(`matrix/${run.id}`, run, (spec, reason) =>
-        save(actor, spec, reason),
-      );
-      try {
-        await lease.update((r) => r, reason);
-      } catch (error) {
-        lease.release();
-        throw error;
-      }
+      const lease = leases.hold(`matrix/${run.id}`, run, (spec, why) => save(actor, spec, why));
+      if (write)
+        try {
+          await lease.update((r) => r, reason);
+        } catch (error) {
+          lease.release();
+          throw error;
+        }
       const done = (async () => {
         const meter = choice.meter();
-        const metered = (r: MatrixRun): MatrixRun => ({
-          ...r,
-          cost: meter.costMicroNok(),
-          tokens: { input: meter.inputTokens, output: meter.outputTokens },
-        });
+        const before = { cost: run.cost, tokens: run.tokens };
+        const unpricedBefore =
+          before.cost === null && before.tokens.input + before.tokens.output > 0;
+        const metered = (r: MatrixRun): MatrixRun => {
+          const spent = meter.costMicroNok();
+          return {
+            ...r,
+            cost: spent === null || unpricedBefore ? null : (before.cost ?? 0) + spent,
+            tokens: {
+              input: before.tokens.input + meter.inputTokens,
+              output: before.tokens.output + meter.outputTokens,
+            },
+          };
+        };
+        const acting = admitted
+          ? withModelAdmission(matrixPrincipal(deps.platformTenant))
+          : matrixPrincipal(deps.platformTenant);
+        const options = { avoidAsJudge: [run.model, run.current], chargeTo: deps.platformTenant };
         try {
-          await lease.update((r) => ({ ...r, status: 'running' }), 'Kjører');
+          let latest = await lease.update((r) => ({ ...r, status: 'running' }), 'Kjører');
           for (const [index, row] of planned.entries()) {
-            const acting = deps.modelAdmission?.(principal)
-              ? withModelAdmission(matrixPrincipal(deps.platformTenant))
-              : matrixPrincipal(deps.platformTenant);
-            const cases = row.set.spec.cases;
-            const options = {
-              avoidAsJudge: [run.model, run.current],
-              chargeTo: deps.platformTenant,
-            };
-            const before = await evals.runCases(
-              acting,
-              row.tenant,
-              { definition: row.definition, files: row.files, version: row.version },
-              cases,
-              meter,
-              options,
-            );
-            const after = await evals.runCases(
-              acting,
-              row.tenant,
-              {
-                definition: withModel(row.definition, run.current, run.model),
-                files: row.files,
-                version: 'draft',
-              },
-              cases,
-              meter,
-              options,
-            );
-            await lease.update(
-              (r) =>
-                metered({
-                  ...r,
-                  rows: r.rows.map((x, i) =>
-                    i === index ? { ...x, current: scoreOf(before), candidate: scoreOf(after) } : x,
-                  ),
-                }),
-              `Testsett ${index + 1} av ${planned.length}`,
-            );
+            if (!row) continue;
+            const step = `Testsett ${index + 1} av ${planned.length}`;
+            for (const side of sides) {
+              const now = latest.rows[index];
+              if (!now || now[side] !== null) continue;
+              const finished = new Set(finishedOf(now, side));
+              await evals.runCases(
+                acting,
+                row.tenant,
+                side === 'current'
+                  ? { definition: row.definition, files: row.files, version: row.version }
+                  : {
+                      definition: withModel(row.definition, run.current, run.model),
+                      files: row.files,
+                      version: 'draft',
+                    },
+                row.set.spec.cases.filter((c) => !finished.has(c.id)),
+                meter,
+                {
+                  ...options,
+                  onCase: async (_, result) => {
+                    latest = await lease.update(
+                      (r) => metered(withCase(r, index, side, result)),
+                      step,
+                    );
+                  },
+                },
+              );
+              latest = await lease.update((r) => metered(sideDone(r, index, side)), step);
+            }
           }
           await lease.update(
             (r) => metered({ ...r, status: 'succeeded', endedAt: new Date().toISOString() }),
             'Ferdig',
           );
         } catch (error) {
+          if (deps.evalSlots?.draining()) {
+            await lease
+              .update((r) => metered({ ...r, released: true }), 'Overlevert til neste instans')
+              .catch(() => undefined);
+            return;
+          }
           await lease.update(
             (r) =>
               metered({
@@ -430,6 +564,7 @@ export const createModelMatrixModule =
           lease.release();
         }
       })();
+      deps.evalSlots?.track(done);
       return { done };
     };
 
@@ -498,6 +633,8 @@ export const createModelMatrixModule =
     };
 
     const affectedTestSets = async (model: string) => {
+      const apis = known(model)?.apis ?? {};
+      if (!('chat' in apis) && !('decide' in apis)) return 0;
       let count = 0;
       for (const used of await inUse())
         if (used.id !== model) count += (await plan(model, used.id)).length;
@@ -527,15 +664,20 @@ export const createModelMatrixModule =
     const checkPublish = async (definition: unknown) => {
       const d = record(definition);
       if (d.kind !== 'Service') return [];
-      return modelsIn(d)
-        .filter((m) => isCandidate(deps.catalog, m))
-        .map((m) => ({
-          path: 'spec.model',
-          message: `model ${m} is not released yet; it is waiting for the quality matrix`,
+      return modelsNamedIn(d)
+        .filter(({ model }) => isCandidate(deps.catalog, model))
+        .map(({ path, model }) => ({
+          path,
+          message: `model ${model} is not released yet; it is waiting for the quality matrix`,
         }));
     };
 
     background(runs().then(() => undefined));
+    const sweep = setInterval(
+      () => background(runs().then(() => undefined)),
+      options.resumeEveryMs ?? 30_000,
+    );
+    sweep.unref?.();
 
     return {
       id: 'model-matrix',
@@ -647,7 +789,9 @@ export const createModelMatrixModule =
               cases: row.set.spec.cases.length,
               current: null,
               candidate: null,
+              version: row.version,
             })),
+            admitted: Boolean(deps.modelAdmission?.(guard.principal)),
             ...leases.stamp(),
           };
           try {
@@ -656,7 +800,13 @@ export const createModelMatrixModule =
               matrixRunAction,
               { tenant: deps.platformTenant, reason, model, current, run: queued.id },
               async () => ({
-                value: await execute(guard.principal, queued, planned, reason),
+                value: await execute(
+                  actorOf(guard.principal.actor ?? guard.principal),
+                  queued.admitted ?? false,
+                  queued,
+                  planned,
+                  reason,
+                ),
                 target: `matrix-run:${queued.id}`,
               }),
             );
@@ -677,7 +827,7 @@ export const createModelMatrixModule =
           ).at(-1) as ConfigEntry<MatrixRun> | undefined;
           if (!entry) return problem(c, 404, 'Not found');
           const run = await settled(entry);
-          return c.json({ ...runView(run), rows: run.rows });
+          return c.json({ ...runView(run), rows: run.rows.map(rowView) });
         });
 
         app.post('/operator/quality/matrix/release', async (c) => {

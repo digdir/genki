@@ -18,11 +18,15 @@ import { useT, type PlainKey } from '../i18n';
 import type { ScreenProps } from '../screen';
 import { rightLabel, useRights } from '../Shell';
 import { EmptyState, ErrorState, Loading } from '../states';
+import { listedServiceCount, rememberServiceNames } from '../listed-services';
+import { modelLabel } from '../models';
+import { StrategyCatalogue } from '../strategy-catalogue';
+import { ServiceLoading } from './service/ServiceLoading';
 import { availableSections, locate } from './service/sections';
-import { Builder, newServiceInit, type BuilderInit } from './services/Builder';
+import { Builder, newDraftId, newServiceInit, type BuilderInit } from './services/Builder';
 import { LiveNewService } from './services/LiveNewService';
 import { NewService } from './services/NewService';
-import { ServiceList } from './services/ServiceList';
+import { ServiceList, type ListedService } from './services/ServiceList';
 import { startKeys } from './services/SetupTab';
 import './services.css';
 
@@ -41,11 +45,12 @@ const ListScreen = ({ api, tenant, tenantName, live }: ScreenProps) => {
   const p = usePortalFormat();
   const { t } = p;
   const [state, retry] = useAsync(
-    async (signal): Promise<ServiceRow[]> => {
+    async (signal): Promise<{ rows: ListedService[]; listed?: number }> => {
       if (live) {
-        const [services, drafts] = await Promise.all([
+        const [services, drafts, models] = await Promise.all([
           api.services(tenant, signal),
           api.quality.drafts(tenant, signal),
+          api.listModels({ all: true }, signal).catch(() => []),
         ]);
         const unpublished = drafts
           .filter((d) => d.latestVersion === null)
@@ -61,12 +66,13 @@ const ListScreen = ({ api, tenant, tenantName, live }: ScreenProps) => {
             by: p.actor(d.by, d.byName),
             when: p.dateTime(d.at),
           }));
-        return [
+        const rows = [
           ...unpublished,
-          ...services.data.map((s): ServiceRow => ({
+          ...services.data.map((s): ListedService => ({
             id: s.id,
             name: s.name,
             purpose: s.purpose,
+            ...(s.model ? { model: modelLabel(s.model.id, models) } : {}),
             job: jobOf(s.outputKind),
             start: s.channels
               .filter((key) => startKeys[key])
@@ -83,19 +89,23 @@ const ListScreen = ({ api, tenant, tenantName, live }: ScreenProps) => {
             when: s.updatedAt ? p.dateTime(s.updatedAt) : '–',
           })),
         ];
+        return { rows, listed: listedServiceCount(services.data, drafts) };
       }
       const definitions = await api.listDefinitions(tenant, signal);
       const unknown = definitions.filter(
         (d) => d.kind === 'Service' && !serviceRows.some((r) => r.id === d.id),
       );
       const extra = await Promise.all(
-        unknown.map(async (d): Promise<ServiceRow> => {
+        unknown.map(async (d): Promise<ListedService> => {
           const full = await api.getDefinition(tenant, 'Service', d.id, signal);
           const service = asServiceDefinition(full.latest.definition);
           return {
             id: d.id,
             name: service.metadata.name ?? d.id,
             purpose: service.spec.purpose,
+            ...(service.spec.model?.primary
+              ? { model: modelLabel(service.spec.model.primary) }
+              : {}),
             job: jobOf(service.spec.output.kind),
             start: channelKeys
               .filter((key) => channelOn(service.spec, key) && startKeys[key])
@@ -108,13 +118,37 @@ const ListScreen = ({ api, tenant, tenantName, live }: ScreenProps) => {
           };
         }),
       );
-      return [...serviceRows, ...extra];
+      const known = serviceRows.map((r): ListedService => {
+        const model = exampleDefinitions[r.id]?.spec.model?.primary;
+        return model ? { ...r, model: modelLabel(model) } : r;
+      });
+      return { rows: [...known, ...extra] };
     },
     [api, tenant, live],
   );
-  if (state.status === 'loading') return <Loading label={t('servicesScreen.loadingServices')} />;
-  if (state.status === 'error') return <ErrorState error={state.error} onRetry={retry} />;
-  return <ServiceList rows={state.data} tenantName={tenantName} />;
+  useEffect(() => {
+    if (state.status === 'ready') rememberServiceNames(tenant, state.data.rows);
+  }, [state, tenant]);
+  if (state.status !== 'ready')
+    return (
+      <ServiceList
+        tenantName={tenantName}
+        placeholder={
+          state.status === 'loading' ? (
+            <Loading label={t('servicesScreen.loadingServices')} shape="list" onRetry={retry} />
+          ) : (
+            <ErrorState error={state.error} onRetry={retry} />
+          )
+        }
+      />
+    );
+  return (
+    <ServiceList
+      rows={state.data.rows}
+      tenantName={tenantName}
+      {...(state.data.listed === undefined ? {} : { listed: state.data.listed })}
+    />
+  );
 };
 
 const useLocation = (id: string, route: ScreenProps['route'], isNew: boolean) => {
@@ -125,8 +159,6 @@ const useLocation = (id: string, route: ScreenProps['route'], isNew: boolean) =>
   }, [redirect]);
   return location;
 };
-
-const newDraftId = () => `utkast-${crypto.randomUUID().slice(0, 8)}`;
 
 const paneOf = (query: URLSearchParams) => {
   const p = query.get('pane');
@@ -159,7 +191,16 @@ const BuilderScreen = (
     },
     [api, tenant, id, props.live, canManage],
   );
-  if (state.status === 'loading') return <Loading label={t('servicesScreen.loadingService')} />;
+  if (state.status === 'loading')
+    return (
+      <ServiceLoading
+        tenant={tenant}
+        id={id}
+        section={location.section}
+        label={t('servicesScreen.loadingService')}
+        onRetry={retry}
+      />
+    );
   if (state.status === 'error') return <ErrorState error={state.error} onRetry={retry} />;
   if (state.data && 'unpublished' in state.data) {
     const { unpublished } = state.data;
@@ -236,6 +277,7 @@ const BuilderScreen = (
     ...(current?.files ? { files: current.files } : {}),
     ...(draft ? { draftRevision: draft.revision } : {}),
     ...(state.data && 'rebasedTo' in state.data ? { rebasedTo: state.data.rebasedTo } : {}),
+    ...(props.live && live ? { opened: draft ?? null } : {}),
   };
   const pane = paneOf(route.query);
   return (
@@ -258,6 +300,34 @@ const BuilderScreen = (
 
 export const Services = (props: ScreenProps) => {
   const t = useT();
+  const { route } = props;
+  const [, id] = route.segments;
+  const tweak = route.query.get('visning');
+  useEffect(() => {
+    const target = tweak ? tweaks[tweak] : undefined;
+    if (target) navigate(target);
+  }, [tweak]);
+  if (!id) return <ListScreen {...props} />;
+  const fallback =
+    id === 'new' ? undefined : (
+      <ServiceLoading
+        tenant={props.tenant}
+        id={id}
+        section={
+          locate(id, route.segments, route.query, availableSections({ isNew: false })).section
+        }
+        label={t('servicesScreen.loadingService')}
+      />
+    );
+  return (
+    <StrategyCatalogue api={props.api} tenant={props.tenant} fallback={fallback}>
+      <ServiceScreens {...props} />
+    </StrategyCatalogue>
+  );
+};
+
+const ServiceScreens = (props: ScreenProps) => {
+  const t = useT();
   const canCreate = useRights().has('manage-services');
   const { route } = props;
   const [, id] = route.segments;
@@ -265,12 +335,6 @@ export const Services = (props: ScreenProps) => {
   const [starting, setStarting] = useState<{ error?: unknown }>();
   const building = id === 'new' || (!!draft && id === draft.id);
   const location = useLocation(id ?? '', route, building);
-  const tweak = route.query.get('visning');
-
-  useEffect(() => {
-    const target = tweak ? tweaks[tweak] : undefined;
-    if (target) navigate(target);
-  }, [tweak]);
   useEffect(() => {
     if (!building) {
       setDraft(undefined);
@@ -311,7 +375,7 @@ export const Services = (props: ScreenProps) => {
     if (id === 'new' && props.live && route.query.get('skjema') === '1')
       return <LiveNewService api={props.api} tenant={props.tenant} />;
     if (starting?.error) return <ErrorState error={starting.error} />;
-    if (starting) return <Loading label={t('servicesScreen.loadingStart')} />;
+    if (starting) return <Loading label={t('servicesScreen.loadingStart')} shape="form" />;
     if (!draft)
       return (
         <NewService

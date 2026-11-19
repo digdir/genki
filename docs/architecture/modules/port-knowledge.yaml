@@ -11,18 +11,22 @@ summary: Search and fetch over datasets, with grants checked and a timeout on ev
 description:
   'A router over a knowledge catalog maps datasets to endpoints and adapters, so Typesense
   can be replaced (ADR 0001). A dataset can set links: kudos-legacy, which gives hits and documents
-  with a retired numeric Kudos id a Kudos title search as their url (publicSourceUrl in
+  with an old numeric Kudos id their Kudos page by UUID as their url, from the map of earlier ids,
+  or a Kudos title search where the map has none and the hit has a title (publicSourceUrl in
   @genai/contracts); other datasets keep their own url or none.'
 responsibilities:
   - Dataset catalog
   - Search and fetch with timeouts
   - Optional document listing by filters or ids, for batch runs over a document set
+  - The conversion part and unit row types, and offsets counted in code points over NFC text (ADR 0055)
 files:
   - packages/port-knowledge/src/port.ts
   - packages/port-knowledge/src/router.ts
   - packages/port-knowledge/src/catalog.ts
   - packages/port-knowledge/src/records.ts
   - packages/port-knowledge/src/conversions.ts
+  - packages/port-knowledge/src/parts.ts
+  - packages/port-knowledge/src/code-points.ts
   - packages/port-knowledge/src/tombstone.ts
 input: Query + filters
 output: Hits

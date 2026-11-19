@@ -1,3 +1,5 @@
+import { kudosEarlierIdsMap } from './kudos-earlier-ids.js';
+
 const legacyDocument =
   /^(?:digdir:\/\/doc\/|https:\/\/kudos\.dfo\.no\/dokument\/)(\d{1,10})(?:[/?#].*)?$/;
 const legacyNumber = /^\d{1,10}$/;
@@ -7,6 +9,13 @@ export type SourceLinkRule = (typeof sourceLinkRules)[number];
 
 export const kudosSearchUrl = (title: string) =>
   `https://kudos.dfo.no/dokumenter?query=${encodeURIComponent(title)}`;
+
+const kudosDocumentUrl = (uuid: string) =>
+  `https://kudos.dfo.no/dokument/${encodeURIComponent(uuid)}`;
+
+const { ids, byFile = {} } = kudosEarlierIdsMap;
+const kudosUuidOf = (id: string) =>
+  Object.hasOwn(ids, id) ? ids[id] : Object.hasOwn(byFile, id) ? byFile[id] : undefined;
 
 export interface LinkableSource {
   url?: string | null | undefined;
@@ -21,9 +30,10 @@ export const publicSourceUrl = (
   const url = source.url?.trim();
   if (rule !== 'kudos-legacy') return url || undefined;
   const legacy = url ? legacyDocument.exec(url)?.[1] : (source.document ?? undefined);
-  if (legacy && legacyNumber.test(legacy))
-    return source.title ? kudosSearchUrl(source.title) : undefined;
-  return url || undefined;
+  if (!legacy || !legacyNumber.test(legacy)) return url || undefined;
+  const uuid = kudosUuidOf(legacy);
+  if (uuid) return kudosDocumentUrl(uuid);
+  return source.title ? kudosSearchUrl(source.title) : undefined;
 };
 
 export const plainHeading = (value: string): string =>

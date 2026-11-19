@@ -7,6 +7,7 @@ import { assistantMock } from './mock/assistant';
 import { buildingBlocksMock } from './mock/building-blocks';
 import { datasetsMock } from './mock/datasets';
 import { keyPoliciesMock } from './mock/key-policies';
+import { accessMock } from './mock/access';
 import { maskinportenMock } from './mock/maskinporten';
 import { hooksMock } from './mock/hooks';
 import { triggersMock } from './mock/triggers';
@@ -18,12 +19,20 @@ import { qualityMock } from './mock/quality';
 import { batchRunsMock } from './mock/batch-runs';
 import { searchEnginesMock } from './mock/search-engines';
 import { skillsMock } from './mock/skills';
+import { exampleAudit, platformStatusMock } from './mock/platform-status';
+import { devtoolsMock } from './mock/devtools';
+import { settingsMock } from './mock/settings';
+import { blocksMock } from './mock/blocks';
+import { serviceTabsMock } from './mock/service-tabs';
 import { exampleSecretNames } from './data/building-blocks';
 import { inputFieldsOf } from './data/playground';
 import { parseYaml } from './yaml';
 import { reasonProblem } from './components/ReasonField';
-import { clientMock } from './mock-clients';
+import { clientMock, exampleKeyAudit } from './mock-clients';
+import type { ServiceSpec } from './data/service-definition';
 import type {
+  ClientView,
+  ServiceKeyView,
   CapabilityModel,
   EvalRunSummary,
   FeedbackItem,
@@ -46,7 +55,13 @@ import type {
   TaskRow,
   UsageReport,
 } from './types';
-import { logTasks, logTimelines, playgroundTimeline } from './data/log';
+import {
+  logTasks,
+  logTimelines,
+  playgroundTasks,
+  playgroundTimeline,
+  serviceRuns,
+} from './data/log';
 import { exampleQualityFeedback, exampleQualityRuns, exampleQualityTestSets } from './data/quality';
 
 export const exampleOrganisations: Organisation[] = [
@@ -79,6 +94,26 @@ const service = (
   return { kind: 'Service', tenant: '999888777', id, latest, versions: history };
 };
 
+const exampleEarlierSpecs: Record<string, Record<number, Record<string, unknown>>> = import.meta.env
+  .MODE === 'test'
+  ? {}
+  : {
+      rapportassistenten: {
+        5: {
+          strategy: { id: 'agent-loop', version: 1, config: { maxSteps: 5, tokenBudget: 12000 } },
+          knowledge: { datasets: [{ dataset: 'digdir/kudos' }], runtimeDocuments: true },
+          model: { primary: 'aivar/qwen3-8', residency: 'norway' },
+          exposure: { chat: true, rest: true },
+        },
+        6: {
+          strategy: { id: 'agent-loop', version: 1, config: { maxSteps: 6, tokenBudget: 16000 } },
+          output: { kind: 'answer', withSources: false },
+          model: { primary: 'aivar/borealis-27b', residency: 'norway' },
+          exposure: { chat: true, mcp: true, rest: true },
+        },
+      },
+    };
+
 export const exampleServices: DefinitionWithHistory[] = [
   service(
     'rapportassistenten',
@@ -88,13 +123,32 @@ export const exampleServices: DefinitionWithHistory[] = [
       riskClass: 'limited',
       audience: ['employees'],
       output: { kind: 'answer', withSources: true },
-      strategy: { id: 'agent-loop', version: 1, config: { maxSteps: 8, tokenBudget: 20000 } },
+      strategy: {
+        id: 'agent-loop',
+        version: 1,
+        config: {
+          maxSteps: 8,
+          tokenBudget: 20000,
+          instructions:
+            'Svar saksbehandlere i Testetaten på spørsmål om evalueringer. Bruk bare rapportene og nettsidene. Vis alltid kilden med dato.',
+        },
+      },
       knowledge: { datasets: [{ dataset: 'digdir/kudos' }], runtimeDocuments: false },
       tools: ['rag@1'],
       model: { primary: 'aivar/borealis-27b', fallback: 'aivar/qwen3-8', residency: 'norway' },
       exposure: { chat: true, mcp: true, openai: true, rest: true },
     },
     [
+      ...(import.meta.env.MODE === 'test'
+        ? []
+        : [
+            {
+              version: 5,
+              publishedBy: 'employee:ansattporten:ola',
+              publishedAt: '2026-09-02T08:30:00Z',
+              reason: 'Første versjon i drift',
+            },
+          ]),
       {
         version: 6,
         publishedBy: 'employee:ansattporten:kari',
@@ -349,7 +403,25 @@ export const exampleChatReply = [
   '```',
 ].join('\n');
 
-export const exampleTasks: TaskRow[] = logTasks;
+export const mockMeActor = 'employee:mock:kari';
+
+const keysSeenIn = (rows: TaskRow[], service: string) => [
+  ...new Map(
+    rows
+      .filter((r) => r.service === service && r.actor?.kind === 'api-key' && r.actor.id)
+      .map((r) => [
+        r.actor?.id ?? '',
+        {
+          id: (r.actor?.id ?? '').replace(/^api-key:/, ''),
+          name: r.actor?.name ?? '',
+          bound: true,
+        },
+      ]),
+  ).values(),
+];
+
+export const exampleTasks: TaskRow[] =
+  import.meta.env.MODE === 'test' ? logTasks : [...logTasks, ...serviceRuns('rapportassistenten')];
 
 export const exampleUsage: UsageReport = buildExampleUsage();
 
@@ -378,6 +450,7 @@ export const exampleShared: SharedService[] = [
   version: version as number,
   riskClass: 'minimal',
   residency: 'norway',
+  model: 'aivar/borealis-27b',
   exposure: ['rest', 'mcp'],
   variants: [{ id: 'default', publicName: `${String(id)}__default`, aliases: [] }],
 }));
@@ -405,6 +478,7 @@ export const exampleAccess: AccessView = {
       datasets: [],
       agents: ['nettsider-nynorsk__default'],
       createdAt: '2026-08-14T10:00:00Z',
+      lastUsedAt: '2026-10-07T08:30:00Z',
       expiresAt: null,
       revokedAt: null,
     },
@@ -417,6 +491,7 @@ export const exampleAccess: AccessView = {
       datasets: [],
       agents: [],
       createdAt: '2026-10-02T09:00:00Z',
+      lastUsedAt: null,
       expiresAt: null,
       revokedAt: null,
     },
@@ -484,6 +559,12 @@ const featureMocks = {
   triggers: triggersMock,
   environments: environmentsMock,
   preferences: preferencesMock,
+  platformStatus: platformStatusMock,
+  access: accessMock,
+  devtools: devtoolsMock,
+  settings: settingsMock,
+  blocks: blocksMock,
+  serviceTabs: serviceTabsMock,
 };
 
 export type FeatureMockOptions = {
@@ -499,6 +580,7 @@ export interface MockExtras {
   chatReply?: string;
   stepFlows?: DefinitionWithHistory[];
   tasks?: TaskRow[];
+  playgroundTasks?: TaskRow[];
   usage?: UsageReport;
   shared?: SharedService[];
   access?: AccessView;
@@ -556,6 +638,7 @@ export const exampleModels: ModelOption[] = [
     residency: 'norway',
     capabilities: ['stream', 'tools', 'json-schema'],
     operations: ['chat', 'generate-image'],
+    price: { inputPerThousand: 0.0119, outputPerThousand: 0.0952 },
   },
   {
     id: 'aivar/nora-70b',
@@ -565,11 +648,33 @@ export const exampleModels: ModelOption[] = [
   },
   { id: 'aivar/qwen3-8', family: 'qwen3', residency: 'norway', capabilities: ['stream'] },
   {
+    id: 'ai-gateway/borealis-27b',
+    name: 'Borealis 27B',
+    family: 'borealis',
+    residency: 'norway',
+    capabilities: ['stream', 'tools'],
+  },
+  {
     id: 'foundry-openai/gpt-4.1',
+    name: 'GPT-4.1',
     family: 'gpt-4.1',
     residency: 'eu',
     capabilities: ['stream', 'tools', 'json-schema'],
     operations: ['chat', 'generate-image'],
+  },
+  {
+    id: 'foundry-openai/gpt-4.1-mini',
+    name: 'GPT-4.1 mini',
+    family: 'gpt-4.1',
+    residency: 'eu',
+    capabilities: ['stream', 'tools', 'json-schema'],
+  },
+  {
+    id: 'foundry-openai/gpt-5',
+    name: 'GPT-5 (OpenAI)',
+    family: 'gpt-5',
+    residency: 'global',
+    capabilities: ['stream', 'tools'],
   },
   {
     id: 'foundry-openai/gpt-4o-2m-tps',
@@ -635,6 +740,23 @@ export const exampleFacets: Record<string, FacetField['options']> = {
   ],
 };
 
+const readableTypes = ['text/plain', 'text/markdown', 'text/csv', 'application/json'];
+
+const mockFileInput = (definition: unknown) => {
+  const spec = (definition as { spec?: ServiceSpec } | undefined)?.spec;
+  const accepts = spec?.input.accepts ?? [];
+  const documents =
+    spec?.knowledge?.runtimeDocuments === true
+      ? accepts.filter((type) => readableTypes.includes(type))
+      : [];
+  const media = accepts.filter((type) => type.startsWith('audio/') || type.startsWith('image/'));
+  return {
+    documents: documents.length ? { accepts: documents, maxBytes: 2097152, maxCount: 5 } : null,
+    media: media.length ? { accepts: media, maxBytes: 10485760, maxCount: 5 } : null,
+    maxRequestBytes: 16777216,
+  };
+};
+
 const mockInputFields = (definition: unknown) => {
   let parsed = definition;
   try {
@@ -652,22 +774,13 @@ const mockInputFields = (definition: unknown) => {
 
 export const exampleSettingsCatalog: SettingInfo[] = [
   {
-    key: 'retrieval.topK',
-    description: 'Hvor mange tekstbiter som hentes per søk.',
-    category: 'Søk',
+    key: 'retrieval.retrieveTopK',
+    description: 'Chunks fetched by id after merging, before boosting and reranking.',
+    category: 'retrieval',
     axis: 'service',
     sensitivity: 'normal',
-    default: 10,
+    default: 100,
     settableAt: ['platform', 'tenant', 'service'],
-  },
-  {
-    key: 'answer.language',
-    description: 'Språket svaret skrives på.',
-    category: 'Svar',
-    axis: 'service',
-    sensitivity: 'normal',
-    default: 'same',
-    settableAt: ['platform', 'service'],
   },
   {
     key: 'answers.writtenStandard',
@@ -682,20 +795,20 @@ export const exampleSettingsCatalog: SettingInfo[] = [
 ];
 
 export const exampleEffective: Record<string, EffectiveSetting> = {
-  'retrieval.topK': {
-    key: 'retrieval.topK',
+  'retrieval.retrieveTopK': {
+    key: 'retrieval.retrieveTopK',
     value: 20,
     source: 'service',
     defaultVersion: 2,
     overridden: [
       { layer: 'tenant', value: 15 },
-      { layer: 'platform', value: 10 },
+      { layer: 'platform', value: 100 },
     ],
     rejected: [],
   },
-  'answer.language': {
-    key: 'answer.language',
-    value: 'same',
+  'answers.writtenStandard': {
+    key: 'answers.writtenStandard',
+    value: 'user',
     source: 'pin',
     pinnedVersion: 1,
     defaultVersion: 3,
@@ -746,6 +859,24 @@ const strategyNeeds: Record<string, string[]> = {
   'rag-single-shot@1': ['json-schema'],
 };
 
+const withMockQuota = (report: UsageReport): UsageReport => {
+  const month = report.to.slice(0, 7);
+  const usedTokens = report.daily
+    .filter((d) => d.date.startsWith(month))
+    .reduce((n, d) => n + d.usage.inputTokens + d.usage.outputTokens, 0);
+  const usedPercent = (usedTokens / quotaTokensPerMonth) * 100;
+  return {
+    ...report,
+    quota: {
+      usedTokens: Math.round(usedTokens),
+      monthlyTokens: quotaTokensPerMonth,
+      usedPercent,
+      alertPercent: 80,
+      alert: usedPercent >= 80,
+    },
+  };
+};
+
 export const mockFetch = (
   services = exampleServices,
   timelines: TaskTimeline[] = logTimelines,
@@ -760,13 +891,22 @@ export const mockFetch = (
   const capabilities = extras.capabilities ?? exampleCapabilities;
   const chatReply = extras.chatReply ?? exampleChatReply;
   const taskRows = extras.tasks ?? exampleTasks;
-  const lifecycles = new Map<string, { state: string; reason: string }>();
-  const usageReport = extras.usage ?? exampleUsage;
+  const trialRows = extras.playgroundTasks ?? playgroundTasks;
+  const lifecycles = new Map<
+    string,
+    { state: string; reason?: string; by?: string; byName?: string; at?: string }
+  >();
+  const usageReport =
+    extras.usage ??
+    withMockQuota(
+      import.meta.env.MODE === 'test' ? exampleUsage : buildExampleUsage(new Date().toISOString()),
+    );
   const shared = extras.shared ?? exampleShared;
   let access = structuredClone(extras.access ?? exampleAccess);
   const clientRoutes = clientMock();
   const batchRuns = featureMocks.batchRuns(extras.features?.batchRuns);
   const features: MockHandler[] = [
+    featureMocks.blocks(extras.features?.blocks),
     featureMocks.buildingBlocks(extras.features?.buildingBlocks),
     featureMocks.skills(extras.features?.skills),
     featureMocks.playground(extras.features?.playground),
@@ -779,11 +919,58 @@ export const mockFetch = (
     featureMocks.hooks(extras.features?.hooks),
     featureMocks.triggers(extras.features?.triggers),
     featureMocks.preferences(extras.features?.preferences),
+    featureMocks.platformStatus(
+      extras.features?.platformStatus ??
+        (import.meta.env.MODE === 'test'
+          ? undefined
+          : { audit: [...exampleAudit, ...exampleKeyAudit] }),
+    ),
+    featureMocks.access(extras.features?.access),
+    featureMocks.devtools(extras.features?.devtools),
+    featureMocks.settings({ catalog: exampleSettingsCatalog, ...extras.features?.settings }),
     batchRuns,
     featureMocks.environments({
       latest: (service) =>
         current.find((d) => d.kind === 'Service' && d.id === service)?.latest.version,
       ...extras.features?.environments,
+    }),
+    featureMocks.serviceTabs({
+      tasks: () => taskRows,
+      keys: async (tenant, service) => {
+        const reply = clientRoutes(
+          `/tenants/${tenant}/services/${encodeURIComponent(service)}/api-keys`,
+          new URL('http://mock'),
+          undefined,
+          () => false,
+        );
+        const listed = reply ? ((await reply.json()) as { keys: ServiceKeyView[] }).keys : [];
+        if (listed.length === 0) return keysSeenIn(taskRows, service);
+        return listed
+          .filter((k) => !k.revokedAt)
+          .map((k) => ({
+            id: k.id,
+            name: k.name,
+            prefix: k.prefix,
+            bound: k.service === service,
+            ...(k.client ? { client: k.client } : {}),
+          }));
+      },
+      frontends: async (tenant, service) => {
+        const reply = clientRoutes(
+          `/tenants/${tenant}/clients`,
+          new URL(`http://mock/?service=${encodeURIComponent(service)}`),
+          undefined,
+          () => false,
+        );
+        const listed = reply ? ((await reply.json()) as { clients: ClientView[] }).clients : [];
+        return listed.map((c) => ({
+          id: c.definition.metadata.id,
+          ...(c.definition.metadata.name ? { name: c.definition.metadata.name } : {}),
+          kind: c.definition.spec.kind,
+          channels: [...c.definition.spec.channels],
+        }));
+      },
+      ...extras.features?.serviceTabs,
     }),
     featureMocks.quality({
       published: (service) =>
@@ -830,7 +1017,13 @@ export const mockFetch = (
       if (unknown) return json({ error: `dataset digdir/kudos cannot filter on ${unknown}` }, 400);
       return json({ fields: fields.map((field) => ({ field, options: exampleFacets[field] })) });
     }
-    if (path === '/health') return json({ status: 'ok', version: 'mock' });
+    if (path === '/health')
+      return json({
+        status: 'ok',
+        version: 'mock',
+        builtAt: '2026-10-06T08:00:00Z',
+        environment: 'genki-test',
+      });
     if (path === '/settings') return json({ data: exampleSettingsCatalog });
     if (/^\/tenants\/[^/]+\/settings\/effective$/.test(path)) return json(exampleEffective);
     if (/^\/tenants\/[^/]+\/settings\/[^/]+$/.test(path) && init?.method === 'DELETE')
@@ -876,6 +1069,8 @@ export const mockFetch = (
       return json({
         data: models.filter(
           (m) =>
+            (url.searchParams.get('all') === 'true' ||
+              (m as { available?: boolean }).available !== false) &&
             (!residency ||
               residencyOrder.indexOf(m.residency) <= residencyOrder.indexOf(residency)) &&
             needs.every((n) => m.capabilities.includes(n)),
@@ -957,7 +1152,7 @@ export const mockFetch = (
     }
     if (/^\/tenants\/[^/]+\/definitions\/input-fields$/.test(path) && init?.method === 'POST') {
       const { definition } = JSON.parse(String(init.body)) as { definition: unknown };
-      return json({ fields: mockInputFields(definition) });
+      return json({ fields: mockInputFields(definition), files: mockFileInput(definition) });
     }
     if (/^\/tenants\/[^/]+\/definitions\/test-run$/.test(path) && init?.method === 'POST')
       return json({ ok: true, task: 'prove-1', answer: chatReply, parts: [] });
@@ -1029,7 +1224,18 @@ export const mockFetch = (
       if (init?.method === 'PUT') {
         if (needsReason()) return missingReason();
         const { state } = JSON.parse(String(init.body)) as { state: string };
-        lifecycles.set(id, { state, reason: reasonOf(init) ?? '' });
+        lifecycles.set(
+          id,
+          state === 'active'
+            ? { state }
+            : {
+                state,
+                reason: reasonOf(init) ?? '',
+                by: 'employee:ansattporten:kari',
+                byName: 'Kari Nordmann',
+                at: new Date().toISOString(),
+              },
+        );
       }
       return json(lifecycles.get(id) ?? { state: 'active' });
     }
@@ -1062,7 +1268,9 @@ export const mockFetch = (
       });
     const taskOne = /^\/tenants\/[^/]+\/tasks\/([^/]+)$/.exec(path);
     if (taskOne) {
-      const found = taskRows.find((t) => t.id === decodeURIComponent(taskOne[1] ?? ''));
+      const found = [...taskRows, ...trialRows].find(
+        (t) => t.id === decodeURIComponent(taskOne[1] ?? ''),
+      );
       return found ? json(found) : notFound();
     }
     const portal = /^\/tenants\/([^/]+)\/(overview|access|usage|tasks|integrations)$/.exec(path);
@@ -1073,6 +1281,12 @@ export const mockFetch = (
             id: s.id,
             name: (s.latest.definition.metadata as { name?: string }).name ?? s.id,
             latestVersion: s.latest.version,
+            status: lifecycles.get(s.id)?.state === 'paused' ? 'paused' : 'active',
+            statusReason: null,
+            warnings: [],
+            runsThisWeek: taskRows.filter(
+              (t) => t.service === s.id && Date.parse(t.createdAt) >= Date.now() - 7 * 86_400_000,
+            ).length,
           })),
           recentTasks: taskRows.slice(0, 5),
           usageThisMonth: usageReport.totals,
@@ -1111,13 +1325,39 @@ export const mockFetch = (
       const status = url.searchParams.get('status');
       const wanted = url.searchParams.get('service');
       const environment = url.searchParams.get('environment');
-      const data = taskRows.filter(
+      const from = url.searchParams.get('from');
+      const to = url.searchParams.get('to');
+      const limit = Number(url.searchParams.get('limit') ?? 100) || 100;
+      const offset = Number(url.searchParams.get('offset') ?? 0) || 0;
+      const actor = url.searchParams.get('actor');
+      if (actor && actor !== 'me' && !/^(employee|api-key):/.test(actor))
+        return json({ title: 'Invalid request', status: 400 }, 400);
+      const wantedActor = actor === 'me' ? mockMeActor : actor;
+      const frontend = url.searchParams.get('frontend');
+      const rows = url.searchParams.get('origin') === 'playground' ? trialRows : taskRows;
+      const matching = rows.filter(
         (t) =>
           (!status || t.status === status) &&
           (!wanted || t.service === wanted) &&
-          (!environment || t.environment === environment),
+          (!environment || t.environment === environment) &&
+          (!wantedActor || t.actor?.id === wantedActor) &&
+          (!frontend || t.frontend === frontend) &&
+          (!from || t.createdAt >= from) &&
+          (!to || t.createdAt <= to),
       );
-      return json({ data, total: data.length });
+      return json({
+        offset,
+        limit,
+        data: matching.slice(offset, offset + limit).map((t) =>
+          t.status === 'failed' && !t.failure
+            ? {
+                ...t,
+                failure: { code: 'deadline_exceeded', reason: 'Kjøringen tok for lang tid.' },
+              }
+            : t,
+        ),
+        total: matching.length,
+      });
     }
     if (/^\/tenants\/[^/]+\/api-keys$/.test(path) && init?.method === 'POST') {
       if (needsReason()) return missingReason();
@@ -1171,7 +1411,16 @@ export const mockFetch = (
         integrations = {
           ...integrations,
           connections: integrations.connections.map((c) =>
-            c.id === approve[1] ? { ...c, pending: c.pending.filter((p) => p.name !== tool) } : c,
+            c.id === approve[1]
+              ? {
+                  ...c,
+                  tools: [
+                    ...c.tools.filter((t) => t.name !== tool),
+                    ...c.pending.filter((p) => p.name === tool),
+                  ],
+                  pending: c.pending.filter((p) => p.name !== tool),
+                }
+              : c,
           ),
         };
         return json({ approved: tool });
@@ -1246,9 +1495,11 @@ export const mockFetch = (
       if (versions === 'versions' && version) {
         const summary = found.versions.find((v) => v.version === Number(version));
         if (!summary) return notFound();
+        const earlier = exampleEarlierSpecs[found.id]?.[summary.version];
         const definition = {
           ...found.latest.definition,
           metadata: { ...(found.latest.definition.metadata as object), version: summary.version },
+          ...(earlier ? { spec: { ...(found.latest.definition.spec as object), ...earlier } } : {}),
         };
         return json({ ...found.latest, ...summary, definition });
       }

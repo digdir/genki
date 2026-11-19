@@ -20,6 +20,7 @@ import {
 } from './example-data';
 import { fixtureSchemaFetch } from '@genai/schema-forms/fixtures';
 import { exampleDescriptors, operationsMock } from './screens/models/operations-mock';
+import type { demosMock } from './screens/demos/mock';
 import { queueMock } from './screens/queue/mock';
 import { searchEnginesMock } from './screens/search-engines/mock';
 import { translator } from './i18n';
@@ -370,8 +371,10 @@ export const mockFetch = (
   const grid = structuredClone(exampleSettingsGrid);
   const history = structuredClone(exampleSettingHistory);
   const searchEngines = searchEnginesMock();
+  let demos: Promise<ReturnType<typeof demosMock>> | undefined;
   const schemaFixtures = fixtureSchemaFetch();
   const secrets = new Set<string>(['foundry-key', 'local-model-key']);
+  const secretChanges = new Map<string, string>([['foundry-key', '2026-10-01T09:30:00Z']]);
 
   const tenantName = (org: string) => tenantList.find((t) => t.orgNumber === org)?.name ?? org;
   const record = (
@@ -755,6 +758,7 @@ export const mockFetch = (
         return json({ title: 'Hemmeligheten mangler en verdi', status: 400 }, 400);
       const name = decodeURIComponent(secret[1] ?? '');
       secrets.add(name);
+      secretChanges.set(name, new Date().toISOString());
       record('alle', 'Lagret hemmelighet', name, reason);
       return new Response(null, { status: 204 });
     }
@@ -949,6 +953,11 @@ export const mockFetch = (
     if (queueReply) return queueReply;
     const modelReply = modelRoute(path, method, reason, body);
     if (modelReply) return modelReply;
+    if (/^\/operator\/(demos(\/|$)|recordings\/|demo-settings$)/.test(path)) {
+      demos ??= import('./screens/demos/mock').then((m) => m.demosMock());
+      const demoReply = await (await demos)(path, method, reason, body);
+      if (demoReply) return demoReply;
+    }
     const engineReply = searchEngines(path, method, reason, body);
     if (engineReply) return engineReply;
     const configReply = configRoute(path, url.search, method, reason, body);
@@ -1179,6 +1188,34 @@ export const mockFetch = (
       return timeline[1] === '999888777' && timeline[2] === exampleTimeline.id
         ? json(exampleTimeline)
         : notFound();
+    }
+    if (path === '/operator/secrets' && method === 'GET') {
+      const users = new Map<string, { kind: string; id: string }[]>();
+      for (const entry of configs.get(endpointKey) ?? []) {
+        const spec = (entry.spec ?? {}) as {
+          auth?: { secret?: string };
+          keys?: Record<string, string>;
+        };
+        for (const ref of [spec.auth?.secret, ...Object.values(spec.keys ?? {})]) {
+          const name = ref?.startsWith('secret://platform/')
+            ? ref.slice('secret://platform/'.length)
+            : undefined;
+          if (name)
+            users.set(name, [
+              ...(users.get(name) ?? []),
+              { kind: 'model-endpoint', id: String(entry.id) },
+            ]);
+        }
+      }
+      return json({
+        data: [...new Set([...secrets, ...users.keys()])].sort().map((name) => ({
+          name,
+          ref: `secret://platform/${name}`,
+          set: secrets.has(name),
+          ...(secretChanges.has(name) ? { changedAt: secretChanges.get(name) } : {}),
+          usedBy: users.get(name) ?? [],
+        })),
+      });
     }
     if (path === '/operator/apis' && method === 'GET')
       return json({

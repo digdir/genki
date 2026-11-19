@@ -142,6 +142,22 @@ describe('knowledge catalog', () => {
   });
 });
 
+describe('endpoints without a key', () => {
+  const open = (adapter: KnowledgeAdapter) =>
+    parseKnowledgeCatalog(
+      { endpoints: { main: { engine: 'stub', baseURL: 'https://s.example' } }, datasets: [] },
+      [adapter],
+    );
+
+  it('an engine that searches open endpoints takes one without auth, and every other engine still needs auth', () => {
+    const keyed = open(stub().adapter);
+    const openEngine = open({ ...stub().adapter, requiresAuth: false });
+
+    expect(!keyed.ok && keyed.errors.map((e) => e.path)).toEqual(['endpoints.main.auth']);
+    expect(openEngine.ok).toBe(true);
+  });
+});
+
 describe('knowledge catalog addresses', () => {
   it('refuses an address without http or https, such as a bare host:port', () => {
     for (const baseURL of ['search.example.no:8108', 'ftp://search.example.no']) {
@@ -472,16 +488,20 @@ describe('source links from the catalog', () => {
       search: async (_d, requests) =>
         requests.map(() => ({
           hits: [
-            hit('330296'),
-            hit('330297', 'digdir://doc/330297'),
+            hit('88642'),
+            hit('10', 'digdir://doc/10'),
+            hit('364', 'https://kudos.dfo.no/dokument/364'),
             hit('4711', 'https://a.no/4711'),
           ],
         })),
-      fetch: async () => [hit('330296')],
-      range: async () => [hit('330296')],
+      fetch: async () => [hit('88642'), hit('364')],
+      range: async () => [hit('10')],
       facets: async () => ({}),
       documents: async () => ({
-        documents: [{ id: '330296', title: 'Tildelingsbrev 2021', fields: {} }],
+        documents: [
+          { id: '88642', title: 'Tildelingsbrev 2021', fields: {} },
+          { id: '364', title: 'Tildelingsbrev 2021', fields: {} },
+        ],
       }),
     }),
   };
@@ -503,23 +523,34 @@ describe('source links from the catalog', () => {
     secrets: envSecrets({}),
   });
   const search = 'https://kudos.dfo.no/dokumenter?query=Tildelingsbrev%202021';
+  const redirected = 'https://kudos.dfo.no/dokument/9c5070e4-d227-4228-9c3d-9dce48c625ae';
+  const heldByFile = 'https://kudos.dfo.no/dokument/2216a4b9-b486-4c41-a496-c0f8fa372488';
 
-  it('links retired numeric ids to a Kudos title search only for a dataset marked kudos-legacy', async () => {
+  it('links old Kudos numbers to their document by UUID, and the rest to a title search, only for a dataset marked kudos-legacy', async () => {
     const kudosPort = linked.open({ kind: 'dataset', id: 'digdir/kudos' }, context());
     const other = linked.open({ kind: 'dataset', id: 'arkiv/saker' }, context());
 
-    const [plain, pinned, own] = (await kudosPort.search({ query: 'x' })).hits;
-    expect(plain?.url).toBe(search);
-    expect(pinned?.url).toBe(search);
+    const [plain, pinned, unresolved, own] = (await kudosPort.search({ query: 'x' })).hits;
+    expect(plain?.url).toBe(redirected);
+    expect(pinned?.url).toBe(heldByFile);
+    expect(unresolved?.url).toBe(search);
     expect(own?.url).toBe('https://a.no/4711');
-    expect((await kudosPort.fetch(['330296-0']))[0]?.url).toBe(search);
-    expect((await kudosPort.range('330296', 0, 1))[0]?.url).toBe(search);
-    expect((await kudosPort.documents?.({}))?.documents[0]?.url).toBe(search);
+    const [batched] = await kudosPort.searchMany([{ query: 'x' }]);
+    expect(batched?.hits.map((h) => h.url)).toEqual([redirected, heldByFile, search, own?.url]);
+    expect((await kudosPort.fetch(['88642-0', '364-0'])).map((h) => h.url)).toEqual([
+      redirected,
+      search,
+    ]);
+    expect((await kudosPort.range('10', 0, 1))[0]?.url).toBe(heldByFile);
+    expect((await kudosPort.documents?.({}))?.documents.map((d) => d.url)).toEqual([
+      redirected,
+      search,
+    ]);
 
     const [bare, internal, kept] = (await other.search({ query: 'x' })).hits;
     expect(bare).not.toHaveProperty('url');
-    expect(internal?.url).toBe('digdir://doc/330297');
-    expect(kept?.url).toBe('https://a.no/4711');
+    expect(internal?.url).toBe('digdir://doc/10');
+    expect(kept?.url).toBe('https://kudos.dfo.no/dokument/364');
     expect((await other.documents?.({}))?.documents[0]).not.toHaveProperty('url');
   });
 
@@ -541,5 +572,48 @@ describe('source links from the catalog', () => {
     );
 
     expect(parsed.ok).toBe(false);
+  });
+});
+
+describe('listing documents through the router', () => {
+  const engine = (listing?: { query: boolean; sort: ('title' | 'year' | 'updated')[] }) => {
+    const listed: unknown[] = [];
+    const { adapter } = stub();
+    const connect = adapter.connect.bind(adapter);
+    const listingAdapter: typeof adapter = {
+      ...adapter,
+      connect: (endpoint) => ({
+        ...connect(endpoint),
+        documents: async (_d, request) => {
+          listed.push(request);
+          return { documents: [], found: 0 };
+        },
+        ...(listing ? { documentListing: () => listing } : {}),
+      }),
+    };
+    const port = router(listingAdapter).open({ kind: 'dataset', id: 'digdir/kudos' }, context());
+    return { port, listed };
+  };
+
+  it('refuses a title search or a sort the engine does not declare, before the engine sees it', async () => {
+    const { port, listed } = engine();
+
+    await expect(port.documents?.({ query: 'brev' })).rejects.toMatchObject({
+      code: 'unsupported',
+    });
+    await expect(
+      port.documents?.({ sort: { key: 'year', direction: 'asc' } }),
+    ).rejects.toMatchObject({ code: 'unsupported' });
+    expect(port.info().documentListing).toBeUndefined();
+    expect(listed).toEqual([]);
+  });
+
+  it('passes a declared title search on trimmed, and a declared sort as asked', async () => {
+    const { port, listed } = engine({ query: true, sort: ['year'] });
+
+    await port.documents?.({ query: '  brev  ', sort: { key: 'year', direction: 'desc' } });
+
+    expect(port.info().documentListing).toEqual({ query: true, sort: ['year'] });
+    expect(listed[0]).toMatchObject({ query: 'brev', sort: { key: 'year', direction: 'desc' } });
   });
 });

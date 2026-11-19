@@ -1,4 +1,4 @@
-import { Alert, Button, Heading, Spinner, Tag } from '@digdir/designsystemet-react';
+import { Alert, Button, Heading, Tag } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
 import { useEffect, useRef, useState } from 'react';
 import { ApiError, type ApiClient } from '../../api';
@@ -10,6 +10,7 @@ import type {
   SwitchMethod,
 } from '../../api/search-engines';
 import { ApiCallLink } from '../../components/ApiCall';
+import { BusyButton } from '../../components/BusyButton';
 import { DataLocationTag } from '../../components/DataLocationTag';
 import { NotDecided } from '../../components/NotDecided';
 import { reasonProblem, ReasonField } from '../../components/ReasonField';
@@ -26,6 +27,7 @@ import {
   verdictColors,
   verdictLabels,
 } from '../../data/search-engines';
+import { backoffDelay } from './backoff';
 import { useT, type T } from '../../i18n';
 import { admissionRunsOutSoon } from './admission';
 
@@ -91,6 +93,7 @@ export const EngineSwitch = ({
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState('');
+  const [pollFailures, setPollFailures] = useState(0);
 
   const dest = engines.find((e) => e.id === target) ?? (targets[0] as SearchEngineInfo);
   const sameModel = canCopy(now, dest);
@@ -108,23 +111,27 @@ export const EngineSwitch = ({
   useEffect(() => {
     if (!sw || (sw.state !== 'running' && sw.state !== 'comparing' && sw.state !== 'activating'))
       return;
-    const timer = setTimeout(() => {
-      api.searchEngines.getSwitch(tenant, datasetId, sw.id).then(
-        (next) => {
-          // Activating into the knowledge database ends once the refresh has run and the catalog names it.
-          if (sw.state === 'activating' && next.state === 'active') {
-            onClose({ kind: 'activated', target: dest.title });
-            return;
-          }
-          setSw(next);
-          if (next.state === 'comparing' || next.state === 'ready')
-            setStep((s) => (s === 3 ? 4 : s));
-        },
-        () => undefined,
-      );
-    }, pollMs);
+    const timer = setTimeout(
+      () => {
+        api.searchEngines.getSwitch(tenant, datasetId, sw.id).then(
+          (next) => {
+            // Activating into the knowledge database ends once the refresh has run and the catalog names it.
+            if (sw.state === 'activating' && next.state === 'active') {
+              onClose({ kind: 'activated', target: dest.title });
+              return;
+            }
+            setPollFailures(0);
+            setSw(next);
+            if (next.state === 'comparing' || next.state === 'ready')
+              setStep((s) => (s === 3 ? 4 : s));
+          },
+          () => setPollFailures((n) => n + 1),
+        );
+      },
+      backoffDelay(pollMs, pollFailures),
+    );
     return () => clearTimeout(timer);
-  }, [api, tenant, datasetId, sw, pollMs, onClose, dest.title]);
+  }, [api, tenant, datasetId, sw, pollMs, pollFailures, onClose, dest.title]);
 
   const act = async (work: () => Promise<void>) => {
     setBusy(true);
@@ -494,9 +501,14 @@ export const EngineSwitch = ({
             <Button variant="secondary" onClick={() => goStep(1)}>
               {t('common.back')}
             </Button>
-            <Button variant="primary" loading={busy} onClick={() => void start()}>
+            <BusyButton
+              variant="primary"
+              busy={busy}
+              busyLabel={t('searchEngine.swStarting')}
+              onClick={() => void start()}
+            >
               {t('searchEngine.swStart')}
-            </Button>
+            </BusyButton>
             <ApiCallLink
               call={{
                 action: t('searchEngine.swStart'),
@@ -542,14 +554,15 @@ export const EngineSwitch = ({
                 </p>
               )}
               <div className="actions">
-                <Button
+                <BusyButton
                   variant="secondary"
                   data-size="sm"
-                  loading={busy}
+                  busy={busy}
+                  busyLabel={t('searchEngine.swReadmitting')}
                   onClick={() => void readmit()}
                 >
                   {t('searchEngine.swReadmit')}
-                </Button>
+                </BusyButton>
               </div>
             </div>
           ) : null}
@@ -577,12 +590,14 @@ export const EngineSwitch = ({
             </Alert>
           ) : null}
           {running ? (
-            <span className="engine-leave subtle small-text">
-              <Spinner aria-hidden="true" data-size="xs" />
-              {t('searchEngine.swMayClose')}
-            </span>
+            <span className="engine-leave subtle small-text">{t('searchEngine.swMayClose')}</span>
           ) : null}
         </div>
+      ) : null}
+      {pollFailures > 0 ? (
+        <p className="meta" role="status">
+          {t('searchEngine.swPollRetrying')}
+        </p>
       ) : null}
 
       {step === 4 ? (
@@ -609,7 +624,6 @@ export const EngineSwitch = ({
           ) : null}
           {!comparison && !compared ? (
             <span className="engine-leave subtle" role="status">
-              <Spinner aria-hidden="true" data-size="xs" />
               {t('searchEngine.swTesting')}
             </span>
           ) : null}
@@ -738,7 +752,6 @@ export const EngineSwitch = ({
           ) : null}
           {sw?.state === 'activating' ? (
             <span className="engine-leave subtle" role="status">
-              <Spinner aria-hidden="true" data-size="xs" />
               {t('searchEngine.swRefreshing', { engine: dest.title })}
             </span>
           ) : (
@@ -759,9 +772,14 @@ export const EngineSwitch = ({
                 <Button variant="secondary" onClick={() => goStep(4)}>
                   {t('common.back')}
                 </Button>
-                <Button variant="primary" loading={busy} onClick={adopt}>
+                <BusyButton
+                  variant="primary"
+                  busy={busy}
+                  busyLabel={t('searchEngine.swAdopting')}
+                  onClick={adopt}
+                >
                   {t('searchEngine.swAdopt')}
-                </Button>
+                </BusyButton>
                 <ApiCallLink
                   call={{
                     action: t('searchEngine.swAdopt'),

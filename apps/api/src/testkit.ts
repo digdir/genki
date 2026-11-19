@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { refusingArchivedPublishes } from './archived-services.js';
 import { join } from 'node:path';
 import { z } from 'zod';
 import type { Principal } from '@genai/contracts';
@@ -27,10 +28,15 @@ import type { ProcessorRecordCheck } from '@genai/port-model';
 import type { TriggerRunStore } from '@genai/jobs';
 import type { EgressOptions } from '@genai/providers-mcp-client';
 import type { DescriptorRegistry } from '@genai/operations';
-import { envSecrets, type EventLog, type MediaOutputConfig } from '@genai/kernel';
+import {
+  envSecrets,
+  type EventLog,
+  type MediaOutputConfig,
+  type PolicyDecisionPoint,
+} from '@genai/kernel';
 import { callerFrom, createPlatform, platformModules, serviceRequirement } from './composition.js';
 import { actorNames } from './actor-names.js';
-import { InMemoryConfigEntryStore } from './config-store.js';
+import { InMemoryConfigEntryStore, type ConfigEntryStore } from './config-store.js';
 import {
   admitMaskinportenClients,
   maskinportenClientRegistry,
@@ -159,12 +165,14 @@ export const setup = (
     tenantQuota?: PlatformOptions['tenantQuota'];
     lifecycle?: PlatformOptions['lifecycle'];
     organisationName?: PlatformOptions['organisationName'];
+    registeredName?: PlatformOptions['registeredName'];
     settings?: SettingDefinition[];
   } = {},
 ) => {
   let clock = new Date('2026-10-06T10:00:00Z');
   const now = () => clock;
-  const store = new InMemoryDefinitionStore(plugins, now);
+  const stored = new InMemoryDefinitionStore(plugins, now);
+  const store = options.lifecycle ? refusingArchivedPublishes(stored, options.lifecycle) : stored;
   const settings = new SettingsRegistry(options.settings ?? settingDefinitions, now);
   let ids = 0;
   const names = actorNames(new InMemoryConfigEntryStore());
@@ -174,6 +182,7 @@ export const setup = (
     settings,
     now,
     names,
+    ...(options.lifecycle ? { lifecycle: options.lifecycle } : {}),
     newId: () => `id-${++ids}`,
     ...(options.minutes ? { maxSupportMinutes: options.minutes } : {}),
   });
@@ -190,6 +199,7 @@ export const setup = (
       ...(options.tenantQuota ? { tenantQuota: options.tenantQuota } : {}),
       ...(options.lifecycle ? { lifecycle: options.lifecycle } : {}),
       ...(options.organisationName ? { organisationName: options.organisationName } : {}),
+      ...(options.registeredName ? { registeredName: options.registeredName } : {}),
     },
   });
   const send = (path: string, who: string | undefined, init: SendInit = {}) =>
@@ -263,6 +273,8 @@ export interface BootOptions {
   processorRecords?: ProcessorRecordCheck;
   blobStore?: BlobStore;
   fakeKey?: string;
+  demoRecorderKeyDigest?: string;
+  policy?: (inner: PolicyDecisionPoint, configEntries: ConfigEntryStore) => PolicyDecisionPoint;
 }
 
 export const bootPlatform = async (options: BootOptions = {}) => {
@@ -295,12 +307,18 @@ export const bootPlatform = async (options: BootOptions = {}) => {
     ...(options.mediaOutput ? { mediaOutput: options.mediaOutput } : {}),
     ...(options.processorRecords ? { processorRecords: options.processorRecords } : {}),
     ...(options.blobStore ? { blobStore: options.blobStore } : {}),
+    ...(options.demoRecorderKeyDigest
+      ? { demoRecorderKeyDigest: options.demoRecorderKeyDigest }
+      : {}),
     modules: options.modules ?? [...platformModules, onboardingModule, maskinportenClientsModule],
-    policy: altinnPolicy({
-      altinn: createMockAltinnPdp({}).authorization,
-      identities: new InMemoryIdentities(),
-      requirementFor: () => serviceRequirement(resource),
-    }),
+    policy: (options.policy ?? ((inner) => inner))(
+      altinnPolicy({
+        altinn: createMockAltinnPdp({}).authorization,
+        identities: new InMemoryIdentities(),
+        requirementFor: () => serviceRequirement(resource),
+      }),
+      configEntries,
+    ),
     authenticate: async (request) => {
       const person = people[request.headers.get('authorization')?.slice(7) ?? ''];
       if (person) return { principal: person };
@@ -317,6 +335,7 @@ export const bootPlatform = async (options: BootOptions = {}) => {
     extensions: platform.extensions,
     models: platform.models,
     tenants: () => platform.directory.list(),
+    lifecycle: platform.lifecycle,
   });
   const app = createApp('test', {
     platform: {
@@ -327,6 +346,7 @@ export const bootPlatform = async (options: BootOptions = {}) => {
       tenantGate: platform.tenantGate,
       registered: platform.registered,
       caller: platform.caller,
+      unmaskedInput: platform.unmaskedInput,
       tasks: kernelTaskReader(platform.kernel, {
         kind: 'operator',
         issuer: 'platform',

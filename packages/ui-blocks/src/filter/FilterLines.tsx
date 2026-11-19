@@ -103,13 +103,7 @@ const changesOf = (
   return { added, removed };
 };
 
-/**
- * «Filteret svaret bygger på» at the top of Fremgangsmåte (dev-fremgangsmate-1): how many
- * documents the answer read from and used, then each field with what it was asked with, «Alle»
- * when it narrowed nothing, and «Endret siden forrige svar» when the filter changed. A field's
- * chosen values are Tags, a year field's periods text. Not a control: the filter is changed only
- * in the filter.
- */
+/** «Filteret svaret bygger på» at the top of Fremgangsmåte (dev-fremgangsmate-1). Not a control. */
 export const FilterBasis = ({
   selection,
   fields,
@@ -182,7 +176,7 @@ export const FilterBasis = ({
           {changed.length > 0 ? (
             <div className="uib-filter-basis-row">
               <dt>{t('filter.basisChanged')}</dt>
-              <dd>{changed.join(', ')}</dd>
+              <dd>{f.list(changed)}</dd>
             </div>
           ) : null}
         </dl>

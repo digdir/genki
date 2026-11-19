@@ -1,20 +1,8 @@
-import { ChevronLeftIcon } from '@navikt/aksel-icons';
-import {
-  Button,
-  Chip,
-  Field,
-  Fieldset,
-  Heading,
-  Label,
-  Link,
-  Select,
-  Spinner,
-  Tag,
-} from '@digdir/designsystemet-react';
+import { Chip, Field, Fieldset, Heading, Label, Select, Tag } from '@digdir/designsystemet-react';
 import { useEffect, useRef, useState } from 'react';
 import type { ApiClient } from '../../api';
+import { BusyButton } from '../../components/BusyButton';
 import { CopyButton } from '../../components/CopyButton';
-import { Icon } from '../../components/Icon';
 import {
   API_BASE,
   answerSources,
@@ -63,6 +51,15 @@ export interface CodeService {
 const typeOf = (outputKind: string | undefined): CodeServiceType =>
   outputKind === 'fields' ? 'felter' : outputKind === 'document' ? 'dokument' : 'svar';
 
+/** A service's name, with its variant only where two choices share the name. */
+export const serviceOptionLabel = (
+  service: Pick<CodeService, 'id' | 'name'>,
+  all: readonly Pick<CodeService, 'id' | 'name'>[],
+) => {
+  const twin = all.some((other) => other.id !== service.id && other.name === service.name);
+  return twin ? `${service.name} (${service.id.split('__')[1] ?? service.id})` : service.name;
+};
+
 export const liveCodeServices = (
   access: AccessView['services'],
   services: ServiceSummaryView[],
@@ -76,16 +73,6 @@ export const liveCodeServices = (
       type: typeOf(byId.get(a.id)?.outputKind),
     }))
     .sort((a, b) => a.name.localeCompare(b.name, 'nb'));
-};
-
-const BackLink = () => {
-  const t = useT();
-  return (
-    <Link href="#/developer/api" className="int-back">
-      <Icon icon={ChevronLeftIcon} size={18} />
-      {t('devTools.api')}
-    </Link>
-  );
 };
 
 export const LiveCallFromCode = ({
@@ -108,17 +95,29 @@ export const LiveCallFromCode = ({
     },
     [api, tenant],
   );
-  if (state.status === 'loading') return <Loading label={t('integCode.loadingServices')} />;
+  if (state.status === 'loading')
+    return (
+      <div className="stack int">
+        <Heading level={3} data-size="xs">
+          {t('integrations.callFromCode')}
+        </Heading>
+        <Loading
+          label={t('integCode.loadingServices')}
+          shape="detail"
+          headingLevel={4}
+          onRetry={retry}
+        />
+      </div>
+    );
   if (state.status === 'error') return <ErrorState error={state.error} onRetry={retry} />;
   if (!state.data.length)
     return (
       <div className="stack int">
-        <BackLink />
-        <Heading level={1} data-size="md">
+        <Heading level={3} data-size="xs">
           {t('integrations.callFromCode')}
         </Heading>
         <div className="state empty">
-          <Heading level={2} data-size="2xs">
+          <Heading level={4} data-size="2xs">
             {t('integCode.noServices')}
           </Heading>
           <p>{t('integCode.noServicesText')}</p>
@@ -271,9 +270,8 @@ export const CallFromCode = ({
 
   return (
     <div className="stack int">
-      <BackLink />
       <div className="stack-xs int-intro-text">
-        <Heading level={1} data-size="md">
+        <Heading level={3} data-size="xs">
           {t('integrations.callFromCode')}
         </Heading>
         <p className="lead">{t(live ? 'integCode.liveLead' : 'integCode.lead')}</p>
@@ -291,7 +289,7 @@ export const CallFromCode = ({
           >
             {services.map((s) => (
               <Select.Option key={s.id} value={s.id}>
-                {s.name} ({s.id})
+                {serviceOptionLabel(s, services)}
               </Select.Option>
             ))}
           </Select>
@@ -351,7 +349,7 @@ export const CallFromCode = ({
             1
           </span>
           <div className="stack-xs">
-            <Heading level={2} data-size="xs">
+            <Heading level={4} data-size="xs">
               {t('integCode.getToken')}
             </Heading>
             <p className="int-step-text">{step1}</p>
@@ -366,7 +364,7 @@ export const CallFromCode = ({
             2
           </span>
           <div className="stack-sm">
-            <Heading level={2} data-size="xs">
+            <Heading level={4} data-size="xs">
               {step2Title}
             </Heading>
             <p className="int-step-text">{step2}</p>
@@ -381,12 +379,16 @@ export const CallFromCode = ({
             </div>
             {ch !== 'mcp' && !live ? (
               <div className="actions">
-                <Button variant="primary" aria-disabled={trying || undefined} onClick={tryIt}>
+                <BusyButton
+                  variant="primary"
+                  busy={trying}
+                  busyLabel={t('integCode.fetching')}
+                  onClick={tryIt}
+                >
                   {t('integCode.showExample')}
-                </Button>
+                </BusyButton>
                 <span role="status" className="row-wrap">
-                  {trying ? <Spinner aria-hidden data-size="xs" /> : null}
-                  {tryMsg}
+                  {trying ? null : tryMsg}
                 </span>
               </div>
             ) : null}
@@ -397,7 +399,7 @@ export const CallFromCode = ({
             3
           </span>
           <div className="stack-sm">
-            <Heading level={2} data-size="xs">
+            <Heading level={4} data-size="xs">
               {t('integCode.response')}
             </Heading>
             <p className="int-step-text">{step3}</p>
@@ -419,7 +421,7 @@ export const CallFromCode = ({
         </li>
       </ol>
       <section aria-labelledby="feil-h" className="stack-sm">
-        <Heading level={2} data-size="xs" id="feil-h">
+        <Heading level={4} data-size="xs" id="feil-h">
           {t('integCode.errorsHeading')}
         </Heading>
         <dl className="int-errors">
@@ -432,6 +434,27 @@ export const CallFromCode = ({
             </div>
           ))}
         </dl>
+      </section>
+      <section aria-labelledby="api-more-h" className="stack-sm">
+        <Heading level={4} data-size="xs" id="api-more-h">
+          {t('integCode.moreHeading')}
+        </Heading>
+        <ul className="bullets">
+          <li>
+            <a href="#/developer/api/reference">{t('integCode.moreReference')}</a>
+          </li>
+          <li>
+            <a href="#/developer/keys">{t('integCode.moreKeys')}</a>
+          </li>
+          <li>
+            <a href="#/statistics">{t('integCode.moreLimits')}</a>
+          </li>
+          <li>
+            <a href="https://docs.digdir.no/docs/idporten/" target="_blank" rel="noreferrer">
+              {t('integCode.moreIdporten')}
+            </a>
+          </li>
+        </ul>
       </section>
     </div>
   );

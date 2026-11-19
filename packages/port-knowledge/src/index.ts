@@ -10,3 +10,5 @@ export * from './scope.js';
 export * from './schema-labels.js';
 export * from './tombstone.js';
 export * from './conversions.js';
+export * from './parts.js';
+export * from './code-points.js';

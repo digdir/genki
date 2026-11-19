@@ -78,18 +78,43 @@ const judgeFactsOf = (t: T, judge: SinkJudgeInfo) => [
   },
 ];
 
+export type Settled<T> = { ok: true; data: T } | { ok: false; error: unknown };
+
+export const settled = <T,>(promise: Promise<T>): Promise<Settled<T>> =>
+  promise.then(
+    (data) => ({ ok: true, data }),
+    (error: unknown) => ({ ok: false, error }),
+  );
+
+type FlashLink = { link?: { href: string; label: string } };
+
 export type Flash =
-  { kind: 'logged'; text: string; change: LoggedChange } | { kind: 'plain'; text: string };
+  | ({ kind: 'logged'; text: string; change: LoggedChange } & FlashLink)
+  | ({ kind: 'plain'; text: string } & FlashLink);
+
+const FlashText = ({ flash }: { flash: Flash }) => (
+  <>
+    {flash.text}
+    {flash.link ? (
+      <>
+        {' '}
+        <a href={flash.link.href}>{flash.link.label}</a>
+      </>
+    ) : null}
+  </>
+);
 
 export const FlashMessage = ({ flash }: { flash: Flash | null }) => (
   <div aria-live="polite">
     {flash?.kind === 'logged' ? (
       <ChangeLogged by={flash.change.by} at={flash.change.at} reason={flash.change.reason}>
-        {flash.text}
+        <FlashText flash={flash} />
       </ChangeLogged>
     ) : flash ? (
       <Alert data-color="success" data-size="sm">
-        <Paragraph data-size="sm">{flash.text}</Paragraph>
+        <Paragraph data-size="sm">
+          <FlashText flash={flash} />
+        </Paragraph>
       </Alert>
     ) : null}
   </div>

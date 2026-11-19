@@ -3,6 +3,7 @@ export {
   clientProtocolVersion,
   McpClient,
   McpProtocolError,
+  McpToolListError,
   type CallToolResult,
   type RemoteTool,
 } from './client.js';
@@ -26,6 +27,7 @@ export {
   pinTools,
   toolSyncDeadlineMs,
   type ConnectionToolSource,
+  type ToolStamp,
   type SyncResult,
 } from './pinned.js';
 export {

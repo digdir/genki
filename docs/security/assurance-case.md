@@ -154,6 +154,7 @@ These are proposed or decided but not built, and must be closed before productio
 - In the API, the kernel shares the runtime database role with the API's own queries, and deployed apps can still switch back to the owner role ([ADR 0022](../adr/0022-tenant-isolation-in-postgres.md)).
 - The usage in the log of calls outside a run (`outside-run:<tenant>:<day>`) is not in the portal's usage figures ([ADR 0047](../adr/0047-one-governed-path-for-model-operations.md)).
 - Budgets in money are not built ([#24](https://github.com/digdir/genki/issues/24)).
+- A deploy reuses the Docling image under its tree-and-week tag when its build attestation is from `images.yml` on `main`, without tying it to a commit, so someone who may push to the test registry could deploy an older Docling image that workflow built ([Checking an image against the source](README.md#checking-an-image-against-the-source)).
 
 ## Keeping this current
 

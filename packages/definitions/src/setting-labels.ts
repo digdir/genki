@@ -146,9 +146,21 @@ export const settingSchemaLabels: SchemaLabels = {
       label: 'Modell nye tjenester starter med',
       help: 'Modellen nye tjenester starter med. Tomt velger den billigste prisede modellen virksomheten kan bruke.',
     },
+    'models.recommended': {
+      label: 'Anbefalte modeller',
+      help: 'Modellene som merkes som anbefalt der man velger modell. Tomt anbefaler modellen nye tjenester starter med.',
+    },
     'answers.writtenStandard': {
       label: 'Målform i svar',
       help: 'Svar på samme målform som spørsmålet, eller alltid bokmål eller nynorsk.',
+    },
+    'tracing.sampleRate': {
+      label: 'Andel kjøringer som spores',
+      help: 'Hvor stor del av kjøringene som sendes til sporingsverktøyet: alle, en av fire eller en av ti. Kjøringer som feiler, spores alltid.',
+    },
+    'answers.showSources': {
+      label: 'Kilder i svarene',
+      help: 'Vis kildene svaret bygger på. Slått av får den som spør bare svaret, uten kilder og kildehenvisninger.',
     },
     'answers.languageInstructions.nb': {
       label: 'Husstil for svar på bokmål',
@@ -344,9 +356,21 @@ export const settingSchemaLabels: SchemaLabels = {
       label: 'Model new services start with',
       help: 'The model new services start with. Empty picks the cheapest priced model the organisation may use.',
     },
+    'models.recommended': {
+      label: 'Recommended models',
+      help: 'The models marked as recommended where people pick a model. Empty recommends the model new services start with.',
+    },
     'answers.writtenStandard': {
       label: 'Written standard in answers',
       help: 'Answer in the same written standard as the question, or always bokmål or nynorsk.',
+    },
+    'tracing.sampleRate': {
+      label: 'Share of runs traced',
+      help: 'How many of the runs are sent to the tracing tool: all, one in four or one in ten. Failed runs are always traced.',
+    },
+    'answers.showSources': {
+      label: 'Sources in answers',
+      help: 'Show the sources an answer is based on. Turned off, the person asking gets the answer alone, without sources or source markers.',
     },
     'answers.languageInstructions.nb': {
       label: 'House style for answers in bokmål',
@@ -614,10 +638,28 @@ export const settingSchemaLabels: SchemaLabels = {
         en: 'Models',
       },
     },
+    'models.recommended': {
+      'x-group': {
+        nb: 'Modeller',
+        en: 'Models',
+      },
+    },
     'answers.writtenStandard': {
       'x-group': {
         nb: 'Svar',
         en: 'Answers',
+      },
+    },
+    'answers.showSources': {
+      'x-group': {
+        nb: 'Svar',
+        en: 'Answers',
+      },
+    },
+    'tracing.sampleRate': {
+      'x-group': {
+        nb: 'Sporing',
+        en: 'Tracing',
       },
     },
     'answers.languageInstructions.nb': {

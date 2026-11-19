@@ -99,6 +99,7 @@ export const boot = async (
     jobRuns?: JobRuns;
     answer?: string;
     searchOnlyClusters?: string[];
+    tenants?: { orgNumber: string; name: string }[];
   } = {},
 ) => {
   const model = await fakeHttp((body) =>
@@ -159,6 +160,7 @@ export const boot = async (
     plugins: platform.plugins,
     settings: new SettingsRegistry([]),
     extensions: platform.extensions,
+    ...(options.tenants ? { tenants: async () => options.tenants ?? [] } : {}),
   });
   const app = new Hono();
   platform.mount(app, admin);
@@ -366,6 +368,218 @@ describe('model, price and endpoint catalog over the API', () => {
   });
 });
 
+describe('who may search an organisation dataset', () => {
+  const ownDataset = async (
+    call: Awaited<ReturnType<typeof boot>>['call'],
+    searchScope?: string,
+  ) => {
+    await call(`/tenants/${digdir}/catalog/knowledge-endpoint/sok`, 'kari', {
+      method: 'PUT',
+      body: tenantEndpoint,
+    });
+    return call(`/tenants/${digdir}/datasets`, 'kari', {
+      body: {
+        id: 'interne-sider',
+        name: 'Interne sider',
+        residency: 'norway',
+        collection: { endpoint: 'sok', options: { index: 'intranett' } },
+        ...(searchScope ? { searchScope } : {}),
+      },
+    });
+  };
+
+  it('keeps a dataset to its own organisation unless it is opened to all', async () => {
+    const { call, platform } = await boot();
+
+    const created = await ownDataset(call);
+
+    expect(await json(created)).toMatchObject({ searchScope: 'tenant' });
+    expect(platform.knowledge.datasets().get(`${digdir}/interne-sider`)?.tenants).toEqual([digdir]);
+    const theirs = await json<{ data: { fullId: string }[] }>(
+      await call(`/tenants/${other}/datasets`, 'ola'),
+    );
+    expect(theirs.data.map((d) => d.fullId)).not.toContain(`${digdir}/interne-sider`);
+  });
+
+  it('lets every organisation search a dataset opened to all, read only, without its files or skipped documents', async () => {
+    const { call, platform } = await boot();
+    await ownDataset(call);
+
+    const opened = await call(`/tenants/${digdir}/datasets/interne-sider`, 'kari', {
+      method: 'PUT',
+      body: { searchScope: 'all' },
+    });
+
+    expect(await json(opened)).toMatchObject({ searchScope: 'all', name: 'Interne sider' });
+    expect(platform.knowledge.datasets().get(`${digdir}/interne-sider`)?.tenants).toBeUndefined();
+    const theirs = await json<{ data: { fullId: string; editable: boolean }[] }>(
+      await call(`/tenants/${other}/datasets`, 'ola'),
+    );
+    expect(theirs.data.find((d) => d.fullId === `${digdir}/interne-sider`)?.editable).toBe(false);
+    const detail = await json<{ skipped: unknown[]; usedBy: unknown[] }>(
+      await call(
+        `/tenants/${other}/datasets/${encodeURIComponent(`${digdir}/interne-sider`)}`,
+        'ola',
+      ),
+    );
+    expect(detail).toMatchObject({ skipped: [], usedBy: [] });
+    const changed = await call(
+      `/tenants/${other}/datasets/${encodeURIComponent(`${digdir}/interne-sider`)}`,
+      'ola',
+      { method: 'PUT', body: { searchScope: 'tenant' } },
+    );
+    expect(changed.status).toBe(404);
+    const pipelines = await call(
+      `/tenants/${other}/datasets/${encodeURIComponent(`${digdir}/interne-sider`)}/pipelines`,
+      'ola',
+    );
+    expect(pipelines.status).toBe(404);
+  });
+
+  it("never shows another organisation's dataset history or change reasons", async () => {
+    const { call } = await boot();
+    await ownDataset(call, 'all');
+    const full = `${digdir}/interne-sider`;
+
+    const catalog = await json<{ data: Record<string, unknown>[] }>(
+      await call(`/tenants/${other}/catalog?kind=dataset`, 'ola'),
+    );
+    const theirs = await json<{ data: unknown[] }>(
+      await call(
+        `/tenants/${other}/building-blocks/dataset/${encodeURIComponent(full)}/versions`,
+        'ola',
+      ),
+    );
+    const owners = await json<{ data: unknown[] }>(
+      await call(
+        `/tenants/${digdir}/building-blocks/dataset/${encodeURIComponent(full)}/versions`,
+        'kari',
+      ),
+    );
+
+    const shown = catalog.data.find((i) => i.id === full);
+    expect(shown).toMatchObject({ id: full, scope: digdir });
+    expect(shown).not.toHaveProperty('by');
+    expect(shown).not.toHaveProperty('at');
+    expect(shown).not.toHaveProperty('reason');
+    expect(theirs.data).toEqual([]);
+    expect(owners.data).toContainEqual(expect.objectContaining({ reason: 'Testendring' }));
+  });
+
+  it("shows another organisation's dataset without the owner's pipeline runs", async () => {
+    const { call } = await boot();
+    await ownDataset(call, 'all');
+    const full = encodeURIComponent(`${digdir}/interne-sider`);
+    const saved = await call(`/tenants/${digdir}/datasets/interne-sider/pipelines`, 'kari', {
+      body: {
+        id: 'nettsider',
+        name: 'Nettsider',
+        source: { kind: 'website', sitemap: 'https://www.example.no/sitemap.xml' },
+      },
+    });
+    expect(saved.status).toBe(201);
+
+    const owners = await json<Record<string, unknown>>(
+      await call(`/tenants/${digdir}/datasets/interne-sider`, 'kari'),
+    );
+    const theirs = await json<Record<string, unknown>>(
+      await call(`/tenants/${other}/datasets/${full}`, 'ola'),
+    );
+    const listed = await json<{ data: Record<string, unknown>[] }>(
+      await call(`/tenants/${other}/datasets`, 'ola'),
+    );
+
+    expect(owners).toMatchObject({ source: 'website' });
+    expect(theirs).toMatchObject({
+      state: owners.state,
+      source: 'none',
+      lastExecution: null,
+      nextRunAt: null,
+      skipped: [],
+    });
+    expect(listed.data.find((d) => d.fullId === `${digdir}/interne-sider`)).toMatchObject({
+      source: 'none',
+      lastExecution: null,
+      nextRunAt: null,
+      updatedAt: null,
+    });
+  });
+
+  it('names the organisation that owns each dataset the caller may see', async () => {
+    const { call } = await boot({
+      tenants: [
+        { orgNumber: digdir, name: 'Digitaliseringsdirektoratet' },
+        { orgNumber: other, name: 'Annen etat' },
+      ],
+    });
+    await ownDataset(call, 'all');
+
+    const listed = await json<{ data: Record<string, unknown>[] }>(
+      await call(`/tenants/${other}/datasets`, 'ola'),
+    );
+    const detail = await json<Record<string, unknown>>(
+      await call(
+        `/tenants/${other}/datasets/${encodeURIComponent(`${digdir}/interne-sider`)}`,
+        'ola',
+      ),
+    );
+
+    const owner = { tenant: digdir, name: 'Digitaliseringsdirektoratet' };
+    expect(listed.data.find((d) => d.fullId === `${digdir}/interne-sider`)?.owner).toEqual(owner);
+    expect(detail.owner).toEqual(owner);
+  });
+
+  it("gives no owner of another organisation's dataset that is not opened to all, since it is not shown", async () => {
+    const { call } = await boot({
+      tenants: [{ orgNumber: digdir, name: 'Digitaliseringsdirektoratet' }],
+    });
+    await ownDataset(call);
+
+    const listed = await json<{ data: Record<string, unknown>[] }>(
+      await call(`/tenants/${other}/datasets`, 'ola'),
+    );
+    const detail = await call(
+      `/tenants/${other}/datasets/${encodeURIComponent(`${digdir}/interne-sider`)}`,
+      'ola',
+    );
+
+    expect(listed.data.map((d) => d.fullId)).not.toContain(`${digdir}/interne-sider`);
+    expect(detail.status).toBe(404);
+  });
+
+  it('gives a null owner name when genki does not know the organisation', async () => {
+    const { call } = await boot();
+    await ownDataset(call);
+
+    const listed = await json<{ data: Record<string, unknown>[] }>(
+      await call(`/tenants/${digdir}/datasets`, 'kari'),
+    );
+
+    expect(listed.data.find((d) => d.fullId === `${digdir}/interne-sider`)?.owner).toEqual({
+      tenant: digdir,
+      name: null,
+    });
+  });
+
+  it('refuses a search scope on a platform dataset or one it does not know', async () => {
+    const { call } = await boot();
+
+    const unknown = await ownDataset(call, 'everyone');
+    const platformOne = await call('/operator/datasets', 'drift', {
+      body: {
+        id: 'apen',
+        name: 'Åpen',
+        residency: 'norway',
+        collection: { endpoint: 'typesense', options: {} },
+        searchScope: 'all',
+      },
+    });
+
+    expect(unknown.status).toBe(400);
+    expect(JSON.stringify(await json(platformOne))).toContain('spec.searchScope');
+  });
+});
+
 describe('tenant catalog entries', () => {
   it('lets a tenant bring its own search endpoint with its own secret and keeps the dataset private', async () => {
     const { call, platform } = await boot();
@@ -547,6 +761,31 @@ describe('tenant catalog entries', () => {
   });
 });
 
+describe('the dataset list', () => {
+  it("counts only the tenant's own services that read each dataset", async () => {
+    const { platform, call } = await boot();
+    const reading = (tenant: string, id: string) =>
+      service({ tenant, id, spec: { knowledge: { datasets: [{ dataset: 'digdir/kudos' }] } } });
+    for (const [tenant, id] of [
+      [digdir, 'svar'],
+      [digdir, 'svar-to'],
+      [other, 'svar-annen'],
+    ] as const)
+      expect(
+        (await platform.definitions.publish(reading(tenant, id), 'test', 'test', files)).ok,
+      ).toBe(true);
+    const countOf = async (tenant: string, who: string) =>
+      (
+        await json<{ data: { id: string; usedByCount: number }[] }>(
+          await call(`/tenants/${tenant}/datasets`, who),
+        )
+      ).data.find((d) => d.id === 'digdir/kudos')?.usedByCount;
+
+    expect(await countOf(digdir, 'kari')).toBe(2);
+    expect(await countOf(other, 'ola')).toBe(1);
+  });
+});
+
 describe('ingestion pipelines', () => {
   const pipeline = {
     id: 'nettsider',
@@ -566,6 +805,26 @@ describe('ingestion pipelines', () => {
     expect(created.status).toBe(201);
     expect([executed.status, removed.status]).toEqual([404, 404]);
     expect(executed.headers.get('content-type')).toContain('application/problem+json');
+  });
+
+  it("never shows who at the platform started a platform dataset's last run to an organisation", async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('offline'));
+    const { call } = await boot();
+    const base = `/operator/datasets/${encodeURIComponent('digdir/kudos')}/pipelines`;
+    await call(base, 'drift', { body: pipeline });
+    await call(`${base}/nettsider/execute`, 'drift', { body: {} });
+
+    const listed = await json<{ data: { id: string; lastExecution: unknown }[] }>(
+      await call(`/tenants/${other}/datasets`, 'ola'),
+    );
+    const kudos = listed.data.find((d) => d.id === 'digdir/kudos');
+    fetchSpy.mockRestore();
+
+    expect(kudos?.lastExecution).toEqual(
+      expect.objectContaining({ startedAt: expect.any(String) }),
+    );
+    expect(kudos?.lastExecution).not.toHaveProperty('startedBy');
+    expect(kudos?.lastExecution).not.toHaveProperty('startedByName');
   });
 
   it('pipeline versions mark the version that removed the pipeline as deleted', async () => {
@@ -657,6 +916,35 @@ describe('ingestion pipelines', () => {
     });
   });
 
+  it('clears the description of a dataset when a PUT sends it as null', async () => {
+    const { call } = await boot();
+    await call(`/tenants/${digdir}/catalog/knowledge-endpoint/sok`, 'kari', {
+      method: 'PUT',
+      body: tenantEndpoint,
+    });
+    await call(`/tenants/${digdir}/datasets`, 'kari', {
+      body: {
+        id: 'veiledere',
+        name: 'Veiledere',
+        description: 'Gammel tekst',
+        endpoint: 'sok',
+        residency: 'eu',
+      },
+    });
+
+    const cleared = await call(`/tenants/${digdir}/datasets/veiledere`, 'kari', {
+      method: 'PUT',
+      body: { description: null },
+    });
+    const read = await json<Record<string, unknown>>(
+      await call(`/tenants/${digdir}/datasets/veiledere`, 'kari'),
+    );
+
+    expect(cleared.status).toBe(200);
+    expect(read).toMatchObject({ name: 'Veiledere' });
+    expect(read).not.toHaveProperty('description');
+  });
+
   it('creates a dataset from the portal shape with a slug id and merges name and description on PUT', async () => {
     const { call } = await boot();
     await call(`/tenants/${digdir}/catalog/knowledge-endpoint/sok`, 'kari', {
@@ -689,7 +977,7 @@ describe('ingestion pipelines', () => {
       description: 'Veiledere for søkere',
       residency: 'eu',
       index: { endpoint: `${digdir}/sok` },
-      source: 'none',
+      source: 'endpoint',
       lastExecution: null,
     });
     expect(

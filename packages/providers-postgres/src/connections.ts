@@ -56,4 +56,25 @@ export class PostgresConnections implements ConnectionRegistry {
       ),
     );
   }
+
+  async update(
+    tenant: string,
+    id: string,
+    change: (state: ConnectionState) => ConnectionState,
+  ): Promise<ConnectionState | undefined> {
+    return withTenant(this.pool, tenant, async (client) => {
+      const found = await client.query<{ state: ConnectionState }>(
+        'select state from tool_connections where tenant = $1 and id = $2 for update',
+        [tenant, id],
+      );
+      const state = found.rows[0]?.state;
+      if (!state) return undefined;
+      const next = change(state);
+      await client.query(
+        'update tool_connections set state = $3, updated_at = now() where tenant = $1 and id = $2',
+        [tenant, id, JSON.stringify(next)],
+      );
+      return next;
+    });
+  }
 }

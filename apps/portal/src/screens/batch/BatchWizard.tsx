@@ -1,3 +1,4 @@
+import { daysThisMonth } from '../../usage-window';
 import { CheckmarkIcon } from '@navikt/aksel-icons';
 import {
   Alert,
@@ -183,6 +184,7 @@ export const BatchWizard = ({
   const [unpricedWhy, setUnpricedWhy] = useState('');
   const [unpricedError, setUnpricedError] = useState('');
   const [approvalWhy, setApprovalWhy] = useState('');
+  const [jobName, setJobName] = useState('');
   const [approvalError, setApprovalError] = useState('');
   const [busy, setBusy] = useState(false);
   const [flash, setFlash] = useState('');
@@ -201,10 +203,7 @@ export const BatchWizard = ({
     (signal) => api.tenantEffectiveSettings(tenant, signal),
     [api, tenant],
   );
-  const [usage] = useAsync(
-    (signal) => api.usage(tenant, Math.max(new Date().getDate(), 1), signal),
-    [api, tenant],
-  );
+  const [usage] = useAsync((signal) => api.usage(tenant, daysThisMonth(), signal), [api, tenant]);
 
   const known = pick.state === 'ready' ? pick.estimate : undefined;
   const allKnown = !!known && known.items <= known.preview.length;
@@ -288,6 +287,7 @@ export const BatchWizard = ({
           estimate: estimate.id,
           ...(estimate.priced ? { maxCostNok: value } : { maxTokens: Math.round(value) }),
           ...(needsApproval ? { approval: approvalWhy.trim() } : {}),
+          ...(jobName.trim() ? { name: jobName.trim() } : {}),
         },
         estimate.priced
           ? `Startet samlet jobb over ${estimate.items} dokumenter`
@@ -689,6 +689,16 @@ export const BatchWizard = ({
                 </>
               ) : null}
             </div>
+            {estimate ? (
+              <Textfield
+                className="batch-cap"
+                label={t('batchWizard.jobName')}
+                description={t('batchWizard.jobNameHint')}
+                maxLength={120}
+                value={jobName}
+                onChange={(e) => setJobName(e.target.value)}
+              />
+            ) : null}
             {estimate ? (
               <Textfield
                 className="batch-cap"

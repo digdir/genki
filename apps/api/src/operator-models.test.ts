@@ -123,6 +123,38 @@ describe('platform models for operators', () => {
     expect(listed.data.find((e) => e.id === 'gateway')?.spec.auth).toEqual(app);
   });
 
+  it('marks a connection as the AI gateway, keeps the mark on an edit that leaves it out, and clears it on false', async () => {
+    const { send, platform } = await boot();
+    const added = await send('/operator/model-endpoints', 'drift', {
+      body: { ...endpoint, gateway: true },
+      reason,
+    });
+    const gatewayOf = () => platform.catalog.get('model-endpoint', 'sigma2')?.spec.gateway;
+    const marked = gatewayOf();
+    await send('/operator/model-endpoints/sigma2', 'drift', {
+      method: 'PUT',
+      body: endpoint,
+      reason,
+    });
+    const kept = gatewayOf();
+    await send('/operator/model-endpoints/sigma2', 'drift', {
+      method: 'PUT',
+      body: { ...endpoint, gateway: false },
+      reason,
+    });
+    const refused = await send('/operator/model-endpoints', 'drift', {
+      body: { ...endpoint, id: 'other', gateway: 'yes' },
+      reason,
+    });
+
+    expect(added.status).toBe(201);
+    expect([marked, kept, gatewayOf()]).toEqual([true, true, undefined]);
+    expect(refused.status).toBe(400);
+    expect((await json<{ errors: { path: string }[] }>(refused)).errors.map((e) => e.path)).toEqual(
+      ['gateway'],
+    );
+  });
+
   it('refuses a federated app whose tenant is not a GUID or whose scope is not /.default', async () => {
     const { send } = await boot();
     const refused = await send('/operator/model-endpoints', 'drift', {

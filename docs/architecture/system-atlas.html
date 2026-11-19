@@ -1865,9 +1865,9 @@
             summary:
               'A local MCP server that lets coding agents list, read, validate, publish and try services through the API, as the person who logged in.',
             description:
-              "Runs on the developer's machine over stdio and calls the public API only (ADR 0046). The person logs in through the browser with Ansattporten, PKCE and a localhost callback, and the token stays in memory. Tools list services, read a definition as YAML, validate and publish it with a change reason, run the playground with a compared setup, and list and read runs with their timelines. Secrets, keys, rights and operator routes are left out.",
+              "Runs on the developer's machine over stdio and calls the public API only (ADR 0046). The person logs in through the browser with Ansattporten, PKCE and a localhost callback, and the token stays in memory. Tools list services, read a definition as YAML, validate and publish it with a change reason, run the playground with a compared setup, search a dataset as a run does, and list and read runs with their timelines. Secrets, keys, rights and operator routes are left out.",
             responsibilities: [
-              'MCP tools over the definition, playground and task routes',
+              'MCP tools over the definition, playground, dataset search and task routes',
               'Browser login with PKCE and a localhost callback',
               'Validate before publish, and a required change reason',
             ],
@@ -1883,7 +1883,7 @@
             edges: [
               {
                 to: 'api',
-                label: 'Definitions, playground runs and run timelines',
+                label: 'Definitions, playground runs, dataset searches and run timelines',
                 kind: 'http',
                 target: 'http',
                 witness: { file: 'apps/admin-mcp/src/tools.ts', contains: '/definitions/validate' },
@@ -1897,7 +1897,7 @@
               },
             ],
             keywords:
-              'admin mcp coding agent claude code copilot publish validate playground timeline',
+              'admin mcp coding agent claude code copilot publish validate playground timeline search dataset',
             schemas: [],
           },
           {
@@ -2145,6 +2145,7 @@
               {
                 'Frontend extensions': 'conversations, filters, step events, per-document sources',
               },
+              'Stopping a /v1 run for the caller that started it, with its turn kept as stopped',
               'OpenAPI tool endpoints',
             ],
             files: ['packages/adapter-openai/src/app.ts', 'packages/adapter-openai/src/sources.ts'],
@@ -2718,14 +2719,15 @@
               'Fire schedules from one worker at a time through a Postgres advisory lock',
               'Install the knowledge job queues on both servers and reconcile knowledge runs every minute (ADR 0042)',
               'Work knowledge.ingest on the platform server and knowledge.index on the knowledge server, behind admission on the run and the knowledge binding',
-              "Work knowledge.convert, 2 at once, with the text layer - fetch the file through its record, write native output to the native output store, store its pages or the converter's refusal, and send the waiting records' index jobs (ADR 0042)",
+              "Work knowledge.convert, KNOWLEDGE_CONVERT_CONCURRENCY at once (2 by default), with Docling when DOCLING_URL is set and else the text layer - fetch the file through its record, write native output to the native output store, store its pages or the converter's refusal, read a file Docling refuses with the text layer, and send the waiting records' index jobs (ADR 0042)",
+              "Send a replacement run when a run ends with text-layer files, and work knowledge.replace - make the pipeline's records wait on Docling, with convert jobs for the night window (ADR 0042)",
               'Work knowledge.seed - store a conversion for each native output in Blob under one sha256 prefix that has none, with pages from its derivation, skipping files it cannot read (ADR 0042)',
               'Count records waiting on a conversion as open work of their runs, and hand a shared conversion to a waiting run when its sender is cancelled',
               'Work KNOWLEDGE_INDEX_CONCURRENCY knowledge.index and knowledge.fill jobs at once (8 by default), with knowledge pools sized to hold them',
               'Wait out a throttled embedding model in knowledge.index and knowledge.fill, pausing every job on the model, for up to 20 minutes a try',
               'Work knowledge.build and knowledge.fill only inside knowledge.nightWindow, and knowledge.check every night at its start',
               'Work knowledge.drop on the platform server for one generation an engine switch left, never the active one',
-              "Work knowledge.fields on the platform server - write new fields on a dataset's stored documents in every generation holding them, nothing embedded (ADR 0042)",
+              "Work knowledge.fields on the platform server - write new fields, and a url when the fill gives one, on a dataset's stored documents in every generation holding them, nothing embedded (ADR 0042)",
               "End a knowledge run with VACUUM (ANALYZE), and send a run's documents as fill jobs past knowledge.heavyThreshold",
               "Cancel a knowledge run whose document dead letters reach its pipeline's failure budget",
               'Check that the knowledge server is bound to its platform server, and answer /readyz with 503 while it is not',
@@ -2882,7 +2884,7 @@
               },
               {
                 to: 'providers-documents',
-                label: 'Converts documents with the text layer',
+                label: 'Converts documents with the text layer, and what Docling refuses',
                 kind: 'call',
                 target: 'call',
                 witness: { file: 'apps/worker/src/main.ts', imports: '@genai/providers-documents' },
@@ -5737,6 +5739,8 @@
               'Kudos, website and folder loaders',
               'Conversion and chunking: converters return pages, and chunks on the knowledge database name their file, pages and heading path, with ids from document, file, page and position (ADR 0042)',
               'Pages from a DoclingDocument (doclingPages, derivation docling-pages 1), with heading levels from section numbers',
+              "Parts from a DoclingDocument (doclingParts, derivation docling-parts 1) - every item with its regions and its span of the conversion's text, one row a page (ADR 0055); both derivations share one walk (docling-walk.ts)",
+              "The Docling server's client (doclingConverter) - one request per file, its refusals by Docling's failure categories, and the DoclingDocument kept as native output (ADR 0042)",
               'Read stored conversions in index jobs instead of converting, and fetch one file of a record for a convert job (storedConverter, Listing.file)',
               'Phrase extraction with a model',
               'The pipeline spec and its sources, shared by the API and the worker',
@@ -5762,6 +5766,9 @@
               'packages/ingest/src/chunk-places.ts',
               'packages/ingest/src/stored-converter.ts',
               'packages/ingest/src/docling-pages.ts',
+              'packages/ingest/src/docling-parts.ts',
+              'packages/ingest/src/docling-walk.ts',
+              'packages/ingest/src/docling.ts',
             ],
             input: 'Source config',
             output: 'Documents, chunks and phrases',
@@ -6456,6 +6463,8 @@
               'Legacy API-key bridge',
               'Altinn authorization (mocked today)',
               'Altinn actions for parties the token lists without actions',
+              "The organisation's people and their rights from Altinn access management",
+              'Limits on who may use a service (ADR 0060)',
             ],
             files: [
               'packages/identity/src/verify.ts',
@@ -6465,6 +6474,8 @@
               'packages/identity/src/policy.ts',
               'packages/identity/src/mock-ansattporten.ts',
               'packages/identity/src/api-keys.ts',
+              'packages/identity/src/altinn-people.ts',
+              'packages/identity/src/service-access.ts',
             ],
             input: 'Bearer token or API key',
             output: 'Principal + policy decision',
@@ -6520,6 +6531,16 @@
                 witness: {
                   file: 'packages/identity/src/altinn.ts',
                   contains: 'createMockAltinnPdp',
+                },
+              },
+              {
+                to: 'altinn',
+                label: 'People and rights in an organisation (mock until live)',
+                kind: 'mock',
+                target: 'http',
+                witness: {
+                  file: 'packages/identity/src/altinn-people.ts',
+                  contains: 'createMockAltinnAccessManagement',
                 },
               },
             ],
@@ -7038,6 +7059,17 @@
                                     pattern: '^[a-z0-9][a-z0-9-]*\\/[a-z0-9][a-z0-9-]*@[1-9]\\d*$',
                                   },
                                 },
+                                maker: { type: 'string', minLength: 1, maxLength: 100 },
+                                releaseDates: {
+                                  type: 'object',
+                                  propertyNames: { type: 'string', minLength: 1, maxLength: 200 },
+                                  additionalProperties: {
+                                    type: 'string',
+                                    format: 'date',
+                                    pattern:
+                                      '^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$',
+                                  },
+                                },
                               },
                               required: ['source'],
                               additionalProperties: false,
@@ -7068,6 +7100,16 @@
                               pattern: '^secret:\\/\\/[a-z0-9-]+\\/[a-z0-9._-]+$',
                             },
                           },
+                          gateway: { type: 'boolean' },
+                          operator: {
+                            type: 'object',
+                            properties: {
+                              name: { type: 'string', minLength: 1, maxLength: 100 },
+                              region: { type: 'string', minLength: 1, maxLength: 100 },
+                            },
+                            required: ['name'],
+                            additionalProperties: false,
+                          },
                         },
                         required: ['baseURL', 'auth', 'families'],
                         additionalProperties: false,
@@ -7083,6 +7125,7 @@
                           endpoint: { type: 'string', pattern: '^[a-z0-9][a-z0-9._/-]*$' },
                           deployment: { type: 'string', minLength: 1 },
                           family: { type: 'string', minLength: 1 },
+                          maker: { type: 'string', minLength: 1, maxLength: 100 },
                           residency: { type: 'string', enum: ['norway', 'eu', 'global'] },
                           capabilities: {
                             default: [],
@@ -7104,6 +7147,12 @@
                             type: 'integer',
                             exclusiveMinimum: 0,
                             maximum: 9007199254740991,
+                          },
+                          releaseDate: {
+                            type: 'string',
+                            format: 'date',
+                            pattern:
+                              '^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$',
                           },
                           maxOutputTokens: {
                             type: 'integer',
@@ -7715,7 +7764,7 @@
                                 type: 'string',
                                 enum: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
                               },
-                              path: { type: 'string', pattern: '^\\/[A-Za-z0-9/_.{}-]*$' },
+                              path: { type: 'string', pattern: '^\\/[A-Za-z0-9/_.{}:-]*$' },
                               follow: {
                                 type: 'string',
                                 format: 'starts_with',
@@ -7759,7 +7808,7 @@
                               encoding: {
                                 default: 'json',
                                 type: 'string',
-                                enum: ['json', 'binary', 'text', 'ndjson'],
+                                enum: ['json', 'binary', 'text', 'ndjson', 'none'],
                               },
                               headers: {
                                 default: {},
@@ -8285,7 +8334,7 @@
                                 type: 'string',
                                 enum: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
                               },
-                              path: { type: 'string', pattern: '^\\/[A-Za-z0-9/_.{}-]*$' },
+                              path: { type: 'string', pattern: '^\\/[A-Za-z0-9/_.{}:-]*$' },
                               follow: {
                                 type: 'string',
                                 format: 'starts_with',
@@ -8329,7 +8378,7 @@
                               encoding: {
                                 default: 'json',
                                 type: 'string',
-                                enum: ['json', 'binary', 'text', 'ndjson'],
+                                enum: ['json', 'binary', 'text', 'ndjson', 'none'],
                               },
                               headers: {
                                 default: {},
@@ -8583,7 +8632,7 @@
                       type: 'object',
                       properties: {
                         method: { type: 'string', enum: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] },
-                        path: { type: 'string', pattern: '^\\/[A-Za-z0-9/_.{}-]*$' },
+                        path: { type: 'string', pattern: '^\\/[A-Za-z0-9/_.{}:-]*$' },
                         follow: {
                           type: 'string',
                           format: 'starts_with',
@@ -8624,7 +8673,7 @@
                         encoding: {
                           default: 'json',
                           type: 'string',
-                          enum: ['json', 'binary', 'text', 'ndjson'],
+                          enum: ['json', 'binary', 'text', 'ndjson', 'none'],
                         },
                         headers: {
                           default: {},
@@ -8870,11 +8919,12 @@
             summary:
               'Search and fetch over datasets, with grants checked and a timeout on every call.',
             description:
-              'A router over a knowledge catalog maps datasets to endpoints and adapters, so Typesense can be replaced (ADR 0001). A dataset can set links: kudos-legacy, which gives hits and documents with a retired numeric Kudos id a Kudos title search as their url (publicSourceUrl in @genai/contracts); other datasets keep their own url or none.',
+              'A router over a knowledge catalog maps datasets to endpoints and adapters, so Typesense can be replaced (ADR 0001). A dataset can set links: kudos-legacy, which gives hits and documents with an old numeric Kudos id their Kudos page by UUID as their url, from the map of earlier ids, or a Kudos title search where the map has none and the hit has a title (publicSourceUrl in @genai/contracts); other datasets keep their own url or none.',
             responsibilities: [
               'Dataset catalog',
               'Search and fetch with timeouts',
               'Optional document listing by filters or ids, for batch runs over a document set',
+              'The conversion part and unit row types, and offsets counted in code points over NFC text (ADR 0055)',
             ],
             files: [
               'packages/port-knowledge/src/port.ts',
@@ -8882,6 +8932,8 @@
               'packages/port-knowledge/src/catalog.ts',
               'packages/port-knowledge/src/records.ts',
               'packages/port-knowledge/src/conversions.ts',
+              'packages/port-knowledge/src/parts.ts',
+              'packages/port-knowledge/src/code-points.ts',
               'packages/port-knowledge/src/tombstone.ts',
             ],
             input: 'Query + filters',
@@ -9403,7 +9455,7 @@
             summary:
               'Reads usage from sources outside genki, such as an AI gateway, and counts each call once.',
             description:
-              'Holds the gateway usage contract, a fake that keeps its rules, the usage@1 contract suite, the hourly poll and the rule that counts a call once whether genki or the gateway measured it.',
+              'Holds the gateway usage contract, a fake that keeps its rules, the usage@2 contract suite, the hourly poll and the rule that counts a call once whether genki or the gateway measured it.',
             responsibilities: [
               'Usage source interface and gateway usage contract',
               'Fake gateway and contract suite',
@@ -10507,7 +10559,7 @@
             summary:
               "Built-in search engine and index writer in the platform's own Postgres or on the knowledge server.",
             description:
-              "Hybrid search with Norwegian full text and pgvector, fused with RRF in one statement. Datasets are kept apart by id, filters and facets are parameterised SQL, and new generations stay invisible until promoted. It runs in the platform database (ADR 0023), or, for an endpoint set to `connection` knowledge, on the knowledge server through the API's reader pool or the worker's writer and owner pools, never the platform database (ADR 0042). Its setup creates the three knowledge roles, stores the platform server's id there and lets only its two logins connect to the database. On the knowledge server each generation is its own partition with its own HNSW and filter indexes, built standalone and attached; the catalog names the active one. There the API reads only through seven SECURITY DEFINER read functions that refuse a dataset the router did not allow, on a read pool that falls back to the primary when a server lacks the generation or does not answer.",
+              "Hybrid search with Norwegian full text and pgvector, as two statements fused with RRF in TypeScript, so a slow text half keeps the vector hits. Datasets are kept apart by id, filters and facets are parameterised SQL, and new generations stay invisible until promoted. It runs in the platform database (ADR 0023), or, for an endpoint set to `connection` knowledge, on the knowledge server through the API's reader pool or the worker's writer and owner pools, never the platform database (ADR 0042). Its setup creates the three knowledge roles, stores the platform server's id there and lets only its two logins connect to the database. On the knowledge server each generation is its own partition with its own HNSW and filter indexes, built standalone and attached; the catalog names the active one. There the API reads only through seven SECURITY DEFINER read functions that refuse a dataset the router did not allow, on a read pool that falls back to the primary when a server lacks the generation or does not answer.",
             responsibilities: [
               'Text, vector and hybrid search',
               'Filters, facets, fetch and range',
@@ -10521,6 +10573,7 @@
               'packages/providers-pgvector/src/engine.ts',
               'packages/providers-pgvector/src/schema.ts',
               'packages/providers-pgvector/src/sql.ts',
+              'packages/providers-pgvector/src/hybrid.ts',
               'packages/providers-pgvector/src/knowledge-setup.ts',
               'packages/providers-pgvector/src/partitions.ts',
               'packages/providers-pgvector/src/knowledge-writer.ts',
@@ -10915,7 +10968,7 @@
             summary:
               "Brønnøysund's open register; each ministry registers which ministry its agencies are under (ADR 0058).",
             description:
-              "Brønnøysund's open register of units, read nightly for the state's organisation (STAT and ORGL with their parents), under NLOD 2.0 (ADR 0058).",
+              "Brønnøysund's open register of units, read nightly for the state's organisation (STAT and ORGL with their parents), under NLOD 2.0 (ADR 0058). The API also looks up the name of an organisation a person signs in for when the platform knows only its number, and keeps it for a day.",
             responsibilities: [],
             files: [],
             input: '',

@@ -3,7 +3,8 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../App';
 import { mockAnsattporten, type AuthClient } from '../auth';
-import { exampleAccess, mockFetch } from '../mock';
+import { mockFetch } from '../mock';
+import type { AccessMockOptions } from '../mock/access';
 import { expectAccessible, failingFetch, heldFetch, renderAt } from '../test-utils';
 
 beforeAll(() => {
@@ -22,174 +23,431 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-const ready = () => screen.findByText('Hentet fra Altinn i dag kl. 10.52');
-const expander = (name: RegExp) => screen.getByRole('button', { name, expanded: false });
+const peopleReady = () => screen.findByText('Viser 4 av 10');
+const personButton = (name: RegExp) => screen.getByRole('button', { name, expanded: false });
+const servicesList = () => screen.findByRole('list', { name: 'Tjenester' });
+const withAccess = (access: AccessMockOptions) =>
+  mockFetch(undefined, undefined, undefined, undefined, { features: { access } });
 
-describe('Tilgang', () => {
-  it('shows rights from Altinn and lists people with their rights', async () => {
-    const calls: string[] = [];
-    const base = heldFetch(/\/access$/);
-    await renderAt('#/access', async (input, init) => {
-      calls.push(String(input));
-      return base.fetch(input, init);
+const recording = (base: typeof fetch = mockFetch()) => {
+  const calls: { url: string; method: string; body: unknown; reason: string }[] = [];
+  const fetch: typeof globalThis.fetch = async (input, init) => {
+    const headers = new Headers(init?.headers);
+    calls.push({
+      url: String(input),
+      method: init?.method ?? 'GET',
+      body: typeof init?.body === 'string' ? JSON.parse(init.body) : undefined,
+      reason: decodeURIComponent(headers.get('change-reason') ?? ''),
     });
+    return base(input, init);
+  };
+  return { fetch, writes: () => calls.filter((c) => c.method !== 'GET') };
+};
 
+const openService = async (name: string) => {
+  await servicesList();
+  fireEvent.click(screen.getByRole('button', { name: `Endre hvem som kan bruke ${name}` }));
+  return screen.getByRole('group', { name: `Hvem kan bruke ${name}?` });
+};
+
+describe('Tilgang: personer', () => {
+  it('lists the people of the organisation with the rights they hold in Altinn', async () => {
+    await renderAt('#/access');
     expect(await screen.findByRole('heading', { level: 1, name: 'Tilgang' })).toBeTruthy();
-    expect(await screen.findByText('Henter fra Altinn')).toBeTruthy();
-    await base.release();
-    expect((await ready()).getAttribute('role')).toBe('status');
-    expect(calls.some((c) => /\/tenants\/999888777\/access$/.test(c))).toBe(true);
-
-    const altinn = screen.getByRole('link', { name: /Endre i Altinn/ });
-    expect(altinn.getAttribute('target')).toBe('_blank');
-    expect(altinn.textContent).toContain('(åpnes i ny fane)');
-
-    for (const right of [
-      'Bruke tjenester',
-      'Administrere tjenester',
-      'Administrere datasett',
-      'Se forbruk og kostnad',
-    ])
-      expect(screen.getAllByText(right).length).toBeGreaterThan(0);
-    expect(screen.getByText('Viser 10 av 10 personer')).toBeTruthy();
-
-    const per = screen.getByRole('button', { name: /Per Hansen/, expanded: true });
-    expect(per).toBeTruthy();
-    expect(screen.getByText('Gitt av Kari Nordmann i Altinn 2. april 2026.')).toBeTruthy();
-    expect(screen.queryByRole('heading', { name: 'Fikk ikke kontakt med Altinn' })).toBeNull();
+    await peopleReady();
+    expect(screen.getByRole('tab', { name: 'Personer' }).getAttribute('aria-selected')).toBe(
+      'true',
+    );
+    const kari = within(screen.getByRole('list', { name: 'Personer' })).getByRole('button', {
+      name: /Kari Nordmann/,
+    });
+    expect(kari.textContent).toContain(
+      'Bruke tjenestene, Lage og endre tjenester, Forvalte datasett, Se forbruk og kostnad',
+    );
+    expect(
+      screen.getByText(/Rettighetene gis i Altinn\. Her kan dere i tillegg begrense/),
+    ).toBeTruthy();
     expectAccessible();
   });
 
-  it('filters people by name and right, and resets the filter', async () => {
-    await renderAt('#/access');
-    await ready();
-
-    fireEvent.change(screen.getByLabelText('Søk etter person'), { target: { value: 'tilskudd' } });
-    expect(screen.getByText('Viser 3 av 10 personer')).toBeTruthy();
-
-    fireEvent.click(screen.getByRole('radio', { name: 'Ingen rettigheter' }));
-    expect(screen.getByText('Viser 0 av 10 personer')).toBeTruthy();
-    expect(screen.getByText('Ingen personer passer søket')).toBeTruthy();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Nullstill søk og filter' }));
-    expect(screen.getByText('Viser 10 av 10 personer')).toBeTruthy();
-
-    fireEvent.click(screen.getByRole('radio', { name: 'Ingen rettigheter' }));
-    fireEvent.click(expander(/Tor Eriksen/));
-    expect(screen.getByText('Ingen. Trenger «Bruke tjenester» i Altinn.')).toBeTruthy();
+  it('warns on a person chosen for a service who lacks the right to use services', async () => {
+    await renderAt('#/access/people');
+    await peopleReady();
+    const per = personButton(/Per Hansen/);
+    expect(within(per).getByText('Mangler «Bruke tjenester»')).toBeTruthy();
+    expect(within(personButton(/Ingrid Berg/)).queryByText('Mangler «Bruke tjenester»')).toBeNull();
+    fireEvent.click(per);
+    expect(
+      screen.getByText(
+        'Per Hansen står på listen over hvem som får bruke Rapportassistenten, men mangler rettigheten «Bruke tjenester» i Altinn. Uten den kommer Per Hansen ikke inn.',
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText('utvalgt, men kommer ikke inn')).toBeTruthy();
   });
 
-  it('narrows access to a service and adds people from the dialog', async () => {
-    await renderAt('#/access');
-    await ready();
+  it('shows which services a person can use and how', async () => {
+    await renderAt('#/access/people');
+    await peopleReady();
+    fireEvent.click(personButton(/Ola Nordmann/));
+    const rapport = screen.getByRole('link', { name: 'Rapportassistenten' });
+    expect(rapport.getAttribute('href')).toBe('#/access/services?open=rapportassistenten');
+    expect(rapport.parentElement?.textContent).toMatch(/utvalgt 17\. nov.* av Kari Nordmann/);
+    const post = screen.getByRole('link', { name: 'Postsortering' });
+    expect(post.parentElement?.textContent).toContain('alle med «Bruke tjenester»');
+  });
 
+  it('leaves out people who only use services until someone searches for them', async () => {
+    await renderAt('#/access/people');
+    await peopleReady();
+    expect(screen.queryByText('Anne Lund')).toBeNull();
+    expect(
+      screen.getByText(
+        'I tillegg har 6 personer i Testetaten bare «Bruke tjenester». De vises når du søker etter dem.',
+      ),
+    ).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Søk etter person'), { target: { value: 'anne' } });
+    expect(screen.getByText('Viser 1 av 10')).toBeTruthy();
+    expect(screen.getByText('Anne Lund')).toBeTruthy();
+  });
+
+  it('filters people by right and resets a search that finds nobody', async () => {
+    await renderAt('#/access/people');
+    await peopleReady();
+    fireEvent.change(screen.getByLabelText('Vis de som kan'), {
+      target: { value: 'manage-datasets' },
+    });
+    expect(screen.getByText('Viser 2 av 10')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Søk etter person'), { target: { value: 'zzz' } });
+    expect(screen.getByRole('heading', { name: 'Ingen personer passer søket' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Nullstill søket' }));
+    expect(screen.getByText('Viser 4 av 10')).toBeTruthy();
+  });
+
+  it('says only you have access when Altinn lists nobody else', async () => {
+    await renderAt(
+      '#/access',
+      withAccess({
+        people: [{ id: 'p-kari', name: 'Kari Nordmann', rights: ['use-services'] }],
+        limits: [],
+      }),
+    );
+    expect(await screen.findByRole('heading', { name: 'Bare du har tilgang ennå' })).toBeTruthy();
+    const [, inEmptyState] = screen.getAllByRole('button', { name: 'Gi en kollega tilgang' });
+    fireEvent.click(inEmptyState as HTMLElement);
+    expect(await screen.findByLabelText('Hvem skal få tilgang?')).toBeTruthy();
+  });
+
+  it('shows the last rights read, with their time, when Altinn does not answer', async () => {
+    await renderAt('#/access', withAccess({ altinn: 'stale', at: '2026-11-18T07:15:00Z' }));
+    await peopleReady();
+    const alert = screen.getByText('Vi fikk ikke kontakt med Altinn.').parentElement as HTMLElement;
+    expect(alert.textContent).toMatch(/slik de var 18\. nov.* 08[.:]15/);
+    expect(
+      within(alert.parentElement as HTMLElement).getByRole('button', { name: 'Prøv igjen' }),
+    ).toBeTruthy();
+  });
+
+  it('shows no list but a retry when Altinn fails before any list was read', async () => {
+    await renderAt('#/access', withAccess({ altinn: 'down' }));
+    expect(await screen.findByText('Vi fikk ikke kontakt med Altinn.')).toBeTruthy();
+    expect(
+      screen.getByText('Derfor kan vi ikke vise hvem som har hvilke rettigheter akkurat nå.'),
+    ).toBeTruthy();
+    expect(screen.queryByRole('list', { name: 'Personer' })).toBeNull();
+  });
+
+  it('says Altinn is not connected, and shows your own rights, when no connection is configured', async () => {
+    await renderAt('#/access', withAccess({ altinn: 'not-configured' }));
+    expect(
+      await screen.findByRole('heading', { name: 'Altinn er ikke koblet til ennå.' }),
+    ).toBeTruthy();
+    expect(screen.queryByText('Vi fikk ikke kontakt med Altinn.')).toBeNull();
+    expect(screen.getByRole('heading', { level: 2, name: 'Kari Nordmann' })).toBeTruthy();
+  });
+});
+
+describe('Tilgang: tjenester', () => {
+  it('opens the services tab from its own address', async () => {
+    await renderAt('#/access/services');
+    await servicesList();
     expect(screen.getByRole('tab', { name: 'Tjenester' }).getAttribute('aria-selected')).toBe(
       'true',
     );
-    const vedtak = screen.getByRole('button', { name: /Vedtaksutkast/, expanded: true });
-    const item = vedtak.closest('li') as HTMLElement;
-    expect(
-      within(item).getByRole('radio', { name: /Bare utvalgte grupper og personer/ }),
-    ).toHaveProperty('checked', true);
+    expect(screen.getByRole('link', { name: 'Tilgang' }).getAttribute('aria-current')).toBe('page');
+  });
 
-    fireEvent.click(within(item).getByRole('button', { name: 'Legg til gruppe eller person' }));
-    expect(
-      await screen.findByRole('heading', { name: 'Gi tilgang til Vedtaksutkast' }),
-    ).toBeTruthy();
-    const tor = screen.getByRole('checkbox', { name: /Tor Eriksen/ });
-    expect(tor.getAttribute('aria-disabled')).toBe('true');
-    fireEvent.click(tor);
-    expect(screen.getByRole('button', { name: 'Legg til' })).toBeTruthy();
+  it('puts the chosen tab in the address', async () => {
+    await renderAt('#/access');
+    await peopleReady();
+    fireEvent.click(screen.getByRole('tab', { name: 'Tjenester' }));
+    await waitFor(() => expect(window.location.hash).toBe('#/access/services'));
+    await servicesList();
+  });
 
-    fireEvent.change(screen.getByLabelText('Søk'), { target: { value: 'Ingrid' } });
-    fireEvent.click(screen.getByRole('checkbox', { name: /Ingrid Berg/ }));
-    fireEvent.click(screen.getByRole('button', { name: 'Legg til 1' }));
-    expect(await screen.findByText('Ingrid Berg har fått tilgang til Vedtaksutkast.')).toBeTruthy();
+  it('redirects the old tab query to the services tab', async () => {
+    await renderAt('#/access?tab=groups&org=999888777');
+    await waitFor(() => expect(window.location.hash).toBe('#/access/services?org=999888777'));
+  });
 
-    fireEvent.click(within(item).getByRole('button', { name: 'Fjern tilgangen for Ingrid Berg' }));
-    expect(
-      screen.getByText('Tilgangen for Ingrid Berg til Vedtaksutkast er fjernet.'),
-    ).toBeTruthy();
-
-    fireEvent.click(within(item).getByRole('radio', { name: /Alle med «Bruke tjenester»/ }));
-    expect(within(vedtak).getByText('Alle med «Bruke tjenester» (8 personer)')).toBeTruthy();
+  it('lists each service with its status and who may use it', async () => {
+    await renderAt('#/access/services');
+    const list = await servicesList();
+    const rapport = within(list).getByRole('button', {
+      name: 'Endre hvem som kan bruke Rapportassistenten',
+    });
+    expect(rapport.textContent).toContain(
+      'Bare utvalgte: Kari Nordmann, Ola Nordmann og Per Hansen',
+    );
+    const post = within(list).getByRole('button', {
+      name: 'Endre hvem som kan bruke Postsortering',
+    });
+    expect(post.textContent).toContain('Alle med «Bruke tjenester» (9 personer)');
+    expect(post.textContent).toContain('I bruk');
     expectAccessible();
   });
 
-  it('shows locked datasets and edits groups', async () => {
-    await renderAt('#/access?tab=datasets');
-    await ready();
-
-    expect(screen.getByRole('tab', { name: 'Datasett' }).getAttribute('aria-selected')).toBe(
-      'true',
-    );
-    fireEvent.click(expander(/Kudos-rapporter/));
+  it('says every service is open to everyone with the right when none is limited', async () => {
+    await renderAt('#/access/services', withAccess({ limits: [] }));
+    await servicesList();
     expect(
       screen.getByText(
-        'Rapportene i Kudos er offentlige. Alle med «Bruke tjenester» kan søke i dem.',
+        'Alle med «Bruke tjenester» kan bruke alle tjenestene. Åpne en tjeneste for å begrense hvem som får bruke den.',
       ),
     ).toBeTruthy();
-
-    fireEvent.click(screen.getByRole('tab', { name: 'Grupper' }));
-    fireEvent.click(expander(/Prosjekt nynorsk/));
-    expect(screen.getByText('Gruppen har ingen medlemmer ennå.')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Legg til personer' }));
-    expect(
-      await screen.findByRole('heading', { name: 'Legg til i Prosjekt nynorsk' }),
-    ).toBeTruthy();
-    fireEvent.click(screen.getByRole('checkbox', { name: /Line Johansen/ }));
-    fireEvent.click(screen.getByRole('checkbox', { name: /Tor Eriksen/ }));
-    fireEvent.click(screen.getByRole('button', { name: 'Legg til 2' }));
-    expect(await screen.findByText('2 personer lagt til i Prosjekt nynorsk.')).toBeTruthy();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Fjern Tor Eriksen fra Prosjekt nynorsk' }));
-    expect(screen.getByText('Tor Eriksen er fjernet fra Prosjekt nynorsk.')).toBeTruthy();
-    expectAccessible();
   });
 
-  it('adds services from the access API that the design data does not know', async () => {
-    const [first] = exampleAccess.services;
-    if (!first) throw new Error('exampleAccess has no services');
-    const access = {
-      ...exampleAccess,
-      services: [
-        ...exampleAccess.services,
-        { ...first, id: 'postsortering', name: 'Postsortering' },
+  it('says a limit holds for people logging in with Ansattporten only, not for keys, systems, operators or other organisations', async () => {
+    await renderAt('#/access/services', withAccess({ limits: [] }));
+    const mode = await openService('Postsortering');
+    expect(screen.queryByText(/Innlogging med Entra kommer ikke inn/)).toBeNull();
+    fireEvent.click(within(mode).getByRole('radio', { name: 'Bare utvalgte personer' }));
+    expect(
+      screen.getByText(
+        'Gjelder personer som logger inn med Ansattporten. Innlogging med Entra kommer ikke inn. API-nøkler, systemer og driften påvirkes ikke, og heller ikke andre virksomheter som bruker en delt tjeneste.',
+      ),
+    ).toBeTruthy();
+  });
+
+  it('offers nobody to choose for a service, and says why, while Altinn is not connected', async () => {
+    await renderAt('#/access/services', withAccess({ altinn: 'not-configured', limits: [] }));
+    const mode = await openService('Postsortering');
+    fireEvent.click(within(mode).getByRole('radio', { name: 'Bare utvalgte personer' }));
+    expect(screen.getByRole('heading', { name: 'Altinn er ikke koblet til ennå.' })).toBeTruthy();
+    expect(
+      screen.getByText(
+        'Derfor er det ingen å velge blant her ennå. Når Altinn er koblet til, kan du velge hvem som får bruke tjenesten.',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByLabelText('Legg til person')).toBeNull();
+    expect(screen.queryByText('Vi fikk ikke kontakt med Altinn.')).toBeNull();
+  });
+
+  it('says a limit controls who can use a service, not who can read or copy its setup', async () => {
+    await renderAt('#/access/services', withAccess({ limits: [] }));
+    const mode = await openService('Postsortering');
+    fireEvent.click(within(mode).getByRole('radio', { name: 'Bare utvalgte personer' }));
+    expect(
+      screen.getByText(
+        'Begrensningen styrer hvem som kan bruke tjenesten, ikke hvem som kan lese eller kopiere oppsettet. Den som kan åpne prøveområdet, kan kjøre en kopi.',
+      ),
+    ).toBeTruthy();
+  });
+
+  it('limits a service to chosen people and saves it with the reason', async () => {
+    const calls = recording(withAccess({ limits: [] }));
+    await renderAt('#/access/services', calls.fetch);
+    const mode = await openService('Postsortering');
+    fireEvent.click(within(mode).getByRole('radio', { name: 'Bare utvalgte personer' }));
+    fireEvent.change(screen.getByLabelText('Legg til person'), { target: { value: 'p-ingrid' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Legg til' }));
+    expect(screen.getByText('Du har endringer som ikke er lagret')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Hvorfor endrer du dette? (vises i loggen)'), {
+      target: { value: 'Bare arkivet skal sortere post' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Lagre endringene' }));
+    expect(await screen.findByText(/Ingrid Berg kan nå bruke Postsortering\./)).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Se endringen i Logg' }).getAttribute('href')).toBe(
+      '#/log/changes',
+    );
+    expect(calls.writes()).toEqual([
+      expect.objectContaining({
+        url: expect.stringContaining('/access/services/postsortering'),
+        method: 'PUT',
+        body: { mode: 'selected', members: ['p-ingrid'] },
+        reason: 'Bare arkivet skal sortere post',
+      }),
+    ]);
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Lukk Postsortering' }).textContent).toContain(
+        'Bare utvalgte: Ingrid Berg',
+      ),
+    );
+  });
+
+  it('needs a reason of at least ten characters before it saves', async () => {
+    const calls = recording();
+    await renderAt('#/access/services', calls.fetch);
+    const mode = await openService('Rapportassistenten');
+    fireEvent.click(within(mode).getByRole('radio', { name: /Alle med «Bruke tjenester»/ }));
+    fireEvent.change(screen.getByLabelText('Hvorfor endrer du dette? (vises i loggen)'), {
+      target: { value: 'kort' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Lagre endringene' }));
+    expect(screen.getByRole('alert').textContent).toBe('Skriv minst 10 tegn om hvorfor.');
+    expect(calls.writes()).toEqual([]);
+  });
+
+  it('asks before removing a person and marks a person who lacks the right', async () => {
+    await renderAt('#/access/services');
+    await openService('Rapportassistenten');
+    const members = screen.getByRole('list', { name: 'Bare utvalgte personer' });
+    const per = within(members).getByText('Per Hansen').parentElement as HTMLElement;
+    expect(within(per).getByText('Mangler «Bruke tjenester» i Altinn')).toBeTruthy();
+    fireEvent.click(within(per).getByRole('button', { name: 'Fjern Per Hansen' }));
+    const ask = screen.getByRole('alertdialog');
+    expect(ask.textContent).toContain(
+      'Fjerne Per Hansen? Hen kan ikke bruke Rapportassistenten etter at du har lagret.',
+    );
+    fireEvent.click(within(ask).getByRole('button', { name: 'Avbryt' }));
+    expect(within(members).getByText('Per Hansen')).toBeTruthy();
+    fireEvent.click(within(per).getByRole('button', { name: 'Fjern Per Hansen' }));
+    fireEvent.click(
+      within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Fjern Per Hansen' }),
+    );
+    expect(within(members).queryByText('Per Hansen')).toBeNull();
+  });
+
+  it('keeps unsaved changes when someone tries to leave, until they are discarded', async () => {
+    await renderAt('#/access/services');
+    const mode = await openService('Rapportassistenten');
+    fireEvent.click(within(mode).getByRole('radio', { name: /Alle med «Bruke tjenester»/ }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Personer' }));
+    expect(
+      await screen.findByText(
+        'Du har endringer som ikke er lagret. Lagre eller forkast dem før du går videre.',
+      ),
+    ).toBeTruthy();
+    expect(window.location.hash).toBe('#/access/services');
+    fireEvent.click(screen.getByRole('button', { name: 'Gi en kollega tilgang' }));
+    expect(screen.queryByLabelText('Hvem skal få tilgang?')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Forkast' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Personer' }));
+    await waitFor(() => expect(window.location.hash).toBe('#/access/people'));
+  });
+
+  it('shows who may use the services but no way to change it without the right to manage services', async () => {
+    const auth = mockAnsattporten({
+      name: 'Ingrid Berg',
+      organisations: [
+        { orgNumber: '999888777', name: 'Testetaten', actions: ['use-services', 'view-usage'] },
       ],
-    };
-    await renderAt('#/access', mockFetch(undefined, undefined, undefined, undefined, { access }));
-    await ready();
-    expect(screen.getByRole('button', { name: /Postsortering/ })).toBeTruthy();
+    });
+    await auth.login();
+    window.location.hash = '#/access/services';
+    render(<App auth={auth} fetch={mockFetch()} live />);
+    const list = await servicesList();
+    expect(within(list).queryByRole('button')).toBeNull();
+    expect(list.textContent).toContain('Bare utvalgte: Kari Nordmann, Ola Nordmann og Per Hansen');
   });
 
-  it('warns when Altinn cannot be reached and recovers on retry', async () => {
-    let fail = true;
-    const ok = mockFetch();
-    const broken = failingFetch(/\/access$/);
-    await renderAt('#/access', (input, init) => (fail ? broken(input, init) : ok(input, init)));
-
+  it('says no access was changed when the list of limits cannot be fetched', async () => {
+    await renderAt('#/access/services', withAccess({ servicesFail: true }));
     expect(
-      await screen.findByRole('heading', { name: 'Fikk ikke kontakt med Altinn' }),
+      await screen.findByRole('heading', {
+        name: 'Vi fikk ikke hentet hvem som kan bruke tjenestene',
+      }),
     ).toBeTruthy();
-    expect(screen.getByText('Sist hentet i dag kl. 08.14')).toBeTruthy();
-    expect(screen.getByText('Viser 10 av 10 personer')).toBeTruthy();
-    expectAccessible();
-
-    fail = false;
-    fireEvent.click(screen.getByRole('button', { name: 'Prøv igjen' }));
-    await ready();
-    expect(screen.queryByRole('heading', { name: 'Fikk ikke kontakt med Altinn' })).toBeNull();
+    expect(
+      screen.getByText('Tjenesten som holder oversikten svarte ikke. Ingen tilganger er endret.'),
+    ).toBeTruthy();
   });
 
-  it('can force the Altinn warning with altinn=error', async () => {
-    await renderAt('#/access?altinn=error');
+  it('shows a refusal for a 403', async () => {
+    await renderAt('#/access/people', failingFetch(/\/services$/, 403));
+    expect(await screen.findByRole('heading', { name: 'Du har ikke tilgang' })).toBeTruthy();
+  });
+
+  it('keeps the services list on screen when the tab is opened again', async () => {
+    let hold = false;
+    const held = heldFetch(/\/access\/services$/);
+    const base = mockFetch();
+    await renderAt('#/access/services', (input, init) =>
+      hold ? held.fetch(input, init) : base(input, init),
+    );
+    await servicesList();
+    fireEvent.click(screen.getByRole('tab', { name: 'Personer' }));
+    await peopleReady();
+    hold = true;
+    fireEvent.click(screen.getByRole('tab', { name: 'Tjenester' }));
     expect(
-      await screen.findByRole('heading', { name: 'Fikk ikke kontakt med Altinn' }),
+      await screen.findByRole('button', { name: 'Endre hvem som kan bruke Rapportassistenten' }),
     ).toBeTruthy();
-    await screen.findByText('Sist hentet i dag kl. 08.14');
-    fireEvent.click(screen.getByRole('button', { name: 'Prøv igjen' }));
-    await ready();
-    expect(screen.queryByRole('heading', { name: 'Fikk ikke kontakt med Altinn' })).toBeNull();
+    await held.release();
+  });
+});
+
+describe('Tilgang: gi en kollega tilgang', () => {
+  it('writes the Altinn message for the chosen rights instead of granting', async () => {
+    const calls = recording();
+    await renderAt('#/access', calls.fetch);
+    await peopleReady();
+    fireEvent.click(screen.getByRole('button', { name: 'Gi en kollega tilgang' }));
+    expect(
+      await screen.findByText('Velg minst én ting over, så skriver vi meldingen.'),
+    ).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Hvem skal få tilgang?'), {
+      target: { value: 'Ola Nordmann' },
+    });
+    fireEvent.click(screen.getByRole('checkbox', { name: /Lage og endre tjenester/ }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /Se forbruk og kostnad/ }));
+    const message = screen.getByLabelText('Meldingen til tilgangsstyreren') as HTMLTextAreaElement;
+    expect(message.value).toContain(
+      'Kan du gi Ola Nordmann rettighetene «Administrere tjenester» og «Se forbruk og kostnad» for genki i Altinn, på vegne av Testetaten (org.nr. 999 888 777)?',
+    );
+    expect(message.value).toContain('Hilsen Kari Nordmann');
+
+    const writeText = vi.fn(() => Promise.resolve());
+    Object.assign(navigator, { clipboard: { writeText } });
+    fireEvent.click(screen.getByRole('button', { name: 'Kopier meldingen' }));
+    expect(
+      await screen.findByText(
+        'Kopiert. Lim inn meldingen i en e-post eller i Teams til tilgangsstyreren.',
+      ),
+    ).toBeTruthy();
+    expect(writeText).toHaveBeenCalledWith(message.value);
+    const altinn = screen.getByRole('link', { name: /Åpne Altinn \(ny fane\)/ });
+    expect(altinn.getAttribute('target')).toBe('_blank');
+    expect(calls.writes()).toEqual([]);
+  });
+
+  it('says so when the message could not be copied', async () => {
+    await renderAt('#/access');
+    await peopleReady();
+    fireEvent.click(screen.getByRole('button', { name: 'Gi en kollega tilgang' }));
+    fireEvent.click(await screen.findByRole('checkbox', { name: /Bruke tjenestene/ }));
+    Object.assign(navigator, {
+      clipboard: { writeText: vi.fn(() => Promise.reject(new Error('denied'))) },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Kopier meldingen' }));
+    expect(
+      await screen.findByText('Fikk ikke kopiert. Merk teksten over og kopier den selv.'),
+    ).toBeTruthy();
+  });
+
+  it('asks before discarding a typed name in the grant dialog', async () => {
+    await renderAt('#/access');
+    await peopleReady();
+    fireEvent.click(screen.getByRole('button', { name: 'Gi en kollega tilgang' }));
+    fireEvent.change(await screen.findByLabelText('Hvem skal få tilgang?'), {
+      target: { value: 'Ola' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Avbryt' }));
+    expect(screen.getByText('Forkaste det du har skrevet?')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Fortsett å skrive' }));
+    expect((screen.getByLabelText('Hvem skal få tilgang?') as HTMLInputElement).value).toBe('Ola');
+    fireEvent.click(screen.getByRole('button', { name: 'Lukk' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Forkast' }));
+    await waitFor(() => expect(screen.queryByLabelText('Hvem skal få tilgang?')).toBeNull());
   });
 });
 
@@ -238,7 +496,7 @@ describe('Uten tilgang', () => {
 
     const recheck = screen.getByRole('button', { name: 'Sjekk på nytt' });
     fireEvent.click(recheck);
-    expect(screen.getByText('Sjekker Altinn')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Sjekker Altinn' })).toBe(recheck);
     expect(recheck.getAttribute('aria-disabled')).toBe('true');
     await act(() => vi.advanceTimersByTimeAsync(1300));
     await waitFor(() =>

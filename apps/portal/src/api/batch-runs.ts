@@ -77,6 +77,7 @@ export type BatchItemStatus =
 
 export interface BatchRun {
   id: string;
+  name?: string;
   service: string;
   version: number;
   model: string | null;
@@ -156,7 +157,7 @@ export const batchRunsApi = ({ get, request, tenantPath, send }: ApiContext) => 
     start: (
       tenant: string,
       id: string,
-      body: { estimate: string; approval?: string } & BatchCap,
+      body: { estimate: string; approval?: string; name?: string } & BatchCap,
       reason: string,
     ) => request<BatchRun>('POST', runs(tenant, id), body, why(reason)),
     list: async (tenant: string, id: string, signal?: AbortSignal) =>

@@ -16,21 +16,12 @@ import {
   TasklistIcon,
   WrenchIcon,
 } from '@navikt/aksel-icons';
-import {
-  Alert,
-  Button,
-  Field,
-  Label,
-  Spinner,
-  Tag,
-  Textarea,
-  ValidationMessage,
-} from '@digdir/designsystemet-react';
+import { Alert, Button, Tag } from '@digdir/designsystemet-react';
 import { useState } from 'react';
 import { Attachments, mediaUrl, type LoadMedia } from '../../components/Attachments';
 import { Icon, type IconComponent } from '../../components/Icon';
 import { useFormat } from '@genai/i18n/react';
-import { approvalDetails } from '../../data/log';
+import { approvalDetails as defaultApprovalDetails } from '../../data/log';
 import { useT, type PlainKey } from '../../i18n';
 import type { TimelineBlock, TimelineStep } from '../../types';
 import { formatDuration, formatOffset } from './format';
@@ -200,16 +191,6 @@ const Block = ({ block, media }: { block: TimelineBlock; media?: StepMedia | und
   );
 };
 
-export interface ApprovalProps {
-  decision: { ok: boolean; comment: string; by: string; at: string } | undefined;
-  comment: string;
-  error: string;
-  onComment: (value: string) => void;
-  onApprove: () => void;
-  onReject: () => void;
-  details?: [string, string][];
-}
-
 const RawData = ({ id, raw }: { id: string; raw: unknown }) => {
   const t = useT();
   const [shown, setShown] = useState(false);
@@ -233,20 +214,11 @@ const RawData = ({ id, raw }: { id: string; raw: unknown }) => {
   );
 };
 
-const noApproval: ApprovalProps = {
-  decision: undefined,
-  comment: '',
-  error: '',
-  onComment: () => undefined,
-  onApprove: () => undefined,
-  onReject: () => undefined,
-};
-
 export const Steps = ({
   steps,
   isOpen,
   onToggle,
-  approval = noApproval,
+  approvalDetails,
   label,
   idPrefix = '',
   media,
@@ -254,7 +226,7 @@ export const Steps = ({
   steps: TimelineStep[];
   isOpen: (step: TimelineStep, index: number) => boolean;
   onToggle: (index: number) => void;
-  approval?: ApprovalProps;
+  approvalDetails?: [string, string][];
   label?: string;
   idPrefix?: string;
   media?: StepMedia | undefined;
@@ -322,9 +294,6 @@ export const Steps = ({
                       <span className="log-step-title">{step.title}</span>
                       {tag ? (
                         <Tag data-size="sm" data-color={tag[1]}>
-                          {step.state === 'running' ? (
-                            <Spinner aria-hidden="true" data-size="2xs" />
-                          ) : null}
                           {t(tag[0])}
                         </Tag>
                       ) : null}
@@ -355,65 +324,18 @@ export const Steps = ({
                     {step.raw === undefined ? null : (
                       <RawData id={`${idPrefix}${step.id}-raw`} raw={step.raw} />
                     )}
-                    {isApproval && step.state === 'waiting' && !approval.decision ? (
+                    {isApproval && step.state === 'waiting' ? (
                       <div className="log-approval">
                         <dl className="log-kv">
-                          {(approval.details ?? approvalDetails).map(([k, v]) => (
+                          {(approvalDetails ?? defaultApprovalDetails).map(([k, v]) => (
                             <div key={k} className="log-kv-row">
                               <dt>{k}</dt>
                               <dd>{v}</dd>
                             </div>
                           ))}
                         </dl>
-                        <Field>
-                          <Label htmlFor="godkjenning-kommentar">{t('logSteps.comment')}</Label>
-                          <Field.Description>{t('logSteps.commentHelp')}</Field.Description>
-                          <Textarea
-                            id="godkjenning-kommentar"
-                            rows={3}
-                            value={approval.comment}
-                            aria-invalid={approval.error ? true : undefined}
-                            onChange={(e) => approval.onComment(e.target.value)}
-                          />
-                          {approval.error ? (
-                            <ValidationMessage>{approval.error}</ValidationMessage>
-                          ) : null}
-                        </Field>
-                        <div className="actions">
-                          <Button variant="primary" onClick={approval.onApprove}>
-                            {t('logSteps.approve')}
-                          </Button>
-                          <Button variant="secondary" onClick={approval.onReject}>
-                            {t('logSteps.reject')}
-                          </Button>
-                        </div>
-                        <span className="small">{t('logSteps.approvalHelp')}</span>
+                        <span className="small">{t('logSteps.approvalElsewhere')}</span>
                       </div>
-                    ) : null}
-                    {isApproval && approval.decision ? (
-                      <dl className="log-kv">
-                        {(
-                          [
-                            [
-                              t('logSteps.decision'),
-                              approval.decision.ok
-                                ? t('logSteps.approved')
-                                : t('logSteps.rejected'),
-                            ],
-                            [t('logSteps.by'), approval.decision.by],
-                            [t('logSteps.at'), approval.decision.at],
-                            [
-                              t('logSteps.comment'),
-                              approval.decision.comment || t('logSteps.noComment'),
-                            ],
-                          ] as const
-                        ).map(([k, v]) => (
-                          <div key={k} className="log-kv-row">
-                            <dt>{k}</dt>
-                            <dd>{v}</dd>
-                          </div>
-                        ))}
-                      </dl>
                     ) : null}
                   </div>
                 ) : null}

@@ -34,3 +34,27 @@ export const organizationLookup =
       return undefined;
     }
   };
+
+const hour = 60 * 60 * 1000;
+
+export const cachedOrganizationLookup = (
+  lookup: (orgNumber: string) => Promise<Organization | undefined>,
+  { foundMs = 24 * hour, missingMs = 10 * 60 * 1000, now = () => Date.now() } = {},
+) => {
+  const cache = new Map<string, { at: number; value: Organization | undefined }>();
+  const pending = new Map<string, Promise<Organization | undefined>>();
+  return async (orgNumber: string): Promise<Organization | undefined> => {
+    const hit = cache.get(orgNumber);
+    if (hit && now() - hit.at < (hit.value ? foundMs : missingMs)) return hit.value;
+    const running = pending.get(orgNumber);
+    if (running) return running;
+    const asked = lookup(orgNumber)
+      .then((value) => {
+        if (value?.source !== 'platform') cache.set(orgNumber, { at: now(), value });
+        return value;
+      })
+      .finally(() => pending.delete(orgNumber));
+    pending.set(orgNumber, asked);
+    return asked;
+  };
+};

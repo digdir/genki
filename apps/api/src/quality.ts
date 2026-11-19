@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { draftServiceOf, originOf, trialOrigins } from './draft-runner.js';
 import { isInternalService } from '@genai/definitions';
 import type { Principal } from '@genai/contracts';
 import {
@@ -7,17 +8,19 @@ import {
   caseView,
   isCaseSplit,
   isCaseType,
+  runState,
   testCase,
   type CaseSplit,
   type TestSet,
 } from '@genai/eval';
 import type { Context, Env, Hono, Schema } from 'hono';
-import { enterTenant } from './access.js';
+import { enterTenant, refusedRight } from './access.js';
 import { actorNames } from './actor-names.js';
-import { AdminRefused, refusedBy, routeOnly } from './admin.js';
+import { actorOf, AdminRefused, refusedBy, routeOnly } from './admin.js';
 import type { LeaseOptions } from './background-lease.js';
 import { VersionConflict, type ConfigEntry } from './config-store.js';
-import { changeReasonOf } from './http.js';
+import { changeReasonOf, isReasonLongEnough, reasonTooShort } from './http.js';
+import { runFinishedType } from './tenant-run-cancel.js';
 import { improvements, improvementView } from './improvements.js';
 import { t } from './i18n/index.js';
 import { hidesInternalServices, isHiddenService } from './internal-services.js';
@@ -26,6 +29,7 @@ import type { MountDeps, PlatformModuleFactory } from './platform-modules.js';
 import { rightsOf, seesUsage, type Right } from './rights.js';
 import { connectionsCovering } from './trace-connections.js';
 import { datasetsOf } from './trace-datasets.js';
+import { compareCases, isCaseChange, runSide } from './eval-compare.js';
 import {
   runDetail,
   casesIn,
@@ -39,8 +43,17 @@ import {
 
 type Status = 400 | 401 | 403 | 404 | 409 | 422;
 
-const problem = (c: Context, status: Status, title: string, errors: unknown[] = []) =>
-  c.json({ type: 'about:blank', title, status, errors }, status, {
+const compareInvalid = 'urn:genai:problem:eval-compare-invalid';
+const notComparable = 'urn:genai:problem:eval-runs-not-comparable';
+
+const problem = (
+  c: Context,
+  status: Status,
+  title: string,
+  errors: unknown[] = [],
+  type = 'about:blank',
+) =>
+  c.json({ type, title, status, errors }, status, {
     'content-type': 'application/problem+json',
   });
 
@@ -105,6 +118,8 @@ const costless = <
   return shown;
 };
 
+export const evalRunCancelAction = 'platform.eval-run.cancel';
+
 export const serviceDraftActions = [
   'platform.service.draft.save',
   'platform.service.draft.rebase',
@@ -117,6 +132,7 @@ export const createQualityModule =
       onBackground?: (work: Promise<void>) => void;
       leases?: LeaseOptions;
       resumeEveryMs?: number;
+      cancelWaitMs?: number;
     } = {},
   ): PlatformModuleFactory =>
   (deps) => {
@@ -125,6 +141,7 @@ export const createQualityModule =
       options.onBackground?.(work);
     };
     const evals = serviceEval(deps, options.leases, background);
+    const cancelWaitMs = options.cancelWaitMs ?? 2000;
     const isSinkJudge = (evaluator: string) => deps.traceSinks?.isSinkJudge?.(evaluator) ?? false;
     const improving = improvements(deps, evals);
     background(improving.recover());
@@ -139,6 +156,7 @@ export const createQualityModule =
       id: 'quality',
       handlers: {
         ...Object.fromEntries(serviceDraftActions.map((action) => [action, routeOnly])),
+        [evalRunCancelAction]: routeOnly,
         ...improving.handlers,
       },
       mount: <E extends Env, S extends Schema, B extends string>(
@@ -151,6 +169,22 @@ export const createQualityModule =
           return isRecord(parsed) ? parsed : {};
         };
         const reasonOf = (c: Context) => changeReasonOf(c)?.trim() ?? '';
+        const starterOf = async (taskId: string, tenant: string) => {
+          const task = await mountDeps.task(taskId).catch(() => undefined);
+          if (!task || task.principal.tenant !== tenant) return undefined;
+          let parts: unknown;
+          try {
+            parts = JSON.parse(task.principal.id);
+          } catch {
+            return undefined;
+          }
+          if (!Array.isArray(parts) || parts.length !== 2) return undefined;
+          const [issuer, subject] = parts.map(String);
+          return {
+            id: task.principal.id,
+            actor: `${task.principal.kind}:${issuer}:${subject}`,
+          };
+        };
 
         const member = async (c: Context, right?: Right) => {
           const principal = await mountDeps.authenticate(c.req.raw);
@@ -202,6 +236,8 @@ export const createQualityModule =
           latestVersion: (await evals.drafts.latestVersion(tenant, service)) ?? null,
           at: draft.at,
           reason: draft.reason,
+          by: draft.by,
+          byName: (await actorNames(deps.configEntries).nameOf(draft.by)) ?? null,
         });
 
         const openedDraft = async (
@@ -250,6 +286,28 @@ export const createQualityModule =
           };
         };
 
+        const trialRunsByService = async (tenant: string) => {
+          const since = new Date(Date.now() - 7 * 86_400_000).toISOString();
+          const capabilities = deps.tasks.envelopes
+            ? (await deps.tasks.envelopes(tenant, { since, limit: 50_000 })).map(
+                (t) => t.service.capability.id,
+              )
+            : (
+                await Promise.all(
+                  (await deps.tasks.all(tenant))
+                    .filter((t) => t.at >= since)
+                    .map(async (t) => (await deps.task(t.task))?.service.capability.id),
+                )
+              ).filter((id): id is string => id !== undefined);
+          const counts = new Map<string, number>();
+          for (const id of capabilities) {
+            if (!trialOrigins.includes(originOf(id))) continue;
+            const service = draftServiceOf(id);
+            if (service) counts.set(service, (counts.get(service) ?? 0) + 1);
+          }
+          return counts;
+        };
+
         app.get('/tenants/:tenant/service-drafts', async (c) => {
           const guard = await member(c);
           if (guard.response) return guard.response;
@@ -259,6 +317,7 @@ export const createQualityModule =
           );
           const found = drafts.filter((_, i) => !hidden[i]);
           const people = await actorNames(deps.configEntries).namesOf(found.map((d) => d.by));
+          const trials = await trialRunsByService(guard.tenant);
           const data = await Promise.all(
             found.map(async (draft) => {
               const { metadata, spec } = draft.spec.definition;
@@ -274,6 +333,7 @@ export const createQualityModule =
                 at: draft.at,
                 by: draft.by,
                 ...(byName ? { byName } : {}),
+                trialRuns7d: trials.get(draft.id) ?? 0,
               };
             }),
           );
@@ -294,6 +354,36 @@ export const createQualityModule =
           } catch (error) {
             return draftFailed(c, error);
           }
+        });
+
+        app.get('/tenants/:tenant/services/:id/draft/checks', async (c) => {
+          const guard = await member(c);
+          if (guard.response) return guard.response;
+          const service = param(c, 'id');
+          const draft = await evals.draftOf(guard.tenant, service);
+          if (!draft) return problem(c, 404, t('problems.draftNotFound'));
+          if (!deps.publishCheck) return problem(c, 404, t('problems.draftNotFound'));
+          const definition = draft.spec.definition;
+          const metadata =
+            isRecord(definition) && isRecord(definition.metadata) ? definition.metadata : {};
+          const problems =
+            metadata.tenant !== guard.tenant || metadata.id !== service
+              ? [{ path: 'metadata', message: t('problems.draftOtherService') }]
+              : await deps.publishCheck(
+                  definition,
+                  actorOf(guard.principal.actor ?? guard.principal),
+                );
+          const hooks = deps.hookRuntime
+            ? await deps.hookRuntime.directory.forTenant(guard.tenant)
+            : [];
+          const hooksSkipped = hooks.some((h) => h.point === 'on_publish' && h.enabled);
+          return c.json({
+            service,
+            revision: draft.version,
+            ready: problems.length === 0,
+            problems,
+            ...(hooksSkipped ? { hooksSkipped: true } : {}),
+          });
         });
 
         app.put('/tenants/:tenant/services/:id/draft', async (c) => {
@@ -630,6 +720,84 @@ export const createQualityModule =
           }
         });
 
+        app.post('/tenants/:tenant/services/:id/eval-runs/:runId/cancel', async (c) => {
+          const guard = await member(c);
+          if (guard.response) return guard.response;
+          const { tenant, principal } = guard;
+          const service = param(c, 'id');
+          const id = param(c, 'runId');
+          const stored = await deps.evalStores.runs.get(id);
+          if (
+            !stored ||
+            stored.tenant !== tenant ||
+            stored.service !== service ||
+            (await isHiddenService(deps.definitions, tenant, service))
+          )
+            return problem(c, 404, t('problems.evalRunNotFound'));
+          const task = stored.task ? await mountDeps.task(stored.task) : undefined;
+          const own =
+            task?.principal.tenant === tenant &&
+            task.principal.id === JSON.stringify([principal.issuer, principal.subject]);
+          const lacking = refusedRight(
+            c,
+            principal,
+            tenant,
+            own ? 'use-services' : 'manage-services',
+          );
+          if (lacking) return lacking;
+          const reason = reasonOf(c);
+          if (!isReasonLongEnough(reason))
+            return problem(c, 400, 'Ugyldig forespørsel', [
+              { path: 'change-reason', message: reasonTooShort },
+            ]);
+          const answer = (state: string) =>
+            state === 'cancelled'
+              ? c.json({ id, status: 'cancelled' }, 200)
+              : state === 'cancelling'
+                ? c.json({ id, status: 'cancelling' }, 202)
+                : problem(
+                    c,
+                    409,
+                    t('problems.evalRunFinished'),
+                    [{ path: 'status', message: `the run has already ended as ${state}` }],
+                    runFinishedType,
+                  );
+          const before = runState(stored.run);
+          if (before !== 'running' && before !== 'waiting-for-scores') return answer(before);
+          let outcome: Awaited<ReturnType<typeof evals.cancelRun>>;
+          try {
+            const done = await mountDeps.admin.within(
+              principal,
+              evalRunCancelAction,
+              { tenant, reason, service, run: id, own },
+              async () => ({
+                value: await evals.cancelRun(
+                  tenant,
+                  service,
+                  id,
+                  actorOf(principal.actor ?? principal),
+                  reason,
+                ),
+                target: `eval-run:${service}/${id}`,
+              }),
+            );
+            c.header('genai-task', done.task);
+            outcome = done.value;
+          } catch (error) {
+            if (error instanceof AdminRefused) return refusedBy(c, error);
+            throw error;
+          }
+          if (!outcome) return problem(c, 404, t('problems.evalRunNotFound'));
+          let state: string = outcome.state ?? 'cancelling';
+          for (let waited = 0; state === 'cancelling' && waited < cancelWaitMs; waited += 50) {
+            await new Promise((resolve) => setTimeout(resolve, 50));
+            const now = await deps.evalStores.runs.get(id);
+            const read = now ? runState(now.run) : 'cancelling';
+            if (read !== 'running' && read !== 'waiting-for-scores') state = read;
+          }
+          return answer(state);
+        });
+
         app.get('/tenants/:tenant/services/:id/eval-runs/sending', async (c) => {
           const guard = await member(c);
           if (guard.response) return guard.response;
@@ -664,11 +832,110 @@ export const createQualityModule =
           const runs = await evals.runsOf(guard.tenant, param(c, 'id'));
           const usage = seesUsage(guard.principal, guard.tenant);
           const agreementsOf = await deps.sinkLabels?.agreementsFor(guard.tenant);
+          const caller = JSON.stringify([guard.principal.issuer, guard.principal.subject]);
+          const starters = new Map(
+            await Promise.all(
+              runs
+                .filter((s) => {
+                  const state = runState(s.run);
+                  return s.task && (state === 'running' || state === 'waiting-for-scores');
+                })
+                .map(async (s) => [s.run.id, await starterOf(s.task, guard.tenant)] as const),
+            ),
+          );
+          const names = await actorNames(deps.configEntries).namesOf(
+            [...starters.values()].flatMap((s) => (s ? [s.actor] : [])),
+          );
           return c.json({
             data: runs.map((s) => {
               const summary = runSummary(s.run, isSinkJudge, agreementsOf?.(s.run));
-              return usage ? summary : costless(summary);
+              const starter = starters.get(s.run.id);
+              const name = starter ? names.get(starter.actor) : undefined;
+              const started = starter
+                ? {
+                    startedBy: starter.actor,
+                    ...(name ? { startedByName: name } : {}),
+                    ...(starter.id === caller ? { startedByYou: true as const } : {}),
+                  }
+                : {};
+              return { ...(usage ? summary : costless(summary)), ...started };
             }),
+          });
+        });
+
+        app.get('/tenants/:tenant/services/:id/eval-runs/compare', async (c) => {
+          const guard = await member(c);
+          if (guard.response) return guard.response;
+          const { tenant } = guard;
+          const service = param(c, 'id');
+          const invalid = (path: string, message: string) =>
+            problem(c, 400, t('problems.evalCompareInvalid'), [{ path, message }], compareInvalid);
+          const candidateId = text(c.req.query('candidate'));
+          if (!candidateId) return invalid('candidate', 'the candidate run is required');
+          const change = c.req.query('change');
+          if (change !== undefined && !isCaseChange(change))
+            return invalid('change', 'change is worse, better, new, missing, pending or same');
+          const limit = Number(c.req.query('limit') ?? 50);
+          if (!Number.isInteger(limit) || limit < 1 || limit > 200)
+            return invalid('limit', 'limit is 1 to 200');
+          const offset = Number(c.req.query('offset') ?? 0);
+          if (!Number.isInteger(offset) || offset < 0 || offset > 100_000)
+            return invalid('offset', 'offset is 0 to 100000');
+          if (await isHiddenService(deps.definitions, tenant, service))
+            return problem(c, 404, t('problems.evalRunNotFound'));
+          const ofService = async (id: string) => {
+            const stored = await evals.runOf(tenant, id);
+            return stored?.service === service && stored.run.tested ? stored : undefined;
+          };
+          const candidate = await ofService(candidateId);
+          if (!candidate)
+            return problem(c, 404, t('problems.evalRunNotFound'), [
+              { path: 'candidate', message: `no run ${candidateId} of ${service}` },
+            ]);
+          const baselineId = text(c.req.query('baseline')) ?? 'published';
+          const baseline =
+            baselineId === 'published'
+              ? await evals.publishedBaseline(
+                  tenant,
+                  service,
+                  candidate.run.testSet.id,
+                  candidate.run.id,
+                )
+              : await ofService(baselineId);
+          if (!baseline)
+            return baselineId === 'published'
+              ? problem(c, 404, t('problems.evalBaselineMissing'), [
+                  { path: 'baseline', message: 'no completed run of the published version' },
+                ])
+              : problem(c, 404, t('problems.evalRunNotFound'), [
+                  { path: 'baseline', message: `no run ${baselineId} of ${service}` },
+                ]);
+          if (baseline.run.testSet.id !== candidate.run.testSet.id)
+            return problem(
+              c,
+              400,
+              t('problems.evalRunsNotComparable'),
+              [{ path: 'baseline', message: 'the runs are of different test sets' }],
+              notComparable,
+            );
+          const setOf = (run: typeof candidate.run) =>
+            deps.evalStores.testSets.get(tenant, run.testSet.id, run.testSet.version);
+          const compared = compareCases(
+            { run: baseline.run, set: await setOf(baseline.run) },
+            { run: candidate.run, set: await setOf(candidate.run) },
+          );
+          const matching = change
+            ? compared.cases.filter((x) => x.change === change)
+            : compared.cases;
+          return c.json({
+            testSet: candidate.run.testSet.id,
+            baseline: { ...runSide(baseline.run), published: baselineId === 'published' },
+            candidate: runSide(candidate.run),
+            counts: compared.counts,
+            data: matching.slice(offset, offset + limit),
+            total: matching.length,
+            offset,
+            limit,
           });
         });
 

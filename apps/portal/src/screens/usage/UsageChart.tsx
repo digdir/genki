@@ -23,7 +23,6 @@ interface Props {
   refLine?: { value: number; label: string };
   label: string;
   ticks: string[];
-  monthly: boolean;
 }
 
 export const UsageChart = ({
@@ -35,7 +34,6 @@ export const UsageChart = ({
   refLine,
   label,
   ticks,
-  monthly,
 }: Props) => {
   const t = useT();
   const f = useFormat();
@@ -66,7 +64,7 @@ export const UsageChart = ({
               <span>{refLine.label}</span>
             </div>
           ) : null}
-          <ol aria-label={label} className={monthly ? 'usage-bars monthly' : 'usage-bars'}>
+          <ol aria-label={label} className="usage-bars">
             {bars.map((b, i) => {
               const on = i === selected;
               const segs = cats
@@ -117,7 +115,7 @@ export const UsageChart = ({
             <span className="numeric">
               {t('usage.selectedTotal', {
                 tokens: short(f, t, sel.total),
-                cost: money(f, t, sel.cost),
+                cost: money(f, t, sel.cost, sel.costAtLeast),
               })}
             </span>
           </div>
@@ -133,7 +131,7 @@ export const UsageChart = ({
           <span className="meta-xs">{t('usage.selectBar')}</span>
         </div>
       ) : null}
-      <Details>
+      <Details className="usage-table-details">
         <DetailsSummary>{t('usage.showTable')}</DetailsSummary>
         <DetailsContent>
           <div
@@ -146,9 +144,7 @@ export const UsageChart = ({
               <caption className="visually-hidden">{label}</caption>
               <TableHead>
                 <TableRow>
-                  <TableHeaderCell scope="col">
-                    {monthly ? t('usage.month') : t('usage.day')}
-                  </TableHeaderCell>
+                  <TableHeaderCell scope="col">{t('usage.day')}</TableHeaderCell>
                   {cats.map((c) => (
                     <TableHeaderCell key={c.id} scope="col" className="num">
                       {c.label}

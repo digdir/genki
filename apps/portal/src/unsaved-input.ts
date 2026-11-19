@@ -73,8 +73,8 @@ export const restoreUnsavedInput = (
   const fill = () => {
     for (const { key, el } of keyed(root)) {
       const value = left.get(key);
-      if (value === undefined || el.value !== '') continue;
-      setValue(el, value);
+      if (value === undefined || (el.value !== '' && el.value !== value)) continue;
+      if (el.value !== value) setValue(el, value);
       left.delete(key);
     }
     if (left.size === 0) stop();

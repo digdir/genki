@@ -48,6 +48,20 @@ describe('combine', () => {
     ]);
   });
 
+  it("matches the gateway's model name and genki's model id each with its own side of the rule", () => {
+    const genkiSide = { ...measured, model: 'ai-gateway/borealis' };
+    const gatewaySide = { ...throughGenkiKey, model: 'aivar:borealis' };
+    const counted = combine([genkiSide, gatewaySide], {
+      throughGateway: (model) => model === 'ai-gateway/borealis',
+      gatewayModel: (model) => model === 'aivar:borealis',
+    });
+
+    expect(sumUsage(counted).cost).toEqual([
+      { currency: 'NOK', micros: 0 },
+      { currency: 'USD', micros: 700 },
+    ]);
+  });
+
   it("counts a tenant's own gateway calls in full whatever genki routes", () => {
     expect(combine([own], { throughGateway: () => true })).toEqual([own]);
   });
@@ -79,6 +93,10 @@ describe('money', () => {
   it('leaves an amount without a rate unpriced in kroner, never 0', () => {
     expect(inNok({ currency: 'USD', micros: 1000 }, '2026-10-01', rates)).toBeUndefined();
     expect(inNok({ currency: 'SEK', micros: 1000 }, '2026-10-12', rates)).toBeUndefined();
+  });
+
+  it('takes a zero amount in any currency as zero kroner, without a rate', () => {
+    expect(inNok({ currency: 'USD', micros: 0 }, '2026-10-01', [])).toEqual({ micros: 0 });
   });
 
   it('takes kroner as they are, without a rate', () => {

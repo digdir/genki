@@ -32,7 +32,7 @@ export const models = {
   colConnection: 'Connection',
   colSource: 'Source',
   colResidency: 'Data processed in',
-  colPrice: 'Price per 1,000 tokens',
+  colPrice: 'Price per 1M tokens',
   colKinds: 'Kind of call and API',
   colCan: 'Can',
   colActions: 'Actions',

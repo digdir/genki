@@ -65,18 +65,11 @@ export interface ApproachProps {
   /** Before the steps, in the open card or the list, such as what the answer read from. */
   scope?: ReactNode;
   /**
-   * `list`: the steps as the dev boards' «Fremgangsmåte» tool (dev-verktoy-1 to -3), with no card
-   * and nothing that folds: «Slik jobbet assistenten med svaret», then each step with a mark, its
-   * title and a line under it, its `description` or the excerpts it read. `sections`: the dev
-   * boards' card (dev-fremgangsmate-1 and -2), Card and Details as Designsystemet draws them, with
-   * the `filter` first when given, then «Prosess» over the numbered steps, each with one line under
-   * it, and the time at the foot. `card`, the default: the card above the answer.
+   * `list`: the steps as the dev boards' tool, no card. `sections`: the dev boards' card, the
+   * `filter` first, then «Prosess». `card`, the default: the card above the answer.
    */
   variant?: 'card' | 'list' | 'sections' | undefined;
-  /**
-   * In the `sections` variant: what the answer was asked with, over the steps and a divider, such
-   * as `FilterBasis`. Left out for a service with no filter: the card starts at «Prosess».
-   */
+  /** In the `sections` variant: what the answer was asked with, such as `FilterBasis`. */
   filter?: ReactNode;
 }
 

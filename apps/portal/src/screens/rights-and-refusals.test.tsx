@@ -56,7 +56,7 @@ describe('refusals from the API', () => {
     );
     await renderAs('#/overview', fetch);
 
-    const tile = (await screen.findByRole('heading', { name: /^Forbruk i/ })).closest(
+    const tile = (await screen.findByRole('heading', { name: /^Bruk i/ })).closest(
       'section',
     ) as HTMLElement;
     expect(
@@ -150,11 +150,13 @@ describe('rights in the UI', () => {
     );
     await renderAs('#/overview', empty, useOnly);
 
-    const start = await screen.findByRole('region', { name: 'Kom i gang' });
-    expect(within(start).queryByRole('link', { name: 'Legg til datasett' })).toBeNull();
-    expect(within(start).queryByRole('link', { name: 'Lag en tjeneste' })).toBeNull();
-    expect(within(start).getByText('Du trenger rettigheten «Administrere datasett».')).toBeTruthy();
-    expect(screen.queryByRole('link', { name: 'Lag en tjeneste' })).toBeNull();
+    const start = await screen.findByRole('region', { name: /^Kom i gang med/ });
+    expect(
+      await within(start).findByText('Du trenger rettigheten «Administrere datasett».'),
+    ).toBeTruthy();
+    expect(within(start).queryByRole('link', { name: 'Nytt datasett' })).toBeNull();
+    expect(within(start).queryByRole('link', { name: 'Ny tjeneste' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Ny tjeneste' })).toBeNull();
     cleanup();
 
     await renderAs('#/services', mockFetch(), useOnly);
@@ -163,9 +165,9 @@ describe('rights in the UI', () => {
     cleanup();
 
     await renderAs('#/datasets', mockFetch(), useOnly);
-    await screen.findByRole('heading', { name: 'Egne datasett og endepunkter' });
-    await screen.findByText(/oppføringer/);
-    expect(screen.queryByRole('button', { name: 'Ny' })).toBeNull();
+    await screen.findByRole('heading', { level: 1, name: 'Datasett' });
+    expect(screen.queryByRole('button', { name: 'Nytt datasett' })).toBeNull();
+    expect(screen.queryByText(/Teknisk: katalogoppføringer/)).toBeNull();
     cleanup();
 
     await renderAs('#/services/rapportassistenten', mockFetch(), useOnly);
@@ -311,7 +313,7 @@ describe('an organisation Digdir has not registered', () => {
     expect(await screen.findByRole('heading', { name: 'Godkjent: logg inn på nytt' })).toBeTruthy();
     expect(screen.getByText(/Digdir godkjente forespørselen 8\. oktober 2026\./)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Logg inn på nytt' }));
-    expect(await screen.findByRole('button', { name: 'Logg inn' })).toBeTruthy();
+    expect((await screen.findAllByRole('button', { name: 'Logg inn' })).length).toBeGreaterThan(0);
   });
 
   it('shows the reason when Digdir refuses and lets the requester try again', async () => {
@@ -383,12 +385,15 @@ describe('an organisation Digdir has not registered', () => {
     await screen.findByRole('form', { name: 'Be om tilgang' });
     expect(screen.getByRole('heading', { name: 'Du handler for flere virksomheter' })).toBeTruthy();
     fireEvent.click(within(main).getByRole('button', { name: 'Bytt virksomhet' }));
-    expect(screen.getByRole('dialog', { name: 'Velg virksomhet' })).toBeTruthy();
+    const menu = screen.getByRole('menu', { name: 'Brukermeny' });
+    expect(within(menu).getByRole('group', { name: 'Handler for' })).toBeTruthy();
   });
 
   it('lets an unregistered organisation read the API reference', async () => {
     await renderAs('#/api-reference', unregistered());
 
+    await waitFor(() => expect(window.location.hash).toBe('#/developer/api/reference'));
+    expect(await screen.findByRole('navigation', { name: 'Endepunkter' })).toBeTruthy();
     await waitFor(() =>
       expect(
         screen.queryByRole('heading', { name: 'Virksomheten er ikke registrert ennå' }),
@@ -413,12 +418,13 @@ describe('empty lists and deep links', () => {
     expect(screen.queryByRole('button', { name: 'Nullstill søk og filter' })).toBeNull();
   });
 
-  it('shows an empty state for Ferdigheter when there are none', async () => {
-    const fetch = answering(/\/skills(\?|$)/, () => Response.json({ data: [] }));
-    await renderAs('#/skills', fetch);
+  it('sends the old Ferdigheter address straight to the skills type page', async () => {
+    await renderAs(
+      '#/skills',
+      answering(/\/skills(\?|$)/, () => Response.json({ data: [] })),
+    );
 
-    expect(await screen.findByRole('heading', { name: 'Ingen ferdigheter ennå' })).toBeTruthy();
-    expect(screen.queryByRole('table')).toBeNull();
+    await waitFor(() => expect(window.location.hash).toBe('#/building-blocks/skill'));
   });
 
   it('opens a dataset from a link with its full id', async () => {
@@ -486,9 +492,9 @@ describe('the step flow picker', () => {
           new CustomEvent('comboboxbeforeselect', { detail: item, cancelable: true }),
         );
     });
-    expect(
-      screen.getByRole('link', { name: 'Åpne i stegflyt-editoren' }).getAttribute('href'),
-    ).toBe('#/step-flows/postruting');
+    expect(screen.getByRole('link', { name: 'Rediger stegflyten' }).getAttribute('href')).toBe(
+      '#/developer/step-flows/postruting',
+    );
   });
 });
 

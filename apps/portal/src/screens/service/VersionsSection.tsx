@@ -1,12 +1,11 @@
-import { Tabs } from '@digdir/designsystemet-react';
+import { Heading, Paragraph } from '@digdir/designsystemet-react';
 import type { ReactNode } from 'react';
-import { useT } from '../../i18n';
+import { usePortalFormat } from '../../format';
 
 export type VersionsView = 'history' | 'yaml';
 
 export const VersionsSection = ({
   view,
-  onView,
   history,
   yaml,
   showHistory,
@@ -17,17 +16,19 @@ export const VersionsSection = ({
   yaml: ReactNode;
   showHistory: boolean;
 }) => {
-  const t = useT();
-  return showHistory ? (
-    <Tabs value={view} onChange={(v) => onView(v === 'yaml' ? 'yaml' : 'history')}>
-      <Tabs.List aria-label={t('serviceVersions.listLabel')}>
-        <Tabs.Tab value="history">{t('serviceVersions.history')}</Tabs.Tab>
-        <Tabs.Tab value="yaml">YAML</Tabs.Tab>
-      </Tabs.List>
-      <Tabs.Panel value="history">{view === 'history' ? history : null}</Tabs.Panel>
-      <Tabs.Panel value="yaml">{view === 'yaml' ? yaml : null}</Tabs.Panel>
-    </Tabs>
-  ) : (
-    <>{yaml}</>
+  const { t } = usePortalFormat();
+  if (showHistory) return <>{view === 'yaml' ? yaml : history}</>;
+  return (
+    <div className="stack">
+      <div className="stack-xs">
+        <Heading level={2} data-size="xs">
+          {t('service.sectionDefinition')}
+        </Heading>
+        <Paragraph data-size="sm" className="meta">
+          {t('serviceDev.definitionLead')}
+        </Paragraph>
+      </div>
+      {yaml}
+    </div>
   );
 };

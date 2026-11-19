@@ -23,6 +23,7 @@ import {
   clip,
   costOf,
   fileNameOf,
+  inLanes,
   isTransient,
   outcomeOf,
   modelChecksRan,
@@ -585,19 +586,21 @@ describe('budget', () => {
 
   it('counts the measured cost when it is higher than the estimate', () => {
     const budget = new Budget(1);
-    budget.add(0.2, 0.7);
+    budget.reserve(0.2);
+    budget.settle(0.2, 0.7);
     expect(budget.spent).toBeCloseTo(0.7);
   });
 
   it('counts the estimate when the measured cost is lower', () => {
     const budget = new Budget(1);
-    budget.add(0.2, 0.05);
+    budget.reserve(0.2);
+    budget.settle(0.2, 0.05);
     expect(budget.spent).toBeCloseTo(0.2);
   });
 
   it('allows a check that brings the run exactly to the cap', () => {
     const budget = new Budget(1);
-    budget.add(0.5);
+    budget.reserve(0.5);
     expect(budget.allows(0.5)).toBe(true);
     expect(budget.allows(0.51)).toBe(false);
   });
@@ -689,11 +692,65 @@ describe('a model check', () => {
     expect(r).toMatchObject({ outcome: 'fail', attempts: 1 });
   });
 
+  it('never lets checks that run at once start past the per-run budget', async () => {
+    const budget = new Budget(0.25);
+    const slow = async (): Promise<Verdict> => {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      return { ok: true, detail: 'ok' };
+    };
+    const results = await Promise.all(
+      [1, 2, 3].map((n) =>
+        runModelCheck('cheap', `m${n}`, 0.1, slow, deps({ budget, price: undefined })),
+      ),
+    );
+    expect(results.map((r) => r.outcome)).toEqual(['pass', 'pass', 'skip']);
+    expect(results[2]).toMatchObject({ skipReason: 'budget' });
+    expect(budget.spent).toBeCloseTo(0.2);
+  });
+
   it('reports the measured cost and charges the budget at least the estimate', async () => {
     const budget = new Budget(2.5);
     const r = await runModelCheck('cheap', 'm', 0.1, attempts(passed), deps({ budget }));
     expect(r.costKr).toBeCloseTo(0.2);
     expect(budget.spent).toBeCloseTo(0.2);
+  });
+});
+
+describe('checks run a few at a time', () => {
+  const counted = () => {
+    let running = 0;
+    const seen = { most: 0 };
+    const task = (value: number, ms: number) => async () => {
+      running++;
+      seen.most = Math.max(seen.most, running);
+      await new Promise((resolve) => setTimeout(resolve, ms));
+      running--;
+      return value;
+    };
+    return { seen, task };
+  };
+
+  it('runs at most the given number at once', async () => {
+    const { seen, task } = counted();
+    await inLanes(2, [task(1, 15), task(2, 1), task(3, 1), task(4, 5)]);
+    expect(seen.most).toBe(2);
+  });
+
+  it('keeps the results in the order given', async () => {
+    const { task } = counted();
+    expect(await inLanes(2, [task(1, 15), task(2, 1), task(3, 1), task(4, 5)])).toEqual([
+      1, 2, 3, 4,
+    ]);
+  });
+
+  it('runs one at a time with one lane', async () => {
+    const { seen, task } = counted();
+    await inLanes(1, [task(1, 5), task(2, 5), task(3, 5)]);
+    expect(seen.most).toBe(1);
+  });
+
+  it('copes with no tasks', async () => {
+    expect(await inLanes(3, [])).toEqual([]);
   });
 });
 

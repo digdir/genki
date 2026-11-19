@@ -53,8 +53,8 @@ describe('the conversation styles', () => {
   });
 
   it('draw the question on the tinted Card’s own ground unless the host names another', () => {
-    expect(flat).toContain(
-      'background: var(--genai-conversation-question-background, var(--ds-color-surface-tinted));',
+    expect(flat).toMatch(
+      /\.uib-conversation-question \{[^}]*background: var\(--genai-conversation-question-background, var\(--ds-color-surface-tinted\)\);/,
     );
   });
 

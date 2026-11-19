@@ -241,6 +241,7 @@ describe('the Shell styles', () => {
       '.uib-shell-tools-trigger {',
       ".uib-shell-tools-trigger[aria-expanded='true'] {",
     ].map((start) => {
+      expect(css.indexOf(start), start).toBeGreaterThanOrEqual(0);
       const from = css.slice(css.indexOf(start));
       return from.slice(0, from.indexOf('}'));
     });

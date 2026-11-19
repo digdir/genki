@@ -62,8 +62,7 @@
     font-weight: var(--genai-welcome-suggestion-font-weight, var(--ds-font-weight-regular));
   }
 
-  /* The icon centred on the question's first line: half the difference between the line and
-     Designsystemet's icon size, up when the icon is the taller. A long question wraps below it. */
+  /* The icon centred on the question's first line; a long question wraps below it. */
   .uib-welcome-suggestion-icon {
     flex-shrink: 0;
     margin-block-start: calc(

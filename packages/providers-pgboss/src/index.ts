@@ -394,7 +394,7 @@ export class PgBossJobQueue implements JobQueue {
   async sendAgain<T extends JobData>(
     queue: QueueDefinition<T>,
     job: Job<T>,
-    options: { key?: string; startAfter: Date },
+    options: { key?: string; startAfter: Date; priority?: number },
   ) {
     const client = await this.#pool.connect();
     try {
@@ -404,6 +404,7 @@ export class PgBossJobQueue implements JobQueue {
       await this.#boss.complete(queue.name, job.id, null, { db });
       const sent = await this.#boss.send(queue.name, admitPayload(queue, job.data), {
         ...(options.key === undefined ? {} : { singletonKey: options.key }),
+        ...(options.priority === undefined ? {} : { priority: options.priority }),
         startAfter: options.startAfter,
         db,
       });
@@ -436,11 +437,12 @@ export class PgBossJobQueue implements JobQueue {
     );
   }
 
-  async retime(queues: QueueDefinition[], startAfter: Date) {
+  async retime(queues: QueueDefinition[], startAfter: Date, options: { priority?: number } = {}) {
     const { rowCount } = await this.#pool.query(
       `update ${this.#schema}.job set start_after = $2
-        where name = any($1) and state in ('created', 'retry')`,
-      [queues.map((q) => q.name), startAfter],
+        where name = any($1) and state in ('created', 'retry')
+          and ($3::int is null or priority = $3)`,
+      [queues.map((q) => q.name), startAfter, options.priority ?? null],
     );
     return rowCount ?? 0;
   }

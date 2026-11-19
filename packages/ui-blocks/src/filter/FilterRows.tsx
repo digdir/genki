@@ -153,8 +153,7 @@ export const FilterRows = ({
                   )}
                 </button>
               </Heading>
-              {/* Kept, only hidden, so a field's list and text survive folding. A field at the small
-                size, as the rows around it; the ticks size themselves. */}
+              {/* Kept, only hidden, so a field's list and text survive folding. */}
               <div
                 id={bodyId}
                 className="uib-filter-row-body"

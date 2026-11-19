@@ -24,6 +24,7 @@ export interface ChunkSummary {
   rank?: number;
   version?: string;
   publishedAt?: string;
+  publisher?: string;
   hitCount?: number;
   searchTypes?: SearchType[];
   matchedQuestions?: string[];
@@ -64,6 +65,8 @@ export interface SearchAttribution {
     'selected-options': string[];
     'value-type': string;
   }[];
+  /** What retrieval noted; a failed strategy's reads "<strategy> search: <reason>". */
+  warnings?: string[];
 }
 
 export interface SearchOutcome {
@@ -131,6 +134,7 @@ export interface SearchSummary {
   'total-chunks': number | null;
   'content-length': number | null;
   title: string | null;
+  publisher?: string;
   headers: string | null;
   'search-types': SearchType[] | null;
   'rerank-score': number | null;
@@ -292,6 +296,7 @@ export class Workspace {
         'total-chunks': null,
         'content-length': c.contentLength ?? null,
         title: c.title ?? null,
+        ...(c.publisher === undefined ? {} : { publisher: c.publisher }),
         headers: headerString(c.headers),
         'search-types': c.searchTypes ?? null,
         'rerank-score': c.rerankScore ?? null,
@@ -353,6 +358,58 @@ export class Workspace {
 
   workspaceChunks(): Chunk[] {
     return [...this.chunks.values()];
+  }
+
+  chunksForSynthesis(): Chunk[] {
+    const read = this.readChunkIds();
+    const explicit = new Set(
+      this.reads.filter((r) => !r.autoRead).flatMap((r) => r.returnedChunkIds),
+    );
+    const evidence = new Set([
+      ...[...this.claimCoverage.values()].flatMap((c) => c.chunkIds),
+      ...this.contradictions.flatMap((c) => c.chunkIds),
+    ]);
+    const summaries = new Map<string, SearchSummary>();
+    for (const search of this.searches) {
+      for (const summary of search.summaries) {
+        const id = summary['chunk-id'];
+        summaries.set(id, {
+          ...summary,
+          // A degraded search or an unranked tail must not erase a known score.
+          'rerank-score': summary['rerank-score'] ?? summaries.get(id)?.['rerank-score'] ?? null,
+        });
+      }
+    }
+    const priority = (c: Chunk) => {
+      const summary = summaries.get(c.chunkId);
+      return [
+        Number(evidence.has(c.chunkId)),
+        Number(!this.nonSupporting.has(c.chunkId)),
+        Number(explicit.has(c.chunkId)),
+        summary?.['rerank-score'] ?? c.rerankScore ?? 0,
+        summary?.['retrieval-prior'] ?? c.score ?? 0,
+        summary?.['hit-count'] ?? c.hitCount ?? 0,
+        -(summary?.['original-rank'] ?? c.rank ?? Number.MAX_SAFE_INTEGER),
+      ];
+    };
+    const ranked = this.workspaceChunks()
+      .filter((c) => read.has(c.chunkId))
+      .map((chunk, index) => ({ chunk, index, priority: priority(chunk) }))
+      .sort((a, b) => {
+        for (let i = 0; i < a.priority.length; i++) {
+          const difference = (b.priority[i] as number) - (a.priority[i] as number);
+          if (difference !== 0) return difference;
+        }
+        return a.index - b.index;
+      });
+    // Whole chunks within the read budget, and always the top one so the context is never empty.
+    let remaining = this.limits.readChars;
+    return ranked.flatMap(({ chunk }, i) => {
+      const length = Math.max(1, chunk.content.length);
+      if (i > 0 && length > remaining) return [];
+      remaining -= length;
+      return [chunk];
+    });
   }
 
   chunksForOutput(): Chunk[] {

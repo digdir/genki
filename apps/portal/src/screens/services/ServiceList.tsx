@@ -8,11 +8,11 @@ import {
   Tag,
   Textfield,
 } from '@digdir/designsystemet-react';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Icon } from '../../components/Icon';
 import { statusColor, type JobId, type ServiceRow, type ServiceStatus } from '../../data/services';
 import { useT, type PlainKey } from '../../i18n';
-import { navigate } from '../../hooks';
+import { navigate, parseRoute } from '../../hooks';
 import { needsRight, useRights } from '../../Shell';
 import { EmptyState } from '../../states';
 
@@ -35,16 +35,58 @@ const jobKey = {
   transcribes: 'serviceList.jobTranscribes',
 } as const satisfies Record<JobId, PlainKey>;
 
-const filters: ('alle' | ServiceStatus)[] = [
-  'alle',
-  'Utkast',
-  'I test',
-  'I bruk',
-  'Satt på pause',
-  'Arkivert',
-];
+type Filter = 'alle' | ServiceStatus;
 
-export const ServiceList = ({ rows, tenantName }: { rows: ServiceRow[]; tenantName: string }) => {
+const filterIds: Record<Filter, string> = {
+  alle: 'all',
+  Utkast: 'draft',
+  'I test': 'test',
+  'I bruk': 'live',
+  'Satt på pause': 'paused',
+  Arkivert: 'archived',
+};
+
+const filters = Object.keys(filterIds) as Filter[];
+
+const filterIn = (value: string | null): Filter =>
+  filters.find((f) => filterIds[f] === value) ?? 'alle';
+
+const fromAddress = () => {
+  const query = parseRoute(window.location.hash).query;
+  return { query: query.get('q') ?? '', filter: filterIn(query.get('status')) };
+};
+
+const keepInAddress = (query: string, filter: Filter) => {
+  const route = parseRoute(window.location.hash);
+  const params = new URLSearchParams(route.query);
+  if (query) params.set('q', query);
+  else params.delete('q');
+  if (filter === 'alle') params.delete('status');
+  else params.set('status', filterIds[filter]);
+  const search = params.toString();
+  window.history.replaceState(
+    window.history.state,
+    '',
+    `#${route.path}${search ? `?${search}` : ''}`,
+  );
+};
+
+export type ListedService = ServiceRow & { model?: string };
+
+const inFilter = (r: ServiceRow, filter: Filter) =>
+  filter === 'alle' ? r.status !== 'Arkivert' : r.status === filter;
+
+export const ServiceList = ({
+  rows,
+  tenantName,
+  listed,
+  placeholder,
+}: {
+  rows?: ListedService[] | undefined;
+  tenantName: string;
+  listed?: number;
+  placeholder?: ReactNode;
+}) => {
   const t = useT();
   const canCreate = useRights().has('manage-services');
   return (
@@ -63,7 +105,7 @@ export const ServiceList = ({ rows, tenantName }: { rows: ServiceRow[]; tenantNa
           </Button>
         ) : null}
       </div>
-      {rows.length === 0 ? (
+      {rows?.length === 0 ? (
         <EmptyState title={t('serviceList.emptyTitle')}>
           <Paragraph>{t('serviceList.emptyBody', { tenant: tenantName })}</Paragraph>
           {canCreate ? (
@@ -75,22 +117,43 @@ export const ServiceList = ({ rows, tenantName }: { rows: ServiceRow[]; tenantNa
           )}
         </EmptyState>
       ) : (
-        <ServiceRows rows={rows} />
+        <ServiceRows
+          rows={rows}
+          placeholder={placeholder}
+          {...(listed === undefined ? {} : { listed })}
+        />
       )}
     </div>
   );
 };
 
-const ServiceRows = ({ rows }: { rows: ServiceRow[] }) => {
+const ServiceRows = ({
+  rows,
+  listed,
+  placeholder,
+}: {
+  rows: ListedService[] | undefined;
+  listed?: number;
+  placeholder: ReactNode;
+}) => {
   const t = useT();
-  const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState<(typeof filters)[number]>('alle');
+  const [query, setQueryState] = useState(() => fromAddress().query);
+  const [filter, setFilterState] = useState<Filter>(() => fromAddress().filter);
+  const setQuery = (next: string) => {
+    setQueryState(next);
+    keepInAddress(next, filter);
+  };
+  const setFilter = (next: Filter) => {
+    setFilterState(next);
+    keepInAddress(query, next);
+  };
   const q = query.trim().toLowerCase();
-  const shown = rows.filter(
-    (r) =>
-      (filter === 'alle' ? r.status !== 'Arkivert' : r.status === filter) &&
-      (!q || `${r.name} ${r.purpose}`.toLowerCase().includes(q)),
-  );
+  const scope = (rows ?? []).filter((r) => inFilter(r, filter));
+  const shown = scope.filter((r) => !q || `${r.name} ${r.purpose}`.toLowerCase().includes(q));
+  const scopeOf = (f: Filter) => (rows ?? []).filter((r) => inFilter(r, f));
+  const countOf = (f: Filter) =>
+    f === 'alle' && listed !== undefined ? listed : scopeOf(f).length;
+  const offered = filters.filter((f) => f === 'alle' || f === filter || countOf(f) > 0);
   return (
     <>
       <div className="services-filters">
@@ -102,26 +165,33 @@ const ServiceRows = ({ rows }: { rows: ServiceRow[] }) => {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
-        <fieldset className="chip-fieldset">
-          <legend className="ds-label">{t('serviceList.statusLegend')}</legend>
-          <div className="tag-row">
-            {filters.map((f) => (
-              <Chip.Radio
-                key={f}
-                name="statusfilter"
-                checked={filter === f}
-                onChange={() => setFilter(f)}
-              >
-                {f === 'alle' ? t('serviceList.filterAll') : t(statusKey[f])}
-              </Chip.Radio>
-            ))}
-          </div>
-        </fieldset>
+        {rows ? (
+          <fieldset className="chip-fieldset">
+            <legend className="ds-label">{t('serviceList.statusLegend')}</legend>
+            <div className="tag-row">
+              {offered.map((f) => (
+                <Chip.Radio
+                  key={f}
+                  name="statusfilter"
+                  checked={filter === f}
+                  onChange={() => setFilter(f)}
+                >
+                  {f === 'alle' ? t('serviceList.filterAll') : t(statusKey[f])}{' '}
+                  <span className="numeric">{countOf(f)}</span>
+                </Chip.Radio>
+              ))}
+            </div>
+          </fieldset>
+        ) : null}
       </div>
-      <p aria-live="polite" className="meta services-count">
-        {t('serviceList.showing', { shown: shown.length, total: rows.length })}
-      </p>
-      {shown.length > 0 ? (
+      {rows ? (
+        <p aria-live="polite" className="meta services-count">
+          {t('serviceList.showing', { shown: shown.length, total: scope.length })}
+        </p>
+      ) : null}
+      {!rows ? (
+        placeholder
+      ) : shown.length > 0 ? (
         <ul className="plain-list services-rows">
           {shown.map((r) => (
             <li key={r.id}>
@@ -145,16 +215,30 @@ const ServiceRows = ({ rows }: { rows: ServiceRow[] }) => {
                 </dd>
                 <dt>{t('serviceList.start')}</dt>
                 <dd className="tag-row">
-                  {r.start.map((s) => (
-                    <Tag key={s} data-size="sm" data-color="neutral">
-                      {s}
-                    </Tag>
-                  ))}
+                  {r.start.length
+                    ? r.start.map((s) => (
+                        <Tag key={s} data-size="sm" data-color="neutral">
+                          {s}
+                        </Tag>
+                      ))
+                    : t('serviceList.noStart')}
                 </dd>
+                {r.model ? (
+                  <>
+                    <dt className="services-row-model">{t('serviceList.model')}</dt>
+                    <dd className="services-row-model">{r.model}</dd>
+                  </>
+                ) : null}
               </dl>
               <div className="services-row-usage">
-                <span className="services-usage numeric">{r.usage}</span>
-                <span className="meta">{t('serviceList.perWeek', { unit: r.unit })}</span>
+                {r.status === 'Utkast' ? (
+                  <span className="meta">{t('serviceList.noRunsYet')}</span>
+                ) : (
+                  <>
+                    <span className="services-usage numeric">{r.usage}</span>
+                    <span className="meta">{t('serviceList.perWeek', { unit: r.unit })}</span>
+                  </>
+                )}
                 <span className="meta">{t('serviceList.changed', { when: r.when, by: r.by })}</span>
               </div>
             </li>
@@ -169,8 +253,9 @@ const ServiceRows = ({ rows }: { rows: ServiceRow[] }) => {
             variant="secondary"
             data-size="sm"
             onClick={() => {
-              setQuery('');
-              setFilter('alle');
+              setQueryState('');
+              setFilterState('alle');
+              keepInAddress('', 'alle');
             }}
           >
             {t('serviceList.reset')}

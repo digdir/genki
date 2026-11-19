@@ -30,9 +30,19 @@ export interface CallToolResult {
 }
 
 export class McpProtocolError extends Error {
-  constructor(message: string) {
+  constructor(
+    message: string,
+    readonly status?: number,
+  ) {
     super(message);
     this.name = 'McpProtocolError';
+  }
+}
+
+export class McpToolListError extends McpProtocolError {
+  constructor(message: string) {
+    super(message);
+    this.name = 'McpToolListError';
   }
 }
 
@@ -139,7 +149,10 @@ export class McpClient {
     if (method === 'server/discover' && (response.status < 200 || response.status >= 300))
       return undefined;
     if (response.status < 200 || response.status >= 300)
-      throw new McpProtocolError(`the tool server answered HTTP ${response.status}`);
+      throw new McpProtocolError(
+        `the tool server answered HTTP ${response.status}`,
+        response.status,
+      );
     const type = String(response.headers['content-type'] ?? '');
     let message: { result?: unknown; error?: { message?: string } };
     try {
@@ -208,7 +221,7 @@ export class McpClient {
       cursor = result?.nextCursor;
       if (!cursor) return tools;
     }
-    throw new McpProtocolError('the tool list has too many pages');
+    throw new McpToolListError('the tool list has too many pages');
   }
 
   async callTool(

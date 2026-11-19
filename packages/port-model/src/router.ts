@@ -124,8 +124,12 @@ export interface ModelDescription {
   endpoint: string;
   deployment: string;
   family?: string;
+  maker?: string;
+  operator?: { name: string; region?: string };
   residency: Residency;
   capabilities: Capability[];
+  contextWindow?: number;
+  releaseDate?: string;
   apis: ApiBindings;
   operations: Operation[];
   enabled: boolean;
@@ -275,7 +279,7 @@ export class ModelRouter implements PortProvider<ModelPort> {
           credential,
           maxRetries: this.options.maxRetries ?? 3,
           timeoutMs: this.options.timeoutMs ?? 120_000,
-          fetch: this.#gate.egress(name),
+          fetch: this.#gate.egress(name, { tenantHeader: endpoint.gateway === true }),
         });
         for (const api of served) byApi.set(api.id, connection);
       }
@@ -289,7 +293,7 @@ export class ModelRouter implements PortProvider<ModelPort> {
   #described(connection: string, family: string) {
     const endpoint = this.#catalog.endpoints[connection] as CatalogEndpoint;
     const baseURL = familyURL(endpoint, endpoint.families[family] ?? '');
-    const own = this.#gate.egress(connection);
+    const own = this.#gate.egress(connection, { tenantHeader: endpoint.gateway === true });
     const hosts = endpoint.allowedHosts ?? [];
     const foreign = hosts.length > 0 ? this.options.foreignFetch?.(hosts) : undefined;
     const ownHost = new URL(baseURL).host;
@@ -413,6 +417,10 @@ export class ModelRouter implements PortProvider<ModelPort> {
                 residency: 'global',
                 capabilities: rule.capabilities,
                 apis,
+                ...(rule.maker ? { maker: rule.maker } : {}),
+                ...(rule.releaseDates?.[found.deployment]
+                  ? { releaseDate: rule.releaseDates[found.deployment] }
+                  : {}),
                 options: {},
               },
               ...(found.model ? { family: found.model } : {}),
@@ -428,6 +436,9 @@ export class ModelRouter implements PortProvider<ModelPort> {
             });
         }
       }
+    for (const [id, route] of this.#discovered)
+      if (failed.some((f) => f.endpoint === route.model.endpoint) && !discovered.has(id))
+        discovered.set(id, route);
     this.#discovered = discovered;
     this.#rebuild();
     return { discovered: discovered.size, failed };
@@ -464,6 +475,7 @@ export class ModelRouter implements PortProvider<ModelPort> {
 
   #describe(route: Route): ModelDescription {
     const model = this.#effective(route);
+    const operator = this.#catalog.endpoints[model.endpoint]?.operator;
     const chat = model.apis.chat;
     const transport = chat
       ? this.#connections
@@ -481,8 +493,19 @@ export class ModelRouter implements PortProvider<ModelPort> {
       endpoint: model.endpoint,
       deployment: model.deployment,
       ...(route.family ? { family: route.family } : {}),
+      ...(model.maker ? { maker: model.maker } : {}),
+      ...(operator
+        ? {
+            operator: {
+              name: operator.name,
+              ...(operator.region ? { region: operator.region } : {}),
+            },
+          }
+        : {}),
       residency: model.residency,
       capabilities: model.capabilities,
+      ...(model.contextWindow === undefined ? {} : { contextWindow: model.contextWindow }),
+      ...(model.releaseDate === undefined ? {} : { releaseDate: model.releaseDate }),
       apis: model.apis,
       operations: Object.keys(model.apis),
       enabled: model.enabled,

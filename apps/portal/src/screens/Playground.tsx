@@ -1,19 +1,48 @@
-import { Heading, Paragraph } from '@digdir/designsystemet-react';
 import { PlaygroundPanel } from '../components/playground/PlaygroundPanel';
+import { useAsync } from '../hooks';
 import { useT } from '../i18n';
 import type { ScreenProps } from '../screen';
+import { PageLoading } from '../states';
 
-export const Playground = ({ api, tenant, tenantName }: ScreenProps) => {
+const ServicePlayground = ({
+  api,
+  tenant,
+  tenantName,
+  service,
+}: Omit<ScreenProps, 'route' | 'live'> & { service: string }) => {
   const t = useT();
+  const [draft, retry] = useAsync(
+    (signal) => api.quality.draft(tenant, service, signal).catch(() => undefined),
+    [api, tenant, service],
+  );
+  if (draft.status !== 'ready')
+    return <PageLoading label={t('playground.loadingSetup')} shape="detail" onRetry={retry} />;
   return (
-    <div className="stack">
-      <div className="playground-intro">
-        <Heading level={1} data-size="lg">
-          {t('playground.pageTitle')}
-        </Heading>
-        <Paragraph className="lead">{t('playground.pageLead')}</Paragraph>
-      </div>
-      <PlaygroundPanel layout="full" api={api} tenant={tenant} tenantName={tenantName} />
-    </div>
+    <PlaygroundPanel
+      layout="page"
+      context="service"
+      name={service}
+      api={api}
+      tenant={tenant}
+      tenantName={tenantName}
+      {...(draft.data
+        ? { serviceDraft: { definition: draft.data.definition, files: draft.data.files } }
+        : {})}
+    />
+  );
+};
+
+export const Playground = ({ api, tenant, tenantName, route }: ScreenProps) => {
+  const service = route.query.get('service');
+  return service ? (
+    <ServicePlayground
+      key={service}
+      api={api}
+      tenant={tenant}
+      tenantName={tenantName}
+      service={service}
+    />
+  ) : (
+    <PlaygroundPanel layout="page" api={api} tenant={tenant} tenantName={tenantName} />
   );
 };

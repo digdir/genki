@@ -41,10 +41,17 @@ describe('the Composer styles', () => {
   it('give the inline frame a shadow, kept under the focus ring, and send the 12 px corners', () => {
     const inline = ".uib-composer-frame[data-variant='inline']";
     expect(rule(inline)).toContain('var(--genai-composer-frame-shadow, var(--ds-shadow-md))');
-    expect(rule(`${inline}:focus-within`)).toContain(
+    expect(rule(`${inline}:has(.uib-composer-field :focus-visible)`)).toContain(
       'var(--dsc-focus-boxShadow), var(--genai-composer-frame-shadow, var(--ds-shadow-md))',
     );
     expect(rule(`${inline} .uib-composer-send`)).toContain('var(--ds-border-radius-xl)');
+  });
+
+  it('ring the frame only while the question field has focus, so a button in it shows its own ring alone', () => {
+    expect(flat).not.toContain(':focus-within');
+    expect(rule('.uib-composer-frame:has(.uib-composer-field :focus-visible)')).toContain(
+      'box-shadow: var(--dsc-focus-boxShadow);',
+    );
   });
 
   it('take the empty refusal out of the flow, but keep it in the page', () => {

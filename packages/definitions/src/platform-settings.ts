@@ -110,6 +110,13 @@ export const nativeSettings: PlatformSetting[] = [
     'models',
     'Catalog model new services start with; empty picks the cheapest priced model the tenant may use.',
   ),
+  setting(
+    'models.recommended',
+    z.array(z.string().min(1).max(200)).max(20),
+    [],
+    'models',
+    'Catalog models marked as recommended where people pick a model; empty recommends the model new services start with.',
+  ),
   {
     ...setting(
       'answers.writtenStandard',
@@ -119,6 +126,23 @@ export const nativeSettings: PlatformSetting[] = [
       'Written standard for answers: user matches the question (nynorsk or bokmål), or always bokmal or nynorsk. A person who reads English gets English unless the service or call sets this. A service guardrail language wins.',
     ),
     settableAt: ['platform', 'tenant', 'service', 'call'],
+  },
+  setting(
+    'tracing.sampleRate',
+    z.union([z.literal(1), z.literal(0.25), z.literal(0.1)]),
+    1,
+    'tracing',
+    'The share of runs whose traces are sent to the tracing tool: 1, 0.25 or 0.1. Failed runs are always traced.',
+  ),
+  {
+    ...setting(
+      'answers.showSources',
+      z.boolean(),
+      true,
+      'answers',
+      'Whether answers come with the sources they are based on. Off leaves the sources and the source markers out of the answer the caller gets, streamed or not; the retrieval record of the run keeps them.',
+    ),
+    settableAt: ['platform', 'tenant', 'service'],
   },
   ...(
     [

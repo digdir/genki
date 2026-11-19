@@ -1,6 +1,7 @@
 import type { InputField } from './input-fields.js';
 
 export * from './input-fields.js';
+export * from './kudos-earlier-ids.js';
 export * from './run-errors.js';
 export * from './schema-meta.js';
 export * from './source-links.js';
@@ -41,6 +42,7 @@ export interface Principal {
   issuer: string;
   subject: string;
   name?: string;
+  email?: string;
   tenant?: string;
   client?: string;
   assurance?: Assurance;
@@ -290,6 +292,7 @@ export interface ServiceProvenance {
   strategy: { id: string; version: string };
   configHash: string;
   environment?: string;
+  frontend?: string;
   models?: ModelProvenance[];
   indexes?: IndexProvenance[];
 }
@@ -315,6 +318,7 @@ export interface Task {
   owner: string;
   parent?: string;
   thread?: string;
+  entryPoint?: string;
   status: TaskStatus;
   pendingInterrupt?: Interrupt;
   result?: Part[];

@@ -732,10 +732,24 @@ export const endpoints: Endpoint[] = [
     desc: 'apirefData.kv-compare.desc',
     right: 'adm',
     params: [
-      ['a', 'query', 'text', 'apirefData.kv-compare.p.a'],
-      ['b', 'query', 'text', 'apirefData.kv-compare.p.b'],
+      ['baseline', 'query', 'text', 'apirefData.kv-compare.p.baseline'],
+      ['candidate', 'query', 'text', 'apirefData.kv-compare.p.candidate'],
+      ['metric', 'query', 'text', 'apirefData.kv-compare.p.metric'],
+      ['allowDifferent', 'query', 'text', 'apirefData.kv-compare.p.allowDifferent'],
     ],
-    response: { a: 'ts-0612', b: 'ts-0613', diff: { faithfulness: 0.04 } },
+    response: {
+      allowedDifferent: ['services'],
+      comparisons: [
+        {
+          metric: 'recall@10',
+          n: 118,
+          meanBaseline: 0.71,
+          meanCandidate: 0.74,
+          difference: 0.03,
+          ci: [-0.02, 0.08],
+        },
+      ],
+    },
   },
   {
     id: 'kv-evaltask',
@@ -2628,4 +2642,6 @@ export const portalActions: PortalAction[] = [
 ];
 
 export const fillPath = (path: string, values: Record<string, string>) =>
-  path.replace(/\{(\w+)\}/g, (m, k: string) => values[k] ?? m);
+  path.replace(/\{(\w+)\}/g, (m, k: string) =>
+    values[k] === undefined ? m : encodeURIComponent(values[k]),
+  );

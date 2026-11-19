@@ -26,6 +26,7 @@ import type { CatalogRegistry } from './catalog-registry.js';
 import type { ChangeTopic } from './change-feed.js';
 import type { ConfigEntryStore } from './config-store.js';
 import type { ApiLog } from './failure-log.js';
+import type { OperationsOverview } from './operations.js';
 import type { DraftDecoration, DraftRunner, ModelPrice } from './draft-runner.js';
 import type { EvalSlots } from './eval-slots.js';
 import type { TaskIndex } from './extensions.js';
@@ -74,11 +75,13 @@ export interface ModuleDeps extends Omit<SearchModuleExtras, 'now'> {
     tenant: string,
     options?: { fresh?: boolean },
   ): Promise<{ usedTokens: number; monthlyTokens: number; exhausted: boolean }>;
+  tenantOperations?(tenant: string): Promise<OperationsOverview>;
   drafts: DraftRunner;
   /** The capability that runs an eval as a kernel task (`platform.eval.run`). */
   evalCapability?: string;
   /** The platform's own version, recorded as the commit of the eval runs it starts. */
   appVersion?: string;
+  demoRecorderKeyDigest?: string;
   /** Resolves a tenant's secret references, only for the hosts each secret is set for. */
   tenantSecrets?: TenantSecrets;
   /** The egress rules every outbound call to a tenant's own endpoint follows (ADR 0015). */
@@ -99,6 +102,9 @@ export interface ModuleDeps extends Omit<SearchModuleExtras, 'now'> {
     try(operator: Principal, request: OperationTry): Promise<OperationTryOutcome>;
   };
   enrichmentTask?: TrackedWork;
+  /** Runs a direct dataset search as a kernel task, so its embedding counts like a run's (#678). */
+  datasetSearchTask?: TrackedWork;
+  publishCheck?(definition: unknown, publisher: string): Promise<ValidationError[]>;
   tasks: TaskIndex;
   task(id: string): Promise<Task | undefined>;
   events(task: string): AsyncIterable<Event>;
@@ -109,6 +115,7 @@ export interface ModuleDeps extends Omit<SearchModuleExtras, 'now'> {
   vault?: {
     set(tenant: string, name: string, value: string, hosts?: readonly string[]): Promise<string>;
     delete(tenant: string, name: string): Promise<void>;
+    names(tenant: string): Promise<string[]>;
   };
   defaultEmbedding?: { model: string; dimensions: number; residency: Residency };
   hookRuntime?: HookRuntime;

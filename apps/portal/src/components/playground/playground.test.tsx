@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type {
   PlaygroundOptions,
   PlaygroundRunRequest,
@@ -21,6 +21,16 @@ const setWidth = (px: number) => {
   window.innerWidth = px;
   window.dispatchEvent(new Event('resize'));
 };
+
+document.getAnimations ??= () => [];
+beforeAll(() => {
+  HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {
+    this.open = true;
+  };
+  HTMLDialogElement.prototype.close ??= function (this: HTMLDialogElement) {
+    this.open = false;
+  };
+});
 
 afterEach(() => {
   cleanup();
@@ -47,7 +57,15 @@ const openPage = async (playground: PlaygroundMockOptions = {}, seen: string[] =
 
 const askSample = (question: string) => {
   fireEvent.click(screen.getByRole('button', { name: question }));
-  fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Kjør' }));
+};
+
+const setupPanel = () => screen.getByRole('complementary', { name: 'Oppsett' });
+
+const startFrom = (label: string) => {
+  const select = within(setupPanel()).getByRole('combobox', { name: 'Start fra' });
+  const option = within(select).getByRole('option', { name: label }) as HTMLOptionElement;
+  fireEvent.change(select, { target: { value: option.value } });
 };
 
 const renderPanel = async (props: PlaygroundPanelProps) => {
@@ -71,7 +89,7 @@ describe('Prøveområde', () => {
     expect(runs).toHaveLength(0);
 
     fireEvent.keyDown(input, { key: 'Enter' });
-    await screen.findByRole('link', { name: 'Se kjøringen' });
+    await screen.findByRole('link', { name: 'Åpne i Logg' });
     expect(runs).toHaveLength(1);
     expect(runs[0]?.input).toEqual({ text: 'Hva sier evalueringene om digital veiledning?' });
     expect(runs[0]?.setup.service).toEqual({ id: 'rapportassistenten', version: 'draft' });
@@ -79,35 +97,48 @@ describe('Prøveområde', () => {
     expect(screen.getByText(/Søkemerknad:/).closest('p')?.textContent).toContain(
       '3 dokumenter ble hoppet over i søket',
     );
-    expect(screen.getByText(/Denne økten: 1 kjøring ·/)).toBeTruthy();
     expectAccessible();
   });
 
-  it('Sammenlign has aria-pressed and shows two answers', async () => {
+  it('compares A and B side by side with the same question, and shows cost and time per side', async () => {
     const runs: PlaygroundRunRequest[] = [];
     await openPage({ runs });
 
-    const compare = screen.getByRole('button', { name: 'Sammenlign' });
-    expect(compare.getAttribute('aria-pressed')).toBe('false');
-    fireEvent.click(compare);
-    expect(
-      screen.getByRole('button', { name: 'Avslutt sammenligning' }).getAttribute('aria-pressed'),
-    ).toBe('true');
-    expect(screen.getByRole('group', { name: 'Oppsett B' })).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Bruk oppsettet' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Sammenlign med et annet oppsett' }));
+    expect(screen.getByRole('heading', { level: 1, name: 'Sammenlign to oppsett' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Vis API-kall' })).toBeNull();
+    const sideA = screen.getByRole('region', { name: /^Oppsett A:\s*Rapportassistenten/ });
+    const sideB = screen.getByRole('region', { name: /^Oppsett B:\s*Rapportassistenten/ });
+    expect(within(sideA).queryByText('Ulikt')).not.toBeNull();
+    expect(within(sideB).getAllByText('Qwen3.8-27B').length).toBeGreaterThan(0);
 
-    fireEvent.change(screen.getByRole('textbox', { name: 'Spørsmål til begge oppsettene' }), {
+    const question = screen.getByRole('textbox', { name: 'Spørsmål til begge' });
+    fireEvent.change(question, {
       target: { value: 'Hva sier evalueringene om digital veiledning?' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Kjør begge' }));
 
-    await waitFor(() => expect(screen.getAllByRole('article')).toHaveLength(2));
-    const labels = screen.getAllByRole('article').map((a) => a.firstElementChild?.textContent);
-    expect(labels[0]).toMatch(/^A · Borealis-27B/);
-    expect(labels[1]).toMatch(/^B · Qwen3\.8-27B/);
+    await waitFor(() => expect(within(sideB).queryByRole('article')).not.toBeNull());
+    await waitFor(() => expect(within(sideA).queryByRole('article')).not.toBeNull());
+    expect(runs).toHaveLength(1);
+    expect(runs[0]?.setup.model).toBe('aivar/borealis-27b');
     expect(runs[0]?.compareWith?.model).toBe('aivar/qwen3-8');
-    expect(screen.getByText(/Denne økten: 2 kjøringer/)).toBeTruthy();
+    expect(runs[0]?.history).toBeUndefined();
+    for (const side of [sideA, sideB]) {
+      const answer = within(side).getByRole('article');
+      expect(within(answer).getByText(/^\d+(,\d+)? s$/)).toBeTruthy();
+      expect(within(answer).getByText(/tokens inn, .* ut$/)).toBeTruthy();
+      expect(within(answer).getByText(/^\d+,\d{2} kr$/)).toBeTruthy();
+      expect(within(side).getByRole('img', { name: /^Tidslinje [AB]: / })).toBeTruthy();
+    }
+    expect((question as HTMLTextAreaElement).value).toBe(
+      'Hva sier evalueringene om digital veiledning?',
+    );
     expectAccessible();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Avslutt sammenligning' }));
+    expect(screen.getByRole('heading', { level: 1, name: 'Prøveområdet' })).toBeTruthy();
+    expect(screen.queryByRole('region', { name: /^Oppsett B/ })).toBeNull();
   });
 
   it('Lagre som testtilfelle sends a candidate, not a case', async () => {
@@ -115,7 +146,8 @@ describe('Prøveområde', () => {
     const seen: string[] = [];
     await openPage({ candidates }, seen);
     askSample('Hva sier evalueringene om digital veiledning?');
-    fireEvent.click(await screen.findByRole('button', { name: 'Lagre som testtilfelle' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Mer om svaret' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Lagre som testtilfelle', hidden: true }));
 
     const expected = screen.getByRole('textbox', { name: 'Forventet svar' }) as HTMLTextAreaElement;
     expect(expected.value).toContain('Evalueringene peker på tre ting');
@@ -215,7 +247,7 @@ describe('Prøveområde', () => {
     const input = await openPage({ runs });
 
     fireEvent.keyDown(input, { key: 'Enter' });
-    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Kjør' }));
 
     expect(runs).toHaveLength(0);
   });
@@ -242,9 +274,8 @@ describe('Prøveområde', () => {
       await screen.findByRole('heading', { name: 'Vi fikk ikke svar fra modellen' }),
     ).toBeTruthy();
     expect(screen.getByText(/Borealis-27B svarte ikke\./)).toBeTruthy();
-    expect(screen.getByText(/Kjøringer teller med i kvoten/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Prøv igjen' }));
-    expect(await screen.findByRole('link', { name: 'Se kjøringen' })).toBeTruthy();
+    expect(await screen.findByRole('link', { name: 'Åpne i Logg' })).toBeTruthy();
     expect(runs).toHaveLength(2);
   });
 
@@ -292,11 +323,9 @@ describe('Prøveområde', () => {
 
   it('extraction sends the sample file and shows the fields', async () => {
     const runs: PlaygroundRunRequest[] = [];
-    await renderAt('#/playground', withPlayground({ runs }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Endre oppsett' }));
-    fireEvent.click(screen.getByRole('radio', { name: 'Et eget oppsett' }));
+    await openPage({ runs });
+    startFrom('Tomt oppsett');
     fireEvent.click(screen.getByRole('radio', { name: 'Hent ut opplysninger fra et dokument' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Bruk oppsettet' }));
 
     expect(screen.getByText('Last opp et dokument for å prøve uttrekket')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Bruk en eksempelfil' }));
@@ -313,11 +342,18 @@ describe('Prøveområde', () => {
     expectAccessible();
   });
 
-  it('Vis API-kall shows the run call the API has', async () => {
-    await openPage();
-    const [showCall] = screen.getAllByRole('button', { name: 'Vis API-kall' });
-    if (showCall) fireEvent.click(showCall);
-    const panel = screen.getByRole('dialog', { name: 'Kjør oppsettet' });
+  it('Vis API-kall sits in the Mer menu on the answer, not in the setup panel', async () => {
+    const input = await openPage();
+    expect(screen.queryByRole('button', { name: 'Vis API-kall' })).toBeNull();
+    expect(screen.queryByText(/Denne økten|teller med i kvoten til/)).toBeNull();
+
+    fireEvent.change(input, { target: { value: 'Hva sier evalueringene om digital veiledning?' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await screen.findByRole('link', { name: 'Åpne i Logg' });
+    expect(within(setupPanel()).queryByRole('button', { name: 'Vis API-kall' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Mer om svaret' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Vis API-kall' }));
+    const panel = screen.getByRole('dialog', { name: 'Kjør på nytt' });
     expect(within(panel).getByText('/tenants/999888777/playground/runs')).toBeTruthy();
     expect(within(panel).queryByText('Ikke bestemt')).toBeNull();
     expect(within(panel).getByText(/Administrere tjenester/)).toBeTruthy();
@@ -369,14 +405,16 @@ describe('Prøveområde', () => {
     };
     await openPage({ options, runs, candidates }, seen);
 
-    expect(screen.getByRole('button', { name: 'Tjeneste: Svar, versjon 2 (i bruk)' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Ferdighet: Klarspråk' })).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Sammenlign' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Bruk oppsettet' }));
-    fireEvent.change(screen.getByRole('textbox', { name: 'Spørsmål til begge oppsettene' }), {
+    expect(
+      (within(setupPanel()).getByRole('combobox', { name: 'Start fra' }) as HTMLSelectElement)
+        .selectedOptions[0]?.textContent,
+    ).toBe('Svar, versjon 2');
+    expect(within(setupPanel()).getByText('Kudos-rapporter')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Sammenlign med et annet oppsett' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Spørsmål til begge' }), {
       target: { value: 'Hva sier evalueringene om digital veiledning?' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Kjør begge' }));
 
     await waitFor(() => expect(screen.getAllByRole('article')).toHaveLength(2));
     expect(runs[0]).toEqual({
@@ -392,15 +430,16 @@ describe('Prøveområde', () => {
       input: { text: 'Hva sier evalueringene om digital veiledning?' },
     });
     const [first] = screen.getAllByRole('article');
-    const sources = within(first as HTMLElement).getByRole('list', { name: 'Kilder' });
-    const sourceItem = within(sources)
-      .getByText('Evaluering av digital veiledning i Testetaten (2023)')
-      .closest('li');
-    expect(sourceItem?.textContent).toBe('Evaluering av digital veiledning i Testetaten (2023)');
-    expect(sourceItem?.value).toBe(1);
-    expect(within(first as HTMLElement).getByText('Norge')).toBeTruthy();
+    expect(
+      within(first as HTMLElement).getByText(
+        /^Kilder?: Evaluering av digital veiledning i Testetaten \(2023\)/,
+      ),
+    ).toBeTruthy();
+    expect(within(first as HTMLElement).getByText('Data i Norge')).toBeTruthy();
 
-    const [saveA] = screen.getAllByRole('button', { name: 'Lagre som testtilfelle' });
+    const [moreA] = screen.getAllByRole('button', { name: 'Mer om svaret' });
+    if (moreA) fireEvent.click(moreA);
+    const [saveA] = screen.getAllByRole('button', { name: 'Lagre som testtilfelle', hidden: true });
     if (saveA) fireEvent.click(saveA);
     expect((screen.getByRole('combobox', { name: 'Testsett' }) as HTMLSelectElement).value).toBe(
       'svar-sporsmal',
@@ -436,14 +475,9 @@ describe('Prøveområde', () => {
     version.variants = [{ id: 'default' }, { id: 'mini', title: 'Rask', model: fast }];
     await openPage({ options, runs });
 
-    fireEvent.click(screen.getByRole('button', { name: /^Tjeneste: / }));
-    fireEvent.change(screen.getByRole('combobox', { name: 'Variant' }), {
+    fireEvent.change(within(setupPanel()).getByRole('combobox', { name: 'Variant' }), {
       target: { value: 'mini' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Bruk oppsettet' }));
-    expect(
-      screen.getByRole('button', { name: new RegExp(`^Tjeneste: ${chosen.name} \\(Rask\\), `) }),
-    ).toBeTruthy();
     askSample(chosen.exampleQuestions?.[0] ?? '');
 
     await waitFor(() => expect(runs).toHaveLength(1));
@@ -451,6 +485,82 @@ describe('Prøveområde', () => {
       service: { id: chosen.id, variant: 'mini' },
       model: fast,
     });
+  });
+
+  it('the variant field sits right under Start fra, and only for a service with variants', async () => {
+    const options = structuredClone(examplePlaygroundOptions);
+    const chosen = options.services.find((s) => s.chat) ?? options.services[0];
+    const version = chosen?.versions[0];
+    if (!version) throw new Error('example has no service');
+    version.variants = [{ id: 'default' }, { id: 'mini', title: 'Rask' }];
+    await openPage({ options });
+
+    const names = within(setupPanel())
+      .getAllByRole('combobox')
+      .map((c) => (c as HTMLSelectElement).labels[0]?.textContent);
+    expect(names.slice(0, 2)).toEqual(['Start fra', 'Variant']);
+
+    const start = within(setupPanel()).getByRole('combobox', { name: /^Start fra/ });
+    const own = within(start).getByRole('option', { name: 'Tomt oppsett' }) as HTMLOptionElement;
+    fireEvent.change(start, { target: { value: own.value } });
+    expect(within(setupPanel()).queryByRole('combobox', { name: 'Variant' })).toBeNull();
+  });
+
+  it('the answer language sits inside the Ferdigheter, byggeklosser og svarform disclosure', async () => {
+    await openPage();
+
+    const language = within(setupPanel()).getByRole('combobox', {
+      name: 'Svarspråk',
+      hidden: true,
+    });
+    const disclosure = language.closest('details');
+    expect(disclosure?.querySelector('summary')?.textContent).toBe(
+      'Ferdigheter, byggeklosser og svarform',
+    );
+  });
+
+  it('example questions show only while the conversation is empty', async () => {
+    await openPage();
+    const example = 'Hva sier evalueringene om digital veiledning?';
+    expect(screen.getByRole('button', { name: example })).toBeTruthy();
+
+    askSample(example);
+    await screen.findByRole('link', { name: 'Åpne i Logg' });
+
+    expect(screen.queryByRole('button', { name: example })).toBeNull();
+  });
+
+  it('Ny samtale sits next to Kjør and clears the conversation', async () => {
+    await openPage();
+    expect(screen.queryByRole('button', { name: 'Ny samtale' })).toBeNull();
+    askSample('Hva sier evalueringene om digital veiledning?');
+    await screen.findByRole('link', { name: 'Åpne i Logg' });
+
+    const fresh = screen.getByRole('button', { name: 'Ny samtale' });
+    const run = screen.getByRole('button', { name: 'Kjør' });
+    expect(fresh.closest('form')).toBe(run.closest('form'));
+    expect(fresh.nextElementSibling).toBe(run);
+
+    fireEvent.click(fresh);
+    expect(screen.queryByRole('link', { name: 'Åpne i Logg' })).toBeNull();
+    expect(
+      screen.getByRole('button', { name: 'Hva sier evalueringene om digital veiledning?' }),
+    ).toBeTruthy();
+  });
+
+  it('the Mer menu on an answer holds Lagre som testtilfelle and Vis API-kall', async () => {
+    await openPage();
+    askSample('Hva sier evalueringene om digital veiledning?');
+    const answer = (await screen.findByRole('link', { name: 'Åpne i Logg' })).closest('article');
+    if (!answer) throw new Error('no answer');
+    expect(within(answer).queryByRole('button', { name: 'Lagre som testtilfelle' })).toBeNull();
+
+    fireEvent.click(within(answer).getByRole('button', { name: 'Mer om svaret' }));
+    expect(
+      within(answer).getByRole('button', { name: 'Lagre som testtilfelle', hidden: true }),
+    ).toBeTruthy();
+    fireEvent.click(within(answer).getByRole('button', { name: 'Vis API-kall', hidden: true }));
+    expect(screen.getByRole('dialog', { name: 'Kjør på nytt' })).toBeTruthy();
   });
 
   it('a used-up quota shows the message from the API', async () => {
@@ -553,12 +663,11 @@ describe('Prøveområde', () => {
       for (const version of service.versions) version.setup.model = 'eu/mistral';
     await openPage({ options, runs });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Sammenlign' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Bruk oppsettet' }));
-    fireEvent.change(screen.getByRole('textbox', { name: 'Spørsmål til begge oppsettene' }), {
+    fireEvent.click(screen.getByRole('button', { name: 'Sammenlign med et annet oppsett' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Spørsmål til begge' }), {
       target: { value: 'Hei' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Kjør begge' }));
 
     await waitFor(() => expect(runs).toHaveLength(1));
     expect(runs[0]?.compareWith?.model).toBe('eu/mistral');
@@ -580,11 +689,11 @@ describe('Prøveområde', () => {
       for (const version of service.versions) version.setup.model = 'eu/mistral';
     await openPage({ options });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Endre oppsett' }));
-    fireEvent.click(screen.getByRole('radio', { name: 'Et eget oppsett' }));
-    expect(screen.getByRole('radio', { name: /^Mistral Next.*Ikke sluppet/ })).toBeTruthy();
-    expect(screen.getByRole('radio', { name: /^Mistral EU/ })).toBeTruthy();
-    expect(screen.queryByRole('radio', { name: /^Mistral EU.*Ikke sluppet/ })).toBeNull();
+    fireEvent.click(within(setupPanel()).getByRole('button', { name: 'Bytt modell' }));
+    const picker = screen.getByRole('dialog', { name: 'Velg modell' });
+    expect(within(picker).getAllByText('Mistral Next (ikke sluppet)').length).toBeGreaterThan(0);
+    expect(within(picker).getAllByText('Mistral EU').length).toBeGreaterThan(0);
+    expect(within(picker).queryByText('Mistral EU (ikke sluppet)')).toBeNull();
   });
 
   it('starts on the first service exposed for chat, not the first in the list', async () => {
@@ -593,10 +702,13 @@ describe('Prøveområde', () => {
     expect(options.services[0]?.chat).toBeFalsy();
     await openPage({ options });
 
-    expect(screen.getByRole('button', { name: /^Tjeneste: Rapportassistenten, / })).toBeTruthy();
+    expect(
+      (within(setupPanel()).getByRole('combobox', { name: 'Start fra' }) as HTMLSelectElement)
+        .selectedOptions[0]?.textContent,
+    ).toMatch(/^Rapportassistenten, /);
   });
 
-  it('a sample question fills the question field and sends nothing until Send is pressed', async () => {
+  it('a sample question fills the question field and sends nothing until Kjør is pressed', async () => {
     const runs: PlaygroundRunRequest[] = [];
     const input = (await openPage({ runs })) as HTMLTextAreaElement;
     fireEvent.click(
@@ -607,8 +719,8 @@ describe('Prøveområde', () => {
     expect(document.activeElement).toBe(input);
     expect(runs).toHaveLength(0);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
-    await screen.findByRole('link', { name: 'Se kjøringen' });
+    fireEvent.click(screen.getByRole('button', { name: 'Kjør' }));
+    await screen.findByRole('link', { name: 'Åpne i Logg' });
     expect(runs).toHaveLength(1);
     expect(runs[0]?.input).toEqual({ text: 'Hva sier evalueringene om digital veiledning?' });
   });
@@ -641,11 +753,9 @@ describe('Prøveområde', () => {
 
   it('an uploaded document is sent as base64 with its name and type', async () => {
     const runs: PlaygroundRunRequest[] = [];
-    await renderAt('#/playground', withPlayground({ runs }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Endre oppsett' }));
-    fireEvent.click(screen.getByRole('radio', { name: 'Et eget oppsett' }));
+    await openPage({ runs });
+    startFrom('Tomt oppsett');
     fireEvent.click(screen.getByRole('radio', { name: 'Hent ut opplysninger fra et dokument' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Bruk oppsettet' }));
     const upload = new File(['Søker: Eksempel IL'], 'søknad.txt', { type: 'text/plain' });
     fireEvent.change(screen.getByLabelText('Dokument'), { target: { files: [upload] } });
     const [extract] = screen

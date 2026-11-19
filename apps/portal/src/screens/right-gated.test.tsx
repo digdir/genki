@@ -55,9 +55,29 @@ const expectLockedWithReason = (button: HTMLElement) => {
 };
 
 describe('buttons the person has no right for', () => {
+  it('the empty Statistikk names the right instead of offering a service to someone without it', async () => {
+    const empty: UsageReport = {
+      from: '2026-10-01T00:00:00.000Z',
+      to: '2026-10-06T10:00:00.000Z',
+      priced: true,
+      totals: { inputTokens: 0, outputTokens: 0, requests: 0, costMicroNok: 0 },
+      daily: [],
+      byService: [],
+      byModel: [],
+    };
+    await renderAs(
+      '#/statistics',
+      useOnly,
+      mockFetch(undefined, undefined, undefined, undefined, { usage: empty }),
+    );
+
+    expect(await screen.findByText(reason)).toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'Lag en tjeneste' })).toBeNull();
+  });
+
   it('API key buttons are disabled with the missing right next to them', async () => {
     const calls = await renderAs('#/integrations?tab=keys', useOnly);
-    const create = await screen.findByRole('button', { name: 'Lag API-nøkkel' });
+    const create = await screen.findByRole('button', { name: 'Ny API-nøkkel' });
     expectLockedWithReason(create);
     fireEvent.click(create);
     expect(screen.queryByRole('heading', { name: 'Ny API-nøkkel' })).toBeNull();
@@ -65,7 +85,7 @@ describe('buttons the person has no right for', () => {
   });
 
   it('test set and run buttons are disabled with the reason, and nothing is sent', async () => {
-    const calls = await renderAs('#/services/rapportassistenten/quality', useOnly);
+    const calls = await renderAs('#/services/rapportassistenten/quality?view=testsets', useOnly);
     await screen.findByText('Hvor mange tilsyn hadde vi i 2025?');
     expectLockedWithReason(screen.getByRole('button', { name: 'Nytt testtilfelle' }));
     const run = screen.getByRole('button', { name: 'Kjør testsettet' });
@@ -80,7 +100,7 @@ describe('buttons the person has no right for', () => {
   });
 
   it('candidate review buttons are disabled with the reason, and nothing is sent', async () => {
-    const calls = await renderAs('#/services/rapportassistenten/quality', useOnly);
+    const calls = await renderAs('#/services/rapportassistenten/quality?view=testsets', useOnly);
     const section = await screen.findByRole('region', { name: 'Forslag til testtilfeller' });
     const item = (await within(section).findByText('Hva var ventetiden på telefon i fjor?'))
       .parentElement as HTMLElement;
@@ -103,15 +123,20 @@ describe('buttons the person has no right for', () => {
     expect(
       await screen.findByRole('heading', { name: 'Du ser tjenesten uten å kunne endre den' }),
     ).toBeTruthy();
-    const toggles = [...document.querySelectorAll<HTMLButtonElement>('.setup-toggle')];
-    expect(toggles.length).toBeGreaterThan(0);
-    for (const toggle of toggles)
-      if (toggle.getAttribute('aria-expanded') !== 'true') fireEvent.click(toggle);
-    const editable = document.querySelectorAll(
-      '.setup-body input:not(:disabled), .setup-body textarea:not(:disabled)',
-    );
-    expect(document.querySelectorAll('.setup-readonly').length).toBeGreaterThan(0);
-    expect(editable.length).toBe(0);
+    const nav = screen.getByRole('navigation', { name: 'Deler av oppsettet' });
+    fireEvent.click(within(nav).getByRole('button', { name: /^Avansert/ }));
+    const areas = within(nav)
+      .getAllByRole('button')
+      .filter((b) => b.classList.contains('setup-nav-item'));
+    expect(areas.length).toBeGreaterThan(4);
+    for (const area of areas) {
+      fireEvent.click(area);
+      const editable = document.querySelectorAll(
+        '.setup-area-body input:not(:disabled), .setup-area-body textarea:not(:disabled)',
+      );
+      expect(editable.length).toBe(0);
+    }
+    expect(screen.queryByRole('region', { name: 'Utkast' })?.querySelector('button')).toBeFalsy();
     expect(calls.some((c) => c.startsWith('PUT') && c.includes('/draft'))).toBe(false);
   });
 
@@ -121,9 +146,9 @@ describe('buttons the person has no right for', () => {
     expect(await screen.findByText(reason)).toBeTruthy();
     cleanup();
     calls.push(...(await renderAs('#/integrations?tab=systems', useOnly)));
-    await screen.findByRole('heading', { name: /Maskinporten/ });
+    await screen.findByRole('region', { name: 'Systemer' });
     cleanup();
-    calls.push(...(await renderAs('#/settings?tab=transfer', useOnly)));
+    calls.push(...(await renderAs('#/settings/all', useOnly)));
     await screen.findAllByText(reason);
     expect(calls.filter((c) => /\/(audit|maskinporten-clients|export)(\?|$)/.test(c))).toEqual([]);
   });
@@ -155,7 +180,7 @@ describe('cost estimate before a paid test set run', () => {
       features: { quality: {} },
     });
     const calls = await renderAs(
-      '#/services/rapportassistenten/quality',
+      '#/services/rapportassistenten/quality?view=testsets',
       manager,
       async (input, init) =>
         urlOf(input).split('?')[0]?.endsWith('/usage')
@@ -193,13 +218,13 @@ describe('rights in live mode', () => {
       [{ orgNumber: '312521172', name: 'FALSK IDIOTSIKKER ELEFANT' }],
       fromApi('312521172', ['use-services', 'manage-services', 'view-usage']),
     );
-    const create = await screen.findByRole('button', { name: 'Lag API-nøkkel' });
+    const create = await screen.findByRole('button', { name: 'Ny API-nøkkel' });
     await expect.poll(() => create.getAttribute('aria-disabled')).not.toBe('true');
   });
 
   it('the API answer wins over the actions in the login', async () => {
     await renderAs('#/integrations?tab=keys', manager, fromApi('999888777', ['use-services']));
-    const create = await screen.findByRole('button', { name: 'Lag API-nøkkel' });
+    const create = await screen.findByRole('button', { name: 'Ny API-nøkkel' });
     await expect.poll(() => create.getAttribute('aria-disabled')).toBe('true');
   });
 });

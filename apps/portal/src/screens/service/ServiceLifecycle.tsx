@@ -1,12 +1,24 @@
-import { Alert, Button, Dialog, Heading, Paragraph, Tag } from '@digdir/designsystemet-react';
+import {
+  Alert,
+  Button,
+  Dialog,
+  Dropdown,
+  Heading,
+  Paragraph,
+  Textfield,
+} from '@digdir/designsystemet-react';
+import { useFormat } from '@genai/i18n/react';
 import { useState } from 'react';
 import type { ApiClient } from '../../api';
-import { ReasonField, reasonProblem } from '../../components/ReasonField';
+import { reasonProblem } from '../../components/ReasonField';
 import { useAsync } from '../../hooks';
 import { useT, type PlainKey } from '../../i18n';
 import type { ServiceLifecycleView } from '../../types';
+import { lifecycleChanged, useServiceLifecycle, type LifecycleView } from './lifecycle';
+import { actorLabel } from '../../format';
+import { BatchDialog } from '../batch/BatchDialog';
 
-type Change = 'pause' | 'resume' | 'archive' | 'restore';
+export type Change = 'pause' | 'resume' | 'archive' | 'restore';
 
 const target: Record<Change, ServiceLifecycleView['state']> = {
   pause: 'paused',
@@ -29,57 +41,84 @@ const actionKey: Record<Change, PlainKey> = {
   restore: 'serviceLifecycle.restore',
 };
 
-export const ServiceLifecycle = ({
+const dayMs = 86_400_000;
+
+const PauseImpact = ({
+  api,
+  tenant,
+  id,
+  now,
+}: {
+  api: ApiClient;
+  tenant: string;
+  id: string;
+  now: () => Date;
+}) => {
+  const t = useT();
+  const [state] = useAsync(
+    async (signal) =>
+      (
+        await api.tasks(
+          tenant,
+          { service: id, from: new Date(now().getTime() - 7 * dayMs).toISOString(), limit: 1 },
+          signal,
+        )
+      ).total,
+    [api, tenant, id],
+  );
+  return (
+    <Paragraph>
+      {state.status === 'ready'
+        ? t('serviceLifecycle.pauseImpact', { count: state.data })
+        : t('serviceLifecycle.pauseInfo')}
+    </Paragraph>
+  );
+};
+
+export const LifecycleDialog = ({
   api,
   tenant,
   id,
   name,
+  change,
+  onClose,
   onChanged,
+  now = () => new Date(),
 }: {
   api: ApiClient;
   tenant: string;
   id: string;
   name: string;
+  change: Change;
+  onClose: () => void;
   onChanged?: () => void;
+  now?: () => Date;
 }) => {
   const t = useT();
-  const [version, setVersion] = useState(0);
-  const [state] = useAsync(
-    (signal) => api.serviceLifecycle(tenant, id, signal),
-    [api, tenant, id, version],
-  );
-  const [change, setChange] = useState<Change>();
   const [reason, setReason] = useState('');
   const [showError, setShowError] = useState(false);
   const [failed, setFailed] = useState(false);
   const [busy, setBusy] = useState(false);
-  if (state.status !== 'ready') return null;
-  const current = state.data.state;
-  const offered: Change[] =
-    current === 'active'
-      ? ['pause', 'archive']
-      : current === 'paused'
-        ? ['resume', 'archive']
-        : ['restore'];
+  const [asking, setAsking] = useState(false);
+  const pause = change === 'pause';
+  const error = showError ? reasonProblem(reason, t) : undefined;
 
-  const titleOf = (c: Change) =>
-    c === 'pause'
+  const requestClose = () => {
+    if (reason.trim()) setAsking(true);
+    else onClose();
+  };
+
+  const title =
+    change === 'pause'
       ? t('serviceLifecycle.pauseTitle', { name })
-      : c === 'resume'
+      : change === 'resume'
         ? t('serviceLifecycle.resumeTitle', { name })
-        : c === 'archive'
+        : change === 'archive'
           ? t('serviceLifecycle.archiveTitle', { name })
           : t('serviceLifecycle.restoreTitle', { name });
 
-  const close = () => {
-    setChange(undefined);
-    setReason('');
-    setShowError(false);
-    setFailed(false);
-  };
-
   const confirm = async () => {
-    if (!change) return;
+    if (busy) return;
     if (reasonProblem(reason, t)) {
       setShowError(true);
       return;
@@ -88,68 +127,205 @@ export const ServiceLifecycle = ({
     setFailed(false);
     try {
       await api.setServiceLifecycle(tenant, id, target[change], reason.trim());
-      close();
-      setVersion((v) => v + 1);
+      onClose();
+      lifecycleChanged(tenant, id);
       onChanged?.();
     } catch {
       setFailed(true);
-    } finally {
       setBusy(false);
     }
   };
 
   return (
-    <>
-      {current === 'paused' ? (
-        <Tag data-size="sm" data-color="warning">
-          {t('serviceLifecycle.tagPaused')}
-        </Tag>
-      ) : null}
-      {current === 'archived' ? (
-        <Tag data-size="sm" data-color="neutral">
-          {t('serviceLifecycle.tagArchived')}
-        </Tag>
-      ) : null}
-      {offered.map((c) => (
-        <Button key={c} variant="tertiary" data-size="sm" onClick={() => setChange(c)}>
-          {t(actionKey[c])}
-        </Button>
-      ))}
-      {change ? (
-        <Dialog
-          open
-          modal
-          closeButton={t('serviceLifecycle.close')}
-          onClose={close}
-          aria-labelledby="lifecycle-h"
-        >
-          <div className="stack">
-            <Heading level={2} data-size="sm" id="lifecycle-h">
-              {titleOf(change)}
-            </Heading>
-            <Paragraph>{t(infoKey[change])}</Paragraph>
-            <ReasonField value={reason} onChange={setReason} showError={showError} />
-            {failed ? (
-              <Alert data-color="danger" data-size="sm" role="alert">
-                {t('serviceLifecycle.failed')}
-              </Alert>
-            ) : null}
+    <Dialog
+      open
+      modal
+      closeButton={false}
+      closedby="none"
+      onCancel={(e) => {
+        e.preventDefault();
+        requestClose();
+      }}
+      aria-labelledby="lifecycle-h"
+    >
+      <div className="stack">
+        <div className="row-wrap spread">
+          <Heading level={2} data-size="sm" id="lifecycle-h">
+            {title}
+          </Heading>
+          <Button variant="tertiary" data-size="sm" onClick={requestClose}>
+            {t('serviceLifecycle.close')}
+          </Button>
+        </div>
+        {pause ? (
+          <PauseImpact api={api} tenant={tenant} id={id} now={now} />
+        ) : (
+          <Paragraph>{t(infoKey[change])}</Paragraph>
+        )}
+        <Textfield
+          multiline
+          rows={3}
+          label={pause ? t('serviceLifecycle.pauseReason') : t('common.reason')}
+          description={pause ? t('serviceLifecycle.pauseReasonHelp') : undefined}
+          value={reason}
+          error={error}
+          aria-invalid={error ? true : undefined}
+          onChange={(e) => {
+            setReason(e.target.value);
+            setAsking(false);
+          }}
+        />
+        {asking ? (
+          <Alert data-color="warning" data-size="sm" role="alert">
+            <Paragraph data-size="sm">{t('serviceLifecycle.discardAsk')}</Paragraph>
             <div className="actions">
-              <Button
-                variant="primary"
-                data-size="sm"
-                disabled={busy}
-                onClick={() => void confirm()}
-              >
-                {t(actionKey[change])}
+              <Button data-size="sm" data-color="danger" onClick={onClose}>
+                {t('serviceLifecycle.discard')}
               </Button>
-              <Button variant="secondary" data-size="sm" onClick={close}>
-                {t('common.cancel')}
+              <Button data-size="sm" variant="secondary" onClick={() => setAsking(false)}>
+                {t('serviceLifecycle.keepWriting')}
               </Button>
             </div>
-          </div>
-        </Dialog>
+          </Alert>
+        ) : null}
+        {failed ? (
+          <Alert data-color="danger" data-size="sm" role="alert">
+            {t('serviceLifecycle.failed')}
+          </Alert>
+        ) : null}
+        <div className="actions">
+          <Button
+            variant="primary"
+            data-size="sm"
+            aria-disabled={busy || undefined}
+            onClick={() => void confirm()}
+          >
+            {busy && pause ? t('serviceLifecycle.pausing') : t(actionKey[change])}
+          </Button>
+          <Button variant="secondary" data-size="sm" onClick={requestClose}>
+            {t('common.cancel')}
+          </Button>
+        </div>
+      </div>
+    </Dialog>
+  );
+};
+
+export const ServiceLifecycle = ({
+  api,
+  tenant,
+  id,
+  name,
+  onChanged,
+  onCopy,
+}: {
+  api: ApiClient;
+  tenant: string;
+  id: string;
+  name: string;
+  onChanged?: () => void;
+  onCopy?: () => void;
+}) => {
+  const t = useT();
+  const view = useServiceLifecycle(api, tenant, id);
+  const [change, setChange] = useState<Change>();
+  const [batchOpen, setBatchOpen] = useState(false);
+  if (!view) return null;
+  const current = view.state;
+  const dialog = change ? (
+    <LifecycleDialog
+      api={api}
+      tenant={tenant}
+      id={id}
+      name={name}
+      change={change}
+      onClose={() => setChange(undefined)}
+      {...(onChanged ? { onChanged } : {})}
+    />
+  ) : null;
+
+  if (current === 'archived')
+    return (
+      <>
+        <Button variant="secondary" data-size="sm" onClick={() => setChange('restore')}>
+          {t(actionKey.restore)}
+        </Button>
+        {dialog}
+      </>
+    );
+
+  return (
+    <>
+      <Dropdown.TriggerContext>
+        <Dropdown.Trigger variant="secondary" data-size="sm">
+          {t('serviceLifecycle.more')}
+        </Dropdown.Trigger>
+        <Dropdown
+          placement="bottom-start"
+          data-size="sm"
+          aria-label={t('serviceLifecycle.moreFor', { name })}
+        >
+          <Dropdown.List>
+            <Dropdown.Item>
+              <Dropdown.Button onClick={() => setBatchOpen(true)}>
+                {t('serviceLifecycle.batch')}
+              </Dropdown.Button>
+            </Dropdown.Item>
+            {onCopy ? (
+              <Dropdown.Item>
+                <Dropdown.Button onClick={onCopy}>{t('serviceLifecycle.copy')}</Dropdown.Button>
+              </Dropdown.Item>
+            ) : null}
+            {(current === 'paused'
+              ? (['resume', 'archive'] as const)
+              : (['pause', 'archive'] as const)
+            ).map((c) => (
+              <Dropdown.Item key={c}>
+                <Dropdown.Button onClick={() => setChange(c)}>{t(actionKey[c])}</Dropdown.Button>
+              </Dropdown.Item>
+            ))}
+          </Dropdown.List>
+        </Dropdown>
+      </Dropdown.TriggerContext>
+      {dialog}
+      {batchOpen ? (
+        <BatchDialog api={api} tenant={tenant} id={id} onClose={() => setBatchOpen(false)} />
       ) : null}
     </>
+  );
+};
+
+export const ArchivedBanner = ({
+  canRestore,
+  lifecycle,
+  ...props
+}: {
+  api: ApiClient;
+  tenant: string;
+  id: string;
+  name: string;
+  lifecycle: LifecycleView;
+  canRestore: boolean;
+  onChanged?: () => void;
+}) => {
+  const t = useT();
+  const f = useFormat();
+  const { at, reason, by, byName } = lifecycle;
+  const who = by ? actorLabel(by, t, byName) : undefined;
+  const when = at ? f.date(at, 'long') : undefined;
+  const why = reason?.trim();
+  return (
+    <div role="status" className="archived-banner">
+      <div className="archived-banner-text">
+        <strong>{t('serviceLifecycle.archivedTitle')}</strong>
+        <span>
+          {who && when
+            ? `${t(why ? 'serviceLifecycle.archivedByWhy' : 'serviceLifecycle.archivedBy', { who, when, why: why ?? '' })} `
+            : `${when ? `${t('serviceLifecycle.archivedAt', { date: when })} ` : ''}${why ? `«${why}». ` : ''}`}
+          {t('serviceLifecycle.archivedText')}
+        </span>
+      </div>
+      {canRestore ? <ServiceLifecycle {...props} /> : null}
+    </div>
   );
 };

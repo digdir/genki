@@ -13,6 +13,7 @@ import { Forward, Models } from './screens/Models';
 import { Onboarding } from './screens/Onboarding';
 import { Operations } from './screens/Operations';
 import { PlatformDefaults } from './screens/PlatformDefaults';
+import { PlatformSecrets } from './screens/PlatformSecrets';
 import { Policies } from './screens/Policies';
 import { pendingCount, Queue } from './screens/Queue';
 import { Quality } from './screens/Quality';
@@ -42,6 +43,7 @@ const Atlas = lazy(() => import('./screens/Atlas').then((m) => ({ default: m.Atl
 const QualityMatrix = lazy(() =>
   import('./screens/QualityMatrix').then((m) => ({ default: m.QualityMatrix })),
 );
+const Demos = lazy(() => import('./screens/Demos').then((m) => ({ default: m.Demos })));
 import type { OperatorSession } from './types';
 
 const inputStore = (): Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> => {
@@ -276,6 +278,7 @@ export const App = ({ auth, fetch: send, baseUrl = '/api', live = false }: Props
     ),
     '/onboarding': () => <Onboarding api={api} live={live} />,
     '/models': () => <Models api={api} params={params} />,
+    '/platform-secrets': () => <PlatformSecrets api={api} />,
     '/model-operations': () => <Forward to="/models" params={apisTab} />,
     '/catalog': () => <Catalog api={api} tab={params.get('tab') ?? undefined} />,
     '/policies': () => <Policies api={api} tab={params.get('tab') ?? undefined} />,
@@ -283,6 +286,11 @@ export const App = ({ auth, fetch: send, baseUrl = '/api', live = false }: Props
       <BuildingBlocks api={api} initial={params.get('block') ?? undefined} live={live} />
     ),
     '/shared-services': () => <SharedServices api={api} />,
+    '/demos': () => (
+      <Suspense fallback={null}>
+        <Demos api={api} params={params} />
+      </Suspense>
+    ),
     '/settings': () => <Settings api={api} />,
     '/quality': () => <Quality api={api} />,
     '/search-engines': () => <SearchEngines api={api} />,

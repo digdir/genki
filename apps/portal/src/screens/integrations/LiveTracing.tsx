@@ -92,6 +92,11 @@ const blank = (instance: TraceInstance | undefined, taken: string[]): Draft => {
   };
 };
 
+export const maskedKey = (key: string) => {
+  const prefix = /^(pk|sk)-lf-/.exec(key)?.[0] ?? '';
+  return key.length > prefix.length + 4 ? `${prefix}••••${key.slice(-4)}` : '••••';
+};
+
 const secretPrefix = (tenant: string) => `secret://tenant/${tenant}/`;
 
 /** The API's pattern for a connection's id. */
@@ -224,9 +229,11 @@ export const LiveTracing = ({
   api,
   tenant,
   onFlash,
+  round: outerRound = 0,
 }: {
   api: ApiClient;
   tenant: string;
+  round?: number;
   onFlash: (text: string, color?: 'success' | 'info' | 'danger') => void;
 }) => {
   const t = useT();
@@ -244,7 +251,8 @@ export const LiveTracing = ({
       ]);
       return { connections: listing.data, instance: listing.instance, services };
     },
-    [api, tenant, round],
+    [api, tenant, round, outerRound],
+    { keepPreviousFor: tenant },
   );
   const [draft, setDraft] = useState<Draft>();
   const [editing, setEditing] = useState(false);
@@ -360,7 +368,21 @@ export const LiveTracing = ({
     }
   };
 
-  if (state.status === 'loading') return <Loading label={t('integLangfuse.loading')} />;
+  if (state.status === 'loading')
+    return (
+      <section aria-labelledby="tracing-h" className="stack-md">
+        <Heading level={3} data-size="xs" id="tracing-h">
+          {t('integLangfuse.heading')}
+        </Heading>
+        <Paragraph data-size="sm">{t('integLangfuse.intro')}</Paragraph>
+        <Loading label={t('integLangfuse.loading')} shape="list" headingLevel={3} onRetry={retry} />
+        {canManage ? (
+          <Button variant="primary" aria-disabled>
+            {t('integLangfuse.add')}
+          </Button>
+        ) : null}
+      </section>
+    );
   if (state.status === 'error')
     return <ErrorState error={state.error} onRetry={retry} headingLevel={3} />;
   const { connections, services } = state.data;
@@ -400,15 +422,42 @@ export const LiveTracing = ({
       <Paragraph data-size="sm">{t('integLangfuse.intro')}</Paragraph>
       <Guide open={guideOpen ?? connections.length === 0} onToggle={setGuideOpen} />
       {connections.length === 0 ? (
-        <Paragraph data-size="sm">{t('integLangfuse.none')}</Paragraph>
+        <div className="stack-xs">
+          <Heading level={4} data-size="2xs">
+            {t('devTracing.emptyTitle')}
+          </Heading>
+          <Paragraph data-size="sm">{t('devTracing.emptyText')}</Paragraph>
+        </div>
       ) : (
         <ul className="plain-list stack-sm">
           {connections.map((c) => (
             <li key={c.id} className="quality-panel">
-              <Heading level={4} data-size="2xs">
-                {c.id}
-              </Heading>
-              <Paragraph data-size="sm">{c.host}</Paragraph>
+              <div className="row-wrap">
+                <Heading level={4} data-size="2xs">
+                  {c.id}
+                </Heading>
+                {c.removing ? null : (
+                  <Tag data-size="sm" data-color="success">
+                    {t('devTracing.connected')}
+                  </Tag>
+                )}
+              </div>
+              <dl className="dev-facts">
+                <div>
+                  <dt>{t('devTracing.address')}</dt>
+                  <dd>{c.host}</dd>
+                </div>
+                <div>
+                  <dt>{t('devTracing.publicKey')}</dt>
+                  <dd>
+                    <code>{maskedKey(c.publicKey)}</code>
+                  </dd>
+                </div>
+                <div>
+                  <dt>{t('devTracing.secretKey')}</dt>
+                  <dd>{t('devTracing.secretStored')}</dd>
+                </div>
+              </dl>
               <Paragraph data-size="sm">
                 {t('integLangfuse.services', { services: c.services.join(', ') || '–' })}
               </Paragraph>

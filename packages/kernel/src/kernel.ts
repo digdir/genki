@@ -54,6 +54,8 @@ export interface KernelLimits {
   maxConcurrentPerTenant: number;
   deltaFlushMs: number;
   deltaFlushChars: number;
+  cancelPollMs: number;
+  leaseRenewMs: number;
 }
 
 export interface CapabilitySource {
@@ -80,6 +82,8 @@ const defaultLimits: KernelLimits = {
   maxConcurrentPerTenant: 100,
   deltaFlushMs: 100,
   deltaFlushChars: 500,
+  cancelPollMs: 1000,
+  leaseRenewMs: 30_000,
 };
 
 const strategyTypes = new Set<string>(strategyEventTypes);
@@ -204,6 +208,7 @@ interface Live {
   eventCount: number;
   depth: number;
   finished: boolean;
+  leased?: boolean;
   settle: { resolve(parts: Part[]): void; reject(error: Error): void };
 }
 
@@ -289,15 +294,26 @@ const validate = (options: KernelOptions) => {
   for (const cap of options.capabilities) checkCapability(options, cap);
 };
 
-export const createKernel = (options: KernelOptions): Kernel => {
+export interface StoppableKernel extends Kernel {
+  stop(): void;
+  drain(): Promise<void>;
+  running(): number;
+}
+
+export const createKernel = (options: KernelOptions): StoppableKernel => {
   validate(options);
   const log = options.log ?? new InMemoryEventLog();
-  const store = options.tasks ?? new InMemoryTaskStore();
+  const store: TaskStore = options.tasks ?? new InMemoryTaskStore();
   const state = options.state ?? new InMemoryStateStore();
   const limits = { ...defaultLimits, ...options.limits };
   const newId = options.newId ?? (() => crypto.randomUUID());
   const now = options.now ?? (() => new Date());
   const live = new Map<string, Live>();
+  const idle: (() => void)[] = [];
+  let stopping = false;
+  const settleIdle = () => {
+    if (live.size === 0) for (const resolve of idle.splice(0)) resolve();
+  };
 
   const source = options.capabilities;
   const capabilities = (): readonly Capability[] => (Array.isArray(source) ? source : source.all());
@@ -379,18 +395,82 @@ export const createKernel = (options: KernelOptions): Kernel => {
     return appended;
   };
 
-  const setStatus = async (l: Live, status: TaskStatus) => {
+  const setStatus = async (l: Live, status: TaskStatus, leaseChecked = false) => {
+    if (!leaseChecked && !isRunning(status) && !(await holdsLease(l))) return release(l);
     await emit(l, { type: 'kernel.task.status', data: { status } }, 'kernel');
     l.task.status = status;
     if (isTerminal(status)) l.task.endedAt = now().toISOString();
     await persist(l);
     if (!isRunning(status)) live.delete(l.task.id);
     log.wake(l.task.id);
+    settleIdle();
   };
 
   const abort = (l: Live, reason: KernelError) => {
     l.abortReason ??= reason;
     l.controller.abort(reason);
+  };
+
+  const cancelled = () => new KernelError('cancelled', 'task was cancelled');
+
+  const holdsLease = async (l: Live) => {
+    if (!l.leased || !store.renewLeases) return true;
+    const held = await store.renewLeases([l.task.id]).catch(() => [l.task.id]);
+    return held.includes(l.task.id);
+  };
+
+  const lose = (l: Live) => {
+    if (l.finished) return;
+    l.finished = true;
+    release(l);
+  };
+
+  function release(l: Live) {
+    const error = new KernelError('server_stopped', 'the task lease ran out on this instance');
+    abort(l, error);
+    l.task.status = 'failed';
+    live.delete(l.task.id);
+    l.settle.reject(error);
+    log.wake(l.task.id);
+    settleIdle();
+  }
+
+  let renewedAt = Number.NEGATIVE_INFINITY;
+  const renewLeases = async () => {
+    if (!store.renewLeases || now().getTime() - renewedAt < limits.leaseRenewMs) return;
+    const leased = [...live.values()].filter((l) => l.leased);
+    if (leased.length === 0) return;
+    renewedAt = now().getTime();
+    const held = new Set(await store.renewLeases(leased.map((l) => l.task.id)));
+    for (const l of leased) if (!held.has(l.task.id)) lose(l);
+  };
+
+  let cancelWatch: ReturnType<typeof setInterval> | undefined;
+  let checkingCancels = false;
+  const checkCancels = async () => {
+    if (live.size === 0) {
+      clearInterval(cancelWatch);
+      cancelWatch = undefined;
+      return;
+    }
+    if (checkingCancels || (!store.cancelRequested && !store.renewLeases)) return;
+    checkingCancels = true;
+    try {
+      await renewLeases().catch(() => undefined);
+      for (const id of (await store.cancelRequested?.([...live.keys()])) ?? []) {
+        const running = live.get(id);
+        if (running) abort(running, cancelled());
+      }
+    } catch {
+      // The next round asks again.
+    } finally {
+      checkingCancels = false;
+    }
+  };
+  const watchCancels = () => {
+    if (cancelWatch || (!store.cancelRequested && !store.renewLeases)) return;
+    cancelWatch = setInterval(() => void checkCancels(), limits.cancelPollMs);
+    cancelWatch.unref?.();
   };
 
   const outputLimit = (l: Live) => {
@@ -441,6 +521,7 @@ export const createKernel = (options: KernelOptions): Kernel => {
   const fail = async (l: Live, error: Error) => {
     if (l.finished) return;
     l.finished = true;
+    if (!(await holdsLease(l))) return release(l);
     const code = error instanceof KernelError ? error.code : 'strategy_error';
     const provider = providerFailureOf(error);
     await emit(
@@ -454,12 +535,12 @@ export const createKernel = (options: KernelOptions): Kernel => {
     );
     const clientMessage = error instanceof KernelError ? error.message : 'the service failed';
     await emit(l, { type: 'kernel.error', data: { code, message: clientMessage } }, 'kernel');
-    await setStatus(l, 'failed');
+    await setStatus(l, 'failed', true);
     l.settle.reject(error);
   };
 
   const finishAborted = async (l: Live) => {
-    const reason = l.abortReason ?? new KernelError('cancelled', 'task was cancelled');
+    const reason = l.abortReason ?? cancelled();
     if (reason.code !== 'cancelled') return fail(l, reason);
     if (l.finished) return;
     l.finished = true;
@@ -504,6 +585,8 @@ export const createKernel = (options: KernelOptions): Kernel => {
   const drive = async (l: Live, start: () => AsyncIterable<Emitted>) => {
     await setStatus(l, 'running');
     live.set(l.task.id, l);
+    l.leased = true;
+    watchCancels();
     const deadlineMs = l.capability.deadlineMs;
     const timer =
       deadlineMs === undefined
@@ -703,6 +786,7 @@ export const createKernel = (options: KernelOptions): Kernel => {
       capabilityRef(capability.descriptor),
     );
     if (!decision.allow) throw new KernelError('forbidden', decision.reason);
+    if (!parent && stopping) throw new KernelError('server_stopped', 'the server is stopping');
     if (!parent) {
       const spent = await options.quota?.({ tenant, capability: capability.descriptor.id });
       if (spent) throw new KernelError('quota_exhausted', spent);
@@ -744,12 +828,16 @@ export const createKernel = (options: KernelOptions): Kernel => {
           ...(invokeOptions.environment === undefined
             ? {}
             : { environment: invokeOptions.environment }),
+          ...(principal.confinedTo?.client === undefined
+            ? {}
+            : { frontend: principal.confinedTo.client }),
         },
         principal: principalRef(principal),
         tenant,
         owner: capability.descriptor.tenant,
         ...(parent ? { parent: parent.task.id } : {}),
         ...(thread === undefined ? {} : { thread }),
+        ...(invokeOptions.entryPoint === undefined ? {} : { entryPoint: invokeOptions.entryPoint }),
         status: 'queued',
         artifacts: [],
         usage: {},
@@ -863,6 +951,13 @@ export const createKernel = (options: KernelOptions): Kernel => {
   };
 
   return {
+    stop: () => {
+      stopping = true;
+    },
+    drain: () =>
+      live.size === 0 ? Promise.resolve() : new Promise<void>((resolve) => idle.push(resolve)),
+    running: () => live.size,
+
     describe: async (principal) => {
       const visible: CapabilityDescriptor[] = [];
       for (const cap of capabilities()) {
@@ -889,6 +984,7 @@ export const createKernel = (options: KernelOptions): Kernel => {
       if (pending.expiresAt && Date.parse(pending.expiresAt) < now().getTime()) {
         throw new KernelError('invalid_state', `interrupt ${interruptId} has expired`);
       }
+      if (stopping) throw new KernelError('server_stopped', 'the server is stopping');
       const l = revive(stored);
       if (!l.strategy.resume)
         throw new KernelError('invalid_state', `strategy ${l.strategy.id} cannot resume`);
@@ -914,7 +1010,8 @@ export const createKernel = (options: KernelOptions): Kernel => {
     cancel: async (principal, taskId) => {
       const stored = await authorize(principal, taskId, 'cancel');
       const running = live.get(taskId);
-      if (running) return abort(running, new KernelError('cancelled', 'task was cancelled'));
+      if (running) return abort(running, cancelled());
+      if (isRunning(stored.task.status)) return store.requestCancel?.(taskId, now().toISOString());
       if (stored.task.status !== 'interrupted') return;
       const l = revive(stored);
       l.finished = true;

@@ -99,6 +99,7 @@ resource admins 'Microsoft.DBforPostgreSQL/flexibleServers/administrators@2024-0
   dependsOn: [groupAdmin]
 }]
 
+output id string = server.id
 output name string = server.name
 output fqdn string = server.properties.fullyQualifiedDomainName
 output databaseName string = databaseNames[0]

@@ -32,12 +32,11 @@ import { Icon } from '../../components/Icon';
 import type { Route } from '../../hooks';
 import { useT, type PlainKey } from '../../i18n';
 import { Contact } from '../FooterPages';
-import { useBelow } from '../Startside';
 import aboutStyles from './about.css?inline';
 import { DataHandlingPage } from './DataHandlingPage';
 import { PricePage } from './PricePage';
 import { PublicErrorBoundary } from './PublicErrorBoundary';
-import { priceSegment, siteName, useDocumentTitle } from './public-pages';
+import { priceSegment, siteName, useBelow, useDocumentTitle } from './public-pages';
 import { PublicStart } from './PublicStart';
 import '../startside.css';
 
@@ -284,13 +283,11 @@ const publicPage = (route: Route) => {
 
 export const PublicSite = ({
   route,
-  preview,
   onLogin,
   busy,
   failed,
 }: {
   route: Route;
-  preview: ReactNode;
   onLogin: () => void;
   busy: boolean;
   failed: boolean;
@@ -381,7 +378,6 @@ export const PublicSite = ({
         {t('shell.skipToContent')}
       </SkipLink>
       <header className="start-header about-header">
-        {preview}
         <div className="about-bar">
           <a className="brand about-brand" href="#/">
             <img src="/emblem-felleslosning.svg" alt="" width={32} height={32} />

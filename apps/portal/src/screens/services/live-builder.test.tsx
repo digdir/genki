@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../../App';
 import { mockAnsattporten } from '../../auth';
 import { logTimelines } from '../../data/log';
 import { exampleDatasets, exampleOrganisations, exampleServices, mockFetch } from '../../mock';
 import type { ModelOption } from '../../types';
+import { openArea } from './setup-areas.test-utils';
 
 document.getAnimations ??= () => [];
 beforeAll(() => {
@@ -19,7 +20,10 @@ beforeAll(() => {
 beforeEach(() => {
   window.location.hash = '';
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 const liveModels: ModelOption[] = [
   { id: 'foundry-openai/gpt-4.1-mini', residency: 'global', capabilities: ['stream'] },
@@ -66,6 +70,23 @@ const startBuilder = async (fetch: typeof globalThis.fetch) => {
   return screen.findByRole('complementary', { name: 'Byggeassistent' });
 };
 
+const publishPage = async (reason: string) => {
+  window.location.hash = '#/services/rapportassistenten/setup/risk';
+  fireEvent.click(await screen.findByRole('button', { name: 'Bekreft risikonivå' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Publiser ...' }));
+  await screen.findByRole('heading', { level: 1, name: /^Publiser Rapportassistenten, versjon/ });
+  fireEvent.change(screen.getByLabelText(/^Hva endret du, og hvorfor\?/), {
+    target: { value: reason },
+  });
+  return document.body;
+};
+
+const publishOnPage = async (page: HTMLElement) => {
+  const button = within(page).getByRole('button', { name: /^Publiser versjon \d+$/ });
+  await waitFor(() => expect(button.getAttribute('aria-disabled')).not.toBe('true'));
+  fireEvent.click(button);
+};
+
 const openSection = async (name: RegExp) => {
   fireEvent.click(await screen.findByRole('button', { name }));
 };
@@ -107,16 +128,15 @@ describe('the live builder', () => {
     ]);
   });
 
-  it('shows the price per 1,000 tokens the API returns and "ikke priset" only for a model without one', async () => {
+  it('shows the price per 1M tokens the API returns and "Ikke priset" only for a model without one', async () => {
     const { fetch } = recorded();
     await startBuilder(fetch);
     await openSection(/^Modell/);
 
-    const models = screen.getByRole('group', { name: 'Modeller Digdir tillater' });
-    expect(
-      within(models).getByText('Kostnad: 0,02 kr inn og 0,08 kr ut per 1 000 tokens'),
-    ).toBeTruthy();
-    expect(within(models).getAllByText('Kostnad: ikke priset')).toHaveLength(1);
+    fireEvent.click(await screen.findByRole('button', { name: 'Bytt modell' }));
+    const picker = screen.getByRole('dialog', { name: 'Velg modell' });
+    expect(within(picker).getByText('20,00 / 80,00 kr per 1M')).toBeTruthy();
+    expect(within(picker).getAllByText('Ikke priset')).toHaveLength(1);
   });
 
   it('lists only live models with residency in words and no invented cost or speed', async () => {
@@ -124,10 +144,11 @@ describe('the live builder', () => {
     await startBuilder(fetch);
     await openSection(/^Modell/);
 
-    const models = screen.getByRole('group', { name: 'Modeller Digdir tillater' });
-    expect(within(models).getAllByRole('radio')).toHaveLength(2);
-    expect(within(models).getByText(/Data behandles i EU/)).toBeTruthy();
-    expect(within(models).queryByText(/Borealis|Fart:|Kostnad: høy/)).toBeNull();
+    fireEvent.click(await screen.findByRole('button', { name: 'Bytt modell' }));
+    const picker = screen.getByRole('dialog', { name: 'Velg modell' });
+    expect(within(picker).getAllByRole('radio')).toHaveLength(2);
+    expect(within(picker).getByText('Data i EU/EØS')).toBeTruthy();
+    expect(within(picker).queryByText(/Borealis|Fart:|Kostnad: høy/)).toBeNull();
   });
 
   it('picks datasets from the catalog, writes the full id and removes them again', async () => {
@@ -235,7 +256,7 @@ describe('the live builder', () => {
     await waitFor(() => expect(window.location.hash).toBe('#/services/ny-tjeneste'));
     const published = await waitFor(() => {
       const head = document.querySelector('.service-head') as HTMLElement;
-      expect(within(head).getByText('I bruk')).toBeTruthy();
+      expect(within(head).getByText('Versjon 1 i bruk')).toBeTruthy();
       return head;
     });
     expect(within(published).queryByText('Utkast')).toBeNull();
@@ -251,7 +272,30 @@ describe('the live builder', () => {
   });
 
   const openPublish = async (runs: unknown[], testSets: unknown[]) => {
-    const base = mockFetch(exampleServices, logTimelines, liveModels, exampleDatasets);
+    const found = exampleServices.find((x) => x.id === 'rapportassistenten');
+    const definition = found?.latest.definition as {
+      spec: { strategy: { config: Record<string, unknown> } };
+    };
+    const base = mockFetch(exampleServices, logTimelines, liveModels, exampleDatasets, {
+      features: {
+        quality: {
+          drafts: {
+            rapportassistenten: {
+              definition: {
+                ...definition,
+                spec: {
+                  ...definition.spec,
+                  strategy: {
+                    ...definition.spec.strategy,
+                    config: { ...definition.spec.strategy.config, instructions: 'Svar kort.' },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
     const fetch: typeof globalThis.fetch = async (input, init) => {
       const url = String(input);
       if (/\/services\/rapportassistenten\/eval-runs$/.test(url))
@@ -264,37 +308,60 @@ describe('the live builder', () => {
     await auth.login();
     window.location.hash = '#/services/rapportassistenten/setup?publiser=1';
     render(<App auth={auth} fetch={fetch} live />);
-    return screen.findByRole('dialog');
+    await screen.findByRole('heading', { level: 1, name: /^Publiser Rapportassistenten, versjon/ });
+    return document.body;
   };
 
-  it('shows the latest test run from the API in the publish dialog, not an example score', async () => {
-    const dialog = await openPublish(
+  it('opens the publish page from ?publiser=1 and says nothing about tests once the draft has a newer test run', async () => {
+    const page = await openPublish(
       [
         {
           id: 'r1',
           status: 'completed',
           testSet: 'ts',
           version: 'draft',
-          startedAt: '2026-10-07T10:00:00Z',
+          draftRevision: 1,
+          startedAt: '2099-01-01T10:00:00Z',
           total: 10,
           passed: 8,
         },
       ],
       [{ id: 'ts', name: 'Spørsmål', cases: 10 }],
     );
-    const fact = await within(dialog).findByText('8 av 10 (80 %)');
-    expect(fact).toBeTruthy();
-    expect(within(dialog).queryByText(/Uten testsett/)).toBeNull();
+    expect(window.location.hash).toBe('#/services/rapportassistenten/setup/publish');
+    await waitFor(() =>
+      expect(within(page).queryByText('Testsettet er ikke kjørt mot utkastet')).toBeNull(),
+    );
+    expect(within(page).queryByText(/Uten testsett/)).toBeNull();
   });
 
-  it('warns about a missing test set from the API and says Ikke kjørt without runs', async () => {
-    const dialog = await openPublish([], []);
-    expect(await within(dialog).findByText(/Uten testsett ser du ikke/)).toBeTruthy();
-    expect(within(dialog).getByText('Ikke laget')).toBeTruthy();
+  it('counts a draft test run only when it ran the saved revision of the draft', async () => {
+    const page = await openPublish(
+      [
+        {
+          id: 'r1',
+          status: 'completed',
+          testSet: 'ts',
+          version: 'draft',
+          draftRevision: 99,
+          startedAt: '2099-01-01T10:00:00Z',
+          total: 10,
+          passed: 8,
+        },
+      ],
+      [{ id: 'ts', name: 'Spørsmål', cases: 10 }],
+    );
+    expect(await within(page).findByText('Testsettet er ikke kjørt mot utkastet')).toBeTruthy();
+  });
+
+  it('warns about a missing test set, and about a test set not run against the draft', async () => {
+    const page = await openPublish([], []);
+    expect(await within(page).findByText(/Uten testsett ser du ikke/)).toBeTruthy();
     cleanup();
 
     const withSet = await openPublish([], [{ id: 'ts', name: 'Spørsmål', cases: 3 }]);
-    expect(await within(withSet).findByText('Ikke kjørt')).toBeTruthy();
+    expect(await within(withSet).findByText('Testsettet er ikke kjørt mot utkastet')).toBeTruthy();
+    expect(within(withSet).getByRole('link', { name: 'Kjør testsettet' })).toBeTruthy();
   });
 });
 
@@ -337,32 +404,21 @@ describe('the live builder and the server draft', () => {
       improvements: [ready],
     });
     const card = await screen.findByRole('region', { name: /^Forslag fra/ });
-    fireEvent.click(within(card).getByRole('button', { name: 'Godta i utkastet' }));
+    fireEvent.click(within(card).getByRole('button', { name: 'Godkjenn' }));
     await within(card).findByText('Godtatt i utkastet');
 
     window.location.hash = '#/services/rapportassistenten/setup/instructions';
     await waitFor(() => expect(instructions().value).toBe(after));
-    window.location.hash = '#/services/rapportassistenten/setup/purpose';
-    fireEvent.click(await screen.findByRole('button', { name: 'Bekreft risikonivå' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Publiser' }));
-    const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByText('Endringer i utkastet som ikke er publisert')).toBeTruthy();
-    fireEvent.change(within(dialog).getByLabelText('Hva er endret, og hvorfor?'), {
-      target: { value: 'Tar i bruk forbedringsforslaget' },
-    });
-    await waitFor(() =>
-      expect(
-        within(dialog).getByRole('button', { name: 'Publiser' }).getAttribute('aria-disabled'),
-      ).not.toBe('true'),
-    );
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Publiser' }));
+    const page = await publishPage('Tar i bruk forbedringsforslaget');
+    expect(within(page).getAllByText(/Lagt til:/).length).toBeGreaterThan(0);
+    await publishOnPage(page);
 
     await waitFor(() => expect(draftWrites(calls, 'DELETE')).toHaveLength(1));
     const published = calls.find((c) => c.method === 'POST' && c.url.endsWith('/api/definitions'));
     expect(published?.body).toMatchObject({
       definition: { spec: { strategy: { config: { instructions: after } } } },
     });
-    expect(draftWrites(calls, 'DELETE')[0]?.body).toEqual({ revision: 1 });
+    expect(draftWrites(calls, 'DELETE')[0]?.body).toEqual({ revision: 2 });
   });
 
   it('saves edits to the server draft with the revision it last saw', async () => {
@@ -384,6 +440,7 @@ describe('the live builder and the server draft', () => {
 
   it('lets the service allow instruction proposals from Arbeidsmåte', async () => {
     const { calls } = await openService('#/services/rapportassistenten/setup/how');
+    fireEvent.click(await screen.findByRole('button', { name: /^Bytt (arbeidsmåte|stegflyt)$/ }));
     const toggle = await screen.findByRole('switch', {
       name: /La plattformen foreslå endringer i instruksjonene/,
     });
@@ -396,12 +453,130 @@ describe('the live builder and the server draft', () => {
     });
   });
 
-  it('shows the latest published version in the header, also after a publish elsewhere', async () => {
-    const { fetch } = await openService('#/services/rapportassistenten/setup');
+  it('opening a service opens its draft once', async () => {
+    const { calls } = await openService('#/services/rapportassistenten/setup');
+    await screen.findByRole('heading', { level: 1, name: 'Rapportassistenten' });
+    await screen.findByText('Versjon 7 i bruk');
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(calls.filter((c) => c.url.endsWith('/draft?rebase=clean'))).toHaveLength(1);
+  });
+
+  it('switching tabs does not open the draft again and keeps the whole header line in place', async () => {
+    const calls: Call[] = [];
+    const base = mockFetch(exampleServices, logTimelines, liveModels, exampleDatasets);
+    const fetch: typeof globalThis.fetch = async (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      calls.push({ url, method: init?.method ?? 'GET', body: undefined });
+      const response = await base(input, init);
+      if (!url.endsWith('/definitions/services/rapportassistenten')) return response;
+      const found = (await response.json()) as { latest: Record<string, unknown> };
+      return Response.json({
+        ...found,
+        latest: { ...found.latest, publishedByName: 'Kari Nordmann' },
+      });
+    };
+    const auth = mockAnsattporten({ name: 'Ingrid Berg', organisations: exampleOrganisations });
+    await auth.login();
+    window.location.hash = '#/services/rapportassistenten/setup';
+    render(<App auth={auth} fetch={fetch} live />);
     const header = (
       await screen.findByRole('heading', { level: 1, name: 'Rapportassistenten' })
     ).closest('header') as HTMLElement;
-    expect(await within(header).findByText(/^Versjon 7 · publisert/)).toBeTruthy();
+    await within(header).findByText('Versjon 7 i bruk');
+
+    for (const [section, tab] of [
+      ['interface', 'Grensesnitt'],
+      ['versions', 'Utviklerverktøy'],
+      ['quality', 'Kvalitet'],
+      ['settings', 'Oppsett'],
+      ['log', 'Utviklerverktøy'],
+      ['setup', 'Oppsett'],
+    ] as const) {
+      window.location.hash = `#/services/rapportassistenten/${section}`;
+      await waitFor(() =>
+        expect(
+          within(screen.getByRole('tablist', { name: /^Faner for/ })).getByRole('tab', {
+            selected: true,
+          }).textContent,
+        ).toBe(tab),
+      );
+      expect(within(header).getByText('Versjon 7 i bruk')).toBeTruthy();
+    }
+    expect(header.isConnected).toBe(true);
+    expect(
+      calls.filter((c) => c.url.endsWith('/rapportassistenten/draft?rebase=clean')),
+    ).toHaveLength(1);
+  });
+
+  it('switching tabs while the definition is fresh sends no request for it again', async () => {
+    const { calls } = await openService('#/services/rapportassistenten/setup');
+    await screen.findByText('Versjon 7 i bruk');
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const definitionReads = () =>
+      calls.filter(
+        (c) => c.method === 'GET' && c.url.endsWith('/definitions/services/rapportassistenten'),
+      ).length;
+    const before = definitionReads();
+
+    for (const section of ['interface', 'quality', 'settings', 'setup']) {
+      window.location.hash = `#/services/rapportassistenten/${section}`;
+      await waitFor(() =>
+        expect(window.location.hash).toBe(`#/services/rapportassistenten/${section}`),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+
+    expect(definitionReads()).toBe(before);
+  });
+
+  it('offers Prøv tjenesten in the header of a draft too', async () => {
+    await startBuilder(mockFetch(exampleServices, logTimelines, liveModels, exampleDatasets));
+    const header = screen
+      .getAllByRole('heading', { level: 1 })[0]
+      ?.closest('header') as HTMLElement;
+    expect(
+      within(header).getByRole('link', { name: 'Prøv tjenesten' }).getAttribute('href'),
+    ).toMatch(/^#\/services\/[^/]+\/test$/);
+  });
+
+  it('makes a copy as a new draft named Kopi av, with the files, and opens it at Oppsett', async () => {
+    const { calls } = await openService('#/services/rapportassistenten');
+    fireEvent.click(await screen.findByRole('button', { name: 'Mer' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Lag en kopi', hidden: true }));
+
+    const copyPath = /\/services\/(utkast-[0-9a-f]{8})\/draft$/;
+    await waitFor(() =>
+      expect(calls.some((c) => c.method === 'PUT' && copyPath.test(c.url))).toBe(true),
+    );
+    const saved = calls.find((c) => c.method === 'PUT' && copyPath.test(c.url));
+    const copyId = copyPath.exec(saved?.url ?? '')?.[1];
+    expect(saved?.body).toMatchObject({
+      revision: 0,
+      definition: { metadata: { name: 'Kopi av Rapportassistenten', version: 1 } },
+    });
+    expect(draftWrites(calls, 'PUT')).toEqual([]);
+    await waitFor(() => expect(window.location.hash).toBe(`#/services/${copyId}/setup`));
+    expect(((await screen.findByLabelText('Navn')) as HTMLInputElement).value).toBe(
+      'Kopi av Rapportassistenten',
+    );
+  });
+
+  it('offers Prøv tjenesten in the header, leading to the service in Prøveområdet', async () => {
+    await openService('#/services/rapportassistenten');
+    const header = (
+      await screen.findByRole('heading', { level: 1, name: 'Rapportassistenten' })
+    ).closest('header') as HTMLElement;
+    expect(within(header).getByRole('link', { name: 'Prøv tjenesten' }).getAttribute('href')).toBe(
+      '#/playground?service=rapportassistenten',
+    );
+  });
+
+  it('a tab switch sends no request for the definition, even once the cache has gone stale', async () => {
+    const { calls, fetch } = await openService('#/services/rapportassistenten/setup');
+    const header = (
+      await screen.findByRole('heading', { level: 1, name: 'Rapportassistenten' })
+    ).closest('header') as HTMLElement;
+    expect(await within(header).findByText('Versjon 7 i bruk')).toBeTruthy();
 
     const found = exampleServices.find((s) => s.id === 'rapportassistenten');
     await fetch('/api/definitions', {
@@ -409,9 +584,20 @@ describe('the live builder and the server draft', () => {
       headers: { 'change-reason': 'Ny innstilling' },
       body: JSON.stringify({ definition: found?.latest.definition, files: {} }),
     });
+    const definitionReads = () =>
+      calls.filter(
+        (c) => c.method === 'GET' && c.url.endsWith('/definitions/services/rapportassistenten'),
+      ).length;
+    const before = definitionReads();
+    vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 60_000);
     window.location.hash = '#/services/rapportassistenten/quality';
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    window.location.hash = '#/services/rapportassistenten/setup';
+    await screen.findByRole('navigation', { name: 'Deler av oppsettet' });
+    await new Promise((resolve) => setTimeout(resolve, 50));
 
-    expect(await screen.findByText(/^Versjon 8 · publisert/)).toBeTruthy();
+    expect(definitionReads()).toBe(before);
+    expect(within(header).getByText('Versjon 7 i bruk')).toBeTruthy();
   });
 });
 
@@ -462,21 +648,11 @@ describe('the live builder when the draft is outdated', () => {
   const openOutdated = async (elsewhere: Record<string, unknown>) => {
     const { calls, publishElsewhere } = await startOutdated(elsewhere, true);
     await publishElsewhere();
-    window.location.hash = '#/services/rapportassistenten/setup/purpose';
-    fireEvent.click(await screen.findByRole('button', { name: 'Bekreft risikonivå' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Publiser' }));
-    const dialog = await screen.findByRole('dialog');
-    fireEvent.change(within(dialog).getByLabelText('Hva er endret, og hvorfor?'), {
-      target: { value: 'Kortere svar til brukerne' },
-    });
+    const dialog = await publishPage('Kortere svar til brukerne');
     return { calls, dialog };
   };
 
-  const publishIn = async (dialog: HTMLElement) => {
-    const button = within(dialog).getByRole('button', { name: 'Publiser' });
-    await waitFor(() => expect(button.getAttribute('aria-disabled')).not.toBe('true'));
-    fireEvent.click(button);
-  };
+  const publishIn = publishOnPage;
   const publishes = (calls: Call[]) =>
     calls.filter((c) => c.method === 'POST' && c.url.endsWith('/api/definitions'));
 
@@ -520,7 +696,7 @@ describe('the live builder when the draft is outdated', () => {
     const warning = await within(dialog).findByText('Utkastet bygger på en eldre versjon');
     const alert = warning.closest('[role="alert"]') as HTMLElement;
     expect(within(alert).getByText('Modell')).toBeTruthy();
-    expect(publishes(calls)[0]?.body).toMatchObject({ draftRevision: 1 });
+    expect(publishes(calls)[0]?.body).toMatchObject({ draftRevision: 2 });
 
     fireEvent.click(within(alert).getByRole('button', { name: 'Oppdater utkastet' }));
     expect(await within(dialog).findByText(/Utkastet er oppdatert/)).toBeTruthy();
@@ -528,7 +704,7 @@ describe('the live builder when the draft is outdated', () => {
     await publishIn(dialog);
     await waitFor(() => expect(publishes(calls)).toHaveLength(2));
     expect(publishes(calls)[1]?.body).toMatchObject({
-      draftRevision: 2,
+      draftRevision: 3,
       definition: {
         spec: {
           model: { primary: 'aivar/qwen3-8' },
@@ -553,9 +729,12 @@ describe('the live builder when the draft is outdated', () => {
     expect(await within(dialog).findByText(/Utkastet er oppdatert/)).toBeTruthy();
     const saved = calls.filter((c) => c.method === 'PUT' && c.url.endsWith('/draft')).at(-1);
     expect(saved?.body).toMatchObject({
-      revision: 2,
+      revision: 3,
       definition: { spec: { strategy: { config: { instructions: 'Svar utfyllende.' } } } },
     });
+    fireEvent.click(within(dialog).getByRole('link', { name: 'Fortsett å redigere' }));
+    await screen.findByRole('navigation', { name: 'Deler av oppsettet' });
+    openArea(/^Formål og målgruppe/);
     await waitFor(() =>
       expect(
         (screen.getByLabelText('Instruksjoner til tjenesten') as HTMLTextAreaElement).value,
@@ -685,6 +864,16 @@ describe('a new service saved as a draft on the server', () => {
     expect(revisions(calls).at(-1)).toBe(saved);
   });
 
+  it('tells on the setup of a draft that Oversikt and Kvalitet arrive once it is published', async () => {
+    const { fetch, id } = await startNamed('Permisjonssvar');
+
+    await elsewhere(fetch, `#/services/${id}/setup`);
+
+    expect(
+      await screen.findByText('Oversikt og Kvalitet kommer når tjenesten er publisert.'),
+    ).toBeTruthy();
+  });
+
   it('opens a draft-only service at its setup when the address names a section it does not have', async () => {
     const { fetch, id } = await startNamed('Permisjonssvar');
 
@@ -693,8 +882,20 @@ describe('a new service saved as a draft on the server', () => {
     expect(((await screen.findByLabelText('Navn')) as HTMLInputElement).value).toBe(
       'Permisjonssvar',
     );
-    expect(screen.getByRole('link', { name: 'Oppsett', current: 'page' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'Oppsett', selected: true })).toBeTruthy();
   });
+
+  it.each(['settings', 'quality', 'log', 'bogus'])(
+    'moves the address of a draft-only service from /%s to Oppsett, the section it shows',
+    async (section) => {
+      const { fetch, id } = await startNamed('Permisjonssvar');
+
+      await elsewhere(fetch, `#/services/${id}/${section}`);
+
+      await screen.findByLabelText('Navn');
+      await waitFor(() => expect(window.location.hash).toBe(`#/services/${id}/setup`));
+    },
+  );
 
   const deleteQuestion = /^Vil du slette utkastet til Permisjonssvar\?/;
   const confirmBox = async () =>
@@ -731,7 +932,7 @@ describe('a new service saved as a draft on the server', () => {
     expect(await screen.findByRole('button', { name: 'Slett utkastet' })).toBeTruthy();
 
     window.location.hash = '#/services/rapportassistenten';
-    await screen.findByText(/upublisert utkast/);
+    await screen.findByText(/^Versjon \d+ i bruk$/);
     expect(screen.queryByRole('button', { name: 'Slett utkastet' })).toBeNull();
   });
 

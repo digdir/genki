@@ -1,9 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-// One corner for the assistant's surfaces and controls, Designsystemet's xl, as «Ny tråd» has it
-// (kunnskapsassistenten#266). Round stays round for numbers, dots and round buttons, and a mark
-// in running text keeps the small corner of a highlighter.
+// One corner, Designsystemet's xl, for the assistant's surfaces (kunnskapsassistenten#266).
 const sheets = readdirSync(import.meta.dirname, { withFileTypes: true })
   .filter((entry) => entry.isDirectory())
   .flatMap((dir) =>
@@ -85,6 +83,10 @@ describe('the corners of the blocks', () => {
       [
         '.uib-sources-excerpt-toggle {',
         '--dsc-button-border-radius: var(--genai-sources-toggle-radius, var(--ds-border-radius-xl))',
+      ],
+      [
+        '.uib-sources-ex-card {',
+        '--dsc-card-border-radius: var(--genai-sources-ex-card-radius, var(--ds-border-radius-xl))',
       ],
       [
         '.uib-sources-search .ds-input {',

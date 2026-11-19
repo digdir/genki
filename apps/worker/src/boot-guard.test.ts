@@ -55,6 +55,14 @@ describe('booting the worker', () => {
       ]);
   });
 
+  it('the worker refuses to start with DOCLING_URL and no DOCLING_API_KEY', () => {
+    const base = { DATABASE_URL: 'postgres://x', PLATFORM_TENANT: '991825827' };
+    const url = { DOCLING_URL: 'http://docling:5001' };
+    expect(workerBootProblems({ ...base, ...url })).toContain('DOCLING_URL needs DOCLING_API_KEY');
+    expect(workerBootProblems({ ...base, ...url, DOCLING_API_KEY: 'key' })).toEqual([]);
+    expect(workerBootProblems(base)).toEqual([]);
+  });
+
   it('the worker refuses to start with a KNOWLEDGE_VCORES that is not a positive whole number', () => {
     const base = { DATABASE_URL: 'postgres://x', PLATFORM_TENANT: '991825827' };
     for (const value of ['four', '0', '-2', '2.5'])

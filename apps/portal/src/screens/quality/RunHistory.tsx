@@ -33,7 +33,7 @@ import { problemTitle, type SetFlash } from './shared';
 
 const pollMs = 2000;
 
-const versionText = (t: T, v: RunVersion) =>
+export const versionText = (t: T, v: RunVersion) =>
   v === 'draft'
     ? t('quality.versionDraft')
     : v === 'published'
@@ -73,7 +73,7 @@ const costText = (t: T, f: Format, r: EvalRun) =>
     ? formatKroner(r.cost, f, t)
     : t(r.status === 'interrupted' ? 'quality.costUnknown' : 'quality.notPricedLower');
 
-const active = (r: EvalRun) => r.status === 'running' || r.status === 'waiting-for-scores';
+export const active = (r: EvalRun) => r.status === 'running' || r.status === 'waiting-for-scores';
 
 const leftText = (t: T, endsAt: string) => {
   const minutes = Math.ceil((Date.parse(endsAt) - Date.now()) / 60_000);
@@ -109,7 +109,7 @@ const metricKeys: Record<string, PlainKey> = {
   'answer-pattern': 'quality.metricAnswerPattern',
 };
 
-const metricLabel = (t: T, metric: string) => {
+export const metricLabel = (t: T, metric: string) => {
   const key = metricKeys[metric];
   return key ? t(key) : metric;
 };
@@ -361,14 +361,14 @@ const sendingRefusal = (t: T, plan: RunSending | undefined, judges: string) => {
 
 const usageDays = 30;
 
-const perCaseFromRuns = (runs: EvalRun[]) => {
+export const perCaseFromRuns = (runs: EvalRun[]) => {
   const casesOf = (r: EvalRun) => r.finished ?? r.total ?? 0;
   const priced = runs.filter((r) => !active(r) && typeof r.cost === 'number' && casesOf(r) > 0);
   const cases = priced.reduce((n, r) => n + casesOf(r), 0);
   return cases > 0 ? priced.reduce((n, r) => n + (r.cost ?? 0), 0) / cases : undefined;
 };
 
-const RunEstimate = ({
+export const RunEstimate = ({
   api,
   tenant,
   serviceId,
@@ -384,7 +384,7 @@ const RunEstimate = ({
   const { t, f } = usePortalFormat();
   const fromRuns = perCaseFromRuns(runs);
   const canSeeUsage = useRights().has('view-usage');
-  const [usage] = useAsync(
+  const [usage, retryUsage] = useAsync(
     async (signal) => {
       if (fromRuns !== undefined || !canSeeUsage) return undefined;
       const report = await api.usage(tenant, usageDays, signal).catch(() => undefined);
@@ -397,7 +397,9 @@ const RunEstimate = ({
     [api, tenant, serviceId, fromRuns, canSeeUsage],
   );
   if (fromRuns === undefined && usage.status === 'loading')
-    return <Loading label={t('quality.estimateLoading')} />;
+    return (
+      <Loading label={t('quality.estimateLoading')} shape="list" rows={1} onRetry={retryUsage} />
+    );
   const perCase = fromRuns ?? (usage.status === 'ready' ? usage.data : undefined);
   if (perCase === undefined)
     return <Paragraph data-size="sm">{t('quality.estimateUnknown', { count: cases })}</Paragraph>;
@@ -439,7 +441,18 @@ const RunDetail = ({
         </Button>
       </div>
       {state.status === 'loading' ? (
-        <Loading label={t('quality.runLoading')} />
+        <Loading
+          label={t('quality.runLoading')}
+          shape="table"
+          columns={[
+            t('quality.runMetric'),
+            t('quality.runMean'),
+            t('quality.runInterval'),
+            t('quality.runCases'),
+          ]}
+          headingLevel={4}
+          onRetry={retry}
+        />
       ) : state.status === 'error' ? (
         <ErrorState error={state.error} onRetry={retry} headingLevel={4} />
       ) : state.data.cases.length === 0 && state.data.status !== 'interrupted' ? (
@@ -525,6 +538,7 @@ export const RunHistory = ({
   marked,
   onClearMarks,
   setFlash,
+  openRun,
 }: {
   api: ApiClient;
   tenant: string;
@@ -534,6 +548,7 @@ export const RunHistory = ({
   marked: string[];
   onClearMarks: () => void;
   setFlash: SetFlash;
+  openRun?: string;
 }) => {
   const { t, f, dateTime } = usePortalFormat();
   const canManage = useRights().has('manage-services');
@@ -542,8 +557,15 @@ export const RunHistory = ({
   // Unticking every marked case closes the question, so it cannot start a run of no cases.
   if (confirming === 'marked' && marked.length === 0) setConfirming(undefined);
   const [round, setRound] = useState(0);
-  const [version, setVersion] = useState<'draft' | 'published'>('draft');
-  const [models] = useAsync((signal) => api.listModels({}, signal), [api]);
+  const [picked, setVersion] = useState<'draft' | 'published'>('draft');
+  const [draft] = useAsync(
+    (signal) => api.quality.draft(tenant, serviceId, signal).then(Boolean),
+    [api, tenant, serviceId],
+  );
+  const noDraft = draft.status === 'ready' && !draft.data;
+  const version = noDraft ? 'published' : picked;
+  const versions = noDraft ? (['published'] as const) : (['draft', 'published'] as const);
+  const [models] = useAsync((signal) => api.listModels({ all: true }, signal), [api]);
   const modelList = models.status === 'ready' ? models.data : [];
   const [starting, setStarting] = useState(false);
   const [trace, setTrace] = useState(false);
@@ -568,7 +590,7 @@ export const RunHistory = ({
   const judged = (plan?.judges.length ?? 0) > 0;
   const refusedText = trace ? sendingRefusal(t, plan, judgeNames) : undefined;
   const [startedId, setStartedId] = useState<string>();
-  const [open, setOpen] = useState<string>();
+  const [open, setOpen] = useState<string | undefined>(openRun);
   const [state, retry] = useAsync(
     (signal) => api.quality.runs(tenant, serviceId, signal),
     [api, tenant, serviceId, round],
@@ -597,6 +619,7 @@ export const RunHistory = ({
       starting ||
       running ||
       !canRun ||
+      draft.status === 'loading' ||
       refusedText ||
       (choice === 'marked' && marked.length === 0)
     )
@@ -628,7 +651,7 @@ export const RunHistory = ({
     }
   };
 
-  const blocked = starting || running || !canRun;
+  const blocked = starting || running || !canRun || draft.status === 'loading';
   const chosen = confirming === 'marked' ? marked.length : cases;
 
   return (
@@ -640,7 +663,7 @@ export const RunHistory = ({
         <Fieldset>
           <Fieldset.Legend>{t('quality.runOn')}</Fieldset.Legend>
           <div className="tag-row">
-            {(['draft', 'published'] as const).map((v) => (
+            {versions.map((v) => (
               <Chip.Radio
                 key={v}
                 name="run-version"
@@ -738,14 +761,20 @@ export const RunHistory = ({
         </Alert>
       ) : null}
       {state.status === 'loading' && !seen.current ? (
-        <Loading label={t('quality.runsLoading')} />
-      ) : state.status === 'error' ? (
+        <Loading label={t('quality.runsLoading')} shape="list" headingLevel={3} onRetry={retry} />
+      ) : state.status === 'error' && !seen.current ? (
         <ErrorState error={state.error} onRetry={retry} headingLevel={3} />
       ) : runs.length === 0 ? (
         <Paragraph data-size="sm">{t('quality.notRunYet')}</Paragraph>
       ) : (
         <div tabIndex={0} role="region" aria-labelledby="kj-h" className="table-scroll">
-          <Table className="runs-table">
+          {state.status === 'error' ? (
+            <ErrorState error={state.error} onRetry={retry} headingLevel={3} />
+          ) : null}
+          <Table
+            className="runs-table"
+            aria-busy={(state.status === 'loading' && !running) || undefined}
+          >
             <Table.Head>
               <Table.Row>
                 <Table.HeaderCell scope="col">{t('quality.started')}</Table.HeaderCell>

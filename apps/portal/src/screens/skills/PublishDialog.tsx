@@ -4,16 +4,16 @@ import {
   Dialog,
   Heading,
   Paragraph,
-  Spinner,
   Tag,
+  Textfield,
 } from '@digdir/designsystemet-react';
 import { useEffect, useState } from 'react';
 import { ApiError, type ApiClient } from '../../api';
 import type { SkillPublishCheck, SkillUse } from '../../api/skills';
-import { ApiCallLink } from '../../components/ApiCall';
-import { useT } from '../../i18n';
-import { ReasonField, reasonProblem } from '../../components/ReasonField';
+import { reasonProblem } from '../../components/ReasonField';
 import { gateLabel, gateWhy } from '../../data/skills';
+import { Loading } from '../../states';
+import { useT } from '../../i18n';
 
 interface Props {
   api: ApiClient;
@@ -21,9 +21,6 @@ interface Props {
   id: string;
   name: string;
   draftVersion: number;
-  publishedVersion: number | undefined;
-  changes: string[];
-  testFact: string;
   threshold: number;
   services: SkillUse[];
   shared: boolean;
@@ -33,15 +30,14 @@ interface Props {
   onGoToTests: () => void;
 }
 
+type Failure = 'refused' | 'nothing' | 'requirements' | 'other';
+
 export const PublishDialog = ({
   api,
   tenant,
   id,
   name,
   draftVersion,
-  publishedVersion,
-  changes,
-  testFact,
   threshold,
   services,
   shared,
@@ -56,7 +52,7 @@ export const PublishDialog = ({
   const [reason, setReason] = useState('');
   const [showError, setShowError] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [failed, setFailed] = useState('');
+  const [failed, setFailed] = useState<Failure>();
 
   const load = async () => {
     setCheck('loading');
@@ -76,34 +72,40 @@ export const PublishDialog = ({
 
   const blocked = check === 'loading' || check === 'error' || check.blocked;
   const failedGates = typeof check === 'object' ? check.gates.filter((g) => !g.passed).length : 0;
+  const reasonError = showError ? reasonProblem(reason, t) : undefined;
 
   const confirm = async () => {
     if (blocked || busy || revision === undefined) return;
     setShowError(true);
     if (reasonProblem(reason, t)) return;
     setBusy(true);
-    setFailed('');
+    setFailed(undefined);
     try {
       const published = await api.skills.publish(tenant, id, reason.trim());
       onPublished(published.version, reason.trim());
     } catch (error) {
+      const status = error instanceof ApiError ? error.status : 0;
       setFailed(
-        error instanceof ApiError && error.status === 422 && 'requirements' in (error.problem ?? {})
-          ? t('skills.publishRequirementsChanged')
-          : t('skills.publishFailed'),
+        status === 403
+          ? 'refused'
+          : status === 409
+            ? 'nothing'
+            : status === 422 && error instanceof ApiError && 'requirements' in (error.problem ?? {})
+              ? 'requirements'
+              : 'other',
       );
       setBusy(false);
-      void load();
+      if (status !== 403 && status !== 409) void load();
     }
   };
 
-  const serviceNote = services.length
-    ? t('skills.publishServiceNote', {
-        services: services.map((s) => s.name).join(', '),
-        versions: services.map((s) => s.version).join(', '),
-        draft: draftVersion,
-      }) + (shared ? t('skills.publishSharedNote') : '')
-    : t('skills.publishNoServices');
+  const lead =
+    t('skills.publishWillBeUsed', { version: draftVersion }) +
+    ' ' +
+    (services.length
+      ? t('skills.publishServicesGet', { services: services.map((s) => s.name).join(', ') })
+      : t('skills.publishNoServices')) +
+    (shared ? t('skills.publishSharedNote') : '');
 
   return (
     <Dialog
@@ -116,51 +118,22 @@ export const PublishDialog = ({
     >
       <div className="stack-md">
         <Heading level={2} data-size="sm" id="skill-pub-h">
-          {t('skills.publishTitle', {
-            version: draftVersion,
-            name: name || t('skills.publishNameFallback'),
-          })}
+          {t('skills.publishDialogTitle', { name })}
         </Heading>
-        <div className="stack-xs">
-          <h3 className="skill-dialog-h">
-            {publishedVersion
-              ? t('skills.publishChangesSince', { version: publishedVersion })
-              : t('skills.publishWhat')}
-          </h3>
-          <ul className="bullets">
-            {changes.map((c) => (
-              <li key={c}>{c}</li>
-            ))}
-          </ul>
-        </div>
-        <dl className="facts">
-          <div>
-            <dt>{t('skills.publishTestset')}</dt>
-            <dd>{testFact}</dd>
-          </div>
-          <div>
-            <dt>{t('skills.publishRequirement')}</dt>
-            <dd>{t('skills.publishAtLeast', { percent: Math.round(threshold * 100) })}</dd>
-          </div>
-          <div>
-            <dt>{t('skills.publishServices')}</dt>
-            <dd>{services.length}</dd>
-          </div>
-        </dl>
-        <div className="stack-xs">
-          <h3 className="skill-dialog-h">{t('skills.publishGates')}</h3>
-          {check === 'loading' ? (
-            <span role="status" className="busy-note">
-              <Spinner aria-hidden data-size="xs" />
-              {t('skills.publishChecking')}
-            </span>
-          ) : null}
-          {check === 'error' ? (
-            <Alert data-color="danger" data-size="sm">
-              {t('skills.publishCheckFailed')}
-            </Alert>
-          ) : null}
-          {typeof check === 'object' ? (
+        <Paragraph>{lead}</Paragraph>
+        {check === 'loading' ? (
+          <Loading label={t('skills.publishChecking')} shape="list" rows={1} headingLevel={3} />
+        ) : null}
+        {check === 'error' ? (
+          <Alert data-color="danger" data-size="sm">
+            {t('skills.publishCheckFailed')}
+          </Alert>
+        ) : null}
+        {typeof check === 'object' && check.blocked ? (
+          <Alert data-color="danger" data-size="sm">
+            <Paragraph data-size="sm">
+              {t('skills.publishBlocked', { count: failedGates })}
+            </Paragraph>
             <ul className="plain-list skill-gates" aria-label={t('skills.publishGates')}>
               {check.gates.map((g) => {
                 const why = gateWhy(t, g);
@@ -177,50 +150,51 @@ export const PublishDialog = ({
                 );
               })}
             </ul>
-          ) : null}
-        </div>
-        {typeof check === 'object' && check.blocked ? (
-          <Alert data-color="danger" data-size="sm">
-            <Paragraph data-size="sm">
-              {t('skills.publishBlocked', { count: failedGates })}
-            </Paragraph>
             <Button variant="secondary" data-size="sm" onClick={onGoToTests}>
               {t('skills.publishGoToTests')}
             </Button>
           </Alert>
         ) : null}
-        <Paragraph data-size="sm">{serviceNote}</Paragraph>
-        <ReasonField
+        <Textfield
+          multiline
+          rows={2}
+          label={t('skills.publishWhy')}
           value={reason}
-          onChange={setReason}
-          showError={showError}
+          error={reasonError}
+          aria-invalid={reasonError ? true : undefined}
           disabled={typeof check === 'object' && check.blocked}
+          onChange={(e) => setReason(e.target.value)}
         />
-        {failed ? (
+        {failed === 'refused' ? (
           <Alert data-color="danger" data-size="sm" role="alert">
-            {failed}
+            <Heading level={3} data-size="2xs">
+              {t('skills.publishRefusedTitle')}
+            </Heading>
+            <Paragraph data-size="sm">{t('skills.publishRefusedText')}</Paragraph>
+          </Alert>
+        ) : failed ? (
+          <Alert data-color="danger" data-size="sm" role="alert">
+            {failed === 'nothing'
+              ? t('skills.publishNoChanges')
+              : failed === 'requirements'
+                ? t('skills.publishRequirementsChanged')
+                : t('skills.publishFailed')}
           </Alert>
         ) : null}
-        <div className="actions">
-          <Button
-            variant="primary"
-            aria-disabled={blocked || busy || undefined}
-            onClick={() => void confirm()}
-          >
-            {t('skills.publishConfirm')}
-          </Button>
+        <div className="actions skill-dialog-actions">
           <Button variant="secondary" onClick={onClose}>
             {t('skills.cancel')}
           </Button>
-          <ApiCallLink
-            call={{
-              action: t('skills.publishAction'),
-              method: 'POST',
-              path: `${api.skills.skillPath(tenant, id)}/publish`,
-              body: { reason: reason.trim() || '…' },
-              right: t('skills.rightManage'),
-            }}
-          />
+          <Button
+            variant="primary"
+            aria-disabled={blocked || busy || undefined}
+            aria-busy={busy || undefined}
+            onClick={() => void confirm()}
+          >
+            {busy
+              ? t('skills.publishing')
+              : t('skills.publishVersionButton', { version: draftVersion })}
+          </Button>
         </div>
       </div>
     </Dialog>

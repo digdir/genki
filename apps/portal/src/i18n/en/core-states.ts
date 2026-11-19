@@ -15,4 +15,8 @@ export const states = {
   noAccess: 'You do not have access',
   seeUsage: 'See usage',
   couldNotFetch: 'Could not fetch the data',
+  loadingLine: '{label} ...',
+  slow: 'This is taking longer than usual. We are still fetching.',
+  tooSlowTitle: 'This took too long',
+  tooSlowText: 'We got no answer within 30 seconds.',
 } satisfies Translation<typeof source>;

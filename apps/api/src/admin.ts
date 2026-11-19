@@ -1,4 +1,10 @@
 import { publishRefusals } from './internal-services.js';
+import {
+  archivedPublishRefusal,
+  refusedAsArchived,
+  serviceArchivedType,
+  type LifecycleOf,
+} from './archived-services.js';
 import type { Event, Part, Principal } from '@genai/contracts';
 import { defaultPlatformTenant } from '@genai/composition';
 import {
@@ -155,6 +161,7 @@ export interface AdminOptions {
   records?: AdminRecordStore;
   tenants?: () => Promise<{ orgNumber: string; name: string }[]>;
   names?: { remember(principal: Principal, name: string): Promise<void> };
+  lifecycle?: LifecycleOf;
 }
 
 export type AdminOutcome = Outcome;
@@ -296,6 +303,13 @@ const asJson = (value: unknown): Part => ({
   body: { kind: 'json', json: value },
 });
 
+const definitionTarget = (definition: unknown) => {
+  const { kind, metadata } = (definition ?? {}) as { kind?: unknown; metadata?: { id?: unknown } };
+  return typeof kind === 'string' && typeof metadata?.id === 'string'
+    ? `${kind}:${metadata.id}`
+    : 'definition';
+};
+
 export const createAdmin = (options: AdminOptions) => {
   const { store, plugins, settings } = options;
   const now = options.now ?? (() => new Date());
@@ -340,12 +354,18 @@ export const createAdmin = (options: AdminOptions) => {
       : [{ path: 'spec.availableTo', message: t('problems.shareOperatorOnly') }];
   };
 
+  const archivedProblems = async (definition: unknown) =>
+    options.lifecycle
+      ? ((await archivedPublishRefusal(definition, options.lifecycle))?.errors ?? [])
+      : [];
+
   const importCheck =
     (principal: Principal) =>
     async (definition: unknown, files: PromptFiles): Promise<ValidationError[]> => [
       ...checkImport(definition, files),
       ...(await sharingProblems(definition, principal)),
       ...(await publishRefusals(store, definition)),
+      ...(await archivedProblems(definition)),
     ];
 
   const confirmedOnImport = (principal: Principal) => (definition: unknown) => {
@@ -405,10 +425,17 @@ export const createAdmin = (options: AdminOptions) => {
     'platform.service.publish': async (input, principal) => {
       const files = (input.files ?? {}) as PromptFiles;
       const sharing = await sharingProblems(input.definition, principal);
+      const refusedTarget = definitionTarget(input.definition);
       if (sharing.length > 0)
-        return { ok: false, errors: sharing, target: 'definition', type: shareOperatorOnlyType };
+        return { ok: false, errors: sharing, target: refusedTarget, type: shareOperatorOnlyType };
       const result = await store.publish(input.definition, actorOf(principal), input.reason, files);
-      if (!result.ok) return { ok: false, errors: result.errors, target: 'definition' };
+      if (!result.ok)
+        return {
+          ok: false,
+          errors: result.errors,
+          target: refusedTarget,
+          ...(refusedAsArchived(result.errors) ? { type: serviceArchivedType } : {}),
+        };
       const { kind, metadata } = result.version.definition;
       return {
         ok: true,
@@ -459,7 +486,11 @@ export const createAdmin = (options: AdminOptions) => {
         check: async (definition, files) => {
           const sharing = await sharingProblems(definition, principal);
           if (sharing.length > 0) sharingRefused = true;
-          return [...checkImport(definition, files), ...sharing];
+          return [
+            ...checkImport(definition, files),
+            ...sharing,
+            ...(await archivedProblems(definition)),
+          ];
         },
         prepare: confirmedOnImport(principal),
       });
@@ -475,7 +506,9 @@ export const createAdmin = (options: AdminOptions) => {
               ? { type: operatorOnlySettingType }
               : sharingRefused
                 ? { type: shareOperatorOnlyType }
-                : {}),
+                : refusedAsArchived(result.errors)
+                  ? { type: serviceArchivedType }
+                  : {}),
           };
     },
     'platform.support.open': async (input, principal) => {

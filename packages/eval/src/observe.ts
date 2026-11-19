@@ -18,7 +18,10 @@ export interface ObservedDecision {
 
 export interface Observation {
   answer: string;
+  /** Every hit the run reported: its search notices first, then the sources it returned. */
   retrieved: ObservedSource[];
+  /** The sources the run returned, in their order; left out when it returned no sources part. */
+  returned?: ObservedSource[];
   citations: ObservedSource[];
   fields?: Record<string, unknown>;
   decisions?: ObservedDecision[];
@@ -69,17 +72,18 @@ export const defaultObserve: Observe = (parts, events) => {
   const fields = json.find(
     (j): j is Record<string, unknown> => typeof j === 'object' && j !== null && !Array.isArray(j),
   );
+  const sourceParts = parts.flatMap((p) =>
+    p.mime === 'application/vnd.genai.sources+json' && p.body.kind === 'json'
+      ? [asSources((p.body.json as { sources?: unknown } | null)?.sources)]
+      : [],
+  );
   const retrieved = [
     ...events.flatMap((e) => {
       const d = e.data as { kind?: string; hits?: unknown } | undefined;
       return e.type === 'kernel.notice' && d?.kind === 'retrieval' ? asSources(d.hits) : [];
     }),
     ...parts.flatMap((p) => asSources(p.meta?.retrieved)),
-    ...parts.flatMap((p) =>
-      p.mime === 'application/vnd.genai.sources+json' && p.body.kind === 'json'
-        ? asSources((p.body.json as { sources?: unknown } | null)?.sources)
-        : [],
-    ),
+    ...sourceParts.flat(),
   ];
   const citations = parts.flatMap((p) => asSources(p.meta?.citations));
   const decisions = events.flatMap((e): ObservedDecision[] => {
@@ -99,6 +103,7 @@ export const defaultObserve: Observe = (parts, events) => {
   return {
     answer,
     retrieved,
+    ...(sourceParts.length > 0 ? { returned: sourceParts.flat() } : {}),
     citations,
     ...(fields ? { fields } : {}),
     ...(decisions.length ? { decisions } : {}),

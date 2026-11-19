@@ -1,28 +1,23 @@
-import {
-  Alert,
-  Button,
-  Field,
-  Label,
-  Paragraph,
-  Textarea,
-  Textfield,
-} from '@digdir/designsystemet-react';
-import { useState } from 'react';
+import { Alert, Button, Heading, Paragraph } from '@digdir/designsystemet-react';
+import { useEffect, useRef, useState } from 'react';
+import { parse } from 'yaml';
 import type { ApiClient } from '../../api';
-import { ApiCallLink } from '../../components/ApiCall';
-import { CopyButton } from '../../components/CopyButton';
+import { usePortalFormat } from '../../format';
 import { useAsync } from '../../hooks';
 import { useT } from '../../i18n';
-import { ErrorState, Loading } from '../../states';
+import { ApiError } from '../../api/error';
+import { EmptyState, ErrorState, Loading } from '../../states';
 import type { PublishedDefinition } from '../../types';
 import { definitionYaml, problemErrors } from './definition';
+import { clock } from './dev-format';
+import { draftChanged } from './draft-events';
+import { servicePath } from './sections';
 import './sections.css';
-import { reasonProblem } from '../../components/ReasonField';
 
 type Check =
   | { kind: 'idle' }
   | { kind: 'busy' }
-  | { kind: 'valid' }
+  | { kind: 'valid'; at: string }
   | { kind: 'invalid'; errors: { path: string; message: string }[] };
 
 interface Props {
@@ -31,6 +26,28 @@ interface Props {
   serviceId: string;
   onPublished?: (published: PublishedDefinition) => void;
 }
+
+const checkDelayMs = 600;
+
+const jumpKeys: [string, RegExp][] = [
+  ['metadata', /^metadata:/],
+  ['spec.purpose', /^ {2}purpose:/],
+  ['spec.model', /^ {2}model:/],
+  ['spec.knowledge', /^ {2}knowledge:/],
+  ['spec.guardrails', /^ {2}guardrails:/],
+  ['spec.limits', /^ {2}limits:/],
+];
+
+export const jumpTargets = (text: string) => {
+  const lines = text.split('\n');
+  const specAt = lines.findIndex((l) => /^spec:/.test(l));
+  return jumpKeys.flatMap(([label, pattern]) => {
+    const line = lines.findIndex(
+      (l, i) => pattern.test(l) && (label === 'metadata' || (specAt >= 0 && i > specAt)),
+    );
+    return line < 0 ? [] : [{ label, line }];
+  });
+};
 
 const Errors = ({ errors }: { errors: { path: string; message: string }[] }) => {
   const t = useT();
@@ -52,163 +69,205 @@ const Errors = ({ errors }: { errors: { path: string; message: string }[] }) => 
 
 const Editor = ({
   api,
+  tenant,
+  serviceId,
   latest,
-  onPublished,
+  initial,
 }: {
   api: ApiClient;
+  tenant: string;
+  serviceId: string;
   latest: PublishedDefinition;
-  onPublished: (published: PublishedDefinition) => void;
+  initial: { text: string; files: Record<string, string>; revision: number };
 }) => {
-  const t = useT();
-  const original = definitionYaml(latest.definition);
-  const [text, setText] = useState(original);
-  const [reason, setReason] = useState('');
-  const [reasonErr, setReasonErr] = useState('');
+  const { t, f } = usePortalFormat();
+  const [text, setText] = useState(initial.text);
   const [check, setCheck] = useState<Check>({ kind: 'idle' });
-  const files = latest.files ?? {};
-  const clean = text === original;
+  const saved = useRef(initial.text);
+  const revision = useRef(initial.revision);
+  const area = useRef<HTMLTextAreaElement>(null);
+  const gutter = useRef<HTMLDivElement>(null);
+  const lines = text.split('\n');
 
-  const validate = async () => {
-    setCheck({ kind: 'busy' });
-    try {
-      const result = await api.validate(text, files);
-      setCheck(result.valid ? { kind: 'valid' } : { kind: 'invalid', errors: result.errors });
-    } catch (error) {
-      setCheck({ kind: 'invalid', errors: problemErrors(error, t) });
-    }
+  useEffect(() => {
+    let stale = false;
+    const timer = setTimeout(() => {
+      setCheck({ kind: 'busy' });
+      void (async () => {
+        try {
+          const result = await api.validate(text, initial.files);
+          if (stale) return;
+          if (!result.valid) return setCheck({ kind: 'invalid', errors: result.errors });
+          if (text !== saved.current) {
+            const draft = await api.quality.saveDraft(
+              tenant,
+              serviceId,
+              {
+                definition: parse(text) as Record<string, unknown>,
+                files: initial.files,
+                revision: revision.current,
+              },
+              t('services.draftSavedReason'),
+            );
+            revision.current = draft.revision;
+            saved.current = text;
+            draftChanged(tenant, serviceId);
+          }
+          if (!stale) setCheck({ kind: 'valid', at: new Date().toISOString() });
+        } catch (error) {
+          if (!stale) setCheck({ kind: 'invalid', errors: problemErrors(error, t) });
+        }
+      })();
+    }, checkDelayMs);
+    return () => {
+      stale = true;
+      clearTimeout(timer);
+    };
+  }, [text]);
+
+  const download = () => {
+    const url = URL.createObjectURL(new Blob([text], { type: 'application/yaml' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${serviceId}.yaml`;
+    link.click();
+    URL.revokeObjectURL(url);
   };
 
-  const publish = async () => {
-    if (clean) return;
-    const reasonError = reasonProblem(reason);
-    if (reasonError) {
-      setReasonErr(reasonError);
-      return;
-    }
-    setCheck({ kind: 'busy' });
-    try {
-      const result = await api.validate(text, files);
-      if (!result.valid) {
-        setCheck({ kind: 'invalid', errors: result.errors });
-        return;
-      }
-      const published = await api.publishDefinition(text, files, reason.trim());
-      onPublished(published);
-    } catch (error) {
-      setCheck({ kind: 'invalid', errors: problemErrors(error, t) });
-    }
+  const jump = (line: number) => {
+    const el = area.current;
+    if (!el) return;
+    const at = lines.slice(0, line).reduce((sum, l) => sum + l.length + 1, 0);
+    el.focus();
+    el.setSelectionRange(at, at);
+    const height = parseFloat(getComputedStyle(el).lineHeight) || 22;
+    el.scrollTop = Math.max(0, line * height - height);
+    if (gutter.current) gutter.current.scrollTop = el.scrollTop;
   };
 
-  const busy = check.kind === 'busy';
   return (
-    <div className="stack-sm">
-      <Field>
-        <Label htmlFor="definisjon-yaml">{t('serviceEditor.label')}</Label>
-        <Field.Description>
-          {t('serviceEditor.description', { version: latest.version })}
-        </Field.Description>
-        <Textarea
-          id="definisjon-yaml"
-          className="service-yaml-editor"
-          rows={28}
-          spellCheck={false}
-          value={text}
-          onChange={(e) => {
-            setText(e.target.value);
-            setCheck({ kind: 'idle' });
-          }}
-        />
-      </Field>
-      <Textfield
-        label={t('serviceEditor.reason')}
-        description={t('serviceEditor.reasonDescription')}
-        value={reason}
-        error={reasonErr || undefined}
-        onChange={(e) => {
-          setReason(e.target.value);
-          setReasonErr('');
-        }}
-      />
-      <div className="row-wrap">
-        <Button
-          variant="primary"
-          data-size="sm"
-          aria-disabled={clean || busy || undefined}
-          onClick={() => !busy && void publish()}
-        >
-          {t('serviceEditor.publish')}
-        </Button>
-        <Button
-          variant="secondary"
-          data-size="sm"
-          aria-disabled={busy || undefined}
-          onClick={() => !busy && void validate()}
-        >
-          {t('serviceEditor.check')}
-        </Button>
-        <Button
-          variant="tertiary"
-          data-size="sm"
-          aria-disabled={clean || undefined}
-          onClick={() => {
-            setText(original);
-            setCheck({ kind: 'idle' });
-          }}
-        >
-          {t('serviceEditor.discard')}
-        </Button>
-        <CopyButton text={text} />
-        <ApiCallLink
-          call={{
-            action: t('serviceEditor.apiAction'),
-            method: 'POST',
-            path: '/definitions',
-            body: { definition: '<YAML>', files: {} },
-            right: 'Administrere tjenester',
-          }}
-        />
+    <div className="stack">
+      <div className="dv-head">
+        <div className="stack-xs">
+          <Heading level={2} data-size="md">
+            {t('service.sectionDefinition')}
+          </Heading>
+          <Paragraph className="meta dv-lead">{t('serviceDev.definitionLead')}</Paragraph>
+        </div>
+        <div className="row-wrap">
+          <Button variant="secondary" onClick={download}>
+            {t('serviceDev.download')}
+          </Button>
+          <Button variant="secondary" asChild>
+            <label>
+              {t('serviceDev.pasteFile')}
+              <input
+                type="file"
+                accept=".yaml,.yml,text/yaml,application/yaml"
+                className="visually-hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = '';
+                  if (!file) return;
+                  void file.text().then(setText);
+                }}
+              />
+            </label>
+          </Button>
+        </div>
       </div>
-      <div aria-live="polite">
-        {check.kind === 'valid' ? (
-          <Alert data-color="success" data-size="sm">
-            {t('serviceEditor.valid')}
-          </Alert>
-        ) : null}
-        {check.kind === 'invalid' ? <Errors errors={check.errors} /> : null}
+      <div className="dv-yaml-status" aria-live="polite">
+        <span className={`dv-dot dv-dot-${check.kind}`} aria-hidden="true" />
+        <span>
+          {check.kind === 'valid' ? (
+            <>
+              <strong>{t('serviceDev.yamlValid')}</strong>{' '}
+              {t('serviceDev.yamlChecked', { time: clock(check.at, f) })}
+            </>
+          ) : check.kind === 'invalid' ? (
+            <strong>{t('serviceDev.yamlInvalid')}</strong>
+          ) : (
+            t('serviceDev.yamlChecking')
+          )}
+        </span>
+        <a href={`#${servicePath(serviceId, 'versions')}`}>
+          {t('serviceDev.seeChanges', { version: latest.version })}
+        </a>
+      </div>
+      {check.kind === 'invalid' ? <Errors errors={check.errors} /> : null}
+      <div className="dv-yaml">
+        <div className="dv-yaml-editor">
+          <div ref={gutter} className="dv-yaml-gutter" aria-hidden="true">
+            {lines.map((_, i) => (
+              <span key={i}>{i + 1}</span>
+            ))}
+          </div>
+          <textarea
+            ref={area}
+            aria-label={t('serviceDev.yamlLabel')}
+            spellCheck={false}
+            wrap="off"
+            value={text}
+            onScroll={(e) => {
+              if (gutter.current) gutter.current.scrollTop = e.currentTarget.scrollTop;
+            }}
+            onChange={(e) => setText(e.target.value)}
+          />
+        </div>
+        <nav aria-label={t('serviceDev.jumpTo')} className="dv-jump">
+          <span className="meta">{t('serviceDev.jumpTo')}</span>
+          {jumpTargets(text).map((j) => (
+            <a
+              key={j.label}
+              href={`#${servicePath(serviceId, 'definition')}`}
+              onClick={(e) => {
+                e.preventDefault();
+                jump(j.line);
+              }}
+            >
+              {j.label}
+            </a>
+          ))}
+        </nav>
       </div>
     </div>
   );
 };
 
-export const DefinitionEditor = ({ api, tenant, serviceId, onPublished }: Props) => {
+export const DefinitionEditor = ({ api, tenant, serviceId }: Props) => {
   const t = useT();
-  const [round, setRound] = useState(0);
-  const [published, setPublished] = useState<number>();
   const [state, retry] = useAsync(
-    (signal) => api.getDefinition(tenant, 'Service', serviceId, signal),
-    [api, tenant, serviceId, round],
+    async (signal) => {
+      const [definition, draft] = await Promise.all([
+        api.getDefinition(tenant, 'Service', serviceId, signal),
+        api.quality.draft(tenant, serviceId, signal).catch(() => undefined),
+      ]);
+      return { latest: definition.latest, draft };
+    },
+    [api, tenant, serviceId],
   );
-  if (state.status === 'loading') return <Loading label={t('serviceEditor.loading')} />;
-  if (state.status === 'error') return <ErrorState error={state.error} onRetry={retry} />;
+  if (state.status === 'loading')
+    return <Loading label={t('serviceEditor.loading')} shape="form" onRetry={retry} />;
+  if (state.status === 'error')
+    return state.error instanceof ApiError && state.error.status === 404 ? (
+      <EmptyState title={t('serviceDev.yamlEmptyTitle')}>
+        <p className="body-sm">{t('serviceDev.yamlEmptyBody')}</p>
+      </EmptyState>
+    ) : (
+      <ErrorState error={state.error} onRetry={retry} />
+    );
+  const { latest, draft } = state.data;
   return (
-    <div className="stack-sm">
-      <div aria-live="polite">
-        {published ? (
-          <Alert data-color="success" data-size="sm">
-            {t('serviceEditor.published', { version: published })}
-          </Alert>
-        ) : null}
-      </div>
-      <Editor
-        key={state.data.latest.version}
-        api={api}
-        latest={state.data.latest}
-        onPublished={(result) => {
-          setPublished(result.version);
-          onPublished?.(result);
-          setRound((r) => r + 1);
-        }}
-      />
-    </div>
+    <Editor
+      api={api}
+      tenant={tenant}
+      serviceId={serviceId}
+      latest={latest}
+      initial={{
+        text: definitionYaml(draft?.definition ?? latest.definition),
+        files: draft?.files ?? latest.files ?? {},
+        revision: draft?.revision ?? 0,
+      }}
+    />
   );
 };

@@ -1,7 +1,5 @@
 import { Heading, List, Paragraph } from '@digdir/designsystemet-react';
-import { NotDecided } from '../../components/NotDecided';
 import { dataHandlingPath } from '../../data/data-handling';
-import { terms } from '../../data/startside';
 import { useT } from '../../i18n';
 import { useDocumentTitle } from './public-pages';
 
@@ -16,25 +14,31 @@ export const PricePage = () => {
         </Heading>
         <Paragraph className="lede">{t('about.priceLede')}</Paragraph>
       </div>
-      <section aria-labelledby="pris-h" className="about-prose-section">
-        <Heading level={2} data-size="sm" id="pris-h">
-          {t('start.priceHeading')} <NotDecided />
+      <section aria-labelledby="price-usage-h" className="about-prose-section">
+        <Heading level={2} data-size="sm" id="price-usage-h">
+          {t('about.priceUsageHeading')}
         </Heading>
-        <Paragraph>{t('start.priceLead')}</Paragraph>
-        <Paragraph>{t('start.pricesNotDecided')}</Paragraph>
-        <Paragraph>{t('start.priceQuota')}</Paragraph>
+        <Paragraph>{t('about.priceUsage1')}</Paragraph>
+        <Paragraph>{t('about.priceUsage2')}</Paragraph>
       </section>
-      <section aria-labelledby="vilkar-h" className="about-prose-section">
-        <Heading level={2} data-size="sm" id="vilkar-h">
-          {t('start.termsHeading')} <NotDecided />
+      <section aria-labelledby="price-free-h" className="about-prose-section">
+        <Heading level={2} data-size="sm" id="price-free-h">
+          {t('about.priceFreeHeading')}
         </Heading>
         <List.Unordered>
-          {terms.map((term) => (
-            <List.Item key={term}>{t(term)}</List.Item>
-          ))}
+          <List.Item>{t('about.priceFree1')}</List.Item>
+          <List.Item>{t('about.priceFree2')}</List.Item>
+          <List.Item>{t('about.priceFree3')}</List.Item>
         </List.Unordered>
       </section>
-      <a href={dataHandlingPath}>{t('about.priceDataLink')}</a>
+      <section aria-labelledby="price-terms-h" className="about-prose-section">
+        <Heading level={2} data-size="sm" id="price-terms-h">
+          {t('about.priceTermsHeading')}
+        </Heading>
+        <Paragraph>
+          {t.rich('about.priceTerms', { link: (c) => <a href={dataHandlingPath}>{c}</a> })}
+        </Paragraph>
+      </section>
     </div>
   );
 };

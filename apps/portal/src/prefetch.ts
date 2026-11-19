@@ -1,26 +1,54 @@
 import type { ApiClient } from './api';
 import { prefetchSignal } from './api/cache';
+import { daysThisMonth, failedRunsRequest } from './usage-window';
+import { noFilters, runsRequest } from './screens/log/filters';
 
 type Load = (
   api: ApiClient,
   tenant: string,
   live: boolean,
   signal: AbortSignal,
+  rights: ReadonlySet<string>,
 ) => Promise<unknown>;
 
 interface Area {
-  chunk: () => Promise<unknown>;
+  chunk?: () => Promise<unknown>;
   list?: readonly Load[];
   item?: (id: string) => readonly Load[];
+  sections?: Readonly<Record<string, readonly Load[]>>;
 }
 
-const tasks: Load = (api, tenant, _live, signal) => api.tasks(tenant, {}, signal);
 const serviceNames: Load = (api, tenant, live, signal) =>
-  live ? api.overview(tenant, signal) : Promise.resolve(undefined);
+  live ? api.services(tenant, signal) : Promise.resolve(undefined);
+
+const withRight =
+  (right: string, load: Load): Load =>
+  (api, tenant, live, signal, rights) =>
+    rights.has(right) ? load(api, tenant, live, signal, rights) : Promise.resolve(undefined);
 
 const strategies: Load = (api, tenant, _live, signal) => api.listStrategies(tenant, signal);
 
+const logRuns: readonly Load[] = [
+  (api, tenant, _live, signal) => api.tasks(tenant, runsRequest(noFilters, new Date()), signal),
+  (api, tenant, _live, signal) =>
+    api.tasks(tenant, { ...runsRequest(noFilters, new Date()), origin: 'playground' }, signal),
+  serviceNames,
+];
+
 const areas: Partial<Record<string, Area>> = {
+  overview: {
+    list: [
+      (api, tenant, _live, signal) => api.overview(tenant, signal),
+      (api, tenant, _live, signal) => api.usage(tenant, daysThisMonth(), signal),
+      (api, tenant, _live, signal) => api.tenantEffectiveSettings(tenant, signal),
+      (api, tenant, _live, signal) => api.datasets.list(tenant, signal),
+      (api, tenant, _live, signal) => api.tasks(tenant, failedRunsRequest(), signal),
+      withRight('manage-services', (api, tenant, _live, signal) => api.audit(tenant, signal)),
+      (api, tenant, _live, signal) => api.services(tenant, signal),
+      (api, tenant, _live, signal) => api.quality.drafts(tenant, signal),
+      withRight('manage-services', (api, tenant, _live, signal) => api.access(tenant, signal)),
+    ],
+  },
   services: {
     chunk: () => import('./screens/Services'),
     list: [
@@ -37,10 +65,11 @@ const areas: Partial<Record<string, Area>> = {
   },
   log: {
     chunk: () => import('./screens/Log'),
-    list: [tasks, serviceNames],
+    list: logRuns,
+    sections: { runs: logRuns, changes: [] },
     item: (id) => [
-      tasks,
       serviceNames,
+      (api, tenant, _live, signal) => api.task(tenant, id, signal),
       (api, tenant, _live, signal) => api.getTaskTimeline(tenant, id, signal),
     ],
   },
@@ -57,33 +86,61 @@ const areas: Partial<Record<string, Area>> = {
     list: [
       (api, tenant, _live, signal) => api.usage(tenant, 190, signal),
       (api, tenant, _live, signal) => api.tenantEffectiveSettings(tenant, signal),
-      (api, _tenant, _live, signal) => api.listModels({}, signal),
+      (api, _tenant, _live, signal) => api.listModels({ all: true }, signal),
     ],
   },
   playground: {
     chunk: () => import('./screens/Playground'),
     list: [(api, tenant, _live, signal) => api.playground.options(tenant, signal)],
   },
-  datasets: { chunk: () => import('./screens/Datasets') },
+  datasets: {
+    chunk: () => import('./screens/Datasets'),
+    list: [
+      (api, tenant, live, signal) =>
+        live ? api.datasets.list(tenant, signal) : api.listDatasets(signal),
+      (api, tenant, live, signal) =>
+        live
+          ? api.configList(`/tenants/${encodeURIComponent(tenant)}/catalog?kind=dataset`, signal)
+          : Promise.resolve(undefined),
+    ],
+  },
   'shared-services': { chunk: () => import('./screens/SharedServices') },
   'building-blocks': { chunk: () => import('./screens/BuildingBlocks') },
   developer: { chunk: () => import('./screens/DeveloperTools') },
-  settings: { chunk: () => import('./screens/Settings') },
+  settings: {
+    chunk: () => import('./screens/Settings'),
+    list: [
+      (api, _tenant, _live, signal) => api.settingsCatalog(signal),
+      (api, tenant, live, signal) =>
+        live ? api.tenantEffectiveSettings(tenant, signal) : Promise.resolve(undefined),
+    ],
+  },
 };
 
 /** Starts the code and the first requests of a screen, so opening it waits for neither in turn. */
-export const prefetchPath = (path: string, api: ApiClient, tenant: string, live: boolean) => {
+export const prefetchPath = (
+  path: string,
+  api: ApiClient,
+  tenant: string,
+  live: boolean,
+  rights: ReadonlySet<string> = new Set(),
+) => {
   const [area = '', id, ...rest] = path.split('?')[0]?.split('/').filter(Boolean) ?? [];
   const found = areas[area];
   if (!found) return;
-  found.chunk().catch(() => undefined);
+  found.chunk?.().catch(() => undefined);
+  const section =
+    id !== undefined && found.sections && Object.hasOwn(found.sections, id)
+      ? found.sections[id]
+      : undefined;
   const loads =
     id === undefined
       ? found.list
-      : id !== 'new' && rest.length === 0
-        ? found.item?.(id)
-        : undefined;
-  for (const load of loads ?? []) load(api, tenant, live, prefetchSignal()).catch(() => undefined);
+      : rest.length > 0
+        ? undefined
+        : (section ?? (id === 'new' ? undefined : found.item?.(id)));
+  for (const load of loads ?? [])
+    load(api, tenant, live, prefetchSignal(), rights).catch(() => undefined);
 };
 
 const linkPath = (target: EventTarget | null) => {

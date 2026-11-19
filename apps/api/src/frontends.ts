@@ -3,6 +3,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import type { Principal } from '@genai/contracts';
 import type { DefinitionStore } from '@genai/definitions';
 import {
+  ALL_GRANT,
   actingForHeader,
   apiKeyDigest,
   boundService,
@@ -93,6 +94,9 @@ export const admitConfined = async (
   const origin = request.headers.get('origin');
   return !origin || client.definition.spec.allowedOrigins.includes(origin);
 };
+
+const grantNames = (grant: string, service: string) =>
+  grant === ALL_GRANT || grant === service || grant.startsWith(`${service}__`);
 
 const corsHeaders = (origin: string) => ({
   'access-control-allow-origin': origin,
@@ -238,6 +242,7 @@ const channelPaths = {
     'GET /v1/models',
     'GET /v1/sessions',
     'POST /v1/chat/completions',
+    'POST /v1/tasks/{task}/cancel',
     'GET /v1/tasks/{task}/media/{id}',
   ],
   rest: ['GET /api/tools/openapi.json', 'POST /api/tools/call/{tool}'],
@@ -403,6 +408,57 @@ export const registerFrontendRoutes = <E extends Env, S extends Schema, B extend
       },
     );
     return c.json({ keys });
+  });
+
+  app.get('/tenants/:tenant/services/:service/shared-with', async (c) => {
+    const g = await guard(c);
+    if (g instanceof Response) return g;
+    const service = c.req.param('service') ?? '';
+    const found = await deps.definitions.get('Service', g.tenant, service);
+    if (!found || (await isHiddenService(deps.definitions, g.tenant, service)))
+      return problem(c, 404, 'Not found');
+    const at = now().toISOString();
+    const [clients, keys] = await Promise.all([
+      deps.clients.list(g.tenant),
+      deps.apiKeys.list(g.tenant),
+    ]);
+    const frontends = clients
+      .filter((x) => x.definition.spec.service === service)
+      .map((x) => ({
+        id: x.definition.metadata.id,
+        ...(x.definition.metadata.name ? { name: x.definition.metadata.name } : {}),
+        kind: x.definition.spec.kind,
+        channels: x.definition.spec.channels,
+      }))
+      .sort((a, b) => a.id.localeCompare(b.id));
+    const apiKeys = keys
+      .filter((k) => !k.revokedAt && (!k.expiresAt || k.expiresAt > at))
+      .flatMap((k) => {
+        const bound = boundService(k);
+        const reaches =
+          bound === service ||
+          (bound === undefined && k.agents.some((a) => grantNames(a, service)));
+        return reaches
+          ? [
+              {
+                id: k.id,
+                name: k.name,
+                ...(k.prefix ? { prefix: k.prefix } : {}),
+                bound: bound === service,
+                ...(k.clientId ? { client: k.clientId } : {}),
+              },
+            ]
+          : [];
+      })
+      .sort((a, b) => a.name.localeCompare(b.name, 'nb') || a.id.localeCompare(b.id));
+    const availableTo = (found.definition.spec as { availableTo?: unknown }).availableTo;
+    const tenants =
+      availableTo === '*'
+        ? '*'
+        : Array.isArray(availableTo)
+          ? [...new Set(availableTo.map(String))].filter((t) => t !== g.tenant).sort()
+          : [];
+    return c.json({ service, frontends, apiKeys, tenants });
   });
 
   app.post('/tenants/:tenant/services/:service/api-keys', async (c) => {

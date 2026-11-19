@@ -12,7 +12,7 @@ export const SidePanel = ({
   onClose,
   children,
   footer,
-  width = 460,
+  width = 480,
 }: {
   title: string;
   eyebrow?: ReactNode;

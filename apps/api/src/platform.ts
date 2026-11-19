@@ -1,4 +1,5 @@
 import { isHiddenAuditTarget } from './internal-services.js';
+import { refusedAsArchived, serviceArchived, serviceArchivedType } from './archived-services.js';
 import { createRoute, z, type OpenAPIHono } from '@hono/zod-openapi';
 import type { Context } from 'hono';
 import { toJSONSchema } from 'zod';
@@ -53,6 +54,7 @@ const draftOriginNames: Record<DraftOrigin, () => string> = {
   playground: () => t('runs.originPlayground'),
   'skill-test': () => t('runs.originSkillTest'),
   assistant: () => t('runs.originAssistant'),
+  trial: () => t('runs.originTrial'),
 };
 
 export interface PlatformApiOptions {
@@ -67,6 +69,7 @@ export interface PlatformApiOptions {
     { orgNumber: string; name: string; status?: 'active' | 'onboarding' | 'paused' }[]
   >;
   organisationName?: (orgNumber: string) => string | undefined;
+  registeredName?: (orgNumber: string) => Promise<string | undefined>;
   tenantQuota?: (tenant: string) => Promise<{ usedPercent: number }>;
   lifecycle?: (tenant: string, service: string) => Promise<{ state: string }>;
   names?: ActorNames;
@@ -345,6 +348,9 @@ const routes = {
       200: json(
         z.object({
           organisations: z.array(MyOrganisation),
+          email: z.string().optional().openapi({
+            description: "The signed-in person's email, only when the login token carried one",
+          }),
           lockdownReadOnly: z.literal(true).optional().openapi({
             description:
               'Present only in a locked environment when the login may only read: not a trusted Entra login and not in LOCKDOWN_USER_GROUPS',
@@ -474,6 +480,37 @@ const routes = {
       404: problems[404],
     },
   }),
+  tenantOverrides: createRoute({
+    method: 'get',
+    path: '/tenants/{tenant}/settings/overrides',
+    summary: "The tenant's services that set their own value for one setting (any member)",
+    request: {
+      params: z.object({ tenant: tenantParam }),
+      query: z.object({
+        key: z
+          .string()
+          .min(1)
+          .openapi({ param: { name: 'key', in: 'query' }, example: 'answers.showSources' }),
+      }),
+    },
+    responses: {
+      200: json(
+        z.object({
+          data: z.array(
+            z.object({
+              service: z.string(),
+              name: z.string(),
+              value: z.unknown().describe("The service's own value, which wins over the tenant's"),
+            }),
+          ),
+        }),
+        'Services with their own value',
+      ),
+      400: problems[400],
+      401: problems[401],
+      404: problems[404],
+    },
+  }),
   setTenant: createRoute({
     method: 'put',
     path: '/tenants/{tenant}/settings/{key}',
@@ -572,7 +609,10 @@ const routes = {
         content: problemContent,
         description: `Not allowed for this tenant; ${shareOperatorOnlyType}: the bundle changes a service's spec.availableTo, which only operators change; or ${operatorOnlySettingType}: the bundle sets or pins a limit only an operator changes for a tenant`,
       },
-      409: conflict,
+      409: {
+        content: problemContent,
+        description: `Changed elsewhere since it was read; or ${serviceArchivedType}: the bundle would publish a new version of an archived service, and nothing is imported (errors name the service)`,
+      },
       422: problems[422],
       404: problems[404],
     },
@@ -608,9 +648,35 @@ const routes = {
     method: 'get',
     path: '/tenants/{tenant}/audit',
     summary: 'Administrative changes in a tenant, each backed by a platform task',
-    request: { params: z.object({ tenant: tenantParam }) },
+    description:
+      'Oldest first. With limit or offset the page is newest first: offset skips that many of the newest entries.',
+    request: {
+      params: z.object({ tenant: tenantParam }),
+      query: z.object({
+        limit: z.coerce
+          .number()
+          .int()
+          .min(1)
+          .max(500)
+          .optional()
+          .openapi({ param: { name: 'limit', in: 'query' }, description: '1 to 500' }),
+        offset: z.coerce
+          .number()
+          .int()
+          .min(0)
+          .optional()
+          .openapi({ param: { name: 'offset', in: 'query' } }),
+      }),
+    },
     responses: {
-      200: json(z.object({ data: z.array(AuditEntry) }), 'Audit log'),
+      200: json(
+        z.object({
+          data: z.array(AuditEntry),
+          total: z.number().int().openapi({ description: 'Entries the caller may see in all' }),
+        }),
+        'Audit log',
+      ),
+      400: problems[400],
       401: problems[401],
       403: problems[403],
       404: problems[404],
@@ -890,16 +956,21 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
     const directory = orgs.length > 0 ? ((await options.tenantDirectory?.()) ?? []) : [];
     return c.json(
       {
-        organisations: orgs.map((orgNumber) => ({
-          orgNumber,
-          name:
-            [
-              directory.find((d) => d.orgNumber === orgNumber)?.name,
-              principal.orgNames?.[orgNumber],
-              options.organisationName?.(orgNumber),
-            ].find((name) => name && name !== orgNumber) ?? orgNumber,
-          rights: [...rightsOf(principal, orgNumber)],
-        })),
+        organisations: await Promise.all(
+          orgs.map(async (orgNumber) => ({
+            orgNumber,
+            name:
+              [
+                directory.find((d) => d.orgNumber === orgNumber)?.name,
+                principal.orgNames?.[orgNumber],
+                options.organisationName?.(orgNumber),
+              ].find((name) => name && name !== orgNumber) ??
+              (await options.registeredName?.(orgNumber).catch(() => undefined)) ??
+              orgNumber,
+            rights: [...rightsOf(principal, orgNumber)],
+          })),
+        ),
+        ...(principal.email ? { email: principal.email } : {}),
         ...(options.lockdown && readOnlyInLockdown(principal) ? { lockdownReadOnly: true } : {}),
       },
       200,
@@ -920,6 +991,16 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
     const used = await Promise.all(
       orgs.map(async (org) => (await options.tenantQuota?.(org))?.usedPercent ?? 0),
     );
+    const looked = await Promise.all(
+      orgs.map(async (org) => {
+        const entry = directory.find((d) => d.orgNumber === org)?.name;
+        if (entry && entry !== org) return entry;
+        return (
+          options.organisationName?.(org) ??
+          (await options.registeredName?.(org).catch(() => undefined))
+        );
+      }),
+    );
     return c.json(
       {
         data: orgs.map((orgNumber, i) => {
@@ -927,7 +1008,7 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
           const count = counts.get(orgNumber) ?? 0;
           return {
             orgNumber,
-            name: entry?.name ?? options.organisationName?.(orgNumber) ?? orgNumber,
+            name: looked[i] ?? orgNumber,
             status: entry?.status ?? (count > 0 ? ('active' as const) : ('onboarding' as const)),
             services: count,
             quotaUsedPercent: used[i] ?? 0,
@@ -1034,6 +1115,29 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
       }),
       200,
     );
+  });
+
+  app.openapi(routes.tenantOverrides, async (c) => {
+    const principal = await auth.authenticate(c.req.raw);
+    if (!principal) return problem(c, 401, 'Not authenticated');
+    const { tenant } = c.req.valid('param');
+    if (!access(principal, tenant, c.req.raw)) return problem(c, 404, 'Not found');
+    const { key } = c.req.valid('query');
+    if (!settings.definitions().some((d) => d.key === key)) return problem(c, 404, 'Not found');
+    const seen = new Set<string>();
+    const data: { service: string; name: string; value: unknown }[] = [];
+    for (const found of await store.capabilities()) {
+      if (found.service.tenant !== tenant || seen.has(found.service.id)) continue;
+      seen.add(found.service.id);
+      const own = (found.capability.config as { settings?: Record<string, unknown> }).settings;
+      if (own?.[key] === undefined) continue;
+      data.push({
+        service: found.service.id,
+        name: found.capability.descriptor.title ?? found.service.id,
+        value: own[key],
+      });
+    }
+    return c.json({ data: data.sort((a, b) => a.name.localeCompare(b.name, 'nb')) }, 200);
   });
 
   app.openapi(routes.setTenant, async (c) => {
@@ -1145,6 +1249,7 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
         check: admin.importCheck(acting),
       });
       if (!plan.ok && plan.operatorOnly) return operatorOnlyRefused(c, plan.errors);
+      if (!plan.ok && refusedAsArchived(plan.errors)) return serviceArchived(c, plan.errors);
       if (!plan.ok) return problem(c, 422, 'Invalid bundle', { errors: plan.errors });
       return c.json({ dryRun: true, plan: plan.plan }, 200);
     }
@@ -1153,6 +1258,7 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
     if (!result.ok && result.conflict) return conflicted(c);
     if (!result.ok && result.type === shareOperatorOnlyType)
       return sharingRefused(c, result.errors);
+    if (!result.ok && result.type === serviceArchivedType) return serviceArchived(c, result.errors);
     if (!result.ok && result.type === operatorOnlySettingType)
       return operatorOnlyRefused(c, result.errors);
     if (!result.ok) return problem(c, 422, 'Invalid bundle', { errors: result.errors });
@@ -1181,6 +1287,7 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
     const principal = await auth.authenticate(c.req.raw);
     if (!principal) return problem(c, 401, 'Not authenticated');
     const { tenant } = c.req.valid('param');
+    const { limit, offset } = c.req.valid('query');
     const acting = access(principal, tenant, c.req.raw);
     if (!acting) return problem(c, 404, 'Not found');
     const lacking = refusedRight(c, acting, tenant, 'manage-services');
@@ -1191,7 +1298,11 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
     const hidden = await Promise.all(
       visible.map((e) => isHiddenAuditTarget(store, tenant, e.target)),
     );
-    const entries = visible.filter((_, i) => !hidden[i]);
+    const shown = visible.filter((_, i) => !hidden[i]);
+    const paged = limit !== undefined || offset !== undefined;
+    const entries = paged
+      ? shown.reverse().slice(offset ?? 0, (offset ?? 0) + (limit ?? shown.length))
+      : shown;
     const names = await options.names?.namesOf(
       entries.filter((e) => e.actor.startsWith('employee:')).map((e) => e.actor),
     );
@@ -1201,6 +1312,7 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
           const actorName = e.actor.startsWith('employee:') ? names?.get(e.actor) : undefined;
           return actorName ? { ...e, actorName } : e;
         }),
+        total: shown.length,
       },
       200,
     );

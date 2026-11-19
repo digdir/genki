@@ -111,6 +111,8 @@ const platform = (calls: string[] = []): typeof fetch => {
       new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json' } });
     if (/^\/tenants\/[^/]+\/services$/.test(path)) return json({ data: summaries });
     if (/^\/tenants\/[^/]+\/tasks$/.test(path)) {
+      if (new URL(url, 'http://x').searchParams.get('origin') === 'playground')
+        return json({ data: [], total: 0 });
       const service = new URL(url, 'http://x').searchParams.get('service');
       const data = service ? runs.map((r) => ({ ...r, service })) : runs;
       return json({ data, total: data.length });
@@ -212,13 +214,91 @@ describe('Tjenester in live mode', () => {
   });
 });
 
+describe('the Tjenester list filters', () => {
+  const withDraft = (): typeof fetch => {
+    const base = platform();
+    return async (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (/\/service-drafts(\?|$)/.test(url))
+        return Response.json({
+          data: [
+            {
+              id: 'utkast-1',
+              name: 'Permisjonssvar',
+              purpose: 'Svarer om permisjon',
+              outputKind: 'answer',
+              latestVersion: null,
+              revision: 1,
+              at: '2026-10-09T08:00:00Z',
+              by: 'employee:test:kari',
+              byName: 'Kari Testansatt',
+            },
+          ],
+        });
+      return base(input, init);
+    };
+  };
+  const openList = async (hash: string, fetch: typeof globalThis.fetch = platform()) => {
+    const auth = mockAnsattporten(kari);
+    await auth.login();
+    window.location.hash = hash;
+    render(<App auth={auth} fetch={fetch} live />);
+    await screen.findByText(/^Viser \d+ av/);
+  };
+
+  it('offers no I test filter when no service on the platform is in test', async () => {
+    await openList('#/services');
+
+    expect(screen.queryByRole('radio', { name: /^I test/ })).toBeNull();
+    expect(screen.getByRole('radio', { name: /^I bruk/ })).toBeTruthy();
+  });
+
+  it('counts in Viser N av M only the services the filter covers, so archived ones are not in Alle', async () => {
+    await openList('#/services');
+
+    expect(screen.getByText('Viser 2 av 2 tjenester')).toBeTruthy();
+    expect(screen.getByRole('radio', { name: 'Alle 2' })).toBeTruthy();
+    expect(screen.getByRole('radio', { name: 'Arkivert 1' })).toBeTruthy();
+  });
+
+  it('counts Alle as Oversikt counts the services: unpublished drafts and every service not archived', async () => {
+    await openList('#/services', withDraft());
+
+    expect(screen.getByRole('radio', { name: 'Alle 3' })).toBeTruthy();
+  });
+
+  it('keeps search and filter in the address, and reads them back on reload', async () => {
+    await openList('#/services');
+
+    fireEvent.click(screen.getByRole('radio', { name: /^Satt på pause/ }));
+    fireEvent.change(screen.getByLabelText('Søk i tjenester'), { target: { value: 'alfa' } });
+    expect(window.location.hash).toBe('#/services?status=paused&q=alfa');
+
+    cleanup();
+    await openList('#/services?status=archived');
+    expect(screen.queryByText('Svar med kilder')).toBeNull();
+    expect(await screen.findByText('Gamma')).toBeTruthy();
+  });
+
+  it('says a draft has no runs yet and no start chosen, instead of a dash before the unit', async () => {
+    await openList('#/services', withDraft());
+
+    const row = (await screen.findByRole('link', { name: 'Permisjonssvar' })).closest(
+      'li',
+    ) as HTMLElement;
+    expect(within(row).getByText('Ingen kjøringer ennå')).toBeTruthy();
+    expect(within(row).getByText('Ikke valgt ennå')).toBeTruthy();
+    expect(within(row).queryByText(/–/)).toBeNull();
+  });
+});
+
 describe('pausing and archiving from the service page', () => {
   it('hides archived services from Tjenester until the Arkivert filter is chosen', async () => {
     await open('#/services');
 
     await screen.findByText('Svar med kilder');
     expect(screen.queryByText('Gamma')).toBeNull();
-    fireEvent.click(screen.getByRole('radio', { name: 'Arkivert' }));
+    fireEvent.click(screen.getByRole('radio', { name: /^Arkivert/ }));
 
     expect(await screen.findByText('Gamma')).toBeTruthy();
     expect(screen.queryByText('Kunnskapsassistenten')).toBeNull();
@@ -244,7 +324,8 @@ describe('pausing and archiving from the service page', () => {
       />,
     );
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Sett på pause' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Mer' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Sett på pause', hidden: true }));
     const dialog = await screen.findByRole('dialog');
     fireEvent.click(within(dialog).getByRole('button', { name: 'Sett på pause' }));
     expect(reasons).toEqual([]);
@@ -254,14 +335,16 @@ describe('pausing and archiving from the service page', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Sett på pause' }));
 
     await waitFor(() => expect(reasons).toEqual(['Venter på ny modell']));
-    expect(await screen.findByRole('button', { name: 'Ta i bruk igjen' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Arkiver' })).toBeTruthy();
+    expect(await screen.findByText('Tjenesten er på pause.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Start igjen' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Arkiver', hidden: true })).toBeTruthy();
   });
 
   it('offers restore for an archived service and names the actions in English', async () => {
     await open('#/services/rapportassistenten', ['en']);
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Archive' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'More' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Archive', hidden: true }));
     const dialog = await screen.findByRole('dialog');
     fireEvent.change(within(dialog).getByRole('textbox'), {
       target: { value: 'Replaced by a new service' },
@@ -272,60 +355,191 @@ describe('pausing and archiving from the service page', () => {
   });
 });
 
+describe('Mer on the service page', () => {
+  it('opens Kjør på mange dokumenter as a dialog over the service page', async () => {
+    await open('#/services/rapportassistenten');
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Mer' }));
+    const menu = screen.getByRole('button', { name: 'Mer' }).parentElement as HTMLElement;
+    fireEvent.click(
+      within(menu).getByRole('button', { name: 'Kjør på mange dokumenter', hidden: true }),
+    );
+
+    expect(await screen.findByRole('dialog', { name: 'Kjør på mange dokumenter' })).toBeTruthy();
+    expect(window.location.hash).toBe('#/services/rapportassistenten');
+  });
+});
+
+describe('an archived service', () => {
+  it('reads as archived only, with a read-only banner, the read-only tabs and no publishing', async () => {
+    await open('#/services/rapportassistenten');
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Mer' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Arkiver', hidden: true }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.change(within(dialog).getByRole('textbox'), {
+      target: { value: 'Erstattet av en ny tjeneste' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Arkiver' }));
+
+    expect(await screen.findByText('Tjenesten er arkivert og kan bare leses.')).toBeTruthy();
+    const header = screen.getByRole('banner');
+    expect(within(header).getByText('Arkivert')).toBeTruthy();
+    expect(within(header).queryByText('I bruk')).toBeNull();
+    expect(within(header).queryByRole('button', { name: 'Publiser' })).toBeNull();
+    expect(within(header).queryByRole('button', { name: 'Sett på pause' })).toBeNull();
+    const tabs = screen.getByRole('tablist', { name: /^Faner for/ });
+    expect(within(tabs).queryByRole('tab', { name: 'Oppsett' })).toBeNull();
+    expect(within(tabs).getByRole('tab', { name: 'Utviklerverktøy' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Gjenopprett' })).toBeTruthy();
+  });
+});
+
+describe('an archived service opened at an editing address', () => {
+  const archivedFetch = (): typeof fetch => {
+    const base = platform();
+    return async (input, init) =>
+      String(input).endsWith('/services/rapportassistenten/lifecycle') && !init?.method
+        ? Response.json({ state: 'archived', reason: 'Erstattet av en ny tjeneste' })
+        : base(input, init);
+  };
+
+  it.each(['settings', 'channels', 'interface', 'batch'])(
+    'shows Oversikt and no editable form at #/services/<id>/%s',
+    async (section) => {
+      const auth = mockAnsattporten(kari);
+      await auth.login();
+      window.location.hash = `#/services/rapportassistenten/${section}`;
+      render(<App auth={auth} fetch={archivedFetch()} live />);
+
+      await screen.findByText('Tjenesten er arkivert og kan bare leses.');
+      const tabs = screen.getByRole('tablist', { name: /^Faner for/ });
+      expect(
+        within(tabs).getByRole('tab', { name: 'Oversikt' }).getAttribute('aria-selected'),
+      ).toBe('true');
+      const main = screen.getByRole('main');
+      expect(within(main).queryAllByRole('textbox')).toEqual([]);
+      expect(within(main).queryAllByRole('combobox')).toEqual([]);
+      expect(within(main).queryByRole('button', { name: /^Lagre/ })).toBeNull();
+    },
+  );
+
+  it('moves the address to Oversikt, the section it shows', async () => {
+    const auth = mockAnsattporten(kari);
+    await auth.login();
+    window.location.hash = '#/services/rapportassistenten/settings';
+    render(<App auth={auth} fetch={archivedFetch()} live />);
+
+    await screen.findByText('Tjenesten er arkivert og kan bare leses.');
+    await waitFor(() => expect(window.location.hash).toBe('#/services/rapportassistenten'));
+  });
+});
+
+describe('Service header in live mode', () => {
+  const openService = async (lifecycle: unknown, publishedByName?: string) => {
+    const base = platform();
+    const auth = mockAnsattporten(kari);
+    await auth.login();
+    window.location.hash = '#/services/rapportassistenten';
+    render(
+      <App
+        auth={auth}
+        live
+        fetch={async (input, init) => {
+          const path = String(input).split('?')[0] ?? '';
+          if (!init?.method && path.endsWith('/services/rapportassistenten/lifecycle'))
+            return new Response(JSON.stringify(lifecycle), {
+              headers: { 'content-type': 'application/json' },
+            });
+          const response = await base(input, init);
+          if (!publishedByName || !path.endsWith('/definitions/services/rapportassistenten'))
+            return response;
+          const body = (await response.json()) as { latest: Record<string, unknown> };
+          return new Response(
+            JSON.stringify({ ...body, latest: { ...body.latest, publishedByName } }),
+            { headers: { 'content-type': 'application/json' } },
+          );
+        }}
+      />,
+    );
+    return (await screen.findByRole('heading', { level: 1, name: 'Rapportassistenten' })).closest(
+      'header',
+    ) as HTMLElement;
+  };
+
+  it('shows a paused service as Satt på pause, not I bruk', async () => {
+    const title = await openService({ state: 'paused', reason: 'Venter på ny modell' });
+
+    await waitFor(() => expect(within(title).getByText('Satt på pause')).toBeTruthy());
+    expect(within(title).queryByText('I bruk')).toBeNull();
+  });
+
+  it('shows an archived service as Arkivert, not I bruk', async () => {
+    const title = await openService({ state: 'archived' });
+
+    await waitFor(() => expect(within(title).getByText('Arkivert')).toBeTruthy());
+    expect(within(title).queryByText('I bruk')).toBeNull();
+  });
+
+  it('keeps only the version tag in the header and names who published it on Oversikt', async () => {
+    const title = await openService({ state: 'active' }, 'Kari Nordmann');
+
+    await waitFor(() => expect(within(title).getByText(/^Versjon \d+ i bruk$/)).toBeTruthy());
+    expect(title.textContent).not.toContain('publisert');
+    expect(await screen.findByText(/^Versjon \d+, publisert .+ av Kari Nordmann$/)).toBeTruthy();
+  });
+});
+
 describe('Oversikt in live mode', () => {
-  it('lists own datasets whose last ingestion failed or was cancelled, and counts running ones', async () => {
+  it('lists own datasets whose last ingestion failed or was cancelled under what needs you', async () => {
     await open('#/overview');
 
-    const section = (
-      await screen.findByRole('heading', { name: 'Innlesinger som trenger oppfølging' })
-    ).closest('section') as HTMLElement;
+    const section = await screen.findByRole('region', { name: 'Trenger deg nå' });
     await within(section).findByText('stopp');
 
     expect(within(section).getByText('avbrutt')).toBeTruthy();
     expect(within(section).queryByText('ok')).toBeNull();
     expect(within(section).queryByText('delt')).toBeNull();
     expect(within(section).queryByText('pagar')).toBeNull();
-    expect(within(section).getByText('1 innlesing pågår')).toBeTruthy();
     expect(within(section).getByText('Feilet')).toBeTruthy();
     expect(within(section).getByText('Avbrutt')).toBeTruthy();
   });
 });
 
 describe('Logg in live mode', () => {
-  it('lists runs by service, question and person instead of by task id', async () => {
+  it('lists runs by service and question instead of by task id', async () => {
     await open('#/log');
 
-    const list = await screen.findByRole('region', { name: 'Siste kjøringer' });
-    const first = await within(list).findByRole('link', { name: /Hva er fristen for å søke/ });
+    const table = await screen.findByRole('table', { name: 'Kjøringer' });
+    const first = await within(table).findByRole('link', {
+      name: 'Kunnskapsassistenten: Hva er fristen for å søke?',
+    });
 
-    expect(within(first).getByText('Kunnskapsassistenten')).toBeTruthy();
-    expect(first.textContent).toContain('Kari Testansatt');
     expect(first.textContent).not.toContain('0f4c9745');
-    expect(within(list).getByText(/API-nøkkel Fagsystemet/)).toBeTruthy();
+    expect(within(table).getAllByText('0,36 kr')).toHaveLength(2);
   });
 
-  it('shows run status and the key of an API run in English on an English screen', async () => {
+  it('shows run status in English on an English screen', async () => {
     await open('#/log', ['en']);
 
-    const list = await screen.findByRole('region', { name: 'Latest runs' });
-    await within(list).findByText(/API key Fagsystemet/);
+    const table = await screen.findByRole('table', { name: 'Runs' });
+    await within(table).findByText('Completed');
 
-    expect(within(list).getByText('Completed')).toBeTruthy();
-    expect(within(list).getByText('Failed')).toBeTruthy();
-    expect(within(list).queryByText('Fullført')).toBeNull();
+    expect(within(table).getByText('Failed')).toBeTruthy();
+    expect(within(table).queryByText('Fullført')).toBeNull();
   });
 
-  it('shows the run head with the service name and person, not the capability id or "api · employee"', async () => {
+  it('shows the run head with the service name, question and person, not the capability id or "api · employee"', async () => {
     await open('#/log/0f4c9745-a123-4060-9062-9b0ced7e2fd6');
 
-    const heading = await screen.findByRole('heading', { level: 2, name: 'Kunnskapsassistenten' });
-    const head = heading.closest('.log-run-head') as HTMLElement;
+    await screen.findByText(/Kari Testansatt/);
+    const heading = screen.getByRole('heading', { level: 1 });
 
-    expect(head.textContent).toContain('Kari Testansatt');
-    expect(head.textContent).toContain('Hva er fristen for å søke?');
-    expect(head.textContent).not.toContain('api · employee');
-    expect(document.body.textContent).toContain('36 øre');
-    expect(head.textContent).not.toContain('991825827/kunnskapsassistenten/default');
+    expect(heading.textContent).toBe('Kunnskapsassistenten: Hva er fristen for å søke?');
+    expect(document.body.textContent).toContain('Startet av Kari Testansatt');
+    expect(document.body.textContent).not.toContain('api · employee');
+    expect(document.body.textContent).toMatch(/0,36\skr/);
+    expect(document.body.textContent).not.toContain('991825827/kunnskapsassistenten/default');
   });
 
   it('translates run status on the service Logg tab in English', async () => {

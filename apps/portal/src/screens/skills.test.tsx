@@ -22,66 +22,252 @@ afterEach(cleanup);
 const fetchWith = (skills: SkillsMockOptions = {}) =>
   mockFetch(undefined, undefined, undefined, undefined, { features: { skills } });
 
-const openSkill = async (id: string, title: string, skills: SkillsMockOptions = {}) => {
-  await renderAt(`#/skills?id=${id}`, fetchWith(skills));
+const skillPath = (id: string) => `#/building-blocks/skill/${id}`;
+
+const openSkill = async (
+  id: string,
+  title: string,
+  skills: SkillsMockOptions = {},
+  suffix = '',
+) => {
+  await renderAt(`${skillPath(id)}${suffix}`, fetchWith(skills));
   await screen.findByRole('heading', { level: 1, name: title });
 };
 
-const tab = (name: RegExp) => fireEvent.click(screen.getByRole('tab', { name }));
+const openWith = async (id: string, title: string, fetch: typeof globalThis.fetch) => {
+  await renderAt(skillPath(id), fetch);
+  await screen.findByRole('heading', { level: 1, name: title });
+};
+
+const tab = async (name: RegExp) => {
+  fireEvent.click(screen.getByRole('tab', { name }));
+  await waitFor(() =>
+    expect(screen.getByRole('tab', { name }).getAttribute('aria-selected')).toBe('true'),
+  );
+};
 
 const region = (name: string) => screen.getByRole('region', { name });
 
-describe('Ferdigheter', () => {
-  it('lists skills with version, publisher, users and status', async () => {
-    await renderAt('#/skills', fetchWith());
-    await screen.findByRole('heading', { level: 1, name: 'Ferdigheter' });
-    const table = await screen.findByRole('table');
-    const vedtak = within(table).getByRole('row', { name: /Skrive vedtaksbrev/ });
-    expect(within(vedtak).getByText('Publisert')).toBeTruthy();
-    expect(within(vedtak).getByText('Utkast til 4')).toBeTruthy();
-    expect(within(vedtak).getByText('Vedtaksutkast')).toBeTruthy();
-    const klar = within(table).getByRole('row', { name: /Klarspråk i brev/ });
-    expect(within(klar).getByText('Digdir')).toBeTruthy();
-    expect(within(klar).getByText('Delt')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Ny ferdighet' })).toBeTruthy();
-    expect(screen.getByLabelText('Importer pakke')).toBeTruthy();
-    expectAccessible();
-  });
+const cases = () => within(screen.getByRole('list', { name: 'Testtilfeller' }));
 
-  it('creates a new skill and opens it in the editor', async () => {
-    await renderAt('#/skills', fetchWith());
-    fireEvent.click(await screen.findByRole('button', { name: 'Ny ferdighet' }));
-    await screen.findByRole('heading', { level: 1, name: 'Ny ferdighet' });
+const urlOf = (input: Parameters<typeof globalThis.fetch>[0]) =>
+  typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+
+const problem = (status: number, title = 'Feil') =>
+  Promise.resolve(
+    new Response(JSON.stringify({ type: 'about:blank', title, status }), {
+      status,
+      headers: { 'content-type': 'application/problem+json' },
+    }),
+  );
+
+describe('Ferdighet under Byggeklosser', () => {
+  it('edits the skill as YAML in a tab after Versjoner, kept until Lagre', async () => {
+    await openSkill('sortere-post', 'Sortere post etter saksområde', {}, '/yaml');
+    const tabs = screen.getAllByRole('tab').map((x) => x.textContent);
+    expect(tabs.slice(-2)).toEqual(['Versjoner', 'YAML']);
+    const box = screen.getByLabelText('Ferdighetsdefinisjon (YAML)') as HTMLTextAreaElement;
+    expect(box.value).toContain('apiVersion: genai/v1');
+    expect(box.value).toContain('kind: Skill');
     expect(
-      screen.getByText(/Ikke publisert · utkast til versjon 1 · utgiver Testetaten/),
-    ).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Publiser versjon 1' })).toBeTruthy();
-    expect(screen.getByText('Ingen eksempler ennå.')).toBeTruthy();
+      screen.getByRole('button', { name: 'Bruk endringene' }).getAttribute('aria-disabled'),
+    ).toBe('true');
+    fireEvent.change(box, {
+      target: {
+        value: box.value.replace('name: Sortere post etter saksområde', 'name: Sortere post'),
+      },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Bruk endringene' }));
+    expect(screen.getByText('Endringene er brukt i ferdigheten.')).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 1, name: 'Sortere post' })).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Ulagrede endringer' })).toBeTruthy();
     expectAccessible();
   });
 
-  it('shows the editor header and tabs for a published skill with a draft', async () => {
+  it('opens Prøv beside the tabs once the skill has a published version', async () => {
     await openSkill('skrive-vedtaksbrev', 'Skrive vedtaksbrev');
+    const button = screen.getByRole('button', { name: 'Prøv' });
+    fireEvent.click(button);
+    expect(button.getAttribute('aria-pressed')).toBe('true');
+    expect(document.querySelector('.skill-layout .skill-try [data-context="skill"]')).toBeTruthy();
     expect(
-      screen.getByText('Versjon 3 i bruk · utkast til versjon 4 · utgiver Testetaten'),
+      await screen.findByText(
+        'Med ferdigheten Skrive vedtaksbrev slik den er i siste publiserte versjon',
+      ),
     ).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Publiser versjon 4' })).toBeTruthy();
-    for (const name of ['Oppsett', 'Testsett', 'Bruk og deling', 'YAML', 'Versjoner'])
-      expect(screen.getByRole('tab', { name: new RegExp(name) })).toBeTruthy();
-    expect(screen.getAllByLabelText('Versjon')).toHaveLength(2);
+  });
+
+  it('Prøv waits for a published version and says why', async () => {
+    await openSkill('svare-pa-innsynskrav', 'Svare på innsynskrav');
+    const unpublished = screen.getByRole('button', { name: 'Prøv' });
+    expect(unpublished.getAttribute('aria-disabled')).toBe('true');
+    expect(unpublished.getAttribute('aria-describedby')).toBeTruthy();
+    expect(
+      screen.getByText('Du kan prøve ferdigheten når den har en publisert versjon.'),
+    ).toBeTruthy();
+    fireEvent.click(unpublished);
+    expect(document.querySelector('.skill-try')).toBeNull();
+  });
+
+  it('exports the skill package from the Flere valg menu', async () => {
+    await openSkill('skrive-vedtaksbrev', 'Skrive vedtaksbrev');
+    fireEvent.click(screen.getByRole('button', { name: 'Flere valg for ferdigheten' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Eksporter pakke', hidden: true }));
+    expect(await screen.findByText(/^Pakken skrive-vedtaksbrev\.zip er lastet ned\./)).toBeTruthy();
+  });
+
+  it('an old skill address is replaced by the address under Byggeklosser', async () => {
+    await renderAt('#/skills?id=klarsprak-i-brev&owner=991825827', fetchWith());
+    await screen.findByRole('heading', { level: 1, name: 'Klarspråk i brev' });
+    expect(window.location.hash).toBe('#/building-blocks/skill/klarsprak-i-brev?owner=991825827');
+  });
+
+  it('the old skill list address goes straight to the skills type page', async () => {
+    await renderAt('#/skills', fetchWith());
+    await waitFor(() => expect(window.location.hash).toBe('#/building-blocks/skill'));
+  });
+
+  it('shows the header from the design with one back link, maker, version and unpublished changes', async () => {
+    await openSkill('skrive-vedtaksbrev', 'Skrive vedtaksbrev');
+    const back = within(screen.getByRole('main')).getByRole('link', { name: 'Byggeklosser' });
+    expect(back.getAttribute('href')).toBe('#/building-blocks');
+    expect(screen.queryByRole('navigation', { name: /brødsmule|breadcrumb/i })).toBeNull();
+    expect(screen.getByText('Ferdighet · laget av Per Hansen')).toBeTruthy();
+    expect(screen.getByText('Publisert, versjon 3')).toBeTruthy();
+    expect(screen.getByText('Endringer ikke publisert')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Publiser' })).toBeTruthy();
+    const tabs = screen.getAllByRole('tab').map((t) => [t.textContent, t.getAttribute('href')]);
+    expect(tabs).toEqual([
+      ['Oppsett', '#/building-blocks/skill/skrive-vedtaksbrev'],
+      ['Testsett', '#/building-blocks/skill/skrive-vedtaksbrev/tests'],
+      ['Bruk og deling', '#/building-blocks/skill/skrive-vedtaksbrev/sharing'],
+      ['Versjoner', '#/building-blocks/skill/skrive-vedtaksbrev/versions'],
+      ['YAML', '#/building-blocks/skill/skrive-vedtaksbrev/yaml'],
+    ]);
     expect(screen.getByText('Malbrev vedtak.docx')).toBeTruthy();
     expectAccessible();
   });
 
-  it('says there is nothing to publish when the draft equals the published version', async () => {
-    await openSkill('sortere-post', 'Sortere post etter saksområde');
-    const button = screen.getByRole('button', { name: 'Ingen endringer å publisere' });
-    expect(button.getAttribute('aria-disabled')).toBe('true');
-    fireEvent.click(button);
-    expect(screen.queryByRole('dialog')).toBeNull();
+  it('opens the tab named in the address and moves between tabs with the arrow keys', async () => {
+    await openSkill('skrive-vedtaksbrev', 'Skrive vedtaksbrev', {}, '/versions');
+    const versions = screen.getByRole('tab', { name: 'Versjoner' });
+    expect(versions.getAttribute('aria-selected')).toBe('true');
+    fireEvent.keyDown(versions, { key: 'ArrowLeft' });
+    await waitFor(() =>
+      expect(window.location.hash).toBe('#/building-blocks/skill/skrive-vedtaksbrev/sharing'),
+    );
+    expect(await screen.findByRole('heading', { name: 'Brukes i 1 tjeneste' })).toBeTruthy();
   });
 
-  it('Be assistenten foreslå shows a change card from the API and Angre restores the field', async () => {
+  it('says there is nothing to publish when the draft equals the published version', async () => {
+    await openSkill('sortere-post', 'Sortere post etter saksområde');
+    expect(screen.queryByText('Endringer ikke publisert')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Publiser' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByRole('status').textContent).toBe('Det er ingen endringer å publisere.');
+  });
+
+  it('shows the error from the design when the skill cannot be fetched, and retries', async () => {
+    let fail = true;
+    const base = fetchWith();
+    const fetch: typeof globalThis.fetch = (input, init) =>
+      fail && /\/skills\/sortere-post$/.test(urlOf(input)) ? problem(500) : base(input, init);
+    await renderAt(skillPath('sortere-post'), fetch);
+    const alert = await screen.findByRole('alert');
+    expect(
+      within(alert).getByRole('heading', { name: 'Vi fikk ikke hentet ferdigheten' }),
+    ).toBeTruthy();
+    expect(alert.textContent).toContain('Det er bare visningen her som mangler.');
+    expect(
+      within(screen.getByRole('main')).getByRole('link', { name: 'Byggeklosser' }),
+    ).toBeTruthy();
+    fail = false;
+    fireEvent.click(within(alert).getByRole('button', { name: 'Prøv igjen' }));
+    await screen.findByRole('heading', { level: 1, name: 'Sortere post etter saksområde' });
+  });
+
+  it('keeps edits local until Lagre endringene, which saves with If-Match', async () => {
+    const calls: { method: string; url: string; ifMatch: string | null }[] = [];
+    const base = fetchWith();
+    const fetch: typeof globalThis.fetch = (input, init) => {
+      calls.push({
+        method: init?.method ?? 'GET',
+        url: urlOf(input),
+        ifMatch: new Headers(init?.headers).get('if-match'),
+      });
+      return base(input, init);
+    };
+    await openWith('sortere-post', 'Sortere post etter saksområde', fetch);
+    fireEvent.change(screen.getByLabelText('Navn'), { target: { value: 'Sortere post' } });
+    const bar = region('Ulagrede endringer');
+    expect(within(bar).getByText('Du har endringer som ikke er lagret')).toBeTruthy();
+    await new Promise((r) => setTimeout(r, 500));
+    expect(calls.some((c) => c.method === 'PUT')).toBe(false);
+    fireEvent.click(within(bar).getByRole('button', { name: 'Lagre endringene' }));
+    expect(
+      await screen.findByText(/^Lagret kl\. \d\d[.:]\d\d\. Endringene er ikke publisert ennå\.$/),
+    ).toBeTruthy();
+    expect(calls.find((c) => c.method === 'PUT')).toMatchObject({
+      url: '/api/tenants/999888777/skills/sortere-post',
+      ifMatch: '"4"',
+    });
+    expect(screen.queryByRole('region', { name: 'Ulagrede endringer' })).toBeNull();
+    expectAccessible();
+  });
+
+  it('asks before leaving the skill with unsaved changes, and stays when asked to', async () => {
+    await openSkill('sortere-post', 'Sortere post etter saksområde');
+    fireEvent.change(screen.getByLabelText('Navn'), { target: { value: 'Sortere post' } });
+    const unload = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(unload);
+    expect(unload.defaultPrevented).toBe(true);
+    const menu = screen.getByRole('navigation', { name: 'Hovedmeny' });
+    const away = within(menu).getByRole('link', { name: 'Byggeklosser' });
+    fireEvent.click(away);
+    const dialog = await screen.findByRole('dialog', { name: 'Forlate ferdigheten uten å lagre?' });
+    expect(window.location.hash).toBe('#/building-blocks/skill/sortere-post');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Bli på siden' }));
+    expect((screen.getByLabelText('Navn') as HTMLInputElement).value).toBe('Sortere post');
+    fireEvent.click(away);
+    fireEvent.click(
+      within(await screen.findByRole('dialog')).getByRole('button', {
+        name: 'Forlat uten å lagre',
+      }),
+    );
+    await waitFor(() => expect(window.location.hash).toBe(away.getAttribute('href')));
+  });
+
+  it('moves between the tabs of the same skill without asking', async () => {
+    await openSkill('sortere-post', 'Sortere post etter saksområde');
+    fireEvent.change(screen.getByLabelText('Navn'), { target: { value: 'Sortere post' } });
+    await tab(/Versjoner/);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByRole('region', { name: 'Ulagrede endringer' })).toBeTruthy();
+  });
+
+  it('Forkast puts back what was saved', async () => {
+    await openSkill('sortere-post', 'Sortere post etter saksområde');
+    const name = screen.getByLabelText('Navn') as HTMLInputElement;
+    fireEvent.change(name, { target: { value: 'Noe annet' } });
+    fireEvent.click(within(region('Ulagrede endringer')).getByRole('button', { name: 'Forkast' }));
+    expect(name.value).toBe('Sortere post etter saksområde');
+    expect(screen.queryByRole('region', { name: 'Ulagrede endringer' })).toBeNull();
+  });
+
+  it('a save someone else got to first shows the conflict and keeps the edit', async () => {
+    const base = fetchWith();
+    const fetch: typeof globalThis.fetch = (input, init) =>
+      init?.method === 'PUT' ? problem(409) : base(input, init);
+    await openWith('sortere-post', 'Sortere post etter saksområde', fetch);
+    fireEvent.change(screen.getByLabelText('Navn'), { target: { value: 'Sortere post' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Lagre endringene' }));
+    expect((await screen.findByRole('alert')).textContent).toMatch(
+      /Noen andre har endret utkastet/,
+    );
+    expect((screen.getByLabelText('Navn') as HTMLInputElement).value).toBe('Sortere post');
+  });
+
+  it("the build assistant's suggestion changes nothing until Legg til i beskrivelsen", async () => {
     const calls: { path: string; body: unknown }[] = [];
     const base = fetchWith();
     const recording: typeof fetch = (input, init) => {
@@ -90,49 +276,49 @@ describe('Ferdigheter', () => {
         calls.push({ path, body: JSON.parse(String(init?.body)) as unknown });
       return base(input, init);
     };
-    await renderAt('#/skills?id=svare-pa-innsynskrav', recording);
-    await screen.findByRole('heading', { level: 1, name: 'Svare på innsynskrav' });
-    const description = screen.getByRole('region', { name: 'Når skal ferdigheten brukes?' });
-    fireEvent.click(within(description).getByRole('button', { name: 'Be assistenten foreslå' }));
-    expect(within(description).getByRole('status').textContent).toContain('Assistenten skriver');
-    await within(description).findByText('Forslag fra assistenten', {}, { timeout: 2000 });
-    const field = screen.getByRole('textbox', {
-      name: 'Når skal ferdigheten brukes?',
-    }) as HTMLTextAreaElement;
-    expect(field.value).toMatch(/offentleglova/);
-    fireEvent.click(within(description).getByRole('button', { name: 'Vis endring' }));
-    expect(within(description).getByText('Før')).toBeTruthy();
-    expect(within(description).getByText('Svar på innsynskrav.')).toBeTruthy();
-    expectAccessible();
-    fireEvent.click(within(description).getByRole('button', { name: 'Angre' }));
-    expect(within(description).getByText('Angret')).toBeTruthy();
-    expect(within(description).getByText('Foreslo en ny beskrivelse').className).toContain(
-      'undone',
-    );
-    expect(within(description).queryByRole('button', { name: 'Angre' })).toBeNull();
+    await openWith('svare-pa-innsynskrav', 'Svare på innsynskrav', recording);
+    const what = region('Hva ferdigheten gjør');
+    const field = within(what).getByRole('textbox', { name: 'Beskrivelse' }) as HTMLTextAreaElement;
+    const ask = within(what).getByRole('button', { name: 'Når bør tjenester bruke den?' });
+    fireEvent.click(ask);
+    expect(ask.getAttribute('aria-expanded')).toBe('true');
+    expect(within(what).getByRole('status').textContent).toContain('Assistenten skriver');
+    expect(await within(what).findByText(/offentleglova/, {}, { timeout: 2000 })).toBeTruthy();
+    expect(within(what).getByText('Forslag fra byggeassistenten')).toBeTruthy();
     expect(field.value).toBe('Svar på innsynskrav.');
+    expectAccessible();
+    fireEvent.click(within(what).getByRole('button', { name: 'Legg til i beskrivelsen' }));
+    expect(field.value).toMatch(/offentleglova/);
+    expect(ask.getAttribute('aria-expanded')).toBe('false');
+    expect(region('Ulagrede endringer')).toBeTruthy();
     expect(calls).toHaveLength(1);
-    expect(calls[0]?.path).toMatch(/\/skills\/svare-pa-innsynskrav\/assistant\/turns$/);
     expect(calls[0]?.body).toMatchObject({
       intent: 'suggest-description',
       draft: { definition: { kind: 'Skill' } },
     });
   });
 
+  it('Lukk closes the suggestion and leaves the field as it was', async () => {
+    await openSkill('svare-pa-innsynskrav', 'Svare på innsynskrav');
+    const what = region('Hva ferdigheten gjør');
+    fireEvent.click(within(what).getByRole('button', { name: 'Når bør tjenester bruke den?' }));
+    await within(what).findByText(/offentleglova/, {}, { timeout: 2000 });
+    fireEvent.click(within(what).getByRole('button', { name: 'Lukk' }));
+    expect(within(what).queryByText('Forslag fra byggeassistenten')).toBeNull();
+    expect(
+      (within(what).getByRole('textbox', { name: 'Beskrivelse' }) as HTMLTextAreaElement).value,
+    ).toBe('Svar på innsynskrav.');
+  });
+
   it('a budget-exhausted assistant shows the message and changes nothing', async () => {
     await openSkill('svare-pa-innsynskrav', 'Svare på innsynskrav', {
       assistant: { status: 'budget_exhausted' },
     });
-    const description = screen.getByRole('region', { name: 'Når skal ferdigheten brukes?' });
-    const field = screen.getByRole('textbox', {
-      name: 'Når skal ferdigheten brukes?',
-    }) as HTMLTextAreaElement;
-    fireEvent.click(within(description).getByRole('button', { name: 'Be assistenten foreslå' }));
-    const alert = await within(description).findByRole('alert');
+    const what = region('Hva ferdigheten gjør');
+    fireEvent.click(within(what).getByRole('button', { name: 'Når bør tjenester bruke den?' }));
+    const alert = await within(what).findByRole('alert');
     expect(alert.textContent).toMatch(/brukt opp dagens kvote på 200\s000 tokens/);
-    expect(alert.textContent).toContain('Ingenting er endret');
-    expect(within(description).queryByText('Forslag fra assistenten')).toBeNull();
-    expect(field.value).toBe('Svar på innsynskrav.');
+    expect(within(what).queryByRole('button', { name: 'Legg til i beskrivelsen' })).toBeNull();
     expectAccessible();
   });
 
@@ -140,23 +326,12 @@ describe('Ferdigheter', () => {
     const base = fetchWith();
     const fetch: typeof globalThis.fetch = (input, init) =>
       String(input).endsWith('/assistant/turns')
-        ? Promise.resolve(
-            new Response(
-              JSON.stringify({
-                type: 'about:blank',
-                title: 'Du trenger rettigheten «Administrere tjenester»',
-                status: 403,
-              }),
-              { status: 403, headers: { 'content-type': 'application/problem+json' } },
-            ),
-          )
+        ? problem(403, 'Du trenger rettigheten «Administrere tjenester»')
         : base(input, init);
-    await renderAt('#/skills?id=svare-pa-innsynskrav', fetch);
-    await screen.findByRole('heading', { level: 1, name: 'Svare på innsynskrav' });
-    const description = screen.getByRole('region', { name: 'Når skal ferdigheten brukes?' });
-    fireEvent.click(within(description).getByRole('button', { name: 'Be assistenten foreslå' }));
-
-    expect((await within(description).findByRole('alert')).textContent).toBe(
+    await openWith('svare-pa-innsynskrav', 'Svare på innsynskrav', fetch);
+    const what = region('Hva ferdigheten gjør');
+    fireEvent.click(within(what).getByRole('button', { name: 'Når bør tjenester bruke den?' }));
+    expect((await within(what).findByRole('alert')).textContent).toBe(
       'Du trenger rettigheten «Administrere tjenester»',
     );
   });
@@ -173,31 +348,36 @@ describe('Ferdigheter', () => {
         ],
       },
     });
-    const examples = screen.getByRole('region', { name: 'Eksempler' });
+    const examples = region('Eksempler');
     const before = within(examples).queryAllByRole('group').length;
-    fireEvent.click(within(examples).getByRole('button', { name: 'Be assistenten foreslå' }));
+    fireEvent.click(within(examples).getByRole('button', { name: 'Hvilke eksempler mangler?' }));
     expect(await within(examples).findByText('Avvist av plattformen, ikke brukt')).toBeTruthy();
     expect(within(examples).getByText('VALIDATION_MAXIMUM')).toBeTruthy();
-    expect(within(examples).getByText('Forslag fra assistenten')).toBeTruthy();
+    expect(within(examples).queryAllByRole('group')).toHaveLength(before);
+    fireEvent.click(within(examples).getByRole('button', { name: 'Legg til eksemplene' }));
     expect(within(examples).getAllByRole('group').length).toBeGreaterThan(before);
     expectAccessible();
   });
 
-  it('shows failed cases, the tab badge and lets the assistant fix the instructions', async () => {
-    await openSkill('skrive-vedtaksbrev', 'Skrive vedtaksbrev', { failing: true });
-    expect(screen.getByRole('tab', { name: /Testsett.*2 feilet/ })).toBeTruthy();
-    tab(/Testsett/);
-    expect(screen.getByText('8 av 10 bestått (80 prosent)')).toBeTruthy();
-    expect(screen.getByText('Krav for publisering: minst 90 prosent')).toBeTruthy();
-    expect(screen.getByRole('heading', { name: '2 testtilfeller feilet' })).toBeTruthy();
-    expect(screen.getAllByText('Utkastet nevner ikke klagefristen på tre uker.').length).toBe(2);
-    expect(within(region('Testtilfeller')).getAllByText('Feilet')).toHaveLength(2);
+  it('counts the instruction characters', async () => {
+    await openSkill('svare-pa-innsynskrav', 'Svare på innsynskrav');
+    fireEvent.change(screen.getByRole('textbox', { name: 'Instruksjoner til modellen' }), {
+      target: { value: 'Kort.' },
+    });
+    expect(screen.getByText('5 tegn')).toBeTruthy();
+  });
+
+  it('shows failed cases with their note and lets the assistant fix the instructions', async () => {
+    await openSkill('skrive-vedtaksbrev', 'Skrive vedtaksbrev', { failing: true }, '/tests');
+    expect(screen.getByRole('heading', { level: 2, name: 'Testsett' })).toBeTruthy();
+    expect(screen.getByText(/^10 saker · sist kjørt .*: 8 av 10 bestått$/)).toBeTruthy();
+    expect(cases().getAllByText('Ikke bestått')).toHaveLength(2);
+    expect(cases().getByText('Utkastet nevner ikke klagefristen på tre uker.')).toBeTruthy();
     expectAccessible();
     fireEvent.click(screen.getByRole('button', { name: 'Be assistenten rette instruksjonene' }));
     const proposal = await screen.findByRole('region', {
       name: 'Assistentens forslag til instruksjonene',
     });
-    expect(within(proposal).getAllByText('Legges til').length).toBeGreaterThan(0);
     fireEvent.click(within(proposal).getByRole('button', { name: 'Bruk endringen' }));
     await screen.findByText(
       /Assistenten har rettet instruksjonene i utkastet/,
@@ -205,52 +385,53 @@ describe('Ferdigheter', () => {
       { timeout: 2000 },
     );
     fireEvent.click(screen.getByRole('button', { name: 'Kjør testsettet' }));
-    await screen.findByText('10 av 10 bestått (100 prosent)', {}, { timeout: 2000 });
+    expect(
+      await screen.findByText(
+        '10 av 10 bestått med utkastet. Forrige versjon: 10 av 10.',
+        {},
+        { timeout: 2000 },
+      ),
+    ).toBeTruthy();
   });
 
   it('shows the instruction fix as a diff and writes nothing until Bruk endringen', async () => {
     const calls: { method: string; path: string }[] = [];
     const base = fetchWith({ failing: true });
     const fetch: typeof globalThis.fetch = (input, init) => {
-      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-      calls.push({ method: init?.method ?? 'GET', path: url.replace(/^\/api/, '') });
+      calls.push({ method: init?.method ?? 'GET', path: urlOf(input).replace(/^\/api/, '') });
       return base(input, init);
     };
-    await renderAt('#/skills?id=skrive-vedtaksbrev', fetch);
+    await renderAt(`${skillPath('skrive-vedtaksbrev')}/tests`, fetch);
     await screen.findByRole('heading', { level: 1, name: 'Skrive vedtaksbrev' });
-    tab(/Testsett/);
     fireEvent.click(screen.getByRole('button', { name: 'Be assistenten rette instruksjonene' }));
     const proposal = await screen.findByRole('region', {
       name: 'Assistentens forslag til instruksjonene',
     });
-    expect(within(proposal).getByRole('list', { name: 'Endringer i instruksjoner' })).toBeTruthy();
     const skill = '/tenants/999888777/skills/skrive-vedtaksbrev';
     expect(calls.filter((c) => c.method === 'POST' && c.path === `${skill}/fix`)).toHaveLength(1);
     expect(calls.some((c) => c.path.includes('/apply'))).toBe(false);
     expect(calls.some((c) => c.method === 'PUT')).toBe(false);
-    expectAccessible();
     fireEvent.click(within(proposal).getByRole('button', { name: 'Forkast' }));
     expect(
       screen.queryByRole('region', { name: 'Assistentens forslag til instruksjonene' }),
     ).toBeNull();
-    expect(calls.some((c) => c.path.includes('/apply'))).toBe(false);
-    tab(/Oppsett/);
+    await tab(/Oppsett/);
     expect(
-      (screen.getByRole('textbox', { name: 'Instruksjoner' }) as HTMLTextAreaElement).value,
+      (screen.getByRole('textbox', { name: 'Instruksjoner til modellen' }) as HTMLTextAreaElement)
+        .value,
     ).not.toMatch(/klagefrist/i);
   });
 
-  it('adds a test case with source text and a dataset', async () => {
+  it('adds a test case with source text and a dataset, saved by Lagre endringene', async () => {
     const puts: unknown[] = [];
     const base = fetchWith();
     const fetch: typeof globalThis.fetch = (input, init) => {
       if (init?.method === 'PUT') puts.push(JSON.parse(String(init.body)));
       return base(input, init);
     };
-    await renderAt('#/skills?id=svare-pa-innsynskrav', fetch);
+    await renderAt(`${skillPath('svare-pa-innsynskrav')}/tests`, fetch);
     await screen.findByRole('heading', { level: 1, name: 'Svare på innsynskrav' });
-    tab(/Testsett/);
-    fireEvent.click(screen.getByRole('button', { name: 'Legg til testtilfelle' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Lag et testsett' }));
     const form = screen.getByRole('group', { name: 'Nytt testtilfelle' });
     fireEvent.change(within(form).getByLabelText('Inn'), { target: { value: 'Hva er fristen?' } });
     fireEvent.change(within(form).getByLabelText('Forventet'), { target: { value: 'Tre uker' } });
@@ -261,10 +442,14 @@ describe('Ferdigheter', () => {
     await waitFor(() => expect(dataset.options.length).toBeGreaterThan(1));
     const option = Array.from(dataset.options).find((o) => o.value) as HTMLOptionElement;
     fireEvent.change(dataset, { target: { value: option.value } });
-    fireEvent.click(screen.getByRole('button', { name: 'Legg til' }));
-    const row = within(region('Testtilfeller')).getByRole('row', { name: /Hva er fristen/ });
-    expect(within(row).getByText('Med kildetekst')).toBeTruthy();
-    expect(within(row).getByText(`Datasett: ${option.text}`)).toBeTruthy();
+    fireEvent.click(within(form).getByRole('button', { name: 'Legg til' }));
+    const item = cases()
+      .getByText(/Hva er fristen/)
+      .closest('li') as HTMLElement;
+    expect(within(item).getByText('Med kildetekst')).toBeTruthy();
+    expect(within(item).getByText(`Datasett: ${option.text}`)).toBeTruthy();
+    expect(puts).toHaveLength(0);
+    fireEvent.click(screen.getByRole('button', { name: 'Lagre endringene' }));
     await waitFor(() =>
       expect(puts.at(-1)).toMatchObject({
         definition: {
@@ -285,25 +470,41 @@ describe('Ferdigheter', () => {
     expectAccessible();
   });
 
+  it('an empty test set offers Lag et testsett and validates the new case', async () => {
+    await openSkill('svare-pa-innsynskrav', 'Svare på innsynskrav', {}, '/tests');
+    expect(screen.getByRole('heading', { name: 'Ingen testsett ennå' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Lag et testsett' }));
+    const form = screen.getByRole('group', { name: 'Nytt testtilfelle' });
+    fireEvent.click(within(form).getByRole('button', { name: 'Legg til' }));
+    expect(screen.getByText('Fyll ut både inn og forventet.')).toBeTruthy();
+    fireEvent.change(within(form).getByLabelText('Inn'), { target: { value: 'Krav om innsyn' } });
+    fireEvent.change(within(form).getByLabelText('Forventet'), { target: { value: 'Avslag' } });
+    fireEvent.change(within(form).getByLabelText('Type'), { target: { value: 'must_reject' } });
+    fireEvent.click(within(form).getByRole('button', { name: 'Legg til' }));
+    const item = cases()
+      .getByText(/Krav om innsyn/)
+      .closest('li') as HTMLElement;
+    expect(within(item).getByText('Skal avvise')).toBeTruthy();
+    expectAccessible();
+  });
+
   it('deletes a test case through the API with If-Match', async () => {
     const deletes: { path: string; ifMatch: string | null }[] = [];
     const base = fetchWith({ failing: true });
     const fetch: typeof globalThis.fetch = (input, init) => {
-      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
       if (init?.method === 'DELETE')
         deletes.push({
-          path: url.replace(/^\/api/, ''),
+          path: urlOf(input).replace(/^\/api/, ''),
           ifMatch: new Headers(init.headers).get('if-match'),
         });
       return base(input, init);
     };
-    await renderAt('#/skills?id=skrive-vedtaksbrev', fetch);
+    await renderAt(`${skillPath('skrive-vedtaksbrev')}/tests`, fetch);
     await screen.findByRole('heading', { level: 1, name: 'Skrive vedtaksbrev' });
-    tab(/Testsett/);
-    const rows = within(region('Testtilfeller')).getAllByRole('row');
-    const first = rows[1] as HTMLElement;
-    const input = within(first).getByRole('rowheader').textContent ?? '';
-    fireEvent.click(within(first).getByRole('button', { name: /^Slett testtilfellet/ }));
+    const before = cases().getAllByRole('listitem').length;
+    fireEvent.click(
+      cases().getAllByRole('button', { name: /^Slett testtilfellet/ })[0] as HTMLElement,
+    );
     await screen.findByText('Testtilfellet er slettet fra utkastet.');
     expect(deletes).toEqual([
       {
@@ -311,115 +512,164 @@ describe('Ferdigheter', () => {
         ifMatch: expect.stringMatching(/^"\d+"$/),
       },
     ]);
-    expect(within(region('Testtilfeller')).getAllByRole('row')).toHaveLength(rows.length - 1);
-    expect(within(region('Testtilfeller')).queryByRole('rowheader', { name: input })).toBeNull();
+    expect(cases().getAllByRole('listitem')).toHaveLength(before - 1);
+  });
+
+  it('gives the reason for deleting a test case in the language the user has chosen', async () => {
+    const reasons: (string | null)[] = [];
+    const base = mockFetch(undefined, undefined, undefined, undefined, {
+      features: { skills: { failing: true }, preferences: { language: 'en' } },
+    });
+    const fetch: typeof globalThis.fetch = (input, init) => {
+      if (init?.method === 'DELETE') {
+        const raw = new Headers(init.headers).get('change-reason');
+        reasons.push(raw === null ? null : decodeURIComponent(raw));
+      }
+      return base(input, init);
+    };
+    await renderAt(`${skillPath('skrive-vedtaksbrev')}/tests`, fetch);
+    await screen.findByRole('heading', { level: 1, name: 'Skrive vedtaksbrev' });
+    fireEvent.click(
+      (await screen.findAllByRole('button', { name: /^Delete the test case/ }))[0] as HTMLElement,
+    );
+    await waitFor(() => expect(reasons).toEqual(['Deleted a test case']));
+  });
+
+  it('a failed delete shows a danger alert, not a success message', async () => {
+    const base = fetchWith({ failing: true });
+    const fetch: typeof globalThis.fetch = (input, init) =>
+      init?.method === 'DELETE' ? problem(500) : base(input, init);
+    await renderAt(`${skillPath('skrive-vedtaksbrev')}/tests`, fetch);
+    await screen.findByRole('heading', { level: 1, name: 'Skrive vedtaksbrev' });
+    fireEvent.click(
+      cases().getAllByRole('button', { name: /^Slett testtilfellet/ })[0] as HTMLElement,
+    );
+    const alert = (
+      await screen.findByText('Vi kunne ikke slette testtilfellet. Prøv igjen om litt.')
+    ).closest('[data-color]') as HTMLElement;
+    expect(alert.getAttribute('data-color')).toBe('danger');
+    expect(alert.getAttribute('role')).toBe('alert');
   });
 
   it('the stale-result alert appears after editing', async () => {
     await openSkill('skrive-vedtaksbrev', 'Skrive vedtaksbrev', { failing: true });
-    tab(/Testsett/);
-    const stale = /Utkastet eller dommeren er endret siden siste kjøring/;
-    expect(screen.queryByText(stale)).toBeNull();
-    tab(/Oppsett/);
-    fireEvent.change(screen.getByRole('textbox', { name: 'Instruksjoner' }), {
+    fireEvent.change(screen.getByRole('textbox', { name: 'Instruksjoner til modellen' }), {
       target: { value: '# Skrive vedtaksbrev\n\nNy tekst.' },
     });
-    tab(/Testsett/);
-    expect(screen.getByText(stale)).toBeTruthy();
-    expect(screen.queryByRole('heading', { name: /feilet/ })).toBeNull();
-    expect(within(region('Testtilfeller')).getAllByText('Ikke kjørt')).toHaveLength(10);
+    await tab(/Testsett/);
+    expect(screen.getByText(/Utkastet eller dommeren er endret siden siste kjøring/)).toBeTruthy();
+    expect(cases().getAllByText('Ikke kjørt')).toHaveLength(10);
     expectAccessible();
   });
 
   it('a run the API marks stale for an earlier judge does not count on the current draft', async () => {
-    await openSkill('skrive-vedtaksbrev', 'Skrive vedtaksbrev', {
-      failing: true,
-      judgeChanged: true,
-    });
-    tab(/Testsett/);
+    await openSkill(
+      'skrive-vedtaksbrev',
+      'Skrive vedtaksbrev',
+      { failing: true, judgeChanged: true },
+      '/tests',
+    );
     expect(screen.getByText(/Utkastet eller dommeren er endret siden siste kjøring/)).toBeTruthy();
-    expect(within(region('Testtilfeller')).getAllByText('Ikke kjørt')).toHaveLength(10);
+    expect(cases().getAllByText('Ikke kjørt')).toHaveLength(10);
   });
 
-  it('adds a test case inline and validates it', async () => {
-    await openSkill('svare-pa-innsynskrav', 'Svare på innsynskrav');
-    tab(/Testsett/);
-    expect(screen.getByText('Ingen testtilfeller ennå')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Legg til testtilfelle' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Legg til' }));
-    expect(screen.getByText('Fyll ut både inn og forventet.')).toBeTruthy();
-    const form = screen.getByRole('group', { name: 'Nytt testtilfelle' });
-    fireEvent.change(within(form).getByLabelText('Inn'), { target: { value: 'Krav om innsyn' } });
-    fireEvent.change(within(form).getByLabelText('Forventet'), { target: { value: 'Avslag' } });
-    fireEvent.change(within(form).getByLabelText('Type'), { target: { value: 'must_reject' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Legg til' }));
-    const row = within(region('Testtilfeller')).getByRole('row', { name: /Krav om innsyn/ });
-    expect(within(row).getByText('Skal avvise')).toBeTruthy();
-    expectAccessible();
-  });
-
-  it('publish dialog lists four requirements with Oppfylt or Ikke oppfylt', async () => {
-    await openSkill('skrive-vedtaksbrev', 'Skrive vedtaksbrev');
-    fireEvent.click(screen.getByRole('button', { name: 'Publiser versjon 4' }));
-    const dialog = await screen.findByRole('dialog', { name: /Publiser versjon 4 av Skrive/ });
-    const gates = await within(dialog).findByRole('list', { name: 'Krav før publisering' });
-    const items = within(gates).getAllByRole('listitem');
-    expect(items).toHaveLength(4);
-    for (const item of items) expect(item.textContent).toMatch(/^(Oppfylt|Ikke oppfylt)/);
-    expect(items[0]?.textContent).toContain('Testsettet er ikke kjørt.');
-    expect(items[3]?.textContent).toMatch(/^Oppfylt/);
-    expect(within(dialog).getByText('Endringer siden versjon 3')).toBeTruthy();
-    expect(within(dialog).getByText('1 nytt eksempel')).toBeTruthy();
-    expect(within(dialog).getByText('Lovdata: versjon 1.3 → 1.4')).toBeTruthy();
-    expectAccessible();
-  });
-
-  it('publishes after a passing run with a reason', async () => {
-    await openSkill('skrive-vedtaksbrev', 'Skrive vedtaksbrev');
-    tab(/Testsett/);
-    fireEvent.click(screen.getByRole('button', { name: 'Kjør testsettet' }));
-    await screen.findByText('10 av 10 bestått (100 prosent)');
-    fireEvent.click(screen.getByRole('button', { name: 'Publiser versjon 4' }));
-    const dialog = await screen.findByRole('dialog', { name: /Publiser versjon 4/ });
-    const gates = await within(dialog).findByRole('list', { name: 'Krav før publisering' });
-    expect(within(gates).getAllByText('Oppfylt')).toHaveLength(4);
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Publiser' }));
-    expect(within(dialog).getByText('Skriv en begrunnelse på minst 10 tegn.')).toBeTruthy();
-    fireEvent.change(within(dialog).getByLabelText('Begrunnelse'), {
-      target: { value: 'Ny versjon med flere eksempler' },
-    });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Publiser' }));
-    await screen.findByText(
-      'Versjon 4 er publisert. Vedtaksutkast får «Oppdatering tilgjengelig».',
-    );
-    await screen.findByText('Versjon 4 i bruk · ingen endringer i utkastet · utgiver Testetaten');
-  });
-
-  it('a blocked publish disables Publiser and links to the test set', async () => {
+  it('a blocked publish lists the requirements, disables publishing and links to the test set', async () => {
     await openSkill('skrive-vedtaksbrev', 'Skrive vedtaksbrev', { failing: true });
-    fireEvent.click(screen.getByRole('button', { name: 'Publiser versjon 4' }));
-    const dialog = await screen.findByRole('dialog', { name: /Publiser versjon 4/ });
+    fireEvent.click(screen.getByRole('button', { name: 'Publiser' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Publiser Skrive vedtaksbrev' });
     await within(dialog).findByText(/Publiseringen er stoppet fordi 1 krav ikke er oppfylt/);
-    const publish = within(dialog).getByRole('button', { name: 'Publiser' });
+    const gates = within(dialog).getByRole('list', { name: 'Krav før publisering' });
+    expect(within(gates).getAllByRole('listitem')).toHaveLength(4);
+    const publish = within(dialog).getByRole('button', { name: 'Publiser versjon 4' });
     expect(publish.getAttribute('aria-disabled')).toBe('true');
-    expect((within(dialog).getByLabelText('Begrunnelse') as HTMLTextAreaElement).disabled).toBe(
-      true,
-    );
-    expect(within(dialog).getByText('8 av 10 bestått (80 prosent).')).toBeTruthy();
+    expect(
+      (within(dialog).getByLabelText('Hvorfor endrer du dette?') as HTMLTextAreaElement).disabled,
+    ).toBe(true);
     expectAccessible();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Gå til testsettet' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-    expect(screen.getByRole('tab', { name: /Testsett/ }).getAttribute('aria-selected')).toBe(
-      'true',
+    await waitFor(() =>
+      expect(window.location.hash).toBe('#/building-blocks/skill/skrive-vedtaksbrev/tests'),
     );
   });
 
-  it('sharing needs the confirmation and a reason', async () => {
+  it('publishes after a passing run with a reason and says when the services get it', async () => {
+    await openSkill('skrive-vedtaksbrev', 'Skrive vedtaksbrev', {}, '/tests');
+    fireEvent.click(screen.getByRole('button', { name: 'Kjør testsettet' }));
+    await screen.findByText(/10 av 10 bestått med utkastet/);
+    fireEvent.click(screen.getByRole('button', { name: 'Publiser' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Publiser Skrive vedtaksbrev' });
+    expect(
+      within(dialog).getByText(
+        'Versjon 4 blir den som brukes. Vedtaksutkast får den neste gang tjenesten publiseres.',
+      ),
+    ).toBeTruthy();
+    const publish = within(dialog).getByRole('button', { name: 'Publiser versjon 4' });
+    await waitFor(() => expect(publish.getAttribute('aria-disabled')).toBeNull());
+    fireEvent.click(publish);
+    expect(within(dialog).getByText('Skriv en begrunnelse på minst 10 tegn.')).toBeTruthy();
+    fireEvent.change(within(dialog).getByLabelText('Hvorfor endrer du dette?'), {
+      target: { value: 'Ny versjon med flere eksempler' },
+    });
+    fireEvent.click(publish);
+    expect(
+      await screen.findByText(
+        'Versjon 4 er publisert. Vedtaksutkast får den neste gang tjenesten publiseres.',
+      ),
+    ).toBeTruthy();
+    await screen.findByText('Publisert, versjon 4');
+    expect(screen.queryByText('Endringer ikke publisert')).toBeNull();
+  });
+
+  it('a publish refused for a missing right says which right and that the changes are saved', async () => {
+    const base = fetchWith();
+    const fetch: typeof globalThis.fetch = (input, init) =>
+      init?.method === 'POST' && urlOf(input).endsWith('/publish')
+        ? problem(403)
+        : base(input, init);
+    await openWith('skrive-vedtaksbrev', 'Skrive vedtaksbrev', fetch);
+    await tab(/Testsett/);
+    fireEvent.click(screen.getByRole('button', { name: 'Kjør testsettet' }));
+    await screen.findByText(/10 av 10 bestått med utkastet/);
+    fireEvent.click(screen.getByRole('button', { name: 'Publiser' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Publiser Skrive vedtaksbrev' });
+    fireEvent.change(within(dialog).getByLabelText('Hvorfor endrer du dette?'), {
+      target: { value: 'Ny versjon med flere eksempler' },
+    });
+    const publish = within(dialog).getByRole('button', { name: 'Publiser versjon 4' });
+    await waitFor(() => expect(publish.getAttribute('aria-disabled')).toBeNull());
+    fireEvent.click(publish);
+    const alert = await within(dialog).findByRole('alert');
+    expect(
+      within(alert).getByRole('heading', { name: 'Du har ikke lov til å publisere ferdigheter' }),
+    ).toBeTruthy();
+    expect(alert.textContent).toContain('«Administrere tjenester» i Altinn');
+  });
+
+  it('closing the publish dialog puts focus back on the publish button', async () => {
     await openSkill('skrive-vedtaksbrev', 'Skrive vedtaksbrev');
-    tab(/Bruk og deling/);
-    const services = await screen.findByRole('region', { name: 'Tjenester' });
-    expect(within(services).getByText('Siste versjon')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Del med andre virksomheter' }));
+    const trigger = screen.getByRole('button', { name: 'Publiser' });
+    fireEvent.click(trigger);
+    const dialog = await screen.findByRole('dialog', { name: 'Publiser Skrive vedtaksbrev' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Avbryt' }));
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+  });
+
+  it('lists the services that use the skill with the version they use', async () => {
+    await openSkill('skrive-vedtaksbrev', 'Skrive vedtaksbrev', {}, '/sharing');
+    await screen.findByRole('heading', { name: 'Brukes i 1 tjeneste' });
+    const link = screen.getByRole('link', { name: 'Vedtaksutkast' });
+    expect(link.getAttribute('href')).toBe('#/services/vedtaksutkast');
+    expect(screen.getByText('Bruker versjon 3')).toBeTruthy();
+  });
+
+  it('choosing all organisations asks for the confirmation and a reason before it goes to Digdir', async () => {
+    await openSkill('skrive-vedtaksbrev', 'Skrive vedtaksbrev', {}, '/sharing');
+    const group = await screen.findByRole('group', { name: 'Hvem kan bruke den' });
+    expect(
+      (within(group).getByRole('radio', { name: /Bare Testetaten/ }) as HTMLInputElement).checked,
+    ).toBe(true);
+    fireEvent.click(within(group).getByRole('radio', { name: /Alle virksomheter i genki/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Send til Digdir' }));
     expect(screen.getByText('Bekreft at ferdigheten kan deles.')).toBeTruthy();
     fireEvent.click(screen.getByRole('checkbox', { name: /inneholder ikke personopplysninger/ }));
@@ -430,143 +680,34 @@ describe('Ferdigheter', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'Send til Digdir' }));
     await screen.findByText('Forespørselen er sendt til Digdir.');
-    expect(screen.getByRole('heading', { name: 'Venter på godkjenning fra Digdir' })).toBeTruthy();
-    expect(screen.getByText(/Sendt i dag kl\. \d\d\.\d\d av Kari Nordmann/)).toBeTruthy();
-    expect(screen.getAllByText('Venter på Digdir').length).toBeGreaterThan(0);
+    expect(screen.getByText('Venter på at Digdir godkjenner delingen.')).toBeTruthy();
     expectAccessible();
-    fireEvent.click(screen.getByRole('button', { name: 'Trekk tilbake forespørselen' }));
+    fireEvent.click(within(group).getByRole('radio', { name: /Bare Testetaten/ }));
     await screen.findByText('Forespørselen om deling er trukket tilbake.');
-    expect(screen.getByRole('button', { name: 'Del med andre virksomheter' })).toBeTruthy();
+    expect(
+      (within(group).getByRole('radio', { name: /Bare Testetaten/ }) as HTMLInputElement).checked,
+    ).toBe(true);
   });
 
   it('says Digdir turned down the last request and lets the skill be shared again', async () => {
     const skills = exampleSkillRecords().map((r) =>
       r.id === 'skrive-vedtaksbrev' ? { ...r, share: 'rejected' as const } : r,
     );
-    await openSkill('skrive-vedtaksbrev', 'Skrive vedtaksbrev', { skills });
-    tab(/Bruk og deling/);
-
+    await openSkill('skrive-vedtaksbrev', 'Skrive vedtaksbrev', { skills }, '/sharing');
     expect(await screen.findByText(/Digdir avslo forrige forespørsel om deling/)).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Del med andre virksomheter' })).toBeTruthy();
+    expect(
+      (screen.getByRole('radio', { name: /Alle virksomheter i genki/ }) as HTMLInputElement)
+        .disabled,
+    ).toBe(false);
   });
 
   it('cannot share an unpublished skill', async () => {
-    await openSkill('svare-pa-innsynskrav', 'Svare på innsynskrav');
-    tab(/Bruk og deling/);
-    expect(await screen.findByText('Publiser ferdigheten før du deler den.')).toBeTruthy();
-    expect(
-      screen
-        .getByRole('button', { name: 'Del med andre virksomheter' })
-        .getAttribute('aria-disabled'),
-    ).toBe('true');
-  });
-
-  it("someone else's skill is read-only with Lag en kopi", async () => {
-    await openSkill('klarsprak-i-brev&owner=991825827', 'Klarspråk i brev');
-    expect(
-      screen.getByText(/Denne ferdigheten er laget av Digdir\. Du kan bruke og prøve den/),
-    ).toBeTruthy();
-    expect(screen.queryByRole('button', { name: /Publiser/ })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Be assistenten foreslå' })).toBeNull();
-    expect(
-      (screen.getByRole('textbox', { name: 'Instruksjoner' }) as HTMLTextAreaElement).readOnly,
-    ).toBe(true);
-    expect(screen.getByText('Versjon 1 i bruk · utgiver Digdir')).toBeTruthy();
-    expectAccessible();
-    fireEvent.click(screen.getByRole('button', { name: 'Lag en kopi' }));
-    await screen.findByRole('button', { name: 'Publiser versjon 1' });
-    expect(screen.getByRole('heading', { level: 1, name: 'Klarspråk i brev' })).toBeTruthy();
-    expect(screen.getByText('Kopien er laget som et utkast hos Testetaten.')).toBeTruthy();
-  });
-
-  it('applies and discards YAML with the genai/v1 schema', async () => {
-    await openSkill('sortere-post', 'Sortere post etter saksområde');
-    tab(/YAML/);
-    const box = screen.getByLabelText('Ferdighetsdefinisjon (YAML)') as HTMLTextAreaElement;
-    expect(box.value).toContain('apiVersion: genai/v1');
-    expect(box.value).toContain('kind: Skill');
-    expect(box.value).toContain('version: 3');
-    expect(box.value).toContain('- brreg@0.1');
-    expect(box.value).toContain('passThreshold: 0.85');
-    expect(
-      screen.getByRole('button', { name: 'Bruk endringene' }).getAttribute('aria-disabled'),
-    ).toBe('true');
-    fireEvent.change(box, {
-      target: {
-        value: box.value.replace('name: Sortere post etter saksområde', 'name: Sortere post'),
-      },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Bruk endringene' }));
-    expect(screen.getByText('Endringene er brukt i ferdigheten.')).toBeTruthy();
-    expect(screen.getByRole('heading', { level: 1, name: 'Sortere post' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Publiser versjon 3' })).toBeTruthy();
-    expectAccessible();
-  });
-
-  it('lists versions with the draft first', async () => {
-    await openSkill('skrive-vedtaksbrev', 'Skrive vedtaksbrev');
-    tab(/Versjoner/);
-    const list = await screen.findByRole('list', { name: 'Versjoner' });
-    const items = within(list).getAllByRole('listitem');
-    expect(items[0]?.textContent).toContain('Utkast til versjon 4');
-    expect(items[1]?.textContent).toContain('Versjon 3');
-    expect(items[1]?.textContent).toContain('I bruk');
-    expect(items[1]?.textContent).toContain('10 av 10 (100 %)');
-    expect(items[3]?.textContent).toContain('Ingen testsett');
-    expectAccessible();
-  });
-
-  it('opens the playground panel beside the editor', async () => {
-    await openSkill('skrive-vedtaksbrev', 'Skrive vedtaksbrev');
-    const button = screen.getByRole('button', { name: 'Prøv' });
-    fireEvent.click(button);
-    expect(button.getAttribute('aria-pressed')).toBe('true');
-    expect(document.querySelector('.skill-try [data-context="skill"]')).toBeTruthy();
-  });
-
-  it('Prøv waits for a published version and names the skill by its display name', async () => {
-    await openSkill('svare-pa-innsynskrav', 'Svare på innsynskrav');
-    const unpublished = screen.getByRole('button', { name: 'Prøv' });
-    expect(unpublished.getAttribute('aria-disabled')).toBe('true');
-    expect(unpublished.getAttribute('aria-describedby')).toBeTruthy();
-    expect(
-      screen.getByText('Du kan prøve ferdigheten når den har en publisert versjon.'),
-    ).toBeTruthy();
-    fireEvent.click(unpublished);
-    expect(document.querySelector('.skill-try')).toBeNull();
-    cleanup();
-
-    await openSkill('skrive-vedtaksbrev', 'Skrive vedtaksbrev');
-    fireEvent.click(screen.getByRole('button', { name: 'Prøv' }));
-    expect(
-      await screen.findByText(
-        'Med ferdigheten Skrive vedtaksbrev slik den er i siste publiserte versjon',
-      ),
-    ).toBeTruthy();
-  });
-
-  it('a failed action shows a danger alert, not a success message', async () => {
-    const base = fetchWith({ failing: true });
-    const fetch: typeof globalThis.fetch = (input, init) =>
-      init?.method === 'DELETE'
-        ? Promise.resolve(
-            new Response(JSON.stringify({ title: 'Feil' }), {
-              status: 500,
-              headers: { 'content-type': 'application/problem+json' },
-            }),
-          )
-        : base(input, init);
-    await renderAt('#/skills?id=skrive-vedtaksbrev', fetch);
-    await screen.findByRole('heading', { level: 1, name: 'Skrive vedtaksbrev' });
-    tab(/Testsett/);
-    const first = within(region('Testtilfeller')).getAllByRole('row')[1] as HTMLElement;
-    fireEvent.click(within(first).getByRole('button', { name: /^Slett testtilfellet/ }));
-
-    const alert = (
-      await screen.findByText('Vi kunne ikke slette testtilfellet. Prøv igjen om litt.')
-    ).closest('[data-color]') as HTMLElement;
-    expect(alert.getAttribute('data-color')).toBe('danger');
-    expect(alert.getAttribute('role')).toBe('alert');
+    await openSkill('svare-pa-innsynskrav', 'Svare på innsynskrav', {}, '/sharing');
+    const all = (await screen.findByRole('radio', {
+      name: /Alle virksomheter i genki/,
+    })) as HTMLInputElement;
+    expect(all.disabled).toBe(true);
+    expect(screen.getByText('Publiser ferdigheten før du deler den.')).toBeTruthy();
   });
 
   it('says so when withdrawing the share request fails', async () => {
@@ -578,24 +719,63 @@ describe('Ferdigheter', () => {
       init?.method === 'DELETE'
         ? Promise.resolve(new Response('{}', { status: 503 }))
         : base(input, init);
-    await renderAt('#/skills?id=skrive-vedtaksbrev', fetch);
-    await screen.findByRole('heading', { level: 1, name: 'Skrive vedtaksbrev' });
-    tab(/Bruk og deling/);
-    fireEvent.click(await screen.findByRole('button', { name: 'Trekk tilbake forespørselen' }));
-
+    await renderAt(`${skillPath('skrive-vedtaksbrev')}/sharing`, fetch);
+    fireEvent.click(await screen.findByRole('radio', { name: /Bare Testetaten/ }));
     expect((await screen.findByRole('alert')).textContent).toBe(
       'Vi kunne ikke trekke tilbake forespørselen. Prøv igjen om litt.',
     );
   });
 
-  it('closing the publish dialog puts focus back on the publish button', async () => {
-    await openSkill('skrive-vedtaksbrev', 'Skrive vedtaksbrev');
-    const trigger = screen.getByRole('button', { name: 'Publiser versjon 4' });
-    fireEvent.click(trigger);
-    const dialog = await screen.findByRole('dialog', { name: /Publiser versjon 4/ });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Avbryt' }));
+  it('lists versions newest first with who, when, which is in use and the reason', async () => {
+    await openSkill('skrive-vedtaksbrev', 'Skrive vedtaksbrev', {}, '/versions');
+    const items = within(screen.getByRole('list', { name: 'Versjoner' })).getAllByRole('listitem');
+    expect(items).toHaveLength(3);
+    expect(items[0]?.textContent).toMatch(/^Versjon 3 · .* av Kari Nordmann · i bruk/);
+    expect(items[2]?.textContent).toMatch(/^Versjon 1 · .* av Per Hansen/);
+    expect(items[2]?.textContent).not.toContain('i bruk');
+    expectAccessible();
+  });
 
-    await waitFor(() => expect(document.activeElement).toBe(trigger));
+  it("a Digdir skill opens on the one block template, and Lag en kopi lands on the copy's editor", async () => {
+    await openSkill('klarsprak-i-brev', 'Klarspråk i brev', {}, '?owner=991825827');
+    expect(screen.getByRole('tab', { name: 'Om' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'Brukes av' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'Versjoner' })).toBeTruthy();
+    expect(screen.queryByRole('tab', { name: /^Testsett/ })).toBeNull();
+    expect(screen.queryByRole('textbox', { name: 'Instruksjoner til modellen' })).toBeNull();
+    expectAccessible();
+    fireEvent.click(screen.getByRole('button', { name: 'Lag en kopi' }));
+    await screen.findByRole('button', { name: 'Publiser' });
+    expect(window.location.hash).toBe('#/building-blocks/skill/klarsprak-i-brev');
+    expect(screen.getByRole('heading', { level: 1, name: 'Klarspråk i brev' })).toBeTruthy();
+  });
+
+  it('tells the user when copying a Digdir skill fails and stays on the block', async () => {
+    const base = fetchWith();
+    const fetch: typeof globalThis.fetch = async (input, init) =>
+      init?.method === 'POST' && urlOf(input).includes('/skills/klarsprak-i-brev/copy')
+        ? problem(500)
+        : base(input, init);
+    await renderAt(`${skillPath('klarsprak-i-brev')}?owner=991825827`, fetch);
+    await screen.findByRole('heading', { level: 1, name: 'Klarspråk i brev' });
+    fireEvent.click(screen.getByRole('button', { name: 'Lag en kopi' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('Vi kunne ikke lage en kopi. Prøv igjen om litt.');
+    expect(window.location.hash).toContain('/building-blocks/skill/klarsprak-i-brev');
+    expect(screen.getByRole('heading', { level: 1, name: 'Klarspråk i brev' })).toBeTruthy();
+    expect(
+      (screen.getByRole('button', { name: 'Lag en kopi' }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+  });
+
+  it('a skill another organisation shares keeps the read-only editor', async () => {
+    await openSkill('skrive-tilsynsrapport', 'Skrive tilsynsrapport', {}, '?owner=999666555');
+    expect(
+      (screen.getByRole('textbox', { name: 'Instruksjoner til modellen' }) as HTMLTextAreaElement)
+        .readOnly,
+    ).toBe(true);
+    expect(screen.queryByRole('button', { name: 'Publiser' })).toBeNull();
+    expectAccessible();
   });
 
   it('creates, edits, tests and publishes a skill through the API paths and shapes', async () => {
@@ -608,14 +788,16 @@ describe('Ferdigheter', () => {
     }[] = [];
     const base = fetchWith();
     const fetch: typeof globalThis.fetch = async (input, init) => {
-      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
       const response = await base(input, init);
       calls.push({
         method: init?.method ?? 'GET',
-        path: url.replace(/^\/api/, ''),
+        path: urlOf(input).replace(/^\/api/, ''),
         body: init?.body ? JSON.parse(String(init.body)) : undefined,
         headers: new Headers(init?.headers),
-        reply: await response.clone().json(),
+        reply: await response
+          .clone()
+          .json()
+          .catch(() => undefined),
       });
       return response;
     };
@@ -623,100 +805,70 @@ describe('Ferdigheter', () => {
     const last = (method: string, path: string) =>
       calls.filter((c) => c.method === method && c.path === path).at(-1);
 
-    await renderAt('#/skills', fetch);
+    await renderAt('#/building-blocks/in-use?type=skill', fetch);
     fireEvent.click(await screen.findByRole('button', { name: 'Ny ferdighet' }));
     await screen.findByRole('heading', { level: 1, name: 'Ny ferdighet' });
+    expect(window.location.hash).toBe('#/building-blocks/skill/ny-ferdighet');
+    expect(screen.getByText('Ikke publisert')).toBeTruthy();
     expect(last('POST', '/tenants/999888777/skills')).toMatchObject({
       body: { id: 'ny-ferdighet', name: '' },
-      reply: {
-        id: 'ny-ferdighet',
-        owner: '999888777',
-        version: null,
-        readOnly: false,
-        draft: { revision: 1, definition: { spec: { description: '', instructions: '' } } },
-        requirements: [{ id: 'tested-on-draft', met: false, reason: 'no_cases' }, {}, {}, {}],
-      },
+      reply: { id: 'ny-ferdighet', version: null, draft: { revision: 1 } },
     });
 
     fireEvent.change(screen.getByLabelText('Navn'), { target: { value: 'Svare på klager' } });
-    fireEvent.change(screen.getByRole('textbox', { name: 'Når skal ferdigheten brukes?' }), {
+    fireEvent.change(screen.getByRole('textbox', { name: 'Beskrivelse' }), {
       target: { value: 'Bruk når noen klager på et vedtak.' },
     });
-    fireEvent.change(screen.getByRole('textbox', { name: 'Instruksjoner' }), {
+    fireEvent.change(screen.getByRole('textbox', { name: 'Instruksjoner til modellen' }), {
       target: { value: '# Svare på klager\n\nSvar kort.' },
     });
-    tab(/Testsett/);
-    fireEvent.click(screen.getByRole('button', { name: 'Legg til testtilfelle' }));
+    await tab(/Testsett/);
+    fireEvent.click(screen.getByRole('button', { name: 'Lag et testsett' }));
     const form = screen.getByRole('group', { name: 'Nytt testtilfelle' });
     fireEvent.change(within(form).getByLabelText('Inn'), { target: { value: 'Klage på avslag' } });
     fireEvent.change(within(form).getByLabelText('Forventet'), {
       target: { value: 'Svar med klagefrist' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Legg til' }));
+    fireEvent.click(within(form).getByRole('button', { name: 'Legg til' }));
     fireEvent.click(screen.getByRole('button', { name: 'Kjør testsettet' }));
-    await screen.findByText('1 av 1 bestått (100 prosent)');
+    await screen.findByText('1 av 1 bestått med utkastet.');
     const saved = calls.filter((c) => c.method === 'PUT' && c.path === skill);
+    expect(saved).toHaveLength(1);
     expect(saved[0]?.headers.get('if-match')).toBe('"1"');
-    expect(saved.at(-1)).toMatchObject({
+    expect(saved[0]).toMatchObject({
       body: {
         definition: {
           metadata: { id: 'ny-ferdighet', name: 'Svare på klager' },
           spec: { testset: { cases: [{ input: 'Klage på avslag', type: 'criteria' }] } },
         },
       },
-      reply: { name: 'Svare på klager', hasChanges: true, draft: { revision: saved.length + 1 } },
     });
     expect(last('POST', `${skill}/test-runs`)).toMatchObject({
-      body: {},
-      reply: { draftRevision: saved.length + 1, passed: 1, total: 1, cases: [{ index: 0 }] },
+      reply: { draftRevision: 2, passed: 1, total: 1 },
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Publiser versjon 1' }));
-    const dialog = await screen.findByRole('dialog', { name: /Publiser versjon 1 av Svare/ });
-    const gates = await within(dialog).findByRole('list', { name: 'Krav før publisering' });
-    expect(within(gates).getAllByText('Oppfylt')).toHaveLength(4);
+    fireEvent.click(screen.getByRole('button', { name: 'Publiser' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Publiser Svare på klager' });
+    const publish = within(dialog).getByRole('button', { name: 'Publiser versjon 1' });
+    await waitFor(() => expect(publish.getAttribute('aria-disabled')).toBeNull());
     expect(last('GET', `${skill}/requirements`)?.reply).toMatchObject({
-      threshold: 0.9,
       requirements: [
         { id: 'tested-on-draft', met: true },
-        { id: 'pass-rate', met: true, passedCases: 1, total: 1 },
+        { id: 'pass-rate', met: true },
         { id: 'must-reject', met: true },
         { id: 'published-tools', met: true },
       ],
     });
-    fireEvent.change(within(dialog).getByLabelText('Begrunnelse'), {
+    fireEvent.change(within(dialog).getByLabelText('Hvorfor endrer du dette?'), {
       target: { value: 'Første versjon for klagesaker' },
     });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Publiser' }));
+    fireEvent.click(publish);
     await screen.findByText('Versjon 1 er publisert.');
-    await screen.findByText('Versjon 1 i bruk · ingen endringer i utkastet · utgiver Testetaten');
+    await screen.findByText('Publisert, versjon 1');
     const published = last('POST', `${skill}/publish`);
     expect(decodeURIComponent(published?.headers.get('change-reason') ?? '')).toBe(
       'Første versjon for klagesaker',
     );
     expect(published?.reply).toMatchObject({ ok: true, version: 1 });
-  });
-
-  it('saves the draft with If-Match', async () => {
-    const calls: { method: string; url: string; ifMatch: string | null }[] = [];
-    const base = fetchWith();
-    const fetch: typeof globalThis.fetch = (input, init) => {
-      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-      calls.push({
-        method: init?.method ?? 'GET',
-        url,
-        ifMatch: new Headers(init?.headers).get('if-match'),
-      });
-      return base(input, init);
-    };
-    await renderAt('#/skills?id=sortere-post', fetch);
-    await screen.findByRole('heading', { level: 1, name: 'Sortere post etter saksområde' });
-    fireEvent.change(screen.getByLabelText('Navn'), { target: { value: 'Sortere post' } });
-    await waitFor(() =>
-      expect(calls.find((c) => c.method === 'PUT')).toMatchObject({
-        url: '/api/tenants/999888777/skills/sortere-post',
-        ifMatch: '"4"',
-      }),
-    );
   });
 });

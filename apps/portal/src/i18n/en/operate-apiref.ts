@@ -60,16 +60,17 @@ export const apirefArea = {
     copy: 'Copy {what}',
     tryHeading: 'Try',
     tryAs:
-      'You call as <strong>{name}</strong> for {tenant}, with your rights from Altinn: {held}. The response is an example. No call is sent.',
+      'You call as <strong>{name}</strong> for {tenant}, with your rights from Altinn: {held}. The call goes to the API with your sign-in.',
     tryAnonymous:
-      'You call for {tenant}, with your rights from Altinn: {held}. The response is an example. No call is sent.',
+      'You call for {tenant}, with your rights from Altinn: {held}. The call goes to the API with your sign-in.',
     heldNone: 'none',
-    invalidJson: 'The content is not valid JSON.',
+    tryReadOnly:
+      'Here you can only try read calls (GET), so nothing changes by accident. Use the curl example above to send this call.',
+    tryRefused:
+      'The API refused the call because you lack the right it requires. Your rights apply, here too.',
+    tryNoAnswer: 'The API did not answer',
     invalidRequest: '400 Invalid request',
     fillIn: 'Fill in "{name}".',
-    forbiddenNote:
-      'The call was rejected because you are not a Digdir operator. Your rights apply, here too.',
-    bodyLabel: 'Body (JSON)',
     send: 'Send',
     sending: 'Sending',
     response: 'Response',
@@ -82,8 +83,6 @@ export const apirefArea = {
     errors: 'Error codes',
     actionsIntro:
       'This is what "Show API call" looks like for important actions in the portal. The link sits next to the button and opens the call the button will make.',
-    actionDone:
-      '"{button}" was done in the prototype. The same call could have been made from a system.',
     schemaUnavailable: 'The schema is not available in the API yet.',
     colField: 'Field',
     colRequired: 'Required',
@@ -273,9 +272,12 @@ export const apirefArea = {
     'kv-run.desc': 'The result for each test case in the run.',
     'kv-run.p.id': 'For example ts-0613',
     'kv-compare.summary': 'Compare two test runs',
-    'kv-compare.desc': 'The difference in scores between two runs, per goal and per test case.',
-    'kv-compare.p.a': 'The first run',
-    'kv-compare.p.b': 'The second run',
+    'kv-compare.desc':
+      'The paired difference between two runs of the same test set, with a confidence interval, for each metric you ask for.',
+    'kv-compare.p.baseline': 'The run to compare against',
+    'kv-compare.p.candidate': 'The run being compared',
+    'kv-compare.p.metric': 'One metric or several with commas, such as recall@10,mrr@10',
+    'kv-compare.p.allowDifferent': 'What the runs may differ in: data, services, servedModels',
     'kv-evaltask.summary': 'Status of a test run in progress',
     'kv-evaltask.desc': 'How far the test run has come.',
     'kv-evaltask.p.task': 'The task id from Run the test set',

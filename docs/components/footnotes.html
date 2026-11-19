@@ -126,7 +126,19 @@
                 answer first cites it, named «Kilde 1: …». It leads to the document, not an excerpt.
                 «Kilder brukt i svaret» lists the documents in the order of their numbers, and
                 <code>answerCopy</code> takes the same option, so a copied answer keeps them. When
-                the footnotes name excerpts, nothing changes: one number per excerpt.
+                the footnotes name excerpts, nothing changes: one number per excerpt, unless
+                <code>numberEachFootnote</code>.
+              </li>
+              <li>
+                <code>numberEachFootnote</code>: when the footnotes name excerpts, each footnote has
+                its own number, 1, 2, 3 as they stand, named «Fotnote 2: …», so two that cite one
+                excerpt have two numbers (dev-kilder-hoyre). Sources' cards show every number an
+                excerpt has, and its ‹ 2 av 7 › counts footnotes. The next look turns it on.
+              </li>
+              <li>
+                <code>shownFootnote</code>: the footnote Sources shows whole, by its index in the
+                footnotes, is marked <code>aria-current</code> and filled as on hover
+                (dev-kilder-hoyre-2-detalj).
               </li>
               <li><code>status</code>: streaming, complete, aborted or failed.</li>
               <li>
@@ -149,7 +161,9 @@
                 the title. Escape and «Tilbake til svaret» go back to whichever the reader followed.
               </li>
               <li>
-                <code>onOpenDocument</code>: a title in «Kilder brukt i svaret» was chosen.
+                <code>onOpenDocument</code>: a title in «Kilder brukt i svaret» was chosen. A
+                <code>plain</code> answer draws the Kildeliste instead, which leads nowhere, so
+                these three and <code>href</code> for titles and excerpts do nothing there.
                 <code>onOpenExcerpt</code>: an excerpt under a title, «Utdrag 1», was chosen, with
                 the excerpt to show in Sources. <code>href</code> gives a footnote, a title and an
                 excerpt an address, for a new tab; with neither <code>href</code> nor
@@ -173,9 +187,34 @@
               </li>
               <li>
                 <code>variant</code>: <code>plain</code> is the dev boards' answer
-                (dev-kilder-hoyre): no card around it, and «Kilder brukt i svaret» with the count in
-                its bar, «Kilder · 3 brukt i svaret» (dev-filter-panel), the documents numbered,
-                each a link, with no excerpt line under them. <code>card</code>, the default.
+                (dev-kilder-hoyre): no card around it, and the Kildeliste in place of «Kilder brukt
+                i svaret» (dev-kildeliste). <code>card</code>, the default.
+              </li>
+              <li>
+                The Kildeliste, under a finished <code>plain</code> answer with
+                <code>sourcesUsed</code>: Details in a Card, «Kildeliste», closed until the reader
+                opens it. Each cited document once, with every footnote that leads to it in front,
+                «2, 5, 6», by the numbers the footnotes are drawn with, and sorted by the first. The
+                footnotes are a column as wide as the longest, up to <code>--ds-size-22</code>,
+                where they wrap. Then the reference: document type, year, <em>title</em>. Publisher.
+                Side 12–13, 27. Address. The type and the publisher are a source's
+                <code>documentType</code> and <code>publisher</code>, which a host sets: genki's
+                <code>sources[]</code> sends <code>publisher</code> but no document type yet, so
+                against genki a row reads «2022, <em>Tittel</em>. Utgiver. Side 12. Address». A part
+                the source lacks is left out, and a line break in a title or publisher becomes a
+                space. A title or publisher that ends with «.», «?» or «!» gets no second full stop.
+                The pages are those of the cited excerpts, from <code>page</code> to
+                <code>pageEnd</code>, joined in runs. The address is shown, as a link, only when it
+                is a web address with no <code>&lt;</code> or <code>&gt;</code>. It leads nowhere in
+                Sources; the footnotes in the text do.
+              </li>
+              <li>
+                <code>onCopyReferences</code>: shows «Kopier kildeliste» under the Kildeliste. The
+                app gets the list as Markdown, one bullet per document,
+                <code
+                  >- [2, 5, 6] Årsrapport, 2022, *Tittel*. Nkom. Side 12–13, 27. &lt;URL&gt;</code
+                >, with no heading, and puts it on the clipboard. When the promise it returns
+                resolves, the button says «Kopiert» for 2.5 seconds.
               </li>
               <li>
                 <code>highlight</code>: search matches to mark in the text, as the conversation's
@@ -305,6 +344,16 @@
                   <td>footnote color</td>
                 </tr>
                 <tr>
+                  <td><code>--genai-answer-footnote-current-background</code></td>
+                  <td><code>--ds-color-accent-base-default</code></td>
+                  <td>the background of the footnote Sources shows whole</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-footnote-current-color</code></td>
+                  <td><code>--ds-color-accent-base-contrast-default</code></td>
+                  <td>the color of the footnote Sources shows whole</td>
+                </tr>
+                <tr>
                   <td><code>--genai-answer-footnote-font-size</code></td>
                   <td>0.75rem</td>
                   <td>footnote font size</td>
@@ -390,6 +439,51 @@
                   <td>note icon size</td>
                 </tr>
                 <tr>
+                  <td><code>--genai-answer-references-column-gap</code></td>
+                  <td><code>--ds-size-6</code></td>
+                  <td>Kildeliste: between the footnotes and the reference</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-references-divider-spacing</code></td>
+                  <td><code>--ds-size-6</code></td>
+                  <td>Kildeliste: above the line over «Kopier kildeliste»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-references-divider-spacing-end</code></td>
+                  <td><code>--ds-size-4</code></td>
+                  <td>Kildeliste: under that line</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-references-font-size</code></td>
+                  <td><code>--ds-body-xs-font-size</code></td>
+                  <td>Kildeliste: its text</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-references-footnotes-font-weight</code></td>
+                  <td><code>--ds-font-weight-medium</code></td>
+                  <td>Kildeliste: the footnotes in front</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-references-footnotes-max-width</code></td>
+                  <td><code>--ds-size-22</code></td>
+                  <td>Kildeliste: the widest the footnote column gets before they wrap</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-references-line-height</code></td>
+                  <td><code>--ds-body-xs-line-height</code></td>
+                  <td>Kildeliste: its lines</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-references-row-gap</code></td>
+                  <td><code>--ds-size-5</code></td>
+                  <td>Kildeliste: between the documents</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-references-spacing</code></td>
+                  <td><code>--ds-size-8</code></td>
+                  <td>Kildeliste: above and under its card</td>
+                </tr>
+                <tr>
                   <td><code>--genai-answer-row-gap</code></td>
                   <td><code>--ds-size-2</code></td>
                   <td>the row under the answer: «Generer på nytt» and the app's row</td>
@@ -408,21 +502,6 @@
                   <td><code>--genai-answer-sources-used-excerpts-hover-color</code></td>
                   <td><code>--ds-color-text-default</code></td>
                   <td>an excerpt's link under the pointer</td>
-                </tr>
-                <tr>
-                  <td><code>--genai-answer-sources-used-bar-background</code></td>
-                  <td><code>--ds-color-surface-tinted</code></td>
-                  <td><code>plain</code>: the bar of «Kilder brukt i svaret», over a plain box</td>
-                </tr>
-                <tr>
-                  <td><code>--genai-answer-sources-used-count-color</code></td>
-                  <td><code>--ds-color-text-subtle</code></td>
-                  <td><code>plain</code>: «· 3 brukt i svaret» after «Kilder»</td>
-                </tr>
-                <tr>
-                  <td><code>--genai-answer-sources-used-count-font-weight</code></td>
-                  <td><code>--ds-font-weight-regular</code></td>
-                  <td><code>plain</code>: the count's weight</td>
                 </tr>
                 <tr>
                   <td><code>--genai-answer-sources-used-icon-size</code></td>
@@ -528,7 +607,8 @@
               </li>
               <li>
                 kunnskapsassistenten's reference list starts each line with the publisher. The
-                contract's sources carry none, so the copied list starts with the title.
+                contract's sources carry <code>publisher</code>. «Kopier kildeliste» puts it after
+                the title; «Kopier svaret»'s «Kilder» still leaves it out.
               </li>
             </ul>
           </div>

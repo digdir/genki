@@ -70,7 +70,7 @@
     border-radius: var(--genai-composer-frame-border-radius, var(--ds-border-radius-xl));
   }
 
-  .uib-composer-frame:focus-within {
+  .uib-composer-frame:has(.uib-composer-field :focus-visible) {
     box-shadow: var(--dsc-focus-boxShadow);
     outline: var(--dsc-focus-outline);
     outline-offset: var(--genai-composer-focus-offset, var(--ds-border-width-focus));
@@ -148,8 +148,7 @@
     min-inline-size: 0;
   }
 
-  /* Inline, as the dev-chat boards draw it: the field and its buttons in one row, «+» first and
-     send last, on a frame with a shadow. The buttons sit at the foot of a field that has grown. */
+  /* Inline, as the dev-chat boards draw it: the field and its buttons in one row on a frame. */
   .uib-composer-frame[data-variant='inline'] {
     flex-flow: row wrap;
     align-items: flex-end;
@@ -157,7 +156,7 @@
     box-shadow: var(--genai-composer-frame-shadow, var(--ds-shadow-md));
   }
 
-  .uib-composer-frame[data-variant='inline']:focus-within {
+  .uib-composer-frame[data-variant='inline']:has(.uib-composer-field :focus-visible) {
     box-shadow: var(--dsc-focus-boxShadow), var(--genai-composer-frame-shadow, var(--ds-shadow-md));
   }
 
@@ -188,8 +187,7 @@
     margin-inline-start: auto;
   }
 
-  /* The question centred on the buttons' line. Six lines at most before it scrolls: seven line
-     heights hold six and the padding of about one. */
+  /* The question centred on the buttons' line, six lines at most before it scrolls. */
   .uib-composer-frame[data-variant='inline'] .uib-composer-field textarea {
     max-block-size: var(--genai-composer-field-max-block-size, 7lh);
     padding-block: var(--genai-composer-field-padding-block, var(--ds-size-3));

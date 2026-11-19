@@ -54,6 +54,7 @@ export type PortalRight =
 
 export interface Session {
   name: string;
+  email?: string;
   organisations: Organisation[];
   token: string;
 }
@@ -123,6 +124,7 @@ export interface TaskTimeline {
   costMicroNok?: number | null;
   erasure?: RunErasure;
   steps: TimelineStep[];
+  stats?: { byModel?: { model: string }[] };
 }
 
 export type Residency = 'norway' | 'eu' | 'global';
@@ -252,16 +254,35 @@ export interface FeedbackItem {
   at: string;
 }
 
+export interface CapabilityFileLimits {
+  accepts: string[];
+  max_bytes: number;
+  max_count: number;
+}
+
 export interface CapabilityModel {
   id: string;
   description?: string;
   _agent_id?: string;
   _mode?: string;
+  _media?: CapabilityFileLimits;
+  _files?: CapabilityFileLimits;
+}
+
+export interface UnmaskedInputUse {
+  flow: string;
+  step: string;
+  stepName?: string;
+  descriptor: string;
+  operation: string;
+  mediaType: string;
+  consent?: { mediaType: string; reason: string };
 }
 
 export interface ValidationResult {
   valid: boolean;
   errors: { path: string; message: string }[];
+  unmaskedInput?: UnmaskedInputUse[];
 }
 
 export interface UsageTotals {
@@ -269,8 +290,10 @@ export interface UsageTotals {
   outputTokens: number;
   requests: number;
   runs?: number;
+  failedRequests?: number;
   costMicroNok: number | null;
   priced?: boolean;
+  unpricedModels?: string[];
   bySource?: { source: UsageSourceId; usage: UsageTotals }[];
 }
 
@@ -278,8 +301,11 @@ export type UsageSourceId = 'genki' | 'gateway';
 
 export interface TaskActor {
   kind: 'person' | 'api-key' | 'system';
+  id?: string;
   name?: string;
 }
+
+export type RunChannel = 'api-key' | 'interface' | 'api' | 'playground' | 'batch';
 
 export interface TaskRow {
   id: string;
@@ -290,16 +316,21 @@ export interface TaskRow {
   erasure?: RunErasure;
   actor?: TaskActor;
   capability: string;
+  version?: number | null;
   environment?: string | null;
   createdAt: string;
   endedAt: string | null;
   usage?: UsageTotals;
+  failure?: { code: string; reason: string; step?: string };
+  channel?: RunChannel | null;
+  frontend?: string;
 }
 
 export interface ServiceLifecycleView {
   state: 'active' | 'paused' | 'archived';
   reason?: string;
   by?: string;
+  byName?: string;
   at?: string;
 }
 
@@ -309,6 +340,7 @@ export interface ServiceSummaryView {
   purpose: string;
   outputKind: string;
   channels: string[];
+  model?: { id: string; residency: Residency | null } | null;
   latestVersion: number | null;
   status: 'active' | 'paused';
   statusReason: string | null;
@@ -360,6 +392,7 @@ export interface ApiKeyView {
   createdAt: string | null;
   createdBy?: string | null;
   createdByName?: string;
+  lastUsedAt?: string | null;
   modelsInLockdown?: boolean;
   expiresAt: string | null;
   revokedAt: string | null;
@@ -441,10 +474,20 @@ export interface UsageReport {
   daily: {
     date: string;
     usage: UsageTotals;
-    byService?: Record<string, UsageTotals>;
+    byService?: Record<
+      string,
+      UsageTotals & { latency?: { p50Ms: number; p95Ms: number; runs: number } | null }
+    >;
     byModel?: Record<string, UsageTotals>;
+    testing?: UsageTotals;
+    ingestion?: UsageTotals;
   }[];
-  byService: { service: string; title?: string; usage: UsageTotals }[];
+  byService: {
+    service: string;
+    title?: string;
+    usage: UsageTotals;
+    latency?: { p50Ms: number; p95Ms: number; runs: number } | null;
+  }[];
   byModel: { model: string; source?: UsageSourceId; usage: UsageTotals }[];
   bySubject?: {
     subject: { kind: string; id: string; org?: string } | null;
@@ -457,6 +500,22 @@ export interface UsageReport {
   project?: string;
   byEnvironment?: { environment: string; usage: UsageTotals }[];
   environment?: string;
+  quota?: UsageQuota;
+  ingestion?: { usage: UsageTotals };
+}
+
+export interface UsageQuota {
+  usedTokens: number;
+  monthlyTokens: number;
+  usedPercent: number;
+  alertPercent: number;
+  alert: boolean;
+}
+
+export interface ToolConnectionView {
+  id: string;
+  name: string;
+  lastSync?: { at: string; ok: boolean; code?: string; message?: string };
 }
 
 export interface ConnectionView {

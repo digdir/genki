@@ -35,6 +35,7 @@ interface Doc {
   title: string;
   metadata?: string;
   digest?: string;
+  report?: { own: boolean; date: string; pages: number };
 }
 
 const corpus: Record<string, Doc> = {
@@ -67,6 +68,38 @@ const corpus: Record<string, Doc> = {
     title: 'Evaluering av veiledningstjenesten (2019)',
     text: ' ',
   },
+  c6: {
+    document: 'kudos:51fe0107',
+    position: 17,
+    title: 'Årsrapport Helsedirektoratet 2023',
+    text: 'For kvinner utgjorde gjennomsnittslønnen kr. 826 000.',
+    digest: 'sha-own',
+    report: { own: true, date: '2024-04-15', pages: 151 },
+  },
+  c7: {
+    document: 'kudos:fdfac1a8',
+    position: 17,
+    title: 'Årsrapport Helsedirektoratet 2023 (HOD)',
+    text: 'For kvinner utgjorde gjennomsnittslønnen kr. 826 000.',
+    digest: 'sha-hod',
+    report: { own: false, date: '2024-01-01', pages: 151 },
+  },
+  c8: {
+    document: 'kudos:a2a2fe02',
+    position: 17,
+    title: 'Årsrapport Helsedirektoratet 2023',
+    text: 'For kvinner utgjorde gjennomsnittslønnen kr. 826 000.',
+    digest: 'sha-own',
+    report: { own: false, date: '2023-01-01', pages: 151 },
+  },
+  c9: {
+    document: 'kudos:51fe0107',
+    position: 1,
+    title: 'Årsrapport Helsedirektoratet 2023',
+    text: 'Forord: direktoratet la frem sin årsrapport for 2023 med mange nye tall.',
+    digest: 'sha-own',
+    report: { own: true, date: '2024-04-15', pages: 151 },
+  },
 };
 
 type Script = (request: SearchRequest) => string[];
@@ -75,6 +108,7 @@ interface StubOptions {
   profiles?: string[];
   capabilities?: KnowledgeCapability[];
   refuse?: (request: SearchRequest) => boolean;
+  fail?: (request: SearchRequest) => string | undefined;
 }
 
 const knowledgeStub = (script: Script, options: StubOptions = {}) => {
@@ -97,6 +131,16 @@ const knowledgeStub = (script: Script, options: StubOptions = {}) => {
           orgs_long: ['Digitaliseringsdirektoratet'],
           orgs_short: ['Digdir'],
           ...(d.digest ? { file_sha256: [d.digest] } : {}),
+          ...(d.report
+            ? {
+                report: {
+                  key: 'årsrapport|983544622|2023|årsrapport helsedirektoratet 2023',
+                  own: d.report.own,
+                  pages: d.report.pages,
+                },
+                publish_date: d.report.date,
+              }
+            : {}),
         },
       },
     };
@@ -112,13 +156,17 @@ const knowledgeStub = (script: Script, options: StubOptions = {}) => {
         batches.push(requests);
         if (requests.some((r) => options.refuse?.(r)))
           throw new KnowledgeError('unsupported', 'engine cannot run this search');
-        return requests.map((r) => ({
-          hits: script(r).map((id, i) =>
-            r.profile === 'doc-title'
-              ? { id, score: 100 - i, text: id, document: id, fields: {} }
-              : toHit(id, 1 - i * 0.1),
-          ),
-        }));
+        return requests.map((r) => {
+          const warning = options.fail?.(r);
+          if (warning !== undefined) return { hits: [], warning };
+          return {
+            hits: script(r).map((id, i) =>
+              r.profile === 'doc-title'
+                ? { id, score: 100 - i, text: id, document: id, fields: {} }
+                : toHit(id, 1 - i * 0.1),
+            ),
+          };
+        });
       },
       fetch: async (_d, ids) => {
         fetched.push(ids);
@@ -158,6 +206,7 @@ const knowledgeStub = (script: Script, options: StubOptions = {}) => {
             orgs_short: 'multiselect',
             title: 'text',
             type: 'multiselect',
+            owner_orgnr: 'multiselect',
           },
         },
       ],
@@ -292,6 +341,35 @@ describe('retrieval pipeline', () => {
     expect(result.chunks.map((c) => c.id)).toEqual(['c4']);
   });
 
+  it("keeps the model's owner_orgnr filter when the auto-filter finds nothing", async () => {
+    const k = knowledgeStub((r) => ('type' in filtersOf(r) ? [] : ['c4']));
+
+    const result = await retrieve({
+      knowledge: k.port,
+      queries: ['tildelingsbrev'],
+      filters: { owner_orgnr: ['991825827'] },
+      facetCache: new FacetCache(),
+      config: {
+        strategies: [{ name: 'content', profiles: ['content'] }],
+        autoFilter: {
+          rules: [
+            {
+              type: 'shape-pattern',
+              field: 'type',
+              patterns: [{ value: 'Tildelingsbrev', regex: '(?i)tildelingsbrev' }],
+            },
+          ],
+        },
+      },
+    });
+
+    expect(result.trace.expansion.autoFilterFallback).toBe(true);
+    expect(k.batches.flat().map(filtersOf)).toEqual([
+      { owner_orgnr: ['991825827'], type: ['Tildelingsbrev'] },
+      { owner_orgnr: ['991825827'] },
+    ]);
+  });
+
   it('caches facet values per dataset for the configured time', async () => {
     const k = knowledgeStub(() => ['c4']);
     const cache = new FacetCache();
@@ -326,6 +404,157 @@ describe('retrieval pipeline', () => {
     expect(full.trace.expansion.droppedAsDuplicateFile).toBe(1);
     expect(metadataOnly.chunks.map((c) => c.id).sort()).toEqual(['c1', 'c2', 'c3']);
     expect(metadataOnly.chunks.every((c) => c.text === undefined)).toBe(true);
+  });
+
+  it("returns a page of a report KUDOS holds twice once, from the agency's own record", async () => {
+    const script: (r: SearchRequest) => string[] = (r) =>
+      r.profile === 'content' ? ['c7', 'c4', 'c6'] : [];
+
+    const result = await retrieve({
+      knowledge: knowledgeStub(script).port,
+      queries: ['gjennomsnittslønn kvinner Helsedirektoratet 2023'],
+      config: { autoFilter: { enabled: false }, queryAwareBoost: false },
+    });
+
+    expect(result.chunks.map((c) => c.id)).toEqual(['c6', 'c4']);
+    expect(result.chunks[0]?.copies).toEqual([{ id: 'c7', document: 'kudos:fdfac1a8' }]);
+    expect(result.trace.expansion.droppedAsReportCopy).toBe(1);
+  });
+
+  it("keeps the agency's own record when a copy of the same file ranks above it", async () => {
+    const script: (r: SearchRequest) => string[] = (r) =>
+      r.profile === 'content' ? ['c8', 'c6'] : [];
+
+    const result = await retrieve({
+      knowledge: knowledgeStub(script).port,
+      queries: ['gjennomsnittslønn kvinner Helsedirektoratet 2023'],
+      config: { autoFilter: { enabled: false }, queryAwareBoost: false },
+    });
+
+    expect(result.chunks.map((c) => c.id)).toEqual(['c6']);
+    expect(result.chunks[0]?.copies).toEqual([{ id: 'c8', document: 'kudos:a2a2fe02' }]);
+  });
+
+  it('a per-strategy rerank fills its final cap after collapsing records of one report', async () => {
+    const script: (r: SearchRequest) => string[] = (r) =>
+      r.profile === 'content' ? ['c7', 'c4'] : r.profile === 'phrase' ? ['c6'] : [];
+    const rr = rerankStub((r) => r.documents.map((_, i) => ({ index: i, score: 1, rank: 1 })));
+
+    const result = await retrieve({
+      knowledge: knowledgeStub(script).port,
+      rerank: rr.port,
+      queries: ['gjennomsnittslønn kvinner Helsedirektoratet 2023'],
+      config: {
+        autoFilter: { enabled: false },
+        rerank: { enabled: true, perStrategy: true, finalCap: 2 },
+      },
+    });
+
+    expect(result.chunks.map((c) => c.id).sort()).toEqual(['c4', 'c6']);
+  });
+
+  it('the user-intent union returns a page of one report once', async () => {
+    const script: (r: SearchRequest) => string[] = (r) =>
+      r.profile !== 'content' ? [] : r.query === 'intent' ? ['c6'] : ['c7'];
+
+    const result = await retrieve({
+      knowledge: knowledgeStub(script).port,
+      queries: ['gjennomsnittslønn'],
+      userIntent: 'intent',
+      config: { autoFilter: { enabled: false }, userIntentUnion: { enabled: true } },
+    });
+
+    expect(result.chunks.map((c) => c.id)).toEqual(['c6']);
+  });
+
+  it("the per-document cap never brings back a copy's page in place of the agency's own record", async () => {
+    const script: (r: SearchRequest) => string[] = (r) =>
+      r.profile === 'content' ? ['c9', 'c7', 'c6'] : [];
+
+    const result = await retrieve({
+      knowledge: knowledgeStub(script).port,
+      queries: ['gjennomsnittslønn kvinner Helsedirektoratet 2023'],
+      config: { autoFilter: { enabled: false }, queryAwareBoost: false, maxPerDocument: 1 },
+    });
+
+    expect(result.chunks.map((c) => c.id)).toEqual(['c9']);
+  });
+
+  it('the user-intent union compares the pages of one report by their text when hits carry none', async () => {
+    const script: (r: SearchRequest) => string[] = (r) =>
+      r.profile !== 'content' ? [] : r.query === 'intent' ? ['c6'] : ['c7'];
+
+    const result = await retrieve({
+      knowledge: knowledgeStub(script).port,
+      queries: ['gjennomsnittslønn'],
+      userIntent: 'intent',
+      config: {
+        autoFilter: { enabled: false },
+        metadataOnly: true,
+        userIntentUnion: { enabled: true },
+      },
+    });
+
+    expect(result.chunks.map((c) => c.id)).toEqual(['c6']);
+  });
+
+  it('the user-intent union compares pages by their text after a per-strategy rerank of hits that carry none', async () => {
+    const script: (r: SearchRequest) => string[] = (r) =>
+      r.query === 'intent'
+        ? r.profile === 'content'
+          ? ['c6']
+          : []
+        : r.profile === 'phrase'
+          ? ['c7']
+          : ['c1'];
+    const rr = rerankStub((r) => r.documents.map((_, i) => ({ index: i, score: 1, rank: 1 })));
+
+    const result = await retrieve({
+      knowledge: knowledgeStub(script).port,
+      rerank: rr.port,
+      queries: ['gjennomsnittslønn'],
+      userIntent: 'intent',
+      config: {
+        autoFilter: { enabled: false },
+        metadataOnly: true,
+        retrieveTopK: 1,
+        rerank: { enabled: true, perStrategy: true },
+        userIntentUnion: { enabled: true },
+      },
+    });
+
+    expect(result.chunks.map((c) => c.id)).not.toContain('c7');
+    expect(result.trace.union?.droppedAsReportCopy).toBe(1);
+  });
+
+  it('the trace counts the records of one report the user-intent union leaves out', async () => {
+    const script: (r: SearchRequest) => string[] = (r) =>
+      r.profile !== 'content' ? [] : r.query === 'intent' ? ['c6'] : ['c7'];
+
+    const result = await retrieve({
+      knowledge: knowledgeStub(script).port,
+      queries: ['gjennomsnittslønn'],
+      userIntent: 'intent',
+      config: { autoFilter: { enabled: false }, userIntentUnion: { enabled: true } },
+    });
+
+    expect(result.trace.union?.droppedAsReportCopy).toBe(1);
+  });
+
+  it('collapses records of one report that meet only after a per-strategy rerank', async () => {
+    const script: (r: SearchRequest) => string[] = (r) =>
+      r.profile === 'content' ? ['c7'] : r.profile === 'phrase' ? ['c6'] : [];
+    const rr = rerankStub((r) => r.documents.map((_, i) => ({ index: i, score: 1, rank: 1 })));
+
+    const result = await retrieve({
+      knowledge: knowledgeStub(script).port,
+      rerank: rr.port,
+      queries: ['gjennomsnittslønn kvinner Helsedirektoratet 2023'],
+      config: { autoFilter: { enabled: false }, rerank: { enabled: true, perStrategy: true } },
+    });
+
+    expect(result.chunks.map((c) => c.id)).toEqual(['c6']);
+    expect(result.trace.expansion.droppedAsReportCopy).toBe(1);
   });
 
   it('fetches at most retrieve-top-k chunks and caps chunks per document', async () => {
@@ -484,7 +713,7 @@ describe('retrieval pipeline', () => {
     });
 
     expect(result.chunks.map((c) => c.id)).toEqual(['c4', 'c1']);
-    expect(result.trace.union).toEqual({ mode: 'cap', cap: 1, rrfK: 60 });
+    expect(result.trace.union).toEqual({ mode: 'cap', cap: 1, rrfK: 60, droppedAsReportCopy: 0 });
     expect(result.trace.intent?.queries).toEqual(['intent']);
     expect(same.trace.intent).toBeUndefined();
   });
@@ -528,6 +757,34 @@ describe('retrieval pipeline', () => {
         'skipped phrase search: dataset lacks profile phrase',
         'skipped metadata search: dataset lacks profile metadata',
         'skipped verified-phrases search: dataset lacks profile verified',
+      ]);
+      expect(result.chunks.map((c) => c.id)).toEqual(['c4']);
+    });
+
+    it('names the strategy whose search failed in its warning', async () => {
+      const k = knowledgeStub((r) => (r.profile === 'metadata' ? ['c4'] : []), {
+        fail: (r) =>
+          r.profile === 'content'
+            ? 'canceling statement due to statement timeout'
+            : r.profile === 'doc-title'
+              ? 'the query is too long'
+              : undefined,
+      });
+
+      const result = await retrieve({
+        knowledge: k.port,
+        queries: ['x', 'y'],
+        config: {
+          autoFilter: { enabled: false },
+          docTitle: { profiles: ['doc-title'], fanout: 2 },
+        },
+      });
+
+      expect(result.trace.expansion.warnings).toEqual([
+        'content search: canceling statement due to statement timeout',
+        'content search: canceling statement due to statement timeout',
+        'doc-title search: the query is too long',
+        'doc-title search: the query is too long',
       ]);
       expect(result.chunks.map((c) => c.id)).toEqual(['c4']);
     });

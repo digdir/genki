@@ -16,6 +16,7 @@ import {
 import { useFormat } from '@genai/i18n/react';
 import { useRef, useState, type ReactNode } from 'react';
 import { ApiError, type ApiClient, type ConfigEntry } from '../../api';
+import { BusyButton } from '../../components/BusyButton';
 import { useAsync } from '../../hooks';
 import { useT, type T } from '../../i18n';
 import { EmptyState, ErrorState, Loading } from '../../states';
@@ -97,7 +98,8 @@ const History = ({ api, path }: { api: ApiClient; path: string }) => {
   const t = useT();
   const f = useFormat();
   const [state, retry] = useAsync((signal) => api.configHistory(path, signal), [api, path]);
-  if (state.status === 'loading') return <Loading label={t('config.historyLoading')} />;
+  if (state.status === 'loading')
+    return <Loading label={t('config.historyLoading')} shape="list" rows={3} onRetry={retry} />;
   if (state.status === 'error') return <ErrorState error={state.error} onRetry={retry} />;
   if (state.data.length === 0)
     return <Paragraph data-size="sm">{t('config.historyEmpty')}</Paragraph>;
@@ -271,9 +273,14 @@ const Editor = ({
       ) : null}
       <div className="row-wrap">
         {readOnly ? null : (
-          <Button data-size="sm" loading={busy} onClick={() => !busy && void save()}>
+          <BusyButton
+            data-size="sm"
+            busy={busy}
+            busyLabel={entry ? t('config.savingVersion') : t('config.creating')}
+            onClick={() => void save()}
+          >
             {entry ? t('config.saveVersion') : t('config.create')}
-          </Button>
+          </BusyButton>
         )}
         {entry && !entry.builtin && !readOnly ? (
           <Button
@@ -320,11 +327,24 @@ export const Registry = ({
   const [state, retry] = useAsync(
     (signal) => api.configList(paths.list, signal),
     [api, paths.list, round],
+    { keepPreviousFor: paths.list },
   );
   const [open, setOpen] = useState<string | 'new'>();
   const flash = useFlash();
   if (state.status === 'loading')
-    return <Loading label={t('config.registryLoading', { label: label.toLowerCase() })} />;
+    return (
+      <Loading
+        label={t('config.registryLoading', { label: label.toLowerCase() })}
+        shape="table"
+        columns={[
+          t('config.colId'),
+          t('config.colScope'),
+          t('config.colVersion'),
+          t('config.colChanged'),
+        ]}
+        onRetry={retry}
+      />
+    );
   if (state.status === 'error') return <ErrorState error={state.error} onRetry={retry} />;
   const rows = state.data.data.filter(filter ?? (() => true));
   const selected = rows.find((r) => `${r.scope ?? ''}/${r.id}` === open);

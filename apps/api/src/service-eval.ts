@@ -53,12 +53,14 @@ import { markedNotFound } from './not-found.js';
 import type { ModuleDeps } from './platform-modules.js';
 import { serviceDrafts } from './service-drafts.js';
 import { chooseEnvironment } from './service-environments.js';
+import { runCanceller } from './tenant-run-cancel.js';
 
 export const judgedModels = (byModel: DraftModelUsage[]) =>
   byModel.filter(judgedAgainst).map((m) => m.model);
 
 export const quotaStopMessage = 'Stoppet fordi månedskvoten for tokens er brukt opp';
 export const serviceEvalResumeKind = 'service-eval-resume';
+export const serviceEvalCancelKind = 'service-eval-cancel';
 export const maxResumes = 3;
 export { serviceDraftKind, type ServiceDraft } from './service-drafts.js';
 
@@ -175,6 +177,7 @@ export interface Subject {
   definition: Record<string, unknown>;
   files: Record<string, string>;
   version: RunVersion;
+  draftRevision?: number;
   environment?: string;
   variant?: string;
 }
@@ -219,12 +222,12 @@ export const summarize = (results: CaseResult[]): Outcome => {
 const verdictMetrics = ['judge.criteria', 'exact-text', 'refusal'];
 
 /** A case passes on its case type's own metric: the criteria judge, the exact text or the refusal. */
-const verdictOf = (scores: Score[]) =>
+export const verdictOf = (scores: Score[]) =>
   verdictMetrics
     .map((m) => scores.find((s) => s.metric === m && s.state !== 'not-applicable'))
     .find((s) => s !== undefined);
 
-const passes = (scores: Score[]) => {
+export const passes = (scores: Score[]) => {
   const verdict = verdictOf(scores);
   return verdict?.state === 'scored' && verdict.value === 1;
 };
@@ -261,6 +264,7 @@ export const runSummary = (
     testSet: run.testSet.id,
     testSetVersion: run.testSet.version,
     version: run.tested?.version ?? 'draft',
+    ...(run.tested?.draftRevision ? { draftRevision: run.tested.draftRevision } : {}),
     ...(run.tested?.variant ? { variant: run.tested.variant } : {}),
     ...(run.tested?.split ? { split: run.tested.split } : {}),
     ...(run.tested?.environment ? { environment: run.tested.environment } : {}),
@@ -558,7 +562,12 @@ export const serviceEval = (
       }
       const draft = await draftOf(tenant, service);
       return draft
-        ? { definition: draft.spec.definition, files: draft.spec.files, version: 'draft' }
+        ? {
+            definition: draft.spec.definition,
+            files: draft.spec.files,
+            version: 'draft',
+            draftRevision: draft.version,
+          }
         : undefined;
     }
     if (version === undefined || version === 'published') {
@@ -752,6 +761,30 @@ export const serviceEval = (
         !s.run.tested?.selected &&
         (testSet === undefined || s.run.testSet.id === testSet),
     );
+
+  const publishedBaseline = async (
+    tenant: string,
+    service: string,
+    testSet: string,
+    except: string,
+  ) => {
+    const found = await subjectOf(tenant, service, undefined);
+    if (!found || typeof found.version !== 'number') return undefined;
+    const validated = validateDefinition(found.definition, deps.plugins);
+    const subject = definitionSubject(
+      validated.ok ? validated.definition.spec : found.definition.spec,
+    );
+    return (await runsOf(tenant, service)).find(
+      (s) =>
+        s.run.id !== except &&
+        s.run.testSet.id === testSet &&
+        runState(s.run) === 'completed' &&
+        !s.run.tested?.selected &&
+        !s.run.tested?.split &&
+        !s.run.tested?.variant &&
+        (s.subject === subject || s.run.tested?.version === found.version),
+    );
+  };
 
   /** What each case answered, read from its task; empty once the task's content is erased. */
   const answersOf = async (run: EvalRun) => {
@@ -951,6 +984,7 @@ export const serviceEval = (
   const keptPrincipal = (principal: Principal): Principal => {
     const kept = { ...principal };
     delete kept.name;
+    delete kept.email;
     delete kept.orgNames;
     delete kept.expiresAt;
     if (kept.actor) kept.actor = keptPrincipal(kept.actor);
@@ -983,6 +1017,22 @@ export const serviceEval = (
     const entry = (await deps.configEntries.history(serviceEvalResumeKind, tenant, run)).at(-1);
     return entry && !entry.deleted ? (entry.spec as Resumable) : undefined;
   };
+
+  const cancelMarked = async (tenant: string, run: string) => {
+    const entry = (await deps.configEntries.history(serviceEvalCancelKind, tenant, run)).at(-1);
+    return entry !== undefined && !entry.deleted;
+  };
+
+  const cancelledRun = (run: EvalRun): EvalRun => ({
+    ...ended(run),
+    status: 'cancelled',
+    endedAt: leases.now().toISOString(),
+  });
+
+  const isCancel = (error: unknown) =>
+    typeof error === 'object' &&
+    error !== null &&
+    (error as { code?: unknown }).code === 'cancelled';
 
   const tokensOf = (usage: EvalRun['usage']) =>
     [usage?.answers, usage?.judges].reduce(
@@ -1022,6 +1072,8 @@ export const serviceEval = (
     let handed = false;
     return (async () => {
       try {
+        if (await cancelMarked(tenant, first.id))
+          throw Object.assign(new Error('the run was cancelled'), { code: 'cancelled' });
         const invoked = await deps.kernel.invoke(principal, deps.evalCapability as string, {
           data: {
             id: first.id,
@@ -1038,6 +1090,8 @@ export const serviceEval = (
           },
         });
         go.setTask(invoked.task);
+        if (await cancelMarked(tenant, first.id))
+          await deps.kernel.cancel(runCanceller, invoked.task).catch(() => undefined);
         // Notices are applied in order to the latest state, and never reopen a finished run.
         void (async () => {
           for await (const event of invoked.events) {
@@ -1129,6 +1183,10 @@ export const serviceEval = (
           };
         }, 'completed');
       } catch (error) {
+        if (isCancel(error) || (await cancelMarked(tenant, first.id).catch(() => false))) {
+          await lease.update(cancelledRun, 'cancelled').catch(() => undefined);
+          return;
+        }
         if (slots.draining()) {
           handed = go.resumable;
           await lease
@@ -1272,6 +1330,7 @@ export const serviceEval = (
       progress: { done: 0, total: cases.length },
       tested: {
         version: subject.version,
+        ...(subject.draftRevision ? { draftRevision: subject.draftRevision } : {}),
         ...(subject.variant ? { variant: subject.variant } : {}),
         ...(split ? { split } : {}),
         ...(sink ? { sink: sink.id } : {}),
@@ -1348,6 +1407,15 @@ export const serviceEval = (
   /** Takes up a run another instance left: only its unfinished cases, as the person who started it. */
   const resume = async (stored: StoredRun): Promise<StoredRun | undefined> => {
     const { tenant, run } = stored;
+    if (finished(run)) return undefined;
+    if (await cancelMarked(tenant, run.id)) {
+      const stopped: StoredRun = { ...stored, run: cancelledRun(run) };
+      const won = await deps.evalStores.runs
+        .replace(stopped, { status: run.status, heartbeatAt: run.heartbeatAt })
+        .catch(() => false);
+      await forget(tenant, run.id);
+      return won ? stopped : ((await deps.evalStores.runs.get(run.id)) ?? stored);
+    }
     if (runState(run) !== 'running' || !stored.service) return undefined;
     const resumable = await resumableOf(tenant, run.id);
     if (!resumable) return undefined;
@@ -1438,6 +1506,32 @@ export const serviceEval = (
     return { ...record, task, run: claimed };
   };
 
+  const cancelRun = async (
+    tenant: string,
+    service: string,
+    id: string,
+    by: string,
+    reason: string,
+  ): Promise<{ state: EvalRun['status'] | 'cancelling' } | undefined> => {
+    const stored = await deps.evalStores.runs.get(id);
+    if (!stored || stored.tenant !== tenant || stored.service !== service) return undefined;
+    if (finished(stored.run)) return { state: runState(stored.run) };
+    if (!(await cancelMarked(tenant, id)))
+      await appendVersion(deps.configEntries, {
+        kind: serviceEvalCancelKind,
+        scope: tenant,
+        id,
+        spec: { run: id },
+        deleted: false,
+        by,
+        reason,
+      });
+    const current = await settled(stored);
+    if (finished(current.run)) return { state: runState(current.run) };
+    if (current.task) await deps.kernel.cancel(runCanceller, current.task).catch(() => undefined);
+    return { state: 'cancelling' };
+  };
+
   /** Every run left unfinished on any instance, taken up again or settled. */
   const resumeAbandoned = async () => {
     if (slots.draining()) return;
@@ -1462,11 +1556,13 @@ export const serviceEval = (
     runOf,
     runsOf,
     latestCompleted,
+    publishedBaseline,
     answersOf,
     judgeReasonsOf,
     sendingOf,
     leases,
     startRun,
+    cancelRun,
     resumeAbandoned,
   };
 };

@@ -195,6 +195,15 @@ describe('the admin MCP tools against the API', () => {
     expect(checked.text).toMatch(/^Valid/);
   });
 
+  it('reaches the dataset search route, and says when a dataset is not in the catalogue', async () => {
+    const { call } = await boot();
+
+    const missing = await call('search_dataset', { dataset: 'digdir/finnes-ikke', query: 'lønn' });
+
+    expect(missing.isError).toBe(true);
+    expect(missing.text).toContain('Fant ikke datasettet');
+  });
+
   it('lists the models the organisation may choose', async () => {
     const { call } = await boot();
 

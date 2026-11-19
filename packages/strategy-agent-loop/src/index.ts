@@ -368,6 +368,7 @@ export const sourceRecord = (c: Chunk): SourceRecord => ({
   ...(c.position === undefined ? {} : { position: c.position }),
   ...(c.version === undefined ? {} : { version: c.version }),
   ...(c.publishedAt === undefined ? {} : { publishedAt: c.publishedAt }),
+  ...(c.publisher === undefined ? {} : { publisher: c.publisher }),
 });
 
 const blank = (text: string | undefined) => !text || text.trim().length === 0;
@@ -656,6 +657,12 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
             yield {
               type: 'kernel.notice',
               data: { kind: 'retrieval', hits: outcome.retrieved, ...outcome.search },
+            };
+          if (outcome.searchError)
+            yield {
+              type: 'x.search.error',
+              audience: 'audit',
+              data: { error: outcome.searchError },
             };
           if (outcome.read)
             yield { type: 'kernel.notice', data: { kind: 'read', ...outcome.read } };

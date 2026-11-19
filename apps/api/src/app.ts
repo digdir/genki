@@ -1,14 +1,16 @@
 import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
 import type { MiddlewareHandler } from 'hono';
+import type { DiscoveryState } from '@genai/composition/discovery-retry';
 import type { Principal } from '@genai/contracts';
 import type { DefinitionStore, PluginSchemas, SettingsRegistry } from '@genai/definitions';
 import { isApiKeyPrincipal, isTestRunnerKey } from '@genai/identity';
 import { tenantAccess, type Access } from './access.js';
+import { refuseWritesToArchived } from './archived-services.js';
 import { requireChangeReason } from './change-reason.js';
 import { rememberActorNames, type ActorNames } from './actor-names.js';
 import { createAdmin, type Admin, type ModelAdmin } from './admin.js';
 import { acceptDecodedIds } from './decoded-ids.js';
-import { registerDefinitionRoutes } from './definitions.js';
+import { registerDefinitionRoutes, type DefinitionsApiOptions } from './definitions.js';
 import {
   apiNotFoundBody,
   gzipResponses,
@@ -34,8 +36,37 @@ import {
 } from './internal-services.js';
 
 const Health = z
-  .object({ status: z.literal('ok'), version: z.string(), lockdown: z.boolean() })
+  .object({
+    status: z.enum(['ok', 'degraded']).openapi({
+      description: 'Degraded while model discovery has not succeeded; the API still answers',
+    }),
+    version: z.string(),
+    environment: z.string().optional().openapi({
+      description: 'The environment this API runs in, from GENAI_ENV; absent when it is not set',
+    }),
+    lockdown: z.boolean(),
+    builtAt: z.string().optional().openapi({
+      description:
+        'When the running build was made, as the time of its commit; absent in local builds',
+    }),
+    modelDiscovery: z
+      .object({
+        state: z.enum(['ok', 'retrying', 'failed']).openapi({
+          description: 'failed once the background retries have run out',
+        }),
+        attempts: z.number().int(),
+        lastError: z.string().optional(),
+        since: z.string().optional().openapi({ description: 'When discovery first failed' }),
+      })
+      .optional()
+      .openapi({ description: 'Whether the models listed by the providers have been found' }),
+  })
   .openapi('Health');
+
+export const buildTimeOf = (epochSeconds: string | undefined) => {
+  if (!epochSeconds || !/^\d{1,12}$/.test(epochSeconds)) return undefined;
+  return new Date(Number(epochSeconds) * 1000).toISOString();
+};
 
 const healthRoute = createRoute({
   method: 'get',
@@ -58,12 +89,14 @@ export type PlatformOptions = Authentication & {
   tasks?: TaskReader;
   tenantDirectory?: PlatformApiOptions['tenantDirectory'];
   organisationName?: PlatformApiOptions['organisationName'];
+  registeredName?: PlatformApiOptions['registeredName'];
   tenantQuota?: PlatformApiOptions['tenantQuota'];
   tenantGate?: MiddlewareHandler;
   registered?: (tenant: string) => Promise<boolean>;
   lifecycle?: PlatformApiOptions['lifecycle'];
   models?: ModelAdmin;
   drafts?: Pick<ServiceDrafts, 'outdated' | 'followPublish'>;
+  unmaskedInput?: DefinitionsApiOptions['unmaskedInput'];
   names?: ActorNames;
   now?: () => Date;
   lockdown?: boolean;
@@ -80,6 +113,9 @@ const withoutApiKeys = (caller: Caller): Authenticator => ({
 });
 
 export interface AppOptions {
+  builtAt?: string;
+  environment?: string;
+  modelDiscovery?: () => DiscoveryState;
   platform?: PlatformOptions;
   requestTiming?: RequestTimingOptions;
 }
@@ -104,7 +140,22 @@ export const createApp = (version: string, options: AppOptions = {}) => {
   app.use('*', localeMiddleware);
   app.use('*', problemResponses);
   const lockdown = options.platform?.lockdown ?? false;
-  app.openapi(healthRoute, (c) => c.json({ status: 'ok' as const, version, lockdown }, 200));
+  const builtAt = options.builtAt ? { builtAt: options.builtAt } : {};
+  app.openapi(healthRoute, (c) => {
+    const discovery = options.modelDiscovery?.();
+    const status = discovery && discovery.state !== 'ok' ? ('degraded' as const) : ('ok' as const);
+    return c.json(
+      {
+        status,
+        version,
+        ...(options.environment ? { environment: options.environment } : {}),
+        lockdown,
+        ...builtAt,
+        ...(discovery ? { modelDiscovery: discovery } : {}),
+      },
+      200,
+    );
+  });
   app.get('/up', (c) => c.text('ok'));
   app.notFound((c) => {
     if (!isHeadlessRagApiPath(c.req.path)) return problem(c, 404, 'Not found');
@@ -150,8 +201,14 @@ export const createApp = (version: string, options: AppOptions = {}) => {
         ...(options.platform.models ? { models: options.platform.models } : {}),
         ...(options.platform.now ? { now: options.platform.now } : {}),
         ...(options.platform.names ? { names: options.platform.names } : {}),
+        ...(options.platform.lifecycle ? { lifecycle: options.platform.lifecycle } : {}),
       });
     const access = options.platform.access ?? tenantAccess(admin);
+    if (options.platform.lifecycle)
+      app.use(
+        '/tenants/:tenant/*',
+        refuseWritesToArchived(caller, access, options.platform.lifecycle),
+      );
     const reader =
       options.platform.tasks ??
       kernelTaskReader(admin.kernel, {
@@ -167,6 +224,7 @@ export const createApp = (version: string, options: AppOptions = {}) => {
       admin,
       access,
       ...(options.platform.drafts ? { drafts: options.platform.drafts } : {}),
+      ...(options.platform.unmaskedInput ? { unmaskedInput: options.platform.unmaskedInput } : {}),
       ...(options.platform.names ? { names: options.platform.names } : {}),
       ...(options.platform.registered ? { registered: options.platform.registered } : {}),
     });
@@ -184,6 +242,9 @@ export const createApp = (version: string, options: AppOptions = {}) => {
       ...(options.platform.tenantQuota ? { tenantQuota: options.platform.tenantQuota } : {}),
       ...(options.platform.organisationName
         ? { organisationName: options.platform.organisationName }
+        : {}),
+      ...(options.platform.registeredName
+        ? { registeredName: options.platform.registeredName }
         : {}),
       ...(options.platform.lifecycle ? { lifecycle: options.platform.lifecycle } : {}),
       ...(options.platform.names ? { names: options.platform.names } : {}),

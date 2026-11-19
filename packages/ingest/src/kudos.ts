@@ -260,11 +260,13 @@ export const fillInKudosFields = (doc: KudosDocument) => ({
   concerned_years: concernedYears(doc),
 });
 
-export const displayNames = (orgs: KudosOrganisation[]) =>
+const namesOfType = (orgs: KudosOrganisation[], type: string) =>
   orgs
     .flatMap((o) => o.alternative_names ?? [])
-    .filter((n) => n.type === 'display')
+    .filter((n) => n.type === type)
     .map((n) => n.name);
+
+export const displayNames = (orgs: KudosOrganisation[]) => namesOfType(orgs, 'display');
 
 /** The nine-digit org numbers of one role's organisations, each once (ADR 0058). */
 export const orgNumbers = (orgs: KudosOrganisation[]) => [
@@ -283,6 +285,8 @@ const kudosStoredFields = [
   'title',
   'authors',
   'orgs_long',
+  'orgs_short',
+  'publisher_names',
   'owner_orgnr',
   'recipient_orgnr',
   'concerned_year',
@@ -294,6 +298,7 @@ const kudosStoredFields = [
   'type',
   'language',
   'concerned_years',
+  'report',
   'total_chunks',
   'last_retrieval_success_at',
   'first_retrieval_failure_at',
@@ -302,21 +307,114 @@ const kudosStoredFields = [
   'retrieval_attempts',
 ];
 
-/** A stored document's fields with its org numbers, in a fresh ingest's order (ADR 0042). */
-export const kudosOrgNumberFields = (doc: {
-  id: string;
-  record: Record<string, unknown>;
-  fields: Record<string, unknown>;
-}): Record<string, unknown> => {
-  const owners = orgNumbers((doc.record.owners ?? []) as KudosOrganisation[]);
-  const recipients = orgNumbers((doc.record.recipients ?? []) as KudosOrganisation[]);
-  const rest = Object.fromEntries(
-    Object.entries(doc.fields).filter(([k]) => k !== 'owner_orgnr' && k !== 'recipient_orgnr'),
-  );
-  const fields: Record<string, unknown> = {
-    ...rest,
+/** A KUDOS record's organisation fields, the same for an ingest and a fill. */
+export const kudosOrgFields = (record: Record<string, unknown>) => {
+  const role = (key: string) => (record[key] ?? []) as KudosOrganisation[];
+  const orgs = [...role('owners'), ...role('recipients'), ...role('publishers')];
+  const short = [...new Set(namesOfType(orgs, 'abbreviation'))];
+  // A document KUDOS lists no publisher for is published by its owners.
+  const publishers = role('publishers').length ? role('publishers') : role('owners');
+  const publisherNames = [...new Set(displayNames(publishers))];
+  const owners = orgNumbers(role('owners'));
+  const recipients = orgNumbers(role('recipients'));
+  return {
+    orgs_long: [...new Set(displayNames(orgs))],
+    ...(short.length ? { orgs_short: short } : {}),
+    ...(publisherNames.length ? { publisher_names: publisherNames } : {}),
     ...(owners.length ? { owner_orgnr: owners } : {}),
     ...(recipients.length ? { recipient_orgnr: recipients } : {}),
+  };
+};
+
+/** The 17 ministries' abbreviations on 18 Nov 2026 (9,057 KUDOS titles, issue 677); add a renamed ministry's here. */
+const ministries = new Set([
+  'AID',
+  'BFD',
+  'DFD',
+  'ED',
+  'FD',
+  'FIN',
+  'HOD',
+  'JD',
+  'KD',
+  'KDD',
+  'KLD',
+  'KUD',
+  'LMD',
+  'NFD',
+  'SD',
+  'SMK',
+  'UD',
+]);
+
+/** A trailing "(HOD)", "(KUD)": the abbreviation a ministry adds to its copy of a report, else undefined. */
+export const ministrySuffix = (title: string): string | undefined => {
+  const t = title.trimEnd();
+  if (!t.endsWith(')')) return undefined;
+  const open = t.lastIndexOf('(');
+  const inner = t.slice(open + 1, -1);
+  return open > 0 && ministries.has(inner) ? inner : undefined;
+};
+
+/** A title without its ministry suffix, in lower case, its whitespace collapsed. */
+export const reportTitle = (title: string) => {
+  const suffix = ministrySuffix(title);
+  const bare = suffix === undefined ? title : title.trimEnd().slice(0, -(suffix.length + 2));
+  return bare.normalize('NFC').toLowerCase().split(/\s+/).filter(Boolean).join(' ');
+};
+
+/** KUDOS dates the records it has no date for 1 January, and most ministry copies. */
+const isRealDate = (date: unknown) =>
+  typeof date === 'string' && /^\d{4}-\d{2}-\d{2}/.test(date) && date.slice(5, 10) !== '01-01';
+
+/** The concerned years, else `p` and the publish year, so yearly editions without years stay apart. */
+const reportYears = (doc: KudosDocument) => {
+  const years = concernedYears(doc);
+  if (years.length) return years.join(',');
+  const date = typeof doc.publish_date === 'string' ? doc.publish_date : '';
+  return /^\d{4}/.test(date) ? `p${date.slice(0, 4)}` : '';
+};
+
+const pagesOf = (files: unknown) => {
+  const pages = (Array.isArray(files) ? files : []).flatMap((f: unknown) => {
+    const n = (f as KudosFile | null)?.pages;
+    return typeof n === 'number' && Number.isInteger(n) && n > 0 ? [n] : [];
+  });
+  return pages.length ? pages.reduce((a, b) => a + b, 0) : undefined;
+};
+
+/** The key one report's KUDOS records share, whether this one is the agency's own, and its pages. */
+export const kudosReportFields = (
+  record: Record<string, unknown>,
+): { report?: { key: string; own: boolean; pages?: number } } => {
+  const doc = record as KudosDocument;
+  const type = typeof doc.type === 'string' ? doc.type.trim().toLowerCase() : '';
+  const title = typeof doc.title === 'string' ? reportTitle(doc.title) : '';
+  const owners = orgNumbers((record.owners ?? []) as KudosOrganisation[]).sort();
+  if (!type || !title || owners.length === 0) return {};
+  const pages = pagesOf(record.files);
+  return {
+    report: {
+      key: [type, owners.join(','), reportYears(doc), title].join('|'),
+      own: ministrySuffix(String(doc.title)) === undefined && isRealDate(doc.publish_date),
+      ...(pages === undefined ? {} : { pages }),
+    },
+  };
+};
+
+const reportFieldNames = ['report'] as const;
+
+type StoredKudos = { id: string; record: Record<string, unknown>; fields: Record<string, unknown> };
+
+/** Stored fields with some replaced, in a fresh ingest's order (ADR 0042). */
+const refilled = (
+  stored: Record<string, unknown>,
+  replaced: readonly string[],
+  next: Record<string, unknown>,
+) => {
+  const fields: Record<string, unknown> = {
+    ...Object.fromEntries(Object.entries(stored).filter(([k]) => !replaced.includes(k))),
+    ...next,
   };
   const known = kudosStoredFields.filter((k) => k in fields);
   return Object.fromEntries([
@@ -325,11 +423,46 @@ export const kudosOrgNumberFields = (doc: {
   ]);
 };
 
+/** A stored document's fields with its org numbers, in a fresh ingest's order (ADR 0042). */
+export const kudosOrgNumberFields = (doc: StoredKudos): Record<string, unknown> => {
+  const { owner_orgnr, recipient_orgnr } = kudosOrgFields(doc.record);
+  return refilled(doc.fields, ['owner_orgnr', 'recipient_orgnr'], {
+    ...(owner_orgnr ? { owner_orgnr } : {}),
+    ...(recipient_orgnr ? { recipient_orgnr } : {}),
+  });
+};
+
+const orgFieldNames = [
+  'orgs_long',
+  'orgs_short',
+  'publisher_names',
+  'owner_orgnr',
+  'recipient_orgnr',
+] as const;
+
+const kudosRoles = ['owners', 'recipients', 'publishers'];
+
+/** `kudos-links-and-abbreviations`: org fields as an ingest writes them, and the prod Kudos page. */
+export const kudosLinkAndAbbreviationFields = (
+  doc: StoredKudos,
+): { fields: Record<string, unknown>; url?: string } => {
+  const record = doc.record as KudosDocument;
+  // A record from another source has no KUDOS organisations or page, so it stays as it is.
+  if (!kudosRoles.some((role) => Array.isArray(doc.record[role]))) return { fields: doc.fields };
+  const fields = refilled(doc.fields, orgFieldNames, kudosOrgFields(doc.record));
+  return record.uuid || record.id ? { fields, url: kudosPublicUrl(record) } : { fields };
+};
+
+/** `kudos-report-keys`: the report fields an ingest writes now, from the stored record (issue 677). */
+export const kudosReportKeyFields = (doc: StoredKudos): Record<string, unknown> => {
+  if (!kudosRoles.some((role) => Array.isArray(doc.record[role]))) return doc.fields;
+  return refilled(doc.fields, reportFieldNames, kudosReportFields(doc.record));
+};
+
 export const prepareKudosDoc = (
   doc: ReturnType<typeof fillInKudosFields> & Record<string, unknown>,
   totalChunks: number,
 ) => {
-  const orgs = [...(doc.owners ?? []), ...(doc.recipients ?? []), ...(doc.publishers ?? [])];
   const files = (doc.files ?? []).map(
     (f) =>
       Object.fromEntries(Object.entries(f).filter(([k]) => k !== 'path')) as Omit<
@@ -337,13 +470,10 @@ export const prepareKudosDoc = (
         'path'
       >,
   );
-  const owners = orgNumbers(doc.owners ?? []);
-  const recipients = orgNumbers(doc.recipients ?? []);
   const enriched: Record<string, unknown> = {
     ...doc,
-    orgs_long: [...new Set(displayNames(orgs))],
-    ...(owners.length ? { owner_orgnr: owners } : {}),
-    ...(recipients.length ? { recipient_orgnr: recipients } : {}),
+    ...kudosOrgFields(doc),
+    ...kudosReportFields(doc),
     files,
     file_sha256: [...new Set(files.flatMap((f) => (f.sha256 ? [f.sha256] : [])))],
     total_chunks: totalChunks,

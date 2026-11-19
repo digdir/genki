@@ -1,3 +1,4 @@
+import { syncFailureCodes } from '../sync-errors.js';
 import { createRoute, z, type RouteConfig } from '@hono/zod-openapi';
 import { writtenStandards } from '@genai/guardrails';
 import { locales } from '@genai/i18n';
@@ -8,6 +9,7 @@ import { connectionInput } from '@genai/providers-mcp-client';
 import { blockKinds, blockStatuses, registrationTypes } from '../building-blocks.js';
 import { changeReason, Problem, problemContent } from '../http.js';
 import { rights } from '../rights.js';
+import { accessPeopleRoutes } from './access-people.js';
 
 const json = <T extends z.ZodType>(schema: T, description: string) => ({
   description,
@@ -336,6 +338,10 @@ const BuildingBlock = z
     description: z.string(),
     publisher: z.object({ type: z.enum(['digdir', 'own', 'shared']), name: z.string() }),
     version: z.string(),
+    versionAt: z
+      .string()
+      .optional()
+      .describe('When the version in version was published; step flows and skills only'),
     latestVersion: z.string().optional(),
     update: z
       .object({
@@ -352,7 +358,16 @@ const BuildingBlock = z
       })
       .optional(),
     dataLocation: DataLocation.nullable(),
+    residency: DataLocation.optional().describe(
+      'Where a registered tool connection processes data, as the registrant declared it; also its dataLocation. Not verified',
+    ),
     status: z.enum(blockStatuses),
+    required: z
+      .literal(true)
+      .optional()
+      .describe(
+        'A guardrail rule the platform made mandatory: it applies to every run of every service, adopted or not',
+      ),
     policyBlock: z.object({ rule: z.string(), ownedBy: z.string(), text: z.string() }).optional(),
     approver: z.string().optional(),
     capabilities: z.array(z.string()),
@@ -410,6 +425,9 @@ const BuildingBlockList = z
       inUse: z.number().int(),
       catalog: z.number().int(),
       byKind: z.record(z.string(), z.number().int()),
+      required: z
+        .record(z.string(), z.number().int())
+        .describe('Required blocks per kind, such as the mandatory guardrail rules'),
     }),
   })
   .openapi('BuildingBlockList');
@@ -480,6 +498,9 @@ const RegistrationInput = z
     documentUrl: z.string().optional(),
     operations: z.array(z.string()).optional(),
     writes: z.boolean().optional(),
+    residency: DataLocation.optional().describe(
+      'Where the tool processes data, as the registrant declares it. Stored on the connection and shown as residency and dataLocation, and the residency rules match this declaration. genki does not verify it',
+    ),
     reason: z.string().optional().describe('Used when the change-reason header is absent.'),
   })
   .openapi('BlockRegistration');
@@ -529,7 +550,8 @@ const RegistrationResult = z
     version: z.string(),
     contractTests: z.array(ContractTestResult),
     synced: z.boolean(),
-    syncError: z.string().optional(),
+    syncError: z.string().optional().describe('A fixed sentence for syncErrorCode'),
+    syncErrorCode: z.enum(syncFailureCodes).optional(),
     changedBy: ChangedBy,
     writesApproval: z
       .object({
@@ -909,6 +931,7 @@ const tracingRoutes: RouteConfig[] = [
 
 export const accessRoutes: RouteConfig[] = [
   ...tracingRoutes,
+  ...accessPeopleRoutes,
   createRoute({
     method: 'get',
     path: '/tenants/{tenant}/access',
@@ -1185,6 +1208,51 @@ export const accessRoutes: RouteConfig[] = [
     },
   }),
   createRoute({
+    method: 'get',
+    path: '/tenants/{tenant}/services/{service}/shared-with',
+    summary:
+      'Who can call one service: its frontends, the API keys that reach it and the other organisations it is shared with (any member; not audited)',
+    request: { params: z.object({ tenant, service: pathParam('service', 'klarsprak') }) },
+    responses: {
+      200: json(
+        z.object({
+          service: z.string(),
+          frontends: z
+            .array(
+              z.object({
+                id: z.string(),
+                name: z.string().optional(),
+                kind: z.enum(['server', 'browser']),
+                channels: z.array(z.string()),
+              }),
+            )
+            .describe('Registered clients of the service'),
+          apiKeys: z
+            .array(
+              z.object({
+                id: z.string(),
+                name: z.string(),
+                prefix: z.string().optional(),
+                bound: z.boolean().describe('Bound to this service alone'),
+                client: z.string().optional(),
+              }),
+            )
+            .describe(
+              'Keys that are not revoked or expired and are bound to the service, or whose grants name it or every service',
+            ),
+          tenants: z
+            .union([z.literal('*'), z.array(z.string())])
+            .describe(
+              'The other organisations the service is shared with (spec.availableTo); * is all',
+            ),
+        }),
+        'Who can call the service',
+      ),
+      401: unauthorized,
+      404: problem('No such service, or not a member of this tenant'),
+    },
+  }),
+  createRoute({
     method: 'post',
     path: '/tenants/{tenant}/services/{service}/api-keys',
     summary:
@@ -1337,7 +1405,8 @@ export const accessRoutes: RouteConfig[] = [
   createRoute({
     method: 'get',
     path: '/tenants/{tenant}/tool-connections',
-    summary: "The tenant's tool connections and the names of their active tools",
+    summary:
+      "The tenant's tool connections, the names of their active tools and each tool's approval",
     request: { params: z.object({ tenant }), headers: supportSession },
     responses: {
       200: json(
@@ -1350,6 +1419,54 @@ export const accessRoutes: RouteConfig[] = [
               endpoint: z.string(),
               version: z.string(),
               tools: z.array(z.string()),
+              connectedAt: z
+                .string()
+                .optional()
+                .describe('When the connection was registered; absent for older connections'),
+              connectedByName: z
+                .string()
+                .optional()
+                .describe('The name of the person who registered it, when genki knows it'),
+              toolDetails: z
+                .array(
+                  z.object({
+                    name: z.string(),
+                    description: z.string().optional(),
+                    state: z.enum(['approved', 'pending']),
+                    since: z
+                      .string()
+                      .optional()
+                      .describe('When it was approved, or when the sync found it waiting'),
+                    approvedBy: z.string().optional(),
+                    approvedByName: z.string().optional(),
+                    changes: z
+                      .boolean()
+                      .describe('True for an OpenAPI operation that is not GET or HEAD'),
+                  }),
+                )
+                .describe(
+                  'Every tool the connection offers. A tool whose changed version waits for approval is listed once, as pending; services keep calling the approved version until then',
+                ),
+              lastSync: z
+                .object({
+                  at: z.string(),
+                  ok: z.boolean(),
+                  code: z.enum(syncFailureCodes).optional(),
+                  message: z.string().optional(),
+                  attempts: z
+                    .number()
+                    .int()
+                    .optional()
+                    .describe('Failed syncs in a row, on a failed one'),
+                  failingSince: z
+                    .string()
+                    .optional()
+                    .describe('When the first of those failed syncs ran'),
+                })
+                .optional()
+                .describe(
+                  'The last sync, kept until the next sync. A failed one has a fixed `code` and a sentence for it, never the tool server text',
+                ),
             }),
           ),
         }),
@@ -1407,10 +1524,34 @@ export const accessRoutes: RouteConfig[] = [
     },
     responses: {
       200: json(z.object({ approved: z.string() }), 'Approved'),
-      400: problem('Missing reason, or no such pending tool'),
+      400: problem('Missing reason'),
       401: unauthorized,
       403: problem('Missing right, or not a member of this tenant'),
-      404: notMember,
+      404: problem(
+        'Not a member of this tenant, or urn:genai:problem:tool-not-found: the connection has no such pending tool',
+      ),
+    },
+  }),
+  createRoute({
+    method: 'post',
+    path: '/tenants/{tenant}/tool-connections/{id}/revoke',
+    summary:
+      'Withdraw the approval of a tool so services can no longer call it until it is approved again (manage-services, audited)',
+    description:
+      'New runs can no longer call the tool. A run already going keeps the tools it started with until it ends. A sync keeps the tool pending, also after the server stops listing it for a while, and an operator write grant never approves it; only approve brings it back.',
+    request: {
+      params: z.object({ tenant, id: pathParam('id', 'lovdata') }),
+      headers: reason,
+      body: body(z.object({ tool: z.string() })),
+    },
+    responses: {
+      200: json(z.object({ revoked: z.string() }), 'Revoked; the tool is pending again'),
+      400: problem('Missing reason'),
+      401: unauthorized,
+      403: problem('Missing right, or not a member of this tenant'),
+      404: problem(
+        'Not a member of this tenant, or urn:genai:problem:tool-not-found: the connection has no such approved tool',
+      ),
     },
   }),
   createRoute({
@@ -1463,7 +1604,37 @@ export const accessRoutes: RouteConfig[] = [
         z.object({ ref: z.string().openapi({ example: 'secret://platform/enhetsregisteret' }) }),
         'The reference',
       ),
-      400: problem('Missing value or reason, or an invalid name'),
+      400: problem('Missing or too long value, missing reason, or an invalid name'),
+      401: unauthorized,
+      403: operatorOnly,
+      413: problem('The request is too large'),
+    },
+  }),
+  createRoute({
+    method: 'get',
+    path: '/operator/secrets',
+    summary:
+      'Platform secret names, whether each is stored, when it last changed and which catalog entries use it; never a value (operators)',
+    responses: {
+      200: json(
+        z.object({
+          data: z.array(
+            z.object({
+              name: z.string().openapi({ example: 'enhetsregisteret' }),
+              ref: z.string().openapi({ example: 'secret://platform/enhetsregisteret' }),
+              set: z.boolean(),
+              changedAt: z.string().optional(),
+              usedBy: z.array(
+                z.object({
+                  kind: z.string().openapi({ example: 'model-endpoint' }),
+                  id: z.string().openapi({ example: 'foundry' }),
+                }),
+              ),
+            }),
+          ),
+        }),
+        'Platform secrets',
+      ),
       401: unauthorized,
       403: operatorOnly,
     },
@@ -1739,7 +1910,61 @@ export const accessRoutes: RouteConfig[] = [
       params: z.object({ tenant, kind: blockKindParam, id: blockIdParam }),
     },
     responses: {
-      200: json(BuildingBlock, 'Building block'),
+      200: json(
+        BuildingBlock.extend({
+          adoptedAt: z
+            .string()
+            .optional()
+            .describe('When the tenant took the block into use; only while it is in use'),
+          adoptedByName: z
+            .string()
+            .optional()
+            .describe('The name of the person who took it into use, when genki knows it'),
+          connection: z
+            .string()
+            .optional()
+            .describe('A model only: the id of the model connection it is reached through'),
+          maker: z
+            .string()
+            .optional()
+            .describe('A model only: who made it, such as OpenAI, when the model list says'),
+          operations: z
+            .array(
+              z.object({
+                operation: z.string().describe('The call type, such as chat, embed or transcribe'),
+                api: z.string().describe('The API the model is called through for it'),
+                builtIn: z
+                  .literal(true)
+                  .optional()
+                  .describe(
+                    "A built-in kind (chat, decide, embed, rerank): genki's own typed calls of it are always production",
+                  ),
+                maturity: z
+                  .enum(['test', 'production'])
+                  .optional()
+                  .describe(
+                    'The maturity of the kind in this environment, which governs calls through a call-operation step; absent when the platform has no operation governance',
+                  ),
+              }),
+            )
+            .optional()
+            .describe('A model only: each call type the model list binds an API for'),
+          processor: z
+            .union([
+              z.object({
+                recorded: z.literal(true),
+                subProcessors: z.array(z.object({ name: z.string(), location: z.string() })),
+                retentionDays: z.number().int(),
+              }),
+              z.object({ recorded: z.literal(false) }),
+            ])
+            .optional()
+            .describe(
+              "A model only: whether an operator recorded a processor record for the model's connection, with its sub-processors and retention; absent when the platform has no operation governance",
+            ),
+        }),
+        'Building block',
+      ),
       401: unauthorized,
       403: problem('Tenant not registered'),
       404: problem('No such building block, or the tenant is not reachable for the caller'),
@@ -1757,6 +1982,34 @@ export const accessRoutes: RouteConfig[] = [
       401: unauthorized,
       403: problem('Tenant not registered'),
       404: problem('No such building block, or the tenant is not reachable for the caller'),
+    },
+  }),
+  createRoute({
+    method: 'get',
+    path: '/tenants/{tenant}/building-blocks/step_flow/{id}/definition',
+    summary:
+      "The latest published version of a step flow the tenant sees in its catalogue, its own or the platform's, for its diagram and YAML (any member)",
+    request: {
+      params: z.object({ tenant, id: pathParam('id', 'basic-rag') }),
+    },
+    responses: {
+      200: json(
+        z.object({
+          id: z.string(),
+          owner: z.string().describe('The organisation that publishes the flow'),
+          version: z.number().int(),
+          publishedAt: z.string(),
+          yaml: z.string().describe('The definition as YAML'),
+          definition: z
+            .record(z.string(), z.unknown())
+            .describe('The StepFlow definition, as the own-flow definition routes return it'),
+        }),
+        'The step flow',
+      ),
+      401: unauthorized,
+      404: problem(
+        "No such step flow in the tenant's catalogue (another organisation's flow, a step block or an unknown id), or the tenant is not reachable for the caller",
+      ),
     },
   }),
   createRoute({

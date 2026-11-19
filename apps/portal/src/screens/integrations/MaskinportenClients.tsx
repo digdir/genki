@@ -5,22 +5,22 @@ import {
   Dialog,
   Fieldset,
   Heading,
+  Tag,
   Paragraph,
   Radio,
   Textfield,
   ValidationMessage,
 } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { ApiError, type ApiClient } from '../../api';
 import type { MaskinportenClient } from '../../api/maskinporten';
 import { scopes } from '../../data/integrations';
 import { formatDate } from '../../format';
 import { useAsync } from '../../hooks';
 import { useT, type T } from '../../i18n';
-import { needsRight, useRights } from '../../Shell';
+import { useRights } from '../../Shell';
 import { ErrorState, Loading } from '../../states';
-import { ItemList, type ItemRowData } from './ItemList';
 import { reasonProblem } from '../../components/ReasonField';
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -51,21 +51,30 @@ const problemText = (error: unknown, t: T) =>
       : error.problem?.errors?.map((e) => e.message).join(' ') || error.message
     : t('integConnections.wrong');
 
+export interface MaskinportenParts {
+  button: ReactNode;
+  rows: ReactNode[] | null;
+  after: ReactNode;
+  busy?: boolean;
+}
+
 export const MaskinportenClients = ({
   api,
   tenant,
   onFlash,
+  children,
 }: {
   api: ApiClient;
   tenant: string;
   onFlash: (text: string, color?: 'success' | 'info' | 'danger') => void;
+  children: (parts: MaskinportenParts) => ReactNode;
 }) => {
   const t = useT();
   const f = useFormat();
   const rights = useRights();
   const canManage = rights.has('manage-services');
   const [tick, setTick] = useState(0);
-  const [state, retry] = useAsync(
+  const [state, retry, pending] = useAsync(
     async (signal) => {
       if (!canManage) return { clients: [], services: [] };
       const [clients, overview] = await Promise.all([
@@ -75,6 +84,7 @@ export const MaskinportenClients = ({
       return { clients, services: overview?.services ?? [] };
     },
     [api, tenant, tick, canManage],
+    { keepPreviousFor: tenant },
   );
   const [open, setOpen] = useState<string>();
   const [form, setForm] = useState<Form>();
@@ -83,8 +93,29 @@ export const MaskinportenClients = ({
   const [removeReason, setRemoveReason] = useState('');
   const [removeError, setRemoveError] = useState('');
 
-  if (state.status === 'loading') return <Loading label={t('integMaskinporten.loading')} />;
-  if (state.status === 'error') return <ErrorState error={state.error} onRetry={retry} />;
+  if (state.status === 'loading')
+    return children({
+      button: canManage ? (
+        <Button variant="secondary" aria-disabled>
+          {t('integMaskinporten.register')}
+        </Button>
+      ) : null,
+      rows: null,
+      after: (
+        <Loading
+          label={t('integMaskinporten.loading')}
+          shape="list"
+          headingLevel={3}
+          onRetry={retry}
+        />
+      ),
+    });
+  if (state.status === 'error')
+    return children({
+      button: null,
+      rows: null,
+      after: <ErrorState error={state.error} onRetry={retry} headingLevel={3} />,
+    });
 
   const { clients, services } = state.data;
   const nameOf = (id: string) => services.find((s) => s.id === id)?.name ?? id;
@@ -144,77 +175,95 @@ export const MaskinportenClients = ({
     }
   };
 
-  const items: ItemRowData[] = clients.map((c) => ({
-    id: c.clientId,
-    name: c.name,
-    status: 'Aktiv',
-    sub: t('integMaskinporten.canCallSub', { reach: reach(c) }),
-    metaLabel: t('integMaskinporten.registeredLabel'),
-    meta: formatDate(c.createdAt, f),
-    rows: [
-      {
-        k: t('integrations.clientId'),
-        v: c.clientId,
-        copyLabel: t('integrations.copyClientId', { name: c.name }),
-      },
-      { k: t('integMaskinporten.canCall'), v: reach(c) },
-      { k: t('integMaskinporten.scope'), v: '', tags: [callScope] },
-    ],
-    actions: canManage
-      ? [
-          {
-            label: t('common.remove'),
-            variant: 'tertiary',
-            onClick: () => {
-              setRemoving(c);
-              setRemoveReason('');
-              setRemoveError('');
-            },
-          },
-        ]
-      : [],
-  }));
-
   const errors = form ? errorsOf(form) : undefined;
   const shown = (key: keyof NonNullable<typeof errors>) =>
     form?.tried && errors?.[key] ? errors[key] : undefined;
 
-  return (
-    <section aria-labelledby="mp-h" className="stack-md">
-      <div className="int-intro">
-        <div className="stack-xs int-intro-text">
-          <Heading level={2} data-size="xs" id="mp-h">
-            {t('integMaskinporten.heading')}
-          </Heading>
-          <Paragraph data-size="sm" className="meta">
-            {t('integMaskinporten.intro', { scope: callScope })}
-          </Paragraph>
-        </div>
-        {canManage ? (
-          <Button
-            variant="primary"
-            onClick={() => {
-              setSaveError('');
-              setForm(emptyForm);
-            }}
-          >
-            {t('integMaskinporten.register')}
-          </Button>
-        ) : (
-          <span className="meta">{needsRight('manage-services', t)}</span>
-        )}
-      </div>
-      {canManage ? (
-        <ItemList
-          items={items}
-          open={open}
-          onToggle={(id) => setOpen(open === id ? undefined : id)}
-          empty={{
-            title: t('integMaskinporten.none'),
-            text: t('integMaskinporten.noneText'),
-          }}
-        />
-      ) : null}
+  const rows = canManage
+    ? clients.map((c) => {
+        const isOpen = open === c.clientId;
+        const panel = `mp-${c.clientId}`;
+        return (
+          <li key={c.clientId}>
+            <button
+              type="button"
+              className="dev-row"
+              aria-expanded={isOpen}
+              aria-controls={panel}
+              onClick={() => setOpen(isOpen ? undefined : c.clientId)}
+            >
+              <span className="dev-row-main">
+                <span className="int-row-name">{c.name}</span>
+                <span className="meta">{t('integMaskinporten.kind')}</span>
+              </span>
+              <Tag data-size="sm" data-color="success">
+                {t('devSystems.inUse')}
+              </Tag>
+              <span className="dev-row-meta">
+                <span>{t('integMaskinporten.canCallSub', { reach: reach(c) })}</span>
+                <span>
+                  {t('integMaskinporten.registeredOn', { date: formatDate(c.createdAt, f) })}
+                </span>
+              </span>
+              <span className="dev-row-chevron" aria-hidden="true">
+                {t(isOpen ? 'devSystems.hide' : 'devSystems.show')}
+              </span>
+            </button>
+            <div
+              id={panel}
+              role="region"
+              aria-label={c.name}
+              hidden={!isOpen}
+              className="dev-row-panel stack-sm"
+            >
+              <dl className="kv">
+                <dt>{t('integrations.clientId')}</dt>
+                <dd>
+                  <code>{c.clientId}</code>
+                </dd>
+                <dt>{t('integMaskinporten.canCall')}</dt>
+                <dd>{reach(c)}</dd>
+                <dt>{t('integMaskinporten.scope')}</dt>
+                <dd>
+                  <code>{callScope}</code>
+                </dd>
+              </dl>
+              <Paragraph data-size="sm" className="meta">
+                {t('integMaskinporten.intro', { scope: callScope })}
+              </Paragraph>
+              <div className="actions">
+                <Button
+                  variant="tertiary"
+                  data-size="sm"
+                  onClick={() => {
+                    setRemoving(c);
+                    setRemoveReason('');
+                    setRemoveError('');
+                  }}
+                >
+                  {t('common.remove')}
+                </Button>
+              </div>
+            </div>
+          </li>
+        );
+      })
+    : null;
+
+  const button = canManage ? (
+    <Button
+      variant="secondary"
+      onClick={() => {
+        setSaveError('');
+        setForm(emptyForm);
+      }}
+    >
+      {t('integMaskinporten.register')}
+    </Button>
+  ) : null;
+
+  const after = (
+    <>
       {removing ? (
         <Alert data-color="danger" data-size="sm">
           <Paragraph data-size="sm">
@@ -339,6 +388,8 @@ export const MaskinportenClients = ({
           </div>
         </Dialog>
       ) : null}
-    </section>
+    </>
   );
+
+  return children({ button, rows, after, busy: pending });
 };

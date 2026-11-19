@@ -20,7 +20,7 @@ const open = async () => {
       languages={['en']}
     />,
   );
-  await screen.findByRole('heading', { name: 'Batch job' });
+  await screen.findByRole('heading', { name: 'Batch', level: 2 });
 };
 
 beforeAll(() => {

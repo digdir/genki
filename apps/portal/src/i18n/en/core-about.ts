@@ -2,7 +2,6 @@ import type { Translation } from '@genai/i18n';
 import type { about as source } from '../nb/core-about';
 
 export const about = {
-  previewSwitch: 'New start page (preview)',
   navLabel: 'About Genki',
   navTargetPicture: 'Target picture',
   navBlocks: 'Building blocks',
@@ -33,7 +32,7 @@ export const about = {
   factWho: 'State and municipal agencies. Each agency builds and controls its own services.',
   factWhereTitle: 'Where data is processed',
   factCostTitle: 'What it costs',
-  factCost: 'You pay for how much text the models read and write.',
+  factCost: 'Free during the trial. Use is measured by how much text the models read and write.',
   buildHeading: 'What you can build',
   buildLede: 'Use the shared services as they are, or build your own on the same building blocks.',
   sharedHeading: 'Shared services, ready from day one',
@@ -45,7 +44,7 @@ export const about = {
   architectureSub: 'Choose a layer to read about its building blocks.',
   moreHeading: 'Price, terms and data',
   notice:
-    'Genki is under development. Prices, terms, the data processing agreement and how long data is stored have not been decided yet.',
+    'Genki is under development. The price after the trial, the terms and the data processing agreement have not been decided yet.',
   tilePriceTitle: 'Price and terms',
   tilePriceBody: 'What it costs, the monthly quota and the terms your agency accepts.',
   tileDataTitle: 'How data is handled',
@@ -61,9 +60,66 @@ export const about = {
   sourceLink: 'The source code on GitHub',
   adrLink: 'The architecture decisions',
   priceTitle: 'Price and terms',
-  priceLede:
-    'This is the draft of price and terms. What is not decided yet is marked «Not decided».',
-  priceDataLink: 'How data is handled',
+  priceLede: 'Use is free during the trial. Price and terms will be settled in spring 2027.',
+  priceUsageHeading: 'How use is counted',
+  priceUsage1:
+    'Use is measured in tokens, about three quarters of a word. Every question, every answer and every document read uses tokens.',
+  priceUsage2:
+    'Under Statistics the organisation sees its use per service and per model, and what it would have cost in kroner. Test runs from the playground and the builder are included.',
+  priceFreeHeading: 'Free during the trial',
+  priceFree1: 'The organisation does not pay for its use.',
+  priceFree2:
+    'Each organisation has a monthly quota. When it is used up, the services answer with an error until next month.',
+  priceFree3: 'If you need more, you can ask for more quota from Statistics when signed in.',
+  priceTermsHeading: 'Terms',
+  priceTerms:
+    'The terms of use after the trial will be settled together with the price. Until then, what is said about data, storage and sub-processors on <link>How data is handled</link> applies.',
+  residencyStatement:
+    'Everything genki stores is stored in the EU/EEA. Each model processes data where it is marked: in Norway, in the EU/EEA, or with global processing, which can be outside the EU/EEA. A service can be limited to models in the EU/EEA or in Norway.',
+  dhUpdated:
+    'Last updated 18 November 2026. This page is the source: other places in the portal use the same text.',
+  dhPdf: 'Download as PDF',
+  dhPdfHelp: 'Choose «Save as PDF» in the print window.',
+  dhModelsHeading: 'The models',
+  dhModelsLabel: 'The models and where they process data',
+  dhModelsSignIn: 'Sign in to see each model you can use, and where it processes data.',
+  dhModelsLoading: 'Fetching the models',
+  dhModelsError: 'We could not fetch the list of models',
+  dhModelsErrorText: 'The summary above still applies. Try again to see each model.',
+  dhNoModels: 'No models are available to you yet.',
+  dhGlobalCount: {
+    one: '{count} of the {total} models you can use has global processing.',
+    other: '{count} of the {total} models you can use have global processing.',
+  },
+  dhColumnModel: 'Model',
+  dhColumnWhere: 'Where data is processed',
+  dhColumnOperator: 'Run by',
+  dhOperatorUnknown: 'Not stated',
+  dhWhereRegion: '{where} ({region})',
+  dhColumnStored: 'Stored in',
+  dhColumnHowLong: 'How long',
+  dhWhereNorway: 'Norway',
+  dhWhereEu: 'EU/EEA',
+  dhWhereGlobal: 'Global processing, can be outside the EU/EEA',
+  dhStoredWhere: 'Azure, the Netherlands',
+  dhHowLongStandard: '90 days (standard)',
+  dhHowLongDataset: 'Until the dataset is deleted',
+  dhStoredHeading: 'What is stored, and for how long',
+  dhStoredLede:
+    'Questions, answers and the sources an answer is based on are stored in Azure in the Netherlands, so the organisation can see what its services answered and correct mistakes.',
+  dhStored1:
+    'The standard is 90 days. The organisation can choose 7 days or 1 year under Settings.',
+  dhStored2:
+    'High-risk services keep it for at least 183 days, limited-risk services for at least 30 days.',
+  dhStored3: 'The documents in datasets are kept until the organisation deletes the dataset.',
+  dhSubprocessorsHeading: 'Sub-processors',
+  dhMicrosoft: 'Microsoft (Azure)',
+  dhMicrosoftText:
+    'Runs the platform and the models in Azure AI Foundry. Stores questions, answers and datasets in the Netherlands.',
+  dhMicrosoftRuns:
+    'Runs {models} in {regions}. Stores questions, answers and datasets in the Netherlands.',
+  dhGateway: 'The AI gateway in Norway',
+  dhGatewayText: 'Runs {models}. Data does not leave Norway.',
   siteName: 'Genki',
   errorTitle: 'Something went wrong',
   errorBody: 'The page could not be shown. Reload the page, or go to the front page.',

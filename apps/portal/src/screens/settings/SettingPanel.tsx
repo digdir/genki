@@ -2,6 +2,7 @@ import {
   Alert,
   Button,
   Chip,
+  Details,
   Field,
   Fieldset,
   Heading,
@@ -9,7 +10,6 @@ import {
   Label,
   Paragraph,
   Select,
-  Spinner,
   Tag,
   Textarea,
   ValidationMessage,
@@ -20,7 +20,8 @@ import { ApiError, type ApiClient } from '../../api';
 import { actorLabel, formatDateTime } from '../../format';
 import { useT, type Format, type T } from '../../i18n';
 import { useAsync } from '../../hooks';
-import { useRights } from '../../Shell';
+import { needsRight, useRights } from '../../Shell';
+import { Loading } from '../../states';
 import { ApiCallLink, type ApiCallPreview } from '../../components/ApiCall';
 import { NotDecided } from '../../components/NotDecided';
 import { SidePanel } from '../../components/SidePanel';
@@ -38,6 +39,9 @@ import {
   editLayerFor,
   effectiveOf,
   formatValue,
+  fromApiValue,
+  lastSaveOf,
+  savedByText,
   isSet,
   layerName,
   layersFor,
@@ -225,20 +229,24 @@ export const SettingPanel = ({
   const [reason, setReason] = useState('');
   const [reasonErr, setReasonErr] = useState('');
   const [saveErr, setSaveErr] = useState('');
-  const [stale, setStale] = useState(false);
+  const [stale, setStale] = useState<{ theirs: string; by: string } | undefined>();
   const [busy, setBusy] = useState(false);
 
   const liveService = liveMode && el === 'T' && serviceId !== undefined && s.type !== 'secret';
   const isDraft = el === 'T' && !liveService;
   const setByDigdir = el === 'V' && !!s.setByDigdir;
-  const canEditHere =
+  const secretNotSent = liveMode && s.type === 'secret';
+  const settableHere =
     !setByDigdir &&
     s.scope.includes(el === 'V' ? 'virksomhet' : el === 'T' ? 'tjeneste' : 'datasett');
+  const canEditHere = settableHere && !secretNotSent && canAudit;
   const editHeading = canEditHere
     ? t('settings.panelNewValue')
     : setByDigdir
       ? t('settings.panelSetByDigdir')
-      : t('settings.panelCannotHere');
+      : settableHere
+        ? t('settings.panelValueHere')
+        : t('settings.panelCannotHere');
   const pinned = ctx.kind !== 'tenant' ? s.pins?.[ctx.target] : undefined;
   const live = el === 'V' && s.apiKey !== undefined && s.type !== 'secret';
   const layerLabel = t('settings.panelLayerOf', {
@@ -249,13 +257,13 @@ export const SettingPanel = ({
   const resetPreview = () => {
     setPreview(undefined);
     setSaveErr('');
-    setStale(false);
+    setStale(undefined);
   };
 
   const runPreview = async (change: Change) => {
     setErr('');
     setSaveErr('');
-    setStale(false);
+    setStale(undefined);
     setReason('');
     setReasonErr('');
     const local = buildPreview(s, change, ctx, names, t, f);
@@ -305,7 +313,7 @@ export const SettingPanel = ({
   if (el !== 'V' && isSet(here))
     actions.push({ label: t('settings.panelResetInherited'), change: { kind: 'reset' } });
   if (ctx.kind === 'tenant' && isSet(here))
-    actions.push({ label: t('settings.panelResetPlatform'), change: { kind: 'reset' } });
+    actions.push({ label: t('settings.allUseDefault'), change: { kind: 'reset' } });
   if (!liveMode && ctx.kind !== 'tenant' && !pinned && !isSet(here) && e.L === 'P')
     actions.push({ label: t('settings.panelPin'), change: { kind: 'pin' } });
   if (!liveMode && ctx.kind !== 'tenant' && pinned)
@@ -369,19 +377,38 @@ export const SettingPanel = ({
         else if (c.kind === 'value')
           await api.setTenantSetting(tenant, key, toApiValue(s, c.v), finalReason);
       } catch (error) {
-        const conflict = error instanceof ApiError && error.status === 409;
+        const status = error instanceof ApiError ? error.status : undefined;
         const details = error instanceof ApiError ? error.problem?.errors : undefined;
-        setStale(conflict);
-        setSaveErr(
-          conflict
-            ? (error.problem?.detail ?? tRef.current('settings.panelStale'))
-            : details?.length
-              ? details.map((d) => settingErrorText(d.message, tRef.current)).join(' ')
-              : tRef.current('settings.panelSaveFailed'),
-        );
+        if (status === 409) {
+          const [current, last] = await Promise.all([
+            (liveService
+              ? api.effectiveSettings(tenant, serviceId ?? '')
+              : api.tenantEffectiveSettings(tenant)
+            ).catch(() => undefined),
+            liveService ? undefined : lastSaveOf(api, tenant, key),
+          ]);
+          const value = current?.[key]?.value;
+          setStale({
+            theirs: value === undefined ? '' : show(fromApiValue(s, value)),
+            by: savedByText(last, tRef.current, f),
+          });
+          setSaveErr('');
+        } else {
+          setStale(undefined);
+          setSaveErr(
+            status === 403
+              ? tRef.current('settings.panelRefused', {
+                  right: tRef.current('rights.manageServices'),
+                })
+              : details?.length
+                ? details.map((d) => settingErrorText(d.message, tRef.current)).join(' ')
+                : tRef.current('settings.panelSaveFailed'),
+          );
+        }
         setBusy(false);
         return;
       }
+      setStale(undefined);
       setBusy(false);
     }
     if (c.kind === 'reset') {
@@ -443,78 +470,96 @@ export const SettingPanel = ({
 
   return (
     <SidePanel title={label} eyebrow={`${categoryText(t, s.cat)} · ${key}`} onClose={onClose}>
-      <div className="tag-row">
-        <Tag data-size="sm" data-color={sensColor[s.sens]}>
-          {t('settings.panelSensitivity', { value: sensText(t, s.sens) })}
-        </Tag>
-        <Tag data-size="sm" data-color="neutral">
-          {t('settings.panelEditing', { layer: layerLabel })}
-        </Tag>
-        {isDraft ? (
+      {isDraft ? (
+        <div className="tag-row">
           <Tag data-size="sm" data-color="info">
             {t('settings.panelGoesToDraft', { version: draftVersion })}
           </Tag>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
       <Paragraph>
         {settingDesc(t, s)} {s.notDecided ? <NotDecided /> : null}
       </Paragraph>
-      <dl className="kv panel-kv">
-        <dt>{t('settings.panelType')}</dt>
-        <dd>{typeText(t, s.type)}</dd>
-        <dt>{t('settings.panelAllowed')}</dt>
-        <dd>{allowedText(s, t, f)}</dd>
-        <dt>{t('settings.panelScope')}</dt>
-        <dd>{scopeText(s, t)}</dd>
-        {rule || s.minRisk ? (
-          <>
-            <dt>{t('settings.panelRule')}</dt>
-            <dd>{rule ?? settingMinRisk(t, s)}</dd>
-          </>
-        ) : null}
-        {s.categories ? (
-          <>
-            <dt>{t('settings.panelApplies')}</dt>
-            <dd>
-              <ul className="tag-row plain-list" aria-label={t('settings.panelCategories')}>
-                {s.categories.map((c) => (
-                  <li key={c}>
-                    <Tag data-size="sm" data-color="neutral">
-                      {piiText(t, c)}
-                    </Tag>
-                  </li>
-                ))}
-              </ul>
-            </dd>
-          </>
-        ) : null}
-      </dl>
-      <div className="stack-xs">
-        <span className="panel-label">{t('settings.panelChain')}</span>
-        <ol className="chain plain-list">
-          {chain.map((c) => (
-            <li key={c.layer} className={c.effective ? 'effective' : undefined}>
-              <span>{c.layer}</span>
-              <span className={c.inherited ? 'inherited' : c.effective ? 'strong' : undefined}>
-                {c.text}
-              </span>
-            </li>
-          ))}
-          {e.L === 'pin' ? (
-            <li className="pinned">
-              <span>{t('settings.panelPinnedLayer')}</span>
-              <span className="strong">
-                {show(e.v)} ({e.pinVersion})
-              </span>
-            </li>
-          ) : null}
-        </ol>
-      </div>
+      {ctx.kind === 'tenant' && s.type !== 'secret' ? (
+        <Paragraph data-size="sm">{t('settings.allDefault', { value: show(s.P) })}</Paragraph>
+      ) : null}
+      <Details className="panel-technical">
+        <Details.Summary>{t('settings.panelTechnical')}</Details.Summary>
+        <Details.Content className="stack-sm">
+          <div className="tag-row">
+            <Tag data-size="sm" data-color={sensColor[s.sens]}>
+              {t('settings.panelSensitivity', { value: sensText(t, s.sens) })}
+            </Tag>
+            <Tag data-size="sm" data-color="neutral">
+              {t('settings.panelEditing', { layer: layerLabel })}
+            </Tag>
+          </div>
+          <dl className="kv panel-kv">
+            <dt>{t('settings.panelType')}</dt>
+            <dd>{typeText(t, s.type)}</dd>
+            <dt>{t('settings.panelAllowed')}</dt>
+            <dd>{allowedText(s, t, f)}</dd>
+            <dt>{t('settings.panelScope')}</dt>
+            <dd>{scopeText(s, t)}</dd>
+            {rule || s.minRisk ? (
+              <>
+                <dt>{t('settings.panelRule')}</dt>
+                <dd>{rule ?? settingMinRisk(t, s)}</dd>
+              </>
+            ) : null}
+            {s.categories ? (
+              <>
+                <dt>{t('settings.panelApplies')}</dt>
+                <dd>
+                  <ul className="tag-row plain-list" aria-label={t('settings.panelCategories')}>
+                    {s.categories.map((c) => (
+                      <li key={c}>
+                        <Tag data-size="sm" data-color="neutral">
+                          {piiText(t, c)}
+                        </Tag>
+                      </li>
+                    ))}
+                  </ul>
+                </dd>
+              </>
+            ) : null}
+          </dl>
+          <div className="stack-xs">
+            <span className="panel-label">{t('settings.panelChain')}</span>
+            <ol className="chain plain-list">
+              {chain.map((c) => (
+                <li key={c.layer} className={c.effective ? 'effective' : undefined}>
+                  <span>{c.layer}</span>
+                  <span className={c.inherited ? 'inherited' : c.effective ? 'strong' : undefined}>
+                    {c.text}
+                  </span>
+                </li>
+              ))}
+              {e.L === 'pin' ? (
+                <li className="pinned">
+                  <span>{t('settings.panelPinnedLayer')}</span>
+                  <span className="strong">
+                    {show(e.v)} ({e.pinVersion})
+                  </span>
+                </li>
+              ) : null}
+            </ol>
+          </div>
+        </Details.Content>
+      </Details>
       <section className="panel-edit stack-sm" aria-label={editHeading}>
         <Heading level={3} data-size="2xs">
           {editHeading}
         </Heading>
         {setByDigdir ? <Paragraph>{t('settings.panelSetByDigdirHelp')}</Paragraph> : null}
+        {settableHere && secretNotSent ? (
+          <Paragraph>{t('settings.panelSecretNotHere')}</Paragraph>
+        ) : null}
+        {settableHere && !secretNotSent && !canAudit ? (
+          <Paragraph>
+            {t('settings.panelNoRight', { need: needsRight('manage-services', t) })}
+          </Paragraph>
+        ) : null}
         {canEditHere ? (
           <>
             {s.type === 'secret' ? (
@@ -669,10 +714,7 @@ export const SettingPanel = ({
         ) : null}
       </section>
       {loadingPreview ? (
-        <div role="status" className="row-wrap">
-          <Spinner aria-hidden data-size="sm" />
-          {t('settings.panelLoadingImpact')}
-        </div>
+        <Loading label={t('settings.panelLoadingImpact')} shape="list" rows={2} headingLevel={3} />
       ) : null}
       {preview && !loadingPreview ? (
         <section className="panel-preview stack-sm" aria-label={t('settings.panelPreview')}>
@@ -727,14 +769,17 @@ export const SettingPanel = ({
               {reasonErr ? <ValidationMessage>{reasonErr}</ValidationMessage> : null}
             </Field>
           )}
+          {stale ? (
+            <Alert data-color="warning" data-size="sm" role="alert">
+              {t('settings.panelConflict', {
+                value: stale.theirs || t('settings.panelInheritedWord'),
+              })}
+              {stale.by ? ` ${stale.by}` : ''}
+            </Alert>
+          ) : null}
           {saveErr ? (
             <Alert data-color="danger" data-size="sm">
               {saveErr}
-              {stale ? (
-                <Button variant="secondary" data-size="sm" onClick={() => window.location.reload()}>
-                  {t('settings.panelReload')}
-                </Button>
-              ) : null}
             </Alert>
           ) : null}
           <div className="actions">
@@ -744,7 +789,11 @@ export const SettingPanel = ({
               loading={busy}
               onClick={() => void save()}
             >
-              {isDraft ? t('settings.panelSaveDraft') : t('common.save')}
+              {isDraft
+                ? t('settings.panelSaveDraft')
+                : stale
+                  ? t('settings.panelSaveMineAnyway')
+                  : t('common.save')}
             </Button>
             <Button variant="secondary" onClick={resetPreview}>
               {t('common.cancel')}

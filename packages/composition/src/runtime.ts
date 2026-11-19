@@ -1,3 +1,5 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { discoverWithRetry } from './discovery-retry.js';
 import {
   unitPricesFor,
   type PriceSpec,
@@ -32,6 +34,7 @@ import {
   CapabilityRegistry,
   checkCapability,
   createGate,
+  type CallScope,
   createKernel,
   InMemoryProviderObjects,
   type Capability as KernelCapability,
@@ -184,10 +187,21 @@ import {
   usingRetrievalPorts,
   type RuntimeConfig,
 } from './retrieval-ports.js';
+import { stateOrganisationTool, stateOrganisationToolRef } from './state-organisation-tool.js';
 import { createGuardrailRuleRegistry, resolveRules } from './scoped-registry.js';
-import { answerLanguageFor, houseStyleFor, withSettings } from './settings-runtime.js';
+import {
+  answerLanguageFor,
+  houseStyleFor,
+  withSettings,
+  withSourcesSetting,
+} from './settings-runtime.js';
 import type { TenantSecretVault } from './tenant-secrets.js';
 import { userPreferenceReader } from './user-preferences.js';
+
+const tenantCallScope = (): CallScope => {
+  const tenants = new AsyncLocalStorage<string>();
+  return { run: (tenant, send) => tenants.run(tenant, send), tenant: () => tenants.getStore() };
+};
 
 export const defaultServiceLimits = { deadlineMs: 300_000, budget: { inputTokens: 2_000_000 } };
 
@@ -392,6 +406,7 @@ export const createRuntime = async (input: RuntimeInput) => {
     kernel?: Kernel;
     store?: DefinitionStore;
     mcp?: ConnectionToolSources;
+    registry?: CapabilityRegistry;
   } = {};
   const ruleHooks: CustomRuleHooks = {
     resolve: async (ctx, entries) =>
@@ -475,6 +490,7 @@ export const createRuntime = async (input: RuntimeInput) => {
   const blobStore = input.blobStore ?? new InMemoryBlobStore();
   const gate = createGate({
     tier: environmentTier,
+    callScope: tenantCallScope(),
     media: blobMediaOutput(input.mediaOutput ?? mediaOutputConfigOf(process.env), blobStore),
     mediaInput: blobMediaInput(blobStore),
     ...(input.admitsModelUse ? { admits: input.admitsModelUse } : {}),
@@ -622,10 +638,25 @@ export const createRuntime = async (input: RuntimeInput) => {
   });
   if (Object.values(migrated).some((n) => n > 0))
     input.logger?.('model connections moved to the shape of ADR 0048', { ...migrated });
-  const discovery = await models.refresh();
-  for (const f of discovery.failed)
-    input.onWarning?.(`model discovery failed for ${f.endpoint}: ${f.error}`);
+  const modelDiscovery = await discoverWithRetry({
+    refresh: () => models.refresh(),
+    ...(input.onWarning ? { onWarning: input.onWarning } : {}),
+  });
   const tools = new ToolRegistry();
+  tools.register(
+    stateOrganisationTool({
+      configEntries,
+      filterFields: async (capability) => {
+        const config = late.registry?.all().find((c) => c.descriptor.id === capability)?.config as
+          RuntimeConfig | undefined;
+        return (config?.knowledge?.datasets ?? []).flatMap(({ dataset }) =>
+          Object.keys(
+            knowledge.datasets().get(knowledge.resolve(dataset) ?? dataset)?.filters ?? {},
+          ),
+        );
+      },
+    }),
+  );
   const connections = input.connections ?? new InMemoryConnections();
   const toolSourceOptions = {
     registry: connections,
@@ -724,21 +755,24 @@ export const createRuntime = async (input: RuntimeInput) => {
       (dataset) => knowledge.resolve(dataset),
       wrap(
         withHooks(
-          guardStrategy(withSettings(settings, strategy), {
-            decisions: true,
-            rules: ruleHooks,
-            answerLanguage: async (ctx, request, config, question) =>
-              answerLanguageFor(
-                settings,
-                ctx,
-                request,
-                config,
-                question,
-                await preferences.of(ctx.tenant, ctx.principal),
-              ),
-            houseStyle: (ctx, _request, config, language) =>
-              houseStyleFor(settings, ctx, config, language),
-          }),
+          withSourcesSetting(
+            settings,
+            guardStrategy(withSettings(settings, strategy), {
+              decisions: true,
+              rules: ruleHooks,
+              answerLanguage: async (ctx, request, config, question) =>
+                answerLanguageFor(
+                  settings,
+                  ctx,
+                  request,
+                  config,
+                  question,
+                  await preferences.of(ctx.tenant, ctx.principal),
+                ),
+              houseStyle: (ctx, _request, config, language) =>
+                houseStyleFor(settings, ctx, config, language),
+            }),
+          ),
           { hooks: hookRuntime.forContext, invoke: hookRuntime.invoke },
         ),
       ),
@@ -765,7 +799,10 @@ export const createRuntime = async (input: RuntimeInput) => {
       ],
       ...(input.extraStrategyConfigs ?? []),
     ]),
-    tools: new Map<string, z.ZodType>([[sourceFactsToolRef, zod.strictObject({})]]),
+    tools: new Map<string, z.ZodType>([
+      [sourceFactsToolRef, zod.strictObject({})],
+      [stateOrganisationToolRef, zod.strictObject({})],
+    ]),
     guardrails: guardrailSchemas,
     blocks: new Set(blocks.refs()),
     models: models.models(),
@@ -812,6 +849,7 @@ export const createRuntime = async (input: RuntimeInput) => {
     }),
   };
   const registry = new CapabilityRegistry({ strategies, ports });
+  late.registry = registry;
   registry.replace(() => false, input.platformCapabilities ?? []);
 
   const refreshTools = async (tenant: string) => {
@@ -1073,6 +1111,7 @@ export const createRuntime = async (input: RuntimeInput) => {
   return {
     kernel,
     gate,
+    modelDiscovery,
     registry,
     ports,
     strategies,

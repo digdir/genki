@@ -101,8 +101,11 @@ export const playgroundMock = (mockOptions: PlaygroundMockOptions = {}): MockHan
           ]),
         );
       }
-      if (streaming) return sse(sseOf(exampleStreamEvents(options, body)));
-      return request.json(exampleRun(options, body));
+      const language = new Headers(request.init?.headers).get('accept-language')?.startsWith('en')
+        ? 'en'
+        : 'nb';
+      if (streaming) return sse(sseOf(exampleStreamEvents(options, body, language)));
+      return request.json(exampleRun(options, body, language));
     }
     if (route === 'testcase-candidates' && request.method === 'POST') {
       const body = request.body<TestCaseCandidateRequest>();

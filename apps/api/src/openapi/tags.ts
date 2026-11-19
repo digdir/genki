@@ -27,7 +27,7 @@ export const apiTags = [
   {
     name: 'Operations',
     description:
-      'Operator-only routes for the console: tenants and organisations, support sessions, platform datasets, models and catalogue, shared services, quality matrix, plugins and building blocks, usage, audit, tracing and running tasks.',
+      'Operator-only routes for the console: tenants and organisations, support sessions, platform datasets, models and catalogue, shared services, quality matrix, plugins and building blocks, demos, usage, audit, tracing and running tasks, and the upload routes of the demo recorder.',
   },
   {
     name: 'Platform',
@@ -41,7 +41,7 @@ export type ApiTag = (typeof apiTags)[number]['name'];
 const rules: [RegExp, ApiTag][] = [
   [/^\/(health|up|openapi\.json|reference)(\/|$)|^\/schemas(\/|$)/, 'Platform'],
   [/^\/(v1|api|a2a)(\/|$)/, 'Frontend'],
-  [/^\/(operator|support-sessions)(\/|$)/, 'Operations'],
+  [/^\/(operator|support-sessions|recorder)(\/|$)/, 'Operations'],
   [/^\/mock\/|^\/onboarding\/|^\/me$/, 'Access and extensions'],
   [/^\/(eval-tasks|eval-runs|testcase-candidates|tasks)\//, 'Work and quality'],
   [/^\/models$/, 'Datasets and knowledge'],
@@ -56,7 +56,7 @@ const rules: [RegExp, ApiTag][] = [
     'Access and extensions',
   ],
   [
-    /^\/tenants\/\{tenant\}\/(projects|tasks|test-sets|eval-runs|feedback|testcase-candidates|gates|guardrail-rules|diagnostics|usage|audit|overview|triggers)(\/|$)/,
+    /^\/tenants\/\{tenant\}\/(projects|tasks|service-failures|test-sets|eval-runs|feedback|testcase-candidates|gates|guardrail-rules|diagnostics|usage|quota-requests|status|audit|overview|triggers)(\/|$)/,
     'Work and quality',
   ],
   [

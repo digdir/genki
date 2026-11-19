@@ -74,7 +74,7 @@ describe('the GenKI docs bundle', () => {
       /param extensions string = '[A-Z_,]*VECTOR[A-Z_,]*'/,
     );
     const platformServer = read('infra/main.bicep').match(
-      /module postgres 'modules\/postgres\.bicep' = \{[\s\S]*?\n\}/,
+      /module postgres 'modules\/postgres\.bicep' = (?:if \(\w+\) )?\{[\s\S]*?\n\}/,
     )?.[0];
     expect(platformServer).toBeDefined();
     expect(platformServer).not.toMatch(/extensions:/);

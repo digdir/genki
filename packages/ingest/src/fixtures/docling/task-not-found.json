@@ -1,0 +1,6 @@
+{
+  "status": 404,
+  "body": {
+    "detail": "Task result not found. Please wait for a completion status."
+  }
+}

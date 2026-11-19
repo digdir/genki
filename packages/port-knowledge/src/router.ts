@@ -24,6 +24,7 @@ import {
   KnowledgeError,
   kindsOf,
   legacyCapabilities,
+  maxDocumentQueryLength,
   searchCapabilities,
   type DocumentsRequest,
   type FieldFilter,
@@ -347,6 +348,26 @@ export class KnowledgeRouter implements PortProvider<KnowledgePort> {
     const linkHits = (hits: Hit[]) => hits.map((hit) => linked(hit, hit.document));
     const maxBatch = this.options.maxBatch ?? 50;
     const listDocuments = connection.documents?.bind(connection);
+    const listing = listDocuments ? connection.documentListing?.(config) : undefined;
+    const checkListing = (request: DocumentsRequest) => {
+      const query = request.query?.trim();
+      if (query && !listing?.query)
+        throw new KnowledgeError(
+          'unsupported',
+          `dataset ${dataset.id} on ${engine} cannot search document titles`,
+        );
+      if (query && query.length > maxDocumentQueryLength)
+        throw new KnowledgeError(
+          'bad_request',
+          `a document search is at most ${maxDocumentQueryLength} characters`,
+        );
+      if (request.sort && !listing?.sort.includes(request.sort.key))
+        throw new KnowledgeError(
+          'unsupported',
+          `dataset ${dataset.id} on ${engine} cannot sort documents by ${request.sort.key}`,
+        );
+      return query;
+    };
     const resolveCitations = connection.resolveCitations?.bind(connection);
     const exporter = connection.export;
 
@@ -358,6 +379,7 @@ export class KnowledgeRouter implements PortProvider<KnowledgePort> {
         profiles,
         engine,
         capabilities: [...capabilities],
+        ...(listing ? { documentListing: { query: listing.query, sort: [...listing.sort] } } : {}),
       }),
       search: async (request) => {
         const checked = check(request);
@@ -407,9 +429,11 @@ export class KnowledgeRouter implements PortProvider<KnowledgePort> {
               const limit = Math.min(Math.max(request.limit ?? 100, 1), 250);
               const offset = Math.max(request.offset ?? 0, 0);
               const filters = checkFilters(request.filters);
-              const page = await guard(() =>
-                listDocuments(config, { ...request, filters, limit, offset }, ctx.signal),
-              );
+              const query = checkListing(request);
+              const listed: DocumentsRequest = { ...request, filters, limit, offset };
+              delete listed.query;
+              if (query) listed.query = query;
+              const page = await guard(() => listDocuments(config, listed, ctx.signal));
               return { ...page, documents: page.documents.map((d) => linked(d, d.id)) };
             },
           }

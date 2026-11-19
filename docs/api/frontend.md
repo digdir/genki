@@ -16,5 +16,6 @@ The rules for these routes are in the [Frontend contract](../frontend-contract.m
 2. `GET /v1/models/{id}/schema`: the input form and the output shape, when the service has a form.
 3. `GET /api/facets?tenant=&dataset-config-key=&fields=`: filter values, when the service has `_datasets`.
 4. `POST /v1/chat/completions` with `"genai_conversation": true` and `"stream": true`.
+   When the person stops the answer, `POST /v1/tasks/{task}/cancel` with the `genai-task` header value. Closing the stream does not stop the run.
 5. `GET /api/conversations` and `GET /api/conversations/{id}` to list and reopen.
 6. `POST /api/feedback` with the `genai-task` header value and `rating: "up"` or `"down"`.

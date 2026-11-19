@@ -3,6 +3,7 @@ import {
   Button,
   Dialog,
   Heading,
+  Link,
   Paragraph,
   Tabs,
   TabsList,
@@ -51,8 +52,10 @@ import {
   autoPublicName,
   examplesOf,
   flowOf,
+  guardOn,
   renameService,
   riskConfirmationFor,
+  toolRefsOf,
   variantsOf,
   withExamples,
   withPublicName,
@@ -69,9 +72,37 @@ import { ImproveInstructions } from './assistant/ImproveInstructions';
 import { SuggestedTests } from './assistant/SuggestedTests';
 import { proposalKey, useAssistant, type TurnEntry } from './assistant/useAssistant';
 import type { InputOptionLookup } from './InputFormEditor';
-import { modelWord, SetupTab, type SectionId } from './SetupTab';
+import {
+  areaSummaries,
+  datasetName,
+  modelWord,
+  riskConfirmedFor,
+  riskNeedsConfirming,
+  SetupTab,
+  withPromptFiles,
+  type SectionId,
+} from './SetupTab';
+import { TryPane } from './setup-try-pane';
+import { DraftBar, savedByOf, saverOf, type SaveState, type SavedBy } from './DraftBar';
+import { DiscardDialog } from './DiscardDialog';
+import { PublishDiff, type ModelFacts, type TestWarning } from './PublishDiff';
+import { SetupLayout, type AreaFact, type SidePane } from './setup-layout';
+import { areaLabelKeys, changeLabel, changeText, type ChangeNames } from './setup-change-text';
+import { draftChecks } from './setup-checks';
+import {
+  advancedAreas,
+  areaOfPath,
+  draftChanges as diffDraft,
+  setupAreas,
+  type SetupArea,
+} from './setup-diff';
 import { initialTestState, scoreText, testKind, type TestState } from './testState';
-import { latestRunFact, type DraftConflict, type ServiceDraft } from '../../api/quality';
+import {
+  latestRunFact,
+  type DraftConflict,
+  type OpenedDraft,
+  type ServiceDraft,
+} from '../../api/quality';
 import { setAt } from '../../definition-path';
 import { checkFlowInputs } from '../../data/flow-inputs';
 import { hasOperationSteps, operationKindsIn } from '../../data/step-operations';
@@ -89,19 +120,37 @@ import { LogSection } from '../service/LogSection';
 import { OverviewSection } from '../service/OverviewSection';
 import { QualitySection } from '../service/QualitySection';
 import { BatchSection } from '../batch/BatchSection';
-import { availableSections, servicePath, type ServiceSection } from '../service/sections';
+import {
+  availableSections,
+  servicePath,
+  subSections,
+  tabOf,
+  type ServiceSection,
+} from '../service/sections';
 import { ServiceHeader } from '../service/ServiceHeader';
-import { ServiceLifecycle } from '../service/ServiceLifecycle';
-import { ServiceNav } from '../service/ServiceNav';
+import { ArchivedBanner, ServiceLifecycle } from '../service/ServiceLifecycle';
+import { lifecycleChanged, useServiceLifecycle } from '../service/lifecycle';
+import { useDraftChanges } from '../service/draft-events';
+import { ServiceNav, ServiceSubNav } from '../service/ServiceNav';
 import { SettingsSection } from '../service/SettingsSection';
 import { StrategyPanel } from '../service/StrategyPanel';
 import { Versions } from '../service/Versions';
 import { problemErrors } from '../service/definition';
 import { describeProblem, publishDraft, type PublishProblem } from '../service/publish';
 import { VersionsSection } from '../service/VersionsSection';
+import { EnvironmentsSection } from '../service/EnvironmentsSection';
 import { LanguageInstructionTabs } from './LanguageInstructionTabs';
 import { InterfaceTab } from './blocks/InterfaceTab';
 import { TryViewKeeper } from './blocks/TryViewKeeper';
+import { UnmaskedInputConsent } from './UnmaskedInputConsent';
+import {
+  isUnmaskedReasonGiven,
+  mediaKind,
+  refusedUnmaskedInput,
+  unmaskedTypes,
+  withUnmaskedInput,
+} from '../../data/unmasked-input';
+import type { UnmaskedInputUse } from '../../types';
 import '../service/service.css';
 
 const setupSections: SectionId[] = [
@@ -127,6 +176,7 @@ export interface BuilderInit {
   files?: Record<string, string>;
   draftRevision?: number;
   rebasedTo?: number;
+  opened?: OpenedDraft | null;
   autoSend?: string;
 }
 
@@ -138,6 +188,28 @@ interface AssistedChange {
 }
 
 const draftDelayMs = 600;
+
+const areaOfSection: Partial<Record<string, SetupArea>> = {
+  purpose: 'purpose',
+  io: 'input',
+  instructions: 'purpose',
+  knowledge: 'sources',
+  tools: 'tools',
+  how: 'how',
+  model: 'model',
+  variants: 'variants',
+  guards: 'guards',
+  start: 'channels',
+};
+
+const areaOf = (detail: string | undefined): SetupArea | undefined =>
+  detail && (setupAreas as string[]).includes(detail)
+    ? (detail as SetupArea)
+    : detail
+      ? areaOfSection[detail]
+      : undefined;
+
+export const newDraftId = () => `utkast-${crypto.randomUUID().slice(0, 8)}`;
 
 const isAssistantState = (v: string | null): v is AssistantState =>
   !!v && (assistantStates as readonly string[]).includes(v);
@@ -226,6 +298,8 @@ export const newServiceInit = (
   };
 };
 
+const archivedSections: ServiceSection[] = ['overview', 'quality', 'versions', 'log'];
+
 export const Builder = ({
   api,
   tenant,
@@ -233,7 +307,7 @@ export const Builder = ({
   live = false,
   init,
   route,
-  section,
+  section: routeSection,
   detail,
   pane: initialPane,
   openPublish,
@@ -257,10 +331,13 @@ export const Builder = ({
   const [datasetOptions] = useAsync(
     async (signal) =>
       live
-        ? (await api.catalog(tenant, 'dataset', signal)).map((d) => ({
-            id: d.id,
-            name: typeof d.spec.name === 'string' && d.spec.name ? d.spec.name : d.id,
-            shared: d.scope !== tenant,
+        ? (await api.datasets.list(tenant, signal)).map((d) => ({
+            id: d.fullId,
+            name: d.name || d.id,
+            shared: (d.owner?.tenant ?? d.scope) !== tenant,
+            documents: d.documents,
+            updatedAt: d.updatedAt ?? null,
+            ...(d.owner ? { owner: d.owner } : {}),
           }))
         : [],
     [api, tenant, live],
@@ -305,7 +382,11 @@ export const Builder = ({
   const [adding, setAdding] = useState<{ key: string; blocks: readonly string[] }>();
   const clearAdding = useCallback(() => setAdding(undefined), []);
   const rights = useRights();
-  const readOnly = !rights.has('manage-services');
+  const lifecycle = useServiceLifecycle(api, tenant, id, !isNew);
+  const reloadLifecycle = () => lifecycleChanged(tenant, id);
+  const archived = lifecycle?.state === 'archived';
+  const section = archived && !archivedSections.includes(routeSection) ? 'overview' : routeSection;
+  const readOnly = !rights.has('manage-services') || archived;
   const readOnlyRef = useRef(readOnly);
   readOnlyRef.current = readOnly;
   const [done, setDone] = useState<Record<string, boolean>>({});
@@ -342,12 +423,37 @@ export const Builder = ({
       : t('services.scoreNotRun')
     : scoreText(test.batch.snap);
   const [prohibited, setProhibited] = useState<Record<number, boolean>>({});
-  const riskConfirmed = !!service.spec.riskConfirmation;
+  const riskConfirmed = riskConfirmedFor(service.spec);
+  const riskOpen = riskNeedsConfirming(service.spec);
   const [versions, setVersions] = useState(init.versions);
   const [published, setPublished] = useState<Record<string, boolean>>({});
   const [flash, setFlash] = useState('');
   const [publish, setPublish] = useState<'test' | 'prod' | null>(openPublish ? 'prod' : null);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const [saveState, setSaveState] = useState<SaveState>('idle');
+  const [savedAt, setSavedAt] = useState<string | undefined>(
+    init.draftRevision ? init.opened?.at : undefined,
+  );
+  const [savedBy, setSavedBy] = useState<SavedBy | undefined>(
+    init.draftRevision && init.opened ? savedByOf(init.opened) : undefined,
+  );
+  const selfActor = useRef<string | undefined>(undefined);
+  const self = { actor: selfActor.current, name: userName };
+  const [failedAt, setFailedAt] = useState<string>();
+  const [conflictDraft, setConflictDraft] = useState<ServiceDraft>();
+  const [discarding, setDiscarding] = useState(false);
+  const [discardedTo, setDiscardedTo] = useState<number>();
+  const discardTrigger = useRef<HTMLElement | null>(null);
+  const discardedAlert = useRef<HTMLDivElement>(null);
+  const wasDiscarding = useRef(false);
+  const discardedNow = useRef(false);
+  const [baseline, setBaseline] = useState<{
+    version: number;
+    definition: Record<string, unknown>;
+    files?: Record<string, string>;
+  }>();
+  const [setupArea, setSetupArea] = useState<SetupArea>(() => areaOf(detail) ?? 'purpose');
+  const [sidePane, setSidePane] = useState<SidePane>('assistant');
 
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
   const later = (fn: () => void, ms: number) => {
@@ -357,11 +463,20 @@ export const Builder = ({
   const change = useCallback((next: (d: ServiceDefinition) => ServiceDefinition) => {
     if (readOnlyRef.current) return;
     unsaved.current = true;
+    setSaveState('unsaved');
     editsRef.current += 1;
     setEdits(editsRef.current);
     setService(next);
   }, []);
   const patch = useCallback((edit: SpecEdit) => change((d) => applySpec(d, edit)), [change]);
+  const editFile = useCallback((path: string, text: string) => {
+    if (readOnlyRef.current) return;
+    unsaved.current = true;
+    setSaveState('unsaved');
+    editsRef.current += 1;
+    setEdits(editsRef.current);
+    setFiles((current) => ({ ...current, [path]: text }));
+  }, []);
   const replaceWith = (next: ServiceDefinition) =>
     change((d) => renamed({ ...d, spec: next.spec }, next.metadata.name ?? ''));
   const keepRevision = (revision: number) => {
@@ -404,6 +519,33 @@ export const Builder = ({
     if (!detail) window.scrollTo?.(0, 0);
   }, [section, detail]);
 
+  useEffect(() => setDiscardedTo(undefined), [section]);
+
+  useEffect(() => {
+    if (discarding) {
+      wasDiscarding.current = true;
+      return;
+    }
+    if (!wasDiscarding.current) return;
+    wasDiscarding.current = false;
+    const target = discardedNow.current ? discardedAlert.current : discardTrigger.current;
+    discardedNow.current = false;
+    if (target?.isConnected) target.focus();
+  }, [discarding, discardedTo]);
+
+  const addressed = route.segments[2];
+  const unshownArea =
+    isNew &&
+    section === 'setup' &&
+    !!detail &&
+    (setupAreas as string[]).includes(detail) &&
+    !Object.values(areaOfSection).includes(detail as SetupArea);
+  useEffect(() => {
+    if (!addressed || (addressed === section && !unshownArea)) return;
+    const alias = section === routeSection && detail && !unshownArea ? `/${detail}` : '';
+    window.location.replace(`#${servicePath(routeId, section, alias)}`);
+  }, [addressed, section, routeSection, routeId, detail, unshownArea]);
+
   useEffect(() => {
     const target: SectionId | undefined =
       section === 'channels'
@@ -432,6 +574,7 @@ export const Builder = ({
     }
     go('setup');
     const section = c.section as SectionId;
+    setSetupArea(areaOfSection[section] ?? 'purpose');
     setOpen((o) => ({ ...o, [section]: true }));
     setHighlight(section);
     later(() => {
@@ -542,39 +685,47 @@ export const Builder = ({
     }, 700);
   };
 
+  const draftChanges = useDraftChanges(tenant, id);
+  const firstOpen = useRef({ changes: draftChanges, draft: init.opened });
   const [remote] = useAsync(
     async (signal) => {
       if (!serverDraft || isNew) return undefined;
-      const keep = unsaved.current;
-      const [draft, opened, definition] = await Promise.all([
-        keep ? api.quality.draft(tenant, id, signal) : undefined,
-        keep ? undefined : api.quality.openDraft(tenant, id, tRef.current('services.rebaseReason')),
-        api.getDefinition(tenant, 'Service', id, signal),
+      const reload = unsaved.current || firstOpen.current.changes !== draftChanges;
+      const reused = firstOpen.current.draft;
+      const [draft, opened] = await Promise.all([
+        reload ? api.quality.draft(tenant, id, signal) : undefined,
+        reload || reused === null
+          ? undefined
+          : (reused ?? api.quality.openDraft(tenant, id, tRef.current('services.rebaseReason'))),
       ]);
       if (opened?.behind && readOnlyRef.current)
-        return { draft: undefined, latest: definition.latest, conflicts: [] as DraftConflict[] };
+        return { draft: undefined, conflicts: [] as DraftConflict[] };
       if (opened?.rebasedFrom !== undefined)
         return {
           draft: opened,
-          latest: definition.latest,
           conflicts: [] as DraftConflict[],
-          rebasedTo: opened.latestVersion ?? definition.latest.version,
+          rebasedTo: opened.latestVersion ?? undefined,
         };
-      return {
-        draft: draft ?? opened,
-        latest: definition.latest,
-        conflicts: opened?.conflicts ?? [],
-      };
+      return { draft: draft ?? opened, conflicts: opened?.conflicts ?? [] };
     },
-    [api, tenant, id, serverDraft, section],
+    [api, tenant, id, serverDraft, draftChanges],
+    { keepPreviousFor: id },
+  );
+  const [publishedLatest] = useAsync(
+    async (signal) =>
+      serverDraft && !isNew
+        ? (await api.getDefinition(tenant, 'Service', id, signal)).latest
+        : undefined,
+    [api, tenant, id, serverDraft],
+    { keepPreviousFor: id },
   );
   const remoteDraft = remote.status === 'ready' ? remote.data?.draft : undefined;
-  const remoteLatest = remote.status === 'ready' ? remote.data?.latest : undefined;
+  const remoteLatest = publishedLatest.status === 'ready' ? publishedLatest.data : undefined;
   const openConflicts = remote.status === 'ready' ? remote.data?.conflicts : undefined;
   const [rebasedNotice, setRebasedNotice] = useState(init.rebasedTo);
   const rebasedTo =
     remote.status === 'ready' && remote.data && 'rebasedTo' in remote.data
-      ? remote.data.rebasedTo
+      ? (remote.data.rebasedTo ?? remoteLatest?.version)
       : undefined;
   useEffect(() => {
     if (rebasedTo !== undefined) setRebasedNotice(rebasedTo);
@@ -605,7 +756,7 @@ export const Builder = ({
   );
   const rename = (name: string) => change((d) => renameService(d, name, current > 0));
   const confirmRisk = (risk: RiskClass | undefined) =>
-    setService((d) =>
+    change((d) =>
       applySpec(d, {
         riskConfirmation: risk
           ? riskConfirmationFor(risk, riskReasons(high), new Date())
@@ -678,6 +829,7 @@ export const Builder = ({
   const saveDraft = async (): Promise<void> => {
     if (!serverDraft || !unsaved.current || draftBlocked.current || saving.current) return;
     saving.current = true;
+    setSaveState('saving');
     const tick = editsRef.current;
     const first = isNew && revisionRef.current === 0;
     try {
@@ -692,18 +844,27 @@ export const Builder = ({
         tRef.current('services.draftSavedReason'),
       );
       keepRevision(saved.revision);
+      setSavedAt(saved.at);
+      if (saved.by) selfActor.current = saved.by;
+      setSavedBy(savedByOf(saved));
       if (first)
         window.location.replace(
           window.location.hash.replace(/^#\/services\/new\b/, `#${servicePath(id)}`),
         );
       if (editsRef.current === tick) unsaved.current = false;
+      setSaveState(unsaved.current ? 'unsaved' : 'idle');
     } catch (error) {
       draftBlocked.current = error instanceof ApiError && error.status === 409;
-      setFlash(
-        draftBlocked.current
-          ? tRef.current('services.draftChangedElsewhere')
-          : tRef.current('services.draftSaveFailed'),
-      );
+      setSaveState(draftBlocked.current ? 'conflict' : 'failed');
+      if (draftBlocked.current && !isNew)
+        void api.quality.draft(tenant, id).then(setConflictDraft, () => undefined);
+      setFailedAt(f.time(new Date()));
+      if (isNew)
+        setFlash(
+          draftBlocked.current
+            ? tRef.current('services.draftChangedElsewhere')
+            : tRef.current('services.draftSaveFailed'),
+        );
       return;
     } finally {
       saving.current = false;
@@ -720,9 +881,64 @@ export const Builder = ({
   useEffect(() => {
     if (!remoteDraft || remoteDraft.revision === revisionRef.current || unsaved.current) return;
     keepRevision(remoteDraft.revision);
+    setSavedAt(remoteDraft.at);
+    setSavedBy(savedByOf(remoteDraft));
     setService(asServiceDefinition(remoteDraft.definition));
     setFiles(remoteDraft.files);
   }, [remoteDraft]);
+
+  const draftBar = serverDraft && !isNew;
+  const liveVersion = baseline ?? remoteLatest;
+  const fileKey = JSON.stringify([
+    service.spec.input.accepts,
+    service.spec.knowledge?.runtimeDocuments === true,
+  ]);
+  const onInputArea = setupArea === 'input';
+  const [fileInput] = useAsync(
+    async () =>
+      live && draftBar && onInputArea
+        ? api.draftFileInput(tenant, definitionRef.current)
+        : undefined,
+    [api, tenant, live, draftBar, onInputArea, fileKey],
+  );
+  const publishedDefinition = useMemo(
+    () => (liveVersion ? asServiceDefinition(liveVersion.definition) : undefined),
+    [liveVersion],
+  );
+  const changeList = useMemo(
+    () =>
+      publishedDefinition
+        ? diffDraft(
+            withPromptFiles(publishedDefinition, liveVersion?.files ?? {}),
+            withPromptFiles(service, files),
+          )
+        : [],
+    [publishedDefinition, service, liveVersion, files],
+  );
+  const hasDraft = draftRevision > 0 || changeList.length > 0;
+  const [checks, retryChecks] = useAsync(
+    (signal) =>
+      draftBar && draftRevision > 0 ? draftChecks(api, tenant, id, signal) : Promise.resolve(null),
+    [api, tenant, id, draftBar, draftRevision],
+  );
+  const checkProblems = checks.status === 'ready' && checks.data ? checks.data.problems : [];
+
+  useEffect(() => {
+    if (!draftBar || (saveState !== 'unsaved' && saveState !== 'saving' && saveState !== 'failed'))
+      return;
+    const warn = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [draftBar, saveState]);
+
+  useEffect(() => {
+    if (draftBar && openPublish) go('setup', '/publish');
+  }, []);
+
+  useEffect(() => {
+    const area = section === 'setup' ? areaOf(detail) : undefined;
+    if (area) setSetupArea(area);
+  }, [section, detail]);
 
   const applyProposal = (entry: TurnEntry, proposal: AssistantProposal) => {
     if (proposal.kind === 'interface' && proposal.blocks?.length) {
@@ -906,11 +1122,19 @@ export const Builder = ({
     await resolveConflicts(picks, conflicts);
   };
   const [check, setCheck] = useState<
-    { status: 'checking' } | { status: 'done'; errors: PublishProblem[] } | undefined
+    | { status: 'checking' }
+    | { status: 'done'; errors: PublishProblem[]; unmasked: UnmaskedInputUse[] }
+    | undefined
   >();
+  const [unmaskedReasons, setUnmaskedReasons] = useState<Record<string, string>>({});
+  const [unmaskedRefused, setUnmaskedRefused] = useState<{
+    uses: UnmaskedInputUse[];
+    messages: Record<string, string>;
+  }>({ uses: [], messages: {} });
   useEffect(() => {
     if (!publish) {
       setCheck(undefined);
+      setUnmaskedRefused({ uses: [], messages: {} });
       return;
     }
     let active = true;
@@ -919,15 +1143,42 @@ export const Builder = ({
       .completeDefinition(definitionRef.current)
       .then((completed) => api.validate(completed, filesRef.current))
       .then(
-        (result) => active && setCheck({ status: 'done', errors: result.errors }),
+        (result) => {
+          if (!active) return;
+          const unmasked = result.unmaskedInput ?? [];
+          setUnmaskedReasons((given) => ({
+            ...Object.fromEntries(
+              unmasked.flatMap((u) => (u.consent ? [[u.mediaType, u.consent.reason]] : [])),
+            ),
+            ...given,
+          }));
+          setCheck({ status: 'done', errors: result.errors, unmasked });
+        },
         (error: unknown) =>
-          active && setCheck({ status: 'done', errors: problemErrors(error, tRef.current) }),
+          active &&
+          setCheck({
+            status: 'done',
+            errors: problemErrors(error, tRef.current),
+            unmasked: [],
+          }),
       );
     return () => {
       active = false;
     };
   }, [publish]);
   const validationErrors = check?.status === 'done' ? check.errors : [];
+  const unmaskedUses = [
+    ...(check?.status === 'done' ? check.unmasked : []),
+    ...unmaskedRefused.uses,
+  ];
+  const unmaskedTypeList = unmaskedTypes(unmaskedUses);
+  const unmaskedMissing = unmaskedTypeList.filter(
+    (m) => !isUnmaskedReasonGiven(unmaskedReasons[m]),
+  ).length;
+  const publishable = withUnmaskedInput(
+    definition,
+    Object.fromEntries(unmaskedTypeList.map((m) => [m, unmaskedReasons[m] ?? ''])),
+  );
   const invalid = validationErrors.length > 0;
   const blockedBy =
     check?.status === 'checking'
@@ -967,16 +1218,30 @@ export const Builder = ({
 
   const doPublish = async ({ reason }: PublishInput) => {
     setProblems(undefined);
+    setUnmaskedRefused({ uses: [], messages: {} });
     draftBlocked.current = true;
     const outcome = await publishDraft(
       api,
-      definition,
+      publishable,
       files,
       reason,
       serverDraft && revisionRef.current > 0 ? revisionRef.current : undefined,
     );
     if (!outcome.ok) {
       draftBlocked.current = false;
+      const refused = refusedUnmaskedInput(outcome.errors);
+      setUnmaskedRefused({
+        uses: refused,
+        messages: Object.fromEntries(
+          refused.map((u) => [
+            u.mediaType,
+            tRef.current('unmaskedInput.refused', {
+              kind: mediaKind(tRef.current, u.mediaType),
+              mediaType: u.mediaType,
+            }),
+          ]),
+        ),
+      });
       setProblems(outcome);
       throw new Error(outcome.errors[0]?.message ?? tRef.current('services.publishFailed'));
     }
@@ -990,6 +1255,18 @@ export const Builder = ({
       if (cleared) keepRevision(0);
     }
     const result = outcome.published;
+    if (draftBar && result.definition) {
+      setBaseline({
+        version: result.version,
+        definition: result.definition,
+        ...(result.files ? { files: result.files } : {}),
+      });
+      setService(asServiceDefinition(result.definition));
+      setSaveState('idle');
+      setSavedAt(undefined);
+      setSavedBy(undefined);
+      setDiscardedTo(undefined);
+    }
     record(
       result.version,
       'prod',
@@ -997,6 +1274,37 @@ export const Builder = ({
       reason,
     );
     if (isNew && serverDraft) window.location.replace(`#${servicePath(result.id)}`);
+  };
+
+  const copyService = async () => {
+    const source = service.metadata.name || id;
+    const copyName = tRef.current('serviceLifecycle.copyName', { name: source });
+    const copyId = newDraftId();
+    const copy = applySpec(renamed(service, copyName), (d) =>
+      withPublicName(d.spec, autoPublicName(copyName)),
+    );
+    setFlash(tRef.current('serviceLifecycle.copying'));
+    try {
+      await api.quality.saveDraft(
+        tenant,
+        copyId,
+        {
+          definition: forTenant(copy, {
+            tenant,
+            id: slug(copyName),
+            version: 1,
+          }) as unknown as Record<string, unknown>,
+          files,
+          revision: 0,
+        },
+        tRef.current('serviceLifecycle.copyReason', { name: source }),
+      );
+    } catch {
+      setFlash(tRef.current('serviceLifecycle.copyFailed'));
+      return;
+    }
+    setFlash('');
+    navigate(servicePath(copyId, 'setup'));
   };
 
   const deleteDraft = async () => {
@@ -1016,6 +1324,38 @@ export const Builder = ({
     }
     unsaved.current = false;
     window.location.replace('#/services');
+  };
+
+  const discardDraft = async () => {
+    if (!liveVersion) return;
+    draftBlocked.current = true;
+    try {
+      await api.quality.deleteDraft(
+        tenant,
+        id,
+        revisionRef.current,
+        tRef.current('serviceDraft.discardReason'),
+      );
+    } catch (error) {
+      draftBlocked.current = false;
+      throw new Error(
+        error instanceof ApiError && error.status === 409
+          ? tRef.current('serviceDraft.discardChangedElsewhere')
+          : tRef.current('serviceDraft.discardFailed'),
+        { cause: error },
+      );
+    }
+    unsaved.current = false;
+    draftBlocked.current = false;
+    keepRevision(0);
+    setService(asServiceDefinition(liveVersion.definition));
+    setFiles(liveVersion.files ?? {});
+    setSaveState('idle');
+    setSavedAt(undefined);
+    setSavedBy(undefined);
+    discardedNow.current = true;
+    setDiscarding(false);
+    setDiscardedTo(liveVersion.version);
   };
 
   const doPublishToTest = ({ reason }: PublishInput) => {
@@ -1039,12 +1379,113 @@ export const Builder = ({
   const suggestions =
     testKind(id, service) === 'fields'
       ? [t('services.suggestCost'), t('services.suggestRerun'), t('services.suggestPrivacy')]
-      : [t('services.suggestCost'), t('services.suggestShorter'), t('services.suggestTest')];
+      : [t('services.suggestCost'), t('services.suggestShorter')];
   const name = service.metadata.name || t('services.newServiceName');
-  const sections = availableSections({ isNew });
-  const withAssistant = !readOnly && (section === 'setup' || section === 'test');
+  const sections = archived
+    ? availableSections({ isNew }).filter((s) => archivedSections.includes(s))
+    : availableSections({ isNew });
+  const withAssistant = !readOnly && ((section === 'setup' && isNew) || section === 'test');
+  const datasetNames =
+    datasetOptions.status === 'ready'
+      ? new Map(datasetOptions.data.map((x) => [x.id, x.name] as const))
+      : undefined;
+  const changeNames: ChangeNames = {
+    dataset: (ref) => datasetName(ref, datasetNames),
+    model: (mid) =>
+      modelCatalog?.find((m) => m.id === mid)?.name ?? modelFor(mid, undefined, live).name,
+    tool: (ref) =>
+      (toolOptions.status === 'ready'
+        ? toolOptions.data.find((o) => o.ref === ref)?.name
+        : undefined) ?? ref,
+  };
+  const modelFacts = (mid: string): ModelFacts => {
+    const found =
+      operationCatalog.status === 'ready'
+        ? operationCatalog.data.find((m) => m.id === mid)
+        : undefined;
+    return { name: changeNames.model(mid), residency: found?.residency, price: found?.price };
+  };
+  const publishedVersion = liveVersion?.version ?? current;
+  const riskChecked = live && checkProblems.some((p) => areaOfPath(p.path) === 'risk');
+  const riskProblem = riskOpen && !riskChecked ? t('serviceDraft.missingRisk') : undefined;
+  const areaProblems = new Map<SetupArea, string[]>();
+  for (const p of live ? checkProblems : []) {
+    const area = areaOfPath(p.path);
+    if (area)
+      areaProblems.set(area, [...(areaProblems.get(area) ?? []), describeProblem(p, t).message]);
+  }
+  if (riskProblem) areaProblems.set('risk', [...(areaProblems.get('risk') ?? []), riskProblem]);
+  const missingAreas = new Set(areaProblems.keys());
+  const changedAreas = new Set<string>(changeList.map((c) => c.area));
+  const areaSummary = areaSummaries(t, service, modelCatalog, datasetNames);
+  const optionalArea = (area: SetupArea) =>
+    area === 'tools'
+      ? toolRefsOf(service.spec).length === 0 && !service.spec.skills?.length
+      : area === 'variants'
+        ? variantsOf(service.spec).length <= 1
+        : area === 'limits'
+          ? Object.keys(service.spec.settings ?? {}).length === 0
+          : false;
+  const areaFacts = Object.fromEntries(
+    setupAreas.map((area): [SetupArea, AreaFact] => [
+      area,
+      {
+        status: missingAreas.has(area)
+          ? 'missing'
+          : changedAreas.has(area)
+            ? 'changed'
+            : advancedAreas.includes(area) && optionalArea(area)
+              ? 'optional'
+              : 'done',
+        summary: areaSummary[area],
+        problems: areaProblems.get(area) ?? [],
+        fromAssistant: Object.keys(fromAi).some((key) => areaOfSection[key] === area),
+      },
+    ]),
+  ) as Record<SetupArea, AreaFact>;
+  const modelChange = changeList.find((c) => c.topic === 'model');
+  const publishHref = `#${servicePath(routeId, 'setup', '/publish')}`;
+  const playgroundHref = isNew
+    ? `#${servicePath(routeId, 'test')}`
+    : `#/playground?service=${encodeURIComponent(id)}`;
+  const publishPage = draftBar && canPublish && section === 'setup' && detail === 'publish';
+  const draftRuns =
+    evalRuns.status === 'ready' && Array.isArray(evalRuns.data)
+      ? evalRuns.data.filter(
+          (r) => r.version === 'draft' && draftRevision > 0 && r.draftRevision === draftRevision,
+        )
+      : [];
+  const testWarning: TestWarning =
+    hasTestSet && changeList.length && draftRuns.length === 0
+      ? modelChange
+        ? 'model'
+        : 'draft'
+      : undefined;
+  const missingCount = checkProblems.length + (riskProblem ? 1 : 0);
+  const onlyProblem = checkProblems[0];
+  const onlyArea = onlyProblem ? areaOfPath(onlyProblem.path) : undefined;
+  const missingText =
+    missingCount === 0
+      ? ''
+      : missingCount > 1
+        ? t('serviceDraft.missingMany', { count: missingCount })
+        : riskProblem
+          ? riskProblem
+          : t('serviceDraft.missingOne', {
+              section: onlyArea
+                ? t(areaLabelKeys[onlyArea])
+                : onlyProblem
+                  ? describeProblem(onlyProblem, t).section
+                  : '',
+            });
+
+  useEffect(() => {
+    if (!draftBar) return;
+    setPublish(publishPage ? 'prod' : null);
+    if (publishPage) void saveDraft();
+  }, [draftBar, publishPage]);
   const screenProps = { api, tenant, tenantName, route, live };
-  const versionsView = route.query.get('view') === 'yaml' ? 'yaml' : 'history';
+  const versionsView = section === 'definition' ? 'yaml' : 'history';
   const latest = versions[0];
   const shown =
     remoteLatest && remoteLatest.version > (latest?.n ?? 0)
@@ -1053,24 +1494,49 @@ export const Builder = ({
           when: remoteLatest.publishedAt ? formatDateTime(remoteLatest.publishedAt, f) : '',
         }
       : latest;
+  const status: ServiceStatus = archived
+    ? 'Arkivert'
+    : lifecycle?.state === 'paused'
+      ? 'Satt på pause'
+      : init.status === 'Utkast' && versions.some((v) => v.state === 'I bruk')
+        ? 'I bruk'
+        : init.status === 'Utkast' && versions.some((v) => v.state === 'I test')
+          ? 'I test'
+          : init.status;
   const meta = live
     ? shown
-      ? [
-          shown.when
-            ? t('services.metaPublishedAt', { n: shown.n, when: shown.when })
-            : t('services.metaVersion', { n: shown.n }),
-          ...(draftRevision > 0 ? [t('services.metaUnpublishedDraft')] : []),
-        ].join(' · ')
+      ? ''
       : t(serverDraft ? 'services.metaNotPublishedAuto' : 'services.metaNotPublished')
     : latest
       ? t('services.metaDraftBased', { n: latest.n })
       : t('services.metaNotPublishedAuto');
 
-  const setup = (only: SectionId[]) => (
+  const setup = (only: SectionId[], area?: SetupArea) => (
     <SetupTab
+      area={area}
+      {...(readOnly
+        ? {}
+        : {
+            ask: (question: string) => {
+              setSidePane('assistant');
+              send(question);
+            },
+          })}
+      modelNote={
+        modelChange && liveVersion ? (
+          <Paragraph data-size="sm" className="meta">
+            {t('setupList.modelChanged', {
+              n: liveVersion.version,
+              model: changeNames.model(modelChange.before ?? ''),
+            })}
+          </Paragraph>
+        ) : null
+      }
       serviceId={id}
       definition={service}
       patch={patch}
+      files={files}
+      onFile={editFile}
       onRename={rename}
       open={open}
       onToggle={(sid) => setOpen((o) => ({ ...o, [sid]: !o[sid] }))}
@@ -1088,6 +1554,8 @@ export const Builder = ({
       {...(live ? { live: { datasets: datasetOptions, tools: toolOptions } } : {})}
       sections={only}
       readOnly={readOnly}
+      inUse={publishedDefinition}
+      fileInput={fileInput}
       {...(frontends ? { frontends } : {})}
       inputLockedIds={publishedFieldIds}
       inputLookup={inputLookup}
@@ -1095,8 +1563,17 @@ export const Builder = ({
       flowCheck={flowCheck}
       operationModels={operationModels}
       api={api}
-      strategy={<StrategyPanel api={api} tenant={tenant} definition={service} patch={patch} />}
+      strategy={
+        <StrategyPanel
+          api={api}
+          tenant={tenant}
+          definition={service}
+          patch={patch}
+          {...(isNew ? {} : { service: id })}
+        />
+      }
       instructionsAssist={improveSlot}
+      assistantOff={assistantOff}
       {...(service.spec.strategy.id === 'remote-agent'
         ? {}
         : {
@@ -1138,6 +1615,30 @@ export const Builder = ({
     />
   );
 
+  const sideAssistantPanel = (
+    <AssistantPanel
+      side
+      messages={messages}
+      cardFor={cardFor}
+      undone={undone}
+      done={done}
+      applied={Object.fromEntries(Object.keys(assisted).map((k) => [k, true]))}
+      typing={typing}
+      composer={composer}
+      suggestions={[]}
+      userName={userName}
+      tenantName={tenantName}
+      assistant={assistant}
+      canApprove={canApprove}
+      onDecide={decide}
+      onComposer={setComposer}
+      onSend={send}
+      onShow={showCard}
+      onUndo={toggleUndo}
+      onAction={action}
+    />
+  );
+
   const body = (() => {
     if (section === 'overview')
       return (
@@ -1147,6 +1648,8 @@ export const Builder = ({
           id={id}
           definition={service}
           versions={versions}
+          tenantName={tenantName}
+          {...(remoteLatest ? { published: remoteLatest } : {})}
         />
       );
     if (section === 'test')
@@ -1191,17 +1694,27 @@ export const Builder = ({
                 service={id}
                 publicName={variantsOf(service.spec)[0]?.publicName ?? ''}
                 onFrontends={setFrontends}
+                frontend={detail}
+                listHref={`#${servicePath(routeId, 'channels')}`}
               />
             )
           }
           modes={
-            <VariantsList
-              service={serviceId}
-              publicName={variantsOf(service.spec)[0]?.publicName ?? ''}
-              variants={variantsOf(service.spec)}
-            />
+            detail ? null : isNew ? (
+              <VariantsList
+                service={serviceId}
+                publicName={variantsOf(service.spec)[0]?.publicName ?? ''}
+                variants={variantsOf(service.spec)}
+              />
+            ) : (
+              <Paragraph data-size="sm">
+                <Link href={`#${servicePath(routeId, 'setup', '/channels')}`}>
+                  {t('serviceDev.channelsInSetup')}
+                </Link>
+              </Paragraph>
+            )
           }
-          editor={setup(['start'])}
+          editor={isNew ? setup(['start']) : null}
         />
       );
     if (section === 'interface')
@@ -1227,21 +1740,14 @@ export const Builder = ({
     if (section === 'batch')
       return <BatchSection api={api} tenant={tenant} id={id} runId={detail} />;
     if (section === 'log')
-      return (
-        <LogSection
-          api={api}
-          tenant={tenant}
-          tenantName={tenantName}
-          id={id}
-          runId={detail}
-          live={live}
-        />
-      );
-    if (section === 'versions')
-      return live && !isNew ? (
+      return <LogSection api={api} tenant={tenant} id={id} runId={detail} live={live} />;
+    if (section === 'environments')
+      return <EnvironmentsSection api={api} tenant={tenant} serviceId={id} />;
+    if (section === 'versions' || section === 'definition')
+      return !isNew ? (
         <VersionsSection
           view={versionsView}
-          onView={(v) => go('versions', v === 'yaml' ? '?view=yaml' : '')}
+          onView={(v) => go(v === 'yaml' ? 'definition' : 'versions')}
           showHistory
           history={
             <Versions
@@ -1263,7 +1769,7 @@ export const Builder = ({
       ) : (
         <VersionsSection
           view={versionsView}
-          onView={(v) => go('versions', v === 'yaml' ? '?view=yaml' : '')}
+          onView={(v) => go(v === 'yaml' ? 'definition' : 'versions')}
           showHistory={!isNew}
           history={<VersionsTab versions={versions} changes={changes} onRollback={rollback} />}
           yaml={
@@ -1275,35 +1781,188 @@ export const Builder = ({
           }
         />
       );
-    return <div className="stack-sm">{setup(setupSections)}</div>;
+    if (!isNew)
+      return (
+        <SetupLayout
+          current={setupArea}
+          onPick={setSetupArea}
+          facts={areaFacts}
+          {...(readOnly ? {} : { assistant: sideAssistantPanel })}
+          tryPane={
+            <TryPane
+              api={api}
+              tenant={tenant}
+              serviceId={serviceId}
+              draft={definition}
+              model={service.spec.model.primary}
+              datasets={(service.spec.knowledge?.datasets ?? []).map((d) => d.dataset)}
+              files={files}
+              version={publishedVersion}
+              playgroundHref={playgroundHref}
+            />
+          }
+          pane={sidePane}
+          onPane={setSidePane}
+        >
+          {setupArea === 'limits' ? (
+            <SettingsSection
+              {...screenProps}
+              id={id}
+              readOnly={readOnly}
+              limits={{
+                logMasked: guardOn(service.spec, 'pii-out-of-log'),
+                own: service.spec.settings ?? {},
+                onLogging: () => setSetupArea('guards'),
+              }}
+            />
+          ) : (
+            setup(setupSections, setupArea)
+          )}
+        </SetupLayout>
+      );
+    return (
+      <div className="stack-sm">
+        {setup(setupSections)}
+        {isNew ? (
+          <Paragraph data-size="sm" className="meta">
+            {t('service.draftNote')}
+          </Paragraph>
+        ) : sections.includes('settings') ? (
+          <Paragraph data-size="sm">
+            <Link href={`#${servicePath(routeId, 'settings')}`}>{t('service.settingsLink')}</Link>
+          </Paragraph>
+        ) : null}
+      </div>
+    );
   })();
 
-  const content = <div className={`service-body service-${section}`}>{body}</div>;
+  const subNav = (
+    <ServiceSubNav id={routeId} sections={sections} current={section} api={api} tenant={tenant} />
+  );
+  const content = (
+    <div className={`service-body service-${section}`}>
+      {subSections(tabOf(section), sections).length > 1 ? (
+        <div className="service-sub">
+          {subNav}
+          <div className="service-sub-body">{body}</div>
+        </div>
+      ) : (
+        body
+      )}
+    </div>
+  );
+
+  const publishNotes = (
+    <>
+      {hasTestSet ? null : (
+        <Alert data-color="warning" data-size="sm">
+          <Paragraph data-size="sm">{t('services.noTestsetWarning')}</Paragraph>
+          <Link href={`#${servicePath(routeId, 'quality')}`}>{t('services.makeTestSet')}</Link>
+        </Alert>
+      )}
+      {invalid ? (
+        <Alert data-color="danger" data-size="sm" role="alert">
+          <Heading level={3} data-size="2xs">
+            {t('services.notAccepted')}
+          </Heading>
+          <ul className="bullets">
+            {validationErrors.map((e) => {
+              const problem = describeProblem(e, t);
+              return (
+                <li key={`${e.path}-${e.message}`}>
+                  <strong>{problem.section}:</strong> {problem.message}
+                </li>
+              );
+            })}
+          </ul>
+        </Alert>
+      ) : null}
+      {draftBase !== undefined && draftBase !== remoteLatestVersion && draftBase > 0 ? (
+        <Paragraph data-size="sm">
+          {t('services.basedOnVersion', { base: draftBase, latest: remoteLatestVersion })}
+        </Paragraph>
+      ) : null}
+      {problems?.outdated ? (
+        <DraftOutdated
+          paths={problems.errors.map((e) => e.path)}
+          onRebase={rebaseDraft}
+          onResolve={resolveConflicts}
+        />
+      ) : problems ? (
+        <Alert data-color="danger" data-size="sm" role="alert">
+          <Paragraph data-size="sm">
+            {problems.refusedByGates
+              ? t('services.refusedByGates')
+              : t('services.notAcceptedShort')}
+          </Paragraph>
+          <ul className="bullets">
+            {problems.errors.map((e) => {
+              const problem = describeProblem(e, t);
+              return (
+                <li key={`${e.path}-${e.message}`}>
+                  <strong>{problem.section}:</strong> {problem.message}
+                </li>
+              );
+            })}
+          </ul>
+        </Alert>
+      ) : null}
+      {unmaskedTypeList.length ? (
+        <UnmaskedInputConsent
+          uses={unmaskedUses}
+          reasons={unmaskedReasons}
+          refused={unmaskedRefused.messages}
+          onReason={(mediaType, reason) => {
+            setUnmaskedReasons((given) => ({ ...given, [mediaType]: reason }));
+            setUnmaskedRefused(({ uses, messages }) => ({
+              uses,
+              messages: Object.fromEntries(
+                Object.entries(messages).filter(([m]) => m !== mediaType),
+              ),
+            }));
+          }}
+        />
+      ) : null}
+    </>
+  );
 
   const page = (
     <ServicePageContext.Provider value>
       <div className="service-page">
         <ServiceHeader
           name={name}
-          status={
-            init.status === 'Utkast' && versions.some((v) => v.state === 'I bruk')
-              ? 'I bruk'
-              : init.status === 'Utkast' && versions.some((v) => v.state === 'I test')
-                ? 'I test'
-                : init.status
-          }
+          status={status}
           meta={meta}
+          tag={
+            draftBar && status === 'I bruk' && liveVersion
+              ? t('serviceDraft.versionInUse', { n: liveVersion.version })
+              : live && shown && status === 'I bruk'
+                ? t('services.metaInUse', { n: shown.n })
+                : undefined
+          }
           flash={flash}
           actions={
             <>
-              {live && canPublish && !isNew ? (
+              {canPublish && draftBar && !archived && missingText ? (
+                <span className="meta service-missing">{missingText}</span>
+              ) : null}
+              {canPublish && !isNew && lifecycle && !archived ? (
                 <ServiceLifecycle
                   api={api}
                   tenant={tenant}
                   id={id}
                   name={service.metadata.name || id}
-                  {...(onPublished ? { onChanged: onPublished } : {})}
+                  onChanged={() => {
+                    reloadLifecycle();
+                    onPublished?.();
+                  }}
+                  {...(live ? { onCopy: () => void copyService() } : {})}
                 />
+              ) : null}
+              {!archived && !(!isNew && section === 'setup') ? (
+                <Button asChild variant="secondary" data-size="sm">
+                  <a href={playgroundHref}>{t('serviceLifecycle.tryService')}</a>
+                </Button>
               ) : null}
               {live || !canPublish ? null : (
                 <Button variant="secondary" data-size="sm" onClick={() => setPublish('test')}>
@@ -1320,13 +1979,25 @@ export const Builder = ({
                   {t('services.deleteDraft')}
                 </Button>
               ) : null}
-              {canPublish &&
-              !isNew &&
-              current > 0 &&
-              !changes.length &&
-              draftRevision === 0 &&
-              !edited ? (
+              {archived ? null : canPublish &&
+                !draftBar &&
+                !isNew &&
+                current > 0 &&
+                !changes.length &&
+                draftRevision === 0 &&
+                !edited ? (
                 <span className="meta">{t('services.nothingToPublish')}</span>
+              ) : canPublish && draftBar ? (
+                <>
+                  <Button
+                    variant="primary"
+                    data-size="sm"
+                    aria-disabled={!hasDraft || missingCount > 0 || undefined}
+                    onClick={() => hasDraft && missingCount === 0 && go('setup', '/publish')}
+                  >
+                    {t('serviceDraft.publishOpen')}
+                  </Button>
+                </>
               ) : canPublish ? (
                 <Button variant="primary" data-size="sm" onClick={() => setPublish('prod')}>
                   {t('services.publish')}
@@ -1360,8 +2031,100 @@ export const Builder = ({
             )}
           </Alert>
         ) : null}
-        <ServiceNav id={routeId} sections={sections} current={section} />
-        {readOnly ? (
+        <ServiceNav
+          id={routeId}
+          name={service.metadata.name}
+          sections={sections}
+          current={section}
+        />
+        {draftBar && !archived ? (
+          <DraftBar
+            state={saveState}
+            version={publishedVersion}
+            changes={changeList.length}
+            hasDraft={hasDraft}
+            savedAt={savedAt ? f.time(savedAt) : undefined}
+            savedBy={saverOf(savedBy, self)}
+            failedAt={failedAt}
+            conflictBy={
+              conflictDraft
+                ? {
+                    saver: saverOf(savedByOf(conflictDraft), self),
+                    at: f.time(conflictDraft.at),
+                  }
+                : undefined
+            }
+            conflictDiff={
+              conflictDraft ? (
+                <ul className="discard-lost">
+                  {diffDraft(asServiceDefinition(conflictDraft.definition), service).map((c, i) => (
+                    <li key={`${c.topic}-${i}`}>
+                      <span className="meta">{changeLabel(t, c)}</span>
+                      <span>{changeText(t, c, changeNames)}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : undefined
+            }
+            canEdit={!readOnly}
+            changesHref={publishHref}
+            onSave={() => void saveDraft()}
+            onDiscard={() => {
+              discardTrigger.current =
+                document.activeElement instanceof HTMLElement ? document.activeElement : null;
+              setDiscarding(true);
+            }}
+          />
+        ) : null}
+        {discardedTo !== undefined ? (
+          <Alert
+            ref={discardedAlert}
+            tabIndex={-1}
+            data-color="success"
+            data-size="sm"
+            role="status"
+          >
+            {t('serviceDraft.discarded', { n: discardedTo })}
+          </Alert>
+        ) : null}
+        {discarding && liveVersion ? (
+          <DiscardDialog
+            name={name}
+            version={liveVersion.version}
+            items={changeList.map((c) => ({
+              label: changeLabel(t, c),
+              text: changeText(t, c, changeNames),
+            }))}
+            savedAt={
+              savedAt
+                ? new Date(savedAt).toDateString() === new Date().toDateString()
+                  ? t('serviceDraft.todayAt', { time: f.time(savedAt) })
+                  : t('serviceDraft.dayAt', {
+                      date: f.date(savedAt, 'medium'),
+                      time: f.time(savedAt),
+                    })
+                : undefined
+            }
+            savedBy={saverOf(savedBy, self)}
+            detailsHref={publishHref}
+            onKeep={() => setDiscarding(false)}
+            onConfirm={discardDraft}
+          />
+        ) : null}
+        {archived && lifecycle ? (
+          <ArchivedBanner
+            api={api}
+            tenant={tenant}
+            id={id}
+            name={service.metadata.name || id}
+            lifecycle={lifecycle}
+            canRestore={rights.has('manage-services')}
+            onChanged={() => {
+              reloadLifecycle();
+              onPublished?.();
+            }}
+          />
+        ) : readOnly ? (
           <Alert data-color="info" data-size="sm">
             <Heading level={2} data-size="2xs">
               {t('servicesScreen.readOnlyTitle')}
@@ -1401,7 +2164,7 @@ export const Builder = ({
             <TabsPanel value="tjeneste">{pane === 'tjeneste' ? content : null}</TabsPanel>
           </Tabs>
         )}
-        {publish && canPublish ? (
+        {publish && canPublish && !draftBar ? (
           <Dialog
             open
             modal
@@ -1422,58 +2185,7 @@ export const Builder = ({
               <Paragraph>
                 {publish === 'test' ? t('services.publishTestInfo') : t('services.publishProdInfo')}
               </Paragraph>
-              {hasTestSet ? null : (
-                <Alert data-color="warning" data-size="sm">
-                  {t('services.noTestsetWarning')}
-                </Alert>
-              )}
-              {invalid ? (
-                <Alert data-color="danger" data-size="sm" role="alert">
-                  <Heading level={3} data-size="2xs">
-                    {t('services.notAccepted')}
-                  </Heading>
-                  <ul className="bullets">
-                    {validationErrors.map((e) => {
-                      const problem = describeProblem(e, t);
-                      return (
-                        <li key={`${e.path}-${e.message}`}>
-                          <strong>{problem.section}:</strong> {problem.message}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </Alert>
-              ) : null}
-              {draftBase !== undefined && draftBase !== remoteLatestVersion && draftBase > 0 ? (
-                <Paragraph data-size="sm">
-                  {t('services.basedOnVersion', { base: draftBase, latest: remoteLatestVersion })}
-                </Paragraph>
-              ) : null}
-              {problems?.outdated ? (
-                <DraftOutdated
-                  paths={problems.errors.map((e) => e.path)}
-                  onRebase={rebaseDraft}
-                  onResolve={resolveConflicts}
-                />
-              ) : problems ? (
-                <Alert data-color="danger" data-size="sm" role="alert">
-                  <Paragraph data-size="sm">
-                    {problems.refusedByGates
-                      ? t('services.refusedByGates')
-                      : t('services.notAcceptedShort')}
-                  </Paragraph>
-                  <ul className="bullets">
-                    {problems.errors.map((e) => {
-                      const problem = describeProblem(e, t);
-                      return (
-                        <li key={`${e.path}-${e.message}`}>
-                          <strong>{problem.section}:</strong> {problem.message}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </Alert>
-              ) : null}
+              {publishNotes}
               <PublishSummary
                 tenantName={tenantName}
                 currentVersion={current}
@@ -1530,12 +2242,27 @@ export const Builder = ({
                     passed: riskPassed,
                     explanation: t('services.gateRiskWhy'),
                   },
+                  ...(unmaskedTypeList.length
+                    ? [
+                        {
+                          name: t('unmaskedInput.gate'),
+                          value: unmaskedMissing
+                            ? t('unmaskedInput.gateMissing', {
+                                missing: unmaskedMissing,
+                                count: unmaskedTypeList.length,
+                              })
+                            : t('services.gateConfirmed'),
+                          passed: unmaskedMissing === 0,
+                          explanation: t('unmaskedInput.gateWhy'),
+                        },
+                      ]
+                    : []),
                 ]}
                 apiCall={{
                   action: t('services.publishAction'),
                   method: 'POST',
                   path: '/definitions',
-                  body: { definition, files },
+                  body: { definition: publishable, files },
                   right: rightLabel(t, 'manage-services'),
                 }}
                 {...(riskPassed && !forbidden
@@ -1545,7 +2272,7 @@ export const Builder = ({
                         label: t('services.fixRisk'),
                         onClick: () => {
                           setPublish(null);
-                          go('setup', '/purpose');
+                          go('setup', isNew ? '/purpose' : '/risk');
                           showPane('tjeneste');
                           setOpen((o) => ({ ...o, purpose: true }));
                         },
@@ -1565,6 +2292,38 @@ export const Builder = ({
       </div>
     </ServicePageContext.Provider>
   );
+  const publishView =
+    publishPage && liveVersion && publishedDefinition ? (
+      <ServicePageContext.Provider value>
+        <div className="service-page">
+          <PublishDiff
+            name={name}
+            current={liveVersion.version}
+            published={withPromptFiles(publishedDefinition, liveVersion.files ?? {})}
+            draft={withPromptFiles(service, files)}
+            changes={changeList}
+            names={changeNames}
+            modelFacts={modelFacts}
+            checks={checks}
+            onRetryChecks={retryChecks}
+            testWarning={testWarning}
+            testHref={`#${servicePath(routeId, 'quality')}`}
+            backHref={`#${servicePath(routeId, 'setup')}`}
+            canPublish={canPublish}
+            blocked={check?.status !== 'done' || invalid || missingCount > 0 || unmaskedMissing > 0}
+            blockedReason={
+              riskProblem ?? (check?.status === 'done' ? blockedBy : t('services.checkingDraft'))
+            }
+            onPublish={async (reason) => {
+              await doPublish({ reason, include: [] });
+              go('setup');
+            }}
+          >
+            {publishNotes}
+          </PublishDiff>
+        </div>
+      </ServicePageContext.Provider>
+    ) : null;
   // The «Grensesnitt» tab's try view goes on while the reader is on another tab of the page.
-  return <TryViewKeeper>{page}</TryViewKeeper>;
+  return <TryViewKeeper>{publishView ?? page}</TryViewKeeper>;
 };

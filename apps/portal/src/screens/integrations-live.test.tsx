@@ -28,7 +28,7 @@ interface Call {
   body: unknown;
 }
 
-const live = async (hash: string, { secretsFail = false } = {}) => {
+const live = async (hash: string, { secretsFail = false, runsFail = false } = {}) => {
   const calls: Call[] = [];
   const base = mockFetch();
   const fetch: typeof globalThis.fetch = async (input, init) => {
@@ -41,6 +41,11 @@ const live = async (hash: string, { secretsFail = false } = {}) => {
     });
     if (secretsFail && new URL(url, 'http://test').pathname.endsWith('/secrets'))
       return new Response(JSON.stringify({ title: 'Forbidden', status: 403 }), { status: 403 });
+    if (runsFail && /\/triggers\/[^/]+\/runs/.test(url))
+      return new Response(JSON.stringify({ title: 'Unavailable', status: 503 }), {
+        status: 503,
+        headers: { 'content-type': 'application/problem+json' },
+      });
     return base(input, init);
   };
   const auth = mockAnsattporten(kari);
@@ -114,82 +119,99 @@ describe('Integrasjoner: brukerflater fra API-et', () => {
 });
 
 describe('Integrasjoner: utløsere fra API-et', () => {
-  it('counts a failing trigger in the follow-up list', async () => {
+  const rowOf = async (name: string | RegExp) =>
+    (await screen.findByText(name, { selector: 'strong' })).closest('tr') as HTMLElement;
+
+  it('warns about a trigger that failed to start, with a link to its service', async () => {
     await live('#/integrations?tab=triggers');
 
-    expect(
-      await screen.findByRole('heading', { name: '1 integrasjon trenger oppfølging' }),
-    ).toBeTruthy();
-    expect(screen.getByText('Mappen «teams-opptak»: får ikke startet tjenesten')).toBeTruthy();
+    const warning = (await screen.findByText(/Mappen «teams-opptak» feilet .* og startet ikke/))
+      .parentElement as HTMLElement;
+    expect(within(warning).getByRole('link', { name: 'Møtereferat' }).getAttribute('href')).toBe(
+      '#/services/motereferat',
+    );
     expectAccessible();
   });
 
-  it('lists each trigger with its kind, service and honest source, and the failing one with its error', async () => {
+  it('lists each trigger in a table with its source, service, last run and error', async () => {
     await live('#/integrations?tab=triggers');
-    fireEvent.click(await row(/Mappen «teams-opptak»/));
+    const failing = await rowOf('Mappen «teams-opptak»');
 
-    expect(screen.getByText('Når et dokument kommer inn · starter Møtereferat')).toBeTruthy();
-    expect(screen.getByText('Plattformens fillagring · teams-opptak')).toBeTruthy();
-    expect(screen.getByText('Utløseren fikk ikke startet tjenesten.')).toBeTruthy();
-    expect(screen.getByText(/the capability motereferat is not published/)).toBeTruthy();
-    expect(screen.getByRole('button', { name: /Hver natt kl\. 02\.00/ })).toBeTruthy();
-    expect(screen.getByRole('button', { name: /Køen «post-inn»/ })).toBeTruthy();
+    expect(within(failing).getByText('Plattformens fillagring · teams-opptak')).toBeTruthy();
+    expect(within(failing).getByRole('link', { name: 'Møtereferat' })).toBeTruthy();
+    expect(within(failing).getByText('Feilet')).toBeTruthy();
+    expect(
+      within(failing).getByText('Tjenesten er ikke publisert, så utløseren fikk ikke startet den.'),
+    ).toBeTruthy();
+    expect(await rowOf(/Hver natt kl\. 02:00/)).toBeTruthy();
+    expect(await rowOf('Køen «post-inn»')).toBeTruthy();
   });
 
-  it('shows recent runs with a link to each run timeline', async () => {
+  it('never shows the raw API error of a failed trigger run', async () => {
     await live('#/integrations?tab=triggers');
-    fireEvent.click(await row(/Køen «post-inn»/));
+    const failing = await rowOf('Mappen «teams-opptak»');
+    expect(within(failing).queryByText(/the capability motereferat is not published/)).toBeNull();
+  });
 
-    const links = await screen.findAllByRole('link', { name: 'Se kjøringen' });
-    expect(links.map((l) => l.getAttribute('href'))).toEqual([
+  it('links the last run of a trigger to its run timeline', async () => {
+    await live('#/integrations?tab=triggers');
+    const queue = await rowOf('Køen «post-inn»');
+
+    expect(within(queue).getByText('Ferdig')).toBeTruthy();
+    expect(within(queue).getByRole('link', { name: /2026/ }).getAttribute('href')).toBe(
       '#/log/opg_post_118',
-      '#/log/opg_post_117',
-    ]);
+    );
   });
 
   it('says the trigger works when the service run failed, and leads to the run', async () => {
     await live('#/integrations?tab=triggers');
-    fireEvent.click(await row(/Hver natt kl\. 02\.00/));
+    const nightly = await rowOf(/Hver natt kl\. 02:00/);
 
-    expect(screen.getByText('Siste kjøring av tjenesten feilet')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Se kjøringen' }));
-    await waitFor(() => expect(window.location.hash).toBe('#/log/opg_nn_0910'));
+    expect(within(nightly).getByText('Kjøringen feilet')).toBeTruthy();
+    expect(within(nightly).getByRole('link', { name: /2026/ }).getAttribute('href')).toBe(
+      '#/log/opg_nn_0910',
+    );
   });
 
   it('pauses a trigger with a logged reason', async () => {
     const calls = await live('#/integrations?tab=triggers');
-    fireEvent.click(await row(/Køen «post-inn»/));
-    fireEvent.click(screen.getByRole('button', { name: 'Sett på pause' }));
+    fireEvent.click(await screen.findByRole('switch', { name: /Aktiv: Køen «post-inn»/ }));
     fireEvent.change(screen.getByLabelText('Begrunnelse'), {
       target: { value: 'Køen flyttes til ny server' },
     });
     const panel = screen.getByLabelText('Begrunnelse').closest('.ds-alert') as HTMLElement;
     fireEvent.click(within(panel).getByRole('button', { name: 'Sett på pause' }));
 
-    expect(await screen.findByText(/Køen «post-inn» er satt på pause/)).toBeTruthy();
+    expect(await screen.findByText('Lagret. Satt på pause.')).toBeTruthy();
     const put = calls.find((c) => c.method === 'PUT');
     expect(put?.url).toMatch(/\/triggers\/postsortering-91d3a7e5f0\/pause$/);
     expect(put?.body).toEqual({ paused: true });
     expect(put?.reason).toBe('Køen flyttes til ny server');
-    expect(await screen.findByRole('button', { name: 'Start igjen' })).toBeTruthy();
+    await waitFor(() =>
+      expect(
+        (screen.getByRole('switch', { name: /Aktiv: Køen «post-inn»/ }) as HTMLInputElement)
+          .checked,
+      ).toBe(false),
+    );
   });
 });
 
 describe('Integrasjoner: MCP-koblinger fra API-et', () => {
   const registerServer = async (secretName: string, options?: { secretsFail: boolean }) => {
     const calls = await live('#/integrations?tab=systems', options);
-    fireEvent.click(await screen.findByText('Registrer en MCP-server'));
-    const form = screen.getByRole('form', { name: 'Ny MCP-kobling' });
-    fireEvent.change(screen.getByLabelText('Begrunnelse'), {
+    fireEvent.click(await screen.findByRole('button', { name: 'Koble til system' }));
+    const form = screen.getByRole('form', { name: 'Koble til system' });
+    fireEvent.change(within(form).getByLabelText('Begrunnelse'), {
       target: { value: 'Saksbehandlerne skal søke i arkivet' },
     });
     const fill = (label: string, value: string) =>
       fireEvent.change(within(form).getByLabelText(label), { target: { value } });
-    fill('Kort navn (små bokstaver og bindestrek)', 'sak');
-    fill('Adresse (https)', 'https://sak.testetaten.example.no/mcp');
+    fill('Navn', 'sak');
+    fill('Adresse', 'https://sak.testetaten.example.no/mcp');
+    fireEvent.click(within(form).getByText('Innlogging mot systemet (valgfritt)'));
     fill('Navn på hemmeligheten (valgfritt)', secretName);
     fill('Hemmeligheten', 'hemmelig-verdi-123');
-    fireEvent.click(within(form).getByRole('button', { name: 'Registrer kobling' }));
+    fireEvent.click(within(form).getByRole('button', { name: 'Koble til' }));
     return calls;
   };
 
@@ -246,10 +268,66 @@ describe('Integrasjoner: MCP-koblinger fra API-et', () => {
 
 describe('schedule names', () => {
   it('names common schedules in plain words and shows anything else as written', () => {
-    expect(describeSchedule('0 2 * * *')).toBe('Hver natt kl. 02.00');
-    expect(describeSchedule('30 7 * * *')).toBe('Hver dag kl. 07.30');
-    expect(describeSchedule('0 7 * * 1')).toBe('Hver mandag kl. 07.00');
+    expect(describeSchedule('0 2 * * *')).toBe('Hver natt kl. 02:00');
+    expect(describeSchedule('30 7 * * *')).toBe('Hver dag kl. 07:30');
+    expect(describeSchedule('0 7 * * 1')).toBe('Hver mandag kl. 07:00');
     expect(describeSchedule('0 * * * *')).toBe('Hver time');
     expect(describeSchedule('*/5 * * * *')).toBe('Tidsplan «*/5 * * * *»');
+  });
+});
+
+describe('Utviklerverktøy: oppfølging i menyen fra API-et', () => {
+  it('counts systems with tool changes waiting and failing triggers from the API', async () => {
+    await live('#/developer/status');
+    const menu = await screen.findByRole('navigation', { name: 'Utviklerverktøy' });
+    await waitFor(() =>
+      expect(
+        within(menu).getByRole('link', { name: 'Systemer 1 trenger oppfølging' }),
+      ).toBeTruthy(),
+    );
+    expect(within(menu).getByRole('link', { name: 'Utløsere 1 trenger oppfølging' })).toBeTruthy();
+  });
+});
+
+describe('Integrasjoner: koble til system i en dialog', () => {
+  it('asks before throwing away a half-filled connection', async () => {
+    const calls = await live('#/developer/systems');
+    fireEvent.click(await screen.findByRole('button', { name: 'Koble til system' }));
+    const form = screen.getByRole('form', { name: 'Koble til system' });
+    fireEvent.change(within(form).getByLabelText('Adresse'), {
+      target: { value: 'https://sak.testetaten.example.no/mcp' },
+    });
+    fireEvent.click(within(form).getByRole('button', { name: 'Avbryt' }));
+    expect(within(form).getByText('Forkaste det du har skrevet?')).toBeTruthy();
+    fireEvent.click(within(form).getByRole('button', { name: 'Forkast' }));
+    expect(screen.queryByRole('form', { name: 'Koble til system' })).toBeNull();
+    expect(calls.some((c) => c.method !== 'GET')).toBe(false);
+  });
+});
+
+describe('API-nøkler fra API-et', () => {
+  it('shows when a key was last used from the lastUsedAt the API lists', async () => {
+    await live('#/developer/keys');
+
+    const list = await screen.findByRole('list', { name: 'API-nøkler' });
+    expect(within(list).getByText(/sist brukt 7\. okt\. 2026/)).toBeTruthy();
+  });
+
+  it('says a key is not used yet only when the API lists lastUsedAt as null', async () => {
+    await live('#/developer/keys');
+
+    const list = await screen.findByRole('list', { name: 'API-nøkler' });
+    expect(within(list).getAllByText(/ikke brukt ennå/)).toHaveLength(1);
+  });
+});
+
+describe('Utløsere in live mode', () => {
+  it('opens no example trigger, so it never asks for the runs of a trigger that does not exist', async () => {
+    const calls = await live('#/integrations?tab=triggers');
+    await screen.findByText('Køen «post-inn»', { selector: 'strong' });
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(calls.filter((c) => /\/triggers\/(okon|ko-post)\/runs/.test(c.url))).toEqual([]);
+    expect(calls.filter((c) => /\/triggers\/[^/]+\/runs/.test(c.url))).toEqual([]);
   });
 });

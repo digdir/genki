@@ -559,6 +559,20 @@ describe('the draft API for the try view', () => {
     });
   });
 
+  it('asks for the same facet counts once while they are fresh, however often the assistant loads them', async () => {
+    const { draftApi, paths } = draft({ definition });
+    const fields = [
+      { id: 'kommune', label: 'kommune' },
+      { id: 'aar', label: 'aar', integer: true },
+    ];
+    await Promise.all([
+      draftApi.loadFacets({}, 'byggeregler', fields),
+      draftApi.loadFacets({}, 'byggeregler', fields),
+    ]);
+    await draftApi.loadFacets({}, 'byggeregler', fields);
+    expect(paths.filter((path) => path.startsWith('/api/facets'))).toHaveLength(2);
+  });
+
   it('runs the playground’s first setup when there is no draft, named in the reader’s language', async () => {
     const { draftApi, requests } = draft(undefined);
     await ask(draftApi, 'Hei', { model: 'playground__default' });

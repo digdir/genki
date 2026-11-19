@@ -51,13 +51,13 @@ describe('Forbruk', () => {
     await renderAt('#/statistics', fetch);
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Statistikk' })).toBeTruthy();
-    expect(await screen.findByText('Henter forbruk')).toBeTruthy();
+    expect(await screen.findByText('Henter bruken')).toBeTruthy();
     await held.release();
     const region = await table();
     expect(calls.some((c) => /\/tenants\/[^/]+\/usage\?days=190$/.test(c))).toBe(true);
 
     expect(screen.getByRole('heading', { level: 2, name: 'Kvote i oktober' })).toBeTruthy();
-    expect(screen.getByText(/Sist oppdatert i dag kl\. \d\d\.\d\d\./)).toBeTruthy();
+    expect(screen.getByText(/Sist oppdatert i dag kl\. \d\d:\d\d\./)).toBeTruthy();
     const meter = screen.getByRole('meter', { name: 'Brukt av kvoten i oktober' });
     expect(meter.getAttribute('aria-valuetext')).toMatch(/av 50 mill\. tokens brukt/);
     expect(screen.getByText('Beregnet kostnad i oktober')).toBeTruthy();
@@ -78,66 +78,13 @@ describe('Forbruk', () => {
     expectAccessible();
   });
 
-  it('warns when a service is near its limit and changes the limit with validation', async () => {
-    await renderAt('#/statistics');
-    await table();
-
-    const alert = screen.getByRole('heading', {
-      name: /Høringsoppsummering har brukt \d+ % av grensen sin/,
-    });
-    expect(alert).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Se jobben som kjører' }).getAttribute('href')).toBe(
-      '#/log',
-    );
-    expect(screen.getAllByText('Nær grensen').length).toBeGreaterThan(0);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Endre grense for Høringsoppsummering' }));
-    expect(
-      await screen.findByRole('heading', { name: 'Grense for Høringsoppsummering' }),
-    ).toBeTruthy();
-    const input = screen.getByLabelText('Millioner tokens per måned');
-    expect((input as HTMLInputElement).value).toBe('1');
-
-    fireEvent.change(input, { target: { value: '0' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Lagre' }));
-    expect(screen.getByText('Skriv et tall større enn 0, for eksempel 2 eller 1,5.')).toBeTruthy();
-    expect(input.getAttribute('aria-invalid')).toBe('true');
-
-    fireEvent.change(input, { target: { value: '60' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Lagre' }));
-    expect(
-      screen.getByText(/Grensen kan ikke være høyere enn kvoten til .+, som er 50 millioner\./),
-    ).toBeTruthy();
-
-    fireEvent.change(input, { target: { value: '2,5' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Lagre' }));
-    expect(
-      await screen.findByText('Grensen for Høringsoppsummering er nå 2,5 mill. tokens per måned.'),
-    ).toBeTruthy();
-    expect(screen.queryByRole('heading', { name: /Høringsoppsummering har brukt/ })).toBeNull();
-    expectAccessible();
-  });
-
-  it('removes a limit and offers to set one again', async () => {
-    await renderAt('#/statistics');
-    await table();
-    fireEvent.click(screen.getByRole('button', { name: 'Endre grense for Vedtaksutkast' }));
-    fireEvent.click(await screen.findByLabelText('Ingen egen grense (bare virksomhetens kvote)'));
-    expect(screen.queryByLabelText('Millioner tokens per måned')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Lagre' }));
-    expect(await screen.findByText('Vedtaksutkast har ikke lenger egen grense.')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Sett grense for Vedtaksutkast' })).toBeTruthy();
-  });
-
   it('switches period and grouping, and sorts the table', async () => {
     await renderAt('#/statistics');
     await table();
 
-    fireEvent.change(screen.getByLabelText('Periode'), { target: { value: 'six' } });
-    expect(screen.getByRole('list', { name: /^Tokens per måned, Mai–oktober 2026/ })).toBeTruthy();
-    fireEvent.change(screen.getByLabelText('Periode'), { target: { value: 'previous' } });
+    fireEvent.change(screen.getByLabelText('Måned'), { target: { value: '2026-09' } });
     expect(
-      screen.getByRole('list', { name: /^Tokens per dag, 1\.–30\. september 2026/ }),
+      await screen.findByRole('list', { name: /^Tokens per dag, 1\.–30\. september 2026/ }),
     ).toBeTruthy();
 
     fireEvent.click(screen.getByRole('radio', { name: 'Modell' }));
@@ -161,7 +108,7 @@ describe('Forbruk', () => {
     await renderAt('#/statistics');
     await table();
     fireEvent.click(screen.getByRole('button', { name: 'Eksporter' }));
-    expect(await screen.findByRole('heading', { name: 'Eksporter forbruk' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Eksporter bruken' })).toBeTruthy();
     fireEvent.click(screen.getByLabelText(/^JSON/));
     fireEvent.click(screen.getByLabelText('Bare summer for perioden'));
     fireEvent.click(screen.getByRole('button', { name: 'Last ned' }));
@@ -175,9 +122,7 @@ describe('Forbruk', () => {
       '#/statistics',
       mockFetch(undefined, undefined, undefined, undefined, { usage: emptyReport }),
     );
-    expect(
-      await screen.findByRole('heading', { level: 2, name: 'Ingen forbruk ennå' }),
-    ).toBeTruthy();
+    expect(await screen.findByRole('heading', { level: 2, name: 'Ingen bruk ennå' })).toBeTruthy();
     expect(screen.getByText(/Kvoten for .+ er 50 millioner tokens per måned\./)).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Lag en tjeneste' }).getAttribute('href')).toBe(
       '#/services/new',
@@ -186,13 +131,27 @@ describe('Forbruk', () => {
     expectAccessible();
   });
 
-  it('points to the Kontakt Digdir page for a higher quota', async () => {
+  it('offers Be om mer kvote and the month choice in the empty state too', async () => {
+    await renderAt(
+      '#/statistics',
+      mockFetch(undefined, undefined, undefined, undefined, { usage: emptyReport }),
+    );
+    await screen.findByRole('heading', { level: 2, name: 'Ingen bruk ennå' });
+    expect(await screen.findByRole('button', { name: 'Be om mer kvote' })).toBeTruthy();
+    expect(screen.getByLabelText('Måned')).toBeTruthy();
+  });
+
+  it('offers Be om mer kvote however little of the quota is used', async () => {
     await renderAt('#/statistics');
-    await screen.findByText(/Digdir kan øke kvoten/);
-    const links = screen.getAllByRole('link', { name: 'Kontakt Digdir' });
-    expect(links.length).toBeGreaterThan(0);
-    for (const link of links) expect(link.getAttribute('href')).toBe('#/contact');
-    expect(screen.queryByText('kundeservice')).toBeNull();
+    await table();
+    expect(await screen.findByRole('button', { name: 'Be om mer kvote' })).toBeTruthy();
+  });
+
+  it('has no Kontakt Digdir note under the quota, since more quota is asked for in the portal', async () => {
+    await renderAt('#/statistics');
+    await table();
+    expect(screen.queryByText(/Digdir kan øke kvoten/)).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Kontakt Digdir' })).toBeNull();
   });
 
   it('says what is counted: tests are not shown but count toward the quota', async () => {
@@ -200,13 +159,13 @@ describe('Forbruk', () => {
       '#/statistics',
       mockFetch(undefined, undefined, undefined, undefined, { usage: emptyReport }),
     );
-    const empty = await screen.findByRole('heading', { level: 2, name: 'Ingen forbruk ennå' });
+    const empty = await screen.findByRole('heading', { level: 2, name: 'Ingen bruk ennå' });
     const text = empty.parentElement?.textContent ?? '';
     expect(text).toContain('Assistenten har sitt eget daglige budsjett og er ikke med.');
     expect(text).not.toContain('også når dere tester i byggeren');
   });
 
-  it('uses the tenant quota, the model residency and display names, and says Ikke priset', async () => {
+  it('uses the tenant quota, the model residency and display names, and names the missing price', async () => {
     const usage = (tokens: number) => ({
       inputTokens: tokens * 0.8,
       outputTokens: tokens * 0.2,
@@ -269,7 +228,205 @@ describe('Forbruk', () => {
     expect(within(models_).queryByText(/foundry-openai\//)).toBeNull();
     expect(within(models_).getByText('I Norge')).toBeTruthy();
     expect(within(models_).getByText('Globalt, også utenfor EU/EØS')).toBeTruthy();
-    expect(within(models_).getAllByText('Ikke priset').length).toBeGreaterThan(0);
+    expect(within(models_).getAllByText(/^Pris mangler for modellen /).length).toBeGreaterThan(0);
+  });
+
+  it('shows minst X kr and names the model without a price when only part of the usage is priced', async () => {
+    const priced = {
+      inputTokens: 800_000,
+      outputTokens: 200_000,
+      requests: 10,
+      costMicroNok: 12_000_000,
+    };
+    const missing = {
+      inputTokens: 400_000,
+      outputTokens: 100_000,
+      requests: 5,
+      costMicroNok: null,
+      priced: false,
+    };
+    const total = {
+      inputTokens: 1_200_000,
+      outputTokens: 300_000,
+      requests: 15,
+      costMicroNok: 12_000_000,
+      priced: false,
+      unpricedModels: ['tenant/norsk-7b'],
+    };
+    const report: UsageReport = {
+      ...emptyReport,
+      priced: false,
+      totals: total,
+      daily: [
+        {
+          date: '2026-10-05',
+          usage: total,
+          byService: { rapportassistenten: priced, postsortering: missing },
+          byModel: { 'foundry-openai/gpt-4.1-mini': priced, 'tenant/norsk-7b': missing },
+        },
+      ],
+      byService: [
+        { service: 'rapportassistenten', usage: priced },
+        { service: 'postsortering', usage: missing },
+      ],
+      byModel: [
+        { model: 'foundry-openai/gpt-4.1-mini', usage: priced },
+        { model: 'tenant/norsk-7b', usage: missing },
+      ],
+    };
+    await renderAt(
+      '#/statistics',
+      mockFetch(undefined, undefined, undefined, undefined, { usage: report }),
+    );
+
+    const region = await table();
+    expect(
+      screen.getByText(
+        'Prisen mangler for modellen norsk-7b. Kostnaden er derfor minst det som står her, og blir riktig når prisen er lagt inn.',
+      ),
+    ).toBeTruthy();
+    const cost = screen.getByText('Beregnet kostnad i oktober').parentElement as HTMLElement;
+    expect(cost.textContent).toContain('minst 12 kr');
+    const sum = within(region).getByRole('rowheader', { name: 'Sum' }).parentElement;
+    expect(sum?.textContent).toContain('minst 12 kr');
+    const row = (name: RegExp) => within(region).getByRole('rowheader', { name }).parentElement;
+    expect(row(/Postsortering/)?.textContent).toContain('Ikke priset');
+  });
+
+  it('marks a partly priced cost as a lower bound in the export, and keeps Ikke priset for unpriced rows', async () => {
+    const part = {
+      inputTokens: 800_000,
+      outputTokens: 200_000,
+      requests: 10,
+      costMicroNok: 12_000_000,
+      priced: false,
+    };
+    const none = { ...part, costMicroNok: null };
+    const total = { ...part, inputTokens: 1_600_000, outputTokens: 400_000, requests: 20 };
+    const report: UsageReport = {
+      ...emptyReport,
+      priced: false,
+      totals: total,
+      daily: [
+        {
+          date: '2026-10-05',
+          usage: total,
+          byService: { rapportassistenten: part, postsortering: none },
+          byModel: { 'foundry-openai/gpt-4.1-mini': total },
+        },
+      ],
+      byService: [
+        { service: 'rapportassistenten', usage: part },
+        { service: 'postsortering', usage: none },
+      ],
+      byModel: [{ model: 'foundry-openai/gpt-4.1-mini', usage: total }],
+    };
+    const blobs: Blob[] = [];
+    const original = URL.createObjectURL;
+    URL.createObjectURL = (blob: Blob) => {
+      blobs.push(blob);
+      return 'blob:usage';
+    };
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    try {
+      await renderAt(
+        '#/statistics',
+        mockFetch(undefined, undefined, undefined, undefined, { usage: report }),
+      );
+      await table();
+      fireEvent.click(screen.getByRole('button', { name: 'Eksporter' }));
+      await screen.findByRole('heading', { name: 'Eksporter bruken' });
+      fireEvent.click(screen.getByLabelText(/^JSON/));
+      fireEvent.click(screen.getByLabelText('Bare summer for perioden'));
+      fireEvent.click(screen.getByRole('button', { name: 'Last ned' }));
+      await screen.findByText(/^Filen forbruk-.+\.json er lastet ned\.$/);
+
+      const records = JSON.parse(
+        (await (blobs[0] as Blob).text()).replace(/^\uFEFF/, ''),
+      ) as Record<string, unknown>[];
+      const byName = (name: RegExp) => records.find((r) => name.test(String(r.navn)));
+      expect(byName(/Rapportassistenten/)).toMatchObject({
+        kostnad_kr: 12,
+        kostnad_er_minst: true,
+      });
+      expect(byName(/Postsortering/)).toMatchObject({
+        kostnad_kr: 'Ikke priset',
+        kostnad_er_minst: false,
+      });
+    } finally {
+      URL.createObjectURL = original;
+      click.mockRestore();
+    }
+  });
+
+  it("shows each row's share of the tokens, with 100 % on the sum row", async () => {
+    const usage = (tokens: number) => ({
+      inputTokens: tokens,
+      outputTokens: 0,
+      requests: 1,
+      costMicroNok: 1_000_000,
+    });
+    const report: UsageReport = {
+      ...emptyReport,
+      totals: usage(4_000),
+      daily: [
+        {
+          date: '2026-10-05',
+          usage: usage(4_000),
+          byService: { rapportassistenten: usage(3_000), postsortering: usage(1_000) },
+        },
+      ],
+      byService: [
+        { service: 'rapportassistenten', usage: usage(3_000) },
+        { service: 'postsortering', usage: usage(1_000) },
+      ],
+    };
+    await renderAt(
+      '#/statistics',
+      mockFetch(undefined, undefined, undefined, undefined, { usage: report }),
+    );
+
+    const region = await table();
+    expect(within(region).getByRole('columnheader', { name: 'Andel' })).toBeTruthy();
+    const row = (name: RegExp) => within(region).getByRole('rowheader', { name }).parentElement;
+    expect(row(/Rapportassistenten/)?.textContent).toContain('75 %');
+    expect(row(/Postsortering/)?.textContent).toContain('25 %');
+    expect(row(/^Sum$/)?.textContent).toContain('100 %');
+  });
+
+  it('shows the price per 1M tokens of each model from the model list, the unit the catalogue uses', async () => {
+    const usage = { inputTokens: 800, outputTokens: 200, requests: 1, costMicroNok: 1_000 };
+    const report: UsageReport = {
+      ...emptyReport,
+      totals: usage,
+      daily: [{ date: '2026-10-05', usage }],
+      byModel: [
+        { model: 'foundry-openai/gpt-4.1-mini', usage },
+        { model: 'tenant/norsk-7b', usage },
+        { model: 'gone/old-model', usage },
+      ],
+    };
+    const models = [
+      {
+        id: 'foundry-openai/gpt-4.1-mini',
+        name: 'GPT-4.1 mini',
+        residency: 'global' as const,
+        capabilities: [],
+        price: { inputPerThousand: 0.0042, outputPerThousand: 0.0168 },
+      },
+      { id: 'tenant/norsk-7b', residency: 'norway' as const, capabilities: [], price: null },
+    ];
+    await renderAt(
+      '#/statistics?by=model',
+      mockFetch(undefined, undefined, models, undefined, { usage: report }),
+    );
+
+    const region = await table('Fordelt på modell');
+    expect(within(region).getByRole('columnheader', { name: 'Pris per 1M tokens' })).toBeTruthy();
+    const row = (name: RegExp) => within(region).getByRole('rowheader', { name }).parentElement;
+    expect(row(/GPT-4\.1 mini/)?.textContent).toContain('4,20 kr inn, 16,80 kr ut');
+    expect(row(/^norsk-7b/)?.textContent).toContain('Pris mangler for modellen norsk-7b');
+    expect(row(/old-model/)?.textContent).toContain('Ukjent');
   });
 
   it('shows usage per project and filters the page to one project', async () => {
@@ -286,7 +443,7 @@ describe('Forbruk', () => {
       expect(calls.some((c) => c.endsWith('/usage?days=190&project=horinger-2026'))).toBe(true),
     );
     expect(
-      await screen.findByText(/Viser bare forbruket fra kjøringene i prosjektet Høringsrunde 2026/),
+      await screen.findByText(/Viser bare bruken fra kjøringene i prosjektet Høringsrunde 2026/),
     ).toBeTruthy();
     const services = await table();
     expect(
@@ -352,6 +509,89 @@ describe('Forbruk', () => {
     expect(screen.queryByRole('region', { name: 'Fordelt på kilde' })).toBeNull();
   });
 
+  it('has no per-service limit column, since limits cannot be stored', async () => {
+    await renderAt('#/statistics');
+    const region = await table();
+
+    expect(within(region).queryByRole('columnheader', { name: /Grense/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /grense/i })).toBeNull();
+  });
+
+  it('shows trial runs as one row after the services, and the rows add up to the sum', async () => {
+    const day = (tokens: number) => ({
+      inputTokens: tokens,
+      outputTokens: 0,
+      requests: 1,
+      runs: 1,
+      costMicroNok: 0,
+    });
+    const usage: UsageReport = {
+      ...emptyReport,
+      totals: day(900),
+      daily: [
+        {
+          date: '2026-10-06',
+          usage: day(900),
+          byService: {
+            rapportassistenten: day(500),
+            'platform/operation-try/a': day(100),
+            'platform/operation-try/b': day(100),
+          },
+        },
+      ],
+      byService: [
+        { service: 'rapportassistenten', usage: day(500) },
+        { service: 'platform/operation-try/a', usage: day(100) },
+        { service: 'platform/operation-try/b', usage: day(100) },
+      ],
+    };
+    await renderAt(
+      '#/statistics',
+      mockFetch(undefined, undefined, undefined, undefined, { usage }),
+    );
+    const region = await table();
+
+    const names = within(region)
+      .getAllByRole('rowheader')
+      .map((r) => r.textContent ?? '');
+    expect(names[0]).toMatch(/^Rapportassistenten/);
+    expect(names[1]).toMatch(/^Prøvekjøringer/);
+    expect(names.some((n) => /Operation try/.test(n))).toBe(false);
+    const trial = within(region)
+      .getByRole('rowheader', { name: /^Prøvekjøringer/ })
+      .closest('tr');
+    expect(within(trial as HTMLElement).getAllByRole('cell')[2]?.textContent).toBe('400');
+    const sum = within(region).getByRole('rowheader', { name: 'Sum' }).closest('tr');
+    expect(within(sum as HTMLElement).getAllByRole('cell')[2]?.textContent).toBe('900');
+  });
+
+  it('keeps the chosen period and grouping in the address and through a retry', async () => {
+    let fail = false;
+    const ok = mockFetch();
+    const broken = failingFetch(/\/usage/);
+    await renderAt('#/statistics', async (input, init) =>
+      fail ? broken(input, init) : ok(input, init),
+    );
+    await table();
+    fireEvent.change(screen.getByLabelText('Måned'), { target: { value: '2026-09' } });
+    await screen.findByRole('list', { name: /^Tokens per dag, 1\.–30\. september 2026/ });
+    fireEvent.click(screen.getByRole('radio', { name: 'Modell' }));
+    await table('Fordelt på modell');
+    expect(window.location.hash).toBe('#/statistics?month=2026-09&by=model');
+
+    cleanup();
+    fail = true;
+    await renderAt('#/statistics?month=2026-09&by=model', async (input, init) =>
+      fail ? broken(input, init) : ok(input, init),
+    );
+    const retry = await screen.findByRole('button', { name: 'Prøv igjen' });
+    fail = false;
+    fireEvent.click(retry);
+
+    await table('Fordelt på modell');
+    expect((screen.getByLabelText('Måned') as HTMLSelectElement).value).toBe('2026-09');
+  });
+
   it('shows an error with retry when the usage API fails', async () => {
     let fail = true;
     const ok = mockFetch();
@@ -362,7 +602,7 @@ describe('Forbruk', () => {
       return fail ? broken(input, init) : ok(input, init);
     });
 
-    expect(await screen.findByRole('heading', { name: 'Fikk ikke hentet forbruket' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Fikk ikke hentet bruken' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Eksporter' })).toBeNull();
     expectAccessible();
 
@@ -370,6 +610,6 @@ describe('Forbruk', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Prøv igjen' }));
     await table();
     await waitFor(() => expect(usageCalls).toBe(2));
-    expect(screen.queryByRole('heading', { name: 'Fikk ikke hentet forbruket' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Fikk ikke hentet bruken' })).toBeNull();
   });
 });

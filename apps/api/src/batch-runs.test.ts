@@ -574,6 +574,27 @@ describe('batch runs over a document set', () => {
     expect(uncapped.body.errors).toEqual([expect.objectContaining({ path: 'maxCostNok' })]);
   });
 
+  it('keeps the name given at start on the run and in the list, and refuses one over 120 characters', async () => {
+    const env = await boot();
+    const estimate = await estimateFor(env);
+
+    const tooLong = await env.send('POST', base, 'kari', {
+      estimate: estimate.id,
+      maxCostNok: 5,
+      name: 'x'.repeat(121),
+    });
+    expect(tooLong.status).toBe(400);
+    expect(tooLong.body.errors).toEqual([expect.objectContaining({ path: 'name' })]);
+    const run = await runTo(env, {
+      estimate: estimate.id,
+      maxCostNok: 5,
+      name: '  Spørsmål fra HR-postkassen ',
+    });
+    expect(run.name).toBe('Spørsmål fra HR-postkassen');
+    const listed = await env.send('GET', base, 'kari');
+    expect((listed.body.data as { name?: string }[])[0]?.name).toBe('Spørsmål fra HR-postkassen');
+  });
+
   it('runs each document, records output, sources, tokens and cost, and retries the failed one', async () => {
     const env = await boot();
     const estimate = await estimateFor(env);
@@ -838,9 +859,9 @@ describe('batch runs over a document set', () => {
     });
   });
 
-  it('links a retired numeric Kudos document and its sources to a Kudos title search in the run and its exports', async () => {
+  it('links an old numeric Kudos document and its sources to its Kudos page by UUID in the run and its exports', async () => {
     const env = await boot();
-    const search = 'https://kudos.dfo.no/dokumenter?query=Tildelingsbrev%202021';
+    const page = 'https://kudos.dfo.no/dokument/40adee75-df78-4d8a-8587-21761020d3f9';
     const estimate = await estimateFor(env, { dataset: 'digdir/kudos', documents: ['330296'] });
     const run = await runTo(env, { estimate: estimate.id, maxCostNok: 5 });
 
@@ -850,12 +871,19 @@ describe('batch runs over a document set', () => {
 
     expect((detail.body.items as { document: unknown }[])[0]?.document).toMatchObject({
       id: '330296',
-      url: search,
+      url: page,
     });
-    expect(String(csv.body)).toContain(`330296;Tildelingsbrev 2021;${search};digdir/kudos`);
+    expect((detail.body.items as { sources: unknown[] }[])[0]?.sources).toContainEqual(
+      expect.objectContaining({ document: '330296', url: page }),
+    );
+    expect(String(csv.body)).toContain(`330296;Tildelingsbrev 2021;${page};digdir/kudos`);
+    expect(String(csv.body)).toContain(`;Tildelingsbrev 2021 ${page};`);
     expect((json.body.items as { document: unknown }[])[0]?.document).toMatchObject({
-      url: search,
+      url: page,
     });
+    expect((json.body.items as { sources: unknown[] }[])[0]?.sources).toContainEqual(
+      expect.objectContaining({ document: '330296', url: page }),
+    );
   });
 
   it('runs only the named documents when ids are given', async () => {
@@ -1539,7 +1567,7 @@ describe('a run stored by an earlier version of the platform', () => {
     });
     return boot({ store });
   };
-  const search = 'https://kudos.dfo.no/dokumenter?query=Tildelingsbrev%202021';
+  const page = 'https://kudos.dfo.no/dokument/40adee75-df78-4d8a-8587-21761020d3f9';
 
   it('exports every row with its document link and each source once', async () => {
     const env = await legacy();
@@ -1547,8 +1575,8 @@ describe('a run stored by an earlier version of the platform', () => {
     const csv = String((await env.send('GET', `${base}/gammel/export?format=csv`)).body);
 
     const row = csv.split('\r\n').find((l) => l.startsWith('1;')) ?? '';
-    expect(row).toContain(`330296;Tildelingsbrev 2021;${search};digdir/kudos;Fullført`);
-    expect(row).toContain(`;Tildelingsbrev 2021 ${search};oppsummering;`);
+    expect(row).toContain(`330296;Tildelingsbrev 2021;${page};digdir/kudos;Fullført`);
+    expect(row).toContain(`;Tildelingsbrev 2021 ${page};oppsummering;`);
     expect(row.split('Tildelingsbrev 2021').length - 1).toBe(2);
   });
 

@@ -11,13 +11,14 @@ const read = (path: string) => readFileSync(join(root, path), 'utf8');
 
 interface Step {
   id?: string;
+  if?: string;
   uses?: string;
   run?: string;
   env?: Record<string, string>;
   with?: Record<string, string>;
 }
 interface Workflow {
-  jobs: Record<string, { outputs?: Record<string, string>; steps?: Step[] }>;
+  jobs: Record<string, { uses?: string; outputs?: Record<string, string>; steps?: Step[] }>;
 }
 const workflow = (name: string) => parse(read(`.github/workflows/${name}`)) as Workflow;
 
@@ -82,15 +83,26 @@ describe('the Docling server image', () => {
 
 describe('the deploy and infra workflows', () => {
   const deploy = workflow('deploy.yml');
-  const all = (name: string) =>
-    Object.values(deploy.jobs).flatMap((job) => (job.steps ?? []).filter((s) => s.id === name));
 
-  it('builds the Docling image on every deploy and copies it to prod by digest', () => {
-    const [build] = all('docling');
+  it('builds the Docling image when docker/docling changes, and at least weekly', () => {
+    const images = workflow('images.yml');
+    const steps = images.jobs.build?.steps ?? [];
+    const build = steps.find((s) => s.id === 'docling');
     expect(build?.uses).toMatch(/^docker\/build-push-action@[0-9a-f]{40}$/);
     expect(build?.with?.context).toBe('docker/docling');
     expect(build?.with?.outputs).toContain('push=true');
-    expect(deploy.jobs.build?.outputs?.docling).toBe('${{ steps.image.outputs.docling }}');
+    expect(build?.if).toBe("steps.have.outputs.docling == ''");
+    expect(build?.with?.tags).toContain(':${{ steps.have.outputs.docling_tag }}');
+    expect(steps.find((s) => s.id === 'have')?.run).toContain(
+      'docling_tag="tree-$(git rev-parse HEAD:docker/docling)-$(date -u +%G-W%V)"',
+    );
+  });
+
+  it('deploys the Docling image by digest, and copies the same digest to prod', () => {
+    expect(workflow('images.yml').jobs.build?.outputs?.docling).toBe(
+      '${{ steps.image.outputs.docling }}',
+    );
+    expect(deploy.jobs.build?.uses).toBe('./.github/workflows/images.yml');
     const prodImport = deploy.jobs['deploy-prod']?.steps?.find((s) => s.id === 'image');
     expect(prodImport?.run).toContain(
       'copy_image genai-docling "${{ needs.build.outputs.docling }}" docling',
@@ -257,5 +269,16 @@ describe.skipIf(!hasAz && !process.env.CI)('the Docling server in the template',
       terminationGracePeriodSeconds?: number;
     };
     expect(terminationGracePeriodSeconds).toBe(600);
+  });
+
+  it('the template gives the Docling server a 6-hour wait and the worker 8 conversions at once', () => {
+    // The worker's client waits a minute longer and asks Docling to stop after 5 h 50 min (issue 477).
+    expect(env()).toContain('{"name":"DOCLING_SERVE_MAX_SYNC_WAIT","value":"21600"}');
+    const worker = JSON.stringify(app('worker').properties.template);
+    // One conversion a replica, so as many at once as the server has replicas.
+    expect(worker).toContain(
+      "'KNOWLEDGE_CONVERT_CONCURRENCY', 'value', string(parameters('doclingMaxReplicas'))",
+    );
+    expect(read('infra/modules/containerapps.bicep')).toMatch(/param doclingMaxReplicas int = 8/);
   });
 });

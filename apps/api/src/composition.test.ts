@@ -28,8 +28,10 @@ import { resolveCatalog } from './catalogs.js';
 import { Hono } from 'hono';
 import { createAdmin } from './admin.js';
 import { createApp } from './app.js';
+import { appendVersion, InMemoryConfigEntryStore, platformScope } from '@genai/composition';
 import { callerFrom, createPlatform, serviceRequirement } from './composition.js';
 import { kernelTaskReader, toTimeline } from './timeline.js';
+import { policyKind } from './building-blocks.js';
 
 const servers: FakeServer[] = [];
 afterEach(async () => {
@@ -258,6 +260,11 @@ const modelReply = (body: Record<string, unknown>) => {
   if (body.tools) {
     const toolTurns = messages.filter((m) => m.role === 'tool').length;
     const offered = (body.tools as { function: { name: string } }[]).map((t) => t.function.name);
+    const asked = messages.find((m) => m.role === 'user')?.content ?? '';
+    if (typeof asked === 'string' && asked.includes('statens organisering'))
+      return toolTurns === 0
+        ? tool('state-organisation', { action: 'under', unit: '932384469' })
+        : text('Dette er virksomhetene.');
     if (offered.includes('source_facts'))
       return toolTurns === 0 ? tool('source_facts', { newest: 3 }) : text('Kudos har dette.');
     if (toolTurns === 0) return tool('search', { queries: ['tildelingsbrev Digdir 2025'] });
@@ -284,9 +291,11 @@ const boot = async (
   access?: Partial<Pick<Parameters<typeof createPlatform>[0], 'policy' | 'authenticate'>>,
   extra: {
     knowledge?: unknown;
+    models?: unknown;
     settings?: SettingsRegistry;
     prices?: Parameters<typeof createPlatform>[0]['prices'];
     log?: InMemoryEventLog;
+    configEntries?: InMemoryConfigEntryStore;
   } = {},
 ) => {
   const model = await fakeHttp(modelReply);
@@ -307,13 +316,14 @@ const boot = async (
   };
   const platform = await createPlatform({
     catalogs: {
-      models: resolveCatalog(yaml('models.yaml'), 'models', env).catalog,
+      models: resolveCatalog(extra.models ?? yaml('models.yaml'), 'models', env).catalog,
       knowledge: resolveCatalog(extra.knowledge ?? yaml('knowledge.yaml'), 'datasets', env).catalog,
       rerank: resolveCatalog(yaml('rerank.yaml'), 'rerankers', env).catalog,
     },
     ...(extra.settings ? { settings: extra.settings } : {}),
     ...(extra.prices ? { prices: extra.prices } : {}),
     ...(extra.log ? { log: extra.log } : {}),
+    ...(extra.configEntries ? { configurables: { store: extra.configEntries } } : {}),
     secrets: envSecrets({ FOUNDRY_OPENAI_KEY: 'm', TYPESENSE_KEY: 't', COLBERT_API_KEY: 'c' }),
     definitions: (plugins) => new InMemoryDefinitionStore(plugins),
     policy: access?.policy ?? { decide: async () => ({ allow: true }) },
@@ -531,6 +541,143 @@ describe('the composed platform', () => {
       .flatMap((r) => (r.body.messages as Message[] | undefined) ?? [])
       .find((m) => m.role === 'tool');
     expect(facts?.content).toContain('"source": "Kudos"');
+  });
+
+  it('validates a service definition that grants state-organisation@1 and refuses an unknown version', async () => {
+    const { platform } = await boot();
+    const service = yaml('services/kunnskapsassistenten.yaml') as {
+      metadata: Record<string, unknown>;
+      spec: Record<string, unknown>;
+    };
+    const publish = (tools: string[]) =>
+      platform.definitions.publish(
+        {
+          ...service,
+          metadata: { ...service.metadata, id: 'ka-register-version' },
+          spec: { ...service.spec, tools },
+        },
+        'test',
+        'test',
+      );
+
+    const known = await publish(['state-organisation@1']);
+    const unknown = await publish(['state-organisation@2']);
+
+    expect(known.ok).toBe(true);
+    expect(!unknown.ok && unknown.errors).toEqual([
+      { path: 'spec.tools[0]', message: 'unknown tool or tool version state-organisation@2' },
+    ]);
+  });
+
+  const registerWithDfd = async () => {
+    const configEntries = new InMemoryConfigEntryStore();
+    await appendVersion(configEntries, {
+      kind: 'state-register',
+      scope: platformScope,
+      id: 'enhetsregisteret',
+      spec: {
+        units: [
+          {
+            orgnr: '932384469',
+            name: 'DIGITALISERINGS- OG FORVALTNINGSDEPARTEMENTET (DFD)',
+            form: 'STAT',
+          },
+          {
+            orgnr: '991825827',
+            name: 'DIGITALISERINGSDIREKTORATET',
+            form: 'ORGL',
+            parent: '932384469',
+          },
+        ],
+        changes: [],
+        syncedAt: '2026-11-16T13:49:00.000Z',
+      },
+      deleted: false,
+      by: 'worker',
+      reason: 'test',
+      at: '2026-11-16T13:49:00.000Z',
+    });
+    return configEntries;
+  };
+
+  it('lets only a service that grants state-organisation@1 call it', async () => {
+    const configEntries = await registerWithDfd();
+    const { platform, app, model } = await boot(undefined, { configEntries });
+    const service = yaml('services/kunnskapsassistenten.yaml') as {
+      metadata: Record<string, unknown>;
+      spec: Record<string, unknown>;
+    };
+    const publish = (id: string, tools: string[]) =>
+      platform.definitions.publish(
+        { ...service, metadata: { ...service.metadata, id }, spec: { ...service.spec, tools } },
+        'test',
+        'test',
+      );
+    expect((await publish('ka-with-register', ['state-organisation@1'])).ok).toBe(true);
+    expect((await publish('ka-without-register', [])).ok).toBe(true);
+    const toolMessage = async (name: string) => {
+      model.seen.length = 0;
+      const res = await mcp(app, 'tools/call', {
+        name,
+        arguments: { query: 'Hvilke virksomheter ligger under DFD, ifølge statens organisering?' },
+      });
+      expect(((await res.json()) as { result: { isError: boolean } }).result.isError).toBe(false);
+      return model.seen
+        .flatMap((r) => (r.body.messages as Message[] | undefined) ?? [])
+        .find((m) => m.role === 'tool')?.content;
+    };
+
+    const granted = await toolMessage('ka-with-register__default');
+    const refused = await toolMessage('ka-without-register__default');
+
+    expect(granted).toContain('<untrusted_data kind="tool:state-organisation"');
+    expect(granted).toContain('DIGITALISERINGSDIREKTORATET');
+    expect(granted).toContain('Enhetsregisteret');
+    expect(refused).toContain('Unknown tool: state-organisation');
+    expect(refused).not.toContain('DIGITALISERINGSDIREKTORATET');
+  });
+
+  it('offers owner_orgnr filter values only when a dataset of the calling service declares the field', async () => {
+    const knowledge = yaml('knowledge.yaml') as {
+      datasets: { id: string; filters: Record<string, string> }[];
+    };
+    const declaring = {
+      ...knowledge,
+      datasets: knowledge.datasets.map((d) =>
+        d.id === 'digdir/kudos'
+          ? { ...d, filters: { ...d.filters, owner_orgnr: 'multiselect' } }
+          : d,
+      ),
+    };
+    const toolMessage = async (catalog: unknown) => {
+      const { platform, app, model } = await boot(undefined, {
+        configEntries: await registerWithDfd(),
+        knowledge: catalog,
+      });
+      const service = yaml('services/kunnskapsassistenten.yaml') as {
+        metadata: Record<string, unknown>;
+        spec: Record<string, unknown>;
+      };
+      await platform.definitions.publish(
+        { ...service, metadata: { ...service.metadata, id: 'ka-filter-values' } },
+        'test',
+        'test',
+      );
+      await mcp(app, 'tools/call', {
+        name: 'ka-filter-values__default',
+        arguments: { query: 'Hva skriver virksomhetene under DFD, ifølge statens organisering?' },
+      });
+      return model.seen
+        .flatMap((r) => (r.body.messages as Message[] | undefined) ?? [])
+        .find((m) => m.role === 'tool')?.content;
+    };
+
+    const declared = await toolMessage(declaring);
+    const undeclared = await toolMessage(knowledge);
+
+    expect(declared).toContain('"filter_values":{"owner_orgnr":["991825827"]}');
+    expect(undeclared).toContain('DIGITALISERINGSDIREKTORATET');
+    expect(undeclared).not.toContain('filter_values');
   });
 
   it('refuses at publish a variant filter on a field none of its datasets declares', async () => {
@@ -976,6 +1123,114 @@ describe('the composed platform', () => {
     expect(classified.status).toBe(200);
     expect(await ids('?residency=norway')).toEqual(['foundry-openai/gpt-4o-2m-tps']);
     expect((await app.request('/models')).status).toBe(401);
+  });
+
+  it('names the context window and release date of a model where the catalog has them', async () => {
+    const catalog = yaml('models.yaml') as { models: Record<string, unknown>[] };
+    const { app } = await boot(undefined, {
+      models: {
+        ...catalog,
+        models: catalog.models.map((m) =>
+          m.id === 'foundry-openai/gpt-6-luna'
+            ? { ...m, contextWindow: 400_000, releaseDate: '2026-09-01' }
+            : m,
+        ),
+      },
+    });
+
+    const res = await app.request('/models', { headers: { authorization: 'Bearer kari' } });
+    const { data } = (await res.json()) as { data: Record<string, unknown>[] };
+
+    expect(data.find((m) => m.id === 'foundry-openai/gpt-6-luna')).toMatchObject({
+      contextWindow: 400_000,
+      releaseDate: '2026-09-01',
+    });
+    expect(data.find((m) => m.id === 'foundry-openai/gpt-5-mini')).not.toHaveProperty(
+      'contextWindow',
+    );
+  });
+
+  it('marks the recommended models from the setting, else the model new services start with', async () => {
+    const recommendedOf = async (values: Record<string, unknown>) => {
+      const settings = new SettingsRegistry(platformSettings);
+      for (const [key, value] of Object.entries(values))
+        expect(settings.setDefault(key, value, 'drift', 'Test').ok).toBe(true);
+      const { app } = await boot(undefined, { settings });
+      const res = await app.request('/models', { headers: { authorization: 'Bearer kari' } });
+      return ((await res.json()) as { data: { id: string; recommended: boolean }[] }).data
+        .filter((m) => m.recommended)
+        .map((m) => m.id);
+    };
+
+    expect(
+      await recommendedOf({
+        'models.recommended': ['foundry-openai/gpt-5-mini', 'foundry-openai/gpt-6-luna'],
+        'services.defaultModel': 'foundry-openai/gpt-4o-2m-tps',
+      }),
+    ).toEqual(['foundry-openai/gpt-5-mini', 'foundry-openai/gpt-6-luna']);
+    expect(
+      await recommendedOf({ 'services.defaultModel': 'foundry-openai/gpt-4o-2m-tps' }),
+    ).toEqual(['foundry-openai/gpt-4o-2m-tps']);
+    expect(await recommendedOf({})).toEqual([]);
+  });
+
+  it("leaves out models the tenant's policy holds back, and lists them with a reason only with all=true", async () => {
+    const configEntries = new InMemoryConfigEntryStore();
+    await configEntries.append({
+      kind: policyKind,
+      scope: '991825827',
+      id: 'default',
+      version: 1,
+      spec: {
+        rules: [
+          { match: { kind: 'model', id: 'foundry-openai/gpt-5-mini' }, effect: 'not_allowed' },
+          {
+            match: { kind: 'model', id: 'foundry-openai/gpt-6-luna' },
+            effect: 'requires_approval',
+            approver: 'tenant',
+          },
+        ],
+      },
+      deleted: false,
+      by: 'kari',
+      at: '2026-11-18T08:00:00Z',
+      reason: 'Regler i testen',
+    });
+    const { app } = await boot(undefined, { configEntries });
+    const list = async (query = '') =>
+      (
+        (await (
+          await app.request(`/models${query}`, { headers: { authorization: 'Bearer kari' } })
+        ).json()) as { data: { id: string; available: boolean; reason?: string }[] }
+      ).data;
+
+    const usable = await list();
+    const all = await list('?all=true');
+
+    expect(usable.map((m) => m.id)).not.toContain('foundry-openai/gpt-5-mini');
+    expect(usable.map((m) => m.id)).not.toContain('foundry-openai/gpt-6-luna');
+    expect(usable.every((m) => m.available)).toBe(true);
+    expect(all.find((m) => m.id === 'foundry-openai/gpt-5-mini')).toMatchObject({
+      available: false,
+      reason: 'not_allowed',
+    });
+    expect(all.find((m) => m.id === 'foundry-openai/gpt-6-luna')).toMatchObject({
+      available: false,
+      reason: 'requires_approval',
+    });
+  });
+
+  it('names who made each model and who runs it where, from the model list', async () => {
+    const { app } = await boot();
+
+    const res = await app.request('/models', { headers: { authorization: 'Bearer kari' } });
+    const { data } = (await res.json()) as { data: { id: string }[] };
+
+    for (const id of ['foundry-openai/gpt-6-luna', 'foundry-openai/gpt-5-mini'])
+      expect(data.find((m) => m.id === id)).toMatchObject({
+        maker: 'OpenAI',
+        operator: { name: 'Microsoft Azure', region: 'Sverige' },
+      });
   });
 
   it('shows the price per 1,000 tokens next to each model, or null when it has none', async () => {

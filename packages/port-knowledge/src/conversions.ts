@@ -32,6 +32,7 @@ export interface AcceptedConverter {
 
 export const textLayerDerivation: Derivation = { name: 'text-layer', version: 1 };
 export const doclingPagesDerivation: Derivation = { name: 'docling-pages', version: 1 };
+export const doclingPartsDerivation: Derivation = { name: 'docling-parts', version: 1 };
 
 /**
  * The converters every pipeline accepts, in order: Docling, any version and settings, kept (the
@@ -96,7 +97,8 @@ export const conversionKey = (target: ConversionTarget) =>
 export interface StoredConversions {
   /**
    * The conversion a document reads: of the first accepted converter the file has one from, the
-   * newest with that converter's derivation (ADR 0042, "Which conversion a document reads").
+   * newest with that converter's derivation (ADR 0042, "Which conversion a document reads"). A
+   * conversion with pages comes before any refusal, so a Docling refusal never hides a text layer.
    */
   find(
     sha256: string,
@@ -169,4 +171,23 @@ export interface StoredConversions {
   ): Promise<Set<string>>;
   /** Every convert key some record waits on. */
   waitedKeys(): Promise<string[]>;
+  /**
+   * A pipeline's records in a dataset after record number `after`, at most `limit`, whose files have a
+   * conversion with pages only from accepted converters that are replaced, and no conversion from
+   * a kept one, refusals included: what a replacement run converts again (ADR 0042, "Conversion").
+   * Only stored records and those skipped as `no_text`, in record order.
+   */
+  replaceable(
+    dataset: string,
+    pipeline: string,
+    accepted: readonly AcceptedConverter[],
+    after: string,
+    limit: number,
+  ): Promise<{ record: string; files: { name: string; sha256: string }[] }[]>;
+  /**
+   * The records of a pipeline in a dataset, stored or skipped as `no_text`, that hold a file and wait
+   * on no conversion: the documents a replacement's new conversion is indexed for, beside those
+   * whose wait it ended.
+   */
+  holding(dataset: string, pipeline: string, sha256: string): Promise<string[]>;
 }

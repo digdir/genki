@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -109,9 +110,14 @@ describe('the CI workflow in the merge queue', () => {
     expect(workflow.on).toHaveProperty('merge_group');
   });
 
-  it('scopes a merge group from the commit it lands on, as it scopes a pull request from its base', () => {
-    expect(env('scope', 'BASE')).toContain('github.event.merge_group.base_sha');
-    expect(env('test', 'BASE')).toContain('github.event.merge_group.base_sha');
+  it('runs every check in full for a merge group, since a deploy reuses its result for the commit', () => {
+    expect(env('scope', 'BASE')).toBe("${{ github.event.pull_request.base.sha || '' }}");
+    expect(env('test', 'BASE')).toBe('${{ github.event.pull_request.base.sha }}');
+    const scope = execFileSync(process.execPath, [join(import.meta.dirname, 'ci-scope.ts')], {
+      encoding: 'utf8',
+      env: { ...process.env, GITHUB_OUTPUT: '' },
+    });
+    expect(JSON.parse(scope)).toEqual({ static: true, tests: 'all', size: true, image: true });
   });
 });
 
@@ -130,5 +136,19 @@ describe('the test job when only the affected tests run', () => {
     const vitest = steps('test').find((s) => s.run?.includes('vitest'));
     expect(vitest?.run).toContain('${CHANGED:+--changed "$CHANGED"}');
     expect(vitest?.env?.CHANGED).toBe('${{ steps.changed.outputs.since }}');
+  });
+});
+
+describe('the secret scan', () => {
+  const gitleaks = () => steps('secrets').find((s) => s.run?.includes('gitleaks'))?.run ?? '';
+
+  it('scans only the history of the commit under test, so a line on another branch cannot fail every pull request', () => {
+    expect(gitleaks()).toMatch(/ git \/repo --log-opts=HEAD /);
+  });
+
+  it('still reads the whole history of that commit', () => {
+    expect(
+      steps('secrets').find((s) => s.uses?.startsWith('actions/checkout@'))?.with?.['fetch-depth'],
+    ).toBe(0);
   });
 });

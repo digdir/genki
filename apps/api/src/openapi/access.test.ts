@@ -210,6 +210,12 @@ describe('access and extensions API reference', () => {
       201,
     );
     await conforms(
+      await send(`${t}/services/klarsprak/shared-with`, 'kari'),
+      'get',
+      '/tenants/{tenant}/services/{service}/shared-with',
+      200,
+    );
+    await conforms(
       await send(`${t}/maskinporten-clients`, 'kari', {
         body: { clientId: 'fagsystem-mp', name: 'Fagsystem', services: ['klarsprak'] },
         reason,
@@ -258,6 +264,17 @@ describe('access and extensions API reference', () => {
       200,
     );
     await conforms(
+      await send('/operator/secrets/sigma2-key', 'drift', {
+        method: 'PUT',
+        body: { value: 'ikke-en-ekte-verdi' },
+        reason,
+      }),
+      'put',
+      '/operator/secrets/{name}',
+      200,
+    );
+    await conforms(await send('/operator/secrets', 'drift'), 'get', '/operator/secrets', 200);
+    await conforms(
       await send(`${t}/connectors`, 'kari'),
       'get',
       '/tenants/{tenant}/connectors',
@@ -290,6 +307,14 @@ describe('access and extensions API reference', () => {
         `${t}/building-blocks/${first?.kind}/${encodeURIComponent(first?.id ?? '')}`,
         'kari',
       ),
+      'get',
+      '/tenants/{tenant}/building-blocks/{kind}/{id}',
+      200,
+    );
+    const model = blocks.find((b) => b.kind === 'model');
+    expect(model).toBeDefined();
+    await conforms(
+      await send(`${t}/building-blocks/model/${encodeURIComponent(model?.id ?? '')}`, 'kari'),
       'get',
       '/tenants/{tenant}/building-blocks/{kind}/{id}',
       200,

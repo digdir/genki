@@ -1018,7 +1018,32 @@ describe('agent-loop sources, as headless-rag publishes them', () => {
     ]);
   });
 
-  it('returns every chunk it read as a source even when the answer cites none', async () => {
+  it("a source record keeps its chunk's publisher", async () => {
+    const store = new Map([
+      ['c1', chunk(1, { publisher: 'Justis- og beredskapsdepartementet' })],
+      ['c2', chunk(2)],
+    ]);
+    const out = await run({
+      retrieval: retrieval({}, store).impl,
+      scripts: {
+        primary: {
+          loop: [
+            () => result('', [call('search', { queries: ['tildelingsbrev'] })]),
+            () => result('', [call('read_chunks', { chunk_ids: ['c1', 'c2'] })]),
+          ],
+          synth: [() => 'Digdir skal digitalisere offentlig sektor.'],
+        },
+      },
+    });
+
+    expect(out.sources.map((s) => [s.chunkId, s.publisher])).toEqual([
+      ['c1', 'Justis- og beredskapsdepartementet'],
+      ['c2', undefined],
+    ]);
+    expect(out.sources[1]).not.toHaveProperty('publisher');
+  });
+
+  it('returns every read chunk in synthesis ranking order even when the answer cites none', async () => {
     const out = await run({
       scripts: {
         primary: {
@@ -1033,7 +1058,7 @@ describe('agent-loop sources, as headless-rag publishes them', () => {
 
     expect(out.text).toBe('Digdir skal digitalisere offentlig sektor.');
     expect(out.meta).toEqual({ citations: [] });
-    expect(out.sources.map((s) => s.chunkId)).toEqual(['c4', 'c1']);
+    expect(out.sources.map((s) => s.chunkId)).toEqual(['c1', 'c4']);
   });
 
   it('keeps the read chunks as sources when the loop runs out and the fallback answers', async () => {

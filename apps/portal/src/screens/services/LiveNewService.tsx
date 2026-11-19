@@ -1,4 +1,3 @@
-import { ChevronLeftIcon } from '@navikt/aksel-icons';
 import {
   Alert,
   Button,
@@ -16,7 +15,6 @@ import {
 } from '@digdir/designsystemet-react';
 import { useMemo, useRef, useState } from 'react';
 import type { ApiClient } from '../../api';
-import { Icon } from '../../components/Icon';
 import { slug } from '../../data/services';
 import { navigate, useAsync } from '../../hooks';
 import { useT, type PlainKey } from '../../i18n';
@@ -24,6 +22,7 @@ import { toYaml } from '../../yaml';
 import { problemErrors } from '../service/definition';
 import { TestRun } from '../service/TestRun';
 import { reasonProblem } from '../../components/ReasonField';
+import { BackLink } from '../../components/BackLink';
 
 type Risk = 'minimal' | 'limited' | 'high';
 
@@ -144,10 +143,7 @@ export const LiveNewService = ({ api, tenant }: { api: ApiClient; tenant: string
   return (
     <div className="new-service">
       <div className="stack-sm">
-        <a href="#/services" className="back-link">
-          <Icon icon={ChevronLeftIcon} size={18} />
-          {t('services.back')}
-        </a>
+        <BackLink label={t('services.back')} href="#/services" />
         <Heading level={1} data-size="lg">
           {t('services.newTitle')}
         </Heading>

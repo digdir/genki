@@ -26,7 +26,11 @@ const dropPayload = z.union([
   z.strictObject({ tenant, dataset: id, generation: id }),
 ]);
 /** The fills a fields-only refresh knows, each by the source whose records it reads (ADR 0042). */
-export const fieldFills = ['kudos-org-numbers'] as const;
+export const fieldFills = [
+  'kudos-org-numbers',
+  'kudos-links-and-abbreviations',
+  'kudos-report-keys',
+] as const;
 /** A dataset whose stored documents get new fields, without re-chunking or embedding. */
 const fieldsPayload = z.strictObject({ tenant, dataset: id, fill: z.enum(fieldFills) });
 /**
@@ -34,14 +38,22 @@ const fieldsPayload = z.strictObject({ tenant, dataset: id, fill: z.enum(fieldFi
  * waiting on it, comma-separated and starting with its own, so the job's dead letter is shown to
  * each (ADR 0042, "Jobs"). Job data keeps 128 characters a value, so the list holds 12.
  */
-const convertPayload = z.strictObject({
+const convertFields = {
   run: id,
   tenant,
   file: sha256,
   dataset: id,
   record: id,
   tenants: z.string().regex(/^(\d{9}|platform)(,(\d{9}|platform))*$/, 'organisation numbers'),
-});
+};
+/**
+ * A text-layer job names no converter, as before issue 477, so a worker of the release before reads
+ * it; a Docling job names Docling.
+ */
+const convertPayload = z.union([
+  z.strictObject(convertFields),
+  z.strictObject({ ...convertFields, converter: z.literal('docling') }),
+]);
 const documentPayload = z.strictObject({ run: id, tenant, generation: id, record: id });
 /**
  * A `vacuum` or `index` build that ends an ingestion run names the run, which stays open until the
@@ -136,6 +148,20 @@ export const knowledgeConvertQueue = (markerTimeoutMs: number) =>
     deadLetter: true,
   });
 
+/**
+ * A replacement run's first step (ADR 0042, "Conversion"): its dataset's records whose files have
+ * only a text-layer conversion wait on Docling, each convert job sent for the night window.
+ */
+export const knowledgeReplaceQueue = defineQueue({
+  name: 'knowledge.replace',
+  policy: 'exclusive',
+  payload: runPayload,
+  expireInSeconds: 2 * hour,
+  heartbeatSeconds: minute,
+  ...retried,
+  deadLetter: true,
+});
+
 export const knowledgeIndexQueue = defineQueue({
   name: 'knowledge.index',
   policy: 'exclusive',
@@ -220,6 +246,7 @@ export const knowledgePlatformQueues: QueueDefinition[] = [
 /** Jobs that follow a document record: on the knowledge server, sent and worked by the writer. */
 export const knowledgeServerQueues = (markerTimeoutMs: number): QueueDefinition[] => [
   knowledgeConvertQueue(markerTimeoutMs),
+  knowledgeReplaceQueue,
   knowledgeIndexQueue,
   knowledgeFillQueue,
   knowledgeBuildQueue,
@@ -237,6 +264,7 @@ export const runQueueNames = [
   'knowledge.ingest',
   'knowledge.push',
   'knowledge.convert',
+  'knowledge.replace',
   'knowledge.index',
   'knowledge.fill',
   'knowledge.build',
@@ -262,8 +290,11 @@ export const knowledgeKeys = {
 /** The two-character sha256 prefixes a seed is split by: 256 batches. */
 export const seedPrefixes = Array.from({ length: 256 }, (_, i) => i.toString(16).padStart(2, '0'));
 
-/** Uploads before ingestion runs before candidates; pg-boss takes the highest first. */
-export const convertPriority = { upload: 3, run: 2, candidate: 1 } as const;
+/**
+ * Uploads before ingestion runs before candidates before replacement runs; pg-boss takes the highest
+ * first. Only a replacement run's convert jobs are sent at 0, so the night window moves them alone.
+ */
+export const convertPriority = { upload: 3, run: 2, candidate: 1, replacement: 0 } as const;
 
 /** Sends a seed's batches, one job per prefix; a batch whose job still waits or runs is not sent again. */
 export const sendSeed = async (

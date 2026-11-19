@@ -1,10 +1,11 @@
-import type { UsageReads } from '@genai/port-usage';
+import { throughGatewayConnections, type UsageReads } from '@genai/port-usage';
 import type { DescriptorRegistry } from '@genai/operations';
 import {
   type Catalogs,
   type EnvironmentTier,
   createRuntime,
   defaultPlatformTenant,
+  defaultServiceLimits,
   InMemoryConfigEntryStore,
   strategyModelNeeds,
   allowOf,
@@ -41,7 +42,10 @@ import {
   strategyKey,
   toCapabilities,
   validateDefinition,
+  variantId,
+  variantStrategyOf,
   type CompiledCapability,
+  type Definition,
   type DefinitionStore,
   type PluginSchemas,
   type ServiceDefinition,
@@ -72,6 +76,7 @@ import {
 import {
   gateQuota,
   InMemoryTraceDeliveries,
+  retentionFor,
   klarsprakChecklist,
   nynorskReference,
   type TraceDeliveryStore,
@@ -93,6 +98,7 @@ import {
   deleteConversationDocuments,
   runtimeDocumentStore,
   runtimeDocumentTypes,
+  runtimeFileTypes,
   runtimeMediaTypes,
 } from './runtime-documents.js';
 import {
@@ -145,7 +151,8 @@ import type { DeclaredPhraseArchive, DocumentConverter } from '@genai/ingest';
 import { datasetEnrichmentModule, enrichmentOutputTokens } from './dataset-enrichment.js';
 import { lastImportAt, publicDatasetState } from './dataset-status.js';
 import { datasetDeleteModule } from './dataset-delete.js';
-import { datasetReaders } from './dataset-readers.js';
+import { datasetSearchModule } from './dataset-search.js';
+import { datasetReaderCounts, datasetReaders } from './dataset-readers.js';
 import { datasetUploadsModule } from './dataset-uploads.js';
 import { type ApiLog } from './failure-log.js';
 import {
@@ -213,8 +220,15 @@ import {
 import { tenantAccess } from './access.js';
 import { actorNames } from './actor-names.js';
 import { platformScope } from './config-store.js';
-import { operationsOverview, type PipelineRuns } from './operations.js';
-import { organizationLookup } from './organizations.js';
+import {
+  forTenant,
+  operationsOverview,
+  type OperationsDeps,
+  type PipelineRuns,
+} from './operations.js';
+import { openIncidentsFor, platformStatusModule } from './platform-status.js';
+import { quotaRequestsModule } from './quota-requests.js';
+import { cachedOrganizationLookup, organizationLookup } from './organizations.js';
 import { locationOf } from './residency.js';
 import { retiredModelMessage, serviceHealth, type ServiceModels } from './service-health.js';
 import { serviceDrafts } from './service-drafts.js';
@@ -264,14 +278,17 @@ import { blockUsageModule } from './block-usage.js';
 import {
   buildingBlocksModule,
   createBuildingBlocksModule,
+  readBlockPolicy,
   withBlockSettings,
 } from './building-blocks.js';
+import { publicPrice, recommendedModels, unavailableReason } from './public-models.js';
 import { engineSwitchesModule } from './engine-switches.js';
 import { definitionSubject } from './definition-subject.js';
 import { runJudges } from './eval-judges.js';
 import { sinkLabels } from './sink-labels.js';
 import { knowledgeEndpointsModule } from './knowledge-endpoints.js';
 import { stateRegisterModule } from './state-register.js';
+import { demosModule } from './demo-routes.js';
 import { playgroundModule } from './playground.js';
 import { proposalsModule } from './proposals.js';
 import { connectorsModule, privateNetworkRegistry } from './connectors.js';
@@ -280,6 +297,7 @@ import { qualityModule } from './quality.js';
 import { batchRunsModule } from './batch-run-routes.js';
 import { projectsModule } from './project-routes.js';
 import { resultReviewsModule } from './result-reviews.js';
+import { tenantRunCancelModule } from './tenant-run-cancel.js';
 import { userPreferencesModule } from './user-preferences.js';
 import { projectTasks } from './project-usage.js';
 import { governanceModule } from './governance.js';
@@ -302,6 +320,8 @@ import { createKeyPoliciesModule } from './key-policies.js';
 import { maskinportenClientsModule } from './maskinporten-clients.js';
 import { triggersModule } from './triggers.js';
 import { lifecycleOf, pausedMessage, serviceLifecycleModule } from './service-lifecycle.js';
+import { batchTasksOf } from './batch-runs.js';
+import { archivedPublishRefusal } from './archived-services.js';
 import {
   allowedEnvironments,
   chooseEnvironment,
@@ -313,8 +333,15 @@ import { documentAccessRoutes } from './openapi/access.js';
 import { modelChoice } from './model-choice.js';
 import { modelMatrixModule, releaseGate } from './model-matrix.js';
 import { operatorModelsModule } from './operator-models.js';
+import { platformSecretsModule } from './platform-secrets.js';
 import { operatorOperationsModule } from './operator-operations.js';
-import { describedStepProblems, operationGovernanceModule } from './operation-governance.js';
+import {
+  describedStepProblems,
+  operationGovernanceModule,
+  stepMediaTypes,
+  unmaskedInputIn,
+  type UnmaskedInputUse,
+} from './operation-governance.js';
 import { operationDescriptorsModule } from './operation-descriptors.js';
 import { documentDatasetRoutes } from './openapi/datasets.js';
 import { declaredSecrets, PluginRegistry } from '@genai/plugins';
@@ -358,6 +385,7 @@ export const platformModules: PlatformModuleFactory[] = [
   engineSwitchesModule,
   knowledgeEndpointsModule,
   stateRegisterModule,
+  demosModule,
   assistantModule,
   proposalsModule,
   connectorsModule,
@@ -371,11 +399,15 @@ export const platformModules: PlatformModuleFactory[] = [
   definitionCompletionModule,
   datasetUploadsModule,
   datasetDeleteModule,
+  datasetSearchModule,
   datasetEnrichmentModule,
   qualityModule,
   batchRunsModule,
   projectsModule,
   resultReviewsModule,
+  tenantRunCancelModule,
+  quotaRequestsModule,
+  platformStatusModule,
   userPreferencesModule,
   onboardingModule,
   maskinportenClientsModule,
@@ -383,6 +415,7 @@ export const platformModules: PlatformModuleFactory[] = [
   serviceLifecycleModule,
   serviceEnvironmentsModule,
   operatorModelsModule,
+  platformSecretsModule,
   operatorOperationsModule,
   operationGovernanceModule,
   operationDescriptorsModule,
@@ -474,6 +507,7 @@ export interface PlatformInput {
   platformTenant?: string;
   /** The platform's version (APP_VERSION), recorded as the commit of eval runs it starts. */
   appVersion?: string;
+  demoRecorderKeyDigest?: string;
   /** Tenants' Langfuse connections: Digdir's instance and whether it may receive content. */
   tracing?: TracingOptions;
   /** Every trace sent to a tenant's sink, until its delete is confirmed. */
@@ -524,6 +558,8 @@ export interface PlatformInput {
   verifyPluginsOnBoot?: boolean;
   rateLimits?: { limiter?: RateLimiter };
   serviceLimits?: { deadlineMs?: number; budget?: Usage };
+  /** The clock a thread's last run is held against its deadline with; tests fix it. */
+  now?: () => number;
   evalSlots?: Partial<EvalSlotLimits>;
   logger?: ApiLog;
   logFailureMessages?: boolean;
@@ -658,6 +694,7 @@ export interface ResolverHooks {
   batch?(compiled: CompiledCapability): Promise<boolean>;
   documents?(compiled: CompiledCapability): Promise<string[]>;
   media?(compiled: CompiledCapability): Promise<string[]>;
+  files?(compiled: CompiledCapability): Promise<string[]>;
 }
 
 const humanized = (id: string) => {
@@ -701,6 +738,8 @@ export const capabilityResolver = (
     if (documents.length) entry = { ...entry, documents };
     const media = (await hooks.media?.(compiled)) ?? [];
     if (media.length) entry = { ...entry, media };
+    const files = (await hooks.files?.(compiled)) ?? [];
+    if (files.length) entry = { ...entry, files };
     const searches = hooks.searches?.(principal, compiled) ?? [];
     if (searches.length) entry = { ...entry, searches };
     const fields = entry.inputFields;
@@ -1200,7 +1239,7 @@ export const createPlatform = async (input: PlatformInput) => {
     input.evaluators ??
     new Map<string, Evaluator>([
       ['contract', contractAssertions()],
-      ['retrieval', retrievalRecall(10)],
+      ['retrieval', retrievalRecall()],
       ['klarsprak-checklist', klarsprakChecklist()],
       ['nynorsk-reference', nynorskReference()],
     ]);
@@ -1228,6 +1267,12 @@ export const createPlatform = async (input: PlatformInput) => {
     title: 'Berikelse av datasett',
     platformTenant,
     outputTokens: enrichmentOutputTokens,
+  });
+  const datasetSearchWork = trackedWork({
+    id: 'platform/dataset-search',
+    title: 'Søk i datasett',
+    platformTenant,
+    outputTokens: 1,
   });
   let modules: PlatformModule[] = [];
   const decorate = decorateWith(() => modules);
@@ -1342,12 +1387,13 @@ export const createPlatform = async (input: PlatformInput) => {
       createBuilderAssistant({ plugins, knowledge }) as Strategy,
       createOptimiser() as Strategy,
       enrichmentWork.strategy,
+      datasetSearchWork.strategy,
     ],
     extraStrategyConfigs: [builderStrategyId, optimiserStrategyId].map((id) => [
       strategyKey(id, 1),
       platformServiceConfig,
     ]),
-    platformCapabilities: [evalCapability, enrichmentWork.capability],
+    platformCapabilities: [evalCapability, enrichmentWork.capability, datasetSearchWork.capability],
     ...(input.state ? { state: input.state } : {}),
     observe: (log: EventLog) =>
       observedEventLog(input.observe ? input.observe(log) : log, experiments),
@@ -1469,6 +1515,14 @@ export const createPlatform = async (input: PlatformInput) => {
   };
 
   const config = await configurables.attach({
+    endpointSources: {
+      network: (host) => databaseGuard.network(host),
+      setSecret: async (tenant, name, value, hosts) => {
+        await vault.set(tenant, name, value, hosts);
+      },
+      deleteSecret: (tenant, name) => vault.delete(tenant, name),
+      secretNames: (tenant) => vault.names(tenant),
+    },
     catalog: runtime.catalog,
     routers: { knowledge, writers },
     engines: () => describeEngines(knowledgeAdapters, writerAdapters),
@@ -1495,8 +1549,18 @@ export const createPlatform = async (input: PlatformInput) => {
           definitions,
           configEntries: configurables.store,
           resolve: (id) => knowledge.resolve(id),
+          names: actorNames(configEntries),
         },
         dataset,
+      ),
+    usedByCounts: (tenant) =>
+      datasetReaderCounts(
+        {
+          definitions,
+          configEntries: configurables.store,
+          resolve: (id) => knowledge.resolve(id),
+        },
+        tenant,
       ),
   });
   if (input.logger) logFailedIngestion(config.ingestion, input.logger);
@@ -1516,11 +1580,43 @@ export const createPlatform = async (input: PlatformInput) => {
       : undefined;
   };
 
-  const checkBeforePublish = async (definition: unknown, publisher: string) => {
+  const flowIn = async (tenant: string, flowRef: string) => {
+    const at = flowRef.lastIndexOf('@');
+    const id = flowRef.slice(0, at);
+    const version = Number(flowRef.slice(at + 1));
+    const flow =
+      (await store.get('StepFlow', tenant, id, version))?.definition ??
+      (await runtime.sharedRecipe(tenant, id, version));
+    return flow?.kind === 'StepFlow' ? flow : undefined;
+  };
+  const unmaskedInput = async (d: Definition): Promise<UnmaskedInputUse[]> => {
+    if (d.kind !== 'Service') return [];
+    const flowOf = (flowRef: string) => flowIn(d.metadata.tenant, flowRef);
+    const uses: UnmaskedInputUse[] = [];
+    for (const flowRef of new Set(flowUsesOf(d.spec).map((u) => u.flow))) {
+      const flow = await flowOf(flowRef);
+      if (flow)
+        uses.push(
+          ...(await unmaskedInputIn(d, flow, flowRef, {
+            descriptors: runtime.descriptors,
+            flow: flowOf,
+          })),
+        );
+    }
+    return uses;
+  };
+
+  const sideEffectModules: ReadonlySet<string> = new Set(['hooks']);
+  const checkBeforePublish = async (
+    definition: unknown,
+    publisher: string,
+    skipped: ReadonlySet<string> = new Set(),
+  ) => {
     const validated = validateDefinition(definition, plugins);
     if (!validated.ok) return undefined;
     const d = validated.definition;
     for (const module of modules) {
+      if (skipped.has(module.id)) continue;
       const problems = (await module.checkPublish?.(d, publisher)) ?? [];
       if (problems.length > 0) return problems;
     }
@@ -1534,15 +1630,7 @@ export const createPlatform = async (input: PlatformInput) => {
         (s) => plugins.datasetNeeds?.has(strategyKey(s.id, s.version)) ?? false,
       );
       if (unsearchable.length > 0) return unsearchable;
-      const flowOf = async (flowRef: string) => {
-        const at = flowRef.lastIndexOf('@');
-        const id = flowRef.slice(0, at);
-        const version = Number(flowRef.slice(at + 1));
-        const flow =
-          (await store.get('StepFlow', d.metadata.tenant, id, version))?.definition ??
-          (await runtime.sharedRecipe(d.metadata.tenant, id, version));
-        return flow?.kind === 'StepFlow' ? flow : undefined;
-      };
+      const flowOf = (flowRef: string) => flowIn(d.metadata.tenant, flowRef);
       for (const flowRef of new Set(flowUsesOf(d.spec).map((u) => u.flow))) {
         const flow = await flowOf(flowRef);
         const problems = flow
@@ -1609,6 +1697,8 @@ export const createPlatform = async (input: PlatformInput) => {
     ];
   };
 
+  const serviceLifecycle = (tenant: string, service: string) =>
+    lifecycleOf(configEntries, tenant, service);
   const compiled = compiledCapabilityCache(() => store.capabilities());
   const resync = async () => {
     compiled.invalidate();
@@ -1622,6 +1712,8 @@ export const createPlatform = async (input: PlatformInput) => {
       resolve: (...args) => store.resolve(...args),
       capabilities: () => compiled.get(),
       publish: async (...args) => {
+        const archived = await archivedPublishRefusal(args[0], serviceLifecycle);
+        if (archived) return archived;
         const problems = await checkBeforePublish(args[0], args[1]);
         if (problems) return { ok: false, errors: problems };
         const result = await store.publish(...args);
@@ -1734,6 +1826,25 @@ export const createPlatform = async (input: PlatformInput) => {
         (await definitions.get('Service', compiled.service.tenant, compiled.service.id))?.definition
           .spec,
       ),
+    files: async (compiled) => {
+      const spec = (await definitions.get('Service', compiled.service.tenant, compiled.service.id))
+        ?.definition.spec;
+      if (!spec) return [];
+      const typed = spec as ServiceDefinition['spec'];
+      const variant = typed.variants?.find((v) => variantId(v) === compiled.variant);
+      const uses = flowUsesOf(typed);
+      const own = uses.filter((u) => u.variant === compiled.variant);
+      const runsService = !variant || variantStrategyOf(typed, variant) === typed.strategy;
+      const refs = (own.length ? own : runsService ? uses.filter((u) => !u.variant) : []).map(
+        (u) => u.flow,
+      );
+      if (refs.length === 0) return [];
+      const stepTypes = await stepMediaTypes(refs, {
+        descriptors: runtime.descriptors,
+        flow: (ref) => flowIn(compiled.service.tenant, ref),
+      });
+      return runtimeFileTypes(spec, stepTypes);
+    },
     batch: async (compiled) => {
       const found = await definitions.get('Service', compiled.service.tenant, compiled.service.id);
       return (
@@ -1893,6 +2004,55 @@ export const createPlatform = async (input: PlatformInput) => {
   });
   const apiKeys = input.apiKeys ?? new InMemoryTenantApiKeys();
   let adminRef: Admin | undefined;
+  const pipelineRuns = async (tenant?: string) => {
+    const runs: PipelineRuns[] = [];
+    for (const item of config.catalog.list({ kind: 'dataset' })) {
+      const owner = item.scope === platformScope ? platformTenant : item.scope;
+      if (tenant !== undefined && owner !== tenant) continue;
+      for (const pipeline of await config.ingestion.list(item.scope, item.id))
+        runs.push({
+          tenant: owner,
+          dataset: item.id,
+          pipeline: pipeline.spec.name,
+          scheduled: pipeline.spec.enabled && pipeline.spec.schedule !== 'none',
+          executions: await config.ingestion.executions(item.id, pipeline.id),
+        });
+    }
+    return runs;
+  };
+  const organization = cachedOrganizationLookup(
+    organizationLookup({
+      tenants: () => directory.list(),
+      ...(input.organizationRegistry
+        ? {
+            registryUrl: input.organizationRegistry.url,
+            ...(input.organizationRegistry.fetch
+              ? { fetch: input.organizationRegistry.fetch }
+              : {}),
+          }
+        : {}),
+    }),
+  );
+  const operationsDeps: OperationsDeps = {
+    now: () => new Date(),
+    models: () => models.describe(),
+    ingestion: () => config.ingestion.backend,
+    pipelines: () => pipelineRuns(),
+    tasks: () => taskIndex.all(),
+    tenantNames: async () => new Map((await directory.list()).map((t) => [t.orgNumber, t.name])),
+    ...(input.databasePing ? { database: input.databasePing } : {}),
+  };
+  const tenantOperations = (tenant: string) =>
+    operationsOverview(
+      forTenant(
+        {
+          ...operationsDeps,
+          pipelines: () => pipelineRuns(tenant),
+          tasks: () => taskIndex.all(tenant),
+        },
+        tenant,
+      ),
+    );
   const consoleOperator: Principal = { kind: 'operator', issuer: 'platform', subject: 'console' };
   const consoleDeps: ConsoleDeps = {
     names: actorNames(configEntries),
@@ -1934,40 +2094,11 @@ export const createPlatform = async (input: PlatformInput) => {
         : undefined;
     },
     cancel: (task) => kernel.cancel(consoleOperator, task),
-    operations: () =>
-      operationsOverview({
-        now: () => new Date(),
-        models: () => models.describe(),
-        ingestion: () => config.ingestion.backend,
-        pipelines: async () => {
-          const runs: PipelineRuns[] = [];
-          for (const item of config.catalog.list({ kind: 'dataset' }))
-            for (const pipeline of await config.ingestion.list(item.scope, item.id))
-              runs.push({
-                tenant: item.scope === platformScope ? platformTenant : item.scope,
-                dataset: item.id,
-                pipeline: pipeline.spec.name,
-                scheduled: pipeline.spec.enabled && pipeline.spec.schedule !== 'none',
-                executions: await config.ingestion.executions(item.id, pipeline.id),
-              });
-          return runs;
-        },
-        tasks: () => taskIndex.all(),
-        tenantNames: async () =>
-          new Map((await directory.list()).map((t) => [t.orgNumber, t.name])),
-        ...(input.databasePing ? { database: input.databasePing } : {}),
-      }),
-    organization: organizationLookup({
-      tenants: () => directory.list(),
-      ...(input.organizationRegistry
-        ? {
-            registryUrl: input.organizationRegistry.url,
-            ...(input.organizationRegistry.fetch
-              ? { fetch: input.organizationRegistry.fetch }
-              : {}),
-          }
-        : {}),
+    operations: async () => ({
+      ...(await operationsOverview(operationsDeps)),
+      incidents: await openIncidentsFor(configurables.store),
     }),
+    organization,
   };
   const pluginRegistry = new PluginRegistry({ runs: configContractRuns(configurables.store) });
   const externalTargets = {
@@ -2012,6 +2143,7 @@ export const createPlatform = async (input: PlatformInput) => {
     evalStores,
     evalCapability: evalCapability.descriptor.id,
     ...(input.appVersion ? { appVersion: input.appVersion } : {}),
+    ...(input.demoRecorderKeyDigest ? { demoRecorderKeyDigest: input.demoRecorderKeyDigest } : {}),
     tenantSecrets,
     traceSinks,
     sinkLabels: sinkLabelService,
@@ -2022,6 +2154,7 @@ export const createPlatform = async (input: PlatformInput) => {
     blobs: blobStore,
     prices,
     quota,
+    tenantOperations,
     drafts,
     evalSlots: caseSlots,
     pinService: async (tenant, service, version) => {
@@ -2041,6 +2174,14 @@ export const createPlatform = async (input: PlatformInput) => {
       try: runtime.tryOperation,
     },
     enrichmentTask: enrichmentWork.run(() => kernel),
+    datasetSearchTask: datasetSearchWork.run(() => kernel),
+    publishCheck: async (definition, publisher) => {
+      const validated = validateDefinition(definition, plugins);
+      if (!validated.ok) return validated.errors;
+      const archived = await archivedPublishRefusal(definition, serviceLifecycle);
+      if (archived) return archived.errors;
+      return (await checkBeforePublish(definition, publisher, sideEffectModules)) ?? [];
+    },
     tasks: taskIndex,
     task: hidingInternalTasks(definitions, async (id) => (await taskStore.get(id))?.task),
     events: (task) => log.read(task, 0, () => false),
@@ -2121,6 +2262,7 @@ export const createPlatform = async (input: PlatformInput) => {
         source: mcp,
         secrets: new TenantSecrets(vault.resolver(input.secrets)),
         onToolsChanged: refreshTools,
+        ...(input.logger ? { log: input.logger } : {}),
       },
       directory,
     }),
@@ -2170,6 +2312,7 @@ export const createPlatform = async (input: PlatformInput) => {
         allTasks: () => taskIndex.all(),
         catalogSkips: input.catalogSkips ?? [],
         hiddenService: (tenant, id) => isHiddenService(definitions, tenant, id),
+        names: actorNames(configEntries),
         eval: {
           kernel,
           evalCapability: evalCapability.descriptor.id,
@@ -2185,6 +2328,7 @@ export const createPlatform = async (input: PlatformInput) => {
         authenticate,
         definitions,
         tasks: (tenant) => taskIndex.all(tenant),
+        retentionOf: (capability) => retentionFor(settings, capability.service.tenant, capability),
         task: hidingInternalTasks(definitions, async (id) => (await taskStore.get(id))?.task),
         ...(taskIndex.envelopes ? { taskEnvelopes: taskIndex.envelopes } : {}),
         events: (id) => log.read(id, 0, () => false),
@@ -2205,9 +2349,19 @@ export const createPlatform = async (input: PlatformInput) => {
             action: 'use-services',
           })),
         prices,
+        modelResidency: (id) => models.describe().find((m) => m.id === id)?.residency,
         ingestionUsage,
         ...(input.gatewayUsage ? { gatewayUsage: input.gatewayUsage } : {}),
+        countingRule: () => {
+          const { endpoints } = runtime.catalog.effective().models;
+          return throughGatewayConnections(
+            models.describe(),
+            (endpoint) =>
+              (endpoints[endpoint] as { gateway?: unknown } | undefined)?.gateway === true,
+          );
+        },
         projectTasks: (tenant) => projectTasks(configurables.store, tenant),
+        quota,
         serviceHealth: async (tenant, service) => {
           const found = await definitions.get('Service', tenant, service);
           const spec = (found?.definition as { spec?: { model?: ServiceModels } } | undefined)
@@ -2217,6 +2371,7 @@ export const createPlatform = async (input: PlatformInput) => {
         traces: { enabled: Boolean(input.traces?.()), content: Boolean(input.traces?.()?.content) },
         drafts,
         names: actorNames(configEntries),
+        batchTasks: (tenant) => batchTasksOf(configurables.store, tenant),
         ...(input.lockdown ? { lockdown: input.lockdown } : {}),
         lifecycle: (tenant, service) => lifecycleOf(configEntries, tenant, service),
         testRunnerKeys: testRunnersAllowed,
@@ -2252,6 +2407,7 @@ export const createPlatform = async (input: PlatformInput) => {
       if (!principal) return problem(c, 401, 'Invalid or missing API key');
       const residency = c.req.query('residency') as Residency | undefined;
       const strategy = c.req.query('strategy');
+      const all = c.req.query('all') === 'true';
       const wanted = [
         ...((c.req.queries('capability') ?? []) as Capability[]),
         ...(strategy ? (strategyModelNeeds.get(strategy) ?? []) : []),
@@ -2267,22 +2423,48 @@ export const createPlatform = async (input: PlatformInput) => {
           (m) => !principal.tenant || !ownedElsewhere(config.catalog, m.id, principal.tenant),
         );
       const displayNames = modelDisplayNames(visible);
-      const data = models
-        .describe()
-        .filter((m) => m.enabled && servesModelPort(m))
-        .filter((m) => !principal.tenant || !ownedElsewhere(config.catalog, m.id, principal.tenant))
+      const policy = principal.tenant
+        ? await readBlockPolicy(configEntries, principal.tenant)
+        : undefined;
+      const recommended = recommendedModels(settings, principal.tenant ?? platformTenant);
+      const data = visible
         .filter((m) => !residency || residencyAllows(residency, m.residency))
         .filter((m) => wanted.every((w) => m.capabilities.includes(w)))
-        .map(({ id, family, residency: r, capabilities, operations, parameters }) => ({
-          id,
-          name: displayNames.get(id) ?? id,
-          ...(family ? { family } : {}),
-          residency: r,
-          capabilities,
-          operations,
-          parameters,
-          price: prices[id] ?? null,
-        }));
+        .map((m) => ({ model: m, reason: unavailableReason(policy, m) }))
+        .filter(({ reason }) => all || reason === undefined)
+        .map(
+          ({
+            model: {
+              id,
+              family,
+              maker,
+              operator,
+              residency: r,
+              capabilities,
+              operations,
+              parameters,
+              contextWindow,
+              releaseDate,
+            },
+            reason,
+          }) => ({
+            id,
+            name: displayNames.get(id) ?? id,
+            ...(family ? { family } : {}),
+            ...(maker ? { maker } : {}),
+            ...(operator ? { operator } : {}),
+            residency: r,
+            capabilities,
+            operations,
+            parameters,
+            price: publicPrice(prices, id),
+            ...(contextWindow === undefined ? {} : { contextWindow }),
+            ...(releaseDate === undefined ? {} : { releaseDate }),
+            recommended: recommended.has(id),
+            available: reason === undefined,
+            ...(reason ? { reason } : {}),
+          }),
+        );
       return c.json({ data });
     });
     app.route(
@@ -2428,6 +2610,19 @@ export const createPlatform = async (input: PlatformInput) => {
       conversationRoutes({
         store: conversations,
         auth: { authenticate: (request) => callerOf(request) },
+        runOf: async ({ principal }, task) => {
+          const run = await kernel.task(principal, task);
+          return {
+            status: run.status,
+            createdAt: Date.parse(run.createdAt),
+            deadlineMs:
+              registry.all().find((c) => c.descriptor.id === run.service.capability.id)
+                ?.deadlineMs ??
+              input.serviceLimits?.deadlineMs ??
+              defaultServiceLimits.deadlineMs,
+          };
+        },
+        ...(input.now ? { now: input.now } : {}),
         onDeleted: async (owner, id) => {
           await threadErasure?.erase(owner.tenant, id);
           if (blobStore) await deleteConversationDocuments(blobStore, owner.tenant, id);
@@ -2498,6 +2693,8 @@ export const createPlatform = async (input: PlatformInput) => {
     plugins,
     extensions,
     directory,
+    organization,
+    modelDiscovery: runtime.modelDiscovery,
     labels,
     apiKeys,
     clients,
@@ -2520,6 +2717,7 @@ export const createPlatform = async (input: PlatformInput) => {
     writers,
     catalog: config.catalog,
     descriptors: runtime.descriptors,
+    unmaskedInput,
     liveSessions: runtime.liveSessions,
     ingestion: config.ingestion,
     gates: configurables.gates,

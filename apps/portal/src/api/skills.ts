@@ -634,10 +634,10 @@ export const skillsApi = ({ get, request, tenantPath }: ApiContext) => {
       }),
     tools: async (tenant: string, signal?: AbortSignal) =>
       (await get<{ data: SkillToolOption[] }>(`${tenantPath(tenant)}/skill-tools`, signal)).data,
-    deleteCase: (tenant: string, id: string, index: number, revision: number) =>
+    deleteCase: (tenant: string, id: string, index: number, revision: number, reason: string) =>
       request<unknown>('DELETE', `${one(tenant, id)}/testcases/${index}`, undefined, {
         'if-match': `"${revision}"`,
-        'change-reason': 'Slettet et testtilfelle',
+        'change-reason': reason,
       }),
     proposeFix: (tenant: string, id: string) =>
       request<SkillFix>('POST', `${one(tenant, id)}/fix`, {}),

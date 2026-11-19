@@ -42,6 +42,8 @@ const discoveryRule = z.strictObject({
   exclude: z.array(z.string().min(1)).default([]),
   capabilities: z.array(z.enum(capabilities)).default(['stream']),
   apis: bindings.optional(),
+  maker: z.string().min(1).max(100).optional(),
+  releaseDates: z.record(z.string().min(1).max(200), z.iso.date()).optional(),
 });
 
 export const connectionSettingValue = /^[\x21-\x7e](?:[\x20-\x7e]{0,254}[\x21-\x7e])?$/;
@@ -81,6 +83,13 @@ const endpoint = z
     allowedHosts: z.array(z.string().regex(allowedHostPattern)).max(20).optional(),
     settings: connectionSettings.optional(),
     keys: connectionKeys.optional(),
+    gateway: z.boolean().optional(),
+    operator: z
+      .strictObject({
+        name: z.string().min(1).max(100),
+        region: z.string().min(1).max(100).optional(),
+      })
+      .optional(),
   })
   .refine((e) => !Object.keys(e.settings ?? {}).some((name) => Object.hasOwn(e.keys ?? {}, name)), {
     message: 'a name is a setting or a key, not both',
@@ -103,10 +112,12 @@ const model = z.strictObject({
   endpoint: id,
   deployment: z.string().min(1),
   family: z.string().min(1).optional(),
+  maker: z.string().min(1).max(100).optional(),
   residency: z.enum(residencies),
   capabilities: z.array(z.enum(capabilities)).default([]),
   apis: bindings.optional(),
   contextWindow: z.number().int().positive().optional(),
+  releaseDate: z.iso.date().optional(),
   maxOutputTokens: z.number().int().positive().optional(),
   parameters: parameterRules.optional(),
   tenants: z.array(z.string().regex(/^\d{9}$/)).optional(),

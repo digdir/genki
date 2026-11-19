@@ -63,6 +63,115 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ## API changes
 
+### 2026-11-19: ranking metrics and comparisons across engines
+
+- The `retrieval` evaluator scores `recall@1`, `recall@5`, `recall@20`, `hit@5`, `mrr@10`, `ndcg@10` and `document-recall@10` beside `recall@10` and `citations-grounded`, from the hits the run's searches reported, and `returned-recall@1`, `returned-recall@5`, `returned-recall@10`, `returned-hit@5`, `returned-mrr@10` and `returned-ndcg@10` from the sources a run returned (see [work.md](work.md#two-kinds-of-evaluation-run)). `recall@10` keeps its values.
+- `GET /eval-runs/compare` takes `metric` as a comma list and `allowDifferent` (`data`, `services`, `servedModels`). Its answer changes shape: `{ allowedDifferent, comparisons: [{ metric, n, meanBaseline, meanCandidate, difference, ci }], staleJudges? }` instead of one comparison at the top level.
+
+### 2026-11-19: all documents of a dataset in one list
+
+- `GET /tenants/{tenant}/datasets/{id}/documents` takes `status=all`: the failed documents, then the pending ones, then the indexed ones, paged as one list, with `total` over all three. `filters` and `sort` apply to the indexed documents only, so filters leave out the failed and pending ones. The default is still `indexed` (see [datasets.md](datasets.md#listing-a-datasets-documents)).
+
+### 2026-11-19: environment descriptions, batch run names and the frontend of a run
+
+- `POST /tenants/{tenant}/services/{id}/environments` takes an optional `description` (who uses the environment, at most 200 characters), and `PATCH /tenants/{tenant}/services/{id}/environments/{environment}` with `{ description }` sets or clears it (`null` or empty) with `manage-services` and a `change-reason`. Each environment in the list gives `description` when one is set, it survives promotions and rollbacks, and the history records the change as the new action `described` (see [services.md](services.md#build-and-edit-a-service-from-your-own-admin-ui)).
+- A run records the registered frontend it came in through, taken from the verified login (a browser frontend's registered client) or key (one bound to a frontend), never from a header. `GET /tenants/{tenant}/tasks` gives it as `frontend` on runs of the caller's own tenant, takes `frontend` to keep only those runs, and now gives `channel` `interface` for a login through a browser frontend, which was `api` (see [work.md](work.md#rights)). Runs from before this change have no `frontend`.
+- `POST /tenants/{tenant}/services/{id}/batch-runs` takes an optional `name` (at most 120 characters), and a run gives `name` when it was named (see [work.md](work.md#rights)).
+
+### 2026-11-19: who started a running test run
+
+- `GET /tenants/{tenant}/services/{id}/eval-runs` gives a run that is running or waiting for scores `startedBy` (`<kind>:<issuer>:<subject>`), `startedByName` when genki knows it, and `startedByYou: true` when the caller started it and so may cancel it with `use-services` (see [work.md](work.md#rights)). Only starters of the caller's own tenant are shown.
+
+### 2026-11-19: the connection and maker of a model block
+
+- `GET /tenants/{tenant}/building-blocks/model/{id}` adds `connection`, the id of the model connection the model is reached through, so a page can name the connection its processor facts belong to, and `maker`, who made the model when the model list says (see [access.md](access.md)).
+
+### 2026-11-18: facts and actions for the portal's building blocks and service tabs
+
+- `GET /tenants/{tenant}/services/{id}/environment-history`: who added, removed, promoted or rolled back each environment of a service, when and why, newest first (see [services.md](services.md#build-and-edit-a-service-from-your-own-admin-ui)). Changes from now on record their action; older ones are inferred.
+- `POST /tenants/{tenant}/services/{id}/eval-runs/{runId}/cancel` cancels a running test run for whoever started it, or with `manage-services`; the run ends with the new status `cancelled` (see [work.md](work.md#rights)).
+- `GET /tenants/{tenant}/tasks` takes `actor` (`me` or an actor id), gives `actor.id` for actors of the caller's own tenant and a `channel` per run (`api-key`, `interface`, `api`, `playground`, `batch` or `null`). The usage report's `daily[].byService` adds `latency` per day.
+- Building blocks add `versionAt` (step flows and skills), `required` and `counts.required` (mandatory guardrail rules), and on a model block `operations` (API, built-in and maturity per call type) and `processor` (whether its connection has a processor record, its sub-processors and retention). See [access.md](access.md). A service uses a model through the draft: set `spec.model.primary` and save with `PUT .../draft`.
+
+### 2026-11-18: playground changes on top of a service version
+
+- `POST /tenants/{tenant}/playground/runs` (and `/stream`) now applies `setup.instructions` and `setup.datasets` when `setup.service` is set; before, they were ignored. They change that run only and never the service, a version or a draft (see [services.md](services.md#playground-changes-on-top-of-a-service-version)). A dataset the tenant may not use, or instructions for a strategy without one instructions field (a step flow), answers `422`. A dataset that does not exist or is not shared with the tenant now answers `422` before the run in the setup without a service too.
+- `GET /tenants/{tenant}/playground/options` gives each version `strategy`: `id`, `version`, `title` in bokmål and English, `takesInstructions` and, for a step flow, `flow` with its `ref`, `id`, `version` and `title`. A variant with its own strategy has `strategy` too. Each model adds `price`, the same as on `GET /models`, or `null`.
+
+### 2026-11-18: comparing two test runs case by case
+
+- New `GET /tenants/{tenant}/services/{id}/eval-runs/compare?candidate={runId}`: two test-set runs of a service, case by case, with each verdict, a `change` per case (`better`, `worse`, `same`, `new`, `missing`, `pending`) and `counts`; the baseline is a named run or, by default, the run of the published version. Paged with `limit` and `offset` (see [work.md](work.md#two-kinds-of-evaluation-run)).
+
+### 2026-11-18: who saved a draft, the draft a test run tested, dataset owners and file limits
+
+- `GET` and `PUT /tenants/{tenant}/services/{id}/draft` (and the draft in a rebase answer) add `by`, who saved the draft last, and `byName`, that person's name, or `null` when genki does not know it.
+- An eval run of the saved draft records its revision: `GET /tenants/{tenant}/services/{id}/eval-runs` and `GET /tenants/{tenant}/eval-runs/{runId}` add `draftRevision`. A run of a published version or of a definition sent in the request has none, nor has a run started before this change.
+- `GET /tenants/{tenant}/datasets` and `GET /tenants/{tenant}/datasets/{id}` add `owner` (`tenant`, and `name` or `null`) and `updatedAt`, when an ingestion run last succeeded. `updatedAt` is `null` for another organisation's dataset, one never read in and one filled outside genki's pipelines.
+- `POST /tenants/{tenant}/definitions/input-fields` adds `files`: the `documents` and `media` the definition takes, each with `accepts`, `maxBytes` and `maxCount` as `/v1` enforces them, or `null`, and `maxRequestBytes`.
+
+### 2026-11-18: platform secrets on their own console screen
+
+- `GET /operator/secrets` lists the platform secrets for operators: each name, whether a value is stored, when it last changed (from the audit log) and the platform catalog entries that name it, such as a connection. Never a value.
+- `PUT /operator/secrets/{name}` now refuses a name longer than 63 characters, an empty value, a value over 16 384 characters (`400`) and a body over 64 KiB (`413`). The console's Platform secrets screen sets and replaces values with it.
+
+### 2026-11-18: an outdated published version is named in the playground
+
+- `POST /tenants/{tenant}/playground/runs` (and `/stream`) answers a published version that no longer fits the platform with `422` `urn:genai:problem:definition-outdated`, adding `service`, `version` and `latestVersion`. It was `about:blank` with the raw validation errors, which are still in `errors`.
+
+### 2026-11-18: what the portal rework reads
+
+- `GET /tenants/{tenant}/datasets/{id}/documents` always answers `total` and `totalExact`, and adds `status` (`indexed`, `failed`, `pending`), `statusCounts`, `listing` (whether the engine can search titles and which sort keys it has), `query`, `sort` and `order`; each document adds `status`, and `chunkCount` when the engine keeps it. `GET .../documents/{doc}?chunks=from-to` adds the chunks at those positions (see [datasets.md](datasets.md#listing-a-datasets-documents)).
+- `GET /models` leaves out a model the tenant's building block policy refuses or holds for approval; `?all=true` lists it with `available: false` and `reason` (`not_allowed`, `requires_approval`). Each model adds `available`, `recommended`, and `contextWindow` and `releaseDate` when the model list has them. New setting `models.recommended` (platform, tenant): the model ids marked recommended; empty marks the model `services.defaultModel` names. A catalogue model takes `releaseDate`, and a discovery rule `releaseDates` by deployment name.
+- The usage report gives each service in `byService` a `latency`: `p50Ms`, `p95Ms` and `runs`, from start to end of the runs that ended in the period, or `null`.
+- `GET /tenants/{tenant}/service-failures?from=` groups each service's failed runs since `from` (default the start of today in Norway) by failure code, the most common first: `{ from, data: [{ service, failed, causes: [{ code, reason, count }] }] }`. Any member; never the error text.
+- `GET /tenants/{tenant}/tasks` takes `offset` and `q` (the run id, or the question for callers with `manage-services`, among the newest 2000 matching runs; never an erased run's question), and answers `offset` and `limit` beside `total`.
+- `GET /tenants/{tenant}/services/{service}/shared-with` lists who can call a service: `frontends`, `apiKeys` (bound to it, or granted it or every service, not revoked or expired) and `tenants` (`spec.availableTo` without the owner).
+- `GET /tenants/{tenant}/services/{id}/draft/checks` runs the checks a publish runs on the saved draft without publishing it: `{ service, revision, ready, problems }`, with `hooksSkipped: true` when enabled on_publish hooks were not run. No model is called.
+
+### 2026-11-18: names, causes and facts the portal shows
+
+- Tool connection state now changes in one step (`ConnectionRegistry.update`; in Postgres a row lock in one transaction), so a revoke can no longer be undone by a sync or by the sync bookkeeping that ran at the same time.
+- Tool connections: `toolDetails`, `connectedAt`, `connectedByName`, `lastSync.attempts` and `lastSync.failingSince` on `GET /tenants/{tenant}/tool-connections`, and `POST .../tool-connections/{id}/revoke` (see [access.md](access.md)). Registration (`POST /tenants/{tenant}/building-blocks`) takes `residency` (`norway`, `eu` or `global`), declared by the person who registers the tool; a tool connection then shows it as `residency` and `dataLocation`, and the residency rules match that declaration. genki does not verify where the tool really runs.
+- `GET /tenants/{tenant}/building-blocks/step_flow/{id}/definition` reads a step flow's latest definition. `GET /tenants/{tenant}/building-blocks/{kind}/{id}` adds `adoptedAt` and `adoptedByName` while the block is in use. The organisation's own shared services are in its catalogue with their users. Built-in guardrails and judges have a name and description in the request language instead of their id.
+- `GET /tenants/{tenant}/services/{id}/lifecycle` adds `byName`. A failed run's `failure` adds `detail` (see [work.md](work.md)). Pipeline executions and a dataset's `lastExecution` add `startedBy` (on `lastExecution`) and `startedByName`, on the organisation's own datasets only; a platform dataset's `lastExecution` never names who started it.
+- New settings: `answers.showSources` (platform, tenant, service; default `true`): turned off, an answer comes without sources and without the `[n]` markers, in the streamed text too; the run's retrieval record keeps the sources. `tracing.sampleRate` (`1`, `0.25` or `0.1`; default `1`): the share of runs sent to the tracing tool, never above the platform's own rate; failed runs are always traced.
+- `GET /tenants/{tenant}/settings/overrides?key=` lists the tenant's services that set their own value for one setting, `{ data: [{ service, name, value }] }`, to any member; an unknown key answers `404`.
+- `GET /health` adds `environment` (from `GENAI_ENV`). `GET /tenants/{tenant}/status` adds `pastIncidents`: resolved incidents that concerned the tenant in the last 90 days, `{ date, title, text }`, newest first.
+- `GET /models` adds `maker` and `operator: { name, region? }` from the model list (`maker` on a model or a discovery rule, `operator` on its endpoint).
+- `GET /shared-services` adds `storage: { keepsText, logDays }` (the owner's retention), `languages: { in, out }` (`out` is `same`, `nb` or `nn`) and `estimatedCostPerThousandRuns: { microNok, basis }`, the average of the owner's completed runs of the last 30 days at the model's price, rounded to two significant digits, and absent with fewer than 20 such runs, so no single run can be worked out from it.
+- The usage report adds `failedRequests` next to every `runs`: totals, per service, per day and service, per project and per environment.
+- `GET /tenants/{tenant}/datasets` gives `documents` for shared datasets too, read from the search engine when genki cannot count its own store. `PUT /tenants/{tenant}/datasets/{id}` with `description: null` clears the description.
+- `GET /tenants/{tenant}/service-drafts` adds `trialRuns7d`: the draft's playground and builder trial runs in the last 7 days. Trial runs started before this change carry no service and are not counted.
+- A refused publish is audited with the definition (`Service:<id>`) as its target instead of `definition`.
+
+### 2026-11-18: a source names its publisher
+
+- A source on `/v1/chat/completions` (and on a stored conversation's messages) adds `publisher`, the organisation that published the document, several joined with a comma, when the document's fields name one. A step flow's answer sources and `sources` on `/api/tools/call/{tool}` add it too. The field is optional, so the shape is otherwise unchanged.
+- A stored conversation's message `sources` keep `version` and `published_at` as the answer sent them, so a reopened thread shows the year. Messages stored before this have neither.
+
+### 2026-11-17: one residency and price source, failure causes, last use and dataset documents
+
+- `GET /tenants/{tenant}/services` gives each service `model: { id, residency }`: the primary model and where it processes data, from the platform's model list, the same source as `GET /models` and the building blocks. `residency` is `null` for a model the list does not know. `spec.model.residency` in the definition is the widest residency the service allows, not where its model runs.
+- The usage totals (`totals` on `GET /tenants/{tenant}/usage`, `usageThisMonth` on `GET /tenants/{tenant}/overview` and each `usage` on `GET /operator/usage`) gain `unpricedModels`: the models with use in the period and no price in the model list. `costMicroNok` then counts only the priced part. Every kroner figure comes from the model list's prices, or from the AI gateway's charge for a model counted there. The report's `priced` is now the same as `totals.priced`, so an open unit without a price also makes it `false`.
+- `GET /tenants/{tenant}/tasks` and `GET /tenants/{tenant}/tasks/{task}` give a failed run `failure: { code, reason, step? }`, as `GET /tenants/{tenant}/tasks/mine` does: a code, a fixed sentence for it and the failed step. Never the provider's or model's error text.
+- An API key's `lastUsedAt` is written about once a minute per key at most (requests at the same moment, or on several replicas, can still write it more often). The key's usage count now counts the minutes in which the key was used, not each request.
+- `GET /tenants/{tenant}/datasets/{id}/documents?limit=&offset=` lists one page of a dataset's documents (see [datasets.md](datasets.md#listing-a-datasets-documents)).
+
+### 2026-11-17: text files to a step flow
+
+- `/v1/chat/completions` takes a `file` content part in the last user message, `{ "type": "file", "file": { "filename": "brev.txt", "file_data": "data:text/plain;base64,<base64>" } }`, as OpenAI clients send it. It reaches a step flow as `{{input.files.N}}`, the same media reference as audio and images, so a `call-operation@1` step can pass it to a descriptor. A service takes a type this way when it is in `spec.input.accepts` and a `call-operation@1` step of the service's flow takes it as media input; `GET /v1/models` shows those types as `_files: { accepts, max_bytes, max_count }` (10 MiB, 5 parts with audio and images together). `file_id` is not supported. Errors: `400 invalid_documents`, `400 documents_not_accepted`, `413 document_too_large`, `415 unsupported_document_type`. A file is not masked, so the step publishes only when the service's risk assessment records unmasked input of that media type, such as `text/plain` (`spec.riskConfirmation.unmaskedInput`), and the gate checks it again on every call.
+
+```sh
+jq -n --arg data "$(base64 < brev.txt | tr -d '\n')" '{
+  model: "sortering__default",
+  messages: [{ role: "user", content: [
+    { type: "text", text: "Les dokumentet" },
+    { type: "file", file: { filename: "brev.txt", file_data: ("data:text/plain;base64," + $data) } }
+  ] }]
+}' | curl -s http://localhost:8080/v1/chat/completions \
+  -H "X-API-Key: $KEY" -H 'content-type: application/json' -d @-
+```
+
 ### 2026-11-16: rotating a key keeps it within the person's rights
 
 - `POST /tenants/{tenant}/api-keys/{id}/rotate` answers `403` when the key's own scopes or its policy's scopes need a right the person rotating it lacks, as saving or attaching a policy does. The key stays as it was.
@@ -193,7 +302,7 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ### 2026-11-03: usage from an AI gateway
 
-Only when an AI gateway is configured (`GATEWAY_USAGE_URL` and `GATEWAY_USAGE_CREDENTIAL`, see [gateway.md](gateway.md)); without one every answer is as before.
+Only when an AI gateway is configured (`GATEWAY_USAGE_URL` with `GATEWAY_USAGE_CREDENTIAL` or `GATEWAY_USAGE_APP_*`, see [gateway.md](gateway.md)); without one every answer is as before.
 
 - `totals`, `daily[].usage` on `GET /tenants/{tenant}/usage`, `usageThisMonth` on `GET /tenants/{tenant}/overview` and each `usage` on `GET /operator/usage` are the sum of genki's own usage and the gateway's. Each gains `bySource: [{ "source": "genki", "usage" }, { "source": "gateway", "usage" }]`.
 - `byModel` rows gain `source`, `genki` or `gateway`. The gateway's rows also come as `bySubject`: the owner (`subject`, or `null` for a key without one), `usage` in kroner, the amount the gateway charged as `cost: { currency, micros }`, and the latest `rate` used with its `rateDay`. A gateway amount with no rate counts as unpriced, never as 0 kr.

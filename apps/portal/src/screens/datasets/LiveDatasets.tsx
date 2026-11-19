@@ -5,26 +5,63 @@ import { useT } from '../../i18n';
 import type { ScreenProps } from '../../screen';
 import { needsRight, useRights } from '../../Shell';
 import { EmptyState, ErrorState, Loading } from '../../states';
-import { TenantCatalog } from '../config/TenantCatalog';
-import type { DetailTab } from './DatasetDetail';
 import { DatasetList } from './DatasetList';
-import { listItemOf } from './live-model';
+import { failureText, listItemOf } from './live-model';
+import { ApiError } from '../../api/error';
 import { LiveDatasetDetail } from './LiveDatasetDetail';
 import { LiveNewDataset } from './LiveNewDataset';
-import { datasetHref } from './model';
+import { datasetHref, detailTabOf } from './model';
 
-const tabs: Record<string, DetailTab> = {
-  ingestions: 'ingestions',
-  filters: 'filters',
-  source: 'source',
-};
-
-const List = ({ api, tenant }: ScreenProps) => {
+const List = ({ api, tenant, tenantName }: ScreenProps) => {
   const t = useT();
   const f = useFormat();
-  const [state, retry] = useAsync((signal) => api.datasets.list(tenant, signal), [api, tenant]);
+  const [state, retry, pending] = useAsync(
+    (signal) => api.datasets.list(tenant, signal),
+    [api, tenant],
+    {
+      keepPreviousFor: tenant,
+    },
+  );
   const canCreate = useRights().has('manage-datasets');
-  if (state.status === 'loading') return <Loading label={t('datasets.loading')} />;
+  const onRetry = async (fullId: string) => {
+    const view = state.status === 'ready' ? state.data.find((d) => d.fullId === fullId) : undefined;
+    if (!view) return;
+    try {
+      const [pipeline] = await api.datasets.pipelines(tenant, view.id);
+      if (!pipeline) throw new Error(t('datasets.sourceNone'));
+      await api.datasets.execute(tenant, view.id, pipeline.id, t('datasets.runReason'));
+    } catch (error) {
+      throw new Error(
+        error instanceof ApiError ? failureText(t, error) : t('datasets.somethingWrong'),
+        {
+          cause: error,
+        },
+      );
+    }
+    retry();
+  };
+  if (state.status === 'loading')
+    return (
+      <div className="stack">
+        <DatasetList
+          canCreate={canCreate}
+          ownerName={tenantName}
+          placeholder={
+            <Loading
+              label={t('datasets.loading')}
+              shape="table"
+              columns={[
+                t('datasets.columnDataset'),
+                t('datasets.columnStatus'),
+                t('datasets.factDocuments'),
+                t('datasets.columnLastStarted'),
+              ]}
+              onRetry={retry}
+            />
+          }
+        />
+      </div>
+    );
   if (state.status === 'error')
     return (
       <>
@@ -48,13 +85,17 @@ const List = ({ api, tenant }: ScreenProps) => {
             </Button>
           ) : null}
         </EmptyState>
-        <TenantCatalog api={api} tenant={tenant} />
       </div>
     );
   return (
     <div className="stack">
-      <DatasetList datasets={state.data.map((d) => listItemOf(t, f, d))} canCreate={canCreate} />
-      <TenantCatalog api={api} tenant={tenant} />
+      <DatasetList
+        datasets={state.data.map((d) => listItemOf(t, f, d))}
+        canCreate={canCreate}
+        ownerName={tenantName}
+        pending={pending}
+        {...(canCreate ? { onRetry } : {})}
+      />
     </div>
   );
 };
@@ -69,6 +110,7 @@ export const LiveDatasets = (props: ScreenProps) => {
       <LiveNewDataset
         api={api}
         tenant={tenant}
+        tenantName={tenantName}
         onCreated={(fullId) => {
           window.location.hash = datasetHref(fullId);
         }}
@@ -92,7 +134,7 @@ export const LiveDatasets = (props: ScreenProps) => {
         tenant={tenant}
         tenantName={tenantName}
         id={id}
-        initialTab={tabs[route.query.get('tab') ?? ''] ?? 'ingestions'}
+        tab={detailTabOf(route)}
       />
     );
   return <List {...props} />;

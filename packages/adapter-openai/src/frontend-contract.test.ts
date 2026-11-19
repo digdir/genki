@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { textPart, type CapabilityDescriptor, type Part, type Principal } from '@genai/contracts';
 import { createKernel, type Capability, type Emitted, type Strategy } from '@genai/kernel';
 import {
@@ -141,19 +141,23 @@ const filterIssues = async (
   );
 };
 
-const setup = () => {
+const setup = (
+  kernelOptions: Partial<Parameters<typeof createKernel>[0]> = {},
+  conversations?: (memory: AskConversations) => AskConversations,
+) => {
   const kernel = createKernel({
     strategies: [strategy],
     capabilities: [capability],
     ports: {},
     policy: { decide: async () => ({ allow: true }) },
+    ...kernelOptions,
   });
   const memory = fakeConversations();
   const app = createOpenAiAdapter({
     kernel,
     resolver,
     auth: { authenticate: async () => kari },
-    conversations: memory.conversations,
+    conversations: conversations ? conversations(memory.conversations) : memory.conversations,
     filterIssues,
     overridePolicy: { check: () => ({ ok: true }) },
     newId: () => 'fixed',
@@ -168,7 +172,7 @@ const setup = () => {
         ...body,
       }),
     });
-  return { ask, ...memory };
+  return { ask, kernel, ...memory };
 };
 
 type Source = {
@@ -211,6 +215,25 @@ describe('/v1 frontend contract: conversations', () => {
       expect.objectContaining({ index: 2, title: 'Årsrapport', document_id: 'd2' }),
     ]);
     expect(stored.get('conv-1')?.[1]?.sources?.[1]).not.toHaveProperty('url');
+  });
+
+  it("stores a source's version and publish date with the turn, so a reopened thread keeps the year", async () => {
+    pool = chunks.map((c) =>
+      c.document === 'd1' ? { ...c, version: 3, publishedAt: '2025-01-15' } : c,
+    );
+    try {
+      const { ask, stored } = setup();
+
+      await ask({ genai_conversation: true });
+
+      expect(stored.get('conv-1')?.[1]?.sources?.map((s) => [s.version, s.published_at])).toEqual([
+        ['3', '2025-01-15'],
+        [undefined, undefined],
+      ]);
+      expect(stored.get('conv-1')?.[1]?.sources?.[1]).not.toHaveProperty('published_at');
+    } finally {
+      pool = chunks;
+    }
   });
 
   it('stores a turn that cites documents as before, with no markers on the turn, its sources or their excerpts', async () => {
@@ -291,6 +314,75 @@ describe('/v1 frontend contract: conversations', () => {
 
     expect(response.headers.get('genai-conversation')).toBe('conv-1');
     expect(text.split('\n\n')[0]).toContain('"conversation_id":"conv-1"');
+  });
+
+  it('stores the question with the id of the run that answers it', async () => {
+    const { ask, stored } = setup();
+
+    const response = await ask({ genai_conversation: true });
+
+    expect(stored.get('conv-1')?.[0]).toMatchObject({
+      role: 'user',
+      task: response.headers.get('genai-task'),
+    });
+  });
+
+  it('stores no question in a continued conversation when the run is refused', async () => {
+    let refuse = false;
+    const { ask, stored } = setup({
+      policy: {
+        decide: async (_principal, action) =>
+          refuse && action === 'invoke' ? { allow: false, reason: 'refused' } : { allow: true },
+      },
+    });
+    await ask({ genai_conversation: true });
+    refuse = true;
+
+    const refused = await ask({ conversation_id: 'conv-1' });
+
+    expect(refused.status).toBe(403);
+    expect(stored.get('conv-1')?.map((t) => t.role)).toEqual(['user', 'assistant']);
+  });
+
+  describe('when the question cannot be stored', () => {
+    const unstored = () => {
+      const waiting: Strategy = {
+        ...strategy,
+        run: async function* (ctx): AsyncIterable<Emitted> {
+          await new Promise((resolve) =>
+            ctx.signal.addEventListener('abort', resolve, { once: true }),
+          );
+          yield { type: 'kernel.result', data: [] };
+        },
+      };
+      return setup({ strategies: [waiting], newId: () => 'run-1' }, (memory) => ({
+        ...memory,
+        append: async (request, id, turn) => {
+          if (turn.role === 'user') throw new Error('store unavailable');
+          await memory.append(request, id, turn);
+        },
+      }));
+    };
+
+    it('cancels the run', async () => {
+      const { ask, kernel } = unstored();
+
+      await ask({ genai_conversation: true });
+
+      await vi.waitFor(async () =>
+        expect((await kernel.task(kari, 'run-1')).status).toBe('cancelled'),
+      );
+    });
+
+    it('answers 500 in the OpenAI error shape and leaves no new conversation behind', async () => {
+      const { ask, stored } = unstored();
+
+      const response = await ask({ genai_conversation: true });
+
+      expect(response.status).toBe(500);
+      expect(await response.json()).toMatchObject({ error: { code: 'internal_error' } });
+      expect(stored.has('conv-1')).toBe(false);
+    });
   });
 });
 
@@ -671,5 +763,31 @@ describe('/v1 frontend contract: steps', () => {
 
     expect(stepFrames(stepped)).toHaveLength(1);
     expect(stepped).not.toContain('"genai_step":{}');
+  });
+});
+
+describe("/v1 frontend contract: a source's publisher", () => {
+  afterEach(() => {
+    pool = chunks;
+  });
+
+  it("a reopened conversation's source keeps its publisher", async () => {
+    pool = chunks.map((c) =>
+      c.document === 'd1' ? { ...c, publisher: 'Justis- og beredskapsdepartementet' } : c,
+    );
+    const { ask, stored } = setup();
+
+    const body = (await (await ask({ genai_conversation: true })).json()) as {
+      sources: { publisher?: string }[];
+    };
+
+    expect(body.sources.map((s) => s.publisher)).toEqual([
+      'Justis- og beredskapsdepartementet',
+      undefined,
+    ]);
+    expect(stored.get('conv-1')?.[1]?.sources?.map((s) => s.publisher)).toEqual([
+      'Justis- og beredskapsdepartementet',
+      undefined,
+    ]);
   });
 });

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { normaliseCitationMarkers } from '@genai/port-model';
 import { dropUnknownMarkers, stripSourceLists } from './citations.js';
 import { stripCodeFences } from './structured.js';
+import { searchFailures } from './tools.js';
 
 const quickly = (run: () => unknown) => {
   const started = performance.now();
@@ -34,5 +35,15 @@ describe('answer cleanup on adversarial input', () => {
   it('strips code fences in linear time', () => {
     expect(quickly(() => stripCodeFences(`\`\`\`${'\t'.repeat(100_000)}x`))).toBeLessThan(1000);
     expect(stripCodeFences('```json\n{"a":1}\n```')).toBe('{"a":1}');
+  });
+
+  it('reads which search strategy failed in linear time', () => {
+    const long = (warning: string) => () => searchFailures({ warnings: [warning] });
+    expect(quickly(long(`${'a-'.repeat(50_000)} search`))).toBeLessThan(1000);
+    expect(quickly(long(`${'a search'.repeat(50_000)}:`))).toBeLessThan(1000);
+    expect(quickly(long(`skipped ${'skipped a search'.repeat(30_000)}:`))).toBeLessThan(1000);
+    expect(quickly(long(`${'a search: a'.repeat(50_000)}\n`))).toBeLessThan(1000);
+    expect(quickly(long(`content search: ${' search: '.repeat(20_000)}`))).toBeLessThan(1000);
+    expect(quickly(long(`content search: ${'took longer '.repeat(20_000)}`))).toBeLessThan(1000);
   });
 });

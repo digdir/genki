@@ -256,6 +256,10 @@ export const qualityArea = {
       other: 'Kjøre testsettet med {count} testtilfeller?',
     },
     confirmRun: 'Start kjøringen',
+    confirmRunPaid: 'Hvert testtilfelle er en betalt kjøring.',
+    confirmRunTime: 'Tar omtrent {time}. Hvert testtilfelle er en betalt kjøring.',
+    confirmRunCost:
+      'Anslått kostnad: omtrent {cost}. Tar omtrent {time}. Hvert testtilfelle er en betalt kjøring.',
     estimateLoading: 'Anslår kostnaden',
     estimateFromRuns:
       'Anslått kostnad: omtrent {cost}. Anslaget er snittet per testtilfelle i tidligere kjøringer av testsettet, ganget med {count}. Hvert testtilfelle er en betalt kjøring.',
@@ -515,5 +519,76 @@ export const qualityArea = {
     approve: 'Godkjenn',
     tryInTest: 'Prøv i test',
     youApproved: 'Du har godkjent. Den andre godkjenningen må komme fra en annen person.',
+  }),
+  qualityPage: defineNamespace({
+    loading: 'Henter kvaliteten for tjenesten',
+    back: 'Tilbake til Kvalitet',
+    technical: 'Teknisk',
+    testSetsTitle: 'Testsett',
+    testSetsLead:
+      'Spørsmål med kjente gode svar. Kjør dem før du publiserer, så ser du om en endring gjorde svarene dårligere.',
+    noSets: 'Ingen testsett ennå',
+    noSetsText:
+      'Start med ti spørsmål saksbehandlerne ofte stiller, og skriv hva et godt svar må inneholde.',
+    createSet: 'Lag et testsett',
+    setMeta: { one: '{count} spørsmål', other: '{count} spørsmål' },
+    setMetaRun: {
+      one: '{count} spørsmål · sist kjørt {when}',
+      other: '{count} spørsmål · sist kjørt {when}',
+    },
+    notRun: 'Ikke kjørt ennå',
+    lastResult: '{passed} av {total} bestått',
+    newResult: '{passed} av {total} bestått nå (var {before}).',
+    runningResult: 'Kjører {done} av {total} spørsmål ...',
+    progress: 'Fremdrift for {name}',
+    running: 'Kjører ...',
+    runSetLabel: 'Kjør testsettet {name}',
+    judgesTitle: 'Automatisk vurdering',
+    judgesLead:
+      'Hvert svar i testsettet sjekkes mot disse reglene. Andel svar som besto i siste kjøring, {when}.',
+    judgesNone:
+      'Ingen vurdering ennå. Kjør et testsett, så ser du hvor stor andel av svarene som besto hver regel.',
+    seeFailed: {
+      one: 'Se den {count} som ikke besto',
+      other: 'Se de {count} som ikke besto',
+    },
+    allPassed: 'Alle besto',
+    ruleExactText: 'Svaret er nøyaktig det testsettet venter.',
+    ruleNonEmpty: 'Tjenesten gir et svar.',
+    ruleRefusal: 'Tjenesten avviser spørsmål den skal avvise.',
+    ruleCriteria: 'Svaret oppfyller kriteriene i testsettet.',
+    ruleAnswerPattern: 'Svaret følger mønsteret testsettet venter.',
+    feedbackTitle: 'Tilbakemeldinger fra brukerne',
+    feedbackShow: 'Vis tilbakemeldinger',
+    filterAll: 'Alle',
+    filterDown: 'Tommel ned',
+    filterComment: 'Med kommentar',
+    feedbackError: 'Vi fikk ikke hentet tilbakemeldingene',
+    feedbackErrorText: 'Resten av siden er oppdatert.',
+    retry: 'Prøv igjen',
+    retrying: 'Henter ...',
+    feedbackLoading: 'Henter tilbakemeldinger',
+    feedbackNone:
+      'Ingen tilbakemeldinger ennå. Brukerne kan gi tommel opp eller ned under hvert svar.',
+    feedbackSummary: 'Siste 30 dager: {up} tommel opp, {down} tommel ned.',
+    feedbackNoneInFilter: 'Ingen tilbakemeldinger de siste 30 dagene passer valget.',
+    thumbUp: 'Tommel opp',
+    thumbDown: 'Tommel ned',
+    openRun: 'Åpne kjøringen',
+    hiddenQuestion: 'Spørsmålet vises ikke når for få har gitt samme vurdering.',
+    allFeedback: 'Se alle tilbakemeldinger',
+    proposalsTitle: 'Forslag til forbedringer',
+    proposalsLead:
+      'Laget fra svarene som ikke besto og tilbakemeldingene. Et godkjent forslag havner i et nytt utkast; ingenting endres før du publiserer.',
+    proposalsNoRight:
+      'Du kan lese forslagene. For å godkjenne eller avvise dem trenger du rettigheten «{right}».',
+    approve: 'Godkjenn',
+    saving: 'Lagrer ...',
+    approvedAt:
+      'Godkjent {when}. Endringen ligger i utkastet; ingenting endres før du publiserer. <link>Se utkastet</link>',
+    approved:
+      'Godkjent. Endringen ligger i utkastet; ingenting endres før du publiserer. <link>Se utkastet</link>',
+    rejectedAt: 'Avvist {when}.',
+    rejected: 'Avvist.',
   }),
 } as const;

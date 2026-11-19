@@ -89,7 +89,8 @@ export const Pipelines = ({
 }) => {
   const t = useT();
   const [state, retry] = useAsync((signal) => api.configList(base, signal), [api, base]);
-  if (state.status === 'loading') return <Loading label={t('config.pipelinesLoading')} />;
+  if (state.status === 'loading')
+    return <Loading label={t('config.pipelinesLoading')} shape="list" onRetry={retry} />;
   if (state.status === 'error') return <ErrorState error={state.error} onRetry={retry} />;
   const backend = state.data.backend;
   return (

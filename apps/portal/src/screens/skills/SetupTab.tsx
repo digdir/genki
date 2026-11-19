@@ -1,67 +1,94 @@
-import { FileIcon } from '@navikt/aksel-icons';
-import {
-  Alert,
-  Button,
-  Field,
-  Heading,
-  Label,
-  Select,
-  Spinner,
-  Textfield,
-} from '@digdir/designsystemet-react';
+import { Button, Field, Heading, Label, Select, Textfield } from '@digdir/designsystemet-react';
 import { useState, type ReactNode } from 'react';
 import type { SkillDefinition, SkillSpec, SkillToolOption } from '../../api/skills';
 import { useFormat } from '@genai/i18n/react';
-import { useT } from '../../i18n';
+import { useT, type PlainKey } from '../../i18n';
 import { fileSize, refName, refVersion, toolName, type ProposalSection } from '../../data/skills';
-import { ChangeCard } from './ChangeCard';
-import type { AssistantNotice, EditorCard, RejectedEditorCard } from './model';
+import type { AskState } from './model';
 import { RejectedCard } from './RejectedCard';
-import { Icon } from '../../components/Icon';
-
-const fileIcon = <Icon icon={FileIcon} size={18} />;
 
 interface Props {
   definition: SkillDefinition;
   canEdit: boolean;
   tools: SkillToolOption[];
-  cards: EditorCard[];
-  rejected: RejectedEditorCard[];
-  notice: AssistantNotice | null;
+  asks: Partial<Record<ProposalSection, AskState>>;
   busy: ProposalSection | 'fix' | '';
   sizes: Record<string, number>;
   onName: (name: string) => void;
   onSpec: (fn: (spec: SkillSpec) => SkillSpec) => void;
   onAsk: (section: ProposalSection) => void;
-  onUndo: (card: EditorCard) => void;
+  onUse: (section: ProposalSection) => void;
   onFile: (file: File) => void;
 }
 
-const AskButton = ({
+const askLabels: Record<ProposalSection, [PlainKey, PlainKey]> = {
+  description: ['skills.askWhen', 'skills.useInDescription'],
+  instructions: ['skills.askInstructionsGood', 'skills.useInInstructions'],
+  examples: ['skills.askExamplesMissing', 'skills.useExamples'],
+};
+
+const Ask = ({
+  section,
+  state,
   busy,
-  mine,
-  onClick,
+  onAsk,
+  onUse,
 }: {
-  busy: boolean;
-  mine: boolean;
-  onClick: () => void;
+  section: ProposalSection;
+  state: AskState | undefined;
+  busy: ProposalSection | 'fix' | '';
+  onAsk: (section: ProposalSection) => void;
+  onUse: (section: ProposalSection) => void;
 }) => {
   const t = useT();
+  const [askKey, useKey] = askLabels[section];
+  const open = !!state?.open;
+  const panelId = `skill-ask-${section}`;
   return (
     <>
       <Button
         variant="secondary"
         data-size="sm"
-        aria-disabled={busy || undefined}
-        onClick={() => !busy && onClick()}
+        className="self-start"
+        aria-expanded={open}
+        aria-controls={open ? panelId : undefined}
+        aria-disabled={(!open && busy !== '') || undefined}
+        onClick={() => onAsk(section)}
       >
-        {t('skills.askAssistant')}
+        {t(askKey)}
       </Button>
-      {mine ? (
-        <span role="status" className="busy-note">
-          <Spinner aria-hidden data-size="xs" />
-          {t('skills.assistantWriting')}
-        </span>
+      {open ? (
+        <div id={panelId} className="skill-suggestion">
+          <span className="skill-suggestion-from">{t('skills.suggestionFrom')}</span>
+          {busy === section ? (
+            <span role="status" className="busy-note">
+              {t('skills.assistantWriting')}
+            </span>
+          ) : null}
+          {state.applied.map(({ card }) => (
+            <span key={card.id} className="skill-suggestion-text">
+              {card.after}
+            </span>
+          ))}
+          {state.rejected.map((c) => (
+            <RejectedCard key={c.id} card={c} />
+          ))}
+          {state.notice ? (
+            <span role="alert" className="skill-suggestion-text">
+              {state.notice.text}
+            </span>
+          ) : null}
+          <div className="actions">
+            {state.applied.length ? (
+              <Button variant="primary" data-size="sm" onClick={() => onUse(section)}>
+                {t(useKey)}
+              </Button>
+            ) : null}
+            <Button variant="secondary" data-size="sm" onClick={() => onAsk(section)}>
+              {t('skills.close')}
+            </Button>
+          </div>
+        </div>
       ) : null}
     </>
   );
@@ -77,70 +104,42 @@ export const SetupTab = ({
   definition,
   canEdit,
   tools,
-  cards,
-  rejected,
-  notice,
+  asks,
   busy,
   sizes,
   onName,
   onSpec,
   onAsk,
-  onUndo,
+  onUse,
   onFile,
 }: Props) => {
   const t = useT();
   const f = useFormat();
   const spec = definition.spec;
   const [catalogOpen, setCatalogOpen] = useState(false);
-  const isBusy = busy !== '';
-  const cardsFor = (section: ProposalSection) => (
-    <>
-      {cards
-        .filter((c) => c.section === section)
-        .map((c) => (
-          <ChangeCard
-            key={c.id}
-            title={c.title}
-            detail={c.detail}
-            before={c.before}
-            after={c.after}
-            afterLabel={c.afterLabel}
-            undone={c.undone}
-            canUndo={canEdit}
-            onUndo={() => onUndo(c)}
-          />
-        ))}
-      {rejected
-        .filter((c) => c.section === section)
-        .map((c) => (
-          <RejectedCard key={c.id} card={c} />
-        ))}
-      {notice?.section === section ? (
-        <Alert data-color={notice.color} data-size="sm" role="alert">
-          {notice.text}
-        </Alert>
-      ) : null}
-    </>
-  );
+  const ask = (section: ProposalSection) =>
+    canEdit ? (
+      <Ask section={section} state={asks[section]} busy={busy} onAsk={onAsk} onUse={onUse} />
+    ) : null;
   const catalog = tools.filter((tool) => !spec.tools.some((ref) => refName(ref) === tool.id));
 
   return (
-    <div className="stack-md">
-      <Textfield
-        className="skill-name-field"
-        label={t('skills.fieldName')}
-        value={definition.metadata.name ?? ''}
-        readOnly={!canEdit}
-        onChange={(e) => onName(e.target.value)}
-      />
-
-      <Section labelledBy="skill-description-label">
+    <div className="skill-setup">
+      <Section labelledBy="skill-what-h">
+        <Heading level={2} data-size="xs" id="skill-what-h">
+          {t('skills.setupWhatTitle')}
+        </Heading>
         <Textfield
-          id="skill-description"
-          label={<span id="skill-description-label">{t('skills.fieldDescription')}</span>}
-          description={t('skills.fieldDescriptionHelp')}
+          label={t('skills.fieldName')}
+          value={definition.metadata.name ?? ''}
+          readOnly={!canEdit}
+          onChange={(e) => onName(e.target.value)}
+        />
+        <Textfield
+          label={t('skills.fieldDescriptionShort')}
+          description={t('skills.fieldDescriptionShortHelp')}
           multiline
-          rows={3}
+          rows={2}
           value={spec.description}
           readOnly={!canEdit}
           onChange={(e) => {
@@ -148,27 +147,19 @@ export const SetupTab = ({
             onSpec((s) => ({ ...s, description: value }));
           }}
         />
-        {cardsFor('description')}
-        {canEdit ? (
-          <div className="row-wrap">
-            <AskButton
-              busy={isBusy}
-              mine={busy === 'description'}
-              onClick={() => onAsk('description')}
-            />
-          </div>
-        ) : null}
+        {ask('description')}
       </Section>
 
-      <Section labelledBy="skill-instructions-label">
+      <Section labelledBy="skill-instructions-h">
+        <Heading level={2} data-size="xs" id="skill-instructions-h">
+          {t('skills.fieldInstructions')}
+        </Heading>
         <Textfield
-          id="skill-instructions"
           className="skill-instructions"
-          label={<span id="skill-instructions-label">{t('skills.fieldInstructions')}</span>}
-          description={t('skills.fieldInstructionsHelp')}
+          label={t('skills.fieldInstructionsModel')}
+          description={t('skills.fieldInstructionsModelHelp')}
           multiline
-          rows={14}
-          spellCheck={false}
+          rows={7}
           value={spec.instructions}
           readOnly={!canEdit}
           onChange={(e) => {
@@ -176,25 +167,17 @@ export const SetupTab = ({
             onSpec((s) => ({ ...s, instructions: value }));
           }}
         />
-        {cardsFor('instructions')}
-        {canEdit ? (
-          <div className="row-wrap">
-            <AskButton
-              busy={isBusy}
-              mine={busy === 'instructions' || busy === 'fix'}
-              onClick={() => onAsk('instructions')}
-            />
-          </div>
-        ) : null}
+        <span className="small subtle">
+          {t('skills.charCount', { count: spec.instructions.length })}
+        </span>
+        {ask('instructions')}
       </Section>
 
       <Section labelledBy="skill-examples-h">
-        <div className="skill-section-head">
-          <Heading level={2} data-size="2xs" id="skill-examples-h">
-            {t('skills.examplesTitle')}
-          </Heading>
-          <span className="small subtle">{t('skills.examplesHelp')}</span>
-        </div>
+        <Heading level={2} data-size="xs" id="skill-examples-h">
+          {t('skills.examplesTitle')}
+        </Heading>
+        <p className="skill-help">{t('skills.examplesHelp')}</p>
         {spec.examples.length === 0 ? (
           <p className="skill-none">{t('skills.examplesNone')}</p>
         ) : null}
@@ -248,33 +231,29 @@ export const SetupTab = ({
             ) : null}
           </fieldset>
         ))}
-        {cardsFor('examples')}
         {canEdit ? (
-          <div className="row-wrap">
-            <Button
-              variant="secondary"
-              data-size="sm"
-              onClick={() =>
-                onSpec((s) => ({
-                  ...s,
-                  examples: [...s.examples, { input: '', expectedOutput: '' }],
-                }))
-              }
-            >
-              {t('skills.exampleAdd')}
-            </Button>
-            <AskButton busy={isBusy} mine={busy === 'examples'} onClick={() => onAsk('examples')} />
-          </div>
+          <Button
+            variant="secondary"
+            data-size="sm"
+            className="self-start"
+            onClick={() =>
+              onSpec((s) => ({
+                ...s,
+                examples: [...s.examples, { input: '', expectedOutput: '' }],
+              }))
+            }
+          >
+            {t('skills.exampleAdd')}
+          </Button>
         ) : null}
+        {ask('examples')}
       </Section>
 
       <Section labelledBy="skill-tools-h">
-        <div className="skill-section-head">
-          <Heading level={2} data-size="2xs" id="skill-tools-h">
-            {t('skills.toolsTitle')}
-          </Heading>
-          <span className="small subtle">{t('skills.toolsHelp')}</span>
-        </div>
+        <Heading level={2} data-size="xs" id="skill-tools-h">
+          {t('skills.toolsTitle')}
+        </Heading>
+        <p className="skill-help">{t('skills.toolsHelp')}</p>
         {spec.tools.length === 0 ? <p className="skill-none">{t('skills.toolsNone')}</p> : null}
         <ul className="plain-list skill-rows">
           {spec.tools.map((ref) => {
@@ -369,29 +348,27 @@ export const SetupTab = ({
       </Section>
 
       <Section labelledBy="skill-files-h">
-        <div className="skill-section-head">
-          <Heading level={2} data-size="2xs" id="skill-files-h">
-            {t('skills.filesTitle')}
-          </Heading>
-          <span className="small subtle">{t('skills.filesHelp')}</span>
-        </div>
+        <Heading level={2} data-size="xs" id="skill-files-h">
+          {t('skills.filesSectionTitle')}
+        </Heading>
+        <p className="skill-help">{t('skills.filesSectionHelp')}</p>
         {spec.attachments.length === 0 ? (
           <p className="skill-none">{t('skills.filesNone')}</p>
         ) : null}
         <ul className="plain-list skill-files">
           {spec.attachments.map((file) => (
             <li key={file.blob}>
-              {fileIcon}
-              <span className="skill-file-name">
-                {file.name}
+              <span>
+                <span className="skill-file-name">{file.name}</span>
                 {sizes[file.blob] !== undefined ? (
-                  <span className="subtle"> · {fileSize(f, sizes[file.blob] ?? 0)}</span>
+                  <span className="small subtle"> {fileSize(f, sizes[file.blob] ?? 0)}</span>
                 ) : null}
               </span>
               {canEdit ? (
                 <Button
                   variant="tertiary"
                   data-size="sm"
+                  className="skill-link-button"
                   aria-label={t('skills.fileRemove', { name: file.name })}
                   onClick={() =>
                     onSpec((s) => ({
@@ -414,13 +391,14 @@ export const SetupTab = ({
           >
             <input
               type="file"
+              multiple
               onChange={(e) => {
-                const file = e.target.files?.[0];
+                const files = [...(e.target.files ?? [])];
                 e.target.value = '';
-                if (file) onFile(file);
+                for (const file of files) onFile(file);
               }}
             />
-            {t('skills.fileAdd')}
+            {t('skills.filesAdd')}
           </label>
         ) : null}
       </Section>

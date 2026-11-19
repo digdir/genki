@@ -91,7 +91,7 @@ One piece of a stored conversion, in reading order: a heading, paragraph, list i
 _Avoid_: block, element, document part, segment
 
 **Furniture**:
-The parts of a file that a reader sees but that carry nothing of their own, such as page headers and footers, page numbers and a site's menu. The converter marks them. Kept in the stored conversion so it can be drawn, never chunked or cited.
+The parts of a file that a reader sees but that carry nothing of their own, such as page headers and footers, page numbers and a site's menu. The converter marks them; a lone page number it leaves in the body counts as furniture too. Kept in the stored conversion so it can be drawn, never chunked or cited.
 _Avoid_: boilerplate, chrome, artefact
 
 **Kept conversion**:

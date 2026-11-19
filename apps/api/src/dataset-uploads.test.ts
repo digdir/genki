@@ -7,8 +7,10 @@ import { envSecrets } from '@genai/kernel';
 import { InMemoryBlobStore } from '@genai/port-blob';
 import { IndexWriterRouter } from '@genai/port-knowledge';
 import { memoryEngine } from '@genai/port-knowledge/testing';
+import { actorNames } from './actor-names.js';
 import { createAdmin } from './admin.js';
 import { createPlatform } from './composition.js';
+import { InMemoryConfigEntryStore } from './config-store.js';
 import { createDatasetUploadsModule, uploadName } from './dataset-uploads.js';
 import { indexIngestionBackend } from './index-ingestion.js';
 
@@ -17,6 +19,7 @@ const other = '999888777';
 const principals: Record<string, Principal> = {
   kari: { kind: 'employee', issuer: 'test', subject: 'kari', tenant: digdir },
   ola: { kind: 'employee', issuer: 'test', subject: 'ola', tenant: other },
+  system: { kind: 'agency-system', issuer: 'test', subject: 'robot', tenant: digdir },
   erik: {
     kind: 'employee',
     issuer: 'test',
@@ -42,6 +45,7 @@ const boot = async () => {
     secrets: envSecrets({}),
   });
   const blobs = new InMemoryBlobStore();
+  const configEntries = new InMemoryConfigEntryStore();
   const platform = await createPlatform({
     catalogs: {
       models: { endpoints: {}, models: [] },
@@ -53,6 +57,7 @@ const boot = async () => {
     policy: { decide: async () => ({ allow: true }) },
     blobStore: blobs,
     configurables: {
+      store: configEntries,
       scheduleIntervalMs: 0,
       ingestion: indexIngestionBackend({
         writers,
@@ -112,7 +117,7 @@ const boot = async () => {
     },
   });
   expect(created.status).toBe(201);
-  return { platform, admin, app, call, upload, blobs };
+  return { platform, admin, app, call, upload, blobs, configEntries };
 };
 
 const json = async <T>(response: Response) => (await response.json()) as T;
@@ -215,6 +220,30 @@ describe('uploading files to a dataset', () => {
     expect((await call(`${base}/uploads/notat.pdf`, 'kari', { method: 'DELETE' })).status).toBe(
       404,
     );
+  });
+
+  it('names the person who started a run, on the run and on the dataset', async () => {
+    const { call, upload, configEntries } = await boot();
+    await actorNames(configEntries).remember(principals.kari as Principal, 'Kari Nordmann');
+    await upload('kari', [new File(['# Veileder\n\nSlik søker du.'], 'veileder.md')]);
+    await call(`${base}/pipelines`, 'kari', {
+      body: {
+        id: 'filer',
+        name: 'Filer',
+        source: { kind: 'upload' },
+        chunking: { minimumLength: 1 },
+      },
+    });
+
+    await call(`${base}/pipelines/filer/execute`, 'kari', { body: {} });
+
+    expect(await settled(call)).toMatchObject({
+      startedBy: 'employee:test:kari',
+      startedByName: 'Kari Nordmann',
+    });
+    expect(await json(await call(base, 'kari'))).toMatchObject({
+      lastExecution: { startedBy: 'employee:test:kari', startedByName: 'Kari Nordmann' },
+    });
   });
 
   it('refuses types it cannot read and files over the size limit, with a reason', async () => {
@@ -327,5 +356,86 @@ describe('uploading files to a dataset', () => {
       'Årsrapport-2025-endelig.docx',
     );
     expect(uploadName('...')).toBeUndefined();
+  });
+});
+
+describe('downloading an original file', () => {
+  it('gives the file back as an attachment the browser saves and never runs', async () => {
+    const { app, upload } = await boot();
+    await upload('kari', [new File(['<script>alert(1)</script>'], 'side.html')]);
+
+    const got = await app.request(`${base}/uploads/side.html`, {
+      headers: { authorization: 'Bearer kari' },
+    });
+
+    expect(got.status).toBe(200);
+    expect(await got.text()).toBe('<script>alert(1)</script>');
+    expect(Object.fromEntries(got.headers)).toMatchObject({
+      'content-type': 'text/html',
+      'content-disposition': `attachment; filename="side.html"; filename*=UTF-8''side.html`,
+      'x-content-type-options': 'nosniff',
+      'content-security-policy': "sandbox; default-src 'none'",
+    });
+  });
+
+  it('names a file with Norwegian letters in a header the browser reads, without breaking the header', async () => {
+    const { app, upload } = await boot();
+    await upload('kari', [new File(['Hei'], 'Søknad "1".txt')]);
+
+    const got = await app.request(`${base}/uploads/S%C3%B8knad-1.txt`, {
+      headers: { authorization: 'Bearer kari' },
+    });
+
+    expect(got.headers.get('content-disposition')).toBe(
+      `attachment; filename="S_knad-1.txt"; filename*=UTF-8''S%C3%B8knad-1.txt`,
+    );
+  });
+
+  it("another organisation cannot download a file, and neither can a member without the tenant's access", async () => {
+    const { app, upload } = await boot();
+    await upload('kari', [new File(['Hemmelig'], 'notat.txt')]);
+
+    const fromOther = await app.request(`${base}/uploads/notat.txt`, {
+      headers: { authorization: 'Bearer ola' },
+    });
+    const inOwnTenant = await app.request(
+      `/tenants/${other}/datasets/opplastet/uploads/notat.txt`,
+      {
+        headers: { authorization: 'Bearer ola' },
+      },
+    );
+
+    expect(fromOther.status).toBe(404);
+    expect(await fromOther.text()).not.toContain('Hemmelig');
+    expect(inOwnTenant.status).toBe(404);
+  });
+
+  it('only people download original files, not API keys or systems', async () => {
+    const { app, upload } = await boot();
+    await upload('kari', [new File(['Hei'], 'notat.txt')]);
+
+    const got = await app.request(`${base}/uploads/notat.txt`, {
+      headers: { authorization: 'Bearer system' },
+    });
+
+    expect(got.status).toBe(403);
+    expect(((await got.json()) as { type: string }).type).toBe(
+      'urn:genai:problem:upload-people-only',
+    );
+  });
+
+  it('answers original-not-kept for a missing file and for a name that tries to leave the folder', async () => {
+    const { app, upload } = await boot();
+    await upload('kari', [new File(['Hei'], 'notat.txt')]);
+
+    for (const name of ['borte.txt', '..%2F..%2Fannet%2Fnotat.txt', '.notat.txt']) {
+      const got = await app.request(`${base}/uploads/${name}`, {
+        headers: { authorization: 'Bearer kari' },
+      });
+      expect(got.status).toBe(404);
+      expect(((await got.json()) as { type: string }).type).toBe(
+        'urn:genai:problem:original-not-kept',
+      );
+    }
   });
 });

@@ -61,6 +61,7 @@ import {
   type ShellProfileProps,
   type ShellTool,
   type SourceDocument,
+  type SourceSelection,
   type SourceTarget,
 } from '@genai/ui-blocks';
 import {
@@ -106,21 +107,17 @@ const sourcesTool = {
   inlineSize: '100%',
 } as CSSProperties;
 
-// The next look's filter beside the threads: 280 wide, a field's ticks in one column so they fit.
-// As wide as its column, which lines its content up at the start and would shrink it to its words.
+// The next look's filter beside the threads: 280 wide, a field's ticks in one column.
 const oneColumnTicks = {
   '--genai-filter-checkboxes-columns': '1',
   inlineSize: '100%',
 } as CSSProperties;
 
-// The next look's threads 220 wide as dev-navbar draws them, and at most 400, so a reader who drags
-// the panel wider reads more of each thread's name without the list growing past a reading width
-// (kunnskapsassistenten#263, #264). The filter beside them keeps 280, and the threads take a change.
+// The next look's threads: 220 wide, at most 400 (kunnskapsassistenten#263, #264).
 const threadsWidth = { width: 220, minWidth: 220, maxWidth: 400 };
 const filterWidth = 280;
 
-// The next look's footnote marks, 16 px as dev-kilder-hoyre draws them, and the reader's question
-// a lighter grey than the summaries of Fremgangsmåte, Kilder and the Kildeliste.
+// The next look's footnote marks at 16 px (dev-kilder-hoyre), and the question a lighter grey.
 const nextFootnotes = {
   '--genai-answer-footnote-size': 'var(--ds-size-4)',
   '--genai-conversation-question-background': 'var(--ds-color-neutral-background-tinted)',
@@ -190,6 +187,7 @@ const AnswerRow = ({
                 markers: turn.markers,
                 locale: t.locale,
                 documentFootnotes: a.look === 'next',
+                numberEachFootnote: a.look === 'next',
               });
               void copy(text, { kind: 'answer', sources });
             },
@@ -268,8 +266,7 @@ const approachOf = (
     ) : asked && count !== undefined ? (
       <FilterRead selection={{}} count={count} />
     ) : undefined;
-  // The next look's card is the dev boards' (dev-fremgangsmate-1 and -2): the filter the answer
-  // built on, when the service has one, then the process. Its tool is the dev-verktoy boards' list.
+  // The next look's card is the dev boards': the filter the answer built on, then the process.
   const card = next && !tool;
   return (
     <>
@@ -360,7 +357,8 @@ export const AssistantView = ({
     followed: NonNullable<AssistantState['lastFollowed']['current']>,
   ) => {
     a.lastFollowed.current = followed;
-    if (sourcesOn) a.showSources(turn.id, target);
+    if (sourcesOn)
+      a.showSources(turn.id, target, 'citation' in followed ? followed.citation : undefined);
     else if (documentOn) a.openDocument(turn.id, target, 'answer');
   };
 
@@ -472,8 +470,7 @@ export const AssistantView = ({
           onFetchAgain={a.fetchAgain}
           assistantName={name}
           answerColor="neutral"
-          // The next look's answer has no card and no name over it (dev-kilder-hoyre), and the
-          // reader's question is a neutral grey, not the accent's tint.
+          // The next look's answer has no card and no name; the question is a neutral grey.
           {...(next
             ? { answerVariant: 'plain' as const, answerLabel: false, questionColor: 'neutral' }
             : {})}
@@ -497,8 +494,21 @@ export const AssistantView = ({
                   follow(turn, target, { turnId: turn.id, document: target });
                 },
                 sourcesUsed: true,
-                // Until genki cites excerpts, the next look marks each cited document.
-                ...(next ? { documentFootnotes: true } : {}),
+                ...(next
+                  ? {
+                      documentFootnotes: true,
+                      numberEachFootnote: true,
+                      ...(a.option('chat', 'copy')
+                        ? {
+                            onCopyReferences: (_turn: ConversationAnswer, markdown: string) =>
+                              navigator.clipboard.writeText(markdown),
+                          }
+                        : {}),
+                      ...(a.tool === 'sources' && a.active && a.shownFootnote !== undefined
+                        ? { shownFootnote: { turnId: a.active.id, citation: a.shownFootnote } }
+                        : {}),
+                    }
+                  : {}),
               }
             : {})}
           onRegenerate={(turn, question) => {
@@ -864,9 +874,7 @@ export const AssistantView = ({
       foot,
       ...nextPrimary,
       ...(next ? { rail: newThreadRail } : {}),
-      // The filter's own panel in the threads' card, as dev-filter-panel draws it: «Filter»,
-      // «Gjelder neste spørsmål», and the card's button on its row. The card is the threads'
-      // width and the filter's, so resizing it changes the threads only.
+      // The filter's own panel in the threads' card (dev-filter-panel); resizing changes the threads only.
       ...(filterPanel
         ? {
             size: {
@@ -934,8 +942,7 @@ export const AssistantView = ({
       ),
       foot,
       ...nextPrimary,
-      // The menu alone, 220 at 1720 (dev-innstillinger-1), and never wider: the threads' card, 500 to
-      // 680 with the filter beside them, as the reader dragged it, keeps its width for the way back.
+      // The menu alone is 220 wide; the threads' card keeps its dragged width for the way back.
       size: { width: 220, minWidth: 220, maxWidth: 220 },
     };
 
@@ -965,6 +972,20 @@ export const AssistantView = ({
             headerColor: 'brand3',
             disclaimer: false,
             foldUncited: true,
+            footnote: a.shownFootnote,
+            onFootnoteChange: a.setShownFootnote,
+            ...(documentOn
+              ? {
+                  onOpenDocument: ({ source, excerpt }: Required<SourceSelection>) => {
+                    if (!a.active) return;
+                    a.openDocument(
+                      a.active.id,
+                      { chunkId: excerpt.chunkId, documentId: source.documentId },
+                      'sources',
+                    );
+                  },
+                }
+              : {}),
           }
         : {
             onAnswerChange: a.showAnswer,

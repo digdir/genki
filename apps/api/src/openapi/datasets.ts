@@ -1,7 +1,12 @@
 import { createRoute, z, type RouteConfig } from '@hono/zod-openapi';
 import { fieldFills } from '@genai/jobs';
 import { priceUnits, sourceLinkRules, unitNamePattern } from '@genai/contracts';
-import { filterKinds, filterValueTypes } from '@genai/port-knowledge';
+import {
+  documentSortKeys,
+  filterKinds,
+  filterValueTypes,
+  maxDocumentQueryLength,
+} from '@genai/port-knowledge';
 import {
   apiIdPattern,
   capabilities,
@@ -9,9 +14,20 @@ import {
   parameterRules,
   residencies,
 } from '@genai/port-model';
-import { catalogKinds } from '../catalog-registry.js';
+import { catalogKinds, datasetSearchScopes } from '../catalog-registry.js';
 import { datasetFields } from '../config-routes.js';
 import { datasetInUseType, datasetRunOpenType } from '../dataset-delete.js';
+import { originalNotKeptType, uploadPeopleOnlyType } from '../dataset-uploads.js';
+import { endpointNotAllowedType, endpointSource } from '../endpoint-source.js';
+import {
+  datasetDocumentNotFoundType,
+  datasetDocumentsFailedType,
+  datasetDocumentsPeopleOnlyType,
+  datasetDocumentsUnsupportedType,
+  datasetSearchBody,
+  documentExcerptLength,
+  maxDocumentsLimit,
+} from '../dataset-search.js';
 import { applyBody, proposeBody, revertBody, verifyBody } from '../dataset-enrichment.js';
 import { switchStates } from '../engine-switches.js';
 import { changeReason, Problem, problemContent } from '../http.js';
@@ -113,12 +129,27 @@ const Dataset = z
     valueTypes: z.record(z.string(), z.enum(filterValueTypes)).optional(),
     maxFacetValues: z.number().int().optional(),
     links: z.enum(sourceLinkRules).optional(),
+    searchScope: z
+      .enum(datasetSearchScopes)
+      .optional()
+      .describe(
+        "Who may search an organisation's own dataset: tenant (default) only the organisation, all every organisation on the platform, which sees it read only (editable false, source none, lastExecution and nextRunAt null, and no change history; its pipelines, files and skipped documents stay with the owner). Platform datasets leave it out and are shared by the operator",
+      ),
   })
   .openapi('Dataset');
 
-const DatasetInput = datasetFields.extend({}).openapi('DatasetInput', {
-  description: 'Give the search engine as index, collection (older name) or endpoint',
-});
+const DatasetInput = datasetFields
+  .extend({
+    endpointSource: endpointSource
+      .optional()
+      .describe(
+        "An organisation's own search address, searched live and never copied into genki, in place of index. genki makes the connection endpoint-{id} with the http-search engine and, for api-key, keeps the key in the vault bound to the address's host (setting it needs manage-services or register-building-blocks as well). Every search goes over https to that host and port only, through the egress guard: never to a private or reserved address, and a redirect is refused, so the key is never sent twice. The key is never returned or logged.",
+      ),
+  })
+  .openapi('DatasetInput', {
+    description:
+      'Give the search engine as index, collection (older name) or endpoint, or, for a new dataset of an organisation, endpointSource',
+  });
 const DatasetChange = datasetFields
   .partial()
   .openapi('DatasetChange', { description: 'Only the fields to change; the rest are kept' });
@@ -133,6 +164,14 @@ const executionStatuses = [
 ] as const;
 const LastExecution = z.object({
   status: z.enum(executionStatuses),
+  startedBy: z
+    .string()
+    .optional()
+    .describe("Who started the run; only on the organisation's own datasets"),
+  startedByName: z
+    .string()
+    .optional()
+    .describe('The name of the person who started the run, when genki knows it'),
   startedAt: z.string(),
   endedAt: z.string().nullable(),
   stored: z.number().int().nullable(),
@@ -163,12 +202,32 @@ const DatasetWithStatus = Dataset.extend({
     'database',
     'parquet',
     'episerver',
+    'endpoint',
     'none',
   ]),
   documents: z.number().int().nullable(),
   chunks: z.number().int().nullable(),
   lastExecution: LastExecution.nullable(),
   nextRunAt: z.string().nullable(),
+  updatedAt: z
+    .string()
+    .nullable()
+    .describe(
+      "When an ingestion run last succeeded; null for a dataset filled outside genki's pipelines, one never read in, and another organisation's dataset",
+    ),
+  owner: z
+    .object({
+      tenant: z
+        .string()
+        .describe(
+          'The organisation that owns the dataset; the platform tenant for platform datasets',
+        ),
+      name: z
+        .string()
+        .nullable()
+        .describe("The organisation's name; null when genki does not know it"),
+    })
+    .describe('Who owns the dataset, for datasets the caller may see'),
 }).openapi('DatasetWithStatus');
 
 const DatasetReader = z
@@ -177,8 +236,24 @@ const DatasetReader = z
     tenant: z.string(),
     id: z.string(),
     name: z.string(),
+    addedAt: z
+      .string()
+      .optional()
+      .describe(
+        'When the reader started reading the dataset: the first version of the newest unbroken run of published versions that name it, or of the adoption',
+      ),
+    addedBy: z.string().optional().describe('Who published that version or adopted the block'),
+    addedByName: z.string().optional().describe("That person's name, when known"),
   })
   .openapi('DatasetReader');
+
+const DatasetListItem = DatasetWithStatus.extend({
+  usedByCount: z
+    .number()
+    .int()
+    .optional()
+    .describe('How many published services and adopted building blocks of the tenant read it'),
+}).openapi('DatasetListItem');
 
 const DatasetDetail = DatasetWithStatus.extend({
   skipped: z.array(SkippedDocument),
@@ -195,6 +270,11 @@ const DatasetDeleteResult = z
       pipelines: z.array(z.string()),
       uploads: z.array(z.string()),
       generations: z.array(z.string()),
+      endpoint: z
+        .string()
+        .optional()
+        .describe("The connection made for the dataset's endpoint source"),
+      secret: z.string().optional().describe('The API key kept for that connection'),
     }),
     kept: z.object({
       knowledgeRecords: z
@@ -244,6 +324,10 @@ const Execution = z
     backend: z.string(),
     status: z.enum(executionStatuses),
     startedBy: z.string(),
+    startedByName: z
+      .string()
+      .optional()
+      .describe('The name of the person who started the run, when genki knows it'),
     startedAt: z.string(),
     endedAt: z.string().optional(),
     report: z
@@ -686,6 +770,10 @@ const ModelEndpointFields = {
         'Named extra keys, each a platform secret reference; only a descriptor module reaches them, as connection.<name>, and no request carries them; at most 4, only the operator sets them, and a change is audited',
       example: { signing: 'secret://platform/provider-signing-key' },
     }),
+  gateway: z.boolean().optional().openapi({
+    description:
+      'The connection is the AI gateway: every model call sends genki-tenant with the tenant organisation number; only the operator sets it',
+  }),
 };
 const ModelEndpointInput = z
   .object({ id: z.string().regex(/^[a-z0-9][a-z0-9._-]{0,62}$/), ...ModelEndpointFields })
@@ -749,11 +837,32 @@ const PublicModel = z
     id: z.string(),
     name: z.string(),
     family: z.string().optional(),
+    maker: z.string().optional().describe('Who made the model, such as OpenAI'),
+    operator: z
+      .object({ name: z.string(), region: z.string().optional() })
+      .optional()
+      .describe('Who runs the model for genki and where, such as Microsoft Azure in Sweden'),
     residency: Residency,
     capabilities: z.array(z.enum(capabilities)),
     operations: z.array(z.string().regex(operationKindPattern)),
     parameters: parameterRules,
     price: Price.nullable(),
+    contextWindow: z.number().int().optional().describe('Tokens the model reads at most'),
+    releaseDate: z.iso.date().optional().describe('The day the model was released'),
+    recommended: z
+      .boolean()
+      .describe(
+        'Listed in the setting models.recommended, or, when that is empty, the model new services start with (services.defaultModel)',
+      ),
+    available: z
+      .boolean()
+      .describe(
+        "False only with all=true, for a model the tenant's building block policy holds back",
+      ),
+    reason: z
+      .enum(['not_allowed', 'requires_approval'])
+      .optional()
+      .describe('Why a model is not available: refused by the policy, or waiting for an approval'),
   })
   .openapi('AvailableModel');
 
@@ -1195,7 +1304,7 @@ const datasetRoutes = (base: Base): RouteConfig[] => {
         : 'Every dataset on the platform (operators)',
       request: { params: z.object(base.params) },
       responses: {
-        200: json(list(tenantSide ? DatasetWithStatus : Dataset), 'Datasets'),
+        200: json(list(tenantSide ? DatasetListItem : Dataset), 'Datasets'),
         ...withoutNotFound(base, guarded(base)),
       },
     }),
@@ -1208,7 +1317,11 @@ const datasetRoutes = (base: Base): RouteConfig[] => {
         201: audited(Dataset, 'Created'),
         400: either('Invalid dataset or missing reason'),
         ...withoutNotFound(base, guarded(base, 'manage-datasets')),
-        409: either('A dataset with that id exists'),
+        409: either('A dataset with that id exists, or the connection endpoint-{id} does'),
+        422: {
+          description: `${endpointNotAllowedType}: the endpoint source's address is not a public https host name (an IP address, a reserved name, user name or password in it, or a host that resolves to a private address)`,
+          content: problemContent,
+        },
       },
     }),
     createRoute({
@@ -1435,6 +1548,38 @@ const uploadRoutes: RouteConfig[] = (() => {
         200: json(list(UploadedFile), 'Files'),
         401: failures[401],
         404: failures[404],
+      },
+    }),
+    createRoute({
+      method: 'get',
+      path: '/tenants/{tenant}/datasets/{id}/uploads/{name}',
+      summary:
+        'Download an uploaded file as it was sent (any person in the tenant, own datasets only; not audited)',
+      description:
+        "The bytes as stored, with the file type from its extension, content-disposition attachment, x-content-type-options nosniff and a sandbox content security policy, so the browser saves it and never runs it. A shared dataset's files stay with the organisation that owns it.",
+      request: { params: params.extend({ name: param('veileder.pdf') }) },
+      responses: {
+        200: {
+          description: 'The file',
+          content: Object.fromEntries(
+            [
+              'application/pdf',
+              'text/plain',
+              'text/markdown',
+              'text/html',
+              'application/octet-stream',
+            ].map((type) => [type, { schema: z.string().openapi({ format: 'binary' }) }]),
+          ),
+        },
+        401: failures[401],
+        403: {
+          description: `${uploadPeopleOnlyType}: an API key or system caller`,
+          content: problemContent,
+        },
+        404: {
+          description: `No such tenant for you or no such own dataset; or ${originalNotKeptType}: no file by that name is kept`,
+          content: problemContent,
+        },
       },
     }),
     createRoute({
@@ -1716,8 +1861,14 @@ const publicModelRoutes: RouteConfig[] = [
     path: '/models',
     summary:
       'Enabled models the caller may use, with price, filtered by residency, capabilities or the needs of a strategy (any signed-in caller or API key)',
+    description:
+      "A model the tenant's building block policy refuses or holds for approval is left out, unless all=true, which lists it with available false and a reason. Models another tenant owns are never listed.",
     request: {
       query: z.object({
+        all: z
+          .enum(['true', 'false'])
+          .optional()
+          .openapi({ description: 'true also lists models the tenant may not use yet' }),
         residency: Residency.optional(),
         strategy: z.string().optional(),
         capability: z
@@ -1770,6 +1921,290 @@ const deleteRoutes: RouteConfig[] = [tenantBase, operatorBase].map((base) =>
   }),
 );
 
+const SearchHit = z
+  .object({
+    id: z.string().describe('The chunk id'),
+    document: z.string().optional(),
+    title: z.string().optional(),
+    url: z.string().optional(),
+    position: z.number().int().optional().describe("The chunk's place in its document, from 0"),
+    page: z
+      .number()
+      .int()
+      .optional()
+      .describe('The first page the chunk is on, when the engine keeps pages'),
+    pageEnd: z.number().int().optional().describe('The last page, when it differs from page'),
+    score: z.number(),
+    text: z.string().describe("The chunk's text"),
+    fields: z.record(z.string(), z.unknown()).describe("The document's and chunk's fields"),
+  })
+  .openapi('DatasetSearchHit');
+
+const DatasetSearchAnswer = z
+  .object({
+    dataset: z.string().describe('The dataset searched, aliases resolved'),
+    profile: z.string().describe('The search profile used'),
+    filters: z.record(z.string(), z.unknown()).describe('The filters applied, as sent'),
+    limit: z.number().int(),
+    found: z.number().int().optional().describe('How many matched, when the engine counts'),
+    warning: z.string().optional(),
+    tookMs: z.number().int().describe('How long the search took'),
+    hits: z.array(SearchHit).describe('In rank order; empty when a filter matches nothing'),
+  })
+  .openapi('DatasetSearchAnswer');
+
+const searchRoutes: RouteConfig[] = [tenantBase, operatorBase].map((base) =>
+  createRoute({
+    method: 'post',
+    path: `${base.path}/datasets/{id}/search`,
+    summary: isTenant(base)
+      ? "Search a dataset in the tenant's catalogue as a service run searches it, without a chat model call (needs manage-services or manage-datasets; not audited)"
+      : 'Search a platform dataset as a service run searches it, without a chat model call (operators; not audited)',
+    description:
+      "One query through the dataset's knowledge port: the same filter checks, limit cap and timeout as a service's search. A filter that matches nothing answers no hits and is never retried without the filter. The query embeds for a vector search, so the route is closed in lockdown. The query is not logged.",
+    request: {
+      params: z.object({ ...base.params, id: param('digdir/kudos') }),
+      body: body(datasetSearchBody),
+    },
+    responses: {
+      200: json(DatasetSearchAnswer, 'The hits and what was searched'),
+      ...guarded(base),
+      ...(isTenant(base)
+        ? {
+            403: either(
+              "An API key, missing both manage-services and manage-datasets, the tenant's block policy does not allow the dataset, or the kernel refused the search",
+            ),
+          }
+        : {}),
+      422: either(
+        'A filter on a field the dataset does not declare or of the wrong type, an unknown profile, or a bad body',
+      ),
+      429: either("The organisation's monthly token quota is used up"),
+      502: either('The search engine failed'),
+      504: either(
+        'A search on the knowledge database took longer than the timeout; other engines answer 502',
+      ),
+    },
+  }),
+);
+
+const typedProblem = (type: string, description: string) => ({
+  description,
+  content: {
+    'application/problem+json': { schema: Problem.extend({ type: z.literal(type) }) },
+  },
+});
+
+const OriginalFile = z
+  .object({
+    name: z.string().describe('The file name; download it from .../uploads/{name}'),
+    size: z.number().int(),
+    type: z.string(),
+  })
+  .openapi('DatasetOriginalFile');
+
+const DatasetDocument = z
+  .object({
+    id: z.string().describe('The document id'),
+    title: z.string().optional(),
+    url: z.string().optional().describe("The public source link, by the dataset's link rule"),
+    fields: z.record(z.string(), z.unknown()).describe("The document's fields"),
+    original: OriginalFile.optional().describe(
+      "The uploaded file the document was read from, for the organisation's own datasets while the file is kept",
+    ),
+    status: z
+      .enum(['indexed', 'failed', 'pending'])
+      .describe(
+        "indexed: in the search engine; failed: skipped or failed in the dataset's latest run; pending: an uploaded file not indexed yet",
+      ),
+    chunkCount: z
+      .number()
+      .int()
+      .optional()
+      .describe("The document's chunks, when the engine keeps the count (total_chunks)"),
+    reason: z
+      .string()
+      .optional()
+      .describe('A failed document: the skip reason, such as no_text, or failed'),
+  })
+  .openapi('DatasetDocument');
+
+const DocumentChunk = z
+  .object({
+    id: z.string(),
+    position: z.number().int().optional(),
+    page: z.number().int().optional(),
+    pageEnd: z.number().int().optional(),
+    text: z.string(),
+  })
+  .openapi('DatasetDocumentChunk');
+
+const DatasetDocumentDetail = DatasetDocument.extend({
+  excerpt: z
+    .string()
+    .optional()
+    .describe(
+      `The start of the document, at most ${documentExcerptLength} characters, when the engine reads passages in order`,
+    ),
+  chunks: z
+    .array(DocumentChunk)
+    .optional()
+    .describe('The chunks at the positions asked for with chunks=from-to, in order'),
+}).openapi('DatasetDocumentDetail');
+
+const documentsOrder =
+  "Documents come in a fixed order, the same for every page: by document id on the knowledge database, and in the collection's own order (its default sorting field, else the order they were indexed) on Typesense.";
+
+const documentRoutes: RouteConfig[] = [
+  createRoute({
+    method: 'get',
+    path: '/tenants/{tenant}/datasets/{id}/documents',
+    summary:
+      "One page of the documents in a dataset in the tenant's catalogue (any person in the tenant; not audited)",
+    description: `The tenant's own datasets, the platform datasets shared with it and the datasets other organisations opened to all (searchScope all), by id or alias, read through the dataset's knowledge port. No model is called. ${documentsOrder}`,
+    request: {
+      params: z.object({ tenant, id: param('digdir/kudos') }),
+      query: z.object({
+        limit: z
+          .string()
+          .optional()
+          .describe(`1 to ${maxDocumentsLimit}, default 50; more is refused, not cut`),
+        offset: z
+          .string()
+          .optional()
+          .describe(
+            'Documents to skip, default 0; a multiple of limit, since some engines read in whole pages',
+          ),
+        filters: z
+          .string()
+          .optional()
+          .describe(
+            'A JSON object in the shape a search takes, on the fields the dataset declares as filters, such as {"type":"veileder","year":{"gte":2020}}; found counts the matching documents',
+          ),
+        query: z
+          .string()
+          .optional()
+          .describe(
+            `Searches document titles, at most ${maxDocumentQueryLength} characters, when listing.query is true; for failed and pending documents it matches the id or file name`,
+          ),
+        sort: z
+          .enum(documentSortKeys)
+          .optional()
+          .describe('Sorts indexed documents by a key listing.sort names; others answer 422'),
+        order: z.enum(['asc', 'desc']).optional().describe('The sort order, asc by default'),
+        status: z
+          .enum(['indexed', 'failed', 'pending', 'all'])
+          .optional()
+          .describe(
+            'Which documents to list, indexed by default; failed and pending take only query, limit and offset; all lists failed, then pending, then indexed documents, and filters and sort apply to the indexed ones only, so filters leave out the failed and pending',
+          ),
+      }),
+    },
+    responses: {
+      200: json(
+        z
+          .object({
+            dataset: z.string().describe('The dataset, aliases resolved'),
+            limit: z.number().int(),
+            offset: z.number().int(),
+            found: z
+              .number()
+              .int()
+              .optional()
+              .describe('All documents that match the filters, when the engine counts'),
+            total: z
+              .number()
+              .int()
+              .describe(
+                "All documents that match: found, else the dataset's document count when nothing narrows the list, else an estimate from the pages read",
+              ),
+            totalExact: z.boolean().describe('False when total is an estimate'),
+            status: z.enum(['indexed', 'failed', 'pending', 'all']),
+            statusCounts: z
+              .object({
+                indexed: z.number().int().nullable(),
+                failed: z.number().int(),
+                pending: z.number().int(),
+              })
+              .describe(
+                "Documents per status in the whole dataset; failed and pending count only in the organisation's own datasets",
+              ),
+            listing: z
+              .object({
+                query: z.boolean(),
+                sort: z.array(z.enum(documentSortKeys)),
+              })
+              .describe('What the engine can do with the list: search titles, and the sort keys'),
+            query: z.string().optional(),
+            sort: z
+              .object({ key: z.enum(documentSortKeys), order: z.enum(['asc', 'desc']) })
+              .optional(),
+            filters: z
+              .record(z.string(), z.unknown())
+              .optional()
+              .describe('The filters applied, as sent'),
+            documents: z.array(DatasetDocument),
+          })
+          .openapi('DatasetDocumentsPage'),
+        'One page of documents',
+      ),
+      401: either('Not signed in'),
+      403: typedProblem(datasetDocumentsPeopleOnlyType, 'An API key or system caller'),
+      404: either("No such tenant for you, or no such dataset in the tenant's catalogue"),
+      422: {
+        description:
+          'A limit or offset out of range, filters that are not a JSON object or name a field the dataset does not declare, a query or sort the engine cannot do, or an engine that cannot list documents',
+        content: {
+          'application/problem+json': {
+            schema: z.union([
+              Problem,
+              Problem.extend({ type: z.literal(datasetDocumentsUnsupportedType) }),
+            ]),
+          },
+        },
+      },
+      502: typedProblem(
+        datasetDocumentsFailedType,
+        'The search engine failed; its error text is never passed on',
+      ),
+    },
+  }),
+  createRoute({
+    method: 'get',
+    path: '/tenants/{tenant}/datasets/{id}/documents/{doc}',
+    summary:
+      "One document in a dataset in the tenant's catalogue, with the start of its text (any person in the tenant; not audited)",
+    description:
+      "The same datasets as the list: the tenant's own, the platform datasets shared with it and those other organisations opened to all. Read through the dataset's knowledge port by the document's id. No model is called.",
+    request: {
+      params: z.object({ tenant, id: param('digdir/kudos'), doc: param('dok-2') }),
+      query: z.object({
+        chunks: z
+          .string()
+          .optional()
+          .describe('Positions to read as from-to, such as 0-9, at most 50; adds chunks'),
+      }),
+    },
+    responses: {
+      200: json(DatasetDocumentDetail, 'The document'),
+      401: either('Not signed in'),
+      403: typedProblem(datasetDocumentsPeopleOnlyType, 'An API key or system caller'),
+      404: {
+        description: `No such tenant for you or no such dataset in the tenant's catalogue; or ${datasetDocumentNotFoundType}: the dataset has no document with that id`,
+        content: problemContent,
+      },
+      422: {
+        description: `A chunks range that is not from-to with at most 50 positions, or ${datasetDocumentsUnsupportedType}: the engine cannot list documents or read passages in order`,
+        content: problemContent,
+      },
+      502: typedProblem(
+        datasetDocumentsFailedType,
+        'The search engine failed; its error text is never passed on',
+      ),
+    },
+  }),
+];
+
 export const datasetRouteGroups: Record<string, RouteConfig[]> = {
   config: [
     ...catalogRoutes(operatorBase),
@@ -1786,6 +2221,7 @@ export const datasetRouteGroups: Record<string, RouteConfig[]> = {
   'engine-switches': [...engineRoutes(tenantBase), ...engineRoutes(operatorBase)],
   'dataset-uploads': uploadRoutes,
   'dataset-delete': deleteRoutes,
+  'dataset-search': [...searchRoutes, ...documentRoutes],
   'dataset-enrichment': enrichmentRoutes,
   'operator-models': operatorModelRoutes,
   'operator-catalog': operatorCatalogRoutes,

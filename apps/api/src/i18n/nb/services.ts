@@ -61,6 +61,7 @@ export const services = defineNamespace({
   connectorName: 'Kobling for {service}',
   seedReason: 'Lastet fra den lokale konfigurasjonen',
   archivedByTenant: 'Tjenesten er arkivert og kan ikke kjøres.',
+  archivedReadOnly: 'Tjenesten er arkivert og kan bare leses. Gjenopprett den for å endre den.',
   pausedByTenant: 'Tjenesten er satt på pause. Begrunnelse: {reason}',
   variantAnswer: 'Svar med kilder',
   variantDefault: 'Standard',
@@ -74,6 +75,7 @@ export const services = defineNamespace({
   environmentName:
     'Miljønavnet må ha små bokstaver, sifre og bindestrek og begynne med en bokstav.',
   environmentExists: 'Tjenesten har allerede miljøet {environment}.',
+  environmentDescription: 'Beskrivelsen er tekst på høyst {max} tegn.',
   environmentProdFixed: 'prod finnes alltid og kan ikke legges til eller fjernes.',
   environmentTooMany: 'En tjeneste kan ha høyst {max} miljøer.',
   environmentSame: 'Et miljø kan ikke fremmes til seg selv.',
@@ -86,4 +88,5 @@ export const services = defineNamespace({
     'Tjenesten har bare prod. Publiser en tidligere versjon på nytt i stedet for å fremme eller rulle tilbake.',
   environmentPinNotAllowed:
     'Versjon {version} kjører ikke i noe miljø denne nøkkelen eller frontenden kan bruke.',
+  costBasisRecentRuns: 'snittet av kjøringene hos eieren de siste 30 dagene, avrundet',
 });

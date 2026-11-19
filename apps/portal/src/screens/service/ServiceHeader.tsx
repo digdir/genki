@@ -1,10 +1,9 @@
-import { ChevronLeftIcon } from '@navikt/aksel-icons';
 import { Heading, Tag } from '@digdir/designsystemet-react';
 import type { ReactNode } from 'react';
-import { Icon } from '../../components/Icon';
 import { statusKeys } from '../../data/service-labels';
 import { statusColor, type ServiceStatus } from '../../data/services';
 import { useT } from '../../i18n';
+import { BackLink } from '../../components/BackLink';
 
 export const ServiceHeader = ({
   name,
@@ -12,29 +11,27 @@ export const ServiceHeader = ({
   meta,
   flash,
   actions,
+  tag,
 }: {
   name: string;
   status: ServiceStatus;
   meta: string;
+  tag?: string | undefined;
   flash: string;
   actions: ReactNode;
 }) => {
   const t = useT();
   return (
     <header className="service-head">
-      <a href="#/services" className="back-link">
-        <Icon icon={ChevronLeftIcon} size={18} />
-        {t('service.back')}
-      </a>
+      <BackLink label={t('service.back')} href="#/services" />
       <div className="service-head-row">
         <div className="service-title">
           <Heading level={1} data-size="md">
             {name}
           </Heading>
           <Tag data-size="sm" data-color={statusColor[status]}>
-            {t(statusKeys[status])}
+            {tag ?? t(statusKeys[status])}
           </Tag>
-          <span className="meta">{meta}</span>
         </div>
         <div className="service-actions">
           <span aria-live="polite" className="service-flash">
@@ -43,6 +40,7 @@ export const ServiceHeader = ({
           {actions}
         </div>
       </div>
+      {meta ? <p className="meta service-meta">{meta}</p> : null}
     </header>
   );
 };

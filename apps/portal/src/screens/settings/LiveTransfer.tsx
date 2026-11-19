@@ -20,6 +20,7 @@ import {
 } from '@digdir/designsystemet-react';
 import { useId, useRef, useState } from 'react';
 import { ApiError, type ApiClient, type ImportPlan, type TenantBundle } from '../../api';
+import { BusyButton } from '../../components/BusyButton';
 import { useAsync } from '../../hooks';
 import { needsRight, useRights } from '../../Shell';
 import { ErrorState, Loading } from '../../states';
@@ -139,7 +140,8 @@ const Export = ({
   );
   const [include, setInclude] = useState({ definitions: true, settings: true });
   const [error, setError] = useState('');
-  if (state.status === 'loading') return <Loading label={t('settings.liveLoadingExport')} />;
+  if (state.status === 'loading')
+    return <Loading label={t('settings.liveLoadingExport')} shape="form" onRetry={retry} />;
   if (state.status === 'error') return <ErrorState error={state.error} onRetry={retry} />;
   if (!state.data) return <Paragraph data-size="sm">{needsRight('manage-services', t)}</Paragraph>;
   const bundle = pick(state.data, include);
@@ -424,13 +426,23 @@ const Import = ({ api, tenant }: { api: ApiClient; tenant: string }) => {
       ) : null}
       <div className="actions transfer-actions">
         {plan ? (
-          <Button variant="primary" loading={busy} onClick={() => !busy && void apply()}>
+          <BusyButton
+            variant="primary"
+            busy={busy}
+            busyLabel={t('settings.applying')}
+            onClick={() => void apply()}
+          >
             {t('settings.nextApply')}
-          </Button>
+          </BusyButton>
         ) : (
-          <Button variant="primary" loading={busy} onClick={() => !busy && void dryRun()}>
+          <BusyButton
+            variant="primary"
+            busy={busy}
+            busyLabel={t('settings.dryRunning')}
+            onClick={() => void dryRun()}
+          >
             {t('settings.nextDryRun')}
-          </Button>
+          </BusyButton>
         )}
       </div>
     </div>

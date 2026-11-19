@@ -1,0 +1,37 @@
+import { defineNamespace } from '@genai/i18n';
+
+export const sharedServicesMore = defineNamespace({
+  lead: 'Ferdige tjenester fra Digdir. Bruk dem direkte, kall dem fra et system, eller legg dem inn i en av tjenestene deres.',
+  pricePerMillionTokens: '{input} kr inn og {output} kr ut per 1M tokens',
+  notPriced: 'Ikke beregnet',
+  notPricedLine: 'pris ikke beregnet',
+  priceUnavailable: 'Kunne ikke hente prisen',
+  priceUnavailableLine: 'kunne ikke hente prisen',
+  stored: 'Lagres',
+  price: 'Pris',
+  languages: 'Språk',
+  notStatedYet: 'Ikke oppgitt ennå',
+  orgNumber: 'Organisasjonsnummer {org}',
+  fileType: 'Filen må være en av disse typene: {types}.',
+  fileTooBig: 'Filen er større enn {size}.',
+  pickAudio: 'Velg en lydfil først.',
+  noAudioYet: 'Denne tjenesten tar ikke imot lydfiler herfra ennå.',
+  writeFirst: 'Skriv eller lim inn en tekst først.',
+  writeOrUpload: 'Skriv eller lim inn en tekst først, eller last opp et dokument.',
+  pasteOrDocument: 'Lim inn inntil 20 000 tegn, eller last opp et dokument.',
+  tooLongNoFile: 'Teksten er lengre enn 20 000 tegn. Kort den ned og prøv igjen.',
+  chooseFile: 'Velg fil',
+  noFileChosen: 'Ingen fil valgt',
+  perRuns: 'Omtrent {price} kr per 1 000 kjøringer (anslått, for {basis})',
+  perRunsLine: 'omtrent {price} kr per 1 000 kjøringer',
+  keepsNoText: 'Teksten lagres ikke. Kjøringen logges i {days} dager uten tekstinnhold.',
+  keepsText: 'Teksten lagres sammen med kjøringen i {days} dager.',
+  langNb: 'bokmål',
+  langNn: 'nynorsk',
+  langEn: 'engelsk',
+  andList: '{first} og {last}',
+  languagesSame: '{input} inn, samme målform ut',
+  languagesTo: '{input} inn, {output} ut',
+});
+
+export const sharedLane = { sharedServicesMore } as const;

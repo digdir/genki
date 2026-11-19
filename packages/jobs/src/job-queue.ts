@@ -111,10 +111,17 @@ export interface JobQueue extends JobReads {
   sendAgain<T extends JobData>(
     queue: QueueDefinition<T>,
     job: Job<T>,
-    options: { key?: string; startAfter: Date },
+    options: { key?: string; startAfter: Date; priority?: number },
   ): Promise<void>;
-  /** Moves the start of every job waiting in these queues, as when the night window changes. */
-  retime(queues: QueueDefinition[], startAfter: Date): Promise<number>;
+  /**
+   * Moves the start of every job waiting in these queues, as when the night window changes; with a
+   * priority, only the jobs sent at it, such as a replacement run's convert jobs.
+   */
+  retime(
+    queues: QueueDefinition[],
+    startAfter: Date,
+    options?: { priority?: number },
+  ): Promise<number>;
   cancel(queue: QueueDefinition, id: string): Promise<void>;
   redrive(queue: QueueDefinition, ids: string[]): Promise<number>;
   stop(): Promise<void>;
@@ -389,7 +396,7 @@ export class InMemoryJobQueue implements JobQueue {
   async sendAgain<T extends JobData>(
     queue: QueueDefinition<T>,
     job: Job<T>,
-    options: { key?: string; startAfter: Date },
+    options: { key?: string; startAfter: Date; priority?: number },
   ) {
     const stored = this.#jobs.get(job.id);
     if (!stored || stored.state !== 'active')
@@ -397,15 +404,20 @@ export class InMemoryJobQueue implements JobQueue {
     stored.state = 'completed';
     await this.send(queue, job.data, {
       ...(options.key === undefined ? {} : { key: options.key }),
+      ...(options.priority === undefined ? {} : { priority: options.priority }),
       startAfter: options.startAfter,
     });
   }
 
-  async retime(queues: QueueDefinition[], startAfter: Date) {
+  async retime(queues: QueueDefinition[], startAfter: Date, options: { priority?: number } = {}) {
     const names = new Set(queues.map((q) => q.name));
     let moved = 0;
     for (const job of this.#jobs.values())
-      if (names.has(job.queue) && queued(job)) {
+      if (
+        names.has(job.queue) &&
+        queued(job) &&
+        (options.priority === undefined || job.priority === options.priority)
+      ) {
         job.startAfter = startAfter.getTime();
         moved += 1;
       }

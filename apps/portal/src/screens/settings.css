@@ -502,3 +502,36 @@
 .written-standard {
   margin: 8px 0 28px;
 }
+
+.common-field select {
+  max-width: 360px;
+}
+
+.common-settings .quota-pending,
+.common-settings p > .ds-button {
+  vertical-align: baseline;
+}
+
+.common-settings p > .ds-button[data-variant='tertiary'] {
+  display: inline-flex;
+  min-height: 0;
+  padding-block: 0;
+  padding-inline: var(--ds-size-1);
+}
+
+.all-settings-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ds-size-4);
+  align-items: end;
+}
+
+.all-settings-table code.setting-key {
+  font-size: var(--ds-body-sm-font-size, 0.875rem);
+  color: var(--ds-color-neutral-text-subtle);
+}
+
+.settings-grid-scroll {
+  position: relative;
+  max-width: 100%;
+}

@@ -1,3 +1,13 @@
+import { residencies } from '@genai/port-model';
+import { bodyLimit } from 'hono/body-limit';
+import { maxPlatformSecretLength, platformSecretNamePattern } from './platform-secrets.js';
+import {
+  redactSecrets,
+  syncFailureMessage,
+  syncFailureOf,
+  type SyncFailureCode,
+} from './sync-errors.js';
+import type { ApiLog } from './failure-log.js';
 import { hidesInternalServices } from './internal-services.js';
 import { t } from './i18n/index.js';
 import { quotaRefused } from './rate-limit.js';
@@ -15,6 +25,7 @@ import {
   recordFeedback,
   reviewCandidate,
   type CandidateStore,
+  type ComparableField,
   type TestCaseCandidate,
   type EvalRunStore,
   type FeedbackStore,
@@ -38,6 +49,8 @@ import {
   secretTargets,
   validateConnection,
   type ConnectionRegistry,
+  type ConnectionState,
+  type PinnedTool,
   type ConnectionToolSource,
   toolSyncDeadlineMs,
   type TenantSecrets,
@@ -45,7 +58,9 @@ import {
 import type { Context, Env, Hono, Schema } from 'hono';
 import { enterTenant, supportSessionHeader, tenantAccess } from './access.js';
 import { adminKeysOnly } from './tenant-gate.js';
+import type { ActorNames } from './actor-names.js';
 import {
+  actorOf,
   AdminRefused,
   refusedBy,
   routeOnlyActions,
@@ -162,12 +177,63 @@ export class TenantDirectory {
   }
 }
 
+export const toolNotFoundType = 'urn:genai:problem:tool-not-found';
+
 export interface ToolAdminDeps {
   connections: ConnectionRegistry;
   source: ConnectionToolSource;
   secrets: TenantSecrets;
   onToolsChanged: (tenant: string) => Promise<void>;
+  now?: () => Date;
+  log?: ApiLog;
 }
+
+const syncErrorLength = 500;
+
+const connectionSecrets = async (tools: ToolAdminDeps, tenant: string, id: string) => {
+  const connection = (await tools.connections.get(tenant, id))?.connection;
+  const auth = connection?.auth;
+  if (!auth) return [];
+  const targets =
+    auth.kind === 'oauth-client-credentials'
+      ? [connection.endpoint, auth.tokenUrl]
+      : [connection.endpoint];
+  const value = await tools.secrets.resolveFor(tenant, auth.secret, targets).catch(() => undefined);
+  return value ? [value] : [];
+};
+
+const changesData = (tool: PinnedTool) => {
+  const method = tool.call?.method;
+  return typeof method === 'string' && !['get', 'head'].includes(method.toLowerCase());
+};
+
+const toolDetailsOf = (state: ConnectionState, names: Map<string, string>) => [
+  ...state.tools
+    .filter((tool) => !state.pending.some((p) => p.remoteName === tool.remoteName))
+    .map((tool) => ({
+      name: tool.name,
+      ...(tool.description ? { description: tool.description } : {}),
+      state: 'approved' as const,
+      ...(tool.approvedAt ? { since: tool.approvedAt } : {}),
+      ...(tool.approvedBy ? { approvedBy: tool.approvedBy } : {}),
+      ...(tool.approvedBy && names.has(tool.approvedBy)
+        ? { approvedByName: names.get(tool.approvedBy) }
+        : {}),
+      changes: changesData(tool),
+    })),
+  ...state.pending.map((tool) => ({
+    name: tool.name,
+    ...(tool.description ? { description: tool.description } : {}),
+    state: 'pending' as const,
+    ...(tool.since ? { since: tool.since } : {}),
+    changes: changesData(tool),
+  })),
+];
+
+const stampOf = (tools: ToolAdminDeps, principal: Principal) => ({
+  at: (tools.now?.() ?? new Date()).toISOString(),
+  by: actorOf(principal.actor ?? principal),
+});
 
 const forTenant = (principal: Principal, tenant: string) =>
   principal.kind === 'operator'
@@ -234,6 +300,14 @@ export const adminExtensions = (deps: {
           target,
         };
       const registered = await deps.tools.connections.register({ ...connection, tenant });
+      const stamp = stampOf(deps.tools, principal);
+      const residency = residencies.find((r) => r === input.residency);
+      await deps.tools.connections.update(tenant, registered.id, (made) => ({
+        ...made,
+        connectedAt: stamp.at,
+        connectedBy: stamp.by,
+        ...(residency ? { residency } : {}),
+      }));
       await deps.tools.source.load(tenant);
       return {
         ok: true,
@@ -262,20 +336,54 @@ export const adminExtensions = (deps: {
     const target = `tool-connection:${tenant}/${id}`;
     if (!forTenant(principal, tenant))
       return refused(target, 'only the tenant or an operator syncs tools');
+    const remember = async (code?: SyncFailureCode) => {
+      const at = (deps.tools.now?.() ?? new Date()).toISOString();
+      await deps.tools.connections.update(tenant, id, (state) => {
+        const before = state.lastSync?.ok === false ? state.lastSync : undefined;
+        return {
+          ...state,
+          lastSync:
+            code === undefined
+              ? { at, ok: true }
+              : {
+                  at,
+                  ok: false,
+                  code,
+                  attempts: (before?.attempts ?? (before ? 1 : 0)) + 1,
+                  failingSince: before ? (before.failingSince ?? before.at) : at,
+                },
+        };
+      });
+    };
     try {
       const result = await deps.tools.source.sync(
         tenant,
         id,
         AbortSignal.timeout(toolSyncDeadlineMs),
+        (deps.tools.now?.() ?? new Date()).toISOString(),
       );
+      await remember();
       await deps.tools.source.load(tenant);
       await deps.tools.onToolsChanged(tenant);
       return { ok: true, value: result, target, audit: { result } };
     } catch (error) {
+      const code = syncFailureOf(error);
+      if (deps.tools.log) {
+        const raw = error instanceof Error ? error.message : String(error);
+        const secrets = await connectionSecrets(deps.tools, tenant, id);
+        deps.tools.log('tool sync failed', {
+          tenant,
+          connection: id,
+          code,
+          error: redactSecrets(raw, secrets).slice(0, syncErrorLength),
+        });
+      }
+      await remember(code);
       return {
         ok: false,
-        errors: [{ path: 'id', message: error instanceof Error ? error.message : String(error) }],
+        errors: [{ path: 'id', message: syncFailureMessage(code) }],
         target,
+        audit: { code },
       };
     }
   },
@@ -287,10 +395,30 @@ export const adminExtensions = (deps: {
     if (!forTenant(principal, tenant))
       return refused(target, 'only the tenant or an operator approves tool changes');
     try {
-      await deps.tools.source.approve(tenant, id, tool);
+      await deps.tools.source.approve(tenant, id, tool, stampOf(deps.tools, principal));
       await deps.tools.source.load(tenant);
       await deps.tools.onToolsChanged(tenant);
       return { ok: true, value: { approved: tool }, target };
+    } catch (error) {
+      return {
+        ok: false,
+        errors: [{ path: 'tool', message: error instanceof Error ? error.message : String(error) }],
+        target,
+      };
+    }
+  },
+  'platform.tools.revoke': async (input, principal) => {
+    const tenant = input.tenant;
+    const id = String(input.id);
+    const tool = String(input.tool);
+    const target = `tool:${tenant}/${tool}`;
+    if (!forTenant(principal, tenant))
+      return refused(target, 'only the tenant or an operator revokes tools');
+    try {
+      await deps.tools.source.revoke(tenant, id, tool, stampOf(deps.tools, principal));
+      await deps.tools.source.load(tenant);
+      await deps.tools.onToolsChanged(tenant);
+      return { ok: true, value: { revoked: tool }, target };
     } catch (error) {
       return {
         ok: false,
@@ -372,6 +500,7 @@ export interface ExtensionRouteDeps {
   eval: EvalDeps;
   platformTenant?: string;
   hiddenService?: (tenant: string, service: string) => Promise<boolean>;
+  names?: Pick<ActorNames, 'namesOf'>;
 }
 
 const param = (c: Context, name: string) => c.req.param(name) ?? '';
@@ -394,6 +523,9 @@ const problem = (
   c.json({ type: 'about:blank', title, status, errors }, status, {
     'content-type': 'application/problem+json',
   });
+
+/** What this route lets two runs differ in when asked; a commit or judges never (ADR 0003). */
+const mayDiffer = new Set<string>(['data', 'services', 'servedModels'] satisfies ComparableField[]);
 
 export const mountExtensions = <E extends Env, S extends Schema, B extends string>(
   app: Hono<E, S, B>,
@@ -501,6 +633,11 @@ export const mountExtensions = <E extends Env, S extends Schema, B extends strin
     if ('response' in entered) return entered.response;
     const tenant = param(c, 'tenant');
     const states = await deps.connections.list(tenant);
+    const approvers = states.flatMap((s) => [
+      ...s.tools.flatMap((tool) => tool.approvedBy ?? []),
+      ...(s.connectedBy ? [s.connectedBy] : []),
+    ]);
+    const names = (await deps.names?.namesOf([...new Set(approvers)])) ?? new Map<string, string>();
     return c.json({
       data: states.map((s) => ({
         id: s.connection.id,
@@ -509,6 +646,25 @@ export const mountExtensions = <E extends Env, S extends Schema, B extends strin
         endpoint: s.connection.endpoint,
         version: s.connection.version,
         tools: s.tools.map((t) => t.name),
+        toolDetails: toolDetailsOf(s, names),
+        ...(s.connectedAt ? { connectedAt: s.connectedAt } : {}),
+        ...(s.connectedBy && names.has(s.connectedBy)
+          ? { connectedByName: names.get(s.connectedBy) }
+          : {}),
+        ...(s.lastSync
+          ? {
+              lastSync: s.lastSync.ok
+                ? { at: s.lastSync.at, ok: true }
+                : {
+                    at: s.lastSync.at,
+                    ok: false,
+                    code: s.lastSync.code ?? 'unknown',
+                    message: syncFailureMessage(s.lastSync.code ?? 'unknown'),
+                    attempts: s.lastSync.attempts ?? 1,
+                    failingSince: s.lastSync.failingSince ?? s.lastSync.at,
+                  },
+            }
+          : {}),
       })),
     });
   });
@@ -529,16 +685,32 @@ export const mountExtensions = <E extends Env, S extends Schema, B extends strin
       id: param(c, 'id'),
     });
   });
-  app.post('/tenants/:tenant/tool-connections/:id/approve', async (c) => {
+  const toolDecision = (action: 'approve' | 'revoke') => async (c: Context) => {
     const principal = await who(c);
     if (!principal) return problem(c, 401, 'Unauthorized');
-    const body = (await c.req.json().catch(() => ({}))) as { tool?: string };
-    return applied(c, principal, 'platform.tools.approve', {
-      tenant: param(c, 'tenant'),
-      id: param(c, 'id'),
-      tool: body.tool ?? '',
-    });
-  });
+    const tenant = param(c, 'tenant');
+    const id = param(c, 'id');
+    const entered = enterTenant(c, access, principal, tenant, 'manage-services');
+    if ('response' in entered) return entered.response;
+    const body = (await c.req.json().catch(() => ({}))) as { tool?: unknown };
+    const tool = typeof body.tool === 'string' ? body.tool : '';
+    const state = await deps.connections.get(tenant, id);
+    const listed = action === 'approve' ? state?.pending : state?.tools;
+    if (!listed?.some((entry) => entry.name === tool))
+      return c.json(
+        {
+          type: toolNotFoundType,
+          title: t('problems.toolNotFound'),
+          status: 404,
+          errors: [{ path: 'tool', message: t('problems.toolNotFound') }],
+        },
+        404,
+        { 'content-type': 'application/problem+json' },
+      );
+    return performed(c, entered.principal, `platform.tools.${action}`, { tenant, id, tool });
+  };
+  app.post('/tenants/:tenant/tool-connections/:id/approve', toolDecision('approve'));
+  app.post('/tenants/:tenant/tool-connections/:id/revoke', toolDecision('revoke'));
   app.put('/tenants/:tenant/secrets/:name', async (c) => {
     const principal = await who(c);
     if (!principal) return problem(c, 401, 'Unauthorized');
@@ -599,28 +771,50 @@ export const mountExtensions = <E extends Env, S extends Schema, B extends strin
     );
   });
 
-  app.put('/operator/secrets/:name', async (c) => {
-    const principal = await who(c);
-    if (!principal) return problem(c, 401, 'Unauthorized');
-    if (principal.kind !== 'operator') return problem(c, 403, 'Forbidden');
-    const name = param(c, 'name');
-    const body = (await c.req.json().catch(() => ({}))) as { value?: unknown };
-    if (typeof body.value !== 'string' || body.value.length === 0)
-      return problem(c, 400, 'Invalid request', [
-        { path: 'value', message: 'a value is required' },
-      ]);
-    const acting = { ...principal, tenant: deps.platformTenant ?? defaultPlatformTenant };
-    const value = body.value;
-    return performed(
-      c,
-      acting,
-      'platform.platform-secret.set',
-      { tenant: acting.tenant, name },
-      async () => {
-        await deps.vault.set('platform', name, value);
-      },
-    );
-  });
+  app.put(
+    '/operator/secrets/:name',
+    bodyLimit({
+      maxSize: maxPlatformSecretLength * 4,
+      onError: (c) =>
+        c.json(
+          { type: 'about:blank', title: 'The request is too large', status: 413, errors: [] },
+          413,
+          {
+            'content-type': 'application/problem+json',
+          },
+        ),
+    }),
+    async (c) => {
+      const principal = await who(c);
+      if (!principal) return problem(c, 401, 'Unauthorized');
+      if (principal.kind !== 'operator') return problem(c, 403, 'Forbidden');
+      const name = param(c, 'name');
+      if (!platformSecretNamePattern.test(name))
+        return problem(c, 400, 'Invalid request', [
+          { path: 'name', message: 'lowercase letters, digits, dots, dashes; at most 63' },
+        ]);
+      const body = (await c.req.json().catch(() => ({}))) as { value?: unknown };
+      if (typeof body.value !== 'string' || body.value.trim().length === 0)
+        return problem(c, 400, 'Invalid request', [
+          { path: 'value', message: 'a value is required' },
+        ]);
+      if (body.value.length > maxPlatformSecretLength)
+        return problem(c, 400, 'Invalid request', [
+          { path: 'value', message: 'at most 16384 characters' },
+        ]);
+      const acting = { ...principal, tenant: deps.platformTenant ?? defaultPlatformTenant };
+      const value = body.value;
+      return performed(
+        c,
+        acting,
+        'platform.platform-secret.set',
+        { tenant: acting.tenant, name },
+        async () => {
+          await deps.vault.set('platform', name, value);
+        },
+      );
+    },
+  );
 
   app.post('/operator/tenants', async (c) => {
     const principal = await who(c);
@@ -736,13 +930,26 @@ export const mountExtensions = <E extends Env, S extends Schema, B extends strin
       (await hiddenRun(c.req.query('candidate') ?? ''))
     )
       return problem(c, 404, 'Not found');
+    const allowDifferent = (c.req.query('allowDifferent') ?? '')
+      .split(',')
+      .map((field) => field.trim())
+      .filter(Boolean);
+    const refused = allowDifferent.find((field) => !mayDiffer.has(field));
+    if (refused !== undefined)
+      return problem(c, 400, 'Invalid request', [
+        {
+          path: 'allowDifferent',
+          message: `${refused} cannot be allowed to differ: only data, services and servedModels can`,
+        },
+      ]);
     try {
       return c.json(
         await evalService.compare(
           actingFor(c, principal),
           c.req.query('baseline') ?? '',
           c.req.query('candidate') ?? '',
-          c.req.query('metric') ?? '',
+          (c.req.query('metric') ?? '').split(','),
+          { allowDifferent: [...new Set(allowDifferent)] as ComparableField[] },
         ),
       );
     } catch (error) {

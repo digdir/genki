@@ -85,16 +85,20 @@ export const guardedSend =
     const response = await guard.request(
       [{ host: target.hostname, port }],
       url,
-      { method: 'POST', headers: init.headers, body: init.body },
+      { method: 'POST', headers: init.headers, body: init.body, maxRedirects: 0 },
       signal,
     );
     return { status: response.status, body: response.body };
   };
 
+const openOrAuthorized = (endpoint: { credential?: Credential }) =>
+  endpoint.credential ? authHeaders(endpoint.credential, 'authorization') : {};
+
 export const httpSearchAdapter = (
   send: HttpSend,
 ): KnowledgeAdapter<{ searchPath: string }, DatasetOptions> => ({
   engine: 'http-search',
+  requiresAuth: false,
   endpointOptions: z.strictObject({ searchPath: z.string().startsWith('/').default('/search') }),
   datasetOptions,
   capabilities: () => [...externalSearchCapabilities],
@@ -110,7 +114,7 @@ export const httpSearchAdapter = (
         {
           headers: {
             'content-type': 'application/json',
-            ...(await authHeaders(endpoint.credential, 'authorization')),
+            ...(await openOrAuthorized(endpoint)),
           },
           body: JSON.stringify({
             query: request.query,

@@ -5,17 +5,32 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parse as parseYaml } from 'yaml';
 import type { Principal } from '@genai/contracts';
 import { InMemoryDefinitionStore, SettingsRegistry } from '@genai/definitions';
-import { parseTestSet } from '@genai/eval';
+import {
+  InMemoryCandidateStore,
+  InMemoryEvalRunStore,
+  InMemoryFeedbackStore,
+  InMemoryTestSetStore,
+  parseTestSet,
+} from '@genai/eval';
 import { envSecrets, InMemoryTaskStore, type StoredTask } from '@genai/kernel';
 import { InMemoryBlobStore } from '@genai/port-blob';
 import type { ModelCatalog } from '@genai/port-model';
 import { fakeHttp, type FakeServer } from '@genai/port-model/testing';
 import { trustedEntraScope } from '@genai/identity';
 import { createAdmin } from './admin.js';
+import { restartMessage, type LeaseOptions } from './background-lease.js';
 import { resolveCatalog } from './catalogs.js';
 import { createPlatform, platformModules } from './composition.js';
+import { appendVersion, InMemoryConfigEntryStore, platformScope } from './config-store.js';
+import type { EvalSlotLimits } from './eval-slots.js';
 import { candidateTrialScope, withCandidateTrial } from './model-access.js';
-import { createModelMatrixModule, modelMatrixModule, releaseGate } from './model-matrix.js';
+import {
+  createModelMatrixModule,
+  matrixRunKind,
+  modelMatrixModule,
+  releaseGate,
+  type MatrixRun,
+} from './model-matrix.js';
 
 const servers: FakeServer[] = [];
 afterEach(async () => {
@@ -131,14 +146,24 @@ const testSet = parseTestSet({
   },
 });
 
+interface Restart {
+  store?: InMemoryConfigEntryStore;
+  evalStores?: Parameters<typeof createPlatform>[0]['evalStores'];
+  leases?: LeaseOptions;
+  evalSlots?: Partial<EvalSlotLimits>;
+  hold?: (body: Record<string, unknown>) => Promise<void> | undefined;
+  definitions?: { store?: InMemoryDefinitionStore };
+}
+
 const boot = async (
   candidateKnowsDeadlines: boolean,
   withTestSet = true,
   lockdown = false,
   usageLookupMs = 0,
+  restart: Restart = {},
 ) => {
   const deployments: string[] = [];
-  const model = await fakeHttp((body: Record<string, unknown>) => {
+  const model = await fakeHttp(async (body: Record<string, unknown>) => {
     if (!body.messages)
       return {
         status: 200,
@@ -150,6 +175,7 @@ const boot = async (
         },
       };
     deployments.push(String(body.model));
+    await restart.hold?.(body);
     const messages = body.messages as { content?: string }[];
     const system = messages[0]?.content ?? '';
     const user = messages.at(-1)?.content ?? '';
@@ -186,7 +212,10 @@ const boot = async (
       rerank: resolveCatalog(yaml('rerank.yaml'), 'rerankers', env).catalog,
     },
     secrets: envSecrets({ FOUNDRY_OPENAI_KEY: 'm', TYPESENSE_KEY: 't', COLBERT_API_KEY: 'c' }),
-    definitions: (plugins) => new InMemoryDefinitionStore(plugins),
+    definitions: (plugins) =>
+      restart.definitions
+        ? (restart.definitions.store ??= new InMemoryDefinitionStore(plugins))
+        : new InMemoryDefinitionStore(plugins),
     blobStore: new InMemoryBlobStore(),
     policy: { decide: async () => ({ allow: true }) },
     prices: {
@@ -195,8 +224,14 @@ const boot = async (
     },
     modules: [
       ...platformModules.filter((m) => m !== modelMatrixModule),
-      createModelMatrixModule({ onBackground: (w) => background.push(w) }),
+      createModelMatrixModule({
+        onBackground: (w) => background.push(w),
+        ...(restart.leases ? { leases: restart.leases } : {}),
+      }),
     ],
+    ...(restart.store ? { configurables: { store: restart.store } } : {}),
+    ...(restart.evalStores ? { evalStores: restart.evalStores } : {}),
+    ...(restart.evalSlots ? { evalSlots: restart.evalSlots } : {}),
     ...(lockdown ? { lockdown: { configuredKeys: new Set<string>() } } : {}),
     ...(usageLookupMs
       ? {
@@ -226,7 +261,8 @@ const boot = async (
   platform.mount(app, admin);
   const published = await platform.definitions.publish(service(current), 'kari', 'første');
   if (!published.ok) throw new Error(JSON.stringify(published.errors));
-  if (withTestSet) await platform.evalStores.testSets.put(testSet);
+  if (withTestSet && !(await platform.evalStores.testSets.get(tenant, testSet.metadata.id)))
+    await platform.evalStores.testSets.put(testSet);
   const send = async (
     method: string,
     path: string,
@@ -269,6 +305,19 @@ const boot = async (
   if (added.status !== 200) throw new Error(JSON.stringify(added.body));
   const visible = async () =>
     ((await send('GET', '/models', 'kari')).body.data as { id: string }[]).map((m) => m.id);
+  const startMatrix = async (who = 'operator') => {
+    const estimate = await send('POST', '/operator/quality/matrix/estimate', who, {
+      model: candidate,
+      current,
+    });
+    return send(
+      'POST',
+      '/operator/quality/matrix/runs',
+      who,
+      { model: candidate, current, confirmedCostNok: estimate.body.estimatedCostNok },
+      { 'change-reason': reason },
+    );
+  };
   const runMatrix = async (who = 'operator') => {
     const estimate = await send('POST', '/operator/quality/matrix/estimate', who, {
       model: candidate,
@@ -307,6 +356,7 @@ const boot = async (
     settled,
     visible,
     runMatrix,
+    startMatrix,
     release,
     deployments,
     usage,
@@ -564,6 +614,106 @@ describe('a test set with more cases than a run has case slots', () => {
   });
 });
 
+describe('a candidate model that serves only an operation kind', () => {
+  const transcriber = 'foundry-openai/kandidat-tale';
+  const addTranscriber = (send: Awaited<ReturnType<typeof boot>>['send']) =>
+    send(
+      'PUT',
+      `/operator/models/${transcriber}`,
+      'operator',
+      {
+        endpoint: 'foundry',
+        deployment: 'kandidat-tale',
+        residency: 'global',
+        capabilities: [],
+        apis: { transcribe: 'openai/transcriptions@1' },
+      },
+      { 'change-reason': reason },
+    );
+  const withTranscriber = (model: string) => {
+    const definition = service(current);
+    return {
+      ...definition,
+      spec: {
+        ...definition.spec,
+        model: { ...definition.spec.model, operations: { transcribe: model } },
+      },
+    };
+  };
+
+  it('is released without a matrix run while chat test sets exist, since it binds neither chat nor decide', async () => {
+    const { send } = await boot(true);
+    expect((await addTranscriber(send)).status).toBe(200);
+
+    const quality = await send('GET', '/operator/quality');
+    const released = await send(
+      'POST',
+      '/operator/quality/matrix/release',
+      'operator',
+      { kind: 'models', name: transcriber },
+      { 'change-reason': 'Talemodellen er prøvd mot sine egne opptak' },
+    );
+
+    expect(quality.body.candidates).toContainEqual({
+      id: transcriber,
+      residency: 'global',
+      testSets: 0,
+    });
+    expect(released.status).toBe(200);
+    expect(released.body).toMatchObject({ model: transcriber, released: true, run: null });
+  });
+
+  it('cannot be the operation model of a published service until it is released', async () => {
+    const { platform, send } = await boot(true);
+    expect((await addTranscriber(send)).status).toBe(200);
+
+    const published = await platform.definitions.publish(
+      withTranscriber(transcriber),
+      'kari',
+      'tale',
+    );
+
+    expect(published.ok ? [] : published.errors).toContainEqual({
+      path: 'spec.model.operations.transcribe',
+      message: `model ${transcriber} is not released yet; it is waiting for the quality matrix`,
+    });
+  });
+});
+
+describe('a candidate model that serves only reranking', () => {
+  const reranker = 'colbert/kandidat';
+
+  it('cannot be the reranker of a published service until it is released', async () => {
+    const { platform, send } = await boot(true);
+    const added = await send(
+      'PUT',
+      `/operator/models/${reranker}`,
+      'operator',
+      {
+        endpoint: 'colbert',
+        deployment: 'kandidat-omrangering',
+        residency: 'global',
+        capabilities: [],
+        apis: { rerank: 'colbert/rerank@1' },
+      },
+      { 'change-reason': reason },
+    );
+    const definition = service(current);
+
+    const published = await platform.definitions.publish(
+      { ...definition, spec: { ...definition.spec, knowledge: { datasets: [], reranker } } },
+      'kari',
+      'omrangering',
+    );
+
+    expect(added.status).toBe(200);
+    expect(published.ok ? [] : published.errors).toContainEqual({
+      path: 'spec.knowledge.reranker',
+      message: `model ${reranker} is not released yet; it is waiting for the quality matrix`,
+    });
+  });
+});
+
 describe('releasing a model nobody can compare against', () => {
   it('needs a reason of at least 20 characters and records that no matrix was run', async () => {
     const { admin, release, send, visible } = await boot(true, false);
@@ -703,6 +853,15 @@ describe('trying a candidate model before release', () => {
       expect(draft.allow).toBe(true);
     });
 
+    it('refuses a candidate reranker unless the principal is marked to try it', async () => {
+      const reranker = { kind: 'reranker', id: candidate } as const;
+
+      expect((await gate.decide(person, 'use:rerank', reranker)).allow).toBe(false);
+      expect((await gate.decide(withCandidateTrial(person), 'use:rerank', reranker)).allow).toBe(
+        true,
+      );
+    });
+
     it('an API key confined to its grants never tries a candidate, even with the mark', async () => {
       const key: Principal = {
         ...person,
@@ -713,5 +872,224 @@ describe('trying a candidate model before release', () => {
 
       expect((await gate.decide(key, 'use:model', model)).allow).toBe(false);
     });
+  });
+});
+
+describe('a matrix run across a restart', () => {
+  const t0 = new Date('2026-11-18T10:00:00Z');
+  const shared = () => ({
+    store: new InMemoryConfigEntryStore(),
+    evalStores: {
+      testSets: new InMemoryTestSetStore(),
+      runs: new InMemoryEvalRunStore(),
+      feedback: new InMemoryFeedbackStore(),
+      candidates: new InMemoryCandidateStore(),
+    },
+    definitions: {},
+  });
+  const isCandidate = (body: Record<string, unknown>) =>
+    body.model === 'kandidat' &&
+    (body.messages as { content?: string }[]).some((m) => m.content?.includes('fristen'));
+  const stored = async (store: InMemoryConfigEntryStore, id: string) =>
+    (await store.history(matrixRunKind, platformScope, id)).at(-1)?.spec as MatrixRun;
+  const read = async (env: Awaited<ReturnType<typeof boot>>, id: string) =>
+    (await env.send('GET', `/operator/quality/matrix/runs/${id}`)).body;
+
+  it('survives a worker restart mid-run, resumes from the last finished case and counts the cases done', async () => {
+    const stores = shared();
+    let open: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => (open = resolve));
+    let held = false;
+    const before = await boot(false, true, false, 0, {
+      ...stores,
+      evalSlots: { perInstance: 1, perTenant: 1, perRun: 1 },
+      leases: { instance: 'before', now: () => t0 },
+      hold: (body) => {
+        if (held || !isCandidate(body)) return undefined;
+        held = true;
+        return gate;
+      },
+    });
+    const started = await before.startMatrix();
+    const id = String(started.body.id);
+    await vi.waitFor(() => expect(held).toBe(true));
+
+    const drained = before.platform.evalSlots.drain();
+    open();
+    await drained;
+    await before.settled();
+    const handed = await read(before, id);
+    const handedOver = await stored(stores.store, id);
+    const after = await boot(false, true, false, 0, {
+      ...stores,
+      leases: { instance: 'after', now: () => t0 },
+    });
+    await after.settled();
+    const run = await read(after, id);
+
+    expect(handed).toMatchObject({ status: 'running', casesDone: 3, casesTotal: 4 });
+    expect(handedOver.released).toBe(true);
+    expect(after.deployments.filter((d) => d !== 'kandidat' && d !== 'gpt-41-dommer')).toEqual([]);
+    expect(after.deployments.filter((d) => d === 'kandidat')).toHaveLength(1);
+    expect(run).toMatchObject({
+      status: 'succeeded',
+      resumed: 1,
+      casesDone: 4,
+      casesTotal: 4,
+      rows: [
+        {
+          current: { score: 1, passed: 2, total: 2 },
+          candidate: { score: 0.5, passed: 1, total: 2 },
+        },
+      ],
+    });
+  });
+
+  it('charges no duplicate cost for the cases finished before the restart', async () => {
+    const whole = shared();
+    const uninterrupted = await boot(false, true, false, 0, whole);
+    const { started: once } = await uninterrupted.runMatrix();
+    const stores = shared();
+    let open: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => (open = resolve));
+    let held = false;
+    const before = await boot(false, true, false, 0, {
+      ...stores,
+      evalSlots: { perInstance: 1, perTenant: 1, perRun: 1 },
+      leases: { instance: 'before', now: () => t0 },
+      hold: (body) => {
+        if (held || !isCandidate(body)) return undefined;
+        held = true;
+        return gate;
+      },
+    });
+    const id = String((await before.startMatrix()).body.id);
+    await vi.waitFor(() => expect(held).toBe(true));
+    const drained = before.platform.evalSlots.drain();
+    open();
+    await drained;
+    await before.settled();
+    const handed = await stored(stores.store, id);
+    const after = await boot(false, true, false, 0, {
+      ...stores,
+      leases: { instance: 'after', now: () => t0 },
+    });
+    await after.settled();
+
+    const resumed = await stored(stores.store, id);
+    const reference = await stored(whole.store, String(once.body.id));
+    expect(resumed.status).toBe('succeeded');
+    expect(resumed.tokens).toEqual(reference.tokens);
+    expect(resumed.tokens.input).toBeGreaterThan(handed.tokens.input);
+    expect(handed.tokens.input).toBeGreaterThan(0);
+  });
+
+  it('takes up a run whose instance stopped without handing it over, two minutes after its last heartbeat', async () => {
+    const stores = shared();
+    let held = false;
+    const before = await boot(false, true, false, 0, {
+      ...stores,
+      evalSlots: { perInstance: 1, perTenant: 1, perRun: 1 },
+      leases: { instance: 'before', now: () => t0 },
+      hold: (body) => {
+        if (!isCandidate(body)) return undefined;
+        held = true;
+        return new Promise<void>(() => undefined);
+      },
+    });
+    const id = String((await before.startMatrix()).body.id);
+    await vi.waitFor(() => expect(held).toBe(true));
+    const crashed = await read(before, id);
+    const early = await boot(false, true, false, 0, {
+      ...stores,
+      leases: { instance: 'early', now: () => new Date(t0.getTime() + 60_000) },
+    });
+    await early.settled();
+    const untouched = await read(early, id);
+    const after = await boot(false, true, false, 0, {
+      ...stores,
+      leases: { instance: 'after', now: () => new Date(t0.getTime() + 10 * 60_000) },
+    });
+    await after.settled();
+    const run = await read(after, id);
+
+    expect(crashed).toMatchObject({ status: 'running', casesDone: 2, casesTotal: 4 });
+    expect(untouched).toMatchObject({ status: 'running' });
+    expect(untouched).not.toHaveProperty('resumed');
+    expect(after.deployments.filter((d) => d === 'kandidat')).toHaveLength(2);
+    expect(run).toMatchObject({
+      status: 'succeeded',
+      resumed: 1,
+      rows: [
+        {
+          current: { score: 1, passed: 2, total: 2 },
+          candidate: { score: 0.5, passed: 1, total: 2 },
+        },
+      ],
+    });
+  });
+
+  const seeded = async (resumes: number) => {
+    const stores = shared();
+    await boot(false, true, false, 0, stores);
+    const run: MatrixRun = {
+      id: `seeded-${resumes}`,
+      model: candidate,
+      current,
+      status: 'running',
+      by: 'operator:test:digdir-drift',
+      startedAt: t0.toISOString(),
+      endedAt: null,
+      estimatedCostNok: 0,
+      cost: 0,
+      tokens: { input: 0, output: 0 },
+      rows: [
+        {
+          tenant,
+          service: 'svar',
+          name: 'Svar',
+          testSet: 'svar-frister',
+          testSetVersion: 1,
+          cases: 2,
+          current: null,
+          candidate: null,
+          version: 1,
+        },
+      ],
+      admitted: true,
+      resumes,
+      owner: 'gone',
+      heartbeatAt: t0.toISOString(),
+      released: true,
+    };
+    await appendVersion<MatrixRun>(stores.store, {
+      kind: matrixRunKind,
+      scope: platformScope,
+      id: run.id,
+      spec: run,
+      deleted: false,
+      by: run.by,
+      reason,
+    });
+    const after = await boot(false, true, false, 0, {
+      ...stores,
+      leases: { instance: 'after', now: () => t0 },
+    });
+    await after.settled();
+    return { after, run: await read(after, run.id) };
+  };
+
+  it('fails a matrix run that has already been taken up three times instead of taking it up again', async () => {
+    const { after, run } = await seeded(3);
+
+    expect(run).toMatchObject({ status: 'failed', error: restartMessage, resumed: 3 });
+    expect(after.deployments).not.toContain('kandidat');
+  });
+
+  it('still takes up a matrix run that has been taken up twice', async () => {
+    const { after, run } = await seeded(2);
+
+    expect(run).toMatchObject({ status: 'succeeded', resumed: 3, casesDone: 4 });
+    expect(after.deployments).toContain('kandidat');
   });
 });

@@ -1,4 +1,3 @@
-import { ChevronLeftIcon } from '@navikt/aksel-icons';
 import { Tabs, TabsList, TabsPanel, TabsTab, ToggleGroup } from '@digdir/designsystemet-react';
 import {
   blockIds,
@@ -23,7 +22,6 @@ import {
   type PointerEvent,
   type ReactNode,
 } from 'react';
-import { Icon } from '../../../components/Icon';
 import { useT } from '../../../i18n';
 import { BlocksPanel, takeOut } from './BlocksPanel';
 import { LayoutTransfer } from './LayoutTransfer';
@@ -34,6 +32,7 @@ import { TemplatesPanel } from './TemplatesPanel';
 import { TextsPanel } from './TextsPanel';
 import type { TryRun } from './TryView';
 import './blocks.css';
+import { BackLink } from '../../../components/BackLink';
 
 type LeftTab = 'chat' | 'blocks' | 'templates' | 'texts';
 
@@ -302,10 +301,7 @@ export const BlocksFullscreen = ({
   const t = useT();
   return (
     <div className="blocks-fullscreen">
-      <a href={backHref} className="back-link">
-        <Icon icon={ChevronLeftIcon} size={18} />
-        {t('builderBlocks.backToBuilder')}
-      </a>
+      <BackLink label={t('builderBlocks.backToBuilder')} href={backHref} />
       <ServicePreview
         layout={state.layout}
         mode={state.mode}

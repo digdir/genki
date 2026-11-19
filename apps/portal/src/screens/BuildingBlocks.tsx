@@ -1,68 +1,167 @@
-import { Heading } from '@digdir/designsystemet-react';
+import { Alert, Button, Heading, Paragraph } from '@digdir/designsystemet-react';
 import { useEffect, useState } from 'react';
-import { blockPath, type BlockKind, type BlockUser } from '../api/building-blocks';
-import { Crumbs } from '../components/Crumbs';
-import { navigate, useAsync } from '../hooks';
+import { blockPath, type BlockKind } from '../api/building-blocks';
+import { navigate, parseRoute, useAsync, type Route } from '../hooks';
 import { useT } from '../i18n';
 import type { ScreenProps } from '../screen';
 import { ErrorState, Loading } from '../states';
-import { BlockDetail } from './buildingblocks/BlockDetail';
-import { BlockList, initialFilters, type ListFilters } from './buildingblocks/BlockList';
-import { FlashMessage, type Flash } from './buildingblocks/common';
+import {
+  BlockDetail,
+  BlockDetailLoading,
+  blockTabs,
+  type BlockTab,
+  type ServiceRuns,
+} from './buildingblocks/BlockDetail';
+import { TypeHeader, TypeList, type TypeFilters } from './buildingblocks/BlockList';
+import { OverviewBody, OverviewHeader, SearchAll } from './buildingblocks/BlocksOverview';
+import {
+  movedKindHash,
+  movedListHash,
+  typeFromSegment,
+  typeHref,
+  type TypeKey,
+} from './buildingblocks/block-types';
+import { SkillBlockPage } from './skills/SkillBlockPage';
+import { FlashMessage, settled, type Flash } from './buildingblocks/common';
 import { ConnectorsPage } from './buildingblocks/ConnectorsPage';
 import { RegisterBlock } from './buildingblocks/RegisterBlock';
+import { ModelCatalog } from './models/ModelCatalog';
+import { ModelsInUse } from './models/ModelsInUse';
+import { BackLink } from '../components/BackLink';
 import './buildingblocks.css';
 
-const ListPage = ({
+const filtersOf = (route: Route): TypeFilters => ({
+  show: route.query.get('show') === 'catalogue' ? 'catalogue' : 'in-use',
+  q: route.query.get('q') ?? '',
+});
+
+export const kindAliases: Record<string, BlockKind> = {
+  'step-flow': 'step_flow',
+  'search-engine': 'search_engine',
+  'shared-service': 'shared_service',
+  'extension-point': 'extension_point',
+};
+
+const useBlockList = (api: ScreenProps['api'], tenant: string, version: number) =>
+  useAsync(
+    async (signal) => {
+      const [list, proposals, connectors] = await Promise.all([
+        api.buildingBlocks.list(tenant, {}, signal),
+        settled(api.buildingBlocks.proposals(tenant, signal)),
+        settled(api.buildingBlocks.connectors(tenant, signal)),
+      ]);
+      return { ...list, proposals, connectors };
+    },
+    [tenant, version],
+    { keepPreviousFor: tenant },
+  );
+
+const ListError = ({ catalogue, onRetry }: { catalogue: boolean; onRetry: () => void }) => {
+  const t = useT();
+  return (
+    <Alert data-color="danger" role="alert">
+      <Heading level={2} data-size="xs">
+        {catalogue ? t('blockPages.errorCatalogueTitle') : t('blockPages.errorInUseTitle')}
+      </Heading>
+      <Paragraph>
+        {catalogue ? t('blockPages.errorCatalogueBody') : t('blockPages.errorInUseBody')}
+      </Paragraph>
+      <Button variant="secondary" data-size="sm" onClick={onRetry}>
+        {t('common.tryAgain')}
+      </Button>
+    </Alert>
+  );
+};
+
+const OverviewPage = ({
   api,
   tenant,
   tenantName,
+  q,
+  onQuery,
+  version,
+}: ScreenProps & { q: string; onQuery: (q: string) => void; version: number }) => {
+  const t = useT();
+  const [state, retry, pending] = useBlockList(api, tenant, version);
+  return (
+    <div className="stack">
+      <OverviewHeader tenantName={tenantName} />
+      <SearchAll q={q} onQuery={onQuery} />
+      {state.status === 'loading' ? (
+        <Loading label={t('blocks.loadingList')} shape="list" onRetry={retry} />
+      ) : state.status === 'error' ? (
+        <ListError catalogue={false} onRetry={retry} />
+      ) : (
+        <OverviewBody
+          api={api}
+          tenant={tenant}
+          items={state.data.data}
+          required={state.data.counts.required ?? {}}
+          refreshing={pending}
+          proposals={state.data.proposals.ok ? state.data.proposals.data : []}
+          partialError={
+            state.data.proposals.ok ? undefined : { error: state.data.proposals.error, retry }
+          }
+          q={q}
+          onQuery={onQuery}
+        />
+      )}
+    </div>
+  );
+};
+
+const TypePage = ({
+  api,
+  tenant,
+  tenantName,
+  type,
   filters,
   onFilters,
   onFlash,
   version,
 }: ScreenProps & {
-  filters: ListFilters;
-  onFilters: (f: ListFilters) => void;
+  type: TypeKey;
+  filters: TypeFilters;
+  onFilters: (f: TypeFilters) => void;
   onFlash: (flash: Flash) => void;
   version: number;
 }) => {
   const t = useT();
-  const [state, retry] = useAsync(
-    async (signal) => {
-      const [list, proposals, connectors] = await Promise.all([
-        api.buildingBlocks.list(tenant, {}, signal),
-        api.buildingBlocks.proposals(tenant, signal).catch(() => []),
-        api.buildingBlocks.connectors(tenant, signal).catch(() => []),
-      ]);
-      return { ...list, proposals, connectors };
-    },
-    [tenant, version],
-  );
+  const [state, retry, pending] = useBlockList(api, tenant, version);
   if (state.status !== 'ready')
     return (
       <div className="stack">
-        <Heading level={1} data-size="lg">
-          {t('blocks.title')}
-        </Heading>
+        <TypeHeader type={type} />
         {state.status === 'loading' ? (
-          <Loading label={t('blocks.loadingList')} />
+          <Loading label={t('blocks.loadingList')} shape="list" onRetry={retry} />
         ) : (
-          <ErrorState error={state.error} onRetry={retry} />
+          <ListError catalogue={filters.show === 'catalogue'} onRetry={retry} />
         )}
       </div>
     );
+  const { proposals, connectors } = state.data;
+  const failed = !proposals.ok ? proposals.error : !connectors.ok ? connectors.error : undefined;
   return (
-    <BlockList
+    <TypeList
       api={api}
       tenant={tenant}
       tenantName={tenantName}
+      type={type}
       items={state.data.data}
-      proposals={state.data.proposals}
-      connectors={state.data.connectors}
+      refreshing={pending}
+      proposals={proposals.ok ? proposals.data : []}
+      connectors={connectors.ok ? connectors.data : []}
+      partialError={failed === undefined ? undefined : { error: failed, retry }}
       filters={filters}
       onFilters={onFilters}
       onFlash={onFlash}
+      onAdopted={(flash, adopted) =>
+        onFlash(
+          adopted
+            ? { ...flash, link: { href: typeHref(type), label: t('blockPages.seeInUse') } }
+            : flash,
+        )
+      }
     />
   );
 };
@@ -73,30 +172,57 @@ const DetailPage = ({
   tenantName,
   kind,
   id,
+  tab,
+  copyFrom,
   onChanged,
-}: ScreenProps & { kind: BlockKind; id: string; onChanged: (flash: Flash) => void }) => {
+}: ScreenProps & {
+  kind: BlockKind;
+  id: string;
+  tab: BlockTab;
+  copyFrom?: string;
+  onChanged: (flash: Flash) => void;
+}) => {
   const t = useT();
   const [version, setVersion] = useState(0);
   const [state, retry] = useAsync(
     async (signal) => {
       const block = { kind, id };
-      const [item, versions, services] = await Promise.all([
+      const [item, versions] = await Promise.all([
         api.buildingBlocks.get(tenant, block, signal),
-        api.buildingBlocks.versions(tenant, block, signal).catch(() => []),
-        api
-          .overview(tenant, signal)
-          .then((o): BlockUser[] => o.services.map((s) => ({ id: s.id, name: s.name })))
-          .catch((): BlockUser[] => []),
+        settled(api.buildingBlocks.versions(tenant, block, signal)),
       ]);
-      return { item, versions, services };
+      return { item, versions };
     },
     [tenant, kind, id, version],
+    { keepPreviousFor: `${tenant}/${kind}/${id}` },
   );
-  if (state.status === 'loading') return <Loading label={t('blocks.loadingOne')} />;
+  const [runs] = useAsync(
+    (signal) =>
+      api
+        .overview(tenant, signal)
+        .then((o): ServiceRuns[] =>
+          o.services.map((s) => ({
+            id: s.id,
+            name: s.name,
+            ...(s.runsThisWeek === undefined ? {} : { runsThisWeek: s.runsThisWeek }),
+          })),
+        )
+        .catch((): ServiceRuns[] => []),
+    [tenant],
+  );
+  if (state.status === 'loading')
+    return (
+      <BlockDetailLoading
+        block={{ kind, id }}
+        tab={tab}
+        label={t('blocks.loadingOne')}
+        onRetry={retry}
+      />
+    );
   if (state.status === 'error')
     return (
       <div className="stack">
-        <Crumbs items={[{ label: t('blocks.title'), href: '#/building-blocks' }, { label: id }]} />
+        <BackLink label={t('blocks.title')} href="#/building-blocks" />
         <Heading level={1} data-size="md">
           {t('blocks.blockOne')}
         </Heading>
@@ -109,8 +235,11 @@ const DetailPage = ({
       tenant={tenant}
       tenantName={tenantName}
       item={state.data.item}
-      services={state.data.services}
+      services={runs.status === 'ready' ? runs.data : []}
       versions={state.data.versions}
+      tab={tab}
+      {...(copyFrom ? { copyFrom } : {})}
+      onRetry={retry}
       onChanged={(flash) => {
         onChanged(flash);
         setVersion((v) => v + 1);
@@ -119,15 +248,85 @@ const DetailPage = ({
   );
 };
 
+const SkillRoute = ({
+  id,
+  view,
+  onChanged,
+  ...props
+}: ScreenProps & { id: string; view: string | undefined; onChanged: (flash: Flash) => void }) => {
+  const t = useT();
+  const owner = props.route.query.get('owner') ?? undefined;
+  const [state] = useAsync(
+    async (signal) => {
+      if (owner === props.tenant) return undefined;
+      const skills = await props.api.skills.list(props.tenant, signal);
+      if (!owner && skills.some((s) => s.id === id && s.owner === props.tenant)) return undefined;
+      return skills.find(
+        (s) =>
+          s.id === id &&
+          s.publisher.type === 'digdir' &&
+          (owner === undefined || s.owner === owner),
+      )?.owner;
+    },
+    [props.api, props.tenant, id, owner],
+  );
+  if (state.status === 'loading') return <Loading label={t('blocks.loadingOne')} shape="detail" />;
+  if (state.status === 'ready' && state.data)
+    return (
+      <DetailPage
+        {...props}
+        kind="skill"
+        id={id}
+        tab={blockTabs[view ?? ''] ?? 'about'}
+        copyFrom={state.data}
+        onChanged={onChanged}
+      />
+    );
+  return <SkillBlockPage {...props} id={id} tab={view} />;
+};
+
+const blockKindList: readonly string[] = [
+  'model',
+  'dataset',
+  'search_engine',
+  'tool',
+  'skill',
+  'extension_point',
+  'guardrail',
+  'judge',
+  'step_flow',
+  'shared_service',
+];
+
+const movedHash = (route: Route) => {
+  const [, kind, id] = route.segments;
+  if (kind === 'in-use' || kind === 'catalogue') return movedListHash(route);
+  if (kind && blockKindList.includes(kind))
+    return movedKindHash(kind as BlockKind, id, route.query);
+  if (kind && !id && !typeFromSegment(kind) && !['new', 'models', 'connectors'].includes(kind))
+    return '#/building-blocks';
+  return undefined;
+};
+
 export const BuildingBlocks = (props: ScreenProps) => {
-  const [, kind, id] = props.route.segments;
-  const [filters, setFilters] = useState<ListFilters>(initialFilters);
+  const t = useT();
+  const { route } = props;
+  const [, kind, id, view] = route.segments;
+  const fromRoute = filtersOf(route);
+  const [typed, setTyped] = useState(fromRoute);
+  const filters = { ...typed, show: fromRoute.show };
   const [flash, setFlash] = useState<{ path: string; flash: Flash } | null>(null);
   const [version, setVersion] = useState(0);
-  const path = props.route.path;
+  const path = route.path;
+  const type = typeFromSegment(kind);
+
+  const search = route.query.toString();
+  useEffect(() => {
+    const now = parseRoute(window.location.hash);
+    if (now.path === route.path && now.query.toString() === search) setTyped(filtersOf(route));
+  }, [search, kind]);
 
   useEffect(() => {
-    setFilters(initialFilters);
     setFlash(null);
   }, [props.tenant]);
 
@@ -137,8 +336,34 @@ export const BuildingBlocks = (props: ScreenProps) => {
     window.scrollTo?.(0, 0);
   };
 
+  const changeFilters = (next: TypeFilters) => {
+    if (!type) return;
+    setTyped(next);
+    const hash = typeHref(type, next.show, next.q);
+    if (next.show !== filters.show) navigate(hash.slice(1));
+    else window.location.replace(hash);
+  };
+
+  const changeQuery = (q: string) => {
+    setTyped({ ...typed, q });
+    window.location.replace(
+      q ? `#/building-blocks?q=${encodeURIComponent(q)}` : '#/building-blocks',
+    );
+  };
+
+  const alias = kind ? kindAliases[kind] : undefined;
+  const moved = alias ? undefined : movedHash(route);
+  useEffect(() => {
+    if (alias)
+      window.location.replace(
+        `#${path.replace(`/building-blocks/${kind}`, `/building-blocks/${alias}`)}`,
+      );
+    else if (moved) window.location.replace(moved);
+  }, [alias, moved, path]);
+
   let page;
-  if (kind === 'new')
+  if (alias || moved) page = <Loading label={t('blocks.loadingOne')} shape="detail" />;
+  else if (kind === 'new')
     page = (
       <RegisterBlock
         api={props.api}
@@ -150,22 +375,34 @@ export const BuildingBlocks = (props: ScreenProps) => {
         }}
       />
     );
+  else if (kind === 'models')
+    page = id === 'in-use' ? <ModelsInUse {...props} /> : <ModelCatalog {...props} />;
   else if (kind === 'connectors' && !id)
     page = <ConnectorsPage {...props} version={version} onFlash={(next) => show(next)} />;
+  else if (kind === 'skill' && id)
+    page = <SkillRoute {...props} id={id} view={view} onChanged={(next) => show(next)} />;
   else if (kind && id)
     page = (
-      <DetailPage {...props} kind={kind as BlockKind} id={id} onChanged={(next) => show(next)} />
-    );
-  else
-    page = (
-      <ListPage
+      <DetailPage
         {...props}
+        kind={kind as BlockKind}
+        id={id}
+        tab={blockTabs[view ?? ''] ?? 'about'}
+        onChanged={(next) => show(next)}
+      />
+    );
+  else if (type)
+    page = (
+      <TypePage
+        {...props}
+        type={type}
         filters={filters}
-        onFilters={setFilters}
+        onFilters={changeFilters}
         onFlash={(next) => show(next)}
         version={version}
       />
     );
+  else page = <OverviewPage {...props} q={typed.q} onQuery={changeQuery} version={version} />;
 
   return (
     <div className="stack">

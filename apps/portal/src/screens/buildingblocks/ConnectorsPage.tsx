@@ -1,5 +1,5 @@
 import { Heading, Paragraph } from '@digdir/designsystemet-react';
-import { Crumbs } from '../../components/Crumbs';
+import { BackLink } from '../../components/BackLink';
 import { useAsync } from '../../hooks';
 import { useT } from '../../i18n';
 import type { ScreenProps } from '../../screen';
@@ -28,15 +28,11 @@ export const ConnectorsPage = ({
       return { proposals: proposals.filter((p) => p.level === 2), connectors };
     },
     [tenant, version],
+    { keepPreviousFor: tenant },
   );
   return (
     <div className="stack">
-      <Crumbs
-        items={[
-          { label: t('connectors.pageBlocks'), href: '#/building-blocks' },
-          { label: t('connectors.pageCrumb') },
-        ]}
-      />
+      <BackLink label={t('connectors.pageBlocks')} href="#/building-blocks" />
       <div className="stack-xs bb-connect-intro">
         <Heading level={1} data-size="md">
           {t('connectors.pageHeading')}
@@ -44,7 +40,7 @@ export const ConnectorsPage = ({
         <Paragraph className="lead">{t('connectors.pageLead', { tenantName })}</Paragraph>
       </div>
       {state.status === 'loading' ? (
-        <Loading label={t('connectors.pageLoading')} />
+        <Loading label={t('connectors.pageLoading')} shape="list" onRetry={retry} />
       ) : state.status === 'error' ? (
         <ErrorState error={state.error} onRetry={retry} />
       ) : (

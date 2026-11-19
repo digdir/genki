@@ -1,6 +1,7 @@
 import { createRoute, z, type RouteConfig } from '@hono/zod-openapi';
 import { definitionKinds } from '@genai/definitions';
 import { evalRunStates, metricSummary } from '@genai/eval';
+import { caseChanges } from '../eval-compare.js';
 import { serviceIntents, skillIntents, unavailableReasons } from '@genai/strategy-builder';
 import { turnBody } from '../assistant.js';
 import { InputField } from '../frontend-openapi.js';
@@ -79,6 +80,19 @@ const ServiceSummary = z
     purpose: z.string(),
     outputKind: z.string(),
     channels: z.array(z.string()),
+    model: z
+      .object({
+        id: z.string(),
+        residency: residency
+          .nullable()
+          .describe(
+            "Where the model processes data, from the platform's model list; null when the model is not in it",
+          ),
+      })
+      .nullable()
+      .describe(
+        "The primary model. Its residency is the model's own, not spec.model.residency, which is the widest the service allows",
+      ),
     latestVersion: z.number().int().nullable(),
     status: z.enum(['active', 'paused']),
     statusReason: z.string().nullable(),
@@ -100,8 +114,33 @@ const ServiceDraft = z
     latestVersion: z.number().int().nullable(),
     at: z.string(),
     reason: z.string(),
+    by: z.string().openapi({ description: 'Who saved the draft last' }),
+    byName: z.string().nullable().openapi({
+      description: 'The name of who saved the draft last; null when genki does not know it',
+    }),
   })
   .openapi('ServiceDraft');
+
+const FileLimit = z.object({
+  accepts: z.array(z.string()).describe('The media types a caller may send'),
+  maxBytes: z.number().int().describe('The largest file accepted, in bytes'),
+  maxCount: z.number().int().describe('The most files accepted in one run'),
+});
+
+const FileInput = z
+  .object({
+    documents: FileLimit.nullable().describe(
+      'Text documents read into the run (knowledge.runtimeDocuments with readable types in input.accepts); null when the definition takes none',
+    ),
+    media: FileLimit.nullable().describe(
+      'Audio and image parts (audio/ and image/ types in input.accepts); null when the definition takes none. File parts a step flow takes have the same limits',
+    ),
+    maxRequestBytes: z.number().int().describe('The largest request body a run accepts, in bytes'),
+  })
+  .openapi('ServiceFileInput', {
+    description:
+      'The files a run of the definition may carry, with the limits the OpenAI-compatible run API enforces and reports on /v1/models',
+  });
 
 const ServiceDraftSummary = z
   .object({
@@ -353,6 +392,13 @@ const EvalRunSummary = z
     testSet: z.string(),
     testSetVersion: z.number().int(),
     version: z.union([z.literal('draft'), z.number().int()]),
+    draftRevision: z
+      .number()
+      .int()
+      .optional()
+      .describe(
+        'The revision of the saved draft the run tested; left out when it ran a published version or an unsaved definition',
+      ),
     variant: z.string().optional(),
     environment: z
       .string()
@@ -370,6 +416,20 @@ const EvalRunSummary = z
         'The cases the run was limited to; such a run does not stand for the whole test set',
       ),
     startedAt: z.string(),
+    startedBy: z
+      .string()
+      .optional()
+      .describe(
+        "Who started the run, as <kind>:<issuer>:<subject>; set while it is running or waiting for scores, for a starter of the caller's own tenant",
+      ),
+    startedByName: z
+      .string()
+      .optional()
+      .describe('The name of who started it, when genki knows it'),
+    startedByYou: z
+      .literal(true)
+      .optional()
+      .describe('Set when the caller started the run, and may cancel it with use-services'),
     endedAt: z.string().nullable(),
     score: z
       .number()
@@ -427,6 +487,67 @@ const EvalRunSummary = z
   })
   .openapi('ServiceEvalRunSummary');
 
+const ComparedRun = z
+  .object({
+    id: z.string(),
+    status: z.enum(evalRunStates),
+    version: z.union([z.literal('draft'), z.number().int()]),
+    variant: z.string().optional(),
+    environment: z.string().optional(),
+    split: z.enum(['locked', 'open']).optional(),
+    selected: z.array(z.string()).optional(),
+    testSetVersion: z.number().int(),
+    startedAt: z.string(),
+    endedAt: z.string().nullable(),
+    score: z.number().nullable().describe('Share of cases that pass, once the run is completed'),
+    passed: z.number().int(),
+    cases: z.number().int().describe('Cases with a result so far'),
+    judges: z.array(z.string()).describe('Each judge as <id>@<version>+<model>'),
+  })
+  .openapi('ServiceEvalComparedRun');
+
+const CaseOutcome = z
+  .object({
+    pass: z.boolean(),
+    score: z
+      .number()
+      .nullable()
+      .describe("The case type's own verdict score, the mean over repeats; null when not scored"),
+    reason: z.string().optional().describe("The judge's reason"),
+  })
+  .nullable();
+
+const EvalComparison = z
+  .object({
+    testSet: z.string(),
+    baseline: ComparedRun.extend({
+      published: z
+        .boolean()
+        .describe('Whether the baseline was chosen as the run of the published version'),
+    }),
+    candidate: ComparedRun,
+    counts: z.record(z.enum(caseChanges), z.number().int()).describe('Cases per change, all pages'),
+    data: z.array(
+      z.object({
+        case: z.string(),
+        input: z.string(),
+        type: z.string(),
+        split: z.enum(['locked', 'open']),
+        change: z
+          .enum(caseChanges)
+          .describe(
+            'better or worse when the verdict flipped, same when it did not, new or missing when only the candidate or the baseline has the case, pending when the run without it is still running. A case outside the split or selected cases of the run without it is left out',
+          ),
+        baseline: CaseOutcome,
+        candidate: CaseOutcome,
+      }),
+    ),
+    total: z.number().int().describe('Cases that match change, before offset and limit'),
+    offset: z.number().int(),
+    limit: z.number().int(),
+  })
+  .openapi('ServiceEvalComparison');
+
 const Improvement = z
   .object({
     id: z.string(),
@@ -456,6 +577,10 @@ const Lifecycle = z
     state: z.enum(['active', 'paused', 'archived']),
     reason: z.string().optional(),
     by: z.string().optional(),
+    byName: z
+      .string()
+      .optional()
+      .describe('The name of the person who paused or archived the service, when genki knows it'),
     at: z.string().optional(),
   })
   .openapi('ServiceLifecycle');
@@ -474,6 +599,10 @@ const ServiceEnvironments = z
           .int()
           .nullable()
           .describe('Where a rollback without a version goes'),
+        description: z
+          .string()
+          .optional()
+          .describe('Who uses the environment, such as testerne i HR, when one is set'),
       }),
     ),
     latestVersion: z.number().int(),
@@ -539,6 +668,7 @@ const BatchEstimate = z
 const BatchRun = z
   .object({
     id: z.string(),
+    name: z.string().optional().describe('The name given at start, when one was'),
     service: z.string(),
     version: z.number().int(),
     model: z.string().nullable(),
@@ -1028,6 +1158,22 @@ const playgroundPolicy = z.object({
 });
 const blockStatus = z.enum(['allowed', 'requires_approval', 'not_allowed']);
 const playgroundOutput = z.enum(['text', 'fields']);
+const PlaygroundStrategy = z
+  .object({
+    id: z.string(),
+    version: z.number().int(),
+    title: UiText,
+    takesInstructions: z
+      .boolean()
+      .describe(
+        'Whether the strategy has one instructions field that setup.instructions can replace in a run',
+      ),
+    flow: z
+      .object({ ref: z.string(), id: z.string(), version: z.number().int(), title: UiText })
+      .optional()
+      .describe('The step flow a step-flow strategy runs; title is its recipe title, or its name'),
+  })
+  .openapi('PlaygroundStrategy');
 
 const PlaygroundOptions = z
   .object({
@@ -1053,12 +1199,16 @@ const PlaygroundOptions = z
               blocks: z.array(z.string()),
               output: playgroundOutput,
             }),
+            strategy: PlaygroundStrategy.optional().describe("The version's spec.strategy"),
             variants: z
               .array(
                 z.object({
                   id: z.string(),
                   title: z.string().optional(),
                   model: z.string().optional(),
+                  strategy: PlaygroundStrategy.optional().describe(
+                    'Only when the variant has its own strategy',
+                  ),
                 }),
               )
               .optional(),
@@ -1075,6 +1225,11 @@ const PlaygroundOptions = z
         dataLocation: residency,
         status: blockStatus,
         policy: playgroundPolicy.optional(),
+        candidate: z.literal(true).optional(),
+        price: z
+          .object({ inputPerThousand: z.number(), outputPerThousand: z.number() })
+          .nullable()
+          .describe('Kroner per 1,000 tokens, as GET /models gives it, or null without a price'),
       }),
     ),
     datasets: z.array(
@@ -1133,6 +1288,7 @@ const PlaygroundResult = z
         position: z.number().optional(),
         version: z.union([z.string(), z.number()]).optional(),
         publishedAt: z.string().optional(),
+        publisher: z.string().optional(),
         score: z.number().optional(),
       }),
     ),
@@ -1197,7 +1353,9 @@ const playgroundErrors = {
   404: problem('The tenant is not reachable for the caller'),
   409: problem('The playground is turned off for the tenant'),
   413: problem('The file is too large'),
-  422: problem('Invalid setup or file'),
+  422: problem(
+    'Invalid setup or file, a dataset the tenant may not use, or instructions for a strategy without one instructions field; urn:genai:problem:definition-outdated when a published version no longer fits the platform (with `service`, `version` and `latestVersion`)',
+  ),
   429: problem('The monthly token quota is used up (with `quota`)'),
 };
 
@@ -1287,6 +1445,34 @@ export const serviceRoutes: RouteConfig[] = [
       400: problem('Missing definition or invalid baseVersion'),
       ...tenantErrors,
       409: problem('The draft was changed by someone else'),
+    },
+  }),
+  createRoute({
+    method: 'get',
+    path: '/tenants/{tenant}/services/{id}/draft/checks',
+    summary:
+      "Run the checks a publish runs on the service's saved draft, without publishing it (any member; not audited)",
+    description:
+      'The same checks as publishing the draft: the definition schema, an archived service, the platform modules (building block policy, risk confirmation, models and the rest), step flows, datasets and the evaluation gates against test runs already recorded. on_publish hooks are not run, so `ready` cannot promise they let the publish through. No model is called and nothing is stored.',
+    request: { params: z.object({ tenant, id: service }) },
+    responses: {
+      200: json(
+        z.object({
+          service: z.string(),
+          revision: z.number().int().describe('The draft revision checked'),
+          ready: z.boolean().describe('True when publishing the draft now would pass the checks'),
+          problems: z.array(z.object({ path: z.string(), message: z.string() })),
+          hooksSkipped: z
+            .literal(true)
+            .optional()
+            .describe(
+              'Present when the organisation has enabled on_publish hooks: they are not run here and can still refuse the publish',
+            ),
+        }),
+        'The checks',
+      ),
+      ...tenantErrors,
+      404: problem('No draft, or the tenant is not reachable'),
     },
   }),
   createRoute({
@@ -1427,6 +1613,70 @@ export const serviceRoutes: RouteConfig[] = [
   }),
   createRoute({
     method: 'post',
+    path: '/tenants/{tenant}/services/{id}/eval-runs/{runId}/cancel',
+    summary:
+      'Cancel a running test run: no further case starts, finished cases are kept and the run ends as cancelled. The person who started it needs use-services, anyone else manage-services; audited, and a cancelled run answers 200 again without a new entry',
+    request: {
+      params: z.object({
+        tenant,
+        id: service,
+        runId: z.string().openapi({ param: { name: 'runId', in: 'path' } }),
+      }),
+      headers: changeReason,
+      body: body(z.object({}).describe('Empty'), false),
+    },
+    responses: {
+      200: audited(z.object({ id: z.string(), status: z.literal('cancelled') }), 'Cancelled'),
+      202: audited(
+        z.object({ id: z.string(), status: z.literal('cancelling') }),
+        'Asked to stop; the instance running it ends it as cancelled before its next case',
+      ),
+      400: problem('Missing reason'),
+      ...tenantErrors,
+      404: problem('No such test run for this service'),
+      409: problem('urn:genai:problem:run-finished: the run has already ended'),
+    },
+  }),
+  createRoute({
+    method: 'get',
+    path: '/tenants/{tenant}/services/{id}/eval-runs/compare',
+    summary:
+      'Two test runs of the service on the same test set, case by case: each verdict and whether the candidate did better or worse. Any member',
+    request: {
+      params: z.object({ tenant, id: service }),
+      query: z.object({
+        candidate: z.string().openapi({ description: 'The run to judge, by id' }),
+        baseline: z.string().optional().openapi({
+          description:
+            'The run to compare with, by id, or published (the default): the newest completed run of the whole test set by the version the prod environment runs',
+        }),
+        change: z
+          .enum(caseChanges)
+          .optional()
+          .openapi({ description: 'Only cases with this change' }),
+        limit: z
+          .string()
+          .optional()
+          .openapi({ description: 'Cases per page, 1 to 200, default 50' }),
+        offset: z
+          .string()
+          .optional()
+          .openapi({ description: 'Cases to skip, 0 to 100000, default 0' }),
+      }),
+    },
+    responses: {
+      200: json(EvalComparison, 'Comparison'),
+      400: problem(
+        'Missing candidate, an invalid change, limit or offset (eval-compare-invalid), or runs of different test sets (eval-runs-not-comparable)',
+      ),
+      ...tenantErrors,
+      404: problem(
+        'No such run of this service, or no completed run of the published version on the test set',
+      ),
+    },
+  }),
+  createRoute({
+    method: 'post',
     path: '/tenants/{tenant}/services/{id}/improvements',
     summary:
       'Ask the optimiser for better instructions, scored on a test set; runs in the background. Needs manage-services',
@@ -1510,6 +1760,53 @@ export const serviceRoutes: RouteConfig[] = [
     },
   }),
   createRoute({
+    method: 'get',
+    path: '/tenants/{tenant}/services/{id}/environment-history',
+    summary:
+      'Changes to the environments of the service, newest first: added, removed, promoted, rolled back and described, with who and why. Needs use-services',
+    request: {
+      params: z.object({ tenant, id: service }),
+      query: z.object({
+        environment: z.string().optional().describe('Only changes to this environment'),
+        limit: z.string().optional().describe('1 to 200, default 50'),
+      }),
+    },
+    responses: {
+      200: json(
+        z.object({
+          data: z.array(
+            z.object({
+              environment: z.string(),
+              action: z
+                .enum(['added', 'removed', 'promoted', 'rolled-back', 'described', 'changed'])
+                .describe(
+                  'changed: a version change saved before changes were recorded, so whether it was a promotion or a rollback is not known',
+                ),
+              version: z
+                .number()
+                .int()
+                .nullable()
+                .describe(
+                  'The version the environment runs after it; null while it follows every publish, or once removed',
+                ),
+              previousVersion: z.number().int().nullable(),
+              from: z.string().optional().describe('On a promotion: the environment it came from'),
+              at: z.string(),
+              by: z.string(),
+              byName: z.string().optional().describe('When genki knows the name'),
+              reason: z.string(),
+            }),
+          ),
+          total: z.number().int().describe('Changes that match, before limit'),
+        }),
+        'History',
+      ),
+      400: problem('An environment that is not a name, or a limit outside 1 to 200'),
+      ...tenantErrors,
+      404: problem('No published service'),
+    },
+  }),
+  createRoute({
     method: 'post',
     path: '/tenants/{tenant}/services/{id}/environments',
     summary:
@@ -1517,14 +1814,50 @@ export const serviceRoutes: RouteConfig[] = [
     request: {
       params: z.object({ tenant, id: service }),
       headers: changeReason,
-      body: body(z.object({ name: z.string().describe('Lowercase name such as test') })),
+      body: body(
+        z.object({
+          name: z.string().describe('Lowercase name such as test'),
+          description: z
+            .string()
+            .max(200)
+            .optional()
+            .describe('Who uses the environment, such as testerne i HR'),
+        }),
+      ),
     },
     responses: {
       201: audited(ServiceEnvironments, 'Added'),
-      400: problem('Missing reason, invalid name, prod, or too many environments'),
+      400: problem(
+        'Missing reason, invalid name, prod, too many environments, or a description over 200 characters',
+      ),
       ...tenantErrors,
       404: problem('No published service'),
       409: problem('The environment exists'),
+    },
+  }),
+  createRoute({
+    method: 'patch',
+    path: '/tenants/{tenant}/services/{id}/environments/{environment}',
+    summary:
+      'Set or clear the description of an environment, who uses it. Changes no version. Needs manage-services; audited',
+    request: {
+      params: z.object({ tenant, id: service, environment }),
+      headers: changeReason,
+      body: body(
+        z.object({
+          description: z
+            .string()
+            .max(200)
+            .nullable()
+            .describe('Who uses the environment; null or empty clears it'),
+        }),
+      ),
+    },
+    responses: {
+      200: audited(ServiceEnvironments, 'Described'),
+      400: problem('Missing reason, or a description over 200 characters'),
+      ...tenantErrors,
+      404: problem('No such service or environment'),
     },
   }),
   createRoute({
@@ -1685,12 +2018,17 @@ export const serviceRoutes: RouteConfig[] = [
           maxTokens: z.number().positive().optional(),
           concurrency: z.number().positive().optional(),
           approval: z.string().optional(),
+          name: z
+            .string()
+            .max(120)
+            .optional()
+            .describe('A name for the run, shown in the list, such as Spørsmål fra HR-postkassen'),
         }),
       ),
     },
     responses: {
       202: json(BatchRun, 'Started'),
-      400: problem('Missing estimate or reason'),
+      400: problem('Missing estimate or reason, or a name over 120 characters'),
       ...tenantErrors,
       404: problem('No such estimate'),
       409: problem('The estimate expired, the service changed, or approval is needed'),
@@ -1851,7 +2189,7 @@ export const serviceRoutes: RouteConfig[] = [
       'The input form a definition would show, with options filled in. Needs manage-services',
     request: { params: z.object({ tenant }), body: body(z.object({ definition: z.unknown() })) },
     responses: {
-      200: json(z.object({ fields: z.array(InputField) }), 'Fields'),
+      200: json(z.object({ fields: z.array(InputField), files: FileInput }), 'Fields'),
       400: problem('Missing definition'),
       ...tenantErrors,
     },
@@ -2655,6 +2993,24 @@ export const serviceRoutes: RouteConfig[] = [
               residency: z.string().nullable(),
               model: z.string().nullable(),
               exposure: z.array(z.string()),
+              storage: z
+                .object({ keepsText: z.boolean(), logDays: z.number().int() })
+                .optional()
+                .describe(
+                  "Whether questions and answers are kept, and for how many days, under the owner's retention",
+                ),
+              languages: z
+                .object({ in: z.array(z.string()), out: z.string() })
+                .optional()
+                .describe(
+                  'The languages it takes questions in, and the language it answers in: same, nb or nn',
+                ),
+              estimatedCostPerThousandRuns: z
+                .object({ microNok: z.number().int(), basis: z.string() })
+                .optional()
+                .describe(
+                  "What a thousand runs cost at the model's price, from the owner's completed runs of the last 30 days, rounded to two significant digits; absent with fewer than 20 priced runs",
+                ),
               variants: z.array(
                 z.object({ id: z.string(), publicName: z.string(), aliases: z.array(z.string()) }),
               ),

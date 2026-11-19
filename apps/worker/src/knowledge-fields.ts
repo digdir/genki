@@ -1,6 +1,10 @@
 import { knowledgeFieldsQueue, queueWork, type fieldFills } from '@genai/jobs';
-import { kudosOrgNumberFields } from '@genai/ingest';
-import type { DocumentRecords, StoredDocument } from '@genai/port-knowledge';
+import {
+  kudosLinkAndAbbreviationFields,
+  kudosOrgNumberFields,
+  kudosReportKeyFields,
+} from '@genai/ingest';
+import type { DocumentRecords, FieldFill, StoredDocument } from '@genai/port-knowledge';
 
 export interface FieldsDeps {
   records: DocumentRecords;
@@ -10,10 +14,11 @@ export interface FieldsDeps {
 }
 
 /** Each fill a `knowledge.fields` job may name: the source whose stored records it reads. */
-const fills: Record<(typeof fieldFills)[number], (doc: StoredDocument) => Record<string, unknown>> =
-  {
-    'kudos-org-numbers': kudosOrgNumberFields,
-  };
+const fills: Record<(typeof fieldFills)[number], (doc: StoredDocument) => FieldFill> = {
+  'kudos-org-numbers': (doc) => ({ fields: kudosOrgNumberFields(doc) }),
+  'kudos-links-and-abbreviations': kudosLinkAndAbbreviationFields,
+  'kudos-report-keys': (doc) => ({ fields: kudosReportKeyFields(doc) }),
+};
 
 /** `knowledge.fields`: new fields on a dataset's stored documents, nothing embedded (ADR 0042). */
 export const fieldsWork = (deps: FieldsDeps) =>

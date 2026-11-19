@@ -97,8 +97,7 @@ export interface AssistantProfile {
   /**
    * The trials the reader may turn on in «Innstillinger», «Eksperimenter». The assembly knows what
    * kunnskapsassistenten's do: `filters-right-panel`, which puts the filter over the sources in the
-   * secondary panel. Years as periods, many values as one chip and the narrower filter
-   * (`compact-filter`) are no longer trials: the filter always draws them.
+   * secondary panel.
    */
   experiments?: readonly AssistantExperiment[] | undefined;
   /** The note at the foot of «Innstillinger». */

@@ -942,6 +942,39 @@ export interface SwitchEstimate {
   embeddings?: { model: string; dimensions: number }[];
 }
 
+/** One hit of a direct dataset search, in rank order. */
+export interface DatasetSearchHit {
+  id: string;
+  document?: string;
+  title?: string;
+  url?: string;
+  position?: number;
+  page?: number;
+  pageEnd?: number;
+  score: number;
+  text: string;
+  fields: Record<string, unknown>;
+}
+
+/** What a direct dataset search answers: the hits and what was searched. */
+export interface DatasetSearchAnswer {
+  dataset: string;
+  profile: string;
+  filters: Record<string, unknown>;
+  limit: number;
+  found?: number;
+  warning?: string;
+  tookMs: number;
+  hits: DatasetSearchHit[];
+}
+
+export interface DatasetSearchRequest {
+  query: string;
+  filters?: Record<string, unknown>;
+  profile?: string;
+  limit?: number;
+}
+
 /** The engine a platform dataset searches now, and the switch it is in, if any. */
 export interface DatasetEngine {
   dataset: string;
@@ -958,6 +991,14 @@ export interface KnowledgeEndpointItem {
   scope: string;
   version: number;
   spec: Record<string, unknown>;
+}
+
+export interface PlatformSecret {
+  name: string;
+  ref: string;
+  set: boolean;
+  changedAt?: string;
+  usedBy: { kind: string; id: string }[];
 }
 
 export interface StoredSecret {
@@ -1108,6 +1149,7 @@ export interface ModelEndpointInput {
     | { kind: 'api-key' | 'bearer'; secret: string; header?: string }
     | { kind: 'federated-app'; clientId: string; tenant: string; scope: string };
   families: Record<string, string>;
+  gateway?: boolean;
   discovery?: DiscoveryRule[];
   settings?: Record<string, string>;
   keys?: Record<string, string>;

@@ -1,4 +1,3 @@
-import { Spinner } from '@digdir/designsystemet-react';
 import type { AssistantLayout } from '@genai/ui-blocks/builder';
 import {
   createContext,
@@ -6,12 +5,14 @@ import {
   Suspense,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
   type ReactNode,
 } from 'react';
 import { createPortal } from 'react-dom';
+import { ShapeSkeleton } from '../../../components/Skeleton';
 import { useT } from '../../../i18n';
 import { draftServiceOf, type RunProblem } from './draftService';
 import type { ReportProblem, TryRun } from './TryView';
@@ -37,6 +38,8 @@ interface Keeper {
 }
 
 const Kept = createContext<Keeper | undefined>(undefined);
+
+export const keptOutOfSightMs = 60_000;
 
 /** Keeps the try view's assistant, answers and threads while the preview is drawn again. */
 export const TryViewKeeper = ({ children }: { children: ReactNode }) => {
@@ -85,11 +88,17 @@ export const TryViewKeeper = ({ children }: { children: ReactNode }) => {
     },
     [drawn],
   );
+  // Out of sight for a while, the assistant goes; this visit's threads come back with it.
+  const [parked, setParked] = useState(false);
+  const parking = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(parking.current), []);
   // Where the reader had scrolled to, which an element taken out of the page loses.
   const scrolled = useRef<(readonly [Element, number])[]>([]);
   const place = useCallback(
     (element: HTMLElement | null) => {
       if (!element) return undefined;
+      clearTimeout(parking.current);
+      setParked(false);
       element.append(drawn);
       for (const [scroller, top] of scrolled.current) scroller.scrollTop = top;
       scrolled.current = [];
@@ -99,6 +108,10 @@ export const TryViewKeeper = ({ children }: { children: ReactNode }) => {
           scroller.scrollTop > 0 ? [[scroller, scroller.scrollTop] as const] : [],
         );
         away.current?.append(drawn);
+        parking.current = setTimeout(() => {
+          scrolled.current = [];
+          setParked(true);
+        }, keptOutOfSightMs);
       };
     },
     [drawn],
@@ -109,14 +122,13 @@ export const TryViewKeeper = ({ children }: { children: ReactNode }) => {
     <Kept.Provider value={keeper}>
       {children}
       <div hidden ref={awayRef} />
-      {shown
+      {shown && !parked
         ? createPortal(
             <Suspense
               fallback={
-                <Spinner
-                  aria-label={t('builderBlocks.tryLoading')}
-                  className="service-preview-empty"
-                />
+                <div role="status" aria-label={t('builderBlocks.tryLoading')} aria-busy="true">
+                  <ShapeSkeleton shape="list" rows={3} />
+                </div>
               }
             >
               <TryView

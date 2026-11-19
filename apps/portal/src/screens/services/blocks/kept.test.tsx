@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PlaygroundRunRequest, PlaygroundStreamEvent } from '../../../api/playground';
 import { sseOf } from '../../../data/playground';
 import { mockFetch } from '../../../mock';
 import { go, renderAt } from '../../../test-utils';
 import { gate, result } from './draft.test-utils';
+import { keptOutOfSightMs } from './TryViewKeeper';
 
 const wide = 1440;
 beforeEach(() => {
@@ -102,8 +103,7 @@ const openTry = async (fetch: typeof globalThis.fetch) => {
   await screen.findByRole('group', { name: 'Byggeklosser og maler' });
 };
 
-// The question field: «Spørsmål til …» in the current look, «Still et spørsmål» or «Spør videre»
-// in the next.
+// «Spørsmål til …» in the current look, «Still et spørsmål» or «Spør videre» in the next.
 const questionField = /^(Spørsmål til|Still et spørsmål|Spør videre)/;
 
 const ask = async (text: string) => {
@@ -227,6 +227,30 @@ describe('the try view drawn again', () => {
     await waitFor(() => expect(answerText()).toBe('Første svar.'));
     expect(questionOnScreen()).toBeTruthy();
     expect(run.stopped).toEqual([]);
+  });
+
+  it('takes the assistant out of the page a while after the reader left Grensesnitt, and brings the thread back on return', async () => {
+    await openTry(streamed({ [question]: [delta('Ja.'), result('Ja.'), finished] }).fetch);
+    await ask(question);
+    await waitFor(() => expect(answerText()).toBe('Ja.'));
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'], shouldAdvanceTime: true });
+    try {
+      go('#/services/rapportassistenten/setup');
+      await waitFor(() =>
+        expect(screen.queryByRole('group', { name: 'Byggeklosser og maler' })).toBeNull(),
+      );
+      expect(screen.queryByText(question, { selector: 'p' })).not.toBeNull();
+      await act(async () => {
+        vi.advanceTimersByTime(keptOutOfSightMs + 1);
+      });
+      expect(screen.queryByText(question, { selector: 'p' })).toBeNull();
+      expect(document.querySelector('.uib-shell-main')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+    go('#/services/rapportassistenten/interface');
+    await screen.findByRole('group', { name: 'Byggeklosser og maler' });
+    expect(await screen.findByRole('link', { name: new RegExp(question) })).toBeTruthy();
   });
 
   it('keeps the answer coming, and its thread on screen, when the window turns narrow and wide again', async () => {

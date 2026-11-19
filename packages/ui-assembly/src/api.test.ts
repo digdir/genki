@@ -334,6 +334,24 @@ describe('a source from the wire', () => {
     expect(first).not.toBe(second);
   });
 
+  it('a source read from the wire keeps its publisher', () => {
+    expect(
+      sourceFromWire({ publisher: 'Justis- og beredskapsdepartementet', excerpts: [] }).publisher,
+    ).toBe('Justis- og beredskapsdepartementet');
+    expect(sourceFromWire({ publisher: '  ', excerpts: [] })).not.toHaveProperty('publisher');
+    const odd = { publisher: 42, excerpts: [] } as unknown as Parameters<typeof sourceFromWire>[0];
+    expect(sourceFromWire(odd)).not.toHaveProperty('publisher');
+  });
+
+  it('reads the publish date as genki sends it, `published_at`', () => {
+    expect(sourceFromWire({ published_at: '2022-03-01', excerpts: [] }).publishedAt).toBe(
+      '2022-03-01',
+    );
+    expect(sourceFromWire({ publishedAt: '2023-01-01', excerpts: [] }).publishedAt).toBe(
+      '2023-01-01',
+    );
+  });
+
   it('leaves a missing title empty, for the blocks to name in the reader’s language', () => {
     expect(sourceFromWire({ excerpts: [] }).title).toBe('');
   });

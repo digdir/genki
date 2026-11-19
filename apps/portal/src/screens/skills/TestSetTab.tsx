@@ -4,24 +4,18 @@ import {
   Field,
   Heading,
   Label,
+  Paragraph,
   Select,
-  Spinner,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeaderCell,
-  TableRow,
   Tag,
   Textfield,
   ValidationMessage,
 } from '@digdir/designsystemet-react';
-import { useState } from 'react';
+import { useFormat } from '@genai/i18n/react';
+import { useEffect, useRef, useState } from 'react';
 import type { SkillCase, SkillCaseType, SkillFix, SkillTestRun } from '../../api/skills';
-import type { ApiCallPreview } from '../../components/ApiCall';
-import { ApiCallLink } from '../../components/ApiCall';
+import { BusyButton } from '../../components/BusyButton';
 import { useT } from '../../i18n';
-import { caseTypeLabels, caseTypeOptions, expectedText, percent } from '../../data/skills';
+import { caseTypeLabels, caseTypeOptions } from '../../data/skills';
 import { FixCard } from './FixCard';
 
 export interface DatasetOption {
@@ -34,11 +28,10 @@ interface Props {
   run: SkillTestRun | undefined;
   fresh: boolean;
   running: boolean;
-  threshold: number;
   canEdit: boolean;
   busy: boolean;
   hasExamples: boolean;
-  runCall: ApiCallPreview;
+  previous: { passed: number; total: number } | undefined;
   datasets: DatasetOption[];
   fix: SkillFix | undefined;
   onRun: () => void;
@@ -64,11 +57,10 @@ export const TestSetTab = ({
   run,
   fresh,
   running,
-  threshold,
   canEdit,
   busy,
   hasExamples,
-  runCall,
+  previous,
   datasets,
   fix,
   onRun,
@@ -80,17 +72,23 @@ export const TestSetTab = ({
   onFromExamples,
 }: Props) => {
   const t = useT();
+  const f = useFormat();
   const [adding, setAdding] = useState<Adding | null>(null);
-  const gate = Math.round(threshold * 100);
+  const [ranHere, setRanHere] = useState(false);
+  const wasRunning = useRef(running);
+  useEffect(() => {
+    if (wasRunning.current && !running) setRanHere(true);
+    if (running) setRanHere(false);
+    wasRunning.current = running;
+  }, [running]);
   const n = cases.length;
   const result = fresh ? run : undefined;
-  const pct = result ? percent(result.passed, result.total) : 0;
-  const failures = result
-    ? result.results
-        .filter((r) => !r.passed)
-        .map((r) => ({ input: cases[r.case]?.input ?? '', reason: r.reason ?? '' }))
-    : [];
+  const failures = result ? result.results.filter((r) => !r.passed).length : 0;
   const stale = !!run && !fresh && !running;
+  const count = t('skills.testsetSummary', { count: n });
+
+  const startAdding = () =>
+    setAdding({ input: '', expected: '', type: 'criteria', context: '', dataset: '', error: '' });
 
   const save = () => {
     if (!adding) return;
@@ -109,164 +107,141 @@ export const TestSetTab = ({
   };
 
   return (
-    <div className="stack-md">
-      <div className="skill-test-bar">
-        {result && !running ? (
-          <Tag data-color={pct >= gate ? 'success' : 'danger'}>
-            {t('skills.testPassed', {
-              passed: result.passed,
-              total: result.total,
-              percent: pct,
-            })}
-          </Tag>
-        ) : null}
-        <span className="subtle">{t('skills.testRequirement', { percent: gate })}</span>
-        <span className="spacer" />
-        {canEdit ? (
-          <Button
-            variant="secondary"
-            data-size="sm"
-            aria-disabled={running || n === 0 || undefined}
-            onClick={() => !running && n > 0 && onRun()}
-          >
-            {t('skills.testRun')}
-          </Button>
-        ) : null}
-        <ApiCallLink call={runCall} />
-      </div>
-      <span role="status" className="busy-note">
-        {running ? (
-          <>
-            <Spinner aria-hidden data-size="xs" />
-            {t('skills.testRunning', { count: n })}
-          </>
-        ) : null}
-      </span>
-      {stale ? (
-        <Alert data-color="info" data-size="sm">
-          {t('skills.testStale')}
-        </Alert>
-      ) : null}
-      {failures.length > 0 && !running ? (
-        <Alert data-color="danger">
-          <Heading level={2} data-size="2xs">
-            {t('skills.testFailedHeading', { count: failures.length })}
+    <div className="skill-tests">
+      {n === 0 ? (
+        <div className="skill-empty">
+          <Heading level={2} data-size="xs">
+            {t('skills.testsetEmptyTitle')}
           </Heading>
-          <ul className="bullets skill-failures">
-            {failures.map((f) => (
-              <li key={f.input}>
-                <strong>{f.input}:</strong> {f.reason}
-              </li>
-            ))}
+          <Paragraph>{t('skills.testsetEmptyText')}</Paragraph>
+          {canEdit && !adding ? (
+            <div className="actions">
+              <Button variant="primary" onClick={startAdding}>
+                {t('skills.testsetCreate')}
+              </Button>
+              {hasExamples ? (
+                <Button variant="secondary" onClick={onFromExamples}>
+                  {t('skills.testFromExamples')}
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <section aria-labelledby="skill-testset-h" className="skill-testset">
+          <div className="skill-testset-head">
+            <div className="skill-testset-title">
+              <Heading level={2} data-size="xs" id="skill-testset-h">
+                {t('skills.testsetTitle')}
+              </Heading>
+              <span className="skill-help">
+                {run && !run.stale
+                  ? t('skills.testsetLastRun', {
+                      cases: count,
+                      when: f.date(run.at),
+                      passed: run.passed,
+                      total: run.total,
+                    })
+                  : t('skills.testsetNeverRun', { cases: count })}
+              </span>
+            </div>
+            {canEdit ? (
+              <BusyButton
+                variant="secondary"
+                busy={running}
+                busyLabel={t('skills.testsetRunning')}
+                onClick={() => onRun()}
+              >
+                {t('skills.testRun')}
+              </BusyButton>
+            ) : null}
+          </div>
+          <div aria-live="polite">
+            {running ? (
+              <span className="busy-note">{t('skills.testsetRunningNote', { count: n })}</span>
+            ) : null}
+            {ranHere && result ? (
+              <p className={failures ? 'skill-run-done failed' : 'skill-run-done'}>
+                {previous
+                  ? t('skills.testsetDonePrevious', {
+                      passed: result.passed,
+                      total: result.total,
+                      before: previous.passed,
+                      beforeTotal: previous.total,
+                    })
+                  : t('skills.testsetDone', { passed: result.passed, total: result.total })}
+              </p>
+            ) : null}
+          </div>
+          {stale ? (
+            <Alert data-color="info" data-size="sm">
+              {t('skills.testStale')}
+            </Alert>
+          ) : null}
+          <ul className="plain-list skill-case-list" aria-label={t('skills.testCasesLabel')}>
+            {cases.map((c, i) => {
+              const r = result?.results.find((x) => x.case === i);
+              const [label, color] = running
+                ? ([t('skills.caseWaiting'), 'neutral'] as const)
+                : r
+                  ? r.passed
+                    ? ([t('skills.testStatePassed'), 'success'] as const)
+                    : ([t('skills.caseFailed'), 'danger'] as const)
+                  : ([t('skills.testStateNotRun'), 'neutral'] as const);
+              return (
+                <li key={`${i}-${c.input}`}>
+                  <span className="skill-case-name">
+                    {c.input}
+                    {c.type === 'criteria' ? null : (
+                      <span className="case-source">{t(caseTypeLabels[c.type])}</span>
+                    )}
+                    {c.context ? (
+                      <span className="case-source">{t('skills.testWithContext')}</span>
+                    ) : null}
+                    {c.dataset ? (
+                      <span className="case-source">
+                        {t('skills.testDataset', {
+                          name: datasets.find((d) => d.id === c.dataset)?.name ?? c.dataset,
+                        })}
+                      </span>
+                    ) : null}
+                  </span>
+                  <Tag data-size="sm" data-color={color}>
+                    {label}
+                  </Tag>
+                  {canEdit ? (
+                    <Button
+                      variant="tertiary"
+                      data-size="sm"
+                      className="skill-link-button"
+                      aria-label={t('skills.testDeleteCase', { input: c.input })}
+                      aria-disabled={busy || running || undefined}
+                      onClick={() => !busy && !running && onDelete(i)}
+                    >
+                      {t('skills.delete')}
+                    </Button>
+                  ) : null}
+                  {!running && r && !r.passed && r.reason ? (
+                    <span className="skill-case-note">{r.reason}</span>
+                  ) : null}
+                </li>
+              );
+            })}
           </ul>
-          {canEdit && !fix ? (
+          {canEdit && failures > 0 && !running && !fix ? (
             <Button
               variant="secondary"
               data-size="sm"
+              className="self-start"
               aria-disabled={busy || undefined}
               onClick={() => !busy && onFix()}
             >
               {t('skills.testFixAsk')}
             </Button>
           ) : null}
-        </Alert>
-      ) : null}
-      {fix ? <FixCard fix={fix} busy={busy} onApply={onApplyFix} onDiscard={onDiscardFix} /> : null}
-      {n === 0 ? (
-        <div className="skill-empty">
-          <span className="skill-empty-title">{t('skills.testEmptyTitle')}</span>
-          <span className="subtle">{t('skills.testEmptyHelp')}</span>
-          {canEdit ? (
-            <Button
-              variant="secondary"
-              data-size="sm"
-              aria-disabled={!hasExamples || undefined}
-              onClick={() => hasExamples && onFromExamples()}
-            >
-              {t('skills.testFromExamples')}
-            </Button>
-          ) : null}
-        </div>
-      ) : (
-        <div
-          className="table-scroll"
-          tabIndex={0}
-          role="region"
-          aria-label={t('skills.testCasesLabel')}
-        >
-          <Table data-size="sm" className="skill-cases">
-            <TableHead>
-              <TableRow>
-                <TableHeaderCell scope="col">{t('skills.testColIn')}</TableHeaderCell>
-                <TableHeaderCell scope="col">{t('skills.testColExpected')}</TableHeaderCell>
-                <TableHeaderCell scope="col">{t('skills.testColType')}</TableHeaderCell>
-                <TableHeaderCell scope="col">{t('skills.testColLast')}</TableHeaderCell>
-                {canEdit ? (
-                  <TableHeaderCell scope="col">
-                    <span className="visually-hidden">{t('skills.delete')}</span>
-                  </TableHeaderCell>
-                ) : null}
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {cases.map((c, i) => {
-                const r = result?.results.find((x) => x.case === i);
-                const state = running
-                  ? t('skills.testStateRunning')
-                  : r
-                    ? r.passed
-                      ? t('skills.testStatePassed')
-                      : t('skills.testStateFailed')
-                    : t('skills.testStateNotRun');
-                const failed = !running && r && !r.passed;
-                return (
-                  <TableRow key={`${i}-${c.input}`} className={failed ? 'case-failed' : undefined}>
-                    <th scope="row" className="case-input">
-                      {c.input}
-                      {c.context ? (
-                        <span className="case-source">{t('skills.testWithContext')}</span>
-                      ) : null}
-                      {c.dataset ? (
-                        <span className="case-source">
-                          {t('skills.testDataset', {
-                            name: datasets.find((d) => d.id === c.dataset)?.name ?? c.dataset,
-                          })}
-                        </span>
-                      ) : null}
-                    </th>
-                    <TableCell>{expectedText(c.expected)}</TableCell>
-                    <TableCell>{t(caseTypeLabels[c.type])}</TableCell>
-                    <TableCell>
-                      <span className="case-state">
-                        <Tag
-                          data-size="sm"
-                          data-color={!running && r ? (r.passed ? 'success' : 'danger') : 'neutral'}
-                        >
-                          {state}
-                        </Tag>
-                        {failed && r.reason ? <span className="case-why">{r.reason}</span> : null}
-                      </span>
-                    </TableCell>
-                    {canEdit ? (
-                      <TableCell>
-                        <Button
-                          variant="tertiary"
-                          data-size="sm"
-                          aria-label={t('skills.testDeleteCase', { input: c.input })}
-                          aria-disabled={busy || running || undefined}
-                          onClick={() => !busy && !running && onDelete(i)}
-                        >
-                          {t('skills.delete')}
-                        </Button>
-                      </TableCell>
-                    ) : null}
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </div>
+        </section>
       )}
+      {fix ? <FixCard fix={fix} busy={busy} onApply={onApplyFix} onDiscard={onDiscardFix} /> : null}
       {canEdit && adding ? (
         <fieldset className="skill-new-case">
           <legend>{t('skills.testNew')}</legend>
@@ -345,22 +320,8 @@ export const TestSetTab = ({
           </div>
         </fieldset>
       ) : null}
-      {canEdit && !adding ? (
-        <Button
-          variant="secondary"
-          data-size="sm"
-          className="self-start"
-          onClick={() =>
-            setAdding({
-              input: '',
-              expected: '',
-              type: 'criteria',
-              context: '',
-              dataset: '',
-              error: '',
-            })
-          }
-        >
+      {canEdit && !adding && n > 0 ? (
+        <Button variant="secondary" data-size="sm" className="self-start" onClick={startAdding}>
           {t('skills.testAdd')}
         </Button>
       ) : null}

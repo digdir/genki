@@ -92,7 +92,7 @@ describe('FilterBasis', () => {
       previous: { type: ['Årsrapport'] },
     });
     expect(rows().at(-1)).toBe(
-      'Endret siden forrige svar: Evaluering er lagt til, Årsrapport er tatt ut',
+      'Endret siden forrige svar: Evaluering er lagt til og Årsrapport er tatt ut',
     );
     rerender(
       <FilterBasis

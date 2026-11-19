@@ -87,6 +87,15 @@ describe('the knowledge queues', () => {
         deadLetter: true,
       },
       {
+        name: 'knowledge.replace',
+        policy: 'exclusive',
+        expireInSeconds: 7200,
+        heartbeatSeconds: 60,
+        retryLimit: 2,
+        retryBackoff: true,
+        deadLetter: true,
+      },
+      {
         name: 'knowledge.index',
         policy: 'exclusive',
         expireInSeconds: 1800,

@@ -63,6 +63,9 @@ export const endpoints = {
   federatedApp: "genki's own identity (federated app)",
   federatedAppDescription:
     'genki signs in with its managed identity through a multi-tenant app. No secret is stored.',
+  gateway: 'This is the AI gateway',
+  gatewayDescription:
+    'Every model call sends genki-tenant with the organisation number of the tenant the call is for, so the gateway counts the usage on the right organisation.',
   appClientId: 'App client ID',
   appClientIdDescription: 'The client ID of the multi-tenant app.',
   resourceTenant: 'Resource tenant',
@@ -99,11 +102,11 @@ export const endpoints = {
   saveModel: 'Save model',
   priceTitle: 'Set price for {model}',
   priceText:
-    'The price is used to calculate the cost organisations see. Enter kroner per 1,000 tokens.',
+    'The price is used to calculate the cost organisations see. Enter kroner per 1M tokens.',
   savePrice: 'Save price',
-  priceInvalid: 'Write both prices as numbers, for example 0.02.',
-  priceIn: 'In (NOK per 1,000 tokens)',
-  priceOut: 'Out (NOK per 1,000 tokens)',
+  priceInvalid: 'Write both prices as numbers, for example 2.5.',
+  priceIn: 'In (NOK per 1M tokens)',
+  priceOut: 'Out (NOK per 1M tokens)',
   stillInUse: 'The connection is still in use. Give the services below another model first.',
   processorMissingHint: 'Only tries with made-up data',
   processorTitle: 'Processor for {id}',

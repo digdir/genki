@@ -7,8 +7,7 @@ import type { CSSProperties, ReactNode } from 'react';
 import { dataHandlingPath } from '../../data/data-handling';
 import { examples, gettingStarted, sharedCapabilities } from '../../data/startside';
 import { useT } from '../../i18n';
-import { jumpTo, useBelow } from '../Startside';
-import { pricePath, useDocumentTitle } from './public-pages';
+import { jumpTo, pricePath, useBelow, useDocumentTitle } from './public-pages';
 
 const Section = ({
   id,
@@ -72,7 +71,7 @@ const Facts = () => {
   const t = useT();
   const facts = [
     [t('about.factWhoTitle'), t('about.factWho')],
-    [t('about.factWhereTitle'), t('dataHandling.processingToday')],
+    [t('about.factWhereTitle'), t('about.residencyStatement')],
     [t('about.factCostTitle'), t('about.factCost')],
   ] as const;
   return (

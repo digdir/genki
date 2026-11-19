@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { App } from '../App';
 import { mockAnsattporten } from '../auth';
@@ -25,13 +25,21 @@ describe('Log in English', () => {
   it('shows the runs tab with English chrome and statuses', async () => {
     await open('#/log');
     expect(await screen.findByRole('heading', { level: 1, name: 'Log' })).toBeTruthy();
-    expect(screen.getByRole('tab', { name: 'Runs' })).toBeTruthy();
-    expect(screen.getByRole('tab', { name: 'Changes' })).toBeTruthy();
-    const list = await screen.findByRole('region', { name: 'Latest runs' });
-    const link = within(list).getByRole('link', { name: /Vedtaksutkast/ });
-    expect(within(link).getByText('Waiting for approval')).toBeTruthy();
-    expect(await screen.findByRole('list', { name: 'Steps in the run' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Search' })).toBeTruthy();
+    const tabs = screen.getByRole('tablist', { name: 'Log' });
+    expect(within(tabs).getByRole('tab', { name: 'Runs' })).toBeTruthy();
+    expect(within(tabs).getByRole('tab', { name: 'Changes' })).toBeTruthy();
+    const table = await screen.findByRole('table', { name: 'Runs' });
+    expect(
+      within(table)
+        .getAllByRole('columnheader')
+        .map((h) => h.textContent),
+    ).toEqual(['Time', 'Run', 'Status', 'Duration', 'Cost']);
+    const row = within(table)
+      .getByRole('link', { name: /^Vedtaksutkast/ })
+      .closest('tr');
+    expect(within(row as HTMLElement).getByText('Waiting for approval')).toBeTruthy();
+    expect(screen.getByLabelText('Period')).toBeTruthy();
+    expect(screen.getByRole('radio', { name: 'All' })).toBeTruthy();
   });
 
   it('says in English that an erased run had its content erased, and marks it in the list', async () => {
@@ -40,16 +48,21 @@ describe('Log in English', () => {
     const note = await screen.findByRole('note', { name: 'The content of this run was erased' });
     expect(note.textContent).toContain('The conversation was deleted on');
     expect(note.textContent).toContain('Only status, time, tokens and cost are kept.');
-    const list = await screen.findByRole('region', { name: 'Latest runs' });
-    const link = within(list).getByRole('link', { name: /Kunnskapsassistenten/ });
-    expect(within(link).getByText('Content erased')).toBeTruthy();
+    cleanup();
+
+    await open('#/log?period=7');
+    const table = await screen.findByRole('table', { name: 'Runs' });
+    const row = within(table)
+      .getByRole('link', { name: /^Kunnskapsassistenten/ })
+      .closest('tr');
+    expect(within(row as HTMLElement).getByText('Content erased')).toBeTruthy();
   });
 
   it('shows the changes tab in English', async () => {
     await open('#/log?tab=changes');
-    expect(await screen.findByText('Type of change')).toBeTruthy();
-    fireEvent.click(screen.getByRole('radio', { name: 'Publishing' }));
-    expect(screen.getByRole('list', { name: 'Changes' })).toBeTruthy();
+    expect(await screen.findByRole('list', { name: 'Changes' })).toBeTruthy();
+    expect(screen.getByRole('radio', { name: 'All' })).toBeTruthy();
+    expect(screen.getByRole('switch', { name: /Show changes from Digdir/ })).toBeTruthy();
   });
 
   it('formats times, offsets and durations for English', () => {

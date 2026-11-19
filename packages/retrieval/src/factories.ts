@@ -52,6 +52,10 @@ export interface RetrievedSummary {
   rank?: number;
   version?: string;
   publishedAt?: string;
+  /** The organisation that published the document, several joined with a comma. */
+  publisher?: string;
+  /** Hits on the same page of other records of this report, left out for this one (issue 677). */
+  copies?: { chunkId: string; document?: string }[];
 }
 
 export interface RetrievedChunk extends RetrievedSummary {
@@ -130,6 +134,18 @@ const publishedAtOf = (fields: Record<string, unknown>) =>
     .map((name) => isoDate(joined(fields, name)))
     .find((v) => v !== undefined);
 
+const namesIn = (value: unknown) =>
+  (Array.isArray(value) ? value : [value]).flatMap((v) =>
+    typeof v === 'string' && v.trim() ? [v.trim()] : [],
+  );
+
+/** The document's publisher, several joined with a comma, as a source names it. */
+const publisherOf = (fields: Record<string, unknown>) => {
+  const listed = namesIn(joined(fields, 'publisher_names'));
+  const names = listed.length ? listed : namesIn(joined(fields, 'publisher'));
+  return names.length ? names.join(', ') : undefined;
+};
+
 const versionOf = (fields: Record<string, unknown>) => {
   const value = joined(fields, 'document_version') ?? joined(fields, 'version');
   return typeof value === 'string' && value.trim()
@@ -181,11 +197,20 @@ const describe = (
     ),
     ...optional('version', versionOf(base.fields)),
     ...optional('publishedAt', publishedAtOf(base.fields)),
+    ...optional('publisher', publisherOf(base.fields)),
   };
 };
 
 const summarize = (c: Chunk): RetrievedSummary => ({
   ...describe(c.id, c),
+  ...(c.copies?.length
+    ? {
+        copies: c.copies.map((copy) => ({
+          chunkId: copy.id,
+          ...optional('document', copy.document),
+        })),
+      }
+    : {}),
   ...optional('score', c.retrievalPrior),
   ...optional('rerankScore', c.rerankScore),
   rank: c.originalRank,

@@ -9,8 +9,8 @@ import {
 import {
   gatewayUsageSource,
   UsageGatewayError,
-  type GatewayUsagePage,
-  type GatewayUsageQuery,
+  type GatewayUsageAnswer,
+  type GatewayUsageRequest,
   type UsageGateway,
   type UsageSource,
 } from '@genai/port-usage';
@@ -23,6 +23,7 @@ export interface GatewayUsageConfig {
   /** A `secret://` reference to the client key, resolved per request. */
   credential?: string;
   federatedApp?: FederatedApp;
+  genkiClients: string[];
   since: Date;
   timeoutMs: number;
   maxResponseBytes: number;
@@ -31,33 +32,31 @@ export interface GatewayUsageConfig {
 export const defaultGatewayTimeoutMs = 60_000;
 
 const count = z.number().int().nonnegative();
-const subject = z.object({
-  kind: z.string().min(1),
-  id: z.string().min(1),
-  org: z.string().optional(),
+const label = z.string().nullable().optional();
+const time = z.string().refine((s) => !Number.isNaN(Date.parse(s)), 'a time');
+
+const group = z.object({
+  group: z.object({
+    provider: label,
+    requestModel: label,
+    responseModel: label,
+    'usage.org': label,
+    'usage.client': label,
+  }),
+  requests: count,
+  inputTokens: count,
+  outputTokens: count,
+  totalTokens: count,
+  cacheReadTokens: count,
+  cacheWriteTokens: count,
+  cost: z.number().nonnegative(),
 });
 
-const page = z.object({
-  from: z.string(),
-  to: z.string(),
-  bucket: z.enum(['hour', 'day']),
-  data: z.array(
-    z.object({
-      start: z.string().refine((s) => !Number.isNaN(Date.parse(s)), 'a time'),
-      closed: z.boolean(),
-      model: z.string().optional(),
-      provider: z.string().optional(),
-      subject: subject.optional(),
-      inputTokens: count,
-      outputTokens: count,
-      cachedInputTokens: count,
-      cacheWriteTokens: count,
-      requests: count,
-      unpricedRequests: count,
-      cost: z.object({ currency: z.string().regex(/^[A-Z]{3}$/), micros: count }),
-    }),
-  ),
-  next: z.string().nullable(),
+const answer = z.object({
+  timeRange: z.object({ from: time, to: time }),
+  bucketSeconds: count,
+  buckets: z.array(group.extend({ start: time })),
+  groups: z.array(group),
 });
 
 const problem = z.object({
@@ -66,14 +65,11 @@ const problem = z.object({
   errors: z.array(z.object({ path: z.string(), message: z.string() })).optional(),
 });
 
-const rfc3339 = (at: Date) => at.toISOString().replace('.000Z', 'Z');
+const refusals: Record<number, string> = {
+  401: "the gateway refused genki's sign-in: the token is not from the gateway's tenant or has the wrong audience",
+  403: 'the gateway refused the usage request: a role is missing or the request breaks its rules',
+};
 
-const withoutUndefined = <T extends object>(value: T) =>
-  Object.fromEntries(Object.entries(value).filter(([, v]) => v !== undefined)) as {
-    [K in keyof T]: Exclude<T[K], undefined>;
-  };
-
-/** Reads gateway settings from the environment; nothing configured leaves the gateway off. */
 const withoutTrailingSlashes = (url: string) => {
   let end = url.length;
   while (end > 0 && url[end - 1] === '/') end -= 1;
@@ -109,6 +105,7 @@ export const gatewayUsageConfigFromEnv = (
     problems.push('GATEWAY_USAGE_CREDENTIAL must be a secret:// reference');
   const since = new Date(env.GATEWAY_USAGE_SINCE ?? '2026-11-01T00:00:00Z');
   if (Number.isNaN(since.getTime())) problems.push('GATEWAY_USAGE_SINCE must be a date');
+  const genkiClient = env.GATEWAY_USAGE_GENKI_CLIENT?.trim() || 'genki';
   const timeoutMs = Number(env.GATEWAY_USAGE_TIMEOUT_MS ?? defaultGatewayTimeoutMs);
   if (!Number.isInteger(timeoutMs) || timeoutMs <= 0)
     problems.push('GATEWAY_USAGE_TIMEOUT_MS must be a whole number of milliseconds');
@@ -118,6 +115,7 @@ export const gatewayUsageConfigFromEnv = (
       id: 'gateway',
       baseUrl: withoutTrailingSlashes(baseUrl as string),
       ...(federatedApp ? { federatedApp } : { credential: credential as string }),
+      genkiClients: [...new Set([genkiClient, ...(federatedApp ? [federatedApp.clientId] : [])])],
       since,
       timeoutMs,
       maxResponseBytes: 32 * 1024 * 1024,
@@ -143,7 +141,6 @@ const clientToken = (config: GatewayUsageConfig, deps: GatewayUsageDeps) => {
   return () => deps.secrets.resolve(ref);
 };
 
-/** The gateway's usage route over HTTP, through the egress guard, signed in with a client key or as an app. */
 export const httpUsageGateway = (
   config: GatewayUsageConfig,
   deps: GatewayUsageDeps,
@@ -157,24 +154,18 @@ export const httpUsageGateway = (
     },
   ];
   return {
-    async query(query: GatewayUsageQuery): Promise<GatewayUsagePage> {
-      const params = new URLSearchParams(
-        withoutUndefined({
-          from: rfc3339(query.from),
-          to: rfc3339(query.to),
-          bucket: query.bucket,
-          groupBy: query.groupBy?.join(','),
-          subject: query.subject,
-          org: query.org,
-          cursor: query.cursor,
-        }),
-      );
+    async query(request: GatewayUsageRequest): Promise<GatewayUsageAnswer> {
       const key = await token();
       let response;
       try {
-        response = await deps.egress.request(allow, `${config.baseUrl}/usage?${params}`, {
-          method: 'GET',
-          headers: { authorization: `Bearer ${key}`, accept: 'application/json' },
+        response = await deps.egress.request(allow, `${config.baseUrl}/usage`, {
+          method: 'POST',
+          headers: {
+            authorization: `Bearer ${key}`,
+            accept: 'application/json',
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify(request),
           timeoutMs: config.timeoutMs,
           maxResponseBytes: config.maxResponseBytes,
         });
@@ -191,6 +182,8 @@ export const httpUsageGateway = (
         }
       })();
       if (response.status !== 200) {
+        const refused = refusals[response.status];
+        if (refused) throw new UsageGatewayError(response.status, refused);
         const found = problem.safeParse(body);
         const retryAfter = Number(response.headers['retry-after']);
         throw new UsageGatewayError(
@@ -200,23 +193,22 @@ export const httpUsageGateway = (
           Number.isFinite(retryAfter) ? retryAfter : undefined,
         );
       }
-      const parsed = page.safeParse(body);
+      const parsed = answer.safeParse(body);
       if (!parsed.success)
         throw new UsageGatewayError(
           502,
           `the gateway's answer breaks the contract: ${parsed.error.message}`,
         );
-      return {
-        ...parsed.data,
-        data: parsed.data.data.map((row) =>
-          withoutUndefined({ ...row, subject: row.subject && withoutUndefined(row.subject) }),
-        ),
-      } as GatewayUsagePage;
+      return parsed.data as GatewayUsageAnswer;
     },
   };
 };
 
 export const aiGatewayUsageSource = (
   config: GatewayUsageConfig,
-  deps: GatewayUsageDeps,
-): UsageSource => gatewayUsageSource(config.id, httpUsageGateway(config, deps));
+  deps: GatewayUsageDeps & { now?: () => Date },
+): UsageSource =>
+  gatewayUsageSource(config.id, httpUsageGateway(config, deps), {
+    genkiClients: config.genkiClients,
+    ...(deps.now ? { now: deps.now } : {}),
+  });

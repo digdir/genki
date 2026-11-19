@@ -267,17 +267,21 @@ export const LiveTestSets = ({
   tenant,
   serviceId,
   setFlash,
+  initialSet,
+  openRun,
 }: {
   api: ApiClient;
   tenant: string;
   serviceId: string;
   setFlash: SetFlash;
+  initialSet?: string;
+  openRun?: string;
 }) => {
   const t = useT();
   const canManage = useRights().has('manage-services');
   const [setsRound, setSetsRound] = useState(0);
   const [casesRound, setCasesRound] = useState(0);
-  const [chosen, setChosen] = useState<string>();
+  const [chosen, setChosen] = useState<string | undefined>(initialSet);
   const [form, setForm] = useState<CaseForm>();
   const [busy, setBusy] = useState(false);
   // Marks belong to the test set they were made in, so they do not follow to another set.
@@ -285,12 +289,14 @@ export const LiveTestSets = ({
   const [sets, retrySets] = useAsync(
     (signal) => api.quality.testSets(tenant, serviceId, signal),
     [api, tenant, serviceId, setsRound],
+    { keepPreviousFor: `${tenant}/${serviceId}` },
   );
   const list: ServiceTestSet[] = sets.status === 'ready' ? sets.data : [];
   const current = list.find((s) => s.id === chosen) ?? list[0];
   const [cases, retryCases] = useAsync(
     async (signal) => (current ? api.quality.cases(tenant, current.id, signal) : []),
     [api, tenant, current?.id, casesRound],
+    { keepPreviousFor: `${tenant}/${current?.id}` },
   );
 
   const changed = () => setCasesRound((r) => r + 1);
@@ -311,7 +317,8 @@ export const LiveTestSets = ({
     }
   };
 
-  if (sets.status === 'loading') return <Loading label={t('quality.setsLoading')} />;
+  if (sets.status === 'loading')
+    return <Loading label={t('quality.setsLoading')} shape="detail" onRetry={retrySets} />;
   if (sets.status === 'error') return <ErrorState error={sets.error} onRetry={retrySets} />;
 
   const createSet = (name: string) =>
@@ -463,7 +470,8 @@ export const LiveTestSets = ({
         {t.rich('quality.liveSplits', { strong: (c) => <strong>{c}</strong> })}
       </p>
       {current.dataset ? (
-        <>
+        <details className="quality-technical">
+          <summary>{t('qualityPage.technical')}</summary>
           <p>
             {t('quality.langfuseDataset', { connection: current.dataset.connection })}{' '}
             <code>{current.dataset.name}</code>
@@ -475,7 +483,7 @@ export const LiveTestSets = ({
             testSet={current.id}
             connection={current.dataset.connection}
           />
-        </>
+        </details>
       ) : null}
 
       {form ? (
@@ -549,6 +557,7 @@ export const LiveTestSets = ({
         marked={markedIds}
         onClearMarks={() => setMarks(undefined)}
         setFlash={setFlash}
+        {...(openRun && current.id === initialSet ? { openRun } : {})}
       />
 
       <section aria-labelledby="cases-h" className="stack-sm">
@@ -559,7 +568,12 @@ export const LiveTestSets = ({
           <Paragraph data-size="sm">{t('quality.markHint')}</Paragraph>
         ) : null}
         {cases.status === 'loading' ? (
-          <Loading label={t('quality.casesLoading')} />
+          <Loading
+            label={t('quality.casesLoading')}
+            shape="list"
+            headingLevel={3}
+            onRetry={retryCases}
+          />
         ) : cases.status === 'error' ? (
           <ErrorState error={cases.error} onRetry={retryCases} headingLevel={3} />
         ) : (

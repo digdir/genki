@@ -18,17 +18,28 @@ Build, test and publish services. A service is a versioned definition; drafts, t
 
 A playground run whose model or step fails answers `502` as `application/problem+json` with `type: urn:genai:problem:playground-unavailable`, `status: 502`, `setup`, `code` and, when the caller may see it, `detail` and `runId`. The streamed `failed` event carries the same problem.
 
+A playground run on a published version that no longer fits the platform, for example one whose strategy version is gone, answers `422` with `type: urn:genai:problem:definition-outdated`, `setup`, `service`, `version`, `latestVersion` and the validation `errors`. The title names the first problem and points to the newest version, in bokmål or English.
+
+## Playground changes on top of a service version
+
+A playground setup with `service` runs that version's definition. `model`, `instructions` and `datasets` in the same setup change it for that run only; genki never writes the change to the service, a version or a draft. The changed definition is validated and checked against the building block policy like any other.
+
+- `datasets` replaces the version's datasets. A dataset the version already has keeps its settings; any other must exist and be shared with the tenant, or the run answers `422` with the path `setup.datasets[i]`, the same answer for both cases. A setup without a service gets the same check.
+- `instructions` replaces the one instructions field of the strategy the chosen variant runs: the variant's own strategy, or else `spec.strategy`, and the variant's `overrides.instructions` when it sets one. A strategy with several steps keeps its steps; agent-loop uses the replaced text wherever it uses its instructions. A strategy without one instructions field, such as step-flow, whose prompts live in the flow's steps, answers `422` with the path `setup.instructions` and a text in bokmål or English. `takesInstructions` on the version's `strategy` in `GET .../playground/options` tells beforehand.
+- `skills`, `blocks` and `fields` are still ignored with a service.
+
 ## Typical sequence: change and publish a service
 
 1. `GET /tenants/{tenant}/services`: the published services with status and channels. `GET /tenants/{tenant}/service-drafts`: the saved drafts, newest first, with `latestVersion: null` for a service never published (ADR 0051).
 2. `GET /tenants/{tenant}/definitions/services/{id}`: the latest published version (`latest`) and every version (`versions`). For a new service, start from `GET /tenants/{tenant}/definitions/template`.
-3. `PUT /tenants/{tenant}/services/{id}/draft` with `{ definition, files?, baseVersion, revision? }`. Send the `revision` you read; `409` means someone else saved in between.
+3. `PUT /tenants/{tenant}/services/{id}/draft` with `{ definition, files?, baseVersion, revision? }`. Send the `revision` you read; `409` means someone else saved in between. The draft answers `by`, who saved it last, and `byName`, their name or `null`. A test run of the saved draft (`POST .../eval-runs` with `version: draft` and no `definition`) records the revision as `draftRevision` on the run.
 4. `POST /tenants/{tenant}/definitions/test-run` with `{ definition, files?, query }`: one run of the unpublished definition, nothing saved.
+   `GET /tenants/{tenant}/services/{id}/draft/checks`: the checks a publish runs (schema, policies, risk confirmation, step flows, datasets and evaluation gates against recorded test runs) on the saved draft, without publishing it or calling a model; `ready` is `true` when publishing it now would pass, else `problems` lists why. on_publish hooks are not run here: when the organisation has enabled one, the answer has `hooksSkipped: true`, and the hook can still refuse the publish.
 5. `POST /definitions` with `change-reason` and `{ definition, files, draftRevision }`: publishes the draft as the next version (`201`). `409 draft-outdated` means a newer version was published; call `POST .../draft/rebase` first. `422` lists what is invalid.
 6. `GET /tenants/{tenant}/definitions/services/{id}/versions/{version}`: read one version.
 7. `GET /tenants/{tenant}/audit`: the change log, with who published and why.
 
-Pause or archive with `PUT /tenants/{tenant}/services/{id}/lifecycle`. Validate without saving with `POST /definitions/validate`.
+Pause or archive with `PUT /tenants/{tenant}/services/{id}/lifecycle`. `GET` on the same path gives the state with `reason`, `by`, `at` and, when genki knows it, the person's name as `byName`. Validate without saving with `POST /definitions/validate`.
 
 ## Recipes: step flows with plain settings
 
@@ -61,3 +72,7 @@ The portal is one client of these routes; another admin UI, or one an LLM genera
 6. `PUT /tenants/{tenant}/services/{id}/draft` with `{ definition, files?, baseVersion, revision? }` to save, as in the sequence above. Save a new service the same way from its first change, under an id of its own while the name can still change; it is listed by `GET /tenants/{tenant}/service-drafts` until it is published. Publish it under the id it keeps, then delete the draft (ADR 0051).
 7. Open the draft again with `GET /tenants/{tenant}/services/{id}/draft?rebase=clean`. If a newer version was published since the draft started, the API rebases the draft on read when nobody changed the same path (`rebasedFrom` says from which version, and the rebase is audited). When both sides changed a path, the draft is returned unchanged with `behind: true` and `conflicts` (`path`, `published`, `draft`) for the person to choose; save the choice with `PUT .../draft`. A caller without `manage-services` gets `behind` and no rebase.
 8. `POST /tenants/{tenant}/definitions/test-run` to try it (a test run completes the draft the same way first), then `POST /tenants/{tenant}/definitions/complete`, `POST /definitions/validate` and `POST /definitions` with `draftRevision` to publish the completed definition.
+
+To use a model in a service, there is no route of its own: read the draft (`GET .../draft`, or start one from the published definition with `baseVersion`), set `spec.model.primary` to the model's id (from `GET /models` or `GET /tenants/{tenant}/building-blocks/model/{id}`), and save it with `PUT .../draft` and the `revision` you read. `GET .../draft/checks` then says whether a publish would accept it, for example when the model runs outside the service's `spec.model.residency`.
+
+`GET /tenants/{tenant}/services/{id}/environment-history` lists the changes to a service's environments, newest first, for any member with `use-services`: each has `environment`, `action` (`added`, `removed`, `promoted`, `rolled-back` or `described`), `version` (what the environment runs after it, `null` while it follows every publish or once removed), `previousVersion`, `from` on a promotion, `at`, `by`, `byName` when genki knows the name, and `reason`. `environment` filters it and `limit` (1 to 200, default 50) pages it, with `total` the changes that match. Changes saved before the action was recorded are inferred from the versions: an environment that appears or goes is `added` or `removed`, and a version that changed is `changed`, since whether it was a promotion or a rollback is not known. Publishing is not in it: an environment that follows every publish moves without a change of its own. An environment can carry a `description` of who uses it, at most 200 characters: give it when you add the environment, or set or clear it with `PATCH .../environments/{environment}` and `{ description }`.

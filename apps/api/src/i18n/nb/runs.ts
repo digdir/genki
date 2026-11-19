@@ -3,8 +3,10 @@ import { defineNamespace } from '@genai/i18n';
 export const runs = defineNamespace({
   taskStatusOneOf: 'status er en av {values}',
   failModel: 'Vi fikk ikke svar fra modellen.',
+  failModelUnavailable: 'Modellen tjenesten bruker, er ikke tilgjengelig nå.',
   failStrategy: 'Tjenesten feilet underveis.',
   originBuilder: 'Byggeren (utkast)',
+  originTrial: 'Prøvekjøring i byggeren (utkast)',
   originPlayground: 'Prøveområdet (utkast)',
   originSkillTest: 'Test av ferdighet (utkast)',
   originAssistant: 'Byggeassistenten',
@@ -15,6 +17,7 @@ export const runs = defineNamespace({
   failMisconfigured: 'Tjenesten er satt opp feil.',
   failCancelled: 'Kjøringen ble avbrutt.',
   failInterrupted: 'Kjøringen ble avbrutt da plattformen startet på nytt.',
+  failServerStopped: 'Serveren stoppet mens kjøringen pågikk. Prøv igjen.',
   stepFailedReason: 'Steget «{step}» feilet. {reason}',
   skipUnsupportedType: 'Filtypen kan ikke søkes i',
   skipOutsideAccess: 'Utenfor tilgangen til tjenesten',

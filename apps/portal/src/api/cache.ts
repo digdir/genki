@@ -75,7 +75,7 @@ const join = <T>(shared: Shared, signal: AbortSignal): Promise<T> => {
 export const createResponseCache = ({
   now = () => Date.now(),
   freshMs = 10_000,
-  maxAgeMs = 10 * 60_000,
+  maxAgeMs = 12 * 60 * 60_000,
   maxEntries = 300,
 }: CacheOptions = {}) => {
   const id = String(nextId++);

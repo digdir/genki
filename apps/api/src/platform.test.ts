@@ -1,7 +1,17 @@
-import type { Task } from '@genai/contracts';
+import type { Principal, Task } from '@genai/contracts';
 import { describe, expect, it } from 'vitest';
 import { createApp } from './app.js';
-import { auth, digdir, files, klarsprak, other, plugins, principals, setup } from './testkit.js';
+import {
+  auth,
+  bootPlatform,
+  digdir,
+  files,
+  klarsprak,
+  other,
+  plugins,
+  principals,
+  setup,
+} from './testkit.js';
 
 type Json = Record<string, unknown>;
 const body = async <T = Json>(res: Response) => (await res.json()) as T;
@@ -30,6 +40,23 @@ describe('audit of administrative changes', () => {
     );
     expect(audit.map((a) => [a.action, a.target])).toEqual([
       ['platform.service.publish', 'Service:klarsprak@1'],
+    ]);
+  });
+
+  it('names the definition as the target of a publish it refuses', async () => {
+    const { send, admin } = setup();
+
+    await admin.perform(principals.kari as Principal, 'platform.service.publish', {
+      tenant: digdir,
+      definition: klarsprak({ settings: { 'finnes.ikke': 1 } }),
+      reason: 'første versjon',
+    });
+
+    const audit = await listed<{ action: string; target: string; outcome: string }>(
+      await send(`/tenants/${digdir}/audit`, 'kari'),
+    );
+    expect(audit.map((a) => [a.action, a.target, a.outcome])).toEqual([
+      ['platform.service.publish', 'Service:klarsprak', 'rejected'],
     ]);
   });
 
@@ -150,6 +177,34 @@ describe('audit of administrative changes', () => {
     expect(JSON.stringify(events.filter((e) => e.type.startsWith('x.')))).not.toContain(
       'sk-live-123',
     );
+  });
+
+  it('pages the audit log newest first with limit and offset, and says how many entries there are', async () => {
+    const { send } = setup();
+    for (const value of [11, 12, 13])
+      await send(`/tenants/${digdir}/settings/search.topK`, 'kari', {
+        method: 'PUT',
+        body: { value },
+        reason: `topK til ${value}`,
+      });
+
+    const page = await body<{ data: { reason: string }[]; total: number }>(
+      await send(`/tenants/${digdir}/audit?limit=2&offset=1`, 'kari'),
+    );
+    const whole = await body<{ data: { reason: string }[]; total: number }>(
+      await send(`/tenants/${digdir}/audit`, 'kari'),
+    );
+
+    expect(page).toMatchObject({ total: 3 });
+    expect(page.data.map((e) => e.reason)).toEqual(['topK til 12', 'topK til 11']);
+    expect(whole.data.map((e) => e.reason)).toEqual(['topK til 11', 'topK til 12', 'topK til 13']);
+  });
+
+  it('refuses an audit page size outside 1 to 500', async () => {
+    const { send } = setup();
+
+    for (const query of ['limit=0', 'limit=501', 'limit=ti', 'offset=-1'])
+      expect((await send(`/tenants/${digdir}/audit?${query}`, 'kari')).status).toBe(400);
   });
 
   it("keeps a tenant's audit log away from other tenants", async () => {
@@ -668,6 +723,25 @@ describe('task timeline and the operator tenant list', () => {
     ]);
   });
 
+  it("lists the tenant's services that set their own value for a setting, to its members only", async () => {
+    const { send, publish } = setup();
+    await publish('kari', klarsprak({ settings: { 'search.topK': 20 } }));
+    await publish('kari', klarsprak({ id: 'enkel' }));
+    await publish('ola', klarsprak({ tenant: other, settings: { 'search.topK': 5 } }));
+
+    const own = await body<{ data: unknown[] }>(
+      await send(`/tenants/${digdir}/settings/overrides?key=search.topK`, 'kari'),
+    );
+    const outsider = await send(`/tenants/${digdir}/settings/overrides?key=search.topK`, 'ola');
+    const unknown = await send(`/tenants/${digdir}/settings/overrides?key=finnes.ikke`, 'kari');
+    const missing = await send(`/tenants/${digdir}/settings/overrides`, 'kari');
+
+    expect(own.data).toEqual([{ service: 'klarsprak', name: 'Klarspråk', value: 20 }]);
+    expect(outsider.status).toBe(404);
+    expect(unknown.status).toBe(404);
+    expect(missing.status).toBe(400);
+  });
+
   it('lists every tenant with its service count for operators only', async () => {
     const { send, publish } = setup();
     await publish('kari', klarsprak());
@@ -699,9 +773,31 @@ describe('task timeline and the operator tenant list', () => {
     expect(tenants.find((t) => t.orgNumber === other)?.name).toBe('Testetaten');
   });
 
-  it('leaves an archived service out of the tenant service count', async () => {
-    const { send, publish } = setup({ lifecycle: async () => ({ state: 'archived' }) });
+  it('names an organisation known only by its number from Enhetsregisteret, for the person and for operators', async () => {
+    const { send, publish } = setup({
+      registeredName: async (org) => (org === digdir ? 'DIGITALISERINGSDIREKTORATET' : undefined),
+    });
     await publish('kari', klarsprak());
+
+    const me = (await (await send('/me', 'kari')).json()) as {
+      organisations: { orgNumber: string; name: string }[];
+    };
+    const tenants = await listed<{ orgNumber: string; name: string }>(
+      await send('/operator/tenants', 'operator'),
+    );
+
+    expect(me.organisations.find((o) => o.orgNumber === digdir)?.name).toBe(
+      'DIGITALISERINGSDIREKTORATET',
+    );
+    expect(tenants.find((t) => t.orgNumber === digdir)?.name).toBe('DIGITALISERINGSDIREKTORATET');
+    expect(tenants.find((t) => t.orgNumber === other)?.name).toBe('Testetaten');
+  });
+
+  it('leaves an archived service out of the tenant service count', async () => {
+    let state = 'active';
+    const { send, publish } = setup({ lifecycle: async () => ({ state }) });
+    await publish('kari', klarsprak());
+    state = 'archived';
 
     const tenants = await listed<{ orgNumber: string; services: number }>(
       await send('/operator/tenants', 'operator'),
@@ -802,5 +898,25 @@ describe("a tenant's change list", () => {
       actor: 'employee:test:kristin@digdir.example',
       actorName: 'Kristin Entra',
     });
+  });
+});
+
+describe('the signed-in person', () => {
+  it('answers /me with the email the login carried, and without one when it carried none', async () => {
+    const { send } = await bootPlatform({
+      people: {
+        kari: {
+          kind: 'employee',
+          issuer: 'test',
+          subject: 'kari',
+          tenant: digdir,
+          email: 'kari@digdir.no',
+        },
+        ola: { kind: 'employee', issuer: 'test', subject: 'ola', tenant: digdir },
+      },
+    });
+
+    expect(await body(await send('/me', 'kari'))).toMatchObject({ email: 'kari@digdir.no' });
+    expect(await body(await send('/me', 'ola'))).not.toHaveProperty('email');
   });
 });

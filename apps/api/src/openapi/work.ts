@@ -17,6 +17,9 @@ import { customRuleSpec, ruleKinds } from '@genai/guardrails';
 import { hookPoints, hookSpec } from '@genai/hooks';
 import { Problem, problemContent, RunErasure } from '../http.js';
 import type { PlatformModuleFactory } from '../platform-modules.js';
+import { incidentResolvedType } from '../platform-status.js';
+import { quotaRequestDecidedType, quotaRequestPendingType } from '../quota-requests.js';
+import { runFinishedType, runNotCancellableType } from '../tenant-run-cancel.js';
 import { sinkJudgeFields, staleJudgesField } from './services.js';
 
 /** A run as readers get it: its lease (owner, heartbeatAt) is never shown. */
@@ -108,7 +111,18 @@ const BySource = z
   .array(z.object({ source: z.enum(['genki', 'gateway']), usage: Usage }))
   .optional()
   .describe('The sum split per source; only when an AI gateway is configured');
-const UsageWithRuns = Usage.extend({ runs: z.number().int(), bySource: BySource });
+const UsageWithRuns = Usage.extend({
+  runs: z.number().int(),
+  failedRequests: z.number().int().describe('The runs among runs that failed'),
+  bySource: BySource,
+});
+const PeriodTotals = UsageWithRuns.extend({
+  unpricedModels: z
+    .array(z.string())
+    .describe(
+      'Models with use in the period and no price in the model list; costMicroNok then counts only the priced part',
+    ),
+});
 
 const OperationKind = z
   .object({
@@ -239,8 +253,23 @@ const TaskBase = z.object({
   endedAt: z.string().nullable(),
 });
 
+const RunFailure = z
+  .object({
+    code: z.string().describe('The run error code, such as deadline_exceeded'),
+    reason: z.string().describe('A fixed sentence for the code; never provider or model text'),
+    step: z.string().optional().describe('The step that failed, in a step flow'),
+    detail: z
+      .string()
+      .optional()
+      .describe(
+        "Set only when every search in the run failed and that explains the failure: on strategy_error, or on deadline_exceeded when the searches timed out, such as 'Every search timed out.'. A fixed translated sentence, never engine or model text",
+      ),
+  })
+  .openapi('RunFailure');
+
 const TaskRow = TaskBase.extend({
   usage: Usage.optional().describe('Only for callers with view-usage'),
+  failure: RunFailure.optional().describe('Only on a failed run'),
   serviceName: z.string(),
   excerpt: z
     .string()
@@ -249,15 +278,31 @@ const TaskRow = TaskBase.extend({
   erasure: RunErasure.optional(),
   actor: z.object({
     kind: z.enum(['api-key', 'person', 'system']),
+    id: z
+      .string()
+      .optional()
+      .describe(
+        "employee:<issuer>:<subject> for a person or api-key:<key id> for a key of the caller's own tenant, as the actor filter takes it; absent for a caller from another tenant",
+      ),
     name: z.string().optional(),
   }),
+  channel: z
+    .enum(['api-key', 'interface', 'api', 'playground', 'batch'])
+    .nullable()
+    .describe(
+      "How the run came in: api-key (a key not bound to a frontend), interface (a key bound to a frontend, or a login through a registered browser frontend), api (another token on /v1, REST, MCP or A2A: a person's, or a registered Maskinporten client's), playground (a trial run), batch (an item of a batch run's latest attempt); null when the run records none of these, such as a trigger",
+    ),
+  frontend: z
+    .string()
+    .optional()
+    .describe(
+      "The registered frontend the run came in through, from the verified login or key; for runs of the caller's own tenant only",
+    ),
 }).openapi('TaskRow');
 
 const MyTask = TaskBase.extend({
   serviceName: z.string().optional(),
-  failure: z
-    .object({ code: z.string(), reason: z.string(), step: z.string().optional() })
-    .optional(),
+  failure: RunFailure.optional(),
 }).openapi('MyTask');
 
 const TrackedTask = z
@@ -894,7 +939,8 @@ const taskRoutes: RouteConfig[] = [
   createRoute({
     method: 'get',
     path: '/tenants/{tenant}/tasks',
-    summary: "The tenant's service runs, or its playground runs, newest first",
+    summary:
+      "The tenant's service runs, or its playground runs, newest first, with the failure reason of failed runs",
     description: described(member, notAudited),
     request: {
       params: z.object({ tenant }),
@@ -903,17 +949,88 @@ const taskRoutes: RouteConfig[] = [
         origin: z
           .enum(['playground'])
           .optional()
-          .describe('playground lists playground runs instead of service runs'),
+          .describe(
+            'playground lists trial runs instead of service runs: playground runs and the trial runs of a draft in the builder (POST /tenants/{tenant}/definitions/test-run)',
+          ),
         status: taskStatus.optional(),
         service: z.string().optional(),
         environment: z.string().optional().describe('Only runs in this service environment'),
+        actor: z
+          .string()
+          .optional()
+          .describe(
+            "me for the caller's own runs, or an actor.id from a run row: only runs that actor of the caller's tenant started",
+          ),
+        frontend: z
+          .string()
+          .optional()
+          .describe(
+            "The id of a registered frontend: only runs of the caller's tenant that came in through it",
+          ),
         from: z.string().optional().describe('ISO time, inclusive'),
         to: z.string().optional().describe('ISO time, inclusive'),
         limit: z.string().optional().describe('1 to 500, default 100'),
+        offset: z.string().optional().describe('Runs to skip, 0 to 100000, default 0'),
+        q: z
+          .string()
+          .optional()
+          .describe(
+            'Text in the run id, or in the question for callers with manage-services, at most 200 characters; searches the newest 2000 runs that match the other filters, and never the question of an erased run',
+          ),
       }),
     },
     responses: {
-      200: json(z.object({ data: z.array(TaskRow), total: z.number().int() }), 'Runs'),
+      200: json(
+        z.object({
+          data: z.array(TaskRow),
+          total: z.number().int().describe('Runs that match, before offset and limit'),
+          offset: z.number().int(),
+          limit: z.number().int(),
+          q: z.string().optional().describe('The search as applied, in lower case'),
+          searched: z
+            .number()
+            .int()
+            .optional()
+            .describe('With q: how many of the newest runs were searched'),
+        }),
+        'Runs',
+      ),
+      ...memberRead,
+      400: problem('An actor that is not me or an actor id'),
+    },
+  }),
+  createRoute({
+    method: 'get',
+    path: '/tenants/{tenant}/service-failures',
+    summary:
+      "Each service's failed runs since a time, grouped by failure code, the most common first",
+    description: described(member, notAudited),
+    request: {
+      params: z.object({ tenant }),
+      headers: readHeaders,
+      query: z.object({
+        from: z
+          .string()
+          .optional()
+          .describe('ISO time, inclusive; default the start of today in Norway (Europe/Oslo)'),
+      }),
+    },
+    responses: {
+      200: json(
+        z.object({
+          from: z.string(),
+          data: z.array(
+            z.object({
+              service: z.string(),
+              failed: z.number().int(),
+              causes: z
+                .array(z.object({ code: z.string(), reason: z.string(), count: z.number().int() }))
+                .describe('By count, the most common cause first; unknown when a run left no code'),
+            }),
+          ),
+        }),
+        'Failure causes per service',
+      ),
       ...memberRead,
     },
   }),
@@ -1002,6 +1119,24 @@ const taskRoutes: RouteConfig[] = [
     ),
     request: { params: z.object({ tenant, task }), headers: namedWriteHeaders },
     responses: { 200: json(ReviewView, 'Approved'), ...reviewProblems },
+  }),
+  createRoute({
+    method: 'post',
+    path: '/tenants/{tenant}/tasks/{task}/cancel',
+    summary: 'Stop a run started through an API entry point; waits up to 2 seconds for it to end',
+    description: described(
+      'use-services for who started the run, otherwise manage-services',
+      'Audited. A cancelled run answers 200 again without a new entry.',
+    ),
+    request: { params: z.object({ tenant, task }), headers: namedWriteHeaders },
+    responses: {
+      200: json(z.object({ task: z.string(), status: z.literal('cancelled') }), 'Cancelled'),
+      202: json(z.object({ task: z.string(), status: taskStatus }), 'Stop asked, not landed yet'),
+      409: problem(
+        `${runFinishedType}: the run has finished; ${runNotCancellableType}: it was not started through an API entry point`,
+      ),
+      ...memberWrite,
+    },
   }),
   createRoute({
     method: 'get',
@@ -1166,6 +1301,13 @@ const ServiceEvalRun = z
     testSet: z.string(),
     testSetVersion: z.number().int(),
     version: z.union([z.literal('draft'), z.number().int()]),
+    draftRevision: z
+      .number()
+      .int()
+      .optional()
+      .describe(
+        'The revision of the saved draft the run tested; left out when it ran a published version or an unsaved definition',
+      ),
     variant: z.string().optional(),
     environment: z
       .string()
@@ -1523,26 +1665,42 @@ const evalRoutes: RouteConfig[] = [
   createRoute({
     method: 'get',
     path: '/eval-runs/compare',
-    summary: 'Paired bootstrap comparison of two evaluation runs on one metric',
+    summary: 'Paired bootstrap comparison of two evaluation runs, one per metric',
     description: described(
       'Access to the tenant of both runs; an operator needs a support session',
       notAudited,
     ),
     request: {
       headers: readHeaders,
-      query: z.object({ baseline: z.string(), candidate: z.string(), metric: z.string() }),
+      query: z.object({
+        baseline: z.string(),
+        candidate: z.string(),
+        metric: z.string().openapi({
+          description: 'One metric or a comma list, such as `recall@10,mrr@10,ndcg@10`',
+        }),
+        allowDifferent: z.string().optional().openapi({
+          description:
+            'A comma list of what the runs may differ in: `data`, `services`, `servedModels`. A commit or judges never may',
+        }),
+      }),
     },
     responses: {
       200: json(
         z.object({
-          n: z.number().int(),
-          meanBaseline: z.number(),
-          meanCandidate: z.number(),
-          difference: z.number(),
-          ci: z.tuple([z.number(), z.number()]),
+          allowedDifferent: z.array(z.enum(['data', 'services', 'servedModels'])),
+          comparisons: z.array(
+            z.object({
+              metric: z.string(),
+              n: z.number().int(),
+              meanBaseline: z.number(),
+              meanCandidate: z.number(),
+              difference: z.number(),
+              ci: z.tuple([z.number(), z.number()]),
+            }),
+          ),
           staleJudges: staleJudgesField,
         }),
-        'Comparison',
+        'One paired comparison per metric, in the order asked',
       ),
       ...evalProblems,
       400: problem('The runs cannot be compared'),
@@ -2049,6 +2207,9 @@ const MatrixRunView = z.object({
   costNok: z.number().nullable(),
   testSets: z.number().int(),
   done: z.number().int(),
+  casesDone: z.number().int(),
+  casesTotal: z.number().int(),
+  resumed: z.number().int().optional(),
   error: z.string().optional(),
 });
 
@@ -2659,22 +2820,44 @@ const qualityRoutes: RouteConfig[] = [
   }),
 ];
 
+const Latency = z.object({
+  p50Ms: z.number().int(),
+  p95Ms: z.number().int(),
+  runs: z.number().int().describe('Ended runs the percentiles are taken over'),
+});
+
 const Day = z.object({
   date: z.string(),
   usage: Usage.extend({ bySource: BySource }),
-  byService: z.record(z.string(), UsageWithRuns),
+  byService: z.record(
+    z.string(),
+    UsageWithRuns.extend({
+      latency: Latency.nullable().describe(
+        "Milliseconds from start to end of the service's runs started this day that have ended, by nearest rank; null when none has",
+      ),
+    }),
+  ),
   byModel: z.record(z.string(), Usage),
+  testing: Usage.describe('Test-set and playground runs on this day'),
+  ingestion: Usage.describe('Ingestion on this day'),
 });
 
 const TenantUsage = z
   .object({
     from: z.string(),
     to: z.string(),
-    priced: z.boolean(),
-    totals: UsageWithRuns.describe('The sum of genki and the AI gateway, when one is configured'),
+    priced: z.boolean().describe('The same as totals.priced'),
+    totals: PeriodTotals.describe('The sum of genki and the AI gateway, when one is configured'),
     daily: z.array(Day),
     byService: z.array(
-      z.object({ service: z.string(), usage: UsageWithRuns, title: z.string().optional() }),
+      z.object({
+        service: z.string(),
+        usage: UsageWithRuns,
+        latency: Latency.nullable().describe(
+          "Milliseconds from a run's start to its end in the period, by nearest rank; null when no run ended",
+        ),
+        title: z.string().optional(),
+      }),
     ),
     byModel: z.array(
       z.object({
@@ -2711,6 +2894,16 @@ const TenantUsage = z
       usage: Usage,
       byOrigin: z.array(z.object({ origin: z.string(), usage: Usage })),
     }),
+    quota: z
+      .object({
+        usedTokens: z.number().int(),
+        monthlyTokens: z.number().int(),
+        usedPercent: z.number(),
+        alertPercent: z.number(),
+        alert: z.boolean().describe('True once this month has used alertPercent of the quota'),
+      })
+      .optional()
+      .describe('The monthly token quota, for the calendar month, whatever days asks for'),
   })
   .openapi('TenantUsage');
 
@@ -2728,6 +2921,77 @@ const AuditRecord = z
     reason: z.string(),
   })
   .openapi('AuditRecord');
+
+const OperationsOverview = z
+  .object({
+    incidents: z.array(z.object({ title: z.string(), text: z.string() })),
+    pastIncidents: z
+      .array(z.object({ date: z.string(), title: z.string(), text: z.string() }))
+      .optional()
+      .describe(
+        'Resolved incidents that concerned the tenant in the last 90 days, newest first; date is when it started',
+      ),
+    components: z.array(
+      z.object({
+        name: z.string(),
+        status: z.enum(['normal', 'degraded', 'down']),
+        errorRate: z.string().optional(),
+        p95: z.string().optional(),
+        note: z.string().optional(),
+      }),
+    ),
+    queueStats: z.array(z.object({ label: z.string(), value: z.string() })),
+    queue: z.array(
+      z.object({
+        type: z.string(),
+        what: z.string(),
+        status: z.enum(['running', 'waiting', 'failed']),
+        age: z.string(),
+        at: z.string(),
+      }),
+    ),
+    triggers: z.array(
+      z.object({
+        tenant: z.string(),
+        what: z.string(),
+        error: z.string(),
+        failedAt: z.string(),
+        lastSuccess: z.string().optional(),
+      }),
+    ),
+  })
+  .openapi('OperationsOverview');
+
+const QuotaRequest = z
+  .object({
+    id: z.string(),
+    monthlyTokens: z.number().int().describe('The monthly token quota asked for'),
+    reason: z.string(),
+    requestedBy: z.string(),
+    requestedByName: z.string().optional(),
+    requestedAt: z.string(),
+    state: z.enum(['pending', 'approved', 'rejected']),
+    decision: z
+      .object({
+        by: z.string(),
+        byName: z.string().optional(),
+        at: z.string(),
+        reason: z.string(),
+      })
+      .optional(),
+  })
+  .openapi('QuotaRequest');
+
+const Incident = z
+  .object({
+    id: z.string(),
+    title: z.string(),
+    text: z.string(),
+    tenants: z.array(z.string()).describe('The tenants it concerns; empty means all'),
+    startedAt: z.string(),
+    resolvedAt: z.string().optional(),
+  })
+  .openapi('Incident');
 
 const operationsRoutes: RouteConfig[] = [
   createRoute({
@@ -2767,7 +3031,7 @@ const operationsRoutes: RouteConfig[] = [
         z.object({
           from: z.string(),
           to: z.string(),
-          data: z.array(z.object({ orgNumber: z.string(), usage: UsageWithRuns })),
+          data: z.array(z.object({ orgNumber: z.string(), usage: PeriodTotals })),
         }),
         'Usage',
       ),
@@ -2815,44 +3079,137 @@ const operationsRoutes: RouteConfig[] = [
   }),
   createRoute({
     method: 'get',
+    path: '/tenants/{tenant}/quota-requests',
+    summary: "The tenant's requests for a larger monthly token quota, newest first",
+    description: described('view-usage', notAudited),
+    request: { params: z.object({ tenant }), headers: readHeaders },
+    responses: {
+      200: json(z.object({ data: z.array(QuotaRequest) }), 'Requests'),
+      403: problem('Missing right'),
+      ...memberRead,
+    },
+  }),
+  createRoute({
+    method: 'post',
+    path: '/tenants/{tenant}/quota-requests',
+    summary:
+      'Ask Digdir for a larger monthly token quota; the change reason is the reason for the request',
+    description: described(
+      'manage-services',
+      audited,
+      'An operator decides it; an approval does not change the quota by itself.',
+    ),
+    request: {
+      params: z.object({ tenant }),
+      headers: namedWriteHeaders,
+      body: body(z.object({ monthlyTokens: z.number().int().min(1) })),
+    },
+    responses: {
+      201: json(QuotaRequest, 'Requested'),
+      409: problem(`${quotaRequestPendingType}: a request is already waiting for a decision`),
+      ...memberWrite,
+    },
+  }),
+  createRoute({
+    method: 'get',
+    path: '/tenants/{tenant}/status',
+    summary:
+      "Platform health as the tenant sees it: shared components, the tenant's own runs, ingestion and failing schedules, and open incidents that concern it",
+    description: described(member, notAudited),
+    request: { params: z.object({ tenant }), headers: readHeaders },
+    responses: { 200: json(OperationsOverview, 'Status'), ...memberRead },
+  }),
+  createRoute({
+    method: 'get',
+    path: '/operator/quota-requests',
+    summary: 'Quota requests from every tenant, newest first',
+    description: described(operator, notAudited),
+    request: {
+      query: z.object({ state: z.enum(['pending', 'approved', 'rejected']).optional() }),
+    },
+    responses: {
+      200: json(
+        z.object({
+          data: z.array(QuotaRequest.extend({ tenant: z.string(), tenantName: z.string() })),
+        }),
+        'Requests',
+      ),
+      400: problem('Unknown state'),
+      ...operatorOnly,
+    },
+  }),
+  createRoute({
+    method: 'post',
+    path: '/operator/quota-requests/{tenant}/{id}/decision',
+    summary:
+      'Approve or reject a quota request; the quota itself is changed with usage.monthlyTokens in a support session',
+    description: described(operator, audited),
+    request: {
+      params: z.object({ tenant, id: pathParam('id', '7d4c1b3e-1f0a-4e2b-9c8d-5a6b7c8d9e0f') }),
+      headers: operatorWriteHeaders,
+      body: body(z.object({ decision: z.enum(['approved', 'rejected']) })),
+    },
+    responses: {
+      200: json(QuotaRequest, 'Decided'),
+      400: problem('Invalid decision or missing change reason'),
+      404: problem('No such request'),
+      409: problem(`${quotaRequestDecidedType}: the request is already decided`),
+      ...operatorOnly,
+    },
+  }),
+  createRoute({
+    method: 'get',
+    path: '/operator/incidents',
+    summary: 'Every incident operators have written, open and resolved, newest first',
+    description: described(operator, notAudited),
+    responses: { 200: json(z.object({ data: z.array(Incident) }), 'Incidents'), ...operatorOnly },
+  }),
+  createRoute({
+    method: 'post',
+    path: '/operator/incidents',
+    summary:
+      'Write an incident that tenants see in their status; without tenants it concerns all of them',
+    description: described(operator, audited),
+    request: {
+      headers: operatorWriteHeaders,
+      body: body(
+        z.object({
+          title: z.string().max(200),
+          text: z.string().max(4000),
+          tenants: z.array(z.string()).optional(),
+        }),
+      ),
+    },
+    responses: {
+      201: json(Incident, 'Written'),
+      400: problem('Invalid incident or missing change reason'),
+      ...operatorOnly,
+    },
+  }),
+  createRoute({
+    method: 'post',
+    path: '/operator/incidents/{id}/resolve',
+    summary: 'Mark an incident resolved; tenants stop seeing it',
+    description: described(operator, audited),
+    request: {
+      params: z.object({ id: pathParam('id', '7d4c1b3e-1f0a-4e2b-9c8d-5a6b7c8d9e0f') }),
+      headers: operatorWriteHeaders,
+    },
+    responses: {
+      200: json(Incident, 'Resolved'),
+      400: problem('Missing change reason'),
+      404: problem('No such incident'),
+      409: problem(`${incidentResolvedType}: the incident is already resolved`),
+      ...operatorOnly,
+    },
+  }),
+  createRoute({
+    method: 'get',
     path: '/operator/operations',
     summary: 'Incidents, component health, queue and failing triggers',
     description: described(operator, notAudited),
     responses: {
-      200: json(
-        z.object({
-          incidents: z.array(z.object({ title: z.string(), text: z.string() })),
-          components: z.array(
-            z.object({
-              name: z.string(),
-              status: z.enum(['normal', 'degraded', 'down']),
-              errorRate: z.string().optional(),
-              p95: z.string().optional(),
-              note: z.string().optional(),
-            }),
-          ),
-          queueStats: z.array(z.object({ label: z.string(), value: z.string() })),
-          queue: z.array(
-            z.object({
-              type: z.string(),
-              what: z.string(),
-              status: z.enum(['running', 'waiting', 'failed']),
-              age: z.string(),
-              at: z.string(),
-            }),
-          ),
-          triggers: z.array(
-            z.object({
-              tenant: z.string(),
-              what: z.string(),
-              error: z.string(),
-              failedAt: z.string(),
-              lastSuccess: z.string().optional(),
-            }),
-          ),
-        }),
-        'Operations',
-      ),
+      200: json(OperationsOverview, 'Operations'),
       ...operatorOnly,
     },
   }),
@@ -2904,7 +3261,7 @@ const operationsRoutes: RouteConfig[] = [
             }),
           ),
           recentTasks: z.array(TaskBase.extend({ usage: Usage.optional() })),
-          usageThisMonth: UsageWithRuns.optional(),
+          usageThisMonth: PeriodTotals.optional(),
           qualityWarnings: z.array(z.object({ service: z.string(), message: z.string() })),
           review: z.object({
             pendingToolChanges: z.number().int(),
@@ -3154,6 +3511,7 @@ const ToolResult = z
           excerpt: z.string().optional(),
           version: z.string().optional(),
           published_at: z.string().optional(),
+          publisher: z.string().optional(),
         }),
       )
       .optional(),

@@ -17,6 +17,8 @@ const accentPins = [
   '--genai-answer-footnote-background',
   '--genai-answer-footnote-border-color',
   '--genai-answer-footnote-color',
+  '--genai-answer-footnote-current-background',
+  '--genai-answer-footnote-current-color',
   '--genai-answer-footnote-hover-background',
   '--genai-answer-footnote-hover-color',
   '--genai-answer-sources-used-link-color',
@@ -25,7 +27,7 @@ const accentPins = [
 const infoPins = ['--genai-answer-note-icon-color'];
 
 describe('the answer styles', () => {
-  it('follow the host’s colour family, but for the seven deliberate pins', () => {
+  it('follow the host’s colour family, but for the nine deliberate pins', () => {
     const pinned = uses
       .filter((use) =>
         /--ds-color-(?:accent|neutral|brand\d|success|warning|danger|info)-/.test(use.fallback),

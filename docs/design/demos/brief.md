@@ -64,7 +64,15 @@ States to show: an empty library, a demo being recorded, a demo marked «Utdater
 - The `voice` job reads the lines aloud in the `smoke-review` environment with the review identity (`AZURE_REVIEW_*`), and keeps the clips in a cache keyed by the demo files. It is skipped when `SPEECH_RESOURCE` is not set, and the demos are then recorded with subtitles only. To turn it on, set `SPEECH_RESOURCE` and `SPEECH_RESOURCE_GROUP` (and `SPEECH_SUBSCRIPTION` if it is not the review subscription) in `smoke-review`, and give the review identity _Cognitive Services Speech User_ on that resource.
 - The `record` job signs in with the smoke test's key (`SMOKE_API_KEY` in `genki-test`) and has no Azure identity. It keeps each demo's mp4, srt and any `failed-step-<n>.png` as the `demos` artifact for 30 days.
 - The demos run in the smoke test's own organisation, not a demo organisation. They pass by screens that can show who made a key or a version, so check a recording before it leaves Digdir.
-- `test-set` needs at least one earlier run of the smoke service's test set, and `playground` asks the model one question on every run.
+- `test-set` needs at least one earlier run of the smoke service's test set, and `playground` asks the smoke service one question on every run, about 0.2 kr on its cheapest model. No other demo calls a model: `playground-compare` fills in the question but does not send it.
+- The console's audit log is not recorded: the smoke key may read only the operator screens in the test runner's view, and the audit log is not one of them. `console-models` points at it instead.
+- A failed demo names its step and leaves `failed-step-<n>.png` in the artifact. A start page that never shows `ready` fails as step 0.
+
+## Phase 2 as built
+
+- The `record` job hands each recording to the library when `DEMO_RECORDER_KEY` (a secret in `genki-test`) and `SMOKE_API_URL` are set: it starts a recording, uploads a screenshot after each step (`step-<n>.png`, which the console shows as progress), the video, its subtitles, a still (`poster.jpg`) and a sample of the voice (`sample.mp3`), and finishes it as recorded or failed with the step, the command as JSON and the error. The API needs `DEMO_RECORDER_KEY_SHA256`.
+- The console has every screen above: the library with a recording in progress, the detail with the recording history and «Ta opp på nytt», the editor («Ny demo» and «Rediger») with «Prøv dette steget» and «Vis YAML», «Opptak pågår» with progress per step, the latest screenshot and cancel, «Feilet opptak» with the step, what the recorder looked for and what it found, and «Innstillinger for demoer».
+- «Ta opp på nytt» and «Prøv dette steget» need the recorder job. Until it runs, the API answers `503 recorder-not-set-up`, and the console shows the workflow instead of the buttons. The chat with `demo-writer` comes with phase 3.
 
 ## Add a demo
 

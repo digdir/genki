@@ -234,6 +234,7 @@ describe('the worker and the knowledge queues', () => {
       'knowledge.export',
       'knowledge.fill',
       'knowledge.index',
+      'knowledge.replace',
       'knowledge.seed',
     ]);
     const id = crypto.randomUUID();
