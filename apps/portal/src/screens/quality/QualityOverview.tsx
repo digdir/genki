@@ -91,19 +91,34 @@ const minutesOf = (runs: EvalRun[]) => {
   return cases > 0 ? seconds / cases : undefined;
 };
 
-const estimateText = (t: T, f: Format, runs: EvalRun[], count: number) => {
-  const cases = t('qualityTabs.caseCount', { count });
+const estimateOf = (t: T, f: Format, runs: EvalRun[], count: number) => {
   const perCase = minutesOf(runs);
-  if (perCase === undefined) return cases;
+  if (perCase === undefined) return {};
   const time = t('qualityTabs.minutes', { count: Math.max(1, Math.round((perCase * count) / 60)) });
   const cost = perCaseFromRuns(runs);
   return cost === undefined
-    ? t('qualityTabs.estimateTime', { cases, time })
-    : t('qualityTabs.estimateAll', {
-        cases,
+    ? { time }
+    : {
         time,
         cost: f.currency(Math.max(1, Math.round((cost * count) / 1_000_000)), { digits: 0 }),
-      });
+      };
+};
+
+const estimateText = (t: T, f: Format, runs: EvalRun[], count: number) => {
+  const cases = t('qualityTabs.caseCount', { count });
+  const { time, cost } = estimateOf(t, f, runs, count);
+  if (time === undefined) return cases;
+  return cost === undefined
+    ? t('qualityTabs.estimateTime', { cases, time })
+    : t('qualityTabs.estimateAll', { cases, time, cost });
+};
+
+const confirmText = (t: T, f: Format, runs: EvalRun[], count: number) => {
+  const { time, cost } = estimateOf(t, f, runs, count);
+  if (time === undefined) return t('quality.confirmRunPaid');
+  return cost === undefined
+    ? t('quality.confirmRunTime', { time })
+    : t('quality.confirmRunCost', { time, cost });
 };
 
 const RunAgain = ({
@@ -142,7 +157,7 @@ const RunAgain = ({
           <Heading level={3} data-size="2xs">
             {t('quality.confirmRunTitle', { count: set.cases })}
           </Heading>
-          <Paragraph data-size="sm">{estimate}</Paragraph>
+          <Paragraph data-size="sm">{confirmText(t, f, own, set.cases)}</Paragraph>
           <div className="actions">
             <Button
               variant="primary"
@@ -506,6 +521,20 @@ const judgeOf = (
   };
 };
 
+const judgeDraft = (gate: ConfigEntry, runs: EvalRun[], publishedVersion: number | undefined) => {
+  const testSet = measuredRun(runs)?.testSet ?? completedRuns(runs)[0]?.testSet;
+  const baseline = completedRuns(runs).find(
+    (r) => r.testSet === testSet && r.version === publishedVersion,
+  );
+  return judgeOf(gate.spec as GateSpec, latestDraftRun(runs, testSet), baseline);
+};
+
+export const gateStops = (
+  gate: ConfigEntry,
+  runs: EvalRun[],
+  publishedVersion: number | undefined,
+) => judgeDraft(gate, runs, publishedVersion).state === 'stops';
+
 export const gateStopReason = (
   t: T,
   f: Format,
@@ -514,11 +543,7 @@ export const gateStopReason = (
   publishedVersion: number | undefined,
 ) => {
   const spec = gate.spec as GateSpec;
-  const testSet = measuredRun(runs)?.testSet ?? completedRuns(runs)[0]?.testSet;
-  const baseline = completedRuns(runs).find(
-    (r) => r.testSet === testSet && r.version === publishedVersion,
-  );
-  const judged = judgeOf(spec, latestDraftRun(runs, testSet), baseline);
+  const judged = judgeDraft(gate, runs, publishedVersion);
   if (spec.kind === 'threshold' && judged.value !== undefined)
     return t('qualityTabs.gateBelow', {
       metric:

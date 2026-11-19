@@ -15,6 +15,7 @@ import { useAsync } from '../../hooks';
 import type { PlainKey, T } from '../../i18n';
 import type { FeedbackItem } from '../../types';
 import { servicePath } from '../service/sections';
+import { CandidateReview } from './CandidateReview';
 import { active, versionText } from './RunHistory';
 import {
   CasesSection,
@@ -70,7 +71,7 @@ const TestSetCards = ({
   );
   const proposals =
     candidates.status === 'ready'
-      ? candidates.data.filter((c) => c.status === 'pending-review').length
+      ? candidates.data.filter((c) => c.status.startsWith('pending')).length
       : undefined;
   return (
     <section aria-labelledby="q-sets" className="quality-section q-sets">
@@ -409,6 +410,33 @@ export const FeedbackSection = ({
         {t('qualityPage.allFeedback')}
       </Link>
     </section>
+  );
+};
+
+export const FeedbackProposals = ({
+  api,
+  tenant,
+  serviceId,
+  setFlash,
+}: {
+  api: ApiClient;
+  tenant: string;
+  serviceId: string;
+  setFlash: SetFlash;
+}) => {
+  const [sets] = useAsync(
+    (signal) => api.quality.testSets(tenant, serviceId, signal).catch(() => []),
+    [api, tenant, serviceId],
+  );
+  return (
+    <CandidateReview
+      api={api}
+      tenant={tenant}
+      serviceId={serviceId}
+      sets={sets.status === 'ready' ? sets.data : []}
+      setFlash={setFlash}
+      onAccepted={() => undefined}
+    />
   );
 };
 

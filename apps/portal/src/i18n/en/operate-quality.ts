@@ -258,6 +258,10 @@ export const qualityArea = {
       other: 'Run the test set with {count} test cases?',
     },
     confirmRun: 'Start the run',
+    confirmRunPaid: 'Each test case is a paid run.',
+    confirmRunTime: 'Takes about {time}. Each test case is a paid run.',
+    confirmRunCost:
+      'Estimated cost: about {cost}. Takes about {time}. Each test case is a paid run.',
     estimateLoading: 'Estimating the cost',
     estimateFromRuns:
       'Estimated cost: about {cost}. The estimate is the average per test case in earlier runs of the test set, times {count}. Each test case is a paid run.',

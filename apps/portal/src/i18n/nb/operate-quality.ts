@@ -256,6 +256,10 @@ export const qualityArea = {
       other: 'Kjøre testsettet med {count} testtilfeller?',
     },
     confirmRun: 'Start kjøringen',
+    confirmRunPaid: 'Hvert testtilfelle er en betalt kjøring.',
+    confirmRunTime: 'Tar omtrent {time}. Hvert testtilfelle er en betalt kjøring.',
+    confirmRunCost:
+      'Anslått kostnad: omtrent {cost}. Tar omtrent {time}. Hvert testtilfelle er en betalt kjøring.',
     estimateLoading: 'Anslår kostnaden',
     estimateFromRuns:
       'Anslått kostnad: omtrent {cost}. Anslaget er snittet per testtilfelle i tidligere kjøringer av testsettet, ganget med {count}. Hvert testtilfelle er en betalt kjøring.',
