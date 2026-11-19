@@ -41,6 +41,7 @@ const throughAdminTasks = [
   'DELETE /tenants/:tenant/maskinporten-clients/:clientId',
   'DELETE /tenants/:tenant/projects/:project',
   'DELETE /tenants/:tenant/projects/:project/subscriptions/:selection',
+  'DELETE /tenants/:tenant/secrets/:name',
   'DELETE /tenants/:tenant/services/:id/draft',
   'DELETE /tenants/:tenant/services/:id/environments/:environment',
   'DELETE /tenants/:tenant/settings/:key',

@@ -65,6 +65,13 @@ export interface QueueCounts {
   deadLetters: number;
 }
 
+export interface QueueBacklog {
+  queue: string;
+  queued: number;
+  /** How long the oldest job that may start now has waited; deferred jobs do not count. */
+  oldestQueuedSeconds: number;
+}
+
 export interface ScheduleOptions {
   tz: string;
   key?: string;
@@ -124,6 +131,8 @@ export interface JobQueue extends JobReads {
   ): Promise<number>;
   cancel(queue: QueueDefinition, id: string): Promise<void>;
   redrive(queue: QueueDefinition, ids: string[]): Promise<number>;
+  /** Every queue on the server with jobs waiting, dead letters left out. */
+  backlog?(now?: Date): Promise<QueueBacklog[]>;
   stop(): Promise<void>;
 }
 

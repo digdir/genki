@@ -7,6 +7,7 @@ export const shell = defineNamespace({
   navDatasets: 'Datasett',
   navBuildingBlocks: 'Byggeklosser',
   navPlayground: 'Prøveområde',
+  playgroundTitle: 'Prøveområdet',
   navAccess: 'Tilgang',
   navLog: 'Logg',
   skipToContent: 'Hopp til hovedinnhold',
@@ -45,8 +46,8 @@ export const shell = defineNamespace({
   menuDeveloper: 'Utviklerverktøy',
   menuDataHandling: 'Slik behandles data',
   badgeIngest: {
-    one: '{count} innlesing trenger oppfølging',
-    other: '{count} innlesinger trenger oppfølging',
+    one: '{count} datasett trenger oppfølging',
+    other: '{count} datasett trenger oppfølging',
   },
 });
 

@@ -177,9 +177,7 @@ const SignIn = ({ onSignIn }: { onSignIn: (() => void) | undefined }) => {
 const useLogin = (view: HostView | undefined, signIn: AppProps['signIn']) =>
   useMemo(() => {
     const login = view?.login;
-    return login?.issuer
-      ? signIn({ ...login, issuer: login.issuer })
-      : undefined;
+    return login?.issuer ? signIn({ ...login, issuer: login.issuer }) : undefined;
   }, [view, signIn]);
 
 export const App = ({ hostname, path, signIn, fetcher = fetch }: AppProps) => {

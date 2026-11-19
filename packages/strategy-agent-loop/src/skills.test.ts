@@ -195,6 +195,7 @@ describe('agent-loop skills', () => {
             () => result('', [call('search', { queries: ['x'] })]),
             () => result('Svaret er 42.'),
           ],
+          synth: [() => 'Svaret er 42 [1].'],
         },
       },
     });
@@ -204,7 +205,7 @@ describe('agent-loop skills', () => {
       skillText(skill),
     );
     expect(out.notices).toContainEqual({ stage: 'citations', action: 'backfill', adopted: true });
-    expect(out.text).toBe('Svar [1].');
+    expect(out.text).toBe('Svaret er 42 [1].');
   });
 
   it.each(['empty-answer', 'exhaustion'])(

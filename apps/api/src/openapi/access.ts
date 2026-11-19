@@ -1,5 +1,10 @@
 import { syncFailureCodes } from '../sync-errors.js';
 import { createRoute, z, type RouteConfig } from '@hono/zod-openapi';
+import {
+  maxTenantSecretBytes,
+  maxTenantSecrets,
+  tenantSecretNamePattern,
+} from '@genai/composition';
 import { writtenStandards } from '@genai/guardrails';
 import { locales } from '@genai/i18n';
 import { clientChannels, clientDefinition } from '@genai/identity';
@@ -250,7 +255,12 @@ const AllowedHosts = z
   );
 const SecretValue = z
   .object({
-    value: z.string().min(1).describe('The secret. It is stored and never shown again.'),
+    value: z
+      .string()
+      .min(1)
+      .describe(
+        `The secret, at most ${maxTenantSecretBytes} bytes in UTF-8. It is stored and never shown again.`,
+      ),
     allowedHosts: AllowedHosts.optional().describe(
       'The origins the secret may be sent to. Required for a new secret; left out, an existing secret keeps its hosts. Other hosts than the stored ones need manage-services.',
     ),
@@ -1630,17 +1640,48 @@ export const accessRoutes: RouteConfig[] = [
     path: '/tenants/{tenant}/secrets/{name}',
     summary:
       'Store a tenant secret and the hosts it is for; the value is never returned (manage-services or register-building-blocks, audited without the value)',
+    description: `A new name has lowercase letters, digits and hyphens, starts with a letter or digit and is at most 63 characters; an existing secret keeps its name. The value is at most ${maxTenantSecretBytes} bytes. An organisation has at most ${maxTenantSecrets} secrets.`,
     request: {
-      params: z.object({ tenant, name: pathParam('name', 'lovdata') }),
+      params: z.object({
+        tenant,
+        name: z
+          .string()
+          .regex(tenantSecretNamePattern)
+          .openapi({ param: { name: 'name', in: 'path' }, example: 'lovdata' }),
+      }),
       headers: reason,
       body: body(SecretValue),
     },
     responses: {
       200: json(SecretRef, 'The reference to use in connections'),
-      400: problem('Missing value, hosts or reason, or an invalid name or host'),
+      400: problem(
+        `Missing value, hosts or reason, an invalid name or host, or a value over ${maxTenantSecretBytes} bytes`,
+      ),
       401: unauthorized,
       403: problem('Missing right, or other hosts without manage-services'),
       404: notMember,
+      409: problem(`The organisation already has ${maxTenantSecrets} secrets`),
+      413: problem('The request is too large'),
+    },
+  }),
+  createRoute({
+    method: 'delete',
+    path: '/tenants/{tenant}/secrets/{name}',
+    summary:
+      'Delete a tenant secret that nothing uses (manage-services or register-building-blocks, audited)',
+    description:
+      'A secret that does not exist answers 204 as well. A secret still named by a hook, tool connection, catalog entry, connector, configuration entry or service definition answers 409 with each use in `usedBy`.',
+    request: {
+      params: z.object({ tenant, name: pathParam('name', 'lovdata') }),
+      headers: reason,
+    },
+    responses: {
+      204: { description: 'Removed, or there was no such secret' },
+      400: problem('Missing reason'),
+      401: unauthorized,
+      403: problem('Missing right'),
+      404: notMember,
+      409: problem('The secret is still in use; `usedBy` lists each use'),
     },
   }),
   createRoute({
@@ -1675,7 +1716,9 @@ export const accessRoutes: RouteConfig[] = [
         z.object({ ref: z.string().openapi({ example: 'secret://platform/enhetsregisteret' }) }),
         'The reference',
       ),
-      400: problem('Missing or too long value, missing reason, or an invalid name'),
+      400: problem(
+        `Missing value or one over ${maxTenantSecretBytes} bytes, missing reason, or an invalid name`,
+      ),
       401: unauthorized,
       403: operatorOnly,
       413: problem('The request is too large'),

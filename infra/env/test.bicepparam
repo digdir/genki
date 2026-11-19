@@ -6,8 +6,19 @@ param postgresAdminGroupObjectId = readEnvironmentVariable('PG_ADMIN_GROUP_OBJEC
 param postgresAdminGroupName = readEnvironmentVariable('PG_ADMIN_GROUP_NAME')
 param deployPrincipalId = readEnvironmentVariable('DEPLOY_PRINCIPAL_ID', '')
 param appIdentityIsPostgresAdmin = true
+param postgresSkuName = 'Standard_B2s'
+param postgresSkuTier = 'Burstable'
+param postgresBackupRetentionDays = 35
+param postgresMaintenanceWindow = { customWindow: 'Enabled', dayOfWeek: 0, startHour: 2, startMinute: 0 }
+param backupsEnabled = true
+param endpointsSubnetPrefix = '10.40.3.0/27'
+// Off until someone with Owner or User Access Administrator turns them on (infra/README.md, "Backups").
+param resourceLocksEnabled = false
 param minReplicas = 1
 param maxReplicas = 2
+param apiDatabasePoolMax = 3
+param workerDatabasePoolMax = 4
+param workerRevisionsMode = 'Multiple'
 
 // Test's own knowledge server (ADR 0042). Small to start (8 GiB, 64 GB): compute moves up or down with a short
 // restart, the disk only grows. Autogrow took the disk to 128 GB in November 2026, and the template follows it,
@@ -106,4 +117,10 @@ param dnsZoneName = 'genki-test.digdir.cloud'
 
 param alertsEnabled = true
 param alertEmails = readEnvironmentVariable('ALERT_EMAILS', '')
-param healthCheckFrequencySeconds = 900
+param healthCheckFrequencySeconds = 300
+// Off until the deploy identity may write a rule scoped to the subscription (infra/README.md, "Backups").
+param serviceHealthAlertEnabled = false
+param infraBudgetAmount = 5000
+param modelsBudgetAmount = 8000
+// Empty until the deploy identity has Cost Management Contributor on rg-genki-test-swc (infra/README.md, "Backups").
+param modelsBudgetResourceGroup = ''

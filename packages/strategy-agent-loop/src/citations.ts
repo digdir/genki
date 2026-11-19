@@ -119,6 +119,7 @@ interface Numberable {
   document?: string;
   url?: string;
   title?: string | undefined;
+  publisher?: string | undefined;
   page?: number;
   pageEnd?: number;
   content: string;
@@ -157,7 +158,7 @@ export const numberByDocument = <C extends Numberable>(docs: C[]) => {
       .map((g, i) => {
         const first = g[0] as C;
         const text = g.map((c) => pageLine(c) + stripPageMarkers(c.content)).join('\n\n');
-        return `[${i + 1}] ${untrustedData('source', text, { id: documentKey(first), title: first.title })}`;
+        return `[${i + 1}] ${untrustedData('source', text, { id: documentKey(first), title: first.title, publisher: first.publisher })}`;
       })
       .join('\n\n'),
     index: new Map(ordered.map((g, i) => [i + 1, (g[0] as C).chunkId])) as CitationIndex,
@@ -173,7 +174,7 @@ export const numberByExcerpt = <C extends Numberable>(docs: C[]) => {
     context: ordered
       .map(
         (c, i) =>
-          `[${i + 1}] ${untrustedData('source', stripPageMarkers(c.content), { id: documentKey(c), title: c.title, ...pageAttribute(c) })}`,
+          `[${i + 1}] ${untrustedData('source', stripPageMarkers(c.content), { id: documentKey(c), title: c.title, publisher: c.publisher, ...pageAttribute(c) })}`,
       )
       .join('\n\n'),
     index: new Map(ordered.map((c, i) => [i + 1, c.chunkId])) as CitationIndex,
@@ -185,6 +186,36 @@ const unknownMarker = / ?\[(\d{1,3})\]/g;
 
 export const dropUnknownMarkers = (text: string, index: CitationIndex) =>
   text.replace(unknownMarker, (whole, n: string) => (index.has(Number(n)) ? whole : ''));
+
+/** Renumbers markers by document position in the published sources and drops the rest. */
+export const numberByPublished = <C extends { chunkId: string; document?: string; url?: string }>(
+  text: string,
+  citations: Citation[],
+  published: C[],
+  chunkOf: (chunkId: string) => C | undefined,
+): { text: string; citations: Citation[]; index: CitationIndex } => {
+  const position = new Map<string, number>();
+  const first = new Map<number, string>();
+  for (const c of published) {
+    const key = documentKey(c);
+    if (position.has(key)) continue;
+    position.set(key, position.size + 1);
+    first.set(position.size, c.chunkId);
+  }
+  const oldToNew = new Map<number, number>();
+  for (const c of citations) {
+    const n = position.get(documentKey(chunkOf(c.chunkId) ?? c));
+    if (n !== undefined) oldToNew.set(c.index, n);
+  }
+  const renumbered = text.replace(unknownMarker, (whole, n: string) => {
+    const next = oldToNew.get(Number(n));
+    return next === undefined ? '' : whole.replace(/\[\d+\]/, `[${next}]`);
+  });
+  const index: CitationIndex = new Map(
+    [...new Set(oldToNew.values())].map((n) => [n, first.get(n) as string]),
+  );
+  return { text: renumbered, citations: parseCitations(renumbered, index), index };
+};
 
 export const sourcesFirst = <C extends { chunkId: string }>(first: C[], rest: C[]): C[] => {
   const ids = new Set(first.map((c) => c.chunkId));

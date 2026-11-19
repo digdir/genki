@@ -4,6 +4,15 @@ body {
   color: var(--ds-color-neutral-text-default);
   font-family: 'Inter', var(--ds-font-family), sans-serif;
   font-feature-settings: 'cv05' 1;
+  overflow-wrap: break-word;
+}
+
+.ds-heading {
+  overflow-wrap: anywhere;
+}
+
+.ds-toggle-group {
+  position: relative;
 }
 
 a:not([class^='ds-'], [class*=' ds-']) {
@@ -31,6 +40,10 @@ a:not([class^='ds-'], [class*=' ds-']):hover {
 @media (max-width: 639px) {
   :root {
     --page-pad: 16px;
+  }
+
+  .main h1.ds-heading {
+    font-size: var(--ds-heading-sm-font-size);
   }
 }
 
@@ -253,6 +266,7 @@ a:not([class^='ds-'], [class*=' ds-']):hover {
   align-self: flex-start;
   height: calc(100vh - var(--header-offset));
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .sidebar + .main {
@@ -291,8 +305,18 @@ a:not([class^='ds-'], [class*=' ds-']):hover {
 }
 
 .narrow-nav {
+  position: relative;
   border-top: 1px solid var(--ds-color-neutral-border-subtle);
   padding: 8px 12px 12px;
+  max-height: calc(100dvh - var(--header-height));
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+.narrow-account {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--ds-color-neutral-border-subtle);
 }
 
 .narrow-nav a {
@@ -520,6 +544,7 @@ a:not([class^='ds-'], [class*=' ds-']):hover {
 .dev-tools-page pre {
   margin: 0;
   overflow-x: auto;
+  position: relative;
 }
 
 @media (max-width: 900px) {
@@ -534,7 +559,8 @@ a:not([class^='ds-'], [class*=' ds-']):hover {
 }
 
 /* Fixed, so the sidebar's scroll area does not clip it; Shell places it above the button. */
-.sidebar-account .popover {
+.sidebar-account .popover,
+.narrow-account .popover {
   position: fixed;
   top: auto;
   right: auto;
@@ -551,6 +577,7 @@ a:not([class^='ds-'], [class*=' ds-']):hover {
 }
 
 .main-inner {
+  container: page / inline-size;
   max-width: var(--page-max);
   margin: 0;
   display: flex;
@@ -764,6 +791,14 @@ a:not([class^='ds-'], [class*=' ds-']):hover {
   border: none;
 }
 
+.table-scroll > table > * > tr > :is(th, td):not([aria-sort]):first-child {
+  padding-inline-start: var(--ds-size-3);
+}
+
+.table-scroll > table > * > tr > :is(th, td):not([aria-sort]):last-child {
+  padding-inline-end: var(--ds-size-3);
+}
+
 .state {
   padding: 24px 0;
 }
@@ -776,6 +811,12 @@ a:not([class^='ds-'], [class*=' ds-']):hover {
 
 .state.loading:empty {
   padding: 0;
+}
+
+.loading-label {
+  margin: 0;
+  font-size: var(--ds-font-size-3);
+  color: var(--ds-color-neutral-text-subtle);
 }
 
 .loading-slow {
@@ -966,6 +1007,7 @@ pre.code {
   line-height: 1.5;
   font-variant-numeric: tabular-nums;
   white-space: pre;
+  position: relative;
 }
 
 code {
@@ -1042,6 +1084,8 @@ code {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  position: relative;
+  overscroll-behavior: contain;
 }
 
 .side-panel-foot {
@@ -1191,15 +1235,6 @@ code {
 @media (max-width: 559px) {
   .header-bar {
     gap: 8px;
-  }
-
-  .header-bar .brand .brand-text {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip: rect(0 0 0 0);
-    white-space: nowrap;
   }
 
   .header-bar .popover-anchor:has(.org-button) {

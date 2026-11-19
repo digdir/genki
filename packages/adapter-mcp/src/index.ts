@@ -23,6 +23,7 @@ export {
   defaultOutputSchema,
   readOverrides,
   SOURCES_MIME,
+  structuredContent,
   type Authenticator,
   type CapabilityEntry,
   type CapabilityResolver,

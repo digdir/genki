@@ -20,7 +20,7 @@ export const agentTools: ToolSpec[] = [
   {
     name: 'search',
     description:
-      'Search the document collection using multiple queries. Returns metadata-only results (chunk_id, doc_num, chunk_index, total_chunks, page, content_length, headers, scores) — NO content. Use read_chunks to fetch content of promising results. page=N (pages=N-M when a chunk spans several) is the chunk\'s page in its PDF: cite that page as plain text, such as "s. 67", never in square brackets.',
+      'Search the document collection using multiple queries. Returns metadata-only results (chunk_id, doc_num, chunk_index, total_chunks, page, content_length, headers, scores) — NO content. Use read_chunks to fetch content of promising results. page=N (pages=N-M when a chunk spans several) is the chunk\'s page in its PDF: cite that page as plain text, such as "s. 67", never in square brackets. publisher="…" names the organisation that published the document: documents with the same title, such as each ministry\'s Prop. 1 S, are told apart by it.',
     parameters: {
       type: 'object',
       properties: {
@@ -32,7 +32,7 @@ export const agentTools: ToolSpec[] = [
         filter_by: {
           type: 'object',
           description:
-            'Optional structured retrieval filter to constrain document search. When inspect_filters lists doc_num or title, search inside one document by filtering doc_num with the doc_num a hit showed, or title with the words of its title, and leave the title out of the queries.',
+            "Optional structured retrieval filter to constrain document search. When inspect_filters lists doc_num or title, search inside one document by filtering doc_num with the doc_num a hit showed, or title with the words of its title, and leave the title out of the queries. When inspect_filters lists orgs_long, filter it with an organisation's name to get that organisation's own document, such as its Prop. 1 S or årsrapport. orgs_long also matches documents the organisation received, such as the tildelingsbrev its ministry sent it, whose publisher= is that ministry.",
           properties: {
             fields: {
               type: 'array',
@@ -42,7 +42,7 @@ export const agentTools: ToolSpec[] = [
                   field: {
                     type: 'string',
                     description:
-                      'Document field to filter on (for example: owner_short, orgs_short, year, doc_num, title)',
+                      'Document field to filter on (for example: orgs_long, owner_short, orgs_short, year, doc_num, title)',
                   },
                   selected_options: {
                     type: 'array',
@@ -67,7 +67,7 @@ export const agentTools: ToolSpec[] = [
   {
     name: 'read_chunks',
     description:
-      'Read full content of specific chunks. Use after search to read promising results. Supports reading by chunk IDs or by document + chunk index range. Each chunk\'s header carries its PDF page as page=N, or pages=N-M when it spans several: cite that page as plain text, such as "s. 67", never in square brackets.',
+      'Read full content of specific chunks. Use after search to read promising results. Supports reading by chunk IDs or by document + chunk index range. Each chunk\'s header carries its PDF page as page=N, or pages=N-M when it spans several: cite that page as plain text, such as "s. 67", never in square brackets. publisher="…" names the organisation that published the document: say whose document you quote when documents share a title.',
     parameters: {
       type: 'object',
       properties: {
@@ -194,7 +194,13 @@ export const systemPromptWithDate = (now: Date): string => {
 };
 
 export const exhaustionNudge =
-  '[SYSTEM: You have used all available iterations. Based on everything you have gathered so far, provide your best answer now. If you found partial information, share it. Do not call any more tools.';
+  '[SYSTEM: You have used all available iterations. Based on everything you have gathered so far, provide your best answer now. If you found partial information, share it. Cite each source you read and use by its chunk_id in square brackets, such as [chunk_id]. Do not call any more tools.';
+
+export const readBeforeAnswerNudge =
+  'You answered from the search results without reading any document. Search results are only titles and snippets, not evidence. Read the hits you mean to use with read_chunks, then answer from what you read.';
+
+export const citeDraftPrompt = (context: string, draft: string) =>
+  `Add source references to the draft answer below. Put [N] right after each statement a numbered source supports, where N is that source's number. Keep the draft as it is: the same content, order, wording, list items and language. Do not shorten it, leave items out or add facts. Leave a statement without a reference when no source supports it. Do not mention the sources, the context or this task. Reply with the answer only.\n\nSources:\n${context}\n\nDraft answer:\n${draft}`;
 
 export const exhaustionDefault = 'Could not determine an answer within the iteration limit.';
 

@@ -46,7 +46,7 @@ import {
 import { originOf, serviceOrigin, type DraftOrigin } from './draft-runner.js';
 import { t } from './i18n/index.js';
 import { readOnlyInLockdown } from './lockdown.js';
-import { toTimeline, type TaskReader } from './timeline.js';
+import { onlyTypes, toTimeline, type TaskReader } from './timeline.js';
 import type { ActorNames } from './actor-names.js';
 
 const draftOriginNames: Record<DraftOrigin, () => string> = {
@@ -313,9 +313,37 @@ const Timeline = z
         model: z.string().optional(),
         iteration: z.number().int().optional(),
         warning: z.literal(true).optional(),
+        reads: z
+          .array(
+            z.object({
+              chunks: z.array(
+                z.object({
+                  id: z.string(),
+                  document: z.string().optional(),
+                  position: z.number().int().optional(),
+                  page: z.number().int().optional(),
+                  title: z.string().optional(),
+                }),
+              ),
+              auto: z.literal(true).optional(),
+              request: z
+                .object({
+                  chunkIds: z.array(z.string()).optional(),
+                  document: z.string().optional(),
+                  chunkRange: z
+                    .object({ from: z.number().int().optional(), to: z.number().int().optional() })
+                    .optional(),
+                })
+                .optional()
+                .describe('What the read asked for; only for those who manage services'),
+            }),
+          )
+          .optional()
+          .describe('The chunks a read step read, in order'),
         raw: z.unknown().optional(),
       }),
     ),
+    omittedSteps: z.number().int().optional().describe('How many steps the types filter left out'),
     stats: RunStats,
   })
   .openapi('TaskTimeline');
@@ -370,6 +398,14 @@ const routes = {
       params: z.object({
         tenant: tenantParam,
         task: z.string().openapi({ param: { name: 'task', in: 'path' } }),
+      }),
+      query: z.object({
+        types: z
+          .string()
+          .optional()
+          .describe(
+            'Comma-separated step types to keep, for example read,model; other steps are left out',
+          ),
       }),
     },
     responses: {
@@ -904,6 +940,7 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
     const principal = await auth.authenticate(c.req.raw);
     if (!principal) return problem(c, 401, 'Not authenticated');
     const { tenant, task } = c.req.valid('param');
+    const { types } = c.req.valid('query');
     const acting = access(principal, tenant, c.req.raw);
     if (!acting) return problem(c, 404, 'Not found');
     const found = await options.tasks.task(task);
@@ -912,20 +949,18 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
       !startedBy(found, principal) && refusedRight(c, acting, tenant, 'manage-services');
     if (lacking) return lacking;
     const erasure = await options.tasks.erasure?.(tenant, task);
-    return c.json(
-      toTimeline(
-        found,
-        await options.tasks.events(task),
-        now(),
-        await serviceNameOf(found.service.capability.id),
-        {
-          details: requireRight(acting, tenant, 'manage-services').ok,
-          usage: startedBy(found, principal) || seesUsage(acting, tenant),
-          ...(erasure ? { erasure } : {}),
-        },
-      ),
-      200,
+    const timeline = toTimeline(
+      found,
+      await options.tasks.events(task),
+      now(),
+      await serviceNameOf(found.service.capability.id),
+      {
+        details: requireRight(acting, tenant, 'manage-services').ok,
+        usage: startedBy(found, principal) || seesUsage(acting, tenant),
+        ...(erasure ? { erasure } : {}),
+      },
     );
+    return c.json(types ? onlyTypes(timeline, types) : timeline, 200);
   });
 
   app.openapi(routes.settingOverrides, async (c) => {
