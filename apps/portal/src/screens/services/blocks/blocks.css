@@ -28,6 +28,20 @@
   background: var(--ds-color-neutral-background-tinted);
 }
 
+@container page (max-width: 899px) {
+  .blocks-split {
+    flex-direction: column;
+  }
+
+  .blocks-left {
+    flex: none;
+  }
+
+  .blocks-split > .blocks-resize {
+    display: none;
+  }
+}
+
 .blocks-resize {
   position: relative;
   flex: 0 0 8px;
@@ -193,6 +207,7 @@
   width: 100%;
   overflow: auto hidden;
   border-radius: var(--ds-border-radius-lg);
+  position: relative;
 }
 
 /* Menus and thread titles float out of the preview in screen pixels, so they undo the zoom. */
@@ -333,6 +348,7 @@
 
 .blocks-fullscreen .preview-panel {
   overflow: auto;
+  position: relative;
 }
 
 .blocks-resize[data-axis='y'] {

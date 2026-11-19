@@ -442,6 +442,7 @@
 
 .diff-table-wrap {
   overflow-x: auto;
+  position: relative;
 }
 
 .diff-table {
@@ -696,6 +697,7 @@
   overflow-x: auto;
   border: 1px solid var(--ds-color-neutral-border-subtle);
   border-radius: 8px;
+  position: relative;
 }
 
 .area-table {

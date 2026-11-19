@@ -228,6 +228,7 @@
 .playground-markdown pre {
   overflow-x: auto;
   white-space: pre;
+  position: relative;
 }
 
 .playground-fields {
@@ -316,6 +317,7 @@
   padding: var(--ds-size-3);
   border-radius: var(--ds-border-radius-md);
   background: var(--ds-color-neutral-background-tinted);
+  position: relative;
 }
 
 .playground-source-excerpts > .playground-markdown + .playground-markdown {
@@ -415,6 +417,7 @@
 
 .result-table-scroll {
   overflow-x: auto;
+  position: relative;
 }
 
 .result-table caption {
@@ -513,6 +516,7 @@
   overflow: auto;
   font-size: 14px;
   line-height: 1.55;
+  position: relative;
 }
 
 .playground-source-detail dd {

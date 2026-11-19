@@ -6,6 +6,10 @@
   padding-top: 20px;
 }
 
+.ar {
+  container: apiref / inline-size;
+}
+
 .ar-ref {
   display: grid;
   grid-template-columns: 260px minmax(0, 1fr);
@@ -189,7 +193,7 @@
   font-weight: 600;
 }
 
-@media (max-width: 899px) {
+@container apiref (max-width: 699px) {
   .ar-ref,
   .ar-version {
     grid-template-columns: minmax(0, 1fr);

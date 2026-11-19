@@ -633,11 +633,6 @@
   border-bottom: 1px solid var(--ds-color-neutral-border-subtle);
 }
 
-.bb-calltypes th:first-child,
-.bb-calltypes td:first-child {
-  padding-left: 0;
-}
-
 .bb-calltypes code {
   font-family: ui-monospace, Menlo, monospace;
   font-size: 14px;
@@ -821,6 +816,7 @@
   line-height: 1.6;
   white-space: pre;
   background: var(--ds-color-neutral-background-tinted);
+  position: relative;
 }
 
 .bb-register {
@@ -876,6 +872,7 @@
 .bb-nav {
   border-bottom: 1px solid var(--ds-color-neutral-border-subtle);
   overflow-x: auto;
+  position: relative;
 }
 
 .bb-nav ul {
@@ -925,6 +922,7 @@
   border-radius: var(--ds-border-radius-md);
   background: var(--ds-color-neutral-background-tinted);
   font-size: 14px;
+  position: relative;
 }
 
 .bb-rows {
