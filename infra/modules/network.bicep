@@ -4,6 +4,9 @@ param tags object
 param addressPrefix string
 param appsSubnetPrefix string
 param postgresSubnetPrefix string
+
+@description('A subnet for private endpoints; empty for none.')
+param endpointsSubnetPrefix string = ''
 param postgresServerName string
 
 resource vnet 'Microsoft.Network/virtualNetworks@2024-05-01' = {
@@ -12,7 +15,7 @@ resource vnet 'Microsoft.Network/virtualNetworks@2024-05-01' = {
   tags: tags
   properties: {
     addressSpace: { addressPrefixes: [addressPrefix] }
-    subnets: [
+    subnets: concat([
       {
         name: 'apps'
         properties: {
@@ -27,7 +30,12 @@ resource vnet 'Microsoft.Network/virtualNetworks@2024-05-01' = {
           delegations: [{ name: 'postgres', properties: { serviceName: 'Microsoft.DBforPostgreSQL/flexibleServers' } }]
         }
       }
-    ]
+    ], empty(endpointsSubnetPrefix) ? [] : [
+      {
+        name: 'endpoints'
+        properties: { addressPrefix: endpointsSubnetPrefix }
+      }
+    ])
   }
 }
 
@@ -50,4 +58,5 @@ resource postgresDnsLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@
 output vnetId string = vnet.id
 output appsSubnetId string = vnet.properties.subnets[0].id
 output postgresSubnetId string = vnet.properties.subnets[1].id
+output endpointsSubnetId string = empty(endpointsSubnetPrefix) ? '' : vnet.properties.subnets[2].id
 output postgresDnsZoneId string = postgresDns.id

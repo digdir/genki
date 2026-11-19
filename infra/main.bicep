@@ -101,9 +101,29 @@ param postgresGeoRedundantBackup string = 'Disabled'
 @allowed(['Disabled', 'SameZone', 'ZoneRedundant'])
 param postgresHighAvailability string = 'Disabled'
 
+@description('The platform server\'s maintenance window in UTC: { customWindow: \'Enabled\', dayOfWeek (0 is Sunday), startHour, startMinute }. The default is Azure\'s own choice of time.')
+param postgresMaintenanceWindow object = { customWindow: 'Disabled', dayOfWeek: 0, startHour: 0, startMinute: 0 }
+
+@description('CanNotDelete locks on the platform server, the storage accounts and Key Vault. Writing a lock takes Owner or User Access Administrator, which the deploy identity does not have (infra/README.md, "Backups").')
+param resourceLocksEnabled bool = false
+
+@description('A daily backup of the file share in a Recovery Services vault, and a nightly copy of the platform database in a storage account of its own (docs/runbook.md, "Backups").')
+param backupsEnabled bool = false
+
+@description('The image the nightly copy runs pg_dump in, by digest, at postgresVersion\'s major version.')
+param pgDumpImage string = 'docker.io/library/postgres:17.12-bookworm@sha256:837bed18782820fe967067cb5328b02b0d9992c1be9a37ee0c9c492cfc03af3b'
+
+@description('true once the copies\' immutability policy is locked by hand (docs/runbook.md, "Backups").')
+param platformBackupImmutabilityLocked bool = false
+
+@description('When the nightly copy runs, as cron in UTC.')
+param platformBackupSchedule string = '30 1 * * *'
+
 param addressPrefix string = '10.40.0.0/16'
 param appsSubnetPrefix string = '10.40.0.0/23'
 param postgresSubnetPrefix string = '10.40.2.0/24'
+@description('A subnet for private endpoints, which backupsEnabled needs; empty for none.')
+param endpointsSubnetPrefix string = ''
 
 @description('none: nothing of the knowledge server. server: the server, its network, the knowledge identities and the principals job. apps: also the API and worker settings for it.')
 @allowed(['none', 'server', 'apps'])
@@ -150,11 +170,25 @@ param healthCheckFrequencySeconds int = 300
 param alertThresholds object = {
   errorRatePercent: 5
   errorRateMinRequests: 20
+  latencySeconds: 5
+  latencyMinRequests: 50
   modelFailures: 5
-  ingestionFailures: 1
+  queueWaitMinutes: 30
+  workerFailures: 3
   altinnFailures: 3
   loginKeyFailures: 1
 }
+
+@description('A Service Health alert for the services genki uses. Its rule is scoped to the subscription, where the deploy identity has no role (infra/README.md, "Backups").')
+param serviceHealthAlertEnabled bool = false
+
+@description('Monthly budgets in the billing currency, notifying the alerts\' action group: infra on this resource group, models on modelsBudgetResourceGroup. 0 or empty: none.')
+param infraBudgetAmount int = 0
+param modelsBudgetAmount int = 0
+@description('The resource group the models run in. The deploy identity needs Cost Management Contributor there.')
+param modelsBudgetResourceGroup string = ''
+@description('The first of a month; Azure refuses to change a budget\'s start later.')
+param budgetStartDate string = '2026-11-01'
 
 param minReplicas int = 1
 param maxReplicas int = 3
@@ -184,6 +218,8 @@ var registryName = take('${namePrefix}${environmentName}${suffix}', 50)
 var vaultName = take('${baseName}-kv-${suffix}', 24)
 var storageName = take('${namePrefix}${environmentName}data${suffix}', 24)
 var infra = deployInfrastructure
+var platformBackupStorageName = take('${namePrefix}${environmentName}bak${suffix}', 24)
+var platformBackupContainer = 'platform'
 var platformDatabase = 'genai'
 
 // Read only behind `infra ?`, as is every infrastructure module's output (infra/README.md, "Deploys that skip the infrastructure").
@@ -206,6 +242,12 @@ resource appIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-3
   tags: allTags
 }
 
+resource backupIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = if (backupsEnabled) {
+  name: '${baseName}-backup-id'
+  location: location
+  tags: allTags
+}
+
 module network 'modules/network.bicep' = if (infra) {
   name: 'network'
   params: {
@@ -215,6 +257,7 @@ module network 'modules/network.bicep' = if (infra) {
     addressPrefix: addressPrefix
     appsSubnetPrefix: appsSubnetPrefix
     postgresSubnetPrefix: postgresSubnetPrefix
+    endpointsSubnetPrefix: endpointsSubnetPrefix
     postgresServerName: postgresServerName
   }
 }
@@ -264,6 +307,8 @@ module postgres 'modules/postgres.bicep' = if (infra) {
     backupRetentionDays: postgresBackupRetentionDays
     geoRedundantBackup: postgresGeoRedundantBackup
     highAvailability: postgresHighAvailability
+    maintenanceWindow: postgresMaintenanceWindow
+    maxConnections: postgresConnections.maxConnections[postgresSkuName]
     databaseNames: [platformDatabase]
     delegatedSubnetId: infra ? network!.outputs.postgresSubnetId : ''
     privateDnsZoneId: infra ? network!.outputs.postgresDnsZoneId : ''
@@ -393,6 +438,31 @@ module storage 'modules/storage.bicep' = if (infra) {
   }
 }
 
+module filesBackup 'modules/files-backup.bicep' = if (backupsEnabled && infra) {
+  name: 'files-backup'
+  params: {
+    name: '${baseName}-files-rsv'
+    location: location
+    tags: allTags
+    storageAccountName: storageName
+    shareName: infra ? storage!.outputs.shareName : 'data'
+  }
+}
+
+module platformBackup 'modules/platform-backup.bicep' = if (backupsEnabled && infra) {
+  name: 'platform-backup'
+  params: {
+    name: platformBackupStorageName
+    location: location
+    tags: allTags
+    writerPrincipalId: backupsEnabled ? backupIdentity!.properties.principalId : ''
+    containerName: platformBackupContainer
+    vnetId: infra ? network!.outputs.vnetId : ''
+    endpointsSubnetId: infra ? network!.outputs.endpointsSubnetId : ''
+    immutabilityLocked: platformBackupImmutabilityLocked
+  }
+}
+
 module apps 'modules/containerapps.bicep' = {
   name: 'containerapps'
   params: {
@@ -479,6 +549,15 @@ module apps 'modules/containerapps.bicep' = {
         }
       : {}
     knowledgeSetup: knowledgeSetup
+    platformBackup: backupsEnabled
+      ? {
+          pgDumpImage: pgDumpImage
+          schedule: platformBackupSchedule
+          writer: { id: backupIdentity!.id, clientId: backupIdentity!.properties.clientId }
+          containerUrl: 'https://${platformBackupStorageName}.blob.${environment().suffixes.storage}/${platformBackupContainer}'
+          drillHost: '${baseName}-pg-restore-drill.postgres.database.azure.com'
+        }
+      : {}
     minReplicas: minReplicas
     maxReplicas: maxReplicas
     apiDatabasePoolMax: apiDatabasePoolMax
@@ -508,7 +587,72 @@ module alerts 'modules/alerts.bicep' = if (alertsEnabled && infra) {
     thresholds: alertThresholds
     postgresServerId: infra ? postgres!.outputs.id : ''
     postgresUserConnections: postgresConnections.maxConnections[postgresSkuName] - postgresConnections.reservedConnections
+    backupJobName: apps.outputs.platformBackupJobName
+    serviceHealthAlert: serviceHealthAlertEnabled
   }
+}
+
+var budgetNotifications = [
+  { threshold: 80, type: 'Actual' }
+  { threshold: 100, type: 'Actual' }
+  { threshold: 100, type: 'Forecasted' }
+]
+module infraBudget 'modules/budget.bicep' = if (alertsEnabled && infra && infraBudgetAmount > 0) {
+  name: 'budget-infra'
+  params: {
+    name: 'budget-genki-infra'
+    amount: infraBudgetAmount
+    startDate: budgetStartDate
+    actionGroupId: alertsEnabled && infra ? alerts!.outputs.actionGroupId : ''
+    notifications: budgetNotifications
+  }
+}
+
+module modelsBudget 'modules/budget.bicep' = if (alertsEnabled && infra && modelsBudgetAmount > 0 && !empty(modelsBudgetResourceGroup)) {
+  name: 'budget-models'
+  scope: resourceGroup(empty(modelsBudgetResourceGroup) ? resourceGroup().name : modelsBudgetResourceGroup)
+  params: {
+    name: 'budget-genki-models'
+    amount: modelsBudgetAmount
+    startDate: budgetStartDate
+    actionGroupId: alertsEnabled && infra ? alerts!.outputs.actionGroupId : ''
+    notifications: budgetNotifications
+  }
+}
+
+var lockNotes = 'genki: remove only on purpose (docs/runbook.md, "Backups").'
+var lockOn = resourceLocksEnabled && infra
+
+resource postgresLock 'Microsoft.Authorization/locks@2020-05-01' = if (lockOn) {
+  scope: existingPostgres
+  name: 'do-not-delete'
+  properties: { level: 'CanNotDelete', notes: lockNotes }
+  dependsOn: [postgres]
+}
+
+resource storageLock 'Microsoft.Authorization/locks@2020-05-01' = if (lockOn) {
+  scope: existingStorage
+  name: 'do-not-delete'
+  properties: { level: 'CanNotDelete', notes: lockNotes }
+  dependsOn: [storage]
+}
+
+resource vaultLock 'Microsoft.Authorization/locks@2020-05-01' = if (lockOn) {
+  scope: existingVault
+  name: 'do-not-delete'
+  properties: { level: 'CanNotDelete', notes: lockNotes }
+  dependsOn: [vault]
+}
+
+resource existingPlatformBackupStorage 'Microsoft.Storage/storageAccounts@2023-05-01' existing = {
+  name: platformBackupStorageName
+}
+
+resource platformBackupLock 'Microsoft.Authorization/locks@2020-05-01' = if (lockOn && backupsEnabled) {
+  scope: existingPlatformBackupStorage
+  name: 'do-not-delete'
+  properties: { level: 'CanNotDelete', notes: lockNotes }
+  dependsOn: [platformBackup]
 }
 
 var zoneSuffix = '.${dnsZoneName}'
@@ -550,6 +694,7 @@ output knowledgeWorkerIdentity object = knowledgeOn
   ? { name: knowledgeWorkerIdentity!.name, principalId: knowledgeWorkerIdentity!.properties.principalId }
   : {}
 output knowledgeSetupJobName string = apps.outputs.knowledgeSetupJobName
+output platformBackupJobName string = apps.outputs.platformBackupJobName
 @description('Whether this deploy applied the infrastructure, and the fingerprint it applied: deploy.yml compares the last full deploy\'s fingerprint with its own.')
 output infrastructureDeployed bool = infra
 output infraFingerprint string = infraFingerprint

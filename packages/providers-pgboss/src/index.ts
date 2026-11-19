@@ -10,6 +10,7 @@ import {
   type JobQueue,
   type JobReads,
   type JobTransaction,
+  type QueueBacklog,
   type QueueCounts,
   type WorkOptions,
   type QueueDefinition,
@@ -267,6 +268,8 @@ export class PgBossJobReads implements JobReads {
   }
 }
 
+const backlogScan = 1000;
+
 export interface PgBossJobQueueOptions {
   works: boolean;
   schema?: string;
@@ -462,6 +465,28 @@ export class PgBossJobQueue implements JobQueue {
 
   counts(queues: QueueDefinition[], options?: ReadOptions) {
     return this.#reads.counts(queues, options);
+  }
+
+  async backlog(now: Date = new Date()): Promise<QueueBacklog[]> {
+    const queues = await this.#boss.getQueues();
+    const deadLetters = new Set(queues.flatMap((q) => (q.deadLetter ? [q.deadLetter] : [])));
+    const backlog = await Promise.all(
+      queues
+        .filter((q) => !deadLetters.has(q.name))
+        .map(async (q) => {
+          const jobs = await this.#boss.findJobs(q.name, { queued: true, limit: backlogScan });
+          const ready = jobs
+            .map((job) => job.startAfter.getTime())
+            .filter((at) => at <= now.getTime());
+          const oldest = ready.length > 0 ? Math.min(...ready) : now.getTime();
+          return {
+            queue: q.name,
+            queued: jobs.length,
+            oldestQueuedSeconds: Math.floor((now.getTime() - oldest) / 1000),
+          };
+        }),
+    );
+    return backlog.filter((entry) => entry.queued > 0);
   }
 
   async stop() {

@@ -195,6 +195,54 @@ describe('pg-boss on the platform server', () => {
     await queue.stop();
   });
 
+  it('reports per queue how long the oldest startable job has waited, leaving out deferred jobs and dead letters', async () => {
+    const backlogged = testQueue('backlogged', { retryLimit: 0 });
+    const deferred = testQueue('deferred');
+    await installJobQueue(login(), [backlogged, deferred], roles);
+    const pool = login({ role: WORKER });
+    const queue = await start(pool);
+    const failed: string[] = [];
+    await queue.work(backlogged, async (job) => {
+      failed.push(job.id);
+      throw new Error('fails on purpose');
+    });
+    await queue.send(backlogged, { tenant: ORG_A });
+    await waitFor(async () => {
+      const { rows } = await pool.query<{ n: number }>(
+        `select count(*)::int as n from pgboss.job where name = $1`,
+        [`${backlogged.name}.dead`],
+      );
+      return rows[0]?.n === 1;
+    });
+    await queue.stop();
+    const reader = await start(login({ role: WORKER }), { works: false });
+    await pool.query(
+      `update pgboss.job set start_after = now() - interval '3 days' where name = $1`,
+      [`${backlogged.name}.dead`],
+    );
+    await reader.send(backlogged, { tenant: ORG_A });
+    await pool.query(
+      `update pgboss.job set start_after = now() - interval '45 minutes'
+        where name = $1 and state = 'created'`,
+      [backlogged.name],
+    );
+    await reader.send(
+      deferred,
+      { tenant: ORG_A },
+      { startAfter: new Date(Date.now() + 3_600_000) },
+    );
+
+    const backlog = await reader.backlog(new Date());
+    const of = (name: string) => backlog.find((entry) => entry.queue === name);
+    expect(of(backlogged.name)?.queued).toBe(1);
+    expect(of(backlogged.name)?.oldestQueuedSeconds).toBeGreaterThanOrEqual(45 * 60);
+    expect(of(backlogged.name)?.oldestQueuedSeconds).toBeLessThan(50 * 60);
+    expect(of(deferred.name)).toEqual({ queue: deferred.name, queued: 1, oldestQueuedSeconds: 0 });
+    expect(of(`${backlogged.name}.dead`)).toBeUndefined();
+    expect(failed).toHaveLength(1);
+    await reader.stop();
+  });
+
   it('the console reads jobs as genai_runtime, only with platform access', async () => {
     const runtime = login({ role: RUNTIME });
     const queue = new PgBossJobReads(runtime);
