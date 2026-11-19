@@ -795,6 +795,10 @@ describe.skipIf(!hasAz && !process.env.CI)('API revisions in the template', () =
       'knowledge-peering',
       'knowledge-postgres',
       'alerts',
+      'budget-infra',
+      'budget-models',
+      'files-backup',
+      'platform-backup',
       'dns',
     ];
     expect(Object.keys(conditions).sort()).toEqual([...infrastructure, 'containerapps'].sort());

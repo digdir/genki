@@ -24,6 +24,7 @@ interface Template {
   resources: {
     name: string;
     properties: {
+      parameters?: Record<string, { value: unknown }>;
       template?: {
         resources: {
           type: string;
@@ -122,9 +123,18 @@ describe.skipIf(!hasAz && !process.env.CI)('connections to the platform database
     (environment, phase) => fits([environment, phase]),
   );
 
-  it('counts at most 33 of the B1ms server’s 35 user connections in test, in every phase', () => {
-    expect(userConnections('test')).toBe(35);
+  it('counts at most 33 of the B2s server’s 414 user connections in test, in every phase', () => {
+    expect(setting('test', 'postgresSkuName')).toBe('Standard_B2s');
+    expect(userConnections('test')).toBe(414);
     for (const phase of Object.keys(phases) as Phase[])
       expect(worstCase('test', phase), phase).toBe(33);
+  });
+
+  it('sets the platform server’s max_connections from the table, since Azure keeps the first SKU’s value', () => {
+    const module = (name: string) => template?.resources.find((r) => r.name === name);
+    expect(module('postgres')?.properties.parameters?.maxConnections).toEqual({
+      value: "[variables('postgresConnections').maxConnections[parameters('postgresSkuName')]]",
+    });
+    expect(module('knowledge-postgres')?.properties.parameters?.maxConnections).toBeUndefined();
   });
 });
