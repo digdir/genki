@@ -1,7 +1,7 @@
 import { untrustedData } from '@genai/port-model';
 import { sameSource, type Observation, type ObservedSource } from './observe.js';
 import { compilePattern } from './pattern.js';
-import type { ReportedUsage, Score, TestCase, UsageSummary } from './schema.js';
+import type { ReportedUsage, Score, SourceRef, TestCase, UsageSummary } from './schema.js';
 
 export interface EvalContext {
   servedModels: string[];
@@ -168,32 +168,132 @@ export const contractAssertions = (refusalPatterns = defaultRefusalPatterns): Ev
   return self;
 };
 
-export const retrievalRecall = (k: number): Evaluator => {
-  if (!Number.isInteger(k) || k < 1) throw new EvalError('k must be a positive integer');
+/** Two hits are the same chunk: by id when both have one, else by document, position and page. */
+const sameHit = (a: SourceRef, b: SourceRef) =>
+  a.chunkId !== undefined && b.chunkId !== undefined
+    ? a.chunkId === b.chunkId
+    : a.document === b.document && a.position === b.position && a.page === b.page;
+
+/** The hits in their order, where a hit seen earlier takes no new rank. */
+const ranked = <T extends SourceRef>(hits: T[]) =>
+  hits.filter((hit, i) => hits.findIndex((h) => sameHit(h, hit)) === i);
+
+const ndcgCut = 10;
+
+/**
+ * Recall at each cut-off, hit@5, mrr@10 and binary ndcg@10 of one ranked list. An expected source
+ * counts once, at the first hit that matches it; the best order has every expected source first.
+ */
+const rankScores = (
+  expected: SourceRef[],
+  hits: SourceRef[],
+  cutOffs: readonly number[],
+  name: (metric: string) => string,
+) => {
+  const list = ranked(hits);
+  const matches = (hit: SourceRef) => expected.some((e) => sameSource(e, hit));
+  const recall = cutOffs.map((k) => {
+    const top = list.slice(0, k);
+    const found = expected.filter((e) => top.some((r) => sameSource(e, r))).length;
+    return {
+      metric: name(`recall@${k}`),
+      value: found / expected.length,
+      details: { found, expected: expected.length },
+    };
+  });
+  const first = list.slice(0, ndcgCut).findIndex(matches);
+  const unmatched = [...expected];
+  let dcg = 0;
+  list.slice(0, ndcgCut).forEach((hit, i) => {
+    const at = unmatched.findIndex((e) => sameSource(e, hit));
+    if (at < 0) return;
+    unmatched.splice(at, 1);
+    dcg += 1 / Math.log2(i + 2);
+  });
+  let ideal = 0;
+  for (let i = 0; i < Math.min(expected.length, ndcgCut); i += 1) ideal += 1 / Math.log2(i + 2);
+  return [
+    ...recall,
+    { metric: name('hit@5'), value: list.slice(0, 5).some(matches) ? 1 : 0 },
+    {
+      metric: name(`mrr@${ndcgCut}`),
+      value: first < 0 ? 0 : 1 / (first + 1),
+      ...(first < 0 ? {} : { details: { rank: first + 1 } }),
+    },
+    { metric: name(`ndcg@${ndcgCut}`), value: dcg / ideal },
+  ];
+};
+
+/** The share of a case's expected documents, by id or earlier id, among the first ten distinct documents. */
+const documentRecall = (expected: SourceRef[], hits: SourceRef[]) => {
+  const wanted = [
+    ...new Map(
+      expected.flatMap((e) => (e.document === undefined ? [] : [[e.document, e] as const])),
+    ).values(),
+  ];
+  if (wanted.length === 0) return undefined;
+  const documents: string[] = [];
+  for (const hit of hits) {
+    if (documents.length === 10) break;
+    if (hit.document !== undefined && !documents.includes(hit.document))
+      documents.push(hit.document);
+  }
+  const found = wanted.filter(
+    (e) =>
+      documents.includes(e.document as string) ||
+      (e.earlierDocument !== undefined && documents.includes(e.earlierDocument)),
+  ).length;
+  return { value: found / wanted.length, details: { found, expected: wanted.length } };
+};
+
+const searchedCutOffs = [1, 5, 10, 20] as const;
+// The sources a service returns are its top 10 by default, so a deeper cut-off would repeat @10.
+const returnedCutOffs = [1, 5, 10] as const;
+const returnedName = (metric: string) => `returned-${metric}`;
+const searchedMetrics = [
+  ...searchedCutOffs.map((k) => `recall@${k}`),
+  'hit@5',
+  `mrr@${ndcgCut}`,
+  `ndcg@${ndcgCut}`,
+];
+const returnedMetrics = [
+  ...returnedCutOffs.map((k) => `recall@${k}`),
+  'hit@5',
+  `mrr@${ndcgCut}`,
+  `ndcg@${ndcgCut}`,
+].map(returnedName);
+
+/**
+ * Scores the search hits a run reported, before any reranker, under today's names, and the sources it
+ * returned, in their order, as `returned-*`; both from the same matching (`sameSource`).
+ */
+export const retrievalRecall = (): Evaluator => {
   const self: Evaluator = {
     id: 'retrieval',
-    version: '1',
+    version: '2',
     kind: 'deterministic',
     evaluate: async (c, o) => {
-      const metric = `recall@${k}`;
       const scores: Score[] = [];
-      if (c.grounding !== 'sources-and-answer' || c.expected.sources.length === 0) {
-        scores.push(
-          skipped(
-            self,
-            metric,
-            `grounding is ${c.grounding} with ${c.expected.sources.length} expected sources`,
-          ),
-        );
+      const expected = c.expected.sources;
+      if (c.grounding !== 'sources-and-answer' || expected.length === 0) {
+        const reason = `grounding is ${c.grounding} with ${expected.length} expected sources`;
+        for (const metric of [...searchedMetrics, 'document-recall@10', ...returnedMetrics])
+          scores.push(skipped(self, metric, reason));
       } else {
-        const top = o.retrieved.slice(0, k);
-        const found = c.expected.sources.filter((g) => top.some((r) => sameSource(g, r))).length;
+        for (const s of rankScores(expected, o.retrieved, searchedCutOffs, (m) => m))
+          scores.push(scored(self, s.metric, s.value, s.details));
+        const documents = documentRecall(expected, o.retrieved);
         scores.push(
-          scored(self, metric, found / c.expected.sources.length, {
-            found,
-            expected: c.expected.sources.length,
-          }),
+          documents
+            ? scored(self, 'document-recall@10', documents.value, documents.details)
+            : skipped(self, 'document-recall@10', 'the expected sources name no document'),
         );
+        if (o.returned === undefined)
+          for (const metric of returnedMetrics)
+            scores.push(skipped(self, metric, 'the run returned no sources'));
+        else
+          for (const s of rankScores(expected, o.returned, returnedCutOffs, returnedName))
+            scores.push(scored(self, s.metric, s.value, s.details));
       }
       if (o.citations.length === 0) {
         scores.push(skipped(self, 'citations-grounded', 'the answer has no citations'));

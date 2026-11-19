@@ -118,7 +118,7 @@ const setOf = (version = 1): TestSet =>
 
 const boot = async (extra: Evaluator[] = []) => {
   const holder: { kernel?: Kernel } = {};
-  const evaluators = [contractAssertions(), retrievalRecall(3), ...extra];
+  const evaluators = [contractAssertions(), retrievalRecall(), ...extra];
   const evalCapability: Capability = {
     descriptor: descriptor('platform-eval'),
     strategy: { id: 'platform.eval.run', version: '1' },
@@ -300,13 +300,16 @@ describe('eval service', () => {
     const second = await settle(() => service.status(kari, two.task));
     const id = (s: RunStatus) => (s.state === 'completed' ? s.run : '');
 
-    const comparison = await service.compare(kari, id(first), id(second), 'answer-pattern', {
+    const comparison = await service.compare(kari, id(first), id(second), ['answer-pattern'], {
       allowDifferent: ['commit'],
     });
 
-    expect(comparison).toMatchObject({ n: 2, difference: 0 });
+    expect(comparison).toMatchObject({
+      allowedDifferent: ['commit'],
+      comparisons: [{ metric: 'answer-pattern', n: 2, difference: 0 }],
+    });
     await expect(
-      service.compare(ola, id(first), id(second), 'answer-pattern'),
+      service.compare(ola, id(first), id(second), ['answer-pattern']),
     ).rejects.toBeInstanceOf(EvalAccessError);
   });
 

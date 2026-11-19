@@ -497,6 +497,8 @@ export const qualityErrors = defineNamespace({
   caseChangeValues: 'change er worse, better, new, missing, pending eller same',
   compareLimit: 'limit er 1 til 200',
   compareOffset: 'offset er 0 til 100000',
+  compareAllowDifferent:
+    '{field} kan ikke få være ulik: bare data, services og servedModels kan det',
   noVersion: 'ingen versjon {version}',
   noTestSetInService: 'ingen testsett {testSet} i tjenesten',
   noCases: 'Testsettet har ingen testtilfeller',

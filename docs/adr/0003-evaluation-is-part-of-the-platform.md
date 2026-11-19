@@ -1,6 +1,6 @@
 # 0003 Evaluation is part of the platform
 
-Status: accepted, 2026-10-12 (built; component comparisons partly built, 2026-10-26; amendment accepted with ADR 0040, 2026-10-29, partly built, 2026-10-30). Proposed 2026-10-06
+Status: accepted, 2026-10-12 (built; component comparisons partly built, 2026-10-26; amendment accepted with ADR 0040, 2026-10-29, partly built, 2026-10-30; comparisons across services and data on request, 2026-11-19). Proposed 2026-10-06
 
 ## Decision
 
@@ -9,7 +9,7 @@ Status: accepted, 2026-10-12 (built; component comparisons partly built, 2026-10
 - Test sets are versioned records owned by a tenant, with cases split into train, validation and holdout. Optimisers never see the holdout split.
 - Scores and feedback are `kernel.score` and `kernel.feedback` events on the task they judge, added with `Kernel.annotate`.
 - Publishing gates live in the service definition. A version with a failing gate cannot be published to production.
-- Every result records the code version, the data, the served model and the judge, so only like is compared with like.
+- Every result records the code version, the data, the served model and the judge, so only like is compared with like. A comparison may be asked to allow two runs to differ in data, services or served models, which is how two search engines or two versions of a service are compared on the same test set; it never allows a different code version or judges (`GET /eval-runs/compare` with `allowDifferent`, tested by `two runs on different services and data compare when the request allows those differences` and `a comparison still refuses runs on different judges or commits`).
 
 ## Component comparisons
 
