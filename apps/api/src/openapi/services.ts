@@ -1292,7 +1292,21 @@ const PlaygroundResult = z
         score: z.number().optional(),
       }),
     ),
-    citations: z.array(z.object({ index: z.number().int(), chunkId: z.string() })).optional(),
+    citations: z
+      .array(
+        z.object({
+          index: z.number().int(),
+          chunkId: z.string(),
+          document: z.string().optional().describe("The cited excerpt's document."),
+        }),
+      )
+      .optional(),
+    citeBy: z
+      .literal('excerpt')
+      .optional()
+      .describe(
+        'Each `[N]` in the answer names one excerpt. Left out, `[N]` names the N-th document.',
+      ),
     clarification: z.object({ question: z.string(), options: z.array(z.string()) }).optional(),
     byModel: z.array(
       z.object({

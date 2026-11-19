@@ -204,6 +204,8 @@ export interface PlaygroundResult {
   costNok: number | null;
   dataLocation: Residency | null;
   citations?: PlaygroundCitation[];
+  /** `excerpt` when each `[N]` names one excerpt; left out, `[N]` names the N-th document. */
+  citeBy?: 'excerpt';
   byModel?: PlaygroundModelUsage[];
   clarification?: PlaygroundClarification;
   steps?: TimelineStep[];
@@ -213,6 +215,8 @@ export interface PlaygroundResult {
 export interface PlaygroundCitation {
   index: number;
   chunkId: string;
+  /** The cited excerpt's document, when the strategy names it. */
+  document?: string;
 }
 
 export interface PlaygroundModelUsage {

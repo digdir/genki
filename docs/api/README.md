@@ -63,6 +63,10 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ## API changes
 
+### 2026-11-19: the playground says when an answer cites excerpts
+
+- `POST /tenants/{tenant}/playground/runs` (and `/stream`) gives `citeBy: 'excerpt'` when each `[N]` in the answer names one excerpt, and `document` on each citation the strategy names one for ([ADR 0052](../adr/0052-answers-cite-excerpts.md)). Left out, `[N]` names the N-th document. The portal's try view turns these into the answer's `markers`, as `@genai/client` has them from `/v1`.
+
 ### 2026-11-19: ranking metrics and comparisons across engines
 
 - The `retrieval` evaluator scores `recall@1`, `recall@5`, `recall@20`, `hit@5`, `mrr@10`, `ndcg@10` and `document-recall@10` beside `recall@10` and `citations-grounded`, from the hits the run's searches reported, and `returned-recall@1`, `returned-recall@5`, `returned-recall@10`, `returned-hit@5`, `returned-mrr@10` and `returned-ndcg@10` from the sources a run returned (see [work.md](work.md#two-kinds-of-evaluation-run)). `recall@10` keeps its values.
