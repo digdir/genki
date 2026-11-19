@@ -340,6 +340,7 @@ export const setupList = {
   helpTools: 'What the service can do besides writing answers.',
   helpHow: 'How the service arrives at the answer.',
   helpVariants: 'Try two setups against each other with real users.',
+  helpChannels: 'Where the service can be reached, and which variants callers can choose.',
   helpGuards: 'Rules that stop or change questions and answers.',
   helpRisk:
     'The risk level under the AI Act. It must be confirmed before the changes can be published.',
@@ -399,6 +400,8 @@ export const setupList = {
   kindFieldsDesc: 'Fixed fields the user fills in, such as department or position percentage.',
   kindFiles: 'Files',
   kindFilesDesc: 'The user can attach documents, such as an application or a decision.',
+  kindAudioDesc: 'A recording that is transcribed before the service answers.',
+  kindSystemDesc: 'Structured data another system sends with the call.',
   fieldText: 'Text',
   fieldLongText: 'Long text',
   fieldChoice: 'Drop-down',

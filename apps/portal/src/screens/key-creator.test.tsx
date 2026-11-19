@@ -61,7 +61,7 @@ const apiWith = (list: ServiceKeyView[]) =>
   });
 
 const itemOf = async (name: string) => {
-  const found = (await screen.findByText(name)).closest('li');
+  const found = (await screen.findByText(name)).closest('li, tr');
   if (!found) throw new Error(`no list item for ${name}`);
   return found.textContent ?? '';
 };
@@ -78,8 +78,8 @@ describe('who created a key, and whether it may use models in lockdown', () => {
       />,
     );
 
-    expect(await itemOf('Med skaper')).toMatch(/laget 3\. nov\. 2026 av Kari Nordmann/);
-    expect(await itemOf('Uten skaper')).toMatch(/laget 3\. nov\. 2026(?! av)/);
+    expect(await itemOf('Med skaper')).toMatch(/Laget 3\. nov\.? av Kari Nordmann/);
+    expect(await itemOf('Uten skaper')).toMatch(/Laget 3\. nov\.?(?!\.| av)/);
   });
 
   it('says on a service channel key whether it may use models in the locked environment', async () => {
@@ -93,10 +93,8 @@ describe('who created a key, and whether it may use models in lockdown', () => {
       />,
     );
 
-    expect(await itemOf('Med skaper')).toContain('Kan bruke modeller i det låste miljøet');
-    expect(await itemOf('Uten skaper')).toContain(
-      'Kan ikke bruke modeller i det låste miljøet: laget av en innlogging som ikke er sluppet inn',
-    );
+    expect(await itemOf('Med skaper')).toContain('Kan bruke modeller i låst miljø');
+    expect(await itemOf('Uten skaper')).toContain('Kan ikke bruke modeller i låst miljø');
   });
 
   it('shows only the date when the creator has no known name', async () => {
@@ -110,7 +108,7 @@ describe('who created a key, and whether it may use models in lockdown', () => {
       />,
     );
 
-    expect(await itemOf('Uten navn')).toMatch(/laget 3\. nov\. 2026(?! av)/);
+    expect(await itemOf('Uten navn')).toMatch(/Laget 3\. nov\.?(?!\.| av)/);
   });
 
   it('says nothing about models on a revoked key', async () => {

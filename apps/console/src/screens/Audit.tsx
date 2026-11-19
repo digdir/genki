@@ -103,6 +103,7 @@ export const actionKey: Record<string, PlainKey> = {
   'platform.service.environments.remove': 'audit.actionServiceEnvironmentRemove',
   'platform.service.environments.promote': 'audit.actionServiceEnvironmentPromote',
   'platform.service.environments.rollback': 'audit.actionServiceEnvironmentRollback',
+  'platform.service.environments.describe': 'audit.actionServiceEnvironmentDescribe',
   'platform.skill.share.decide': 'audit.actionSkillShareDecide',
   'platform.recipe.share': 'audit.actionRecipeShare',
   'platform.recipe.unshare': 'audit.actionRecipeUnshare',

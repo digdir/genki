@@ -79,6 +79,7 @@ export const audit = defineNamespace({
   actionServiceEnvironmentRemove: 'Fjernet miljø fra tjeneste',
   actionServiceEnvironmentPromote: 'Fremmet versjon til miljø',
   actionServiceEnvironmentRollback: 'Rullet tilbake miljø',
+  actionServiceEnvironmentDescribe: 'Endret beskrivelse av miljø',
   actionSkillShareDecide: 'Avgjorde deling av ferdighet',
   actionRecipeShare: 'Delte en oppskrift med alle virksomheter',
   actionRecipeUnshare: 'Sluttet å dele en oppskrift',

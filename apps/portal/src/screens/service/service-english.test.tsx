@@ -6,6 +6,7 @@ import { createApiClient } from '../../api';
 import { mockFetch } from '../../mock';
 import '../../test-utils';
 import { translator } from '../../i18n';
+import { RightsProvider } from '../../Shell';
 import { ServiceChannels } from './Channels';
 import { ServiceNav, ServiceSubNav } from './ServiceNav';
 import { describeProblem } from './publish';
@@ -64,18 +65,20 @@ describe('service pages in English', () => {
   it('lists frontends and the registration form in English', async () => {
     render(
       inEnglish(
-        <ServiceChannels
-          api={api}
-          tenant="999888777"
-          service="rapportassistenten"
-          apiBase="https://api.example.no"
-        />,
+        <RightsProvider value={['manage-services']}>
+          <ServiceChannels
+            api={api}
+            tenant="999888777"
+            service="rapportassistenten"
+            apiBase="https://api.example.no"
+          />
+        </RightsProvider>,
       ),
     );
     const cards = await screen.findByRole('list', { name: 'Frontends' });
-    expect(within(cards).getByText('Browser with sign-in')).toBeTruthy();
+    expect(within(cards).getByRole('link', { name: 'Details for Intranettet' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Endpoints' })).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Register frontend' }));
+    fireEvent.click(screen.getByRole('link', { name: 'Register frontend' }));
     expect(screen.getByLabelText('Name')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Register' }));
     expect(
@@ -86,15 +89,17 @@ describe('service pages in English', () => {
   it('shows API keys in English', async () => {
     render(
       inEnglish(
-        <ServiceChannels
-          api={api}
-          tenant="999888777"
-          service="rapportassistenten"
-          apiBase="https://api.example.no"
-        />,
+        <RightsProvider value={['manage-services']}>
+          <ServiceChannels
+            api={api}
+            tenant="999888777"
+            service="rapportassistenten"
+            apiBase="https://api.example.no"
+          />
+        </RightsProvider>,
       ),
     );
-    expect(await screen.findByRole('heading', { name: 'API keys for the service' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'API keys' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Create API key' }));
     expect(screen.getByText('Settings that can be overridden per call')).toBeTruthy();
   });

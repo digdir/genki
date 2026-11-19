@@ -143,7 +143,7 @@ describe('Integrasjoner: utløsere fra API-et', () => {
     expect(
       within(failing).getByText('Tjenesten er ikke publisert, så utløseren fikk ikke startet den.'),
     ).toBeTruthy();
-    expect(await rowOf(/Hver natt kl\. 02\.00/)).toBeTruthy();
+    expect(await rowOf(/Hver natt kl\. 02:00/)).toBeTruthy();
     expect(await rowOf('Køen «post-inn»')).toBeTruthy();
   });
 
@@ -165,7 +165,7 @@ describe('Integrasjoner: utløsere fra API-et', () => {
 
   it('says the trigger works when the service run failed, and leads to the run', async () => {
     await live('#/integrations?tab=triggers');
-    const nightly = await rowOf(/Hver natt kl\. 02\.00/);
+    const nightly = await rowOf(/Hver natt kl\. 02:00/);
 
     expect(within(nightly).getByText('Kjøringen feilet')).toBeTruthy();
     expect(within(nightly).getByRole('link', { name: /2026/ }).getAttribute('href')).toBe(
@@ -268,9 +268,9 @@ describe('Integrasjoner: MCP-koblinger fra API-et', () => {
 
 describe('schedule names', () => {
   it('names common schedules in plain words and shows anything else as written', () => {
-    expect(describeSchedule('0 2 * * *')).toBe('Hver natt kl. 02.00');
-    expect(describeSchedule('30 7 * * *')).toBe('Hver dag kl. 07.30');
-    expect(describeSchedule('0 7 * * 1')).toBe('Hver mandag kl. 07.00');
+    expect(describeSchedule('0 2 * * *')).toBe('Hver natt kl. 02:00');
+    expect(describeSchedule('30 7 * * *')).toBe('Hver dag kl. 07:30');
+    expect(describeSchedule('0 7 * * 1')).toBe('Hver mandag kl. 07:00');
     expect(describeSchedule('0 * * * *')).toBe('Hver time');
     expect(describeSchedule('*/5 * * * *')).toBe('Tidsplan «*/5 * * * *»');
   });

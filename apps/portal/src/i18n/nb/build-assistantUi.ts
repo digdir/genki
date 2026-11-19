@@ -50,7 +50,7 @@ export const assistantUi = {
     bannerDisabledLink: 'Gå til innstillingen',
     bannerBudgetTitle: 'Assistentens budsjett for i dag er brukt opp',
     bannerBudget:
-      'Byggeassistenten kan bruke {tokens} tokens per dag hos {tenant}, og det er brukt. Budsjettet fornyes kl. 00.00. Kvoten for tjenestene er ikke berørt. Skjemaet virker som vanlig.',
+      'Byggeassistenten kan bruke {tokens} tokens per dag hos {tenant}, og det er brukt. Budsjettet fornyes kl. 00:00. Kvoten for tjenestene er ikke berørt. Skjemaet virker som vanlig.',
     bannerBudgetLink: 'Se forbruket',
     n2: 'to',
     n3: 'tre',

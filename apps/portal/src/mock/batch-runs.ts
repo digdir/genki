@@ -53,6 +53,80 @@ const facet = (docs: MockDocument[], key: keyof MockDocument) => {
   return [...counts].map(([value, count]) => ({ value, count }));
 };
 
+const exampleItems = (total: number, done: number, failed: number): BatchItem[] =>
+  Array.from({ length: total }, (_, index) => ({
+    index,
+    document: { id: `rad-${index + 1}`, title: `Rad ${index + 1}` },
+    status: index < done ? 'succeeded' : index < done + failed ? 'failed' : 'queued',
+    attempts: index < done + failed ? 1 : 0,
+    sources: [],
+    tokens: index < done ? { input: 900, output: 200 } : { input: 0, output: 0 },
+    costMicroNok: index < done ? 3871 : 0,
+  }));
+
+const exampleRun = (
+  id: string,
+  startedAt: string,
+  version: number,
+  name: string,
+  items: BatchItem[],
+  running: boolean,
+  jobName: string,
+): BatchRunDetail & { service: string } => ({
+  id,
+  name: jobName,
+  service: 'rapportassistenten',
+  version,
+  model: 'aivar/borealis-27b',
+  priced: true,
+  dataset: 'digdir/kudos',
+  filters: {},
+  startedBy: `employee:mock:${name.split(' ')[0]?.toLowerCase() ?? ''}`,
+  startedByName: name,
+  status: running ? 'running' : 'succeeded',
+  total: items.length,
+  concurrency: 4,
+  pass: 1,
+  startedAt,
+  endedAt: running ? null : startedAt,
+  items,
+  counts: { queued: 0, running: 0, succeeded: 0, notFound: 0, failed: 0, skipped: 0 },
+});
+
+export const exampleBatchRuns = (now = new Date()) => {
+  const today = new Date(now);
+  today.setHours(13, 10, 0, 0);
+  return [
+    exampleRun(
+      'run-hr-november',
+      today.toISOString(),
+      7,
+      'Ingrid Berg',
+      exampleItems(2000, 1240, 0),
+      true,
+      'Spørsmål fra HR-postkassen, november',
+    ),
+    exampleRun(
+      'run-intranett-faq',
+      '2026-11-14T09:30:00Z',
+      7,
+      'Kari Nordmann',
+      exampleItems(320, 320, 0),
+      false,
+      'Ofte stilte spørsmål til ny intranettside',
+    ),
+    exampleRun(
+      'run-reiseregler',
+      '2026-11-06T12:00:00Z',
+      6,
+      'Ola Hansen',
+      exampleItems(120, 88, 32),
+      false,
+      'Test av reiseregler',
+    ),
+  ];
+};
+
 export const batchRunsMock = (options: BatchRunsMockOptions = {}): MockHandler => {
   const documents = options.documents ?? exampleBatchDocuments();
   const priced = options.priced ?? true;
@@ -62,7 +136,9 @@ export const batchRunsMock = (options: BatchRunsMockOptions = {}): MockHandler =
   const limitNok = options.approvalLimitNok ?? 150;
   const overLimit = (high: number | undefined) =>
     limitNok > 0 && (high ?? 0) > limitNok * 1_000_000;
-  const runs = structuredClone(options.runs ?? []);
+  const runs = structuredClone(
+    options.runs ?? (import.meta.env.MODE === 'test' ? [] : exampleBatchRuns()),
+  );
   const estimates = new Map<string, BatchEstimate & { docs: MockDocument[] }>();
   let counter = 0;
 
@@ -192,6 +268,7 @@ export const batchRunsMock = (options: BatchRunsMockOptions = {}): MockHandler =
         maxCostNok?: number;
         maxTokens?: number;
         approval?: string;
+        name?: string;
       }>();
       const estimate = req.estimate ? estimates.get(req.estimate) : undefined;
       if (!estimate)
@@ -213,6 +290,7 @@ export const batchRunsMock = (options: BatchRunsMockOptions = {}): MockHandler =
       }));
       const run = {
         id: `run-${++counter}`,
+        ...(req.name?.trim() ? { name: req.name.trim() } : {}),
         service,
         version: estimate.version,
         model: estimate.model,

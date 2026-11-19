@@ -1,6 +1,6 @@
 .ov-tiles {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
   gap: 12px;
 }
 
@@ -76,6 +76,16 @@
   background: var(--ds-color-accent-surface-tinted);
 }
 
+.ov-bars-flat {
+  align-items: flex-end;
+}
+
+.ov-bars-flat > span {
+  height: 2px;
+  border-radius: 0;
+  background: var(--ds-color-neutral-border-subtle);
+}
+
 .ov-bars-accent > span:last-child {
   background: var(--ds-color-accent-base-default);
 }
@@ -105,6 +115,10 @@
   padding: 14px 16px;
   border: 1px solid var(--ds-color-neutral-border-subtle);
   border-radius: var(--ds-border-radius-md);
+}
+
+.ov-need > span {
+  font-size: 15px;
 }
 
 .ov-need > a {
@@ -262,27 +276,40 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 14px 16px 14px 42px;
-  position: relative;
+  padding: 14px 16px;
   border: 1px solid var(--ds-color-neutral-border-subtle);
   border-radius: var(--ds-border-radius-md);
   background: var(--ds-color-neutral-background-default);
 }
 
-.ov-step::before {
-  content: '';
-  position: absolute;
-  left: 14px;
-  top: 17px;
-  width: 14px;
-  height: 14px;
+.ov-step-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ov-step-done {
+  fill: var(--ds-color-success-base-default);
+}
+
+.ov-step-check {
+  color: var(--ds-color-success-contrast-default);
+}
+
+.ov-step-open {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  box-sizing: border-box;
   border-radius: 50%;
   border: 2px solid var(--ds-color-neutral-border-default);
 }
 
-.ov-step[data-done='true']::before {
-  border-color: var(--ds-color-success-base-default);
-  background: var(--ds-color-success-base-default);
+.ov-model {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
 }
 
 .ov-step > a {
@@ -300,4 +327,20 @@
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.ov-runs {
+  min-width: 0;
+}
+
+.ov-run-table {
+  font-size: 15px;
+}
+
+.ov-run-table .nowrap {
+  white-space: nowrap;
+}
+
+.ov-run-table td:nth-child(2) {
+  overflow-wrap: anywhere;
 }

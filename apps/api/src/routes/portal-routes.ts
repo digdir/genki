@@ -954,6 +954,9 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
     return t.principal.kind === 'employee' ? `employee:${issuer}:${subject}` : undefined;
   };
 
+  const frontendOf = (t: Task, tenant: string) =>
+    t.principal.tenant === tenant ? t.service.frontend : undefined;
+
   const startedByCaller = (t: Task, principal: Principal, tenant: string) =>
     t.principal.tenant === tenant &&
     t.principal.id === JSON.stringify([principal.issuer, principal.subject]);
@@ -978,9 +981,11 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
               : 'api-key'
             : batch.has(t.id)
               ? 'batch'
-              : t.entryPoint !== undefined
-                ? 'api'
-                : null;
+              : frontendOf(t, tenant) !== undefined
+                ? 'interface'
+                : t.entryPoint !== undefined
+                  ? 'api'
+                  : null;
         return [t.id, channel] as const;
       }),
     );
@@ -1057,6 +1062,7 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
         ...(erasure ? { erasure } : {}),
         actor: actors.get(t.id) ?? { kind: 'system' as const },
         channel: channels.get(t.id) ?? null,
+        ...(frontendOf(t, tenant) ? { frontend: frontendOf(t, tenant) } : {}),
       };
     });
   };
@@ -1798,6 +1804,13 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       return problem(c, 400, 'Invalid request', [
         { path: 'actor', message: 'actor is me, or an actor id from a run row' },
       ]);
+    const frontend = c.req.query('frontend')?.trim() || undefined;
+    if (frontend !== undefined && !/^[a-z0-9][a-z0-9-]{0,62}$/.test(frontend))
+      return problem(c, 400, 'Invalid request', [
+        { path: 'frontend', message: 'frontend is the id of a registered frontend' },
+      ]);
+    const byFrontend = (t: Task | undefined) =>
+      !frontend || (t !== undefined && frontendOf(t, g.tenant) === frontend);
     const byActor = (t: Task | undefined) =>
       !actor ||
       (t !== undefined &&
@@ -1819,6 +1832,7 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       .filter((r) => !from || r.createdAt >= from)
       .filter((r) => !to || r.createdAt <= to)
       .filter((r) => byActor(byId.get(r.id)))
+      .filter((r) => byFrontend(byId.get(r.id)))
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     const matching = needle
       ? await searchTasks(

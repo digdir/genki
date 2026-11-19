@@ -268,6 +268,7 @@ export const changes = defineNamespace({
   environmentRemove: 'fjernet et miljø fra tjenesten',
   environmentPromote: 'fremmet en versjon av tjenesten til et miljø',
   environmentRollback: 'rullet tilbake et miljø for tjenesten',
+  environmentDescribe: 'endret beskrivelsen av et miljø for tjenesten',
   serviceRiskConfirm: 'bekreftet risikovurderingen for tjenesten',
   serviceShare: 'delte tjenesten',
   skillAttachmentUpload: 'lastet opp et vedlegg til ferdigheten',

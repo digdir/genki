@@ -16,9 +16,14 @@ import { BusyButton } from '../../components/BusyButton';
 import { usePortalFormat } from '../../format';
 import { useAsync } from '../../hooks';
 import { useRights } from '../../Shell';
-import { ErrorState, Loading } from '../../states';
+import { ApiError } from '../../api/error';
+import { EmptyState, ErrorState, Loading } from '../../states';
 import type { PublishedDefinition } from '../../types';
 import { lineDiff, type DiffOp } from '../quality/diff';
+import { changeText } from '../services/setup-change-text';
+import { draftChanges } from '../services/setup-diff';
+import type { T } from '../../i18n';
+import { clock, sameDay, shortWhen } from './dev-format';
 import { definitionYaml, problemErrors, withoutVersion } from './definition';
 import { servicePath } from './sections';
 import './sections.css';
@@ -39,9 +44,13 @@ export const changedLines = (before: string, after: string) => {
   const keep = lines.map((_, i) =>
     lines.slice(Math.max(0, i - context), i + context + 1).some(([op]) => op !== 'same'),
   );
-  const out: ({ op: DiffOp; text: string } | { op: 'gap' })[] = [];
+  const out: ({ op: DiffOp; text: string; n: number } | { op: 'gap' })[] = [];
+  let oldLine = 0;
+  let newLine = 0;
   lines.forEach(([op, text], i) => {
-    if (keep[i]) out.push({ op, text });
+    if (op !== 'add') oldLine += 1;
+    if (op !== 'remove') newLine += 1;
+    if (keep[i]) out.push({ op, text, n: op === 'remove' ? oldLine : newLine });
     else if (out.at(-1)?.op !== 'gap') out.push({ op: 'gap' });
   });
   return {
@@ -49,6 +58,23 @@ export const changedLines = (before: string, after: string) => {
     added: lines.filter(([op]) => op === 'add').length,
     removed: lines.filter(([op]) => op === 'remove').length,
   };
+};
+
+const sameNames = {
+  dataset: (ref: string) => ref,
+  model: (id: string) => id,
+  tool: (ref: string) => ref,
+};
+
+export const changeSummary = (
+  before: Record<string, unknown> | undefined,
+  after: Record<string, unknown>,
+  t: T,
+) => {
+  if (!before) return [t('serviceDev.firstSummary')];
+  const changes = draftChanges(asServiceDefinition(before), asServiceDefinition(after));
+  const texts = [...new Set(changes.map((c) => changeText(t, c, sameNames)))];
+  return texts.length ? texts : [t('serviceDev.noSetupChanges')];
 };
 
 const VersionDiff = ({
@@ -84,6 +110,7 @@ const VersionDiff = ({
       return {
         after: definitionYaml(after),
         before: before === undefined ? '' : definitionYaml(before),
+        summary: changeSummary(before, after, t),
       };
     },
     [api, tenant, serviceId, selected, previous, latest],
@@ -106,34 +133,44 @@ const VersionDiff = ({
   const diff = changedLines(state.data.before, state.data.after);
   return (
     <>
+      <ul className="dv-summary">
+        {state.data.summary.map((line) => (
+          <li key={line}>{line}</li>
+        ))}
+      </ul>
       {previous !== undefined ? (
         <p className="meta">
           {t('serviceDev.diffCounts', { added: diff.added, removed: diff.removed })}
         </p>
       ) : null}
-      <div tabIndex={0} role="region" aria-label={t('serviceDev.diffLabel')} className="dv-diff">
-        {diff.rows.map((row, i) =>
-          row.op === 'gap' ? (
-            <div key={i} className="dv-gap" aria-hidden="true">
-              ⋯
-            </div>
-          ) : (
-            <div key={i} className={`dv-line dv-${row.op}`}>
-              <span className="dv-sign">
-                {row.op === 'add' ? '+' : row.op === 'remove' ? '-' : ''}
-                <span className="visually-hidden">
-                  {row.op === 'add'
-                    ? t('quality.opAdd')
-                    : row.op === 'remove'
-                      ? t('quality.opRemove')
-                      : ''}
+      {diff.rows.some((row) => row.op !== 'gap') ? (
+        <div tabIndex={0} role="region" aria-label={t('serviceDev.diffLabel')} className="dv-diff">
+          {diff.rows.map((row, i) =>
+            row.op === 'gap' ? (
+              <div key={i} className="dv-gap" aria-hidden="true">
+                ⋯
+              </div>
+            ) : (
+              <div key={i} className={`dv-line dv-${row.op}`}>
+                <span className="dv-n" aria-hidden="true">
+                  {row.n}
                 </span>
-              </span>
-              <span className="dv-text">{row.text}</span>
-            </div>
-          ),
-        )}
-      </div>
+                <span className="dv-sign">
+                  {row.op === 'add' ? '+' : row.op === 'remove' ? '-' : ''}
+                  <span className="visually-hidden">
+                    {row.op === 'add'
+                      ? t('quality.opAdd')
+                      : row.op === 'remove'
+                        ? t('quality.opRemove')
+                        : ''}
+                  </span>
+                </span>
+                <span className="dv-text">{row.text}</span>
+              </div>
+            ),
+          )}
+        </div>
+      ) : null}
     </>
   );
 };
@@ -148,7 +185,13 @@ export const Versions = ({ api, tenant, serviceId, onPublished }: Props) => {
         api.quality.draft(tenant, serviceId, signal).catch(() => undefined),
         api.environments.list(tenant, serviceId, signal).catch(() => undefined),
       ]);
-      return { history, draft, pointers: environments?.environments ?? [] };
+      const changes = draft
+        ? draftChanges(
+            asServiceDefinition(history.latest.definition),
+            asServiceDefinition(draft.definition),
+          ).length
+        : 0;
+      return { history, draft, changes, pointers: environments?.environments ?? [] };
     },
     [api, tenant, serviceId, round],
     { keepPreviousFor: `${tenant}/${serviceId}` },
@@ -164,12 +207,10 @@ export const Versions = ({ api, tenant, serviceId, onPublished }: Props) => {
 
   const head = (
     <div className="stack-xs">
-      <Heading level={2} data-size="xs">
+      <Heading level={2} data-size="md">
         {t('service.sectionVersions')}
       </Heading>
-      <Paragraph data-size="sm" className="meta">
-        {t('serviceDev.versionsLead')}
-      </Paragraph>
+      <Paragraph className="meta dv-lead">{t('serviceDev.versionsLead')}</Paragraph>
     </div>
   );
 
@@ -184,15 +225,42 @@ export const Versions = ({ api, tenant, serviceId, onPublished }: Props) => {
     return (
       <div className="stack">
         {head}
-        <ErrorState error={state.error} onRetry={retry} />
+        {state.error instanceof ApiError && state.error.status === 404 ? (
+          <EmptyState title={t('serviceDev.versionsEmptyTitle')}>
+            <p className="body-sm">{t('serviceDev.versionsEmptyBody')}</p>
+          </EmptyState>
+        ) : (
+          <ErrorState error={state.error} onRetry={retry} />
+        )}
       </div>
     );
-  const { history, draft, pointers } = state.data;
+  const { history, draft, changes, pointers } = state.data;
   const staged = pointers.length > 1;
   const runningIn = (version: number) =>
     pointers.filter((e) => e.version === version).map((e) => e.name);
   const followers = pointers.filter((e) => e.followsPublishes).map((e) => e.name);
+  const pinned = pointers.filter((e) => !e.followsPublishes).map((e) => e.name);
   const current = history.latest.version;
+  const next = current + 1;
+  const list = (names: string[]) =>
+    names.length > 1
+      ? t('serviceDev.and', { first: names.slice(0, -1).join(', '), last: names.at(-1) ?? '' })
+      : (names[0] ?? '');
+  const when = (iso: string) =>
+    sameDay(iso, new Date()) ? t('serviceDev.todayAt', { time: clock(iso, f) }) : shortWhen(iso, f);
+  const draftBy = draft?.byName;
+  const restoreText = (version: number) =>
+    !staged || pinned.length === 0
+      ? t('serviceDev.restoreReplaces', { version, next, current })
+      : followers.length === 0
+        ? t('serviceDev.restorePinned', { version, next })
+        : t('serviceDev.restoreStaged', {
+            version,
+            next,
+            current,
+            followers: list(followers),
+            pinned: list(pinned),
+          });
   const versions = [...history.versions].reverse();
   const selected: Selected = chosen ?? current;
   const numbers = versions.map((v) => v.version);
@@ -284,7 +352,14 @@ export const Versions = ({ api, tenant, serviceId, onPublished }: Props) => {
                   </Tag>
                 </span>{' '}
                 <span className="meta">
-                  {t('serviceDev.savedAt', { when: f.dateTime(draft.at, 'medium') })}
+                  {draftBy
+                    ? t('serviceDev.draftMeta', { when: when(draft.at), who: draftBy })
+                    : t('serviceDev.draftMetaAt', { when: when(draft.at) })}
+                </span>
+                <span className="dv-version-reason">
+                  {changes
+                    ? t('serviceDev.draftChanges', { count: changes, version: current })
+                    : t('serviceDev.noDraftChanges', { version: current })}
                 </span>
               </button>
             </li>
@@ -299,17 +374,16 @@ export const Versions = ({ api, tenant, serviceId, onPublished }: Props) => {
               >
                 <span className="tag-row">
                   <strong>{t('serviceVersions.version', { version: v.version })}</strong>{' '}
-                  {staged
-                    ? runningIn(v.version).map((name) => (
-                        <Tag
-                          key={name}
-                          data-size="sm"
-                          data-color={name === productionEnvironment ? 'success' : 'info'}
-                        >
-                          {t('serviceVersions.runsIn', { environment: name })}
-                        </Tag>
-                      ))
-                    : null}
+                  {staged && runningIn(v.version).length ? (
+                    <Tag
+                      data-size="sm"
+                      data-color={
+                        runningIn(v.version).includes(productionEnvironment) ? 'success' : 'info'
+                      }
+                    >
+                      {t('serviceDev.inEnvironments', { list: list(runningIn(v.version)) })}
+                    </Tag>
+                  ) : null}
                   {!staged && v.version === current ? (
                     <Tag data-size="sm" data-color="success">
                       {t('serviceVersions.inUse')}
@@ -317,9 +391,12 @@ export const Versions = ({ api, tenant, serviceId, onPublished }: Props) => {
                   ) : null}
                 </span>{' '}
                 <span className="meta">
-                  {f.dateTime(v.publishedAt, 'medium')}, {actor(v.publishedBy, v.publishedByName)}
+                  {t('serviceDev.versionMeta', {
+                    when: shortWhen(v.publishedAt, f),
+                    who: actor(v.publishedBy, v.publishedByName),
+                  })}
                 </span>
-                {v.reason ? <span className="meta"> «{v.reason}»</span> : null}
+                {v.reason ? <span className="dv-version-reason">«{v.reason}»</span> : null}
               </button>
             </li>
           ))}
@@ -353,18 +430,9 @@ export const Versions = ({ api, tenant, serviceId, onPublished }: Props) => {
             </div>
           </div>
           {confirming && selected !== 'draft' ? (
-            <Alert data-color="warning" data-size="sm" role="alertdialog" aria-labelledby="dv-rb">
+            <Alert data-color="info" data-size="sm" role="alertdialog" aria-labelledby="dv-rb">
               <strong id="dv-rb">{t('serviceVersions.publishAgain', { version: selected })}</strong>
-              <Paragraph data-size="sm">
-                {!staged
-                  ? t('serviceVersions.confirm', { version: selected, current })
-                  : followers.length
-                    ? t('serviceVersions.confirmEnvironments', {
-                        version: selected,
-                        environments: followers.join(', '),
-                      })
-                    : t('serviceVersions.confirmPinned', { version: selected })}
-              </Paragraph>
+              <Paragraph data-size="sm">{restoreText(selected)}</Paragraph>
               <Textfield
                 label={t('serviceVersions.reason')}
                 value={reason}
@@ -382,9 +450,9 @@ export const Versions = ({ api, tenant, serviceId, onPublished }: Props) => {
                   busyLabel={t('serviceDev.publishing')}
                   onClick={() => void restore(selected)}
                 >
-                  {t('serviceVersions.publishAgain', { version: selected })}
+                  {t('serviceDev.publishAs', { version: next })}
                 </BusyButton>
-                <Button variant="secondary" data-size="sm" onClick={() => setConfirming(false)}>
+                <Button variant="tertiary" data-size="sm" onClick={() => setConfirming(false)}>
                   {t('serviceVersions.cancel')}
                 </Button>
               </div>

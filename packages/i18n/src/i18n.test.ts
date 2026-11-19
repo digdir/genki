@@ -95,12 +95,17 @@ describe('format', () => {
     const enf = createFormat('en');
     expect(nbf.date(at)).toBe('7. oktober 2026');
     expect(enf.date(at)).toBe('7 October 2026');
-    expect(nbf.dateTime(at)).toBe('7. oktober 2026 kl. 10.05');
+    expect(nbf.dateTime(at)).toBe('7. oktober 2026 kl. 10:05');
     expect(enf.dateTime(at)).toBe('7 October 2026, 10:05');
     expect(nbf.currency(1234.5)).toBe('1 234,5 kr');
     expect(enf.currency(1234.5)).toBe('NOK 1,234.5');
     expect(enf.list(['a', 'b', 'c'])).toBe('a, b and c');
     expect(nbf.list(['a', 'b', 'c'])).toBe('a, b og c');
+  });
+
+  it('writes clock times with a colon in bokmål and English', () => {
+    expect(createFormat('nb').time(new Date('2026-10-07T12:07:00Z'))).toBe('14:07');
+    expect(createFormat('en').time(new Date('2026-10-07T12:07:00Z'))).toBe('14:07');
   });
 
   it('formats relative time', () => {

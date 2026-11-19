@@ -141,6 +141,8 @@ export const playgroundUi = {
     tokensPerModel: 'Tokens per modell',
     viewRun: 'Se kjøringen',
     saveAsTest: 'Lagre som testtilfelle',
+    answerMore: 'Mer om svaret',
+    answerMoreShort: 'Mer',
     saveIntro:
       'Blir et forslag til testsettet. Den som eier testsettet, godtar eller avviser det under Kvalitet, som andre kandidater.',
     testSet: 'Testsett',

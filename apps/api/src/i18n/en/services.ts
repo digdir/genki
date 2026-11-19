@@ -73,6 +73,7 @@ export const services = {
   environmentName:
     'The environment name must use lowercase letters, digits and dashes and start with a letter.',
   environmentExists: 'The service already has the environment {environment}.',
+  environmentDescription: 'The description is text of at most {max} characters.',
   environmentProdFixed: 'prod always exists and cannot be added or removed.',
   environmentTooMany: 'A service can have at most {max} environments.',
   environmentSame: 'An environment cannot be promoted to itself.',

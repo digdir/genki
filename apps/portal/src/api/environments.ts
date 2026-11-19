@@ -5,6 +5,7 @@ export interface EnvironmentView {
   version: number | null;
   followsPublishes: boolean;
   previousVersion: number | null;
+  description?: string;
 }
 
 export interface ServiceEnvironments {
@@ -23,11 +24,24 @@ export const environmentsApi = ({ get, request, tenantPath }: ApiContext) => {
   return {
     list: (tenant: string, service: string, signal?: AbortSignal) =>
       get<ServiceEnvironments>(base(tenant, service), signal),
-    add: (tenant: string, service: string, name: string, reason: string) =>
+    add: (tenant: string, service: string, name: string, reason: string, description?: string) =>
       request<ServiceEnvironments>(
         'POST',
         base(tenant, service),
-        { name },
+        description ? { name, description } : { name },
+        { 'change-reason': reason },
+      ),
+    describe: (
+      tenant: string,
+      service: string,
+      name: string,
+      description: string | null,
+      reason: string,
+    ) =>
+      request<ServiceEnvironments>(
+        'PATCH',
+        one(tenant, service, name),
+        { description },
         { 'change-reason': reason },
       ),
     remove: (tenant: string, service: string, name: string, reason: string) =>

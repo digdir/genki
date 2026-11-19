@@ -75,6 +75,7 @@ export const services = defineNamespace({
   environmentName:
     'Miljønavnet må ha små bokstaver, sifre og bindestrek og begynne med en bokstav.',
   environmentExists: 'Tjenesten har allerede miljøet {environment}.',
+  environmentDescription: 'Beskrivelsen er tekst på høyst {max} tegn.',
   environmentProdFixed: 'prod finnes alltid og kan ikke legges til eller fjernes.',
   environmentTooMany: 'En tjeneste kan ha høyst {max} miljøer.',
   environmentSame: 'Et miljø kan ikke fremmes til seg selv.',

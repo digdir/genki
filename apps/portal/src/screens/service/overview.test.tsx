@@ -159,10 +159,22 @@ const asManager = (ui: ReactNode) => (
   <RightsProvider value={['manage-services']}>{ui}</RightsProvider>
 );
 
-const day = (date: string, runs: number, failed = 0, cost = 1_000_000) => ({
+const day = (
+  date: string,
+  runs: number,
+  failed = 0,
+  cost = 1_000_000,
+  latency: { p50Ms: number; p95Ms: number; runs: number } | null = {
+    p50Ms: 1800,
+    p95Ms: 6400,
+    runs,
+  },
+) => ({
   date,
   usage: { runs, requests: runs, costMicroNok: cost },
-  byService: { rapport: { runs, requests: runs, failedRequests: failed, costMicroNok: cost } },
+  byService: {
+    rapport: { runs, requests: runs, failedRequests: failed, costMicroNok: cost, latency },
+  },
 });
 
 const health = (
@@ -174,6 +186,12 @@ const health = (
     total?: number;
     keys?: unknown[];
     hold?: RegExp;
+    daily?: unknown[];
+    runs?: unknown[];
+    drafts?: unknown[];
+    keyTotals?: Record<string, number>;
+    checks?: unknown;
+    gates?: unknown[];
   } = {},
 ) => {
   const calls: string[] = [];
@@ -195,7 +213,19 @@ const health = (
         to: '2026-11-17',
         priced: true,
         totals: { runs: 0 },
-        daily: [day('2026-11-15', 90), day('2026-11-16', 110), day('2026-11-17', 120, 6)],
+        daily: overrides.daily ?? [
+          day('2026-11-15', 90, 0, 1_000_000, { p50Ms: 2400, p95Ms: 7000, runs: 90 }),
+          day('2026-11-16', 110, 0, 1_000_000, { p50Ms: 1200, p95Ms: 5000, runs: 110 }),
+          day(
+            '2026-11-17',
+            120,
+            6,
+            1_000_000,
+            overrides.latency === undefined
+              ? { p50Ms: 1800, p95Ms: 6400, runs: 120 }
+              : overrides.latency,
+          ),
+        ],
         byService: [
           {
             service: 'rapport',
@@ -232,6 +262,26 @@ const health = (
           tenants: ['974760673'],
         },
       );
+    if (path.endsWith('/eval-runs')) return reply({ data: overrides.runs ?? [] });
+    if (path.endsWith('/test-sets')) return reply({ data: [] });
+    if (path.endsWith('/service-drafts')) return reply({ data: overrides.drafts ?? [] });
+    if (path.endsWith('/draft/checks') && overrides.checks) return reply(overrides.checks);
+    if (path.endsWith('/gates')) return reply({ data: overrides.gates ?? [] });
+    if (path.endsWith('/tasks') && url.searchParams.get('limit') === '1')
+      return reply({
+        data: [],
+        total:
+          overrides.keyTotals?.[
+            url.searchParams.get('actor') ??
+              (url.searchParams.get('frontend')
+                ? `frontend:${url.searchParams.get('frontend')}`
+                : '')
+          ] ??
+          overrides.total ??
+          1,
+        offset: 0,
+        limit: 1,
+      });
     if (path.endsWith('/tasks'))
       return reply({
         data: overrides.recent ?? [
@@ -280,8 +330,8 @@ describe('the Oversikt tab of a published service', () => {
       <OverviewSection api={api} tenant={tenant} id="rapport" definition={definition} now={now} />,
     );
 
-    await waitFor(() => expect(text(tile(/^Svartid, median/))).toContain('95 prosent under'));
-    expect(text(tile(/^Svartid, median/))).toMatch(/1,8 s.*6,4 s/);
+    await waitFor(() => expect(text(tile(/^Svartid/))).toContain('Median i dag. 95 % under'));
+    expect(text(tile(/^Svartid/))).toMatch(/1,8 s.*6,4 s/);
   });
 
   it('says there is no latency yet instead of inventing one when the service has no timed runs', async () => {
@@ -290,7 +340,7 @@ describe('the Oversikt tab of a published service', () => {
       <OverviewSection api={api} tenant={tenant} id="rapport" definition={definition} now={now} />,
     );
 
-    await waitFor(() => expect(text(tile(/^Svartid, median/))).toContain('Ingen data'));
+    await waitFor(() => expect(text(tile(/^Svartid/))).toContain('Ingen data'));
   });
 
   it('shows the failures of today with their most common cause', async () => {
@@ -300,15 +350,17 @@ describe('the Oversikt tab of a published service', () => {
     );
 
     const need = await screen.findByText('6 kjøringer feilet i dag');
-    expect(text(need.parentElement)).toContain('Oftest: Modellen svarte ikke i tide (4 av 6).');
+    expect(text(need.parentElement)).toContain(
+      'Vanligste årsak: Modellen svarte ikke i tide (4 av 6).',
+    );
     expect(
       within(need.parentElement as HTMLElement)
-        .getByRole('link', { name: 'Se de som feilet' })
+        .getByRole('link', { name: 'Se de feilede kjøringene' })
         .getAttribute('href'),
     ).toBe('#/services/rapport/log?status=failed&period=today');
     await waitFor(() =>
       expect(text(tile(/^Andel med feil i dag/))).toContain(
-        '6 av 120, oftest Modellen svarte ikke i tide',
+        '6 av 120. Vanligste: Modellen svarte ikke i tide',
       ),
     );
     const from = calls.find((c) => c.startsWith('/tenants/991825827/service-failures'));
@@ -317,17 +369,17 @@ describe('the Oversikt tab of a published service', () => {
     );
   });
 
-  it('keeps a place for each source of Trenger deg nå while it loads and fills it as it arrives', async () => {
+  it('shows Trenger deg only once every source of it has arrived', async () => {
     const { api, release } = health({ hold: /service-failures$/ });
     render(
       <OverviewSection api={api} tenant={tenant} id="rapport" definition={definition} now={now} />,
     );
 
-    const heading = await screen.findByRole('heading', { name: 'Trenger deg nå' });
-    const section = heading.closest('section') as HTMLElement;
-    await waitFor(() => expect(section.querySelectorAll('.ov-need').length).toBe(1));
-    expect(within(section).queryByText(/feilet i dag/)).toBeNull();
+    await screen.findByRole('heading', { name: 'Siste endringer' });
+    expect(screen.queryByRole('heading', { name: 'Trenger deg' })).toBeNull();
     release();
+    const heading = await screen.findByRole('heading', { name: 'Trenger deg' });
+    const section = heading.closest('section') as HTMLElement;
     expect(await within(section).findByText('6 kjøringer feilet i dag')).toBeTruthy();
   });
 
@@ -340,7 +392,7 @@ describe('the Oversikt tab of a published service', () => {
     const who = await screen.findByRole('region', { name: 'Hvem bruker den' });
     await waitFor(() => expect(within(who).getByText('Innsynsportalen')).toBeTruthy());
     expect(within(who).getByText('Én API-nøkkel')).toBeTruthy();
-    expect(text(who)).toContain('Delt med én annen virksomhet.');
+    expect(text(who)).toContain('Delt med én annen virksomhet');
   });
 
   it('says a service is not reachable yet when nothing is shared with it', async () => {
@@ -352,7 +404,7 @@ describe('the Oversikt tab of a published service', () => {
     const who = await screen.findByRole('region', { name: 'Hvem bruker den' });
     await waitFor(() => expect(within(who).getByText('Ingen brukerflater')).toBeTruthy());
     expect(within(who).getByText('Ingen API-nøkler')).toBeTruthy();
-    expect(text(who)).toContain('Ikke delt med andre virksomheter.');
+    expect(text(who)).toContain('Ikke delt med andre virksomheter');
   });
 
   it('links each question in Siste kjøringer to its run in Logg', async () => {
@@ -373,11 +425,244 @@ describe('the Oversikt tab of a published service', () => {
 
     expect(
       await screen.findByRole('heading', {
-        name: 'Versjon 7 er publisert. Dette gjenstår før den er i bruk',
+        name: 'Versjon 7 er publisert. Dette gjenstår før folk tar den i bruk',
       }),
     ).toBeTruthy();
     expect(screen.getByText('Lag et testsett')).toBeTruthy();
-    expect(screen.queryByRole('heading', { name: 'Trenger deg nå' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Trenger deg' })).toBeNull();
+  });
+
+  it('shows a daily bar per day of the median latency', async () => {
+    const { api } = health();
+    render(
+      <OverviewSection api={api} tenant={tenant} id="rapport" definition={definition} now={now} />,
+    );
+
+    await waitFor(() => expect(text(tile(/^Svartid/))).toContain('1,8 s'));
+    const bars = [...tile(/^Svartid/).querySelectorAll('.ov-bars > span')] as HTMLElement[];
+    expect(bars.map((b) => b.style.height)).toEqual(['100%', '50%', '75%']);
+  });
+
+  it('labels the channel of each recent run, not who started it', async () => {
+    const person = { kind: 'person' as const, id: 'employee:x:ola', name: 'Ola Hansen' };
+    const key = { kind: 'api-key' as const, id: 'api-key:k1', name: 'Saksbehandling' };
+    const bot = { kind: 'api-key' as const, id: 'api-key:k2', name: 'Teams-bot' };
+    const at = (m: number) => `2026-11-17T13:${String(10 + m).padStart(2, '0')}:00Z`;
+    const { api } = health({
+      recent: [
+        {
+          ...run('r0', 'completed', at(7), 'Spørsmål 0'),
+          channel: 'interface',
+          frontend: 'innsyn',
+          actor: person,
+        },
+        { ...run('r1', 'completed', at(6), 'Spørsmål 1'), channel: 'interface', actor: bot },
+        { ...run('r2', 'completed', at(5), 'Spørsmål 2'), channel: 'api-key', actor: key },
+        { ...run('r3', 'completed', at(4), 'Spørsmål 3'), channel: 'api', actor: person },
+        { ...run('r4', 'completed', at(3), 'Spørsmål 4'), channel: 'playground', actor: person },
+        { ...run('r5', 'completed', at(2), 'Spørsmål 5'), channel: 'batch', actor: person },
+        { ...run('r6', 'completed', at(1), 'Spørsmål 6'), channel: null },
+      ],
+      total: 7,
+    });
+    render(
+      <OverviewSection api={api} tenant={tenant} id="rapport" definition={definition} now={now} />,
+    );
+
+    const table = await screen.findByRole('region', { name: 'Siste kjøringer' });
+    await within(table).findByText('Innsynsportalen');
+    const channels = within(table)
+      .getAllByRole('row')
+      .slice(1)
+      .map((row) => text(within(row).getAllByRole('cell')[2]));
+    expect(channels).toEqual([
+      'Innsynsportalen',
+      'Teams-bot',
+      'API: Saksbehandling',
+      'API',
+      'Prøveområdet',
+      'Samlet jobb',
+      'Utløser',
+    ]);
+    expect(within(table).queryByText('Ola Hansen')).toBeNull();
+  });
+
+  it('decides the draft is untested from the revision the last test run tested', async () => {
+    const draftRun = (revision: number) => ({
+      id: `d${revision}`,
+      status: 'completed',
+      testSet: 'kjerne',
+      version: 'draft',
+      draftRevision: revision,
+      startedAt: '2026-11-17T10:30:00Z',
+      endedAt: '2026-11-17T10:40:00Z',
+      score: 0.9,
+      passed: 9,
+      total: 10,
+    });
+    const summary = {
+      id: 'rapport',
+      name: 'Rapportassistenten',
+      purpose: '',
+      outputKind: 'answer',
+      latestVersion: 7,
+      revision: 4,
+      at: '2026-11-17T09:00:00Z',
+      by: 'employee:x:kari',
+      byName: 'Kari Nordmann',
+    };
+    const { api } = health({ runs: [draftRun(3)], drafts: [summary] });
+    render(
+      <OverviewSection api={api} tenant={tenant} id="rapport" definition={definition} now={now} />,
+    );
+
+    const need = await screen.findByText('Utkastet er endret etter siste test');
+    expect(text(need.parentElement)).toContain('Testet 11:40, endret 10:00.');
+    cleanup();
+
+    const tested = health({ runs: [draftRun(4)], drafts: [summary] });
+    render(
+      <OverviewSection
+        api={tested.api}
+        tenant={tenant}
+        id="rapport"
+        definition={definition}
+        now={now}
+      />,
+    );
+    const section = (await screen.findByRole('heading', { name: 'Trenger deg' })).closest(
+      'section',
+    ) as HTMLElement;
+    await waitFor(() => expect(section.getAttribute('aria-busy')).toBeNull());
+    expect(within(section).queryByText(/Utkastet er/)).toBeNull();
+  });
+
+  it('names the gate that stops publishing in its own words, not the API message', async () => {
+    const summary = {
+      id: 'rapport',
+      name: 'Rapportassistenten',
+      purpose: '',
+      outputKind: 'answer',
+      latestVersion: 7,
+      revision: 4,
+      at: '2026-11-17T09:00:00Z',
+      by: 'employee:x:kari',
+    };
+    const draftRun = {
+      id: 'd4',
+      status: 'completed',
+      testSet: 'kjerne',
+      version: 'draft',
+      draftRevision: 4,
+      startedAt: '2026-11-17T10:30:00Z',
+      endedAt: '2026-11-17T10:40:00Z',
+      score: 0.9,
+      passed: 9,
+      total: 10,
+      metrics: { refusal: { mean: 0.89, n: 9 } },
+    };
+    const { api } = health({
+      runs: [draftRun],
+      drafts: [summary],
+      checks: {
+        service: 'rapport',
+        revision: 4,
+        ready: false,
+        problems: [
+          {
+            path: 'spec.evaluation.gates',
+            message: 'refused by evaluation gates (avslag-uten-kilde)',
+          },
+        ],
+      },
+      gates: [
+        {
+          id: 'avslag-uten-kilde',
+          version: 1,
+          spec: { kind: 'threshold', metric: 'refusal', threshold: 0.9 },
+        },
+      ],
+    });
+    render(
+      <OverviewSection api={api} tenant={tenant} id="rapport" definition={definition} now={now} />,
+    );
+
+    const need = await screen.findByText('Utkastet stoppes av en sperre');
+    await waitFor(() =>
+      expect(text(need.parentElement)).toContain(
+        'Én sperre stopper publisering: Avslag uten kilde er 89 %, kravet er 90 %.',
+      ),
+    );
+    expect(text(need.parentElement)).not.toContain('refused by');
+  });
+
+  it('says the quality is the same as the version before when the score did not change', async () => {
+    const versionRun = (version: number, endedAt: string) => ({
+      id: `v${version}`,
+      status: 'completed',
+      testSet: 'kjerne',
+      version,
+      startedAt: endedAt,
+      endedAt,
+      score: 0.86,
+      passed: 43,
+      total: 50,
+    });
+    const { api } = health({
+      runs: [versionRun(7, '2026-11-17T10:00:00Z'), versionRun(6, '2026-11-10T10:00:00Z')],
+    });
+    render(
+      <OverviewSection api={api} tenant={tenant} id="rapport" definition={definition} now={now} />,
+    );
+
+    await waitFor(() => expect(text(tile(/^Kvalitet/))).toContain('Samme som 86 % i versjon 6'));
+    expect(text(tile(/^Kvalitet/))).not.toContain('Opp fra');
+  });
+
+  it('shows the share of runs per key in Hvem bruker den, a frontend key under its frontend only', async () => {
+    const { api } = health({
+      shared: {
+        frontends: [{ id: 'teams', name: 'Teams-bot', kind: 'server', channels: ['openai'] }],
+        apiKeys: [
+          { id: 'k1', name: 'Saksbehandling', bound: true },
+          { id: 'k2', name: 'Teams', bound: true, client: 'teams' },
+          { id: 'k3', name: 'Intranett-server, gammel', bound: true },
+        ],
+        tenants: [],
+      },
+      total: 200,
+      keyTotals: { 'api-key:k1': 24, 'api-key:k2': 54, 'api-key:k3': 0 },
+    });
+    render(
+      <OverviewSection api={api} tenant={tenant} id="rapport" definition={definition} now={now} />,
+    );
+
+    const who = await screen.findByRole('region', { name: 'Hvem bruker den' });
+    await waitFor(() =>
+      expect(text(who)).toContain(
+        '2 API-nøklerSaksbehandling (12 %), Intranett-server, gammel (ikke brukt)',
+      ),
+    );
+    expect(text(who)).toContain('Brukerflate · 27 % av kjøringene');
+    expect(text(who)).not.toContain('Teams (27 %)');
+  });
+
+  it('shows the share of runs a browser frontend brought, from the runs that recorded it', async () => {
+    const { api } = health({
+      shared: {
+        frontends: [{ id: 'intranettet', name: 'Intranettet', kind: 'browser', channels: [] }],
+        apiKeys: [],
+        tenants: [],
+      },
+      total: 200,
+      keyTotals: { 'frontend:intranettet': 122 },
+    });
+    render(
+      <OverviewSection api={api} tenant={tenant} id="rapport" definition={definition} now={now} />,
+    );
+
+    const who = await screen.findByRole('region', { name: 'Hvem bruker den' });
+    await waitFor(() => expect(text(who)).toContain('Brukerflate · 61 % av kjøringene'));
   });
 
   it('shows who paused the service, when and why, in a banner', async () => {

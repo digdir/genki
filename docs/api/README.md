@@ -63,6 +63,16 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ## API changes
 
+### 2026-11-19: environment descriptions, batch run names and the frontend of a run
+
+- `POST /tenants/{tenant}/services/{id}/environments` takes an optional `description` (who uses the environment, at most 200 characters), and `PATCH /tenants/{tenant}/services/{id}/environments/{environment}` with `{ description }` sets or clears it (`null` or empty) with `manage-services` and a `change-reason`. Each environment in the list gives `description` when one is set, it survives promotions and rollbacks, and the history records the change as the new action `described` (see [services.md](services.md#build-and-edit-a-service-from-your-own-admin-ui)).
+- A run records the registered frontend it came in through, taken from the verified login (a browser frontend's registered client) or key (one bound to a frontend), never from a header. `GET /tenants/{tenant}/tasks` gives it as `frontend` on runs of the caller's own tenant, takes `frontend` to keep only those runs, and now gives `channel` `interface` for a login through a browser frontend, which was `api` (see [work.md](work.md#rights)). Runs from before this change have no `frontend`.
+- `POST /tenants/{tenant}/services/{id}/batch-runs` takes an optional `name` (at most 120 characters), and a run gives `name` when it was named (see [work.md](work.md#rights)).
+
+### 2026-11-19: who started a running test run
+
+- `GET /tenants/{tenant}/services/{id}/eval-runs` gives a run that is running or waiting for scores `startedBy` (`<kind>:<issuer>:<subject>`), `startedByName` when genki knows it, and `startedByYou: true` when the caller started it and so may cancel it with `use-services` (see [work.md](work.md#rights)). Only starters of the caller's own tenant are shown.
+
 ### 2026-11-19: the connection and maker of a model block
 
 - `GET /tenants/{tenant}/building-blocks/model/{id}` adds `connection`, the id of the model connection the model is reached through, so a page can name the connection its processor facts belong to, and `maker`, who made the model when the model list says (see [access.md](access.md)).

@@ -99,10 +99,12 @@ import { TableColumnsEditor, type TableSpec } from './TableOutputEditor';
 import { VariantsEditor } from './VariantsEditor';
 import type { ApiClient } from '../../api';
 import { A2aChannel } from '../integrations/A2aChannel';
+import { VariantsList } from '../service/VariantsList';
 import type { SetupArea } from './setup-diff';
 import {
   AskChip,
   InputArea,
+  KindCard,
   RowsArea,
   SourcesArea,
   type DatasetOption,
@@ -427,6 +429,7 @@ export const areaSummaries = (
     tools: sum.tools,
     how: sum.how,
     variants: sum.variants,
+    channels: sum.start,
     guards: sum.guards,
     risk: level
       ? t(riskConfirmed ? 'setupList.riskConfirmedSummary' : 'setupList.riskUnconfirmedSummary', {
@@ -1798,17 +1801,16 @@ export const SetupTab = ({
       useFields={fieldsOn || inputFields.length > 0}
       useFiles={filesOn}
       fileInput={fileInput}
-      extraKinds={(['audio', 'system'] as const)
-        .filter((c) => inputChoiceOn(s, c))
-        .map((c) => (
-          <div key={c} className="kind-card picked">
-            <Checkbox
-              label={labelOf(t, inputKeys, c)}
-              checked
-              onChange={() => patch((cur) => withInputChoice(cur.spec, c))}
-            />
-          </div>
-        ))}
+      extraKinds={(['audio', 'system'] as const).map((c) => (
+        <KindCard
+          key={c}
+          name={labelOf(t, inputKeys, c)}
+          description={t(c === 'audio' ? 'setupList.kindAudioDesc' : 'setupList.kindSystemDesc')}
+          checked={inputChoiceOn(s, c)}
+          locked={readOnly}
+          onToggle={() => patch((cur) => withInputChoice(cur.spec, c))}
+        />
+      ))}
       fieldsEditor={(_open, close) => (
         <div className="stack-xs">
           <InputFieldsEditor
@@ -1985,6 +1987,17 @@ export const SetupTab = ({
           );
         case 'how':
           return howBody;
+        case 'channels':
+          return (
+            <>
+              <VariantsList
+                service={serviceId}
+                publicName={variantsOf(s)[0]?.publicName ?? ''}
+                variants={variantsOf(s)}
+              />
+              {startBody}
+            </>
+          );
         case 'variants':
           return (
             <RowsArea

@@ -216,6 +216,79 @@ describe('adding test', () => {
   });
 });
 
+describe('describing an environment', () => {
+  const listed = async (call: (path: string) => Response | Promise<Response>, path: string) =>
+    ((await (await call(path)).json()) as { environments: Record<string, unknown>[] }).environments;
+
+  it('keeps the description given when test is added, through promotions and rollbacks', async () => {
+    const { call, publish, environments } = await boot();
+    await publish('Første.');
+    await call(environments, { body: { name: 'test', description: ' testerne i HR ' }, reason });
+    await publish('Andre.');
+    await call(`${environments}/test/rollback`, { body: { version: 1 }, reason });
+
+    expect((await listed(call, environments))[1]).toMatchObject({
+      name: 'test',
+      version: 1,
+      description: 'testerne i HR',
+    });
+  });
+
+  it('changes and clears the description with manage-services and a reason, and records it in the history', async () => {
+    const { call, publish, environments, addTest } = await boot();
+    await publish('Første.');
+    await addTest();
+    const path = `${environments}/test`;
+
+    expect(
+      (await call(path, { method: 'PATCH', body: { description: 'HR' }, as: 'lise', reason }))
+        .status,
+    ).toBe(403);
+    expect((await call(path, { method: 'PATCH', body: { description: 'HR' } })).status).toBe(400);
+    expect(
+      (await call(path, { method: 'PATCH', body: { description: 'HR' }, reason })).status,
+    ).toBe(200);
+    expect((await listed(call, environments))[1]?.description).toBe('HR');
+    expect(
+      (await call(path, { method: 'PATCH', body: { description: null }, reason })).status,
+    ).toBe(200);
+    expect((await listed(call, environments))[1]).not.toHaveProperty('description');
+    const history = (await (
+      await call(`/tenants/${digdir}/services/svar/environment-history`)
+    ).json()) as { data: { action: string }[] };
+    expect(history.data.slice(0, 2).map((e) => e.action)).toEqual(['described', 'described']);
+  });
+
+  it('refuses a description over 200 characters, and one for an environment the service does not have', async () => {
+    const { call, publish, environments } = await boot();
+    await publish('Første.');
+    const long = 'x'.repeat(201);
+
+    expect(
+      (await call(environments, { body: { name: 'test', description: long }, reason })).status,
+    ).toBe(400);
+    expect(
+      (await call(`${environments}/test`, { method: 'PATCH', body: { description: 'HR' }, reason }))
+        .status,
+    ).toBe(404);
+  });
+
+  it("never lets one organisation describe another's environment", async () => {
+    const { call, publish, environments, addTest } = await boot();
+    await publish('Første.');
+    await addTest();
+
+    const res = await call(`${environments}/test`, {
+      method: 'PATCH',
+      body: { description: 'HR' },
+      as: 'ola',
+      reason,
+    });
+    expect(res.status).toBe(404);
+    expect((await listed(call, environments))[1]).not.toHaveProperty('description');
+  });
+});
+
 describe('choosing the environment per call', () => {
   it('runs the version of the environment the key is bound to', async () => {
     const { publish, addTest, newKey, versionRun } = await boot();

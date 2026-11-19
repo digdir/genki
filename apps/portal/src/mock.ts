@@ -19,17 +19,20 @@ import { qualityMock } from './mock/quality';
 import { batchRunsMock } from './mock/batch-runs';
 import { searchEnginesMock } from './mock/search-engines';
 import { skillsMock } from './mock/skills';
-import { platformStatusMock } from './mock/platform-status';
+import { exampleAudit, platformStatusMock } from './mock/platform-status';
 import { devtoolsMock } from './mock/devtools';
 import { settingsMock } from './mock/settings';
 import { blocksMock } from './mock/blocks';
+import { serviceTabsMock } from './mock/service-tabs';
 import { exampleSecretNames } from './data/building-blocks';
 import { inputFieldsOf } from './data/playground';
 import { parseYaml } from './yaml';
 import { reasonProblem } from './components/ReasonField';
-import { clientMock } from './mock-clients';
+import { clientMock, exampleKeyAudit } from './mock-clients';
 import type { ServiceSpec } from './data/service-definition';
 import type {
+  ClientView,
+  ServiceKeyView,
   CapabilityModel,
   EvalRunSummary,
   FeedbackItem,
@@ -52,7 +55,13 @@ import type {
   TaskRow,
   UsageReport,
 } from './types';
-import { logTasks, logTimelines, playgroundTasks, playgroundTimeline } from './data/log';
+import {
+  logTasks,
+  logTimelines,
+  playgroundTasks,
+  playgroundTimeline,
+  serviceRuns,
+} from './data/log';
 import { exampleQualityFeedback, exampleQualityRuns, exampleQualityTestSets } from './data/quality';
 
 export const exampleOrganisations: Organisation[] = [
@@ -85,6 +94,26 @@ const service = (
   return { kind: 'Service', tenant: '999888777', id, latest, versions: history };
 };
 
+const exampleEarlierSpecs: Record<string, Record<number, Record<string, unknown>>> = import.meta.env
+  .MODE === 'test'
+  ? {}
+  : {
+      rapportassistenten: {
+        5: {
+          strategy: { id: 'agent-loop', version: 1, config: { maxSteps: 5, tokenBudget: 12000 } },
+          knowledge: { datasets: [{ dataset: 'digdir/kudos' }], runtimeDocuments: true },
+          model: { primary: 'aivar/qwen3-8', residency: 'norway' },
+          exposure: { chat: true, rest: true },
+        },
+        6: {
+          strategy: { id: 'agent-loop', version: 1, config: { maxSteps: 6, tokenBudget: 16000 } },
+          output: { kind: 'answer', withSources: false },
+          model: { primary: 'aivar/borealis-27b', residency: 'norway' },
+          exposure: { chat: true, mcp: true, rest: true },
+        },
+      },
+    };
+
 export const exampleServices: DefinitionWithHistory[] = [
   service(
     'rapportassistenten',
@@ -110,6 +139,16 @@ export const exampleServices: DefinitionWithHistory[] = [
       exposure: { chat: true, mcp: true, openai: true, rest: true },
     },
     [
+      ...(import.meta.env.MODE === 'test'
+        ? []
+        : [
+            {
+              version: 5,
+              publishedBy: 'employee:ansattporten:ola',
+              publishedAt: '2026-09-02T08:30:00Z',
+              reason: 'Første versjon i drift',
+            },
+          ]),
       {
         version: 6,
         publishedBy: 'employee:ansattporten:kari',
@@ -364,7 +403,25 @@ export const exampleChatReply = [
   '```',
 ].join('\n');
 
-export const exampleTasks: TaskRow[] = logTasks;
+export const mockMeActor = 'employee:mock:kari';
+
+const keysSeenIn = (rows: TaskRow[], service: string) => [
+  ...new Map(
+    rows
+      .filter((r) => r.service === service && r.actor?.kind === 'api-key' && r.actor.id)
+      .map((r) => [
+        r.actor?.id ?? '',
+        {
+          id: (r.actor?.id ?? '').replace(/^api-key:/, ''),
+          name: r.actor?.name ?? '',
+          bound: true,
+        },
+      ]),
+  ).values(),
+];
+
+export const exampleTasks: TaskRow[] =
+  import.meta.env.MODE === 'test' ? logTasks : [...logTasks, ...serviceRuns('rapportassistenten')];
 
 export const exampleUsage: UsageReport = buildExampleUsage();
 
@@ -507,6 +564,7 @@ const featureMocks = {
   devtools: devtoolsMock,
   settings: settingsMock,
   blocks: blocksMock,
+  serviceTabs: serviceTabsMock,
 };
 
 export type FeatureMockOptions = {
@@ -598,10 +656,18 @@ export const exampleModels: ModelOption[] = [
   },
   {
     id: 'foundry-openai/gpt-4.1',
+    name: 'GPT-4.1',
     family: 'gpt-4.1',
     residency: 'eu',
     capabilities: ['stream', 'tools', 'json-schema'],
     operations: ['chat', 'generate-image'],
+  },
+  {
+    id: 'foundry-openai/gpt-4.1-mini',
+    name: 'GPT-4.1 mini',
+    family: 'gpt-4.1',
+    residency: 'eu',
+    capabilities: ['stream', 'tools', 'json-schema'],
   },
   {
     id: 'foundry-openai/gpt-4o-2m-tps',
@@ -846,7 +912,12 @@ export const mockFetch = (
     featureMocks.hooks(extras.features?.hooks),
     featureMocks.triggers(extras.features?.triggers),
     featureMocks.preferences(extras.features?.preferences),
-    featureMocks.platformStatus(extras.features?.platformStatus),
+    featureMocks.platformStatus(
+      extras.features?.platformStatus ??
+        (import.meta.env.MODE === 'test'
+          ? undefined
+          : { audit: [...exampleAudit, ...exampleKeyAudit] }),
+    ),
     featureMocks.access(extras.features?.access),
     featureMocks.devtools(extras.features?.devtools),
     featureMocks.settings({ catalog: exampleSettingsCatalog, ...extras.features?.settings }),
@@ -855,6 +926,44 @@ export const mockFetch = (
       latest: (service) =>
         current.find((d) => d.kind === 'Service' && d.id === service)?.latest.version,
       ...extras.features?.environments,
+    }),
+    featureMocks.serviceTabs({
+      tasks: () => taskRows,
+      keys: async (tenant, service) => {
+        const reply = clientRoutes(
+          `/tenants/${tenant}/services/${encodeURIComponent(service)}/api-keys`,
+          new URL('http://mock'),
+          undefined,
+          () => false,
+        );
+        const listed = reply ? ((await reply.json()) as { keys: ServiceKeyView[] }).keys : [];
+        if (listed.length === 0) return keysSeenIn(taskRows, service);
+        return listed
+          .filter((k) => !k.revokedAt)
+          .map((k) => ({
+            id: k.id,
+            name: k.name,
+            prefix: k.prefix,
+            bound: k.service === service,
+            ...(k.client ? { client: k.client } : {}),
+          }));
+      },
+      frontends: async (tenant, service) => {
+        const reply = clientRoutes(
+          `/tenants/${tenant}/clients`,
+          new URL(`http://mock/?service=${encodeURIComponent(service)}`),
+          undefined,
+          () => false,
+        );
+        const listed = reply ? ((await reply.json()) as { clients: ClientView[] }).clients : [];
+        return listed.map((c) => ({
+          id: c.definition.metadata.id,
+          ...(c.definition.metadata.name ? { name: c.definition.metadata.name } : {}),
+          kind: c.definition.spec.kind,
+          channels: [...c.definition.spec.channels],
+        }));
+      },
+      ...extras.features?.serviceTabs,
     }),
     featureMocks.quality({
       published: (service) =>
@@ -1212,17 +1321,27 @@ export const mockFetch = (
       const from = url.searchParams.get('from');
       const to = url.searchParams.get('to');
       const limit = Number(url.searchParams.get('limit') ?? 100) || 100;
+      const offset = Number(url.searchParams.get('offset') ?? 0) || 0;
+      const actor = url.searchParams.get('actor');
+      if (actor && actor !== 'me' && !/^(employee|api-key):/.test(actor))
+        return json({ title: 'Invalid request', status: 400 }, 400);
+      const wantedActor = actor === 'me' ? mockMeActor : actor;
+      const frontend = url.searchParams.get('frontend');
       const rows = url.searchParams.get('origin') === 'playground' ? trialRows : taskRows;
       const matching = rows.filter(
         (t) =>
           (!status || t.status === status) &&
           (!wanted || t.service === wanted) &&
           (!environment || t.environment === environment) &&
+          (!wantedActor || t.actor?.id === wantedActor) &&
+          (!frontend || t.frontend === frontend) &&
           (!from || t.createdAt >= from) &&
           (!to || t.createdAt <= to),
       );
       return json({
-        data: matching.slice(0, limit).map((t) =>
+        offset,
+        limit,
+        data: matching.slice(offset, offset + limit).map((t) =>
           t.status === 'failed' && !t.failure
             ? {
                 ...t,
@@ -1369,9 +1488,11 @@ export const mockFetch = (
       if (versions === 'versions' && version) {
         const summary = found.versions.find((v) => v.version === Number(version));
         if (!summary) return notFound();
+        const earlier = exampleEarlierSpecs[found.id]?.[summary.version];
         const definition = {
           ...found.latest.definition,
           metadata: { ...(found.latest.definition.metadata as object), version: summary.version },
+          ...(earlier ? { spec: { ...(found.latest.definition.spec as object), ...earlier } } : {}),
         };
         return json({ ...found.latest, ...summary, definition });
       }

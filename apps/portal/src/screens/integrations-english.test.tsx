@@ -1,5 +1,4 @@
 // @vitest-environment jsdom
-import { createFormat } from '@genai/i18n';
 import { inEnglish } from '@genai/i18n/react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
@@ -45,12 +44,11 @@ const overview = (hash: string, live = false) =>
 describe('integrations in English', () => {
   it('names schedules in plain English', () => {
     const t = translator('en');
-    const f = createFormat('en');
-    expect(describeSchedule('0 2 * * *', t, f)).toBe('Every night at 02:00');
-    expect(describeSchedule('30 7 * * *', t, f)).toBe('Every day at 07:30');
-    expect(describeSchedule('0 7 * * 1', t, f)).toBe('Every Monday at 07:00');
-    expect(describeSchedule('0 * * * *', t, f)).toBe('Every hour');
-    expect(describeSchedule('*/5 * * * *', t, f)).toBe('Schedule "*/5 * * * *"');
+    expect(describeSchedule('0 2 * * *', t)).toBe('Every night at 02:00');
+    expect(describeSchedule('30 7 * * *', t)).toBe('Every day at 07:30');
+    expect(describeSchedule('0 7 * * 1', t)).toBe('Every Monday at 07:00');
+    expect(describeSchedule('0 * * * *', t)).toBe('Every hour');
+    expect(describeSchedule('*/5 * * * *', t)).toBe('Schedule "*/5 * * * *"');
   });
 
   it('shows the systems and their status in English', async () => {

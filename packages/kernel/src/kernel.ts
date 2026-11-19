@@ -828,6 +828,9 @@ export const createKernel = (options: KernelOptions): StoppableKernel => {
           ...(invokeOptions.environment === undefined
             ? {}
             : { environment: invokeOptions.environment }),
+          ...(principal.confinedTo?.client === undefined
+            ? {}
+            : { frontend: principal.confinedTo.client }),
         },
         principal: principalRef(principal),
         tenant,

@@ -224,7 +224,7 @@ describe('ChangeLogged', () => {
       const alert = screen.getByRole('status');
       expect(alert.getAttribute('data-color')).toBe('success');
       expect(alert.textContent).toBe(
-        'Byggeklossen er tatt i bruk. Endret av Kari Nordmann i dag kl. 14.05: «Strammere kildekrav». Logget.',
+        'Byggeklossen er tatt i bruk. Endret av Kari Nordmann i dag kl. 14:05: «Strammere kildekrav». Logget.',
       );
     } finally {
       vi.useRealTimers();
@@ -233,7 +233,7 @@ describe('ChangeLogged', () => {
 
   it('names the date when the change was not made today', () => {
     expect(changedWhen(new Date('2026-10-03T07:09:00Z'), new Date('2026-10-07T12:00:00Z'))).toBe(
-      '3. oktober 2026 kl. 09.09',
+      '3. oktober 2026 kl. 09:09',
     );
   });
 });

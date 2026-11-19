@@ -312,3 +312,34 @@
   padding-top: 8px;
   border-top: 1px solid var(--ds-color-neutral-border-subtle);
 }
+
+.batch-jobs .batch-job-name strong {
+  display: block;
+  font-weight: 600;
+}
+
+.batch-jobs .batch-job-name .meta {
+  display: block;
+  font-size: 14px;
+}
+
+.batch-list-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 140px;
+}
+
+.batch-list-bar {
+  display: block;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--ds-color-neutral-surface-tinted);
+  overflow: hidden;
+}
+
+.batch-list-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--ds-color-accent-base-default);
+}

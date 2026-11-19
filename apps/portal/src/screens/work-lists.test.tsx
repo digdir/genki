@@ -481,19 +481,12 @@ describe('Service header in live mode', () => {
     expect(within(title).queryByText('I bruk')).toBeNull();
   });
 
-  it('names who published the version in use when the API knows', async () => {
+  it('keeps only the version tag in the header and names who published it on Oversikt', async () => {
     const title = await openService({ state: 'active' }, 'Kari Nordmann');
 
-    await waitFor(() =>
-      expect(title.textContent).toMatch(/Versjon \d+ i bruk · publisert .+ av Kari Nordmann/),
-    );
-  });
-
-  it('leaves out who published when the API has no name', async () => {
-    const title = await openService({ state: 'active' });
-
-    await waitFor(() => expect(title.textContent).toMatch(/Versjon \d+ i bruk · publisert /));
-    expect(title.textContent).not.toContain(' av ');
+    await waitFor(() => expect(within(title).getByText(/^Versjon \d+ i bruk$/)).toBeTruthy());
+    expect(title.textContent).not.toContain('publisert');
+    expect(await screen.findByText(/^Versjon \d+, publisert .+ av Kari Nordmann$/)).toBeTruthy();
   });
 });
 

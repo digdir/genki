@@ -17,7 +17,7 @@ export const VersionsSection = ({
   showHistory: boolean;
 }) => {
   const { t } = usePortalFormat();
-  if (view !== 'yaml' && showHistory) return <>{history}</>;
+  if (showHistory) return <>{view === 'yaml' ? yaml : history}</>;
   return (
     <div className="stack">
       <div className="stack-xs">

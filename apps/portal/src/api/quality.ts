@@ -41,13 +41,23 @@ export interface MetricSummary {
 
 export interface EvalRun {
   id: string;
-  status: 'running' | 'waiting-for-scores' | 'completed' | 'failed' | 'interrupted' | (string & {});
+  status:
+    | 'running'
+    | 'waiting-for-scores'
+    | 'completed'
+    | 'failed'
+    | 'interrupted'
+    | 'cancelled'
+    | (string & {});
   testSet: string;
   version: RunVersion;
   draftRevision?: number;
   model?: string;
   selected?: string[];
   startedAt: string;
+  startedBy?: string;
+  startedByName?: string;
+  startedByYou?: true;
   endedAt?: string | null;
   score?: number | null;
   passed?: number | null;

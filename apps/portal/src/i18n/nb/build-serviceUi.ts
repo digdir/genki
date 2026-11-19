@@ -188,6 +188,8 @@ export const serviceUi = {
     addHeading: 'Nytt miljø',
     name: 'Navn',
     nameDescription: 'Små bokstaver, tall og bindestrek, for eksempel test.',
+    usedBy: 'Hvem bruker det (valgfritt)',
+    usedByDescription: 'Vises på kortet, for eksempel testerne i HR.',
     nameInvalid:
       'Navnet må begynne med en liten bokstav og ha bare små bokstaver, tall og bindestrek, for eksempel test.',
     nameTaken: 'Tjenesten har allerede miljøet {name}.',
@@ -199,6 +201,7 @@ export const serviceUi = {
       'prod går fra versjon {from} til versjon {to}, som {name} kjører nå. Ingenting publiseres, og prod står fast på versjon {to}.',
     promoted: 'prod kjører nå versjon {version}.',
     rollback: 'Rull tilbake',
+    moreFor: 'Flere valg for {name}',
     rollbackLabel: 'Rull tilbake {name}',
     rollbackVersion: 'Versjonen {name} skal kjøre',
     rollbackOption: 'Versjon {version}',
@@ -317,6 +320,8 @@ export const serviceUi = {
     ownIntro:
       'Egne nettsider og apper som bruker tjenesten. En brukerflate kan kalle fra egen server med API-nøkkel, eller fra nettleseren der ansatte logger inn med Ansattporten.',
     register: 'Registrer brukerflate',
+    openFrontend: 'Detaljer',
+    frontendMissing: 'Fant ingen brukerflate med id-en {id}. Den kan være fjernet.',
     copySecretNow: 'Kopier hemmeligheten nå',
     secretOnce:
       'Den vises bare denne ene gangen. Bruk den til å sjekke signaturen i genai-signature på hvert varsel.',

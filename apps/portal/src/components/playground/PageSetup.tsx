@@ -308,37 +308,39 @@ export const PageSetup = ({
           <span>{workText(strategy, language, t)}</span>
         </Fieldset>
       ) : null}
-      {own ? (
-        <Details data-size="sm">
-          <Details.Summary>{t('playground.moreChoices')}</Details.Summary>
-          <Details.Content className="playground-setup-more">
-            <Fieldset data-size="sm">
-              <Fieldset.Legend>{t('playground.skills')}</Fieldset.Legend>
-              {checkboxes('skills', options.skills)}
-            </Fieldset>
-            <Fieldset data-size="sm">
-              <Fieldset.Legend>{t('playground.blocks')}</Fieldset.Legend>
-              {checkboxes('blocks', options.blocks)}
-            </Fieldset>
-            <Fieldset data-size="sm">
-              <Fieldset.Legend>{t('playground.outputLegend')}</Fieldset.Legend>
-              <Radio
-                name={`${id}-out`}
-                label={t('playground.outputChat')}
-                checked={setup.output === 'text'}
-                onChange={() => onChange({ ...setup, output: 'text' })}
-              />
-              <Radio
-                name={`${id}-out`}
-                label={t('playground.outputFields')}
-                checked={setup.output === 'fields'}
-                onChange={() => onChange({ ...setup, output: 'fields' })}
-              />
-            </Fieldset>
-          </Details.Content>
-        </Details>
-      ) : null}
-      <AnswerLanguagePicker value={answerLanguage} onChange={onAnswerLanguage} />
+      <Details data-size="sm">
+        <Details.Summary>{t('playground.moreChoices')}</Details.Summary>
+        <Details.Content className="playground-setup-more">
+          <AnswerLanguagePicker value={answerLanguage} onChange={onAnswerLanguage} />
+          {own ? (
+            <>
+              <Fieldset data-size="sm">
+                <Fieldset.Legend>{t('playground.skills')}</Fieldset.Legend>
+                {checkboxes('skills', options.skills)}
+              </Fieldset>
+              <Fieldset data-size="sm">
+                <Fieldset.Legend>{t('playground.blocks')}</Fieldset.Legend>
+                {checkboxes('blocks', options.blocks)}
+              </Fieldset>
+              <Fieldset data-size="sm">
+                <Fieldset.Legend>{t('playground.outputLegend')}</Fieldset.Legend>
+                <Radio
+                  name={`${id}-out`}
+                  label={t('playground.outputChat')}
+                  checked={setup.output === 'text'}
+                  onChange={() => onChange({ ...setup, output: 'text' })}
+                />
+                <Radio
+                  name={`${id}-out`}
+                  label={t('playground.outputFields')}
+                  checked={setup.output === 'fields'}
+                  onChange={() => onChange({ ...setup, output: 'fields' })}
+                />
+              </Fieldset>
+            </>
+          ) : null}
+        </Details.Content>
+      </Details>
       <div className="playground-setup-summary">
         {changes ? <span>{changes}</span> : null}
         {found ? (

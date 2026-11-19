@@ -495,12 +495,12 @@ describe('live dataset detail', () => {
       return undefined;
     });
     await renderLive(`${veiledere}/ingestions`, fetch);
-    const warned = await screen.findByText(/sluppet inn bare til 15\. november 2026 kl\. 08\.56/);
+    const warned = await screen.findByText(/sluppet inn bare til 15\. november 2026 kl\. 08:56/);
     expect(warned.closest('[data-color="warning"]')).not.toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'Slipp inn igjen' }));
 
-    expect(await screen.findByText(/sluppet inn til 16\. november 2026 kl\. 06\.00/)).toBeTruthy();
+    expect(await screen.findByText(/sluppet inn til 16\. november 2026 kl\. 06:00/)).toBeTruthy();
     const readmit = calls.find((c) => c.url.endsWith('/executions/r1/readmit'));
     expect(readmit?.method).toBe('POST');
     expect(readmit?.reason).toBeTruthy();
@@ -540,7 +540,7 @@ describe('live dataset detail', () => {
     await renderLive(`${veiledere}/ingestions`, fetch);
 
     expect(
-      await screen.findByText(/sluppet inn bare til 15\. november 2026 kl\. 08\.56/),
+      await screen.findByText(/sluppet inn bare til 15\. november 2026 kl\. 08:56/),
     ).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Slipp inn igjen' }));
     await waitFor(() =>
@@ -591,7 +591,7 @@ describe('live dataset detail', () => {
     );
 
     expect(
-      await screen.findByText(/sluppet inn bare til 15\. november 2026 kl\. 08\.56/),
+      await screen.findByText(/sluppet inn bare til 15\. november 2026 kl\. 08:56/),
     ).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Slipp inn igjen' })).toBeNull();
   });

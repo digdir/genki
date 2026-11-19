@@ -1,12 +1,34 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { useEffect, useState } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createApiClient } from '../../api';
 import { mockFetch } from '../../mock';
+import { RightsProvider } from '../../Shell';
 import { expectAccessible } from '../../test-utils';
 import { ServiceChannels } from './Channels';
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  window.location.hash = '';
+});
+
+const frontendIn = (hash: string) => /\/channels\/([^/]+)$/.exec(hash)?.[1];
+
+const Routed = (props: Omit<Parameters<typeof ServiceChannels>[0], 'frontend'>) => {
+  const [hash, setHash] = useState(window.location.hash);
+  useEffect(() => {
+    const changed = () => setHash(window.location.hash);
+    window.addEventListener('hashchange', changed);
+    return () => window.removeEventListener('hashchange', changed);
+  }, []);
+  return <ServiceChannels {...props} frontend={frontendIn(hash)} />;
+};
+
+const openFrontend = async (service: string, id: string) => {
+  window.location.hash = `#/services/${service}/channels/${id}`;
+  await waitFor(() => expect(screen.queryByRole('list', { name: 'Brukerflater' })).toBeNull());
+};
 
 interface Call {
   method: string;
@@ -53,15 +75,12 @@ const setup = (service = 'rapportassistenten', { secretsFail = false } = {}) => 
   };
   const api = createApiClient({ baseUrl: '/api', fetch, token: () => 'test' });
   render(
-    <main>
-      <h1>Rapportassistenten</h1>
-      <ServiceChannels
-        api={api}
-        tenant="999888777"
-        service={service}
-        apiBase="https://api.example.no"
-      />
-    </main>,
+    <RightsProvider value={['manage-services']}>
+      <main>
+        <h1>Rapportassistenten</h1>
+        <Routed api={api} tenant="999888777" service={service} apiBase="https://api.example.no" />
+      </main>
+    </RightsProvider>,
   );
   return { calls };
 };
@@ -73,17 +92,45 @@ describe('channels and frontends for a service', () => {
   it('lists endpoints and the registered frontends with how to connect', async () => {
     setup();
     const cards = await screen.findByRole('list', { name: 'Brukerflater' });
-    expect(within(cards).getByRole('heading', { name: 'Intranettet' })).toBeTruthy();
-    expect(within(cards).getByText('testetaten-intranett')).toBeTruthy();
-    expect(within(cards).getByText('Nettleser med innlogging')).toBeTruthy();
-    expect(screen.getByText('POST /api/mcp')).toBeTruthy();
-    expect(within(cards).getByText(/client_id: 'testetaten-intranett'/)).toBeTruthy();
+    expect(within(cards).getByText('Intranettet')).toBeTruthy();
+    const endpoints = screen.getByRole('region', { name: 'Endepunkter' });
+    expect(within(endpoints).getAllByText('POST /api/mcp').length).toBeGreaterThan(0);
     expectAccessible();
+
+    await openFrontend('rapportassistenten', 'intranettet');
+    expect(await screen.findByRole('heading', { name: 'Intranettet' })).toBeTruthy();
+    expect(screen.getByText('testetaten-intranett')).toBeTruthy();
+    expect(screen.getByText('Nettleser med innlogging')).toBeTruthy();
+    expect(screen.getByText(/client_id: 'testetaten-intranett'/)).toBeTruthy();
+    expectAccessible();
+  });
+
+  it('opens a frontend on its own page from the list, with a link back to Nøkler og kanaler', async () => {
+    setup();
+    const cards = await screen.findByRole('list', { name: 'Brukerflater' });
+    const details = within(cards).getByRole('link', { name: 'Detaljer for Intranettet' });
+    expect(details.getAttribute('href')).toBe('#/services/rapportassistenten/channels/intranettet');
+
+    await openFrontend('rapportassistenten', 'intranettet');
+    expect(await screen.findByRole('heading', { level: 2, name: 'Intranettet' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Nøkler og kanaler' }).getAttribute('href')).toBe(
+      '#/services/rapportassistenten/channels',
+    );
+    expect(screen.getByRole('button', { name: /^Endre/ })).toBeTruthy();
+  });
+
+  it('keeps every endpoint of every channel under Alle endepunkter', async () => {
+    setup();
+    const endpoints = await screen.findByRole('region', { name: 'Endepunkter' });
+    const all = within(endpoints).getByText('Alle endepunkter').closest('details') as HTMLElement;
+    expect(within(all).getByText('GET /api/tools/openapi.json')).toBeTruthy();
+    expect(within(all).getByText('GET /api/conversations')).toBeTruthy();
+    expect(within(all).getByText('GET /api/facets')).toBeTruthy();
   });
 
   it('registers a browser frontend with origins and Ansattporten, after validation', async () => {
     const { calls } = setup('nytt-oppslag');
-    fireEvent.click(await screen.findByRole('button', { name: 'Registrer brukerflate' }));
+    fireEvent.click(await screen.findByRole('link', { name: 'Registrer brukerflate' }));
     fireEvent.click(screen.getByLabelText('Fra nettleseren med innlogging i Ansattporten'));
     fireEvent.click(screen.getByRole('button', { name: 'Registrer' }));
     expect(await screen.findByText('Rett opp i dette:')).toBeTruthy();
@@ -114,18 +161,20 @@ describe('channels and frontends for a service', () => {
       },
     });
     const cards = await screen.findByRole('list', { name: 'Brukerflater' });
-    expect(within(cards).getByRole('heading', { name: 'Saksbehandlerportalen' })).toBeTruthy();
+    expect(await within(cards).findByText('Saksbehandlerportalen')).toBeTruthy();
   });
 
   it('stores a new webhook secret for the webhook address', async () => {
     const { calls } = setup('nytt-oppslag');
-    fireEvent.click(await screen.findByRole('button', { name: 'Registrer brukerflate' }));
+    fireEvent.click(await screen.findByRole('link', { name: 'Registrer brukerflate' }));
     type('Navn', 'Saksvarsler');
     type('Adresse varslene sendes til', 'https://varsel.testetaten.example.no/krok');
     fireEvent.click(screen.getByLabelText('En kjøring er ferdig'));
     type('Begrunnelse', 'Saksbehandlerne skal få varsel');
     fireEvent.click(screen.getByRole('button', { name: 'Registrer' }));
     expect(await screen.findByText(/Saksvarsler er registrert/)).toBeTruthy();
+    await screen.findByText('Saksvarsler');
+    await openFrontend('nytt-oppslag', 'saksvarsler');
 
     fireEvent.click(await screen.findByRole('button', { name: 'Lag ny hemmelighet' }));
 
@@ -136,7 +185,7 @@ describe('channels and frontends for a service', () => {
   });
 
   const registerWebhook = async (secretName?: string) => {
-    fireEvent.click(await screen.findByRole('button', { name: 'Registrer brukerflate' }));
+    fireEvent.click(await screen.findByRole('link', { name: 'Registrer brukerflate' }));
     type('Navn', 'Saksvarsler');
     type('Adresse varslene sendes til', 'https://varsel.testetaten.example.no/krok');
     fireEvent.click(screen.getByLabelText('En kjøring er ferdig'));
@@ -144,6 +193,8 @@ describe('channels and frontends for a service', () => {
     type('Begrunnelse', 'Saksbehandlerne skal få varsel');
     fireEvent.click(screen.getByRole('button', { name: 'Registrer' }));
     expect(await screen.findByText(/Saksvarsler er registrert/)).toBeTruthy();
+    await screen.findByText('Saksvarsler');
+    await openFrontend('nytt-oppslag', 'saksvarsler');
     fireEvent.click(await screen.findByRole('button', { name: 'Lag ny hemmelighet' }));
   };
 
@@ -174,7 +225,7 @@ describe('channels and frontends for a service', () => {
 
   it('refuses an origin with a path', async () => {
     setup();
-    fireEvent.click(await screen.findByRole('button', { name: 'Registrer brukerflate' }));
+    fireEvent.click(await screen.findByRole('link', { name: 'Registrer brukerflate' }));
     type('Navn', 'Test');
     type('Tillatte opprinnelser', 'https://app.example.no/sti');
     fireEvent.click(screen.getByRole('button', { name: 'Registrer' }));
@@ -198,19 +249,20 @@ describe('channels and frontends for a service', () => {
       client: 'intranettet',
       allowedOverrides: [],
     });
-    const keys = await screen.findByRole('list', { name: 'API-nøkler for tjenesten' });
-    expect(within(keys).getByText('Brukerflate: Intranettet')).toBeTruthy();
-    expect(within(keys).getByText('Sist brukt aldri')).toBeTruthy();
+    const keys = await screen.findByRole('table');
+    expect(await within(keys).findByText('Brukerflate: Intranettet')).toBeTruthy();
+    expect(within(keys).getByText('Aldri')).toBeTruthy();
 
     fireEvent.click(within(keys).getByRole('button', { name: 'Roter Intranett-server' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Lag ny nøkkel' }));
     expect(await screen.findByText(/slutter å virke med en gang\./)).toBeTruthy();
-    await waitFor(() => expect(within(keys).getAllByText('Trukket tilbake')).toHaveLength(1));
+    await waitFor(() => expect(within(keys).getByText(/· rotert /)).toBeTruthy());
+    expect(within(keys).getAllByRole('row')).toHaveLength(2);
 
     fireEvent.click(within(keys).getByRole('button', { name: 'Trekk tilbake Intranett-server' }));
     type('Begrunnelse', 'Trengs ikke lenger');
     fireEvent.click(screen.getByRole('button', { name: 'Trekk tilbake nøkkelen' }));
-    await waitFor(() => expect(within(keys).getAllByText('Trukket tilbake')).toHaveLength(2));
+    await waitFor(() => expect(within(keys).getAllByText('Trukket tilbake')).toHaveLength(1));
   });
 
   it('picks overridable settings, with a wildcard per group, when creating and rotating a key', async () => {
@@ -237,13 +289,17 @@ describe('channels and frontends for a service', () => {
       name: 'Overstyrer',
       allowedOverrides: ['retrieval.*', 'answer.language'],
     });
-    const keys = await screen.findByRole('list', { name: 'API-nøkler for tjenesten' });
+    const keys = await screen.findByRole('table');
     const allowed = await within(keys).findByRole('list', { name: 'Har lov til' });
     expect(
       within(allowed)
         .getAllByRole('listitem')
         .map((i) => i.textContent),
-    ).toEqual(['Alt om søk', 'Språket svaret skrives på']);
+    ).toEqual([
+      'Alle miljøer',
+      'Alle kanaler',
+      'Kan overstyre: alt om søk, språket svaret skrives på',
+    ]);
 
     fireEvent.click(within(keys).getByRole('button', { name: 'Roter Overstyrer' }));
     const rotating = await screen.findByRole('group', { name: 'Roter Overstyrer' });
@@ -258,7 +314,7 @@ describe('channels and frontends for a service', () => {
               .getAllByRole('listitem')
               .map((i) => i.textContent),
           ),
-      ).toContainEqual(['Alt om søk']),
+      ).toContainEqual(['Alle miljøer', 'Alle kanaler', 'Kan overstyre: alt om søk']),
     );
     const rotated = calls.find((c) => c.url.endsWith('/rotate'));
     expect(rotated?.body).toEqual({ allowedOverrides: ['retrieval.*'] });

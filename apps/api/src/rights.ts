@@ -103,6 +103,7 @@ export const adminActionRights: Readonly<
   'platform.service.environments.remove': 'manage-services',
   'platform.service.environments.promote': 'manage-services',
   'platform.service.environments.rollback': 'manage-services',
+  'platform.service.environments.describe': 'manage-services',
   'platform.setting.set': 'manage-services',
   'platform.setting.pin': 'manage-services',
   'platform.tenant.import': 'manage-services',

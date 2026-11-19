@@ -817,7 +817,7 @@ export const exampleVersions: Record<string, VersionRow[]> = {
   soknadsuttrekk: [
     {
       n: 1,
-      when: '3. oktober kl. 14.20',
+      when: '3. oktober kl. 14:20',
       who: 'Kari Nordmann',
       state: 'I test',
       score: '7 av 10 riktige på prøven',
@@ -830,7 +830,7 @@ export const exampleVersions: Record<string, VersionRow[]> = {
   rapportassistenten: [
     {
       n: 3,
-      when: '1. oktober kl. 09.42',
+      when: '1. oktober kl. 09:42',
       who: 'Kari Nordmann',
       state: 'I bruk',
       score: 'Testsett: 46 av 50 (92 %)',
@@ -838,7 +838,7 @@ export const exampleVersions: Record<string, VersionRow[]> = {
     },
     {
       n: 2,
-      when: '24. september kl. 14.05',
+      when: '24. september kl. 14:05',
       who: 'Kari Nordmann',
       state: 'Tidligere',
       score: 'Testsett: 43 av 50 (86 %)',
@@ -846,7 +846,7 @@ export const exampleVersions: Record<string, VersionRow[]> = {
     },
     {
       n: 1,
-      when: '19. august kl. 11.02',
+      when: '19. august kl. 11:02',
       who: 'Kari Nordmann',
       state: 'Tidligere',
       score: 'Ingen testsett',

@@ -1959,6 +1959,21 @@ describe('who started a run and how it came in', () => {
     by('batch', '2026-10-06T08:03:00Z', person('per')),
     by('trigger', '2026-10-06T08:04:00Z', { kind: 'workload', id: '["platform","trigger"]' }),
     {
+      ...by('browser', '2026-10-06T08:07:00Z', person('lise'), { entryPoint: 'openai' }),
+      service: {
+        ...task('browser', digdir, '2026-10-06T08:07:00Z').service,
+        frontend: 'intranettet',
+      },
+    },
+    {
+      ...by('foreign', '2026-10-06T08:08:00Z', person('kari', other), { entryPoint: 'openai' }),
+      tenant: other,
+      service: {
+        ...task('foreign', digdir, '2026-10-06T08:08:00Z').service,
+        frontend: 'intranettet',
+      },
+    },
+    {
       ...by('shared', '2026-10-06T08:05:00Z', person('kari', other), { entryPoint: 'openai' }),
       tenant: other,
     },
@@ -2006,6 +2021,8 @@ describe('who started a run and how it came in', () => {
       batch: 'batch',
       trigger: null,
       shared: 'api',
+      browser: 'interface',
+      foreign: 'api',
     });
     expect(trials.data.map((r) => [r.id, r.channel])).toEqual([['trial', 'playground']]);
   });
@@ -2032,6 +2049,21 @@ describe('who started a run and how it came in', () => {
     expect(all.data.find((r) => r.id === 'shared')?.actor.id).toBeUndefined();
     expect(asOther.data.map((r) => r.id)).toEqual(['api']);
     expect((await send(`/tenants/${digdir}/tasks?actor=me`, 'ola')).status).toBe(404);
+  });
+
+  it('names the frontend a run came through and filters by it, only for runs of its own tenant', async () => {
+    const { send } = await boot();
+
+    const all = await list(send);
+    const through = await list(send, '?frontend=intranettet');
+    const frontends = Object.fromEntries(
+      all.data.map((r) => [r.id, (r as { frontend?: string }).frontend]),
+    );
+
+    expect(frontends.browser).toBe('intranettet');
+    expect(frontends.foreign).toBeUndefined();
+    expect(through.data.map((r) => r.id)).toEqual(['browser']);
+    expect((await send(`/tenants/${digdir}/tasks?frontend=Intra%20nett`, 'kari')).status).toBe(400);
   });
 
   it('refuses an actor filter that is neither me nor an actor id', async () => {

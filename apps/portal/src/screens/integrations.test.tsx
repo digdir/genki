@@ -93,7 +93,7 @@ describe('Integrasjoner: Nøkler', () => {
     expect(within(list).getByText('Publiseringssystemet')).toBeTruthy();
     expect(within(list).getByText('Alle tjenester og datasett')).toBeTruthy();
     expect(within(list).queryByText('Tilbakekalt')).toBeNull();
-    expect(within(list).getByText(/60 kall per minutt · sist brukt i dag kl. 02.03/)).toBeTruthy();
+    expect(within(list).getByText(/60 kall per minutt · sist brukt i dag kl. 02:03/)).toBeTruthy();
     expectAccessible();
   });
 

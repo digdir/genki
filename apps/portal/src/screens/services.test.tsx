@@ -158,7 +158,7 @@ describe('builder', () => {
     expect(navLink('Utviklerverktøy').getAttribute('aria-selected')).toBe('true');
     expect(subLink('Utviklerverktøy', 'Versjoner').getAttribute('aria-selected')).toBe('true');
     expect(screen.getByText('Versjon 6')).toBeTruthy();
-    expect(screen.getByText('Begrunnelse: Strammere krav til kilder')).toBeTruthy();
+    expect(screen.getByText('«Strammere krav til kilder»')).toBeTruthy();
     expectAccessible();
   });
 
@@ -315,27 +315,27 @@ describe('risk level and v3 checks', () => {
 });
 
 describe('developer view', () => {
-  it('shows the shared schema YAML and validates it against the API', async () => {
+  it('shows the definition as YAML and checks it against the schema through the API', async () => {
     const { calls, fetch } = recording();
-    await openBuilder('#/services/soknadsuttrekk/versions?view=yaml', 'Søknadsuttrekk', fetch);
-    const text = yamlField().value;
+    await openBuilder(
+      '#/services/rapportassistenten/versions?view=yaml',
+      'Rapportassistenten',
+      fetch,
+    );
+    const editor = (await screen.findByLabelText('Definisjonen')) as HTMLTextAreaElement;
+    const text = editor.value;
     expect(text).toContain('kind: Service');
     expect(text).toMatch(
-      /metadata:\n {2}tenant: '\d+'\n {2}id: soknadsuttrekk\n {2}name: Søknadsuttrekk\n {2}version: 2/,
+      /metadata:\n {2}tenant: '\d+'\n {2}id: rapportassistenten\n {2}name: Rapportassistenten/,
     );
-    expect(text).toContain('id: single-call');
-    expect(text).toContain('- enhetsregisteret@1');
+    expect(text).toContain('id: agent-loop');
+    expect(text).toContain('- dataset: digdir/kudos');
     expectAccessible();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Sjekk mot skjemaet' }));
-    expect(await screen.findByText('Definisjonen følger skjemaet.')).toBeTruthy();
+    expect(await screen.findByText('Gyldig.', {}, { timeout: 3000 })).toBeTruthy();
     const call = calls.find((c) => c.url.endsWith('/definitions/validate'));
     expect((call?.body as { definition: unknown }).definition).toBe(text);
-
-    fireEvent.change(yamlField(), { target: { value: `${text}steps: []\n` } });
-    fireEvent.click(screen.getByRole('button', { name: 'Sjekk mot skjemaet' }));
-    expect(await screen.findByText('Definisjonen følger ikke skjemaet:')).toBeTruthy();
-    expect(screen.getByText('spec.steps')).toBeTruthy();
+    expect(calls.some((c) => c.method === 'POST' && c.url.endsWith('/definitions'))).toBe(false);
   });
 
   it('applies and discards YAML edits', async () => {
@@ -381,18 +381,21 @@ describe('pasting the example definitions', () => {
 });
 
 describe('versions', () => {
-  it('compares and rolls back to a live version', async () => {
+  it('compares a version with the one before and publishes it again as a new version', async () => {
     const { calls, fetch } = recording();
     await openBuilder('#/services/rapportassistenten/versions', 'Rapportassistenten', fetch);
-    fireEvent.click(screen.getByRole('button', { name: 'Sammenlign med utkastet, versjon 6' }));
-    expect(screen.getByText('Endret i utkastet')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Rull tilbake hit, versjon 6' }));
-    expect(screen.getByText(/Utkastet får de samme innstillingene som versjon 6/)).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Rull tilbake' }));
-    expect(
-      await screen.findByText('Utkastet er tilbakestilt til versjon 6. Ingenting er publisert.'),
-    ).toBeTruthy();
+    fireEvent.click(await screen.findByRole('button', { name: /^Versjon 6/ }));
+    expect(await screen.findByRole('heading', { name: 'Versjon 6, første versjon' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Ta i bruk igjen' }));
+    const confirm = screen.getByRole('alertdialog', { name: 'Publiser versjon 6 på nytt' });
+    expect(within(confirm).getByText(/publiseres som versjon 8/)).toBeTruthy();
+    fireEvent.change(within(confirm).getByLabelText('Begrunnelse'), {
+      target: { value: 'Versjon 7 avslår for sjelden' },
+    });
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Publiser som versjon 8' }));
+    expect(await screen.findByText('Versjon 6 er publisert på nytt som versjon 8.')).toBeTruthy();
     expect(calls.some((c) => c.url.endsWith('/rapportassistenten/versions/6'))).toBe(true);
+    expect(calls.some((c) => c.method === 'POST' && c.url.endsWith('/definitions'))).toBe(true);
     expectAccessible();
   });
 });

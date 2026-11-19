@@ -278,6 +278,7 @@ export const changes = {
   environmentRemove: 'removed an environment from the service',
   environmentPromote: 'promoted a version of the service to an environment',
   environmentRollback: 'rolled an environment of the service back',
+  environmentDescribe: 'changed the description of an environment of the service',
   serviceRiskConfirm: 'confirmed the risk assessment for the service',
   serviceShare: 'shared the service',
   skillAttachmentUpload: 'uploaded an attachment to the skill',

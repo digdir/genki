@@ -245,9 +245,9 @@ export const setup = defineNamespace({
   queueHelp: 'En meldingskø i plattformen.',
   schedule: 'Tidsplan',
   schedulePublished: 'Som publisert: {cron}',
-  scheduleNightly: 'Hver natt kl. 02.00',
+  scheduleNightly: 'Hver natt kl. 02:00',
   scheduleHourly: 'Hver time',
-  scheduleMonday: 'Hver mandag kl. 07.00',
+  scheduleMonday: 'Hver mandag kl. 07:00',
   publicName: 'Offentlig navn',
   publicNameHelp:
     'Systemer og andre tjenester kaller tjenesten med dette navnet. Kan ikke endres etter publisering.',
@@ -339,6 +339,7 @@ export const setupList = defineNamespace({
   helpTools: 'Det tjenesten kan gjøre i tillegg til å skrive svar.',
   helpHow: 'Hvordan tjenesten kommer fram til svaret.',
   helpVariants: 'Prøv to oppsett mot hverandre med ekte brukere.',
+  helpChannels: 'Hvor tjenesten kan nås, og hvilke varianter de som kaller den kan velge.',
   helpGuards: 'Regler som stopper eller endrer spørsmål og svar.',
   helpRisk:
     'Risikonivået etter KI-forordningen. Det må være bekreftet før endringene kan publiseres.',
@@ -397,6 +398,8 @@ export const setupList = defineNamespace({
   kindFieldsDesc: 'Faste felter brukeren fyller ut, for eksempel avdeling eller stillingsprosent.',
   kindFiles: 'Filer',
   kindFilesDesc: 'Brukeren kan legge ved dokumenter, for eksempel en søknad eller et vedtak.',
+  kindAudioDesc: 'Opptak som skrives ut før tjenesten svarer.',
+  kindSystemDesc: 'Strukturerte data som et annet system sender med i kallet.',
   fieldText: 'Tekst',
   fieldLongText: 'Lang tekst',
   fieldChoice: 'Nedtrekk',

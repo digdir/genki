@@ -196,6 +196,15 @@ const tokensFor = (
   return t;
 };
 
+const latencyOf = (runs: number, seed: number) =>
+  runs > 0
+    ? {
+        p50Ms: Math.round(3900 + random(seed) * 700),
+        p95Ms: Math.round(8800 + random(seed + 1) * 1600),
+        runs,
+      }
+    : null;
+
 export const exampleProjects = [
   { id: 'horinger-2026', name: 'Høringsrunde 2026', services: ['horingsoppsummering'] },
 ];
@@ -218,7 +227,7 @@ export const buildExampleUsage = (
     const month = date.getUTCMonth();
     const day = date.getUTCDate();
     const partial = i === 0;
-    const services: Record<string, UsageTotals> = {};
+    const services: NonNullable<UsageReport['daily'][number]['byService']> = {};
     const models: Record<string, UsageTotals> = {};
     let dayTotal = zeroUsage();
     usageServices.forEach((s, index) => {
@@ -228,7 +237,7 @@ export const buildExampleUsage = (
       const cost = ((t / 1000) * (priceOf(s.model) * (1 - fb) + priceOf(MINI) * fb)) / 100;
       const shp = shape[s.id] ?? { inputShare: 0.9, perRun: 4000 };
       const u = totals(t, shp.inputShare, shp.perRun, cost);
-      services[s.id] = u;
+      services[s.id] = { ...u, latency: latencyOf(u.requests, month * 100 + day + index) };
       byService[s.id] = add(byService[s.id] ?? zeroUsage(), u);
       dayTotal = add(dayTotal, u);
       [
@@ -262,7 +271,11 @@ export const buildExampleUsage = (
     priced: true,
     totals: sum,
     daily,
-    byService: Object.entries(byService).map(([service, usage]) => ({ service, usage })),
+    byService: Object.entries(byService).map(([service, usage], index) => ({
+      service,
+      usage,
+      latency: latencyOf(usage.requests, index),
+    })),
     byModel: Object.entries(byModel).map(([model, usage]) => ({ model, usage })),
     byProject: (project ? exampleProjects.filter((p) => p.id === project) : exampleProjects).map(
       (p) => ({

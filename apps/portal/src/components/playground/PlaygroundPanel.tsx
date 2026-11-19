@@ -1079,6 +1079,11 @@ export const PlaygroundPanel = ({
           }}
         />
       </Field>
+      {page && !comparing && messages.some((m) => !m.setups.b) ? (
+        <Button variant="secondary" type="button" onClick={newConversation}>
+          {t('playground.newConversation')}
+        </Button>
+      ) : null}
       <BusyButton
         variant="primary"
         type="submit"
@@ -1112,16 +1117,11 @@ export const PlaygroundPanel = ({
     status: 'ready',
     data: pickerModelsOf(options, catalog.status === 'ready' ? catalog.data : [], t),
   };
-  const threadFoot = (shown: Message[]) => (
+  const threadFoot = (
     <div className="playground-thread-foot">
       <span role="status" className="playground-status">
         {busy ? t(comparing ? 'playground.runningBoth' : 'playground.running') : null}
       </span>
-      {shown.length && !isExtract && !comparing ? (
-        <Button variant="tertiary" data-size="sm" onClick={newConversation}>
-          {t('playground.newConversation')}
-        </Button>
-      ) : null}
     </div>
   );
   const showCall = () =>
@@ -1176,7 +1176,7 @@ export const PlaygroundPanel = ({
         </div>
         {compared ? savePart(compared) : null}
         <div className="playground-compare-ask">
-          {threadFoot([])}
+          {threadFoot}
           {inputPart}
           <div className="playground-compare-note">
             <span className="playground-subtle">
@@ -1273,7 +1273,7 @@ export const PlaygroundPanel = ({
                 );
               })}
             </ol>
-            {threadFoot(shown)}
+            {threadFoot}
             {inputPart}
           </section>
         </div>

@@ -931,6 +931,26 @@ describe('Byggeklosser: detalj', () => {
     expect(document.body.textContent).toContain('"reason":"Raskere uttrekk i Postsortering"');
   });
 
+  it('keeps Vis API-kall in the detail header and Kvalitet and Innstillinger under the Om tab', async () => {
+    await open('#/building-blocks/model/aivar%2Fborealis-27b');
+    await screen.findByRole('heading', { name: 'Innstillinger for Testetaten' });
+    const head = screen
+      .getByRole('heading', { level: 1 })
+      .closest('.bb-detail-head') as HTMLElement;
+    expect(within(head).getByRole('button', { name: 'Vis API-kall' })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 2, name: 'Kvalitet på testsett' })).toBeTruthy();
+    expect(
+      screen.getByRole('heading', { level: 2, name: 'Innstillinger for Testetaten' }),
+    ).toBeTruthy();
+
+    cleanup();
+    await open('#/building-blocks/model/aivar%2Fborealis-27b/used-by');
+    expect(
+      (await screen.findByRole('tab', { name: 'Brukes av' })).getAttribute('aria-selected'),
+    ).toBe('true');
+    expect(screen.queryByRole('heading', { level: 2, name: 'Kvalitet på testsett' })).toBeNull();
+  });
+
   it('previews the reason in the body of the settings call', async () => {
     await open('#/building-blocks/model/aivar%2Fborealis-27b');
     await screen.findByRole('heading', { name: 'Innstillinger for Testetaten' });

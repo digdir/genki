@@ -147,7 +147,8 @@ describe('Prøveområde', () => {
     const seen: string[] = [];
     await openPage({ candidates }, seen);
     askSample('Hva sier evalueringene om digital veiledning?');
-    fireEvent.click(await screen.findByRole('button', { name: 'Lagre som testtilfelle' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Mer om svaret' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Lagre som testtilfelle', hidden: true }));
 
     const expected = screen.getByRole('textbox', { name: 'Forventet svar' }) as HTMLTextAreaElement;
     expect(expected.value).toContain('Evalueringene peker på tre ting');
@@ -431,7 +432,9 @@ describe('Prøveområde', () => {
     ).toBeTruthy();
     expect(within(first as HTMLElement).getByText('Data i Norge')).toBeTruthy();
 
-    const [saveA] = screen.getAllByRole('button', { name: 'Lagre som testtilfelle' });
+    const [moreA] = screen.getAllByRole('button', { name: 'Mer om svaret' });
+    if (moreA) fireEvent.click(moreA);
+    const [saveA] = screen.getAllByRole('button', { name: 'Lagre som testtilfelle', hidden: true });
     if (saveA) fireEvent.click(saveA);
     expect((screen.getByRole('combobox', { name: 'Testsett' }) as HTMLSelectElement).value).toBe(
       'svar-sporsmal',
@@ -477,6 +480,82 @@ describe('Prøveområde', () => {
       service: { id: chosen.id, variant: 'mini' },
       model: fast,
     });
+  });
+
+  it('the variant field sits right under Start fra, and only for a service with variants', async () => {
+    const options = structuredClone(examplePlaygroundOptions);
+    const chosen = options.services.find((s) => s.chat) ?? options.services[0];
+    const version = chosen?.versions[0];
+    if (!version) throw new Error('example has no service');
+    version.variants = [{ id: 'default' }, { id: 'mini', title: 'Rask' }];
+    await openPage({ options });
+
+    const names = within(setupPanel())
+      .getAllByRole('combobox')
+      .map((c) => (c as HTMLSelectElement).labels[0]?.textContent);
+    expect(names.slice(0, 2)).toEqual(['Start fra', 'Variant']);
+
+    const start = within(setupPanel()).getByRole('combobox', { name: /^Start fra/ });
+    const own = within(start).getByRole('option', { name: 'Tomt oppsett' }) as HTMLOptionElement;
+    fireEvent.change(start, { target: { value: own.value } });
+    expect(within(setupPanel()).queryByRole('combobox', { name: 'Variant' })).toBeNull();
+  });
+
+  it('the answer language sits inside the Ferdigheter, byggeklosser og svarform disclosure', async () => {
+    await openPage();
+
+    const language = within(setupPanel()).getByRole('combobox', {
+      name: 'Svarspråk',
+      hidden: true,
+    });
+    const disclosure = language.closest('details');
+    expect(disclosure?.querySelector('summary')?.textContent).toBe(
+      'Ferdigheter, byggeklosser og svarform',
+    );
+  });
+
+  it('example questions show only while the conversation is empty', async () => {
+    await openPage();
+    const example = 'Hva sier evalueringene om digital veiledning?';
+    expect(screen.getByRole('button', { name: example })).toBeTruthy();
+
+    askSample(example);
+    await screen.findByRole('link', { name: 'Åpne i Logg' });
+
+    expect(screen.queryByRole('button', { name: example })).toBeNull();
+  });
+
+  it('Ny samtale sits next to Kjør and clears the conversation', async () => {
+    await openPage();
+    expect(screen.queryByRole('button', { name: 'Ny samtale' })).toBeNull();
+    askSample('Hva sier evalueringene om digital veiledning?');
+    await screen.findByRole('link', { name: 'Åpne i Logg' });
+
+    const fresh = screen.getByRole('button', { name: 'Ny samtale' });
+    const run = screen.getByRole('button', { name: 'Kjør' });
+    expect(fresh.closest('form')).toBe(run.closest('form'));
+    expect(fresh.nextElementSibling).toBe(run);
+
+    fireEvent.click(fresh);
+    expect(screen.queryByRole('link', { name: 'Åpne i Logg' })).toBeNull();
+    expect(
+      screen.getByRole('button', { name: 'Hva sier evalueringene om digital veiledning?' }),
+    ).toBeTruthy();
+  });
+
+  it('the Mer menu on an answer holds Lagre som testtilfelle and Vis API-kall', async () => {
+    await openPage();
+    askSample('Hva sier evalueringene om digital veiledning?');
+    const answer = (await screen.findByRole('link', { name: 'Åpne i Logg' })).closest('article');
+    if (!answer) throw new Error('no answer');
+    expect(within(answer).queryByRole('button', { name: 'Lagre som testtilfelle' })).toBeNull();
+
+    fireEvent.click(within(answer).getByRole('button', { name: 'Mer om svaret' }));
+    expect(
+      within(answer).getByRole('button', { name: 'Lagre som testtilfelle', hidden: true }),
+    ).toBeTruthy();
+    fireEvent.click(within(answer).getByRole('button', { name: 'Vis API-kall', hidden: true }));
+    expect(screen.getByRole('dialog', { name: 'Kjør på nytt' })).toBeTruthy();
   });
 
   it('a used-up quota shows the message from the API', async () => {

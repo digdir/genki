@@ -102,51 +102,56 @@ const published = (version: number) => ({
 });
 
 describe('service definition sections', () => {
-  it('edits the YAML, validates it and publishes it as a new version with a reason', async () => {
+  it('edits the YAML, validates it and saves it as the draft instead of publishing', async () => {
     const { api, calls } = platform({
       [`GET ${service}`]: history,
+      [`GET /tenants/${tenant}/services/klarsprak/draft`]: () => null,
+      [`PUT /tenants/${tenant}/services/klarsprak/draft`]: () => ({
+        revision: 1,
+        definition: {},
+        files: {},
+        at: '2026-11-19T13:02:00Z',
+        reason: '',
+      }),
       'POST /definitions/validate': () => ({ valid: true }),
-      'POST /definitions': () => published(3),
     });
     render(<DefinitionEditor api={api} tenant={tenant} serviceId="klarsprak" />);
 
-    const editor = await screen.findByLabelText('Tjenestedefinisjon (YAML)');
-    expect((editor as HTMLTextAreaElement).value).toContain('instructions: Svar kort.');
-    expect((editor as HTMLTextAreaElement).value).not.toMatch(/version: 2/);
+    const editor = (await screen.findByLabelText('Definisjonen')) as HTMLTextAreaElement;
+    expect(editor.value).toContain('instructions: Svar kort.');
+    expect(editor.value).not.toMatch(/version: 2/);
     fireEvent.change(editor, {
-      target: {
-        value: (editor as HTMLTextAreaElement).value.replace('Svar kort.', 'Svar svært kort.'),
-      },
+      target: { value: editor.value.replace('Svar kort.', 'Svar svært kort.') },
     });
-    fireEvent.change(screen.getByLabelText('Begrunnelse'), {
-      target: { value: 'Enda kortere svar' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Publiser ny versjon' }));
 
-    expect(await screen.findByText('Versjon 3 er publisert og i bruk.')).toBeTruthy();
-    const publish = calls.find((c) => c.method === 'POST' && c.path === '/definitions');
-    expect(decodeURIComponent(publish?.headers.get('change-reason') ?? '')).toBe(
-      'Enda kortere svar',
+    await waitFor(() => expect(calls.some((c) => c.method === 'PUT')).toBe(true), {
+      timeout: 3000,
+    });
+    const save = calls.find((c) => c.method === 'PUT');
+    expect(decodeURIComponent(save?.headers.get('change-reason') ?? '')).toBe(
+      'Utkast lagret fra byggeren',
     );
-    expect((publish?.body as { definition: string }).definition).toContain('Svar svært kort.');
+    expect(JSON.stringify((save?.body as { definition: unknown }).definition)).toContain(
+      'Svar svært kort.',
+    );
+    expect(calls.some((c) => c.method === 'POST' && c.path === '/definitions')).toBe(false);
   });
 
-  it('shows schema errors from validation and does not publish', async () => {
+  it('shows schema errors from validation and does not save the draft', async () => {
     const { api, calls } = platform({
       [`GET ${service}`]: history,
+      [`GET /tenants/${tenant}/services/klarsprak/draft`]: () => null,
       'POST /definitions/validate': () => ({
         status: 422,
         errors: [{ path: 'spec.riskClass', message: 'Invalid option' }],
       }),
     });
     render(<DefinitionEditor api={api} tenant={tenant} serviceId="klarsprak" />);
-    const editor = await screen.findByLabelText('Tjenestedefinisjon (YAML)');
+    const editor = await screen.findByLabelText('Definisjonen');
     fireEvent.change(editor, { target: { value: 'kind: Service' } });
-    fireEvent.change(screen.getByLabelText('Begrunnelse'), { target: { value: 'Prøver noe' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Publiser ny versjon' }));
 
-    expect(await screen.findByText('spec.riskClass')).toBeTruthy();
-    expect(calls.some((c) => c.path === '/definitions')).toBe(false);
+    expect(await screen.findByText('spec.riskClass', {}, { timeout: 3000 })).toBeTruthy();
+    expect(calls.some((c) => c.method === 'PUT' || c.path === '/definitions')).toBe(false);
   });
 
   it('lists the version history and republishes an earlier version as a new one', async () => {
@@ -166,7 +171,7 @@ describe('service definition sections', () => {
     fireEvent.change(screen.getByLabelText('Begrunnelse'), {
       target: { value: 'Tilbake til lange svar' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Publiser versjon 1 på nytt' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Publiser som versjon 3' }));
 
     expect(await screen.findByText('Versjon 1 er publisert på nytt som versjon 3.')).toBeTruthy();
     const publish = calls.find((c) => c.method === 'POST' && c.path === '/definitions');
@@ -200,7 +205,7 @@ describe('service definition sections', () => {
     fireEvent.change(screen.getByLabelText('Begrunnelse'), {
       target: { value: 'Tilbake til lange svar' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Publiser versjon 1 på nytt' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Publiser som versjon 3' }));
 
     await screen.findByText('Versjon 1 er publisert på nytt som versjon 3.');
     const publish = calls.find((c) => c.method === 'POST' && c.path === '/definitions');

@@ -292,6 +292,7 @@ export interface ServiceProvenance {
   strategy: { id: string; version: string };
   configHash: string;
   environment?: string;
+  frontend?: string;
   models?: ModelProvenance[];
   indexes?: IndexProvenance[];
 }

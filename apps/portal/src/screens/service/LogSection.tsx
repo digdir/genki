@@ -10,17 +10,21 @@ import {
   Table,
   Tag,
 } from '@digdir/designsystemet-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ApiClient } from '../../api';
 import { BackLink } from '../../components/BackLink';
 import { usePortalFormat } from '../../format';
 import { useAsync } from '../../hooks';
-import type { PlainKey } from '../../i18n';
+import { productionEnvironment } from '../../api/environments';
+import type { PlainKey, T } from '../../i18n';
+import type { TaskRow } from '../../types';
 import { EmptyState, ErrorState, Loading } from '../../states';
 import { RunDetail } from '../log/RunDetail';
 import { actorText } from '../log/format';
+import { clockSeconds, sameDay, shortWhen } from './dev-format';
 import { servicePath } from './sections';
 import '../log.css';
+import './sections.css';
 
 const dayMs = 86_400_000;
 const pageSizes = [25, 50, 100];
@@ -53,6 +57,22 @@ const fromOf = (period: Period, now: Date) => {
   return new Date(start.getTime() - back * dayMs).toISOString();
 };
 
+const meActor = 'me';
+
+const byText = (r: TaskRow, t: T) =>
+  r.actor?.kind === 'api-key' && r.channel !== 'interface' && r.actor.name
+    ? t('serviceDev.byKey', { name: r.actor.name })
+    : r.actor?.kind === 'person' && r.environment && r.environment !== productionEnvironment
+      ? t('serviceDev.byPersonIn', { name: actorText(r.actor, t), environment: r.environment })
+      : actorText(r.actor, t);
+
+const pageKeys = {
+  today: 'serviceDev.pageToday',
+  week: 'serviceDev.pageWeek',
+  month: 'serviceDev.pageMonth',
+  all: 'serviceDev.pageAllRuns',
+} as const;
+
 const initialQuery = () => new URLSearchParams(window.location.hash.split('?')[1] ?? '');
 
 export const LogSection = ({
@@ -74,13 +94,15 @@ export const LogSection = ({
   const [start] = useState(initialQuery);
   const [period, setPeriod] = useState<Period>(() => {
     const p = start.get('period');
-    return periods.some(([v]) => v === p) ? (p as Period) : 'all';
+    return periods.some(([v]) => v === p) ? (p as Period) : 'today';
   });
   const [status, setStatus] = useState(() => {
     const s = start.get('status') ?? '';
     return statuses.some(([v]) => v === s) ? s : '';
   });
   const [environment, setEnvironment] = useState('');
+  const [actor, setActor] = useState('');
+  const seen = useRef(new Map<string, string>());
   const [typed, setTyped] = useState('');
   const [q, setQ] = useState('');
   const [size, setSize] = useState(25);
@@ -96,25 +118,35 @@ export const LogSection = ({
 
   const [environments] = useAsync(
     async (signal) =>
-      live
-        ? ((
-            await api.environments.list(tenant, id, signal).catch(() => undefined)
-          )?.environments.map((e) => e.name) ?? [])
-        : [],
-    [api, tenant, id, live],
+      (await api.environments.list(tenant, id, signal).catch(() => undefined))?.environments.map(
+        (e) => e.name,
+      ) ?? [],
+    [api, tenant, id],
   );
   const names = environments.status === 'ready' ? environments.data : [];
-  const staged = names.length > 1;
   const from = fromOf(period, now());
   const [state, retry, pending] = useAsync(
     (signal) =>
       api.serviceTabs.taskPage(
         tenant,
-        { service: id, status, environment, from, q, limit: size, offset },
+        { service: id, status, environment, actor, from, q, limit: size, offset },
         signal,
       ),
-    [api, tenant, id, status, environment, from, q, size, offset],
+    [api, tenant, id, status, environment, actor, from, q, size, offset],
     { keepPreviousFor: id },
+  );
+  const [failed] = useAsync(
+    async (signal) =>
+      status
+        ? undefined
+        : (
+            await api.serviceTabs.taskPage(
+              tenant,
+              { service: id, status: 'failed', environment, actor, from, q, limit: 1, offset: 0 },
+              signal,
+            )
+          ).total,
+    [api, tenant, id, status, environment, actor, from, q],
   );
   const href = (run: string) => `#${servicePath(id, 'log', `/${encodeURIComponent(run)}`)}`;
 
@@ -130,6 +162,7 @@ export const LogSection = ({
     setPeriod('all');
     setStatus('');
     setEnvironment('');
+    setActor('');
     setTyped('');
     setQ('');
     setOffset(0);
@@ -138,11 +171,18 @@ export const LogSection = ({
     period !== 'all' ? t(periods.find(([v]) => v === period)?.[1] ?? 'serviceDev.periodAll') : '',
     status ? statusText(status).text : '',
     environment,
+    actor === meActor ? t('serviceDev.fromMe') : actor ? (seen.current.get(actor) ?? actor) : '',
     q ? `«${q}»` : '',
   ].filter(Boolean);
   const page = state.status === 'ready' ? state.data : undefined;
   const rows = page?.data.filter((r) => r.service === id) ?? [];
-  const usageShown = rows.some((r) => r.usage !== undefined);
+  for (const r of rows)
+    if (r.actor?.id && !seen.current.has(r.actor.id))
+      seen.current.set(r.actor.id, byText({ ...r, environment: null }, t));
+  const at = page && Number.isFinite(page.offset) ? page.offset : offset;
+  const failedCount =
+    status === 'failed' ? page?.total : failed.status === 'ready' ? failed.data : undefined;
+  const started = (iso: string) => (sameDay(iso, now()) ? clockSeconds(iso) : shortWhen(iso, f));
   const duration = (createdAt: string, endedAt: string | null) =>
     endedAt
       ? t('common.seconds', {
@@ -153,14 +193,12 @@ export const LogSection = ({
       : '–';
 
   return (
-    <section aria-labelledby="svc-log-h" className="stack-sm">
+    <section aria-labelledby="svc-log-h" className="stack">
       <div className="stack-xs">
-        <Heading level={2} data-size="xs" id="svc-log-h">
+        <Heading level={2} data-size="md" id="svc-log-h">
           {t('service.sectionLog')}
         </Heading>
-        <Paragraph data-size="sm" className="meta">
-          {t('serviceLog.intro')}
-        </Paragraph>
+        <Paragraph className="meta dv-lead">{t('serviceLog.intro')}</Paragraph>
       </div>
       <div role="search" className="dv-filters">
         <Field className="dv-filter-search">
@@ -208,7 +246,26 @@ export const LogSection = ({
             ))}
           </Select>
         </Field>
-        {staged ? (
+        <Field>
+          <Label htmlFor="svc-log-from">{t('serviceDev.fromLabel')}</Label>
+          <Select
+            id="svc-log-from"
+            value={actor}
+            onChange={(e) => {
+              setActor(e.target.value);
+              setOffset(0);
+            }}
+          >
+            <Select.Option value="">{t('serviceDev.fromAll')}</Select.Option>
+            <Select.Option value={meActor}>{t('serviceDev.fromMe')}</Select.Option>
+            {[...seen.current].map(([value, label]) => (
+              <Select.Option key={value} value={value}>
+                {label}
+              </Select.Option>
+            ))}
+          </Select>
+        </Field>
+        {names.length ? (
           <Field>
             <Label htmlFor="svc-log-env">{t('serviceLog.environment')}</Label>
             <Select
@@ -268,31 +325,23 @@ export const LogSection = ({
       {page && rows.length ? (
         <>
           <div tabIndex={0} role="region" aria-labelledby="svc-log-h" className="scroll-x">
-            <Table data-size="sm" aria-busy={pending || undefined}>
+            <Table data-size="sm" className="dv-log-table" aria-busy={pending || undefined}>
               <Table.Head>
                 <Table.Row>
                   <Table.HeaderCell scope="col">{t('serviceLog.colStarted')}</Table.HeaderCell>
                   <Table.HeaderCell scope="col">{t('serviceDev.colQuestion')}</Table.HeaderCell>
                   <Table.HeaderCell scope="col">{t('serviceLog.colBy')}</Table.HeaderCell>
-                  {staged ? (
-                    <Table.HeaderCell scope="col">
-                      {t('serviceLog.colEnvironment')}
-                    </Table.HeaderCell>
-                  ) : null}
+                  <Table.HeaderCell scope="col">{t('serviceLog.colEnvironment')}</Table.HeaderCell>
                   <Table.HeaderCell scope="col">{t('serviceLog.colStatus')}</Table.HeaderCell>
                   <Table.HeaderCell scope="col" className="right">
                     {t('serviceDev.colDuration')}
                   </Table.HeaderCell>
-                  {usageShown ? (
-                    <>
-                      <Table.HeaderCell scope="col" className="right">
-                        {t('serviceLog.colTokens')}
-                      </Table.HeaderCell>
-                      <Table.HeaderCell scope="col" className="right">
-                        {t('serviceLog.colCost')}
-                      </Table.HeaderCell>
-                    </>
-                  ) : null}
+                  <Table.HeaderCell scope="col" className="right">
+                    {t('serviceLog.colTokens')}
+                  </Table.HeaderCell>
+                  <Table.HeaderCell scope="col" className="right">
+                    {t('serviceLog.colCost')}
+                  </Table.HeaderCell>
                 </Table.Row>
               </Table.Head>
               <Table.Body>
@@ -300,17 +349,15 @@ export const LogSection = ({
                   const s = statusText(r.status);
                   return (
                     <Table.Row key={r.id}>
-                      <Table.Cell className="nowrap numeric">
-                        {f.dateTime(r.createdAt, 'medium')}
-                      </Table.Cell>
-                      <Table.Cell>
+                      <Table.Cell className="nowrap numeric">{started(r.createdAt)}</Table.Cell>
+                      <Table.Cell className="dv-log-question">
                         <Link href={href(r.id)}>{r.excerpt || r.serviceName || r.id}</Link>
                         {r.failure ? (
                           <div className="meta danger-text">{r.failure.reason}</div>
                         ) : null}
                       </Table.Cell>
-                      <Table.Cell>{actorText(r.actor, t)}</Table.Cell>
-                      {staged ? <Table.Cell>{r.environment ?? '–'}</Table.Cell> : null}
+                      <Table.Cell>{byText(r, t)}</Table.Cell>
+                      <Table.Cell>{r.environment ?? '–'}</Table.Cell>
                       <Table.Cell>
                         <Tag data-size="sm" data-color={s.color}>
                           {s.text}
@@ -319,16 +366,12 @@ export const LogSection = ({
                       <Table.Cell className="right numeric">
                         {duration(r.createdAt, r.endedAt)}
                       </Table.Cell>
-                      {usageShown ? (
-                        <>
-                          <Table.Cell className="right numeric">
-                            {r.usage ? f.number(r.usage.inputTokens + r.usage.outputTokens) : ''}
-                          </Table.Cell>
-                          <Table.Cell className="right numeric">
-                            {r.usage ? kroner(r.usage.costMicroNok) : ''}
-                          </Table.Cell>
-                        </>
-                      ) : null}
+                      <Table.Cell className="right numeric">
+                        {r.usage ? f.number(r.usage.inputTokens + r.usage.outputTokens) : '–'}
+                      </Table.Cell>
+                      <Table.Cell className="right numeric">
+                        {r.usage ? kroner(r.usage.costMicroNok) : '–'}
+                      </Table.Cell>
                     </Table.Row>
                   );
                 })}
@@ -337,17 +380,18 @@ export const LogSection = ({
           </div>
           <nav aria-label={t('qualityTabs.pages')} className="row-between">
             <span className="meta">
-              {t('serviceDev.pageText', {
-                from: f.number(page.offset + 1),
-                to: f.number(page.offset + page.data.length),
+              {t(pageKeys[period], {
+                from: f.number(at + 1),
+                to: f.number(at + page.data.length),
                 total: f.number(page.total),
               })}
+              {failedCount ? ` ${t('serviceDev.failedCount', { count: failedCount })}` : ''}
               {page.q && page.searched !== undefined
                 ? ` ${t('serviceDev.searched', { count: page.searched })}`
                 : ''}
             </span>
             <span className="row-wrap align-end">
-              <Field data-size="sm">
+              <Field data-size="sm" className="dv-inline-field">
                 <Label htmlFor="svc-log-size">{t('serviceDev.perPage')}</Label>
                 <Select
                   id="svc-log-size"

@@ -207,7 +207,7 @@ export const fieldKindKeys: Record<InputFieldSpec['kind'], PlainKey> = {
   organisation: 'setupList.fieldOrganisation',
 };
 
-const KindCard = ({
+export const KindCard = ({
   name,
   description,
   checked,

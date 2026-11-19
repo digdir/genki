@@ -651,6 +651,7 @@ export const routeErrors = {
   runFinished: 'the run has already finished',
   evalRunEndedAs: 'the run has already ended as {state}',
   actorFilter: 'actor is me, or an actor id from a run row',
+  frontendFilter: 'frontend is the id of a registered frontend',
   incidentResolved: 'the incident is already resolved',
   quotaRequestPending: 'a quota request is already waiting for a decision',
   quotaRequestApproved: 'the quota request is already approved',

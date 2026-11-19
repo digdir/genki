@@ -495,7 +495,7 @@ const examples: Example[] = [
     name: 'Kudos-rapporter',
     description: 'Evalueringer, årsrapporter og utredninger fra Kudos.',
     publisher: publishers.own,
-    version: 'Lest inn i dag kl. 05.00',
+    version: 'Lest inn i dag kl. 05:00',
     dataLocation: 'norway',
     status: 'in_use',
     usedBy: ['rapportassistenten'],

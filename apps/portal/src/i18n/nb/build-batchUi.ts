@@ -250,6 +250,8 @@ export const batchUi = {
     sampleCost: 'Prøven koster det samme som 3 dokumenter.',
     sampleCostMax: 'Prøven koster det samme som 3 dokumenter, høyst {cost}.',
     stopIfCost: 'Stopp jobben hvis kostnaden går over',
+    jobName: 'Navn på jobben (valgfritt)',
+    jobNameHint: 'Vises i listen over jobber. Uten navn vises utvalget.',
     stopIfUse: 'Stopp jobben hvis forbruket går over',
     stopHintCost: 'Kroner. Foreslått: øvre anslag pluss 20 prosent.',
     stopHintTokens: 'Tokens. Foreslått: øvre anslag pluss 20 prosent.',

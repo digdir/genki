@@ -143,6 +143,8 @@ export const playgroundUi = {
     tokensPerModel: 'Tokens per model',
     viewRun: 'View the run',
     saveAsTest: 'Save as test case',
+    answerMore: 'More about this answer',
+    answerMoreShort: 'More',
     saveIntro:
       'Becomes a proposal for the test set. The owner of the test set accepts or rejects it under Quality, like other candidates.',
     testSet: 'Test set',

@@ -290,7 +290,13 @@ const TaskRow = TaskBase.extend({
     .enum(['api-key', 'interface', 'api', 'playground', 'batch'])
     .nullable()
     .describe(
-      "How the run came in: api-key (a key not bound to a frontend), interface (a key bound to a server frontend), api (a token that is not an API key on /v1, REST, MCP or A2A: a person's, or a registered Maskinporten client's; a browser frontend's runs are not told apart), playground (a trial run), batch (an item of a batch run's latest attempt); null when the run records none of these, such as a trigger",
+      "How the run came in: api-key (a key not bound to a frontend), interface (a key bound to a frontend, or a login through a registered browser frontend), api (another token on /v1, REST, MCP or A2A: a person's, or a registered Maskinporten client's), playground (a trial run), batch (an item of a batch run's latest attempt); null when the run records none of these, such as a trigger",
+    ),
+  frontend: z
+    .string()
+    .optional()
+    .describe(
+      "The registered frontend the run came in through, from the verified login or key; for runs of the caller's own tenant only",
     ),
 }).openapi('TaskRow');
 
@@ -954,6 +960,12 @@ const taskRoutes: RouteConfig[] = [
           .optional()
           .describe(
             "me for the caller's own runs, or an actor.id from a run row: only runs that actor of the caller's tenant started",
+          ),
+        frontend: z
+          .string()
+          .optional()
+          .describe(
+            "The id of a registered frontend: only runs of the caller's tenant that came in through it",
           ),
         from: z.string().optional().describe('ISO time, inclusive'),
         to: z.string().optional().describe('ISO time, inclusive'),

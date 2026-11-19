@@ -251,6 +251,8 @@ export const batchUi = {
     sampleCost: 'The trial costs the same as 3 documents.',
     sampleCostMax: 'The trial costs the same as 3 documents, at most {cost}.',
     stopIfCost: 'Stop the job if the cost goes above',
+    jobName: 'Name of the job (optional)',
+    jobNameHint: 'Shown in the list of jobs. Without a name, the selection is shown.',
     stopIfUse: 'Stop the job if the usage goes above',
     stopHintCost: 'Kroner. Suggested: the upper estimate plus 20 percent.',
     stopHintTokens: 'Tokens. Suggested: the upper estimate plus 20 percent.',

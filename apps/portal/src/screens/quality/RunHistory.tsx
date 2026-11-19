@@ -361,7 +361,7 @@ const sendingRefusal = (t: T, plan: RunSending | undefined, judges: string) => {
 
 const usageDays = 30;
 
-const perCaseFromRuns = (runs: EvalRun[]) => {
+export const perCaseFromRuns = (runs: EvalRun[]) => {
   const casesOf = (r: EvalRun) => r.finished ?? r.total ?? 0;
   const priced = runs.filter((r) => !active(r) && typeof r.cost === 'number' && casesOf(r) > 0);
   const cases = priced.reduce((n, r) => n + casesOf(r), 0);
