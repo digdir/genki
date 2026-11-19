@@ -41,6 +41,14 @@ describe('loading a page or a section', () => {
     expect(line.closest('.visually-hidden')).toBeNull();
   });
 
+  it('shows the loading line once when the label already ends in an ellipsis', async () => {
+    render(<Loading label="Henter …" />);
+    await wait(300);
+
+    expect(screen.getAllByText('Henter …')).toHaveLength(1);
+    expect(screen.queryByText('Henter … ...')).toBeNull();
+  });
+
   it('keeps the page title from the menu while a top-level page loads its code', async () => {
     render(<ScreenLoading route={parseRoute('#/statistics')} />);
 

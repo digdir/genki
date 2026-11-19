@@ -77,7 +77,7 @@ const LoadingState = ({
       {stage === 'quiet' ? null : (
         <>
           <p className="loading-label">
-            {label.endsWith('...') ? label : t('states.loadingLine', { label })}
+            {/(\.\.\.|…)$/.test(label) ? label : t('states.loadingLine', { label })}
           </p>
           {stage === 'slow' ? <p className="loading-slow">{t('states.slow')}</p> : null}
           {page ? (
