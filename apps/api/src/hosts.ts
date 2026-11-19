@@ -1,6 +1,7 @@
 import type { DefinitionStore, ServiceDefinition, ServiceInterface } from '@genai/definitions';
 import {
   isHostname,
+  oidcAudienceOf,
   type ClientDefinition,
   type ClientIssue,
   type ClientStore,
@@ -39,6 +40,11 @@ export const reservedDomainsFrom = (env: NodeJS.ProcessEnv): string[] => [
     .filter(Boolean),
 ];
 
+export const assistantHostnameFrom = (env: NodeJS.ProcessEnv): string | undefined => {
+  const name = env.GENAI_ASSISTANT_HOSTNAME?.trim().toLowerCase();
+  return name && isHostname(name) ? name : undefined;
+};
+
 const under = (hostname: string, domain: string) =>
   hostname === domain || hostname.endsWith(`.${domain}`);
 
@@ -46,7 +52,13 @@ export interface HostingRules {
   /** Hostname to the tenant it is opened for. */
   hostnames: ReadonlyMap<string, string>;
   reservedDomains: readonly string[];
+  /** genki's own assistant hostname, the one name in its zones a hosted Client may claim. */
+  assistantHostname?: string | undefined;
 }
+
+const isReserved = (rules: HostingRules, hostname: string) =>
+  hostname !== rules.assistantHostname &&
+  rules.reservedDomains.some((domain) => under(hostname, domain));
 
 export const hostnameNotAllowed = 'hostname_not_allowed';
 
@@ -59,10 +71,7 @@ export const hostnameProblems = (
   const { tenant, id } = definition.metadata;
   return (definition.spec.hostnames ?? []).flatMap(({ hostname }, i): ClientIssue[] => {
     const path = `spec.hostnames.${i}.hostname`;
-    if (
-      rules.reservedDomains.some((domain) => under(hostname, domain)) ||
-      rules.hostnames.get(hostname) !== tenant
-    )
+    if (isReserved(rules, hostname) || rules.hostnames.get(hostname) !== tenant)
       return [
         { path, message: `${hostnameNotAllowed}: ${hostname} is not open to this organisation` },
       ];
@@ -85,7 +94,12 @@ export interface HostView {
   service: string;
   environment: string;
   name: Text;
-  login: { issuer: string | null; clientId: string };
+  login: {
+    issuer: string | null;
+    clientId: string;
+    audience: string;
+    altinnResource: string | null;
+  };
   theme: null;
   menu: ({ label: Text; page: string } | { label: Text; href: string })[];
   pages: { id: string; title: Text }[];
@@ -97,6 +111,7 @@ export interface HostDeps {
   configEntries: ConfigEntryStore;
   rules: HostingRules;
   issuer?: string | undefined;
+  altinnResource?: string | undefined;
 }
 
 const resolve = async (
@@ -105,7 +120,7 @@ const resolve = async (
 ): Promise<{ view: HostView; shown: ServiceInterface } | undefined> => {
   const hostname = asked.toLowerCase();
   if (!isHostname(hostname)) return undefined;
-  if (deps.rules.reservedDomains.some((domain) => under(hostname, domain))) return undefined;
+  if (isReserved(deps.rules, hostname)) return undefined;
   const tenant = deps.rules.hostnames.get(hostname);
   if (!tenant) return undefined;
   const client = (await deps.clients.list(tenant)).find(
@@ -137,7 +152,12 @@ const resolve = async (
     service,
     environment: claim.environment,
     name: shown.layout.profile?.assistantName ?? definition.metadata.name ?? service,
-    login: { issuer: deps.issuer ?? null, clientId: client.spec.oidc.clientId },
+    login: {
+      issuer: deps.issuer ?? null,
+      clientId: client.spec.oidc.clientId,
+      audience: oidcAudienceOf(client) ?? client.spec.oidc.clientId,
+      altinnResource: deps.altinnResource ?? null,
+    },
     theme: null,
     menu: (shown.menu ?? []).map((item) =>
       'page' in item

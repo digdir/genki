@@ -1218,7 +1218,12 @@ export const accessRoutes: RouteConfig[] = [
           service: z.string(),
           environment: z.string(),
           name: z.unknown(),
-          login: z.object({ issuer: z.string().nullable(), clientId: z.string() }),
+          login: z.object({
+            issuer: z.string().nullable(),
+            clientId: z.string(),
+            audience: z.string(),
+            altinnResource: z.string().nullable(),
+          }),
           theme: z.null(),
           menu: z.array(z.record(z.string(), z.unknown())),
           pages: z.array(z.object({ id: z.string(), title: z.unknown() })),

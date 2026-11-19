@@ -1570,13 +1570,18 @@
             summary:
               "genki's generic host for a service's assistant, drawn from the service's interface by hostname.",
             description:
-              "A React app that looks up the hostname it is served on, draws the service's name, menu and pages, and after login the assistant the service's layout describes through ui-assembly. It runs no code from the service owner. Login through a BFF in the API is not built yet; locally it uses the dev login.",
+              "A React app that looks up the hostname it is served on, draws the service's name, menu and pages, and after login the assistant the service's layout describes through ui-assembly. It runs no code from the service owner. It logs in in the browser with the authorization code flow and PKCE against the issuer and client the host route names, until the BFF replaces login.ts.",
             responsibilities: [
               'Look up the hostname and draw the hosted service, or say there is none',
               "Draw the menu and the service's Markdown pages",
               "Draw the assistant from the layout in the reader's language",
+              "Log the person in with the hosted Client's Ansattporten client",
             ],
-            files: ['apps/assistant/src/App.tsx', 'apps/assistant/src/host.ts'],
+            files: [
+              'apps/assistant/src/App.tsx',
+              'apps/assistant/src/host.ts',
+              'apps/assistant/src/login.ts',
+            ],
             input: "The hostname and the person's questions",
             output: 'Host lookups, chat requests',
             edges: [
@@ -1614,6 +1619,13 @@
                 kind: 'http',
                 target: 'http',
                 witness: { file: 'apps/assistant/src/host.ts', contains: '/interface' },
+              },
+              {
+                to: 'ansattporten',
+                label: 'Browser login with PKCE',
+                kind: 'http',
+                target: 'http',
+                witness: { file: 'apps/assistant/src/login.ts', contains: 'authorization_code' },
               },
             ],
             keywords: 'assistant host hosted hostname menu pages frontend react designsystemet',

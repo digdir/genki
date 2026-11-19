@@ -10,19 +10,18 @@ import {
   loadHost,
   loadLayout,
   loadPage,
-  localLogin,
   textIn,
   type HostView,
   type Page,
-  type Session,
 } from './host';
+import type { HostLogin, Login, Session } from './login';
 import { useT } from './i18n';
 
 export interface AppProps {
   hostname: string;
   path: string;
-  /** Logs in through the API's dev login; without it, sign-in is not built yet. */
-  local: boolean;
+  /** Makes the login for the client the host route names. */
+  signIn: (login: HostLogin) => Login;
   fetcher?: typeof fetch;
 }
 
@@ -159,28 +158,68 @@ const AssistantPane = ({
   );
 };
 
-const SignIn = ({ local, onSignIn }: { local: boolean; onSignIn: () => void }) => {
+const SignIn = ({ onSignIn }: { onSignIn: (() => void) | undefined }) => {
   const t = useT();
-  return local ? (
+  return onSignIn ? (
     <div className="ah-signin">
-      <Button onClick={onSignIn}>{t('host.signInLocal')}</Button>
+      <Button onClick={onSignIn}>{t('host.signIn')}</Button>
     </div>
   ) : (
     <Alert data-color="info" className="ah-signin">
       <Heading level={2} data-size="xs">
-        {t('host.signInComing')}
+        {t('host.signInUnavailable')}
       </Heading>
-      <Paragraph>{t('host.signInComingDetail')}</Paragraph>
+      <Paragraph>{t('host.signInUnavailableDetail')}</Paragraph>
     </Alert>
   );
 };
 
-export const App = ({ hostname, path, local, fetcher = fetch }: AppProps) => {
+const useLogin = (view: HostView | undefined, signIn: AppProps['signIn']) =>
+  useMemo(() => {
+    const login = view?.login;
+    return login?.issuer
+      ? signIn({ ...login, issuer: login.issuer })
+      : undefined;
+  }, [view, signIn]);
+
+export const App = ({ hostname, path, signIn, fetcher = fetch }: AppProps) => {
   const t = useT();
   const host = useLoaded<HostView>(() => loadHost(fetcher, hostname), [hostname]);
+  const login = useLogin(host.kind === 'ok' ? host.value : undefined, signIn);
   const [session, setSession] = useState<Session>();
+  const [at, setAt] = useState(path);
   const [signInFailed, setSignInFailed] = useState(false);
-  if (host.kind === 'loading') return <Spinner aria-label={t('host.loading')} />;
+  const [completing, setCompleting] = useState(false);
+  useEffect(() => {
+    if (!login) return;
+    if (!login.isCallback()) {
+      setSession(login.current());
+      return;
+    }
+    let live = true;
+    setCompleting(true);
+    login
+      .complete()
+      .then(
+        ({ session: done, returnTo }) => {
+          if (!live) return;
+          window.history.replaceState(null, '', returnTo);
+          setAt(returnTo);
+          setSession(done);
+        },
+        () => {
+          if (!live) return;
+          window.history.replaceState(null, '', '/');
+          setAt('/');
+          setSignInFailed(true);
+        },
+      )
+      .finally(() => live && setCompleting(false));
+    return () => {
+      live = false;
+    };
+  }, [login]);
+  if (host.kind === 'loading' || completing) return <Spinner aria-label={t('host.loading')} />;
   if (host.kind === 'failed')
     return (
       <main className="ah-main">
@@ -197,21 +236,27 @@ export const App = ({ hostname, path, local, fetcher = fetch }: AppProps) => {
       </main>
     );
   const view = host.value;
-  const pageId = path.replace(/^\/+|\/+$/g, '');
+  const pageId = at.split('?')[0]?.replace(/^\/+|\/+$/g, '') ?? '';
   const onPage = view.pages.some((p) => p.id === pageId);
-  const signIn = () => {
-    setSignInFailed(false);
-    localLogin(fetcher).then(setSession, () => setSignInFailed(true));
+  const startSignIn =
+    login &&
+    (() => {
+      setSignInFailed(false);
+      login.start().catch(() => setSignInFailed(true));
+    });
+  const signOut = () => {
+    setSession(undefined);
+    void login?.signOut();
   };
   let body: ReactNode;
   if (onPage) body = <PageView fetcher={fetcher} hostname={view.hostname} id={pageId} />;
   else if (session) body = <AssistantPane fetcher={fetcher} host={view} session={session} />;
-  else body = <SignIn local={local} onSignIn={signIn} />;
+  else body = <SignIn onSignIn={startSignIn} />;
   return (
     <>
-      <Header host={view} session={session} onSignOut={() => setSession(undefined)} />
-      <main className="ah-main" id="main">
-        {signInFailed ? <Alert data-color="danger">{t('host.failed')}</Alert> : null}
+      <Header host={view} session={session} onSignOut={signOut} />
+      <main className={!onPage && session ? 'ah-main ah-assistant' : 'ah-main'} id="main">
+        {signInFailed ? <Alert data-color="danger">{t('host.signInFailed')}</Alert> : null}
         {body}
       </main>
     </>

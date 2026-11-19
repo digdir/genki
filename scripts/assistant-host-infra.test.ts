@@ -100,4 +100,32 @@ describe.skipIf(!hasAz && !process.env.CI)('the assistant host in the template',
     const text = JSON.stringify(host());
     expect(text).not.toMatch(/api-id|Microsoft\.DBforPostgreSQL|keyVaultUri|-kv-/);
   });
+
+  it('binds genki’s own assistant hostname on the host app in the stages the other apps use', () => {
+    const app = host().find((r) => r.type === 'Microsoft.App/containerApps');
+    const ingress = JSON.stringify(app?.properties);
+    expect(ingress).toContain('"customDomains":"[if(variables(\'bound\')');
+    const certificate = host().find(
+      (r) => r.type === 'Microsoft.App/managedEnvironments/managedCertificates',
+    );
+    expect(certificate?.condition).toBe(
+      "[and(variables('bound'), equals(parameters('customDomainsStage'), 'certificates'))]",
+    );
+    expect(JSON.stringify(module('assistant-host').properties.parameters)).toContain(
+      "parameters('customDomainsStage')",
+    );
+    expect(read('infra/env/test.bicepparam')).toMatch(
+      /assistant: 'assistant\.genki-test\.digdir\.cloud'/,
+    );
+  });
+
+  it('opens the assistant hostname on the API only while the host runs, and verifies it against the host’s own environment', () => {
+    const api = JSON.stringify(module('containerapps').properties.parameters);
+    expect(api).toContain(
+      `"GENAI_ASSISTANT_HOSTNAME":"[if(parameters('assistantHostEnabled'), coalesce(tryGet(parameters('hostnames'), 'assistant'), ''), '')]"`,
+    );
+    expect(api).toContain(`"GENAI_HOSTED_HOSTNAMES":"[parameters('hostedHostnames')]"`);
+    const dns = JSON.stringify(module('dns').properties.parameters);
+    expect(dns).toMatch(/'assistant-host'\), '[\d-]+'\)\.outputs\.verificationId\.value/);
+  });
 });

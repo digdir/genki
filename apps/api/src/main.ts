@@ -1,4 +1,4 @@
-import { hostedHostnamesFrom, reservedDomainsFrom } from './hosts.js';
+import { assistantHostnameFrom, hostedHostnamesFrom, reservedDomainsFrom } from './hosts.js';
 import type { Server } from 'node:http';
 import { attachSessionUpgrade } from './session-upgrade.js';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
@@ -500,6 +500,7 @@ const platform = await createPlatform({
   hosting: {
     hostnames: hostedHostnamesFrom(process.env),
     reservedDomains: reservedDomainsFrom(process.env),
+    assistantHostname: assistantHostnameFrom(process.env),
   },
   ...(db ? { webhookDeliveries: db.webhookDeliveries } : {}),
   ...(db ? { traceDeliveries: db.traceDeliveries } : {}),

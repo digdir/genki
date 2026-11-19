@@ -61,8 +61,8 @@ param consoleClientId string = ''
 param consoleIssuer string = ansattportenIssuer
 param consoleTokenEndpoint string = ''
 
-@description('Custom hostnames: api, portal, workspace, console. Empty strings use the generated Container Apps hostnames.')
-param hostnames object = { api: '', portal: '', workspace: '', console: '' }
+@description('Custom hostnames: api, portal, workspace, console, and assistant for the assistant host. Empty strings use the generated Container Apps hostnames.')
+param hostnames object = { api: '', portal: '', workspace: '', console: '', assistant: '' }
 
 @description('none: no custom domains. hostnames: add them without certificates (DNS must exist). certificates: managed certificates, run after hostnames.')
 @allowed(['none', 'hostnames', 'certificates'])
@@ -158,6 +158,9 @@ param alertThresholds object = {
 
 @description('Deploys the generic assistant host (ADR 0061) in its own environment, with its own identity and Key Vault (ADR 0062).')
 param assistantHostEnabled bool = false
+
+@description('Hostnames the API opens to hosting, each for one tenant: host=orgnr,host=orgnr (GENAI_HOSTED_HOSTNAMES).')
+param hostedHostnames string = ''
 
 param minReplicas int = 1
 param maxReplicas int = 3
@@ -433,6 +436,8 @@ module apps 'modules/containerapps.bicep' = {
       OPERATOR_SUBJECTS: operatorSubjects
       PLATFORM_TENANT: platformTenant
       EMPLOYEE_CLIENT_IDS: join(filter([portalClientId, workspaceClientId, consoleClientId], id => !empty(id)), ',')
+      GENAI_HOSTED_HOSTNAMES: hostedHostnames
+      GENAI_ASSISTANT_HOSTNAME: assistantHostEnabled ? (hostnames.?assistant ?? '') : ''
     }
     webSettings: {
       ansattportenIssuer: ansattportenIssuer
@@ -505,6 +510,9 @@ module assistantHost 'modules/assistant-host.bicep' = if (assistantHostEnabled) 
     registryName: registryName
     appsImage: appsImage
     apiUpstream: 'https://${apps.outputs.fqdn}'
+    ansattportenIssuer: ansattportenIssuer
+    hostname: hostnames.?assistant ?? ''
+    customDomainsStage: customDomainsStage
   }
 }
 
@@ -528,6 +536,16 @@ module alerts 'modules/alerts.bicep' = if (alertsEnabled && infra) {
 
 var zoneSuffix = '.${dnsZoneName}'
 var zoneApps = filter(['api', 'portal', 'workspace', 'console'], app => !empty(hostnames[app]) && endsWith(hostnames[app], zoneSuffix))
+var assistantInZone = assistantHostEnabled && endsWith(hostnames.?assistant ?? '', zoneSuffix)
+var assistantRecords = assistantInZone
+  ? [
+      {
+        label: replace(hostnames.assistant, zoneSuffix, '')
+        target: assistantHost!.outputs.fqdn
+        verificationId: assistantHost!.outputs.verificationId
+      }
+    ]
+  : []
 
 module dns 'modules/dns.bicep' = if (createDnsZone && !empty(dnsZoneName) && infra) {
   name: 'dns'
@@ -539,6 +557,7 @@ module dns 'modules/dns.bicep' = if (createDnsZone && !empty(dnsZoneName) && inf
       label: replace(hostnames[app], zoneSuffix, '')
       target: apps.outputs.defaultFqdns[app]
     }]
+    otherRecords: assistantRecords
   }
 }
 

@@ -19,3 +19,11 @@ The rules for these routes are in the [Frontend contract](../frontend-contract.m
    When the person stops the answer, `POST /v1/tasks/{task}/cancel` with the `genai-task` header value. Closing the stream does not stop the run.
 5. `GET /api/conversations` and `GET /api/conversations/{id}` to list and reopen.
 6. `POST /api/feedback` with the `genai-task` header value and `rating: "up"` or `"down"`.
+
+## A hosted assistant
+
+genki's assistant host draws a service on a hostname of its own (ADR 0061). It needs no credential to start:
+
+1. `GET /v1/hosts/{hostname}`: the tenant, service, environment, name, menu and page titles, and `login` with `issuer`, `clientId`, `audience` and `altinnResource`. Any hostname that is not active, including one opened to another tenant, gets `404` with `urn:genai:problem:host-not-found`. Cached 60 seconds.
+2. `GET /v1/hosts/{hostname}/pages/{id}`: a page's title and Markdown body.
+3. After login with the named client: `GET /v1/models`, then `GET /v1/models/{id}/interface` for the layout, then the sequence above.

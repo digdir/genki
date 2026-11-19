@@ -11,7 +11,12 @@ export interface HostView {
   service: string;
   environment: string;
   name: Text;
-  login: { issuer: string | null; clientId: string };
+  login: {
+    issuer: string | null;
+    clientId: string;
+    audience: string;
+    altinnResource: string | null;
+  };
   menu: MenuItem[];
   pages: { id: string; title: Text }[];
 }
@@ -80,20 +85,4 @@ export const loadLayout = async (fetcher: typeof fetch, service: string, token: 
     await fetcher(`/api/v1/models/${encodeURIComponent(model)}/interface`, { headers }),
   );
   return shown?.layout;
-};
-
-export interface Session {
-  name: string;
-  token: string;
-}
-
-export const localLogin = async (fetcher: typeof fetch): Promise<Session> => {
-  const response = await fetcher('/api/mock/dev-login', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ as: 'employee' }),
-  });
-  if (!response.ok) throw new Error(`dev login failed with status ${response.status}`);
-  const body = (await response.json()) as Session;
-  return { name: body.name, token: body.token };
 };

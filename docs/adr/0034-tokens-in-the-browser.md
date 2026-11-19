@@ -1,6 +1,6 @@
 # 0034 Tokens in the browser
 
-Status: proposed, 2026-10-16
+Status: proposed, 2026-10-16 (the assistant host keeps its token in `sessionStorage` on the same conditions, 2026-11-19)
 
 ## Context
 
@@ -34,3 +34,4 @@ Rejected: tokens in `localStorage` (survives the tab, readable by any script in 
 - Logout today removes the tokens from `sessionStorage` and ends the Ansattporten session on a deliberate logout; it does not revoke a refresh token. Unsaved input kept across re-login is stored per tab, not per person, and is cleared on a deliberate logout.
 - The ID token is used only for the display name and for logout. It grants nothing and the API never accepts it. The console checks the `nonce` like the portal and workspace do.
 - A new script source, inline script or third-party library in the apps weakens this decision until the BFF exists; review the CSP when adding one.
+- Built 2026-11-19: the assistant host (`apps/assistant`, ADR 0061) logs in in the browser on the same conditions, as a public client of the service's hosted Client, and keeps only the access token and ID token in `sessionStorage`, with no refresh and no silent renewal: when the token expires, the person logs in again. It checks `state`, `nonce` and the issuer the metadata names, returns only to a path on its own hostname, and is served with the same CSP, with the issuer's origin in `connect-src`. All of it is in `apps/assistant/src/login.ts`, which the BFF replaces. Tests: `apps/assistant/src/app.test.tsx` and `apps/assistant/src/login.test.ts`.
