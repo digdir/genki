@@ -1,0 +1,25 @@
+server {
+  listen 8080;
+  root /usr/share/nginx/html;
+
+  add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self' ${OIDC_ISSUER}; img-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'" always;
+  add_header X-Content-Type-Options nosniff always;
+  add_header Referrer-Policy no-referrer always;
+
+  location = /config.json {
+    default_type application/json;
+    add_header Cache-Control no-store always;
+    return 200 '{"genkiUrl":"${GENKI_API_URL}","apiBase":"/genki","issuer":"${OIDC_ISSUER}","clientId":"${OIDC_CLIENT_ID}","redirectUri":"${PUBLIC_URL}/callback","postLogoutRedirectUri":"${PUBLIC_URL}/","altinnResource":"${ALTINN_RESOURCE}","service":"${GENKI_SERVICE}"}';
+  }
+
+  location /genki/ {
+    proxy_pass ${GENKI_UPSTREAM}/;
+    proxy_ssl_server_name on;
+    proxy_buffering off;
+    proxy_read_timeout 300s;
+  }
+
+  location / {
+    try_files $uri /index.html;
+  }
+}
