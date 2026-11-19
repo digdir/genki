@@ -1256,6 +1256,7 @@ describe('a metadata hit on the knowledge server', () => {
       'I 2025 ble omorganiseringen av Tolletaten fullført',
       'Read this or that, or else, or not',
     ]),
+    report('leer', 'Tolletaten omorganisering', []),
     report(
       'lang',
       'Årsrapport Langtidsplan 2025',
@@ -1287,8 +1288,13 @@ describe('a metadata hit on the knowledge server', () => {
   });
 
   it("a metadata hit whose query holds only the title's words is the document's first chunk", async () => {
-    // Page 2 holds every word of the query, but the query names only the document.
+    // Page 2 holds the title's words most often, but the query names only the document.
     expect(await hitOf('"Årsrapport Tolletaten 2025"')).toBe('toll-0');
+  });
+
+  it('a document without chunks does not hide the some-words matches', async () => {
+    // `leer` holds every word in its title and has no chunk; Tolletaten 2025 holds some of them.
+    expect(await hitOf('Tolletaten omorganisering')).toBe('toll-3');
   });
 
   it('a metadata hit ignores a word excluded with -', async () => {
