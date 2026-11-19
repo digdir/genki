@@ -14,6 +14,7 @@ export const shell = {
   navDatasets: 'Datasets',
   navBuildingBlocks: 'Building blocks',
   navPlayground: 'Playground',
+  playgroundTitle: 'Playground',
   navAccess: 'Access',
   navLog: 'Log',
   skipToContent: 'Skip to main content',
@@ -52,8 +53,8 @@ export const shell = {
   menuDeveloper: 'Developer tools',
   menuDataHandling: 'How data is handled',
   badgeIngest: {
-    one: '{count} ingestion needs follow-up',
-    other: '{count} ingestions need follow-up',
+    one: '{count} dataset needs attention',
+    other: '{count} datasets need attention',
   },
 } satisfies Translation<typeof shellSource>;
 

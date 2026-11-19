@@ -95,9 +95,9 @@ describe('the playground page', () => {
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Prøveområdet' })).toBeTruthy();
     expect(
-      screen
-        .getByRole('button', { name: 'Sammenlign med et annet oppsett' })
-        .getAttribute('aria-disabled'),
+      (await screen.findByRole('button', { name: 'Sammenlign med et annet oppsett' })).getAttribute(
+        'aria-disabled',
+      ),
     ).toBe('true');
   });
 
@@ -398,7 +398,13 @@ describe('the playground page', () => {
   });
 
   it('marks as different only what differs between A and B', async () => {
-    await openPage();
+    const panel = await openPage();
+    await waitFor(() =>
+      expect(
+        (within(panel).getByRole('textbox', { name: 'Instruksjoner' }) as HTMLTextAreaElement)
+          .value,
+      ).toMatch(/^Svar saksbehandlere/),
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Sammenlign med et annet oppsett' }));
 
     const sideA = screen.getByRole('region', { name: /^Oppsett A:/ });

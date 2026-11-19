@@ -25,8 +25,8 @@ import { useT, type Format, type T } from '../i18n';
 import { useAsync, type AsyncState } from '../hooks';
 import type { ScreenProps } from '../screen';
 import { useRights } from '../Shell';
-import { failureText } from './datasets/live-model';
-import { datasetTabPath } from './datasets/model';
+import { failureText, lacksSource, needsFollowUp } from './datasets/live-model';
+import { datasetHref, datasetTabPath } from './datasets/model';
 import { ErrorState, limitOf, refusalOf } from '../states';
 import type { ModelOption, Overview as OverviewData, TaskRow, UsageReport } from '../types';
 import { LiveChanges } from './changes/LiveChanges';
@@ -447,8 +447,8 @@ export const Overview = ({
   api,
   tenant,
   tenantName,
-  onFailingIngests,
-}: ScreenProps & { onFailingIngests?: (count: number) => void }) => {
+  onFollowUp,
+}: ScreenProps & { onFollowUp?: (count: number) => void }) => {
   const t = useT();
   const f = useFormat();
   const rights = useRights();
@@ -510,10 +510,10 @@ export const Overview = ({
     const timer = setInterval(retryDatasets, pollMs);
     return () => clearInterval(timer);
   }, [anyRunning, retryDatasets]);
-  const failing = own.filter((d) => failedRecently(d) && !isRunning(d)).length;
+  const followUp = datasets.status === 'ready' ? datasets.data.filter(needsFollowUp) : [];
   useEffect(() => {
-    onFailingIngests?.(failing);
-  }, [onFailingIngests, failing]);
+    if (datasets.status === 'ready') onFollowUp?.(followUp.length);
+  }, [onFollowUp, datasets.status, followUp.length]);
 
   const checkedAt = useMemo(
     () => (datasets.status === 'ready' || usage.status === 'ready' ? new Date() : undefined),
@@ -698,6 +698,26 @@ export const Overview = ({
           aria-label={t('overview.seeFilesFor', { name: d.name })}
         >
           {t('overview.seeFiles')}
+        </a>
+      ),
+    });
+  }
+  const shownDatasets = new Set([...watched, ...own.filter(partlyRead)].map((d) => d.fullId));
+  for (const d of own.filter((d) => needsFollowUp(d) && !shownDatasets.has(d.fullId))) {
+    const noSource = lacksSource(d);
+    items.push({
+      key: `follow-up-${d.fullId}`,
+      badge: t(noSource ? 'overview.badgeNoSource' : 'overview.badgeFollowUp'),
+      color: 'warning',
+      text: (
+        <>
+          <a href={datasetHref(d.fullId)}>{d.name}</a>{' '}
+          {t(noSource ? 'overview.noSourceText' : 'overview.followUpText')}
+        </>
+      ),
+      action: (
+        <a href={datasetHref(d.fullId)} aria-label={t('overview.seeDatasetFor', { name: d.name })}>
+          {t('overview.seeDataset')}
         </a>
       ),
     });

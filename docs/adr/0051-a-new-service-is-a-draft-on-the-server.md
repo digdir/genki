@@ -1,6 +1,6 @@
 # 0051 A new service is a draft on the server
 
-Status: proposed, 2026-11-03
+Status: proposed, 2026-11-03 (built, 2026-11-11: drafts saved from the first change, `GET /tenants/{tenant}/service-drafts`, deleting the draft of a service never published)
 
 ## Context
 

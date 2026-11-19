@@ -71,6 +71,8 @@ const keepInAddress = (query: string, filter: Filter) => {
   );
 };
 
+export type ListedService = ServiceRow & { model?: string };
+
 const inFilter = (r: ServiceRow, filter: Filter) =>
   filter === 'alle' ? r.status !== 'Arkivert' : r.status === filter;
 
@@ -80,7 +82,7 @@ export const ServiceList = ({
   listed,
   placeholder,
 }: {
-  rows?: ServiceRow[] | undefined;
+  rows?: ListedService[] | undefined;
   tenantName: string;
   listed?: number;
   placeholder?: ReactNode;
@@ -130,7 +132,7 @@ const ServiceRows = ({
   listed,
   placeholder,
 }: {
-  rows: ServiceRow[] | undefined;
+  rows: ListedService[] | undefined;
   listed?: number;
   placeholder: ReactNode;
 }) => {
@@ -221,6 +223,12 @@ const ServiceRows = ({
                       ))
                     : t('serviceList.noStart')}
                 </dd>
+                {r.model ? (
+                  <>
+                    <dt className="services-row-model">{t('serviceList.model')}</dt>
+                    <dd className="services-row-model">{r.model}</dd>
+                  </>
+                ) : null}
               </dl>
               <div className="services-row-usage">
                 {r.status === 'Utkast' ? (

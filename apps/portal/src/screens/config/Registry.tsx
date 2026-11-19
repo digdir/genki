@@ -16,6 +16,7 @@ import {
 import { useFormat } from '@genai/i18n/react';
 import { useRef, useState, type ReactNode } from 'react';
 import { ApiError, type ApiClient, type ConfigEntry } from '../../api';
+import { BusyButton } from '../../components/BusyButton';
 import { useAsync } from '../../hooks';
 import { useT, type T } from '../../i18n';
 import { EmptyState, ErrorState, Loading } from '../../states';
@@ -272,9 +273,14 @@ const Editor = ({
       ) : null}
       <div className="row-wrap">
         {readOnly ? null : (
-          <Button data-size="sm" loading={busy} onClick={() => !busy && void save()}>
+          <BusyButton
+            data-size="sm"
+            busy={busy}
+            busyLabel={entry ? t('config.savingVersion') : t('config.creating')}
+            onClick={() => void save()}
+          >
             {entry ? t('config.saveVersion') : t('config.create')}
-          </Button>
+          </BusyButton>
         )}
         {entry && !entry.builtin && !readOnly ? (
           <Button
