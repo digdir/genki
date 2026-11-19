@@ -510,7 +510,7 @@ resource platformBackupJob 'Microsoft.App/jobs@2025-02-02-preview' = if (backupO
         {
           name: 'upload'
           image: workerImage
-          resources: { cpu: json('0.25'), memory: '0.5Gi' }
+          resources: { cpu: json('0.5'), memory: '1Gi' }
           command: ['node', 'scripts/platform-backup.ts', 'upload']
           env: [
             { name: 'AZURE_CLIENT_ID', value: backupOn ? platformBackup.writer.clientId : '' }

@@ -62,13 +62,14 @@ A page's label is the first furniture text on it that reads as a page number (`1
 | Pages with a printed label                                | 71.5 % |  67.8 % |
 | Pages the label rule keeps a label for (coverage)         | 70.5 % |  66.2 % |
 | Labels the rule keeps (agreement with a neighbour)        | 98.6 % |  97.6 % |
+| Coverage when a lone number in the body counts too        | 73.7 % |  69.1 % |
 | Pages with a running title left in the body (strict rule) |  4.8 % |   7.3 % |
 | Files with one                                            |     36 |      36 |
 | Files with a contact line in the bottom band              | 20.5 % |  24.5 % |
 | Contact lines the same-band rule catches                  |   0/91 |   0/106 |
 | Texts marked furniture                                    |  9.3 % |  11.4 % |
 
-The script also prints the counts behind these shares, numbers in the body near the page edge, Roman numerals (none of the pages that have one get a label) and repeated text in the middle of the page.
+The second coverage row also reads a number in the body that sits in the top or bottom 8 % of a page with no furniture label, kept when an adjacent page has the same offset. That is close to `docling-parts`, which makes a lone number in the top or bottom 10 % furniture (ADR 0055) and reads labels from it. The script also prints the counts behind these shares, numbers in the body near the page edge, Roman numerals (none of the pages that have one get a label) and repeated text in the middle of the page.
 
 ## Storage (`storage.py`)
 

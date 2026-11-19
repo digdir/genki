@@ -195,6 +195,9 @@ param budgetStartDate string = '2026-11-01'
 @description('Turns on the BFF for the assistant host (ADR 0061): put the same genai-proxy-key in genki\'s and the host\'s Key Vault first.')
 param assistantBffEnabled bool = false
 
+@description('Hostnames the assistant host serves, each { hostname or subdomain, tenant, stage, apex? }: a subdomain becomes <subdomain>.apps.<dnsZoneName>, stage as customDomainsStage, apex for a zone apex. See infra/README.md, "Hosted hostnames".')
+param hostedHostnames array = []
+
 param minReplicas int = 1
 param maxReplicas int = 3
 @description('Most connections each of an API replica\'s two pools opens to the platform database (DATABASE_POOL_MAX).')
@@ -216,6 +219,10 @@ param workerMemory string = '4Gi'
 
 var postgresConnections = loadJsonContent('postgres-connections.json')
 var baseName = '${namePrefix}-${environmentName}'
+var assignedNames = filter(hostedHostnames, h => !empty(h.?subdomain ?? ''))
+var hostedNames = map(hostedHostnames, h => union(h, {
+  hostname: toLower(empty(h.?subdomain ?? '') ? h.hostname : '${h.subdomain}.apps.${dnsZoneName}')
+}))
 var suffix = uniqueString(resourceGroup().id)
 var allTags = union(tags, { system: 'genki', environment: environmentName })
 var postgresServerName = '${baseName}-pg-${suffix}'
@@ -516,6 +523,7 @@ module apps 'modules/containerapps.bicep' = {
       OPERATOR_SUBJECTS: operatorSubjects
       PLATFORM_TENANT: platformTenant
       EMPLOYEE_CLIENT_IDS: join(filter([portalClientId, workspaceClientId, consoleClientId], id => !empty(id)), ',')
+      GENAI_HOSTED_HOSTNAMES: join(map(hostedNames, h => '${h.hostname}=${h.tenant}'), ',')
     }
     webSettings: {
       ansattportenIssuer: ansattportenIssuer
@@ -601,6 +609,7 @@ module assistantHost 'modules/assistant-host.bicep' = if (assistantHostEnabled) 
     appsImage: appsImage
     apiUpstream: 'https://${apps.outputs.fqdn}'
     bffProxyKey: assistantBffEnabled
+    hostedHostnames: hostedNames
   }
 }
 
@@ -702,6 +711,9 @@ module dns 'modules/dns.bicep' = if (createDnsZone && !empty(dnsZoneName) && inf
       label: replace(hostnames[app], zoneSuffix, '')
       target: apps.outputs.defaultFqdns[app]
     }]
+    hostedLabels: assistantHostEnabled ? map(assignedNames, h => '${toLower(h.subdomain)}.apps') : []
+    hostedTarget: assistantHostEnabled ? assistantHost!.outputs.fqdn : ''
+    hostedVerificationId: assistantHostEnabled ? assistantHost!.outputs.verificationId : ''
   }
 }
 
@@ -729,7 +741,6 @@ output knowledgeWorkerIdentity object = knowledgeOn
   : {}
 output knowledgeSetupJobName string = apps.outputs.knowledgeSetupJobName
 output platformBackupJobName string = apps.outputs.platformBackupJobName
-@description('Whether this deploy applied the infrastructure, and the fingerprint it applied: deploy.yml compares the last full deploy\'s fingerprint with its own.')
 output assistantHost object = assistantHostEnabled
   ? {
       appName: assistantHost!.outputs.appName
@@ -737,7 +748,9 @@ output assistantHost object = assistantHostEnabled
       staticIp: assistantHost!.outputs.staticIp
       verificationId: assistantHost!.outputs.verificationId
       vaultName: take('${baseName}-hostkv', 24)
+      dnsRecords: assistantHost!.outputs.dnsRecords
     }
   : {}
+@description('Whether this deploy applied the infrastructure, and the fingerprint it applied: deploy.yml compares the last full deploy\'s fingerprint with its own.')
 output infrastructureDeployed bool = infra
 output infraFingerprint string = infraFingerprint

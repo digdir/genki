@@ -9,6 +9,7 @@ import {
   type AssistantLayout,
 } from './layout.js';
 import {
+  isDocumentLink,
   isHttpsLink,
   isProfileData,
   PROFILE_MAX_BYTES,
@@ -177,6 +178,25 @@ describe('the profile as data in a layout', () => {
     expect(isHttpsLink('https://kudos.dfo.no@example.com/{id}')).toBe(false);
     expect(isHttpsLink('https:///{id}')).toBe(false);
     expect(isHttpsLink('//kudos.dfo.no/{id}')).toBe(false);
+  });
+
+  it("takes a document link on the host's own site, so it opens under any hostname, and no other relative link", () => {
+    expect(isDocumentLink('/api/datasets/kudos/documents/{id}/file')).toBe(true);
+    expect(isDocumentLink('/dokument/{id}')).toBe(true);
+    expect(isDocumentLink('https://kudos.dfo.no/documents/{id}')).toBe(true);
+    for (const link of [
+      '//kudos.dfo.no/{id}',
+      '/\\kudos.dfo.no/{id}',
+      'dokument/{id}',
+      '/a b/{id}',
+    ])
+      expect(isDocumentLink(link)).toBe(false);
+    expect(
+      profileProblems(kudos({ documentLinks: { any: '/api/datasets/kudos/documents/{id}/file' } })),
+    ).toEqual([]);
+    expect(
+      profileProblems({ experiments: [{ id: 'x', title: 'X', href: '/eksperiment' }] }),
+    ).toEqual([{ rule: 'link-not-https', path: 'profile.experiments[0].href' }]);
   });
 
   it('finds a field of a kind it does not know, though the type allows none', () => {

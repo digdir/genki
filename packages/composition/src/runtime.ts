@@ -558,6 +558,7 @@ export const createRuntime = async (input: RuntimeInput) => {
           input.logger?.('knowledge vacuum failed', {
             error: error instanceof Error ? error.message : String(error),
           }),
+        onServerMigrated: (ms) => input.logger?.('knowledge server migrated', { ms }),
       })
     : undefined;
   const knowledgeAdapters: KnowledgeAdapter[] = [

@@ -205,6 +205,19 @@ export const isHttpsLink = (link: string) => {
   }
 };
 
+/** A path on the host's own site, `/` first and never `//`, so it opens under whatever hostname draws it. */
+export const isSitePath = (link: string) => {
+  if (!/^\/(?![/\\])[^\\\s]*$/.test(link)) return false;
+  try {
+    return new URL(link.split('{id}').join('0'), 'https://host.invalid').host === 'host.invalid';
+  } catch {
+    return false;
+  }
+};
+
+/** Where a document lives: an https link whose host comes before `{id}`, or a path on the host's own site. */
+export const isDocumentLink = (link: string) => isHttpsLink(link) || isSitePath(link);
+
 /**
  * Every limit a profile breaks, each with its path in the layout: its size, each text's length,
  * each list's length, links that are not https, and a field kind the assembly does not know.
@@ -221,10 +234,10 @@ export const profileProblems = (profile: ProfileData, at = 'profile'): ProfilePr
   const count = (length: number, path: string, max: number) => {
     if (length > max) problems.push({ rule: 'too-many', path, max });
   };
-  const link = (value: string | undefined, path: string) => {
+  const link = (value: string | undefined, path: string, allowed = isHttpsLink) => {
     if (value === undefined) return;
     text(value, path, profileLimits.url);
-    if (!isHttpsLink(value)) problems.push({ rule: 'link-not-https', path });
+    if (!allowed(value)) problems.push({ rule: 'link-not-https', path });
   };
   const texts = (list: readonly string[] | undefined, path: string, max: number) => {
     if (!list) return;
@@ -263,7 +276,7 @@ export const profileProblems = (profile: ProfileData, at = 'profile'): ProfilePr
       text(plural, `${path}.typePlurals.${type}`, profileLimits.id);
     }
     for (const [pattern, url] of Object.entries(corpus.documentLinks ?? {}))
-      link(url, `${path}.documentLinks.${pattern}`);
+      link(url, `${path}.documentLinks.${pattern}`, isDocumentLink);
     if (corpus.about) {
       text(corpus.about.idField, `${path}.about.idField`, profileLimits.id);
       count(corpus.about.fields.length, `${path}.about.fields`, profileLimits.aboutFields);

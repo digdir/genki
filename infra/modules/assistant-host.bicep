@@ -9,6 +9,9 @@ param maxReplicas int = 3
 @description('Reads genai-proxy-key from the host\'s own Key Vault and turns on the BFF routes (ADR 0061).')
 param bffProxyKey bool = false
 
+@description('{ hostname, tenant, stage, apex? } from main.bicep\'s hostedHostnames.')
+param hostedHostnames array = []
+
 resource identity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' existing = {
   name: '${name}-assistant-id'
 }
@@ -25,10 +28,26 @@ resource environment 'Microsoft.App/managedEnvironments@2025-02-02-preview' exis
   name: '${name}-hosted-env'
 }
 
+var bound = filter(hostedHostnames, h => h.stage != 'none')
+var certified = filter(bound, h => h.stage == 'certificates')
+var certificateName = toObject(hostedHostnames, h => toLower(h.hostname), h => replace(toLower(h.hostname), '.', '-'))
+
+resource certificates 'Microsoft.App/managedEnvironments/managedCertificates@2025-02-02-preview' = [for h in certified: {
+  parent: environment
+  name: certificateName[toLower(h.hostname)]
+  location: location
+  tags: tags
+  properties: {
+    subjectName: toLower(h.hostname)
+    domainControlValidation: h.?apex ?? false ? 'HTTP' : 'CNAME'
+  }
+}]
+
 resource host 'Microsoft.App/containerApps@2025-02-02-preview' = {
   name: '${name}-assistant'
   location: location
   tags: tags
+  dependsOn: [certificates]
   identity: {
     type: 'UserAssigned'
     userAssignedIdentities: { '${identity.id}': {} }
@@ -43,6 +62,13 @@ resource host 'Microsoft.App/containerApps@2025-02-02-preview' = {
         targetPort: 8080
         transport: 'auto'
         allowInsecure: false
+        customDomains: map(bound, h => {
+          name: toLower(h.hostname)
+          bindingType: h.stage == 'certificates' ? 'SniEnabled' : 'Disabled'
+          certificateId: h.stage == 'certificates'
+            ? resourceId('Microsoft.App/managedEnvironments/managedCertificates', environment.name, certificateName[toLower(h.hostname)])
+            : null
+        })
       }
       registries: [{ server: registry.properties.loginServer, identity: identity.id }]
       secrets: bffProxyKey
@@ -78,3 +104,18 @@ output fqdn string = host.properties.configuration.ingress.fqdn
 output environmentName string = environment.name
 output staticIp string = environment.properties.staticIp
 output verificationId string = environment.properties.customDomainConfiguration.customDomainVerificationId
+
+@description('The records each hosted hostname needs in its own DNS before its stage moves past none.')
+output dnsRecords array = map(hostedHostnames, h => {
+  hostname: toLower(h.hostname)
+  records: [
+    h.?apex ?? false
+      ? { type: 'A', name: toLower(h.hostname), value: environment.properties.staticIp }
+      : { type: 'CNAME', name: toLower(h.hostname), value: host.properties.configuration.ingress.fqdn }
+    {
+      type: 'TXT'
+      name: 'asuid.${toLower(h.hostname)}'
+      value: environment.properties.customDomainConfiguration.customDomainVerificationId
+    }
+  ]
+})

@@ -51,6 +51,9 @@ export const problems = defineNamespace({
   entraNotTrusted: 'Entra ID-innloggingen din gir ikke tilgang til dette miljøet',
   entraNotTrustedDetail:
     'Bare medlemmer av de oppsatte Entra-gruppene i Digdir kan logge inn med Entra ID her. Logg inn med TestID for å lese, eller be om tilgang.',
+  serviceLocked: 'Denne assistenten er bare åpen for ansatte i Digdir i testmiljøet',
+  serviceLockedDetail:
+    'Logg inn med Digdir-kontoen din (Entra ID). Har du gjort det og kommer likevel ikke inn, kan du be teamet bak tjenesten om tilgang.',
   unreadableDefinition: 'Definisjonen kan ikke leses',
   invalidDefinition: 'Ugyldig definisjon',
   skillsPublishedThrough:
