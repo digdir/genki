@@ -98,6 +98,7 @@ export const adminActionRights: Readonly<
 > = {
   'platform.service.publish': 'manage-services',
   'platform.service.lifecycle': 'manage-services',
+  'platform.service.delete': 'manage-services',
   'platform.step-flow.archive': 'manage-services',
   'platform.service.access': 'manage-services',
   'platform.service.environments.add': 'manage-services',

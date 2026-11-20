@@ -137,6 +137,14 @@ export const serviceUi = {
     keepWriting: 'Keep writing',
     failed: 'The change was not saved. Try again.',
     close: 'Close',
+    delete: 'Delete for good',
+    deleteTitle: 'Delete {name} for good',
+    deleteInfo:
+      'The definition, all its versions and its draft are deleted, and the step flows only this service uses. Runs and documents are deleted after the normal retention period. This cannot be undone.',
+    deleteConfirm: 'Type {id} to confirm',
+    deleteMismatch: 'Type the service id exactly as it is shown.',
+    deleting: 'Deleting …',
+    deleteFailed: 'The service was not deleted. Try again.',
   },
   serviceLog: {
     all: 'All runs for the service',

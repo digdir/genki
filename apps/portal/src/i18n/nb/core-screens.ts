@@ -270,6 +270,7 @@ export const changes = defineNamespace({
   serviceDraftRebase: 'oppdaterte utkastet til',
   serviceDraftSave: 'lagret utkastet til',
   serviceLifecycle: 'endret status for tjenesten',
+  serviceDelete: 'slettet tjenesten',
   stepFlowArchive: 'arkiverte stegflyten',
   operationKindDelete: 'slettet typen kall',
   serviceAccess: 'endret hvem som kan bruke',

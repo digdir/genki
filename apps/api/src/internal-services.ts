@@ -78,12 +78,22 @@ const remembered = (key: string, check: () => Promise<boolean>) => {
 export const isHiddenService = async (store: DefinitionStore, tenant: string, id: string) =>
   hidesInternalServices() && ((await internalChecks.get(store)?.(tenant, id)) ?? false);
 
+export const deletedInternalServiceKind = 'deleted-internal-service';
+
+const deletedInternalChecks = new WeakMap<
+  DefinitionStore,
+  (tenant: string, id: string) => Promise<string[]>
+>();
+
 export const isHiddenTask = async (store: DefinitionStore, task: Task) => {
   if (!hidesInternalServices()) return false;
   const capability = task.service.capability.id;
   if (originOf(capability) !== serviceOrigin) return false;
   const [tenant, id] = capability.split('/');
-  return tenant !== undefined && id !== undefined && isHiddenService(store, tenant, id);
+  if (tenant === undefined || id === undefined) return false;
+  if (await isHiddenService(store, tenant, id)) return true;
+  const deletions = (await deletedInternalChecks.get(store)?.(tenant, id)) ?? [];
+  return deletions.some((at) => Date.parse(task.createdAt) <= Date.parse(at));
 };
 
 export const hidingInternalTasks =
@@ -181,7 +191,10 @@ const wrapped = new WeakSet<DefinitionStore>();
 
 export const hidingInternalServices = (
   store: DefinitionStore,
-  options: { draftDefinition?: DraftDefinition } = {},
+  options: {
+    draftDefinition?: DraftDefinition;
+    deletedInternal?: (tenant: string, id: string) => Promise<string[]>;
+  } = {},
 ): DefinitionStore => {
   if (wrapped.has(store)) return store;
   const internal = (tenant: string, id: string) =>
@@ -224,6 +237,7 @@ export const hidingInternalServices = (
       const all = await store.capabilities(onInvalid);
       return hidesInternalServices() ? all.filter((c) => !c.internal) : all;
     },
+    remove: (tenant, definitions) => store.remove(tenant, definitions),
     publish: async (input, actor, reason, files) => {
       const refused = await publishRefusals(view, input);
       if (refused.length > 0) return { ok: false, errors: refused };
@@ -235,6 +249,7 @@ export const hidingInternalServices = (
   };
   wrapped.add(view);
   internalChecks.set(view, internal);
+  if (options.deletedInternal) deletedInternalChecks.set(view, options.deletedInternal);
   return view;
 };
 

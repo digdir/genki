@@ -76,6 +76,7 @@ export const audit = {
   actionHookFeedback: 'Ran hooks on feedback',
   actionPrivateNetworksSave: 'Saved private networks',
   actionServiceLifecycle: 'Changed service status',
+  actionServiceDelete: 'Deleted service',
   actionServiceEnvironmentAdd: 'Added service environment',
   actionServiceEnvironmentRemove: 'Removed service environment',
   actionServiceEnvironmentPromote: 'Promoted version to environment',

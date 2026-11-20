@@ -253,6 +253,7 @@ import { testRunnerView } from './test-runner.js';
 import { compiledCapabilityCache } from './compiled-capabilities.js';
 import {
   hidingInternalServices,
+  deletedInternalServiceKind,
   hidingInternalTasks,
   hidingInternalTestSets,
   isHiddenService,
@@ -324,6 +325,7 @@ import { maskinportenClientsModule } from './maskinporten-clients.js';
 import { defaultReservedDomains, registerHostRoutes, type HostingRules } from './hosts.js';
 import { hostedByGenki, interfaceCatalogueProblems } from './interface-catalogue.js';
 import { triggersModule } from './triggers.js';
+import { createServiceDeleteModule } from './service-delete.js';
 import { lifecycleOf, pausedMessage, serviceLifecycleModule } from './service-lifecycle.js';
 import { stepFlowArchiveModule } from './step-flow-archive.js';
 import { batchTasksOf } from './batch-runs.js';
@@ -1732,6 +1734,10 @@ export const createPlatform = async (input: PlatformInput) => {
       list: (...args) => store.list(...args),
       resolve: (...args) => store.resolve(...args),
       capabilities: () => compiled.get(),
+      remove: async (...args) => {
+        await store.remove(...args);
+        await resync();
+      },
       publish: async (...args) => {
         const archived = await archivedPublishRefusal(args[0], serviceLifecycle);
         if (archived) return archived;
@@ -1745,6 +1751,10 @@ export const createPlatform = async (input: PlatformInput) => {
     {
       draftDefinition: async (tenant, id) =>
         (await serviceDrafts(configurables.store, store).draftOf(tenant, id))?.spec.definition,
+      deletedInternal: async (tenant, id) =>
+        (await configurables.store.history(deletedInternalServiceKind, tenant, id)).map(
+          (e) => e.at,
+        ),
     },
   );
 
@@ -2274,6 +2284,11 @@ export const createPlatform = async (input: PlatformInput) => {
     createKeyPoliciesModule({
       policies: keyPolicies,
       keys: apiKeys,
+    })(moduleDeps),
+    createServiceDeleteModule({
+      clients,
+      apiKeys,
+      ...(input.now ? { now: input.now } : {}),
     })(moduleDeps),
   );
   if (input.verifyPluginsOnBoot)

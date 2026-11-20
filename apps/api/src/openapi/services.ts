@@ -1754,6 +1754,44 @@ export const serviceRoutes: RouteConfig[] = [
   }),
   createRoute({
     method: 'delete',
+    path: '/tenants/{tenant}/services/{id}',
+    summary:
+      'Delete an archived service for good: its definition, every version, its draft, its environments and the step flows of the organisation that nothing else still stored runs. Runs, conversations and documents stay and follow normal retention (ADR 0011). The id can be used again. Needs manage-services; audited',
+    request: { params: z.object({ tenant, id: service }), headers: changeReason },
+    responses: {
+      200: audited(
+        z.object({
+          id: z.string(),
+          deleted: z.literal(true),
+          versions: z.number().int(),
+          stepFlows: z.array(z.string()),
+        }),
+        'Deleted',
+      ),
+      400: problem('Missing reason'),
+      ...tenantErrors,
+      404: problem('No such service'),
+      409: {
+        description:
+          'urn:genai:problem:service-not-archived: only an archived service can be deleted. urn:genai:problem:service-in-use: a frontend, a live API key or another service that is not archived still uses it; errors name them, with path frontends, apiKeys or services',
+        content: {
+          'application/problem+json': {
+            schema: z.object({
+              type: z.enum([
+                'urn:genai:problem:service-not-archived',
+                'urn:genai:problem:service-in-use',
+              ]),
+              title: z.string(),
+              status: z.literal(409),
+              errors: z.array(z.object({ path: z.string(), message: z.string() })),
+            }),
+          },
+        },
+      },
+    },
+  }),
+  createRoute({
+    method: 'delete',
     path: '/tenants/{tenant}/step-flows/{id}',
     summary:
       "Archive one of the organisation's own step flows: Stegflyter and Byggeklosser stop listing it, its versions stay so runs and history keep working, and publishing it again lists it again. Refused while the latest version, or a version an environment is pinned to, of any service that is not archived runs it, directly or as a subflow, internal services included. Needs manage-services; audited",

@@ -661,6 +661,13 @@ export const createApiClient = ({
         { state },
         { 'change-reason': reason },
       ),
+    deleteService: (tenant: string, id: string, reason: string) =>
+      request<{ id: string; deleted: true; versions: number; stepFlows: string[] }>(
+        'DELETE',
+        `${tenantPath(tenant)}/services/${encodeURIComponent(id)}`,
+        undefined,
+        { 'change-reason': reason },
+      ),
     task: (tenant: string, task: string, signal?: AbortSignal) =>
       get<TaskRow>(`${tenantPath(tenant)}/tasks/${encodeURIComponent(task)}`, signal),
     sharedServices: async (signal?: AbortSignal) =>
