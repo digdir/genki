@@ -171,6 +171,8 @@ const boot = async (
     globalModelsOnly?: boolean;
     /** A release whose catalog no longer has the engine datasets moved from, as platform-pg. */
     withoutLocal?: boolean;
+    /** The engine datasets moved from, shared with only this organisation. */
+    localSharedWith?: string;
   } = {},
 ) => {
   const entries = shared.entries ?? new InMemoryConfigEntryStore();
@@ -185,7 +187,12 @@ const boot = async (
           // The engine datasets move from: an in-memory one, as platform-pg went with issue 151.
           ...(shared.withoutLocal
             ? {}
-            : { lokal: { engine: 'memory', sharing: { tenants: '*' as const } } }),
+            : {
+                lokal: {
+                  engine: 'memory',
+                  sharing: { tenants: shared.localSharedWith ? [shared.localSharedWith] : '*' },
+                },
+              }),
           'knowledge-pg': {
             engine: 'pgvector',
             options: { connection: 'knowledge' },
@@ -592,6 +599,26 @@ describe('switching a dataset into the knowledge database', () => {
     expect(booted.worker.started.at(-1)).toMatchObject({ dataset: `${digdir}/aktiv` });
     expect(booted.worker.started.at(-1)?.generation).toBeUndefined();
     expect(booted.worker.started.at(-1)?.engineSwitch).toBeUndefined();
+  });
+
+  it('roll back is not offered when the old engine is no longer shared with the organisation', async () => {
+    const worker = fakeWorker();
+    const entries = new InMemoryConfigEntryStore();
+    const first = await boot({ worker, entries });
+    await folderDataset(first, 'ikke-delt');
+    const opened = await toReady(first, 'ikke-delt');
+    await first.call(`${base('ikke-delt')}/engine-switches/${opened.sid}/activate`, { body: {} });
+    await worker.end(runOf(worker, opened.id, 1), 'succeeded');
+    await first.module.follow();
+
+    const next = await boot({ worker, entries, localSharedWith: '999888777' });
+    expect((await engineView(next, 'ikke-delt')).previous).toBeUndefined();
+    expect((await view(next, 'ikke-delt', opened.sid)).canRollback).toBe(false);
+    const refused = await next.call(`${base('ikke-delt')}/engine-switches/${opened.sid}/rollback`, {
+      body: {},
+      reason: 'Tilbake til den gamle søkemotoren',
+    });
+    expect(refused.status).toBe(409);
   });
 
   it('a switch between two pgvector endpoints is refused, since both keep their data on the knowledge server', async () => {

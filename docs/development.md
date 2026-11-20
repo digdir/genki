@@ -41,6 +41,7 @@ npm start          # setup, then API, worker, portal, console and workspace; sto
 | Process   | Address               | For                                                                 |
 | --------- | --------------------- | ------------------------------------------------------------------- |
 | API       | http://localhost:8080 | The platform, with database migrations and seeded definitions       |
+| Worker    | http://localhost:8081 | Durable jobs, such as runs on the knowledge database; health checks |
 | Portal    | http://localhost:5173 | Agencies: build, test and publish services, datasets and API keys   |
 | Console   | http://localhost:5174 | Digdir operators: tenants, shared services, models, platform health |
 | Workspace | http://localhost:5176 | Employees: chat with published services, with sources and approvals |

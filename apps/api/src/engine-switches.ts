@@ -351,13 +351,6 @@ export const createEngineSwitchesModule =
       return typeof days === 'number' && days > 0 ? days : 14;
     };
 
-    /** Whether a switch's previous endpoint is still in the catalog: platform-pg went with issue 151. */
-    const previousExists = (scope: string, from: string) =>
-      Boolean(
-        catalog.get('knowledge-endpoint', from) ??
-        catalog.get('knowledge-endpoint', catalog.qualify(scope, from)),
-      );
-
     const endpointFor = (tenant: string, ref: string) =>
       catalog
         .visibleTo(tenant)
@@ -366,6 +359,12 @@ export const createEngineSwitchesModule =
             i.kind === 'knowledge-endpoint' &&
             (i.id === catalog.qualify(tenant, ref) || i.id === ref),
         );
+
+    /**
+     * Whether a switch can go back to its previous endpoint: it is still in the catalog (platform-pg
+     * went with issue 151) and still shared with the dataset's organisation.
+     */
+    const previousExists = (scope: string, from: string) => Boolean(endpointFor(scope, from));
 
     const ownDataset = (tenant: string, id: string) => {
       const item = catalog.get('dataset', catalog.qualify(tenant, id));
