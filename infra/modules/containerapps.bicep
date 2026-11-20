@@ -218,6 +218,9 @@ var platformLoginSecretEnv = platformLoginSecret
   ? [{ name: 'PLATFORM_LOGIN_CLIENT_SECRET', secretRef: 'platform-login-client-secret' }]
   : []
 
+// The API's revision from before PR 880 still reads colbert-api-key, so the secret stays with no env var; it goes in a later PR once that revision is gone (#690).
+var colbertKeySecret = { name: 'colbert-api-key', keyVaultUrl: '${keyVaultUri}secrets/colbert-api-key', identity: identityId }
+
 var apiAppName = '${name}-api'
 var apiCandidateRevision = empty(apiRevisionSuffix) ? '' : '${apiAppName}--${apiRevisionSuffix}'
 var apiCandidateLabelled = !empty(apiCandidateRevision) && !contains([apiLiveRevision, apiPreviousRevision], apiCandidateRevision)
@@ -254,7 +257,7 @@ resource api 'Microsoft.App/containerApps@2025-02-02-preview' = {
         traffic: apiTraffic
       }
       registries: [{ server: registryServer, identity: identityId }]
-      secrets: concat(secrets, proxyKeySecret, platformLoginSecretRef)
+      secrets: concat(secrets, proxyKeySecret, platformLoginSecretRef, [colbertKeySecret])
     }
     template: {
       revisionSuffix: empty(apiRevisionSuffix) ? null : apiRevisionSuffix
