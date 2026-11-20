@@ -19,7 +19,7 @@ import {
 import { knowledgeRoles } from './knowledge-setup.js';
 import { readFunctionMigrations } from './read-functions.js';
 
-// Issue 800: a filtered vector search on the knowledge server finds what exact search over the same rows finds.
+// Issue 800: a filtered vector search ranks small filters exactly and raises the index limits for large ones.
 type Dataset = DatasetConfig<PgvectorDatasetOptions>;
 
 const signal = new AbortController().signal;
@@ -120,7 +120,7 @@ const exact = async (type: string, limit: number) => {
 };
 
 /** Runs `kn_search` as the reader, then reads the HNSW settings in the same transaction and in the next one. */
-const settingsAround = async (filters: unknown[], g = generation) => {
+const settingsAround = async (filters: unknown[], g = generation, efSearch?: number) => {
   const client = await (api.pools.reader as pg.Pool).connect();
   const read = async () =>
     (
@@ -135,6 +135,8 @@ const settingsAround = async (filters: unknown[], g = generation) => {
       `select set_config('app.datasets', $1, true), set_config('hnsw.iterative_scan', 'relaxed_order', true)`,
       [JSON.stringify([vectors.id])],
     );
+    if (efSearch)
+      await client.query(`select set_config('hnsw.ef_search', $1, true)`, [String(efSearch)]);
     await client.query(
       `select * from kn_search($1, $2, 'chunks', 'vector', 'x', $3::halfvec, null, $4::jsonb, 10, 50, 60)`,
       [vectors.id, g, JSON.stringify(queryVector), JSON.stringify(filters)],
@@ -154,8 +156,7 @@ const planOf = async (filters: unknown[], join: 'index' | 'any join' = 'index') 
   const client = await owner.connect();
   try {
     await client.query('begin');
-    // On Kudos the planner guesses the same ~1,400 documents for every type value and, for a large guess, ranks
-    // every chunk of the generation before it filters. Here nested loops are made dear to the same effect.
+    // On Kudos a large document guess made the planner rank every chunk first; dear nested loops do the same here.
     if (join === 'any join') await client.query('set local enable_nestloop = off');
     const { rows } = await client.query<{ sql: string }>(
       `select kn_search_sql($1, $2, 'chunks', 'vector', 'x', $3::halfvec, null, $4::jsonb, 10, 50, 60) as sql`,
@@ -207,8 +208,7 @@ beforeAll(async () => {
   // The server's own limits, as `hnsw.*` in the server parameters would set them.
   await admin.query(`alter role knowledge_api set hnsw.ef_search = ${server.efSearch}`);
   await admin.query(`alter role knowledge_api set hnsw.max_scan_tuples = ${server.maxScanTuples}`);
-  // On Kudos the planner reads the HNSW index for a rare value too (issue 674's probe); on a partition this
-  // small it would sort the filter's chunks instead, so sorting is made as dear as millions of chunks make it.
+  // On Kudos the planner reads the HNSW index for a rare value too; dear sorting makes this small partition do so.
   await admin.query(`alter role knowledge_api set enable_sort = off`);
   const source = {
     host: container.getHost(),
@@ -261,8 +261,7 @@ describe('filtered vector search on the knowledge server', () => {
   });
 
   it("counting a filter's chunks reads the chunks' doc index, not the chunks", async () => {
-    // Reading the chunks reads a table block for each of the 101 it counts; the doc index alone reads none,
-    // though planning may look at one.
+    // Reading the chunks reads a block per chunk counted (101); the doc index reads none, planning at most one.
     expect(await chunkBlocksToBuild(typeIs('middels'))).toBeLessThanOrEqual(1);
   });
 
@@ -284,6 +283,26 @@ describe('filtered vector search on the knowledge server', () => {
       tuples: String(server.maxScanTuples),
       mem: '1',
     });
+  });
+
+  it("a filtered vector search never lowers the server's own scan limits", async () => {
+    const { during } = await settingsAround(typeIs('vanlig'), generation, 400);
+    expect(during?.ef).toBe('400');
+  });
+
+  it('an exact ranking puts a chunk without a direction last', async () => {
+    const chunks = partitionOf('kn_chunks', generation);
+    await owner.query(
+      `insert into ${chunks} (dataset, generation, id, doc_id, position, text, config, vec)
+         values ($1, $2, 'd50#zero', 'd50', 99, 'tom', 'norwegian', array_fill(0, array[$3::int])::real[]::halfvec)`,
+      [vectors.id, generation, dims],
+    );
+    try {
+      const result = await search('sjelden');
+      expect(result.hits.map((h) => h.id)).not.toContain('d50#zero');
+    } finally {
+      await owner.query(`delete from ${chunks} where id = 'd50#zero'`);
+    }
   });
 
   it("an unfiltered search keeps the server's hnsw.ef_search", async () => {

@@ -246,12 +246,7 @@ const createFunctions = (filtered: FilteredSearch) => [
          id_col := case p_target when 'phrases' then 'x.chunk_id' else 'x.id' end;
          -- The cast matches the partition's HNSW index on vec::halfvec(N).
          dist := format('x.vec::halfvec(%s) <=> %L::halfvec(%s)', dims, p_vector::text, dims);
-         -- An index scan drops the rows a filter rejects and stops at hnsw.max_scan_tuples, so a rare value
-         -- comes back short (issue 800). A filter keeping few chunks is ranked exactly. The count and the exact
-         -- ranking read the filter's documents first and then each one's chunks by the doc index: joined
-         -- plainly, the planner may read every chunk of the generation when it guesses the filter large.
-         -- The count stops one past the threshold and reads the doc index alone: a generation belongs to one
-         -- dataset, and chunks without a vector count too.
+         -- A small filter is ranked exactly, documents first; the count reads the doc index alone (issue 800).
          if where_sql <> 'true' then
            filtered_docs := format('(select d.id from kn_docs d where d.dataset = %s and d.generation = %s and %s) m',
              ds, g, where_sql);
@@ -274,12 +269,12 @@ const createFunctions = (filtered: FilteredSearch) => [
            end if;
          end if;
          if exact then
-           -- Ordering by the score, not the distance, keeps the HNSW index out of an exact ranking.
+           -- Sorted above the documents-first join, so no HNSW scan; a zero vector's NaN distance sorts last.
            ctes := ctes || format(
              'v as (select id, max(s) as s from (
                 select x.id, (1 - (%s))::float8 as s from %s
-                order by s desc, x.id limit %s) nearest group by id)',
-             dist, filtered_chunks, p_candidates);
+                order by %s, x.id limit %s) nearest group by id)',
+             dist, filtered_chunks, dist, p_candidates);
          else
            ctes := ctes || format(
              'v as (select id, max(s) as s from (
@@ -463,11 +458,7 @@ export interface FilteredSearch {
   scanMemMultiplier: number;
 }
 
-// Measured on Kudos in test (3.6 M chunks, the server's 4 MB work_mem, issue 800; ADR 0042):
-// - exact, repeat p95: 34k chunks 178 ms, 80k 431 ms, Årsrapport's 241k 1.25 s (recall@10 1.0; 0.82 by the
-//   index today), so every type up to Årsrapport is ranked exactly;
-// - above it, only depth, tuples and memory raised together lifted Årsrapport's recall (0.815 → 0.938); on
-//   the types above the cutoff NOU went 0.895 → 0.965 and Evaluering kept 0.97, its repeat p95 5.1 s → 1.5 s.
+// Measured on Kudos in test (issue 800); the numbers are in ADR 0042.
 export const filteredSearch: FilteredSearch = {
   exactChunks: 250_000,
   efSearch: 200,

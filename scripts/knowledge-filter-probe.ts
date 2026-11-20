@@ -1,13 +1,6 @@
-// Measures filtered vector search on the knowledge server against exact search (issue 800). In Azure:
-//   az containerapp exec -g <resource group> -n genai-<env>-worker --command "node scripts/knowledge-filter-probe.ts <command> <generation> [plan.json]"
-//
-//   sizes <generation>               chunks and documents per `type` and `concerned_years` value, and the server's
-//                                    search settings.
-//   recall <generation> <plan.json>  recall@k of each side against exact search under the same filter, short lists,
-//                                    and first-run and repeat p50/p95 times.
-//
-// Both are read only: they run as the worker's owner role in read-only transactions, at the server's work_mem unless
-// the plan sets one. Prints one JSON line per result. The query draws are issue 674's probe's, so its seeds repeat.
+// Measures filtered vector search against exact search (issue 800), read only, on the worker in Azure:
+// `node scripts/knowledge-filter-probe.ts sizes <generation>` (chunks per type and year) or
+// `recall <generation> <plan.json>` (recall@k, short lists and times per side). One JSON line per result.
 import { readFile } from 'node:fs/promises';
 import { knowledgeSourceFromEnv } from '@genai/providers-postgres';
 import { openKnowledgePools, partitionOf } from '@genai/providers-pgvector';
@@ -206,8 +199,7 @@ const main = async () => {
         const from = (where: string) =>
           `from kn_chunks x join kn_docs d on d.dataset = ${ds} and d.generation = ${g} and d.id = x.doc_id
              where x.dataset = ${ds} and x.generation = ${g} and x.vec is not null and ${where}`;
-        // An exact ranking reads the filter's documents first, then each one's chunks by the doc index, as
-        // `kn_search` does: joined plainly, the planner may rank every chunk of the generation before filtering.
+        // Documents first, then their chunks by the doc index, as `kn_search` ranks a small filter.
         const exactFrom = (where: string) =>
           where === 'true'
             ? from(where)
@@ -215,12 +207,11 @@ const main = async () => {
                  cross join lateral (select x.id, x.vec from kn_chunks x where x.dataset = ${ds}
                    and x.generation = ${g} and x.doc_id = m.id and x.vec is not null offset 0) x`;
         const truthSql = (where: string) =>
-          `select n.id from (select x.id, (1 - (${dist()}))::float8 as s ${exactFrom(where)}) n
-             order by n.s desc, n.id limit ${plan.k}`;
+          `select n.id from (select x.id, ${dist()} as d ${exactFrom(where)}) n order by n.d, n.id limit ${plan.k}`;
         const sideSql = (side: Side, where: string) => {
           if (side.search === 'exact')
-            return `select n.id from (select x.id, (1 - (${dist()}))::float8 as s ${exactFrom(where)}
-               order by s desc, x.id limit ${plan.candidates}) n order by n.s desc, n.id`;
+            return `select n.id from (select x.id, ${dist()} as d ${exactFrom(where)}
+               order by d, x.id limit ${plan.candidates}) n order by n.d, n.id`;
           return `select n.id from (select x.id, ${dist()} as d ${from(where)}
              order by ${dist()} limit ${plan.candidates}) n order by n.d, n.id`;
         };
@@ -255,8 +246,7 @@ const main = async () => {
                     cfg,
                   ])
                 ).rows[0]?.sql ?? 'false');
-          // Truth: every distance under the filter computed. Ordered by score, as `kn_search` ranks a small filter,
-          // so the HNSW index cannot serve it and the filter's own indexes still can.
+          // Truth: every distance under the filter computed, documents first.
           const asked = plan.knownOnly
             ? queries.filter((q) => stored.has(`${f.name}\u0000${q.id}`))
             : queries;
