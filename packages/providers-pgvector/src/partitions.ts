@@ -227,12 +227,7 @@ const sequenceDefault = `select exists (select 1 from pg_attrdef d
        where p.classid = 'pg_attrdef'::regclass and p.objid = d.oid
          and p.refobjid = to_regclass($3))) as applied`;
 
-/**
- * How to tell from the catalog that a schema step is already applied. Even with `if not exists`,
- * `alter table` and `create index` take their table lock before they look, so a step run again
- * waits behind every writer and search; one already applied is skipped instead (issue 634). A
- * step that matches no check, such as a default other than a sequence's, runs every time.
- */
+/** Catalog checks for steps already applied, skipped since their DDL locks before it looks (ADR 0055). */
 const appliedChecks: [RegExp, string][] = [
   [/^create table if not exists (\w+)/, relationExists],
   [/^create (?:unique )?index if not exists (\w+)/, relationExists],
@@ -252,11 +247,7 @@ const applied = async (client: PoolClient, sql: string) => {
   return false;
 };
 
-/**
- * Runs at a worker's first knowledge use; like partition DDL it gives up after `lockTimeoutMs`
- * rather than queue writes behind it. Only steps not yet applied take a table lock, so a start
- * with nothing new never waits for writers or searches.
- */
+/** Runs at a worker's first knowledge use; like partition DDL it gives up after `lockTimeoutMs` rather than queue writes behind it. */
 export const migrateKnowledgeServer = async (owner: Pool, options: PartitionOptions = {}) => {
   const client = await owner.connect();
   try {
