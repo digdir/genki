@@ -1651,3 +1651,60 @@ describeContract('pgvector on the knowledge server', knowledgeContract, async ()
     }),
   };
 });
+
+/** Two rules the platform database's tests held until issue 151, on the knowledge server. */
+describe('search rules carried over from the platform database', () => {
+  it('hybrid ranks an exact phrase match above a merely similar chunk', async () => {
+    const d = dataset('pgvector/hybrid', 3, { filters: {} });
+    const generation = 'g-20261120-hybrid';
+    const one = (id: string, text: string, vec: number[]): IndexDocument => ({
+      id,
+      title: id,
+      fields: {},
+      chunks: [{ id: `${id}-0`, position: 0, text, metadata: {}, vector: vec }],
+      phrases: [],
+    });
+    await fill(d, generation, [
+      one('eksakt', 'Søknadsfristen for tilskudd er 1. mars.', [0.8, 0.6, 0]),
+      one('lignende', 'Midler kan bes om før våren.', [1, 0, 0]),
+      one('annet', 'Rapporter leveres årlig.', [0, 0, 1]),
+    ]);
+    const engine = readEngine(api.pools, () => ({
+      embed: async (texts) => texts.map(() => [1, 0, 0]),
+    }));
+    const [result] = await connectionOf(engine).search(
+      routed(d, generation),
+      [{ query: 'søknadsfristen for tilskudd', profile: 'content', limit: 3 }],
+      signal,
+    );
+    expect(result?.hits.map((h) => h.document).slice(0, 2)).toEqual(['eksakt', 'lignende']);
+  });
+
+  it('custom profiles search vectors alone and named document fields', async () => {
+    const config: Dataset = {
+      id: 'pgvector/profiler',
+      filters: fixtureFilters,
+      embedding: { model: 'fixture', dimensions: 32 },
+      options: {
+        profiles: {
+          vektor: { target: 'phrases', mode: 'vector' },
+          sammendrag: { target: 'docs', mode: 'text', fields: ['sammendrag', 'title'] },
+        },
+      },
+    };
+    const generation = 'g-20261120-profiler';
+    await seedCorpus(writer(), config, undefined, generation);
+    const connection = connectionOf();
+    expect(connection.profiles(config)).toEqual(['vektor', 'sammendrag']);
+    const [vector, fields] = await connection.search(
+      routed(config, generation),
+      [
+        { query: 'Kan tilskudd brukes til skyplattform?', profile: 'vektor', limit: 1 },
+        { query: 'innovasjon', profile: 'sammendrag', filters: { aar: { gte: 2024 } } },
+      ],
+      signal,
+    );
+    expect(vector?.hits.map((h) => h.id)).toEqual(['dok-1-2']);
+    expect(fields?.hits.map((h) => h.document)).toEqual(['dok-5']);
+  });
+});

@@ -191,6 +191,8 @@ const boot = async (
             options: { connection: 'knowledge' },
             sharing: { tenants: '*' },
           },
+          // A second pgvector endpoint, with the connection left to its default.
+          kunnskapsserveren: { engine: 'pgvector', sharing: { tenants: '*' } },
         },
         datasets: [],
       },
@@ -592,6 +594,25 @@ describe('switching a dataset into the knowledge database', () => {
     expect(booted.worker.started.at(-1)?.engineSwitch).toBeUndefined();
   });
 
+  it('a switch between two pgvector endpoints is refused, since both keep their data on the knowledge server', async () => {
+    const booted = await boot();
+    const created = await booted.call(`/tenants/${digdir}/datasets`, {
+      body: {
+        id: 'delt',
+        name: 'Delt lagring',
+        residency: 'norway',
+        index: { endpoint: 'kunnskapsserveren' },
+        embedding,
+      },
+    });
+    expect(created.status).toBe(201);
+    const refused = await booted.call(`${base('delt')}/engine-switches`, {
+      body: { to: 'knowledge-pg', method: 'reingest', embedding },
+    });
+    expect(refused.status).toBe(409);
+    expect(await refused.text()).toContain('Søkemotorene deler lagring');
+  });
+
   it("roll back is not offered when the old engine's endpoint is gone", async () => {
     const worker = fakeWorker();
     const entries = new InMemoryConfigEntryStore();
@@ -602,11 +623,13 @@ describe('switching a dataset into the knowledge database', () => {
     await worker.end(runOf(worker, opened.id, 1), 'succeeded');
     await first.module.follow();
     expect((await engineView(first, 'flyttet')).previous).toMatchObject({ endpoint: 'lokal' });
+    expect((await view(first, 'flyttet', opened.sid)).canRollback).toBe(true);
 
     const next = await boot({ worker, entries, withoutLocal: true });
     const engine = await engineView(next, 'flyttet');
     expect(engine.endpoint).toBe('knowledge-pg');
     expect(engine.previous).toBeUndefined();
+    expect((await view(next, 'flyttet', opened.sid)).canRollback).toBe(false);
     const refused = await next.call(`${base('flyttet')}/engine-switches/${opened.sid}/rollback`, {
       body: {},
       reason: 'Tilbake til den gamle søkemotoren',

@@ -83,7 +83,7 @@ The API and worker log in to Postgres with the app's managed identity and an Ent
 
 The app identity owns the schema and runs migrations. Queries run as `genai_runtime` (no BYPASSRLS), switched per connection with the `role` option, so row-level security applies (ADR 0022). The worker switches to `genai_worker` instead: a member of `genai_runtime` with the same row-level security, and of the roles the apps run queries as, the only one with rights on the `pgboss` job tables (ADR 0041). The migration creates both roles and lets the app identity switch to them.
 
-The server allows the `vector` extension through its `azure.extensions` setting (`VECTOR`, in `modules/postgres.bicep`, for test and prod alike). Azure Postgres refuses `create extension` for any extension not on that list, and the pgvector engine creates `vector` when it first migrates. To allow more extensions later, add them to the same comma-separated value.
+The server allows the `vector` extension through its `azure.extensions` setting (`VECTOR`, in `modules/postgres.bicep`, for test and prod alike). Azure Postgres refuses `create extension` for any extension not on that list. Since issue 151 no search data is on the platform server and nothing creates `vector` there; the setting is left as it is. To allow more extensions later, add them to the same comma-separated value.
 
 ## Backups
 

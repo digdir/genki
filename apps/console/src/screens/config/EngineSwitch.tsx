@@ -81,6 +81,7 @@ const Loaded = ({
   base,
   engine,
   targets,
+  onKnowledge,
   pollMs,
   reload,
   now,
@@ -89,6 +90,8 @@ const Loaded = ({
   base: string;
   engine: DatasetEngine;
   targets: string[];
+  /** The dataset is already on a knowledge endpoint, so there is nowhere to move it. */
+  onKnowledge: boolean;
   pollMs: number;
   reload: () => void;
   now: () => Date;
@@ -371,7 +374,9 @@ const Loaded = ({
         {t('engineSwitch.rollback', { endpoint: previous.endpoint })}
       </Button>
     </div>
-  ) : !engine.canSwitch ? null : targets.length === 0 ? (
+  ) : !engine.canSwitch ? null : onKnowledge ? (
+    <Paragraph data-size="sm">{t('engineSwitch.onKnowledge')}</Paragraph>
+  ) : targets.length === 0 ? (
     <Paragraph data-size="sm">{t('engineSwitch.noTargets')}</Paragraph>
   ) : choosing ? (
     <div className="stack-sm">
@@ -501,7 +506,10 @@ export const EngineSwitchSection = ({
           (e) => onKnowledgeServer(e) && sharedWith(e, orgOf(base)) && e.id !== engine.endpoint,
         )
         .map((e) => e.id);
-      return { engine, targets };
+      const onKnowledge = endpoints.data.some(
+        (e) => e.id === engine.endpoint && onKnowledgeServer(e),
+      );
+      return { engine, targets, onKnowledge };
     },
     [api, base],
   );
@@ -520,6 +528,7 @@ export const EngineSwitchSection = ({
           base={base}
           engine={state.data.engine}
           targets={state.data.targets}
+          onKnowledge={state.data.onKnowledge}
           pollMs={pollMs}
           reload={retry}
           now={now}

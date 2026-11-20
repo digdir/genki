@@ -187,6 +187,18 @@ describe('engine switch of a platform dataset in the console', () => {
     ).toEqual(['knowledge-pg']);
   });
 
+  it('a dataset already on the knowledge database says so and offers no move', async () => {
+    const { api } = platform({
+      [`GET ${base}/engine`]: () => [200, engineOn('knowledge-pg')],
+      'GET /operator/catalog/entries?kind=knowledge-endpoint': () => [200, endpoints],
+    });
+    render(<EngineSwitchSection api={api} base={base} />);
+
+    expect(await screen.findByText('Datasettet ligger i kunnskapsdatabasen.')).toBeTruthy();
+    expect(screen.queryByText(/Det finnes ingen søkemotor i kunnskapsdatabasen/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Flytt til kunnskapsdatabasen' })).toBeNull();
+  });
+
   it('a pgvector endpoint without options is offered, since its connection defaults to the knowledge server', async () => {
     const { api } = platform({
       [`GET ${base}/engine`]: () => [200, engineOn('kudos-typesense')],

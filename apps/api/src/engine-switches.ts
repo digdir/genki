@@ -351,6 +351,13 @@ export const createEngineSwitchesModule =
       return typeof days === 'number' && days > 0 ? days : 14;
     };
 
+    /** Whether a switch's previous endpoint is still in the catalog: platform-pg went with issue 151. */
+    const previousExists = (scope: string, from: string) =>
+      Boolean(
+        catalog.get('knowledge-endpoint', from) ??
+        catalog.get('knowledge-endpoint', catalog.qualify(scope, from)),
+      );
+
     const endpointFor = (tenant: string, ref: string) =>
       catalog
         .visibleTo(tenant)
@@ -670,7 +677,8 @@ export const createEngineSwitchesModule =
         canRollback:
           spec.state === 'active' &&
           keptUntil !== undefined &&
-          new Date(keptUntil).getTime() > now().getTime(),
+          new Date(keptUntil).getTime() > now().getTime() &&
+          previousExists(entry.scope, spec.from),
         ...(decision ? { decision } : {}),
       };
     };
@@ -1638,7 +1646,7 @@ export const createEngineSwitchesModule =
         lastSpec &&
         keptUntil &&
         new Date(keptUntil).getTime() > now().getTime() &&
-        endpointFor(tenant, lastSpec.from)
+        previousExists(tenant, lastSpec.from)
           ? {
               previous: {
                 endpoint: lastSpec.from,
@@ -2260,7 +2268,7 @@ export const createEngineSwitchesModule =
               return problem(c, 409, 'Den forrige søkemotoren er ikke lenger beholdt.', [
                 { path: 'keptUntil', message: spec.previous.keptUntil },
               ]);
-            if (!endpointFor(g.tenant, spec.from))
+            if (!previousExists(g.tenant, spec.from))
               return problem(c, 409, 'Den forrige søkemotoren finnes ikke lenger.', [
                 { path: 'from', message: spec.from },
               ]);

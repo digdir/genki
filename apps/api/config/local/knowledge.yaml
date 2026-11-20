@@ -8,6 +8,8 @@ endpoints:
   kunnskapsserveren:
     name: Kunnskapsserveren
     engine: pgvector
+    # Written out, though it is the default: a release before issue 151 reads a missing one as platform.
+    options: { connection: knowledge }
     sharing: { tenants: '*' }
 datasets:
   - id: digdir/kudos
