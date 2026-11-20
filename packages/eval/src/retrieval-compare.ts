@@ -1,4 +1,4 @@
-import { sameSource } from './observe.js';
+import { sameSource, type HitRef } from './observe.js';
 import type { SourceRef, TestCase } from './schema.js';
 
 export interface RetrievalCase {
@@ -7,7 +7,7 @@ export interface RetrievalCase {
   expected: SourceRef[];
 }
 
-export interface RetrievedHit extends SourceRef {
+export interface RetrievedHit extends HitRef {
   title?: string;
   text?: string;
 }
