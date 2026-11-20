@@ -234,14 +234,14 @@ export const blocks: Block[] = [
     status: 'bygd',
     description: [
       'En virksomhet legger til sine data som datasett. Innhenting (ingest) henter dokumenter fra filer, Parquet, Postgres, HTTP eller MCP, deler dem i biter, lager embeddings og skriver til en søkemotor. PDF-er gjøres om til Markdown med Marker.',
-      'Søket er leverandørnøytralt bak en port. Typesense og Postgres med pgvector er innebygd, og en ColBERT-reranker velger de beste kildene før modellen svarer. Hvert svar er merket som laget med KI og har nummererte kilder.',
+      'Søket er leverandørnøytralt bak en port. Typesense og Postgres med pgvector er innebygd. Reranking har en port, og en reranker kobles til som en modell, men ingen er satt opp ennå. Hvert svar er merket som laget med KI og har nummererte kilder.',
       'Kunnskapsassistenten, som svarer med kilder fra offentlige rapporter i Kudos, er eksempeltjenesten. Den er definert som alle andre tjenester, i konfigurasjon.',
     ],
     capabilities: [
       'Datasett på Typesense, pgvector, Postgres, HTTP eller MCP',
       'Innhenting fra filer, Parquet, Postgres og MCP, med PDF til Markdown',
       'Chunking, embeddings og fasetter',
-      'Reranking med ColBERT',
+      'Port for reranking, ingen reranker satt opp ennå',
       'Nummererte kilder i svaret og i API-et',
       'Bytt søkemotor i konfigurasjon, ikke kode',
     ],
@@ -253,7 +253,6 @@ export const blocks: Block[] = [
       'port-rerank',
       'providers-typesense',
       'providers-pgvector',
-      'providers-colbert',
       'providers-documents',
     ],
     adrs: [

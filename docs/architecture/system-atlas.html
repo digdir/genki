@@ -2647,16 +2647,6 @@
                 },
               },
               {
-                to: 'providers-colbert',
-                label: 'Composes ColBERT adapter',
-                kind: 'call',
-                target: 'call',
-                witness: {
-                  file: 'apps/api/src/composition.ts',
-                  imports: '@genai/providers-colbert',
-                },
-              },
-              {
                 to: 'providers-documents',
                 label: 'Composes the local document converter',
                 kind: 'call',
@@ -3003,7 +2993,7 @@
               'Keep uploaded operation descriptors as config entries and serve the bundled ones and the uploads as one registry, read again at every descriptor call, in the API and the worker (ADR 0047)',
               'Apply catalogs, guardrail rules, hooks and skills stored as config entries',
               'Move stored model connections, models, processor records and classifications once to connections with API families and models with API bindings (ADR 0048)',
-              'Fold an embedding catalogue and ColBERT rerankers from before ADR 0048 into the model catalogue, keeping ids, and move stored per-1,000-token prices to prices per kind and unit',
+              'Fold an embedding catalogue and rerankers on an engine with an API from before ADR 0048 into the model catalogue, keeping ids, and move stored per-1,000-token prices to prices per kind and unit',
               'Log the model connections without a processor record at start, and warn or refuse typed calls on them by GENAI_PROCESSOR_RECORDS',
               'Compile published services into capabilities and quarantine invalid ones',
               'Apply per-agency building-block settings (on/off, timeouts) to every service run, in the API and the worker',
@@ -3204,16 +3194,6 @@
                 witness: {
                   file: 'packages/composition/src/runtime.ts',
                   imports: '@genai/providers-anthropic',
-                },
-              },
-              {
-                to: 'providers-colbert',
-                label: 'Composes the ColBERT reranker',
-                kind: 'call',
-                target: 'call',
-                witness: {
-                  file: 'packages/composition/src/runtime.ts',
-                  imports: '@genai/providers-colbert',
                 },
               },
               {
@@ -9710,7 +9690,7 @@
             summary:
               'Reranks candidate passages with the rerank models of the model catalogue and the rerank catalogue.',
             description:
-              "Same router shape as the model and knowledge ports; ColBERT is the first adapter. A reranker is a model in the model catalogue that binds an API for rerank, such as colbert/rerank@1 or the typed descriptor compatible/rerank@1 (ADR 0048, ADR 0049); engines without an API, such as plug-ins, stay in the rerank catalogue. Every rerank call goes through the kernel's gate (ADR 0047), so it is admitted in lockdown, checked against tenant sharing and every residency ceiling, held to its closed shape, masked and metered. The router itself only routes and degrades.",
+              "Same router shape as the model and knowledge ports. A reranker is a model in the model catalogue that binds an API for rerank, such as the typed descriptor compatible/rerank@1 (ADR 0048, ADR 0049); genki runs no reranker of its own, so a service that names no reranker runs with rerank off. Engines without an API, such as plug-ins, would stay in the rerank catalogue; none is built in. Every rerank call goes through the kernel's gate (ADR 0047), so it is admitted in lockdown, checked against tenant sharing and every residency ceiling, held to its closed shape, masked and metered. The router itself only routes and degrades.",
             responsibilities: [
               'Rerank models from the model catalogue, and the rerank catalogue for engines without an API',
               'Rerank with timeouts and warnings',
@@ -9724,7 +9704,9 @@
             ],
             input: 'Query + candidates',
             output: 'Scores',
-            replaces: [{ module: 'rag', how: 'ColBERT rerank call' }],
+            replaces: [
+              { module: 'rag', how: 'Rerank call, behind a port with no built-in adapter' },
+            ],
             edges: [
               {
                 to: 'operations',
@@ -9754,7 +9736,7 @@
                 witness: { file: 'packages/port-rerank/src/adapter.ts', imports: '@genai/kernel' },
               },
             ],
-            keywords: 'rerank port colbert',
+            keywords: 'rerank port',
             schemas: [
               {
                 name: 'catalog',
@@ -10346,68 +10328,6 @@
               },
             ],
             keywords: 'typesense writer index collections generation',
-            schemas: [],
-          },
-          {
-            id: 'providers-colbert',
-            plane: 'providers',
-            name: 'ColBERT adapter',
-            note: 'Rerank over HTTP',
-            icon: 'chart',
-            color: '#8fa8b3',
-            status: 'Provider',
-            packages: ['@genai/providers-colbert'],
-            summary: 'Rerank adapter for the ColBERT service.',
-            description:
-              'Posts query and candidates to the ColBERT endpoint, with a timeout (ADR 0017).',
-            responsibilities: ['ColBERT rerank call, the built-in API colbert/rerank@1'],
-            files: ['packages/providers-colbert/src/index.ts'],
-            input: 'Query + candidates',
-            output: 'Scores',
-            replaces: [{ module: 'rag', how: 'ColBERT client' }],
-            edges: [
-              {
-                to: 'plugins',
-                label: 'Manifest and contract fixture',
-                kind: 'call',
-                target: 'call',
-                witness: {
-                  file: 'packages/providers-colbert/src/contract.ts',
-                  imports: '@genai/plugins',
-                },
-              },
-              {
-                to: 'kernel',
-                label: 'Kernel SPI: tasks, events, principals, capabilities',
-                kind: 'call',
-                target: 'call',
-                witness: {
-                  file: 'packages/providers-colbert/src/index.ts',
-                  imports: '@genai/kernel',
-                },
-              },
-              {
-                to: 'port-rerank',
-                label: 'Rerank through the rerank port',
-                kind: 'call',
-                target: 'call',
-                witness: {
-                  file: 'packages/providers-colbert/src/index.ts',
-                  imports: '@genai/port-rerank',
-                },
-              },
-              {
-                to: 'colbert-service',
-                label: 'Rerank request',
-                kind: 'http',
-                target: 'http',
-                witness: {
-                  file: 'packages/providers-colbert/src/index.ts',
-                  contains: '(endpoint.fetch ?? fetch)(endpoint.baseURL',
-                },
-              },
-            ],
-            keywords: 'colbert rerank provider',
             schemas: [],
           },
           {
@@ -11373,26 +11293,6 @@
             schemas: [],
           },
           {
-            id: 'colbert-service',
-            plane: 'external',
-            name: 'ColBERT',
-            note: 'Rerank service',
-            icon: 'chart',
-            color: '#607b88',
-            status: 'External',
-            external: true,
-            summary: 'The ColBERT rerank service, called with a timeout.',
-            description: 'The ColBERT rerank service, called with a timeout.',
-            responsibilities: [],
-            files: [],
-            input: '',
-            output: '',
-            replaces: [],
-            edges: [],
-            keywords: 'colbert-service colbert external',
-            schemas: [],
-          },
-          {
             id: 'postgres-db',
             plane: 'external',
             name: 'PostgreSQL',
@@ -12046,7 +11946,7 @@
           `<p class="lead">Every edge whose kind today differs from its target. Each row is an integration that runs against a fake now and must be switched to the real national service.</p>` +
             `<div class="edge-list">${changingEdges.map((e) => edgeRow(e, `<span>${link(e.from)} → ${link(e.to)}</span>`)).join('')}</div>` +
             `<div class="detail-section"><h3>Not in this set</h3><ul class="bullets">
-          <li><b>${counts('http')}</b> HTTP edges already reach real systems: Azure AI Foundry, Typesense, ColBERT, Langfuse, tenant MCP servers and the frontends.</li>
+          <li><b>${counts('http')}</b> HTTP edges already reach real systems: Azure AI Foundry, Typesense, Langfuse, tenant MCP servers and the frontends.</li>
           <li><b>${counts('sql')}</b> SQL edge to Postgres, used when DATABASE_URL is set; memory stores otherwise.</li>
           <li><b>${counts('call')}</b> in-process imports between workspace packages, each matched to a real import by the atlas test.</li>
         </ul></div>`,

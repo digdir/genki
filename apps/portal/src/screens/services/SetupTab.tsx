@@ -252,11 +252,9 @@ const pairLabel = (t: T, table: Record<string, [PlainKey, PlainKey]>, id: string
 
 const riskLabel = (t: T, id: string) => pairLabel(t, riskKeys, id);
 
-const rerankerNames: Record<string, string> = { colbert: 'ColBERT' };
-
 export const rerankerOf = (spec: ServiceSpec) => {
   const id = spec.knowledge?.reranker;
-  return typeof id === 'string' && id ? (rerankerNames[id] ?? id) : undefined;
+  return typeof id === 'string' && id ? id : undefined;
 };
 
 export const defaultInstructions = (t: T, spec: ServiceSpec) => {

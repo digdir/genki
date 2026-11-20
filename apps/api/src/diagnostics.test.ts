@@ -261,7 +261,7 @@ describe('operator diagnostics', () => {
       rerank: { enabled: true, candidateK: 12 },
     });
     const trace = changed.body.trace as { expansion: { rerank: { status: string } } };
-    expect(trace.expansion.rerank.status).toBe('unconfigured');
+    expect(trace.expansion.rerank.status).toBe('off');
   });
 
   it("resolution shows the service's retrieval settings without calling a model", async () => {

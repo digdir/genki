@@ -37,7 +37,7 @@ describe('the models a judge is checked against', () => {
       [
         usage({ kind: 'model', id: 'foundry-openai/gpt-4o' }, 10),
         usage({ kind: 'embedder', id: 'foundry/text-embedding-3-small' }, 4),
-        usage({ kind: 'reranker', id: 'colbert' }, 7),
+        usage({ kind: 'reranker', id: 'omrangering' }, 7),
         usage({ kind: 'transcriber', id: 'foundry/whisper' }, 3),
       ],
       {},

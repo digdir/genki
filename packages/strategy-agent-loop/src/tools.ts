@@ -363,9 +363,9 @@ export const formatSearchMetadataResults = (
       ? ' (filter returned 0 results, fell back to unfiltered)'
       : '') +
     (attribution?.rerankError
-      ? ` ColBERT rerank failed (${attribution.rerankError}) — original ranking preserved.`
+      ? ` Rerank failed (${attribution.rerankError}) — original ranking preserved.`
       : attribution?.rerankEnabled
-        ? ` Ranking: ColBERT semantic rerank${attribution.rerankMs === undefined ? '' : ` (${attribution.rerankMs}ms)`}. Higher rerank= means more semantically relevant to the query.`
+        ? ` Ranking: semantic rerank${attribution.rerankMs === undefined ? '' : ` (${attribution.rerankMs}ms)`}. Higher rerank= means more semantically relevant to the query.`
         : '') +
     (omitted > 0
       ? ` Showing top ${shown.length} by rank; ${omitted} lower-ranked chunks omitted. Refine the query or read from the visible set.`
@@ -805,9 +805,10 @@ const rerank = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome> 
       .slice(0, 3)
       .map((c, i) => `${i + 1}. ${c.content.slice(0, 80)}`)
       .join('; ');
-    return {
-      content: `Reranked to top ${reranked.length} chunks. Top results:\n${untrustedData('excerpts', top)}`,
-    };
+    const done = env.retrieval.reranks
+      ? `Reranked to top ${reranked.length} chunks.`
+      : `No reranker: kept the search order of ${reranked.length} chunks.`;
+    return { content: `${done} Top results:\n${untrustedData('excerpts', top)}` };
   } catch (error) {
     if (env.signal.aborted) throw error;
     return {

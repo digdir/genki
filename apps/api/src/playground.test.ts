@@ -169,7 +169,6 @@ const boot = async ({
   const env = {
     FOUNDRY_OPENAI_BASE_URL: `${model.url}/v1`,
     TYPESENSE_URL: search.url,
-    COLBERT_API_URL: search.url,
   };
   const settings = new SettingsRegistry(platformSettings);
   const blobs = new InMemoryBlobStore();
@@ -181,7 +180,7 @@ const boot = async ({
       rerank: resolveCatalog(yaml('rerank.yaml'), 'rerankers', env).catalog,
     },
     prices: { [modelId]: { inputPerThousand: 1, outputPerThousand: 2 } },
-    secrets: envSecrets({ FOUNDRY_OPENAI_KEY: 'm', TYPESENSE_KEY: 't', COLBERT_API_KEY: 'c' }),
+    secrets: envSecrets({ FOUNDRY_OPENAI_KEY: 'm', TYPESENSE_KEY: 't' }),
     definitions: store,
     settings,
     ...(taskIndex ? { taskIndex } : {}),

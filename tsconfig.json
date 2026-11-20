@@ -77,9 +77,6 @@
       "path": "packages/port-embedding"
     },
     {
-      "path": "packages/providers-colbert"
-    },
-    {
       "path": "packages/port-tools"
     },
     {

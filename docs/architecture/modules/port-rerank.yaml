@@ -8,9 +8,11 @@ status: Port
 packages:
   - '@genai/port-rerank'
 summary: Reranks candidate passages with the rerank models of the model catalogue and the rerank catalogue.
-description: Same router shape as the model and knowledge ports; ColBERT is the first adapter.
-  A reranker is a model in the model catalogue that binds an API for rerank, such as
-  colbert/rerank@1 or the typed descriptor compatible/rerank@1 (ADR 0048, ADR 0049); engines without an API, such as plug-ins, stay in the rerank catalogue.
+description: Same router shape as the model and knowledge ports. A reranker is a model in the model
+  catalogue that binds an API for rerank, such as the typed descriptor compatible/rerank@1
+  (ADR 0048, ADR 0049); genki runs no reranker of its own, so a service that names no reranker runs
+  with rerank off. Engines without an API, such as plug-ins, would stay in the rerank catalogue;
+  none is built in.
   Every rerank call goes through the kernel's gate (ADR 0047), so it is admitted in lockdown,
   checked against tenant sharing and every residency ceiling, held to its closed shape, masked and
   metered. The router itself only routes and degrades.
@@ -27,7 +29,7 @@ input: Query + candidates
 output: Scores
 replaces:
   - module: rag
-    how: ColBERT rerank call
+    how: Rerank call, behind a port with no built-in adapter
 edges:
   - to: operations
     label: Descriptor executor and registry
@@ -54,4 +56,4 @@ contract:
   - name: catalog
     file: packages/port-rerank/src/catalog.ts
     export: rerankCatalog
-keywords: rerank port colbert
+keywords: rerank port

@@ -400,6 +400,7 @@ export const createAgentRetrieval = (options: RetrievalFactoryOptions) => {
     readRange: backend.readRange,
     plan: backend.plan,
     rerank: backend.rerank,
+    reranks: options.rerank !== undefined,
     filterFields: async (signal: AbortSignal) => {
       signal.throwIfAborted();
       return Object.entries(options.knowledge.info().filters).map(([field, declared]) => {
@@ -528,6 +529,7 @@ export const createRagRetrieval = (options: RetrievalFactoryOptions) => {
   return {
     plan: backend.plan,
     rerank: backend.rerank,
+    reranks: options.rerank !== undefined,
     documents: (query: DocumentQuery, signal: AbortSignal) =>
       listDocuments(options.knowledge, query, options.filters, signal),
     readDocument: async (document: string, maxChunks: number, signal: AbortSignal) => {

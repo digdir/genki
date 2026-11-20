@@ -44,10 +44,10 @@ describe('setup summaries', () => {
   it('name the reranker the definition configures, in the language of the screen', () => {
     const c = definition({
       strategy: { id: 'agent-loop', config: {} },
-      knowledge: { datasets: [{ dataset: 'digdir/kudos' }], reranker: 'colbert' },
+      knowledge: { datasets: [{ dataset: 'digdir/kudos' }], reranker: 'digdir-omrangering' },
     });
-    expect(summaries(t, c).knowledge).toBe('digdir/kudos · omrangering med ColBERT');
-    expect(summaries(en, c).knowledge).toBe('digdir/kudos · reranked with ColBERT');
+    expect(summaries(t, c).knowledge).toBe('digdir/kudos · omrangering med digdir-omrangering');
+    expect(summaries(en, c).knowledge).toBe('digdir/kudos · reranked with digdir-omrangering');
   });
 
   it('show the ref of a live dataset without API names, never an example name', () => {

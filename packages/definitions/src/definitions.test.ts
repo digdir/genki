@@ -99,7 +99,7 @@ const plugins: PluginSchemas = {
     'model@1',
   ]),
   retrieval: z.strictObject({ maxPerDocument: z.number().int().positive().optional() }),
-  rerankers: new Set(['colbert']),
+  rerankers: new Set(['omrangering']),
   strategyResidency: (id, config) =>
     id === strategyKey('remote-agent', 1)
       ? (config as { endpoint?: { residency?: 'norway' | 'eu' | 'global' } } | null)?.endpoint
@@ -272,7 +272,7 @@ describe('service definitions', () => {
     });
     const spec = specOf({
       model: { primary: 'foundry/gpt-4o', residency: 'global' },
-      knowledge: { datasets: [{ dataset: 'digdir/kudos' }], reranker: 'colbert' },
+      knowledge: { datasets: [{ dataset: 'digdir/kudos' }], reranker: 'omrangering' },
     });
 
     expect(serviceDataLocation(spec, located('norway', 'norway'))).toBe('norway');
@@ -353,7 +353,7 @@ describe('service definitions', () => {
     const service = (residency: string) =>
       withSpec({
         model: { primary: 'foundry/gpt-4o', residency },
-        knowledge: { datasets: [{ dataset: 'digdir/kudos' }], reranker: 'colbert' },
+        knowledge: { datasets: [{ dataset: 'digdir/kudos' }], reranker: 'omrangering' },
       });
     const outsideEu = { ...plugins, rerankerResidency: () => 'global' as const };
 
@@ -363,7 +363,7 @@ describe('service definitions', () => {
         {
           path: 'spec.knowledge.reranker',
           message:
-            'Omrangeringen colbert behandler data utenfor EU/EØS. Tjenesten krever at data behandles i EU/EØS.',
+            'Omrangeringen omrangering behandler data utenfor EU/EØS. Tjenesten krever at data behandles i EU/EØS.',
         },
       ],
     });
@@ -1052,14 +1052,12 @@ describe('compiling a service into capabilities', () => {
     expect(compiled[0]?.capability.grants.map((g) => `${g.port}:${g.ref.id}`)).toEqual([
       'knowledge:digdir/kudos',
       'tools:rag@1',
-      'rerank:colbert',
       'model:foundry/gpt-4o',
       'model:aivar/borealis',
     ]);
     expect(compiled[0]?.capability.config).toMatchObject({
       knowledge: {
         datasets: [{ dataset: 'digdir/kudos' }],
-        reranker: 'colbert',
         retrieval: { maxPerDocument: 10 },
       },
       tools: ['rag@1'],

@@ -48,6 +48,8 @@ export interface RagRetrieval {
     signal: AbortSignal,
   ): Promise<{ chunks: Chunk[]; attribution?: SearchAttribution }>;
   rerank(query: string, chunks: Chunk[], signal: AbortSignal): Promise<Chunk[]>;
+  /** False when the service has no reranker: the search order stays and no rerank step is shown. */
+  reranks: boolean;
 }
 
 export const ragConfig = z.strictObject({
@@ -163,24 +165,26 @@ export const createRagSingleShot = (options: RagOptions): Strategy<RagRuntimeCon
     };
 
     let ranked = found.chunks;
-    const rerankStarted = Date.now();
-    let fallback = false;
-    try {
-      ranked = await retrieval.rerank(query, found.chunks, ctx.signal);
-    } catch (error) {
-      if (ctx.signal.aborted) throw error;
-      fallback = true;
+    if (retrieval.reranks) {
+      const rerankStarted = Date.now();
+      let fallback = false;
+      try {
+        ranked = await retrieval.rerank(query, found.chunks, ctx.signal);
+      } catch (error) {
+        if (ctx.signal.aborted) throw error;
+        fallback = true;
+      }
+      yield {
+        type: 'kernel.notice',
+        data: {
+          kind: 'rerank',
+          ms: Date.now() - rerankStarted,
+          fallback,
+          count: ranked.length,
+          hits: retrievalHits(ranked.slice(0, 5)),
+        },
+      };
     }
-    yield {
-      type: 'kernel.notice',
-      data: {
-        kind: 'rerank',
-        ms: Date.now() - rerankStarted,
-        fallback,
-        count: ranked.length,
-        hits: retrievalHits(ranked.slice(0, 5)),
-      },
-    };
     const window = ranked.slice(
       0,
       (generating ? settings.contextTopK : undefined) ?? settings.topK ?? 10,

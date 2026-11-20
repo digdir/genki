@@ -1,6 +1,6 @@
 # 0048 Connections serve many APIs, models bind one per operation
 
-Status: proposed, 2026-11-05 (partly built, 2026-11-05; the console built, 2026-11-05; plug-in rerank engines, stored rerank entries, processor records on embed and rerank calls, and limits and kind settings through the operator routes are missing; discovered models classified by kind and served on the embedding and rerank ports, 2026-11-20)
+Status: proposed, 2026-11-05 (partly built, 2026-11-05; the console built, 2026-11-05; plug-in rerank engines, stored rerank entries, processor records on embed and rerank calls, and limits and kind settings through the operator routes are missing; discovered models classified by kind and served on the embedding and rerank ports, 2026-11-20; ColBERT and its built-in `colbert/rerank@1` removed, so the bundled `compatible/rerank@1` descriptor is the one rerank API, 2026-11-20)
 
 Supersedes the adapter-per-protocol part of ADR 0021 and the "one registration" bullet of ADR 0044. Amends ADR 0047: a descriptor names an API family instead of an endpoint protocol, its id names the API instead of the kind, and the `descriptors` opt-in on a model is replaced by bindings.
 
@@ -54,7 +54,7 @@ ADR 0047 meant every operation, chat included, to be one governed path. The cata
 ### One catalogue
 
 - Embedding models move into the model catalogue as models with `apis: { embed: … }`. The embedding catalogue file and its separate endpoint go away, and `EmbeddingRouter` resolves from the same catalogue registry, so embedders can be added and changed without a deploy.
-- Rerank engines follow the same way: `colbert/rerank@1` is a built-in implementation, and a reranker is a model with `apis: { rerank: … }`.
+- Rerank engines follow the same way: a reranker is a model with `apis: { rerank: … }`, such as a discovered reranker bound to the bundled descriptor `compatible/rerank@1` (ADR 0049). genki runs no reranker of its own. The first built-in implementation, `colbert/rerank@1`, is removed (issue 690): it called a host outside Norway although the catalogue declared the reranker `residency: norway` (issue 129). The rerank port, the service field `knowledge.reranker`, `retrieval.rerank` and the pipeline's rerank stage stay. A service that names no reranker runs with rerank off, and one that names a reranker no catalogue holds is refused at publish (tests "a service without a reranker runs retrieval with rerank off" and "a service that names a reranker no catalog holds is refused at publish").
 
 ### Router and gate
 

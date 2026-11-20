@@ -1,3 +1,3 @@
-# Rerankers on engines that have no API yet; colbert is a model in models.yaml (ADR 0048).
+# Rerankers on engines that have no API (ADR 0048). None is built in: a reranker with an API is a model in models.yaml.
 endpoints: {}
 rerankers: []

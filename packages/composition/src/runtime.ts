@@ -92,11 +92,10 @@ import {
   type ModelClassificationStore,
   type ModelClassification,
 } from '@genai/port-model';
-import { parseRerankCatalog, RerankRouter } from '@genai/port-rerank';
+import { parseRerankCatalog, type RerankAdapter, RerankRouter } from '@genai/port-rerank';
 import { parseToolRef, textOf, ToolRegistry } from '@genai/port-tools';
 import { A2aToolSource } from '@genai/providers-a2a-client';
 import { anthropicMessages } from '@genai/providers-anthropic';
-import { colbert } from '@genai/providers-colbert';
 import {
   ConnectionToolSources,
   EgressGuard,
@@ -231,7 +230,7 @@ export const inMemoryClassifications = (): ModelClassificationStore => {
 export interface Catalogs {
   models: unknown;
   knowledge: unknown;
-  /** Rerankers on engines without an API; colbert rerankers here move into the model catalogue. */
+  /** Rerankers on engines without an API; a reranker whose engine has an API moves into the model catalogue. */
   rerank: unknown;
   /** An embedding catalogue from before ADR 0048; its embedders move into the model catalogue. */
   embeddings?: unknown;
@@ -326,6 +325,8 @@ export interface RuntimeInput {
   knowledgeServer?: KnowledgePools;
   knowledgeGuard?: () => void;
   embeddingAdapters?: EmbeddingAdapter[];
+  /** Rerank engines for rerankers without an API; none is built in (ADR 0048). */
+  rerankAdapters?: RerankAdapter[];
   processorRecords?: ProcessorRecordCheck;
   searchOnlyClusters?: (string | undefined)[];
   catalogPolicy?: CatalogPolicy;
@@ -463,7 +464,7 @@ export const createRuntime = async (input: RuntimeInput) => {
   const modelAdapters = [openAiChat, anthropicMessages];
   const discoverySources = [azureDeployments, openAiModels];
   const embeddingAdapters = [openAiEmbeddings, ...(input.embeddingAdapters ?? [])];
-  const rerankAdapters = [colbert];
+  const rerankAdapters = input.rerankAdapters ?? [];
   const portApis: BuiltInApi[] = [
     ...embeddingAdapters.map((a) => ({
       id: a.api.id,

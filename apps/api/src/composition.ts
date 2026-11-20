@@ -184,6 +184,7 @@ import {
   type TokenProviders,
 } from '@genai/kernel';
 import { type EmbeddingAdapter } from '@genai/port-embedding';
+import type { RerankAdapter } from '@genai/port-rerank';
 import { kindsOf, KnowledgeRouter, type FieldFilter } from '@genai/port-knowledge';
 import {
   residencies,
@@ -194,7 +195,6 @@ import {
   type ProcessorRecordCheck,
   type Residency,
 } from '@genai/port-model';
-import { colbert } from '@genai/providers-colbert';
 import { type KnowledgePools, type PgvectorEngineOptions } from '@genai/providers-pgvector';
 import { parquetReader } from '@genai/providers-parquet';
 import { postgresRowReader } from '@genai/providers-postgres-source';
@@ -355,7 +355,6 @@ import { operationDescriptorsModule } from './operation-descriptors.js';
 import { documentDatasetRoutes } from './openapi/datasets.js';
 import { declaredSecrets, PluginRegistry } from '@genai/plugins';
 import { anthropicPlugins } from '@genai/providers-anthropic/contract';
-import { colbertPlugins } from '@genai/providers-colbert/contract';
 import { compatibleRerankPlugins } from '@genai/port-rerank/contract';
 import { a2aPlugins } from '@genai/providers-a2a-client/contract';
 import { mcpPlugins } from '@genai/providers-mcp-client/contract';
@@ -561,6 +560,8 @@ export interface PlatformInput {
   knowledgePool?: PgvectorEngineOptions['pool'];
   knowledgeServer?: KnowledgePools;
   embeddingAdapters?: EmbeddingAdapter[];
+  /** Rerank engines for rerankers without an API; none is built in (ADR 0048). */
+  rerankAdapters?: RerankAdapter[];
   searchOnlyClusters?: (string | undefined)[];
   ingestFolderRoot?: string;
   ingestWorkingDirectory?: string;
@@ -1432,6 +1433,7 @@ export const createPlatform = async (input: PlatformInput) => {
     ...(input.knowledgePool ? { knowledgePool: input.knowledgePool } : {}),
     ...(input.knowledgeServer ? { knowledgeServer: input.knowledgeServer } : {}),
     ...(input.embeddingAdapters ? { embeddingAdapters: input.embeddingAdapters } : {}),
+    ...(input.rerankAdapters ? { rerankAdapters: input.rerankAdapters } : {}),
     ...(input.searchOnlyClusters ? { searchOnlyClusters: input.searchOnlyClusters } : {}),
     ...(input.configurables?.catalogPolicy
       ? { catalogPolicy: input.configurables.catalogPolicy }
@@ -2139,7 +2141,7 @@ export const createPlatform = async (input: PlatformInput) => {
   const pluginRegistry = new PluginRegistry({ runs: configContractRuns(configurables.store) });
   const externalTargets = {
     models: modelAdapters,
-    rerank: [colbert],
+    rerank: input.rerankAdapters ?? [],
     knowledge: knowledgeAdapters,
     secrets: catalogSecrets,
     tenant: platformTenant,
@@ -2149,7 +2151,6 @@ export const createPlatform = async (input: PlatformInput) => {
   for (const plugin of [
     ...openAiPlugins,
     ...anthropicPlugins,
-    ...colbertPlugins,
     ...compatibleRerankPlugins(runtime.descriptors),
     ...mcpPlugins,
     ...a2aPlugins,
