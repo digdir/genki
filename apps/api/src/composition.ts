@@ -184,7 +184,13 @@ import {
   type TokenProviders,
 } from '@genai/kernel';
 import { type EmbeddingAdapter } from '@genai/port-embedding';
-import { kindsOf, KnowledgeRouter, type FieldFilter } from '@genai/port-knowledge';
+import {
+  kindsOf,
+  KnowledgeRouter,
+  type FieldFilter,
+  type IndexWriterAdapter,
+  type KnowledgeAdapter,
+} from '@genai/port-knowledge';
 import {
   residencies,
   residencyAllows,
@@ -195,7 +201,7 @@ import {
   type Residency,
 } from '@genai/port-model';
 import { colbert } from '@genai/providers-colbert';
-import { type KnowledgePools, type PgvectorEngineOptions } from '@genai/providers-pgvector';
+import { type KnowledgePools } from '@genai/providers-pgvector';
 import { parquetReader } from '@genai/providers-parquet';
 import { postgresRowReader } from '@genai/providers-postgres-source';
 import {
@@ -555,8 +561,9 @@ export interface PlatformInput {
   /** Labels brought back from tenants' trace sinks, pending until an operator accepts them. */
   sinkLabels?: SinkLabelStore;
   configurables?: ConfigurablesInput;
-  knowledgePool?: PgvectorEngineOptions['pool'];
   knowledgeServer?: KnowledgePools;
+  /** Search engines beside the built-in ones, such as a test's in-memory engine. */
+  knowledgeEngines?: { adapter: KnowledgeAdapter; writer: IndexWriterAdapter }[];
   embeddingAdapters?: EmbeddingAdapter[];
   searchOnlyClusters?: (string | undefined)[];
   ingestFolderRoot?: string;
@@ -1426,8 +1433,8 @@ export const createPlatform = async (input: PlatformInput) => {
           return { host, port: port ? Number(port) : 443 };
         }),
       ),
-    ...(input.knowledgePool ? { knowledgePool: input.knowledgePool } : {}),
     ...(input.knowledgeServer ? { knowledgeServer: input.knowledgeServer } : {}),
+    ...(input.knowledgeEngines ? { knowledgeEngines: input.knowledgeEngines } : {}),
     ...(input.embeddingAdapters ? { embeddingAdapters: input.embeddingAdapters } : {}),
     ...(input.searchOnlyClusters ? { searchOnlyClusters: input.searchOnlyClusters } : {}),
     ...(input.configurables?.catalogPolicy

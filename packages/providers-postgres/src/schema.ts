@@ -1146,6 +1146,9 @@ const migrations: string[] = [
     publishedIsolation(table, column),
   ),
   ...usageMigrations,
+  // The shared search tables of the retired `connection: platform`: every pgvector dataset is on
+  // the knowledge server, and no release since issue 151 reads them (ADR 0042, Consequences).
+  `drop table if exists kn_phrases, kn_chunks, kn_docs, kn_active, kn_generations`,
   ...appRole(runtimeRole),
   ...appRole(workerRole, runtimeRole),
   `grant select, insert, update, delete on ${[

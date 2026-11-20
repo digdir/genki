@@ -55,7 +55,7 @@ const doc = (id: string, dimensions: number, fields: Record<string, unknown>): I
   phrases: [],
 });
 
-const writerFor = (engine = pgvectorEngine({ pool: admin, knowledge: worker.pools })) =>
+const writerFor = (engine = pgvectorEngine({ knowledge: worker.pools })) =>
   engine.writer.connect(endpoint, { signal }) as IndexWriter<PgvectorDatasetOptions>;
 
 const fill = async (d: Dataset, generation: string, docs: IndexDocument[]) => {
@@ -181,7 +181,7 @@ describe('generations as partitions on the knowledge server', () => {
     await fill(other, 'g-20261030-0102', [doc('b', 8, { type: ['rapport'], year: 2024 })]);
     const otherIndexes = await indexesOf(partitionOf('kn_docs', 'g-20261030-0102'));
 
-    const engine = pgvectorEngine({ pool: admin, knowledge: worker.pools });
+    const engine = pgvectorEngine({ knowledge: worker.pools });
     await engine.followCatalog([
       {
         ...kudos,
@@ -205,8 +205,8 @@ describe('generations as partitions on the knowledge server', () => {
     const d = dataset('digdir/follow', 8, { filters: { type: 'multiselect' }, valueTypes: {} });
     await fill(d, 'g-20261030-0201', [doc('a', 8, { type: ['rapport'], year: 2023 })]);
     const table = partitionOf('kn_docs', 'g-20261030-0201');
-    const worker = pgvectorEngine({ pool: admin, knowledge: { owner, writer: owner } });
-    const api = pgvectorEngine({ pool: admin, knowledge: { reader: owner } });
+    const worker = pgvectorEngine({ knowledge: { owner, writer: owner } });
+    const api = pgvectorEngine({ knowledge: { reader: owner } });
     const changed: Dataset = {
       ...d,
       filters: { type: 'multiselect', year: 'range' },
@@ -225,7 +225,6 @@ describe('generations as partitions on the knowledge server', () => {
     const table = partitionOf('kn_docs', 'g-20261102-0201');
     let bound = false;
     const engine = pgvectorEngine({
-      pool: admin,
       knowledge: { owner, writer: owner },
       knowledgeGuard: () => {
         if (!bound) throw new Error('the knowledge server is bound to another platform server');
@@ -312,7 +311,6 @@ describe('generations as partitions on the knowledge server', () => {
   it('the worker logs how long the knowledge server migration took', async () => {
     const took: number[] = [];
     const engine = pgvectorEngine({
-      pool: admin,
       knowledge: worker.pools,
       onServerMigrated: (ms) => took.push(ms),
     });
@@ -568,7 +566,7 @@ describe('generations as partitions on the knowledge server', () => {
   });
 
   it('knowledge writes are refused where there is no owner pool, as in the API', () => {
-    const api = pgvectorEngine({ pool: admin, knowledge: { reader: owner } });
+    const api = pgvectorEngine({ knowledge: { reader: owner } });
     expect(() => api.writer.connect(endpoint, { signal })).toThrow(
       new KnowledgeError('unavailable', 'knowledge data is written by the worker'),
     );

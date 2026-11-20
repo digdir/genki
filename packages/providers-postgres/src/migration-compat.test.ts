@@ -8,12 +8,17 @@ const statements = schema
   .map((s) => s.replace(/\s+/g, ' ').trim().toLowerCase())
   .filter(Boolean);
 
+/** Tables no revision still serving reads: the shared search tables, retired by issue 151. */
+const retired = ['drop table if exists kn_phrases, kn_chunks, kn_docs, kn_active, kn_generations'];
+
 describe('schema migrations, run by a new API revision while the old one still serves', () => {
   it('never drop or rename a table or column, nor change a column type', () => {
-    const breaking = statements.filter((s) =>
-      /\bdrop table\b|\bdrop column\b|\brename (column|to)\b|\balter column \S+ (set data )?type\b|\balter column \S+ set not null\b/.test(
-        s,
-      ),
+    const breaking = statements.filter(
+      (s) =>
+        !retired.includes(s) &&
+        /\bdrop table\b|\bdrop column\b|\brename (column|to)\b|\balter column \S+ (set data )?type\b|\balter column \S+ set not null\b/.test(
+          s,
+        ),
     );
     expect(breaking).toEqual([]);
   });

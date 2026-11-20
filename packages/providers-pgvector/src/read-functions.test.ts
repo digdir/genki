@@ -93,9 +93,9 @@ const fixtureEmbedder = (dataset: DatasetConfig): QueryEmbedder => ({
 const readEngine = (
   knowledge: KnowledgePools = api.pools,
   embedder: (dataset: DatasetConfig) => QueryEmbedder = fixtureEmbedder,
-) => pgvectorEngine({ pool: primary.admin, knowledge, embedder });
+) => pgvectorEngine({ knowledge, embedder });
 
-const writerEngine = () => pgvectorEngine({ pool: primary.admin, knowledge: worker.pools });
+const writerEngine = () => pgvectorEngine({ knowledge: worker.pools });
 
 const writer = () =>
   writerEngine().writer.connect(endpoint, { signal }) as IndexWriter<PgvectorDatasetOptions>;
@@ -406,7 +406,6 @@ describe('read functions on the knowledge server', () => {
     );
     try {
       const elsewhereWriter = pgvectorEngine({
-        pool: elsewhere.admin,
         knowledge: elsewhereWorker.pools,
       }).writer.connect(endpoint, { signal }) as IndexWriter<PgvectorDatasetOptions>;
       const docs = [doc('v', 8, { type: ['rapport'] })];
@@ -1177,7 +1176,6 @@ describe('text search on the knowledge server', () => {
 
     it('a hybrid search whose text half runs past its limit returns the vector hits with a warning', async () => {
       const slow = pgvectorEngine({
-        pool: primary.admin,
         knowledge: api.pools,
         embedder: fixtureEmbedder,
         textSearchMs: 1,

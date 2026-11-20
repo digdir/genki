@@ -112,12 +112,7 @@ import {
   openAiModels,
 } from '@genai/providers-openai';
 import { OpenApiToolSource } from '@genai/providers-openapi-tools';
-import {
-  pgvectorEngine,
-  pgvectorEngineName,
-  type KnowledgePools,
-  type PgvectorEngineOptions,
-} from '@genai/providers-pgvector';
+import { pgvectorEngine, type KnowledgePools } from '@genai/providers-pgvector';
 import { typesense } from '@genai/providers-typesense';
 import { typesenseIndexWriter } from '@genai/providers-typesense-writer';
 import {
@@ -179,7 +174,6 @@ import {
   portContexts,
   routerCatalog,
   knowledgeServerEndpoints,
-  withoutEngines,
   withoutKnowledgeServer,
 } from './knowledge-context.js';
 import { sharedRecipeFinder } from './recipe-shares.js';
@@ -322,9 +316,10 @@ export interface RuntimeInput {
   mediaOutput?: MediaOutputConfig;
   connections?: ConnectionRegistry;
   modelClassifications?: ModelClassificationStore;
-  knowledgePool?: PgvectorEngineOptions['pool'];
   knowledgeServer?: KnowledgePools;
   knowledgeGuard?: () => void;
+  /** Search engines beside the built-in ones, such as a test's in-memory engine. */
+  knowledgeEngines?: { adapter: KnowledgeAdapter; writer: IndexWriterAdapter }[];
   embeddingAdapters?: EmbeddingAdapter[];
   processorRecords?: ProcessorRecordCheck;
   searchOnlyClusters?: (string | undefined)[];
@@ -550,37 +545,28 @@ export const createRuntime = async (input: RuntimeInput) => {
       return (await port.embed(texts)).vectors;
     },
   });
-  const pgvector = input.knowledgePool
-    ? pgvectorEngine({
-        pool: input.knowledgePool,
-        ...(input.knowledgeServer ? { knowledge: input.knowledgeServer } : {}),
-        ...(input.knowledgeGuard ? { knowledgeGuard: input.knowledgeGuard } : {}),
-        ...(embeddingModels.size > 0 ? { embedder: queryEmbedder } : {}),
-        onVacuumError: (error) =>
-          input.logger?.('knowledge vacuum failed', {
-            error: error instanceof Error ? error.message : String(error),
-          }),
-        onServerMigrated: (ms) => input.logger?.('knowledge server migrated', { ms }),
-      })
-    : undefined;
+  const pgvector = pgvectorEngine({
+    ...(input.knowledgeServer ? { knowledge: input.knowledgeServer } : {}),
+    ...(input.knowledgeGuard ? { knowledgeGuard: input.knowledgeGuard } : {}),
+    ...(embeddingModels.size > 0 ? { embedder: queryEmbedder } : {}),
+    onServerMigrated: (ms) => input.logger?.('knowledge server migrated', { ms }),
+  });
   const knowledgeAdapters: KnowledgeAdapter[] = [
     typesense as KnowledgeAdapter,
-    ...(pgvector ? [pgvector.adapter as KnowledgeAdapter] : []),
+    pgvector.adapter as KnowledgeAdapter,
     ...searchAdapters,
+    ...(input.knowledgeEngines ?? []).map((e) => e.adapter),
   ];
   const writerAdapters: IndexWriterAdapter[] = [
     typesenseIndexWriter({
       sharedClusterUrls: [process.env.TYPESENSE_URL, ...(input.searchOnlyClusters ?? [])],
     }) as IndexWriterAdapter,
-    ...(pgvector ? [pgvector.writer as IndexWriterAdapter] : []),
+    pgvector.writer as IndexWriterAdapter,
+    ...(input.knowledgeEngines ?? []).map((e) => e.writer),
   ];
-  const knowledgeSeed = withoutEngines(
-    input.knowledgeServer
-      ? input.catalogs.knowledge
-      : withoutKnowledgeServer(input.catalogs.knowledge, input.onWarning),
-    pgvector ? [] : [pgvectorEngineName],
-    input.onWarning,
-  );
+  const knowledgeSeed = input.knowledgeServer
+    ? input.catalogs.knowledge
+    : withoutKnowledgeServer(input.catalogs.knowledge, input.onWarning);
   const providerObjects = input.providerObjects ?? new InMemoryProviderObjects(input.now);
   const models = new ModelRouter({
     gate,
@@ -954,7 +940,7 @@ export const createRuntime = async (input: RuntimeInput) => {
   let knowledgeCatalog: EffectiveCatalogs['knowledge'] | undefined;
   /** Brings the knowledge server's filter indexes in line with the current catalog. */
   const followKnowledge = () => {
-    if (!pgvector || !knowledgeCatalog) return;
+    if (!knowledgeCatalog) return;
     const onKnowledgeServer = new Set(knowledgeServerEndpoints(knowledgeCatalog));
     pgvector
       .followCatalog(
