@@ -127,6 +127,33 @@ A subject is whom keys and usage belong to, written `<kind>:<id>`. In JSON it is
 - `capabilities` uses genki's names: `stream`, `tools`, `json-schema`, `reasoning`. `apis` lists the request formats the gateway accepts for it: `chat-completions`, `responses`, `messages`. Both are arrays, never `null`.
 - `price` is the price that applies now, or `null` for a model the gateway cannot price. Rates are per `perTokens` tokens, except `perPage`, which is per page. Other rates are `reasoning`, `inputAudio` and `outputAudio`. A tier replaces the rates when a call's context is over `contextOver` tokens.
 
+### What genki reads from the OpenAI-compatible model list
+
+Discovery reads the gateway's OpenAI-compatible `GET /v1/models` on the model listener, not the list above. Besides `id`, two optional fields per model tell genki what the model is for, in the shape LiteLLM uses:
+
+```json
+{
+  "data": [
+    {
+      "id": "sigma2:qwen-reranker",
+      "object": "model",
+      "mode": "rerank",
+      "endpoints": ["/v1/rerank"]
+    },
+    {
+      "id": "sigma2:clef-flash",
+      "object": "model",
+      "mode": "evaluation",
+      "endpoints": ["/v1/decisions", "/v1/systemone"]
+    }
+  ]
+}
+```
+
+- `mode` is `chat`, `embedding`, `rerank`, `image_generation`, `audio_transcription`, `audio_speech` or another word for a kind genki has no port for, such as `evaluation`.
+- `endpoints` lists the paths the model answers on. Genki reads `/chat/completions`, `/embeddings` and `/rerank` when there is no `mode`.
+- A gateway that sends neither still works: genki falls back to the operator's setting and the model name, as [providers.md](../providers.md#what-kind-a-discovered-model-is) says. A model of a kind genki cannot call is listed, never offered for chat.
+
 ## Usage
 
 The usage route is the gateway's own contract, not the draft above: `POST {base}/usage`, where `{base}` is the gateway's address without `/v1` (model calls go to `{base}/v1`). It takes a bearer token for genki's app (see Authentication) with the gateway's usage role, and a JSON body:
@@ -315,7 +342,12 @@ discovery:
   - source: openai-models
     include: ['sigma2:*', 'aivar:borealis*', 'borealis2*']
     apis: { chat: openai/chat-completions@1 }
+    residency: norway
+    models:
+      sigma2:qwen-embedding: { embed: { dimensions: 1024 } }
 ```
+
+`residency: norway` holds for every model the rule finds; check it against where each model runs before setting it. The embedding model is served once its dimensions are set; the reranker binds `compatible/rerank@1` by itself.
 
 Then refresh the models, confirm the candidates with their residency and capabilities, and register the processor record for the connection. A call on one of them sends `genki-tenant`, and the next hourly poll shows it under the tenant's usage. The Azure models stay on genki's own AI Foundry connections, which the gateway's usage does not include.
 

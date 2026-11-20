@@ -118,6 +118,8 @@ export interface ModelRouterOptions {
   descriptors?: ApiDescriptors;
   governance?: OperationGovernance;
   objects?: ObjectLedger;
+  /** Called after discovery, a reload or a classification changes which models exist or what they are. */
+  onChange?: () => void;
   /** A fetch that only reaches the listed hosts and never a private address; used for answer links. */
   foreignFetch?: (hosts: string[]) => typeof fetch;
   now?: () => Date;
@@ -132,6 +134,10 @@ export type ProcessorRecordCheck = (typeof processorRecordChecks)[number];
 export interface ModelDescription {
   transport?: ModelTransport;
   id: string;
+  kind: string;
+  kindFrom?: KindSource;
+  /** The paths the provider's listing says the model answers on. */
+  listedEndpoints?: string[];
   endpoint: string;
   deployment: string;
   family?: string;
@@ -187,7 +193,19 @@ interface Route {
   origin: 'catalog' | 'discovered';
   apis: ApiBindings;
   listed?: Capability[];
+  kind?: string;
+  kindFrom?: KindSource;
+  endpoints?: string[];
 }
+
+/** Where a discovered model's kind came from: the provider's listing, the operator's rule, or its name. */
+export type KindSource = 'listing' | 'operator' | 'name';
+
+const kindOrder = ['chat', 'embed', 'rerank', 'decide'];
+
+/** The kind a model is: the one discovery found, else the first kind it binds, chat before the rest. */
+const kindOfBindings = (apis: ApiBindings): string | undefined =>
+  kindOrder.find((k) => apis[k] !== undefined) ?? Object.keys(apis).sort()[0];
 
 export const modelOutputCeiling = 16_384;
 
@@ -318,6 +336,7 @@ export class ModelRouter implements PortProvider<ModelPort> {
 
   reload(catalog: unknown) {
     this.#load(catalog);
+    this.options.onChange?.();
   }
 
   #described(connection: string, family: string) {
@@ -416,6 +435,28 @@ export class ModelRouter implements PortProvider<ModelPort> {
     }
   }
 
+  /** The API a discovered model of a kind binds: the rule's, the kind's default, or the one API of the kind the connection offers. */
+  #bindingFor(kind: string, rule: ApiBindings | undefined, families: string[]): ApiBindings {
+    const named = rule?.[kind];
+    if (named) return { [kind]: named };
+    const defaults = families.flatMap((f) => {
+      const api = this.#apis.defaultFor(kind, f);
+      return api ? [api] : [];
+    });
+    const offered = this.#apis
+      .list()
+      .filter(
+        (a) =>
+          a.kind === kind &&
+          families.includes(a.family) &&
+          a.status === 'typed' &&
+          a.source !== 'uploaded',
+      );
+    const api =
+      defaults.length === 1 ? defaults[0] : offered.length === 1 ? offered[0]?.id : undefined;
+    return api ? { [kind]: api } : {};
+  }
+
   async refresh(): Promise<RefreshResult> {
     if (this.options.classifications) this.#classes = await this.options.classifications.load();
     const sources = new Map((this.options.sources ?? []).map((s) => [s.kind, s]));
@@ -458,24 +499,36 @@ export class ModelRouter implements PortProvider<ModelPort> {
             if (!slug) continue;
             const id = `${prefix.toLowerCase()}/${slug}`;
             if (discovered.has(id)) continue;
-            const chats = found.chat !== false;
+            const settings = rule.models?.[found.deployment];
+            const kind = settings?.kind ?? found.kind ?? 'chat';
+            const chats = kind === 'chat';
+            const bound = chats
+              ? Object.fromEntries(
+                  Object.entries(apis).filter(([k]) => !otherPortKinds.includes(k)),
+                )
+              : this.#bindingFor(kind, rule.apis, Object.keys(endpoint.families));
             discovered.set(id, {
               model: {
                 id,
                 endpoint: name,
                 deployment: found.deployment,
-                residency: 'global',
+                residency: rule.residency ?? 'global',
                 capabilities: chats ? rule.capabilities : [],
-                apis: chats ? apis : {},
+                apis: bound,
                 ...(rule.maker ? { maker: rule.maker } : {}),
                 ...(rule.releaseDates?.[found.deployment]
                   ? { releaseDate: rule.releaseDates[found.deployment] }
                   : {}),
+                ...(settings?.embed ? { embed: settings.embed } : {}),
+                ...(settings?.rerank ? { rerank: settings.rerank } : {}),
                 options: {},
               },
               ...(found.model ? { family: found.model } : {}),
               origin: 'discovered',
-              apis: chats ? apis : {},
+              apis: bound,
+              kind,
+              kindFrom: settings?.kind ? 'operator' : (found.kindFrom ?? 'name'),
+              ...(found.endpoints ? { endpoints: found.endpoints } : {}),
               ...(chats && found.capabilities?.length ? { listed: found.capabilities } : {}),
             });
           }
@@ -502,6 +555,7 @@ export class ModelRouter implements PortProvider<ModelPort> {
             Object.fromEntries(route.listed.map((c) => [c, { has: true, at, by: 'listing' }])),
           )) || remembered;
     if (remembered) this.#rebuild();
+    this.options.onChange?.();
     return { discovered: discovered.size, failed };
   }
 
@@ -637,7 +691,15 @@ export class ModelRouter implements PortProvider<ModelPort> {
     await this.options.classifications?.save(id, next);
     this.#classes = { ...this.#classes, [id]: next };
     this.#rebuild();
+    this.options.onChange?.();
     return this.#describe(route);
+  }
+
+  #kindOf(route: Route, apis: ApiBindings): { kind: string; kindFrom?: KindSource } {
+    if (this.#classes[route.model.id]?.apis)
+      return { kind: kindOfBindings(apis) ?? 'unknown', kindFrom: 'operator' };
+    const kind = route.kind ?? kindOfBindings(apis) ?? 'unknown';
+    return route.kindFrom ? { kind, kindFrom: route.kindFrom } : { kind };
   }
 
   #describe(route: Route): ModelDescription {
@@ -658,6 +720,8 @@ export class ModelRouter implements PortProvider<ModelPort> {
     return {
       ...(transport ? { transport } : {}),
       id: model.id,
+      ...this.#kindOf(route, model.apis),
+      ...(route.endpoints ? { listedEndpoints: route.endpoints } : {}),
       endpoint: model.endpoint,
       deployment: model.deployment,
       ...(route.family ? { family: route.family } : {}),
@@ -728,6 +792,22 @@ export class ModelRouter implements PortProvider<ModelPort> {
     } catch {
       return {};
     }
+  }
+
+  /** Discovered models other ports serve, as model catalogue entries: embedders with their dimensions, and rerankers. */
+  discoveredForOtherPorts(): CatalogModel[] {
+    return [...this.#discovered.values()].flatMap((route) => {
+      if (this.#static.has(route.model.id)) return [];
+      const model = this.#effective(route);
+      if (!model.enabled) return [];
+      const apis = Object.fromEntries(
+        Object.entries(model.apis).filter(
+          ([kind]) => otherPortKinds.includes(kind) && (kind !== 'embed' || model.embed),
+        ),
+      );
+      if (Object.keys(apis).length === 0) return [];
+      return [{ ...route.model, residency: model.residency, apis }];
+    });
   }
 
   describe(): ModelDescription[] {

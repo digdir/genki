@@ -4,11 +4,14 @@ import {
   checkEqual,
   checkFailsWith,
   fakeHttp,
+  manifest,
   skipped,
+  type PluginRegistration,
   type ContractSuite,
   type ContractTarget,
   type FakeReply,
 } from '@genai/plugins';
+import type { DescriptorRegistry } from '@genai/operations';
 import type { RerankAdapter } from './adapter.js';
 import type { FailureMode, Ranked, RerankPort } from './port.js';
 import { RerankRouter } from './router.js';
@@ -18,7 +21,9 @@ export const rerankContractVersion = 'rerank@1';
 export type RerankScenario = 'score' | 'out-of-range' | { status: number };
 
 export interface RerankContractFixture {
-  adapter: RerankAdapter;
+  adapter?: RerankAdapter;
+  /** A typed rerank descriptor that serves the API in place of an adapter, on a model-catalogue reranker. */
+  descriptor?: { registry: DescriptorRegistry; api: string; family: string };
   basePath?: string;
   endpointOptions?: Record<string, unknown>;
   rerankerOptions?: Record<string, unknown>;
@@ -62,30 +67,60 @@ export const rerankContractTarget = async (
     },
     calls: () => server.seen.length,
     open: ({ onFailure = 'fail', signal = new AbortController().signal } = {}) => {
-      const router = new RerankRouter({
-        catalog: {
-          endpoints: {
-            contract: {
-              engine: fixture.adapter.engine,
-              baseURL: `${server.url}${fixture.basePath ?? ''}`,
-              auth: { kind: 'api-key', secret: 'secret://env/contract-key' },
-              options: fixture.endpointOptions ?? {},
+      const auth = { kind: 'api-key', secret: 'secret://env/contract-key' } as const;
+      const secrets = envSecrets({ CONTRACT_KEY: 'contract-key' });
+      const described = fixture.descriptor;
+      const router = described
+        ? new RerankRouter({
+            catalog: { endpoints: {}, rerankers: [] },
+            models: {
+              endpoints: {
+                contract: {
+                  baseURL: server.url,
+                  auth,
+                  families: { [described.family]: fixture.basePath ?? '' },
+                },
+              },
+              models: [
+                {
+                  id: 'contract/reranker',
+                  endpoint: 'contract',
+                  deployment: 'contract-reranker',
+                  residency: 'norway',
+                  apis: { rerank: described.api },
+                  rerank: { onFailure },
+                },
+              ],
             },
-          },
-          rerankers: [
-            {
-              id: 'contract/reranker',
-              endpoint: 'contract',
-              residency: 'norway',
-              onFailure,
-              options: fixture.rerankerOptions ?? {},
+            adapters: [],
+            descriptors: described.registry,
+            secrets,
+            timeoutMs: 5000,
+          })
+        : new RerankRouter({
+            catalog: {
+              endpoints: {
+                contract: {
+                  engine: (fixture.adapter as RerankAdapter).engine,
+                  baseURL: `${server.url}${fixture.basePath ?? ''}`,
+                  auth,
+                  options: fixture.endpointOptions ?? {},
+                },
+              },
+              rerankers: [
+                {
+                  id: 'contract/reranker',
+                  endpoint: 'contract',
+                  residency: 'norway',
+                  onFailure,
+                  options: fixture.rerankerOptions ?? {},
+                },
+              ],
             },
-          ],
-        },
-        adapters: [fixture.adapter],
-        secrets: envSecrets({ CONTRACT_KEY: 'contract-key' }),
-        timeoutMs: 5000,
-      });
+            adapters: fixture.adapter ? [fixture.adapter] : [],
+            secrets,
+            timeoutMs: 5000,
+          });
       const ctx: PortContext = {
         tenant: '991825827',
         principal: { kind: 'employee', issuer: 'contract', subject: 'kari', tenant: '991825827' },
@@ -170,3 +205,37 @@ export const rerankContract: ContractSuite<RerankContractSubject> = {
     },
   ],
 };
+
+export const compatibleRerankApi = 'compatible/rerank@1';
+
+/** The rerank shape Cohere, Jina, vLLM and LiteLLM share, served by its bundled descriptor. */
+export const compatibleRerankFixture = (registry: DescriptorRegistry): RerankContractFixture => ({
+  descriptor: { registry, api: compatibleRerankApi, family: 'openai' },
+  inputs: (body) => ({
+    query: String(body.query ?? ''),
+    documents: Array.isArray(body.documents) ? body.documents.map(String) : [],
+  }),
+  ranking: (ranked) => ({
+    status: 200,
+    json: { results: ranked.map((r) => ({ index: r.index, relevance_score: r.score })) },
+  }),
+  failure: (status) => ({ status, json: { error: { message: `HTTP ${status}` } } }),
+});
+
+export const compatibleRerankPlugins = (registry: DescriptorRegistry): PluginRegistration[] => [
+  {
+    manifest: manifest({
+      kind: 'rerank',
+      id: 'rerank.compatible',
+      version: '1',
+      contract: rerankContractVersion,
+      title: 'Rerank on an OpenAI-compatible endpoint',
+      description:
+        'Reranking in the shape Cohere, Jina, vLLM and LiteLLM share, through the compatible/rerank@1 descriptor.',
+      configSchema: { type: 'object', properties: {} },
+      secrets: ['api-key'],
+    }),
+    suite: rerankContract,
+    target: () => rerankContractTarget(compatibleRerankFixture(registry)),
+  } as PluginRegistration,
+];
