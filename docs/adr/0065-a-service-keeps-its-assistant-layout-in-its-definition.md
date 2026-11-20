@@ -14,7 +14,7 @@ The proposal for ADR 0056 in pull request #570 is the prior work this record bui
 
 ### Where it is stored
 
-- **`spec.interface` is an optional, closed field of a Service definition** (`packages/definitions/src/service-interface.ts`). Its one part now is `layout`. A theme (ADR 0063 as proposed), a menu and pages (ADR 0061 as proposed) are later fields beside it.
+- **`spec.interface` is an optional, closed field of a Service definition** (`packages/definitions/src/service-interface.ts`). Its parts now are `layout` and `icon`, an optional base64 `data:` address of a PNG or SVG image, at most 24 KiB, which the public host answer returns (ADR 0061). A theme (ADR 0063 as proposed), a menu and pages (ADR 0061 as proposed) are later fields beside it.
 - **It is part of the service.** It is saved in the draft (ADR 0051) through `GET` and `PUT /tenants/{tenant}/services/{id}/draft`, rebased with it, checked by `GET .../draft/checks`, published as a new version with a change reason, and an environment runs the version, and so the interface, it points to (ADR 0004). Saving it needs no new store, route or right; the routes that read it are under Consequences.
 - **Reading and writing it needs what the draft needs.** A member of the tenant reads the draft; `manage-services` writes it. A caller from another tenant gets `404`, as for any draft.
 - **Runs ignore it.** No strategy, guardrail or capability reads it, and `definitionSubject` leaves it out, so a change of look alone keeps the eval runs a publishing gate looks up.
@@ -63,5 +63,6 @@ Turned down:
 - Built since: `GET /v1/hosts/{hostname}` and `GET /v1/hosts/{hostname}/pages/{id}` (`apps/api/src/hosts.ts`), public and cached 60 seconds, for a hostname the operator has opened to the tenant in `GENAI_HOSTED_HOSTNAMES` and a hosted Client claims, whose environment points to a version with a layout. Every other hostname or page gets the same `404` with `urn:genai:problem:host-not-found` and `no-store`, so the answer does not tell why.
 - What the public route reveals is decided: only what the page needs before login, the tenant's organisation number, the service id, the environment, the assistant's name, the issuer and OIDC client id (both public in any login redirect), the menu and the page titles. Not the Client's registration id, the version, the layout or its profile, which come after login from the interface route.
 - Tests: `apps/api/src/hosts.test.ts` ("the assistant host", "the interface catalogue", "a service's interface") and `packages/definitions/src/definitions.test.ts`.
+- Built with #901: `icon`. Tests: `packages/definitions/src/definitions.test.ts` (the icon tests) and `apps/api/src/hosts.test.ts` ("gives the service’s icon for the browser tab before login").
 - Not built: `available` and `required`, the theme, editing texts per language in the builder, and the builder assistant's rule for links and `x-` values under `/spec/interface`.
 - A stored interface is a contract from its first publish. Changes to its shape are additive.

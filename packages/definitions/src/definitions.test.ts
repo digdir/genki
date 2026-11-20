@@ -1837,6 +1837,7 @@ describe('a service interface (spec.interface)', () => {
     const started = performance.now();
     expect(isIconDataUrl(long)).toBe(false);
     expect(isIconDataUrl(long.slice(0, 20_000))).toBe(true);
+    expect(isIconDataUrl(`${long.slice(0, 20_000)}!`)).toBe(false);
     expect(performance.now() - started).toBeLessThan(100);
   });
 
