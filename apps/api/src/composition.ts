@@ -354,6 +354,7 @@ import { documentDatasetRoutes } from './openapi/datasets.js';
 import { declaredSecrets, PluginRegistry } from '@genai/plugins';
 import { anthropicPlugins } from '@genai/providers-anthropic/contract';
 import { colbertPlugins } from '@genai/providers-colbert/contract';
+import { compatibleRerankPlugins } from '@genai/port-rerank/contract';
 import { a2aPlugins } from '@genai/providers-a2a-client/contract';
 import { mcpPlugins } from '@genai/providers-mcp-client/contract';
 import { openApiPlugins } from '@genai/providers-openapi-tools/contract';
@@ -2139,6 +2140,7 @@ export const createPlatform = async (input: PlatformInput) => {
     ...openAiPlugins,
     ...anthropicPlugins,
     ...colbertPlugins,
+    ...compatibleRerankPlugins(runtime.descriptors),
     ...mcpPlugins,
     ...a2aPlugins,
     ...openApiPlugins,

@@ -13,6 +13,12 @@ import {
   type FederatedTokens,
   type TokenProviders,
 } from '@genai/kernel';
+import {
+  describedSend,
+  type DescribedEndpoint,
+  type Descriptor,
+  type DescriptorRegistry,
+} from '@genai/operations';
 import type { RerankAdapter, RerankConnection, RerankerConfig } from './adapter.js';
 import { parseRerankCatalog, type CatalogReranker } from './catalog.js';
 import { parseModelRerankers } from './models.js';
@@ -31,12 +37,14 @@ export interface RerankRouterOptions {
   maxDocuments?: number;
   onWarning?: (message: string) => void;
   gate?: Gate;
+  descriptors?: DescriptorRegistry;
 }
 
 interface Route {
   reranker: CatalogReranker;
   config: RerankerConfig;
-  connection: RerankConnection;
+  connection?: RerankConnection;
+  described?: { descriptor: Descriptor; endpoint: DescribedEndpoint; deployment: string };
 }
 
 const refusalCodes: Record<GateRefusal, RerankError['code']> = {
@@ -55,6 +63,18 @@ const rerankPayload: GatePayload<Ranked[]> = {
   shape: rerankShape,
   usage: () => ({ requests: 1 }),
 };
+
+const rerankErrorFromStatus = (status: number | undefined, message: string) =>
+  new RerankError(
+    status === 429
+      ? 'rate_limited'
+      : status === 401 || status === 403
+        ? 'unauthorized'
+        : status !== undefined && status >= 400 && status < 500
+          ? 'bad_request'
+          : 'unavailable',
+    message,
+  );
 
 const valid = (ranking: Ranked[], count: number) =>
   ranking.filter((r) => Number.isInteger(r.index) && r.index >= 0 && r.index < count);
@@ -79,12 +99,12 @@ export class RerankRouter implements PortProvider<RerankPort> {
 
   /** What keeps the rerankers of a model catalogue from running. */
   problems(models: unknown): { path: string; message: string }[] {
-    const result = parseModelRerankers(models, this.options.adapters);
+    const result = parseModelRerankers(models, this.options.adapters, this.options.descriptors);
     return result.ok ? [] : result.errors;
   }
 
   reloadModels(models: unknown) {
-    const result = parseModelRerankers(models, this.options.adapters);
+    const result = parseModelRerankers(models, this.options.adapters, this.options.descriptors);
     if (!result.ok)
       throw new Error(
         `invalid rerank models: ${result.errors.map((e) => `${e.path}: ${e.message}`).join('; ')}`,
@@ -92,29 +112,46 @@ export class RerankRouter implements PortProvider<RerankPort> {
     const options = this.options;
     const routes = new Map<string, Route>();
     for (const m of result.rerankers) {
+      const credential = credentialFor(
+        m.auth,
+        options.secrets,
+        options.tokenProviders,
+        m.baseURL,
+        options.federatedTokens,
+      );
+      const fetch = this.#gate.egress(m.endpoint, { tenantHeader: m.gateway });
+      const timeoutMs = options.timeoutMs ?? 10_000;
+      const reranker: CatalogReranker = {
+        id: m.id,
+        endpoint: m.endpoint,
+        residency: m.residency,
+        onFailure: m.onFailure,
+        ...(m.tenants ? { tenants: m.tenants } : {}),
+        options: m.options,
+      };
+      const descriptor = m.described ? options.descriptors?.get(m.api) : undefined;
+      if (descriptor) {
+        routes.set(m.id, {
+          reranker,
+          config: { id: m.id, options: {} },
+          described: {
+            descriptor,
+            endpoint: { baseURL: m.baseURL, credential, fetch, timeoutMs, connection: m.endpoint },
+            deployment: m.deployment as string,
+          },
+        });
+        continue;
+      }
       const adapter = options.adapters.find((a) => a.api?.id === m.api) as RerankAdapter;
       routes.set(m.id, {
-        reranker: {
-          id: m.id,
-          endpoint: m.endpoint,
-          residency: m.residency,
-          onFailure: m.onFailure,
-          ...(m.tenants ? { tenants: m.tenants } : {}),
-          options: m.options,
-        },
+        reranker,
         config: { id: m.id, options: adapter.rerankerOptions.parse(m.options) },
         connection: adapter.connect({
           baseURL: m.baseURL,
-          credential: credentialFor(
-            m.auth,
-            options.secrets,
-            options.tokenProviders,
-            m.baseURL,
-            options.federatedTokens,
-          ),
+          credential,
           options: adapter.endpointOptions.parse({}),
-          timeoutMs: options.timeoutMs ?? 10_000,
-          fetch: this.#gate.egress(m.endpoint, { tenantHeader: m.gateway }),
+          timeoutMs,
+          fetch,
         }),
       });
     }
@@ -181,7 +218,7 @@ export class RerankRouter implements PortProvider<RerankPort> {
   open(ref: Ref, ctx: PortContext): RerankPort {
     const route = this.#routes.get(ref.id);
     if (!route) throw new RerankError('bad_request', `no reranker ${ref.id} in the catalog`);
-    const { reranker, config, connection } = route;
+    const { reranker, config, connection, described } = route;
     const max = this.options.maxResidency;
     const maxDocuments = this.options.maxDocuments ?? 200;
     const refusals = new WeakSet<RerankError>();
@@ -190,6 +227,7 @@ export class RerankRouter implements PortProvider<RerankPort> {
       operation: 'rerank',
       model: { kind: 'reranker', id: reranker.id },
       endpoint: reranker.endpoint,
+      ...(described ? { descriptor: described.descriptor.id } : {}),
       residency: reranker.residency,
       admission: 'admitted',
       ...(reranker.tenants ? { tenants: reranker.tenants } : {}),
@@ -214,7 +252,18 @@ export class RerankRouter implements PortProvider<RerankPort> {
         if (request.documents.length === 0) return { ranking: [] };
         try {
           const ranking = await this.#gate.call(ctx, target, rerankPayload, request, (sent) =>
-            connection.rerank(config, sent, ctx.signal),
+            described
+              ? describedSend<Ranked[]>(
+                  described.descriptor,
+                  described.endpoint,
+                  described.deployment,
+                  sent,
+                  {
+                    signal: ctx.signal,
+                    fail: (status, message) => rerankErrorFromStatus(status, message),
+                  },
+                ).then((answer) => answer.result)
+              : (connection as RerankConnection).rerank(config, sent, ctx.signal),
           );
           return { ranking: valid(ranking, request.documents.length) };
         } catch (error) {

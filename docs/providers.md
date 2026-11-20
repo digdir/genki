@@ -52,7 +52,32 @@ An API has the id `<provider>/<api>@<version>`, a kind (`chat`, `decide`, `embed
 | `openai/embeddings@1`       | `embed`  | `openai`    | Embeddings; was `openai/embed@1`, still read.          |
 | `colbert/rerank@1`          | `rerank` | `colbert`   | Reranking; option `maxInputLength`.                    |
 
-A model binds one API per kind with `apis`. A binding is valid when the API exists, is of that kind, and is in a family the model's connection offers; a `chat` binding also needs an API with a built-in implementation. A model without `apis` on a connection with one family binds that family's default chat API. A discovery rule binds the APIs of the models it finds, and `idPrefix` sets the first part of their ids, so ids stay the same when two connections become one. A model the listing reports as an image, video, realtime, live, transcription, speech, embedding or moderation model binds no API and gets no capabilities, whatever the rule says, so it is not offered for chat; neither listing reports what kind a model is, so `azure-deployments` reads the model name it reports and `openai-models` the listed id. An operator binds it by hand with `PATCH /operator/models/{id}`, and that binding wins over the next listing.
+A model binds one API per kind with `apis`. A binding is valid when the API exists, is of that kind, and is in a family the model's connection offers; a `chat` binding also needs an API with a built-in implementation. A model without `apis` on a connection with one family binds that family's default chat API. A discovery rule binds the APIs of the models it finds, and `idPrefix` sets the first part of their ids, so ids stay the same when two connections become one.
+
+The bundled descriptor `compatible/rerank@1` (kind `rerank`, family `openai`) sends `POST {base}/rerank` with `model`, `query` and `documents`, and reads `results[].index` and `results[].relevance_score`, the shape Cohere, Jina, vLLM and LiteLLM share.
+
+### What kind a discovered model is
+
+Each discovered model gets a kind, from the first of these that says one:
+
+1. The listing: a `kind` or `mode` on the `/models` entry (also `model_info.mode`, or a `type` genki knows), then the paths in `endpoints`. `chat`, `completion` and `responses` are `chat`, `embedding` is `embed`, `rerank` is `rerank`, `image_generation` is `generate-image`, `audio_transcription` is `transcribe` and `audio_speech` is `generate-speech`; any other mode is kept as the kind, such as `evaluation`. A path ending in `/chat/completions` or `/responses` is `chat`, `/embeddings` is `embed` and `/rerank` is `rerank`; other paths make the kind `unknown`.
+2. The rule: `models: { <deployment>: { kind: rerank } }` wins over the listing.
+3. The name: a part such as `image`, `dall`, `sora`, `realtime`, `live`, `transcribe`, `whisper`, `tts`, `embedding`, `rerank`, `reranker` or `moderation` gives the kind; a name with none of them is `chat`.
+
+A `chat` model binds the rule's `apis` and its capabilities. A model of another kind binds the rule's API for that kind (`apis: { rerank: compatible/rerank@1 }`), else the kind's default API, else the one API of that kind in the connection's families, and gets no capabilities. With none it binds nothing: it is listed with its kind and listed endpoints, offered for nothing, and needs an operator to bind an API or add a reviewed descriptor. It is never offered for chat. An operator binds a model by hand with `PATCH /operator/models/{id}`, and that binding wins over the next listing.
+
+A rule's `residency` is where the models it finds process data, `global` when left out. An operator's residency on one model still wins.
+
+```yaml
+discovery:
+  - source: openai-models
+    include: ['sigma2:*']
+    apis: { chat: openai/chat-completions@1 }
+    residency: norway
+    models:
+      sigma2:qwen-embedding: { embed: { dimensions: 1024 } }
+      sigma2:clef-flash: { kind: decide }
+```
 
 ## Embedding and rerank models
 
@@ -74,7 +99,7 @@ models:
     rerank: { onFailure: degrade }
 ```
 
-An embedding model must name `embed.dimensions`. A rerank engine that a plug-in registers without an API stays in the rerank catalogue; a model with the same id wins over it.
+An embedding model must name `embed.dimensions`. A discovered embedding model is served by the embedding port once its rule names its dimensions under `models.<deployment>.embed`, and a discovered reranker as soon as it binds an API; both can then be named by id like any other. A rerank engine that a plug-in registers without an API stays in the rerank catalogue; a model with the same id wins over it.
 
 ## Prices
 

@@ -49,6 +49,12 @@ import { ModelStatus } from './ModelList';
 import { ParametersDialog, parameterNames, RejectedHint, ruleText } from './Parameters';
 import { priceText } from './prices';
 
+const kindFromLabel: Record<'listing' | 'operator' | 'name', PlainKey> = {
+  listing: 'models.kindFromListing',
+  operator: 'models.kindFromOperator',
+  name: 'models.kindFromName',
+};
+
 export const originLabel: Record<ApiOrigin, PlainKey> = {
   'built-in': 'apis.originBuiltIn',
   'built-in-described': 'apis.originBuiltInDescribed',
@@ -226,6 +232,27 @@ export const ModelDetail = ({ api, data, done, id }: AreaProps & { id: string })
           <dd>
             {model.origin === 'discovered' ? t('models.discoveredAuto') : t('models.fromCatalog')}
           </dd>
+          {model.kind ? (
+            <>
+              <dt>{t('models.modelKind')}</dt>
+              <dd>
+                {model.kind === 'unknown' ? t('models.kindUnknown') : operationName(model.kind, t)}
+                {model.kindFrom ? (
+                  <span className="meta">{t(kindFromLabel[model.kindFrom])}</span>
+                ) : null}
+              </dd>
+            </>
+          ) : null}
+          {model.listedEndpoints?.length ? (
+            <>
+              <dt>{t('models.listedEndpoints')}</dt>
+              <dd>
+                {model.listedEndpoints.map((path) => (
+                  <code key={path}>{path} </code>
+                ))}
+              </dd>
+            </>
+          ) : null}
           <dt>{t('models.colResidency')}</dt>
           <dd>
             <span className="actions-row">

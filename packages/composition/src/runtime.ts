@@ -582,7 +582,9 @@ export const createRuntime = async (input: RuntimeInput) => {
     input.onWarning,
   );
   const providerObjects = input.providerObjects ?? new InMemoryProviderObjects(input.now);
+  let followDiscovered = () => {};
   const models = new ModelRouter({
+    onChange: () => followDiscovered(),
     gate,
     descriptors,
     governance,
@@ -625,6 +627,7 @@ export const createRuntime = async (input: RuntimeInput) => {
   });
   const rerank = new RerankRouter({
     gate,
+    descriptors,
     catalog: rerankSeed,
     models: modelSeed,
     adapters: rerankAdapters,
@@ -963,14 +966,29 @@ export const createRuntime = async (input: RuntimeInput) => {
         input.onWarning?.(`knowledge filter indexes not updated: ${String(error)}`),
       );
   };
-  const apply = (catalogs: EffectiveCatalogs) => {
-    models.reload(catalogs.models);
-    embedders.reload(catalogs.models);
-    rerank.reloadModels(catalogs.models);
+  let modelCatalog: unknown = modelSeed;
+  /** Serves discovered embedders and rerankers on their ports, next to the catalogue's own. */
+  followDiscovered = () => {
+    const merged = withDiscoveredModels(modelCatalog, models.discoveredForOtherPorts());
+    try {
+      embedders.reload(merged);
+      rerank.reloadModels(merged);
+    } catch (error) {
+      input.onWarning?.(
+        `discovered embedders and rerankers not served: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      embedders.reload(modelCatalog);
+      rerank.reloadModels(modelCatalog);
+    }
     replaceSet(
       embeddingModels,
       embedders.describe().map((e) => e.id),
     );
+    replaceSet(plugins.rerankers, rerank.rerankers());
+  };
+  const apply = (catalogs: EffectiveCatalogs) => {
+    modelCatalog = catalogs.models;
+    models.reload(catalogs.models);
     knowledge.reload(catalogs.knowledge);
     writers.reload(catalogs.knowledge);
     knowledgeCatalog = catalogs.knowledge;
@@ -1208,6 +1226,17 @@ export const createRuntime = async (input: RuntimeInput) => {
 };
 
 export type Runtime = Awaited<ReturnType<typeof createRuntime>>;
+
+const withDiscoveredModels = (catalog: unknown, discovered: readonly unknown[]): unknown => {
+  const base =
+    typeof catalog === 'object' && catalog !== null ? (catalog as Record<string, unknown>) : {};
+  const own = Array.isArray(base.models) ? (base.models as unknown[]) : [];
+  const ids = new Set(own.map((m) => (m as { id?: unknown }).id));
+  return {
+    ...base,
+    models: [...own, ...discovered.filter((m) => !ids.has((m as { id?: unknown }).id))],
+  };
+};
 
 const replaceSet = (target: Set<string> | undefined, values: Iterable<string>) => {
   if (!target) return;

@@ -1,0 +1,29 @@
+{
+  "source": "the rerank response vLLM documents for two documents, best match first",
+  "deployment": "sigma2:qwen-reranker",
+  "input": { "query": "frist for tilskudd", "documents": ["Reiseregning", "Frist for tilskudd"] },
+  "request": {
+    "method": "POST",
+    "path": "/rerank",
+    "body": {
+      "model": "sigma2:qwen-reranker",
+      "query": "frist for tilskudd",
+      "documents": ["Reiseregning", "Frist for tilskudd"]
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "results": [
+        { "index": 1, "relevance_score": 0.92 },
+        { "index": 0, "relevance_score": 0.04 }
+      ]
+    }
+  },
+  "result": [
+    { "index": 1, "score": 0.92, "rank": 1 },
+    { "index": 0, "score": 0.04, "rank": 2 }
+  ],
+  "usage": { "requests": 1 },
+  "dropped": 0
+}
