@@ -285,6 +285,7 @@ const interfaceFields: Record<string, Pair> = {
       [`layout.${path}.en`, [`${nb} på engelsk`, `${en} in English`]],
     ]),
   ),
+  icon: ['Ikon', 'Icon'],
   menu: ['Meny', 'Menu'],
   'menu.page': ['Side', 'Page'],
   'menu.href': ['Lenke', 'Link'],

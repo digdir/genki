@@ -1242,6 +1242,10 @@ export const accessRoutes: RouteConfig[] = [
           theme: z
             .null()
             .describe("Designsystemet's default (Digdir) theme, until a service's own is built"),
+          icon: z
+            .string()
+            .nullable()
+            .describe("The service's icon for the browser tab, a base64 PNG or SVG data: address"),
           menu: z.array(z.record(z.string(), z.unknown())),
           pages: z.array(z.object({ id: z.string(), title: z.unknown() })),
         }),

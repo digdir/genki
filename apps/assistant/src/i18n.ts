@@ -16,6 +16,7 @@ export const nb = defineCatalogue({
     signOut: 'Logg ut',
     noLayout: 'Tjenesten har ikke noe oppsett for assistenten.',
     pageMissing: 'Siden finnes ikke.',
+    backTo: 'Tilbake til {name}',
   },
 });
 
@@ -34,6 +35,7 @@ export const en = {
     signOut: 'Log out',
     noLayout: 'The service has no layout for the assistant.',
     pageMissing: 'The page does not exist.',
+    backTo: 'Back to {name}',
   },
 } satisfies Translation<typeof nb>;
 

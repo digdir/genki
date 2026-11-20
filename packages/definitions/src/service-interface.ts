@@ -4,6 +4,7 @@ export const INTERFACE_MAX_BYTES = 256 * 1024;
 export const PROFILE_MAX_BYTES = 32 * 1024;
 export const PAGE_MAX_BYTES = 32 * 1024;
 export const PAGES_MAX_BYTES = 128 * 1024;
+export const ICON_MAX_LENGTH = 24 * 1024;
 
 /** The limits of `@genai/ui-blocks`' `profileLimits`, kept alike by a test in `@genai/strategy-builder`. */
 export const interfaceLimits = {
@@ -209,11 +210,21 @@ const page = z.strictObject({
   ),
 });
 
+const iconDataUrl = /^data:image\/(?:png|svg\+xml);base64,[A-Za-z0-9+/]+={0,2}$/;
+
+export const isIconDataUrl = (value: string) =>
+  value.length <= ICON_MAX_LENGTH && iconDataUrl.test(value);
+
 const reserved = new Set(['api', 'auth', 'assets', 'innstillinger', 'callback', 'theme']);
 
 export const serviceInterface = z
   .strictObject({
     layout: assistantLayout.optional(),
+    icon: z
+      .string()
+      .max(ICON_MAX_LENGTH)
+      .refine(isIconDataUrl, 'must be a base64 data: address of a PNG or SVG image')
+      .optional(),
     menu: z.array(menuItem).max(interfaceLimits.menuItems).optional(),
     pages: z
       .array(page)
