@@ -537,6 +537,7 @@ export interface PlatformInput {
   clients?: ClientStore;
   reservedClientIds?: string[];
   hosting?: HostingRules;
+  documentFileOrigins?: readonly string[];
   platformLogin?: { clientId: string; audience: string };
   webhookDeliveries?: WebhookDeliveryStore;
   triggerRuns?: TriggerRunStore;
@@ -2666,6 +2667,7 @@ export const createPlatform = async (input: PlatformInput) => {
             (await boundServiceReads(principal, names))
           );
         },
+        remoteFile: { origins: input.documentFileOrigins ?? [] },
         originalFile: documentOriginals(
           blobStore,
           (dataset) => config.catalog.get('dataset', dataset)?.scope,

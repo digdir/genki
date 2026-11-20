@@ -1,4 +1,5 @@
 import { actingClient, createBff, InMemoryBffSessions } from './bff/index.js';
+import { remoteFileOriginsFrom } from '@genai/adapter-rest';
 import { platformLoginFrom } from './platform-login.js';
 import {
   assistantHostnameFrom,
@@ -517,6 +518,7 @@ const platform = await createPlatform({
   clients,
   reservedClientIds,
   hosting,
+  documentFileOrigins: remoteFileOriginsFrom(process.env.GENAI_DOCUMENT_FILE_ORIGINS),
   ...(platformLogin
     ? { platformLogin: { clientId: platformLogin.clientId, audience: platformLogin.audience } }
     : {}),

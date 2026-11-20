@@ -179,6 +179,8 @@ Only `.env.local` is loaded automatically. Secrets in config are referenced as `
 
 Where the host serves the BFF (`assistantBffEnabled`, ADR 0034, ADR 0061), the page holds no token: it asks `GET /auth/me`, sends the person to `/auth/login`, and calls genki through `/api/` with the host's session cookie. A Client with its own `oidc` then names its client secret, a tenant secret bound to the issuer's origin, in `oidc.secret`. Where the host serves no BFF, it logs in in the browser with the authorization code flow and PKCE as a public client and keeps the token in `sessionStorage` (`apps/assistant/src/login.ts`).
 
+A cited document's PDF shows in Dokumentvisning through `GET /api/datasets/{id}/documents/{doc}/file` (ADR 0066): an uploaded PDF from genki's own store, or, for a dataset from a remote source, a PDF the document's record lists on an origin in `GENAI_DOCUMENT_FILE_ORIGINS` (comma-separated `https://` origins, none by default), which the API reads and serves itself. The host frames it only where it calls genki through the BFF, with the session cookie.
+
 To run it locally against the mock login in the browser, with the API on its default port:
 
 ```sh

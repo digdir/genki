@@ -4,9 +4,11 @@ import { KnowledgeError, kindsOf, type KnowledgeRouter } from '@genai/port-knowl
 import { Hono, type Context } from 'hono';
 import { disjunctiveFacets } from './facets.js';
 import { facetRequest } from './filters.js';
+import { fileNameOf, listedPdf, openRemotePdf, type RemoteFileOptions } from './remote-file.js';
 
 export { disjunctiveFacets, type FacetField, type FacetOption } from './facets.js';
 export { facetRequest, filterMapErrors, toPortFilters, type FieldSpec } from './filters.js';
+export { remoteFileOriginsFrom, type RemoteFileOptions } from './remote-file.js';
 
 export interface Authenticator {
   authenticate(request: Request): Promise<Principal | undefined>;
@@ -36,6 +38,7 @@ export interface RestAdapterOptions {
     datasetId: string,
     documentId: string,
   ) => Promise<OriginalDocumentFile | undefined>;
+  remoteFile?: RemoteFileOptions;
   newTaskId?: () => string;
 }
 
@@ -242,6 +245,33 @@ export const createRestAdapter = (options: RestAdapterOptions) => {
             ? "default-src 'none'; frame-ancestors 'self'"
             : "sandbox; default-src 'none'",
         });
+      }
+      const remote = options.remoteFile?.origins.length ? options.remoteFile : undefined;
+      const asked = c.req.query('file');
+      const pdf = remote ? listedPdf(found, asked, remote.origins) : undefined;
+      if (remote && asked !== undefined && !pdf) return noFile();
+      if (remote && pdf) {
+        if (wantsJson(c))
+          return c.json(
+            { kind: 'served', mediaType: 'application/pdf', source: pdf },
+            200,
+            privately,
+          );
+        const headers = {
+          ...privately,
+          'content-type': 'application/pdf',
+          'content-disposition': attachment('inline', fileNameOf(pdf)),
+          'x-content-type-options': 'nosniff',
+          'content-security-policy': "default-src 'none'; frame-ancestors 'self'",
+        };
+        let body: ReadableStream<Uint8Array> | undefined;
+        try {
+          body = await openRemotePdf(pdf, remote, c.req.raw.signal);
+          return c.body(body, 200, headers);
+        } catch (error) {
+          await body?.cancel().catch(() => undefined);
+          throw error;
+        }
       }
       const source = sourceAddress(found.url);
       if (!source) return noFile();

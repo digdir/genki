@@ -1,5 +1,5 @@
 import { Alert, Button, Heading, Link, Paragraph, Spinner } from '@digdir/designsystemet-react';
-import { localeNames, locales, type Locale } from '@genai/i18n';
+import type { Locale } from '@genai/i18n';
 import { LanguageChoice, useLocale } from '@genai/i18n/react';
 import {
   Assistant,
@@ -12,7 +12,7 @@ import {
 } from '@genai/ui-assembly';
 import { Markdown } from '@genai/ui-blocks';
 import { lookOf, type AssistantLayout } from '@genai/ui-blocks/builder';
-import { ArrowLeftIcon, ExternalLinkIcon, FileTextIcon, GlobeIcon } from '@navikt/aksel-icons';
+import { ArrowLeftIcon, ExternalLinkIcon, FileTextIcon } from '@navikt/aksel-icons';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   inLanguage,
@@ -149,44 +149,23 @@ const PageView = ({ fetcher, host, id }: { fetcher: typeof fetch; host: HostView
 const drawsReader = (layout: AssistantLayout, session: Session) =>
   lookOf(layout) === 'next' && session.name !== '';
 
-const otherLocale = (locale: Locale): Locale => locales.find((l) => l !== locale) ?? locale;
-
-const profileMenu = (
-  host: HostView,
-  locale: Locale,
-  setPreference: (preference: Locale) => void,
-): AssistantProfile['menu'] => {
-  const other = otherLocale(locale);
-  return {
-    extra: [
-      ...host.menu.map((item) =>
-        'page' in item
-          ? {
-              id: `page:${item.page}`,
-              label: textIn(item.label, locale),
-              href: `/${item.page}`,
-              icon: <FileTextIcon aria-hidden />,
-            }
-          : {
-              id: `href:${item.href}`,
-              label: textIn(item.label, locale),
-              href: item.href,
-              icon: <ExternalLinkIcon aria-hidden />,
-            },
-      ),
-      ...(other === locale
-        ? []
-        : [
-            {
-              id: 'language',
-              label: localeNames[other],
-              onSelect: () => setPreference(other),
-              icon: <GlobeIcon aria-hidden />,
-            },
-          ]),
-    ],
-  };
-};
+const profileMenu = (host: HostView, locale: Locale): AssistantProfile['menu'] => ({
+  extra: host.menu.map((item) =>
+    'page' in item
+      ? {
+          id: `page:${item.page}`,
+          label: textIn(item.label, locale),
+          href: `/${item.page}`,
+          icon: <FileTextIcon aria-hidden />,
+        }
+      : {
+          id: `href:${item.href}`,
+          label: textIn(item.label, locale),
+          href: item.href,
+          icon: <ExternalLinkIcon aria-hidden />,
+        },
+  ),
+});
 
 const AssistantPane = ({
   fetcher,
@@ -194,12 +173,14 @@ const AssistantPane = ({
   session,
   header,
   signOut,
+  files,
 }: {
   fetcher: typeof fetch;
   host: HostView;
   session: Session;
   header: ReactNode;
   signOut: { href: string; onSignOut?: () => void };
+  files: boolean;
 }) => {
   const t = useT();
   const { locale, setPreference } = useLocale();
@@ -228,10 +209,11 @@ const AssistantPane = ({
     () => ({
       ...(session.name ? { signedInAs: session.name } : {}),
       ...(session.organisation ? { organisation: session.organisation } : {}),
-      menu: profileMenu(host, locale, setPreference),
+      menu: profileMenu(host, locale),
       signOut,
+      ...(files && api ? { documentFile: api.documentFile } : {}),
     }),
-    [session, host, locale, setPreference, signOut],
+    [session, host, locale, signOut, files, api],
   );
   const [say, notice] = useNotice();
   const storage = useMemo(() => browserStorage(`assistant.${host.service}.`), [host.service]);
@@ -259,6 +241,8 @@ const AssistantPane = ({
           storage={storage}
           colorScheme={colorScheme}
           onColorSchemeChange={setColorScheme}
+          language={locale}
+          onLanguageChange={setPreference}
           onNotice={say}
           onFeedback={api.sendFeedback}
           onRename={api.renameThread}
@@ -428,6 +412,7 @@ export const App = ({
         session={session}
         header={header}
         signOut={signOutLink}
+        files={viaBff}
       />
     );
   return (

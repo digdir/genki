@@ -53,6 +53,7 @@ import {
   type VariantOption,
   type Zone,
 } from '@genai/ui-blocks';
+import type { Locale } from '@genai/i18n';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   failureOf,
@@ -120,6 +121,8 @@ export interface AssistantOptions {
   /** The reader's colour scheme, kept by the host, which «Innstillinger» changes. */
   colorScheme?: ColorScheme | undefined;
   onColorSchemeChange?: ((scheme: ColorScheme) => void) | undefined;
+  language?: Locale | undefined;
+  onLanguageChange?: ((language: Locale) => void) | undefined;
   /** Feedback on an answer. Without it, no feedback is offered. */
   onFeedback?: ((feedback: AssistantFeedback) => Promise<void> | void) | undefined;
   /** A thread renamed or deleted in the list. Without them, neither is offered. */
@@ -265,6 +268,8 @@ export const useAssistant = ({
   onNotice,
   colorScheme = 'auto',
   onColorSchemeChange,
+  language,
+  onLanguageChange,
   onFeedback,
   onRename,
   onDelete,
@@ -1503,6 +1508,8 @@ export const useAssistant = ({
     threadInUrl,
     colorScheme,
     onColorSchemeChange,
+    language,
+    onLanguageChange,
     onFeedback,
   };
 };

@@ -5,6 +5,7 @@ export * from './sources/pairing.js';
 export * from './sources/Sources.js';
 export type * from './sources/types.js';
 export * from './document-view/DocumentView.js';
+export * from './document-view/PdfView.js';
 export * from './shell/index.js';
 export * from './states/States.js';
 export * from './variant-picker/VariantPicker.js';

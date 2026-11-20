@@ -11,6 +11,7 @@ import {
   Tag,
   Textfield,
 } from '@digdir/designsystemet-react';
+import { locales, type Locale } from '@genai/i18n';
 import { useFormat } from '@genai/i18n/react';
 import { DownloadIcon, ExternalLinkIcon, PlusIcon, TrashIcon } from '@navikt/aksel-icons';
 import { useId, type ReactNode } from 'react';
@@ -69,12 +70,18 @@ const ActionButton = ({ action, children }: { action: SettingsAction; children: 
 
 // ── Generelt ──
 
+const localeLabels = {
+  nb: 'settings.languageNb',
+  en: 'settings.languageEn',
+} as const satisfies Record<Locale, string>;
+
 export type AnswerLanguage = 'nb' | 'nn' | 'en';
 export type AnswerLength = 'short' | 'normal' | 'long';
 export type OpenWith = 'new' | 'last';
 export type TextSize = 'standard' | 'large' | 'larger';
 
 export interface SettingsGeneralProps extends SettingsPageNote {
+  language?: SettingsChoice<Locale> | undefined;
   /** «Utseende»: light, dark or the system's, as `ColorSchemeToggle` draws it. */
   colorScheme?: SettingsChoice<ColorScheme> | undefined;
   /** «Språk i svarene». The service must answer in the language chosen. */
@@ -93,6 +100,7 @@ export interface SettingsGeneralProps extends SettingsPageNote {
 
 /** «Generelt» (dev-innstillinger-1): language, how the answers look, and where the reader starts. */
 export const SettingsGeneral = ({
+  language,
   colorScheme,
   answerLanguage,
   answerLength,
@@ -105,7 +113,14 @@ export const SettingsGeneral = ({
 }: SettingsGeneralProps) => {
   const t = useT();
   const f = useFormat();
-  const rows = generalRowsOf({ answerLanguage, answerLength, openWith, colorScheme, textSize });
+  const rows = generalRowsOf({
+    language,
+    answerLanguage,
+    answerLength,
+    openWith,
+    colorScheme,
+    textSize,
+  });
   return (
     <SettingsPage
       className={classes('uib-settings-general', className)}
@@ -121,6 +136,14 @@ export const SettingsGeneral = ({
       }
       title={t('settings.general')}
     >
+      {language ? (
+        <ChoiceRow
+          choice={language}
+          description={t('settings.languageDescription')}
+          options={locales.map((value) => ({ value, label: t(localeLabels[value]) }))}
+          title={t('settings.language')}
+        />
+      ) : null}
       {answerLanguage ? (
         <ChoiceRow
           choice={answerLanguage}
