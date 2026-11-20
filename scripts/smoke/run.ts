@@ -645,17 +645,24 @@ export const main = async () => {
     try {
       if (needsGrant('definitions', 'free', 'lifecycle:throwaway')) {
         const yaml = withId(serviceYaml(), plan.service, plan.throwaway);
+        // An archived version that no longer validates refuses to restore (409); pausing lets the publish through.
         const restored = await client.lifecycle(plan.throwaway, 'active');
+        const reopened =
+          restored.status === 409 ? await client.lifecycle(plan.throwaway, 'paused') : restored;
         const publish = await client.publish(yaml);
-        if (restored.status === 200 || publish.status < 300) published.push(plan.throwaway);
+        if (reopened.status === 200 || publish.status < 300) published.push(plan.throwaway);
         const active =
           publish.status < 300 ? await client.lifecycle(plan.throwaway, 'active') : publish;
         const read = await client.get(
           `/tenants/${plan.tenant}/services/${plan.throwaway}/lifecycle`,
         );
+        const reopening =
+          restored === reopened
+            ? `restore ${restored.status}`
+            : `restore ${restored.status}, paused ${reopened.status}`;
         record('definitions', 'free', 'lifecycle:throwaway', {
           ok: publish.status < 300 && active.status === 200 && read.status === 200,
-          detail: `publish ${publish.status}, activate ${active.status}, read ${read.status}`,
+          detail: `${reopening}; publish ${publish.status}, activate ${active.status}, read ${read.status}`,
         });
       }
       if (needsGrant('access', 'free', 'access:outside-prefix')) {
