@@ -113,13 +113,13 @@ param dnsZoneName = 'genki-test.digdir.cloud'
 // Each hostname moves none, hostnames, certificates, one deploy at a time (infra/README.md, "Hosted hostnames").
 param assistantHostEnabled = true
 param assistantBffEnabled = true
-param assistantHostnameStage = 'none'
+param assistantHostnameStage = 'hostnames'
 param hostedHostnames = [
-  { subdomain: 'kunnskap', tenant: '312521172', stage: 'none' }
+  { subdomain: 'kunnskap', tenant: '312521172', stage: 'hostnames' }
 ]
 // genki's platform login client for hosted Clients without oidc (infra/README.md, "Platform login").
 param platformLoginClientId = 'dde98722-c952-4172-a5d6-10bdf721680f'
-param platformLoginStage = 'none'
+param platformLoginStage = 'hostnames'
 
 param alertsEnabled = true
 param alertEmails = readEnvironmentVariable('ALERT_EMAILS', '')
