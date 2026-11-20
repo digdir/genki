@@ -21,6 +21,7 @@ import {
   type ServiceDefinition,
   type SkillDefinition,
   type StepFlowDefinition,
+  type StoredDefinitionRef,
   type FlowFinder,
   type SkillFinder,
   type ValidationError,
@@ -224,6 +225,28 @@ export class PostgresDefinitionStore implements DefinitionStore {
   async capabilities(onInvalid?: OnInvalidStored) {
     const rows = (await this.pool.query<VersionRow>(latestServices)).rows;
     return compileStoredServices(rows.map(toVersion), this.plugins, onInvalid);
+  }
+
+  async remove(tenant: string, definitions: StoredDefinitionRef[]) {
+    if (definitions.length === 0) return;
+    const client = await this.pool.connect();
+    try {
+      await client.query('begin');
+      await client.query(`select pg_advisory_xact_lock(hashtext('genai-definitions'))`);
+      await client.query(`select set_config('app.tenant', $1, true)`, [tenant]);
+      await client.query(
+        `delete from definition_versions d
+          using unnest($2::text[], $3::text[]) as gone(kind, id)
+          where d.tenant = $1 and d.kind = gone.kind and d.id = gone.id`,
+        [tenant, definitions.map((d) => d.kind), definitions.map((d) => d.id)],
+      );
+      await client.query('commit');
+    } catch (error) {
+      await client.query('rollback');
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   async #missingFlows(

@@ -25,6 +25,7 @@ import {
   EmptyState,
   ErrorState,
   Filter,
+  FilterBasis,
   FilterRead,
   NotFoundState,
   Settings,
@@ -85,6 +86,12 @@ import { phrase, useT, type AssemblyTranslator } from './i18n.js';
 import { stepsOf } from './procedure.js';
 import { useAssistant, type AssistantOptions, type AssistantState } from './useAssistant.js';
 
+// The next look's field in a conversation is one line until the question grows (dev-chat-samtale).
+const oneLineField = {
+  '--genai-composer-field-min-block-size-floor': '0px',
+  '--genai-composer-field-min-block-size': '0px',
+} as CSSProperties;
+
 // The cards frame's ground, the shell's, under the docked field: it fades into the card, not the
 // page (the next look).
 const cardGround = {
@@ -100,11 +107,21 @@ const sourcesTool = {
   inlineSize: '100%',
 } as CSSProperties;
 
-// `compact-filter`: a field's ticks in one column, so the filter fits its narrow panel.
-const oneColumnTicks = { '--genai-filter-checkboxes-columns': '1' } as CSSProperties;
+// The next look's filter beside the threads: 280 wide, a field's ticks in one column.
+const oneColumnTicks = {
+  '--genai-filter-checkboxes-columns': '1',
+  inlineSize: '100%',
+} as CSSProperties;
 
-// The next look's footnote marks, 16 px as dev-kilder-hoyre draws them.
-const nextFootnotes = { '--genai-answer-footnote-size': 'var(--ds-size-4)' } as CSSProperties;
+// The next look's threads: 220 wide, at most 400 (kunnskapsassistenten#263, #264).
+const threadsWidth = { width: 220, minWidth: 220, maxWidth: 400 };
+const filterWidth = 280;
+
+// The next look's footnote marks at 16 px (dev-kilder-hoyre), and the question a lighter grey.
+const nextFootnotes = {
+  '--genai-answer-footnote-size': 'var(--ds-size-4)',
+  '--genai-conversation-question-background': 'var(--ds-color-neutral-background-tinted)',
+} as CSSProperties;
 
 // The tools' icons in the next look, as the dev-verktoy boards draw them: Fremgangsmåte's robot,
 // Kilder's page with a magnifier. Notater's pencil waits for the block.
@@ -241,6 +258,7 @@ const approachOf = (
   const changed =
     asked && before?.scope?.selection ? !sameSelection(before.scope.selection, asked) : false;
   const count = turn.scope?.documents;
+  const used = turn.answer?.sources?.length;
   // Beside the tool, the card says only how many documents the answer read from.
   const scope =
     asked && place !== 'compact' ? (
@@ -248,6 +266,8 @@ const approachOf = (
     ) : asked && count !== undefined ? (
       <FilterRead selection={{}} count={count} />
     ) : undefined;
+  // The next look's card is the dev boards': the filter the answer built on, then the process.
+  const card = next && !tool;
   return (
     <>
       <Approach
@@ -255,11 +275,23 @@ const approachOf = (
         working={busy}
         startedAt={approach.startedAt}
         {...(approach.finishedAt ? { finishedAt: approach.finishedAt } : {})}
-        {...(turn.answer?.sources ? { used: turn.answer.sources.length } : {})}
-        // The next look's tool is the dev-verktoy boards' list; its card is their bar.
-        {...(next ? (tool ? { variant: 'list' as const } : { summary: 'totals' as const }) : {})}
-        {...(changed ? { note: t('filter.changed') } : {})}
-        {...(scope ? { scope } : {})}
+        {...(used === undefined || card ? {} : { used })}
+        {...(card ? { variant: 'sections' as const } : next ? { variant: 'list' as const } : {})}
+        {...(card && asked
+          ? {
+              filter: (
+                <FilterBasis
+                  selection={asked}
+                  fields={a.facets}
+                  count={count}
+                  used={used}
+                  previous={changed ? before?.scope?.selection : undefined}
+                />
+              ),
+            }
+          : {})}
+        {...(changed && !card ? { note: t('filter.changed') } : {})}
+        {...(scope && !card ? { scope } : {})}
       />
       {a.level === 'detailed' && place !== 'compact' ? (
         // No block draws the detailed level yet: the step frames as genki sent them, for now.
@@ -355,8 +387,6 @@ export const AssistantView = ({
   // The next look draws the filter as its own panel beside the threads, in their card
   // (dev-filter-panel; «9 · Filtrering» A), not as a second view of the same panel.
   const filterPanel = next && threadsOn && filterZone === 'primary' && !filtersBeside;
-  // `compact-filter`: that panel 230 wide at every width of the card, and the threads the rest.
-  const compactFilter = filterPanel && a.flags.has('compact-filter');
   const twoViews = threadsOn && filterZone === 'primary' && !filtersBeside && !filterPanel;
 
   const [atEnd, setAtEnd] = useState(true);
@@ -440,8 +470,10 @@ export const AssistantView = ({
           onFetchAgain={a.fetchAgain}
           assistantName={name}
           answerColor="neutral"
-          // The next look's answer has no card and no name over it (dev-kilder-hoyre).
-          {...(next ? { answerVariant: 'plain' as const, answerLabel: false } : {})}
+          // The next look's answer has no card and no name; the question is a neutral grey.
+          {...(next
+            ? { answerVariant: 'plain' as const, answerLabel: false, questionColor: 'neutral' }
+            : {})}
           // The next look names the thread once, in the main card's `h1`.
           {...(a.named && !next ? { title: a.named, titleRepeatsQuestion: a.repeatsQuestion } : {})}
           target={a.answerTarget}
@@ -496,16 +528,21 @@ export const AssistantView = ({
     // The catalogue keeps follow-ups to the current look.
     const followUps = a.option('chat', 'followUps') ? a.profile?.followUps : undefined;
     const disclaimer = a.option('chat', 'disclaimer');
-    // While a question is written, the next look hides the greeting and suggestions in place.
-    const typing = next && start && a.draft !== '';
     return (
       <div
         className="uia-chat"
         data-start={start || undefined}
-        data-typing={typing || undefined}
         data-in-panel={inPanel || undefined}
         // In the next look the docked field stands on the main card's ground, not the page's.
-        style={next ? { ...nextFootnotes, ...(inPanel ? {} : cardGround) } : undefined}
+        style={
+          next
+            ? {
+                ...nextFootnotes,
+                ...(inPanel ? {} : cardGround),
+                ...(start ? {} : oneLineField),
+              }
+            : undefined
+        }
       >
         {titled ? pageHeading : null}
         {middle}
@@ -558,6 +595,16 @@ export const AssistantView = ({
             // scroll margin as tall as it, as kunnskapsassistenten does.
             sticky={!start && !inPanel}
             fieldRef={a.fieldRef}
+            // The dev-chat boards' field: one row with «+» and send, an arrow up, named as they name it.
+            {...(next
+              ? {
+                  variant: 'inline' as const,
+                  label: start ? t('assembly.fieldStart') : t('assembly.fieldFollowUp'),
+                  placeholder: start
+                    ? t('assembly.fieldStartPlaceholder')
+                    : t('assembly.fieldFollowUpPlaceholder'),
+                }
+              : {})}
           />
         )}
         {start ? (
@@ -789,9 +836,7 @@ export const AssistantView = ({
     ) : undefined;
 
   // The next look's sizes, the dev-navbar board's at 1720: threads 220, tools 380.
-  const nextPrimary: Partial<ShellPanel> = next
-    ? { size: { width: 220, minWidth: 220 }, ...profileFoot }
-    : {};
+  const nextPrimary: Partial<ShellPanel> = next ? { size: threadsWidth, ...profileFoot } : {};
   const threadsTitle = next ? { title: t('builder.threads') } : {};
 
   const threadsAndFilter = phrase(t, [t('builder.threads'), t('builder.filter')]);
@@ -829,23 +874,21 @@ export const AssistantView = ({
       foot,
       ...nextPrimary,
       ...(next ? { rail: newThreadRail } : {}),
-      // The filter's own panel in the threads' card, 220 + 440 at 1720 as dev-filter-panel draws
-      // it: «Filter», «Gjelder neste spørsmål», and the card's button on its row.
+      // The filter's own panel in the threads' card (dev-filter-panel); resizing changes the threads only.
       ...(filterPanel
         ? {
-            // With `compact-filter`, no narrower than the threads' 220 beside the filter's 230.
-            size: { width: 660, minWidth: compactFilter ? 220 + 230 : 660 },
+            size: {
+              width: threadsWidth.width + filterWidth,
+              minWidth: threadsWidth.minWidth + filterWidth,
+              maxWidth: threadsWidth.maxWidth + filterWidth,
+            },
             companion: {
               label: t('assembly.filterForThread'),
               title: t('builder.filter'),
               subtitle: t('filter.appliesNext'),
-              width: compactFilter ? 230 : 440,
-              ...(compactFilter
-                ? {
-                    keepWidth: true,
-                    children: <div style={oneColumnTicks}>{filter(undefined, 2)}</div>,
-                  }
-                : { children: filter(undefined, 2) }),
+              width: filterWidth,
+              keepWidth: true,
+              children: <div style={oneColumnTicks}>{filter(undefined, 2)}</div>,
             },
           }
         : {}),
@@ -899,8 +942,7 @@ export const AssistantView = ({
       ),
       foot,
       ...nextPrimary,
-      // The menu alone, 220 at 1720 (dev-innstillinger-1), and never wider: the threads' card, 660
-      // with the filter beside them or as the reader dragged it, keeps its width for the way back.
+      // The menu alone is 220 wide; the threads' card keeps its dragged width for the way back.
       size: { width: 220, minWidth: 220, maxWidth: 220 },
     };
 

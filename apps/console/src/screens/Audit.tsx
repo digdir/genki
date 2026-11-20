@@ -99,6 +99,7 @@ export const actionKey: Record<string, PlainKey> = {
   'platform.hook.feedback': 'audit.actionHookFeedback',
   'platform.private-networks.save': 'audit.actionPrivateNetworksSave',
   'platform.service.lifecycle': 'audit.actionServiceLifecycle',
+  'platform.service.delete': 'audit.actionServiceDelete',
   'platform.service.environments.add': 'audit.actionServiceEnvironmentAdd',
   'platform.service.environments.remove': 'audit.actionServiceEnvironmentRemove',
   'platform.service.environments.promote': 'audit.actionServiceEnvironmentPromote',

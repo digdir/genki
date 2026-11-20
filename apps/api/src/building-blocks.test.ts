@@ -56,6 +56,7 @@ import { digdir, files, klarsprak, plugins, settingDefinitions } from './testkit
 
 const model = (id: string, residency: ModelDescription['residency']): ModelDescription => ({
   id,
+  kind: 'chat',
   endpoint: 'foundry',
   deployment: id.split('/')[1] ?? id,
   residency,

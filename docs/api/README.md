@@ -63,6 +63,11 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ## API changes
 
+### 2026-11-20: archived services and catalog references
+
+- An archived service no longer keeps a catalog model or reranker in use, so `DELETE /operator/catalog/{kind}/{id}` can delete one only archived services name, and a skipped model only they name is marked `unused`.
+- `PUT /tenants/{tenant}/services/{id}/lifecycle` to `active` from `paused` or `archived` checks the latest version against the catalog as publishing does, and answers `409` with `urn:genai:problem:service-outdated` when it no longer validates; `errors` names what is missing. Pausing an archived service stays unchecked, so a fixed version can be published before activating it.
+
 ### 2026-11-20: genki checks what discovered models can do
 
 - `POST /operator/models/refresh` also checks the capabilities of discovered models that their discovery rule does not name, with at most 12 small synthetic model calls through the gate, and answers `learned` with `checked` (model, capability, `has`), `calls`, `deferred` (checks left over the cap) and the priced `usage`. The audit `result` carries the same.
@@ -255,7 +260,7 @@ jq -n --arg data "$(base64 < brev.txt | tr -d '\n')" '{
 
 ### 2026-11-05: embedders, rerankers and prices per unit
 
-- Embedding models are models in the model catalogue with `apis: { embed: openai/embeddings@1 }` and `embed: { dimensions, maxBatch? }`; the embedding catalogue and the schemas `Embedding` and `EmbeddingEndpoint` are gone. A reranker on an engine with an API is a model with `apis: { rerank: … }` and `rerank: { onFailure }`; genki has no such API until it runs a reranker of its own. Ids do not change, and neither model is listed in `GET /models` as a chat model.
+- Embedding models are models in the model catalogue with `apis: { embed: openai/embeddings@1 }` and `embed: { dimensions, maxBatch? }`; the embedding catalogue and the schemas `Embedding` and `EmbeddingEndpoint` are gone. A reranker on an engine with an API is a model with `apis: { rerank: … }` and `rerank: { onFailure }`, such as the bundled descriptor `compatible/rerank@1`; `colbert/rerank@1` is removed. Ids do not change, and neither model is listed in `GET /models` as a chat model.
 - The descriptor `openai/embed@1` is `openai/embeddings@1`; the old id is still read, and a model bound to it moves to the new one.
 - `PUT /operator/models/{id}/price` takes `{ <kind>: { <unit>: <kroner per unit> } }` with the units `input-token`, `output-token`, `cached-input-token`, `audio-second`, `image`, `video-second`, `character` and `request`. `{ inputPerThousand, outputPerThousand }` is still accepted and holds for every kind the model binds. The answer adds `prices`, and keeps `inputPerThousand` and `outputPerThousand` as the per-1,000-token view. A unit not in the list answers `400`.
 - `GET /operator/apis` adds `units`, the units each API reports.

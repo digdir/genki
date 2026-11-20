@@ -211,10 +211,10 @@ jobs:
         run: |
           for _ in $(seq 1 60); do
             body=$(curl -fsS --max-time 10 "${{ steps.deploy.outputs.url }}/health" || true)
-            if echo "$body" | jq -e --arg v "${{ github.sha }}" '.version == $v and (.modelDiscovery.state // "ok") == "ok"' >/dev/null 2>&1; then echo "$body"; exit 0; fi
+            if echo "$body" | jq -e --arg v "${{ github.sha }}" '.version == $v and (.modelDiscovery.state // "ok") == "ok" and [(.catalog.skipped // [])[] | select(.unused != true)] == []' >/dev/null 2>&1; then echo "$body"; exit 0; fi
             sleep 5
           done
-          echo "the candidate revision did not report ${{ github.sha }} with its models found: $body; users keep ${{ steps.plan.outputs.live }}"; exit 1
+          echo "the candidate revision did not report ${{ github.sha }} with its models found and no catalog entry skipped that something uses: $body; users keep ${{ steps.plan.outputs.live }}"; exit 1
       - name: api skipped
         if: env.ALTINN_PDP_URL == ''
         run: |
@@ -407,10 +407,10 @@ jobs:
         run: |
           for _ in $(seq 1 60); do
             body=$(curl -fsS --max-time 10 "${{ steps.deploy.outputs.url }}/health" || true)
-            if echo "$body" | jq -e --arg v "${{ github.sha }}" '.version == $v and (.modelDiscovery.state // "ok") == "ok"' >/dev/null 2>&1; then echo "$body"; exit 0; fi
+            if echo "$body" | jq -e --arg v "${{ github.sha }}" '.version == $v and (.modelDiscovery.state // "ok") == "ok" and [(.catalog.skipped // [])[] | select(.unused != true)] == []' >/dev/null 2>&1; then echo "$body"; exit 0; fi
             sleep 5
           done
-          echo "health check did not report ${{ github.sha }} with its models found: $body; roll back with the rollback workflow"; exit 1
+          echo "health check did not report ${{ github.sha }} with its models found and no catalog entry skipped that something uses: $body; roll back with the rollback workflow"; exit 1
       - name: stop unused API revisions
         if: "!cancelled() && steps.deploy.outcome == 'success' && steps.api.outputs.live != ''"
         env:
@@ -574,7 +574,7 @@ jobs:
         run: |
           for _ in $(seq 1 60); do
             body=$(curl -fsS --max-time 10 "${{ steps.deploy.outputs.url }}/health" || true)
-            if echo "$body" | jq -e --arg v "${{ github.sha }}" '.version == $v and (.modelDiscovery.state // "ok") == "ok"' >/dev/null 2>&1; then echo "$body"; exit 0; fi
+            if echo "$body" | jq -e --arg v "${{ github.sha }}" '.version == $v and (.modelDiscovery.state // "ok") == "ok" and [(.catalog.skipped // [])[] | select(.unused != true)] == []' >/dev/null 2>&1; then echo "$body"; exit 0; fi
             sleep 5
           done
-          echo "health check did not report ${{ github.sha }} with its models found: $body"; exit 1
+          echo "health check did not report ${{ github.sha }} with its models found and no catalog entry skipped that something uses: $body"; exit 1

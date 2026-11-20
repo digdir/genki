@@ -503,6 +503,13 @@ const autoReadTopK = async (
 /** Org-number filters that find nothing are kept, or a search returns others' documents as theirs. */
 const keptWhenEmpty = new Set(['owner_orgnr', 'recipient_orgnr']);
 
+const detectionsOf = (error: unknown): SearchDetection[] | undefined => {
+  const detections = (error as { detections?: unknown } | null)?.detections;
+  return Array.isArray(detections) && detections.length > 0
+    ? (detections as SearchDetection[])
+    : undefined;
+};
+
 /** A search that threw: the agent hears why, and the search step shows that every search failed. */
 const thrown = (
   queries: string[],
@@ -511,10 +518,16 @@ const thrown = (
   lead: string,
 ): ToolOutcome => {
   const reason = thrownReason(error);
+  const detections = detectionsOf(error);
   return {
-    content: `${lead}every search ${failureText[reason]}. Try again later, or say that search is failing.`,
+    content: `${lead}every search ${failureText[reason]}. Try again later, or say that search is failing.${searchHints(detections ? { detections } : undefined)}`,
     retrieved: [],
-    search: { queries, ...(filters?.length ? { filters } : {}), failedCompletely: reason },
+    search: {
+      queries,
+      ...(filters?.length ? { filters } : {}),
+      ...(detections ? { detections } : {}),
+      failedCompletely: reason,
+    },
     searchError: (error instanceof Error ? error.message : String(error)).slice(0, 500),
   };
 };

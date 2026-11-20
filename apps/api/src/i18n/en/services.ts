@@ -59,7 +59,10 @@ export const services = {
   connectorName: 'Connector for {service}',
   seedReason: 'Loaded from the local configuration',
   archivedByTenant: 'The service is archived and cannot be run.',
+  archiveBeforeDelete: 'Only an archived service can be deleted. Archive the service first.',
   archivedReadOnly: 'The service is archived and can only be read. Restore it to change it.',
+  reactivateOutdated:
+    'The latest version no longer validates: {problems}. Pause the service, publish a version that fixes this, then activate it.',
   pausedByTenant: 'The service is paused. Reason: {reason}',
   variantAnswer: 'Answers with sources',
   variantDefault: 'Default',

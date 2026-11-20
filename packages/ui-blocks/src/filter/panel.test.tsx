@@ -77,6 +77,17 @@ describe('the panel variant', () => {
     expect(row(/^Virksomhet/).textContent).toBe('Virksomhet Alle');
   });
 
+  it('puts Designsystemet’s Divider under each row, not a border of its own', () => {
+    render(<Host />);
+    const rows = [...document.querySelectorAll('.uib-filter-row')];
+    expect(rows).toHaveLength(3);
+    expect(rows.map((one) => one.nextElementSibling?.classList.contains('ds-divider'))).toEqual([
+      true,
+      true,
+      true,
+    ]);
+  });
+
   it('says «Alle» in a row only when it lists two or more values and every one is chosen', () => {
     const every = orgs.options.map((option) => option.value);
     const { unmount } = render(

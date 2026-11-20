@@ -2,6 +2,7 @@ import {
   authenticatedFetch,
   authHeaders,
   errorFromStatus,
+  discoveredKind,
   listedCapabilities,
   ModelError,
   rejectedParameter,
@@ -422,30 +423,16 @@ const azureRoot = (baseURL: string) =>
     .replace(/\/openai(\/v1)?$/, '')
     .replace(/\/anthropic$/, '');
 
-const nonChatParts = new Set([
-  'image',
-  'dall',
-  'sora',
-  'realtime',
-  'live',
-  'transcribe',
-  'tts',
-  'whisper',
-  'embedding',
-  'moderation',
-]);
-
-/** The provider lists no capabilities here, so the model name is all there is to go on. */
-const listed = (deployment: string, model?: string): DiscoveredDeployment => ({
-  deployment,
-  ...(model ? { model } : {}),
-  ...((model ?? deployment)
-    .toLowerCase()
-    .split(/[-_.:/\s]+/)
-    .some((part) => nonChatParts.has(part))
-    ? { chat: false }
-    : {}),
-});
+const listed = (deployment: string, model?: string, entry?: unknown): DiscoveredDeployment => {
+  const { kind, from, endpoints } = discoveredKind(entry, model ?? deployment);
+  return {
+    deployment,
+    ...(model ? { model } : {}),
+    kind,
+    kindFrom: from,
+    ...(endpoints ? { endpoints } : {}),
+  };
+};
 
 export const azureDeployments: DiscoverySource = {
   kind: 'azure-deployments',
@@ -480,7 +467,9 @@ export const openAiModels: DiscoverySource = {
     return (Array.isArray(body.data) ? (body.data as { id?: unknown }[]) : []).flatMap((m) => {
       if (typeof m?.id !== 'string' || !m.id) return [];
       const found = listedCapabilities(m);
-      return [{ ...listed(m.id), ...(found.length > 0 ? { capabilities: found } : {}) }];
+      return [
+        { ...listed(m.id, undefined, m), ...(found.length > 0 ? { capabilities: found } : {}) },
+      ];
     });
   },
 };

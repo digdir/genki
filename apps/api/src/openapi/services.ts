@@ -1750,6 +1750,47 @@ export const serviceRoutes: RouteConfig[] = [
       400: problem('Missing reason or invalid state'),
       ...tenantErrors,
       404: problem('No such service'),
+      409: problem(
+        'urn:genai:problem:service-outdated: activating a paused or archived service checks its latest version against the catalog as publishing does, and it no longer validates, for example because a model it names was deleted while it was archived. errors names what is missing; pause it, publish a fixed version, then activate it',
+      ),
+    },
+  }),
+  createRoute({
+    method: 'delete',
+    path: '/tenants/{tenant}/services/{id}',
+    summary:
+      'Delete an archived service for good: its definition, every version, its draft, its environments and the step flows of the organisation that nothing else still stored runs. Runs, conversations and documents stay and follow normal retention (ADR 0011). The id can be used again. Needs manage-services; audited',
+    request: { params: z.object({ tenant, id: service }), headers: changeReason },
+    responses: {
+      200: audited(
+        z.object({
+          id: z.string(),
+          deleted: z.literal(true),
+          versions: z.number().int(),
+          stepFlows: z.array(z.string()),
+        }),
+        'Deleted',
+      ),
+      400: problem('Missing reason'),
+      ...tenantErrors,
+      404: problem('No such service'),
+      409: {
+        description:
+          'urn:genai:problem:service-not-archived: only an archived service can be deleted. urn:genai:problem:service-in-use: a frontend, a live API key or another service that is not archived still uses it; errors name them, with path frontends, apiKeys or services',
+        content: {
+          'application/problem+json': {
+            schema: z.object({
+              type: z.enum([
+                'urn:genai:problem:service-not-archived',
+                'urn:genai:problem:service-in-use',
+              ]),
+              title: z.string(),
+              status: z.literal(409),
+              errors: z.array(z.object({ path: z.string(), message: z.string() })),
+            }),
+          },
+        },
+      },
     },
   }),
   createRoute({

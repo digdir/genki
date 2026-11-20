@@ -53,6 +53,7 @@ describe('plug-in registry', () => {
     for (const kind of [
       'model',
       'embedding',
+      'rerank',
       'knowledge',
       'tool-source',
       'blob',
@@ -60,7 +61,10 @@ describe('plug-in registry', () => {
       'hook',
     ])
       expect(kinds, kind).toContain(kind);
-    expect(kinds, 'no rerank engine is built in (ADR 0048)').not.toContain('rerank');
+    expect(
+      data.filter((p) => p.kind === 'rerank').map((p) => p.id),
+      'the bundled descriptor is the one built-in rerank API',
+    ).toEqual(['rerank.compatible']);
     expect(data.find((p) => p.id === 'model.openai-chat')).toMatchObject({
       contract: 'model@1',
       verifiable: true,

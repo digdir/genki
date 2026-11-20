@@ -1,6 +1,6 @@
 # 0048 Connections serve many APIs, models bind one per operation
 
-Status: proposed, 2026-11-05 (partly built, 2026-11-05; the console built, 2026-11-05; plug-in rerank engines, stored rerank entries, processor records on embed and rerank calls, embedders found by discovery on the embedding port, and limits and kind settings through the operator routes are missing; ColBERT removed, so no built-in rerank implementation until genki runs a reranker of its own, 2026-11-20)
+Status: proposed, 2026-11-05 (partly built, 2026-11-05; the console built, 2026-11-05; plug-in rerank engines, stored rerank entries, processor records on embed and rerank calls, and limits and kind settings through the operator routes are missing; discovered models classified by kind and served on the embedding and rerank ports, 2026-11-20; ColBERT and its built-in `colbert/rerank@1` removed, so the bundled `compatible/rerank@1` descriptor is the one rerank API, 2026-11-20)
 
 Supersedes the adapter-per-protocol part of ADR 0021 and the "one registration" bullet of ADR 0044. Amends ADR 0047: a descriptor names an API family instead of an endpoint protocol, its id names the API instead of the kind, and the `descriptors` opt-in on a model is replaced by bindings.
 
@@ -30,7 +30,9 @@ ADR 0047 meant every operation, chat included, to be one governed path. The cata
 - A connection holds `baseURL` (the provider resource's root), `auth`, `families` and `discovery`. `protocol` is removed.
 - `families` maps each API family the connection offers to its base, a path under `baseURL` or a full URL on the same resource: `families: { openai: /openai/v1, anthropic: https://<resource>.services.ai.azure.com/anthropic }`. A connection offers a family only when it names it.
 - The processor record stays keyed on the connection id, so one provider resource has one record.
-- `discovery` is a list of rules, each with `include`, `exclude`, `capabilities` and `apis`, the bindings a discovered deployment gets. Two rules on one connection replace the former `foundry-openai` and `foundry-claude`; embedders are listed models, not discovered. A discovered model still starts as a candidate an operator confirms (ADR 0021).
+- `discovery` is a list of rules, each with `include`, `exclude`, `capabilities` and `apis`, the bindings a discovered deployment gets. Two rules on one connection replace the former `foundry-openai` and `foundry-claude`. A discovered model still starts as a candidate an operator confirms (ADR 0021).
+- A discovered model has a kind: what the provider's listing says (`kind` or `mode`, then the paths in `endpoints`), else what the rule's `models.<deployment>.kind` says, which wins over the listing, else its name, else `chat`. A chat model binds the rule's `apis`. A model of another kind binds the rule's API for that kind, else the kind's default API, else the one API of that kind in the connection's families; with none it binds nothing, is listed with its kind and listed endpoints, and is offered for nothing until an operator binds an API or adds a reviewed descriptor (ADR 0049). It is never offered for chat.
+- A rule's `residency` is where every model it finds processes data, `global` when left out; an operator's residency on one model still wins. `models.<deployment>.embed` gives a discovered embedding model its dimensions, and from then on the embedding port serves it; a discovered reranker is served by the rerank port as soon as it binds an API.
 - Connection `options` are removed; both adapters declare an empty schema today.
 - A connection may hold non-secret `settings` (such as a key id or a region) and named `keys` (secret references) for descriptors that sign requests (ADR 0049). Only an operator sets them, a tenant connection cannot have them, and a `PUT` without them keeps them.
 
@@ -52,7 +54,7 @@ ADR 0047 meant every operation, chat included, to be one governed path. The cata
 ### One catalogue
 
 - Embedding models move into the model catalogue as models with `apis: { embed: … }`. The embedding catalogue file and its separate endpoint go away, and `EmbeddingRouter` resolves from the same catalogue registry, so embedders can be added and changed without a deploy.
-- Rerank engines follow the same way: a reranker is a model with `apis: { rerank: … }`. There is no built-in rerank implementation until genki runs a reranker of its own. The first one, `colbert/rerank@1`, is removed (issue 690): it called a host outside Norway although the catalogue declared the reranker `residency: norway` (issue 129). The rerank port, the service field `knowledge.reranker`, `retrieval.rerank` and the pipeline's rerank stage stay. A service that names no reranker runs with rerank off, and one that names a reranker no catalogue holds is refused at publish (tests "a service without a reranker runs retrieval with rerank off" and "a service that names a reranker no catalog holds is refused at publish").
+- Rerank engines follow the same way: a reranker is a model with `apis: { rerank: … }`, such as a discovered reranker bound to the bundled descriptor `compatible/rerank@1` (ADR 0049). genki runs no reranker of its own. The first built-in implementation, `colbert/rerank@1`, is removed (issue 690): it called a host outside Norway although the catalogue declared the reranker `residency: norway` (issue 129). The rerank port, the service field `knowledge.reranker`, `retrieval.rerank` and the pipeline's rerank stage stay. A service that names no reranker runs with rerank off, and one that names a reranker no catalogue holds is refused at publish (tests "a service without a reranker runs retrieval with rerank off" and "a service that names a reranker no catalog holds is refused at publish").
 
 ### Router and gate
 
@@ -89,7 +91,7 @@ Turned down:
 
 - Keeping `protocol` and adding more of them: every new API would still need a new endpoint and a new adapter.
 - A protocol list on the endpoint: it still ties the API choice to the endpoint, not to the deployment that actually supports it.
-- Detecting the API from model names: ADR 0044 turned this down, and it stays turned down. Discovery rules are written by an operator.
+- Detecting the API from model names: ADR 0044 turned this down, and it stays turned down. A name only decides the kind when neither the listing nor the operator does, and the API still comes from the rule, the kind's default or the one API of that kind; genki never writes or turns on a descriptor by itself.
 
 ## Consequences
 
@@ -99,5 +101,6 @@ Turned down:
 - Typed chat and decide calls carry the connection's processor record. On a connection without one they log a warning once and go through; with `GENAI_PROCESSOR_RECORDS=enforce` they refuse real data. The migration carries the existing records, `GET /operator/processor-records` and a log line at start name the connections without one, and the default turns to `enforce` once the console shows them.
 - A price stored per 1,000 tokens is moved to unit prices for every kind its model binds, at start and once. `costMicroNok` and `priced` on a run read as before.
 - Built (#383): the console's models area, with connections, models and the API bound for each kind (`apps/console/src/screens/models`).
-- Still missing: limits and kind settings such as `embed: { dimensions, maxBatch }` through `PUT` and `PATCH /operator/models/{id}`, so they are set in the catalogue only; plug-in rerank engines without an API stay in the rerank catalogue, and stored `rerank-endpoint` and `reranker` entries are not moved; embed and rerank calls do not yet check the processor record; embedders found by discovery are not served by the embedding port.
+- Still missing: limits and kind settings such as `embed: { dimensions, maxBatch }` through `PUT` and `PATCH /operator/models/{id}`, so they are set in the catalogue only; plug-in rerank engines without an API stay in the rerank catalogue, and stored `rerank-endpoint` and `reranker` entries are not moved; embed and rerank calls do not yet check the processor record; discovered rerankers are not yet in the tenant catalogue the reranker picker reads, so a service names one by id.
+- Built (2026-11-20): discovered models are classified by kind (`discoveredKind` in `packages/port-model/src/kinds.ts`), a rule takes `residency` and `models`, and `ModelRouter.discoveredForOtherPorts` feeds discovered embedders and rerankers to their ports. Tests: `packages/providers-openai/src/discovered-kinds.test.ts` and `apps/api/src/discovered-kinds.test.ts`.
 - Interaction patterns beyond one JSON request and one JSON answer are ADR 0049.

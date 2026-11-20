@@ -118,6 +118,7 @@ const actionKeys: Record<string, PlainKey> = {
   'platform.service.draft.rebase': 'changes.serviceDraftRebase',
   'platform.service.draft.save': 'changes.serviceDraftSave',
   'platform.service.lifecycle': 'changes.serviceLifecycle',
+  'platform.service.delete': 'changes.serviceDelete',
   'platform.step-flow.archive': 'changes.stepFlowArchive',
   'platform.service.access': 'changes.serviceAccess',
   'platform.service.environments.add': 'changes.environmentAdd',

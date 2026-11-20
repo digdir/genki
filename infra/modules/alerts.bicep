@@ -207,6 +207,18 @@ var appLogAlerts = [
     threshold: 1
   }
   {
+    key: 'catalog-skipped'
+    title: 'Catalog entry skipped'
+    description: 'The API or the worker left a stored catalog entry out when it rebuilt the catalog, so a dataset, model or endpoint runs on its seed or is missing; see docs/runbook.md, "Catalog entry skipped".'
+    severity: 2
+    frequency: 'PT5M'
+    window: 'PT15M'
+    query: '${consoleLogs} | where Log has \'catalog entry skipped\' | extend entry = parse_json(Log) | project TimeGenerated, ContainerAppName, entryKind = tostring(entry.kind), entryId = tostring(entry.id), reason = tostring(entry.reason)'
+    measure: ''
+    aggregation: 'Count'
+    threshold: 1
+  }
+  {
     key: 'api-latency'
     title: 'API slow'
     description: 'The API\'s 95th percentile response time was over ${thresholds.latencySeconds} s over 15 minutes, with at least ${thresholds.latencyMinRequests} requests; health checks, uploads and routes that wait for a model answer (playground, service calls, assistant, A2A, MCP) are left out.'

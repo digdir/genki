@@ -2,7 +2,9 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { catalogueProblems } from '@genai/i18n';
 import { InLocale } from '@genai/i18n/react';
-import { useState } from 'react';
+import { ArrowUpIcon, PaperclipIcon, PaperplaneIcon, PlusIcon } from '@navikt/aksel-icons';
+import { useState, type ReactElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { nb as sharedNb } from '../i18n.js';
 import { Composer, ComposerDisclaimer, type ComposerProps } from './Composer.js';
@@ -431,5 +433,74 @@ describe('the composer’s language', () => {
   it("keeps the question field's words in its own catalogue, out of the shared one that Approach loads", () => {
     expect(Object.keys(nb)).toEqual(['composer']);
     expect(sharedNb).not.toHaveProperty('composer');
+  });
+});
+
+// An icon told by its drawing, the path Aksel draws it with.
+const drawing = (icon: ReactElement) => {
+  const holder = document.createElement('div');
+  holder.innerHTML = renderToStaticMarkup(icon);
+  return holder.querySelector('path')?.getAttribute('d');
+};
+const iconOf = (button: HTMLElement) => button.querySelector('svg path')?.getAttribute('d');
+
+describe('the inline field, the dev-chat boards’', () => {
+  const upload = { items: [], onAdd: () => {}, onRemove: () => {} };
+
+  it('sends with an arrow up, the action’s primary button once there is a question', () => {
+    draw({ variant: 'inline' });
+    type('Hva sier rapporten?');
+    expect(iconOf(sendButton())).toBe(drawing(<ArrowUpIcon />));
+    expect(sendButton().getAttribute('data-variant')).toBe('primary');
+    expect(sendButton().getAttribute('data-color')).toBe('accent');
+  });
+
+  it('draws send neutral and quiet, still in the tab order, while there is nothing to send', () => {
+    draw({ variant: 'inline' });
+    expect(sendButton().getAttribute('aria-disabled')).toBe('true');
+    expect(sendButton().getAttribute('data-variant')).toBe('tertiary');
+    expect(sendButton().getAttribute('data-color')).toBe('neutral');
+    expect(sendButton().disabled).toBe(false);
+  });
+
+  it('uploads with «+» at the start of the row, before the field in reading order too', () => {
+    draw({ variant: 'inline', attachments: upload });
+    const plus = screen.getByRole('button', { name: 'Legg ved dokument' });
+    expect(iconOf(plus)).toBe(drawing(<PlusIcon />));
+    expect(before(plus, field())).toBe(true);
+    expect(document.querySelector('.uib-composer-frame')?.getAttribute('data-variant')).toBe(
+      'inline',
+    );
+  });
+
+  it('draws no «+» where the service has no upload yet', () => {
+    draw({ variant: 'inline', attachments: { items: [], onRemove: () => {} } });
+    expect(screen.queryByRole('button', { name: /Legg ved dokument/ })).toBeNull();
+  });
+
+  it('puts a question with a new line over the buttons, and back in the row without one', () => {
+    draw({ variant: 'inline' });
+    const frame = () => document.querySelector('.uib-composer-frame') as HTMLElement;
+    expect(frame().hasAttribute('data-wrapped')).toBe(false);
+    type('Hva sier rapporten?\nOg hva sier evalueringen?');
+    expect(frame().hasAttribute('data-wrapped')).toBe(true);
+    type('Hva sier rapporten?');
+    expect(frame().hasAttribute('data-wrapped')).toBe(false);
+  });
+
+  it('takes the host’s name and placeholder for the field', () => {
+    draw({ variant: 'inline', label: 'Still et spørsmål', placeholder: 'Skriv her …' });
+    const named = screen.getByRole('textbox', { name: 'Still et spørsmål' });
+    expect(named.getAttribute('placeholder')).toBe('Skriv her …');
+  });
+
+  it('leaves the stacked field as it was: a paper plane on the action’s primary button', () => {
+    draw({ attachments: upload });
+    expect(iconOf(sendButton())).toBe(drawing(<PaperplaneIcon />));
+    expect(sendButton().getAttribute('data-color')).toBe('accent');
+    expect(sendButton().getAttribute('data-variant')).toBe('primary');
+    expect(iconOf(screen.getByRole('button', { name: 'Legg ved dokument' }))).toBe(
+      drawing(<PaperclipIcon />),
+    );
   });
 });

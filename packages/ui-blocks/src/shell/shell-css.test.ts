@@ -55,6 +55,11 @@ const neutralPins = [
   '--genai-shell-tools-tab-hover-background',
   '--genai-shell-tools-tab-selected-background',
   '--genai-shell-tools-tabs-background',
+  // The tools' dropdown button: navigation, not the main action, so neutral in every state.
+  '--genai-shell-tools-trigger-active-background',
+  '--genai-shell-tools-trigger-background',
+  '--genai-shell-tools-trigger-color',
+  '--genai-shell-tools-trigger-hover-background',
 ];
 
 describe('the Shell styles', () => {
@@ -191,7 +196,7 @@ describe('the Shell styles', () => {
       ".uib-shell[data-frame='cards']:not([data-compact]) > .uib-shell-side[data-side='primary'] { margin-inline-end: var(--genai-shell-gap, var(--ds-size-3)); }",
     );
     expect(css).toContain(
-      ".uib-shell[data-frame='cards'] .uib-shell-toggle { --dsc-button-size: var(--genai-shell-rail-button-size, var(--ds-size-11)); }",
+      ".uib-shell[data-frame='cards'] .uib-shell-toggle { --dsc-button-border-radius: var(--genai-shell-toggle-radius, var(--ds-border-radius-xl)); --dsc-button-size: var(--genai-shell-rail-button-size, var(--ds-size-11)); }",
     );
     expect(css).toContain(
       'border-radius: var(--genai-shell-card-radius, var(--ds-border-radius-xl));',
@@ -212,6 +217,50 @@ describe('the Shell styles', () => {
     expect(css).toContain(
       ".uib-shell[data-frame='cards'] > .uib-shell-side > .uib-shell-box > .uib-shell-header, .uib-shell[data-frame='cards'] > .uib-shell-side > .uib-shell-fill > .uib-shell-box > .uib-shell-header { align-items: start; }",
     );
+  });
+
+  it('centre an open panel’s button on its title’s line, moved and not resized, and leave a rail’s alone', () => {
+    expect(css).toContain(
+      ".uib-shell[data-frame='cards'] > .uib-shell-side:not([data-collapsed]) .uib-shell-header > .uib-shell-toggle { translate: 0 calc((var(--genai-shell-title-line-height, var(--ds-size-8)) - var(--genai-shell-rail-button-size, var(--ds-size-11))) / 2); }",
+    );
+  });
+
+  it('draw the tools’ dropdown button pressed or open on the active surface, hover only under the pointer (dev-verktoy-3)', () => {
+    const open = css.slice(css.indexOf(".uib-shell-tools-trigger[aria-expanded='true'] {"));
+    expect(open.slice(0, open.indexOf('}'))).toContain(
+      '--dsc-button-background: var(--genai-shell-tools-trigger-active-background, var(--ds-color-neutral-surface-active));',
+    );
+    const trigger = css.slice(css.indexOf('.uib-shell-tools-trigger {'));
+    expect(trigger.slice(0, trigger.indexOf('}'))).toContain(
+      '--dsc-button-background--active: var(--genai-shell-tools-trigger-active-background, var(--ds-color-neutral-surface-active));',
+    );
+  });
+
+  it('draw the tools’ dropdown button in neutral in every state, never in the Button’s accent', () => {
+    const rules = [
+      '.uib-shell-tools-trigger {',
+      ".uib-shell-tools-trigger[aria-expanded='true'] {",
+    ].map((start) => {
+      expect(css.indexOf(start), start).toBeGreaterThanOrEqual(0);
+      const from = css.slice(css.indexOf(start));
+      return from.slice(0, from.indexOf('}'));
+    });
+    const trigger = rules[0] ?? '';
+    for (const [name, token] of [
+      ['--dsc-button-background', 'surface-tinted'],
+      ['--dsc-button-background--hover', 'surface-hover'],
+      ['--dsc-button-background--active', 'surface-active'],
+      ['--dsc-button-color', 'text-default'],
+      ['--dsc-button-color--hover', 'text-default'],
+      ['--dsc-button-color--active', 'text-default'],
+    ]) {
+      expect(trigger).toMatch(
+        new RegExp(`${name}: var\\([^;]*var\\(--ds-color-neutral-${token}\\)\\);`),
+      );
+    }
+    for (const rule of rules) {
+      expect(rule).not.toMatch(/accent|--ds-color-(surface|text|base)-/);
+    }
   });
 
   it('keep what a rail shows at its bottom out of the top row', () => {

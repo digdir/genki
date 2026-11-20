@@ -25,6 +25,7 @@ import {
 import type { EnvironmentTier } from '@genai/composition';
 import type { BlobStore } from '@genai/port-blob';
 import type { ProcessorRecordCheck } from '@genai/port-model';
+import type { FederatedTokens } from '@genai/kernel';
 import type { TriggerRunStore } from '@genai/jobs';
 import type { EgressOptions } from '@genai/providers-mcp-client';
 import type { DescriptorRegistry } from '@genai/operations';
@@ -274,12 +275,15 @@ export interface BootOptions {
   blobStore?: BlobStore;
   fakeKey?: string;
   demoRecorderKeyDigest?: string;
+  configEntries?: InMemoryConfigEntryStore;
+  federatedTokens?: FederatedTokens;
+  onWarning?: (message: string) => void;
   policy?: (inner: PolicyDecisionPoint, configEntries: ConfigEntryStore) => PolicyDecisionPoint;
 }
 
 export const bootPlatform = async (options: BootOptions = {}) => {
   const people = options.people ?? {};
-  const configEntries = new InMemoryConfigEntryStore();
+  const configEntries = options.configEntries ?? new InMemoryConfigEntryStore();
   const settings = new SettingsRegistry(platformSettings);
   const authenticator = createAuthenticator(options.verifier ? { verifier: options.verifier } : {});
   const admit = admitMaskinportenClients(
@@ -307,6 +311,8 @@ export const bootPlatform = async (options: BootOptions = {}) => {
     ...(options.mediaOutput ? { mediaOutput: options.mediaOutput } : {}),
     ...(options.processorRecords ? { processorRecords: options.processorRecords } : {}),
     ...(options.blobStore ? { blobStore: options.blobStore } : {}),
+    ...(options.federatedTokens ? { federatedTokens: options.federatedTokens } : {}),
+    ...(options.onWarning ? { onWarning: options.onWarning } : {}),
     ...(options.demoRecorderKeyDigest
       ? { demoRecorderKeyDigest: options.demoRecorderKeyDigest }
       : {}),

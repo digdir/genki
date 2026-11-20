@@ -581,8 +581,13 @@ describe('azure deployment discovery', () => {
     });
 
     expect(found).toEqual([
-      { deployment: 'gpt-4o-2M-tps', model: 'gpt-4o' },
-      { deployment: 'claude-sonnet-5-5', model: 'claude-sonnet-5-5' },
+      { deployment: 'gpt-4o-2M-tps', model: 'gpt-4o', kind: 'chat', kindFrom: 'name' },
+      {
+        deployment: 'claude-sonnet-5-5',
+        model: 'claude-sonnet-5-5',
+        kind: 'chat',
+        kindFrom: 'name',
+      },
     ]);
     expect(seen[0]?.path).toBe('/openai/deployments?api-version=2022-12-01');
     expect(seen[0]?.headers['api-key']).toBe('test-key');
@@ -935,7 +940,13 @@ describe('what a discovered model is offered for', () => {
     await r.refresh();
 
     expect(r.describe()).toMatchObject([
-      { id: 'foundry-openai/gpt-live-1', operations: ['chat'], capabilities: ['stream'] },
+      {
+        id: 'foundry-openai/gpt-live-1',
+        kind: 'chat',
+        kindFrom: 'operator',
+        operations: ['chat'],
+        capabilities: ['stream'],
+      },
     ]);
     expect(r.models().has('foundry-openai/gpt-live-1')).toBe(true);
   });

@@ -111,7 +111,11 @@ describe('a pgvector endpoint on the knowledge server', () => {
       if (sql.includes('kn_generation')) return { rows: [{ recipe: {} }], rowCount: 1 };
       throw cancelled;
     });
-    const reader = { connect: vi.fn(async () => ({ query, release: () => undefined })), query };
+    const reader = {
+      connect: vi.fn(async () => ({ query, release: () => undefined })),
+      query,
+      options: {},
+    };
     const engine = pgvectorEngine({
       pool: fakePool().pool,
       knowledge: { reader: reader as unknown as Pool },

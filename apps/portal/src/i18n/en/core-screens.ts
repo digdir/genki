@@ -280,6 +280,7 @@ export const changes = {
   serviceDraftRebase: 'brought up to date the draft of',
   serviceDraftSave: 'saved the draft of',
   serviceLifecycle: 'changed the status of the service',
+  serviceDelete: 'deleted the service',
   stepFlowArchive: 'archived the step flow',
   operationKindDelete: 'deleted the operation kind',
   serviceAccess: 'changed who may use',

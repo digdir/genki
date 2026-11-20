@@ -155,6 +155,7 @@ const restartedFrom =
     list: (...args) => previous.list(...args),
     resolve: (...args) => previous.resolve(...args),
     publish: (...args) => previous.publish(...args),
+    remove: (...args) => previous.remove(...args),
     capabilities: async (onInvalid) => {
       const stored = await Promise.all(
         [builderServiceId, optimiserServiceId].map((id) => previous.get('Service', tenant, id)),

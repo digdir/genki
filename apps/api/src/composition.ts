@@ -253,6 +253,7 @@ import { testRunnerView } from './test-runner.js';
 import { compiledCapabilityCache } from './compiled-capabilities.js';
 import {
   hidingInternalServices,
+  deletedInternalServiceKind,
   hidingInternalTasks,
   hidingInternalTestSets,
   isHiddenService,
@@ -324,6 +325,7 @@ import { maskinportenClientsModule } from './maskinporten-clients.js';
 import { defaultReservedDomains, registerHostRoutes, type HostingRules } from './hosts.js';
 import { hostedByGenki, interfaceCatalogueProblems } from './interface-catalogue.js';
 import { triggersModule } from './triggers.js';
+import { createServiceDeleteModule } from './service-delete.js';
 import { lifecycleOf, pausedMessage, serviceLifecycleModule } from './service-lifecycle.js';
 import { stepFlowArchiveModule } from './step-flow-archive.js';
 import { batchTasksOf } from './batch-runs.js';
@@ -353,6 +355,7 @@ import { operationDescriptorsModule } from './operation-descriptors.js';
 import { documentDatasetRoutes } from './openapi/datasets.js';
 import { declaredSecrets, PluginRegistry } from '@genai/plugins';
 import { anthropicPlugins } from '@genai/providers-anthropic/contract';
+import { compatibleRerankPlugins } from '@genai/port-rerank/contract';
 import { a2aPlugins } from '@genai/providers-a2a-client/contract';
 import { mcpPlugins } from '@genai/providers-mcp-client/contract';
 import { openApiPlugins } from '@genai/providers-openapi-tools/contract';
@@ -557,7 +560,7 @@ export interface PlatformInput {
   knowledgePool?: PgvectorEngineOptions['pool'];
   knowledgeServer?: KnowledgePools;
   embeddingAdapters?: EmbeddingAdapter[];
-  /** Rerank engines; none is built in until genki runs a reranker of its own (ADR 0048). */
+  /** Rerank engines for rerankers without an API; none is built in (ADR 0048). */
   rerankAdapters?: RerankAdapter[];
   searchOnlyClusters?: (string | undefined)[];
   ingestFolderRoot?: string;
@@ -1734,6 +1737,10 @@ export const createPlatform = async (input: PlatformInput) => {
       list: (...args) => store.list(...args),
       resolve: (...args) => store.resolve(...args),
       capabilities: () => compiled.get(),
+      remove: async (...args) => {
+        await store.remove(...args);
+        await resync();
+      },
       publish: async (...args) => {
         const archived = await archivedPublishRefusal(args[0], serviceLifecycle);
         if (archived) return archived;
@@ -1747,6 +1754,10 @@ export const createPlatform = async (input: PlatformInput) => {
     {
       draftDefinition: async (tenant, id) =>
         (await serviceDrafts(configurables.store, store).draftOf(tenant, id))?.spec.definition,
+      deletedInternal: async (tenant, id) =>
+        (await configurables.store.history(deletedInternalServiceKind, tenant, id)).map(
+          (e) => e.at,
+        ),
     },
   );
 
@@ -2140,6 +2151,7 @@ export const createPlatform = async (input: PlatformInput) => {
   for (const plugin of [
     ...openAiPlugins,
     ...anthropicPlugins,
+    ...compatibleRerankPlugins(runtime.descriptors),
     ...mcpPlugins,
     ...a2aPlugins,
     ...openApiPlugins,
@@ -2275,6 +2287,11 @@ export const createPlatform = async (input: PlatformInput) => {
     createKeyPoliciesModule({
       policies: keyPolicies,
       keys: apiKeys,
+    })(moduleDeps),
+    createServiceDeleteModule({
+      clients,
+      apiKeys,
+      ...(input.now ? { now: input.now } : {}),
     })(moduleDeps),
   );
   if (input.verifyPluginsOnBoot)

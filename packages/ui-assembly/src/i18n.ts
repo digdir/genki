@@ -26,6 +26,11 @@ const nbAssembly = defineNamespace({
   filterForThread: 'Filter for tråden',
   // The next look's secondary panel, as the dev-verktoy boards name it: «Skjul verktøypanelet».
   toolsPanel: 'Verktøypanelet',
+  // The next look's question field, on a new thread and in a conversation.
+  fieldStart: 'Still et spørsmål',
+  fieldStartPlaceholder: 'Skriv her …',
+  fieldFollowUp: 'Spør videre',
+  fieldFollowUpPlaceholder: 'Spør videre …',
   approachEmpty: 'Fremgangsmåten vises her når du stiller et spørsmål.',
   approachNotKept:
     'Fremgangsmåten lagres ikke med svarene i tråden. Den vises her når du stiller et nytt spørsmål.',
@@ -75,6 +80,10 @@ const enAssembly = {
   stripClose: 'Close',
   filterForThread: 'The thread’s filter',
   toolsPanel: 'Tool panel',
+  fieldStart: 'Ask a question',
+  fieldStartPlaceholder: 'Write here …',
+  fieldFollowUp: 'Ask a follow-up',
+  fieldFollowUpPlaceholder: 'Ask a follow-up …',
   approachEmpty: 'The approach shows here when you ask a question.',
   approachNotKept:
     'The approach is not kept with the answers in the thread. It shows here when you ask a new question.',

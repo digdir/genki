@@ -145,6 +145,13 @@ const unsupportedOr = async <T>(
   }
 };
 
+/** A search error carries what detection found, so a caller can still give it as a hint. */
+export const withDetections = (error: unknown, detections: Detection[]): unknown => {
+  if (detections.length > 0 && error instanceof Object && Object.isExtensible(error))
+    Object.assign(error, { detections });
+  return error;
+};
+
 const inBatches = async (
   knowledge: KnowledgePort,
   requests: SearchRequest[],
@@ -616,10 +623,17 @@ export const retrieve = async (input: RetrieveInput): Promise<RetrievalResult> =
     const detected = await detect(queries, note);
     const explicit = toSet(input.filters);
     const effective = toInput(mergeTyped(explicit, detected.filter ?? {}));
-    let result = await runStrategies(queries, portFilters(effective), note);
+    const strategies = async (filters: Record<string, FilterValue> | undefined) => {
+      try {
+        return await runStrategies(queries, filters, note);
+      } catch (error) {
+        throw withDetections(error, detected.detections);
+      }
+    };
+    let result = await strategies(portFilters(effective));
     let fallback = false;
     if (detected.filter && effective && result.merged.length === 0) {
-      result = await runStrategies(queries, portFilters(toInput(explicit)), note);
+      result = await strategies(portFilters(toInput(explicit)));
       fallback = true;
     }
 

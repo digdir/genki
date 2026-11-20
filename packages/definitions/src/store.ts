@@ -140,6 +140,12 @@ export interface DefinitionStore {
   list(tenant: string): Promise<{ kind: Definition['kind']; id: string }[]>;
   resolve(name: string, version?: number): Promise<CompiledCapability | undefined>;
   capabilities(onInvalid?: OnInvalidStored): Promise<CompiledCapability[]>;
+  remove(tenant: string, definitions: StoredDefinitionRef[]): Promise<void>;
+}
+
+export interface StoredDefinitionRef {
+  kind: Definition['kind'];
+  id: string;
 }
 
 export type SkillFinder = (
@@ -394,6 +400,10 @@ export class InMemoryDefinitionStore implements DefinitionStore {
       this.plugins,
       onInvalid,
     );
+  }
+
+  async remove(tenant: string, definitions: StoredDefinitionRef[]) {
+    for (const { kind, id } of definitions) this.#definitions.delete(keyOf(kind, tenant, id));
   }
 
   #services() {
