@@ -78,8 +78,8 @@ const fill = async (g: string, rareOnEvery: boolean) => {
        from generate_series(1, $3::int) n cross join generate_series(0, $4::int - 1) p`,
     [vectors.id, g, documents, chunksPerDocument, dims],
   );
-  await owner.query(`analyze ${docs}`);
-  await owner.query(`analyze ${chunks}`);
+  await owner.query(`vacuum (analyze) ${docs}`);
+  await owner.query(`vacuum (analyze) ${chunks}`);
 };
 
 /** The search as the API runs it: the knowledge port, as the reader, through `kn_search`. */
@@ -170,6 +170,28 @@ const planOf = async (filters: unknown[], join: 'index' | 'any join' = 'index') 
   }
 };
 
+/** The chunk partition's table blocks `kn_search_sql` reads as it builds the search for this filter, counting its chunks. */
+const chunkBlocksToBuild = async (filters: unknown[]) => {
+  // A fresh session: a pooled one still holds unflushed counts from its earlier transactions.
+  const client = new pg.Client({ connectionString: container.getConnectionUri() });
+  await client.connect();
+  try {
+    await client.query('begin');
+    await client.query(
+      `select kn_search_sql($1, $2, 'chunks', 'vector', 'x', $3::halfvec, null, $4::jsonb, 10, 50, 60)`,
+      [vectors.id, generation, JSON.stringify(queryVector), JSON.stringify(filters)],
+    );
+    const { rows } = await client.query<{ blocks: string }>(
+      `select pg_stat_get_xact_blocks_fetched($1::regclass) as blocks`,
+      [partitionOf('kn_chunks', generation)],
+    );
+    return Number(rows[0]?.blocks);
+  } finally {
+    await client.query('rollback');
+    await client.end();
+  }
+};
+
 const typeIs = (type: string) => [{ field: 'type', op: 'in', values: [type] }];
 
 beforeAll(async () => {
@@ -236,6 +258,12 @@ describe('filtered vector search on the knowledge server', () => {
     const plan = await planOf(typeIs('sjelden'), 'any join');
     expect(plan).toContain(`Index Scan using ${chunks}_doc on ${chunks} x`);
     expect(plan).not.toContain(`Seq Scan on ${chunks} x`);
+  });
+
+  it("counting a filter's chunks reads the chunks' doc index, not the chunks", async () => {
+    // Reading the chunks reads a table block for each of the 101 it counts; the doc index alone reads none,
+    // though planning may look at one.
+    expect(await chunkBlocksToBuild(typeIs('middels'))).toBeLessThanOrEqual(1);
   });
 
   it('a filter that keeps more chunks than the threshold searches the HNSW index', async () => {

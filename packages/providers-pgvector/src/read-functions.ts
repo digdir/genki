@@ -165,6 +165,7 @@ const createFunctions = (filtered: FilteredSearch) => [
        g text := quote_literal(p_generation);
        recipe jsonb;
        matched integer;
+       filtered_docs text;
        filtered_chunks text;
        exact boolean := false;
        cfg text;
@@ -249,14 +250,18 @@ const createFunctions = (filtered: FilteredSearch) => [
          -- comes back short (issue 800). A filter keeping few chunks is ranked exactly. The count and the exact
          -- ranking read the filter's documents first and then each one's chunks by the doc index: joined
          -- plainly, the planner may read every chunk of the generation when it guesses the filter large.
-         -- The count stops one past the threshold.
+         -- The count stops one past the threshold and reads the doc index alone: a generation belongs to one
+         -- dataset, and chunks without a vector count too.
          if where_sql <> 'true' then
-           filtered_chunks := format('(select d.id from kn_docs d where d.dataset = %s and d.generation = %s and %s) m
-               cross join lateral (select %s as id, x.vec from %s x
-                 where x.dataset = %s and x.generation = %s and x.doc_id = m.id and x.vec is not null offset 0) x',
-             ds, g, where_sql, id_col, tbl, ds, g);
-           execute format('select count(*)::int from (select 1 from %s limit %s) n',
-             filtered_chunks, ${Math.trunc(filtered.exactChunks) + 1}) into matched;
+           filtered_docs := format('(select d.id from kn_docs d where d.dataset = %s and d.generation = %s and %s) m',
+             ds, g, where_sql);
+           execute format('select count(*)::int from (select 1 from %s
+               cross join lateral (select 1 from %s x where x.generation = %s and x.doc_id = m.id offset 0) x
+               limit %s) n',
+             filtered_docs, tbl, g, ${Math.trunc(filtered.exactChunks) + 1}) into matched;
+           filtered_chunks := format('%s cross join lateral (select %s as id, x.vec from %s x
+               where x.dataset = %s and x.generation = %s and x.doc_id = m.id and x.vec is not null offset 0) x',
+             filtered_docs, id_col, tbl, ds, g);
            exact := matched <= ${Math.trunc(filtered.exactChunks)};
            if not exact then
              -- For this read's transaction only, and never below the server's own.
