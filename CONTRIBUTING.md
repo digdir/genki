@@ -8,7 +8,7 @@ You need [mise](https://mise.jdx.dev) and Docker.
 
 ```sh
 mise trust && mise install   # Node 24.21.0, pinned in mise.toml
-npm start                    # setup, then API, portal, console and workspace
+npm start                    # setup, then API, worker, portal, console and workspace
 ```
 
 `npm start` runs `npm run setup` (starts Postgres with pgvector and the knowledge server in Docker, creates `.env.local` if it is missing or adds the knowledge settings it lacks, and sets up the knowledge server) and then `npm run dev:all`. Setup turns on dev mode (`GENAI_DEV_MODE=true`), which gives you the mock login with test persons and lets the API run without real identity settings. Never turn it on anywhere else. [docs/development.md](docs/development.md) lists the ports, test persons and the settings that need your own model and search accounts; everything works without them on the local test model.

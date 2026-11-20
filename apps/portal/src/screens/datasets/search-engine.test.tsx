@@ -101,7 +101,7 @@ describe('Datasett: søkemotor', () => {
   });
 
   it('says there is nothing to switch to when the platform has one engine', async () => {
-    await openOwn({ endpoints: exampleEndpoints.filter((e) => e.id === 'platform-pg') });
+    await openOwn({ endpoints: exampleEndpoints.filter((e) => e.id === 'kunnskapsserveren') });
     const section = await block();
     expect(
       within(section).getByText(
@@ -440,7 +440,7 @@ describe('Datasett: søkemotor', () => {
     });
     expect(replies.get(`GET ${path}/engine`)).toMatchObject({
       endpoint: 'opensearch-sev',
-      previous: { endpoint: 'platform-pg', title: 'Innebygd søk' },
+      previous: { endpoint: 'kunnskapsserveren', title: 'Innebygd søk' },
     });
   });
 

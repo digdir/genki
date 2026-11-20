@@ -7,10 +7,12 @@ import { InMemoryDefinitionStore, SettingsRegistry } from '@genai/definitions';
 import { envSecrets } from '@genai/kernel';
 import { testContext } from '@genai/port-embedding/testing';
 import { knowledgeProfiles } from '@genai/port-knowledge';
+import { memoryEngine } from '@genai/port-knowledge/testing';
 import { createPool } from '@genai/providers-postgres';
 import type { AssistantProposal } from '@genai/strategy-builder';
 import { createAdmin } from './admin.js';
 import { createPlatform } from './composition.js';
+import type { JobRunStore } from './ingestion.js';
 import { storeProposal, type CatalogProposal } from './proposals.js';
 import { stopPostgres } from '@genai/providers-postgres/testing';
 
@@ -88,11 +90,10 @@ const boot = async () => {
       models: { endpoints: {}, models: [] },
       knowledge: {
         endpoints: {
-          'platform-pg': {
-            engine: 'pgvector',
-            options: { connection: 'platform' },
-            sharing: { tenants: '*' },
-          },
+          // The default for connector datasets: the knowledge database, which takes no database source yet (issue 870).
+          kunnskapsserveren: { engine: 'pgvector', sharing: { tenants: '*' } },
+          // Where these tests' connectors sync instead.
+          lokal: { engine: 'memory', sharing: { tenants: '*' } },
         },
         datasets: [],
       },
@@ -107,7 +108,10 @@ const boot = async () => {
     },
     egress: { testOverride: { allowLoopback: true } },
     onWarning: (message) => warnings.push(message),
-    knowledgePool: pool,
+    knowledgeServer: { reader: pool },
+    knowledgeEngines: [memoryEngine()],
+    // A deployment's job queue: datasets on the knowledge database run as jobs, none here.
+    configurables: { jobRuns: { runsAsJobs: () => false, runs: {} as unknown as JobRunStore } },
   });
   const admin = createAdmin({
     store: platform.definitions,
@@ -117,6 +121,11 @@ const boot = async () => {
   });
   const app = new Hono();
   platform.mount(app, admin);
+  // An approval syncs into the in-memory engine unless it names an endpoint.
+  const bodyOf = (path: string, body: unknown) =>
+    path.endsWith('/approve') && typeof body === 'object' && body !== null && !('endpoint' in body)
+      ? { ...body, endpoint: 'lokal' }
+      : body;
   const call = (path: string, as: string, init: { method?: string; body?: unknown } = {}) =>
     app.request(path, {
       method: init.method ?? (init.body === undefined ? 'GET' : 'POST'),
@@ -125,7 +134,7 @@ const boot = async () => {
         'content-type': 'application/json',
         'change-reason': 'Testendring',
       },
-      ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
+      ...(init.body === undefined ? {} : { body: JSON.stringify(bodyOf(path, init.body)) }),
     });
   const propose = async (title: string, table = 'saker') =>
     (await storeProposal(
@@ -234,7 +243,8 @@ describe('a connector mapping approved from the builder assistant', () => {
           },
         )
         .search({ query, profile: knowledgeProfiles.content });
-    const closed = await search('klage');
+    // The in-memory engine matches whole words; it does not stem as Norwegian text search does.
+    const closed = await search('klagen');
     expect(closed.hits[0]?.text).toContain('Klagen ble tatt til følge');
     const open = await search('driftstilskudd');
     expect(open.hits.map((h) => h.text).join(' ')).not.toContain('under behandling');
@@ -485,6 +495,23 @@ describe('a connector mapping approved from the builder assistant', () => {
     await settled(call, view?.id ?? '');
   });
 
+  it("a connector's dataset defaults to kunnskapsserveren, which refuses its database source until issue 870", async () => {
+    const { call, propose } = await boot();
+    const proposal = await propose('Saker i kunnskapsdatabasen');
+    const refused = await call(`/tenants/${digdir}/proposals/${proposal.id}/approve`, 'kari', {
+      // Names no endpoint, so the connector takes the default.
+      body: { reason, connection: { ...login, tls: false }, endpoint: undefined },
+    });
+
+    expect(refused.status).not.toBe(200);
+    expect(await refused.text()).toContain(
+      'a source of kind database cannot fill a dataset on the knowledge database yet',
+    );
+    expect(
+      (await json<{ data: unknown[] }>(await call(`/tenants/${digdir}/connectors`, 'kari'))).data,
+    ).toEqual([]);
+  });
+
   it('a failed level-2 approval removes its secret inside an audited task', async () => {
     const { admin, call, propose } = await boot();
     const proposal = await propose('Saker uten søkemotor');
@@ -661,7 +688,7 @@ describe('a connector mapping approved from the builder assistant', () => {
     expect(
       (
         await call(`/tenants/${other}/datasets`, 'ola', {
-          body: { id: 'laan', name: 'Lånte saker', residency: 'norway', endpoint: 'platform-pg' },
+          body: { id: 'laan', name: 'Lånte saker', residency: 'norway', endpoint: 'lokal' },
         })
       ).status,
     ).toBe(201);

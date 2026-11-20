@@ -11109,22 +11109,20 @@
             color: '#8fa8b3',
             status: 'Provider',
             packages: ['@genai/providers-pgvector'],
-            summary:
-              "Built-in search engine and index writer in the platform's own Postgres or on the knowledge server.",
+            summary: 'Built-in search engine and index writer on the knowledge server.',
             description:
-              "Hybrid search with Norwegian full text and pgvector, as two statements fused with RRF in TypeScript, so a slow text half keeps the vector hits. Datasets are kept apart by id, filters and facets are parameterised SQL, and new generations stay invisible until promoted. It runs in the platform database (ADR 0023), or, for an endpoint set to `connection` knowledge, on the knowledge server through the API's reader pool or the worker's writer and owner pools, never the platform database (ADR 0042). Its setup creates the three knowledge roles, stores the platform server's id there and lets only its two logins connect to the database. On the knowledge server each generation is its own partition with its own HNSW and filter indexes, built standalone and attached; the catalog names the active one. There the API reads only through seven SECURITY DEFINER read functions that refuse a dataset the router did not allow, on a read pool that falls back to the primary when a server lacks the generation or does not answer.",
+              "Hybrid search with Norwegian full text and pgvector, as two statements fused with RRF in TypeScript, so a slow text half keeps the vector hits. Datasets are kept apart by id, filters and facets are parameterised SQL, and new generations stay invisible until promoted. It runs only on the knowledge server, through the API's reader pool or the worker's writer and owner pools, never the platform database (ADR 0042); the platform database's shared kn_ tables went with issue 151. Its setup creates the three knowledge roles, stores the platform server's id there and lets only its two logins connect to the database. On the knowledge server each generation is its own partition with its own HNSW and filter indexes, built standalone and attached; the catalog names the active one. There the API reads only through seven SECURITY DEFINER read functions that refuse a dataset the router did not allow, on a read pool that falls back to the primary when a server lacks the generation or does not answer.",
             responsibilities: [
               'Text, vector and hybrid search',
               'Filters, facets, fetch and range',
               'Index writer with generations',
-              'Autovacuum off and a VACUUM after each run with no write open (pgvector 0.8.2)',
               'A per-generation advisory lock that writers take shared and VACUUM exclusively',
               'Heavy work for the worker - builds, VACUUM, REINDEX, pg_prewarm, freeze ages and a recall sample',
               'Stored conversions on the knowledge server - pages per file, converter and derivation, and the records waiting on them (ADR 0042)',
             ],
             files: [
               'packages/providers-pgvector/src/engine.ts',
-              'packages/providers-pgvector/src/schema.ts',
+              'packages/providers-pgvector/src/transaction.ts',
               'packages/providers-pgvector/src/sql.ts',
               'packages/providers-pgvector/src/hybrid.ts',
               'packages/providers-pgvector/src/knowledge-setup.ts',
@@ -11152,10 +11150,13 @@
               },
               {
                 to: 'postgres-db',
-                label: 'SQL over the platform pool',
+                label: 'SQL on the knowledge server',
                 kind: 'sql',
                 target: 'sql',
-                witness: { file: 'packages/providers-pgvector/src/schema.ts', contains: 'vector' },
+                witness: {
+                  file: 'packages/providers-pgvector/src/partitions.ts',
+                  contains: 'vector',
+                },
               },
             ],
             keywords: 'pgvector postgres hybrid search vectors writer',

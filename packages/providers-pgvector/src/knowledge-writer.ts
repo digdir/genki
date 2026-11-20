@@ -15,7 +15,7 @@ import {
   recipeOf,
 } from './partitions.js';
 import { tryGenerationWrite } from './heavy-work.js';
-import { transaction } from './schema.js';
+import { transaction } from './transaction.js';
 import { fieldsText } from './sql.js';
 
 type Options = { textSearchConfig?: string | undefined };

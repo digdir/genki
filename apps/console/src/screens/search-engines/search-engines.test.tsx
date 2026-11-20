@@ -144,7 +144,7 @@ describe('Søkemotorer', () => {
   it('the builtin engine shows no address or key fields', async () => {
     await openEndpoint('innebygd-sok');
     expect(
-      screen.getByText('Kjører i plattformens database. Ingen adresse eller nøkkel trengs.'),
+      screen.getByText('Kjører i plattformen. Ingen adresse eller nøkkel trengs.'),
     ).toBeTruthy();
     expect(screen.queryByRole('textbox', { name: /Adresse/ })).toBeNull();
     expect(screen.queryByRole('combobox', { name: /nøkkel|hemmelighet/i })).toBeNull();

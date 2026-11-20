@@ -559,7 +559,7 @@ const platform = await createPlatform({
     rerank: catalogs.rerank.catalog,
     embeddings: catalogs.embeddings.catalog,
   },
-  ...(db ? { knowledgePool: db.pool, changes: db.changes } : {}),
+  ...(db ? { changes: db.changes } : {}),
   ...(knowledgeServer ? { knowledgeServer: knowledgeServer.pools } : {}),
   ...(db
     ? {

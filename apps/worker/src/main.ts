@@ -25,6 +25,7 @@ import {
   saveUsdNok,
   scheduleUsdNok,
   scheduleRegisterSync,
+  onKnowledgeServer,
   stateRegisterGuard,
   TenantSecretVault,
   traceSinkAccess,
@@ -320,7 +321,7 @@ const knowledgeServerDatasets = (): DatasetConfig[] => {
   const runtime = late.runtime;
   if (!runtime) return [];
   return runtime.writers
-    .datasetIds((endpoint) => endpoint.options?.connection === 'knowledge')
+    .datasetIds((endpoint) => onKnowledgeServer(endpoint))
     .flatMap((id) => {
       try {
         const { dataset } = runtime.writers.open(id, { signal: new AbortController().signal });
@@ -748,7 +749,6 @@ const runtime = await createRuntime({
   ...(traces ? { observe: (l: EventLog) => observedEventLog(l, traces) } : {}),
   ...(db
     ? {
-        knowledgePool: db.pool,
         ...knowledgeRuntimeInput(knowledgeServer, knowledgeBinding),
         connections: db.connections,
         modelClassifications: db.modelClassifications,

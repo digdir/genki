@@ -44,7 +44,13 @@ export const localModelPort = (url: string | undefined): number | undefined => {
   }
 };
 
-export const defaultPorts = { api: 8080, portal: 5173, console: 5174, workspace: 5176 };
+export const defaultPorts = {
+  api: 8080,
+  worker: 8081,
+  portal: 5173,
+  console: 5174,
+  workspace: 5176,
+};
 
 export const devPorts = (env: Record<string, string | undefined>) => {
   const pick = (name: string, fallback: number) => {
@@ -53,6 +59,7 @@ export const devPorts = (env: Record<string, string | undefined>) => {
   };
   return {
     api: pick('GENAI_API_PORT', defaultPorts.api),
+    worker: pick('GENAI_WORKER_PORT', defaultPorts.worker),
     portal: pick('GENAI_PORTAL_PORT', defaultPorts.portal),
     console: pick('GENAI_CONSOLE_PORT', defaultPorts.console),
     workspace: pick('GENAI_WORKSPACE_PORT', defaultPorts.workspace),
@@ -106,6 +113,18 @@ export const devProcesses = (env: Record<string, string | undefined>): DevProces
           ...(devMode && !env.ANSATTPORTEN_ISSUER ? { GENAI_MOCK_RIGHTS: 'true' } : {}),
         }),
         ...(custom ? { PORT: String(ports.api) } : {}),
+      },
+    },
+    // Runs on the knowledge database are jobs, so a new dataset fills only with the worker (issue 151).
+    {
+      name: 'worker',
+      port: ports.worker,
+      ...npmCommand(['run', 'dev', '--workspace', 'apps/worker']),
+      env: {
+        ...unlessSet(env, { GENAI_DEV_MODE: 'true' }),
+        ...(ports.worker === defaultPorts.worker
+          ? {}
+          : { WORKER_HEALTH_PORT: String(ports.worker) }),
       },
     },
     vite('portal', ports.portal, apiEnv),

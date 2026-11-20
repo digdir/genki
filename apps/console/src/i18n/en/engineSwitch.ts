@@ -11,6 +11,7 @@ export const engineSwitch = {
     'The dataset is read in again from its source. Services search the old engine until you put the new one in use.',
   start: 'Start the move',
   close: 'Close',
+  onKnowledge: 'The dataset is on the knowledge database.',
   noTargets:
     'There is no search engine on the knowledge database yet. Make one under Search engines, with the connection Knowledge server.',
   route: 'From {from} to {to}',

@@ -14,7 +14,7 @@ import {
   type StoredConversions,
 } from '@genai/port-knowledge';
 import type { Pool } from 'pg';
-import { transaction } from './schema.js';
+import { transaction } from './transaction.js';
 
 /**
  * Waits and the conversion that ends them lock the convert key's row, in their transactions, so a

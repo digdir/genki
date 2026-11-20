@@ -64,9 +64,9 @@ const boot = async (
           },
           ...(ownEngine
             ? {
-                'platform-pg': {
+                kunnskapsserveren: {
                   engine: 'pgvector',
-                  options: { connection: 'platform' },
+                  options: { connection: 'knowledge' },
                   sharing: { tenants: '*' },
                 },
               }
@@ -77,7 +77,7 @@ const boot = async (
             ? [
                 {
                   id: 'digdir/kunnskap',
-                  endpoint: 'platform-pg',
+                  endpoint: 'kunnskapsserveren',
                   residency: 'global',
                   embedding: { model: 'test/embed-eu', dimensions: 8 },
                 },
@@ -135,7 +135,7 @@ const boot = async (
       return principal ? { principal } : undefined;
     },
     ...(traces ? { traces: () => ({ endpoint: 'https://traces.example', ...traces }) } : {}),
-    ...(ownEngine ? { knowledgePool: {} as never } : {}),
+    ...(ownEngine ? { knowledgeServer: { reader: {} as never } } : {}),
   });
   const admin = createAdmin({
     store: platform.definitions,

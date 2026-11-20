@@ -14,7 +14,7 @@ import type { Pool, PoolClient } from 'pg';
 import { generationWritable, tryGenerationWrite } from './heavy-work.js';
 import { partitionOf } from './partitions.js';
 import { deleteDocument, replaceDocument, updateDocumentFields } from './knowledge-writer.js';
-import { transaction } from './schema.js';
+import { transaction } from './transaction.js';
 
 interface RecordRow {
   number: string;
