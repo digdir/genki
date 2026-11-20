@@ -324,14 +324,20 @@ describe('the throwaway service of a run', () => {
   it('publishes the throwaway again after an earlier run archived it', async () => {
     const { state, handle } = archivedAfterEarlierRun();
     const { rows } = await runAgainstFake({}, handle);
-    expect(rows.find((c) => c.id === 'lifecycle:throwaway')).toMatchObject({ outcome: 'pass' });
+    expect(rows.find((c) => c.id === 'lifecycle:throwaway')).toMatchObject({
+      outcome: 'pass',
+      detail: 'restore 200; publish 201, activate 200, read 200',
+    });
     expect(state.get(loadPlan().throwaway)).toBe('archived');
   }, 30_000);
 
   it('publishes the throwaway again when its archived version no longer validates', async () => {
     const { state, handle } = archivedAfterEarlierRun(false, true);
     const { rows } = await runAgainstFake({}, handle);
-    expect(rows.find((c) => c.id === 'lifecycle:throwaway')).toMatchObject({ outcome: 'pass' });
+    expect(rows.find((c) => c.id === 'lifecycle:throwaway')).toMatchObject({
+      outcome: 'pass',
+      detail: 'restore 409, paused 200; publish 201, activate 200, read 200',
+    });
     expect(state.get(loadPlan().throwaway)).toBe('archived');
   }, 30_000);
 

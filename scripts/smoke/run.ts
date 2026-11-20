@@ -656,9 +656,13 @@ export const main = async () => {
         const read = await client.get(
           `/tenants/${plan.tenant}/services/${plan.throwaway}/lifecycle`,
         );
+        const reopening =
+          restored === reopened
+            ? `restore ${restored.status}`
+            : `restore ${restored.status}, paused ${reopened.status}`;
         record('definitions', 'free', 'lifecycle:throwaway', {
           ok: publish.status < 300 && active.status === 200 && read.status === 200,
-          detail: `publish ${publish.status}, activate ${active.status}, read ${read.status}`,
+          detail: `${reopening}; publish ${publish.status}, activate ${active.status}, read ${read.status}`,
         });
       }
       if (needsGrant('access', 'free', 'access:outside-prefix')) {
