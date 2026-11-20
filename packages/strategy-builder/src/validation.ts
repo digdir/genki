@@ -136,6 +136,12 @@ const capabilityWords: Record<string, string> = {
   reasoning: 'resonnering',
 };
 
+const capabilityList = (list: string | undefined) =>
+  (list ?? '')
+    .split(', ')
+    .map((c) => capabilityWords[c] ?? c)
+    .join(' og ');
+
 const quoted = (list: string) =>
   list
     .split('|')
@@ -203,12 +209,11 @@ const rules: Rule[] = [
       `Modellen «${m[1]}» kjører ${places[m[2] ?? ''] ?? m[2]}, men tjenesten krever ${places[m[3] ?? ''] ?? m[3]}.`,
   ],
   [
-    /^model (\S+) lacks (.+), which (\S+) needs$/,
+    /^model (\S+) lacks ([^;]+), which (\S+) needs(?:; checked ([^;]+) on (\d{4})-(\d{2})-(\d{2}))?$/,
     (m) =>
-      `Modellen «${m[1]}» mangler ${(m[2] ?? '')
-        .split(', ')
-        .map((c) => capabilityWords[c] ?? c)
-        .join(' og ')}, som oppsettet trenger.`,
+      `Modellen «${m[1]}» mangler ${capabilityList(m[2])}, som oppsettet trenger.${
+        m[4] ? ` Genki sjekket ${capabilityList(m[4])} ${m[7]}.${m[6]}.${m[5]}.` : ''
+      }`,
   ],
   [/^model (\S+) cannot call tools$/, (m) => `Modellen «${m[1]}» kan ikke bruke verktøy.`],
   [/^high-risk services are not offered yet$/, () => 'Tjenester med høy risiko tilbys ikke ennå.'],

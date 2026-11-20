@@ -5,7 +5,7 @@ import {
   serviceArchivedType,
   type LifecycleOf,
 } from './archived-services.js';
-import type { Event, Part, Principal } from '@genai/contracts';
+import type { Event, Part, Principal, Usage } from '@genai/contracts';
 import { defaultPlatformTenant } from '@genai/composition';
 import {
   checkPromptFiles,
@@ -114,12 +114,21 @@ export interface ModelSummary {
   parameters?: Record<string, unknown>;
   rejectedParameters?: Record<string, string>;
   transport?: { api: string; source: 'configured' | 'learned' | 'default' };
+  learned?: Record<string, { has: boolean; at: string; by: 'listing' | 'call' }>;
   services?: Record<string, unknown>[];
+}
+
+export interface CapabilityLearning {
+  checked: { model: string; capability: string; has: boolean }[];
+  calls: number;
+  deferred: number;
+  usage: Usage;
 }
 
 export interface ModelAdmin {
   describe(): ModelSummary[];
   refresh(): Promise<{ discovered: number; failed: { endpoint: string; error: string }[] }>;
+  learnCapabilities?(actor: Principal): Promise<CapabilityLearning>;
   classify(
     id: string,
     classification: {
@@ -539,7 +548,9 @@ export const createAdmin = (options: AdminOptions) => {
       if (refused) return refused;
       const models = modelsOrFail();
       const before = models.describe().map((m) => m.id);
-      const result = await models.refresh();
+      const found = await models.refresh();
+      const learned = await models.learnCapabilities?.(principal);
+      const result = { ...found, ...(learned ? { learned } : {}) };
       const after = models.describe().map((m) => m.id);
       return {
         ok: true,
@@ -914,7 +925,7 @@ export const createAdmin = (options: AdminOptions) => {
         reason,
       }),
     refreshModels: (principal: Principal, reason: string) =>
-      run<Awaited<ReturnType<ModelAdmin['refresh']>>>(
+      run<Awaited<ReturnType<ModelAdmin['refresh']>> & { learned?: CapabilityLearning }>(
         { ...principal, tenant: platformTenant },
         'platform.models.refresh',
         { tenant: platformTenant, reason },

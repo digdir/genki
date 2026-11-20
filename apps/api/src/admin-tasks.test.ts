@@ -184,6 +184,8 @@ const throughAdminTasks = [
   'PUT /operator/gates/:id',
   'PUT /operator/guardrail-rules/:id',
   'PUT /operator/hooks/:id',
+  'POST /operator/models/refresh',
+  'PATCH /operator/models/:id{.+}',
   'PUT /operator/models/:id{.+}',
   'PUT /operator/models/:id{.+}/price',
   'PUT /operator/secrets/:name',

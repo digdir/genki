@@ -1,6 +1,7 @@
 import {
   perThousandView,
   pricedUsage,
+  type Usage,
   unitPricesFor,
   type PriceSpec,
   type Ref,
@@ -8,6 +9,7 @@ import {
   type UsagePrice,
 } from '@genai/contracts';
 import {
+  addUsage,
   createGate,
   credentialFor,
   type Credential,
@@ -61,6 +63,12 @@ import {
   type OperationGovernance,
   type OperationPort,
 } from './operation.js';
+import {
+  checkCapability,
+  checkedCapabilities,
+  type CapabilityCheck,
+  type LearnedCapabilities,
+} from './capability-checks.js';
 import { chatPayload, decidePayload, modelRefusal } from './gate.js';
 import { applyParameterRules, type ParameterRules, type TunableParameter } from './parameters.js';
 import {
@@ -81,6 +89,7 @@ export interface ModelClassification {
   enabled?: boolean;
   parameters?: ParameterRules;
   observed?: Partial<Record<TunableParameter, string>>;
+  learned?: LearnedCapabilities;
 }
 
 export interface ModelClassificationStore {
@@ -111,6 +120,7 @@ export interface ModelRouterOptions {
   objects?: ObjectLedger;
   /** A fetch that only reaches the listed hosts and never a private address; used for answer links. */
   foreignFetch?: (hosts: string[]) => typeof fetch;
+  now?: () => Date;
 }
 
 export type ModelPrice = UsagePrice;
@@ -140,6 +150,7 @@ export interface ModelDescription {
   prices?: Record<string, UnitPrices>;
   parameters: ParameterRules;
   rejectedParameters: Partial<Record<TunableParameter, string>>;
+  learned?: LearnedCapabilities;
 }
 
 export interface RefreshResult {
@@ -147,10 +158,27 @@ export interface RefreshResult {
   failed: { endpoint: string; error: string }[];
 }
 
+export interface LearnOptions {
+  maxCalls?: number;
+  freshForMs?: number;
+}
+
+export interface LearnResult {
+  checked: { model: string; capability: Capability; has: boolean }[];
+  calls: number;
+  deferred: number;
+  usage: Usage;
+}
+
+export const defaultLearnCalls = 12;
+export const learnedFreshForMs = 7 * 24 * 60 * 60 * 1000;
+
 export interface LiveModel {
   residency: Residency;
   capabilities: Capability[];
   operations: Operation[];
+  /** Capabilities a check found missing, with when it checked. */
+  checked?: Partial<Record<Capability, string>>;
 }
 
 interface Route {
@@ -158,6 +186,7 @@ interface Route {
   family?: string;
   origin: 'catalog' | 'discovered';
   apis: ApiBindings;
+  listed?: Capability[];
 }
 
 export const modelOutputCeiling = 16_384;
@@ -339,12 +368,29 @@ export class ModelRouter implements PortProvider<ModelPort> {
     return new Map([...this.#discovered, ...this.#static]);
   }
 
+  #now() {
+    return this.options.now?.() ?? new Date();
+  }
+
+  /** The learned results that count: none once an operator sets capabilities, and none the configuration already gives. */
+  #learnedInEffect(route: Route): LearnedCapabilities | undefined {
+    const c = this.#classes[route.model.id] ?? {};
+    if (c.capabilities || !c.learned) return undefined;
+    const entries = Object.entries(c.learned).filter(
+      ([capability]) => !route.model.capabilities.includes(capability as Capability),
+    );
+    return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+  }
+
   #effective(route: Route): CatalogModel & { enabled: boolean; apis: ApiBindings } {
     const c = this.#classes[route.model.id] ?? {};
+    const learned = Object.entries(this.#learnedInEffect(route) ?? {}).flatMap(
+      ([capability, check]) => (check.has ? [capability as Capability] : []),
+    );
     return {
       ...route.model,
       residency: c.residency ?? route.model.residency,
-      capabilities: c.capabilities ?? route.model.capabilities,
+      capabilities: c.capabilities ?? [...route.model.capabilities, ...learned],
       apis: c.apis ?? route.apis,
       enabled: c.enabled ?? true,
       ...((c.parameters ?? route.model.parameters)
@@ -357,12 +403,16 @@ export class ModelRouter implements PortProvider<ModelPort> {
     this.#live.clear();
     for (const route of this.#routes().values()) {
       const model = this.#effective(route);
-      if (model.enabled && servesModelPort({ operations: Object.keys(model.apis) }))
-        this.#live.set(model.id, {
-          residency: model.residency,
-          capabilities: model.capabilities,
-          operations: Object.keys(model.apis),
-        });
+      if (!model.enabled || !servesModelPort({ operations: Object.keys(model.apis) })) continue;
+      const lacking = Object.entries(this.#learnedInEffect(route) ?? {}).flatMap(
+        ([capability, check]) => (check.has ? [] : [[capability, check.at] as const]),
+      );
+      this.#live.set(model.id, {
+        residency: model.residency,
+        capabilities: model.capabilities,
+        operations: Object.keys(model.apis),
+        ...(lacking.length > 0 ? { checked: Object.fromEntries(lacking) } : {}),
+      });
     }
   }
 
@@ -426,6 +476,7 @@ export class ModelRouter implements PortProvider<ModelPort> {
               ...(found.model ? { family: found.model } : {}),
               origin: 'discovered',
               apis: chats ? apis : {},
+              ...(chats && found.capabilities?.length ? { listed: found.capabilities } : {}),
             });
           }
         } catch (error) {
@@ -441,7 +492,122 @@ export class ModelRouter implements PortProvider<ModelPort> {
         discovered.set(id, route);
     this.#discovered = discovered;
     this.#rebuild();
+    const at = this.#now().toISOString();
+    let remembered = false;
+    for (const route of discovered.values())
+      if (route.listed)
+        remembered =
+          (await this.#remember(
+            route.model.id,
+            Object.fromEntries(route.listed.map((c) => [c, { has: true, at, by: 'listing' }])),
+          )) || remembered;
+    if (remembered) this.#rebuild();
     return { discovered: discovered.size, failed };
+  }
+
+  /** Merges what a check found into the stored row as it is now; a capability that passed once is never taken away. */
+  async #remember(id: string, found: LearnedCapabilities): Promise<boolean> {
+    const fresh = (merge: ModelClassification | undefined) => {
+      const current = merge ?? {};
+      const learned: LearnedCapabilities = { ...current.learned };
+      let changed = false;
+      for (const [capability, check] of Object.entries(found) as [Capability, CapabilityCheck][]) {
+        if (learned[capability]?.has) continue;
+        learned[capability] = check;
+        changed = true;
+      }
+      return changed ? { ...current, learned } : undefined;
+    };
+    if (!fresh(this.#classes[id])) return false;
+    try {
+      const stored = this.options.classifications
+        ? (await this.options.classifications.load())[id]
+        : this.#classes[id];
+      const next = fresh(stored);
+      if (!next) return false;
+      await this.options.classifications?.save(id, next);
+      this.#classes = { ...this.#classes, [id]: next };
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  #free(id: string) {
+    const prices = unitPricesFor(this.options.priceOf?.(id), 'chat');
+    return prices?.['input-token'] === 0 && prices['output-token'] === 0;
+  }
+
+  readonly #unsettled = new Map<string, number>();
+  #learning: Promise<LearnResult> | undefined;
+
+  /** Checks what discovered models can do that their rule does not say, with a few small calls through the gate. */
+  learn(ctx: PortContext, options: LearnOptions = {}): Promise<LearnResult> {
+    this.#learning ??= this.#learn(ctx, options).finally(() => {
+      this.#learning = undefined;
+    });
+    return this.#learning;
+  }
+
+  async #learn(ctx: PortContext, options: LearnOptions): Promise<LearnResult> {
+    const now = this.#now();
+    const maxCalls = options.maxCalls ?? defaultLearnCalls;
+    const freshFor = options.freshForMs ?? learnedFreshForMs;
+    const settled = (check: { has: boolean; at: string } | undefined) =>
+      check !== undefined && (check.has || now.getTime() - Date.parse(check.at) < freshFor);
+    const result: LearnResult = { checked: [], calls: 0, deferred: 0, usage: {} };
+    const due = [...this.#discovered.values()]
+      .filter((route) => {
+        const model = this.#effective(route);
+        const chat = model.apis.chat;
+        return (
+          model.enabled &&
+          chat !== undefined &&
+          this.#connections.get(model.endpoint)?.get(chat) !== undefined &&
+          !this.#classes[model.id]?.capabilities
+        );
+      })
+      .sort(
+        (a, b) =>
+          Number(this.#free(b.model.id)) - Number(this.#free(a.model.id)) ||
+          (this.#unsettled.get(a.model.id) ?? 0) - (this.#unsettled.get(b.model.id) ?? 0),
+      );
+    for (const route of due) {
+      const id = route.model.id;
+      const pending = checkedCapabilities.filter(
+        (c) => !route.model.capabilities.includes(c) && !settled(this.#classes[id]?.learned?.[c]),
+      );
+      if (pending.length === 0) continue;
+      const found: LearnedCapabilities = {};
+      try {
+        const port = this.#open({ kind: 'model', id }, ctx, true);
+        for (const capability of pending) {
+          // Leaves room for the plain call a refused check makes.
+          if (result.calls + 2 > maxCalls) {
+            result.deferred += 1;
+            continue;
+          }
+          const outcome = await checkCapability(port, capability);
+          result.calls += outcome.calls;
+          if (outcome.usage)
+            result.usage = addUsage(
+              result.usage,
+              pricedUsage(outcome.usage, this.#unitPrices(id, 'chat')),
+            );
+          if (outcome.has === undefined) {
+            this.#unsettled.set(id, now.getTime());
+            continue;
+          }
+          found[capability] = { has: outcome.has, at: now.toISOString(), by: 'call' };
+          result.checked.push({ model: id, capability, has: outcome.has });
+        }
+      } catch {
+        this.#unsettled.set(id, now.getTime());
+      }
+      await this.#remember(id, found);
+    }
+    if (result.checked.length > 0) this.#rebuild();
+    return result;
   }
 
   async classify(id: string, classification: ModelClassification): Promise<ModelDescription> {
@@ -460,7 +626,8 @@ export class ModelRouter implements PortProvider<ModelPort> {
       });
       if (problems.length > 0) throw new ModelError('bad_request', problems.join('; '));
     }
-    const next = { ...this.#classes[id], ...classification };
+    const next: ModelClassification = { ...this.#classes[id], ...classification };
+    if (classification.apis) delete next.learned;
     if (classification.parameters && next.observed) {
       const set = new Set(Object.keys(classification.parameters));
       next.observed = Object.fromEntries(
@@ -475,6 +642,7 @@ export class ModelRouter implements PortProvider<ModelPort> {
 
   #describe(route: Route): ModelDescription {
     const model = this.#effective(route);
+    const learned = this.#learnedInEffect(route);
     const operator = this.#catalog.endpoints[model.endpoint]?.operator;
     const chat = model.apis.chat;
     const transport = chat
@@ -511,11 +679,12 @@ export class ModelRouter implements PortProvider<ModelPort> {
       enabled: model.enabled,
       origin: route.origin,
       classified: Object.keys(this.#classes[model.id] ?? {}).some(
-        (k) => k !== 'observed' && k !== 'parameters',
+        (k) => k !== 'observed' && k !== 'parameters' && k !== 'learned',
       ),
       ...(this.options.priceOf ? this.#priceView(model.id, Object.keys(model.apis)) : {}),
       parameters: model.parameters ?? {},
       rejectedParameters: this.#classes[model.id]?.observed ?? {},
+      ...(learned ? { learned } : {}),
     };
   }
 
@@ -806,11 +975,14 @@ export class ModelRouter implements PortProvider<ModelPort> {
   }
 
   open(ref: Ref, ctx: PortContext): ModelPort {
-    const { model, target, failure, served, info, implementation } = this.#resolve(
-      ref,
-      ctx,
-      'chat',
-    );
+    return this.#open(ref, ctx, false);
+  }
+
+  /** A capability check skips the capability test, and carries no real data, so it is synthetic. */
+  #open(ref: Ref, ctx: PortContext, checking: boolean): ModelPort {
+    const resolved = this.#resolve(ref, ctx, 'chat');
+    const { model, failure, served, info, implementation } = resolved;
+    const target: GateTarget = checking ? { ...resolved.target, synthetic: true } : resolved.target;
     const chatting = () => {
       const found = implementation('chat');
       if (!found.connection)
@@ -818,6 +990,7 @@ export class ModelRouter implements PortProvider<ModelPort> {
       return { connection: found.connection, deployment: found.deployment };
     };
     const require = (request: ChatRequest, extra: Capability[] = []) => {
+      if (checking) return;
       const missing = [...needed(request), ...extra].filter((c) => !model.capabilities.includes(c));
       if (missing.length > 0)
         throw new ModelError(

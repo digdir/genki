@@ -109,6 +109,14 @@ export const ModelList = ({ api, data, done }: AreaProps) => {
       {refreshed ? (
         <Alert data-color={refreshed.failed.length > 0 ? 'warning' : 'success'} role="status">
           <Paragraph>{t('models.discovered', { count: refreshed.discovered })}</Paragraph>
+          {refreshed.learned && refreshed.learned.calls > 0 ? (
+            <Paragraph>{t('models.learnedCalls', { count: refreshed.learned.calls })}</Paragraph>
+          ) : null}
+          {refreshed.learned && refreshed.learned.deferred > 0 ? (
+            <Paragraph>
+              {t('models.learnedDeferred', { count: refreshed.learned.deferred })}
+            </Paragraph>
+          ) : null}
           {refreshed.failed.length > 0 ? (
             <>
               <Paragraph>{t('models.providersFailed')}</Paragraph>

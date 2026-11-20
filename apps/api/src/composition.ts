@@ -2764,6 +2764,7 @@ export const createPlatform = async (input: PlatformInput) => {
     directory,
     organization,
     modelDiscovery: runtime.modelDiscovery,
+    learnModelCapabilities: runtime.learnModelCapabilities,
     labels,
     apiKeys,
     clients,

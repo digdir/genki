@@ -761,6 +761,13 @@ const OperatorModel = z
     classified: z.boolean().optional(),
     parameters: parameterRules.optional(),
     rejectedParameters: z.record(z.string(), z.string()).optional(),
+    learned: z
+      .record(
+        z.string(),
+        z.object({ has: z.boolean(), at: z.string(), by: z.enum(['listing', 'call']) }),
+      )
+      .optional()
+      .describe('Capabilities genki checked itself, and when; absent once an operator sets them'),
     transport: z
       .object({ api: z.string(), source: z.enum(['configured', 'learned', 'default']) })
       .optional(),
@@ -786,6 +793,15 @@ const RefreshResult = z
   .object({
     discovered: z.number(),
     failed: z.array(z.object({ endpoint: z.string(), error: z.string() })),
+    learned: z
+      .object({
+        checked: z.array(z.object({ model: z.string(), capability: z.string(), has: z.boolean() })),
+        calls: z.number(),
+        deferred: z.number().describe('Checks left for the next refresh, over the cap'),
+        usage: z.record(z.string(), z.unknown()),
+      })
+      .optional()
+      .describe('What a few small calls found out about discovered models'),
   })
   .openapi('ModelRefreshResult');
 
@@ -803,7 +819,8 @@ const modelRoutes = {
   refresh: createRoute({
     method: 'post',
     path: '/operator/models/refresh',
-    summary: 'Discover models from every endpoint again (operators, audited)',
+    summary:
+      'Discover models from every endpoint again, and check what new ones can do (operators, audited)',
     request: { headers: changeReason },
     responses: {
       200: json(RefreshResult, 'What was found'),

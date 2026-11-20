@@ -63,6 +63,12 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ## API changes
 
+### 2026-11-20: genki checks what discovered models can do
+
+- `POST /operator/models/refresh` also checks the capabilities of discovered models that their discovery rule does not name, with at most 12 small synthetic model calls through the gate, and answers `learned` with `checked` (model, capability, `has`), `calls`, `deferred` (checks left over the cap) and the priced `usage`. The audit `result` carries the same.
+- `GET /operator/models` answers `learned` per model: each capability genki checked, with `has`, `at` and `by` (`listing` or `call`). It is absent once an operator sets the capabilities, which then win.
+- A definition whose model lacks what its strategy needs is refused as before; when genki checked a missing capability, the message ends `; checked <capabilities> on <YYYY-MM-DD>`.
+
 ### 2026-11-20: readable model names, makers and operators
 
 - `GET /models` answers a readable `name` (`GPT-6 Luna` for `gpt-6-luna`, `Borealis 27B` for `sigma2:borealis-27b`), still with the deployment or id added where two names collide, and the same names reach the playground, the step operations and the builder assistant.

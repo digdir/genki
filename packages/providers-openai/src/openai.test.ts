@@ -691,6 +691,71 @@ describe('OpenAI model list discovery', () => {
     ]);
   });
 
+  it('takes the capabilities a /models entry names, in the shapes gateways use', async () => {
+    const { url } = await fake(() => ({
+      status: 200,
+      json: {
+        object: 'list',
+        data: [
+          { id: 'listed', capabilities: ['tools', 'json_schema', 'vision'] },
+          { id: 'flagged', capabilities: { function_calling: true, streaming: false } },
+          { id: 'parameters', supported_parameters: ['tools', 'structured_outputs', 'reasoning'] },
+          { id: 'info', model_info: { supports_response_schema: true, supports_reasoning: false } },
+          { id: 'bare' },
+        ],
+      },
+    }));
+
+    const r = gateway(url, { capabilities: [] });
+    await r.refresh();
+
+    expect(r.describe().map((m) => [m.deployment, m.capabilities])).toEqual([
+      ['bare', []],
+      ['flagged', ['tools']],
+      ['info', ['json-schema']],
+      ['listed', ['tools', 'json-schema']],
+      ['parameters', ['tools', 'json-schema', 'reasoning']],
+    ]);
+  });
+
+  it('a listed model with no capabilities in its rule that answers in the JSON shape learns json-schema over the wire', async () => {
+    const server = await fakeHttp((body, _attempt, path) => {
+      if (path === '/v1/models')
+        return { status: 200, json: { object: 'list', data: [{ id: 'aivar:borealis' }] } };
+      if (body.stream)
+        return {
+          status: 200,
+          sse: [
+            {
+              data: {
+                ...completion(''),
+                object: 'chat.completion.chunk',
+                choices: [{ index: 0, delta: { content: 'Blue' }, finish_reason: 'stop' }],
+              },
+            },
+            { data: '[DONE]' },
+          ],
+        };
+      if (body.response_format) return { status: 200, json: completion('{"colour":"blue"}') };
+      return { status: 200, json: completion('Blue.') };
+    });
+    servers.push(server);
+
+    const r = gateway(server.url, { capabilities: [] });
+    await r.refresh();
+    const result = await r.learn(testContext().ctx);
+
+    expect(result.checked).toEqual([
+      { model: 'ai-gateway/aivar-borealis', capability: 'json-schema', has: true },
+      { model: 'ai-gateway/aivar-borealis', capability: 'stream', has: true },
+    ]);
+    expect(r.describe()[0]?.capabilities).toEqual(['json-schema', 'stream']);
+    expect(server.seen.find((s) => s.body.response_format)?.body.response_format).toMatchObject({
+      type: 'json_schema',
+      json_schema: { strict: true },
+    });
+  });
+
   it('a refused model listing is reported for its connection', async () => {
     const { url } = await fake(() => ({ status: 400, json: { error: { message: 'bad' } } }));
 

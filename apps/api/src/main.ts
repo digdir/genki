@@ -55,7 +55,7 @@ import { createAdmin, platformActor } from './admin.js';
 import { createAccessPeopleModule, peopleSourceFrom, selectedPeople } from './access-people.js';
 import { draftServices } from './access-draft-services.js';
 import { InMemoryTenantApiKeys, type TenantApiKeys } from './routes/portal-routes.js';
-import type { PriceSpec } from '@genai/contracts';
+import type { PriceSpec, Principal } from '@genai/contracts';
 import { postgresKeyPolicies, postgresTenantKeys } from './tenant-keys.js';
 import { clientRegistry, notifyingClients, type ClientListener } from './frontends.js';
 import { actorNames } from './actor-names.js';
@@ -652,6 +652,19 @@ const platform = await createPlatform({
   ...(phraseArchive ? { phraseArchive } : {}),
 });
 
+const learnAndAnnounce = async (actor?: Principal) => {
+  const result = await platform.learnModelCapabilities(actor);
+  if (result.checked.length > 0)
+    await db?.changes.announce('model-classifications').catch((error: unknown) =>
+      log('learned model capabilities not announced to other replicas', {
+        error: String(error),
+      }),
+    );
+  return result;
+};
+void learnAndAnnounce().catch((error: unknown) =>
+  log('checking what discovered models can do failed', { error: String(error) }),
+);
 const admin = createAdmin({
   platformTenant,
   store: platform.definitions,
@@ -664,6 +677,7 @@ const admin = createAdmin({
       refreshEverywhere(platform.modelDiscovery, db?.changes, (error) =>
         log('model refresh not announced to other replicas', { error: String(error) }),
       ),
+    learnCapabilities: learnAndAnnounce,
     classify: platform.models.classify.bind(platform.models),
   },
   extensions: platform.extensions,
