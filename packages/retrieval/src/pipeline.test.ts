@@ -109,6 +109,7 @@ interface StubOptions {
   capabilities?: KnowledgeCapability[];
   refuse?: (request: SearchRequest) => boolean;
   fail?: (request: SearchRequest) => string | undefined;
+  down?: Error;
 }
 
 const knowledgeStub = (script: Script, options: StubOptions = {}) => {
@@ -154,6 +155,7 @@ const knowledgeStub = (script: Script, options: StubOptions = {}) => {
       profiles: () => options.profiles ?? ['phrase', 'metadata', 'content', 'doc-title'],
       search: async (_d, requests) => {
         batches.push(requests);
+        if (options.down) throw options.down;
         if (requests.some((r) => options.refuse?.(r)))
           throw new KnowledgeError('unsupported', 'engine cannot run this search');
         return requests.map((r) => {
@@ -787,6 +789,24 @@ describe('retrieval pipeline', () => {
         'doc-title search: the query is too long',
       ]);
       expect(result.chunks.map((c) => c.id)).toEqual(['c4']);
+    });
+
+    it('keeps the detected organisations when every strategy search fails', async () => {
+      const k = knowledgeStub(numericScript, {
+        down: new Error('timeout exceeded when trying to connect'),
+      });
+
+      const search = retrieve({
+        knowledge: k.port,
+        queries: numericQueries,
+        facetCache: new FacetCache(),
+        detectionUse: 'hint',
+      });
+
+      await expect(search).rejects.toThrow('timeout exceeded when trying to connect');
+      await expect(search).rejects.toMatchObject({
+        detections: expect.arrayContaining([expect.objectContaining({ field: 'orgs_short' })]),
+      });
     });
 
     it('searches the first dataset profile with a notice when no configured profile exists', async () => {

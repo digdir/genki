@@ -148,6 +148,45 @@ describe('pgvector engine', () => {
     expect(hits.map((h) => h.document).slice(0, 2)).toEqual(['eksakt', 'lignende']);
   });
 
+  it('a search batch larger than the pool does not fail every request waiting for a connection', async () => {
+    const dims = { model: 'fixture', dimensions: 3 };
+    const embedder = () => ({ embed: async (texts: string[]) => texts.map(() => [1, 0, 0]) });
+    const dataset = config('pgvector/small-pool', { embedding: dims, filters: {} });
+    await seed(writerOf(engineWith(embedder)), dataset, [
+      single('frist', 'Frist', ['Søknadsfristen for tilskudd er 1. mars.'], [[1, 0, 0]]),
+    ]);
+    const small = new pg.Pool({
+      connectionString: container.getConnectionUri(),
+      max: 2,
+      connectionTimeoutMillis: 200,
+    });
+    let slow = false;
+    small.on('connect', (client) => {
+      const query = client.query.bind(client) as (...args: unknown[]) => Promise<unknown>;
+      Object.assign(client, {
+        query: async (...args: unknown[]) => {
+          if (slow) await new Promise((resolve) => setTimeout(resolve, 50));
+          return query(...args);
+        },
+      });
+    });
+    try {
+      const port = openTarget(
+        { adapter: pgvectorEngine({ pool: small, embedder }).adapter, endpoint, embedding: dims },
+        dataset,
+      );
+      await port.search({ query: 'tilskudd' });
+      slow = true;
+      const results = await port.searchMany(
+        Array.from({ length: 10 }, (_, i) => ({ query: `tilskudd ${i}`, limit: 3 })),
+      );
+      expect(results.map((r) => r.warning)).toEqual(Array(10).fill(undefined));
+      expect(results.every((r) => r.hits[0]?.document === 'frist')).toBe(true);
+    } finally {
+      await small.end();
+    }
+  });
+
   it('norwegian text search matches søknad and søknader', async () => {
     const engine = engineWith();
     const dataset = config('pgvector/norsk', { filters: {} });
