@@ -2556,10 +2556,14 @@ describe('replacement runs', () => {
     await s.file('a.pdf', firstFile);
     await s.file('b.pdf', reportOf('two-files-b'));
     const run = await fill(s);
+    // a.pdf's document keeps both files; picked by its file, since ids hash the folder's path.
     const [one, two] = (
       await admin.query<{ id: string }>(
-        `select id from src_documents where dataset = $1 order by id`,
-        [s.dataset.id],
+        `select d.id from src_documents d
+           join src_files f on f.dataset = d.dataset and f.document = d.id
+          where d.dataset = $1
+          order by f.sha256 = $2 desc`,
+        [s.dataset.id, first],
       )
     ).rows;
     await admin.query(`update src_files set document = $2 where dataset = $1 and document = $3`, [
