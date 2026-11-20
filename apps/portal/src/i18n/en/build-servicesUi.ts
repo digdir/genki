@@ -5,65 +5,6 @@ export const servicesUi = {
   services: {
     back: 'Services',
     newTitle: 'New service',
-    newLead:
-      'Start with the job the service should do. You can decide channels, model and guardrails later. Nothing is published until you choose to.',
-    makeWithAi: 'Create with AI',
-    makeWithAiHelp:
-      'Describe the job in your own words. The assistant asks a few questions and suggests a setup you can change.',
-    describeLabel: 'What should the service do?',
-    describePlaceholder:
-      'For example: When a complaint comes in, I want a draft reply that follows our document template.',
-    tryLabel: 'Try:',
-    tryReply: 'Draft replies to complaints',
-    tryInvoices: 'Extract details from invoices',
-    tryHearing: 'Summarise consultation responses by topic',
-    defaultRequest: 'I want to create a service that answers questions about our documents.',
-    startAssistant: 'Start with the assistant',
-    useFormRich: 'Would you rather fill in everything yourself? <link>Use the form</link>.',
-    pickJob: 'Or choose a job',
-    jobRequest: 'I want to create a service that {job}.',
-    fromTemplate: 'Or start from a template',
-    kaName: 'Like Kunnskapsassistenten',
-    kaRequest:
-      'I want to create a service like Kunnskapsassistenten: answers with sources from our own documents, with its own frontend through API and MCP.',
-    kaDescription:
-      'Answers with sources from your own documents, with its own frontend through API or MCP. Digdir built Kunnskapsassistenten this way on the platform.',
-    templateRequest: 'I want to start from the template "{name}".',
-    jobAnswers: 'Answers questions',
-    jobAnswersExample:
-      'A caseworker asks what evaluations say about digital guidance, and gets an answer with sources.',
-    tagAnswers: 'Answers',
-    jobDrafts: 'Writes drafts',
-    jobDraftsExample:
-      'A draft reply to a complaint, based on the case and the document template for reply letters.',
-    jobRewrites: 'Rewrites',
-    jobRewritesExample:
-      'An outgoing letter is rewritten in plain language, or from bokmål to nynorsk.',
-    jobSummarises: 'Summarises',
-    jobSummarisesExample:
-      '214 consultation responses are summarised by topic, with who thinks what.',
-    jobExtracts: 'Extracts details',
-    jobExtractsExample:
-      'Names, organisation numbers and amounts are extracted from grant applications.',
-    jobSorts: 'Sorts',
-    jobSortsExample: 'Incoming mail is routed to the right department and given a priority.',
-    jobPrepares: 'Prepares cases',
-    jobPreparesExample:
-      'An application is checked against the regulations in several steps, and a caseworker approves.',
-    jobTranscribes: 'Transcribes',
-    jobTranscribesExample: 'A meeting recording becomes text and minutes with decisions.',
-    tplAnswers: 'Ask our documents',
-    tplAnswersIo: 'Question → answer with sources',
-    tplDrafts: 'Draft reply letter',
-    tplDraftsIo: 'Case and letter template → draft letter as a document',
-    tplRewrites: 'Plain language for outgoing letters',
-    tplRewritesIo: 'Letter → rewritten letter with the changes marked',
-    tplSorts: 'Sort incoming mail',
-    tplSortsIo: 'Email and attachments → case area, priority and recipient',
-    tplSummarises: 'Summarise consultation responses',
-    tplSummarisesIo: 'Folder of consultation responses → summary by topic',
-    tplTranscribes: 'Meeting minutes from audio',
-    tplTranscribesIo: 'Audio recording → transcript and minutes',
     statusDraft: 'Draft',
     statusTest: 'In test',
     statusLive: 'In use',

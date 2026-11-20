@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { App } from '../App';
 import { mockAnsattporten } from '../auth';
+import { mockFetch } from '../mock';
 import { strategyRoutes } from '../mock/strategies';
 import { go, kari } from '../test-utils';
 
@@ -353,31 +354,19 @@ describe('live mode shows only platform data', () => {
     expect(screen.queryByRole('combobox', { name: 'Tjeneste' })).toBeNull();
   });
 
-  it('live mode opens the builder with the assistant', async () => {
-    await renderLive('#/services/new');
+  it('live mode opens Ny tjeneste straight in Oppsett with the builder assistant beside it', async () => {
+    await renderLive('#/services/new', mockFetch([]));
 
-    await screen.findByRole('heading', { name: 'Lag med KI' });
-    fireEvent.change(screen.getByLabelText('Hva skal tjenesten gjøre?'), {
-      target: { value: 'Svar på spørsmål om permisjon' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Start med assistenten' }));
-    const panel = await screen.findByRole('complementary', { name: 'Byggeassistent' });
-    expect(await within(panel).findByText('Svar på spørsmål om permisjon')).toBeTruthy();
-    expect(
-      await within(panel.querySelector('.assistant-log') as HTMLElement).findByText(
-        /Hva skal tjenesten svare på\?/,
-        {},
-        { timeout: 3000 },
-      ),
-    ).toBeTruthy();
+    const nav = await screen.findByRole('navigation', { name: 'Deler av oppsettet' });
+    expect(within(nav).getByRole('button', { name: /^Formål og målgruppe/ })).toBeTruthy();
+    expect(await screen.findByRole('complementary', { name: 'Byggeassistent' })).toBeTruthy();
     expect(screen.queryByText(/Da setter jeg opp/)).toBeNull();
-    expect(screen.getByRole('button', { name: /^Formål og målgruppe/ })).toBeTruthy();
+    expect(window.location.hash).toMatch(/^#\/services\/utkast-[0-9a-f]{8}\/setup$/);
   });
 
   it('keeps the plain form for creating a service', async () => {
-    await renderLive('#/services/new');
+    await renderLive('#/services/new?skjema=1');
 
-    fireEvent.click(await screen.findByRole('link', { name: 'Bruk skjemaet' }));
     expect(await screen.findByRole('textbox', { name: 'Navn' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Opprett og publiser' })).toBeTruthy();
   });
@@ -402,13 +391,6 @@ describe('live mode shows only platform data', () => {
     expect((await screen.findAllByText(/gpt-4o-2m-tps/)).length).toBeGreaterThan(0);
     expect(await screen.findByText(/digdir\/kudos/)).toBeTruthy();
     expect(screen.queryByText(/Qwen|Borealis/)).toBeNull();
-  });
-
-  it('offers no example templates in Ny tjeneste', async () => {
-    await renderLive('#/services/new');
-
-    await screen.findByRole('heading', { name: 'Lag med KI' });
-    expect(screen.queryByRole('button', { name: /Som Kunnskapsassistenten/ })).toBeNull();
   });
 });
 

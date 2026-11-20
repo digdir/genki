@@ -133,28 +133,14 @@ describe('the service page against the mock', () => {
 });
 
 describe('new service', () => {
-  it('starts the builder from a job with the assistant asking questions', async () => {
+  it('opens Ny tjeneste straight in the shared Oppsett, with no job to pick first', async () => {
     await renderAt('#/services/new');
-    await screen.findByRole('heading', { level: 1, name: 'Ny tjeneste' });
-    expect(screen.getByRole('heading', { name: 'Lag med KI' })).toBeTruthy();
+    const nav = await screen.findByRole('navigation', { name: 'Deler av oppsettet' });
+    expect(within(nav).getByRole('button', { name: /^Formål og målgruppe/ })).toBeTruthy();
+    expect(screen.getByRole('complementary', { name: 'Byggeassistent' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Lag med KI' })).toBeNull();
+    expect(screen.queryByText(/^Satte jobb/)).toBeNull();
     expectAccessible();
-
-    fireEvent.click(screen.getByRole('button', { name: /Henter ut opplysninger/ }));
-    expect(await screen.findByText('Satte jobb: henter ut opplysninger')).toBeTruthy();
-    expect(screen.getByRole('heading', { level: 1, name: 'Ny tjeneste' })).toBeTruthy();
-    expect(screen.getByText('Ikke publisert · lagres automatisk')).toBeTruthy();
-    expect(screen.getByRole('button', { name: /^Formål og målgruppe/ })).toBeTruthy();
-    expectAccessible();
-  });
-
-  it('guesses the job from free text', async () => {
-    await renderAt('#/services/new');
-    await screen.findByRole('heading', { level: 1, name: 'Ny tjeneste' });
-    fireEvent.change(screen.getByLabelText('Hva skal tjenesten gjøre?'), {
-      target: { value: 'Utkast til svarbrev på klager' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Start med assistenten' }));
-    expect(await screen.findByText('Satte jobb: lager utkast')).toBeTruthy();
   });
 });
 
@@ -378,9 +364,7 @@ describe('developer view', () => {
 
   it('applies and discards YAML edits', async () => {
     await renderAt('#/services/new');
-    await screen.findByRole('heading', { level: 1, name: 'Ny tjeneste' });
-    fireEvent.click(screen.getByRole('button', { name: /^Svarer/ }));
-    await screen.findByText('Satte jobb: svarer på spørsmål');
+    await screen.findByRole('navigation', { name: 'Deler av oppsettet' });
     go('#/services/new/definition');
     await screen.findByLabelText('Tjenestedefinisjon (YAML)');
     const apply = screen.getByRole('button', { name: 'Bruk endringene' });
@@ -404,9 +388,7 @@ describe('developer view', () => {
 describe('pasting the example definitions', () => {
   it.each(serviceExamples)('applies %s in the builder YAML tab', async (_, text) => {
     await renderAt('#/services/new');
-    await screen.findByRole('heading', { level: 1, name: 'Ny tjeneste' });
-    fireEvent.click(screen.getByRole('button', { name: /^Svarer/ }));
-    await screen.findByText('Satte jobb: svarer på spørsmål');
+    await screen.findByRole('navigation', { name: 'Deler av oppsettet' });
     go('#/services/new/definition');
     await screen.findByLabelText('Tjenestedefinisjon (YAML)');
     fireEvent.change(yamlField(), { target: { value: text } });

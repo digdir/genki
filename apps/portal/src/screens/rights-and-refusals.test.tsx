@@ -10,6 +10,7 @@ import type { DatasetView } from '../api/datasets';
 import type { AccessRequest } from '../api/onboarding';
 import type { OnboardingMockOptions } from '../mock/onboarding';
 import type { Organisation } from '../types';
+import { openArea } from './services/setup-areas.test-utils';
 
 document.getAnimations ??= () => [];
 beforeEach(() => {
@@ -119,12 +120,12 @@ describe('refusals from the API', () => {
       forbidden('Du trenger rettigheten «Administrere tjenester»'),
     );
     await renderAs('#/services/new', fetch);
-    fireEvent.change(await screen.findByLabelText('Hva skal tjenesten gjøre?'), {
+    const panel = await screen.findByRole('complementary', { name: 'Byggeassistent' });
+    fireEvent.change(within(panel).getByLabelText('Skriv til assistenten'), {
       target: { value: 'Svar på spørsmål' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Start med assistenten' }));
+    fireEvent.click(within(panel).getByRole('button', { name: 'Send' }));
 
-    const panel = await screen.findByRole('complementary', { name: 'Byggeassistent' });
     expect(
       await within(panel).findByText('Du trenger rettigheten «Administrere tjenester»'),
     ).toBeTruthy();
@@ -473,11 +474,9 @@ describe('the step flow picker', () => {
       }),
     );
     await renderAs('#/services/new', fetch);
-    fireEvent.change(await screen.findByLabelText('Hva skal tjenesten gjøre?'), {
-      target: { value: 'Sorter innkommende post' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Start med assistenten' }));
-    fireEvent.click(await screen.findByRole('button', { name: /^Arbeidsmåte/ }));
+    await screen.findByRole('navigation', { name: 'Deler av oppsettet' });
+    openArea(/^Arbeidsmåte/);
+    fireEvent.click(await screen.findByRole('button', { name: 'Bytt arbeidsmåte' }));
 
     const picker = await screen.findByRole('combobox', { name: 'Stegflyt' });
     expect(picker.tagName).toBe('INPUT');
@@ -492,8 +491,9 @@ describe('the step flow picker', () => {
           new CustomEvent('comboboxbeforeselect', { detail: item, cancelable: true }),
         );
     });
-    expect(screen.getByRole('link', { name: 'Rediger stegflyten' }).getAttribute('href')).toBe(
-      '#/developer/step-flows/postruting',
+    const links = screen.getAllByRole('link', { name: 'Rediger stegflyten' });
+    expect(links.map((l) => l.getAttribute('href')?.split('?')[0])).toEqual(
+      links.map(() => '#/developer/step-flows/postruting'),
     );
   });
 });

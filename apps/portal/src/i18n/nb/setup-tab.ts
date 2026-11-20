@@ -402,6 +402,26 @@ export const setupList = defineNamespace({
   datasetAddedLabel: '{name} er lagt til',
   add: 'Legg til',
   noHits: 'Ingen treff',
+  comingTag: 'Kommer senere',
+  notSavedYet:
+    'Lagres ikke i utkastet ennå. Det du legger inn her, blir borte når du lukker siden.',
+  webPages: 'Nettsider',
+  webPagesHelp:
+    'Sider tjenesten skal bruke som kilde, for eksempel regelverk eller veiledning på nett.',
+  webPagesAdd: 'Legg til nettside',
+  webPagesChosen: 'Valgte nettsider',
+  webPagesInvalid:
+    'Skriv en nettadresse som begynner med https://, for eksempel https://www.nav.no/arbeid.',
+  webPagesRemove: 'Fjern nettsiden {url}',
+  ownDocuments: 'Egne dokumenter',
+  ownDocumentsHelp:
+    'Dokumenter tjenesten skal bruke som kunnskap, for eksempel retningslinjer eller rutiner. PDF, Word eller tekst.',
+  ownDocumentsPick: 'Velg filer',
+  ownDocumentsChosen: 'Valgte dokumenter',
+  ownDocumentsRemove: 'Fjern dokumentet {name}',
+  resultWish: 'Hva ønsker dere å få ut av tjenesten?',
+  resultWishHelp:
+    'Beskriv med egne ord hva brukeren skal sitte igjen med, for eksempel et utkast som kan sendes, eller et kort svar med henvisning til regelverket.',
   sourcesShown: 'Kildene vises alltid under svaret.',
   sourcesHidden: 'Kildene vises ikke under svaret. Det velger du under Sluttresultat.',
   whatUserSends: 'Hva sender brukeren?',

@@ -371,7 +371,8 @@ export const Builder = ({
   const filesRef = useRef(files);
   filesRef.current = files;
   const serverDraft = live && (!isNew || id !== 'new');
-  const setupLayout = !isNew || (serverDraft && init.draftRevision !== undefined);
+  // Every service gets the shared Oppsett; only a live #/services/new has no draft yet.
+  const setupLayout = !isNew || !live || init.draftRevision !== undefined;
   const areaShown = (d: string | undefined) => {
     const area = areaOf(d);
     return isNew && area === 'limits' ? undefined : area;
@@ -934,8 +935,10 @@ export const Builder = ({
   const hasDraft = draftRevision > 0 || changeList.length > 0;
   const [checks, retryChecks] = useAsync(
     (signal) =>
-      draftBar && draftRevision > 0 ? draftChecks(api, tenant, id, signal) : Promise.resolve(null),
-    [api, tenant, id, draftBar, draftRevision],
+      serverDraft && draftRevision > 0
+        ? draftChecks(api, tenant, id, signal)
+        : Promise.resolve(null),
+    [api, tenant, id, serverDraft, draftRevision],
   );
   const checkProblems = checks.status === 'ready' && checks.data ? checks.data.problems : [];
 
