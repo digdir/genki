@@ -84,10 +84,6 @@ export interface AssistantProfile {
    * more than the service's own, as kunnskapsassistenten's picker offers its family of services.
    */
   family?: ((service: string) => boolean) | undefined;
-  /**
-   * A document's whole file for Dokumentvisning, by its number, and the opened excerpt's own file
-   * (its `url` before `#page=N`) when the excerpt has one; provisional until genki has a route.
-   */
   documentFile?:
     | ((
         documentId: string,

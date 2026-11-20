@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { LocaleProvider } from '@genai/i18n/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
@@ -396,27 +396,50 @@ describe('the assistant host', () => {
     expect(screen.getAllByRole('main')).toHaveLength(1);
   });
 
-  it('puts the host’s pages and links, the other language and «Logg ut» in the profile menu', async () => {
-    const chosen: (string | null)[] = [];
+  it('puts the host’s pages and links and «Logg ut» in the profile menu, and no language', async () => {
     const fetcher = signedIn(nextLayout);
     render(
-      <LocaleProvider initialPreference="nb" onPreferenceChange={(p) => chosen.push(p)}>
+      <LocaleProvider initialPreference="nb">
         <App hostname="ka.example.no" path="/" signIn={browser().signIn} fetcher={fetcher} />
       </LocaleProvider>,
     );
 
     await screen.findByRole('button', { name: 'Kari Nordmann' });
-    expect(menuEntries()).toEqual(['Om', 'Hjelp', 'English', 'Logg ut']);
+    expect(menuEntries()).toEqual(['Om', 'Hjelp', 'Logg ut']);
     const menu = document.querySelector<HTMLElement>('.uib-shell-profile-menu');
     expect(menu?.querySelector('a[href="/om"]')).toBeTruthy();
     expect(menu?.querySelector('a[href="https://example.no/hjelp"]')).toBeTruthy();
     expect(menu?.querySelector('a[href="/auth/logout"]')?.textContent).toBe('Logg ut');
     expect(menu?.textContent).toContain('991825827');
-    const english = [...(menu?.querySelectorAll('button') ?? [])].find(
-      (b) => b.textContent === 'English',
+  });
+
+  it('offers the language first under «Innstillinger», «Generelt», and switches the service to it', async () => {
+    const chosen: (string | null)[] = [];
+    history.replaceState(null, '', '/innstillinger');
+    const fetcher = signedIn({
+      ...nextLayout,
+      zones: { ...nextLayout.zones, primary: [{ block: 'threads' }, { block: 'settings' }] },
+    });
+    render(
+      <LocaleProvider initialPreference="nb" onPreferenceChange={(p) => chosen.push(p)}>
+        <App
+          hostname="ka.example.no"
+          path="/innstillinger"
+          signIn={browser().signIn}
+          fetcher={fetcher}
+        />
+      </LocaleProvider>,
     );
-    fireEvent.click(english as HTMLElement);
+
+    await screen.findByRole('heading', { level: 1, name: 'Generelt' });
+    const rows = [...document.querySelectorAll('.uib-settings-row-title')].map(
+      (r) => r.textContent,
+    );
+    expect(rows[0]).toBe('Språk');
+    const language = screen.getByRole('group', { name: 'Språk' });
+    fireEvent.click(within(language).getByRole('radio', { name: 'Engelsk' }));
     expect(chosen).toEqual(['en']);
+    history.replaceState(null, '', '/');
   });
 
   it('keeps the host header for a layout that does not draw the reader', async () => {

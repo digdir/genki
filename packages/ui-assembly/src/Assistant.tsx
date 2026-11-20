@@ -914,10 +914,14 @@ export const AssistantView = ({
     ...experiment,
     on: a.flags.has(experiment.id),
   }));
-  // «Generelt» offers the colour scheme the host keeps, and its menu line says no more.
-  const general = a.onColorSchemeChange
-    ? { colorScheme: { value: a.colorScheme, onChange: a.onColorSchemeChange } }
-    : {};
+  const general = {
+    ...(a.onLanguageChange
+      ? { language: { value: a.language, onChange: a.onLanguageChange } }
+      : {}),
+    ...(a.onColorSchemeChange
+      ? { colorScheme: { value: a.colorScheme, onChange: a.onColorSchemeChange } }
+      : {}),
+  };
   if (nextSettings)
     primary = {
       label: t('builder.settings'),
