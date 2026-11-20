@@ -199,8 +199,6 @@ export const setup = defineNamespace({
   improveLabel: 'La plattformen foreslå endringer i instruksjonene',
   improveHelp:
     'Plattformen kan foreslå bedre instruksjoner ut fra tilbakemeldinger og testsett. Du godtar hvert forslag selv. Gjelder fra neste publisering.',
-  modelPrice: '{input} kr inn og {output} kr ut per 1M tokens',
-  notPriced: 'ikke priset',
   operationModels: 'Modell per operasjon',
   operationModelsHelp:
     'Flyten kaller disse operasjonene. Velg modellen som utfører hver av dem. Stedet for behandling følger modellen.',
@@ -354,9 +352,12 @@ export const setupList = defineNamespace({
   next: 'Neste: {name}',
   sideLabel: 'Byggeassistent og prøving',
   sideTabs: 'Sidepanel',
+  toAssistant: 'Spør assistenten',
+  toTry: 'Prøv tjenesten',
   tabAssistant: 'Assistent',
   tabTry: 'Prøv',
   tryNote: 'Prøver utkastet, ikke versjon {n}. Bare du ser svaret. Koster som en vanlig kjøring.',
+  tryNoteFirst: 'Prøver utkastet. Bare du ser svaret. Koster som en vanlig kjøring.',
   openPlayground: 'Åpne i Prøveområdet med tidslinje',
   askGoal: 'Hva skal brukerne oppnå?',
   askSources: 'Hvilke kilder er relevante?',

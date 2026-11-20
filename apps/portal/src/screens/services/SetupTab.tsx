@@ -1407,6 +1407,7 @@ export const SetupTab = ({
         models={pickerModels}
         value={primary}
         service={d.metadata.name ?? serviceId}
+        {...(s.model.residency ? { residency: s.model.residency as Residency } : {})}
         readOnly={readOnly}
         onRetry={retryModels}
         onChange={(id) => {

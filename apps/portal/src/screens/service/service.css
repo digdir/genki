@@ -106,6 +106,7 @@
 
 .service-page .scroll-x {
   overflow-x: auto;
+  position: relative;
 }
 
 .service-page .body-sm {
@@ -253,7 +254,7 @@
   outline-offset: 2px;
 }
 
-@media (max-width: 759px) {
+@container page (max-width: 1179px) {
   .service-sub {
     grid-template-columns: minmax(0, 1fr);
     gap: 16px;

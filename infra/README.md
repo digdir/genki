@@ -6,18 +6,20 @@ Bicep for genki's Azure environments: test (`env/test.bicepparam`, `genki-test.d
 
 ## What gets created (one resource group per environment)
 
-| Resource                                   | Notes                                                                                                                                                             |
-| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Virtual network                            | `apps` subnet (/23, delegated to Container Apps), `postgres` subnet (delegated to Postgres Flexible Server)                                                       |
-| Container Apps environment                 | The six container apps below, the shared `data` volume, managed certificates                                                                                      |
-| Container registry (Basic)                 | No admin user; the apps pull with their identity (AcrPull), the deploy identity pushes (AcrPush)                                                                  |
-| Key Vault                                  | RBAC only, purge protection; the apps read secrets with Key Vault Secrets User                                                                                    |
-| Postgres Flexible Server 17                | Private networking only, Entra ID auth only (no passwords), database `genai`                                                                                      |
-| Storage account with the file share `data` | Mounted at `/data` in the API and worker: uploads and other blobs (`BLOB_DIR=/data/blobs`)                                                                        |
-| Blob container `conversions`               | In the same account: converters' native output (ADR 0042), blob versioning, earlier versions deleted 30 days after they were written, the knowledge worker writes |
-| Log Analytics and Application Insights     | The environment's managed OpenTelemetry agent sends traces and logs to Application Insights                                                                       |
-| Alerts (`alertsEnabled`)                   | Action group `<name>-alerts`, an availability test on the API's `/health` and seven alert rules, see the [runbook](../docs/runbook.md#alerts)                     |
-| DNS zone (optional, `createDnsZone`)       | `genki-test.digdir.cloud` or `genki.digdir.cloud` with a CNAME and a validation TXT record per host name                                                          |
+| Resource                                            | Notes                                                                                                                                                                              |
+| --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Virtual network                                     | `apps` subnet (/23, delegated to Container Apps), `postgres` subnet (delegated to Postgres Flexible Server)                                                                        |
+| Container Apps environment                          | The six container apps below, the shared `data` volume, managed certificates                                                                                                       |
+| Container registry (Basic)                          | No admin user; the apps pull with their identity (AcrPull), the deploy identity pushes (AcrPush)                                                                                   |
+| Key Vault                                           | RBAC only, purge protection; the apps read secrets with Key Vault Secrets User                                                                                                     |
+| Postgres Flexible Server 17                         | Private networking only, Entra ID auth only (no passwords), database `genai`                                                                                                       |
+| Storage account with the file share `data`          | Mounted at `/data` in the API and worker: uploads and other blobs (`BLOB_DIR=/data/blobs`)                                                                                         |
+| Blob container `conversions`                        | In the same account: converters' native output (ADR 0042), blob versioning, earlier versions deleted 30 days after they were written, the knowledge worker writes                  |
+| Log Analytics and Application Insights              | The environment's managed OpenTelemetry agent sends traces and logs to Application Insights                                                                                        |
+| Alerts (`alertsEnabled`)                            | Action group `<name>-alerts`, an availability test on the API's `/health`, the alert rules and the budgets, see the [runbook](../docs/runbook.md#alerts)                           |
+| Backups (`backupsEnabled`)                          | A Recovery Services vault for the share `data`, the nightly database copy's job, identity and storage account, see [Backups](#backups)                                             |
+| Assistant host (`assistantHostEnabled`, on in test) | `<name>-assistant` in its own environment `<name>-hosted-env`, identity `<name>-assistant-id` with AcrPull only, Key Vault `<name>-hostkv` for the host alone (ADR 0061, ADR 0062) |
+| DNS zone (optional, `createDnsZone`)                | `genki-test.digdir.cloud` or `genki.digdir.cloud` with a CNAME and a validation TXT record per host name                                                                           |
 
 From `KNOWLEDGE_SERVER_STAGE=server` on, also the environment's knowledge server in a network of its own, the knowledge identities and the principals job: see [Knowledge server](#knowledge-server).
 
@@ -77,11 +79,30 @@ Not checked yet, and checked by that first run in test:
 
 ## Database
 
-The API and worker log in to Postgres with the app's managed identity and an Entra ID token as the password (`PGHOST`, `PGUSER`, `PGDATABASE`, `PGSSLMODE`, `AZURE_CLIENT_ID`). The token is fetched when a connection opens and reused until five minutes before it expires. `DATABASE_URL` still wins when set, which is how local development connects. `DATABASE_POOL_MAX` caps each of a process's two pools to the platform database, the owner's and the store pool's; unset, each opens up to 10, and less than 3 refuses to start, since the store pool keeps two connections listening. The template sets it from `apiDatabasePoolMax` and `workerDatabasePoolMax`: 3 and 4 in test, where the B1ms server takes 35 connections from users, and 10 in prod. `scripts/postgres-connections.test.ts` adds up every pool full, two API revisions at most replicas, the worker and one connection for a one-off job, for each phase of a deploy, and fails when a sum passes the server's user connections in `infra/postgres-connections.json`. In test every phase fits at 33 of 35. The worker there runs in multiple revision mode (`workerRevisionsMode`), so `scripts/worker-revisions.sh` stops it before each deploy that applies the template (`candidate`, `deploy-test` and `infra.yml`) and after it settles on exactly one running worker revision, whatever the deploy did: it cancels the run's deployment if a cancelled run left it going in Azure, keeps the newest revision once it runs, and otherwise starts the last good one again and fails the step. Old and new worker never run together. Background work pauses for the deploy: queued jobs wait, the stop gives running jobs 10 seconds to finish, and one it cuts off is retried once its heartbeat lapses, or kept as a dead letter when its queue has no retries left, as on any worker restart, and the leases are advisory locks that end with the worker's connection. Prod keeps single revision mode, where Azure starts the new worker before it stops the old one. The worker holds all its leader leases on one connection (`PostgresLeases`), which it checks every 10 seconds with a 5 second query timeout. A worker counts as leader only within 15 seconds of its last good check, so it stops leading on its own clock long before the server would drop a silent connection's locks (`tcp_keepalives_idle` 120 seconds on test's server); when the connection stops answering, it opens a new one and takes the leases back once they are free. An alert fires when the server has more than 80 % of its user connections open ([runbook](../docs/runbook.md), Database connections).
+The API and worker log in to Postgres with the app's managed identity and an Entra ID token as the password (`PGHOST`, `PGUSER`, `PGDATABASE`, `PGSSLMODE`, `AZURE_CLIENT_ID`). The token is fetched when a connection opens and reused until five minutes before it expires. `DATABASE_URL` still wins when set, which is how local development connects. `DATABASE_POOL_MAX` caps each of a process's two pools to the platform database, the owner's and the store pool's; unset, each opens up to 10, and less than 3 refuses to start, since the store pool keeps two connections listening. The template sets it from `apiDatabasePoolMax` and `workerDatabasePoolMax`: 10 in test, where the B2s server takes 414 connections from users, and in prod. A request waits at most 10 seconds for a free connection of a pool (`connectionTimeoutMillis`); then it fails, and the API answers 503 with `Retry-After`, instead of queuing behind a starved pool. Azure keeps a server's first `max_connections` through a resize, so the template sets the platform server's from the table ([Azure: limits](https://learn.microsoft.com/en-us/azure/postgresql/configure-maintain/concepts-limits#maximum-connections)); a change waits for a restart. `scripts/postgres-connections.test.ts` adds up every pool full, two API revisions at most replicas, the worker and one connection for a one-off job, for each phase of a deploy, and fails when a sum passes the server's user connections in `infra/postgres-connections.json`. In test every phase fits at 101 of 414. The worker there runs in multiple revision mode (`workerRevisionsMode`), so `scripts/worker-revisions.sh` stops it before each deploy that applies the template (`candidate`, `deploy-test` and `infra.yml`) and after it settles on exactly one running worker revision, whatever the deploy did: it cancels the run's deployment if a cancelled run left it going in Azure, keeps the newest revision once it runs, and otherwise starts the last good one again and fails the step. Old and new worker never run together. Background work pauses for the deploy: queued jobs wait, the stop gives running jobs 10 seconds to finish, and one it cuts off is retried once its heartbeat lapses, or kept as a dead letter when its queue has no retries left, as on any worker restart, and the leases are advisory locks that end with the worker's connection. Prod keeps single revision mode, where Azure starts the new worker before it stops the old one. The worker holds all its leader leases on one connection (`PostgresLeases`), which it checks every 10 seconds with a 5 second query timeout. A worker counts as leader only within 15 seconds of its last good check, so it stops leading on its own clock long before the server would drop a silent connection's locks (`tcp_keepalives_idle` 120 seconds on test's server); when the connection stops answering, it opens a new one and takes the leases back once they are free. An alert fires when the server has more than 80 % of its user connections open ([runbook](../docs/runbook.md), Database connections).
 
 The app identity owns the schema and runs migrations. Queries run as `genai_runtime` (no BYPASSRLS), switched per connection with the `role` option, so row-level security applies (ADR 0022). The worker switches to `genai_worker` instead: a member of `genai_runtime` with the same row-level security, and of the roles the apps run queries as, the only one with rights on the `pgboss` job tables (ADR 0041). The migration creates both roles and lets the app identity switch to them.
 
 The server allows the `vector` extension through its `azure.extensions` setting (`VECTOR`, in `modules/postgres.bicep`, for test and prod alike). Azure Postgres refuses `create extension` for any extension not on that list, and the pgvector engine creates `vector` when it first migrates. To allow more extensions later, add them to the same comma-separated value.
+
+## Backups
+
+What is kept and how to restore it is in the [runbook](../docs/runbook.md#backups). In the template:
+
+- `postgresBackupRetentionDays` (35 in test) and `postgresMaintenanceWindow` (Sundays 02:00 UTC in test; Azure's own choice of time, as before, by default and on the knowledge server).
+- `backupsEnabled`: `modules/files-backup.bicep` (the vault and the daily share backup), `modules/platform-backup.bicep` (the copies' storage account, reachable only through a private endpoint in the subnet `endpoints` (`endpointsSubnetPrefix`), its immutability policy and the backup identity's one role, Storage Blob Data Contributor on the container, which the deploy identity may already assign), the identity `<name>-backup-id`, and the jobs `<name>-pg-backup` and `<name>-pg-restore-check` in `modules/containerapps.bicep`. The dump runs in the official `postgres` image pinned by digest (`pgDumpImage`); keep its major version at `postgresVersion`.
+- `infraBudgetAmount`, `modelsBudgetAmount` and `modelsBudgetResourceGroup`: `modules/budget.bicep`, with the alerts' action group.
+
+Four settings stay off in test, since the deploy identity (Contributor and a limited Role Based Access Control Administrator on the resource group) cannot write what they need:
+
+| Setting                            | Needs                                                                                                 | Until then                                                                                                                                                                                                                            |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `resourceLocksEnabled`             | `Microsoft.Authorization/locks/write`, in Owner or User Access Administrator; Contributor excludes it | An owner makes the locks once: `az lock create -n do-not-delete -t CanNotDelete -g <resource group> --resource <name> --resource-type <type>` for the platform server, the storage account, the copies' storage account and Key Vault |
+| `serviceHealthAlertEnabled`        | A rule scoped to the subscription, where the deploy identity has no role                              | An owner gives the deploy identity Monitoring Contributor on the subscription, or makes the rule by hand as in `modules/alerts.bicep`                                                                                                 |
+| `platformBackupImmutabilityLocked` | An owner locks the copies' immutability policy (runbook, "Backups")                                   | Set it to `true` once locked, so the template no longer sends the policy                                                                                                                                                              |
+| `modelsBudgetResourceGroup`        | Cost Management Contributor (or Contributor) on `rg-genki-test-swc`                                   | Set it to `rg-genki-test-swc` once the role is there                                                                                                                                                                                  |
+
+Changing `postgresSkuName` restarts the server during the deploy, for a few minutes, and the new `max_connections` waits for one more restart: deploy it in a quiet window and restart the server after (`az postgres flexible-server restart`).
 
 ## Knowledge server
 
@@ -247,6 +268,7 @@ Development mode is off: the image sets `NODE_ENV=production`, and the API refus
 | `portal.genki-test.digdir.cloud`    | `genai-test-portal`    |
 | `workspace.genki-test.digdir.cloud` | `genai-test-workspace` |
 | `console.genki-test.digdir.cloud`   | `genai-test-console`   |
+| `assistant.genki-test.digdir.cloud` | `genai-test-assistant` |
 
 `genki-test.digdir.cloud` is delegated to an Azure DNS zone the team controls. The template creates the zone (`createDnsZone`) with, per host name:
 
@@ -265,6 +287,114 @@ Certificates created outside the template, for example in the Azure portal, go i
 
 Without the DNS zone, create the same CNAME and TXT records wherever `genki-test.digdir.cloud` is hosted.
 
+`assistant.genki-test.digdir.cloud` is the assistant host's (ADR 0061), bound only while `assistantHostEnabled` is on. Its app runs in its own environment, `<name>-hosted-env`, so its `TXT asuid.assistant` record carries that environment's verification id (output `assistantHost.verificationId`), and its managed certificate is created in that environment. Its stage is `assistantHostnameStage`, the same stages as `CUSTOM_DOMAINS_STAGE` and the same value unless set, bound on the host alongside the hosted hostnames below; a new host starts it at `none`, since Azure binds a name only once its DNS points at the host. The template sets `GENAI_ASSISTANT_HOSTNAME` on the API to it and opens it to `PLATFORM_TENANT` in `GENAI_HOSTED_HOSTNAMES`; it is not an entry in `hostedHostnames`.
+
+### Hosted hostnames
+
+A hosted service is served by the assistant host (`<name>-assistant`, ADR 0061) on a name genki assigns in its own zone, `<subdomain>.apps.<zone>` such as `kunnskap.apps.genki-test.digdir.cloud`, or on a custom domain the service owns, such as `qa.kunnskap.digdir.cloud`. Either is added with a pull request to the environment's parameter file, and one entry in `hostedHostnames` does every part:
+
+```bicep
+param hostedHostnames = [
+  { subdomain: 'kunnskap', tenant: '991825827', stage: 'certificates' }
+  { hostname: 'qa.kunnskap.digdir.cloud', tenant: '991825827', stage: 'certificates' }
+  { hostname: 'kunnskap.digdir.cloud', tenant: '991825827', stage: 'hostnames', apex: true }
+]
+```
+
+- **A subdomain is the default.** It is one lowercase DNS label (letters, digits and hyphens, no dots, at most 63 characters) and becomes `<subdomain>.apps.<dnsZoneName>`. genki assigns these names; nothing is claimed in its zone. The template writes the CNAME to the host's generated host name and the `TXT asuid.<subdomain>.apps` record in genki's own DNS zone, as it does for the four app hostnames, so no one else touches DNS. The `apps.` level holds these names alone: no app hostname and no custom domain may sit there. Each name gets its own managed certificate; there is no wildcard.
+- **A custom domain is the option** for a service that has its own: `hostname` instead of `subdomain`.
+- The API gets every entry as `GENAI_HOSTED_HOSTNAMES` (`host=tenant,host=tenant`), which opens the hostname to that organisation: only its hosted Clients may then name it in `spec.hostnames`, and only then does `GET /v1/hosts/{hostname}` answer.
+- The assistant host binds every entry whose `stage` is past `none`, with a managed certificate in `<name>-hosted-env`. The stages are those of `CUSTOM_DOMAINS_STAGE`, per hostname, since a new hostname must be on the app before Azure issues its certificate: `none` (the API only), then `hostnames` once DNS points at the host, then `certificates`. Each step is its own pull request and deploy. The four app hostnames above keep `hostnames` and `CUSTOM_DOMAINS_STAGE` as before.
+- `apex: true` is for a zone apex, which can have no CNAME: an A record to the host environment's static IP, and a certificate validated over HTTP instead of CNAME.
+- The records a custom domain needs are in the output `assistantHost.dnsRecords`: a CNAME to the host's generated host name (an A record to `assistantHost.staticIp` for an apex), and `TXT asuid.<hostname>` with `assistantHost.verificationId`. They go in the owner's DNS zone, which the template does not write. A CAA record on the domain, if any, must allow `digicert.com`.
+- A subdomain's records are written by the deploy that applies the whole template, while its stage is still `none`; move it to `hostnames` in the next pull request.
+- Nothing binds while `assistantHostEnabled` is off, but the API still opens the hostname.
+- `scripts/hosted-hostnames-infra.test.ts` checks every entry in both parameter files: either a subdomain that is one valid label or a lowercase hostname outside genki's own zones, a nine-digit organisation number, a known stage, and no name twice; and that none of the four app hostnames sits under `apps.`.
+
+Removing an entry unbinds the hostname and closes it in the API at the next deploy; the certificate stays in the environment until deleted by hand (`az containerapp env certificate delete`). Moving a team's existing domain is in [docs/runbook.md](../docs/runbook.md#moving-a-teams-domain-to-genki).
+
+### Turning on the assistant host
+
+genki-test runs the assistant host with its BFF (`assistantHostEnabled`, `assistantBffEnabled`), with genki's own `assistant.genki-test.digdir.cloud` (`assistantHostnameStage`) and Kunnskapsassistenten's `kunnskap.apps.genki-test.digdir.cloud` starting at stage `none`. The template cannot do these steps itself; they are for an operator with Azure access (Azure), a genki-test platform operator (genki), and whoever holds the service's Ansattporten client in Samarbeidsportalen (Ansattporten). In order:
+
+1. **Proxy key, before the deploy** (Azure). The host's Key Vault is created by the template, but the host's app reads `genai-proxy-key` from it in the same deploy, so create the vault first with the template's settings and put the same key in both vaults:
+
+   ```sh
+   RG=rg-genki-test-weu
+   KEY=$(openssl rand -hex 32)
+   GENKI_KV=$(az keyvault list -g $RG --query "[?starts_with(name, 'genai-test-kv-')].name" -o tsv)
+   az keyvault secret set --vault-name "$GENKI_KV" -n genai-proxy-key --value "$KEY" -o none
+   az keyvault create -g $RG -n genai-test-hostkv -l westeurope --enable-rbac-authorization true \
+     --enable-purge-protection true --retention-days 90 --public-network-access Enabled -o none
+   az role assignment create --role "Key Vault Secrets Officer" --assignee "$(az ad signed-in-user show --query id -o tsv)" \
+     --scope "$(az keyvault show -n genai-test-hostkv --query id -o tsv)" -o none
+   az keyvault secret set --vault-name genai-test-hostkv -n genai-proxy-key --value "$KEY" -o none
+   unset KEY
+   ```
+
+   A new role assignment can take a few minutes before the last command is let through.
+
+2. **Deploy** (Azure). After the merge, run **deploy** by hand (`gh workflow run deploy.yml --ref main -f environment=test`); it applies the whole template since `infra/` changed, or tick **infrastructure** if it does not. It creates `genai-test-assistant` in `genai-test-hosted-env` and writes `CNAME` and `TXT asuid` for `assistant` and `kunnskap.apps` in genki's zone. `az deployment group show -g $RG -n main --query properties.outputs.assistantHost.value` shows the host's address and records.
+3. **The client secret as a tenant secret** (genki). The service's existing confidential Ansattporten client logs in through the BFF, so its threads stay (`docs/runbook.md`, "Moving a team's domain to genki"). Kunnskapsassistenten's secret is `ansattporten-client-secret` on `ka-app` (`az containerapp secret show --subscription Altinn-AI-Assistant -g rg-ka-test-weu -n ka-app --secret-name ansattporten-client-secret --query value -o tsv`), or a new one from Samarbeidsportalen. Bind it to the issuer only:
+
+   ```sh
+   API=https://api.genki-test.digdir.cloud
+   curl -fsS -X PUT "$API/tenants/312521172/secrets/kunnskapsassistenten-login" -H "authorization: Bearer $GENKI_TOKEN" \
+     -H 'content-type: application/json' -H 'change-reason: Klienthemmeligheten BFF-en logger inn med' \
+     -d "{\"value\": \"$CLIENT_SECRET\", \"allowedHosts\": [\"https://test.ansattporten.no\"]}"
+   ```
+
+4. **The hosted Client** (genki, an operator, since lockdown lets only an operator mark a Client hosted). Take the service's existing Client, keep its client id, and add the hostname, the secret and the URIs:
+
+   ```sh
+   H=kunnskap.apps.genki-test.digdir.cloud
+   curl -fsS "$API/tenants/312521172/clients?service=kunnskapsassistenten" -H "authorization: Bearer $GENKI_TOKEN" |
+     jq '.clients[0].definition' > client.json   # check that this is the Client with the service's Ansattporten client id
+   jq --arg h $H '.spec.hosted = true | .spec.hostnames = [{hostname: $h, environment: "prod"}]
+     | .spec.oidc.secret = "kunnskapsassistenten-login"
+     | .spec.oidc.redirectUris += ["https://\($h)/auth/callback"] | .spec.oidc.postLogoutRedirectUris += ["https://\($h)/"]' \
+     client.json > hosted.json
+   curl -fsS -X PUT "$API/tenants/312521172/clients/$(jq -r .metadata.id hosted.json)" -H "authorization: Bearer $GENKI_TOKEN" \
+     -H 'content-type: application/json' -H 'change-reason: Kunnskapsassistenten på genkis assistentvert' -d @hosted.json
+   ```
+
+5. **Ansattporten** (the client's holder, Samarbeidsportalen for Ansattporten test). On the same client: redirect URI `https://kunnskap.apps.genki-test.digdir.cloud/auth/callback`, post-logout URI `https://kunnskap.apps.genki-test.digdir.cloud/`, `authorization_details` of type `ansattporten:altinn:resource` for `urn:altinn:resource:digdir-genai-platform-test` (the BFF asks for genki's `ALTINN_RESOURCE`), client authentication `client_secret_basic`, and the refresh token grant, without which a session ends when the five-minute access token does.
+6. **The layout** (genki). The host draws only a published `spec.interface.layout`: publish it from the portal's Grensesnitt tab. A document link that is a path on the site, such as `/api/api/datasets/kudos/documents/{id}/file`, opens through the BFF on whatever hostname draws the assistant. `curl -s https://api.genki-test.digdir.cloud/v1/hosts/kunnskap.apps.genki-test.digdir.cloud` answers 200 once steps 4 and 6 are done.
+7. **Stages** (a pull request each, then its deploy). Move the `kunnskap` entry and `assistantHostnameStage` to `hostnames`, then to `certificates`. After the second, `https://kunnskap.apps.genki-test.digdir.cloud/` signs people in.
+8. **Who gets in.** In lockdown, an Entra login in `LOCKDOWN_ENTRA_GROUPS` passes on any Client; anyone else needs an Entra group in `LOCKDOWN_SERVICE_GROUPS` (GitHub variable in the test environment, then **deploy**), which a hosted Client in the platform tenant admits.
+
+Kunnskapsassistenten's own `qa.kunnskap.digdir.cloud` follows later, with the steps in [docs/runbook.md](../docs/runbook.md#moving-a-teams-domain-to-genki): lower the TTLs, add `{ hostname: 'qa.kunnskap.digdir.cloud', tenant: '312521172', stage: 'none' }`, put `TXT asuid.qa` with `assistantHost.verificationId` in the `kunnskap.digdir.cloud` zone, take the name off `ka-app`, point `CNAME qa` at the host, and move the entry through the stages; add the hostname and its URIs to the Client and the Ansattporten client as in steps 4 and 5.
+
+### Platform login
+
+A hosted Client without its own `oidc` logs in through genki's platform login ([ADR 0061](../docs/adr/0061-genki-hosts-a-services-assistant.md)): one Ansattporten client that genki owns, with one callback on `login.apps.<zone>`, served by the assistant host. The service's hostname sends the browser there, and the login host hands the session back with a one-time code. The same client is meant to sign in to the portal and the console later; for now it signs in only to hosted assistants. genki-test turns it on with `platformLoginClientId` and `platformLoginStage` in `infra/env/test.bicepparam`; an empty client id turns it off. In order:
+
+1. **The Ansattporten client** (Samarbeidsportalen for Ansattporten test; done for genki-test, client id `dde98722-c952-4172-a5d6-10bdf721680f`). A web application with `client_secret_basic`, the grants `authorization_code` and `refresh_token`, PKCE `S256`, and:
+   - redirect URI `https://login.apps.genki-test.digdir.cloud/auth/callback`
+   - post-logout redirect URI `https://login.apps.genki-test.digdir.cloud/auth/logged-out`
+   - scopes `openid profile`, and the resource the portal client asks for, the API audience (`API_AUDIENCE`, `digdir:genai` unless set)
+   - `authorization_details` of type `ansattporten:altinn:resource` for the environment's `ALTINN_RESOURCE`, the same resource the portal client asks for (on genki-test, the value of the GitHub variable, `urn:altinn:resource:digdir-genai-platform-test` above)
+   - access token 300 s, refresh token one-time use with a lifetime of 28800 s, authorization lifetime 28800 s, the 8 hours a session lasts at most
+2. **The secret, before the deploy** (Azure). The API reads `platform-login-client-secret` from genki's Key Vault in the same deploy that turns the platform login on, so a revision without it does not start. Copy the secret in Samarbeidsportalen, then run this; it reads the clipboard, never prints the secret, and clears the clipboard:
+
+   ```sh
+   pbpaste | az keyvault secret set --vault-name genai-test-kv-q63pldec6l -n platform-login-client-secret --file /dev/stdin -o none; pbcopy </dev/null
+   ```
+
+3. **Deploy** (Azure), as in step 2 of "Turning on the assistant host". It writes `CNAME` and `TXT asuid` for `login.apps` in genki's zone and gives the API `PLATFORM_LOGIN_CLIENT_ID`, `PLATFORM_LOGIN_HOSTNAME` and the secret.
+4. **Stages** (a pull request each, then its deploy). Move `platformLoginStage` to `hostnames`, then to `certificates`. After the second, `https://login.apps.genki-test.digdir.cloud/auth/logged-out` answers a signed-out page.
+
+**A service moves to the platform login** (genki, an operator in lockdown, since only an operator changes the client id of a hosted Client). Take its hosted Client, remove `oidc`, and save it:
+
+```sh
+curl -fsS "$API/tenants/312521172/clients?service=kunnskapsassistenten" -H "authorization: Bearer $GENKI_TOKEN" |
+  jq '.clients[0].definition | del(.spec.oidc)' > shared.json
+curl -fsS -X PUT "$API/tenants/312521172/clients/$(jq -r .metadata.id shared.json)" -H "authorization: Bearer $GENKI_TOKEN" \
+  -H 'content-type: application/json' -H 'change-reason: Kunnskapsassistenten logger inn med genkis felles innlogging' -d @shared.json
+```
+
+The next login on its hostname goes through `login.apps`. People's threads start fresh, since the platform login gives each person a subject of its own on every Client (ADR 0061). The service's own Ansattporten client, its redirect URIs on the hostname and its tenant secret are no longer used; delete them once the login works. To go back, put `oidc` back as it was. A Client that keeps `oidc` logs in with its own client as before.
+
 ## Login registrations
 
 Register one Ansattporten integration per app and environment: in Ansattporten's test environment for genki-test, in production Ansattporten (`https://ansattporten.no`) for prod. `<zone>` is `genki-test.digdir.cloud` or `genki.digdir.cloud`:
@@ -275,7 +405,9 @@ Register one Ansattporten integration per app and environment: in Ansattporten's
 | Workspace | `https://workspace.<zone>/callback` | `https://workspace.<zone>/` |
 | Console   | `https://console.<zone>/callback`   | `https://console.<zone>/`   |
 
-Each asks for `openid profile`, the API audience `digdir:genai`, and `authorization_details` of type `ansattporten:altinn:resource` for the environment's Altinn resource: `urn:altinn:resource:digdir-genai-platform-test` in test, `urn:altinn:resource:digdir-genai-platform` in prod. Put the client ids in `PORTAL_CLIENT_ID`, `WORKSPACE_CLIENT_ID` and `CONSOLE_CLIENT_ID` of the matching GitHub environment.
+A service drawn by the assistant host logs in through genki's platform login (see "Platform login"), unless its hosted Client names its own Ansattporten client in `oidc`. Such a service logs in with its own Ansattporten client, registered with `https://<hostname>/auth/callback` and `https://<hostname>/` (for genki-test's own name, `https://assistant.genki-test.digdir.cloud/auth/callback`). It asks for `openid profile`, the Client's audience (its `oidc.audience`, or its client id) and the same `authorization_details`.
+
+The three apps each ask for `openid profile`, the API audience `digdir:genai`, and `authorization_details` of type `ansattporten:altinn:resource` for the environment's Altinn resource: `urn:altinn:resource:digdir-genai-platform-test` in test, `urn:altinn:resource:digdir-genai-platform` in prod. Put the client ids in `PORTAL_CLIENT_ID`, `WORKSPACE_CLIENT_ID` and `CONSOLE_CLIENT_ID` of the matching GitHub environment.
 
 The decision point needs, per environment, the Altinn resource, a Maskinporten client owned by Digdir with the scope `altinn:authorization/authorize`, and an Altinn subscription key: in tt02 and Maskinporten test for genki-test, in Altinn production (`https://platform.altinn.no`) and production Maskinporten (`https://maskinporten.no/`) for prod. Issues #42 and #43 describe them.
 

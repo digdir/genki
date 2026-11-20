@@ -1125,6 +1125,16 @@ describe('the composed platform', () => {
     expect((await app.request('/models')).status).toBe(401);
   });
 
+  it('classifies the shipped text-embedding-3 models as eu, since their deployments are in the EU data zone', () => {
+    const catalog = yaml('models.yaml') as {
+      models: { deployment?: string; residency?: string }[];
+    };
+    const embedders = catalog.models.filter((m) => m.deployment?.startsWith('text-embedding-3'));
+
+    expect(embedders).toHaveLength(3);
+    expect(embedders.map((m) => m.residency)).toEqual(['eu', 'eu', 'eu']);
+  });
+
   it('names the context window and release date of a model where the catalog has them', async () => {
     const catalog = yaml('models.yaml') as { models: Record<string, unknown>[] };
     const { app } = await boot(undefined, {
@@ -1231,6 +1241,42 @@ describe('the composed platform', () => {
         maker: 'OpenAI',
         operator: { name: 'Microsoft Azure', region: 'Sverige' },
       });
+  });
+
+  it('names a gateway model readably, with its maker, the host it runs at and the gateway it goes through', async () => {
+    const { app } = await boot(undefined, {
+      models: {
+        endpoints: {
+          'ai-gateway': {
+            baseURL: 'https://gateway.example/v1',
+            auth: { kind: 'bearer', secret: 'secret://env/foundry-openai-key' },
+            families: { openai: '' },
+            gateway: true,
+          },
+        },
+        models: [
+          {
+            id: 'ai-gateway/sigma2-borealis2-preview',
+            endpoint: 'ai-gateway',
+            deployment: 'sigma2:borealis2-preview',
+            residency: 'norway',
+          },
+        ],
+      },
+    });
+
+    const res = await app.request('/models', { headers: { authorization: 'Bearer kari' } });
+    const { data } = (await res.json()) as { data: unknown[] };
+
+    expect(data).toEqual([
+      expect.objectContaining({
+        id: 'ai-gateway/sigma2-borealis2-preview',
+        name: 'Borealis 2 Preview',
+        maker: 'NbAiLab',
+        operator: { name: 'Sigma2' },
+        gateway: true,
+      }),
+    ]);
   });
 
   it('shows the price per 1,000 tokens next to each model, or null when it has none', async () => {

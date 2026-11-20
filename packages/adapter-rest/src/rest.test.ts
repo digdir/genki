@@ -382,3 +382,135 @@ describe('facets', () => {
     expect(await res.json()).toMatchObject({ error: 'Facets are unavailable for this dataset.' });
   });
 });
+
+const documentReply =
+  (documents: Record<string, unknown>[]): ((body: Record<string, unknown>) => FakeReply) =>
+  (body) => ({
+    status: 200,
+    json: {
+      results: (body.searches as Search[]).map((s) => {
+        const wanted = /:=\[(.*)\]/.exec(String(s.filter_by ?? ''))?.[1]?.replace(/[`"]/g, '');
+        const hits = documents
+          .filter((d) => !wanted || wanted.split(',').includes(String(d.doc_num)))
+          .map((document) => ({ document }));
+        return { hits, found: hits.length };
+      }),
+    },
+  });
+
+const fileOf = (doc: string, dataset = 'kudos') => `/api/datasets/${dataset}/documents/${doc}/file`;
+
+describe('a document file', () => {
+  const remote = documentReply([
+    { doc_num: '4711', title: 'Årsrapport', url: 'https://kilde.example/files/4711.pdf#page=3' },
+    { doc_num: '4712', title: 'Landingsside', url: 'https://kilde.example/dokument/4712' },
+    { doc_num: '4713', title: 'Uten adresse' },
+    { doc_num: '4714', title: 'Farlig', url: 'javascript:alert(1)' },
+  ]);
+
+  it('sends a reader of the dataset to the remote source of a document', async () => {
+    const { app } = await setup(remote);
+
+    const res = await get(app, fileOf('4711'));
+
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe('https://kilde.example/files/4711.pdf');
+  });
+
+  it('describes the remote file as JSON when asked, with its media type when the address shows it', async () => {
+    const { app } = await setup(remote);
+    const asJson = (doc: string) =>
+      app.request(fileOf(doc), {
+        headers: { authorization: 'Bearer kari', accept: 'application/json' },
+      });
+
+    const pdf = await asJson('4711');
+    const page = await asJson('4712');
+
+    expect(pdf.headers.get('cache-control')).toBe('private, no-store');
+    expect(await pdf.json()).toEqual({
+      kind: 'source',
+      url: 'https://kilde.example/files/4711.pdf',
+      mediaType: 'application/pdf',
+    });
+    expect(await page.json()).toEqual({
+      kind: 'source',
+      url: 'https://kilde.example/dokument/4712',
+      mediaType: null,
+    });
+  });
+
+  it('answers document_file_not_found for a document without an address, or with one that is not http', async () => {
+    const { app } = await setup(remote);
+
+    for (const doc of ['4713', '4714']) {
+      const res = await get(app, fileOf(doc));
+      expect(res.status).toBe(404);
+      expect(await res.json()).toMatchObject({ code: 'document_file_not_found' });
+    }
+  });
+
+  it('answers document_not_found for a number the dataset does not hold', async () => {
+    const { app } = await setup(remote);
+
+    const res = await get(app, fileOf('9999'));
+
+    expect(res.status).toBe(404);
+    expect(await res.json()).toMatchObject({ code: 'document_not_found' });
+  });
+
+  it('keeps the access rules of the dataset: a hidden dataset reads as one that does not exist', async () => {
+    const { app, server } = await setup(remote);
+
+    const hidden = await get(app, fileOf('4711', 'nav/internal'));
+    const refused = await (
+      await setup(remote, { mayRead: () => false })
+    ).app.request(fileOf('4711'), { headers: { authorization: 'Bearer kari' } });
+    const anonymous = await get(app, fileOf('4711'), '');
+
+    for (const res of [hidden, refused]) {
+      expect(res.status).toBe(404);
+      expect(await res.json()).toMatchObject({ code: 'dataset_not_found' });
+    }
+    expect(anonymous.status).toBe(401);
+    expect(server.seen).toHaveLength(0);
+  });
+
+  it('serves an uploaded original in place of the source, a PDF inline and anything else as an attachment', async () => {
+    const pdf = new TextEncoder().encode('%PDF-1.7');
+    const { app } = await setup(remote, {
+      originalFile: async (_principal, _dataset, doc) =>
+        doc === '4711'
+          ? { name: 'årsrapport.pdf', type: 'application/pdf', body: pdf }
+          : doc === '4712'
+            ? { name: 'side.html', type: 'text/html', body: new TextEncoder().encode('<b>x</b>') }
+            : undefined,
+    });
+
+    const inline = await get(app, fileOf('4711'));
+    const html = await get(app, fileOf('4712'));
+
+    expect(inline.status).toBe(200);
+    expect(inline.headers.get('content-type')).toBe('application/pdf');
+    expect(inline.headers.get('content-disposition')).toMatch(/^inline;/);
+    expect(inline.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(new Uint8Array(await inline.arrayBuffer())).toEqual(pdf);
+    expect(html.headers.get('content-disposition')).toMatch(/^attachment;/);
+    expect(html.headers.get('content-security-policy')).toContain('sandbox');
+  });
+
+  it('asks for the original as the caller, so the platform can refuse it to another organisation', async () => {
+    const asked: string[] = [];
+    const { app } = await setup(remote, {
+      originalFile: async (principal) => {
+        asked.push(principal.subject);
+        return undefined;
+      },
+    });
+
+    const res = await get(app, fileOf('4711'));
+
+    expect(asked).toEqual(['kari']);
+    expect(res.status).toBe(302);
+  });
+});

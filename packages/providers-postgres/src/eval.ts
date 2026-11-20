@@ -24,6 +24,7 @@ import { randomBytes } from 'node:crypto';
 import type { Pool } from 'pg';
 import { open, seal } from './crypto.js';
 import type { ContentKeys } from './keys.js';
+import { withLease } from './leases.js';
 import { withPlatformAccess, withTenant } from './tenancy.js';
 
 const FEEDBACK_SCOPE = 'feedback';
@@ -327,20 +328,9 @@ export class PostgresSinkLabelStore implements SinkLabelStore {
     });
   }
 
-  /** A transaction-free advisory lock, held on its own connection while the work runs. */
+  /** One run of `work` per connection at a time, across replicas, under a lease. */
   async exclusive<T>(tenant: string, connection: string, work: () => Promise<T>): Promise<T> {
-    const client = await this.pool.connect();
-    const key = `sink_labels:${tenant}:${connection}`;
-    try {
-      await client.query('select pg_advisory_lock(hashtext($1))', [key]);
-      try {
-        return await work();
-      } finally {
-        await client.query('select pg_advisory_unlock(hashtext($1))', [key]);
-      }
-    } finally {
-      client.release();
-    }
+    return withLease(this.pool, tenant, `sink-labels:${connection}`, work, { waitMs: 5 * 60_000 });
   }
 
   async pseudonymKey(tenant: string): Promise<string> {

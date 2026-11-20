@@ -119,7 +119,8 @@ export class PostgresConversationStore implements ConversationStore {
         `select * from conversations where ${filter} order by created desc, id limit $4 offset $5`,
         [...params, page.pageSize, page.pageSize * page.pageIndex],
       );
-      const conversations = await Promise.all(rows.rows.map((r) => this.#decode(r, owner)));
+      const conversations: Conversation[] = [];
+      for (const row of rows.rows) conversations.push(await this.#decode(client, row, owner));
       return {
         conversations: conversations.filter((c) => hasTags(c, tags)),
         total: Number(total.rows[0]?.count ?? 0),
@@ -130,14 +131,14 @@ export class PostgresConversationStore implements ConversationStore {
   async get(owner: Owner, id: string) {
     return withTenant(this.pool, owner.tenant, async (client) => {
       const row = await this.#find(client, owner, id);
-      return row && this.#decode(row, owner);
+      return row && this.#decode(client, row, owner);
     });
   }
 
   async messages(owner: Owner, id: string) {
     return withTenant(this.pool, owner.tenant, async (client) => {
       if (!(await this.#find(client, owner, id))) return undefined;
-      const key = await this.#key(owner.tenant, id, false);
+      const key = await this.#key(owner.tenant, id, false, client);
       const rows = await client.query<MessageRow>(
         'select seq, created, parent_seq, body from conversation_messages where conversation = $1 and tenant = $2 order by seq',
         [id, owner.tenant],
@@ -150,13 +151,13 @@ export class PostgresConversationStore implements ConversationStore {
     return withTenant(this.pool, owner.tenant, async (client) => {
       const row = await this.#find(client, owner, id, true);
       if (!row) return undefined;
-      const current = await this.#decode(row, owner);
+      const current = await this.#decode(client, row, owner);
       const next = {
         ...current,
         ...(changes.topic === undefined ? {} : { topic: changes.topic }),
         ...(changes.tags === undefined ? {} : { tags: normalizeTags(changes.tags) }),
       };
-      const key = await this.#key(owner.tenant, id, true);
+      const key = await this.#key(owner.tenant, id, true, client);
       await client.query(
         'update conversations set tags = $3, body = $4 where id = $1 and tenant = $2',
         [
@@ -183,7 +184,7 @@ export class PostgresConversationStore implements ConversationStore {
       );
       const seq = (last.rows[0]?.seq ?? -1) + 1;
       const created = Math.max(this.now(), Number(last.rows[0]?.created ?? 0) + 1);
-      const key = await this.#key(owner.tenant, id, true);
+      const key = await this.#key(owner.tenant, id, true, client);
       const parentSeq = await this.#parentFor(client, id, message);
       return this.#insertMessage(client, key, owner.tenant, id, seq, created, message, parentSeq);
     });
@@ -201,10 +202,15 @@ export class PostgresConversationStore implements ConversationStore {
     return deleted;
   }
 
-  async #key(tenant: string, id: string, create: true): Promise<Buffer>;
-  async #key(tenant: string, id: string, create: false): Promise<Buffer | undefined>;
-  async #key(tenant: string, id: string, create: boolean) {
-    const key = await this.keys.get(tenant, threadScope(id), create);
+  async #key(tenant: string, id: string, create: true, db?: PoolClient): Promise<Buffer>;
+  async #key(
+    tenant: string,
+    id: string,
+    create: false,
+    db?: PoolClient,
+  ): Promise<Buffer | undefined>;
+  async #key(tenant: string, id: string, create: boolean, db?: PoolClient) {
+    const key = await this.keys.get(tenant, threadScope(id), create, db);
     if (create && !key) throw new Error('no content key');
     return key;
   }
@@ -237,8 +243,8 @@ export class PostgresConversationStore implements ConversationStore {
     return seqOf(parentId);
   }
 
-  async #decode(row: ConversationRow, owner: Owner): Promise<Conversation> {
-    const key = await this.#key(row.tenant, row.id, false);
+  async #decode(client: PoolClient, row: ConversationRow, owner: Owner): Promise<Conversation> {
+    const key = await this.#key(row.tenant, row.id, false, client);
     let body = { topic: '', userId: '' };
     if (key) {
       try {

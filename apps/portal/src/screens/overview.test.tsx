@@ -312,6 +312,15 @@ describe('Oversikt', () => {
     expect(screen.queryByText(/operation-try/)).toBeNull();
   });
 
+  it('never names a service Hjem does not list, such as an archived one, among the failed runs', async () => {
+    onFixedDay();
+    const { fetch } = withFailedRuns([failedRun('r1', 'smoke-throwaway', 'Røyktest', today)]);
+    await renderAt('#/overview', fetch);
+
+    expect(await screen.findByText(/Ingenting trenger deg nå/)).toBeTruthy();
+    expect(screen.queryByText(/Røyktest/)).toBeNull();
+  });
+
   it('counts the failed runs of the last 7 days per service in Mest brukt', async () => {
     onFixedDay();
     const weekAgo = threeDaysAgo;
@@ -474,6 +483,50 @@ describe('Oversikt', () => {
     ).toBe('#/datasets/999888777%2Farkiv');
     const menu = screen.getByRole('navigation', { name: 'Hovedmeny' });
     expect(await within(menu).findByLabelText('1 datasett trenger oppfølging')).toBeTruthy();
+  });
+
+  it('lists a Digdir dataset that needs follow-up, since the Datasett badge counts it', async () => {
+    const sharedDegraded = {
+      features: {
+        datasets: {
+          datasets: [
+            {
+              id: 'kudos',
+              fullId: 'digdir/kudos',
+              name: 'Kudos',
+              description: '',
+              scope: 'platform',
+              editable: false,
+              residency: 'norway',
+              effectiveResidency: 'norway',
+              index: { endpoint: 'platform-pg' },
+              facets: [],
+              searchScope: 'tenant',
+              source: 'kudos',
+              documents: 10,
+              chunks: 10,
+              usedBy: [],
+              lastExecution: {
+                status: 'cancelled',
+                startedAt: '2026-10-01T01:00:00Z',
+                endedAt: '2026-10-01T01:10:00Z',
+                stored: 0,
+                skipped: 0,
+              },
+              nextRunAt: null,
+              skipped: [],
+            },
+          ],
+        },
+      },
+    } as Parameters<typeof mockFetch>[4];
+    await renderAt('#/overview', withUsage(normalUsage, sharedDegraded));
+
+    const menu = await screen.findByRole('navigation', { name: 'Hovedmeny' });
+    expect(await within(menu).findByLabelText('1 datasett trenger oppfølging')).toBeTruthy();
+    const attention = screen.getByRole('region', { name: 'Trenger deg nå' });
+    expect(within(attention).getByRole('link', { name: 'Se datasettet: Kudos' })).toBeTruthy();
+    expect(within(attention).queryByText(/Ingenting trenger deg nå/)).toBeNull();
   });
 
   it('shows no Datasett badge for a tenant without datasets', async () => {

@@ -60,10 +60,13 @@ server {
     proxy_set_header Host __API_HOST__;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto https;
+    include /tmp/genki/bff-api.conf;
     proxy_http_version 1.1;
     proxy_buffering off;
     proxy_read_timeout 300s;
   }
+
+  include /tmp/genki/bff.conf;
 
   location / {
     include /etc/nginx/genki-headers.conf;

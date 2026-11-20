@@ -2,6 +2,7 @@ import {
   authenticatedFetch,
   authHeaders,
   errorFromStatus,
+  listedCapabilities,
   ModelError,
   rejectedParameter,
   type ChatChunk,
@@ -10,6 +11,7 @@ import {
   type ChatResult,
   type DeploymentConfig,
   type BuiltInApi,
+  type DiscoveredDeployment,
   type DiscoverySource,
   type EndpointConfig,
   type FinishReason,
@@ -420,6 +422,31 @@ const azureRoot = (baseURL: string) =>
     .replace(/\/openai(\/v1)?$/, '')
     .replace(/\/anthropic$/, '');
 
+const nonChatParts = new Set([
+  'image',
+  'dall',
+  'sora',
+  'realtime',
+  'live',
+  'transcribe',
+  'tts',
+  'whisper',
+  'embedding',
+  'moderation',
+]);
+
+/** The provider lists no capabilities here, so the model name is all there is to go on. */
+const listed = (deployment: string, model?: string): DiscoveredDeployment => ({
+  deployment,
+  ...(model ? { model } : {}),
+  ...((model ?? deployment)
+    .toLowerCase()
+    .split(/[-_.:/\s]+/)
+    .some((part) => nonChatParts.has(part))
+    ? { chat: false }
+    : {}),
+});
+
 export const azureDeployments: DiscoverySource = {
   kind: 'azure-deployments',
   list: async (endpoint) => {
@@ -435,9 +462,7 @@ export const azureDeployments: DiscoverySource = {
       data?: { id?: string; model?: string; status?: string }[];
     };
     return (body.data ?? []).flatMap((d) =>
-      d.id && d.status === 'succeeded'
-        ? [{ deployment: d.id, ...(d.model ? { model: d.model } : {}) }]
-        : [],
+      d.id && d.status === 'succeeded' ? [listed(d.id, d.model)] : [],
     );
   },
 };
@@ -452,9 +477,11 @@ export const openAiModels: DiscoverySource = {
     });
     if (!response.ok) throw new Error(`listing models failed with HTTP ${response.status}`);
     const body = (await response.json()) as { data?: unknown };
-    return (Array.isArray(body.data) ? (body.data as { id?: unknown }[]) : []).flatMap((m) =>
-      typeof m?.id === 'string' && m.id ? [{ deployment: m.id }] : [],
-    );
+    return (Array.isArray(body.data) ? (body.data as { id?: unknown }[]) : []).flatMap((m) => {
+      if (typeof m?.id !== 'string' || !m.id) return [];
+      const found = listedCapabilities(m);
+      return [{ ...listed(m.id), ...(found.length > 0 ? { capabilities: found } : {}) }];
+    });
   },
 };
 

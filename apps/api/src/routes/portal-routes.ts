@@ -3,7 +3,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { usageUnits, type Event, type Principal, type Task, type Usage } from '@genai/contracts';
 import { invalidInputProblem } from '@genai/adapter-openai';
 import { isAdmittedEntraLogin, isTrustedEntraLogin } from '@genai/composition';
-import type { CompiledCapability, DefinitionStore } from '@genai/definitions';
+import type { CompiledCapability, DefinitionStore, ServiceDefinition } from '@genai/definitions';
 import {
   ALL_GRANT,
   apiKeyDigest,
@@ -203,6 +203,7 @@ export interface PortalRouteDeps {
   prices?: Record<string, ModelPrice>;
   retentionOf?(capability: CompiledCapability): { payloadDays: number };
   modelResidency?(model: string): Residency | undefined;
+  serviceDataLocation?(spec: ServiceDefinition['spec']): Residency | undefined;
   ingestionUsage?(
     tenant: string,
   ): Promise<{ at: string; dataset: string; model: string; usage: Usage }[]>;
@@ -670,6 +671,10 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
   const now = deps.now ?? (() => new Date());
   const newKey = deps.newKey ?? (() => `gp_${randomBytes(24).toString('base64url')}`);
   const newId = deps.newId ?? (() => randomUUID());
+  const dataLocationOf = (definition: { kind: string; spec: unknown }) =>
+    definition.kind === 'Service'
+      ? (deps.serviceDataLocation?.(definition.spec as ServiceDefinition['spec']) ?? null)
+      : null;
 
   const envelopeMemo = new AsyncLocalStorage<Map<string, RememberedWindow[]>>();
   app.use('/tenants/:tenant/*', (_c, next) => envelopeMemo.run(new Map(), next));
@@ -881,6 +886,7 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
             typeof primary === 'string'
               ? { id: primary, residency: deps.modelResidency?.(primary) ?? null }
               : null,
+          dataLocation: latest ? dataLocationOf(latest.definition) : null,
           latestVersion: latest?.version ?? null,
           status: lifecycle.state === 'paused' ? 'paused' : (health?.status ?? 'active'),
           statusReason:
@@ -1513,6 +1519,7 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       version: found?.version ?? null,
       riskClass: spec.riskClass ?? null,
       residency: spec.model?.residency ?? null,
+      dataLocation: found ? dataLocationOf(found.definition) : null,
       model: spec.model?.primary ?? null,
       exposure: Object.entries(spec.exposure ?? {})
         .filter(([, on]) => on)

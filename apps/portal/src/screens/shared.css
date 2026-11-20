@@ -266,4 +266,5 @@
   padding: 16px 20px;
   border-radius: var(--ds-border-radius-md);
   background: var(--ds-color-neutral-background-tinted);
+  position: relative;
 }

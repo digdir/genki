@@ -1,9 +1,11 @@
 import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
 import type { MiddlewareHandler } from 'hono';
+import { HTTPException } from 'hono/http-exception';
 import type { DiscoveryState } from '@genai/composition/discovery-retry';
 import type { Principal } from '@genai/contracts';
 import type { DefinitionStore, PluginSchemas, SettingsRegistry } from '@genai/definitions';
 import { isApiKeyPrincipal, isTestRunnerKey } from '@genai/identity';
+import { isPoolExhausted } from '@genai/providers-postgres';
 import { tenantAccess, type Access } from './access.js';
 import { refuseWritesToArchived } from './archived-services.js';
 import { requireChangeReason } from './change-reason.js';
@@ -101,6 +103,7 @@ export type PlatformOptions = Authentication & {
   now?: () => Date;
   lockdown?: boolean;
   loginRefusal?: (request: Request) => Promise<string | undefined>;
+  platformClientIds?: readonly string[];
 };
 
 const withoutApiKeys = (caller: Caller): Authenticator => ({
@@ -120,6 +123,8 @@ export interface AppOptions {
   requestTiming?: RequestTimingOptions;
 }
 
+export const databaseBusyType = 'urn:genai:problem:database-busy';
+
 export const createApp = (version: string, options: AppOptions = {}) => {
   const app = new OpenAPIHono({
     defaultHook: (result, c) => {
@@ -131,6 +136,17 @@ export const createApp = (version: string, options: AppOptions = {}) => {
         })),
       });
     },
+  });
+  app.onError((error, c) => {
+    if (isPoolExhausted(error))
+      return c.json(
+        { type: databaseBusyType, title: t('problems.databaseBusy'), status: 503 },
+        503,
+        { 'content-type': 'application/problem+json', 'retry-after': '5' },
+      );
+    if (error instanceof HTTPException) return error.getResponse();
+    console.error(error);
+    return c.text('Internal Server Error', 500);
   });
   if (options.requestTiming) app.use('*', requestTiming(options.requestTiming));
   acceptDecodedIds(app);
@@ -187,7 +203,13 @@ export const createApp = (version: string, options: AppOptions = {}) => {
     const { caller, auth } = authentication;
     app.use('*', internalServiceViewer(caller));
     if (options.platform.loginRefusal)
-      app.use('*', refuseUntrustedEntra(options.platform.loginRefusal));
+      app.use(
+        '*',
+        refuseUntrustedEntra(
+          options.platform.loginRefusal,
+          new Set(options.platform.platformClientIds ?? []),
+        ),
+      );
     if (lockdown) app.use('*', refuseLockedRoutes(caller));
     app.use('*', refuseOutsideTestRunnerScope(caller));
     app.use('*', requireChangeReason(caller));

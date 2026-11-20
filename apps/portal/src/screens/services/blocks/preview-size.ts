@@ -5,4 +5,9 @@ export const previewWidth = 1280;
 export const previewScale = (available: number) =>
   available <= 0
     ? 1
-    : Math.min(1.5, Math.max(0.5, Math.floor((available / previewWidth) * 1000) / 1000));
+    : Math.min(1.5, Math.max(0.45, Math.floor((available / previewWidth) * 1000) / 1000));
+
+export const previewDrawWidth = (available: number) =>
+  available <= 0
+    ? previewWidth
+    : Math.min(previewWidth, Math.floor(available / previewScale(available)));

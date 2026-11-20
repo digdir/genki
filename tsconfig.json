@@ -185,6 +185,9 @@
       "path": "apps/workspace"
     },
     {
+      "path": "apps/assistant"
+    },
+    {
       "path": "apps/docs"
     },
     {

@@ -77,6 +77,7 @@ export const catalogErrors = defineNamespace({
   onlyTenantApprovesTools: 'bare virksomheten eller en operatør godkjenner endringer i verktøy',
   onlyTenantRevokesTools: 'bare virksomheten eller en operatør trekker tilbake verktøy',
   onlyOperatorsPlatformSecrets: 'bare operatører setter hemmeligheter for plattformen',
+  onlyOperatorsDeletePlatformSecrets: 'bare operatører sletter hemmeligheter for plattformen',
   invalidSecretName: 'ikke et gyldig navn på en hemmelighet',
   onlyTenantSecrets: 'bare virksomheten eller en operatør setter hemmelighetene',
   onlyTenantSecretsRemoved: 'bare virksomheten eller en operatør fjerner hemmelighetene',
@@ -94,6 +95,18 @@ export const catalogErrors = defineNamespace({
   onlyTenantChangesClients: 'bare virksomheten eller en operatør endrer klientene',
   clientOtherTenant: 'klienten tilhører en annen virksomhet',
   onlyTenantRemovesClients: 'bare virksomheten eller en operatør fjerner klientene',
+  hostedInLockdown:
+    'i låst modus er det bare en plattformoperatør som bestemmer om genki er vert for en klient',
+  hostedClientIdInLockdown:
+    'i låst modus er det bare en plattformoperatør som endrer klient-id-en til en klient genki er vert for',
+  onlyOperatorHosts: 'bare en plattformoperatør bestemmer om genki er vert for en klient',
+  hostnameNotOpen: '{hostnameNotAllowed}: {hostname} er ikke åpnet for denne virksomheten',
+  hostnameTaken: '{hostname} tilhører klienten {id}',
+  hostOwnBlockHosted:
+    '{block} er vertens egen blokk, og genkis assistentvert tegner bare blokker fra katalogen',
+  unknownInterfaceBlock: 'ukjent grensesnittblokk {block}',
+  hostedServiceOwnBlock:
+    'grensesnittet til tjenesten har vertens egen blokk ({block}), som genkis assistentvert ikke tegner',
   noSuchClient: 'klienten finnes ikke',
   noClientFor: 'ingen klient {client} for {service}',
   riskConfirm:
@@ -640,6 +653,8 @@ export const definitionErrors = defineNamespace({
   modelNoTools: 'Modellen «{id}» kan ikke bruke verktøy.',
   unknownModel: 'Modellen «{id}» finnes ikke i plattformen.',
   modelLacks: 'Modellen «{id}» mangler {capabilities}, som oppsettet {strategy} trenger.',
+  modelLacksChecked:
+    'Modellen «{id}» mangler {capabilities}, som oppsettet {strategy} trenger. Genki sjekket {checked} {date}.',
   tooManyEvents: 'Kjøringen ble stoppet fordi den laget mer enn {count} hendelser.',
   firstVariantChat: 'Den første varianten er standard og må kunne brukes i chat.',
   onlyFlowTable: 'Bare arbeidsmåten Fast stegflyt kan lage en tabell.',

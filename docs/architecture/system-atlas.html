@@ -1559,6 +1559,87 @@
             schemas: [],
           },
           {
+            id: 'assistant-host',
+            plane: 'consumers',
+            name: 'Assistant host',
+            note: "A hosted service's assistant",
+            icon: 'chat',
+            color: '#74a7ff',
+            status: 'React app',
+            packages: ['@genai/assistant'],
+            summary:
+              "genki's generic host for a service's assistant, drawn from the service's interface by hostname.",
+            description:
+              "A React app that looks up the hostname it is served on, draws the service's name, menu and pages, and after login the assistant the service's layout describes through ui-assembly. It runs no code from the service owner. Where the host serves the API's BFF it signs in through it (bffSignIn in bff.ts, a host-only session cookie, no token in the page); elsewhere it logs in in the browser with the authorization code flow and PKCE against the issuer and client the host route names (login.ts).",
+            responsibilities: [
+              'Look up the hostname and draw the hosted service, or say there is none',
+              "Draw the menu and the service's Markdown pages",
+              "Draw the assistant from the layout in the reader's language",
+              'Sign the person in through the BFF, or in the browser where the host serves none',
+            ],
+            files: [
+              'apps/assistant/src/App.tsx',
+              'apps/assistant/src/host.ts',
+              'apps/assistant/src/login.ts',
+              'apps/assistant/src/bff.ts',
+            ],
+            input: "The hostname and the person's questions",
+            output: 'Host lookups, chat requests',
+            edges: [
+              {
+                to: 'i18n',
+                label: 'Language state and catalogues',
+                kind: 'call',
+                target: 'call',
+                witness: { file: 'apps/assistant/src/i18n.ts', imports: '@genai/i18n' },
+              },
+              {
+                to: 'ui-assembly',
+                label: 'Draws the assistant from the layout',
+                kind: 'call',
+                target: 'call',
+                witness: { file: 'apps/assistant/src/App.tsx', imports: '@genai/ui-assembly' },
+              },
+              {
+                to: 'ui-blocks',
+                label: "Draws a page's Markdown",
+                kind: 'call',
+                target: 'call',
+                witness: { file: 'apps/assistant/src/App.tsx', imports: '@genai/ui-blocks' },
+              },
+              {
+                to: 'api',
+                label: 'The hosted service and its pages by hostname',
+                kind: 'http',
+                target: 'http',
+                witness: { file: 'apps/assistant/src/host.ts', contains: '/api/v1/hosts/' },
+              },
+              {
+                to: 'api',
+                label: 'Sign-in through the BFF, with no token in the page',
+                kind: 'http',
+                target: 'http',
+                witness: { file: 'apps/assistant/src/bff.ts', contains: '/auth/me' },
+              },
+              {
+                to: 'adapter-openai',
+                label: "The service's interface after login",
+                kind: 'http',
+                target: 'http',
+                witness: { file: 'apps/assistant/src/host.ts', contains: '/interface' },
+              },
+              {
+                to: 'ansattporten',
+                label: 'Browser login with PKCE',
+                kind: 'http',
+                target: 'http',
+                witness: { file: 'apps/assistant/src/login.ts', contains: 'authorization_code' },
+              },
+            ],
+            keywords: 'assistant host hosted hostname menu pages frontend react designsystemet',
+            schemas: [],
+          },
+          {
             id: 'portal',
             plane: 'consumers',
             name: 'Portal',
@@ -2287,6 +2368,11 @@
               'Compose ports, providers and strategies into a kernel',
               'Mount MCP, /v1, REST, conversation, portal and console routes',
               'Authenticate callers and choose stores',
+              {
+                'Run the BFF for the assistant host':
+                  'login as a confidential client, sessions in Postgres, and a session swapped for a bearer token (ADR 0061)',
+              },
+              "Run genki's platform login on login.apps.\u003czone> and hand its session to a hosted hostname with a one-time code (ADR 0061)",
               'Run a published service over a document set, with a cost estimate, a cost cap and a retry list',
               'Keep projects of document selections, and subscriptions that run a service on new documents under a monthly cost cap',
               "Let operators set the maturity of operation kinds and the processor records of model endpoints, and refuse a service's call-operation step at publish unless both allow it (ADR 0047)",
@@ -2301,6 +2387,8 @@
               'apps/api/src/routes/console-routes.ts',
               'apps/api/src/batch-runs.ts',
               'apps/api/src/session-upgrade.ts',
+              'apps/api/src/bff/bff.ts',
+              'apps/api/src/bff/acting.ts',
               'apps/api/src/projects.ts',
               'apps/api/src/task-export.ts',
               'apps/api/src/operation-governance.ts',
@@ -2719,9 +2807,9 @@
               'Fire schedules from one worker at a time through a Postgres advisory lock',
               'Install the knowledge job queues on both servers and reconcile knowledge runs every minute (ADR 0042)',
               'Work knowledge.ingest on the platform server and knowledge.index on the knowledge server, behind admission on the run and the knowledge binding',
-              "Work knowledge.convert, KNOWLEDGE_CONVERT_CONCURRENCY at once (2 by default), with Docling when DOCLING_URL is set and else the text layer - fetch the file through its record, write native output to the native output store, store its pages or the converter's refusal, read a file Docling refuses with the text layer, and send the waiting records' index jobs (ADR 0042)",
+              "Work knowledge.convert, KNOWLEDGE_CONVERT_CONCURRENCY at once (2 by default), with Docling when DOCLING_URL is set and else the text layer - fetch the file through its record, write native output to the native output store, store its parts and pages or the converter's refusal, read a file Docling refuses with the text layer, and send the waiting records' index jobs (ADR 0042)",
               "Send a replacement run when a run ends with text-layer files, and work knowledge.replace - make the pipeline's records wait on Docling, with convert jobs for the night window (ADR 0042)",
-              'Work knowledge.seed - store a conversion for each native output in Blob under one sha256 prefix that has none, with pages from its derivation, skipping files it cannot read (ADR 0042)',
+              'Work knowledge.seed - store a conversion for each native output in Blob under one sha256 prefix that has none, with pages from its derivation or, for a parts batch, its parts, skipping files it cannot read (ADR 0042, ADR 0055)',
               'Count records waiting on a conversion as open work of their runs, and hand a shared conversion to a waiting run when its sender is cancelled',
               'Work KNOWLEDGE_INDEX_CONCURRENCY knowledge.index and knowledge.fill jobs at once (8 by default), with knowledge pools sized to hold them',
               'Wait out a throttled embedding model in knowledge.index and knowledge.fill, pausing every job on the model, for up to 20 minutes a try',
@@ -4070,6 +4158,466 @@
                           },
                           additionalProperties: false,
                         },
+                        interface: {
+                          type: 'object',
+                          properties: {
+                            layout: {
+                              type: 'object',
+                              properties: {
+                                version: { type: 'number', const: 1 },
+                                template: { type: 'string', pattern: '^[a-z][a-z0-9-]{0,63}$' },
+                                look: { type: 'string', pattern: '^[a-z][a-z0-9-]{0,63}$' },
+                                zones: {
+                                  type: 'object',
+                                  properties: {
+                                    primary: {
+                                      maxItems: 16,
+                                      type: 'array',
+                                      items: {
+                                        type: 'object',
+                                        properties: {
+                                          block: {
+                                            type: 'string',
+                                            pattern: '^[a-z][a-z0-9-]{0,63}$',
+                                          },
+                                          settings: {
+                                            type: 'object',
+                                            propertyNames: {
+                                              type: 'string',
+                                              pattern: '^[a-zA-Z][a-zA-Z0-9-]{0,63}$',
+                                            },
+                                            additionalProperties: {
+                                              anyOf: [
+                                                { type: 'boolean' },
+                                                { type: 'string', maxLength: 1000 },
+                                              ],
+                                            },
+                                          },
+                                        },
+                                        required: ['block'],
+                                        additionalProperties: false,
+                                      },
+                                    },
+                                    main: {
+                                      maxItems: 16,
+                                      type: 'array',
+                                      items: {
+                                        type: 'object',
+                                        properties: {
+                                          block: {
+                                            type: 'string',
+                                            pattern: '^[a-z][a-z0-9-]{0,63}$',
+                                          },
+                                          settings: {
+                                            type: 'object',
+                                            propertyNames: {
+                                              type: 'string',
+                                              pattern: '^[a-zA-Z][a-zA-Z0-9-]{0,63}$',
+                                            },
+                                            additionalProperties: {
+                                              anyOf: [
+                                                { type: 'boolean' },
+                                                { type: 'string', maxLength: 1000 },
+                                              ],
+                                            },
+                                          },
+                                        },
+                                        required: ['block'],
+                                        additionalProperties: false,
+                                      },
+                                    },
+                                    secondary: {
+                                      maxItems: 16,
+                                      type: 'array',
+                                      items: {
+                                        type: 'object',
+                                        properties: {
+                                          block: {
+                                            type: 'string',
+                                            pattern: '^[a-z][a-z0-9-]{0,63}$',
+                                          },
+                                          settings: {
+                                            type: 'object',
+                                            propertyNames: {
+                                              type: 'string',
+                                              pattern: '^[a-zA-Z][a-zA-Z0-9-]{0,63}$',
+                                            },
+                                            additionalProperties: {
+                                              anyOf: [
+                                                { type: 'boolean' },
+                                                { type: 'string', maxLength: 1000 },
+                                              ],
+                                            },
+                                          },
+                                        },
+                                        required: ['block'],
+                                        additionalProperties: false,
+                                      },
+                                    },
+                                  },
+                                  required: ['primary', 'main', 'secondary'],
+                                  additionalProperties: false,
+                                },
+                                profile: {
+                                  type: 'object',
+                                  properties: {
+                                    assistantName: {
+                                      anyOf: [
+                                        { type: 'string', maxLength: 80 },
+                                        {
+                                          type: 'object',
+                                          properties: {
+                                            nb: { type: 'string', maxLength: 80 },
+                                            en: { type: 'string', maxLength: 80 },
+                                          },
+                                          required: ['nb', 'en'],
+                                          additionalProperties: false,
+                                        },
+                                      ],
+                                    },
+                                    suggestions: {
+                                      maxItems: 6,
+                                      type: 'array',
+                                      items: {
+                                        anyOf: [
+                                          { type: 'string', maxLength: 200 },
+                                          {
+                                            type: 'object',
+                                            properties: {
+                                              nb: { type: 'string', maxLength: 200 },
+                                              en: { type: 'string', maxLength: 200 },
+                                            },
+                                            required: ['nb', 'en'],
+                                            additionalProperties: false,
+                                          },
+                                        ],
+                                      },
+                                    },
+                                    followUps: {
+                                      maxItems: 6,
+                                      type: 'array',
+                                      items: {
+                                        anyOf: [
+                                          { type: 'string', maxLength: 200 },
+                                          {
+                                            type: 'object',
+                                            properties: {
+                                              nb: { type: 'string', maxLength: 200 },
+                                              en: { type: 'string', maxLength: 200 },
+                                            },
+                                            required: ['nb', 'en'],
+                                            additionalProperties: false,
+                                          },
+                                        ],
+                                      },
+                                    },
+                                    corpora: {
+                                      type: 'object',
+                                      propertyNames: { type: 'string', maxLength: 128 },
+                                      additionalProperties: {
+                                        type: 'object',
+                                        properties: {
+                                          label: {
+                                            anyOf: [
+                                              { type: 'string', maxLength: 80 },
+                                              {
+                                                type: 'object',
+                                                properties: {
+                                                  nb: { type: 'string', maxLength: 80 },
+                                                  en: { type: 'string', maxLength: 80 },
+                                                },
+                                                required: ['nb', 'en'],
+                                                additionalProperties: false,
+                                              },
+                                            ],
+                                          },
+                                          description: {
+                                            anyOf: [
+                                              { type: 'string', maxLength: 500 },
+                                              {
+                                                type: 'object',
+                                                properties: {
+                                                  nb: { type: 'string', maxLength: 500 },
+                                                  en: { type: 'string', maxLength: 500 },
+                                                },
+                                                required: ['nb', 'en'],
+                                                additionalProperties: false,
+                                              },
+                                            ],
+                                          },
+                                          fields: {
+                                            maxItems: 30,
+                                            type: 'array',
+                                            items: {
+                                              type: 'object',
+                                              properties: {
+                                                id: { type: 'string', maxLength: 128 },
+                                                label: {
+                                                  anyOf: [
+                                                    { type: 'string', maxLength: 80 },
+                                                    {
+                                                      type: 'object',
+                                                      properties: {
+                                                        nb: { type: 'string', maxLength: 80 },
+                                                        en: { type: 'string', maxLength: 80 },
+                                                      },
+                                                      required: ['nb', 'en'],
+                                                      additionalProperties: false,
+                                                    },
+                                                  ],
+                                                },
+                                                heading: {
+                                                  anyOf: [
+                                                    { type: 'string', maxLength: 80 },
+                                                    {
+                                                      type: 'object',
+                                                      properties: {
+                                                        nb: { type: 'string', maxLength: 80 },
+                                                        en: { type: 'string', maxLength: 80 },
+                                                      },
+                                                      required: ['nb', 'en'],
+                                                      additionalProperties: false,
+                                                    },
+                                                  ],
+                                                },
+                                                kind: { type: 'string', enum: ['year'] },
+                                                years: {
+                                                  type: 'object',
+                                                  properties: {
+                                                    first: {
+                                                      type: 'integer',
+                                                      minimum: -9007199254740991,
+                                                      maximum: 9007199254740991,
+                                                    },
+                                                    last: {
+                                                      type: 'integer',
+                                                      minimum: -9007199254740991,
+                                                      maximum: 9007199254740991,
+                                                    },
+                                                  },
+                                                  additionalProperties: false,
+                                                },
+                                              },
+                                              required: ['id', 'label'],
+                                              additionalProperties: false,
+                                            },
+                                          },
+                                          typePlurals: {
+                                            type: 'object',
+                                            propertyNames: { type: 'string', maxLength: 128 },
+                                            additionalProperties: {
+                                              anyOf: [
+                                                { type: 'string', maxLength: 128 },
+                                                {
+                                                  type: 'object',
+                                                  properties: {
+                                                    nb: { type: 'string', maxLength: 128 },
+                                                    en: { type: 'string', maxLength: 128 },
+                                                  },
+                                                  required: ['nb', 'en'],
+                                                  additionalProperties: false,
+                                                },
+                                              ],
+                                            },
+                                          },
+                                          typeField: { type: 'string', maxLength: 128 },
+                                          documentLinks: {
+                                            type: 'object',
+                                            properties: {
+                                              digits: { type: 'string', maxLength: 500 },
+                                              uuid: { type: 'string', maxLength: 500 },
+                                              any: { type: 'string', maxLength: 500 },
+                                            },
+                                            additionalProperties: false,
+                                          },
+                                          about: {
+                                            type: 'object',
+                                            properties: {
+                                              idField: { type: 'string', maxLength: 128 },
+                                              fields: {
+                                                maxItems: 10,
+                                                type: 'array',
+                                                items: { type: 'string', maxLength: 128 },
+                                              },
+                                            },
+                                            required: ['idField', 'fields'],
+                                            additionalProperties: false,
+                                          },
+                                        },
+                                        additionalProperties: false,
+                                      },
+                                    },
+                                    experiments: {
+                                      maxItems: 10,
+                                      type: 'array',
+                                      items: {
+                                        type: 'object',
+                                        properties: {
+                                          id: { type: 'string', maxLength: 128 },
+                                          title: {
+                                            anyOf: [
+                                              { type: 'string', maxLength: 80 },
+                                              {
+                                                type: 'object',
+                                                properties: {
+                                                  nb: { type: 'string', maxLength: 80 },
+                                                  en: { type: 'string', maxLength: 80 },
+                                                },
+                                                required: ['nb', 'en'],
+                                                additionalProperties: false,
+                                              },
+                                            ],
+                                          },
+                                          description: {
+                                            anyOf: [
+                                              { type: 'string', maxLength: 500 },
+                                              {
+                                                type: 'object',
+                                                properties: {
+                                                  nb: { type: 'string', maxLength: 500 },
+                                                  en: { type: 'string', maxLength: 500 },
+                                                },
+                                                required: ['nb', 'en'],
+                                                additionalProperties: false,
+                                              },
+                                            ],
+                                          },
+                                          href: { type: 'string', maxLength: 500 },
+                                          hrefLabel: {
+                                            anyOf: [
+                                              { type: 'string', maxLength: 80 },
+                                              {
+                                                type: 'object',
+                                                properties: {
+                                                  nb: { type: 'string', maxLength: 80 },
+                                                  en: { type: 'string', maxLength: 80 },
+                                                },
+                                                required: ['nb', 'en'],
+                                                additionalProperties: false,
+                                              },
+                                            ],
+                                          },
+                                        },
+                                        required: ['id', 'title'],
+                                        additionalProperties: false,
+                                      },
+                                    },
+                                    settingsNote: {
+                                      anyOf: [
+                                        { type: 'string', maxLength: 1000 },
+                                        {
+                                          type: 'object',
+                                          properties: {
+                                            nb: { type: 'string', maxLength: 1000 },
+                                            en: { type: 'string', maxLength: 1000 },
+                                          },
+                                          required: ['nb', 'en'],
+                                          additionalProperties: false,
+                                        },
+                                      ],
+                                    },
+                                  },
+                                  additionalProperties: false,
+                                },
+                              },
+                              required: ['version', 'zones'],
+                              additionalProperties: false,
+                            },
+                            menu: {
+                              maxItems: 12,
+                              type: 'array',
+                              items: {
+                                anyOf: [
+                                  {
+                                    type: 'object',
+                                    properties: {
+                                      label: {
+                                        anyOf: [
+                                          { type: 'string', maxLength: 80 },
+                                          {
+                                            type: 'object',
+                                            properties: {
+                                              nb: { type: 'string', maxLength: 80 },
+                                              en: { type: 'string', maxLength: 80 },
+                                            },
+                                            required: ['nb', 'en'],
+                                            additionalProperties: false,
+                                          },
+                                        ],
+                                      },
+                                      page: { type: 'string', pattern: '^[a-z][a-z0-9-]{0,63}$' },
+                                    },
+                                    required: ['label', 'page'],
+                                    additionalProperties: false,
+                                  },
+                                  {
+                                    type: 'object',
+                                    properties: {
+                                      label: {
+                                        anyOf: [
+                                          { type: 'string', maxLength: 80 },
+                                          {
+                                            type: 'object',
+                                            properties: {
+                                              nb: { type: 'string', maxLength: 80 },
+                                              en: { type: 'string', maxLength: 80 },
+                                            },
+                                            required: ['nb', 'en'],
+                                            additionalProperties: false,
+                                          },
+                                        ],
+                                      },
+                                      href: { type: 'string', maxLength: 500 },
+                                    },
+                                    required: ['label', 'href'],
+                                    additionalProperties: false,
+                                  },
+                                ],
+                              },
+                            },
+                            pages: {
+                              maxItems: 12,
+                              type: 'array',
+                              items: {
+                                type: 'object',
+                                properties: {
+                                  id: { type: 'string', pattern: '^[a-z][a-z0-9-]{0,63}$' },
+                                  title: {
+                                    anyOf: [
+                                      { type: 'string', maxLength: 80 },
+                                      {
+                                        type: 'object',
+                                        properties: {
+                                          nb: { type: 'string', maxLength: 80 },
+                                          en: { type: 'string', maxLength: 80 },
+                                        },
+                                        required: ['nb', 'en'],
+                                        additionalProperties: false,
+                                      },
+                                    ],
+                                  },
+                                  body: {
+                                    anyOf: [
+                                      { type: 'string' },
+                                      {
+                                        type: 'object',
+                                        properties: {
+                                          nb: { type: 'string' },
+                                          en: { type: 'string' },
+                                        },
+                                        required: ['nb', 'en'],
+                                        additionalProperties: false,
+                                      },
+                                    ],
+                                  },
+                                },
+                                required: ['id', 'title', 'body'],
+                                additionalProperties: false,
+                              },
+                            },
+                          },
+                          additionalProperties: false,
+                        },
                       },
                       required: ['purpose', 'riskClass', 'input', 'output', 'strategy', 'model'],
                       additionalProperties: false,
@@ -4697,6 +5245,7 @@
                     noAnswerText: { type: 'string', minLength: 1, maxLength: 500 },
                     instructionsInAnswer: { type: 'boolean' },
                     citeBy: { type: 'string', enum: ['document', 'excerpt'] },
+                    sources: { type: 'string', enum: ['cited', 'read'] },
                     search: {
                       type: 'object',
                       properties: {
@@ -5767,6 +6316,8 @@
               'packages/ingest/src/stored-converter.ts',
               'packages/ingest/src/docling-pages.ts',
               'packages/ingest/src/docling-parts.ts',
+              'packages/ingest/src/docling-output.ts',
+              'packages/ingest/src/text-layer-parts.ts',
               'packages/ingest/src/docling-walk.ts',
               'packages/ingest/src/docling.ts',
             ],
@@ -6754,7 +7305,7 @@
                           properties: {
                             kind: { type: 'string', const: 'webhook' },
                             url: { type: 'string', format: 'uri' },
-                            secret: { type: 'string', pattern: '^[a-z0-9][a-z0-9._-]*$' },
+                            secret: { type: 'string', pattern: '^[a-z0-9][a-z0-9-]{0,62}$' },
                           },
                           required: ['kind', 'url', 'secret'],
                           additionalProperties: false,
@@ -6886,7 +7437,7 @@
             summary:
               'One port for model calls; a router owns the catalog, capabilities, operations, credentials and routing, the kernel gate governs every call.',
             description:
-              'Adapters implement APIs, not vendors (ADR 0021). A connection offers API families, a model binds one API per kind, and the API registry lists built-in implementations and descriptors under one id each (ADR 0048). Models are discovered from connections such as Azure AI Foundry, start with residency global and are classified by an operator.',
+              'Adapters implement APIs, not vendors (ADR 0021). A connection offers API families, a model binds one API per kind, and the API registry lists built-in implementations and descriptors under one id each (ADR 0048). Models are discovered from connections such as Azure AI Foundry, start with residency global and are classified by an operator; genki checks what a discovered model can do itself, with a few small synthetic calls through the gate (ADR 0021,',
             responsibilities: [
               'Model catalog and discovery',
               'Operations on the catalogue (chat, decide and every kind a registered descriptor defines) and capability checks',
@@ -6896,6 +7447,7 @@
               'Calls through the kernel gate, which checks admission (lockdown, ADR 0033), enabled, sharing and residency, holds the request and the answer to their closed shapes, runs the payload guard and meters (ADR 0047); the router itself only routes',
               'The API registry and the binding of each model kind to an API, with the units each API reports; embedding and rerank models bind APIs other ports implement (ADR 0048)',
               "Prices per model, kind and unit; typed chat and decide calls carry the connection's processor record and production maturity (ADR 0048,",
+              'Learning the capabilities of discovered models from the listing and from small synthetic calls',
               'Credential resolution',
             ],
             files: [
@@ -6907,6 +7459,7 @@
               'packages/port-model/src/decision.ts',
               'packages/port-model/src/operation.ts',
               'packages/port-model/src/instructions.ts',
+              'packages/port-model/src/capability-checks.ts',
             ],
             input: 'Generic chat request',
             output: 'Completion, deltas, decision answers, usage',

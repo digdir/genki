@@ -11,6 +11,10 @@ param identityName string
 param registryServer string
 param keyVaultUri string
 param keyVaultSecretNames array
+@description('Gives the API the assistant host\'s proxy key, genai-proxy-key in Key Vault, which the BFF trusts the forwarded hostname by (ADR 0061).')
+param bffProxyKey bool = false
+@description('Reads platform-login-client-secret from genki\'s Key Vault for the API: the secret of genki\'s own login client (ADR 0061).')
+param platformLoginSecret bool = false
 param apiImage string
 param apiRevisionSuffix string = ''
 param apiLiveRevision string = ''
@@ -36,6 +40,9 @@ param knowledge object = {}
 
 @description('The principals job: { host, admin: { id, clientId }, args }, run in the worker image. Empty: none.')
 param knowledgeSetup object = {}
+
+@description('The nightly copy of the platform database: { pgDumpImage, writer: { id, clientId }, containerUrl, schedule, drillHost }. Empty: none.')
+param platformBackup object = {}
 param storageAccountName string
 param storageShareName string
 
@@ -200,6 +207,17 @@ var doclingKeySecret = {
   identity: identityId
 }
 
+var proxyKeySecret = bffProxyKey
+  ? [{ name: 'genai-proxy-key', keyVaultUrl: '${keyVaultUri}secrets/genai-proxy-key', identity: identityId }]
+  : []
+var proxyKeyEnv = bffProxyKey ? [{ name: 'GENAI_PROXY_KEY', secretRef: 'genai-proxy-key' }] : []
+var platformLoginSecretRef = platformLoginSecret
+  ? [{ name: 'platform-login-client-secret', keyVaultUrl: '${keyVaultUri}secrets/platform-login-client-secret', identity: identityId }]
+  : []
+var platformLoginSecretEnv = platformLoginSecret
+  ? [{ name: 'PLATFORM_LOGIN_CLIENT_SECRET', secretRef: 'platform-login-client-secret' }]
+  : []
+
 var apiAppName = '${name}-api'
 var apiCandidateRevision = empty(apiRevisionSuffix) ? '' : '${apiAppName}--${apiRevisionSuffix}'
 var apiCandidateLabelled = !empty(apiCandidateRevision) && !contains([apiLiveRevision, apiPreviousRevision], apiCandidateRevision)
@@ -236,7 +254,7 @@ resource api 'Microsoft.App/containerApps@2025-02-02-preview' = {
         traffic: apiTraffic
       }
       registries: [{ server: registryServer, identity: identityId }]
-      secrets: secrets
+      secrets: concat(secrets, proxyKeySecret, platformLoginSecretRef)
     }
     template: {
       revisionSuffix: empty(apiRevisionSuffix) ? null : apiRevisionSuffix
@@ -245,7 +263,7 @@ resource api 'Microsoft.App/containerApps@2025-02-02-preview' = {
           name: 'api'
           image: apiImage
           resources: { cpu: json(cpu), memory: memory }
-          env: concat([{ name: 'PORT', value: '8080' }, { name: 'APP_VERSION', value: appVersion }, { name: 'DATABASE_POOL_MAX', value: string(apiDatabasePoolMax) }], serverEnv, knowledgeEnv.api)
+          env: concat([{ name: 'PORT', value: '8080' }, { name: 'APP_VERSION', value: appVersion }, { name: 'DATABASE_POOL_MAX', value: string(apiDatabasePoolMax) }], serverEnv, knowledgeEnv.api, proxyKeyEnv, platformLoginSecretEnv)
           volumeMounts: dataMount
           probes: [
             { type: 'Liveness', httpGet: { path: '/health', port: 8080 }, periodSeconds: 30 }
@@ -436,6 +454,120 @@ resource knowledgeSetupJob 'Microsoft.App/jobs@2025-02-02-preview' = if (setupOn
   }
 }
 
+// The nightly copy (docs/runbook.md, "Backups"): the app identity reads, the backup identity writes.
+var backupOn = !empty(platformBackup)
+var platformLoginEnv = [
+  { name: 'PGHOST', value: postgresHost }
+  { name: 'PGDATABASE', value: postgresDatabase }
+  { name: 'PGUSER', value: identityName }
+  { name: 'PGSSLMODE', value: 'require' }
+]
+var dumpFile = '/work/platform.dump'
+var tokenFile = '/work/pgtoken'
+
+resource platformBackupJob 'Microsoft.App/jobs@2025-02-02-preview' = if (backupOn) {
+  name: '${name}-pg-backup'
+  location: location
+  tags: tags
+  identity: {
+    type: 'UserAssigned'
+    userAssignedIdentities: union({ '${identityId}': {} }, backupOn ? { '${platformBackup.writer.id}': {} } : {})
+  }
+  properties: {
+    environmentId: environment.id
+    workloadProfileName: 'Consumption'
+    configuration: {
+      triggerType: 'Schedule'
+      scheduleTriggerConfig: {
+        cronExpression: backupOn ? platformBackup.schedule : ''
+        parallelism: 1
+        replicaCompletionCount: 1
+      }
+      replicaTimeout: 3600
+      replicaRetryLimit: 1
+      registries: [{ server: registryServer, identity: identityId }]
+    }
+    template: {
+      volumes: [{ name: 'work', storageType: 'EmptyDir' }]
+      initContainers: [
+        {
+          name: 'token'
+          image: workerImage
+          resources: { cpu: json('0.25'), memory: '0.5Gi' }
+          command: ['node', 'scripts/platform-backup.ts', 'token']
+          env: [
+            { name: 'AZURE_CLIENT_ID', value: identityClientId }
+            { name: 'PGTOKEN_FILE', value: tokenFile }
+          ]
+          volumeMounts: [{ volumeName: 'work', mountPath: '/work' }]
+        }
+        {
+          name: 'dump'
+          image: backupOn ? platformBackup.pgDumpImage : ''
+          resources: { cpu: json('0.5'), memory: '1Gi' }
+          command: [
+            'sh'
+            '-c'
+            'PGPASSWORD="$(cat ${tokenFile})" && rm ${tokenFile} && export PGPASSWORD && exec pg_dump --format=custom --compress=6 --enable-row-security --file=${dumpFile}'
+          ]
+          env: concat(platformLoginEnv, [{ name: 'PGOPTIONS', value: '-c app.platform_access=backup' }])
+          volumeMounts: [{ volumeName: 'work', mountPath: '/work' }]
+        }
+      ]
+      containers: [
+        {
+          name: 'upload'
+          image: workerImage
+          resources: { cpu: json('0.5'), memory: '1Gi' }
+          command: ['node', 'scripts/platform-backup.ts', 'upload']
+          env: [
+            { name: 'AZURE_CLIENT_ID', value: backupOn ? platformBackup.writer.clientId : '' }
+            { name: 'BACKUP_FILE', value: dumpFile }
+            { name: 'BACKUP_CONTAINER_URL', value: backupOn ? platformBackup.containerUrl : '' }
+          ]
+          volumeMounts: [{ volumeName: 'work', mountPath: '/work' }]
+        }
+      ]
+    }
+  }
+}
+
+// The restore drill's row counts, run by .github/workflows/platform-restore-drill.yml against the throwaway server.
+resource restoreCheckJob 'Microsoft.App/jobs@2025-02-02-preview' = if (backupOn) {
+  name: '${name}-pg-restore-check'
+  location: location
+  tags: tags
+  identity: {
+    type: 'UserAssigned'
+    userAssignedIdentities: { '${identityId}': {} }
+  }
+  properties: {
+    environmentId: environment.id
+    workloadProfileName: 'Consumption'
+    configuration: {
+      triggerType: 'Manual'
+      manualTriggerConfig: { parallelism: 1, replicaCompletionCount: 1 }
+      replicaTimeout: 600
+      replicaRetryLimit: 0
+      registries: [{ server: registryServer, identity: identityId }]
+    }
+    template: {
+      containers: [
+        {
+          name: 'check'
+          image: workerImage
+          resources: { cpu: json('0.25'), memory: '0.5Gi' }
+          command: ['node', 'scripts/platform-backup.ts', 'count']
+          env: concat(platformLoginEnv, [
+            { name: 'AZURE_CLIENT_ID', value: identityClientId }
+            { name: 'DRILL_PGHOST', value: backupOn ? platformBackup.drillHost : '' }
+          ])
+        }
+      ]
+    }
+  }
+}
+
 var apiPublicUrl = empty(hostnames.api) ? 'https://${api.properties.configuration.ingress.fqdn}' : 'https://${hostnames.api}'
 var portalUrl = empty(hostnames.portal) ? '' : 'https://${hostnames.portal}'
 
@@ -526,6 +658,7 @@ output workerName string = worker.name
 output webAppNames array = [for (item, i) in webApps: web[i].name]
 output doclingName string = docling.name
 output knowledgeSetupJobName string = setupOn ? knowledgeSetupJob.name : ''
+output platformBackupJobName string = backupOn ? platformBackupJob.name : ''
 output fqdn string = api.properties.configuration.ingress.fqdn
 output apiCandidateRevision string = apiCandidateRevision
 output apiCandidateUrl string = !empty(apiLiveRevision) && apiCandidateLabelled

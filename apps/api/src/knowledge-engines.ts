@@ -10,6 +10,7 @@ import {
 } from '@genai/port-knowledge';
 import { z } from 'zod';
 import { translate, type ApiKey } from './i18n/index.js';
+import { platformDataLocation } from './residency.js';
 
 export interface EngineDescription {
   engine: string;
@@ -100,7 +101,7 @@ export interface DescribeOptions {
 export const describeEngines = (
   adapters: KnowledgeAdapter[],
   writers: IndexWriterAdapter[],
-  options: DescribeOptions = {},
+  options: DescribeOptions = { platformDataLocation },
 ): EngineDescription[] =>
   adapters
     .map((adapter): EngineDescription => {

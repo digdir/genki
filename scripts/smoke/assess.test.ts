@@ -4,6 +4,7 @@ import {
   assessCompletion,
   assessFacets,
   assessHealth,
+  assessInternal,
   assessKeyAdmission,
   assessModels,
   assessOpenapi,
@@ -865,6 +866,22 @@ describe('expected statuses', () => {
 
   it('fails a write that should have been refused', () => {
     expect(assessStatus(http(201, {}), [403], 'publish').detail).toBe('publish: 201, expected 403');
+  });
+});
+
+describe('internal smoke services', () => {
+  const published = (visibility?: string) =>
+    http(200, { latest: { definition: { spec: visibility ? { visibility } : {} } } });
+
+  it('passes a smoke service the portal never lists because it is internal', () => {
+    expect(assessInternal(published('internal'), 'smoke').ok).toBe(true);
+  });
+
+  it('fails a smoke service published without visibility internal', () => {
+    expect(assessInternal(published(), 'smoke')).toEqual({
+      ok: false,
+      detail: 'smoke is not internal, so the portal lists it',
+    });
   });
 });
 

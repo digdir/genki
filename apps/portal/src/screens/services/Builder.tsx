@@ -140,6 +140,7 @@ import { describeProblem, publishDraft, type PublishProblem } from '../service/p
 import { VersionsSection } from '../service/VersionsSection';
 import { EnvironmentsSection } from '../service/EnvironmentsSection';
 import { LanguageInstructionTabs } from './LanguageInstructionTabs';
+import type { AssistantLayout } from '@genai/ui-blocks/builder';
 import { InterfaceTab } from './blocks/InterfaceTab';
 import { TryViewKeeper } from './blocks/TryViewKeeper';
 import { UnmaskedInputConsent } from './UnmaskedInputConsent';
@@ -315,6 +316,10 @@ export const Builder = ({
 }: Props) => {
   const t = useT();
   const f = useFormat();
+  const dayAndTime = (iso: string) =>
+    new Date(iso).toDateString() === new Date().toDateString()
+      ? t('serviceDraft.todayAt', { time: f.time(iso) })
+      : t('serviceDraft.dayAt', { date: f.date(iso, 'medium'), time: f.time(iso) });
   const tRef = useRef(t);
   tRef.current = t;
   const narrow = useNarrow();
@@ -366,6 +371,11 @@ export const Builder = ({
   const filesRef = useRef(files);
   filesRef.current = files;
   const serverDraft = live && (!isNew || id !== 'new');
+  const setupLayout = !isNew || (serverDraft && init.draftRevision !== undefined);
+  const areaShown = (d: string | undefined) => {
+    const area = areaOf(d);
+    return isNew && area === 'limits' ? undefined : area;
+  };
   const [draftRevision, setDraftRevision] = useState(init.draftRevision ?? 0);
   const revisionRef = useRef(draftRevision);
   const routeId = isNew && draftRevision === 0 ? 'new' : id;
@@ -452,7 +462,7 @@ export const Builder = ({
     definition: Record<string, unknown>;
     files?: Record<string, string>;
   }>();
-  const [setupArea, setSetupArea] = useState<SetupArea>(() => areaOf(detail) ?? 'purpose');
+  const [setupArea, setSetupArea] = useState<SetupArea>(() => areaShown(detail) ?? 'purpose');
   const [sidePane, setSidePane] = useState<SidePane>('assistant');
 
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
@@ -469,6 +479,10 @@ export const Builder = ({
     setService(next);
   }, []);
   const patch = useCallback((edit: SpecEdit) => change((d) => applySpec(d, edit)), [change]);
+  const writeLayout = useCallback(
+    (layout: AssistantLayout) => patch((d) => ({ interface: { ...d.spec.interface, layout } })),
+    [patch],
+  );
   const editFile = useCallback((path: string, text: string) => {
     if (readOnlyRef.current) return;
     unsaved.current = true;
@@ -539,7 +553,9 @@ export const Builder = ({
     section === 'setup' &&
     !!detail &&
     (setupAreas as string[]).includes(detail) &&
-    !Object.values(areaOfSection).includes(detail as SetupArea);
+    (setupLayout
+      ? !areaShown(detail)
+      : !Object.values(areaOfSection).includes(detail as SetupArea));
   useEffect(() => {
     if (!addressed || (addressed === section && !unshownArea)) return;
     const alias = section === routeSection && detail && !unshownArea ? `/${detail}` : '';
@@ -936,7 +952,7 @@ export const Builder = ({
   }, []);
 
   useEffect(() => {
-    const area = section === 'setup' ? areaOf(detail) : undefined;
+    const area = section === 'setup' ? areaShown(detail) : undefined;
     if (area) setSetupArea(area);
   }, [section, detail]);
 
@@ -1384,7 +1400,7 @@ export const Builder = ({
   const sections = archived
     ? availableSections({ isNew }).filter((s) => archivedSections.includes(s))
     : availableSections({ isNew });
-  const withAssistant = !readOnly && ((section === 'setup' && isNew) || section === 'test');
+  const withAssistant = !readOnly && ((section === 'setup' && !setupLayout) || section === 'test');
   const datasetNames =
     datasetOptions.status === 'ready'
       ? new Map(datasetOptions.data.map((x) => [x.id, x.name] as const))
@@ -1484,6 +1500,13 @@ export const Builder = ({
     setPublish(publishPage ? 'prod' : null);
     if (publishPage) void saveDraft();
   }, [draftBar, publishPage]);
+  const firstPublishPage =
+    isNew && serverDraft && canPublish && section === 'setup' && detail === 'publish';
+  useEffect(() => {
+    if (!firstPublishPage) return;
+    setPublish('prod');
+    window.location.replace(`#${servicePath(routeId, 'setup')}`);
+  }, [firstPublishPage, routeId]);
   const screenProps = { api, tenant, tenantName, route, live };
   const versionsView = section === 'definition' ? 'yaml' : 'history';
   const latest = versions[0];
@@ -1726,6 +1749,7 @@ export const Builder = ({
           definition={definition}
           files={files}
           narrow={narrow}
+          onLayout={readOnly ? undefined : writeLayout}
           fullscreen={detail === 'preview'}
           backHref={`#${servicePath(routeId, 'interface')}`}
           adding={adding}
@@ -1781,7 +1805,7 @@ export const Builder = ({
           }
         />
       );
-    if (!isNew)
+    if (setupLayout)
       return (
         <SetupLayout
           current={setupArea}
@@ -1804,7 +1828,7 @@ export const Builder = ({
           pane={sidePane}
           onPane={setSidePane}
         >
-          {setupArea === 'limits' ? (
+          {setupArea === 'limits' && !isNew ? (
             <SettingsSection
               {...screenProps}
               id={id}
@@ -1818,6 +1842,11 @@ export const Builder = ({
           ) : (
             setup(setupSections, setupArea)
           )}
+          {isNew ? (
+            <Paragraph data-size="sm" className="meta">
+              {t('service.draftNote')}
+            </Paragraph>
+          ) : null}
         </SetupLayout>
       );
     return (
@@ -1959,7 +1988,7 @@ export const Builder = ({
                   {...(live ? { onCopy: () => void copyService() } : {})}
                 />
               ) : null}
-              {!archived && !(!isNew && section === 'setup') ? (
+              {!archived && !(setupLayout && section === 'setup') ? (
                 <Button asChild variant="secondary" data-size="sm">
                   <a href={playgroundHref}>{t('serviceLifecycle.tryService')}</a>
                 </Button>
@@ -2043,7 +2072,7 @@ export const Builder = ({
             version={publishedVersion}
             changes={changeList.length}
             hasDraft={hasDraft}
-            savedAt={savedAt ? f.time(savedAt) : undefined}
+            savedAt={savedAt ? dayAndTime(savedAt) : undefined}
             savedBy={saverOf(savedBy, self)}
             failedAt={failedAt}
             conflictBy={
@@ -2095,16 +2124,7 @@ export const Builder = ({
               label: changeLabel(t, c),
               text: changeText(t, c, changeNames),
             }))}
-            savedAt={
-              savedAt
-                ? new Date(savedAt).toDateString() === new Date().toDateString()
-                  ? t('serviceDraft.todayAt', { time: f.time(savedAt) })
-                  : t('serviceDraft.dayAt', {
-                      date: f.date(savedAt, 'medium'),
-                      time: f.time(savedAt),
-                    })
-                : undefined
-            }
+            savedAt={savedAt ? dayAndTime(savedAt) : undefined}
             savedBy={saverOf(savedBy, self)}
             detailsHref={publishHref}
             onKeep={() => setDiscarding(false)}

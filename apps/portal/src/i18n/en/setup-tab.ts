@@ -201,8 +201,6 @@ export const setup = {
   improveLabel: 'Let the platform suggest changes to the instructions',
   improveHelp:
     'The platform can suggest better instructions based on feedback and test sets. You accept each suggestion yourself. Applies from the next publication.',
-  modelPrice: 'NOK {input} in and NOK {output} out per 1M tokens',
-  notPriced: 'not priced',
   operationModels: 'Model per operation',
   operationModelsHelp:
     'The flow calls these operations. Choose the model that performs each of them. Where data is processed follows the model.',
@@ -355,9 +353,12 @@ export const setupList = {
   next: 'Next: {name}',
   sideLabel: 'Builder assistant and trying',
   sideTabs: 'Side panel',
+  toAssistant: 'Ask the assistant',
+  toTry: 'Try the service',
   tabAssistant: 'Assistant',
   tabTry: 'Try',
   tryNote: 'Tries the draft, not version {n}. Only you see the answer. Costs like a normal run.',
+  tryNoteFirst: 'Tries the draft. Only you see the answer. Costs like a normal run.',
   openPlayground: 'Open in the Playground with the timeline',
   askGoal: 'What should the users achieve?',
   askSources: 'Which sources are relevant?',

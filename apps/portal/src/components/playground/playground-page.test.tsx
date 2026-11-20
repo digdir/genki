@@ -164,7 +164,9 @@ describe('the playground page', () => {
     const panel = await openPage();
 
     const facts = within(panel).getByText(/^Data i Norge ·/);
-    expect(facts.textContent).toBe('Data i Norge · 11,90\u00a0kr / 95,20\u00a0kr per 1M tokens');
+    expect(facts.textContent).toBe(
+      'Data i Norge · inn 11,90\u00a0kr / ut 95,20\u00a0kr per 1M tokens',
+    );
   });
 
   it('shows the instruction text when the service keeps its instructions in a prompt file', async () => {

@@ -10,6 +10,7 @@ const validPattern = (pattern: string) => {
 };
 import { z } from 'zod';
 import { flowSettingsSchema } from './flow-settings.js';
+import { serviceInterface } from './service-interface.js';
 
 export const orgNumber = z.string().regex(/^\d{9}$/, 'must be a nine-digit organisation number');
 const slug = z
@@ -269,6 +270,7 @@ export const serviceSpec = z.strictObject({
   improve: z
     .strictObject({ allow: z.array(z.enum(improvable)).default([]) })
     .default({ allow: [] }),
+  interface: serviceInterface.optional(),
 });
 
 const metadata = z.strictObject({

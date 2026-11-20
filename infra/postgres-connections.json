@@ -1,4 +1,5 @@
 {
+  "source": "https://learn.microsoft.com/en-us/azure/postgresql/configure-maintain/concepts-limits#maximum-connections",
   "reservedConnections": 15,
   "maxConnections": {
     "Standard_B1ms": 50,

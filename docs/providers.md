@@ -39,7 +39,7 @@ endpoints:
         apis: { chat: openai/chat-completions@1 }
 ```
 
-A discovered model gets the id `<idPrefix>/<deployment>` with the deployment slugged as the console does when a model is added by hand: lower case, characters other than letters, digits, `_`, `.` and `-` replaced by `-`, and leading and trailing separators removed. `aivar:borealis` becomes `ai-gateway/aivar-borealis`, and `meta-llama/Llama-3.1-8B` becomes `ai-gateway/meta-llama-llama-3.1-8b`. A deployment that is already a model on the connection is not listed again. A discovered model is a candidate until an operator confirms it, and the OpenAI list says nothing of residency, family or capabilities, so the operator sets them then. A listing that fails is reported for its connection in the refresh result.
+A discovered model gets the id `<idPrefix>/<deployment>` with the deployment slugged as the console does when a model is added by hand: lower case, characters other than letters, digits, `_`, `.` and `-` replaced by `-`, and leading and trailing separators removed. `aivar:borealis` becomes `ai-gateway/aivar-borealis`, and `meta-llama/Llama-3.1-8B` becomes `ai-gateway/meta-llama-llama-3.1-8b`. A deployment that is already a model on the connection is not listed again. A discovered model is a candidate until an operator confirms it, and the OpenAI list says nothing of residency or family, so the operator sets them then. Capabilities a `/models` entry names (`capabilities`, `supported_parameters`, or `supports_*` flags, also under `model_info`) are taken as learned, and genki checks the rest with a few small calls (ADR 0021). A listing that fails is reported for its connection in the refresh result.
 
 An API has the id `<provider>/<api>@<version>`, a kind (`chat`, `decide`, `embed` and so on) and a family. `GET /operator/apis` lists every API Genki can bind: built-in implementations and operation descriptors, under one id each. The built-in APIs are:
 
@@ -52,7 +52,7 @@ An API has the id `<provider>/<api>@<version>`, a kind (`chat`, `decide`, `embed
 | `openai/embeddings@1`       | `embed`  | `openai`    | Embeddings; was `openai/embed@1`, still read.          |
 | `colbert/rerank@1`          | `rerank` | `colbert`   | Reranking; option `maxInputLength`.                    |
 
-A model binds one API per kind with `apis`. A binding is valid when the API exists, is of that kind, and is in a family the model's connection offers; a `chat` binding also needs an API with a built-in implementation. A model without `apis` on a connection with one family binds that family's default chat API. A discovery rule binds the APIs of the models it finds, and `idPrefix` sets the first part of their ids, so ids stay the same when two connections become one.
+A model binds one API per kind with `apis`. A binding is valid when the API exists, is of that kind, and is in a family the model's connection offers; a `chat` binding also needs an API with a built-in implementation. A model without `apis` on a connection with one family binds that family's default chat API. A discovery rule binds the APIs of the models it finds, and `idPrefix` sets the first part of their ids, so ids stay the same when two connections become one. A model the listing reports as an image, video, realtime, live, transcription, speech, embedding or moderation model binds no API and gets no capabilities, whatever the rule says, so it is not offered for chat; neither listing reports what kind a model is, so `azure-deployments` reads the model name it reports and `openai-models` the listed id. An operator binds it by hand with `PATCH /operator/models/{id}`, and that binding wins over the next listing.
 
 ## Embedding and rerank models
 
@@ -63,7 +63,7 @@ models:
   - id: foundry/text-embedding-3-small
     endpoint: foundry
     deployment: text-embedding-3-small
-    residency: global
+    residency: eu
     apis: { embed: openai/embeddings@1 }
     embed: { dimensions: 1536, maxBatch: 64 }
   - id: colbert

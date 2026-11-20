@@ -2,7 +2,7 @@
 
 Status: proposed, 2026-11-11 (partly built: the layout, its catalogue, rules and templates, and `@genai/ui-assembly`; a block in both its zones, 2026-11-13; the host's headers, 2026-11-13; the look a layout setting, and a template's options, 2026-11-13; the profile as data in the layout, 2026-11-14; the portal's try view draws it, 2026-11-14; a question the host refuses taken back, 2026-11-14; a document's file from the host, in beta, 2026-11-16; the opened excerpt's file asked for and the PDF opened at its page, 2026-11-16)
 
-Left: where a layout is stored, such as a frontend part of the service definition; texts in more than one language; and suggestions from the service's example questions, which `/v1/models` does not carry. Each needs its own change.
+Left: where a layout is stored, which ADR 0065 proposes as `spec.interface` in the service definition; texts in more than one language; and suggestions from the service's example questions, which `/v1/models` does not carry. Each needs its own change.
 
 ## Context
 
@@ -48,5 +48,5 @@ ADR 0053 keeps the UI blocks free of fetching: data in, events out. It left two 
 - A builder that offers the look as a choice names it with `lookKey`, in the catalogue's words.
 - Every block corner now falls back to Designsystemet's `xl` in every look, and the tools' dropdown button is neutral. A host that wants other corners sets the blocks' `--genai-*` radius variables.
 - The profile's shape is part of the layout's version 1 once a layout with one is stored: changes to it are additive, and a new field kind or kind of number is refused by a host that does not know it, as a new look is.
-- The limits are `layoutProblems`', so a builder or a store that checks a layout keeps to them; a host that draws a stored layout without checking it draws a long text as it is. The https rule holds either way: `profileOf` drops a layout's link or link template that `isHttpsLink` refuses, while a host's own links stay as the host gives them.
+- The limits are `layoutProblems`', so a builder or a store that checks a layout keeps to them; a host that draws a stored layout without checking it draws a long text as it is. The https rule holds either way: `profileOf` drops a layout's link or link template that `isHttpsLink` refuses (for a document link, `isDocumentLink`, which also takes a path on the host's own site, ADR 0065), while a host's own links stay as the host gives them.
 - A field a profile chooses without saying whether its values are integers is now sent as the dataset declares it, where it was sent as text.

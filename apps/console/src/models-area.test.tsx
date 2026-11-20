@@ -467,6 +467,25 @@ describe('Modeller: the model list', () => {
     expect(screen.getByText(/foundry: listing deployments failed with HTTP 401/)).toBeTruthy();
   });
 
+  it('says how many small calls a refresh spent checking what new models can do, and how many wait', async () => {
+    const result: RefreshResult = {
+      discovered: 2,
+      failed: [],
+      learned: { checked: [], calls: 12, deferred: 3 },
+    };
+    await signedIn('#/models?tab=models', mockFetch(undefined, undefined, result));
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Hent modeller på nytt' }));
+    const box = await dialog('Hent modeller på nytt');
+    giveReason(box, 'Se hva nye modeller kan');
+    fireEvent.click(within(box).getByRole('button', { name: 'Hent modeller på nytt' }));
+
+    expect(
+      await screen.findByText('Genki sjekket hva modellene kan, med 12 små kall.'),
+    ).toBeTruthy();
+    expect(screen.getByText('3 sjekker venter til neste gang modellene hentes.')).toBeTruthy();
+  });
+
   it('adds a model on a connection with a chat API from its families', async () => {
     const { calls, fetch } = recorded();
     await signedIn('#/models?tab=models', fetch);
@@ -584,6 +603,30 @@ describe('Modeller: one model', () => {
         reason: 'Responses gir resonnering mellom verktøykall',
       },
     ]);
+  });
+
+  it('marks the capabilities genki learned with the date, and says what a check found missing', async () => {
+    const learnedModel: OperatorModel = {
+      ...localModel,
+      id: 'gateway/borealis',
+      endpoint: 'gateway',
+      deployment: 'borealis',
+      origin: 'discovered',
+      classified: false,
+      capabilities: ['stream', 'json-schema'],
+      learned: {
+        'json-schema': { has: true, at: '2026-11-19T08:00:00.000Z', by: 'call' },
+        tools: { has: false, at: '2026-11-19T08:00:00.000Z', by: 'call' },
+      },
+    };
+    await signedIn('#/models?model=gateway/borealis', mockFetch(undefined, [learnedModel]));
+
+    expect(await screen.findByText(/Strømming, .* \(sjekket av Genki 19\.11\.2026\)/)).toBeTruthy();
+    expect(
+      screen.getByText(
+        /Genki sjekket .* 19\.11\.2026, og modellen kunne det ikke\. Resten er satt/,
+      ),
+    ).toBeTruthy();
   });
 
   it("a model is offered only APIs in its connection's families", async () => {
@@ -721,6 +764,20 @@ describe('Modeller: APIs and the guided path', () => {
     giveReason(moving, 'Tre uker i test uten avvik');
     fireEvent.click(within(moving).getByRole('button', { name: 'Flytt til produksjon' }));
     expect(await screen.findByText(/Bildegenerering er i produksjon/)).toBeTruthy();
+  });
+
+  it('an operator deletes a kind no API describes, with a reason, and the kind leaves the list', async () => {
+    await signedIn('#/models?tab=apis');
+    const button = await screen.findByRole('button', { name: /^Slett / });
+    const label = button.getAttribute('aria-label') ?? '';
+
+    fireEvent.click(button);
+    const deleting = await dialog(/^Slette typen /);
+    giveReason(deleting, 'Typen ble bare brukt i en test');
+    fireEvent.click(within(deleting).getByRole('button', { name: 'Slett' }));
+
+    expect(await screen.findByText(/er slettet\.$/)).toBeTruthy();
+    await waitFor(() => expect(screen.queryByRole('button', { name: label })).toBeNull());
   });
 
   it('try is offered only in a test environment', async () => {

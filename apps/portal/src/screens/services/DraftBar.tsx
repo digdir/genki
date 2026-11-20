@@ -97,21 +97,23 @@ export const DraftBar = ({
                   title: savedAt
                     ? t('serviceDraft.savedAt', { time: savedAt })
                     : t('serviceDraft.saved'),
-                  text: [
-                    changes
-                      ? t('serviceDraft.changesSince', { count: changes, n: version })
-                      : t('serviceDraft.noChangesSince', { n: version }),
-                    other ? t('serviceDraft.savedBy', { name: saverName(t, other) }) : '',
-                  ]
-                    .filter(Boolean)
-                    .join(' '),
+                  text: changes
+                    ? t('serviceDraft.changesSince', { count: changes, n: version })
+                    : t('serviceDraft.noChangesSince', { n: version }),
+                  more: t('serviceDraft.inUseUntil', { n: version }),
+                  by: other ? t('serviceDraft.savedBy', { name: saverName(t, other) }) : '',
                 };
   const actions = canEdit && hasDraft && state !== 'conflict';
   return (
     <div role="region" aria-label={t('serviceDraft.region')} className={`draft-bar ${view.tone}`}>
       <span aria-hidden="true" className="draft-bar-dot" />
       <div className="draft-bar-text" aria-live="polite">
-        <strong>{view.title}</strong> <span>{view.text}</span>
+        <strong>{view.title}</strong>{' '}
+        <span>
+          {view.text}
+          {'more' in view ? <span className="draft-bar-more"> {view.more}</span> : null}
+          {'by' in view && view.by ? ` ${view.by}` : null}
+        </span>
       </div>
       {state === 'failed' && canEdit ? (
         <Button variant="primary" data-size="sm" onClick={onSave}>

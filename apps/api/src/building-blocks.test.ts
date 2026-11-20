@@ -161,6 +161,7 @@ const setup = async ({
   tools = [] as string[],
   guardrails = [] as string[],
   governed = false,
+  extraModels = [] as ModelDescription[],
 } = {}) => {
   const runs = new InMemoryEvalRunStore();
   const blockSet = new Set(blockRefs);
@@ -224,6 +225,7 @@ const setup = async ({
         { ...model('foundry/gpt-4o', 'norway'), maker: 'OpenAI' },
         model('azure/gpt-41', 'eu'),
         model('openai/gpt-5', 'global'),
+        ...extraModels,
       ],
     },
     knowledge: { resolve: () => undefined },
@@ -345,6 +347,24 @@ describe('building blocks API', () => {
     expect(res.status).toBe(200);
     expect(asked).toBe(0);
     expect(runLists).toBe(1);
+  });
+
+  it('names model blocks readably, deciding colliding names only among the models the tenant sees', async () => {
+    const catalog = {
+      visibleTo: () => [],
+      list: () => [],
+      get: (_kind: string, id: string) =>
+        id === 'annen/gpt-41' ? { id, kind: 'model', scope: '405003309', spec: {} } : undefined,
+      history: async () => [],
+    } as unknown as CatalogRegistry;
+    const { send } = await setup({ catalog, extraModels: [model('annen/gpt-41', 'eu')] });
+
+    const list = await json<BuildingBlockList>(await send(`${base}?kind=model`, 'kari'));
+
+    expect(list.data.find((b) => b.id === 'azure/gpt-41')).toMatchObject({
+      name: 'GPT-41',
+    });
+    expect(list.data.some((b) => b.id === 'annen/gpt-41')).toBe(false);
   });
 
   it('a model outside the tenant residencies is not_allowed with the policy text', async () => {
@@ -1267,6 +1287,21 @@ describe('platform building block texts', () => {
         description: 'Skrevet av oss',
       });
   });
+
+  it("calls the platform organisation's own step flows its own, and the flows shipped with genki Digdir's", async () => {
+    const { send, store } = await setup({ blockRefs: ['retrieve@1'] });
+    await store.publish(flow('basic-rag', 'Basic RAG', 'Plan queries'), 'test', 'første versjon');
+    await store.publish(flow('egen-flyt', 'Min flyt', 'Skrevet av oss'), 'test', 'første versjon');
+
+    const list = (await json<BuildingBlockList>(await send(`${base}?kind=step_flow`, 'kari'))).data;
+
+    expect(list.find((b) => b.id === 'egen-flyt')?.publisher).toEqual({
+      type: 'own',
+      name: digdir,
+    });
+    expect(list.find((b) => b.id === 'basic-rag')?.publisher.type).toBe('digdir');
+    expect(list.find((b) => b.id === 'retrieve@1')?.publisher.type).toBe('digdir');
+  });
 });
 
 describe('the built-in guardrails and judges', () => {
@@ -1802,7 +1837,7 @@ describe('facts a building block page shows', () => {
     );
 
     expect(recorded.processor).toEqual({ recorded: false });
-    expect(recorded.maker).toBeUndefined();
+    expect(recorded.maker).toBe('OpenAI');
     expect(recorded.operations).toEqual([
       { operation: 'chat', api: 'openai/chat-completions@1', builtIn: true, maturity: 'test' },
     ]);

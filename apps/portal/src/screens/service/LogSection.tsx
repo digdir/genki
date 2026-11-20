@@ -356,7 +356,7 @@ export const LogSection = ({
                           <div className="meta danger-text">{r.failure.reason}</div>
                         ) : null}
                       </Table.Cell>
-                      <Table.Cell>{byText(r, t)}</Table.Cell>
+                      <Table.Cell className="dv-log-by">{byText(r, t)}</Table.Cell>
                       <Table.Cell>{r.environment ?? '–'}</Table.Cell>
                       <Table.Cell>
                         <Tag data-size="sm" data-color={s.color}>

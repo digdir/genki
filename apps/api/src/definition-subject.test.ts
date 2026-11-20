@@ -23,6 +23,11 @@ describe('the subject a test run and a publish share', () => {
     expect(definitionSubject(published)).toBe(definitionSubject(spec));
   });
 
+  it('ignores the interface, so a change of look alone keeps the eval runs a publish is gated on', () => {
+    const layout = { version: 1, zones: { primary: [], main: [{ block: 'chat' }], secondary: [] } };
+    expect(definitionSubject({ ...spec, interface: { layout } })).toBe(definitionSubject(spec));
+  });
+
   it('changes when anything the service does changes', () => {
     expect(
       definitionSubject({ ...spec, model: { primary: 'foundry-openai/gpt-5.4-mini' } }),

@@ -4,6 +4,15 @@ body {
   color: var(--ds-color-neutral-text-default);
   font-family: 'Inter', var(--ds-font-family), sans-serif;
   font-feature-settings: 'cv05' 1;
+  overflow-wrap: break-word;
+}
+
+.ds-heading {
+  overflow-wrap: anywhere;
+}
+
+.ds-toggle-group {
+  position: relative;
 }
 
 a:not([class^='ds-'], [class*=' ds-']) {
@@ -260,6 +269,7 @@ a:not([class^='ds-'], [class*=' ds-']):hover {
   align-self: flex-start;
   height: calc(100vh - var(--header-offset));
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .sidebar + .main {
@@ -298,6 +308,7 @@ a:not([class^='ds-'], [class*=' ds-']):hover {
 }
 
 .narrow-nav {
+  position: relative;
   border-top: 1px solid var(--ds-color-neutral-border-subtle);
   padding: 8px 12px 12px;
   max-height: calc(100dvh - var(--header-height));
@@ -536,6 +547,7 @@ a:not([class^='ds-'], [class*=' ds-']):hover {
 .dev-tools-page pre {
   margin: 0;
   overflow-x: auto;
+  position: relative;
 }
 
 @media (max-width: 900px) {
@@ -568,6 +580,7 @@ a:not([class^='ds-'], [class*=' ds-']):hover {
 }
 
 .main-inner {
+  container: page / inline-size;
   max-width: var(--page-max);
   margin: 0;
   display: flex;
@@ -656,6 +669,10 @@ a:not([class^='ds-'], [class*=' ds-']):hover {
   flex-wrap: wrap;
   gap: 10px;
   align-items: center;
+}
+
+.screen-loading {
+  display: contents;
 }
 
 .stack {
@@ -779,6 +796,14 @@ a:not([class^='ds-'], [class*=' ds-']):hover {
 .table-scroll > table {
   width: 100%;
   border: none;
+}
+
+.table-scroll > table > * > tr > :is(th, td):not([aria-sort]):first-child {
+  padding-inline-start: var(--ds-size-3);
+}
+
+.table-scroll > table > * > tr > :is(th, td):not([aria-sort]):last-child {
+  padding-inline-end: var(--ds-size-3);
 }
 
 .state {
@@ -989,6 +1014,7 @@ pre.code {
   line-height: 1.5;
   font-variant-numeric: tabular-nums;
   white-space: pre;
+  position: relative;
 }
 
 code {
@@ -1065,6 +1091,8 @@ code {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  position: relative;
+  overscroll-behavior: contain;
 }
 
 .side-panel-foot {

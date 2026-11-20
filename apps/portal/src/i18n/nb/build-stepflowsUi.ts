@@ -414,5 +414,14 @@ export const stepflowsUi = {
     noVersions: 'Ingen publiserte versjoner ennå.',
     versionsFailed: 'Vi fikk ikke hentet versjonene.',
     notShown: 'Utgiveren deler ikke stegene i denne flyten, så den kan ikke vises her.',
+    archive: 'Arkiver',
+    archiveLabel: 'Arkiver {name}',
+    archiveTitle: 'Arkivere {name}?',
+    archiveText:
+      'Stegflyten forsvinner fra Stegflyter og Byggeklosser. Versjonene blir liggende i historikken, og publiserer noen den på nytt, vises den igjen.',
+    archiving: 'Arkiverer',
+    archived: '{name} er arkivert.',
+    archiveInUse: 'En tjeneste bruker stegflyten, så den kan ikke arkiveres.',
+    archiveFailed: 'Vi fikk ikke arkivert stegflyten. Prøv igjen.',
   }),
 } as const;

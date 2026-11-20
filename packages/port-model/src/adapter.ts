@@ -4,6 +4,7 @@ import type { z } from 'zod';
 import type { DecisionRequest, DecisionResult } from './decision.js';
 import {
   ModelError,
+  type Capability,
   type ChatChunk,
   type ChatRequest,
   type ChatResult,
@@ -110,6 +111,10 @@ export { authenticatedFetch, authHeaders, shape, type Credential } from '@genai/
 export interface DiscoveredDeployment {
   deployment: string;
   model?: string;
+  /** False when the provider reports a model that does not chat, such as an image or realtime model. */
+  chat?: boolean;
+  /** What the listing says the model can do, when it says anything. */
+  capabilities?: Capability[];
 }
 
 export interface DiscoverySource {

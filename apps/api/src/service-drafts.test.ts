@@ -506,3 +506,73 @@ describe('checking a draft before it is published', () => {
     expect([none.status, outsider.status]).toEqual([404, 404]);
   });
 });
+
+describe('a service’s interface in its draft', () => {
+  const layout = {
+    version: 1,
+    template: 'knowledge-assistant-next',
+    zones: { primary: [{ block: 'threads' }], main: [{ block: 'chat' }], secondary: [] },
+    profile: { assistantName: { nb: 'Svarhjelpen', en: 'The answer helper' } },
+  };
+  type WithInterface = Spec & { interface?: { layout: typeof layout } };
+  const interfaceOf = (draft: Record<string, unknown>) =>
+    (specOf(draft) as WithInterface).interface;
+
+  it('is saved in the draft and published with the next version', async () => {
+    const env = await boot();
+    expect((await env.saveDraft({ interface: { layout } } as Partial<Spec>)).status).toBe(200);
+    expect(interfaceOf(await env.draft())).toEqual({ layout });
+
+    const published = await env.send('POST', '/definitions', {
+      definition: (await env.draft()).definition,
+      files: {},
+    });
+
+    expect(published.status).toBe(201);
+    expect(((await env.latest()) as WithInterface).interface).toEqual({ layout });
+  });
+
+  it('is neither read nor written by another organisation, nor written without manage-services', async () => {
+    const env = await boot();
+    await env.saveDraft({ interface: { layout } } as Partial<Spec>);
+    const changed = {
+      definition: {
+        ...service,
+        spec: {
+          ...service.spec,
+          interface: { layout: { ...layout, zones: { primary: [], main: [], secondary: [] } } },
+        },
+      },
+      files: {},
+    };
+
+    const read = await env.send('GET', env.draftPath, undefined, 'ola');
+    const written = await env.send('PUT', env.draftPath, changed, 'ola');
+    const elsewhere = await env.send(
+      'PUT',
+      `/tenants/${other}/services/svar/draft`,
+      changed,
+      'kari',
+    );
+    const member = await env.send('PUT', env.draftPath, changed, 'reader');
+
+    expect([read.status, written.status, elsewhere.status, member.status]).toEqual([
+      404, 404, 404, 403,
+    ]);
+    expect(JSON.stringify(read.body)).not.toContain('Svarhjelpen');
+    expect(interfaceOf(await env.draft())).toEqual({ layout });
+  });
+
+  it('is checked before publishing, so a layout past its limits stops the draft', async () => {
+    const env = await boot();
+    const long = { ...layout, profile: { assistantName: 'x'.repeat(81) } };
+    await env.saveDraft({ interface: { layout: long } } as Partial<Spec>);
+
+    const checked = await env.send('GET', `${env.draftPath}/checks`);
+
+    expect(checked.body.ready).toBe(false);
+    expect((checked.body.problems as { path: string }[]).map((p) => p.path)).toContain(
+      'spec.interface.layout.profile.assistantName',
+    );
+  });
+});

@@ -51,6 +51,9 @@ export const problems = defineNamespace({
   entraNotTrusted: 'Entra ID-innloggingen din gir ikke tilgang til dette miljøet',
   entraNotTrustedDetail:
     'Bare medlemmer av de oppsatte Entra-gruppene i Digdir kan logge inn med Entra ID her. Logg inn med TestID for å lese, eller be om tilgang.',
+  serviceLocked: 'Denne assistenten er bare åpen for ansatte i Digdir i testmiljøet',
+  serviceLockedDetail:
+    'Logg inn med Digdir-kontoen din (Entra ID). Har du gjort det og kommer likevel ikke inn, kan du be teamet bak tjenesten om tilgang.',
   unreadableDefinition: 'Definisjonen kan ikke leses',
   invalidDefinition: 'Ugyldig definisjon',
   skillsPublishedThrough:
@@ -167,6 +170,7 @@ export const problems = defineNamespace({
   serviceIdTaken: 'Id-en er allerede i bruk.',
   operatorOnlySettingTitle: 'Bare Digdir endrer denne grensen for en virksomhet',
   uploadRequestTooLarge: 'Forespørselen er større enn {size} MB. Send filene i flere forespørsler.',
+  databaseBusy: 'Databasen har ingen ledig tilkobling akkurat nå. Prøv igjen om litt.',
   status400: 'Forespørselen kan ikke leses',
   status401: 'Du er ikke logget inn',
   status403: 'Ingen tilgang',
@@ -174,6 +178,15 @@ export const problems = defineNamespace({
   status405: 'Metoden støttes ikke her',
   status409: 'Konflikt',
   serviceArchivedTitle: 'Tjenesten er arkivert',
+  hostNotFoundTitle: 'Ingen tjeneste på dette vertsnavnet',
+  bffProxyRefused: 'Forespørselen kom ikke gjennom vertens mellomtjener',
+  bffSignedOut: 'Du er logget ut. Logg inn igjen.',
+  bffLoggedOutTitle: 'Du er logget ut',
+  bffLoggedOutBody: 'Du kan lukke denne fanen.',
+  bffCsrfRefused: 'Forespørselen kom ikke fra denne siden',
+  bffLoginUnavailable: 'Innloggingen svarer ikke nå. Prøv igjen om litt.',
+  bffNotConfigured: 'Innlogging er ikke satt opp for dette vertsnavnet',
+  bffOrganisationRefused: 'Du kan ikke handle for denne virksomheten',
   status413: 'Forespørselen er for stor',
   status415: 'Formatet støttes ikke',
   status422: 'Endringen er ugyldig',
@@ -192,4 +205,18 @@ export const problems = defineNamespace({
     'Arbeidsmåten {strategy} har ikke ett felt for instruksjoner, så prøveområdet kan ikke bytte dem ut. Endre stegene i et utkast i stedet.',
   playgroundDatasetNotAvailable:
     'Datasettet {dataset} finnes ikke, eller virksomheten har ikke tilgang til det.',
+  stepFlowNotFound: 'Fant ikke stegflyten {id}',
+  stepFlowInUseTitle: 'Stegflyten er i bruk',
+  stepFlowUsedBy: 'Tjenesten {tenant}/{service} bruker stegflyten',
+  stepFlowUsedByInternal: '{count} interne tjenester bruker stegflyten',
+  stepFlowUsedByOthers: '{count} tjenester hos andre virksomheter bruker stegflyten',
+  operationKindNotFound: 'Fant ikke typen kall {kind}',
+  operationKindBuiltIn: 'Typen kall {kind} er innebygd og kan ikke slettes',
+  operationKindInUseTitle: 'Typen kall er i bruk',
+  operationKindDescribedBy: 'API-et {descriptor} beskriver typen kall',
+  platformSecretNotFound: 'Fant ikke plattformhemmeligheten {name}',
+  platformSecretInUseTitle: 'Plattformhemmeligheten er i bruk',
+  platformSecretUsedBy: '{kind} {id} bruker plattformhemmeligheten',
+  platformSecretUsesUnknown:
+    'Genki kan ikke sjekke hva som bruker plattformhemmeligheten, så den slettes ikke',
 });

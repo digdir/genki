@@ -78,6 +78,7 @@ export const catalogErrors = {
   onlyTenantApprovesTools: 'only the tenant or an operator approves tool changes',
   onlyTenantRevokesTools: 'only the tenant or an operator revokes tools',
   onlyOperatorsPlatformSecrets: 'only operators set platform secrets',
+  onlyOperatorsDeletePlatformSecrets: 'only operators delete platform secrets',
   invalidSecretName: 'not a valid secret name',
   onlyTenantSecrets: 'only the tenant or an operator sets its secrets',
   onlyTenantSecretsRemoved: 'only the tenant or an operator removes its secrets',
@@ -97,6 +98,17 @@ export const catalogErrors = {
   onlyTenantRemovesClients: 'only the tenant or an operator removes its clients',
   noSuchClient: 'no such client',
   noClientFor: 'no client {client} for {service}',
+  hostedInLockdown: 'in lockdown only a platform operator marks a client hosted',
+  hostedClientIdInLockdown:
+    'in lockdown only a platform operator changes the client id of a hosted client',
+  onlyOperatorHosts: 'only a platform operator marks a client hosted',
+  hostnameNotOpen: '{hostnameNotAllowed}: {hostname} is not open to this organisation',
+  hostnameTaken: '{hostname} belongs to the client {id}',
+  hostOwnBlockHosted:
+    "{block} is a host's own block, and genki's assistant host draws only catalogue blocks",
+  unknownInterfaceBlock: 'unknown interface block {block}',
+  hostedServiceOwnBlock:
+    "the service's interface has a host's own block ({block}), which genki's assistant host does not draw",
   riskConfirm:
     'risk class {riskClass} must be confirmed by a person with the publish right before publishing',
   riskConfirmMismatch:
@@ -636,6 +648,8 @@ export const definitionErrors = {
   modelNoTools: 'model {id} cannot call tools',
   unknownModel: 'unknown model {id}',
   modelLacks: 'model {id} lacks {capabilities}, which {strategy} needs',
+  modelLacksChecked:
+    'model {id} lacks {capabilities}, which {strategy} needs; checked {checked} on {date}',
   tooManyEvents: 'task emitted more than {count} events',
   firstVariantChat: 'the first variant is the default and must be a chat variant',
   onlyFlowTable: 'only a step flow can produce a table',

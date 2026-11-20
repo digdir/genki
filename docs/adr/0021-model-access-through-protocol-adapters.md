@@ -1,6 +1,6 @@
 # 0021 Model access through protocol adapters
 
-Status: accepted, 2026-10-12 (built; Responses API behind `openai-chat`, ADR 0044, 2026-11-03; adapters per protocol and the endpoint protocol superseded by [ADR 0048](0048-connections-serve-many-apis.md), 2026-11-05). Proposed 2026-10-06
+Status: accepted, 2026-10-12 (built; Responses API behind `openai-chat`, ADR 0044, 2026-11-03; adapters per protocol and the endpoint protocol superseded by [ADR 0048](0048-connections-serve-many-apis.md), 2026-11-05; discovered models' capabilities checked by genki, 2026-11-20). Proposed 2026-10-06
 
 ## Decision
 
@@ -11,6 +11,8 @@ Strategies call models through one port (`chat`, `chatStream`). Behind it, three
 - **The model catalog is configuration.** Each endpoint names a protocol, a base URL and how to authenticate (`api-key`, `bearer` or a named `token-provider` such as Entra ID). Each model names an endpoint, a deployment, a residency and its capabilities (`stream`, `tools`, `json-schema`, `reasoning`).
 
 Models are discovered, not configured. The environment holds only endpoints and keys. An endpoint declares where its models are listed (for Azure AI Foundry, the resource's deployment list) and which deployments to include, and the router finds them at startup and on refresh. A discovered model starts with residency `global`, because the listing does not say where a deployment runs, and an operator reclassifies it, sets its capabilities or turns it off in the console. A service picks its model from a dropdown filtered by its residency and by what its strategy needs, and the choice is stored in the versioned service definition.
+
+genki finds out itself what a discovered model can do beyond what its discovery rule names. It first takes what the connection's model listing says, then checks `json-schema`, `tools` and `stream` with one small synthetic call each (and one plain call when the provider refuses a check, to tell a missing capability from a broken model), through the model gate, after the first discovery at startup and on `POST /operator/models/refresh`. Every replica runs its own startup round. Reasoning is taken only from the listing, since no answer shows it. Each result is stored as learned, with when and how it was found, beside the operator's classification; capabilities an operator sets win over learned ones. A refresh spends at most 12 calls, free models first, and logs and audits their usage; a missing capability is checked again after 7 days, a passed one never, and a check that settles nothing (the model is down, the answer was cut off, the tool was not called) records nothing. A capability that passed once is never taken away by a later check. A strategy still refuses a model that lacks what it needs, and the publish check names what genki checked and on which day.
 
 A router owns everything that is the same for every adapter: catalog lookup, residency, capability checks, credentials and metering. Secrets appear only as `secret://` references and are resolved per request. SDKs never read credentials from the environment.
 

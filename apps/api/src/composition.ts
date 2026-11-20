@@ -41,6 +41,7 @@ import {
   SettingsRegistry,
   strategyKey,
   toCapabilities,
+  serviceDataLocation,
   validateDefinition,
   variantId,
   variantStrategyOf,
@@ -154,6 +155,7 @@ import { datasetDeleteModule } from './dataset-delete.js';
 import { datasetSearchModule } from './dataset-search.js';
 import { datasetReaderCounts, datasetReaders } from './dataset-readers.js';
 import { datasetUploadsModule } from './dataset-uploads.js';
+import { documentOriginals } from './document-originals.js';
 import { type ApiLog } from './failure-log.js';
 import {
   indexIngestionBackend,
@@ -293,6 +295,7 @@ import { playgroundModule } from './playground.js';
 import { proposalsModule } from './proposals.js';
 import { connectorsModule, privateNetworkRegistry } from './connectors.js';
 import { modelDisplayNames, ownedElsewhere } from './model-access.js';
+import { identityOf, type ConnectionFacts } from './model-identity.js';
 import { qualityModule } from './quality.js';
 import { batchRunsModule } from './batch-run-routes.js';
 import { projectsModule } from './project-routes.js';
@@ -318,8 +321,11 @@ import { definitionCompletionModule } from './definition-completion.js';
 import { skillsModule } from './skills.js';
 import { createKeyPoliciesModule } from './key-policies.js';
 import { maskinportenClientsModule } from './maskinporten-clients.js';
+import { defaultReservedDomains, registerHostRoutes, type HostingRules } from './hosts.js';
+import { hostedByGenki, interfaceCatalogueProblems } from './interface-catalogue.js';
 import { triggersModule } from './triggers.js';
 import { lifecycleOf, pausedMessage, serviceLifecycleModule } from './service-lifecycle.js';
+import { stepFlowArchiveModule } from './step-flow-archive.js';
 import { batchTasksOf } from './batch-runs.js';
 import { archivedPublishRefusal } from './archived-services.js';
 import {
@@ -334,6 +340,7 @@ import { modelChoice } from './model-choice.js';
 import { modelMatrixModule, releaseGate } from './model-matrix.js';
 import { operatorModelsModule } from './operator-models.js';
 import { platformSecretsModule } from './platform-secrets.js';
+import { platformSecretUses, secretUses } from './secret-uses.js';
 import { operatorOperationsModule } from './operator-operations.js';
 import {
   describedStepProblems,
@@ -413,6 +420,7 @@ export const platformModules: PlatformModuleFactory[] = [
   maskinportenClientsModule,
   triggersModule,
   serviceLifecycleModule,
+  stepFlowArchiveModule,
   serviceEnvironmentsModule,
   operatorModelsModule,
   platformSecretsModule,
@@ -526,6 +534,8 @@ export interface PlatformInput {
   serviceRequirement?: (tenant: string, service: string) => ServiceRequirementShape;
   clients?: ClientStore;
   reservedClientIds?: string[];
+  hosting?: HostingRules;
+  platformLogin?: { clientId: string; audience: string };
   webhookDeliveries?: WebhookDeliveryStore;
   triggerRuns?: TriggerRunStore;
   gatewayUsage?: UsageReads;
@@ -1193,6 +1203,10 @@ export const createPlatform = async (input: PlatformInput) => {
   };
   const taskStore = input.tasks ?? new InMemoryTaskStore();
   const clients = input.clients ?? new InMemoryClients();
+  const hosting: HostingRules = input.hosting ?? {
+    hostnames: new Map(),
+    reservedDomains: defaultReservedDomains,
+  };
   const webhooks = createWebhooks({
     clients,
     secrets: vault.resolver(input.secrets),
@@ -1625,10 +1639,17 @@ export const createPlatform = async (input: PlatformInput) => {
       return problems.length > 0 ? problems : undefined;
     }
     if (d.kind === 'Service') {
-      const unsearchable = missingDatasetProblems(
+      const blockProblems = interfaceCatalogueProblems(
         d,
-        (s) => plugins.datasetNeeds?.has(strategyKey(s.id, s.version)) ?? false,
+        await hostedByGenki(clients, d.metadata.tenant, d.metadata.id),
       );
+      const unsearchable = [
+        ...blockProblems,
+        ...missingDatasetProblems(
+          d,
+          (s) => plugins.datasetNeeds?.has(strategyKey(s.id, s.version)) ?? false,
+        ),
+      ];
       if (unsearchable.length > 0) return unsearchable;
       const flowOf = (flowRef: string) => flowIn(d.metadata.tenant, flowRef);
       for (const flowRef of new Set(flowUsesOf(d.spec).map((u) => u.flow))) {
@@ -1949,7 +1970,11 @@ export const createPlatform = async (input: PlatformInput) => {
       c.req.path.startsWith('/api/tools/call/') ||
       c.req.path === '/v1/chat/completions');
   const serviceLimitsGate: MiddlewareHandler = async (c, next) => {
-    if (c.req.path === '/v1/models' || /^\/v1\/models\/[^/]+\/schema$/.test(c.req.path))
+    if (
+      c.req.path === '/v1/models' ||
+      /^\/v1\/models\/[^/]+\/(?:schema|interface)$/.test(c.req.path) ||
+      c.req.path.startsWith('/v1/hosts/')
+    )
       return next();
     const caller = await callerOf(c.req.raw);
     const tenant = caller?.principal.tenant;
@@ -2274,6 +2299,8 @@ export const createPlatform = async (input: PlatformInput) => {
     ...frontendAdminHandlers({
       clients,
       definitions,
+      hosting,
+      locked: input.lockdown !== undefined,
       ...(input.reservedClientIds ? { reservedClientIds: input.reservedClientIds } : {}),
     }),
     ...consoleAdminExtensions(consoleDeps),
@@ -2285,6 +2312,15 @@ export const createPlatform = async (input: PlatformInput) => {
     app: Hono<E, S, B>,
     admin?: Admin,
   ) => {
+    registerHostRoutes(app, {
+      clients,
+      definitions,
+      configEntries,
+      rules: hosting,
+      issuer: input.endpoints?.issuer,
+      altinnResource: input.endpoints?.altinnResource,
+      platformLogin: input.platformLogin,
+    });
     app.use('*', clientCors(clients));
     for (const path of [
       '/v1/*',
@@ -2313,6 +2349,19 @@ export const createPlatform = async (input: PlatformInput) => {
         catalogSkips: input.catalogSkips ?? [],
         hiddenService: (tenant, id) => isHiddenService(definitions, tenant, id),
         names: actorNames(configEntries),
+        secretUses: secretUses({
+          configEntries,
+          catalog: config.catalog,
+          connections,
+          definitions,
+        }),
+        platformSecretUses: platformSecretUses({
+          configEntries,
+          catalog: config.catalog,
+          definitions,
+          platformTenant,
+          platformScope,
+        }),
         eval: {
           kernel,
           evalCapability: evalCapability.descriptor.id,
@@ -2350,6 +2399,7 @@ export const createPlatform = async (input: PlatformInput) => {
           })),
         prices,
         modelResidency: (id) => models.describe().find((m) => m.id === id)?.residency,
+        serviceDataLocation: (spec) => serviceDataLocation(spec, plugins),
         ingestionUsage,
         ...(input.gatewayUsage ? { gatewayUsage: input.gatewayUsage } : {}),
         countingRule: () => {
@@ -2423,6 +2473,7 @@ export const createPlatform = async (input: PlatformInput) => {
           (m) => !principal.tenant || !ownedElsewhere(config.catalog, m.id, principal.tenant),
         );
       const displayNames = modelDisplayNames(visible);
+      const { endpoints } = runtime.catalog.effective().models;
       const policy = principal.tenant
         ? await readBlockPolicy(configEntries, principal.tenant)
         : undefined;
@@ -2437,6 +2488,8 @@ export const createPlatform = async (input: PlatformInput) => {
             model: {
               id,
               family,
+              deployment,
+              endpoint,
               maker,
               operator,
               residency: r,
@@ -2451,8 +2504,10 @@ export const createPlatform = async (input: PlatformInput) => {
             id,
             name: displayNames.get(id) ?? id,
             ...(family ? { family } : {}),
-            ...(maker ? { maker } : {}),
-            ...(operator ? { operator } : {}),
+            ...identityOf(
+              { family, deployment, maker, operator },
+              endpoints[endpoint] as ConnectionFacts | undefined,
+            ),
             residency: r,
             capabilities,
             operations,
@@ -2496,6 +2551,16 @@ export const createPlatform = async (input: PlatformInput) => {
         },
         filterIssues: async (principal, entry, filters) =>
           askFilterIssues(knowledge, principal, entry, filters),
+        serviceInterface: async (entry) => {
+          const [tenant, service] = entry.capability.split('/');
+          const found =
+            tenant && service
+              ? await definitions.get('Service', tenant, service, entry.version)
+              : undefined;
+          const shown = (found?.definition as Pick<ServiceDefinition, 'spec'> | undefined)?.spec
+            .interface;
+          return shown?.layout ? { ...shown } : undefined;
+        },
         serviceSchema: async (entry) => {
           const [tenant, service] = entry.capability.split('/');
           const found =
@@ -2583,6 +2648,10 @@ export const createPlatform = async (input: PlatformInput) => {
             (await boundServiceReads(principal, names))
           );
         },
+        originalFile: documentOriginals(
+          blobStore,
+          (dataset) => config.catalog.get('dataset', dataset)?.scope,
+        ),
         status: async (dataset) => {
           const item = config.catalog.get('dataset', dataset);
           if (!item) return 'configured';
@@ -2695,6 +2764,7 @@ export const createPlatform = async (input: PlatformInput) => {
     directory,
     organization,
     modelDiscovery: runtime.modelDiscovery,
+    learnModelCapabilities: runtime.learnModelCapabilities,
     labels,
     apiKeys,
     clients,

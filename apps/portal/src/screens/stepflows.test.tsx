@@ -651,6 +651,89 @@ describe('Stegflyter in Utviklerverktøy', () => {
     expect(screen.getByRole('button', { name: /^Våre/ })).toBeTruthy();
   });
 
+  const archiving = (status: number) => {
+    const { calls, fetch } = recording();
+    const answered: typeof globalThis.fetch = async (input, init) => {
+      if (init?.method === 'DELETE') {
+        calls.push({
+          url: String(input),
+          method: 'DELETE',
+          body: undefined,
+          headers: new Headers(init.headers),
+        });
+        return new Response(
+          JSON.stringify(
+            status === 200
+              ? { id: 'x', archived: true, version: 1 }
+              : { type: 'urn:genai:problem:step-flow-in-use', status, errors: [], usedBy: [] },
+          ),
+          { status, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      const response = await fetch(input, init);
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (!url.includes('kind=step_flow')) return response;
+      const body = (await response.json()) as {
+        data: { publisher: { type: string }; usedBy: unknown[] }[];
+      };
+      const own = body.data.find((flow) => flow.publisher.type === 'own');
+      if (own) own.usedBy = [];
+      return new Response(JSON.stringify(body), {
+        status: response.status,
+        headers: { 'content-type': 'application/json' },
+      });
+    };
+    return { calls, fetch: answered };
+  };
+
+  const archiveFirst = async () => {
+    const table = await screen.findByRole('table', { name: 'Stegflyter' });
+    const button = within(table).getByRole('button', { name: /^Arkiver / });
+    fireEvent.click(button);
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText(/Begrunnelse/), {
+      target: { value: 'Rydder bort en testflyt' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Arkiver' }));
+    return { button };
+  };
+
+  it('archives an unused step flow of our own with a reason and says so', async () => {
+    const { calls, fetch } = archiving(200);
+    await openHome(fetch);
+
+    const { button } = await archiveFirst();
+
+    expect(await screen.findByText(/er arkivert\.$/)).toBeTruthy();
+    const sent = calls.find((c) => c.method === 'DELETE');
+    expect(sent?.url).toMatch(/\/step-flows\/[^/]+$/);
+    expect(decodeURIComponent(sent?.headers.get('change-reason') ?? '')).toBe(
+      'Rydder bort en testflyt',
+    );
+    expect(button.getAttribute('aria-label')).toMatch(/^Arkiver /);
+  });
+
+  it('explains that a step flow a service uses cannot be archived', async () => {
+    const { fetch } = archiving(409);
+    await openHome(fetch);
+
+    await archiveFirst();
+
+    expect(
+      await screen.findByText('En tjeneste bruker stegflyten, så den kan ikke arkiveres.'),
+    ).toBeTruthy();
+  });
+
+  it('offers to archive only our own step flows that no service uses', async () => {
+    await openHome(archiving(200).fetch);
+    const table = await screen.findByRole('table', { name: 'Stegflyter' });
+    const row = within(table)
+      .getByRole('button', { name: /^Arkiver / })
+      .closest('tr') as HTMLElement;
+    expect(within(row).getByText('Ingen tjenester ennå')).toBeTruthy();
+    expect(within(row).queryByText(/^Fra /)).toBeNull();
+  });
+
   it('marks Utviklerverktøy in the menu while a step flow is open', async () => {
     await openService();
     const nav = screen.getByRole('navigation', { name: /hovedmeny|meny/i });

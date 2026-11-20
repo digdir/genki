@@ -55,15 +55,6 @@ const refusedGates = (message: string) => {
     .filter(Boolean);
 };
 
-const residencyRank = ['norway', 'eu', 'global'];
-
-const widest = (places: (string | undefined)[]) =>
-  places.reduce<string | undefined>(
-    (wide, place) =>
-      place && residencyRank.indexOf(place) > residencyRank.indexOf(wide ?? '') ? place : wide,
-    undefined,
-  );
-
 const matchDataset = (
   datasets: (DatasetView & { aliases?: string[] })[] | undefined,
   tenant: string,
@@ -346,17 +337,19 @@ export const OverviewSection = ({
   );
   const [running] = useAsync(
     async (signal) => {
-      const [history, environments, datasets, models] = await Promise.allSettled([
+      const [history, environments, datasets, models, services] = await Promise.allSettled([
         api.getDefinition(tenant, 'Service', id, signal),
         api.environments.list(tenant, id, signal),
         api.datasets.list(tenant, signal),
         api.listModels({}, signal),
+        api.services(tenant, signal),
       ]);
       return {
         history: settled(history),
         environments: settled(environments)?.environments,
         datasets: settled(datasets),
         models: settled(models),
+        dataLocation: settled(services)?.data.find((s) => s.id === id)?.dataLocation,
       };
     },
     [api, tenant, id],
@@ -648,13 +641,7 @@ export const OverviewSection = ({
     const found = matchDataset(known?.datasets, tenant, ref.dataset);
     return found ? [found] : [];
   });
-  const residency = known
-    ? widest([
-        model?.residency ?? d.spec.model.residency,
-        ...sourceDatasets.map((ds) => ds.effectiveResidency ?? ds.residency),
-      ])
-    : undefined;
-  const residencyKey = residency ? residencyKeys[residency] : undefined;
+  const residencyKey = known?.dataLocation ? residencyKeys[known.dataLocation] : undefined;
   const consent = (published?.definition as ServiceDefinition | undefined)?.spec?.riskConfirmation;
 
   const changeCount = (() => {

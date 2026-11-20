@@ -16,6 +16,8 @@ responsibilities:
   - Compose ports, providers and strategies into a kernel
   - Mount MCP, /v1, REST, conversation, portal and console routes
   - Authenticate callers and choose stores
+  - Run the BFF for the assistant host: login as a confidential client, sessions in Postgres, and a session swapped for a bearer token (ADR 0061)
+  - Run genki's platform login on login.apps.<zone> and hand its session to a hosted hostname with a one-time code (ADR 0061)
   - Run a published service over a document set, with a cost estimate, a cost cap and a retry list
   - Keep projects of document selections, and subscriptions that run a service on new documents under a monthly cost cap
   - Let operators set the maturity of operation kinds and the processor records of model endpoints,
@@ -32,6 +34,8 @@ files:
   - apps/api/src/routes/console-routes.ts
   - apps/api/src/batch-runs.ts
   - apps/api/src/session-upgrade.ts
+  - apps/api/src/bff/bff.ts
+  - apps/api/src/bff/acting.ts
   - apps/api/src/projects.ts
   - apps/api/src/task-export.ts
   - apps/api/src/operation-governance.ts

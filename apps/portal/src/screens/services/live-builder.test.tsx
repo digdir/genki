@@ -135,7 +135,7 @@ describe('the live builder', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Bytt modell' }));
     const picker = screen.getByRole('dialog', { name: 'Velg modell' });
-    expect(within(picker).getByText('20,00 / 80,00 kr per 1M')).toBeTruthy();
+    expect(within(picker).getByText('inn 20,00 / ut 80,00 kr per 1M tokens')).toBeTruthy();
     expect(within(picker).getAllByText('Ikke priset')).toHaveLength(1);
   });
 
@@ -872,6 +872,26 @@ describe('a new service saved as a draft on the server', () => {
     expect(
       await screen.findByText('Oversikt og Kvalitet kommer når tjenesten er publisert.'),
     ).toBeTruthy();
+  });
+
+  it('opens a saved draft-only service in the setup layout, with the assistant and Prøv beside it', async () => {
+    const { fetch, id } = await startNamed('Permisjonssvar');
+
+    await elsewhere(fetch, `#/services/${id}/setup`);
+
+    expect(await screen.findByRole('navigation', { name: 'Deler av oppsettet' })).toBeTruthy();
+    const side = screen.getByRole('region', { name: 'Byggeassistent og prøving' });
+    expect(within(side).getByRole('tab', { name: 'Prøv' })).toBeTruthy();
+    expect(side.contains(screen.getByRole('complementary', { name: 'Byggeassistent' }))).toBe(true);
+  });
+
+  it('opens the publish dialog of a draft-only service from /setup/publish', async () => {
+    const { fetch, id } = await startNamed('Permisjonssvar');
+
+    await elsewhere(fetch, `#/services/${id}/setup/publish`);
+
+    expect(await screen.findByRole('dialog', { name: 'Publiser Permisjonssvar' })).toBeTruthy();
+    await waitFor(() => expect(window.location.hash).toBe(`#/services/${id}/setup`));
   });
 
   it('opens a draft-only service at its setup when the address names a section it does not have', async () => {

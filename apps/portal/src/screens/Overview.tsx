@@ -653,7 +653,8 @@ export const Overview = ({
       ),
     });
   for (const run of failed?.today ?? []) {
-    const name = names.get(run.id) ?? run.name;
+    const name = names.get(run.id);
+    if (name === undefined) continue;
     items.push({
       key: `runs-${run.id}`,
       badge: t('overview.badgeErrorsToday'),
@@ -703,7 +704,7 @@ export const Overview = ({
     });
   }
   const shownDatasets = new Set([...watched, ...own.filter(partlyRead)].map((d) => d.fullId));
-  for (const d of own.filter((d) => needsFollowUp(d) && !shownDatasets.has(d.fullId))) {
+  for (const d of followUp.filter((d) => !shownDatasets.has(d.fullId))) {
     const noSource = lacksSource(d);
     items.push({
       key: `follow-up-${d.fullId}`,

@@ -1,7 +1,10 @@
-import type { DatasetLocation } from '@genai/definitions';
+import type { DatasetLocation, PluginSchemas } from '@genai/definitions';
 import { residencies, type Residency } from '@genai/port-model';
 import type { CatalogItem, CatalogRegistry } from './catalog-registry.js';
 import type { EngineDescription } from './knowledge-engines.js';
+
+/** Where genki stores what it stores itself, its own engines included (ADR 0045). */
+export const platformDataLocation: Residency = 'eu';
 
 export const widest = (...values: (Residency | undefined)[]): Residency =>
   values.reduce<Residency>(
@@ -32,7 +35,9 @@ export const locationOf = (deps: LocationDeps, item: CatalogItem): DatasetLocati
   const declared = isResidency(spec.residency) ? spec.residency : 'global';
   const model = typeof spec.embedding?.model === 'string' ? spec.embedding.model : undefined;
   return {
-    stored: widest(declared, engine?.dataLocation),
+    stored: engine?.builtin
+      ? (engine.dataLocation ?? declared)
+      : widest(declared, engine?.dataLocation),
     ...(model ? { embedding: { model, residency: deps.embeddingResidency(model) } } : {}),
   };
 };
@@ -42,3 +47,11 @@ export const effectiveResidency = (location: DatasetLocation): Residency =>
     location.stored,
     location.embedding ? (location.embedding.residency ?? 'global') : undefined,
   );
+
+export const datasetDataLocation = (
+  plugins: Pick<PluginSchemas, 'datasetLocation'>,
+  dataset: string,
+): Residency | undefined => {
+  const location = plugins.datasetLocation?.(dataset);
+  return location ? effectiveResidency(location) : undefined;
+};

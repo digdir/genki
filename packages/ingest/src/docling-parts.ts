@@ -23,6 +23,7 @@ import {
   type DoclingProv,
   type WalkEntry,
 } from './docling-walk.js';
+import { pageLabels } from './page-labels.js';
 
 const kinds = new Set<string>(partKinds);
 
@@ -221,5 +222,6 @@ export const doclingParts = (
       parts: held,
     };
   });
-  return { units, unmapped };
+  const labels = pageLabels(units);
+  return { units: units.map((unit, i) => ({ ...unit, label: labels[i] ?? null })), unmapped };
 };

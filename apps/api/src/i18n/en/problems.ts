@@ -51,6 +51,9 @@ export const problems = {
   entraNotTrusted: 'Your Entra ID login gives no access to this environment',
   entraNotTrustedDetail:
     'Only members of the configured Digdir Entra groups can log in with Entra ID here. Log in with TestID to read, or ask for access.',
+  serviceLocked: 'This assistant is only open to Digdir employees in the test environment',
+  serviceLockedDetail:
+    'Log in with your Digdir account (Entra ID). If you have and still cannot get in, ask the team behind the service for access.',
   unreadableDefinition: 'Unreadable definition',
   invalidDefinition: 'Invalid definition',
   skillsPublishedThrough:
@@ -165,6 +168,7 @@ export const problems = {
   operatorOnlySettingTitle: 'Only Digdir changes this limit for an organisation',
   uploadRequestTooLarge:
     'The request is larger than {size} MB. Send the files in several requests.',
+  databaseBusy: 'The database has no free connection right now. Try again shortly.',
   status400: 'The request cannot be read',
   status401: 'You are not signed in',
   status403: 'No access',
@@ -172,6 +176,15 @@ export const problems = {
   status405: 'The method is not supported here',
   status409: 'Conflict',
   serviceArchivedTitle: 'The service is archived',
+  hostNotFoundTitle: 'No service on this hostname',
+  bffProxyRefused: "The request did not come through the host's proxy",
+  bffSignedOut: 'You are signed out. Sign in again.',
+  bffLoggedOutTitle: 'You are signed out',
+  bffLoggedOutBody: 'You can close this tab.',
+  bffCsrfRefused: 'The request did not come from this page',
+  bffLoginUnavailable: 'Sign-in is not answering now. Try again shortly.',
+  bffNotConfigured: 'Sign-in is not set up for this hostname',
+  bffOrganisationRefused: 'You cannot act for this organisation',
   status413: 'The request is too large',
   status415: 'The format is not supported',
   status422: 'The change is invalid',
@@ -190,4 +203,18 @@ export const problems = {
     'The {strategy} way of working has no single instructions field, so the playground cannot replace them. Change the steps in a draft instead.',
   playgroundDatasetNotAvailable:
     'The dataset {dataset} does not exist, or the organisation has no access to it.',
+  stepFlowNotFound: 'No step flow {id}',
+  stepFlowInUseTitle: 'The step flow is in use',
+  stepFlowUsedBy: 'The service {tenant}/{service} uses the step flow',
+  stepFlowUsedByInternal: '{count} internal services use the step flow',
+  stepFlowUsedByOthers: '{count} services in other organisations use the step flow',
+  operationKindNotFound: 'No operation kind {kind}',
+  operationKindBuiltIn: 'The operation kind {kind} is built in and cannot be deleted',
+  operationKindInUseTitle: 'The operation kind is in use',
+  operationKindDescribedBy: 'The API {descriptor} describes the operation kind',
+  platformSecretNotFound: 'No platform secret {name}',
+  platformSecretInUseTitle: 'The platform secret is in use',
+  platformSecretUsedBy: '{kind} {id} uses the platform secret',
+  platformSecretUsesUnknown:
+    'Genki cannot check what uses the platform secret, so it is not deleted',
 } satisfies Translation<typeof source>;

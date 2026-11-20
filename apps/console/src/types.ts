@@ -170,6 +170,13 @@ export interface OperatorModel {
   price?: ModelPrice | null;
   parameters?: ParameterRules;
   rejectedParameters?: Partial<Record<TunableParameter, string>>;
+  learned?: Partial<Record<Capability, CapabilityCheck>>;
+}
+
+export interface CapabilityCheck {
+  has: boolean;
+  at: string;
+  by: 'listing' | 'call';
 }
 
 export type TunableParameter = 'temperature' | 'reasoning' | 'maxTokens';
@@ -192,6 +199,11 @@ export interface ModelClassification {
 export interface RefreshResult {
   discovered: number;
   failed: { endpoint: string; error: string }[];
+  learned?: {
+    checked: { model: string; capability: Capability; has: boolean }[];
+    calls: number;
+    deferred: number;
+  };
 }
 
 export interface SupportSession {

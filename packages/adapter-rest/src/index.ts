@@ -17,6 +17,12 @@ export interface DatasetDescription {
   description: string;
 }
 
+export interface OriginalDocumentFile {
+  name: string;
+  type: string;
+  body: Uint8Array;
+}
+
 export interface RestAdapterOptions {
   knowledge: KnowledgeRouter;
   auth: Authenticator;
@@ -24,6 +30,12 @@ export interface RestAdapterOptions {
   describe?: (datasetId: string) => DatasetDescription | undefined;
   mayRead?: (principal: Principal, datasetId: string) => boolean | Promise<boolean>;
   status?: (datasetId: string) => string | Promise<string>;
+  /** A document's uploaded original, for a caller its owner lets read it. */
+  originalFile?: (
+    principal: Principal,
+    datasetId: string,
+    documentId: string,
+  ) => Promise<OriginalDocumentFile | undefined>;
   newTaskId?: () => string;
 }
 
@@ -83,6 +95,43 @@ const queryErrors = (c: Context) => {
   return Object.keys(humanized).length > 0 ? humanized : undefined;
 };
 
+/** The source's own address for a document, without a page or credentials; http or https only. */
+export const sourceAddress = (url: string | undefined): string | undefined => {
+  if (!url) return undefined;
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return undefined;
+    if (parsed.username || parsed.password) return undefined;
+    parsed.hash = '';
+    return parsed.href;
+  } catch {
+    return undefined;
+  }
+};
+
+const mediaTypeFields = ['mediaType', 'mimeType', 'contentType', 'content_type', 'mime_type'];
+const mediaTypePattern = /^[a-z]+\/[a-z0-9.+-]+$/;
+
+export const sourceMediaType = (url: string, fields: Record<string, unknown>): string | null => {
+  if (new URL(url).pathname.toLowerCase().endsWith('.pdf')) return 'application/pdf';
+  for (const field of mediaTypeFields) {
+    const value = fields[field];
+    if (typeof value === 'string' && mediaTypePattern.test(value.trim().toLowerCase()))
+      return value.trim().toLowerCase();
+  }
+  return null;
+};
+
+const attachment = (disposition: 'inline' | 'attachment', name: string) => {
+  const ascii = name.replace(/[^A-Za-z0-9._-]/g, '_');
+  return `${disposition}; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(name)}`;
+};
+
+const isPdf = (type: string) =>
+  (type.split(';')[0] ?? '').trim().toLowerCase() === 'application/pdf';
+
+const wantsJson = (c: Context) => (c.req.header('accept') ?? '').includes('application/json');
+
 export const createRestAdapter = (options: RestAdapterOptions) => {
   const app = new Hono<Env>();
   const describe = options.describe ?? (() => undefined);
@@ -138,16 +187,86 @@ export const createRestAdapter = (options: RestAdapterOptions) => {
     }
   });
 
+  const visibleDataset = async (principal: Principal, asked: string) => {
+    const ids = await visible(principal);
+    const id =
+      options.knowledge.resolve(asked) ??
+      ids.find((candidate) => candidate.slice(candidate.lastIndexOf('/') + 1) === asked);
+    return id && ids.includes(id) ? id : undefined;
+  };
+
+  app.get('/api/datasets/:id{[^/]+(?:/[^/]+)?}/documents/:doc/file', async (c) => {
+    const principal = c.get('principal');
+    const id = await visibleDataset(principal, c.req.param('id') ?? '');
+    if (!id) return failure(c, 404, 'Dataset not found', 'dataset_not_found');
+    const doc = c.req.param('doc') ?? '';
+    const noFile = () =>
+      failure(c, 404, 'The document has no file to open', 'document_file_not_found');
+    try {
+      const port = options.knowledge.open(
+        { kind: 'dataset', id },
+        {
+          tenant: principal.tenant ?? '',
+          principal,
+          task: newTaskId(),
+          signal: c.req.raw.signal,
+          meter: async () => undefined,
+        },
+      );
+      if (!port.documents) return noFile();
+      const found = (await port.documents({ ids: [doc], limit: 1 })).documents.find(
+        (d) => d.id === doc,
+      );
+      if (!found) return failure(c, 404, 'Document not found', 'document_not_found');
+      const original = await options.originalFile?.(principal, id, doc);
+      const privately = { 'cache-control': 'private, no-store', 'referrer-policy': 'no-referrer' };
+      if (original) {
+        const pdf = isPdf(original.type);
+        if (wantsJson(c))
+          return c.json(
+            {
+              kind: 'original',
+              mediaType: pdf ? 'application/pdf' : original.type,
+              name: original.name,
+            },
+            200,
+            privately,
+          );
+        return c.body(original.body.slice().buffer, 200, {
+          ...privately,
+          'content-type': pdf ? 'application/pdf' : original.type,
+          'content-length': String(original.body.byteLength),
+          'content-disposition': attachment(pdf ? 'inline' : 'attachment', original.name),
+          'x-content-type-options': 'nosniff',
+          'content-security-policy': pdf
+            ? "default-src 'none'; frame-ancestors 'self'"
+            : "sandbox; default-src 'none'",
+        });
+      }
+      const source = sourceAddress(found.url);
+      if (!source) return noFile();
+      if (wantsJson(c))
+        return c.json(
+          { kind: 'source', url: source, mediaType: sourceMediaType(source, found.fields) },
+          200,
+          privately,
+        );
+      return c.redirect(source, 302);
+    } catch (error) {
+      if (
+        error instanceof KnowledgeError &&
+        (error.code === 'forbidden' || error.code === 'residency')
+      )
+        return failure(c, 404, 'Dataset not found', 'dataset_not_found');
+      return failure(c, 502, 'The document cannot be read now', 'document_unavailable');
+    }
+  });
+
   app.get('/api/datasets/:id{.+}', async (c) => {
     try {
-      const asked = c.req.param('id') ?? '';
-      const ids = await visible(c.get('principal'));
-      const id =
-        options.knowledge.resolve(asked) ??
-        ids.find((candidate) => candidate.slice(candidate.lastIndexOf('/') + 1) === asked);
-      if (!id || !ids.includes(id))
-        return failure(c, 404, 'Dataset not found', 'dataset_not_found');
       const principal = c.get('principal');
+      const id = await visibleDataset(principal, c.req.param('id') ?? '');
+      if (!id) return failure(c, 404, 'Dataset not found', 'dataset_not_found');
       const filters = (() => {
         try {
           const port = options.knowledge.open(

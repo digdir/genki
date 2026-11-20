@@ -110,6 +110,24 @@ describe('platform secrets screen', () => {
     expect(document.body.innerHTML).not.toContain(fakeValue);
   });
 
+  it('deletes a secret nothing uses after asking for a reason, and offers no delete for one in use', async () => {
+    const { fetch, calls } = recorded();
+    await signedIn(fetch);
+    await table();
+    expect(screen.queryByRole('button', { name: 'Slett foundry-key' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Slett local-model-key' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Slett gammel-testnokkel' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Slette gammel-testnokkel?' });
+    typeInto(within(dialog).getByRole('textbox', { name: 'Begrunnelse' }), reason);
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Slett' }));
+
+    await screen.findByText('gammel-testnokkel er slettet.');
+    expect(calls.filter((c) => c.method === 'DELETE')).toEqual([
+      { method: 'DELETE', path: '/operator/secrets/gammel-testnokkel', reason },
+    ]);
+  });
+
   it('refuses a change without a reason and sends nothing', async () => {
     const { fetch, puts } = recorded();
     await signedIn(fetch);

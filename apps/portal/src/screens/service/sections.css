@@ -8,6 +8,7 @@
   white-space: pre;
   border-radius: var(--ds-border-radius-md);
   background: var(--ds-color-neutral-background-tinted);
+  position: relative;
 }
 
 .test-run-result {
@@ -30,6 +31,7 @@
   overflow-x: auto;
   resize: vertical;
   tab-size: 2;
+  position: relative;
 }
 
 .dv-head {
@@ -141,6 +143,7 @@
   font-family: ui-monospace, Menlo, Consolas, monospace;
   font-size: 13.5px;
   line-height: 1.6;
+  position: relative;
 }
 
 .dv-line {
@@ -192,7 +195,12 @@
 }
 
 .dv-log-question {
-  min-width: 140px;
+  min-width: 112px;
+}
+
+.dv-log-by {
+  overflow-wrap: anywhere;
+  min-width: 7rem;
 }
 
 .dv-log-table :is(th, td) {
@@ -234,6 +242,7 @@
 
 .dv-keys-region {
   position: relative;
+  container: keys / inline-size;
 }
 
 .dv-keys .tag-row > .ds-tag {
@@ -248,6 +257,21 @@
   flex-wrap: nowrap;
   gap: 4px;
   white-space: nowrap;
+}
+
+@container keys (max-width: 719px) {
+  .dv-keys {
+    min-width: 0;
+  }
+
+  .dv-keys td:first-child {
+    min-width: 150px;
+  }
+
+  .dv-keys .actions {
+    flex-direction: column;
+    align-items: flex-end;
+  }
 }
 
 .dv-columns {
@@ -404,6 +428,8 @@
   tab-size: 2;
   color: var(--ds-color-neutral-text-default);
   background: var(--ds-color-neutral-background-default);
+  position: relative;
+  overscroll-behavior: contain;
 }
 
 .dv-yaml-editor textarea:focus-visible {

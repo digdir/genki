@@ -11,7 +11,7 @@ import {
   type PluginSchemas,
   type SettingDefinition,
 } from '@genai/definitions';
-import { createAdmin } from './admin.js';
+import { createAdmin, type ModelAdmin } from './admin.js';
 import { createApp, type PlatformOptions } from './app.js';
 import type { Authenticator } from './http.js';
 import {
@@ -328,12 +328,18 @@ export const bootPlatform = async (options: BootOptions = {}) => {
   });
   for (const id of options.services ?? [])
     await platform.definitions.publish(testService(id), 'test', 'test', files);
+  const modelAdmin: ModelAdmin = {
+    describe: () => platform.models.describe(),
+    refresh: () => platform.models.refresh(),
+    learnCapabilities: platform.learnModelCapabilities,
+    classify: platform.models.classify.bind(platform.models),
+  };
   const admin = createAdmin({
     store: platform.definitions,
     plugins: platform.plugins,
     settings,
     extensions: platform.extensions,
-    models: platform.models,
+    models: modelAdmin,
     tenants: () => platform.directory.list(),
     lifecycle: platform.lifecycle,
   });
@@ -343,6 +349,7 @@ export const bootPlatform = async (options: BootOptions = {}) => {
       plugins: platform.plugins,
       settings,
       admin,
+      models: modelAdmin,
       tenantGate: platform.tenantGate,
       registered: platform.registered,
       caller: platform.caller,

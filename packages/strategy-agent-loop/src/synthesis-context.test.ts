@@ -160,12 +160,12 @@ describe('synthesis context selection', () => {
 
   const earlier = chunk(1, { content: 'a'.repeat(600), contentLength: 600 });
   const decisive = chunk(2, { content: 'Decisive evidence.'.repeat(30), contentLength: 1 });
-  const refundedThenSupported = () =>
+  const refundedThenSupported = (sources?: 'read') =>
     run({
       retrieval: retrieval({}, new Map([earlier, decisive].map((c) => [c.chunkId, c]))).impl,
       config: {
         ...baseConfig,
-        strategy: { ...baseConfig.strategy, budget: { readChars: 700 } },
+        strategy: { ...baseConfig.strategy, budget: { readChars: 700 }, sources },
       },
       scripts: {
         primary: {
@@ -193,8 +193,8 @@ describe('synthesis context selection', () => {
     expect(promptFrom(out)).not.toContain(earlier.content);
   });
 
-  it('keeps every read chunk as a source when the synthesis is bounded', async () => {
-    const out = await refundedThenSupported();
+  it('keeps every read chunk as a source when the synthesis is bounded and the service lists what it read', async () => {
+    const out = await refundedThenSupported('read');
 
     expect(out.sources.map((s) => s.chunkId)).toEqual(['c2', 'c1']);
   });

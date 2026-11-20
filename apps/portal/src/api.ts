@@ -229,11 +229,19 @@ const encodeReason = (headers: Record<string, string>) =>
 
 export const createApiClient = ({
   baseUrl,
-  fetch: send,
+  fetch: given,
   token,
   actorName,
   locale,
 }: ApiClientOptions) => {
+  const send = (url: string, init: RequestInit = {}) =>
+    given(url, {
+      ...init,
+      headers: {
+        ...(init.headers as Record<string, string> | undefined),
+        'genki-surface': 'portal',
+      },
+    });
   const language = (): Record<string, string> => (locale ? { 'accept-language': locale() } : {});
   const cache = createResponseCache();
   const fetchJson = async <T>(path: string, signal?: AbortSignal): Promise<T> => {

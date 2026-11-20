@@ -83,6 +83,7 @@ import {
   apiRegistry,
   ModelError,
   ModelRouter,
+  type LearnResult,
   type BuiltInApi,
   type OperationPort,
   type ProcessorRecordCheck,
@@ -148,6 +149,7 @@ import {
   type ConfigEntryStore,
 } from './config-store.js';
 import { withDocumentScope } from './document-scope.js';
+import { mayUseModels, withModelAdmission } from './lockdown.js';
 import { outsideRun } from './outside-run.js';
 import { operationGovernance } from './operation-governance.js';
 import {
@@ -558,6 +560,7 @@ export const createRuntime = async (input: RuntimeInput) => {
           input.logger?.('knowledge vacuum failed', {
             error: error instanceof Error ? error.message : String(error),
           }),
+        onServerMigrated: (ms) => input.logger?.('knowledge server migrated', { ms }),
       })
     : undefined;
   const knowledgeAdapters: KnowledgeAdapter[] = [
@@ -596,6 +599,7 @@ export const createRuntime = async (input: RuntimeInput) => {
         processorRecords: typedCalls,
       }),
     sources: discoverySources,
+    ...(input.now ? { now: input.now } : {}),
     classifications: input.modelClassifications ?? inMemoryClassifications(),
     priceOf: (id) => unitPrices[id] as PriceSpec | undefined,
     secrets: catalogSecrets,
@@ -638,6 +642,37 @@ export const createRuntime = async (input: RuntimeInput) => {
   });
   if (Object.values(migrated).some((n) => n > 0))
     input.logger?.('model connections moved to the shape of ADR 0048', { ...migrated });
+  const learnModelCapabilities = async (actor?: Principal): Promise<LearnResult> => {
+    const system: Principal = {
+      kind: 'agency-system',
+      issuer: 'platform',
+      subject: 'capability-check',
+      tenant: platformTenant,
+      ...(actor ? { actor } : {}),
+    };
+    const result = await models
+      .learn({
+        tenant: platformTenant,
+        principal: mayUseModels(actor) ? withModelAdmission(system) : system,
+        task: 'capability-check',
+        signal: new AbortController().signal,
+        meter: async () => undefined,
+      })
+      .catch((error: unknown) => {
+        input.logger?.('checking what discovered models can do failed', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return { checked: [], calls: 0, deferred: 0, usage: {} } satisfies LearnResult;
+      });
+    if (result.calls > 0)
+      input.logger?.('checked what discovered models can do', {
+        calls: result.calls,
+        deferred: result.deferred,
+        checked: result.checked.map((c) => `${c.model} ${c.capability} ${c.has ? 'yes' : 'no'}`),
+        usage: result.usage,
+      });
+    return result;
+  };
   const modelDiscovery = await discoverWithRetry({
     refresh: () => models.refresh(),
     ...(input.onWarning ? { onWarning: input.onWarning } : {}),
@@ -1112,6 +1147,7 @@ export const createRuntime = async (input: RuntimeInput) => {
     kernel,
     gate,
     modelDiscovery,
+    learnModelCapabilities,
     registry,
     ports,
     strategies,

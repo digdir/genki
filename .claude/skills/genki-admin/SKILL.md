@@ -35,7 +35,7 @@ To **create a service**, start from `new_service_template`, change `metadata.id`
 
 ## Reading a run
 
-`get_run` gives a compact timeline; `full: true` gives every detail, which can be very long.
+`get_run` gives a compact timeline; `full: true` gives the steps as JSON of at most 60,000 characters and says how many steps it left out. To see what the agent read, ask for `types: ["read"]`: each read step lists the chunks it read, with document, position and page.
 
 - The first line has the service, `status` (`running`, `completed`, `failed`, `interrupted` or `cancelled`), start, duration, tokens and cost. Cost "not fully priced" means some model has no price, not that it was free.
 - Then the steps in order: type, title, duration, model and tokens where there was a model call, and a summary. Below a step, its blocks: `quote` for what was sent, `list` or `tags` for hits and filters, `answer` for the answer, `note` and `error` for what went wrong. Long lists are cut to five.

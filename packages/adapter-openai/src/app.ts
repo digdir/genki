@@ -294,6 +294,8 @@ export interface OpenAiAdapterOptions {
     filters: unknown,
   ) => Promise<FilterIssue[]>;
   serviceSchema?: (entry: ModelEntry) => Promise<Record<string, unknown> | undefined>;
+  /** The published interface of the version an entry runs, for a host that draws it. */
+  serviceInterface?: (entry: ModelEntry) => Promise<Record<string, unknown> | undefined>;
 }
 
 interface ChatMessage {
@@ -656,6 +658,27 @@ export const createOpenAiAdapter = (options: OpenAiAdapterOptions) => {
     const locale = negotiate(c.req.header('accept-language'));
     c.header('vary', 'Accept-Language');
     return c.json(locale ? localizeSchema(schema, locale) : schema);
+  });
+
+  app.get('/v1/models/:id/interface', async (c) => {
+    const id = decodeURIComponent(c.req.param('id'));
+    const environment = c.req.header(environmentHeader)?.trim();
+    const resolved = await resolver.resolve(
+      c.get('principal'),
+      id,
+      environment ? { environment } : {},
+    );
+    if (!resolved.ok)
+      return resolved.code.startsWith('environment_') || resolved.code === 'invalid_environment'
+        ? fail(c, resolved.code, resolved.message, statusFor[resolved.code] ?? 403)
+        : fail(c, 'model_not_found', `The model \`${id}\` does not exist.`, 404);
+    const found = await options.serviceInterface?.(resolved.entry);
+    if (!found) return fail(c, 'interface_not_found', `The model \`${id}\` has no interface.`, 404);
+    if (resolved.entry.environment) c.header(environmentHeader, resolved.entry.environment);
+    if (resolved.entry.version !== undefined)
+      c.header('genai-service-version', String(resolved.entry.version));
+    c.header('cache-control', 'private, no-store');
+    return c.json(found);
   });
 
   app.use(

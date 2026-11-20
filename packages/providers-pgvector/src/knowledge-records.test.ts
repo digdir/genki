@@ -457,6 +457,30 @@ describe('document records on the knowledge server', () => {
     expect(await tombstones()).toBe(0);
   });
 
+  it("a document's held vectors are read back by their text, and only from its generation", async () => {
+    const name = 'digdir/held-vectors';
+    const generation = await freshGeneration(name);
+    const other = await freshGeneration(name);
+    await records.apply(
+      { dataset: name, pipeline: 'site', generation, plan: newDocs('p', 'q') },
+      noSend,
+    );
+    const record = await recordOf(name, 'p');
+    expect(await records.heldVectors(record, generation)).toEqual(new Map());
+    await records.replace(record, generation, { document: doc('p') });
+    await records.replace(await recordOf(name, 'q'), generation, { document: doc('q') });
+
+    // Stored as halfvec, so each number comes back within half precision.
+    const held = await records.heldVectors(record, generation);
+    expect([...held.keys()].sort()).toEqual(['Tekst om p 0', 'Tekst om p 1']);
+    for (const [text, expected] of [
+      ['Tekst om p 0', [0.1, 0.2, 0.3]],
+      ['Tekst om p 1', [0.1, 0.2, 1.3]],
+    ] as const)
+      held.get(text)?.forEach((n, i) => expect(n).toBeCloseTo(expected[i] as number, 3));
+    expect(await records.heldVectors(record, other)).toEqual(new Map());
+  });
+
   it('a held record is checked without being written again', async () => {
     const name = 'digdir/checked';
     const generation = await freshGeneration(name);

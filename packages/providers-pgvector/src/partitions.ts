@@ -109,6 +109,32 @@ const recordMigrations: string[] = [
   `alter table src_conversions add column if not exists failure text`,
   // Files a converter reads get stored conversions; HTML and plain text are read by the index job.
   `alter table src_files add column if not exists converts boolean not null default false`,
+  // Page count and blank end per conversion, so short files need no pages (issue 749).
+  `alter table src_conversions add column if not exists page_count integer`,
+  `alter table src_conversions add column if not exists blank_end integer`,
+  // A conversion's number, which its units and chunks name (ADR 0055, "Units and storage"). A
+  // nullable column, then its sequence as the default, so the seeded table is not rewritten under
+  // the lock; rows stored before keep no number. The unique index is built in this transaction.
+  `alter table src_conversions add column if not exists id bigint`,
+  `create sequence if not exists src_conversions_id_seq owned by src_conversions.id`,
+  `alter table src_conversions alter column id set default nextval('src_conversions_id_seq')`,
+  `create unique index if not exists src_conversions_id on src_conversions (id)`,
+  // A parts conversion's parts, one row per unit: a page of a PDF.
+  `create table if not exists src_conversion_units (
+     conversion bigint not null references src_conversions (id) on delete cascade,
+     unit integer not null,
+     kind text not null,
+     label text,
+     width real,
+     height real,
+     text_start integer,
+     text_end integer,
+     unit_to integer not null,
+     seq_from integer not null,
+     seq_to integer not null,
+     parts jsonb not null,
+     primary key (conversion, unit)
+   )`,
 ];
 
 const migrations: string[] = [
@@ -182,13 +208,44 @@ const migrations: string[] = [
   `grant select, insert, update, delete on kn_docs, kn_chunks, kn_phrases to ${knowledgeRoles.writer}`,
   `grant select on kn_generations to ${knowledgeRoles.writer}`,
   `grant update (recipe, data_version) on kn_generations to ${knowledgeRoles.writer}`,
-  `grant select, insert, update, delete on src_changes, src_documents, src_files, src_tombstones, kn_applied, src_conversions, src_conversion_waits, src_conversion_keys to ${knowledgeRoles.writer}`,
-  `grant usage, select on sequence src_documents_number_seq to ${knowledgeRoles.writer}`,
+  `grant select, insert, update, delete on src_changes, src_documents, src_files, src_tombstones, kn_applied, src_conversions, src_conversion_waits, src_conversion_keys, src_conversion_units to ${knowledgeRoles.writer}`,
+  `grant usage, select on sequence src_documents_number_seq, src_conversions_id_seq to ${knowledgeRoles.writer}`,
   // Functions are executable by PUBLIC when created; the reader reaches data only through the read functions.
   `revoke execute on function kn_int(jsonb), kn_text(jsonb) from public`,
   `grant execute on function kn_int(jsonb), kn_text(jsonb) to ${knowledgeRoles.writer}`,
   ...readFunctionMigrations(knowledgeRoles.reader),
 ];
+
+const relationExists = `select to_regclass($1) is not null as applied`;
+const columnExists = `select exists (select 1 from pg_attribute
+   where attrelid = to_regclass($1) and attname = $2 and not attisdropped) as applied`;
+const sequenceDefault = `select exists (select 1 from pg_attrdef d
+   join pg_attribute a on a.attrelid = d.adrelid and a.attnum = d.adnum
+   where d.adrelid = to_regclass($1) and a.attname = $2
+     -- The default's dependency on its sequence: pg_get_expr would lock the table to print it.
+     and exists (select 1 from pg_depend p
+       where p.classid = 'pg_attrdef'::regclass and p.objid = d.oid
+         and p.refobjid = to_regclass($3))) as applied`;
+
+/** Catalog checks for steps already applied, skipped since their DDL locks before it looks (ADR 0055). */
+const appliedChecks: [RegExp, string][] = [
+  [/^create table if not exists (\w+)/, relationExists],
+  [/^create (?:unique )?index if not exists (\w+)/, relationExists],
+  [/^create sequence if not exists (\w+)/, relationExists],
+  [/^alter table (\w+) add column if not exists (\w+)/, columnExists],
+  [/^alter table (\w+) alter column (\w+) set default nextval\('(\w+)'\)$/, sequenceDefault],
+];
+
+/** True when the step's effect is already in the catalog; false for steps that run every time. */
+const applied = async (client: PoolClient, sql: string) => {
+  for (const [pattern, check] of appliedChecks) {
+    const match = pattern.exec(sql);
+    if (!match) continue;
+    const { rows } = await client.query<{ applied: boolean }>(check, match.slice(1));
+    return rows[0]?.applied === true;
+  }
+  return false;
+};
 
 /** Runs at a worker's first knowledge use; like partition DDL it gives up after `lockTimeoutMs` rather than queue writes behind it. */
 export const migrateKnowledgeServer = async (owner: Pool, options: PartitionOptions = {}) => {
@@ -199,7 +256,7 @@ export const migrateKnowledgeServer = async (owner: Pool, options: PartitionOpti
       `${options.lockTimeoutMs ?? defaultLockTimeoutMs}ms`,
     ]);
     await client.query(`select pg_advisory_xact_lock(hashtext('genai-knowledge-server-migrate'))`);
-    for (const sql of migrations) await client.query(sql);
+    for (const sql of migrations) if (!(await applied(client, sql))) await client.query(sql);
     await client.query('commit');
   } catch (error) {
     await client.query('rollback').catch(() => undefined);

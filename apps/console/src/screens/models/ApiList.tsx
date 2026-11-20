@@ -106,10 +106,46 @@ export const MoveKindDialog = ({
   );
 };
 
+export const DeleteKindDialog = ({
+  api,
+  kind,
+  onClose,
+  onDeleted,
+}: {
+  api: AreaProps['api'];
+  kind: OperationKind | undefined;
+  onClose: () => void;
+  onDeleted: (message: string) => void;
+}) => {
+  const t = useT();
+  const name = kind ? operationName(kind.kind, t) : '';
+  return (
+    <ReasonDialog
+      open={Boolean(kind)}
+      title={t('modelOperations.deleteKindTitle', { kind: name })}
+      text={t('modelOperations.deleteKindText')}
+      confirmLabel={t('modelOperations.deleteKind')}
+      onClose={onClose}
+      onConfirm={async (reason) => {
+        if (!kind) return;
+        try {
+          await api.deleteKind(kind.kind, reason);
+        } catch (error) {
+          throw new DialogError(
+            [t('modelOperations.deleteKindFailed'), ...messagesOf(error)].join(' '),
+          );
+        }
+        onDeleted(t('modelOperations.kindDeleted', { kind: name }));
+      }}
+    />
+  );
+};
+
 export const ApiList = ({ api, data, done }: AreaProps) => {
   const t = useT();
   const [uploading, setUploading] = useState(false);
   const [moving, setMoving] = useState<OperationKind | undefined>();
+  const [deleting, setDeleting] = useState<OperationKind | undefined>();
   const apis = data.apis;
   const kinds = data.kinds?.data ?? [];
   const descriptorOf = (id: string) => data.descriptors?.find((d) => d.id === id);
@@ -228,6 +264,19 @@ export const ApiList = ({ api, data, done }: AreaProps) => {
                         .join(', ') || '–'}
                     </TableCell>
                     <TableCell>
+                      {!k.builtIn && k.descriptors.length === 0 ? (
+                        <Button
+                          variant="tertiary"
+                          data-size="sm"
+                          data-color="danger"
+                          onClick={() => setDeleting(k)}
+                          aria-label={t('modelOperations.deleteKindFor', {
+                            kind: operationName(k.kind, t),
+                          })}
+                        >
+                          {t('modelOperations.deleteKind')}
+                        </Button>
+                      ) : null}
                       {k.builtIn || k.descriptors.length === 0 ? null : (
                         <Button
                           variant="tertiary"
@@ -265,6 +314,12 @@ export const ApiList = ({ api, data, done }: AreaProps) => {
         }}
       />
       <MoveKindDialog api={api} kind={moving} onClose={() => setMoving(undefined)} onMoved={done} />
+      <DeleteKindDialog
+        api={api}
+        kind={deleting}
+        onClose={() => setDeleting(undefined)}
+        onDeleted={done}
+      />
     </div>
   );
 };

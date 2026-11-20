@@ -52,9 +52,17 @@ export const blocksUi = {
     frameLeft: 'Venstre panel',
     frameMain: 'Innhold',
     frameRight: 'Høyre panel',
+    keptTitle: 'Et oppsett i denne nettleseren er ikke lagret',
+    keptText:
+      'Før oppsettet ble lagret i utkastet, husket portalen det bare i nettleseren. Lagre det i utkastet for å beholde det, eller forkast det og start fra malen.',
+    keptSave: 'Lagre i utkastet',
+    keptDiscard: 'Forkast',
+    foreignTitle: 'Byggeren kan ikke endre dette oppsettet',
+    foreignText:
+      'Oppsettet i utkastet har tekster på flere språk, egne byggeklosser fra en vert eller noe annet byggeren ikke kan vise uten å miste det. Endre det i definisjonen (YAML).',
     transferTitle: 'Oppsettet som JSON',
     transferHelp:
-      'Portalen husker oppsettet bare i denne nettleseren, til fanen lukkes. Kopier det for å ta det med til en annen nettleser eller til en vert.',
+      'Oppsettet lagres i utkastet til tjenesten og publiseres med neste versjon. Kopier det for å ta det med til en annen tjeneste eller til en vert.',
     copyLayout: 'Kopier oppsettet',
     pasteLayout: 'Lim inn oppsett',
     copied: 'Oppsettet er kopiert som JSON.',
@@ -138,7 +146,7 @@ export const blocksUi = {
     removeCollection: 'Fjern tekstene for {key}',
     tooLong: 'Høyst {max} tegn.',
     tooMany: 'Høyst {max}.',
-    notHttps: 'Må være en https-adresse, med vertsnavnet før {id}.',
+    notHttps: 'Må være en https-adresse med vertsnavnet før {id}, eller en sti som starter med /.',
     unknownKind: 'Felttypen er ukjent: «{kind}».',
     tooLarge: 'Tekstene er større enn {max} byte. Kort dem ned.',
   }),
