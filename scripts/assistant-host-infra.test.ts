@@ -115,11 +115,16 @@ describe.skipIf(!hasAz && !process.env.CI)('the assistant host in the template',
       "[concat(variables('hostedNames'), variables('assistantNames'))]",
     );
     expect(module('assistant-host').properties.parameters?.hostedHostnames).toEqual({
-      value: "[variables('servedNames')]",
+      value: "[concat(variables('servedNames'), variables('loginNames'))]",
     });
     expect(read('infra/env/test.bicepparam')).toMatch(
       /assistant: 'assistant\.genki-test\.digdir\.cloud'/,
     );
+  });
+
+  it('logs no request to the login routes, whose query carries one-time codes', () => {
+    const bff = /location \/auth\/ \{[^}]*\}/.exec(read('docker/apps/30-genki-config.sh'))?.[0];
+    expect(bff).toContain('access_log off;');
   });
 
   it('opens the assistant hostname on the API only while the host runs, and verifies it against the host’s own environment', () => {

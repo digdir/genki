@@ -220,7 +220,7 @@ A service can be drawn on a name genki assigns before its own domain moves, and 
 1. A pull request adds `{ subdomain: 'kunnskap', tenant: '<organisation number>', stage: 'none' }` to `hostedHostnames` in `infra/env/test.bicepparam`. The deploy that follows applies the whole template (the parameter file changed), which writes `CNAME kunnskap.apps` and `TXT asuid.kunnskap.apps` in genki's zone.
 2. Add `kunnskap.apps.genki-test.digdir.cloud` to the service's hosted Client (`spec.hostnames`).
 3. Pull requests set the entry's `stage` to `hostnames`, then `certificates`, each merged and deployed.
-4. Check that `https://kunnskap.apps.genki-test.digdir.cloud/` draws the service and that sign-in works; the Ansattporten client needs `https://kunnskap.apps.genki-test.digdir.cloud/auth/callback` as a redirect URI and the hostname's root as post-logout URI.
+4. Check that `https://kunnskap.apps.genki-test.digdir.cloud/` draws the service and that sign-in works. On genki's platform login nothing is registered per hostname; a Client with its own `oidc` needs `https://kunnskap.apps.genki-test.digdir.cloud/auth/callback` as a redirect URI and the hostname's root as post-logout URI in its Ansattporten client.
 
 Then move the team's own domain with the steps below.
 

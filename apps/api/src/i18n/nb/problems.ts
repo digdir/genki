@@ -181,6 +181,8 @@ export const problems = defineNamespace({
   hostNotFoundTitle: 'Ingen tjeneste på dette vertsnavnet',
   bffProxyRefused: 'Forespørselen kom ikke gjennom vertens mellomtjener',
   bffSignedOut: 'Du er logget ut. Logg inn igjen.',
+  bffLoggedOutTitle: 'Du er logget ut',
+  bffLoggedOutBody: 'Du kan lukke denne fanen.',
   bffCsrfRefused: 'Forespørselen kom ikke fra denne siden',
   bffLoginUnavailable: 'Innloggingen svarer ikke nå. Prøv igjen om litt.',
   bffNotConfigured: 'Innlogging er ikke satt opp for dette vertsnavnet',

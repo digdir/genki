@@ -365,6 +365,36 @@ genki-test runs the assistant host with its BFF (`assistantHostEnabled`, `assist
 
 Kunnskapsassistenten's own `qa.kunnskap.digdir.cloud` follows later, with the steps in [docs/runbook.md](../docs/runbook.md#moving-a-teams-domain-to-genki): lower the TTLs, add `{ hostname: 'qa.kunnskap.digdir.cloud', tenant: '312521172', stage: 'none' }`, put `TXT asuid.qa` with `assistantHost.verificationId` in the `kunnskap.digdir.cloud` zone, take the name off `ka-app`, point `CNAME qa` at the host, and move the entry through the stages; add the hostname and its URIs to the Client and the Ansattporten client as in steps 4 and 5.
 
+### Platform login
+
+A hosted Client without its own `oidc` logs in through genki's platform login ([ADR 0061](../docs/adr/0061-genki-hosts-a-services-assistant.md)): one Ansattporten client that genki owns, with one callback on `login.apps.<zone>`, served by the assistant host. The service's hostname sends the browser there, and the login host hands the session back with a one-time code. The same client is meant to sign in to the portal and the console later; for now it signs in only to hosted assistants. genki-test turns it on with `platformLoginClientId` and `platformLoginStage` in `infra/env/test.bicepparam`; an empty client id turns it off. In order:
+
+1. **The Ansattporten client** (Samarbeidsportalen for Ansattporten test; done for genki-test, client id `dde98722-c952-4172-a5d6-10bdf721680f`). A web application with `client_secret_basic`, the grants `authorization_code` and `refresh_token`, PKCE `S256`, and:
+   - redirect URI `https://login.apps.genki-test.digdir.cloud/auth/callback`
+   - post-logout redirect URI `https://login.apps.genki-test.digdir.cloud/auth/logged-out`
+   - scopes `openid profile`, and the resource the portal client asks for, the API audience (`API_AUDIENCE`, `digdir:genai` unless set)
+   - `authorization_details` of type `ansattporten:altinn:resource` for the environment's `ALTINN_RESOURCE`, the same resource the portal client asks for (on genki-test, the value of the GitHub variable, `urn:altinn:resource:digdir-genai-platform-test` above)
+   - access token 300 s, refresh token one-time use with a lifetime of 28800 s, authorization lifetime 28800 s, the 8 hours a session lasts at most
+2. **The secret, before the deploy** (Azure). The API reads `platform-login-client-secret` from genki's Key Vault in the same deploy that turns the platform login on, so a revision without it does not start. Copy the secret in Samarbeidsportalen, then run this; it reads the clipboard, never prints the secret, and clears the clipboard:
+
+   ```sh
+   pbpaste | az keyvault secret set --vault-name genai-test-kv-q63pldec6l -n platform-login-client-secret --file /dev/stdin -o none; pbcopy </dev/null
+   ```
+
+3. **Deploy** (Azure), as in step 2 of "Turning on the assistant host". It writes `CNAME` and `TXT asuid` for `login.apps` in genki's zone and gives the API `PLATFORM_LOGIN_CLIENT_ID`, `PLATFORM_LOGIN_HOSTNAME` and the secret.
+4. **Stages** (a pull request each, then its deploy). Move `platformLoginStage` to `hostnames`, then to `certificates`. After the second, `https://login.apps.genki-test.digdir.cloud/auth/logged-out` answers a signed-out page.
+
+**A service moves to the platform login** (genki, an operator in lockdown, since only an operator changes the client id of a hosted Client). Take its hosted Client, remove `oidc`, and save it:
+
+```sh
+curl -fsS "$API/tenants/312521172/clients?service=kunnskapsassistenten" -H "authorization: Bearer $GENKI_TOKEN" |
+  jq '.clients[0].definition | del(.spec.oidc)' > shared.json
+curl -fsS -X PUT "$API/tenants/312521172/clients/$(jq -r .metadata.id shared.json)" -H "authorization: Bearer $GENKI_TOKEN" \
+  -H 'content-type: application/json' -H 'change-reason: Kunnskapsassistenten logger inn med genkis felles innlogging' -d @shared.json
+```
+
+The next login on its hostname goes through `login.apps`. People's threads start fresh, since the platform login gives each person a subject of its own on every Client (ADR 0061). The service's own Ansattporten client, its redirect URIs on the hostname and its tenant secret are no longer used; delete them once the login works. To go back, put `oidc` back as it was. A Client that keeps `oidc` logs in with its own client as before.
+
 ## Login registrations
 
 Register one Ansattporten integration per app and environment: in Ansattporten's test environment for genki-test, in production Ansattporten (`https://ansattporten.no`) for prod. `<zone>` is `genki-test.digdir.cloud` or `genki.digdir.cloud`:
@@ -375,7 +405,7 @@ Register one Ansattporten integration per app and environment: in Ansattporten's
 | Workspace | `https://workspace.<zone>/callback` | `https://workspace.<zone>/` |
 | Console   | `https://console.<zone>/callback`   | `https://console.<zone>/`   |
 
-A service drawn by the assistant host logs in with its own Ansattporten client, the one its hosted Client names, registered with `https://<hostname>/auth/callback` and `https://<hostname>/` (for genki-test's own name, `https://assistant.genki-test.digdir.cloud/auth/callback`). It asks for `openid profile`, the Client's audience (its `oidc.audience`, or its client id) and the same `authorization_details`.
+A service drawn by the assistant host logs in through genki's platform login (see "Platform login"), unless its hosted Client names its own Ansattporten client in `oidc`. Such a service logs in with its own Ansattporten client, registered with `https://<hostname>/auth/callback` and `https://<hostname>/` (for genki-test's own name, `https://assistant.genki-test.digdir.cloud/auth/callback`). It asks for `openid profile`, the Client's audience (its `oidc.audience`, or its client id) and the same `authorization_details`.
 
 The three apps each ask for `openid profile`, the API audience `digdir:genai`, and `authorization_details` of type `ansattporten:altinn:resource` for the environment's Altinn resource: `urn:altinn:resource:digdir-genai-platform-test` in test, `urn:altinn:resource:digdir-genai-platform` in prod. Put the client ids in `PORTAL_CLIENT_ID`, `WORKSPACE_CLIENT_ID` and `CONSOLE_CLIENT_ID` of the matching GitHub environment.
 

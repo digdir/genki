@@ -199,6 +199,13 @@ param assistantBffEnabled bool = false
 @allowed(['none', 'hostnames', 'certificates'])
 param assistantHostnameStage string = customDomainsStage
 
+@description('genki\'s own Ansattporten client that a hosted Client without oidc logs in through (ADR 0061). Empty turns the platform login off. Its secret is platform-login-client-secret in genki\'s Key Vault.')
+param platformLoginClientId string = ''
+
+@description('The stage of login.apps.<dnsZoneName>, the platform login\'s host on the assistant host, as customDomainsStage.')
+@allowed(['none', 'hostnames', 'certificates'])
+param platformLoginStage string = 'none'
+
 @description('Hostnames the assistant host serves, each { hostname or subdomain, tenant, stage, apex? }: a subdomain becomes <subdomain>.apps.<dnsZoneName>, stage as customDomainsStage, apex for a zone apex. See infra/README.md, "Hosted hostnames".')
 param hostedHostnames array = []
 
@@ -231,6 +238,9 @@ var assistantNames = empty(hostnames.?assistant ?? '') || empty(platformTenant)
   ? []
   : [{ hostname: toLower(hostnames.assistant), tenant: platformTenant, stage: assistantHostnameStage }]
 var servedNames = concat(hostedNames, assistantNames)
+var platformLoginOn = assistantHostEnabled && assistantBffEnabled && !empty(platformLoginClientId) && !empty(dnsZoneName)
+var platformLoginHostname = platformLoginOn ? 'login.apps.${dnsZoneName}' : ''
+var loginNames = platformLoginOn ? [{ hostname: platformLoginHostname, tenant: '', stage: platformLoginStage }] : []
 var suffix = uniqueString(resourceGroup().id)
 var allTags = union(tags, { system: 'genki', environment: environmentName })
 var postgresServerName = '${baseName}-pg-${suffix}'
@@ -504,6 +514,7 @@ module apps 'modules/containerapps.bicep' = {
     keyVaultUri: infra ? vault!.outputs.uri : existingVault.properties.vaultUri
     keyVaultSecretNames: keyVaultSecretNames
     bffProxyKey: assistantHostEnabled && assistantBffEnabled
+    platformLoginSecret: platformLoginOn
     apiImage: apiImage
     apiRevisionSuffix: apiRevisionSuffix
     apiLiveRevision: apiLiveRevision
@@ -533,6 +544,8 @@ module apps 'modules/containerapps.bicep' = {
       EMPLOYEE_CLIENT_IDS: join(filter([portalClientId, workspaceClientId, consoleClientId], id => !empty(id)), ',')
       GENAI_HOSTED_HOSTNAMES: join(map(servedNames, h => '${h.hostname}=${h.tenant}'), ',')
       GENAI_ASSISTANT_HOSTNAME: assistantHostEnabled ? (hostnames.?assistant ?? '') : ''
+      PLATFORM_LOGIN_CLIENT_ID: platformLoginOn ? platformLoginClientId : ''
+      PLATFORM_LOGIN_HOSTNAME: platformLoginHostname
     }
     webSettings: {
       ansattportenIssuer: ansattportenIssuer
@@ -619,7 +632,7 @@ module assistantHost 'modules/assistant-host.bicep' = if (assistantHostEnabled) 
     apiUpstream: 'https://${apps.outputs.fqdn}'
     ansattportenIssuer: ansattportenIssuer
     bffProxyKey: assistantBffEnabled
-    hostedHostnames: servedNames
+    hostedHostnames: concat(servedNames, loginNames)
   }
 }
 
@@ -732,7 +745,9 @@ module dns 'modules/dns.bicep' = if (createDnsZone && !empty(dnsZoneName) && inf
       target: apps.outputs.defaultFqdns[app]
     }]
     otherRecords: assistantRecords
-    hostedLabels: assistantHostEnabled ? map(assignedNames, h => '${toLower(h.subdomain)}.apps') : []
+    hostedLabels: assistantHostEnabled
+      ? concat(map(assignedNames, h => '${toLower(h.subdomain)}.apps'), platformLoginOn ? ['login.apps'] : [])
+      : []
     hostedTarget: assistantHostEnabled ? assistantHost!.outputs.fqdn : ''
     hostedVerificationId: assistantHostEnabled ? assistantHost!.outputs.verificationId : ''
   }

@@ -16,6 +16,7 @@ import {
   type ClientStore,
   type StoredClient,
   environmentNamePattern,
+  usesPlatformLogin,
 } from '@genai/identity';
 import type { Context, Env, Hono, MiddlewareHandler, Schema } from 'hono';
 import { enterTenant, tenantAccess } from './access.js';
@@ -63,8 +64,33 @@ export const notifyingClients = (inner: ClientStore, listener: ClientListener): 
   },
 });
 
-export const clientRegistry = (clients: ClientStore): ClientRegistry => ({
+export interface PlatformLoginRegistry {
+  clientId: string;
+  audience: string;
+  /** The hosted Client the BFF is acting for now, if any. */
+  current: () => { tenant: string; client: string } | undefined;
+}
+
+export const clientRegistry = (
+  clients: ClientStore,
+  platformLogin?: PlatformLoginRegistry,
+): ClientRegistry => ({
   byClientId: async (clientId) => {
+    if (platformLogin && clientId === platformLogin.clientId) {
+      const acting = platformLogin.current();
+      const found = acting && (await clients.get(acting.tenant, acting.client));
+      if (!found || !usesPlatformLogin(found.definition)) return undefined;
+      const { definition } = found;
+      return {
+        clientId,
+        audience: platformLogin.audience,
+        tenant: definition.metadata.tenant,
+        service: definition.spec.service,
+        client: definition.metadata.id,
+        hosted: true,
+        platformLogin: true,
+      };
+    }
     const found = (await clients.list()).find((c) => c.definition.spec.oidc?.clientId === clientId);
     if (!found) return undefined;
     const { definition } = found;

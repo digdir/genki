@@ -173,10 +173,10 @@ Only `.env.local` is loaded automatically. Secrets in config are referenced as `
 
 1. The operator opens the hostname to the tenant: `GENAI_HOSTED_HOSTNAMES=host=orgnr,host=orgnr` on the API. A name under genki's own zones (`genki-test.digdir.cloud`, `genki.digdir.cloud`, `GENAI_RESERVED_DOMAINS`) is refused, except `GENAI_ASSISTANT_HOSTNAME`, genki's own assistant hostname, which the template sets from `hostnames.assistant` while `assistantHostEnabled` is on.
 2. The service is published with `spec.interface.layout`, and optionally `menu` and `pages`.
-3. The tenant registers a Client of kind `browser` with `oidc` (its Ansattporten client id, redirect URI `https://<hostname>/auth/callback`, post-logout URI `https://<hostname>/`) and `hostnames: [{ hostname, environment }]`, and an operator marks it hosted (`spec.hosted: true`; in lockdown only an operator can, through `PUT /tenants/{tenant}/clients/{id}/hosted`).
+3. The tenant registers a Client of kind `browser` with `hostnames: [{ hostname, environment }]`, and either no `oidc`, to log in through genki's platform login where the host serves the BFF, or `oidc` with its own Ansattporten client (its client id, redirect URI `https://<hostname>/auth/callback`, post-logout URI `https://<hostname>/`). An operator marks it hosted (`spec.hosted: true`; in lockdown only an operator can, through `PUT /tenants/{tenant}/clients/{id}/hosted`).
 4. DNS points the hostname at the assistant host app. On genki-test, `assistant.genki-test.digdir.cloud` is defined in `infra/env/test.bicepparam` beside the other four, and a service's own name is an entry in `hostedHostnames` there (`infra/README.md`, "Hosted hostnames").
 
-Where the host serves the BFF (`assistantBffEnabled`, ADR 0034, ADR 0061), the page holds no token: it asks `GET /auth/me`, sends the person to `/auth/login`, and calls genki through `/api/` with the host's session cookie. The Client then names its client secret, a tenant secret bound to the issuer's origin, in `oidc.secret`. Where the host serves no BFF, it logs in in the browser with the authorization code flow and PKCE as a public client and keeps the token in `sessionStorage` (`apps/assistant/src/login.ts`).
+Where the host serves the BFF (`assistantBffEnabled`, ADR 0034, ADR 0061), the page holds no token: it asks `GET /auth/me`, sends the person to `/auth/login`, and calls genki through `/api/` with the host's session cookie. A Client with its own `oidc` then names its client secret, a tenant secret bound to the issuer's origin, in `oidc.secret`. Where the host serves no BFF, it logs in in the browser with the authorization code flow and PKCE as a public client and keeps the token in `sessionStorage` (`apps/assistant/src/login.ts`).
 
 To run it locally against the mock login in the browser, with the API on its default port:
 
@@ -197,7 +197,19 @@ GENAI_PROXY_KEY=$KEY VITE_GENKI_HOST=kunnskap.localhost ASSISTANT_TLS_CERT=host.
   npm run dev -w apps/assistant -- --port 443 --host 0.0.0.0   # https://kunnskap.localhost
 ```
 
-The dev server then forwards `/auth/` and `/api/` with the proxy key and the hostname, as nginx does in the apps image. Save the tenant secret first (`PUT /tenants/991825827/secrets/<name>` with `allowedHosts: ["http://localhost:8080"]`), then the Client with `hosted: true`, `hostnames: [{ hostname: kunnskap.localhost }]`, the redirect URI `https://kunnskap.localhost/auth/callback` and `oidc.secret: <name>`: the mock login takes the secret when the Client is saved.
+The dev server then forwards `/auth/` and `/api/` with the proxy key and the hostname, as nginx does in the apps image, and a `*.localhost` name the browser asked for wins over `VITE_GENKI_HOST`, so the same server is also the login host.
+
+A Client without `oidc` logs in through genki's platform login (ADR 0061). Start the API with its settings as well; the mock login registers the platform client with the secret, and the Client needs nothing more than `hosted: true` and its hostname:
+
+```sh
+mkcert -cert-file host.pem -key-file host-key.pem kunnskap.localhost login.localhost
+GENAI_HOSTED_HOSTNAMES=kunnskap.localhost=991825827 GENAI_PROXY_KEY=$KEY PLATFORM_LOGIN_CLIENT_ID=genki-platform-login-local \
+  PLATFORM_LOGIN_CLIENT_SECRET=$(openssl rand -hex 24) PLATFORM_LOGIN_HOSTNAME=login.localhost npm run dev   # the API
+```
+
+`https://kunnskap.localhost/auth/login` then goes to `https://login.localhost/auth/login`, the mock login, `https://login.localhost/auth/callback` and back to `https://kunnskap.localhost/auth/handoff`.
+
+The Client may instead name its own Ansattporten client in `oidc`, which then logs in on the hostname itself. Save the tenant secret first (`PUT /tenants/991825827/secrets/<name>` with `allowedHosts: ["http://localhost:8080"]`), then the Client with `hosted: true`, `hostnames: [{ hostname: kunnskap.localhost }]`, the redirect URI `https://kunnskap.localhost/auth/callback` and `oidc.secret: <name>`: the mock login takes the secret when the Client is saved.
 
 **Tests.** `npm run check` runs prettier, eslint, the type check, dependency boundaries, the apps' size budgets and every test. `npm run size` builds the portal, console, workspace, assistant and docs and fails when an app's first load, its entry and the chunks that entry imports up front, grows past its gzip budget in `scripts/size-budget.ts`. Docker must be running: the Postgres, pgvector and Typesense-writer suites start containers with Testcontainers. Run a part with `npx vitest run <paths>` from the repository root, with paths from the root, and narrow it to one test with `-t "<name>"`. Run from inside an app, Vitest misses the root `vitest.config.ts` and fails with `Cannot find package '@genai/...'`. When Docker is not running, the container suites fail with `Could not find a working container runtime strategy`; that is Docker, not the test. Tests never call real models; the live suites skip themselves unless their settings are set.
 

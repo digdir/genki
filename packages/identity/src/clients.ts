@@ -86,7 +86,12 @@ export const clientDefinition = z
       oidc: z
         .strictObject({
           clientId: z
-            .string()
+            .string({
+              error: (issue) =>
+                issue.input === undefined
+                  ? 'a client id from Ansattporten; a hosted client that leaves out oidc logs in through genki’s platform login, whose resource it takes, so it sets no audience of its own'
+                  : undefined,
+            })
             .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$/, 'must be a client id from Ansattporten'),
           audience: z.string().min(1).optional(),
           redirectUris: z.array(webUrl).min(1),
@@ -151,11 +156,12 @@ export const clientDefinition = z
         });
     });
     if (client.spec.kind !== 'browser') return;
-    if (!client.spec.oidc)
+    if (!client.spec.oidc && !client.spec.hosted)
       ctx.addIssue({
         code: 'custom',
         path: ['spec', 'oidc'],
-        message: 'a browser client logs users in, so it needs an OIDC registration',
+        message:
+          'a browser client logs users in, so it needs an OIDC registration unless it is hosted and logs in through genki’s platform login',
       });
     if (client.spec.allowedOrigins.length === 0 && names.length === 0)
       ctx.addIssue({
@@ -261,6 +267,10 @@ const withHostedOrigins = (definition: ClientDefinition): ClientDefinition => {
   const own = (definition.spec.hostnames ?? []).map((n) => hostedOrigin(n.hostname));
   return { ...definition, spec: { ...definition.spec, allowedOrigins: own } };
 };
+
+/** A hosted Client without its own `oidc` logs in through genki's platform login client (ADR 0061). */
+export const usesPlatformLogin = (definition: ClientDefinition) =>
+  definition.spec.hosted === true && definition.spec.oidc === undefined;
 
 export const oidcAudienceOf = (definition: ClientDefinition) =>
   definition.spec.oidc?.audience ?? definition.spec.oidc?.clientId;

@@ -21,6 +21,8 @@ export interface LoginIssuerOptions {
   audience: string;
   testData: IdentityTestDataInput;
   registeredClients: RegisteredClients;
+  platformLoginClients?: readonly string[];
+  platformLoginKey?: Uint8Array;
   trustedEntra?: TrustedEntra;
   fetch?: typeof fetch;
   onKeysNotFetched?: (fields: {
@@ -54,6 +56,8 @@ export const loginIssuers = async ({
   audience,
   testData,
   registeredClients,
+  platformLoginClients = [],
+  platformLoginKey,
   trustedEntra,
   fetch: fetchFn = fetch,
   onKeysNotFetched,
@@ -72,6 +76,8 @@ export const loginIssuers = async ({
       ),
       trustedClients: employeeClientIds(env),
       registeredClients,
+      platformLoginClients,
+      ...(platformLoginKey ? { platformLoginKey } : {}),
       ...(trustedEntra ? { trustedEntra } : {}),
     });
   }
@@ -96,6 +102,8 @@ export const loginIssuers = async ({
     audience,
     keys: createLocalJWKSet({ keys: [key.publicJwk] }),
     registeredClients,
+    platformLoginClients,
+    ...(platformLoginKey ? { platformLoginKey } : {}),
     ...(trustedEntra ? { trustedEntra } : {}),
   });
   return { trusted, mock, mockIssuer: issuer };

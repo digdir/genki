@@ -117,6 +117,9 @@ param assistantHostnameStage = 'none'
 param hostedHostnames = [
   { subdomain: 'kunnskap', tenant: '312521172', stage: 'none' }
 ]
+// genki's platform login client for hosted Clients without oidc (infra/README.md, "Platform login").
+param platformLoginClientId = 'dde98722-c952-4172-a5d6-10bdf721680f'
+param platformLoginStage = 'none'
 
 param alertsEnabled = true
 param alertEmails = readEnvironmentVariable('ALERT_EMAILS', '')

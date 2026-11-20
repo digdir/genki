@@ -50,6 +50,7 @@ const boot = async (
     lockdown?: boolean;
     assistantHostname?: string;
     endpoints?: { issuer: string; altinnResource: string };
+    platformLogin?: { clientId: string; audience: string };
   } = {},
 ) => {
   const keys = new InMemoryTenantApiKeys();
@@ -81,6 +82,7 @@ const boot = async (
     },
     ...(options.lockdown ? { lockdown: { configuredKeys: new Set<string>() } } : {}),
     ...(options.endpoints ? { endpoints: options.endpoints } : {}),
+    ...(options.platformLogin ? { platformLogin: options.platformLogin } : {}),
     authenticate: async (request) => {
       const person =
         principals[request.headers.get('authorization')?.replace(/^Bearer /, '') ?? ''];
@@ -270,6 +272,36 @@ describe('the assistant host', () => {
         altinnResource: 'urn:altinn:resource:digdir-genai-platform',
       },
     });
+  });
+
+  const loginEndpoints = {
+    issuer: 'https://login.example.no',
+    altinnResource: 'urn:altinn:resource:digdir-genai-platform',
+  };
+
+  it('a hosted Client without its own oidc logs in with the platform login client', async () => {
+    const endpoints = loginEndpoints;
+    const on = await boot({
+      endpoints,
+      platformLogin: { clientId: 'genki-platform-login', audience: 'digdir:genai' },
+    });
+    expect((await on.publish(service('klarsprak', shown))).ok).toBe(true);
+    expect((await on.saveClient('klarsprak-host', client({ oidc: undefined }))).status).toBe(200);
+    expect(await (await on.call('/v1/hosts/ka.example.no')).json()).toMatchObject({
+      login: {
+        issuer: 'https://login.example.no',
+        clientId: 'genki-platform-login',
+        audience: 'digdir:genai',
+        altinnResource: 'urn:altinn:resource:digdir-genai-platform',
+      },
+    });
+  });
+
+  it('a hosted Client without its own oidc draws nothing while the platform login is off', async () => {
+    const off = await boot({ endpoints: loginEndpoints });
+    expect((await off.publish(service('klarsprak', shown))).ok).toBe(true);
+    expect((await off.saveClient('klarsprak-host', client({ oidc: undefined }))).status).toBe(200);
+    expect((await off.call('/v1/hosts/ka.example.no')).status).toBe(404);
   });
 
   it('genki’s own assistant hostname is the one name in its zones a hosted client may claim', async () => {
