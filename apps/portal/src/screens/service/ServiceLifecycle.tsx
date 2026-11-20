@@ -9,9 +9,9 @@ import {
 } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
 import { useState } from 'react';
-import type { ApiClient } from '../../api';
+import { ApiError, type ApiClient } from '../../api';
 import { reasonProblem } from '../../components/ReasonField';
-import { useAsync } from '../../hooks';
+import { navigate, useAsync } from '../../hooks';
 import { useT, type PlainKey } from '../../i18n';
 import type { ServiceLifecycleView } from '../../types';
 import { lifecycleChanged, useServiceLifecycle, type LifecycleView } from './lifecycle';
@@ -211,6 +211,101 @@ export const LifecycleDialog = ({
   );
 };
 
+export const DeleteServiceDialog = ({
+  api,
+  tenant,
+  id,
+  name,
+  onClose,
+}: {
+  api: ApiClient;
+  tenant: string;
+  id: string;
+  name: string;
+  onClose: () => void;
+}) => {
+  const t = useT();
+  const [typed, setTyped] = useState('');
+  const [reason, setReason] = useState('');
+  const [showErrors, setShowErrors] = useState(false);
+  const [refusals, setRefusals] = useState<string[]>();
+  const [busy, setBusy] = useState(false);
+  const mismatch =
+    showErrors && typed.trim() !== id ? t('serviceLifecycle.deleteMismatch') : undefined;
+  const reasonError = showErrors ? reasonProblem(reason, t) : undefined;
+
+  const confirm = async () => {
+    if (busy) return;
+    if (typed.trim() !== id || reasonProblem(reason, t)) {
+      setShowErrors(true);
+      return;
+    }
+    setBusy(true);
+    setRefusals(undefined);
+    try {
+      await api.deleteService(tenant, id, reason.trim());
+      onClose();
+      navigate('/services');
+    } catch (error) {
+      const messages =
+        error instanceof ApiError ? (error.problem?.errors ?? []).map((e) => e.message) : [];
+      setRefusals(messages.length > 0 ? messages : [t('serviceLifecycle.deleteFailed')]);
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog open modal closedby="any" onClose={onClose} aria-labelledby="delete-service-h">
+      <div className="stack">
+        <Heading level={2} data-size="sm" id="delete-service-h">
+          {t('serviceLifecycle.deleteTitle', { name })}
+        </Heading>
+        <Paragraph>{t('serviceLifecycle.deleteInfo')}</Paragraph>
+        <Textfield
+          label={t('serviceLifecycle.deleteConfirm', { id })}
+          value={typed}
+          autoComplete="off"
+          error={mismatch}
+          aria-invalid={mismatch ? true : undefined}
+          onChange={(e) => setTyped(e.target.value)}
+        />
+        <Textfield
+          multiline
+          rows={3}
+          label={t('common.reason')}
+          value={reason}
+          error={reasonError}
+          aria-invalid={reasonError ? true : undefined}
+          onChange={(e) => setReason(e.target.value)}
+        />
+        {refusals ? (
+          <Alert data-color="danger" data-size="sm" role="alert">
+            {refusals.map((message) => (
+              <Paragraph key={message} data-size="sm">
+                {message}
+              </Paragraph>
+            ))}
+          </Alert>
+        ) : null}
+        <div className="actions">
+          <Button
+            variant="primary"
+            data-color="danger"
+            data-size="sm"
+            aria-disabled={busy || undefined}
+            onClick={() => void confirm()}
+          >
+            {busy ? t('serviceLifecycle.deleting') : t('serviceLifecycle.delete')}
+          </Button>
+          <Button variant="secondary" data-size="sm" onClick={onClose}>
+            {t('common.cancel')}
+          </Button>
+        </div>
+      </div>
+    </Dialog>
+  );
+};
+
 export const ServiceLifecycle = ({
   api,
   tenant,
@@ -230,6 +325,7 @@ export const ServiceLifecycle = ({
   const view = useServiceLifecycle(api, tenant, id);
   const [change, setChange] = useState<Change>();
   const [batchOpen, setBatchOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   if (!view) return null;
   const current = view.state;
   const dialog = change ? (
@@ -250,7 +346,24 @@ export const ServiceLifecycle = ({
         <Button variant="secondary" data-size="sm" onClick={() => setChange('restore')}>
           {t(actionKey.restore)}
         </Button>
+        <Button
+          variant="secondary"
+          data-color="danger"
+          data-size="sm"
+          onClick={() => setDeleting(true)}
+        >
+          {t('serviceLifecycle.delete')}
+        </Button>
         {dialog}
+        {deleting ? (
+          <DeleteServiceDialog
+            api={api}
+            tenant={tenant}
+            id={id}
+            name={name}
+            onClose={() => setDeleting(false)}
+          />
+        ) : null}
       </>
     );
 

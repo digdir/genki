@@ -1222,6 +1222,31 @@ export const mockFetch = (
     const clientReply = clientRoutes(path, url, init, needsReason);
     if (clientReply) return clientReply;
     if (path === '/shared-services') return json({ data: shared });
+    const serviceRoute = /^\/tenants\/[^/]+\/services\/([^/]+)$/.exec(path);
+    if (serviceRoute && init?.method === 'DELETE') {
+      if (needsReason()) return missingReason();
+      const id = decodeURIComponent(serviceRoute[1] ?? '');
+      const found = current.find((s) => s.kind === 'Service' && s.id === id);
+      if (!found) return notFound();
+      if (lifecycles.get(id)?.state !== 'archived')
+        return json(
+          {
+            type: 'urn:genai:problem:service-not-archived',
+            title: 'Tjenesten er ikke arkivert',
+            status: 409,
+            errors: [
+              {
+                path: 'lifecycle',
+                message: 'Bare en arkivert tjeneste kan slettes. Arkiver tjenesten først.',
+              },
+            ],
+          },
+          409,
+        );
+      current = current.filter((s) => s !== found);
+      lifecycles.delete(id);
+      return json({ id, deleted: true, versions: found.versions.length, stepFlows: [] });
+    }
     const lifecycleRoute = /^\/tenants\/[^/]+\/services\/([^/]+)\/lifecycle$/.exec(path);
     if (lifecycleRoute) {
       const id = decodeURIComponent(lifecycleRoute[1] ?? '');

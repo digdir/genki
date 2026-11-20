@@ -136,6 +136,14 @@ export const serviceUi = {
     keepWriting: 'Fortsett å skrive',
     failed: 'Endringen ble ikke lagret. Prøv igjen.',
     close: 'Lukk',
+    delete: 'Slett for godt',
+    deleteTitle: 'Slett {name} for godt',
+    deleteInfo:
+      'Definisjonen, alle versjonene og utkastet slettes, og stegflyter bare denne tjenesten bruker. Kjøringer og dokumenter slettes etter vanlig lagringstid. Dette kan ikke angres.',
+    deleteConfirm: 'Skriv {id} for å bekrefte',
+    deleteMismatch: 'Skriv tjenestens id nøyaktig slik den står.',
+    deleting: 'Sletter …',
+    deleteFailed: 'Tjenesten ble ikke slettet. Prøv igjen.',
   }),
   serviceLog: defineNamespace({
     all: 'Alle kjøringer for tjenesten',

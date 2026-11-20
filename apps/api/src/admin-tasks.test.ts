@@ -45,6 +45,7 @@ const throughAdminTasks = [
   'DELETE /tenants/:tenant/projects/:project/subscriptions/:selection',
   'DELETE /tenants/:tenant/secrets/:name',
   'DELETE /tenants/:tenant/step-flows/:id',
+  'DELETE /tenants/:tenant/services/:id',
   'DELETE /tenants/:tenant/services/:id/draft',
   'DELETE /tenants/:tenant/services/:id/environments/:environment',
   'DELETE /tenants/:tenant/settings/:key',

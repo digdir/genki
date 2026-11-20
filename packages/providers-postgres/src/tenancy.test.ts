@@ -855,6 +855,29 @@ describe('postgres definition store', () => {
       1, 2, 3, 4, 5, 6,
     ]);
   });
+
+  it('removes every version of the named definitions in one tenant and none in another', async () => {
+    const store = new PostgresDefinitionStore(runtime, plugins);
+    await store.publish(flow(ORG_A, 'slett-flyt'), 'a', 'r');
+    await store.publish(service(ORG_A, 'slett-meg'), 'a', 'r1');
+    await store.publish(service(ORG_A, 'slett-meg'), 'a', 'r2');
+    await store.publish(service(ORG_B, 'slett-meg-b'), 'b', 'r');
+
+    await store.remove(ORG_A, [
+      { kind: 'Service', id: 'slett-meg' },
+      { kind: 'StepFlow', id: 'slett-flyt' },
+    ]);
+    await store.remove(ORG_A, [{ kind: 'Service', id: 'slett-meg-b' }]);
+
+    expect(await store.versions('Service', ORG_A, 'slett-meg')).toEqual([]);
+    expect(await store.versions('StepFlow', ORG_A, 'slett-flyt')).toEqual([]);
+    expect((await store.capabilities()).some((c) => c.service.id === 'slett-meg')).toBe(false);
+    expect(await store.versions('Service', ORG_B, 'slett-meg-b')).toHaveLength(1);
+    expect(await store.publish(service(ORG_A, 'slett-meg'), 'a', 'igjen')).toMatchObject({
+      ok: true,
+    });
+    expect((await store.get('Service', ORG_A, 'slett-meg'))?.version).toBe(1);
+  });
 });
 
 describe('admin stores under row-level security', () => {

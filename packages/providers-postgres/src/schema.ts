@@ -1145,6 +1145,9 @@ const migrations: string[] = [
   ...Object.entries(publishedTables).flatMap(([table, column]) =>
     publishedIsolation(table, column),
   ),
+  `drop policy if exists tenant_delete on definition_versions`,
+  `create policy tenant_delete on definition_versions for delete
+     using (tenant = current_setting('app.tenant', true))`,
   ...usageMigrations,
   ...appRole(runtimeRole),
   ...appRole(workerRole, runtimeRole),
