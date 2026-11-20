@@ -246,7 +246,9 @@ describe('generations as partitions on the knowledge server', () => {
     expect((await indexesOf(table)).filter((n) => n.includes('_r_'))).toHaveLength(1);
   });
 
-  it('the server migration gives up after lock_timeout instead of queueing writes behind it', async () => {
+  it('a server migration with a new step gives up after lock_timeout instead of queueing writes behind it', async () => {
+    // A step not yet applied: the index is built again, which needs a lock writers block.
+    await owner.query(`drop index if exists kn_docs_title_tsv`);
     const holder = await owner.connect();
     try {
       await holder.query('begin');
@@ -259,6 +261,7 @@ describe('generations as partitions on the knowledge server', () => {
       holder.release();
     }
     await migrateKnowledgeServer(owner);
+    expect(await indexesOf('kn_docs')).toContain('kn_docs_title_tsv');
   });
 
   it('the migration adds the conversion number without rewriting src_conversions', async () => {
@@ -319,6 +322,40 @@ describe('generations as partitions on the knowledge server', () => {
 
     expect(took).toHaveLength(1);
     expect(took[0]).toBeGreaterThanOrEqual(0);
+  });
+
+  it("a column whose default does not use the migration's sequence gets the migration's default again", async () => {
+    await owner.query(`alter table src_conversions alter column id set default 42`);
+
+    await migrateKnowledgeServer(owner);
+
+    const { rows } = await admin.query<{ def: string }>(
+      `select pg_get_expr(d.adbin, d.adrelid) as def from pg_attrdef d
+         join pg_attribute a on a.attrelid = d.adrelid and a.attnum = d.adnum
+        where d.adrelid = 'src_conversions'::regclass and a.attname = 'id'`,
+    );
+    expect(rows).toEqual([{ def: "nextval('src_conversions_id_seq'::regclass)" }]);
+  });
+
+  it('a server migration with nothing new takes no table lock while writers hold every knowledge table', async () => {
+    await migrateKnowledgeServer(owner);
+    const holder = await admin.connect();
+    try {
+      await holder.query('begin');
+      const { rows } = await holder.query<{ name: string }>(
+        `select tablename as name from pg_tables
+          where schemaname = 'public' and (tablename like 'kn\\_%' or tablename like 'src\\_%')`,
+      );
+      // ACCESS EXCLUSIVE conflicts with every lock a table can take, a writer's and a search's included.
+      await holder.query(
+        `lock table ${rows.map((r) => r.name).join(', ')} in access exclusive mode`,
+      );
+
+      await expect(migrateKnowledgeServer(owner, { lockTimeoutMs: 300 })).resolves.toBeUndefined();
+    } finally {
+      await holder.query('rollback');
+      holder.release();
+    }
   });
 
   it('attaching a generation does not scan it', async () => {

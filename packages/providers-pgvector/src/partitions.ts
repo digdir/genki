@@ -216,6 +216,37 @@ const migrations: string[] = [
   ...readFunctionMigrations(knowledgeRoles.reader),
 ];
 
+const relationExists = `select to_regclass($1) is not null as applied`;
+const columnExists = `select exists (select 1 from pg_attribute
+   where attrelid = to_regclass($1) and attname = $2 and not attisdropped) as applied`;
+const sequenceDefault = `select exists (select 1 from pg_attrdef d
+   join pg_attribute a on a.attrelid = d.adrelid and a.attnum = d.adnum
+   where d.adrelid = to_regclass($1) and a.attname = $2
+     -- The default's dependency on its sequence: pg_get_expr would lock the table to print it.
+     and exists (select 1 from pg_depend p
+       where p.classid = 'pg_attrdef'::regclass and p.objid = d.oid
+         and p.refobjid = to_regclass($3))) as applied`;
+
+/** Catalog checks for steps already applied, skipped since their DDL locks before it looks (ADR 0055). */
+const appliedChecks: [RegExp, string][] = [
+  [/^create table if not exists (\w+)/, relationExists],
+  [/^create (?:unique )?index if not exists (\w+)/, relationExists],
+  [/^create sequence if not exists (\w+)/, relationExists],
+  [/^alter table (\w+) add column if not exists (\w+)/, columnExists],
+  [/^alter table (\w+) alter column (\w+) set default nextval\('(\w+)'\)$/, sequenceDefault],
+];
+
+/** True when the step's effect is already in the catalog; false for steps that run every time. */
+const applied = async (client: PoolClient, sql: string) => {
+  for (const [pattern, check] of appliedChecks) {
+    const match = pattern.exec(sql);
+    if (!match) continue;
+    const { rows } = await client.query<{ applied: boolean }>(check, match.slice(1));
+    return rows[0]?.applied === true;
+  }
+  return false;
+};
+
 /** Runs at a worker's first knowledge use; like partition DDL it gives up after `lockTimeoutMs` rather than queue writes behind it. */
 export const migrateKnowledgeServer = async (owner: Pool, options: PartitionOptions = {}) => {
   const client = await owner.connect();
@@ -225,7 +256,7 @@ export const migrateKnowledgeServer = async (owner: Pool, options: PartitionOpti
       `${options.lockTimeoutMs ?? defaultLockTimeoutMs}ms`,
     ]);
     await client.query(`select pg_advisory_xact_lock(hashtext('genai-knowledge-server-migrate'))`);
-    for (const sql of migrations) await client.query(sql);
+    for (const sql of migrations) if (!(await applied(client, sql))) await client.query(sql);
     await client.query('commit');
   } catch (error) {
     await client.query('rollback').catch(() => undefined);
