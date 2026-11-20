@@ -185,14 +185,19 @@ const entryName = (entry: unknown) => {
   return [e.kind, e.id].filter((part) => typeof part === 'string').join(' ');
 };
 
-/** Reads `skipped` from /operator/catalog/entries, or `catalog.skipped` from /health without a key. */
+/** Reads `skipped` from /operator/catalog/entries, or `catalog.skipped` from /health without a key; unused entries pass. */
 export const assessCatalog = (result: HttpResult, from: 'entries' | 'health'): Verdict => {
   const path = from === 'entries' ? '/operator/catalog/entries' : '/health';
   if (result.status !== 200) return { ok: false, detail: `${path} answered ${result.status}` };
   const body = record(json(result.text));
-  const skipped = list(from === 'entries' ? body.skipped : record(body.catalog).skipped);
+  const all = list(from === 'entries' ? body.skipped : record(body.catalog).skipped);
+  const skipped = all.filter((entry) => record(entry).unused !== true);
+  const unused = all.length - skipped.length;
   return skipped.length === 0
-    ? { ok: true, detail: `${path}: no catalog entry skipped` }
+    ? {
+        ok: true,
+        detail: `${path}: no catalog entry skipped${unused ? ` that something uses (${unused} unused)` : ''}`,
+      }
     : {
         ok: false,
         detail: `${path}: ${skipped.length} catalog entries skipped: ${clip(skipped.map(entryName).join(', '))}`,

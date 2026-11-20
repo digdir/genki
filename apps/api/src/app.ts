@@ -72,6 +72,10 @@ const Health = z
             id: z.string().optional().openapi({
               description: "Left out for an organisation's own entry",
             }),
+            unused: z.literal(true).optional().openapi({
+              description:
+                'A model or reranker no published service and no dataset uses; it does not hold back a deploy',
+            }),
           }),
         ),
       })

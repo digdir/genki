@@ -107,6 +107,14 @@ describe('catalog', () => {
     );
   });
 
+  it('a leftover model nobody uses does not fail the check', () => {
+    const body = { skipped: [{ kind: 'model', id: 'nimbrel-cortex/cortex', unused: true }] };
+    expect(assessCatalog(http(200, body), 'entries')).toMatchObject({
+      ok: true,
+      detail: '/operator/catalog/entries: no catalog entry skipped that something uses (1 unused)',
+    });
+  });
+
   it('fails when the route does not answer 200', () => {
     expect(assessCatalog(http(403, {}), 'entries')).toMatchObject({
       ok: false,
