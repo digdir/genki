@@ -79,6 +79,8 @@ export interface RetrievalHit {
   document?: string;
   position?: number;
   page?: number;
+  /** The last page of a chunk that runs over several. */
+  pageEnd?: number;
   score?: number;
   title?: string;
 }
@@ -178,6 +180,7 @@ export const retrievalHits = (chunks: ChunkSummary[]): RetrievalHit[] =>
     ...(c.document === undefined ? {} : { document: c.document }),
     ...(c.position === undefined ? {} : { position: c.position }),
     ...(c.page === undefined ? {} : { page: c.page }),
+    ...(c.pageEnd === undefined ? {} : { pageEnd: c.pageEnd }),
     ...(c.score === undefined ? {} : { score: c.score }),
     ...(c.title === undefined ? {} : { title: c.title }),
   }));

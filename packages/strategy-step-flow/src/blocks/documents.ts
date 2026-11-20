@@ -129,6 +129,8 @@ const hitsOf = (chunks: FlowChunk[]) =>
     id: c.chunkId,
     ...(c.document === undefined ? {} : { document: c.document }),
     ...(c.position === undefined ? {} : { position: c.position }),
+    ...(c.page === undefined ? {} : { page: c.page }),
+    ...(c.pageEnd === undefined ? {} : { pageEnd: c.pageEnd }),
   }));
 
 export const readDocumentBlock: Block<z.infer<typeof readInput>, z.infer<typeof readParams>> = {
