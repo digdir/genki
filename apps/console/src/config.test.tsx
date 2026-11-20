@@ -109,6 +109,7 @@ describe('catalog in the console', () => {
     const tabs = screen.getAllByRole('tab').map((tab) => tab.textContent ?? '');
     expect(tabs).toContain('Modellendepunkter');
     expect(tabs.filter((name) => /rerank/i.test(name))).toEqual([]);
+    expect(document.body.textContent).not.toMatch(/rerank/i);
   });
 });
 

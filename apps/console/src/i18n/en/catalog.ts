@@ -6,7 +6,7 @@ export const catalog = {
   introTenant:
     "The organisation's own endpoints, models and datasets, alongside what the platform shares with it. Every change becomes a new version.",
   introPlatform:
-    'Endpoints, models, datasets, rerankers and prices the platform uses. Every change becomes a new version and is logged in Audit.',
+    'Endpoints, models, datasets and prices the platform uses. Every change becomes a new version and is logged in Audit.',
   secretsNote: 'Secrets are given as a reference (for example env:NAME), never as a value.',
   chooseTenant: 'Choose an organisation',
   loadingKinds: 'Loading what the organisation can register',
