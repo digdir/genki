@@ -354,6 +354,116 @@ describe('the assistant host', () => {
     expect(went).toEqual(['/auth/logout']);
   });
 
+  const nextLayout = {
+    version: 1,
+    look: 'next',
+    zones: { primary: [{ block: 'threads' }], main: [{ block: 'chat' }], secondary: [] },
+    profile: { assistantName: 'Klarspråkassistenten', suggestions: ['Skriv om dette'] },
+  };
+  const signedIn = (layout: unknown, extra: Record<string, () => Response> = {}) => {
+    const routes: Record<string, () => Response> = {
+      '/api/v1/hosts/ka.example.no': () => json(view),
+      '/auth/me': () =>
+        json({
+          name: 'Kari Nordmann',
+          organisation: '991825827',
+          organisations: [{ orgNumber: '991825827' }],
+          expiresAt: '2026-11-19T18:00:00.000Z',
+        }),
+      '/api/v1/models': () => json({ data: [{ id: 'klarsprak__default' }] }),
+      '/api/v1/models/klarsprak__default/interface': () => json({ layout }),
+      ...extra,
+    };
+    const fetcher: typeof fetch = async (input) =>
+      (routes[String(input)] ?? (() => json({ data: [], conversations: [] })))();
+    vi.stubGlobal('fetch', fetcher);
+    return fetcher;
+  };
+  const menuEntries = () =>
+    [...document.querySelectorAll('.uib-shell-profile-menu li')].map((li) => li.textContent);
+
+  it('draws a next-look assistant with no host header and one main landmark, the reader at the panel’s foot', async () => {
+    const fetcher = signedIn(nextLayout);
+    render(
+      <LocaleProvider preference="nb">
+        <App hostname="ka.example.no" path="/" signIn={browser().signIn} fetcher={fetcher} />
+      </LocaleProvider>,
+    );
+
+    expect(await screen.findByRole('button', { name: 'Kari Nordmann' })).toBeTruthy();
+    expect(screen.queryByRole('banner')).toBeNull();
+    expect(screen.queryByRole('group', { name: 'Språk / Language' })).toBeNull();
+    expect(screen.getAllByRole('main')).toHaveLength(1);
+  });
+
+  it('puts the host’s pages and links, the other language and «Logg ut» in the profile menu', async () => {
+    const chosen: (string | null)[] = [];
+    const fetcher = signedIn(nextLayout);
+    render(
+      <LocaleProvider initialPreference="nb" onPreferenceChange={(p) => chosen.push(p)}>
+        <App hostname="ka.example.no" path="/" signIn={browser().signIn} fetcher={fetcher} />
+      </LocaleProvider>,
+    );
+
+    await screen.findByRole('button', { name: 'Kari Nordmann' });
+    expect(menuEntries()).toEqual(['Om', 'Hjelp', 'English', 'Logg ut']);
+    const menu = document.querySelector<HTMLElement>('.uib-shell-profile-menu');
+    expect(menu?.querySelector('a[href="/om"]')).toBeTruthy();
+    expect(menu?.querySelector('a[href="https://example.no/hjelp"]')).toBeTruthy();
+    expect(menu?.querySelector('a[href="/auth/logout"]')?.textContent).toBe('Logg ut');
+    expect(menu?.textContent).toContain('991825827');
+    const english = [...(menu?.querySelectorAll('button') ?? [])].find(
+      (b) => b.textContent === 'English',
+    );
+    fireEvent.click(english as HTMLElement);
+    expect(chosen).toEqual(['en']);
+  });
+
+  it('keeps the host header for a layout that does not draw the reader', async () => {
+    const fetcher = signedIn({
+      version: 1,
+      zones: { primary: [], main: [{ block: 'chat' }], secondary: [] },
+    });
+    render(
+      <LocaleProvider preference="nb">
+        <App hostname="ka.example.no" path="/" signIn={browser().signIn} fetcher={fetcher} />
+      </LocaleProvider>,
+    );
+
+    expect(await screen.findByRole('button', { name: 'Logg ut' })).toBeTruthy();
+    expect(screen.getByRole('banner')).toBeTruthy();
+    expect(screen.getAllByRole('main')).toHaveLength(1);
+  });
+
+  it('shows the service’s icon in the browser tab', async () => {
+    const link = document.createElement('link');
+    link.rel = 'icon';
+    link.href = '/emblem-felleslosning.svg';
+    document.head.append(link);
+    const icon = 'data:image/svg+xml;base64,PHN2Zy8+';
+    draw('/', genki({ '/api/v1/hosts/ka.example.no': () => json({ ...view, icon }) }));
+
+    await screen.findByRole('button', { name: 'Logg inn' });
+    expect(link.getAttribute('href')).toBe(icon);
+    link.remove();
+  });
+
+  it('draws a page with the way back to the assistant before and after it, and no host header', async () => {
+    draw(
+      '/om',
+      genki({
+        '/api/v1/hosts/ka.example.no': () => json(view),
+        '/api/v1/hosts/ka.example.no/pages/om': () =>
+          json({ id: 'om', title: 'Om tjenesten', body: 'Tekst.' }),
+      }),
+    );
+
+    await screen.findByRole('heading', { level: 1, name: 'Om tjenesten' });
+    const back = screen.getAllByRole('link', { name: 'Tilbake til Klarspråkassistenten' });
+    expect(back.map((a) => a.getAttribute('href'))).toEqual(['/', '/']);
+    expect(screen.queryByRole('banner')).toBeNull();
+  });
+
   it('offers no sign-in when the BFF has no login set up for the hostname', async () => {
     draw(
       '/',
@@ -386,5 +496,15 @@ describe('the assistant host', () => {
     const url = new URL('https://ka.example.no/om');
     expect(hostnameOf(url, 'annen.example.no')).toBe('annen.example.no');
     expect(hostnameOf(url, undefined)).toBe('ka.example.no');
+  });
+
+  it('sets the size mode on the body, not the root, so 1rem stays 16 px', async () => {
+    const fs = (await import(`node:${'fs'}`)) as {
+      readFileSync: (path: string, encoding: 'utf8') => string;
+    };
+    const page = fs.readFileSync('apps/assistant/index.html', 'utf8');
+    expect(page).toMatch(/<html[^>]*>/);
+    expect(page.match(/<html[^>]*>/)?.[0]).not.toContain('data-size');
+    expect(page.match(/<body[^>]*>/)?.[0]).toContain('data-size="md"');
   });
 });

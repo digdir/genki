@@ -1,8 +1,18 @@
-import { Alert, Button, Heading, Paragraph, Spinner } from '@digdir/designsystemet-react';
+import { Alert, Button, Heading, Link, Paragraph, Spinner } from '@digdir/designsystemet-react';
+import { localeNames, locales, type Locale } from '@genai/i18n';
 import { LanguageChoice, useLocale } from '@genai/i18n/react';
-import { Assistant, createGenkiApi, profileOf } from '@genai/ui-assembly';
+import {
+  Assistant,
+  browserStorage,
+  createGenkiApi,
+  profileOf,
+  useNotice,
+  useStoredColorScheme,
+  type AssistantProfile,
+} from '@genai/ui-assembly';
 import { Markdown } from '@genai/ui-blocks';
-import type { AssistantLayout } from '@genai/ui-blocks/builder';
+import { lookOf, type AssistantLayout } from '@genai/ui-blocks/builder';
+import { ArrowLeftIcon, ExternalLinkIcon, FileTextIcon, GlobeIcon } from '@navikt/aksel-icons';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   inLanguage,
@@ -10,6 +20,7 @@ import {
   loadHost,
   loadLayout,
   loadPage,
+  showIcon,
   textIn,
   type HostView,
   type Page,
@@ -30,6 +41,7 @@ export interface AppProps {
 
 interface Session {
   name: string;
+  organisation?: string | undefined;
   /** What every call to genki carries: the bearer token, or the BFF's CSRF header. */
   headers: Record<string, string>;
 }
@@ -102,41 +114,96 @@ const Header = ({
   );
 };
 
-const PageView = ({
-  fetcher,
-  hostname,
-  id,
-}: {
-  fetcher: typeof fetch;
-  hostname: string;
-  id: string;
-}) => {
+const PageView = ({ fetcher, host, id }: { fetcher: typeof fetch; host: HostView; id: string }) => {
   const t = useT();
   const { locale } = useLocale();
-  const page = useLoaded<Page>(() => loadPage(fetcher, hostname, id), [hostname, id]);
-  if (page.kind === 'loading') return <Spinner aria-label={t('host.loading')} />;
-  if (page.kind !== 'ok') return <Paragraph>{t('host.pageMissing')}</Paragraph>;
-  return (
-    <article className="ah-page">
-      <Heading level={1} data-size="lg">
-        {textIn(page.value.title, locale)}
-      </Heading>
-      <Markdown text={textIn(page.value.body, locale)} headingLevel={2} links={isPageLink} />
-    </article>
+  const page = useLoaded<Page>(() => loadPage(fetcher, host.hostname, id), [host.hostname, id]);
+  const back = (
+    <Link href="/" className="ah-page-back">
+      <ArrowLeftIcon aria-hidden />
+      {t('host.backTo', { name: textIn(host.name, locale) })}
+    </Link>
   );
+  return (
+    <div className="ah-page-frame">
+      <main className="ah-page" id="main">
+        {back}
+        {page.kind === 'loading' ? (
+          <Spinner aria-label={t('host.loading')} />
+        ) : page.kind === 'ok' ? (
+          <article className="ah-page-text">
+            <Heading level={1} data-size="lg">
+              {textIn(page.value.title, locale)}
+            </Heading>
+            <Markdown text={textIn(page.value.body, locale)} headingLevel={2} links={isPageLink} />
+          </article>
+        ) : (
+          <Paragraph>{t('host.pageMissing')}</Paragraph>
+        )}
+        {back}
+      </main>
+    </div>
+  );
+};
+
+const drawsReader = (layout: AssistantLayout, session: Session) =>
+  lookOf(layout) === 'next' && session.name !== '';
+
+const otherLocale = (locale: Locale): Locale => locales.find((l) => l !== locale) ?? locale;
+
+const profileMenu = (
+  host: HostView,
+  locale: Locale,
+  setPreference: (preference: Locale) => void,
+): AssistantProfile['menu'] => {
+  const other = otherLocale(locale);
+  return {
+    extra: [
+      ...host.menu.map((item) =>
+        'page' in item
+          ? {
+              id: `page:${item.page}`,
+              label: textIn(item.label, locale),
+              href: `/${item.page}`,
+              icon: <FileTextIcon aria-hidden />,
+            }
+          : {
+              id: `href:${item.href}`,
+              label: textIn(item.label, locale),
+              href: item.href,
+              icon: <ExternalLinkIcon aria-hidden />,
+            },
+      ),
+      ...(other === locale
+        ? []
+        : [
+            {
+              id: 'language',
+              label: localeNames[other],
+              onSelect: () => setPreference(other),
+              icon: <GlobeIcon aria-hidden />,
+            },
+          ]),
+    ],
+  };
 };
 
 const AssistantPane = ({
   fetcher,
   host,
   session,
+  header,
+  signOut,
 }: {
   fetcher: typeof fetch;
   host: HostView;
   session: Session;
+  header: ReactNode;
+  signOut: { href: string; onSignOut?: () => void };
 }) => {
   const t = useT();
-  const { locale } = useLocale();
+  const { locale, setPreference } = useLocale();
+  const [colorScheme, setColorScheme] = useStoredColorScheme('assistant.colorScheme');
   const layout = useLoaded<AssistantLayout>(
     () => loadLayout(fetcher, host.service, session.headers),
     [host.service, session],
@@ -157,18 +224,52 @@ const AssistantPane = ({
       }),
     [shown, host.tenant, locale, session],
   );
-  if (layout.kind === 'loading') return <Spinner aria-label={t('host.loading')} />;
-  if (layout.kind === 'failed') return <Alert data-color="danger">{t('host.failed')}</Alert>;
-  if (!shown || !api) return <Paragraph>{t('host.noLayout')}</Paragraph>;
+  const profile = useMemo<AssistantProfile>(
+    () => ({
+      ...(session.name ? { signedInAs: session.name } : {}),
+      ...(session.organisation ? { organisation: session.organisation } : {}),
+      menu: profileMenu(host, locale, setPreference),
+      signOut,
+    }),
+    [session, host, locale, setPreference, signOut],
+  );
+  const [say, notice] = useNotice();
+  const storage = useMemo(() => browserStorage(`assistant.${host.service}.`), [host.service]);
+  const alone = (content: ReactNode) => (
+    <>
+      {header}
+      <main className="ah-main" id="main">
+        {content}
+      </main>
+    </>
+  );
+  if (layout.kind === 'loading') return alone(<Spinner aria-label={t('host.loading')} />);
+  if (layout.kind === 'failed') return alone(<Alert data-color="danger">{t('host.failed')}</Alert>);
+  if (!shown || !api) return alone(<Paragraph>{t('host.noLayout')}</Paragraph>);
   return (
-    <Assistant
-      api={api}
-      layout={shown}
-      service={host.service}
-      tenant={host.tenant}
-      threadInUrl
-      paths={{ home: '/', settings: '/innstillinger' }}
-    />
+    <>
+      {drawsReader(shown, session) ? null : header}
+      <div className="ah-assistant">
+        <Assistant
+          api={api}
+          layout={shown}
+          service={host.service}
+          tenant={host.tenant}
+          profile={profile}
+          storage={storage}
+          colorScheme={colorScheme}
+          onColorSchemeChange={setColorScheme}
+          onNotice={say}
+          onFeedback={api.sendFeedback}
+          onRename={api.renameThread}
+          onDelete={api.deleteThread}
+          mainId="main"
+          threadInUrl
+          paths={{ home: '/', settings: '/innstillinger' }}
+        />
+      </div>
+      {notice}
+    </>
   );
 };
 
@@ -208,6 +309,8 @@ export const App = ({
   const bff = useMemo(() => givenBff ?? bffSignIn(fetcher), [givenBff, fetcher]);
   const host = useLoaded<HostView>(() => loadHost(fetcher, hostname), [hostname]);
   const hostFound = host.kind === 'ok';
+  const icon = host.kind === 'ok' ? host.value.icon : undefined;
+  useEffect(() => showIcon(icon), [icon]);
   const hostSession = useLoaded<HostSession>(
     async () =>
       hostFound ? bff.session().catch((): HostSession => ({ kind: 'unavailable' })) : undefined,
@@ -222,7 +325,11 @@ export const App = ({
   const bffSession = useMemo<Session | undefined>(
     () =>
       hostSession.kind === 'ok' && hostSession.value.kind === 'signed-in'
-        ? { name: hostSession.value.who.name ?? '', headers: bff.headers() }
+        ? {
+            name: hostSession.value.who.name ?? '',
+            organisation: hostSession.value.who.organisation ?? undefined,
+            headers: bff.headers(),
+          }
         : undefined,
     [hostSession, bff],
   );
@@ -260,6 +367,19 @@ export const App = ({
       live = false;
     };
   }, [login]);
+  const signOutLink = useMemo(
+    () =>
+      viaBff
+        ? { href: bff.signOutUrl }
+        : {
+            href: '/',
+            onSignOut: () => {
+              setSession(undefined);
+              void login?.signOut();
+            },
+          },
+    [viaBff, bff, login],
+  );
   if (host.kind === 'loading' || (hostFound && hostSession.kind !== 'ok') || completing)
     return <Spinner aria-label={t('host.loading')} />;
   if (host.kind === 'failed')
@@ -298,16 +418,24 @@ export const App = ({
     setSession(undefined);
     void login?.signOut();
   };
-  let body: ReactNode;
-  if (onPage) body = <PageView fetcher={fetcher} hostname={view.hostname} id={pageId} />;
-  else if (session) body = <AssistantPane fetcher={fetcher} host={view} session={session} />;
-  else body = <SignIn onSignIn={startSignIn} />;
+  const header = <Header host={view} session={session} onSignOut={signOut} />;
+  if (onPage) return <PageView fetcher={fetcher} host={view} id={pageId} />;
+  if (session)
+    return (
+      <AssistantPane
+        fetcher={fetcher}
+        host={view}
+        session={session}
+        header={header}
+        signOut={signOutLink}
+      />
+    );
   return (
     <>
-      <Header host={view} session={session} onSignOut={signOut} />
-      <main className={!onPage && session ? 'ah-main ah-assistant' : 'ah-main'} id="main">
+      {header}
+      <main className="ah-main" id="main">
         {signInFailed ? <Alert data-color="danger">{t('host.signInFailed')}</Alert> : null}
-        {body}
+        <SignIn onSignIn={startSignIn} />
       </main>
     </>
   );

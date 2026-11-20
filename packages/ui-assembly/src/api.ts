@@ -16,6 +16,7 @@ import type {
 import { documentLink } from './links.js';
 import type { AssistantProfile, CorpusProfile, FieldSpec } from './profile.js';
 import type { StepFrame } from './procedure.js';
+import type { AssistantFeedback } from './useAssistant.js';
 
 export interface AnswerData {
   text: string;
@@ -398,6 +399,12 @@ export interface GenkiApiOptions {
   headers?: (() => Record<string, string> | Promise<Record<string, string>>) | undefined;
 }
 
+export interface GenkiApi extends AssistantApi {
+  sendFeedback(feedback: AssistantFeedback): Promise<void>;
+  renameThread(thread: ThreadRow, title: string): Promise<void>;
+  deleteThread(thread: ThreadRow): Promise<void>;
+}
+
 const httpError = async (response: Response) => {
   let detail = response.statusText;
   try {
@@ -409,14 +416,13 @@ const httpError = async (response: Response) => {
   return new HttpError(response.status, `${response.status} ${detail}`);
 };
 
-/** The assembly's calls against genki's API. Reads, a new thread and a question only. */
 export const createGenkiApi = ({
   baseUrl,
   tenant,
   profile,
   language = 'nb',
   headers,
-}: GenkiApiOptions): AssistantApi => {
+}: GenkiApiOptions): GenkiApi => {
   // Every request, the stream's too: the host's headers, with the request's own over them.
   const send: typeof fetch = async (input, init) => {
     if (!headers) return fetch(input, init);
@@ -459,7 +465,33 @@ export const createGenkiApi = ({
 
   const aboutCache = new Map<string, Promise<readonly string[] | undefined>>();
 
+  const sendJson = async (method: string, path: string, body?: unknown) => {
+    const response = await send(`${baseUrl}${path}`, {
+      method,
+      headers: {
+        Accept: 'application/json',
+        ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+    if (!response.ok) throw await httpError(response);
+  };
+  const conversationPath = (thread: ThreadRow) =>
+    `/api/conversations/${encodeURIComponent(thread.id)}`;
+
   return {
+    sendFeedback: async ({ runId, rating, reasons, comment }) => {
+      if (!runId) throw new HttpError(400, 'the answer has no run to rate');
+      await sendJson('POST', '/api/feedback', {
+        task: runId,
+        rating,
+        ...(reasons.length > 0 ? { reasons: [...reasons] } : {}),
+        ...(comment ? { comment } : {}),
+      });
+    },
+    renameThread: (thread, title) => sendJson('PUT', conversationPath(thread), { title }),
+    deleteThread: (thread) => sendJson('DELETE', conversationPath(thread)),
+
     loadModels: async () => (await getJson<{ data: ModelRow[] }>('/v1/models')).data,
 
     // Every page, not the first 100: the list has no «Vis flere».

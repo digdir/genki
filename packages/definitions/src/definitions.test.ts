@@ -7,6 +7,7 @@ import fc from 'fast-check';
 import {
   flowUsesOf,
   InMemoryDefinitionStore,
+  isIconDataUrl,
   platformSettings,
   resolveSetting,
   resolveSettings,
@@ -1819,6 +1820,24 @@ describe('a service interface (spec.interface)', () => {
       expect(errorsOf(withPages({ pages: pages(4, 30 * 1024) }))).toEqual([]);
       expect(errorsOf(withPages({ pages: pages(5, 30 * 1024) }))).not.toEqual([]);
     });
+  });
+
+  it('takes an icon only as a base64 PNG or SVG data address', () => {
+    const icon = (value: string) => errorsOf(withSpec({ interface: { layout, icon: value } }));
+    expect(icon('data:image/svg+xml;base64,PHN2Zy8+')).toEqual([]);
+    expect(icon('data:image/png;base64,iVBORw0KGgo=')).toEqual([]);
+    expect(icon('https://example.no/icon.svg')).not.toEqual([]);
+    expect(icon('data:image/svg+xml,<svg onload="x()"/>')).not.toEqual([]);
+    expect(icon('data:text/html;base64,PHN2Zy8+')).not.toEqual([]);
+    expect(icon(`data:image/png;base64,${'A'.repeat(24 * 1024)}`)).not.toEqual([]);
+  });
+
+  it('checks an icon in linear time', () => {
+    const long = `data:image/png;base64,${'A'.repeat(200_000)}!`;
+    const started = performance.now();
+    expect(isIconDataUrl(long)).toBe(false);
+    expect(isIconDataUrl(long.slice(0, 20_000))).toBe(true);
+    expect(performance.now() - started).toBeLessThan(100);
   });
 
   it('refuses an interface over 256 KiB, and takes one just under', () => {

@@ -17,6 +17,7 @@ export interface HostView {
     audience: string;
     altinnResource: string | null;
   };
+  icon?: string | null;
   menu: MenuItem[];
   pages: { id: string; title: Text }[];
 }
@@ -26,6 +27,12 @@ export interface Page {
   title: Text;
   body: Text;
 }
+
+export const showIcon = (icon: string | null | undefined) => {
+  if (!icon?.startsWith('data:image/')) return;
+  const link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+  if (link) link.href = icon;
+};
 
 export const textIn = (text: Text, locale: Locale) =>
   typeof text === 'string' ? text : text[locale === 'en' ? 'en' : 'nb'];

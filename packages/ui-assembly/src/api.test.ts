@@ -858,3 +858,74 @@ describe('the fields a profile chooses', () => {
     expect(await reads.loadFields('kudos')).toEqual([{ ...year, integer: true }]);
   });
 });
+
+describe('the writes a host sends through genki', () => {
+  const sent = () => {
+    const calls: { url: string; method: string; body: unknown; headers: Headers }[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        calls.push({
+          url,
+          method: init?.method ?? 'GET',
+          body: init?.body ? JSON.parse(String(init.body)) : undefined,
+          headers: new Headers(init?.headers),
+        });
+        return json({ ok: true, success: true, task: 'r1', conversation: { id: 't1' } });
+      }),
+    );
+    return calls;
+  };
+  const writer = () =>
+    createGenkiApi({
+      baseUrl: '/api',
+      tenant: 'digdir',
+      headers: () => ({ 'genai-csrf': '1' }),
+    });
+  const row = { id: 't 1', title: 'Gammel', updatedAt: 0 };
+
+  it('rates an answer on its run, with the host’s headers', async () => {
+    const calls = sent();
+    await writer().sendFeedback({
+      answerId: 'a1',
+      runId: 'r1',
+      rating: 'down',
+      reasons: ['Feil'],
+      comment: 'Mangler kilde',
+    });
+    expect(calls).toEqual([
+      expect.objectContaining({
+        url: '/api/api/feedback',
+        method: 'POST',
+        body: { task: 'r1', rating: 'down', reasons: ['Feil'], comment: 'Mangler kilde' },
+      }),
+    ]);
+    expect(calls[0]?.headers.get('genai-csrf')).toBe('1');
+  });
+
+  it('sends no rating for an answer without a run', async () => {
+    const calls = sent();
+    await expect(
+      writer().sendFeedback({ answerId: 'a1', rating: 'up', reasons: [] }),
+    ).rejects.toThrow();
+    expect(calls).toEqual([]);
+  });
+
+  it('renames and deletes a thread at its own address', async () => {
+    const calls = sent();
+    await writer().renameThread(row, 'Ny');
+    await writer().deleteThread(row);
+    expect(calls.map((c) => [c.method, c.url, c.body])).toEqual([
+      ['PUT', '/api/api/conversations/t%201', { title: 'Ny' }],
+      ['DELETE', '/api/api/conversations/t%201', undefined],
+    ]);
+  });
+
+  it('fails a write genki refuses', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('{}', { status: 404 })),
+    );
+    await expect(writer().deleteThread(row)).rejects.toBeInstanceOf(HttpError);
+  });
+});
