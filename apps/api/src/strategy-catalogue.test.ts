@@ -98,6 +98,19 @@ describe('the strategy catalogue', () => {
     expect(defaults['remote-agent']).toBeUndefined();
   });
 
+  it('lists each section of the agent instructions with a reason, in the order the agent gets them', async () => {
+    const { body } = await listed();
+    const agent = body.data.find((s) => s.id === 'agent-loop')?.defaultInstructions;
+
+    expect(agent?.layered).toBe(true);
+    expect(agent?.sections?.map((s) => s.id)).toEqual(['role', 'reasoning', 'workflow', 'gate']);
+    expect(agent?.sections?.map((s) => s.text).join('\n\n')).toBe(defaultSystemPrompt);
+    for (const section of agent?.sections ?? []) {
+      expect(section.title.nb).not.toBe('');
+      expect(section.reason.en).toMatch(/keep/i);
+    }
+  });
+
   it('gives the rag default the same text the strategy sends, with the date filled in', () => {
     const sent = systemPromptWithDate(new Date('2026-10-20T10:00:00Z'));
 

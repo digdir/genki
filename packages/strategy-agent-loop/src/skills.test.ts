@@ -3,6 +3,7 @@ import {
   baseConfig,
   call,
   decision,
+  harnessCard,
   readSignal,
   result,
   run,
@@ -29,7 +30,7 @@ const klarsprak = (version: number, instructions: string) => ({
 });
 
 const skill = klarsprak(2, 'Bruk korte setninger. Behold {context} og {question} bokstavelig.');
-const synthesisSystem = `${systemPromptWithDate(new Date('2026-10-06T10:00:00Z'))}\n\n${untrustedDataNotes.nb}`;
+const synthesisSystem = `${systemPromptWithDate(new Date('2026-10-06T10:00:00Z'))}\n\n${harnessCard(true, true)}\n\n${untrustedDataNotes.nb}`;
 const ungated = { ...baseConfig.strategy, ablate: [...ablatableStages] };
 
 describe('agent-loop skills', () => {
@@ -49,7 +50,7 @@ describe('agent-loop skills', () => {
     const [first, second] = out.loops;
     expect(first?.tools?.map((t) => t.name)).toContain('use_skill');
     expect(first?.messages[0]?.content).toBe(
-      `${defaultSystemPrompt}\n\n# Ferdigheter\n\nThese skills are available. Call use_skill with the name to load a skill's instructions when the question needs it:\n- klarsprak: Skriv om tekst til klarspråk.${untrustedDataNote}`,
+      `${harnessCard()}\n\n${defaultSystemPrompt}\n\n# Ferdigheter\n\nThese skills are available. Call use_skill with the name to load a skill's instructions when the question needs it:\n- klarsprak: Skriv om tekst til klarspråk.${untrustedDataNote}`,
     );
     expect(toolMessages(second)).toEqual([
       '## klarsprak\nSkriv om tekst til klarspråk.\n\nBruk korte setninger. Versjon 2.\n\nEksempler:\nInn: Vedtaket er fattet.\nForventet resultat: Vi har bestemt.',
@@ -63,7 +64,9 @@ describe('agent-loop skills', () => {
     const empty = await run({ config: { ...baseConfig, skills: [] }, scripts: script });
 
     expect(empty.loops).toEqual(before.loops);
-    expect(before.loops[0]?.messages[0]?.content).toBe(defaultSystemPrompt + untrustedDataNote);
+    expect(before.loops[0]?.messages[0]?.content).toBe(
+      `${harnessCard()}\n\n${defaultSystemPrompt}${untrustedDataNote}`,
+    );
     expect(before.loops[0]?.tools?.map((t) => t.name)).not.toContain('use_skill');
   });
 

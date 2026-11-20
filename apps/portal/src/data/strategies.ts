@@ -9,6 +9,20 @@ export interface UiText {
   en: string;
 }
 
+export interface PromptSectionEntry {
+  id: string;
+  title: UiText;
+  reason: UiText;
+  text: string;
+}
+
+export interface PromptSection {
+  id: string;
+  title: string;
+  reason: string;
+  text: string;
+}
+
 export interface StrategyEntry {
   id: string;
   version: number;
@@ -19,7 +33,12 @@ export interface StrategyEntry {
   pipeline: { title: UiText; description: UiText; repeats?: true }[];
   newConfig: Record<string, unknown>;
   takes: { instructions: ConfigUse; examples: ConfigUse };
-  defaultInstructions?: { text: UiText; note?: UiText };
+  defaultInstructions?: {
+    text: UiText;
+    note?: UiText;
+    sections?: PromptSectionEntry[];
+    layered?: true;
+  };
   schema: string;
 }
 
@@ -84,8 +103,34 @@ export const strategyEntry = (id: string | undefined) => catalogue.find((s) => s
 
 export const defaultInstructionsOf = (id: string | undefined, locale: Locale) => {
   const found = strategyEntry(id)?.defaultInstructions;
-  return found ? { text: found.text[locale], note: found.note?.[locale] } : undefined;
+  return found
+    ? {
+        text: found.text[locale],
+        note: found.note?.[locale],
+        layered: found.layered === true,
+        sections: (found.sections ?? []).map((s): PromptSection => ({
+          id: s.id,
+          title: s.title[locale],
+          reason: s.reason[locale],
+          text: s.text,
+        })),
+      }
+    : undefined;
 };
+
+export const promptSectionEditsOf = (config: Raw): Record<string, string> => {
+  const edits = config.promptSections;
+  return isRaw(edits)
+    ? Object.fromEntries(
+        Object.entries(edits).flatMap(([id, text]) =>
+          typeof text === 'string' ? [[id, text]] : [],
+        ),
+      )
+    : {};
+};
+
+export const withPromptSection = (config: Raw, id: string, text: string | undefined): Raw =>
+  writePath(config, ['promptSections', id], text);
 
 export const takesOf = (id: string | undefined) =>
   strategyEntry(id)?.takes ?? { instructions: 'no' as const, examples: 'no' as const };

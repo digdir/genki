@@ -112,7 +112,7 @@ export const settingSchemaLabels: SchemaLabels = {
     },
     'synthesis.instructions': {
       label: 'Systemledetekst for svaret',
-      help: 'Egen systeminstruks til svarmodellen. Tomt bruker den innebygde.',
+      help: 'Egen systeminstruks til svarmodellen. For en agent legges den til etter de innebygde delene. Tomt bruker bare den innebygde.',
     },
     'synthesis.temperature': {
       label: 'Temperatur for svaret',
@@ -322,7 +322,7 @@ export const settingSchemaLabels: SchemaLabels = {
     },
     'synthesis.instructions': {
       label: 'System prompt for the answer',
-      help: 'A custom system instruction for the answering model. Empty uses the built-in one.',
+      help: 'A custom system instruction for the answering model. For an agent it is added after the built-in sections. Empty uses only the built-in one.',
     },
     'synthesis.temperature': {
       label: 'Temperature for the answer',

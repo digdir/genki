@@ -223,11 +223,29 @@ const StrategyCatalogueEntry = z
         note: UiText.optional().openapi({
           description: 'What the platform adds to the instructions at run time',
         }),
+        sections: z
+          .array(
+            z.object({
+              id: z.string(),
+              title: UiText,
+              reason: UiText.openapi({ description: 'Why the platform has the section' }),
+              text: z.string(),
+            }),
+          )
+          .optional()
+          .openapi({
+            description:
+              'The sections of the built-in instructions, in order. A service edits one in spec.strategy.config.promptSections under its id; an empty text leaves it out',
+          }),
+        layered: z.literal(true).optional().openapi({
+          description:
+            'Instructions written in the service are added after the sections instead of replacing them',
+        }),
       })
       .optional()
       .openapi({
         description:
-          'The built-in instructions, only for a strategy that has them. Writing instructions in the service replaces them',
+          'The built-in instructions, only for a strategy that has them. Writing instructions in the service replaces them, unless layered is true',
       }),
     schema: z.string().openapi({ description: 'The config schema, with labels, under /schemas' }),
   })

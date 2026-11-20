@@ -1,26 +1,72 @@
 import type { ToolSpec } from '@genai/port-model';
 
-export const defaultSystemPrompt = `You are a research assistant with access to a document knowledge base. Answer the user's question accurately.
+export const promptSectionIds = ['role', 'reasoning', 'workflow', 'gate'] as const;
+export type PromptSectionId = (typeof promptSectionIds)[number];
 
-Always include your reasoning in your message text before making tool calls. Explain what you're about to do and why.
+export interface PromptSection {
+  id: PromptSectionId;
+  text: string;
+}
 
-Workflow (repeat as needed):
+export const searchPromptSections: PromptSection[] = [
+  {
+    id: 'role',
+    text: "You are a research assistant with access to this service's document collection. Answer the user's question accurately from it.",
+  },
+  {
+    id: 'reasoning',
+    text: "Always include your reasoning in your message text before making tool calls. Explain what you're about to do and why.",
+  },
+  {
+    id: 'workflow',
+    text: `Workflow (repeat as needed):
 1. SEARCH: Use search with diverse queries. Returns metadata only, no content.
 2. READ: Use read_chunks to fetch full content of promising results.
 3. RERANK: Use rerank_results to surface the most relevant chunks in your workspace.
-4. GENERATE: Use generate_response to produce an answer.
+4. GENERATE: Use generate_response to produce an answer.`,
+  },
+  {
+    id: 'gate',
+    text: 'After each tool call, the system runs a sufficiency gate. If it rejects, follow the hint; if it passes, finalize.',
+  },
+];
 
-After each tool call, the system runs a sufficiency gate. If it rejects, follow the hint; if it passes, finalize.`;
+export const toolsOnlyPromptSections: PromptSection[] = [
+  {
+    id: 'role',
+    text: "You are an assistant with access to the tools listed for this conversation. Answer the user's question accurately, using the tools when they can help.",
+  },
+  {
+    id: 'reasoning',
+    text: "Always include your reasoning in your message text before making tool calls. Explain what you're about to do and why. When you have what you need, answer in your message text without calling a tool.",
+  },
+];
 
-export const toolsOnlySystemPrompt = `You are an assistant with access to the tools listed for this conversation. Answer the user's question accurately, using the tools when they can help.
+export type PromptSectionEdits = Partial<Record<PromptSectionId, string>>;
 
-Always include your reasoning in your message text before making tool calls. Explain what you're about to do and why. When you have what you need, answer in your message text without calling a tool.`;
+export const ownerInstructionsHeading = "The service owner's instructions:";
+
+export const composeSystemPrompt = (
+  sections: PromptSection[],
+  edits: PromptSectionEdits = {},
+  instructions?: string,
+): string =>
+  [
+    ...sections.map((s) => (edits[s.id] ?? s.text).trim()),
+    ...(instructions?.trim() ? [`${ownerInstructionsHeading}\n${instructions.trim()}`] : []),
+  ]
+    .filter((text) => text.length > 0)
+    .join('\n\n');
+
+export const defaultSystemPrompt = composeSystemPrompt(searchPromptSections);
+
+export const toolsOnlySystemPrompt = composeSystemPrompt(toolsOnlyPromptSections);
 
 export const agentTools: ToolSpec[] = [
   {
     name: 'search',
     description:
-      'Search the document collection using multiple queries. Returns metadata-only results (chunk_id, doc_num, chunk_index, total_chunks, page, content_length, headers, scores) — NO content. Use read_chunks to fetch content of promising results. page=N (pages=N-M when a chunk spans several) is the chunk\'s page in its PDF: cite that page as plain text, such as "s. 67", never in square brackets. publisher="…" names the organisation that published the document: documents with the same title, such as each ministry\'s Prop. 1 S, are told apart by it.',
+      'Search the document collection using multiple queries. Returns hits grouped by document, with metadata only (doc_num, title, publication date, publisher, and per hit chunk_id, chunk_index, page, content_length, headers, scores), NO content. The result says how many hits and documents the search found, which documents it shows and how to see the rest. Use read_chunks to fetch content of promising results. page=N (pages=N-M when a chunk spans several) is the chunk\'s page in its PDF: cite that page as plain text, such as "s. 67", never in square brackets. publisher="…" names the organisation that published the document: documents with the same title are told apart by it.',
     parameters: {
       type: 'object',
       properties: {
@@ -29,10 +75,15 @@ export const agentTools: ToolSpec[] = [
           items: { type: 'string' },
           description: 'Search queries to execute against the document collection',
         },
+        page: {
+          type: 'integer',
+          description:
+            'Which page of documents to show, from 1. Repeat the same queries and filter_by with the next page to see documents the first page left out; that does not use a search.',
+        },
         filter_by: {
           type: 'object',
           description:
-            "Optional structured retrieval filter to constrain document search. When inspect_filters lists doc_num or title, search inside one document by filtering doc_num with the doc_num a hit showed, or title with the words of its title, and leave the title out of the queries. When inspect_filters lists orgs_long, filter it with an organisation's name to get that organisation's own document, such as its Prop. 1 S or årsrapport. orgs_long also matches documents the organisation received, such as the tildelingsbrev its ministry sent it, whose publisher= is that ministry.",
+            'Optional structured retrieval filter to constrain document search to the documents the question is about. inspect_filters lists the fields this collection can filter on and their values. When inspect_filters lists doc_num or title, search inside one document by filtering doc_num with the doc_num a hit showed, or title with the words of its title, and leave the title out of the queries.',
           properties: {
             fields: {
               type: 'array',
@@ -41,8 +92,7 @@ export const agentTools: ToolSpec[] = [
                 properties: {
                   field: {
                     type: 'string',
-                    description:
-                      'Document field to filter on (for example: orgs_long, owner_short, orgs_short, year, doc_num, title)',
+                    description: 'Document field to filter on, one that inspect_filters lists',
                   },
                   selected_options: {
                     type: 'array',
@@ -178,7 +228,7 @@ const norwegianMonths = [
 export const datedSystemPromptTemplate =
   'You are a helpful assistant. The date this conversation was created at is {date} (Norwegian time).';
 
-export const systemPromptWithDate = (now: Date): string => {
+export const norwegianDate = (now: Date): string => {
   const parts = Object.fromEntries(
     new Intl.DateTimeFormat('en-GB', {
       timeZone: 'Europe/Oslo',
@@ -189,9 +239,11 @@ export const systemPromptWithDate = (now: Date): string => {
       .formatToParts(now)
       .map((p) => [p.type, p.value]),
   );
-  const date = `${Number(parts.day)}. ${norwegianMonths[Number(parts.month) - 1]} ${parts.year}`;
-  return datedSystemPromptTemplate.replace('{date}', date);
+  return `${Number(parts.day)}. ${norwegianMonths[Number(parts.month) - 1]} ${parts.year}`;
 };
+
+export const systemPromptWithDate = (now: Date): string =>
+  datedSystemPromptTemplate.replace('{date}', norwegianDate(now));
 
 export const exhaustionNudge =
   'You have used the budget for this question. This turn has no tools: answer now from what you have read. Cite each source you read and use by its chunk_id in square brackets, such as [chunk_id]. If you found partial information, share it, and say plainly what you could not find.';

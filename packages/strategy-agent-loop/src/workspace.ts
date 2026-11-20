@@ -26,7 +26,7 @@ export interface ChunkSummary {
   publishedAt?: string;
   publisher?: string;
   hitCount?: number;
-  searchTypes?: SearchType[];
+  searchTypes?: string[];
   matchedQuestions?: string[];
   snippet?: string;
 }
@@ -138,7 +138,7 @@ export interface SearchSummary {
   title: string | null;
   publisher?: string;
   headers: string | null;
-  'search-types': SearchType[] | null;
+  'search-types': string[] | null;
   'rerank-score': number | null;
   'retrieval-prior': number | null;
   'hit-count': number | null;
@@ -155,6 +155,14 @@ export interface SearchEntry {
   fallback: boolean;
   filters?: FilterField[];
   attribution?: SearchAttribution;
+}
+
+export interface SearchWindow {
+  key: string;
+  chunks: (ChunkSummary & { titleOverlapBonus?: number })[];
+  attribution?: SearchAttribution;
+  filters?: FilterField[];
+  lead: string;
 }
 
 export interface ChunkRange {
@@ -254,6 +262,7 @@ export class Workspace {
   citationValidation: CitationValidation | undefined;
   noToolCallRetries = 0;
   sourceFactsRead = false;
+  lastSearchWindow: SearchWindow | undefined;
 
   constructor(readonly limits: BudgetLimits) {}
 

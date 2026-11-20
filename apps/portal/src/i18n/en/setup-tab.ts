@@ -87,6 +87,15 @@ export const setup = {
   defaultInstructionsShow: 'See the default instructions',
   defaultInstructionsCompare: 'Compare with the default instructions',
   defaultInstructionsLabel: 'The default instructions (cannot be changed here)',
+  promptSectionsShow: 'See and change the default instructions',
+  promptSectionsHelp:
+    'The agent gets the default instructions in these sections. You can change a section; only that section is replaced. An empty text leaves it out.',
+  promptSectionEdited: '(changed)',
+  promptSectionReset: 'Reset {section}',
+  promptSectionsOwnerSlot:
+    'The instructions you write for the service come here, after the sections above.',
+  instructionsLayeredHelp:
+    'The service uses the default instructions of the setup. Instructions you write here are added after them.',
   defaultInstructionsUse: 'Use as a starting point',
   instructionsInFlowHelp:
     'The instructions are in the steps of the step flow {flow}. Change them in the step flow under Step flows.',

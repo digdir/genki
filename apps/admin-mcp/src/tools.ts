@@ -181,7 +181,7 @@ interface Strategy {
   description: { en: string };
   takes: { instructions: string; examples: string };
   newConfig: Record<string, unknown>;
-  defaultInstructions?: { text: { en: string } };
+  defaultInstructions?: { text: { en: string }; layered?: boolean };
   schema: string;
 }
 
@@ -476,7 +476,7 @@ const describeStrategy = tool({
   name: 'describe_strategy',
   title: 'Describe a way of working',
   description:
-    'Without an id, list the strategies a service can use. With an id, give the keys its config takes (also the keys a variant may override in overrides), the starting config and the built-in instructions it uses when the service has none.',
+    'Without an id, list the strategies a service can use. With an id, give the keys its config takes (also the keys a variant may override in overrides), the starting config and its built-in instructions: used when the service has none, or for a layered strategy always used, with the instructions of the service added after them.',
   kind: 'read',
   args: z.strictObject({
     id: z.string().min(1).optional().describe('A strategy id, e.g. rag-single-shot'),
@@ -513,8 +513,11 @@ const describeStrategy = tool({
     const schema = await client.request<Record<string, unknown>>('GET', found.schema);
     const config = full ? schema : trimSchema(schema);
     const builtIn = found.defaultInstructions?.text.en;
+    const builtInLead = found.defaultInstructions?.layered
+      ? "Built-in sections, always used; the service's instructions are added after them, and promptSections edits one section:"
+      : 'Built-in instructions, used when the service has none:';
     return {
-      text: `${found.id}@${found.version}: ${found.description.en}\nInstructions: ${found.takes.instructions}, examples: ${found.takes.examples}\nStarting config:\n${stringify(found.newConfig)}${builtIn ? `\nBuilt-in instructions, used when the service has none:\n${builtIn}\n` : ''}\nConfig keys:\n${JSON.stringify(config, null, 1)}`,
+      text: `${found.id}@${found.version}: ${found.description.en}\nInstructions: ${found.takes.instructions}, examples: ${found.takes.examples}\nStarting config:\n${stringify(found.newConfig)}${builtIn ? `\n${builtInLead}\n${builtIn}\n` : ''}\nConfig keys:\n${JSON.stringify(config, null, 1)}`,
       data: { ...found, config },
     };
   },
