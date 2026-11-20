@@ -2170,7 +2170,7 @@ describe('a service without a reranker', () => {
     return (await res.json()) as { result: { isError: boolean } };
   };
 
-  it('the API and the worker start and seed their catalog without reranker settings', async () => {
+  it('the API starts and seeds its services and catalog without reranker settings', async () => {
     const { platform } = await boot();
     const admin = createAdmin({
       store: platform.definitions,
