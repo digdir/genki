@@ -199,7 +199,7 @@ const drop = (blob: ReturnType<typeof observable>, path: string, text: string) =
   blob.put({ tenant, path }, new TextEncoder().encode(text), 'text/plain');
 
 describe('worker', () => {
-  it('the API and the worker start and seed their catalog without reranker settings', async () => {
+  it('the worker starts on a seed catalogue that holds no reranker', async () => {
     const { runtime } = await setup();
 
     expect([...(runtime.plugins.rerankers ?? [])]).toEqual([]);

@@ -529,6 +529,7 @@ export const createRagRetrieval = (options: RetrievalFactoryOptions) => {
   return {
     plan: backend.plan,
     rerank: backend.rerank,
+    reranks: options.rerank !== undefined,
     documents: (query: DocumentQuery, signal: AbortSignal) =>
       listDocuments(options.knowledge, query, options.filters, signal),
     readDocument: async (document: string, maxChunks: number, signal: AbortSignal) => {

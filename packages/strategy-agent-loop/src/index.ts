@@ -199,6 +199,7 @@ const withoutDataset: AgentRetrieval = {
   readRange: noDataset,
   plan: noDataset,
   rerank: noDataset,
+  reranks: false,
   filterFields: noDataset,
   facets: noDataset,
 };

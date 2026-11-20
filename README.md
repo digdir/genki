@@ -29,7 +29,7 @@ It provides:
 - **A headless API** that runs every service the same way, whether it is called as an OpenAI-compatible model, an MCP tool, an A2A agent or over REST
 - **Three web apps** on that API: the **portal**, where an organisation builds, tests and publishes services; the **workspace**, where employees use them; and the **console**, where Digdir runs the platform
 - **Definitions instead of code**: a service, variant, prompt, dataset or guardrail is versioned configuration, and every change is audited with who made it and why
-- **Datasets and ingestion** on Typesense, pgvector, Postgres, HTTP or MCP, with reranking
+- **Datasets and ingestion** on Typesense, pgvector, Postgres, HTTP or MCP, with a port for reranking and no reranker built in yet
 - **Quality checks**: test sets, judges and publishing gates, plus a parity harness that compares answers with [digdir-headless-rag](https://github.com/digdir/digdir-headless-rag)
 
 ## Quickstart

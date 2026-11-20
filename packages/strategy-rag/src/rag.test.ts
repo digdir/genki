@@ -57,6 +57,7 @@ const retrieval = (overrides: Partial<RagRetrieval> = {}) => {
       calls.push({ op: 'rerank', args: query });
       return [...chunks].reverse();
     },
+    reranks: true,
     ...overrides,
   };
   return { impl, calls };
@@ -258,6 +259,19 @@ describe('rag-single-shot strategy', () => {
         .filter((e) => e.type === 'kernel.notice')
         .map((e) => (e.data as { kind?: string }).kind),
     ).toEqual(['plan', 'retrieval', 'rerank', 'read']);
+  });
+
+  it('a RAG run without a reranker shows no rerank step', async () => {
+    const r = retrieval({ reranks: false });
+    const out = await run({ strategy: { topK: 2 } }, r.impl);
+
+    expect(
+      out.events
+        .filter((e) => e.type === 'kernel.notice')
+        .map((e) => (e.data as { kind?: string }).kind),
+    ).toEqual(['plan', 'retrieval', 'read']);
+    expect(r.calls.map((c) => c.op)).toEqual(['plan', 'retrieve']);
+    expect(out.sources.map((s) => s.chunkId)).toEqual(['c1', 'c2']);
   });
 
   it('records what the search detected in the retrieval notice', async () => {

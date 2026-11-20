@@ -67,7 +67,7 @@ models:
     embed: { dimensions: 1536, maxBatch: 64 }
 ```
 
-An embedding model must name `embed.dimensions`. A rerank engine that a plug-in registers without an API stays in the rerank catalogue; a model with the same id wins over it.
+An embedding model must name `embed.dimensions`. A rerank engine without an API would stay in the rerank catalogue, and a model with the same id wins over it; with no rerank engine in genki, a rerank plug-in cannot be registered yet.
 
 ## Prices
 

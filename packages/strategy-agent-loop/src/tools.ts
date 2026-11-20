@@ -792,10 +792,9 @@ const rerank = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome> 
       .slice(0, 3)
       .map((c, i) => `${i + 1}. ${c.content.slice(0, 80)}`)
       .join('; ');
-    const done =
-      env.retrieval.reranks === false
-        ? `No reranker: kept the search order of ${reranked.length} chunks.`
-        : `Reranked to top ${reranked.length} chunks.`;
+    const done = env.retrieval.reranks
+      ? `Reranked to top ${reranked.length} chunks.`
+      : `No reranker: kept the search order of ${reranked.length} chunks.`;
     return { content: `${done} Top results:\n${untrustedData('excerpts', top)}` };
   } catch (error) {
     if (env.signal.aborted) throw error;

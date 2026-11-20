@@ -9650,7 +9650,7 @@
             summary:
               'Reranks candidate passages with the rerank models of the model catalogue and the rerank catalogue.',
             description:
-              "Same router shape as the model and knowledge ports. It has no built-in adapter until genki runs a reranker of its own (ADR 0048), so a service that names no reranker runs with rerank off. A reranker is a model in the model catalogue that binds an API for rerank; engines without an API, such as plug-ins, stay in the rerank catalogue. Every rerank call goes through the kernel's gate (ADR 0047), so it is admitted in lockdown, checked against tenant sharing and every residency ceiling, held to its closed shape, masked and metered. The router itself only routes and degrades.",
+              "Same router shape as the model and knowledge ports. It has no built-in adapter until genki runs a reranker of its own (ADR 0048), so a service that names no reranker runs with rerank off. A reranker would be a model in the model catalogue that binds an API for rerank, or an entry of the rerank catalogue for an engine without an API; a rerank plug-in needs an engine too, so none can be registered yet. Every rerank call goes through the kernel's gate (ADR 0047), so it is admitted in lockdown, checked against tenant sharing and every residency ceiling, held to its closed shape, masked and metered. The router itself only routes and degrades.",
             responsibilities: [
               'Rerank models from the model catalogue, and the rerank catalogue for engines without an API',
               'Rerank with timeouts and warnings',

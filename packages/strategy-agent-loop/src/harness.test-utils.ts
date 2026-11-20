@@ -229,6 +229,7 @@ export const retrieval = (
       calls.push({ op: 'rerank', args: query });
       return [...chunks].reverse();
     },
+    reranks: true,
     filterFields: async () => [{ field: 'orgs_short', type: 'string[]', valueType: 'string' }],
     facets: async (fields) =>
       Object.fromEntries(fields.map((f) => [f, [{ value: 'DIGDIR', count: 12 }]])),
