@@ -16,6 +16,7 @@ import {
   skippedOf,
   type DatasetDeleteResult,
   type DatasetDetailView,
+  type DatasetEffective,
   type ExecutionView,
   type ExecutionsView,
 } from '../../api/datasets';
@@ -99,6 +100,45 @@ const Deleted = ({ name, result }: { name: string; result: DatasetDeleteResult }
         <a href="#/datasets">{t('datasets.goToDatasets')}</a>
       </Paragraph>
     </div>
+  );
+};
+
+const engineName = (e: { engine?: string; engineTitle?: string; endpoint: string }) =>
+  e.engineTitle ?? e.engine ?? e.endpoint;
+
+const EffectiveLine = ({ effective }: { effective: DatasetEffective }) => {
+  const t = useT();
+  return (
+    <p className="meta">
+      {[
+        t('datasets.effectiveEngine', { engine: engineName(effective) }),
+        ...(effective.generation
+          ? [t('datasets.effectiveGeneration', { generation: effective.generation })]
+          : []),
+      ].join(' · ')}
+    </p>
+  );
+};
+
+const EffectiveMismatch = ({ effective }: { effective: DatasetEffective }) => {
+  const t = useT();
+  const f = useFormat();
+  const expected = effective.expected;
+  if (!expected) return null;
+  return (
+    <Alert data-color="warning">
+      <Heading level={2} data-size="2xs">
+        {t(effective.fromSeed ? 'datasets.effectiveSeedTitle' : 'datasets.effectiveOlderTitle')}
+      </Heading>
+      <p className="alert-text">
+        {t('datasets.effectiveMismatch', {
+          current: engineName(effective),
+          expected: engineName(expected),
+          version: f.number(expected.version),
+          when: f.dateTime(expected.at),
+        })}
+      </p>
+    </Alert>
   );
 };
 
@@ -433,6 +473,7 @@ const Loaded = ({
           </div>
           {view.description ? <Paragraph className="lead">{view.description}</Paragraph> : null}
           <p className="meta">{meta}</p>
+          {view.effective ? <EffectiveLine effective={view.effective} /> : null}
         </div>
         {canEdit && pipeline ? (
           <div className="actions">
@@ -467,6 +508,7 @@ const Loaded = ({
         ) : null}
       </div>
       <div aria-live="polite" className="stack-sm">
+        {view.effective ? <EffectiveMismatch effective={view.effective} /> : null}
         {failedRun ? (
           <Alert data-color="danger">
             <Heading level={2} data-size="2xs">

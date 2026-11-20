@@ -8,6 +8,7 @@ import { isApiKeyPrincipal, isTestRunnerKey } from '@genai/identity';
 import { isPoolExhausted } from '@genai/providers-postgres';
 import { tenantAccess, type Access } from './access.js';
 import { refuseWritesToArchived } from './archived-services.js';
+import { publicSkipped, skippedEntries, type SkippedSource } from './catalog-health.js';
 import { requireChangeReason } from './change-reason.js';
 import { rememberActorNames, type ActorNames } from './actor-names.js';
 import { createAdmin, type Admin, type ModelAdmin } from './admin.js';
@@ -40,7 +41,8 @@ import {
 const Health = z
   .object({
     status: z.enum(['ok', 'degraded']).openapi({
-      description: 'Degraded while model discovery has not succeeded; the API still answers',
+      description:
+        'Degraded while model discovery has not succeeded or a stored catalog entry is skipped; the API still answers',
     }),
     version: z.string(),
     environment: z.string().optional().openapi({
@@ -62,6 +64,22 @@ const Health = z
       })
       .optional()
       .openapi({ description: 'Whether the models listed by the providers have been found' }),
+    catalog: z
+      .object({
+        skipped: z.array(
+          z.object({
+            kind: z.string(),
+            id: z.string().optional().openapi({
+              description: "Left out for an organisation's own entry",
+            }),
+          }),
+        ),
+      })
+      .optional()
+      .openapi({
+        description:
+          'Stored catalog entries the last catalog rebuild left out, so the platform runs an older version or the seed in their place',
+      }),
   })
   .openapi('Health');
 
@@ -119,6 +137,7 @@ export interface AppOptions {
   builtAt?: string;
   environment?: string;
   modelDiscovery?: () => DiscoveryState;
+  catalogSkipped?: () => readonly SkippedSource[];
   platform?: PlatformOptions;
   requestTiming?: RequestTimingOptions;
 }
@@ -159,7 +178,13 @@ export const createApp = (version: string, options: AppOptions = {}) => {
   const builtAt = options.builtAt ? { builtAt: options.builtAt } : {};
   app.openapi(healthRoute, (c) => {
     const discovery = options.modelDiscovery?.();
-    const status = discovery && discovery.state !== 'ok' ? ('degraded' as const) : ('ok' as const);
+    const skipped = options.catalogSkipped
+      ? publicSkipped(skippedEntries(options.catalogSkipped()))
+      : undefined;
+    const status =
+      (discovery && discovery.state !== 'ok') || (skipped?.length ?? 0) > 0
+        ? ('degraded' as const)
+        : ('ok' as const);
     return c.json(
       {
         status,
@@ -168,6 +193,7 @@ export const createApp = (version: string, options: AppOptions = {}) => {
         lockdown,
         ...builtAt,
         ...(discovery ? { modelDiscovery: discovery } : {}),
+        ...(skipped ? { catalog: { skipped } } : {}),
       },
       200,
     );

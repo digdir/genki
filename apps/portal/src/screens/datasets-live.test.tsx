@@ -164,7 +164,7 @@ describe('live new dataset', () => {
         'Filen har ikke tekst vi kan lese, for eksempel et skannet dokument.',
       ),
     ).toBeTruthy();
-    expect(screen.getByText(/ · 6 dokumenter lest inn$/)).toBeTruthy();
+    expect(screen.getByText(/ · 6 dokumenter i søkemotoren$/)).toBeTruthy();
   });
 
   it('uploads the chosen files before the first ingestion and leaves out unreadable ones', async () => {
@@ -368,7 +368,7 @@ describe('live dataset detail', () => {
     await renderLive(`${veiledere}/ingestions`, fetch);
     await screen.findByRole('heading', { level: 1, name: 'Veiledere og rundskriv' });
     expect(
-      screen.getByText(/^Opplastede filer · Siste innlesing .+ · 6 dokumenter lest inn$/),
+      screen.getByText(/^Opplastede filer · Siste innlesing .+ · 6 dokumenter i søkemotoren$/),
     ).toBeTruthy();
     const runs = await screen.findByRole('list', { name: 'Innlesinger' });
     expect(within(runs).getByText('6 lest inn')).toBeTruthy();

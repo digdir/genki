@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import {
+  assessCatalog,
   assessCompletion,
   assessFacets,
   assessHealth,
@@ -205,12 +206,22 @@ export const main = async () => {
   const skip = (group: string, tier: Tier, id: string, reason: SkipReason, detail: string) =>
     checks.push(skipped(group, tier, id, reason, detail));
 
-  let health = assessHealth(await call(`${api}/health`, { timeout: freeTimeout }), expected);
+  let healthResult = await call(`${api}/health`, { timeout: freeTimeout });
+  let health = assessHealth(healthResult, expected);
   for (let i = 1; i < 10 && !health.ok && expected; i++) {
     await sleep(15_000);
-    health = assessHealth(await call(`${api}/health`, { timeout: freeTimeout }), expected);
+    healthResult = await call(`${api}/health`, { timeout: freeTimeout });
+    health = assessHealth(healthResult, expected);
   }
   record('platform', 'free', 'health', health);
+  record(
+    'platform',
+    'free',
+    'catalog',
+    key
+      ? assessCatalog(await client.get('/operator/catalog/entries'), 'entries')
+      : assessCatalog(healthResult, 'health'),
+  );
   const sha = expected ?? health.version ?? '';
   const tiers = health.ok ? wantedTiers : wantedTiers.filter((t) => t === 'free');
   if (tiers.length < wantedTiers.length)

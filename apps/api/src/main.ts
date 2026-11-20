@@ -690,6 +690,7 @@ const app = createApp(version, {
   ...(builtAt ? { builtAt } : {}),
   ...(process.env.GENAI_ENV ? { environment: process.env.GENAI_ENV } : {}),
   modelDiscovery: platform.modelDiscovery.state,
+  catalogSkipped: () => platform.catalog.skipped(),
   requestTiming: {
     write: (entry) => log('request', { ...entry }),
     slowMs: Number(process.env.SLOW_REQUEST_MS) || defaultSlowRequestMs,

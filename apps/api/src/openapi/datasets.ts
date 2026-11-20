@@ -255,7 +255,39 @@ const DatasetListItem = DatasetWithStatus.extend({
     .describe('How many published services and adopted building blocks of the tenant read it'),
 }).openapi('DatasetListItem');
 
+const engineFields = {
+  engine: z
+    .string()
+    .optional()
+    .describe("The endpoint's search engine, when the endpoint is known"),
+  engineTitle: z.string().optional().describe("That engine's name"),
+};
+const DatasetEffective = z
+  .object({
+    endpoint: z.string(),
+    ...engineFields,
+    generation: z.string().optional().describe('The generation read on the knowledge database'),
+    version: z.number().int().describe('The catalog version in use; 0 for the seed'),
+    fromSeed: z.boolean().describe("True while the dataset runs on the platform's seed"),
+    expected: z
+      .object({
+        endpoint: z.string(),
+        ...engineFields,
+        generation: z.string().optional(),
+        version: z.number().int(),
+        at: z.string(),
+      })
+      .optional()
+      .describe(
+        'The newest stored version, when the last catalog rebuild left it out; the dataset then runs on an older version or its seed',
+      ),
+  })
+  .openapi('DatasetEffective');
+
 const DatasetDetail = DatasetWithStatus.extend({
+  effective: DatasetEffective.optional().describe(
+    "Where searches go now; only for the owner's members",
+  ),
   skipped: z.array(SkippedDocument),
   usedBy: z
     .array(DatasetReader)

@@ -504,6 +504,35 @@ describe('a deploy that takes minutes, not half an hour', () => {
     }
   });
 
+  it('every health poll waits past a revision that skips a catalog entry, and passes one that skips none', () => {
+    const polls = Object.values(deploy.jobs)
+      .flatMap((j) => j.steps ?? [])
+      .map((s) => s.run ?? '')
+      .filter((run) => run.includes('/health"'));
+    const sha = 'a'.repeat(40);
+    const passes = (filter: string, body: object) => {
+      try {
+        execFileSync('jq', ['-e', '--arg', 'v', sha, filter], { input: JSON.stringify(body) });
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    const healthy = { status: 'ok', version: sha, modelDiscovery: { state: 'ok' } };
+    for (const run of polls) {
+      const filter = /jq -e --arg v "[^"]+" '([^']+)'/.exec(run)?.[1] ?? '';
+      expect(passes(filter, healthy)).toBe(true);
+      expect(passes(filter, { ...healthy, catalog: { skipped: [] } })).toBe(true);
+      expect(
+        passes(filter, {
+          ...healthy,
+          status: 'degraded',
+          catalog: { skipped: [{ kind: 'dataset', id: 'digdir/kudos' }] },
+        }),
+      ).toBe(false);
+    }
+  });
+
   it('gives up on a health call after ten seconds, so a hanging one cannot stall the polling', () => {
     const polls = Object.values(deploy.jobs)
       .flatMap((j) => j.steps ?? [])
