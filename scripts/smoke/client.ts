@@ -111,7 +111,7 @@ export const createClient = (api: string, key: string | undefined, plan: Plan) =
         timeout: freeTimeout,
         body: yaml,
       }),
-    lifecycle: (id: string, state: 'active' | 'archived') =>
+    lifecycle: (id: string, state: 'active' | 'paused' | 'archived') =>
       call(`${tenant}/services/${encodeURIComponent(id)}/lifecycle`, {
         method: 'PUT',
         headers: writeHeaders(),

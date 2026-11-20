@@ -278,8 +278,9 @@ describe('the throwaway service of a run', () => {
     vi.restoreAllMocks();
   });
 
-  const archivedAfterEarlierRun = (publishFails = false) => {
+  const archivedAfterEarlierRun = (publishFails = false, outdated = false) => {
     const state = new Map<string, string>([[loadPlan().throwaway, 'archived']]);
+    let republished = false;
     const handle: Handler = (req, res) => {
       const reply = (status: number) => {
         res.writeHead(status, { 'content-type': 'application/json' });
@@ -292,7 +293,10 @@ describe('the throwaway service of a run', () => {
         req.on('data', (chunk: Buffer) => (body += chunk.toString()));
         req.on('end', () => {
           if (!state.has(id)) return reply(404);
-          state.set(id, (JSON.parse(body) as { state: string }).state);
+          const next = (JSON.parse(body) as { state: string }).state;
+          if (outdated && !republished && next === 'active' && state.get(id) !== 'active')
+            return reply(409);
+          state.set(id, next);
           reply(200);
         });
         return true;
@@ -306,6 +310,7 @@ describe('the throwaway service of a run', () => {
           if (!body.includes(id)) return reply(201);
           if (publishFails && state.get(id) !== 'archived') return reply(500);
           if (state.get(id) === 'archived') return reply(409);
+          republished = true;
           state.set(id, 'active');
           reply(201);
         });
@@ -318,6 +323,13 @@ describe('the throwaway service of a run', () => {
 
   it('publishes the throwaway again after an earlier run archived it', async () => {
     const { state, handle } = archivedAfterEarlierRun();
+    const { rows } = await runAgainstFake({}, handle);
+    expect(rows.find((c) => c.id === 'lifecycle:throwaway')).toMatchObject({ outcome: 'pass' });
+    expect(state.get(loadPlan().throwaway)).toBe('archived');
+  }, 30_000);
+
+  it('publishes the throwaway again when its archived version no longer validates', async () => {
+    const { state, handle } = archivedAfterEarlierRun(false, true);
     const { rows } = await runAgainstFake({}, handle);
     expect(rows.find((c) => c.id === 'lifecycle:throwaway')).toMatchObject({ outcome: 'pass' });
     expect(state.get(loadPlan().throwaway)).toBe('archived');
