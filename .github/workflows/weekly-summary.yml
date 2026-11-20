@@ -2,8 +2,8 @@ name: weekly-summary
 
 on:
   schedule:
+    - cron: '0 10 * * 5'
     - cron: '0 11 * * 5'
-    - cron: '0 12 * * 5'
   workflow_dispatch:
 
 permissions: {}
@@ -31,7 +31,7 @@ jobs:
           persist-credentials: false
       - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
       - id: due
-        name: Run only the schedule that is 13:00 in Oslo, once a week
+        name: Run only the schedule that is 12:00 in Oslo, once a week
         env:
           GITHUB_TOKEN: ${{ github.token }}
           SCHEDULE: ${{ github.event.schedule }}
