@@ -63,6 +63,11 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ## API changes
 
+### 2026-11-20: archived services and catalog references
+
+- An archived service no longer keeps a catalog model or reranker in use, so `DELETE /operator/catalog/{kind}/{id}` can delete one only archived services name, and a skipped model only they name is marked `unused`.
+- `PUT /tenants/{tenant}/services/{id}/lifecycle` to `active` from `paused` or `archived` checks the latest version against the catalog as publishing does, and answers `409` with `urn:genai:problem:service-outdated` when it no longer validates; `errors` names what is missing. Pausing an archived service stays unchecked, so a fixed version can be published before activating it.
+
 ### 2026-11-20: genki checks what discovered models can do
 
 - `POST /operator/models/refresh` also checks the capabilities of discovered models that their discovery rule does not name, with at most 12 small synthetic model calls through the gate, and answers `learned` with `checked` (model, capability, `has`), `calls`, `deferred` (checks left over the cap) and the priced `usage`. The audit `result` carries the same.

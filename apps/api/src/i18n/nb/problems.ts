@@ -185,6 +185,7 @@ export const problems = defineNamespace({
   serviceUsedByService: 'Tjenesten {service} bruker tjenesten',
   serviceUsedByOthers: '{count} tjenester hos andre virksomheter bruker tjenesten',
   serviceUsedByInternal: '{count} interne tjenester bruker tjenesten',
+  serviceOutdatedTitle: 'Tjenesten bruker noe som ikke finnes lenger',
   hostNotFoundTitle: 'Ingen tjeneste på dette vertsnavnet',
   bffProxyRefused: 'Forespørselen kom ikke gjennom vertens mellomtjener',
   bffSignedOut: 'Du er logget ut. Logg inn igjen.',

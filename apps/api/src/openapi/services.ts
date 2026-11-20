@@ -1750,6 +1750,9 @@ export const serviceRoutes: RouteConfig[] = [
       400: problem('Missing reason or invalid state'),
       ...tenantErrors,
       404: problem('No such service'),
+      409: problem(
+        'urn:genai:problem:service-outdated: activating a paused or archived service checks its latest version against the catalog as publishing does, and it no longer validates, for example because a model it names was deleted while it was archived. errors names what is missing; pause it, publish a fixed version, then activate it',
+      ),
     },
   }),
   createRoute({

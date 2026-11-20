@@ -746,6 +746,20 @@ const routes = {
 const OperatorModel = z
   .looseObject({
     id: z.string(),
+    kind: z
+      .string()
+      .optional()
+      .describe(
+        'What the model is for: chat, embed, rerank, decide, or a kind genki has no port for, such as evaluation; unknown when nothing says',
+      ),
+    kindFrom: z
+      .enum(['listing', 'operator', 'name'])
+      .optional()
+      .describe("For a discovered model: the provider's listing, the operator's rule, or its name"),
+    listedEndpoints: z
+      .array(z.string())
+      .optional()
+      .describe("The paths the provider's listing says the model answers on"),
     endpoint: z.string().optional(),
     deployment: z.string().optional(),
     family: z.string().optional(),

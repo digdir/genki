@@ -156,6 +156,9 @@ export interface ModelUsage {
 
 export interface OperatorModel {
   id: string;
+  kind?: string;
+  kindFrom?: 'listing' | 'operator' | 'name';
+  listedEndpoints?: string[];
   endpoint: string;
   deployment: string;
   family?: string;

@@ -183,6 +183,7 @@ export const problems = {
   serviceUsedByService: 'The service {service} uses the service',
   serviceUsedByOthers: '{count} services in other organisations use the service',
   serviceUsedByInternal: '{count} internal services use the service',
+  serviceOutdatedTitle: 'The service uses something that no longer exists',
   hostNotFoundTitle: 'No service on this hostname',
   bffProxyRefused: "The request did not come through the host's proxy",
   bffSignedOut: 'You are signed out. Sign in again.',

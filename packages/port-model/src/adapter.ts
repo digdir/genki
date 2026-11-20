@@ -111,8 +111,11 @@ export { authenticatedFetch, authHeaders, shape, type Credential } from '@genai/
 export interface DiscoveredDeployment {
   deployment: string;
   model?: string;
-  /** False when the provider reports a model that does not chat, such as an image or realtime model. */
-  chat?: boolean;
+  /** The operation kind the listing or the model name points to, such as chat, embed or rerank. */
+  kind?: string;
+  kindFrom?: 'listing' | 'name';
+  /** The paths the listing says the model answers on. */
+  endpoints?: string[];
   /** What the listing says the model can do, when it says anything. */
   capabilities?: Capability[];
 }

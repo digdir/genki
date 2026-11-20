@@ -533,6 +533,31 @@ describe('a deploy that takes minutes, not half an hour', () => {
     }
   });
 
+  it('a skipped dataset blocks the deploy, and a leftover model nobody uses does not', () => {
+    const polls = Object.values(deploy.jobs)
+      .flatMap((j) => j.steps ?? [])
+      .map((s) => s.run ?? '')
+      .filter((run) => run.includes('/health"'));
+    const sha = 'a'.repeat(40);
+    const passes = (filter: string, skipped: object[]) => {
+      const body = { status: 'degraded', version: sha, catalog: { skipped } };
+      try {
+        execFileSync('jq', ['-e', '--arg', 'v', sha, filter], { input: JSON.stringify(body) });
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    const leftover = { kind: 'model', id: 'nimbrel-cortex/cortex', unused: true };
+    for (const run of polls) {
+      const filter = /jq -e --arg v "[^"]+" '([^']+)'/.exec(run)?.[1] ?? '';
+      expect(passes(filter, [leftover])).toBe(true);
+      expect(passes(filter, [{ kind: 'dataset', id: 'digdir/kudos' }])).toBe(false);
+      expect(passes(filter, [{ kind: 'model', id: 'digdir/used' }])).toBe(false);
+      expect(passes(filter, [leftover, { kind: 'dataset', id: 'digdir/kudos' }])).toBe(false);
+    }
+  });
+
   it('gives up on a health call after ten seconds, so a hanging one cannot stall the polling', () => {
     const polls = Object.values(deploy.jobs)
       .flatMap((j) => j.steps ?? [])

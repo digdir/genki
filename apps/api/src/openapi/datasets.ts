@@ -759,7 +759,31 @@ const DiscoveryRule = z
     include: z.array(z.string()).optional(),
     exclude: z.array(z.string()).optional(),
     capabilities: z.array(z.enum(capabilities)).optional(),
-    apis: ApiBindings.optional().describe('The APIs a discovered deployment binds'),
+    apis: ApiBindings.optional().describe(
+      'The APIs a discovered deployment binds; a model of another kind than chat binds the API named here for its kind, or the one API of that kind the connection offers',
+    ),
+    residency: z
+      .enum(['norway', 'eu', 'global'])
+      .optional()
+      .describe(
+        'Where the models this rule finds process data; global when left out. An operator can still set one model apart.',
+      ),
+    models: z
+      .record(
+        z.string(),
+        z.object({
+          kind: z.string().optional().describe('The kind of the model, over what the listing says'),
+          embed: z
+            .object({ dimensions: z.number().int(), maxBatch: z.number().int().optional() })
+            .optional()
+            .describe(
+              'An embedding model is served on the embedding port once its dimensions are set',
+            ),
+          rerank: z.object({ onFailure: z.enum(['degrade', 'fail']).optional() }).optional(),
+        }),
+      )
+      .optional()
+      .describe('Settings for one discovered deployment, by its name'),
   })
   .openapi('DiscoveryRule');
 const ModelEndpointFields = {
