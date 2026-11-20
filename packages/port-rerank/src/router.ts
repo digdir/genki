@@ -64,17 +64,18 @@ const rerankPayload: GatePayload<Ranked[]> = {
   usage: () => ({ requests: 1 }),
 };
 
-const rerankErrorFromStatus = (status: number | undefined, message: string) =>
-  new RerankError(
-    status === 429
-      ? 'rate_limited'
-      : status === 401 || status === 403
-        ? 'unauthorized'
-        : status !== undefined && status >= 400 && status < 500
-          ? 'bad_request'
-          : 'unavailable',
-    message,
+/** A fixed message per status: the provider's text can echo the query or documents. */
+const rerankErrorFromStatus = (status: number | undefined): RerankError => {
+  if (status === 429) return new RerankError('rate_limited', 'the reranker is rate limited');
+  if (status === 401 || status === 403)
+    return new RerankError('unauthorized', 'the reranker refused the key');
+  if (status !== undefined && status >= 400 && status < 500)
+    return new RerankError('bad_request', `the reranker refused the request with HTTP ${status}`);
+  return new RerankError(
+    'unavailable',
+    status === undefined ? 'the reranker is unavailable' : `the reranker answered HTTP ${status}`,
   );
+};
 
 const valid = (ranking: Ranked[], count: number) =>
   ranking.filter((r) => Number.isInteger(r.index) && r.index >= 0 && r.index < count);
@@ -136,7 +137,32 @@ export class RerankRouter implements PortProvider<RerankPort> {
           config: { id: m.id, options: {} },
           described: {
             descriptor,
-            endpoint: { baseURL: m.baseURL, credential, fetch, timeoutMs, connection: m.endpoint },
+            endpoint: {
+              baseURL: m.baseURL,
+              credential,
+              fetch,
+              timeoutMs,
+              connection: m.endpoint,
+              ...(options.descriptors?.module
+                ? { modules: (sha: string) => options.descriptors?.module?.(sha) }
+                : {}),
+              ...(m.settings ? { settings: m.settings } : {}),
+              ...(m.keys
+                ? {
+                    keys: Object.fromEntries(
+                      Object.entries(m.keys).map(([name, ref]) => {
+                        const named = credentialFor(
+                          { kind: 'api-key', secret: ref },
+                          options.secrets,
+                          options.tokenProviders,
+                          m.baseURL,
+                        );
+                        return [name, named.kind === 'api-key' ? named.key : named.token];
+                      }),
+                    ),
+                  }
+                : {}),
+            },
             deployment: m.deployment as string,
           },
         });
@@ -258,11 +284,14 @@ export class RerankRouter implements PortProvider<RerankPort> {
                   described.endpoint,
                   described.deployment,
                   sent,
-                  {
-                    signal: ctx.signal,
-                    fail: (status, message) => rerankErrorFromStatus(status, message),
+                  { signal: ctx.signal, fail: (status) => rerankErrorFromStatus(status) },
+                ).then(
+                  (answer) => answer.result,
+                  (error: unknown) => {
+                    if (error instanceof RerankError || ctx.signal.aborted) throw error;
+                    throw new RerankError('unavailable', 'the reranker is unavailable');
                   },
-                ).then((answer) => answer.result)
+                )
               : (connection as RerankConnection).rerank(config, sent, ctx.signal),
           );
           return { ranking: valid(ranking, request.documents.length) };

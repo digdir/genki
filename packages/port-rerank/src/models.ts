@@ -28,6 +28,8 @@ const connection = z.object({
   baseURL: z.url({ protocol: /^https?$/ }),
   auth,
   families: z.record(z.string(), z.string()),
+  settings: z.record(z.string(), z.string()).optional(),
+  keys: z.record(z.string(), secret).optional(),
   gateway: z.boolean().optional(),
 });
 
@@ -55,6 +57,8 @@ export interface ModelReranker {
   baseURL: string;
   auth: z.infer<typeof auth>;
   gateway: boolean;
+  settings?: Record<string, string>;
+  keys?: Record<string, string>;
   options: Record<string, unknown>;
 }
 
@@ -141,6 +145,8 @@ export const parseModelRerankers = (
       baseURL: familyURL(spec.data.baseURL, base),
       auth: spec.data.auth,
       gateway: spec.data.gateway === true,
+      ...(spec.data.settings ? { settings: spec.data.settings } : {}),
+      ...(spec.data.keys ? { keys: spec.data.keys } : {}),
       options: m.options,
     });
   });

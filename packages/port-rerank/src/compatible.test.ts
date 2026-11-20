@@ -1,6 +1,13 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { envSecrets, type PortContext } from '@genai/kernel';
-import { loadDescriptors } from '@genai/operations';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { createGate, envSecrets, type PortContext } from '@genai/kernel';
+import {
+  bundledDescriptorDir,
+  descriptorRegistry,
+  loadDescriptors,
+  parseDescriptor,
+} from '@genai/operations';
 import { fakeHttp, type FakeServer } from '@genai/plugins';
 import { RerankRouter } from './index.js';
 
@@ -89,5 +96,77 @@ describe('the generic rerank adapter', () => {
         },
       ],
     );
+  });
+
+  it("a rerank provider's error text never reaches the log", async () => {
+    const echoed = 'frist for tilskudd til Kari Nordmann';
+    let status = 400;
+    const server = await fakeHttp(() => ({
+      status,
+      json: { error: { message: `could not rank: ${echoed}` } },
+    }));
+    servers.push(server);
+    const warnings: string[] = [];
+    const router = new RerankRouter({
+      catalog: { endpoints: {}, rerankers: [] },
+      models: gatewayModels(server.url),
+      adapters: [],
+      descriptors: loadDescriptors(),
+      secrets: envSecrets({ K: 'k' }),
+      onWarning: (m) => warnings.push(m),
+    });
+    const port = () => router.open({ kind: 'reranker', id: 'gw/sigma2-qwen-reranker' }, ctx);
+
+    const refused = await port().rerank({ query: echoed, documents: ['a', 'b'] });
+    status = 500;
+    const failed = await port().rerank({ query: echoed, documents: ['a', 'b'] });
+
+    expect(warnings).toHaveLength(1);
+    expect(warnings.join(' ')).not.toContain('Kari');
+    expect([refused.degraded?.message, failed.degraded?.message]).toEqual([
+      'the reranker refused the request with HTTP 400',
+      'the reranker answered HTTP 500',
+    ]);
+  });
+
+  it("a described rerank call reads the connection's settings", async () => {
+    const descriptor = parseDescriptor(
+      readFileSync(join(bundledDescriptorDir, 'compatible', 'rerank@1.yaml'), 'utf8')
+        .replace('id: compatible/rerank@1', 'id: fake/rerank-described@1')
+        .replace(
+          '  path: /rerank\n',
+          '  path: /rerank\n  headers:\n    x-key-id: $connection.keyId\n',
+        )
+        .replace(
+          'wire:\n  request:',
+          'wire:\n  headers:\n    object:\n      x-key-id: plain\n  request:',
+        ),
+    );
+    const keyIds: (string | null)[] = [];
+    const egress: typeof fetch = async (_url, init) => {
+      keyIds.push(new Headers(init?.headers).get('x-key-id'));
+      return Response.json({ results: [{ index: 0, relevance_score: 0.5 }] });
+    };
+    const base = gatewayModels('https://gateway.example', {
+      apis: { rerank: descriptor.id },
+    });
+    const router = new RerankRouter({
+      catalog: { endpoints: {}, rerankers: [] },
+      models: {
+        ...base,
+        endpoints: { gw: { ...base.endpoints.gw, settings: { keyId: 'AKID-7' } } },
+      },
+      adapters: [],
+      descriptors: descriptorRegistry([descriptor]),
+      secrets: envSecrets({ K: 'k' }),
+      gate: { ...createGate({ tier: 'test' }), egress: () => egress },
+    });
+
+    const result = await router
+      .open({ kind: 'reranker', id: 'gw/sigma2-qwen-reranker' }, ctx)
+      .rerank({ query: 'q', documents: ['a'] });
+
+    expect(result.ranking).toEqual([{ index: 0, score: 0.5, rank: 1 }]);
+    expect(keyIds).toEqual(['AKID-7']);
   });
 });
