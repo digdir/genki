@@ -1,12 +1,19 @@
 import type { CatalogItem, CatalogRegistry } from './catalog-registry.js';
 
 export type SkippedSource =
-  string | { kind: string; id: string; problems?: readonly { path?: string; message: string }[] };
+  | string
+  | {
+      kind: string;
+      id: string;
+      problems?: readonly { path?: string; message: string }[];
+      unused?: true;
+    };
 
 export interface SkippedEntry {
   kind: string;
   id: string;
   reasons?: string[];
+  unused?: true;
 }
 
 /** Takes the skipped list as `kind id` strings or as `{kind, id, problems}`; drop the strings once both shapes are merged. */
@@ -14,7 +21,12 @@ export const skippedEntries = (skipped: readonly SkippedSource[]): SkippedEntry[
   skipped.map((entry) => {
     if (typeof entry !== 'string') {
       const reasons = (entry.problems ?? []).map((p) => p.message);
-      return { kind: entry.kind, id: entry.id, ...(reasons.length ? { reasons } : {}) };
+      return {
+        kind: entry.kind,
+        id: entry.id,
+        ...(reasons.length ? { reasons } : {}),
+        ...(entry.unused ? { unused: true as const } : {}),
+      };
     }
     const space = entry.indexOf(' ');
     return { kind: entry.slice(0, space), id: entry.slice(space + 1) };
@@ -24,7 +36,11 @@ const tenantId = /^\d{9}\//;
 
 /** What a public route may show: an organisation's own entry is named by its kind only. */
 export const publicSkipped = (entries: readonly SkippedEntry[]) =>
-  entries.map(({ kind, id }) => (tenantId.test(id) ? { kind } : { kind, id }));
+  entries.map(({ kind, id, unused }) => ({
+    kind,
+    ...(tenantId.test(id) ? {} : { id }),
+    ...(unused ? { unused } : {}),
+  }));
 
 export interface EndpointEngine {
   engine?: string;

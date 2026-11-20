@@ -132,6 +132,22 @@ describe('api', () => {
     });
   });
 
+  it('health marks a skipped model nobody uses as unused, also for an organisation', async () => {
+    const watched = createApp('abc', {
+      catalogSkipped: () => [
+        { kind: 'model', id: 'nimbrel-cortex/cortex', problems: [], unused: true },
+        { kind: 'model', id: '312521172/egen', problems: [], unused: true },
+      ],
+    });
+
+    expect((await (await watched.request('/health')).json()).catalog).toEqual({
+      skipped: [
+        { kind: 'model', id: 'nimbrel-cortex/cortex', unused: true },
+        { kind: 'model', unused: true },
+      ],
+    });
+  });
+
   it('reads the build time from the commit time in seconds and ignores anything else', () => {
     expect(buildTimeOf('1763366400')).toBe('2025-11-17T08:00:00.000Z');
     expect(buildTimeOf('')).toBeUndefined();
