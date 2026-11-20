@@ -58,10 +58,13 @@ a:not([class^='ds-'], [class*=' ds-']):hover {
   max-width: var(--read-max);
 }
 
-:focus-visible {
-  outline: 3px solid var(--ds-color-focus-outer);
-  outline-offset: 3px;
-  box-shadow: 0 0 0 3px var(--ds-color-focus-inner);
+/* Under Designsystemet's and the blocks' own focus, so a block can turn it off. */
+@layer ds.base {
+  :focus-visible {
+    outline: 3px solid var(--ds-color-focus-outer);
+    outline-offset: 3px;
+    box-shadow: 0 0 0 3px var(--ds-color-focus-inner);
+  }
 }
 
 [aria-disabled='true'] {

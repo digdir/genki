@@ -56,8 +56,11 @@ const tryOut = (layout: AssistantLayout, text = 'Ja, en garasje over 50 m² tren
   };
 };
 
+// «Spørsmål til …» in the current look, «Still et spørsmål» or «Spør videre» in the next.
+const questionField = /^(Spørsmål til Byggesaksveileder|Still et spørsmål|Spør videre)$/;
+
 const ask = async (question: string) => {
-  const field = await screen.findByRole('textbox', { name: /Spørsmål til Byggesaksveileder/ });
+  const field = await screen.findByRole('textbox', { name: questionField });
   fireEvent.change(field, { target: { value: question } });
   await act(async () => {
     fireEvent.click(screen.getByRole('button', { name: 'Send spørsmålet' }));
@@ -157,7 +160,7 @@ describe('a draft the playground cannot run yet', () => {
     await ask('Trenger jeg søknad for en garasje?');
     await screen.findByText(/Oppsettet er ikke klart til å prøves ennå\./);
     const frame = document.querySelector('.service-preview-frame') as HTMLElement;
-    await within(frame).findByRole('textbox', { name: /Spørsmål til Byggesaksveileder/ });
+    await within(frame).findByRole('textbox', { name: questionField });
     expect(within(frame).queryByText('Fant ikke tråden')).toBeNull();
     expect(within(frame).queryByText('Tråden har ingen meldinger ennå')).toBeNull();
     expect(within(frame).queryByText('Svaret kom ikke fram')).toBeNull();

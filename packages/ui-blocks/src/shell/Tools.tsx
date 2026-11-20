@@ -144,6 +144,8 @@ export const ShellTools = ({
       <Dropdown.Trigger
         // Named by the tool it shows first, as it reads, then by what it does (WCAG 2.5.3).
         aria-label={t('shell.toolChoice', { tool: current.label })}
+        // Said in the markup, which a popover's button does not do: the open state's style needs it.
+        aria-expanded={menuOpen}
         className="uib-shell-tools-trigger"
         variant="tertiary"
       >

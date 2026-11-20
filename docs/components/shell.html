@@ -157,8 +157,10 @@
                 at its top. <code>mainTitle</code>: the page's <code>h1</code>, such as the thread's
                 title, pinned at the top of the main column with a line under it; in the cards frame
                 it spans the card. Every title the shell draws looks alike, Heading xs on one line
-                cut with «…», and its text stands on the same line in every panel.
-                <code>mainSize</code>: its floor and reading width, 640 and 800.
+                cut with «…», and its text stands on the same line in every panel. Beside a title,
+                the panel's 44 button is centred on the title's line, standing 6 above it, so the
+                titles keep that line. <code>mainSize</code>: its floor and reading width, 640 and
+                800.
               </li>
               <li>
                 <code>frame</code>: <code>flush</code>, the default, or <code>cards</code>.
@@ -190,10 +192,9 @@
                 view draws it. The shell lays out for that width, not the window's, leaves the
                 page's <code>&lt;main&gt;</code> and skip links to the host, and titles the main
                 column with an <code>h2</code>. A frame too narrow for an open panel beside the main
-                column gets the same panel over the shell, inside the frame, as the builder's 1280
-                with the threads and their filter 660 wide: the host's page around it stays in reach
-                and is never dimmed. Where a page has no <code>matchMedia</code>, no media query
-                matches.
+                column gets the same panel over the shell, inside the frame, as a 1280 frame does
+                with a panel 660 wide: the host's page around it stays in reach and is never dimmed.
+                Where a page has no <code>matchMedia</code>, no media query matches.
               </li>
               <li>
                 <code>gap</code> and <code>rail</code>: 32 and 67 by default, 12 and 76 for cards.
@@ -404,12 +405,32 @@
                   <tr>
                     <td><code>--genai-shell-tools-tinted-background</code></td>
                     <td><code>--ds-color-surface-tinted</code></td>
-                    <td>the tinted switcher's ground, the joined buttons' and the dropdown's</td>
+                    <td>the tinted switcher's ground, behind the joined buttons</td>
                   </tr>
                   <tr>
                     <td><code>--genai-shell-tools-tinted-hover-background</code></td>
                     <td><code>--ds-color-surface-hover</code></td>
-                    <td>a tinted button under the pointer, and the dropdown open</td>
+                    <td>a tinted button under the pointer</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-tools-trigger-background</code></td>
+                    <td><code>--ds-color-neutral-surface-tinted</code></td>
+                    <td>the tools' dropdown button's ground (dev-verktoy-3)</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-tools-trigger-hover-background</code></td>
+                    <td><code>--ds-color-neutral-surface-hover</code></td>
+                    <td>the dropdown's button under the pointer</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-tools-trigger-active-background</code></td>
+                    <td><code>--ds-color-neutral-surface-active</code></td>
+                    <td>the dropdown's button pressed, or with its menu open</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-tools-trigger-color</code></td>
+                    <td><code>--ds-color-neutral-text-default</code></td>
+                    <td>the dropdown's button's words, icon and chevron</td>
                   </tr>
                   <tr>
                     <td><code>--genai-shell-tools-tinted-selected-background</code></td>
@@ -428,7 +449,7 @@
                   </tr>
                   <tr>
                     <td><code>--genai-shell-tools-tinted-radius</code></td>
-                    <td><code>--ds-border-radius-default</code></td>
+                    <td><code>--ds-border-radius-xl</code></td>
                     <td>the tinted switcher's corners</td>
                   </tr>
                   <tr>
@@ -647,7 +668,7 @@
                   </tr>
                   <tr>
                     <td><code>--genai-shell-tools-tabs-radius</code></td>
-                    <td><code>--ds-border-radius-lg</code></td>
+                    <td><code>--ds-border-radius-xl</code></td>
                     <td>the tabs' row</td>
                   </tr>
                   <tr>
@@ -672,7 +693,7 @@
                   </tr>
                   <tr>
                     <td><code>--genai-shell-tools-tab-radius</code></td>
-                    <td><code>--ds-border-radius-md</code></td>
+                    <td><code>--ds-border-radius-xl</code></td>
                     <td>a tab</td>
                   </tr>
                   <tr>
@@ -784,7 +805,7 @@
                   </tr>
                   <tr>
                     <td><code>--genai-shell-divider-color</code></td>
-                    <td><code>--ds-color-neutral-surface-tinted</code></td>
+                    <td><code>--ds-color-neutral-border-subtle</code></td>
                     <td>
                       the lines under the main card's title, over a card's foot and under the
                       profile menu's top (pinned)
@@ -796,6 +817,16 @@
                     <td>
                       a card's button and the avatar's on a rail; part of the <code>rail</code>
                     </td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-toggle-radius</code></td>
+                    <td><code>--ds-border-radius-xl</code></td>
+                    <td>the corners of a card's button to hide or show its panel</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-rail-button-radius</code></td>
+                    <td><code>--ds-border-radius-xl</code></td>
+                    <td>the corners of the buttons on a collapsed rail, and the profile's</td>
                   </tr>
                   <tr>
                     <td><code>--genai-shell-profile-name-font-size</code></td>
