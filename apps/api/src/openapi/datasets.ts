@@ -279,7 +279,7 @@ const DatasetEffective = z
       })
       .optional()
       .describe(
-        'The newest stored version, when the last catalog rebuild left it out; the dataset then runs on an older version or its seed',
+        'The newest stored version, when the last catalog rebuild left it out; the dataset then runs on its seed, or is missing when it has no seed',
       ),
   })
   .openapi('DatasetEffective');

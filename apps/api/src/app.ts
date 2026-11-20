@@ -78,7 +78,7 @@ const Health = z
       .optional()
       .openapi({
         description:
-          'Stored catalog entries the last catalog rebuild left out, so the platform runs an older version or the seed in their place',
+          'Stored catalog entries the last catalog rebuild left out, so the platform runs the seed in their place, or has none when there is no seed',
       }),
   })
   .openapi('Health');

@@ -245,7 +245,6 @@ const datasets = {
   effectiveEngine: 'Search engine: {engine}',
   effectiveGeneration: 'generation {generation}',
   effectiveSeedTitle: 'Runs on the default setup, not the saved version',
-  effectiveOlderTitle: 'Runs on an older version, not the newest saved one',
   effectiveMismatch:
     'Searches now go to {current}. The newest saved version ({version}, {when}) uses {expected}, but the platform could not put it to use. The document count is for {current}. Contact the platform operators.',
   failedAt: 'The ingestion {when} failed',

@@ -243,7 +243,6 @@ export const datasets = defineNamespace({
   effectiveEngine: 'Søkemotor: {engine}',
   effectiveGeneration: 'generasjon {generation}',
   effectiveSeedTitle: 'Kjører på standardoppsettet, ikke lagret versjon',
-  effectiveOlderTitle: 'Kjører på en eldre versjon, ikke den nyeste lagrede',
   effectiveMismatch:
     'Søkene går nå til {current}. Den nyeste lagrede versjonen ({version}, {when}) bruker {expected}, men plattformen kunne ikke ta den i bruk. Antallet dokumenter gjelder {current}. Ta kontakt med driften av plattformen.',
   failedAt: 'Innlesingen {when} feilet',

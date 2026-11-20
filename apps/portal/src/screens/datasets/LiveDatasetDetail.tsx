@@ -128,7 +128,7 @@ const EffectiveMismatch = ({ effective }: { effective: DatasetEffective }) => {
   return (
     <Alert data-color="warning">
       <Heading level={2} data-size="2xs">
-        {t(effective.fromSeed ? 'datasets.effectiveSeedTitle' : 'datasets.effectiveOlderTitle')}
+        {t('datasets.effectiveSeedTitle')}
       </Heading>
       <p className="alert-text">
         {t('datasets.effectiveMismatch', {

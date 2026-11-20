@@ -209,7 +209,7 @@ var appLogAlerts = [
   {
     key: 'catalog-skipped'
     title: 'Catalog entry skipped'
-    description: 'The API or the worker left a stored catalog entry out when it rebuilt the catalog, so a dataset, model or endpoint runs an older version or its seed; see docs/runbook.md, "Catalog entry skipped".'
+    description: 'The API or the worker left a stored catalog entry out when it rebuilt the catalog, so a dataset, model or endpoint runs on its seed or is missing; see docs/runbook.md, "Catalog entry skipped".'
     severity: 2
     frequency: 'PT5M'
     window: 'PT15M'
