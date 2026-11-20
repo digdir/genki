@@ -59,7 +59,7 @@ const rankedSql = (q: string) => `case when p_target = 'docs' then format(
               group by id order by s desc, id limit %7$s',
              ${q}, id_col, tbl, ds, g, doc_filter, p_candidates) end`;
 
-const createFunctions = [
+const createFunctions = (filtered: FilteredSearch) => [
   // `app.datasets` is a JSON array of the dataset ids the router allowed, set once per read transaction.
   `create or replace function kn_allowed(p_dataset text) returns void
      language plpgsql stable set search_path = pg_catalog, public as $$
@@ -158,11 +158,16 @@ const createFunctions = [
   `create or replace function kn_search_sql(
        p_dataset text, p_generation text, p_target text, p_mode text, p_query text, p_vector halfvec,
        p_fields text[], p_filters jsonb, p_limit integer, p_candidates integer, p_rrf_k integer)
-     returns text language plpgsql stable set search_path = pg_catalog, public as $$
+     -- Volatile: a filtered vector half reads the filter's size and may raise the index scan's limits.
+     returns text language plpgsql volatile set search_path = pg_catalog, public as $$
      declare
        ds text := quote_literal(p_dataset);
        g text := quote_literal(p_generation);
        recipe jsonb;
+       matched integer;
+       filtered_docs text;
+       filtered_chunks text;
+       exact boolean := false;
        cfg text;
        dims integer;
        where_sql text;
@@ -241,12 +246,43 @@ const createFunctions = [
          id_col := case p_target when 'phrases' then 'x.chunk_id' else 'x.id' end;
          -- The cast matches the partition's HNSW index on vec::halfvec(N).
          dist := format('x.vec::halfvec(%s) <=> %L::halfvec(%s)', dims, p_vector::text, dims);
-         ctes := ctes || format(
-           'v as (select id, max(s) as s from (
-              select %s as id, (1 - (%s))::float8 as s from %s x %s
-              where x.dataset = %s and x.generation = %s and x.vec is not null and %s
-              order by %s limit %s) nearest group by id)',
-           id_col, dist, tbl, ${docJoin('x')}, ds, g, where_sql, dist, p_candidates);
+         -- A small filter is ranked exactly, documents first; the count reads the doc index alone (issue 800).
+         if where_sql <> 'true' then
+           filtered_docs := format('(select d.id from kn_docs d where d.dataset = %s and d.generation = %s and %s) m',
+             ds, g, where_sql);
+           execute format('select count(*)::int from (select 1 from %s
+               cross join lateral (select 1 from %s x where x.generation = %s and x.doc_id = m.id offset 0) x
+               limit %s) n',
+             filtered_docs, tbl, g, ${Math.trunc(filtered.exactChunks) + 1}) into matched;
+           filtered_chunks := format('%s cross join lateral (select %s as id, x.vec from %s x
+               where x.dataset = %s and x.generation = %s and x.doc_id = m.id and x.vec is not null offset 0) x',
+             filtered_docs, id_col, tbl, ds, g);
+           exact := matched <= ${Math.trunc(filtered.exactChunks)};
+           if not exact then
+             -- For this read's transaction only, and never below the server's own.
+             perform set_config('hnsw.ef_search', greatest(coalesce(current_setting('hnsw.ef_search', true), '0')::int,
+                       ${Math.trunc(filtered.efSearch)})::text, true),
+                     set_config('hnsw.max_scan_tuples', greatest(coalesce(current_setting('hnsw.max_scan_tuples', true), '0')::int,
+                       ${Math.trunc(filtered.maxScanTuples)})::text, true),
+                     set_config('hnsw.scan_mem_multiplier', greatest(coalesce(current_setting('hnsw.scan_mem_multiplier', true), '0')::float8,
+                       ${Number(filtered.scanMemMultiplier)})::text, true);
+           end if;
+         end if;
+         if exact then
+           -- Sorted above the documents-first join, so no HNSW scan; a zero vector's NaN distance is left out.
+           ctes := ctes || format(
+             'v as (select id, max(s) as s from (
+                select x.id, (1 - (%s))::float8 as s from %s where (%s) <> ''NaN''::float8
+                order by %s, x.id limit %s) nearest group by id)',
+             dist, filtered_chunks, dist, dist, p_candidates);
+         else
+           ctes := ctes || format(
+             'v as (select id, max(s) as s from (
+                select %s as id, (1 - (%s))::float8 as s from %s x %s
+                where x.dataset = %s and x.generation = %s and x.vec is not null and %s
+                order by %s limit %s) nearest group by id)',
+             id_col, dist, tbl, ${docJoin('x')}, ds, g, where_sql, dist, p_candidates);
+         end if;
        end if;
        if use_text and use_vector then
          ctes := ctes || format(
@@ -412,9 +448,30 @@ const createFunctions = [
      end $$`,
 ];
 
+/** How a filtered vector search reads a generation (issue 800). */
+export interface FilteredSearch {
+  /** A filter that keeps at most this many rows (chunks, or phrases) is ranked exactly, without the HNSW index. */
+  exactChunks: number;
+  /** Above it, the index scan's limits for that search's transaction; never below the server's own. */
+  efSearch: number;
+  maxScanTuples: number;
+  scanMemMultiplier: number;
+}
+
+// Measured on Kudos in test (issue 800); the numbers are in ADR 0042.
+export const filteredSearch: FilteredSearch = {
+  exactChunks: 250_000,
+  efSearch: 200,
+  maxScanTuples: 100_000,
+  scanMemMultiplier: 4,
+};
+
 /** Read-function migrations for the knowledge-server list; the reader reaches data only through these. */
-export const readFunctionMigrations = (reader: string): string[] => [
-  ...createFunctions,
+export const readFunctionMigrations = (
+  reader: string,
+  filtered: FilteredSearch = filteredSearch,
+): string[] => [
+  ...createFunctions(filtered),
   `revoke execute on function ${[...readFunctions, ...readHelpers].join(', ')} from public`,
   `grant execute on function ${readFunctions.join(', ')} to ${reader}`,
 ];
