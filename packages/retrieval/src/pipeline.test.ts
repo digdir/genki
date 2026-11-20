@@ -237,18 +237,18 @@ const rerankStub = (
   const port = new RerankRouter({
     catalog: {
       endpoints: {
-        colbert: {
+        omrangering: {
           engine: 'stub',
           baseURL: 'https://rerank.example',
           auth: { kind: 'api-key', secret: 'secret://env/k' },
         },
       },
-      rerankers: [{ id: 'colbert', endpoint: 'colbert', residency: 'norway', onFailure }],
+      rerankers: [{ id: 'omrangering', endpoint: 'omrangering', residency: 'norway', onFailure }],
     },
     adapters: [adapter],
     secrets: envSecrets({ K: 'k' }),
     onWarning: (m) => warnings.push(m),
-  }).open({ kind: 'dataset', id: 'colbert' }, ctx);
+  }).open({ kind: 'dataset', id: 'omrangering' }, ctx);
   return { port, requests, warnings };
 };
 
@@ -671,8 +671,22 @@ describe('retrieval pipeline', () => {
       expect(result.chunks.map((c) => c.id)).toEqual(['c1', 'c4']);
       expect(result.chunks[0]?.snippet).toBe('Digdir hadde 326 årsverk i 2022.');
     }
-    expect(unconfigured.trace.expansion.rerank.status).toBe('unconfigured');
     expect(empty.trace.expansion.rerank.status).toBe('empty');
+  });
+
+  it('a service without a reranker runs retrieval with rerank off', async () => {
+    const script: (r: SearchRequest) => string[] = (r) =>
+      r.profile === 'content' ? ['c1', 'c4'] : r.profile === 'phrase' ? ['c4'] : [];
+    for (const rerank of [{ enabled: true }, { enabled: true, perStrategy: true }]) {
+      const result = await retrieve({
+        knowledge: knowledgeStub(script).port,
+        queries: ['årsverk'],
+        config: { autoFilter: { enabled: false }, rerank },
+      });
+
+      expect(result.trace.expansion.rerank.status).toBe('off');
+      expect(result.chunks.every((c) => c.rerankScore === undefined)).toBe(true);
+    }
   });
 
   it('adds a doc-title strategy that fans out to the first chunks of the best documents', async () => {

@@ -50,13 +50,12 @@ An API has the id `<provider>/<api>@<version>`, a kind (`chat`, `decide`, `embed
 | `openai/decide@1`           | `decide` | `openai`    | Structured decisions.                                  |
 | `anthropic/messages@1`      | `chat`   | `anthropic` | Default for the family; option `defaultMaxTokens`.     |
 | `openai/embeddings@1`       | `embed`  | `openai`    | Embeddings; was `openai/embed@1`, still read.          |
-| `colbert/rerank@1`          | `rerank` | `colbert`   | Reranking; option `maxInputLength`.                    |
 
 A model binds one API per kind with `apis`. A binding is valid when the API exists, is of that kind, and is in a family the model's connection offers; a `chat` binding also needs an API with a built-in implementation. A model without `apis` on a connection with one family binds that family's default chat API. A discovery rule binds the APIs of the models it finds, and `idPrefix` sets the first part of their ids, so ids stay the same when two connections become one. A model the listing reports as an image, video, realtime, live, transcription, speech, embedding or moderation model binds no API and gets no capabilities, whatever the rule says, so it is not offered for chat; neither listing reports what kind a model is, so `azure-deployments` reads the model name it reports and `openai-models` the listed id. An operator binds it by hand with `PATCH /operator/models/{id}`, and that binding wins over the next listing.
 
 ## Embedding and rerank models
 
-Embedders and rerankers are models in the same catalogue, with a binding for `embed` or `rerank` and the kind's settings under the kind. They are changed like any model, without a deploy, and are not offered as chat models.
+Embedders and rerankers are models in the same catalogue, with a binding for `embed` or `rerank` and the kind's settings under the kind. They are changed like any model, without a deploy, and are not offered as chat models. genki has no built-in rerank API until it runs a reranker of its own (ADR 0048), so no model can bind `rerank` yet, and a service that names no reranker runs with rerank off.
 
 ```yaml
 models:
@@ -66,12 +65,6 @@ models:
     residency: eu
     apis: { embed: openai/embeddings@1 }
     embed: { dimensions: 1536, maxBatch: 64 }
-  - id: colbert
-    endpoint: colbert
-    deployment: colbert
-    residency: norway
-    apis: { rerank: colbert/rerank@1 }
-    rerank: { onFailure: degrade }
 ```
 
 An embedding model must name `embed.dimensions`. A rerank engine that a plug-in registers without an API stays in the rerank catalogue; a model with the same id wins over it.
@@ -126,7 +119,7 @@ Before ADR 0048 a connection named one `protocol` and a model listed `operations
 - models keep their ids, move to the new connection and get `apis` from their former protocol, `operations` and `options.api`;
 - processor records and model classifications follow;
 - the embedding catalogue's endpoints merge into the connection on the same resource (`foundry-embeddings` into `foundry`) and its models become embedding models with the same ids;
-- a reranker whose engine has an API (`colbert`) becomes a model with the same id;
+- a reranker whose engine has an API becomes a model with the same id;
 - a binding to `openai/embed@1` becomes `openai/embeddings@1`;
 - a seed connection whose rules name a former id with `idPrefix` takes over its models and processor records.
 

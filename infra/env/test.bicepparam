@@ -48,7 +48,6 @@ param keyVaultSecretNames = concat(
     'foundry-openai-key'
     'foundry-claude-key'
     'typesense-key'
-    'colbert-api-key'
     'langfuse-public-key'
     'langfuse-secret-key'
   ],
@@ -63,7 +62,6 @@ param appEnv = {
   FOUNDRY_OPENAI_BASE_URL: readEnvironmentVariable('FOUNDRY_OPENAI_BASE_URL', '')
   FOUNDRY_CLAUDE_BASE_URL: readEnvironmentVariable('FOUNDRY_CLAUDE_BASE_URL', '')
   TYPESENSE_URL: readEnvironmentVariable('TYPESENSE_URL', '')
-  COLBERT_API_URL: readEnvironmentVariable('COLBERT_API_URL', '')
   LANGFUSE_BASE_URL: 'https://langfuse.digdir.cloud'
   // True unless the variable is set: operators confirmed ADR 0011's conditions.
   LANGFUSE_INSTANCE_RECEIVES_CONTENT: empty(langfuseContent) ? 'true' : langfuseContent

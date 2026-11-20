@@ -191,11 +191,11 @@ See [Build on it](#build-on-it) for the other channels.
 
 The example services, such as Kunnskapsassistenten, Klarspråk and Nynorsk, need real models and search. Without those settings they are skipped and logged at startup, so **Lokal testchat** is the only service until you add them.
 
-| Works on a fresh clone, no secrets                           | Needs settings in `.env.local`                                  |
-| ------------------------------------------------------------ | --------------------------------------------------------------- |
-| Login with test persons, rights, portal, console, workspace  | Real models: `FOUNDRY_OPENAI_*`, `FOUNDRY_CLAUDE_*`             |
-| Postgres storage, migrations, API keys, conversations, audit | Kudos and public-docs search: `TYPESENSE_*`                     |
-| Lokal testchat, and your own services on the local model     | Reranking: `COLBERT_API_*`; Langfuse, Maskinporten, real Altinn |
+| Works on a fresh clone, no secrets                           | Needs settings in `.env.local`                      |
+| ------------------------------------------------------------ | --------------------------------------------------- |
+| Login with test persons, rights, portal, console, workspace  | Real models: `FOUNDRY_OPENAI_*`, `FOUNDRY_CLAUDE_*` |
+| Postgres storage, migrations, API keys, conversations, audit | Kudos and public-docs search: `TYPESENSE_*`         |
+| Lokal testchat, and your own services on the local model     | Langfuse, Maskinporten, real Altinn                 |
 
 Every setting is listed in [`.env.example`](.env.example), with what happens when it is empty. Restart after you change `.env.local`.
 
@@ -311,7 +311,6 @@ spec:
     config: { budget: { searches: 4, reads: 6, readChars: 12000 }, temperature: 0.3 }
   knowledge:
     datasets: [{ dataset: digdir/kudos }]
-    reranker: colbert
   model: { primary: foundry-openai/gpt-5.6-terra, residency: global }
   exposure: { chat: true, mcp: true, openai: true, rest: true, a2a: true }
 ```

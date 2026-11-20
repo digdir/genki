@@ -15,7 +15,5 @@ export const catalog = defineNamespace({
   tabModel: 'Modeller',
   tabKnowledgeEndpoint: 'Kunnskapsendepunkter',
   tabDataset: 'Datasett',
-  tabRerankEndpoint: 'Rerank-endepunkter',
-  tabReranker: 'Rerankere',
   tabPrice: 'Priser',
 });

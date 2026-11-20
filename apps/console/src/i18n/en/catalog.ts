@@ -16,7 +16,5 @@ export const catalog = {
   tabModel: 'Models',
   tabKnowledgeEndpoint: 'Knowledge endpoints',
   tabDataset: 'Datasets',
-  tabRerankEndpoint: 'Rerank endpoints',
-  tabReranker: 'Rerankers',
   tabPrice: 'Prices',
 } satisfies Translation<typeof source>;

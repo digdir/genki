@@ -372,7 +372,7 @@ describe('rag-single-shot strategy', () => {
         throw new Error('planner down');
       },
       rerank: async () => {
-        throw new Error('colbert down');
+        throw new Error('reranker down');
       },
     });
     const out = await run({ strategy: { topK: 2 } }, r.impl);

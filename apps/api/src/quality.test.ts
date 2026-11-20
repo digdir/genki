@@ -241,7 +241,6 @@ const boot = async (prices?: Record<string, ModelPrice>, options: BootOptions = 
   const env = {
     FOUNDRY_OPENAI_BASE_URL: `${model.url}/v1`,
     TYPESENSE_URL: search.url,
-    COLBERT_API_URL: search.url,
     // local/echo, whose catalogue entry says norway, for a draft that leaves its residency out.
     ...(options.localModel ? { LOCAL_MODEL_URL: `${model.url}/v1` } : {}),
   };
@@ -255,7 +254,6 @@ const boot = async (prices?: Record<string, ModelPrice>, options: BootOptions = 
     secrets: envSecrets({
       FOUNDRY_OPENAI_KEY: 'm',
       TYPESENSE_KEY: 't',
-      COLBERT_API_KEY: 'c',
       LOCAL_MODEL_KEY: 'l',
     }),
     definitions: (plugins) => new InMemoryDefinitionStore(plugins),

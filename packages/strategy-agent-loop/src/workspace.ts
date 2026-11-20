@@ -93,6 +93,8 @@ export interface AgentRetrieval {
     signal: AbortSignal,
   ): Promise<{ queries: string[]; userIntent?: string }>;
   rerank(query: string, chunks: Chunk[], signal: AbortSignal): Promise<Chunk[]>;
+  /** False when the service has no reranker, so rerank keeps the search order. */
+  reranks?: boolean;
   filterFields(
     signal: AbortSignal,
   ): Promise<{ field: string; type: string; valueType: 'string' | 'integer' }[]>;

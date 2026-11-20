@@ -400,6 +400,7 @@ export const createAgentRetrieval = (options: RetrievalFactoryOptions) => {
     readRange: backend.readRange,
     plan: backend.plan,
     rerank: backend.rerank,
+    reranks: options.rerank !== undefined,
     filterFields: async (signal: AbortSignal) => {
       signal.throwIfAborted();
       return Object.entries(options.knowledge.info().filters).map(([field, declared]) => {

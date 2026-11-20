@@ -98,6 +98,18 @@ describe('catalog in the console', () => {
 
     expect(await screen.findByText(/Noen andre har endret oppføringen/)).toBeTruthy();
   });
+
+  it('the console catalogue offers no rerank tabs', async () => {
+    const { api } = platform({
+      'GET /operator/catalog/entries?kind=model-endpoint': () => [200, { data: [endpoint] }],
+    });
+    render(<Catalog api={api} tab="model-endpoint" />);
+
+    await screen.findByRole('button', { name: /Åpne/ });
+    const tabs = screen.getAllByRole('tab').map((tab) => tab.textContent ?? '');
+    expect(tabs).toContain('Modellendepunkter');
+    expect(tabs.filter((name) => /rerank/i.test(name))).toEqual([]);
+  });
 });
 
 describe('quality gates and guardrail rules', () => {

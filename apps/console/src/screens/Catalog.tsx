@@ -50,16 +50,6 @@ export const catalogTabs = [
     template: { name: '', endpoint: '', residency: 'norway', options: {} },
   },
   {
-    kind: 'rerank-endpoint',
-    label: 'catalog.tabRerankEndpoint',
-    template: {
-      adapter: 'colbert',
-      baseURL: 'https://',
-      auth: { kind: 'api-key', secret: 'env:' },
-    },
-  },
-  { kind: 'reranker', label: 'catalog.tabReranker', template: { endpoint: '' } },
-  {
     kind: 'price',
     label: 'catalog.tabPrice',
     template: { inputPerThousand: 0, outputPerThousand: 0 },

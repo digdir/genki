@@ -249,7 +249,6 @@ const boot = async (world: Shared = shared()) => {
   const env = {
     FOUNDRY_OPENAI_BASE_URL: `${model.url}/v1`,
     TYPESENSE_URL: search.url,
-    COLBERT_API_URL: search.url,
   };
   const background: Promise<void>[] = [];
   let deps: ModuleDeps | undefined;
@@ -259,7 +258,7 @@ const boot = async (world: Shared = shared()) => {
       knowledge: resolveCatalog(yaml('knowledge.yaml'), 'datasets', env).catalog,
       rerank: resolveCatalog(yaml('rerank.yaml'), 'rerankers', env).catalog,
     },
-    secrets: envSecrets({ FOUNDRY_OPENAI_KEY: 'm', TYPESENSE_KEY: 't', COLBERT_API_KEY: 'c' }),
+    secrets: envSecrets({ FOUNDRY_OPENAI_KEY: 'm', TYPESENSE_KEY: 't' }),
     definitions: (plugins) => new InMemoryDefinitionStore(plugins),
     blobStore: new InMemoryBlobStore(),
     policy: { decide: async () => ({ allow: true }) },

@@ -8,6 +8,7 @@ import type { Evaluator, Score } from '@genai/eval';
 import { envSecrets, type PortContext } from '@genai/kernel';
 import { fakeHttp, type FakeServer } from '@genai/port-model/testing';
 import { openAiChatFixture } from '@genai/providers-openai/contract';
+import { testRerankAdapter } from './rerank.test-utils.js';
 import { createAdmin } from './admin.js';
 import { createPlatform } from './composition.js';
 import { appendVersion, platformScope } from './config-store.js';
@@ -126,6 +127,7 @@ const boot = async (
       return person ? { principal: person } : undefined;
     },
     egress,
+    rerankAdapters: [testRerankAdapter],
   });
   const admin = createAdmin({
     store: platform.definitions,
@@ -762,7 +764,7 @@ describe('operator-registered rerankers', () => {
     const url = await jsonServer((body) => {
       seen.push(body);
       const words = new Set(
-        String(body.user_input ?? '')
+        String(body.query ?? '')
           .toLowerCase()
           .split(/\s+/),
       );
@@ -791,7 +793,7 @@ describe('operator-registered rerankers', () => {
       },
       endpoint: {
         baseURL: `${url}/rerank`,
-        protocol: 'colbert',
+        protocol: 'test-rerank',
         auth: { kind: 'api-key', secret: 'secret://env/plugin-key' },
       },
     });

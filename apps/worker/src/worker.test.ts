@@ -154,7 +154,6 @@ const setup = async (
   const env = {
     FOUNDRY_OPENAI_BASE_URL: `${upstream.url}/v1`,
     TYPESENSE_URL: upstream.url,
-    COLBERT_API_URL: upstream.url,
   };
   const blob = observable(new InMemoryBlobStore());
   const tasks = new InMemoryTaskStore();
@@ -165,7 +164,7 @@ const setup = async (
       knowledge: resolveCatalog(config('knowledge.yaml'), 'datasets', env).catalog,
       rerank: resolveCatalog(config('rerank.yaml'), 'rerankers', env).catalog,
     },
-    secrets: envSecrets({ FOUNDRY_OPENAI_KEY: 'm', TYPESENSE_KEY: 't', COLBERT_API_KEY: 'c' }),
+    secrets: envSecrets({ FOUNDRY_OPENAI_KEY: 'm', TYPESENSE_KEY: 't' }),
     vault: new TenantSecretVault(),
     definitions: (plugins) => new InMemoryDefinitionStore(plugins),
     policy: ownTenantOnly(),
@@ -200,6 +199,15 @@ const drop = (blob: ReturnType<typeof observable>, path: string, text: string) =
   blob.put({ tenant, path }, new TextEncoder().encode(text), 'text/plain');
 
 describe('worker', () => {
+  it('the API and the worker start and seed their catalog without reranker settings', async () => {
+    const { runtime } = await setup();
+
+    expect([...(runtime.plugins.rerankers ?? [])]).toEqual([]);
+    const seed = config('models.yaml') as { models: { id: string; apis?: { rerank?: string } }[] };
+    expect(seed.models.filter((m) => m.apis?.rerank !== undefined).map((m) => m.id)).toEqual([]);
+    expect(runtime.plugins.models.size).toBeGreaterThan(0);
+  });
+
   it('registers each service, a batch companion when batch is on, and its triggers', async () => {
     const { worker } = await setup();
 

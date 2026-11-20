@@ -95,7 +95,7 @@ const kaDefinition = {
       version: 1,
       config: { budget: { searches: 4, reads: 6, readChars: 12000 } },
     },
-    knowledge: { datasets: [{ dataset: 'digdir/kudos' }], reranker: 'colbert' },
+    knowledge: { datasets: [{ dataset: 'digdir/kudos' }] },
     model: { primary: 'foundry-openai/gpt-4o-2m-tps', residency: 'global' },
     exposure: { chat: true, mcp: true, openai: true, rest: true },
   },
