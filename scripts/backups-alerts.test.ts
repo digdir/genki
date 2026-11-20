@@ -247,6 +247,20 @@ describe.skipIf(!hasAz && !process.env.CI)('backups and alerts in the template',
       expect(slow).not.toContain(`"${route}"`);
   });
 
+  it('alerts on any catalog entry skipped by the API or the worker within 15 minutes', () => {
+    const rules = (module('alerts').properties.template?.variables ?? {}).appLogAlerts as Record<
+      string,
+      unknown
+    >[];
+    const rule = rules.find((r) => r.key === 'catalog-skipped');
+    expect(rule).toMatchObject({ window: 'PT15M', aggregation: 'Count', threshold: 1 });
+    expect(String(rule?.query)).toContain("Log has ''catalog entry skipped''");
+    expect(String(rule?.query)).toContain('{0}');
+    expect(text((module('alerts').properties.template?.variables ?? {}).consoleLogs)).toContain(
+      'workerAppName',
+    );
+  });
+
   it('the API slow alert still counts the conversation list, eval runs and batch runs', () => {
     const slow = text((module('alerts').properties.template?.variables ?? {}).slowByDesignPaths);
     for (const route of ['/api/conversations', '/eval-runs', '/batch-runs'])

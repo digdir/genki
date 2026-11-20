@@ -90,6 +90,48 @@ describe('api', () => {
     });
   });
 
+  it('health is degraded while a catalog entry is skipped, and still answers 200 so replicas stay ready', async () => {
+    let skipped: string[] = ['dataset digdir/kudos'];
+    const watched = createApp('abc', { catalogSkipped: () => skipped });
+
+    const health = await watched.request('/health');
+    expect(health.status).toBe(200);
+    expect(await health.json()).toMatchObject({
+      status: 'degraded',
+      catalog: { skipped: [{ kind: 'dataset', id: 'digdir/kudos' }] },
+    });
+    skipped = [];
+    expect(await (await watched.request('/health')).json()).toMatchObject({
+      status: 'ok',
+      catalog: { skipped: [] },
+    });
+  });
+
+  it('health names a skipped entry by kind and id, and never its reasons', async () => {
+    const watched = createApp('abc', {
+      catalogSkipped: () => [
+        {
+          kind: 'dataset',
+          id: 'digdir/kudos',
+          problems: [{ path: 'datasets', message: 'unknown endpoint kunnskapsserveren' }],
+        },
+      ],
+    });
+
+    const body = await (await watched.request('/health')).json();
+    expect(body.catalog).toEqual({ skipped: [{ kind: 'dataset', id: 'digdir/kudos' }] });
+  });
+
+  it("health leaves an organisation's own skipped entry unnamed", async () => {
+    const watched = createApp('abc', {
+      catalogSkipped: () => ['dataset 312521172/hemmelig', 'knowledge-endpoint kunnskapsserveren'],
+    });
+
+    expect((await (await watched.request('/health')).json()).catalog).toEqual({
+      skipped: [{ kind: 'dataset' }, { kind: 'knowledge-endpoint', id: 'kunnskapsserveren' }],
+    });
+  });
+
   it('reads the build time from the commit time in seconds and ignores anything else', () => {
     expect(buildTimeOf('1763366400')).toBe('2025-11-17T08:00:00.000Z');
     expect(buildTimeOf('')).toBeUndefined();

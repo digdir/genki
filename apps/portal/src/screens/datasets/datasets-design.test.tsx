@@ -978,7 +978,7 @@ describe("another organisation's dataset", () => {
     );
     await screen.findByRole('heading', { level: 1, name: 'Interne sider hos Annenetaten' });
     const lead = document.querySelector('.page-head .meta')?.textContent ?? '';
-    expect(lead).toBe('Delt med dere av en annen virksomhet · 40 dokumenter lest inn');
+    expect(lead).toBe('Delt med dere av en annen virksomhet · 40 dokumenter i søkemotoren');
     expect(screen.queryByRole('button', { name: 'Les inn på nytt' })).toBeNull();
   });
 });
