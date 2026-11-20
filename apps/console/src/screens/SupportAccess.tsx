@@ -40,6 +40,7 @@ import {
 import type { ApiClient } from '../api';
 import { ApiCall } from '../api-call';
 import { useAsync } from '../hooks';
+import { definitionKindLabels, definitionKindParams } from '../definition-kinds';
 import { useT, type T } from '../i18n';
 import { settingLabels } from '../setting-labels';
 import { shapeFromSchema } from '../settings-model';
@@ -368,8 +369,6 @@ export const ChangeList = ({ changes }: { changes: Change[] }) => (
 const DraftsTab = ({ api, session }: { api: ApiClient; session: ActiveSupport }) => {
   const t = useT();
   const f = useFormat();
-  const kindLabel = (kind: string) =>
-    kind === 'Service' ? t('supportAccess.kindService') : t('supportAccess.kindStepFlow');
   const [state, retry] = useAsync(
     (signal) => api.tenantDefinitions(session.tenant, signal),
     [api, session.tenant],
@@ -392,19 +391,19 @@ const DraftsTab = ({ api, session }: { api: ApiClient; session: ActiveSupport })
             <li key={`${d.kind}/${d.id}`}>
               <span className="two-line grow">
                 <a
-                  href={`#/tenants/services?tenant=${session.tenant}&kind=${d.kind === 'Service' ? 'service' : 'step-flow'}&id=${encodeURIComponent(d.id)}`}
+                  href={`#/tenants/services?tenant=${session.tenant}&kind=${definitionKindParams[d.kind]}&id=${encodeURIComponent(d.id)}`}
                 >
                   {d.name}
                 </a>
                 <span className="meta">
                   {d.publishedAt
                     ? t('supportAccess.publishedVersionOn', {
-                        kind: kindLabel(d.kind),
+                        kind: t(definitionKindLabels[d.kind]),
                         version: d.latestVersion,
                         date: formatDay(d.publishedAt, f),
                       })
                     : t('supportAccess.publishedVersion', {
-                        kind: kindLabel(d.kind),
+                        kind: t(definitionKindLabels[d.kind]),
                         version: d.latestVersion,
                       })}
                 </span>

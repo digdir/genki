@@ -17,7 +17,13 @@ import {
 } from '@genai/definitions';
 import { refusedRight, type Access } from './access.js';
 import type { ActorNames } from './actor-names.js';
-import { actorOf, shareOperatorOnlyType, sharingRefused, type Admin } from './admin.js';
+import {
+  actorOf,
+  blockPublisherProblems,
+  shareOperatorOnlyType,
+  sharingRefused,
+  type Admin,
+} from './admin.js';
 import { confirmedBy } from './governance.js';
 import { riskConfirmationProblems } from './risk-confirmation.js';
 import type { UnmaskedInputUse } from './operation-governance.js';
@@ -45,11 +51,17 @@ export interface DefinitionsApiOptions {
   registered?: (tenant: string) => Promise<boolean>;
 }
 
-const kinds = { services: 'Service', 'step-flows': 'StepFlow', skills: 'Skill' } as const;
+const kinds = {
+  services: 'Service',
+  'step-flows': 'StepFlow',
+  skills: 'Skill',
+  blocks: 'Block',
+} as const;
 const segments = {
   Service: 'services',
   StepFlow: 'step-flows',
   Skill: 'skills',
+  Block: 'blocks',
 } as const satisfies Record<Definition['kind'], keyof typeof kinds>;
 
 const VersionSummary = z
@@ -121,7 +133,7 @@ const tenantParam = z
   .string()
   .openapi({ param: { name: 'tenant', in: 'path' }, example: '991825827' });
 const kindParam = z
-  .enum(['services', 'step-flows', 'skills'])
+  .enum(['services', 'step-flows', 'skills', 'blocks'])
   .openapi({ param: { name: 'kind', in: 'path' } });
 const idParam = z.string().openapi({ param: { name: 'id', in: 'path' } });
 
@@ -146,7 +158,10 @@ const routes = {
       },
       400: { content: problemContent, description: 'The body could not be read' },
       401: { content: problemContent, description: 'Not authenticated' },
-      403: { content: problemContent, description: 'Not allowed for this tenant' },
+      403: {
+        content: problemContent,
+        description: `Not allowed for this tenant, or ${shareOperatorOnlyType}: only an operator publishes a built-in Block`,
+      },
       422: { content: problemContent, description: 'The definition is invalid' },
     },
   }),
@@ -167,7 +182,7 @@ const routes = {
       401: { content: problemContent, description: 'Not authenticated' },
       403: {
         content: problemContent,
-        description: `Not allowed for this tenant, or ${shareOperatorOnlyType}: the definition changes spec.availableTo, which only operators change`,
+        description: `Not allowed for this tenant, or ${shareOperatorOnlyType}: the definition changes spec.availableTo, which only operators change, or is a built-in Block, which only operators publish`,
       },
       409: {
         content: problemContent,
@@ -355,12 +370,14 @@ export const registerDefinitionRoutes = (app: OpenAPIHono, options: DefinitionsA
       return problem(c, 400, 'Unreadable definition', { detail: read.unreadable });
     const { validated } = read;
     const tenant = validated.ok ? validated.definition.metadata.tenant : undefined;
-    if (tenant && !access(principal, tenant, c.req.raw))
-      return problem(c, 403, 'Not allowed for this tenant');
+    const acting = tenant ? access(principal, tenant, c.req.raw) : undefined;
+    if (tenant && !acting) return problem(c, 403, 'Not allowed for this tenant');
     if (tenant && (await unregistered(principal, tenant))) return tenantNotRegistered(c, tenant);
     const lacking = tenant && refusedRight(c, principal, tenant, 'manage-services');
     if (lacking) return lacking;
     if (!validated.ok) return problem(c, 422, 'Invalid definition', { errors: validated.errors });
+    const unpublishable = blockPublisherProblems(validated.definition, acting ?? principal);
+    if (unpublishable.length > 0) return sharingRefused(c, unpublishable);
     const unmasked = (await options.unmaskedInput?.(validated.definition)) ?? [];
     const unmaskedInput = unmasked.length ? { unmaskedInput: unmasked } : {};
     const errors = [

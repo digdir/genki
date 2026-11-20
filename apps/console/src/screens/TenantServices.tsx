@@ -14,17 +14,13 @@ import { useFormat } from '@genai/i18n/react';
 import { useState } from 'react';
 import type { ApiClient } from '../api';
 import { navigate, useAsync } from '../hooks';
-import { useT, type PlainKey, type T } from '../i18n';
+import { useT, type T } from '../i18n';
 import { EmptyState, ErrorState, Loading } from '../states';
+import { definitionKindLabels, definitionKindParams } from '../definition-kinds';
 import type { TenantDefinition } from '../types';
 import { formatWhen, PageHeader, TableRegion } from '../ui';
 import { toYaml } from '../yaml';
 import { formatOrgNumber } from './Tenants';
-
-const kindLabel: Record<TenantDefinition['kind'], PlainKey> = {
-  Service: 'tenantServices.kindService',
-  StepFlow: 'tenantServices.kindStepFlow',
-};
 
 const actor = (who: string, name: string | undefined, t: T) =>
   name ??
@@ -97,7 +93,7 @@ const Detail = ({
   return (
     <section className="stack" aria-labelledby="definisjon-h">
       <Heading level={2} data-size="xs" id="definisjon-h">
-        {t(kindLabel[kind])} {id}
+        {t(definitionKindLabels[kind])} {id}
       </Heading>
       <TableRegion label={t('tenantServices.versionsOf', { id })}>
         <Table>
@@ -250,7 +246,7 @@ export const TenantServices = ({
                       <span className="meta">{d.id}</span>
                     </span>
                   </TableHeaderCell>
-                  <TableCell>{t(kindLabel[d.kind])}</TableCell>
+                  <TableCell>{t(definitionKindLabels[d.kind])}</TableCell>
                   <TableCell>{d.latestVersion}</TableCell>
                   <TableCell className="sm">
                     {d.publishedAt ? formatWhen(d.publishedAt, f, t) : '–'}
@@ -264,7 +260,7 @@ export const TenantServices = ({
                       onClick={() =>
                         navigate('/tenants/services', {
                           tenant,
-                          kind: d.kind === 'Service' ? 'service' : 'step-flow',
+                          kind: definitionKindParams[d.kind],
                           id: d.id,
                         })
                       }
