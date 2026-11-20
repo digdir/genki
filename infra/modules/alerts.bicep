@@ -213,7 +213,7 @@ var appLogAlerts = [
     severity: 2
     frequency: 'PT5M'
     window: 'PT15M'
-    query: '${consoleLogs} | where Log has \'catalog entry skipped\' | extend entry = parse_json(Log) | project TimeGenerated, ContainerAppName, kind = tostring(entry.kind), id = tostring(entry.id), reason = tostring(entry.reason)'
+    query: '${consoleLogs} | where Log has \'catalog entry skipped\' | extend entry = parse_json(Log) | project TimeGenerated, ContainerAppName, entryKind = tostring(entry.kind), entryId = tostring(entry.id), reason = tostring(entry.reason)'
     measure: ''
     aggregation: 'Count'
     threshold: 1

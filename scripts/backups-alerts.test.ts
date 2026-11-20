@@ -255,6 +255,7 @@ describe.skipIf(!hasAz && !process.env.CI)('backups and alerts in the template',
     const rule = rules.find((r) => r.key === 'catalog-skipped');
     expect(rule).toMatchObject({ window: 'PT15M', aggregation: 'Count', threshold: 1 });
     expect(String(rule?.query)).toContain("Log has ''catalog entry skipped''");
+    expect(String(rule?.query)).not.toMatch(/[,|]\s*(kind|id)\s*=/);
     expect(String(rule?.query)).toContain('{0}');
     expect(text((module('alerts').properties.template?.variables ?? {}).consoleLogs)).toContain(
       'workerAppName',
