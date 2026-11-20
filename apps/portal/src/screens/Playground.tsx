@@ -30,7 +30,7 @@ const ServicePlayground = ({
   onTried,
 }: Omit<ScreenProps, 'route' | 'live'> & {
   service: string;
-  onTried: (tried: TriedHere) => void;
+  onTried: (tried: TriedHere | undefined) => void;
 }) => {
   const t = useT();
   const [draft, retry] = useAsync(
@@ -55,11 +55,7 @@ const ServicePlayground = ({
   );
 };
 
-/**
- * Frontend tries the interface of a service with the builder's building blocks, without its
- * assistant. Backend tries its content: a model, instructions, datasets or a service's draft. Both
- * can go on to a new service. An old `#/playground?service=<id>` opens that draft in Backend.
- */
+/** Frontend tries an interface, Backend its content; `#/playground?service=<id>` opens Backend. */
 export const Playground = ({ api, tenant, tenantName, route, live }: ScreenProps) => {
   const t = useT();
   const narrow = useNarrow();
@@ -84,13 +80,14 @@ export const Playground = ({ api, tenant, tenantName, route, live }: ScreenProps
   useEffect(() => {
     if (view === 'backend') setBackendOpened(true);
   }, [view]);
-  // What Backend tried, for the draft it was tried on: another `?service=` starts afresh.
-  const tried = useRef<{ service: string | null; tried: TriedHere } | undefined>(undefined);
+  // What Backend tried, kept for the organisation and draft it was tried on.
+  const triedFor = `${tenant}\n${service ?? ''}`;
+  const tried = useRef<{ key: string; tried: TriedHere | undefined }>(undefined);
   const onTried = useCallback(
-    (next: TriedHere) => {
-      tried.current = { service, tried: next };
+    (next: TriedHere | undefined) => {
+      tried.current = { key: triedFor, tried: next };
     },
-    [service],
+    [triedFor],
   );
 
   const [making, setMaking] = useState<'busy' | 'failed'>();
@@ -107,7 +104,7 @@ export const Playground = ({ api, tenant, tenantName, route, live }: ScreenProps
           layout: blocks.layout,
           ...(blocks.state.held ? { held: blocks.state.held } : {}),
         }),
-        tried: tried.current?.service === service ? tried.current.tried : undefined,
+        tried: tried.current?.key === triedFor ? tried.current.tried : undefined,
       });
       const id = handoverDraftId();
       await api.quality.saveDraft(
@@ -149,8 +146,8 @@ export const Playground = ({ api, tenant, tenantName, route, live }: ScreenProps
           state={blocks}
           run={run}
           address={address}
-          backHref="#/playground"
-          onExit={() => navigate('/playground')}
+          backHref={`#${hrefs.frontend}`}
+          onExit={() => navigate(hrefs.frontend)}
         />
       ) : null}
       <Tabs
@@ -199,7 +196,7 @@ export const Playground = ({ api, tenant, tenantName, route, live }: ScreenProps
                 narrow={narrow}
                 run={run}
                 address={address}
-                onFullscreen={() => navigate('/playground/preview')}
+                onFullscreen={() => navigate(`/playground/preview${query}`)}
               />
             </div>
           ) : null}

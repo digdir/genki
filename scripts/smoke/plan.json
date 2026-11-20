@@ -177,7 +177,7 @@
         "personal": true
       },
       {
-        "path": "#/playground",
+        "path": "#/playground/backend",
         "baseline": true
       },
       {

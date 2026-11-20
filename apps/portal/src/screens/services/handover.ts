@@ -6,7 +6,7 @@ import { autoPublicName, slug, withModel, withPublicName } from '../../data/serv
 import type { TriedHere } from '../../components/playground/PlaygroundPanel';
 import { withPlaygroundChanges } from '../../components/playground/startDraft';
 
-/** What «Lag en tjeneste av dette» in the playground can carry into a new service, or not. */
+/** What "Make a service of this" in the playground can carry into a new service, or not. */
 export type HandoverItem =
   | 'layout'
   | 'model'
@@ -26,11 +26,7 @@ export interface Handover {
   left: HandoverItem[];
 }
 
-/**
- * A new draft's definition from the tenant's template, with the layout tried in Frontend and the
- * model, instructions and datasets tried in Backend. What it holds is listed in `carried`; what was
- * tried that a draft cannot hold from here is listed in `left`.
- */
+/** A new draft from the template with Frontend's layout and Backend's model, instructions and datasets. */
 export const serviceFromPlayground = ({
   template,
   tenant,
@@ -59,7 +55,8 @@ export const serviceFromPlayground = ({
       changes.push({ kind: 'model', to: setup.model });
       carried.push('model');
     }
-    if (tried.instructions.trim()) {
+    if (tried.instructions === undefined) left.push('instructions');
+    else if (tried.instructions.trim()) {
       changes.push({ kind: 'instructions' });
       carried.push('instructions');
     }
@@ -68,7 +65,7 @@ export const serviceFromPlayground = ({
       carried.push('datasets');
     }
     // The template's own variant is the one the changes go into, not the tried service's.
-    const own: PlaygroundSetup = { ...setup, instructions: tried.instructions };
+    const own: PlaygroundSetup = { ...setup, instructions: tried.instructions ?? '' };
     delete own.service;
     const next = withPlaygroundChanges(definition, own, changes);
     // A new service keeps its data where the tried model does, so the model is allowed in it.

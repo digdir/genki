@@ -283,7 +283,7 @@ export const playgroundUi = {
     handoverCarried: 'Carried over:',
     handoverLeft: 'Not carried over, set these up here:',
     handoverClose: 'Close',
-    handoverLayout: 'the building blocks from Frontend',
+    handoverLayout: 'the interface from Frontend',
     handoverModel: 'the model',
     handoverInstructions: 'the instructions',
     handoverDatasets: 'the datasets',

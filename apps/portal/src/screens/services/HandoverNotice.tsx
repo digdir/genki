@@ -17,10 +17,7 @@ const itemKeys: Record<HandoverItem, PlainKey> = {
   conversation: 'playground.handoverConversation',
 };
 
-/**
- * Says once, on the new service the playground made, what it carried over and what it did not.
- * It is said on this visit only: leaving the service or closing the notice forgets it.
- */
+/** Says once what the playground carried over; closing it or leaving Oppsett forgets it. */
 export const HandoverNotice = ({ draft }: { draft: string }) => {
   const t = useT();
   const [handover, setHandover] = useState(() => handoverFor(draft));

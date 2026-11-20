@@ -281,7 +281,7 @@ export const playgroundUi = {
     handoverCarried: 'Dette ble med:',
     handoverLeft: 'Dette ble ikke med, og må settes opp her:',
     handoverClose: 'Lukk',
-    handoverLayout: 'byggeklossene fra Frontend',
+    handoverLayout: 'grensesnittet fra Frontend',
     handoverModel: 'modellen',
     handoverInstructions: 'instruksjonene',
     handoverDatasets: 'datasettene',
