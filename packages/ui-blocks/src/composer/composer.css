@@ -70,7 +70,17 @@
     border-radius: var(--genai-composer-frame-border-radius, var(--ds-border-radius-xl));
   }
 
+  /* Hover, as Designsystemet draws it on a text field: the border grows by one more line of its own
+     colour (`--dsc-input-outline-*--hover`). On the frame, since the field's own outline is off. */
+  .uib-composer-frame:has(.uib-composer-field:hover):not(:has(.uib-composer-field :focus-visible)) {
+    outline: var(--ds-border-width-default) solid
+      var(--genai-composer-frame-border-color, var(--ds-color-border-default));
+    outline-offset: -0.1px;
+  }
+
+  /* The frame's own border goes while the ring shows, so the ring is the only line round the field. */
   .uib-composer-frame:has(.uib-composer-field :focus-visible) {
+    border-color: transparent;
     box-shadow: var(--dsc-focus-boxShadow);
     outline: var(--dsc-focus-outline);
     outline-offset: var(--genai-composer-focus-offset, var(--ds-border-width-focus));
@@ -113,6 +123,8 @@
     border: 0;
   }
 
+  /* Hover too: the field's own hover outline would be a second line inside the frame's. */
+  .uib-composer-field textarea:hover,
   .uib-composer-field textarea:focus-visible {
     box-shadow: none;
     outline: none;
