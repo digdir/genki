@@ -309,8 +309,9 @@ const causeCodes = (error: unknown) => {
     depth < deepestCause && typeof level === 'object' && level !== null;
     depth++
   ) {
+    // A DOMException's numeric code (23 for TimeoutError) says less than its name.
     const own =
-      codeOf((level as { code?: unknown }).code) ??
+      (level instanceof DOMException ? level.name : codeOf((level as { code?: unknown }).code)) ??
       (depth === 0 && level instanceof Error && codeShape.test(level.name)
         ? level.name
         : undefined);

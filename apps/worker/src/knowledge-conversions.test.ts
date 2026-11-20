@@ -784,6 +784,8 @@ describe('stored conversions', () => {
         code: '57014',
       },
       { error: Object.assign(new Error('Docling answered 503'), { code: 503 }), code: '503' },
+      // A download that times out: a DOMException's numeric code (23) says less than its name.
+      { error: new DOMException('The operation timed out.', 'TimeoutError'), code: 'TimeoutError' },
     ];
     for (const { error, code } of causes) {
       await clearConvertJobs();
