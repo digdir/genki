@@ -74,7 +74,10 @@ describe('the source facts tool', () => {
       question: 'Hvilke nyligste dokumenter har du hentet inn fra Kudos?',
     });
 
-    expect(facts.asked).toEqual([{ newest: 5, fields: ['orgs_short'] }]);
+    expect(facts.asked).toEqual([
+      { newest: 0, maxValues: 50 },
+      { newest: 5, fields: ['orgs_short'] },
+    ]);
     const [content] = toolMessages(out.loops[1]);
     expect(content).toMatch(/^<untrusted_data kind="source-facts">/);
     expect(content).toContain('"documents": 45799');
@@ -96,7 +99,7 @@ describe('the source facts tool', () => {
       retrieval: facts.impl,
     });
 
-    expect(facts.asked).toEqual([]);
+    expect(facts.asked).toEqual([{ newest: 0, maxValues: 50 }]);
     expect(toolMessages(out.loops[1])[0]).toMatch(/^Unknown tool: source_facts/);
   });
 });

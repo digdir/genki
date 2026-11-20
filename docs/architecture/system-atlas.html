@@ -5190,6 +5190,14 @@
                         },
                       ],
                     },
+                    promptSections: {
+                      type: 'object',
+                      propertyNames: {
+                        type: 'string',
+                        enum: ['role', 'reasoning', 'workflow', 'gate'],
+                      },
+                      additionalProperties: { type: 'string', maxLength: 65536 },
+                    },
                     languageInstructions: {
                       type: 'object',
                       propertyNames: { type: 'string', enum: ['nb', 'nn', 'en'] },

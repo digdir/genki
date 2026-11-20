@@ -5,6 +5,7 @@ import {
   defaultMaxOutputTokens,
   instructionsConfig,
   languageInstructionsConfig,
+  maxInstructionChars,
   ModelError,
   type ChatMessage,
   type ChatRequest,
@@ -24,7 +25,9 @@ import {
   agentTools,
   cutOffToolCallNudge,
   answerInstructionsLead,
-  defaultSystemPrompt,
+  composeSystemPrompt,
+  promptSectionIds,
+  searchPromptSections,
   type ActiveFilter,
   answerTurnGaps,
   exhaustionDefaults,
@@ -37,8 +40,9 @@ import {
   searchScaffold,
   smallTalkCheck,
   systemPromptWithDate,
-  toolsOnlySystemPrompt,
+  toolsOnlyPromptSections,
 } from './prompts.js';
+import { cardFactsCache, collectCardFacts, serviceCardText } from './service-card.js';
 import { executionMetadata, judgedInsufficient } from './execution.js';
 import { evaluateRead } from './read-signals.js';
 import {
@@ -103,6 +107,7 @@ export * from './citations.js';
 export * from './execution.js';
 export * from './intent.js';
 export * from './prompts.js';
+export * from './service-card.js';
 export * from './read-signals.js';
 export * from './skills.js';
 export * from './source-facts.js';
@@ -138,6 +143,9 @@ export const sessionFor = (
 
 export const agentLoopConfig = z.strictObject({
   instructions: instructionsConfig.optional(),
+  promptSections: z
+    .partialRecord(z.enum(promptSectionIds), z.string().max(maxInstructionChars))
+    .optional(),
   languageInstructions: languageInstructionsConfig.optional(),
   generationPrompt: z.string().min(1).optional(),
   budget: z
@@ -458,6 +466,14 @@ const gateRelevant = (results: ToolCallResult[]) =>
       r.name === 'read_chunks' || r.name === 'rerank_results' || r.name === 'generate_response',
   );
 
+const cardCaches = new WeakMap<AgentLoopOptions, ReturnType<typeof cardFactsCache>>();
+
+const cardCacheFor = (options: AgentLoopOptions) => {
+  const found = cardCaches.get(options) ?? cardFactsCache(options.now ?? (() => new Date()));
+  cardCaches.set(options, found);
+  return found;
+};
+
 const withGateHint = (results: ToolCallResult[], hint: string) =>
   results.map((r) =>
     r.name === 'generate_response' ? { ...r, content: `${r.content}\n\n${hint}` } : r,
@@ -531,15 +547,39 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
       displayLimit: settings.search?.displayLimit ?? defaultSearchSettings.displayLimit,
       showSnippets: settings.search?.snippets ?? defaultSearchSettings.showSnippets,
     };
+    const cardFacts = searchable
+      ? await cardCacheFor(options)(
+          JSON.stringify([
+            ctx.tenant,
+            ctx.principal,
+            ctx.capability.id,
+            ctx.capability.version,
+            config['knowledge'] ?? null,
+            retrievalRequest.overrides?.['retrieve-filter-by'] ?? null,
+          ]),
+          () => collectCardFacts(searchable, ctx.signal),
+        )
+      : { sources: [], filterFields: [], complete: true };
+    const card = {
+      ...cardFacts,
+      name: ctx.capability.title,
+      ...(ctx.capability.description ? { purpose: ctx.capability.description } : {}),
+      searchable: Boolean(searchable),
+      languages: Array.isArray(config.languages) ? (config.languages as string[]) : [],
+      filtered: activeFilters.length > 0,
+      today: clock(),
+    };
+    const serviceCard = serviceCardText(card);
     const initialMessages: ChatMessage[] = [
       {
         role: 'system',
         content:
-          (settings.instructions
-            ? baseInstructions(settings.instructions)
-            : searchable
-              ? defaultSystemPrompt
-              : toolsOnlySystemPrompt) +
+          `${serviceCard}\n\n` +
+          composeSystemPrompt(
+            searchable ? searchPromptSections : toolsOnlyPromptSections,
+            settings.promptSections,
+            settings.instructions ? baseInstructions(settings.instructions) : undefined,
+          ) +
           skillCatalog(skills) +
           (activeFilters.length ? `\n\n${activeFiltersInstruction(activeFilters)}` : '') +
           attachedNote(workspace.attached, Boolean(searchable)) +
@@ -577,7 +617,8 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
       signal: ctx.signal,
       // The untrusted-data note comes last, as in the agent's prompt.
       systemPrompt:
-        systemPromptWithDate((options.now ?? (() => new Date()))()) +
+        systemPromptWithDate(clock()) +
+        `\n\n${serviceCardText(card, true)}` +
         (settings.instructionsInAnswer && settings.instructions
           ? `\n\n${answerInstructionsLead}\n\n${baseInstructions(settings.instructions)}`
           : '') +

@@ -87,6 +87,15 @@ export const setup = defineNamespace({
   defaultInstructionsShow: 'Se standardinstruksjonene',
   defaultInstructionsCompare: 'Sammenlign med standardinstruksjonene',
   defaultInstructionsLabel: 'Standardinstruksjonene (kan ikke endres her)',
+  promptSectionsShow: 'Se og endre standardinstruksjonene',
+  promptSectionsHelp:
+    'Agenten får standardinstruksjonene i disse delene. Du kan endre en del; da erstattes bare den. Tom tekst tar delen ut.',
+  promptSectionEdited: '(endret)',
+  promptSectionReset: 'Tilbakestill {section}',
+  promptSectionsOwnerSlot:
+    'Instruksjonene du skriver for tjenesten, kommer her, etter delene over.',
+  instructionsLayeredHelp:
+    'Tjenesten bruker standardinstruksjonene til oppsettet. Instruksjonene du skriver her, legges til etter dem.',
   defaultInstructionsUse: 'Bruk som utgangspunkt',
   instructionsInFlowHelp:
     'Instruksjonene står i stegene i stegflyten {flow}. Endre dem i stegflyten under Stegflyter.',

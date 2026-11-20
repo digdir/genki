@@ -1,6 +1,14 @@
 import type { LabelText, SchemaLabels } from '@genai/contracts';
 
 const nb = {
+  promptSections: {
+    label: 'Endrede deler av standardinstruksjonene',
+    help: 'Erstatter bare den delen du endrer. Tom tekst tar delen ut. Instruksjonene dine kommer etter delene.',
+  },
+  'promptSections.role': { label: 'Rolle' },
+  'promptSections.reasoning': { label: 'Begrunnelse' },
+  'promptSections.workflow': { label: 'Arbeidsmåte' },
+  'promptSections.gate': { label: 'Kontroll' },
   generationPrompt: { label: 'Ledetekst for svaret', help: 'Tomt bruker den innebygde.' },
   budget: { label: 'Budsjett per oppgave' },
   'budget.searches': { label: 'Flest søk' },
@@ -44,7 +52,7 @@ const nb = {
   'search.titleOverlapWeight': { label: 'Vekt på treff i tittelen' },
   'search.strategyQuota': { label: 'Treff sikret per søkemåte' },
   'search.autoReadTopK': { label: 'Dokumenter som leses automatisk' },
-  'search.displayLimit': { label: 'Treff som vises til modellen' },
+  'search.displayLimit': { label: 'Dokumenter som vises til modellen per side' },
   'search.snippets': { label: 'Vis utdrag i treffene' },
   ablate: {
     label: 'Steg som slås av',
@@ -59,6 +67,14 @@ const nb = {
 } satisfies Record<string, LabelText>;
 
 const en: Record<keyof typeof nb, LabelText> = {
+  promptSections: {
+    label: 'Changed sections of the default instructions',
+    help: 'Replaces only the section you change. An empty text leaves the section out. Your instructions come after the sections.',
+  },
+  'promptSections.role': { label: 'Role' },
+  'promptSections.reasoning': { label: 'Reasoning' },
+  'promptSections.workflow': { label: 'Workflow' },
+  'promptSections.gate': { label: 'Check' },
   generationPrompt: { label: 'Prompt for the answer', help: 'Empty uses the built-in one.' },
   budget: { label: 'Budget per task' },
   'budget.searches': { label: 'Most searches' },
@@ -102,7 +118,7 @@ const en: Record<keyof typeof nb, LabelText> = {
   'search.titleOverlapWeight': { label: 'Weight of matches in the title' },
   'search.strategyQuota': { label: 'Results kept per search method' },
   'search.autoReadTopK': { label: 'Documents read automatically' },
-  'search.displayLimit': { label: 'Results shown to the model' },
+  'search.displayLimit': { label: 'Documents shown to the model per page' },
   'search.snippets': { label: 'Show excerpts in the results' },
   ablate: {
     label: 'Steps turned off',
@@ -120,6 +136,7 @@ export const agentLoopSchemaLabels: SchemaLabels = {
   nb,
   en,
   meta: {
+    promptSections: { 'x-advanced': true },
     generationPrompt: { 'x-widget': 'prompt', 'x-advanced': true },
     budget: { 'x-advanced': true },
     search: { 'x-advanced': true },

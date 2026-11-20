@@ -603,7 +603,7 @@ const settingDefs = defineNamespace({
   synthesis_generationPrompt_desc:
     'Ledetekst som erstatter den innebygde for å lage svaret. Tomt bruker den innebygde.',
   synthesis_instructions_desc:
-    'Systemledetekst som erstatter den innebygde for modellen som svarer. Tomt bruker den innebygde.',
+    'Systemledetekst for modellen som svarer. Den erstatter den innebygde; for en agent legges den til etter de innebygde delene. Tomt bruker bare den innebygde.',
   knowledge_nightWindow_desc:
     'Tidsrom (norsk tid) der indeksbygg, store innlesinger og VACUUM kjøres, skrevet som 01:00-06:00, eller «always» for å la dem kjøre når som helst, som før lansering.',
   knowledge_heavyThreshold_desc:

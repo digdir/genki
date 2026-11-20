@@ -609,7 +609,7 @@ const settingDefs = {
   synthesis_generationPrompt_desc:
     'Replacement prompt for writing the answer. Empty uses the built-in prompt.',
   synthesis_instructions_desc:
-    'Replacement system prompt for the answering model. Empty uses the built-in prompt.',
+    'System prompt for the answering model. It replaces the built-in prompt; for an agent it is added after the built-in sections. Empty uses only the built-in prompt.',
   knowledge_nightWindow_desc:
     'Hours (Norwegian time) in which index builds, large fills and VACUUM run, written as 01:00-06:00, or "always" to let them run at any hour, as before a launch.',
   knowledge_heavyThreshold_desc:

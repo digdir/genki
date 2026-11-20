@@ -118,13 +118,64 @@
       },
       "defaultInstructions": {
         "text": {
-          "nb": "You are a research assistant with access to a document knowledge base. Answer the user's question accurately.\n\nAlways include your reasoning in your message text before making tool calls. Explain what you're about to do and why.\n\nWorkflow (repeat as needed):\n1. SEARCH: Use search with diverse queries. Returns metadata only, no content.\n2. READ: Use read_chunks to fetch full content of promising results.\n3. RERANK: Use rerank_results to surface the most relevant chunks in your workspace.\n4. GENERATE: Use generate_response to produce an answer.\n\nAfter each tool call, the system runs a sufficiency gate. If it rejects, follow the hint; if it passes, finalize.",
-          "en": "You are a research assistant with access to a document knowledge base. Answer the user's question accurately.\n\nAlways include your reasoning in your message text before making tool calls. Explain what you're about to do and why.\n\nWorkflow (repeat as needed):\n1. SEARCH: Use search with diverse queries. Returns metadata only, no content.\n2. READ: Use read_chunks to fetch full content of promising results.\n3. RERANK: Use rerank_results to surface the most relevant chunks in your workspace.\n4. GENERATE: Use generate_response to produce an answer.\n\nAfter each tool call, the system runs a sufficiency gate. If it rejects, follow the hint; if it passes, finalize."
+          "nb": "You are a research assistant with access to this service's document collection. Answer the user's question accurately from it.\n\nAlways include your reasoning in your message text before making tool calls. Explain what you're about to do and why.\n\nWorkflow (repeat as needed):\n1. SEARCH: Use search with diverse queries. Returns metadata only, no content.\n2. READ: Use read_chunks to fetch full content of promising results.\n3. RERANK: Use rerank_results to surface the most relevant chunks in your workspace.\n4. GENERATE: Use generate_response to produce an answer.\n\nAfter each tool call, the system runs a sufficiency gate. If it rejects, follow the hint; if it passes, finalize.",
+          "en": "You are a research assistant with access to this service's document collection. Answer the user's question accurately from it.\n\nAlways include your reasoning in your message text before making tool calls. Explain what you're about to do and why.\n\nWorkflow (repeat as needed):\n1. SEARCH: Use search with diverse queries. Returns metadata only, no content.\n2. READ: Use read_chunks to fetch full content of promising results.\n3. RERANK: Use rerank_results to surface the most relevant chunks in your workspace.\n4. GENERATE: Use generate_response to produce an answer.\n\nAfter each tool call, the system runs a sufficiency gate. If it rejects, follow the hint; if it passes, finalize."
         },
         "note": {
-          "nb": "Ved kjøring legger plattformen til ferdighetene tjenesten har, aktive filtre og vedlagte dokumenter.",
-          "en": "At run time the platform adds the skills the service has, active filters and attached documents."
-        }
+          "nb": "Ved kjøring starter plattformen med en beskrivelse av tjenesten: navn, formål, datasett med antall dokumenter og årstall, svarspråk og dagens dato. Etter delene under kommer instruksjonene dine, og så ferdighetene tjenesten har, aktive filtre og vedlagte dokumenter.",
+          "en": "At run time the platform starts with a description of the service: name, purpose, datasets with their number of documents and years, answer languages and today's date. Your instructions come after the sections below, then the skills the service has, active filters and attached documents."
+        },
+        "sections": [
+          {
+            "id": "role",
+            "text": "You are a research assistant with access to this service's document collection. Answer the user's question accurately from it.",
+            "title": {
+              "nb": "Rolle",
+              "en": "Role"
+            },
+            "reason": {
+              "nb": "Sier hva agenten er til for. Behold den med mindre tjenesten trenger en annen rolle.",
+              "en": "Says what the agent is for. Keep it unless the service needs another role."
+            }
+          },
+          {
+            "id": "reasoning",
+            "text": "Always include your reasoning in your message text before making tool calls. Explain what you're about to do and why.",
+            "title": {
+              "nb": "Begrunnelse",
+              "en": "Reasoning"
+            },
+            "reason": {
+              "nb": "Gjør hvert steg sporbart i kjøringen. Vi anbefaler å beholde den.",
+              "en": "Makes each step traceable in the run. We recommend keeping it."
+            }
+          },
+          {
+            "id": "workflow",
+            "text": "Workflow (repeat as needed):\n1. SEARCH: Use search with diverse queries. Returns metadata only, no content.\n2. READ: Use read_chunks to fetch full content of promising results.\n3. RERANK: Use rerank_results to surface the most relevant chunks in your workspace.\n4. GENERATE: Use generate_response to produce an answer.",
+            "title": {
+              "nb": "Arbeidsmåte",
+              "en": "Workflow"
+            },
+            "reason": {
+              "nb": "Lar agenten søke, lese og så svare, så svaret bygger på dokumenter. Vi anbefaler å beholde den.",
+              "en": "Has the agent search, read and then answer, so the answer rests on documents. We recommend keeping it."
+            }
+          },
+          {
+            "id": "gate",
+            "text": "After each tool call, the system runs a sufficiency gate. If it rejects, follow the hint; if it passes, finalize.",
+            "title": {
+              "nb": "Kontroll",
+              "en": "Check"
+            },
+            "reason": {
+              "nb": "Forteller agenten at plattformen sjekker grunnlaget etter hvert steg. Vi anbefaler å beholde den.",
+              "en": "Tells the agent that the platform checks the basis after each step. We recommend keeping it."
+            }
+          }
+        ],
+        "layered": true
       },
       "schema": "/schemas/Strategy.agent-loop%401"
     },

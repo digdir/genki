@@ -225,6 +225,16 @@ describe('the admin MCP tools against the API', () => {
     expect(missing.isError).toBe(true);
   });
 
+  it('says that agent-loop adds the service instructions after its built-in sections', async () => {
+    const { call } = await boot();
+
+    const agent = await call('describe_strategy', { id: 'agent-loop' });
+
+    expect(agent.text).toContain(
+      "Built-in sections, always used; the service's instructions are added after them",
+    );
+  });
+
   it('lists playground runs separately, and refuses a service filter on them', async () => {
     const { call } = await boot();
 

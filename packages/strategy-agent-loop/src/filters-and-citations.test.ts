@@ -148,7 +148,7 @@ describe('what the search detected in the query', () => {
     const out = await run({ retrieval: detected(), scripts: searchOnce });
 
     expect(toolMessages(out.loops[1])[0]).toContain(
-      'Hint, no filter applied: The query names "Datatilsynet"; orgs_long can filter on it. The query names the years "2023", "2024"; title can filter on them. Add filter_by only if the question asks for nothing else; a question about an organisation also needs other organisations\' documents.',
+      'Hint, no filter applied: The query names "Datatilsynet"; orgs_long can filter on it. The query names the years "2023", "2024"; title can filter on them. Use filter_by when the question is only about these; search without it when the question also needs other documents.',
     );
   });
 

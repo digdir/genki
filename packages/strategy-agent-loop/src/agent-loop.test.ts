@@ -13,6 +13,7 @@ import {
   capability,
   chunk,
   decision,
+  harnessCard,
   kari,
   models,
   readSignal,
@@ -105,7 +106,7 @@ describe('agent-loop strategy', () => {
     );
     const synth = out.seen.find((s) => s.kind === 'synth')?.request;
     expect(synth?.messages[0]?.content).toBe(
-      `You are a helpful assistant. The date this conversation was created at is 6. oktober 2026 (Norwegian time).\n\n${untrustedDataNotes.nb}`,
+      `You are a helpful assistant. The date this conversation was created at is 6. oktober 2026 (Norwegian time).\n\n${harnessCard(true, true)}\n\n${untrustedDataNotes.nb}`,
     );
     expect(synth?.messages[1]?.content).toContain(
       'Question: Hva sier tildelingsbrevet til Digdir for 2025?',
@@ -349,9 +350,12 @@ describe('agent-loop strategy', () => {
     });
 
     const text = toolMessages(out.loops[1])[0] ?? '';
-    expect(text).toMatch(/Showing top 2 by rank; 1 lower-ranked chunks omitted\./);
-    expect(text.split('\n')[1]).toBe('<untrusted_data kind="search-results">');
-    expect(text.split('\n')[2]).toMatch(/^1\. chunk_id=c2 .* title_match=2$/);
+    const lines = text.split('\n');
+    expect(text).toContain('Showing documents 1 to 2 of 3; more available');
+    expect(lines[2]).toBe('<untrusted_data kind="search-results">');
+    expect(lines[3]).toMatch(/^1\. doc_num=d2 title="Tildelingsbrev Digdir 2025"/);
+    expect(lines[4]).toMatch(/^ {3}chunk_id=c2 .* title_match=2$/);
+    expect(text).not.toContain('chunk_id=c3');
   });
 
   const guarded = (extra: Record<string, unknown> = {}) => ({
@@ -660,10 +664,10 @@ describe('agent-loop strategy', () => {
     const system = (o: typeof out) =>
       o.seen.find((s) => s.kind === 'synth')?.request.messages[0]?.content;
     expect(system(out)).toBe(
-      `You are a helpful assistant. The date this conversation was created at is 6. oktober 2026 (Norwegian time).\n\n${answerInstructionsLead}\n\nIkke fyll ut med egen kunnskap.\n\n${untrustedDataNotes.nb}`,
+      `You are a helpful assistant. The date this conversation was created at is 6. oktober 2026 (Norwegian time).\n\n${harnessCard(true, true)}\n\n${answerInstructionsLead}\n\nIkke fyll ut med egen kunnskap.\n\n${untrustedDataNotes.nb}`,
     );
     expect(system(plain)).toBe(
-      `You are a helpful assistant. The date this conversation was created at is 6. oktober 2026 (Norwegian time).\n\n${untrustedDataNotes.nb}`,
+      `You are a helpful assistant. The date this conversation was created at is 6. oktober 2026 (Norwegian time).\n\n${harnessCard(true, true)}\n\n${untrustedDataNotes.nb}`,
     );
   });
 

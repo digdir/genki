@@ -1,6 +1,11 @@
 import type { UiText } from '@genai/contracts';
 import { jsonSchemaOf } from '@genai/definitions';
-import { datedSystemPromptTemplate, defaultSystemPrompt } from '@genai/strategy-agent-loop';
+import {
+  datedSystemPromptTemplate,
+  defaultSystemPrompt,
+  searchPromptSections,
+  type PromptSectionId,
+} from '@genai/strategy-agent-loop';
 import type { Context } from 'hono';
 import type { z } from 'zod';
 import { enterTenant } from './access.js';
@@ -17,9 +22,18 @@ export interface PipelineStep {
   repeats?: true;
 }
 
+export interface PromptSectionEntry {
+  id: PromptSectionId;
+  title: UiText;
+  reason: UiText;
+  text: string;
+}
+
 export interface DefaultInstructions {
   text: UiText;
   note?: UiText;
+  sections?: PromptSectionEntry[];
+  layered?: true;
 }
 
 export interface StrategyEntry {
@@ -52,6 +66,42 @@ const step = (title: UiText, description: UiText, repeats?: true): PipelineStep 
   description,
   ...(repeats ? { repeats } : {}),
 });
+
+const sectionLabels: Record<PromptSectionId, { title: UiText; reason: UiText }> = {
+  role: {
+    title: text('Rolle', 'Role'),
+    reason: text(
+      'Sier hva agenten er til for. Behold den med mindre tjenesten trenger en annen rolle.',
+      'Says what the agent is for. Keep it unless the service needs another role.',
+    ),
+  },
+  reasoning: {
+    title: text('Begrunnelse', 'Reasoning'),
+    reason: text(
+      'Gjør hvert steg sporbart i kjøringen. Vi anbefaler å beholde den.',
+      'Makes each step traceable in the run. We recommend keeping it.',
+    ),
+  },
+  workflow: {
+    title: text('Arbeidsmåte', 'Workflow'),
+    reason: text(
+      'Lar agenten søke, lese og så svare, så svaret bygger på dokumenter. Vi anbefaler å beholde den.',
+      'Has the agent search, read and then answer, so the answer rests on documents. We recommend keeping it.',
+    ),
+  },
+  gate: {
+    title: text('Kontroll', 'Check'),
+    reason: text(
+      'Forteller agenten at plattformen sjekker grunnlaget etter hvert steg. Vi anbefaler å beholde den.',
+      'Tells the agent that the platform checks the basis after each step. We recommend keeping it.',
+    ),
+  },
+};
+
+export const agentPromptSections: PromptSectionEntry[] = searchPromptSections.map((section) => ({
+  ...section,
+  ...sectionLabels[section.id],
+}));
 
 const described: Record<string, Described> = {
   'single-call': {
@@ -156,9 +206,11 @@ const described: Record<string, Described> = {
     defaultInstructions: {
       text: text(defaultSystemPrompt, defaultSystemPrompt),
       note: text(
-        'Ved kjøring legger plattformen til ferdighetene tjenesten har, aktive filtre og vedlagte dokumenter.',
-        'At run time the platform adds the skills the service has, active filters and attached documents.',
+        'Ved kjøring starter plattformen med en beskrivelse av tjenesten: navn, formål, datasett med antall dokumenter og årstall, svarspråk og dagens dato. Etter delene under kommer instruksjonene dine, og så ferdighetene tjenesten har, aktive filtre og vedlagte dokumenter.',
+        "At run time the platform starts with a description of the service: name, purpose, datasets with their number of documents and years, answer languages and today's date. Your instructions come after the sections below, then the skills the service has, active filters and attached documents.",
       ),
+      sections: agentPromptSections,
+      layered: true,
     },
   },
   'step-flow': {

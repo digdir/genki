@@ -9,10 +9,12 @@ import {
   readEvaluatorSystemPrompt,
   smallTalkCheck,
   SOURCES_MIME,
+  type AgentLoopOptions,
   type AgentLoopRuntimeConfig,
   type AgentRetrieval,
   type Chunk,
   type SourceRecord,
+  serviceCardText,
 } from './index.js';
 
 export const kari: Principal = {
@@ -244,7 +246,7 @@ export const capability = (config: AgentLoopRuntimeConfig, tools: string[] = [])
     version: '1',
     tenant: '991825827',
     title: 'KA',
-    description: 'KA',
+    description: 'Svarer på spørsmål om offentlig økonomi.',
     input: {},
     interaction: ['unary', 'stream'],
     accepts: [],
@@ -260,6 +262,22 @@ export const capability = (config: AgentLoopRuntimeConfig, tools: string[] = [])
     ...tools.map((t) => ({ port: 'tools', ref: { kind: 'tool', id: t, tenant: '991825827' } })),
   ],
 });
+
+export const harnessCard = (searchable = true, forAnswer = false) =>
+  serviceCardText(
+    {
+      name: 'KA',
+      purpose: 'Svarer på spørsmål om offentlig økonomi.',
+      searchable,
+      sources: [],
+      filterFields: searchable ? ['orgs_short'] : [],
+      complete: true,
+      languages: [],
+      filtered: false,
+      today: new Date('2026-10-06T10:00:00Z'),
+    },
+    forAnswer,
+  );
 
 export const baseConfig: AgentLoopRuntimeConfig = {
   strategy: { budget: { searches: 4, reads: 6, readChars: 12000 } },
@@ -279,19 +297,22 @@ export const run = async (opts: {
   overrides?: Record<string, unknown>;
   parts?: Part[];
   now?: () => Date;
+  loopOptions?: AgentLoopOptions;
 }) => {
   const r = opts.retrieval ?? retrieval().impl;
   const requests: unknown[] = [];
   const { provider, seen } = models(opts.scripts, opts.stream);
   const kernel = createKernel({
     strategies: [
-      createAgentLoop({
-        retrieval: (_ctx, _config, request) => {
-          requests.push(request);
-          return opts.withoutDataset ? undefined : r;
+      createAgentLoop(
+        opts.loopOptions ?? {
+          retrieval: (_ctx, _config, request) => {
+            requests.push(request);
+            return opts.withoutDataset ? undefined : r;
+          },
+          now: opts.now ?? (() => new Date('2026-10-06T10:00:00Z')),
         },
-        now: opts.now ?? (() => new Date('2026-10-06T10:00:00Z')),
-      }),
+      ),
     ],
     capabilities: [capability(opts.config ?? baseConfig, opts.tools)],
     ports: { model: provider, tools: opts.registry ?? new ToolRegistry() },
