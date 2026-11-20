@@ -35,7 +35,7 @@ describe('pgvector endpoint options', () => {
     expect(parse().ok).toBe(true);
     const reader = fakePool();
     const { adapter } = pgvectorEngine({ knowledge: { reader: reader.pool } });
-    const options = adapter.endpointOptions.parse(undefined);
+    const options = adapter.endpointOptions.parse({});
     expect(options).toEqual({ connection: 'knowledge' });
     await adapter.probe?.({ options, timeoutMs: 5000 } as never, new AbortController().signal);
     expect(reader.query).toHaveBeenCalledWith('select 1');

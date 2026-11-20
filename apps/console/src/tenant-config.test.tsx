@@ -278,11 +278,11 @@ describe("an agency's dataset in the console", () => {
       scope: org,
       origin: 'api',
       version: 1,
-      spec: { name: 'Notater', endpoint: 'platform-pg', residency: 'norway' },
+      spec: { name: 'Notater', endpoint: 'kudos-typesense', residency: 'norway' },
     };
     const engine = {
       dataset: `${org}/notater`,
-      endpoint: 'platform-pg',
+      endpoint: 'kudos-typesense',
       embedding: null,
       canSwitch: true,
       retentionDays: 14,

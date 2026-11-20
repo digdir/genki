@@ -94,7 +94,6 @@ type Dataset = DatasetConfig<PgvectorDatasetOptions>;
 
 export const pgvectorEngineName = 'pgvector';
 
-const defaultConfig = 'norwegian';
 const defaultRrfK = 60;
 
 export const defaultPgvectorProfiles = (vectors: boolean): Record<string, PgvectorProfile> => {

@@ -919,7 +919,7 @@ const theirs: DatasetDetailView = {
   scope: '111222333',
   editable: true,
   residency: 'global',
-  index: { endpoint: 'platform-pg' },
+  index: { endpoint: 'kunnskapsserveren' },
   facets: [],
   searchScope: 'all',
   source: 'website',

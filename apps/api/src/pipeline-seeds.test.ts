@@ -151,7 +151,9 @@ describe('the GenKI docs', () => {
     expect(docs).toMatchObject({ name: 'GenKI-dokumentasjon', endpoint: 'kunnskapsserveren' });
     expect(docs?.generation).toMatch(/^g-\d{8}-[0-9a-f]{6}$/);
     expect(endpoint?.engine).toBe('pgvector');
-    expect(pgvectorEndpointOptions.parse(endpoint?.options)).toEqual({ connection: 'knowledge' });
+    expect(pgvectorEndpointOptions.parse(endpoint?.options ?? {})).toEqual({
+      connection: 'knowledge',
+    });
     expect(Object.keys(catalog.endpoints)).not.toContain('platform-pg');
     expect(models.find((m) => m.id === docs?.embedding?.model)?.embed?.dimensions).toBe(
       docs?.embedding?.dimensions,

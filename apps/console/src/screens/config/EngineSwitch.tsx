@@ -44,8 +44,10 @@ const ended = new Set<EngineSwitchState>(['active', 'rolled_back', 'cancelled'])
 
 /** A pgvector endpoint on the knowledge server: the only target this section offers (#151). */
 const onKnowledgeServer = (e: ConfigEntry) => {
-  const spec = e.spec as { engine?: string; options?: { connection?: string } };
-  return spec.engine === 'pgvector' && spec.options?.connection === 'knowledge';
+  // A pgvector endpoint runs only on the knowledge server: `connection` is 'knowledge' or left
+  // out, and the default is the knowledge server, so the engine alone decides.
+  const spec = e.spec as { engine?: string };
+  return spec.engine === 'pgvector';
 };
 
 const sidOf = (id: string) => id.slice(id.lastIndexOf(':') + 1);

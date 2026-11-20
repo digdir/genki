@@ -90,6 +90,29 @@ describe('live datasets list', () => {
 });
 
 describe('live new dataset', () => {
+  it('a new dataset in the portal defaults to kunnskapsserveren', async () => {
+    const { calls, fetch } = recorded();
+    await renderLive('#/datasets/new', fetch);
+    expect(await screen.findByRole('heading', { level: 1, name: 'Nytt datasett' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('radio', { name: /Nettsted/ }));
+    fireEvent.change(screen.getByLabelText('Navn'), { target: { value: 'Nettsidene våre' } });
+    fireEvent.change(screen.getByLabelText('Adresse til nettstedskartet', { exact: false }), {
+      target: { value: 'https://testetaten.example.no/sitemap.xml' },
+    });
+    fireEvent.change(screen.getByLabelText('Begrunnelse'), {
+      target: { value: 'Nettsidene skal kunne søkes i' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Lag datasettet og les inn' }));
+
+    await waitFor(() =>
+      expect(calls.some((c) => c.method === 'PUT' && c.url.includes('/catalog/dataset/'))).toBe(
+        true,
+      ),
+    );
+    const create = calls.find((c) => c.method === 'PUT' && c.url.includes('/catalog/dataset/'));
+    expect((create?.body as { endpoint?: string }).endpoint).toBe('kunnskapsserveren');
+  });
+
   it('creates a website dataset, its pipeline and runs it, then shows the result', async () => {
     const { calls, fetch } = recorded();
     await renderLive('#/datasets/new', fetch);
@@ -115,7 +138,7 @@ describe('live new dataset', () => {
       'bare brukes av tjenester som tillater global behandling',
     );
     expect(storage.textContent).not.toContain('EU/EØS eller strengere');
-    expect(storage.textContent).not.toMatch(/[{}]|platform-pg/);
+    expect(storage.textContent).not.toMatch(/[{}]|kunnskapsserveren/);
     expectAccessible();
 
     fireEvent.click(screen.getByRole('button', { name: 'Lag datasettet og les inn' }));
@@ -139,7 +162,7 @@ describe('live new dataset', () => {
     expect(writes.every((c) => c.reason === 'Nettsidene skal kunne søkes i')).toBe(true);
     expect(writes[0]?.body).toEqual({
       name: 'Nettsidene våre',
-      endpoint: 'platform-pg',
+      endpoint: 'kunnskapsserveren',
       residency: 'global',
       searchScope: 'tenant',
       embedding: { model: 'foundry/text-embedding-3-small', dimensions: 1536 },
