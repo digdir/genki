@@ -26,9 +26,12 @@ import {
   answerInstructionsLead,
   defaultSystemPrompt,
   type ActiveFilter,
-  exhaustionDefault,
+  answerTurnGaps,
+  exhaustionDefaults,
   exhaustionNudge,
-  noToolCallHonestMiss,
+  honestMisses,
+  questionLanguage,
+  remainingBudgetNote,
   noToolCallNudge,
   readBeforeAnswerNudge,
   searchScaffold,
@@ -67,6 +70,7 @@ import {
   responseValidationHint,
   shadowGateDecision,
   shouldRunResponseValidation,
+  standsWhenUnsure,
   type ClarificationRequest,
   type SufficiencyDecision,
 } from './sufficiency.js';
@@ -141,6 +145,7 @@ export const agentLoopConfig = z.strictObject({
       searches: z.number().int().positive().optional(),
       reads: z.number().int().positive().optional(),
       readChars: z.number().int().positive().optional(),
+      seconds: z.number().int().min(10).max(600).optional(),
     })
     .optional(),
   maxIterations: z.number().int().min(1).max(30).optional(),
@@ -453,8 +458,19 @@ const gateRelevant = (results: ToolCallResult[]) =>
       r.name === 'read_chunks' || r.name === 'rerank_results' || r.name === 'generate_response',
   );
 
-const replaceGenerateResult = (results: ToolCallResult[], text: string) =>
-  results.map((r) => (r.name === 'generate_response' ? { ...r, content: text } : r));
+const withGateHint = (results: ToolCallResult[], hint: string) =>
+  results.map((r) =>
+    r.name === 'generate_response' ? { ...r, content: `${r.content}\n\n${hint}` } : r,
+  );
+
+const latestGaps = (workspace: Workspace) =>
+  [
+    ...new Set(
+      [...workspace.sufficiencyDecisions, ...workspace.responseValidations]
+        .filter((d) => d.status !== 'sufficient')
+        .flatMap((d) => d.missingInfo),
+    ),
+  ].slice(-5);
 
 export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRuntimeConfig> => ({
   id: 'agent-loop',
@@ -484,6 +500,18 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
     const synthesisSession = sessionFor(ctx, config.model, 'synthesis', session);
     const judgeSession = sessionFor(ctx, config.model, 'judge', session);
     const maxIterations = settings.maxIterations ?? 10;
+    const toolRounds = Math.max(1, maxIterations - 1);
+    const clock = options.now ?? (() => new Date());
+    const startedAt = clock().getTime();
+    const seconds = settings.budget?.seconds;
+    const secondsLeft = () =>
+      seconds === undefined
+        ? undefined
+        : Math.max(0, seconds - Math.floor((clock().getTime() - startedAt) / 1000));
+    const language = questionLanguage(
+      query,
+      Array.isArray(config.languages) ? config.languages[0] : undefined,
+    );
     const temperature = settings.temperature ?? 0.1;
     const skills = config.skills ?? [];
     const sourceFactsOn = Boolean(
@@ -583,10 +611,37 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
     let iteration = 0;
     let lastIteration = 0;
     let readNudges = 0;
+    let draftRepairs = 0;
     const reactStarted = Date.now();
+    const budgetNote = () => {
+      const b = workspace.budget();
+      return remainingBudgetNote([
+        ['rounds', Math.max(0, toolRounds - iteration - 1), toolRounds],
+        ...(searchable
+          ? ([
+              ['searches', b.searchesRemaining, b.maxSearches],
+              ['reads', b.readsRemaining, b.maxReads],
+              ['characters', b.readCharsRemaining, b.maxReadChars],
+            ] as const)
+          : []),
+        ...(seconds === undefined ? [] : ([['seconds', secondsLeft() ?? 0, seconds]] as const)),
+      ]);
+    };
+    const judgesOff = () => {
+      const b = workspace.budget();
+      return (
+        iteration >= toolRounds - 1 ||
+        secondsLeft() === 0 ||
+        (b.searchExhausted && (b.readsExhausted || b.readCharsExhausted))
+      );
+    };
 
-    for (; iteration < maxIterations && !finalized; iteration += 1) {
+    for (; iteration < toolRounds && !finalized; iteration += 1) {
       if (ctx.signal.aborted) throw new Error('cancelled');
+      if (secondsLeft() === 0) {
+        yield { type: 'kernel.notice', data: { stage: 'time-budget', seconds, iteration } };
+        break;
+      }
       const tools =
         phase === 'finalize' ? agentTools.filter((t) => t.name === 'generate_response') : toolSpecs;
       lastIteration = iteration;
@@ -630,7 +685,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
         if (
           !cutOff &&
           readNudges < 2 &&
-          iteration < maxIterations - 1 &&
+          iteration < toolRounds - 1 &&
           answersFromSnippets(workspace, turn.content)
         ) {
           readNudges += 1;
@@ -639,7 +694,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
         }
         answer =
           guard && (history.length === 0 || searchScaffold.test(turn.content))
-            ? (settings.noAnswerText ?? noToolCallHonestMiss)
+            ? (settings.noAnswerText ?? honestMisses[language])
             : turn.content;
         if (!blank(answer)) yield { type: 'kernel.part.delta', data: { text: answer } };
         fallbackMessages = initialMessages;
@@ -655,6 +710,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
       let results: ToolCallResult[] = [];
       const toolCalls: Record<string, unknown>[] = [];
       let generated = false;
+      let drafted: string | undefined;
       let streamed = false;
       for (const call of turn.toolCalls) {
         const args = parseArguments(call.arguments);
@@ -701,7 +757,10 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
             };
           if (outcome.read)
             yield { type: 'kernel.notice', data: { kind: 'read', ...outcome.read } };
-          if (call.name === 'generate_response') generated = true;
+          if (call.name === 'generate_response') {
+            generated = true;
+            drafted = outcome.generated;
+          }
         } else if (sourceFactsOn && call.name === sourceFactsTool.name) {
           const facts = await runSourceFacts(retrieval, args.value, ctx.signal);
           content = facts.content;
@@ -742,7 +801,8 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
         data: { event: 'agent/turn-completed', iteration, 'tool-calls': toolCalls },
       };
 
-      if (!ablated.has('read-signal-eval')) {
+      const spent = judgesOff();
+      if (!ablated.has('read-signal-eval') && !spent) {
         const pending = workspace.drainPendingEval();
         if (pending.length) {
           const signal = await evaluateRead({
@@ -766,14 +826,24 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
       }
 
       const relevant = gateRelevant(results);
-      const shadowRaw = relevant ? shadowGateDecision(workspace) : undefined;
-      const shadow =
+      const draft = blank(drafted) ? undefined : drafted;
+      const citedDraft = draft !== undefined && Boolean(workspace.citationValidation?.grounded);
+      const draftJudged =
+        generated &&
+        !spent &&
+        (citedDraft ? draftRepairs === 0 : draft === undefined || ablated.has('grounding-gate'));
+      const shadowRaw = relevant && !spent ? shadowGateDecision(workspace) : undefined;
+      const shadowCounted =
         shadowRaw &&
         (generated ||
           shadowRaw.status === 'sufficient' ||
           shadowRaw.suggestedStrategy === 're-search' ||
           shadowRaw.suggestedStrategy === 'ask-clarification')
-          ? shadowRaw
+          ? enforceSufficiencyLimit(workspace, shadowRaw)
+          : undefined;
+      const shadow =
+        shadowCounted && !(citedDraft && shadowCounted.status !== 'sufficient')
+          ? shadowCounted
           : undefined;
       const lastStatus = workspace.lastReadSignal?.status;
       if (
@@ -789,20 +859,25 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
         }
       }
 
-      const summary = relevant && !shadow ? buildEvidenceSummary(workspace, query) : undefined;
+      const summary =
+        relevant && !shadow && !spent ? buildEvidenceSummary(workspace, query) : undefined;
       const hasUnread = Boolean(
         summary && (summary['unread-chunk-ids'].length || summary['unread-range']),
       );
       const keepable =
-        Boolean(summary) && !ablated.has('sufficiency-gate') && (generated || !hasUnread);
+        Boolean(summary) &&
+        !ablated.has('sufficiency-gate') &&
+        (generated ? draftJudged : !hasUnread);
       let sufficiency: SufficiencyDecision | undefined = shadow;
       if (!sufficiency && keepable && summary) {
+        const judged = await evaluateSufficiency(query, summary, evaluator, ctx.signal, draft);
         const decision = enforceSufficiencyLimit(workspace, {
-          ...(await evaluateSufficiency(query, summary, evaluator, ctx.signal)),
+          ...(generated ? standsWhenUnsure(judged) : judged),
           source: 'llm-sufficiency-gate',
         });
         if (generated || (decision.status === 'sufficient' && !hasUnread)) sufficiency = decision;
       }
+      const draftRead = generated && sufficiency !== undefined && sufficiency !== shadow;
       const grounding =
         generated && !ablated.has('grounding-gate') ? groundingDecision(workspace) : undefined;
       const effective = grounding ?? sufficiency;
@@ -810,7 +885,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
         ? gateSystemHint(query, effective, summary ?? buildEvidenceSummary(workspace, query))
         : undefined;
       if (effective && effective.status !== 'sufficient' && generated && hint !== undefined)
-        results = replaceGenerateResult(results, hint);
+        results = withGateHint(results, hint);
       if (effective)
         workspace.sufficiencyDecisions.push({
           ...effective,
@@ -821,18 +896,18 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
       let validationHint: string | undefined;
       if (
         !ablated.has('response-validation') &&
-        generated &&
+        draftJudged &&
+        !draftRead &&
         (!effective || effective.status === 'sufficient') &&
         shouldRunResponseValidation(workspace)
       ) {
         const s2 = buildEvidenceSummary(workspace, query);
         validation = enforceSufficiencyLimit(workspace, {
-          ...(await evaluateSufficiency(query, s2, evaluator, ctx.signal)),
+          ...standsWhenUnsure(await evaluateSufficiency(query, s2, evaluator, ctx.signal, draft)),
           source: 'response-validation',
         });
         validationHint = responseValidationHint(query, validation, s2);
-        if (validation.status !== 'sufficient')
-          results = replaceGenerateResult(results, validationHint);
+        if (validation.status !== 'sufficient') results = withGateHint(results, validationHint);
         workspace.responseValidations.push({ ...validation, message: validationHint });
       }
 
@@ -849,13 +924,14 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
           },
         };
 
+      const remaining = budgetNote();
       messages = [
         ...messages,
         assistant,
         ...results.map((r): ChatMessage => ({
           role: 'tool',
           toolCallId: r.callId,
-          content: r.content,
+          content: `${r.content}\n\n${remaining}`,
         })),
       ];
       fallbackMessages = messages;
@@ -869,6 +945,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
         workspace.lastGenerateInsufficient =
           needsRetry || Boolean(active && active.status !== 'sufficient');
       const rejected = generated && Boolean(active && active.status !== 'sufficient');
+      if (rejected && citedDraft) draftRepairs += 1;
       if (rejected && streamed)
         yield { type: 'kernel.notice', data: { stage: 'answer-discarded', iteration } };
 
@@ -919,13 +996,15 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
       const stored = workspace.lastGeneratedResponse?.trim()
         ? workspace.lastGeneratedResponse
         : undefined;
-      const usable = stored && !workspace.lastGenerateInsufficient ? stored : undefined;
+      const cited = Boolean(stored && workspace.citationValidation?.grounded);
+      const usable = stored && (cited || !workspace.lastGenerateInsufficient) ? stored : undefined;
       if (usable) answer = usable;
       else {
         yield {
           type: 'kernel.notice',
           data: { stage: finalized ? 'recovered-empty' : 'exhausted', iterations: iteration },
         };
+        const gaps = answerTurnGaps(latestGaps(workspace));
         try {
           const fallback = yield* withDeltas((push) =>
             session.text(
@@ -933,14 +1012,15 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
                 purpose: 'answer',
                 messages: [
                   ...withLoadedSkills(fallbackMessages, workspace.loadedSkills),
-                  { role: 'user', content: exhaustionNudge },
+                  ...(gaps ? [{ role: 'system' as const, content: gaps }] : []),
+                  { role: 'system', content: exhaustionNudge },
                 ],
                 temperature,
               },
               push,
             ),
           );
-          answer = blank(fallback) ? exhaustionDefault : fallback;
+          answer = blank(fallback) ? exhaustionDefaults[language] : fallback;
         } catch (error) {
           if (!stored || ctx.signal.aborted) throw error;
           answer = stored;
@@ -1022,7 +1102,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
       foundNothing &&
       settings.noAnswerText &&
       answer !== settings.noAnswerText &&
-      answer !== exhaustionDefault &&
+      answer !== exhaustionDefaults[language] &&
       onlySaysNothingFound(answer ?? '') &&
       workspace.searches.length > 0
     ) {

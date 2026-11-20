@@ -28,22 +28,13 @@ const inferTargetMetric = (query: string): string | null => {
   return null;
 };
 
-const questionWords = new Set([
-  'Hva',
-  'Hvem',
-  'Hvor',
-  'Hvordan',
-  'Hvorfor',
-  'Når',
-  'What',
-  'Who',
-  'Where',
-  'How',
-  'Why',
-  'When',
-  'Compare',
-  'Sammenlign',
-]);
+export const questionWords = new Set(
+  (
+    'Hva Hvem Hvor Hvordan Hvorfor Hvilke Hvilken Hvilket Når Har Hadde Er Var Finnes Fins Kan Kunne Skal Bør Må Gi Vis Finn List ' +
+    'Kva Kven Kvar Kor Korleis Kvifor Finst Gje ' +
+    'What Who Where How Why When Which Has Have Had Is Are Was Were Does Do Did Can Could Should Give Show Find List Compare Sammenlign Samanlikn'
+  ).split(' '),
+);
 
 const capitalised = /[A-ZÆØÅ][A-Za-zÆØÅæøå0-9.-]+/g;
 

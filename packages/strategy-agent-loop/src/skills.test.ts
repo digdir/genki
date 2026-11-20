@@ -243,7 +243,7 @@ describe('agent-loop skills', () => {
 
     const recovery = out.seen.find((s) => s.kind === 'final')?.request;
     expect(toolMessages(recovery)).toEqual([]);
-    expect(recovery?.messages.map((m) => m.role)).toEqual(['system', 'user', 'user']);
+    expect(recovery?.messages.map((m) => m.role)).toEqual(['system', 'user', 'system']);
   });
 
   it('preserves exact synthesis prompts without a successful skill load and does not leak between runs', async () => {

@@ -29,10 +29,10 @@ import {
   answerInstructionsLead,
   createAgentLoop,
   cutOffToolCallNudge,
-  exhaustionDefault,
+  exhaustionDefaults,
   evaluatorSystemPrompt,
   exhaustionNudge,
-  noToolCallHonestMiss,
+  honestMisses,
   noToolCallNudge,
   toolsOnlySystemPrompt,
   readEvaluatorSystemPrompt,
@@ -131,7 +131,7 @@ describe('agent-loop strategy', () => {
     expect(retrieved[0]).toMatchObject({ queries: expect.arrayContaining([expect.any(String)]) });
   });
 
-  it('runs the LLM sufficiency gate on a generated answer, sends its hint back, and validates the next answer', async () => {
+  it('a rejected draft stays visible to the model', async () => {
     const out = await run({
       scripts: {
         primary: {
@@ -142,34 +142,34 @@ describe('agent-loop strategy', () => {
             () => result('', [call('generate_response', { query: 'x' })]),
           ],
           read: [() => readSignal('gap-remaining', { scope_assessment: 'ambiguous' })],
-          sufficiency: [
-            () => decision('insufficient', 're-search'),
-            () => decision('sufficient', 'finalize'),
-            () => decision('sufficient', 'finalize'),
-          ],
+          sufficiency: [() => decision('insufficient', 're-search')],
           synth: [() => 'Første utkast [1].', () => 'Bedre svar [1].'],
         },
       },
     });
 
     const gates = out.seen.filter((s) => s.kind === 'sufficiency');
-    expect(gates).toHaveLength(3);
+    expect(gates).toHaveLength(1);
     expect(gates[0]?.request.messages[0]?.content).toBe(evaluatorSystemPrompt);
     expect(gates[0]?.request.temperature).toBe(0);
     expect(gates[0]?.request.messages[1]?.content).toMatch(
       /^User query:\nHva sier tildelingsbrevet til Digdir for 2025\?\n\nEvidence summary JSON:\n\{/,
     );
+    expect(gates[0]?.request.messages[1]?.content).toContain('Første utkast [1].');
     const fourth = out.loops[3];
     const hint =
       '[SYSTEM: Sufficiency gate rejected the current evidence. insufficient by test Missing info: the requested figure. Avoid repeating the latest queries verbatim: ("x"). Start a more targeted search and then read the new hits before finalizing.]';
-    expect(toolMessages(fourth).at(-1)).toBe(hint);
+    expect(toolMessages(fourth).at(-1)).toBe(`Første utkast [1].\n\n${hint}`);
     expect(systemMessages(fourth).at(-1)).toBe(hint);
     expect(out.text).toBe('Bedre svar [1].');
   });
 
   it('forces finalize at the retry limit of five rejections', async () => {
     const out = await run({
-      config: { ...baseConfig, strategy: { ...baseConfig.strategy, maxIterations: 10 } },
+      config: {
+        ...baseConfig,
+        strategy: { ...baseConfig.strategy, maxIterations: 10, ablate: ['grounding-gate'] },
+      },
       scripts: {
         primary: {
           loop: [
@@ -179,7 +179,7 @@ describe('agent-loop strategy', () => {
           ],
           read: [() => readSignal('gap-remaining', { scope_assessment: 'ambiguous' })],
           sufficiency: [() => decision('insufficient', 'read-more')],
-          synth: [() => 'Svar med forbehold [1].'],
+          synth: [() => 'Svar med forbehold.'],
         },
       },
     });
@@ -192,7 +192,7 @@ describe('agent-loop strategy', () => {
       'read-more',
       'finalize',
     ]);
-    expect(out.text).toBe('Svar med forbehold [1].');
+    expect(out.text).toBe('Svar med forbehold.');
   });
 
   it('rejects an uncited answer through the grounding floor even when the evaluator accepts it', async () => {
@@ -212,7 +212,7 @@ describe('agent-loop strategy', () => {
     });
 
     expect(toolMessages(out.loops[3]).at(-1)).toMatch(
-      /^\[SYSTEM: Grounding gate rejected the answer\. The generated answer cites no retrieved source \(0 reference\(s\), 0 valid\)/,
+      /^Paris\.\n\n\[SYSTEM: Grounding gate rejected the answer\. The generated answer cites no retrieved source \(0 reference\(s\), 0 valid\)/,
     );
     expect(out.notices).toContainEqual(
       expect.objectContaining({ stage: 'gate', source: 'grounding-gate' }),
@@ -388,7 +388,7 @@ describe('agent-loop strategy', () => {
 
     expect(systemMessages(out.loops.at(-1)).filter((m) => m === noToolCallNudge)).toHaveLength(2);
     expect(out.seen.filter((s) => s.kind === 'small-talk')).toHaveLength(1);
-    expect(out.text).toBe(noToolCallHonestMiss);
+    expect(out.text).toBe(honestMisses.nb);
     expect(out.meta).toMatchObject({ noAnswer: true });
     expect(own.text).toBe('Kildene i Kudos dekker ikke dette.');
     expect(own.meta).toMatchObject({ noAnswer: true });
@@ -477,7 +477,7 @@ describe('agent-loop strategy', () => {
     });
 
     expect(out.notices).toContainEqual(expect.objectContaining({ stage: 'exhausted' }));
-    expect(out.text).toBe(exhaustionDefault);
+    expect(out.text).toBe(exhaustionDefaults.nb);
   });
 
   it('answers small talk without a search, also when a search is required', async () => {
@@ -513,7 +513,7 @@ describe('agent-loop strategy', () => {
       2,
     );
     expect(out.seen.filter((s) => s.kind === 'small-talk')).toHaveLength(0);
-    expect(out.text).toBe(noToolCallHonestMiss);
+    expect(out.text).toBe(honestMisses.nb);
   });
 
   it('only counts a search as looking in the sources, not another tool', async () => {
@@ -532,7 +532,7 @@ describe('agent-loop strategy', () => {
     });
 
     expect(systemMessages(out.loops.at(-1)).filter((m) => m === noToolCallNudge)).toHaveLength(2);
-    expect(out.text).toBe(noToolCallHonestMiss);
+    expect(out.text).toBe(honestMisses.nb);
   });
 
   it('keeps the guard after a call to a tool that does not exist', async () => {
@@ -549,7 +549,7 @@ describe('agent-loop strategy', () => {
     });
 
     expect(toolMessages(out.loops[1])[0]).toMatch(/^Unknown tool: search_documents\./);
-    expect(out.text).toBe(noToolCallHonestMiss);
+    expect(out.text).toBe(honestMisses.nb);
   });
 
   it('says that the sources do not cover a question in the words the service chose', async () => {
@@ -620,7 +620,7 @@ describe('agent-loop strategy', () => {
     });
 
     expect(followUp.text).toBe('Samordning styrkes.');
-    expect(pretend.text).toBe(noToolCallHonestMiss);
+    expect(pretend.text).toBe(honestMisses.nb);
   });
 
   it('gives the call that writes the answer the service instructions too, when the service asks', async () => {
@@ -1067,7 +1067,7 @@ describe('agent-loop sources, as headless-rag publishes them', () => {
 
   it('keeps the read chunks as sources when the loop runs out and the fallback answers', async () => {
     const out = await run({
-      config: { ...baseConfig, strategy: { ...baseConfig.strategy, maxIterations: 2 } },
+      config: { ...baseConfig, strategy: { ...baseConfig.strategy, maxIterations: 3 } },
       scripts: {
         primary: {
           loop: [
