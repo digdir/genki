@@ -775,6 +775,17 @@ describe('stored conversions', () => {
         error: new TypeError("Cannot read properties of undefined (reading 'pages')"),
         code: 'TypeError',
       },
+      // pg names its errors `error` and gives the SQLSTATE, which can start with a digit.
+      {
+        error: Object.assign(new Error('canceling statement due to statement timeout'), {
+          name: 'error',
+          code: '57014',
+        }),
+        code: '57014',
+      },
+      { error: Object.assign(new Error('Docling answered 503'), { code: 503 }), code: '503' },
+      // A download that times out: a DOMException's numeric code (23) says less than its name.
+      { error: new DOMException('The operation timed out.', 'TimeoutError'), code: 'TimeoutError' },
     ];
     for (const { error, code } of causes) {
       await clearConvertJobs();
@@ -980,8 +991,38 @@ describe('stored conversions', () => {
 
     await expect(
       handler(s.work.knowledge, 'knowledge.convert')(job('knowledge.convert', sent[0]?.data ?? {})),
-    ).rejects.toThrow(/failed: TypeError$/);
+    ).rejects.toThrow(/failed: TypeError ← ECONNRESET$/);
     expect(await stored(await sha(pdf))).toEqual([]);
+  }, 60_000);
+
+  it("names each cause's code in a failed convert job's error, never its message", async () => {
+    await clearConvertJobs();
+    // undici's shape: `fetch failed` with the connect timeout as its cause, and messages that can
+    // name a host, a path or a file.
+    const s = await scenario({
+      fetchError: () =>
+        new TypeError('fetch failed for /dokument/hemmelig-rapport.pdf', {
+          cause: Object.assign(new Error('Connect Timeout Error (hemmelig-rapport.pdf)'), {
+            code: 'UND_ERR_CONNECT_TIMEOUT',
+            cause: { code: 'see /tmp/hemmelig-rapport.pdf' },
+          }),
+        }),
+    });
+    await s.file('aarsak.pdf', reportOf('aarsak'));
+    const { sent } = await ingest(s);
+
+    const failure = await handler(
+      s.work.knowledge,
+      'knowledge.convert',
+    )(job('knowledge.convert', sent[0]?.data ?? {})).then(
+      () => undefined,
+      (error: unknown) => error as Error & { code?: string },
+    );
+    expect(failure?.message).toMatch(/failed: TypeError ← UND_ERR_CONNECT_TIMEOUT$/);
+    expect(failure?.code).toBe('TypeError ← UND_ERR_CONNECT_TIMEOUT');
+    expect(JSON.stringify({ message: failure?.message, code: failure?.code })).not.toMatch(
+      /hemmelig|Connect Timeout|fetch failed/,
+    );
   }, 60_000);
 
   it('a file stored as unreachable is fetched again when its record is written again', async () => {
@@ -2027,9 +2068,9 @@ describe('Docling conversions', () => {
   }, 180_000);
 
   it('a dropped connection or a headers timeout is tried again', async () => {
-    for (const [answer, timeout] of [
-      ['drop', undefined],
-      ['hang', 300],
+    for (const [answer, timeout, code] of [
+      ['drop', undefined, 'TypeError ← UND_ERR_SOCKET'],
+      ['hang', 300, 'TypeError ← UND_ERR_HEADERS_TIMEOUT'],
     ] as const) {
       await clearConvertJobs();
       const server = await doclingServer(() => answer);
@@ -2042,7 +2083,7 @@ describe('Docling conversions', () => {
           s.work.knowledge,
           'knowledge.convert',
         )(job('knowledge.convert', sent[0]?.data ?? {})),
-      ).rejects.toThrow();
+      ).rejects.toMatchObject({ code });
       expect(await conversionRows(await sha(pdf))).toEqual([]);
     }
   }, 60_000);
@@ -2526,10 +2567,14 @@ describe('replacement runs', () => {
     await s.file('a.pdf', firstFile);
     await s.file('b.pdf', reportOf('two-files-b'));
     const run = await fill(s);
+    // a.pdf's document keeps both files; picked by its file, since ids hash the folder's path.
     const [one, two] = (
       await admin.query<{ id: string }>(
-        `select id from src_documents where dataset = $1 order by id`,
-        [s.dataset.id],
+        `select d.id from src_documents d
+           join src_files f on f.dataset = d.dataset and f.document = d.id
+          where d.dataset = $1
+          order by f.sha256 = $2 desc`,
+        [s.dataset.id, first],
       )
     ).rows;
     await admin.query(`update src_files set document = $2 where dataset = $1 and document = $3`, [

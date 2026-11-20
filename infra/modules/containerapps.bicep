@@ -321,7 +321,8 @@ resource worker 'Microsoft.App/containerApps@2025-02-02-preview' = {
 // The Docling server (ADR 0042, issue 476): PDF conversions for knowledge.convert. Internal TCP ingress, since
 // HTTP ingress ends a request after 240 s and a conversion takes minutes; the worker holds one request open
 // until Docling answers. One conversion per replica (one Docling worker on 4 vCPU), and replicas start on open
-// connections, from zero. It keeps nothing past a replica: no volume, results dropped once fetched, OCR page images
+// connections, from zero: a connection to the app's name is held until the first replica is up (74 s in test,
+// issue 867). It keeps nothing past a replica: no volume, results dropped once fetched, OCR page images
 // in /tmp deleted after each region, and WARNING logs, which still name the file and page when Tesseract fails on
 // one. The platform identity is there only to pull the image and read the key: code in the container, which
 // parses untrusted PDFs, cannot get a token for it.
@@ -390,7 +391,9 @@ resource docling 'Microsoft.App/containerApps@2025-02-02-preview' = {
   }
 }
 
-var doclingUrl = 'http://${docling.properties.configuration.ingress.fqdn}:5001'
+// By the app's name: the internal FQDN goes to the environment's HTTP ingress, which has nothing on 5001, so no
+// connection ever reached Docling by it, awake or not (issue 867).
+var doclingUrl = 'http://${docling.name}:5001'
 var doclingEnv = [
   { name: 'DOCLING_URL', value: doclingUrl }
   { name: 'DOCLING_API_KEY', secretRef: doclingKeySecret.name }
