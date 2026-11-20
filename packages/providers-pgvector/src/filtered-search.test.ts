@@ -120,7 +120,11 @@ const exact = async (type: string, limit: number) => {
 };
 
 /** Runs `kn_search` as the reader, then reads the HNSW settings in the same transaction and in the next one. */
-const settingsAround = async (filters: unknown[], g = generation, efSearch?: number) => {
+const settingsAround = async (
+  filters: unknown[],
+  g = generation,
+  own?: { ef: number; tuples: number; mem: number },
+) => {
   const client = await (api.pools.reader as pg.Pool).connect();
   const read = async () =>
     (
@@ -135,8 +139,12 @@ const settingsAround = async (filters: unknown[], g = generation, efSearch?: num
       `select set_config('app.datasets', $1, true), set_config('hnsw.iterative_scan', 'relaxed_order', true)`,
       [JSON.stringify([vectors.id])],
     );
-    if (efSearch)
-      await client.query(`select set_config('hnsw.ef_search', $1, true)`, [String(efSearch)]);
+    if (own)
+      await client.query(
+        `select set_config('hnsw.ef_search', $1, true), set_config('hnsw.max_scan_tuples', $2, true),
+                set_config('hnsw.scan_mem_multiplier', $3, true)`,
+        [String(own.ef), String(own.tuples), String(own.mem)],
+      );
     await client.query(
       `select * from kn_search($1, $2, 'chunks', 'vector', 'x', $3::halfvec, null, $4::jsonb, 10, 50, 60)`,
       [vectors.id, g, JSON.stringify(queryVector), JSON.stringify(filters)],
@@ -286,22 +294,37 @@ describe('filtered vector search on the knowledge server', () => {
   });
 
   it("a filtered vector search never lowers the server's own scan limits", async () => {
-    const { during } = await settingsAround(typeIs('vanlig'), generation, 400);
-    expect(during?.ef).toBe('400');
+    const { during } = await settingsAround(typeIs('vanlig'), generation, {
+      ef: 400,
+      tuples: 90_000,
+      mem: 5,
+    });
+    expect(during).toEqual({ ef: '400', tuples: '90000', mem: '5' });
   });
 
-  it('an exact ranking puts a chunk without a direction last', async () => {
+  it('an exact ranking leaves out a chunk without a direction', async () => {
+    // One document of three chunks, fewer than the 50 candidates, so nothing is cut before the final order.
+    const docs = partitionOf('kn_docs', generation);
     const chunks = partitionOf('kn_chunks', generation);
     await owner.query(
+      `insert into ${docs} (dataset, generation, id, fields, config)
+         values ($1, $2, 'enkel', '{"type": ["enkel"]}', 'norwegian')`,
+      [vectors.id, generation],
+    );
+    await owner.query(
       `insert into ${chunks} (dataset, generation, id, doc_id, position, text, config, vec)
-         values ($1, $2, 'd50#zero', 'd50', 99, 'tom', 'norwegian', array_fill(0, array[$3::int])::real[]::halfvec)`,
+         select $1, $2, 'enkel#' || p, 'enkel', p, 'del', 'norwegian',
+           case when p = 0 then array_fill(0, array[$3::int])::real[]
+                else array(select sin(p + i) from generate_series(0, $3::int - 1) i)::real[] end::halfvec
+         from generate_series(0, 2) p`,
       [vectors.id, generation, dims],
     );
     try {
-      const result = await search('sjelden');
-      expect(result.hits.map((h) => h.id)).not.toContain('d50#zero');
+      const result = await search('enkel');
+      expect(result.hits.map((h) => h.id).sort()).toEqual(['enkel#1', 'enkel#2']);
     } finally {
-      await owner.query(`delete from ${chunks} where id = 'd50#zero'`);
+      await owner.query(`delete from ${chunks} where doc_id = 'enkel'`);
+      await owner.query(`delete from ${docs} where id = 'enkel'`);
     }
   });
 

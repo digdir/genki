@@ -269,12 +269,12 @@ const createFunctions = (filtered: FilteredSearch) => [
            end if;
          end if;
          if exact then
-           -- Sorted above the documents-first join, so no HNSW scan; a zero vector's NaN distance sorts last.
+           -- Sorted above the documents-first join, so no HNSW scan; a zero vector's NaN distance is left out.
            ctes := ctes || format(
              'v as (select id, max(s) as s from (
-                select x.id, (1 - (%s))::float8 as s from %s
+                select x.id, (1 - (%s))::float8 as s from %s where (%s) <> ''NaN''::float8
                 order by %s, x.id limit %s) nearest group by id)',
-             dist, filtered_chunks, dist, p_candidates);
+             dist, filtered_chunks, dist, dist, p_candidates);
          else
            ctes := ctes || format(
              'v as (select id, max(s) as s from (
@@ -450,7 +450,7 @@ const createFunctions = (filtered: FilteredSearch) => [
 
 /** How a filtered vector search reads a generation (issue 800). */
 export interface FilteredSearch {
-  /** A filter that keeps at most this many chunks is ranked exactly, without the HNSW index. */
+  /** A filter that keeps at most this many rows (chunks, or phrases) is ranked exactly, without the HNSW index. */
   exactChunks: number;
   /** Above it, the index scan's limits for that search's transaction; never below the server's own. */
   efSearch: number;

@@ -1,6 +1,4 @@
-// Measures filtered vector search against exact search (issue 800), read only, on the worker in Azure:
-// `node scripts/knowledge-filter-probe.ts sizes <generation>` (chunks per type and year) or
-// `recall <generation> <plan.json>` (recall@k, short lists and times per side). One JSON line per result.
+// Issue 800, read only, on the worker: `node scripts/knowledge-filter-probe.ts sizes|recall <generation> [plan.json]`.
 import { readFile } from 'node:fs/promises';
 import { knowledgeSourceFromEnv } from '@genai/providers-postgres';
 import { openKnowledgePools, partitionOf } from '@genai/providers-pgvector';
@@ -55,10 +53,7 @@ interface SampleSpec {
   seed?: number;
 }
 
-/**
- * A side is one way to search: `kn_search` as deployed (its own count, threshold and settings), today's index
- * search with the given limits, or exact search ranked by score, as `kn_search` ranks a small filter.
- */
+/** One way to search: `kn_search` as deployed, the HNSW index with given limits, or exact search. */
 interface Side {
   name: string;
   search: 'kn_search' | 'index' | 'exact';
