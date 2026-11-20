@@ -673,10 +673,6 @@ export const createRuntime = async (input: RuntimeInput) => {
       });
     return result;
   };
-  const modelDiscovery = await discoverWithRetry({
-    refresh: () => models.refresh(),
-    ...(input.onWarning ? { onWarning: input.onWarning } : {}),
-  });
   const tools = new ToolRegistry();
   tools.register(
     stateOrganisationTool({
@@ -1024,6 +1020,10 @@ export const createRuntime = async (input: RuntimeInput) => {
   });
   await catalog.initialize();
   released.catalog = catalog;
+  const modelDiscovery = await discoverWithRetry({
+    refresh: () => models.refresh(),
+    ...(input.onWarning ? { onWarning: input.onWarning } : {}),
+  });
   const pricesMoved = await migratePrices({
     store: configEntries,
     kindsOf,
