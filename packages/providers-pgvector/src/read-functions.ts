@@ -269,12 +269,12 @@ const createFunctions = (filtered: FilteredSearch) => [
            end if;
          end if;
          if exact then
-           -- Sorted above the documents-first join, so no HNSW scan; a zero vector's NaN distance is left out.
+           -- Sorted above the documents-first join, so no HNSW scan; each distance computed once, a zero vector's NaN left out.
            ctes := ctes || format(
              'v as (select id, max(s) as s from (
-                select x.id, (1 - (%s))::float8 as s from %s where (%s) <> ''NaN''::float8
-                order by %s, x.id limit %s) nearest group by id)',
-             dist, filtered_chunks, dist, dist, p_candidates);
+                select n.id, (1 - n.d)::float8 as s from (select x.id, %s as d from %s offset 0) n
+                where n.d <> ''NaN''::float8 order by n.d, n.id limit %s) nearest group by id)',
+             dist, filtered_chunks, p_candidates);
          else
            ctes := ctes || format(
              'v as (select id, max(s) as s from (
