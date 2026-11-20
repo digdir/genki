@@ -1,4 +1,5 @@
 import type { Principal } from '@genai/contracts';
+import { validateDefinition } from '@genai/definitions';
 import { serviceLifecycleKind } from '@genai/jobs';
 import type { Context } from 'hono';
 import { enterTenant } from './access.js';
@@ -13,6 +14,8 @@ import { rightRefused, type Right } from './rights.js';
 export { serviceLifecycleKind };
 
 export type Lifecycle = 'active' | 'paused' | 'archived';
+
+export const serviceOutdatedType = 'urn:genai:problem:service-outdated';
 
 export interface LifecycleView {
   state: Lifecycle;
@@ -57,11 +60,12 @@ const forTenant = (principal: Principal, tenant: string) =>
 
 const problem = (
   c: Context,
-  status: 400 | 401 | 403 | 404,
+  status: 400 | 401 | 403 | 404 | 409,
   title: string,
   errors: { path: string; message: string }[] = [],
+  extra: { type?: string; detail?: string } = {},
 ) =>
-  c.json({ type: 'about:blank', title, status, errors }, status, {
+  c.json({ type: 'about:blank', title, status, ...extra, errors }, status, {
     'content-type': 'application/problem+json',
   });
 
@@ -80,9 +84,19 @@ export const serviceLifecycleModule: PlatformModuleFactory = (deps) => {
         const state = input.state as Lifecycle;
         if (!states.includes(state))
           return failed(target, 'state', 'state must be active, paused or archived');
-        if (!(await deps.definitions.get('Service', tenant, id)))
-          return failed(target, 'id', `no service ${id}`);
+        const latest = await deps.definitions.get('Service', tenant, id);
+        if (!latest) return failed(target, 'id', `no service ${id}`);
         const before = await lifecycleOf(entries, tenant, id);
+        if (state === 'active' && before.state !== 'active') {
+          const validated = validateDefinition(latest.definition, deps.plugins);
+          if (!validated.ok)
+            return {
+              ok: false,
+              errors: validated.errors,
+              target,
+              type: serviceOutdatedType,
+            } as AdminOutcome;
+        }
         if (before.state !== state)
           await appendVersion(entries, {
             kind: serviceLifecycleKind,
@@ -151,6 +165,13 @@ export const serviceLifecycleModule: PlatformModuleFactory = (deps) => {
           const paths = new Set(result.errors.map((e) => e.path));
           if (paths.has('principal')) return problem(c, 403, 'Forbidden', result.errors);
           if (paths.has('id')) return problem(c, 404, 'Not found', result.errors);
+          if (result.type === serviceOutdatedType)
+            return problem(c, 409, t('problems.serviceOutdatedTitle'), result.errors, {
+              type: serviceOutdatedType,
+              detail: t('services.reactivateOutdated', {
+                problems: result.errors.map((e) => e.message).join('; '),
+              }),
+            });
           return problem(c, 400, 'Invalid request', result.errors);
         }
         return c.json(await shown(guard.tenant, id));

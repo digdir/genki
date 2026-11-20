@@ -29,7 +29,7 @@ import {
   type PiiCategory,
 } from '@genai/guardrails';
 import { withHooks } from '@genai/hooks';
-import { batchCapabilityFor, batchStrategy } from '@genai/jobs';
+import { batchCapabilityFor, batchStrategy, serviceLifecycleKind } from '@genai/jobs';
 import {
   CapabilityRegistry,
   checkCapability,
@@ -386,6 +386,22 @@ export const referencesOf = (configs: unknown[]): CatalogReferences => {
     }
   }
   return found;
+};
+
+export const liveServiceReferences = async (
+  capabilities: CompiledCapability[],
+  entries: Pick<ConfigEntryStore, 'latest'>,
+): Promise<CatalogReferences> => {
+  const archived = new Set(
+    (await entries.latest({ kind: serviceLifecycleKind }))
+      .filter((e) => !e.deleted && (e.spec as { state?: string } | null)?.state === 'archived')
+      .map((e) => `${e.scope}/${e.id}`),
+  );
+  return referencesOf(
+    capabilities
+      .filter((c) => !archived.has(`${c.service.tenant}/${c.service.id}`))
+      .map((c) => c.capability.config),
+  );
 };
 
 export const createRuntime = async (input: RuntimeInput) => {
@@ -1024,8 +1040,7 @@ export const createRuntime = async (input: RuntimeInput) => {
     },
     apply,
     ...(input.catalogPolicy ? { policy: input.catalogPolicy } : {}),
-    references: async () =>
-      referencesOf((await store.capabilities()).map((c) => c.capability.config)),
+    references: async () => liveServiceReferences(await store.capabilities(), configEntries),
     localEngines: () =>
       new Set(knowledgeAdapters.filter((a) => a.requiresBaseURL === false).map((a) => a.engine)),
     ...(input.derivedCatalog ? { derive: input.derivedCatalog } : {}),

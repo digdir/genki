@@ -39,7 +39,7 @@ A playground setup with `service` runs that version's definition. `model`, `inst
 6. `GET /tenants/{tenant}/definitions/services/{id}/versions/{version}`: read one version.
 7. `GET /tenants/{tenant}/audit`: the change log, with who published and why.
 
-Pause or archive with `PUT /tenants/{tenant}/services/{id}/lifecycle`. `GET` on the same path gives the state with `reason`, `by`, `at` and, when genki knows it, the person's name as `byName`. Validate without saving with `POST /definitions/validate`.
+Pause or archive with `PUT /tenants/{tenant}/services/{id}/lifecycle`. Activating it again checks its latest version against the catalog, and answers `409` `urn:genai:problem:service-outdated` when something it names was deleted meanwhile; pause it, publish a fixed version, then activate it. `GET` on the same path gives the state with `reason`, `by`, `at` and, when genki knows it, the person's name as `byName`. Validate without saving with `POST /definitions/validate`.
 
 ## Recipes: step flows with plain settings
 
