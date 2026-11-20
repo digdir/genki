@@ -463,9 +463,13 @@ export interface FilteredSearch {
   scanMemMultiplier: number;
 }
 
-// Provisional: issue 800's read-only check in test sets these, with its numbers here and in ADR 0042.
+// Measured on Kudos in test (3.6 M chunks, the server's 4 MB work_mem, issue 800; ADR 0042):
+// - exact, repeat p95: 34k chunks 178 ms, 80k 431 ms, Årsrapport's 241k 1.25 s (recall@10 1.0; 0.82 by the
+//   index today), so every type up to Årsrapport is ranked exactly;
+// - above it, only depth, tuples and memory raised together lifted Årsrapport's recall (0.815 → 0.938); on
+//   the types above the cutoff NOU went 0.895 → 0.965 and Evaluering kept 0.97, its repeat p95 5.1 s → 1.5 s.
 export const filteredSearch: FilteredSearch = {
-  exactChunks: 20_000,
+  exactChunks: 250_000,
   efSearch: 200,
   maxScanTuples: 100_000,
   scanMemMultiplier: 4,
