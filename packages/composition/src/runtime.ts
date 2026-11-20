@@ -1011,6 +1011,7 @@ export const createRuntime = async (input: RuntimeInput) => {
     localEngines: () =>
       new Set(knowledgeAdapters.filter((a) => a.requiresBaseURL === false).map((a) => a.engine)),
     ...(input.derivedCatalog ? { derive: input.derivedCatalog } : {}),
+    ...(input.logger ? { logger: input.logger } : {}),
     priceKinds: kindsOf,
     priceUnits: (id, kind) => {
       const api = models.describe().find((m) => m.id === id)?.apis[kind];
