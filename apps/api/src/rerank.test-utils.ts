@@ -2,10 +2,7 @@ import { authHeaders } from '@genai/kernel';
 import type { Ranked, RerankAdapter } from '@genai/port-rerank';
 import { z } from 'zod';
 
-/**
- * A rerank engine for tests, since genki has none built in (ADR 0048). It posts
- * `{ query, documents }` and reads `[{ index, score, rank }]`.
- */
+/** A rerank engine for tests; genki has none built in (ADR 0048). */
 export const testRerankAdapter: RerankAdapter = {
   engine: 'test-rerank',
   api: { id: 'test/rerank@1', family: 'test-rerank' },
