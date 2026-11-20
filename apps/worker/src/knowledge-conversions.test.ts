@@ -775,6 +775,15 @@ describe('stored conversions', () => {
         error: new TypeError("Cannot read properties of undefined (reading 'pages')"),
         code: 'TypeError',
       },
+      // pg names its errors `error` and gives the SQLSTATE, which can start with a digit.
+      {
+        error: Object.assign(new Error('canceling statement due to statement timeout'), {
+          name: 'error',
+          code: '57014',
+        }),
+        code: '57014',
+      },
+      { error: Object.assign(new Error('Docling answered 503'), { code: 503 }), code: '503' },
     ];
     for (const { error, code } of causes) {
       await clearConvertJobs();
@@ -2057,9 +2066,9 @@ describe('Docling conversions', () => {
   }, 180_000);
 
   it('a dropped connection or a headers timeout is tried again', async () => {
-    for (const [answer, timeout] of [
-      ['drop', undefined],
-      ['hang', 300],
+    for (const [answer, timeout, code] of [
+      ['drop', undefined, 'TypeError ← UND_ERR_SOCKET'],
+      ['hang', 300, 'TypeError ← UND_ERR_HEADERS_TIMEOUT'],
     ] as const) {
       await clearConvertJobs();
       const server = await doclingServer(() => answer);
@@ -2072,7 +2081,7 @@ describe('Docling conversions', () => {
           s.work.knowledge,
           'knowledge.convert',
         )(job('knowledge.convert', sent[0]?.data ?? {})),
-      ).rejects.toThrow();
+      ).rejects.toMatchObject({ code });
       expect(await conversionRows(await sha(pdf))).toEqual([]);
     }
   }, 60_000);

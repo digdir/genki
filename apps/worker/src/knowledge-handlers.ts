@@ -283,8 +283,17 @@ export const knowledgePoolSizeOf = (concurrency: number) => Math.max(10, 2 * con
 /** The convert queue as the handlers send to it; its expiry is set where the queues are installed. */
 const convertQueue = knowledgeConvertQueue(defaultMarkerTimeoutMs);
 
-/** A code a library gives an error, such as `UND_ERR_CONNECT_TIMEOUT`: one word, never a sentence. */
-const codeShape = /^[A-Za-z][\w.-]{0,63}$/;
+/**
+ * A code a library gives an error, such as `UND_ERR_CONNECT_TIMEOUT` or pg's SQLSTATE `57014`: one
+ * word, never a sentence.
+ */
+const codeShape = /^\w[\w.-]{0,63}$/;
+const codeOf = (code: unknown) =>
+  typeof code === 'number' && Number.isFinite(code)
+    ? String(code)
+    : typeof code === 'string' && codeShape.test(code)
+      ? code
+      : undefined;
 const deepestCause = 5;
 
 /**
@@ -300,13 +309,11 @@ const causeCodes = (error: unknown) => {
     depth < deepestCause && typeof level === 'object' && level !== null;
     depth++
   ) {
-    const { code } = level as { code?: unknown };
     const own =
-      typeof code === 'string' && codeShape.test(code)
-        ? code
-        : depth === 0 && level instanceof Error && codeShape.test(level.name)
-          ? level.name
-          : undefined;
+      codeOf((level as { code?: unknown }).code) ??
+      (depth === 0 && level instanceof Error && codeShape.test(level.name)
+        ? level.name
+        : undefined);
     if (own) codes.push(own);
     level = (level as { cause?: unknown }).cause;
   }
