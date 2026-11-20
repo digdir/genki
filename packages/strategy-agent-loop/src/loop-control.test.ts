@@ -4,6 +4,7 @@ import {
   buildEvidencePlan,
   exhaustionDefaults,
   exhaustionNudge,
+  honestMisses,
   inferQueryIntent,
   questionLanguage,
   soundsLikeRefusal,
@@ -304,6 +305,33 @@ describe('the budget an agent sees and how it ends', () => {
     );
     expect((await exhausted('Hva sier tildelingsbrevet til Digdir?')).text).toBe(
       exhaustionDefaults.nb,
+    );
+  });
+
+  it('the honest miss follows the question language', async () => {
+    const guarded = (question: string) =>
+      run({
+        question,
+        config: {
+          ...baseConfig,
+          strategy: { ...baseConfig.strategy, noToolCallRetry: true },
+        },
+        scripts: {
+          primary: {
+            loop: [
+              () => result('Brunost lages av myse.'),
+              () => result('Brunost kokes lenge.'),
+              () => result('Brunost er brun.'),
+            ],
+          },
+        },
+      });
+
+    expect((await guarded('Kva er oppskrifta på tradisjonell brunost?')).text).toBe(
+      honestMisses.nn,
+    );
+    expect((await guarded('What is the recipe for traditional brown cheese?')).text).toBe(
+      honestMisses.en,
     );
   });
 
