@@ -278,6 +278,7 @@ export const run = async (opts: {
   history?: { role: 'user' | 'assistant'; text: string }[];
   overrides?: Record<string, unknown>;
   parts?: Part[];
+  now?: () => Date;
 }) => {
   const r = opts.retrieval ?? retrieval().impl;
   const requests: unknown[] = [];
@@ -289,7 +290,7 @@ export const run = async (opts: {
           requests.push(request);
           return opts.withoutDataset ? undefined : r;
         },
-        now: () => new Date('2026-10-06T10:00:00Z'),
+        now: opts.now ?? (() => new Date('2026-10-06T10:00:00Z')),
       }),
     ],
     capabilities: [capability(opts.config ?? baseConfig, opts.tools)],
@@ -347,8 +348,11 @@ export const run = async (opts: {
   };
 };
 
-export const toolMessages = (request: ChatRequest | undefined) =>
+export const rawToolMessages = (request: ChatRequest | undefined) =>
   (request?.messages ?? []).flatMap((m) => (m.role === 'tool' ? [m.content] : []));
+
+export const toolMessages = (request: ChatRequest | undefined) =>
+  rawToolMessages(request).map((m) => m.replace(/\n\nRemaining budget: [^\n]*$/, ''));
 
 export const systemMessages = (request: ChatRequest | undefined) =>
   (request?.messages ?? []).slice(1).flatMap((m) => (m.role === 'system' ? [m.content] : []));

@@ -361,6 +361,20 @@
                 "en": "Most characters read"
               },
               "x-widget": "number"
+            },
+            "seconds": {
+              "type": "integer",
+              "minimum": 10,
+              "maximum": 600,
+              "x-label": {
+                "nb": "Lengste tid (sekunder)",
+                "en": "Longest time (seconds)"
+              },
+              "x-help": {
+                "nb": "Når tiden er brukt, svarer agenten med det den har lest. Ikke satt gir ingen tidsgrense.",
+                "en": "When the time is used up, the agent answers from what it has read. Not set means no time limit."
+              },
+              "x-widget": "number"
             }
           },
           "additionalProperties": false,
@@ -378,6 +392,10 @@
           "x-label": {
             "nb": "Flest runder",
             "en": "Most rounds"
+          },
+          "x-help": {
+            "nb": "Den siste runden er alltid et svar uten verktøy.",
+            "en": "The last round is always an answer without tools."
           },
           "x-widget": "number",
           "x-right": "manage-services"
