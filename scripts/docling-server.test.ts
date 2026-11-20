@@ -180,6 +180,12 @@ describe.skipIf(!hasAz && !process.env.CI)('the Docling server in the template',
     return found;
   };
   const docling = () => app('docling');
+  // The worker's Docling settings, from the variable its env takes them from.
+  const workerDocling = () => {
+    expect(JSON.stringify(app('worker').properties.template)).toContain("variables('doclingEnv')");
+    const { doclingEnv, doclingUrl } = template().variables;
+    return { env: JSON.stringify(doclingEnv), url: doclingUrl };
+  };
   const env = () => JSON.stringify(docling().properties.template);
 
   it('gives the Docling key to the worker and the Docling server only', () => {
@@ -197,7 +203,7 @@ describe.skipIf(!hasAz && !process.env.CI)('the Docling server in the template',
     const shared = loops.filter((c) => ['secrets', 'secretEnv'].includes(c.name));
     expect(shared).toHaveLength(2);
     expect(JSON.stringify(shared)).not.toContain('docling');
-    expect(JSON.stringify(app('worker').properties.template)).toContain("'DOCLING_API_KEY'");
+    expect(workerDocling().env).toContain('"DOCLING_API_KEY"');
     expect(env()).toContain(
       `{"name":"DOCLING_SERVE_API_KEY","secretRef":"[variables('doclingKeySecret').name]"}`,
     );
@@ -222,11 +228,12 @@ describe.skipIf(!hasAz && !process.env.CI)('the Docling server in the template',
     ]);
   });
 
-  it('sets DOCLING_URL on the worker in test and prod', () => {
-    const worker = JSON.stringify(app('worker').properties.template);
-    expect(worker).toMatch(
-      /'DOCLING_URL', 'value', format\('http:\/\/\{0\}:5001', reference\(resourceId\('Microsoft\.App\/containerApps', format\('\{0\}-docling'.*?\.configuration\.ingress\.fqdn\)/,
-    );
+  it("sets DOCLING_URL on the worker to the Docling app's name, which reaches its TCP ingress", () => {
+    const { env: worker, url } = workerDocling();
+    // The internal FQDN goes to the environment's HTTP ingress, which has nothing on 5001 (issue 867).
+    expect(worker).toContain(`{"name":"DOCLING_URL","value":"[variables('doclingUrl')]"}`);
+    expect(url).toBe("[format('http://{0}:5001', format('{0}-docling', parameters('name')))]");
+    expect(read('infra/modules/containerapps.bicep')).toContain(`name: '\${name}-docling'`);
     // No switch: the same template gives both environments the server.
     for (const file of ['test', 'prod'])
       expect(read(`infra/env/${file}.bicepparam`), file).not.toMatch(/docling/i);
@@ -274,10 +281,9 @@ describe.skipIf(!hasAz && !process.env.CI)('the Docling server in the template',
   it('the template gives the Docling server a 6-hour wait and the worker 8 conversions at once', () => {
     // The worker's client waits a minute longer and asks Docling to stop after 5 h 50 min (issue 477).
     expect(env()).toContain('{"name":"DOCLING_SERVE_MAX_SYNC_WAIT","value":"21600"}');
-    const worker = JSON.stringify(app('worker').properties.template);
     // One conversion a replica, so as many at once as the server has replicas.
-    expect(worker).toContain(
-      "'KNOWLEDGE_CONVERT_CONCURRENCY', 'value', string(parameters('doclingMaxReplicas'))",
+    expect(workerDocling().env).toContain(
+      `{"name":"KNOWLEDGE_CONVERT_CONCURRENCY","value":"[string(parameters('doclingMaxReplicas'))]"}`,
     );
     expect(read('infra/modules/containerapps.bicep')).toMatch(/param doclingMaxReplicas int = 8/);
   });

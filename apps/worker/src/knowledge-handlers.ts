@@ -283,6 +283,36 @@ export const knowledgePoolSizeOf = (concurrency: number) => Math.max(10, 2 * con
 /** The convert queue as the handlers send to it; its expiry is set where the queues are installed. */
 const convertQueue = knowledgeConvertQueue(defaultMarkerTimeoutMs);
 
+/** A code a library gives an error, such as `UND_ERR_CONNECT_TIMEOUT`: one word, never a sentence. */
+const codeShape = /^[A-Za-z][\w.-]{0,63}$/;
+const deepestCause = 5;
+
+/**
+ * An error's code, or its name, and then each cause's code, as `TypeError ← UND_ERR_CONNECT_TIMEOUT`:
+ * undici's `fetch failed` keeps the reason in its cause (issue 867). Never a message, which can name
+ * a host, a path or a file, and never a code that is not one word.
+ */
+const causeCodes = (error: unknown) => {
+  const codes: string[] = [];
+  let level: unknown = error;
+  for (
+    let depth = 0;
+    depth < deepestCause && typeof level === 'object' && level !== null;
+    depth++
+  ) {
+    const { code } = level as { code?: unknown };
+    const own =
+      typeof code === 'string' && codeShape.test(code)
+        ? code
+        : depth === 0 && level instanceof Error && codeShape.test(level.name)
+          ? level.name
+          : undefined;
+    if (own) codes.push(own);
+    level = (level as { cause?: unknown }).cause;
+  }
+  return codes.length > 0 ? codes.join(' ← ') : 'Error';
+};
+
 /** A convert job's converter by the name its data gives: Docling, else the text layer (issue 477). */
 const identityOf = (converter: string | undefined) =>
   converter === doclingIdentity.name ? doclingIdentity : textLayer;
@@ -604,8 +634,7 @@ export const knowledgeWork = (
    * a path or a dataset: its dead letter is shown to every organisation waiting on it (ADR 0042).
    */
   const convertError = (record: string, error: unknown) => {
-    const code =
-      (error as { code?: unknown }).code ?? (error instanceof Error ? error.name : 'Error');
+    const code = causeCodes(error);
     // The code goes on the error too, so the failed-job log can name it (issue 532).
     return Object.assign(
       new Error(`converting a file of record ${record} failed: ${String(code)}`),

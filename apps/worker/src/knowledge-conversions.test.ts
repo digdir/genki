@@ -980,8 +980,38 @@ describe('stored conversions', () => {
 
     await expect(
       handler(s.work.knowledge, 'knowledge.convert')(job('knowledge.convert', sent[0]?.data ?? {})),
-    ).rejects.toThrow(/failed: TypeError$/);
+    ).rejects.toThrow(/failed: TypeError ← ECONNRESET$/);
     expect(await stored(await sha(pdf))).toEqual([]);
+  }, 60_000);
+
+  it("names each cause's code in a failed convert job's error, never its message", async () => {
+    await clearConvertJobs();
+    // undici's shape: `fetch failed` with the connect timeout as its cause, and messages that can
+    // name a host, a path or a file.
+    const s = await scenario({
+      fetchError: () =>
+        new TypeError('fetch failed for /dokument/hemmelig-rapport.pdf', {
+          cause: Object.assign(new Error('Connect Timeout Error (hemmelig-rapport.pdf)'), {
+            code: 'UND_ERR_CONNECT_TIMEOUT',
+            cause: { code: 'see /tmp/hemmelig-rapport.pdf' },
+          }),
+        }),
+    });
+    await s.file('aarsak.pdf', reportOf('aarsak'));
+    const { sent } = await ingest(s);
+
+    const failure = await handler(
+      s.work.knowledge,
+      'knowledge.convert',
+    )(job('knowledge.convert', sent[0]?.data ?? {})).then(
+      () => undefined,
+      (error: unknown) => error as Error & { code?: string },
+    );
+    expect(failure?.message).toMatch(/failed: TypeError ← UND_ERR_CONNECT_TIMEOUT$/);
+    expect(failure?.code).toBe('TypeError ← UND_ERR_CONNECT_TIMEOUT');
+    expect(JSON.stringify({ message: failure?.message, code: failure?.code })).not.toMatch(
+      /hemmelig|Connect Timeout|fetch failed/,
+    );
   }, 60_000);
 
   it('a file stored as unreachable is fetched again when its record is written again', async () => {
