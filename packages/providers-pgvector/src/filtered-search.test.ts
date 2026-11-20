@@ -160,7 +160,11 @@ const settingsAround = async (
 };
 
 /** The plan of the statement `kn_search_sql` builds for this filter; `join` sets how the planner may join. */
-const planOf = async (filters: unknown[], join: 'index' | 'any join' = 'index') => {
+const planOf = async (
+  filters: unknown[],
+  join: 'index' | 'any join' = 'index',
+  verbose = false,
+) => {
   const client = await owner.connect();
   try {
     await client.query('begin');
@@ -171,7 +175,9 @@ const planOf = async (filters: unknown[], join: 'index' | 'any join' = 'index') 
       [vectors.id, generation, JSON.stringify(queryVector), JSON.stringify(filters)],
     );
     if (join === 'index') await client.query('set local enable_seqscan = off');
-    const plan = await client.query<{ 'QUERY PLAN': string }>(`explain ${rows[0]?.sql ?? ''}`);
+    const plan = await client.query<{ 'QUERY PLAN': string }>(
+      `explain ${verbose ? '(verbose) ' : ''}${rows[0]?.sql ?? ''}`,
+    );
     return plan.rows.map((r) => r['QUERY PLAN']).join('\n');
   } finally {
     await client.query('rollback');
@@ -266,6 +272,12 @@ describe('filtered vector search on the knowledge server', () => {
     const plan = await planOf(typeIs('sjelden'), 'any join');
     expect(plan).toContain(`Index Scan using ${chunks}_doc on ${chunks} x`);
     expect(plan).not.toContain(`Seq Scan on ${chunks} x`);
+  });
+
+  it("an exact ranking computes each chunk's distance once", async () => {
+    // On Kudos, computing it for the score, the zero-vector check and the order took 2.5 s instead of 1 s.
+    const plan = await planOf(typeIs('sjelden'), 'index', true);
+    expect(plan.split('<=>').length - 1).toBe(1);
   });
 
   it("counting a filter's chunks reads the chunks' doc index, not the chunks", async () => {
