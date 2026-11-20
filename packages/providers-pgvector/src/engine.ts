@@ -96,6 +96,8 @@ export interface PgvectorEngineOptions {
   maxQueryLength?: number;
   /** How long a hybrid search's text half may run; `textSearchMs` unless a test shortens it. */
   textSearchMs?: number;
+  /** Searches of one batch run at once; `searchConcurrencyFor` the pool's size when left out. */
+  searchConcurrency?: number;
   /** A VACUUM after a run's end failed; the run has already committed, so it does not fail. */
   onVacuumError?: (error: unknown) => void;
   /** The knowledge server's migrations ran at this process's first knowledge use, in `ms`. */
@@ -183,6 +185,30 @@ const failIfAborted = (signal: AbortSignal) => {
   if (signal.aborted) throw signal.reason ?? new Error('aborted');
 };
 
+/** A quarter of the pool, since a hybrid search holds two connections and other batches share it. */
+export const searchConcurrencyFor = (poolMax: number) => Math.max(1, Math.floor(poolMax / 4));
+
+const settleLimited = async <T, R>(
+  items: T[],
+  limit: number,
+  work: (item: T) => Promise<R>,
+): Promise<PromiseSettledResult<R>[]> => {
+  const settled: PromiseSettledResult<R>[] = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      try {
+        settled[i] = { status: 'fulfilled', value: await work(items[i] as T) };
+      } catch (reason) {
+        settled[i] = { status: 'rejected', reason };
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return settled;
+};
+
 const configOf = (dataset: Dataset) => dataset.options.textSearchConfig ?? defaultConfig;
 
 export const pgvectorEngine = (options: PgvectorEngineOptions): PgvectorEngine => {
@@ -225,12 +251,16 @@ export const pgvectorEngine = (options: PgvectorEngineOptions): PgvectorEngine =
     return vectors;
   };
 
+  const concurrencyOf = (p: Pool) =>
+    options.searchConcurrency ?? searchConcurrencyFor(p.options.max ?? 10);
+
   /** Embeds the queries that need a vector once, runs each search, and turns a failed one into a warning. */
   const searchBatch = async (
     dataset: Dataset,
     requests: SearchRequest[],
     signal: AbortSignal,
     one: SearchOne,
+    concurrency: number,
   ): Promise<SearchResult[]> => {
     const profiles = new Map(profilesOf(dataset));
     const planned = requests.map((request) => {
@@ -256,31 +286,29 @@ export const pgvectorEngine = (options: PgvectorEngineOptions): PgvectorEngine =
       embedWarning = `vector search is unavailable: ${error instanceof Error ? error.message : String(error)}`;
     }
     const vectorOf = new Map(wanting.map((x, i) => [x, vectors[i]]));
-    const settled = await Promise.allSettled(
-      planned.map(async (x): Promise<SearchResult> => {
-        if (x.tooLong) return { hits: [], warning: 'the query is too long' };
-        failIfAborted(signal);
-        const vector = vectorOf.get(x);
-        const warning = x.wantsVector ? embedWarning : undefined;
-        if (x.p.mode === 'vector' && vector === undefined)
-          return { hits: [], warning: warning ?? 'no query vector' };
-        const result =
-          x.p.mode !== 'hybrid'
-            ? await one(x.p, x.request, vector)
-            : vector === undefined
-              ? // Without its vector half, a hybrid profile searches text as a text profile does.
-                await one({ ...x.p, mode: 'text' }, x.request, undefined)
-              : await searchHybrid(
-                  one,
-                  x.p,
-                  x.request,
-                  vector,
-                  dataset.options.rrfK ?? defaultRrfK,
-                  options.textSearchMs ?? textSearchMs,
-                );
-        return warning === undefined ? result : { ...result, warning };
-      }),
-    );
+    const settled = await settleLimited(planned, concurrency, async (x): Promise<SearchResult> => {
+      if (x.tooLong) return { hits: [], warning: 'the query is too long' };
+      failIfAborted(signal);
+      const vector = vectorOf.get(x);
+      const warning = x.wantsVector ? embedWarning : undefined;
+      if (x.p.mode === 'vector' && vector === undefined)
+        return { hits: [], warning: warning ?? 'no query vector' };
+      const result =
+        x.p.mode !== 'hybrid'
+          ? await one(x.p, x.request, vector)
+          : vector === undefined
+            ? // Without its vector half, a hybrid profile searches text as a text profile does.
+              await one({ ...x.p, mode: 'text' }, x.request, undefined)
+            : await searchHybrid(
+                one,
+                x.p,
+                x.request,
+                vector,
+                dataset.options.rrfK ?? defaultRrfK,
+                options.textSearchMs ?? textSearchMs,
+              );
+      return warning === undefined ? result : { ...result, warning };
+    });
     failIfAborted(signal);
     if (settled.every((s) => s.status === 'rejected')) throw settled[0]?.reason;
     return settled.map((s) =>
@@ -349,8 +377,12 @@ export const pgvectorEngine = (options: PgvectorEngineOptions): PgvectorEngine =
       search: async (dataset, requests, signal) => {
         failIfAborted(signal);
         await migrated();
-        return searchBatch(dataset, requests, signal, (p, request, vector, half) =>
-          searchOne(dataset, p, request, vector, half),
+        return searchBatch(
+          dataset,
+          requests,
+          signal,
+          (p, request, vector, half) => searchOne(dataset, p, request, vector, half),
+          concurrencyOf(pool),
         );
       },
       fetch: async (dataset, ids, signal) => {
@@ -429,7 +461,8 @@ export const pgvectorEngine = (options: PgvectorEngineOptions): PgvectorEngine =
       timeoutMs,
       profilesOf,
       rrfK: (dataset) => dataset.options.rrfK ?? defaultRrfK,
-      searchBatch,
+      searchBatch: (dataset, requests, signal, one) =>
+        searchBatch(dataset, requests, signal, one, concurrencyOf(readerPool)),
     });
     return { ...reads, profiles };
   };
