@@ -777,7 +777,7 @@ const blockIdParam = z.string().openapi({
 });
 
 const definitionKind = z
-  .enum(['services', 'step-flows', 'skills'])
+  .enum(['services', 'step-flows', 'skills', 'blocks'])
   .openapi({ param: { name: 'kind', in: 'path' }, example: 'services' });
 
 const TraceConnection = z
@@ -2560,7 +2560,7 @@ export const accessRoutes: RouteConfig[] = [
     responses: {
       200: json(
         z.object({
-          kind: z.enum(['Service', 'StepFlow', 'Skill']),
+          kind: z.enum(['Service', 'StepFlow', 'Skill', 'Block']),
           tenant: z.string(),
           id: z.string(),
           latest: DefinitionVersion,

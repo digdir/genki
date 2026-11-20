@@ -163,6 +163,8 @@ export const problems = {
   shareOperatorOnly:
     'Only platform operators change who the service is shared with. Keep spec.availableTo as it is in the published version.',
   shareOperatorOnlyTitle: 'Only operators change sharing',
+  builtInBlockOperatorOnly:
+    'Only platform operators publish built-in blocks. They belong to genki and are shared with everyone.',
   internalOperatorOnly: 'Only operators make a service internal.',
   serviceIdTaken: 'The id is already in use.',
   operatorOnlySettingTitle: 'Only Digdir changes this limit for an organisation',

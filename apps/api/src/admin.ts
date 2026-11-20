@@ -225,6 +225,16 @@ const sharingOf = (definition: unknown) => {
   return Array.isArray(value) ? [...new Set(value.map(String))].sort().join(',') : '';
 };
 
+export const blockPublisherProblems = (
+  definition: unknown,
+  principal: Principal,
+): ValidationError[] =>
+  (definition as { kind?: unknown }).kind === 'Block' &&
+  (definition as { spec?: { tier?: unknown } }).spec?.tier === 'built-in' &&
+  !maySetSharing(principal)
+    ? [{ path: 'spec.tier', message: t('problems.builtInBlockOperatorOnly') }]
+    : [];
+
 const engineSwitchSubject = 'engine-switch';
 
 /**
@@ -356,6 +366,7 @@ export const createAdmin = (options: AdminOptions) => {
     principal: Principal,
   ): Promise<ValidationError[]> => {
     const d = definition as { kind?: unknown; metadata?: { tenant?: unknown; id?: unknown } };
+    if (d?.kind === 'Block') return blockPublisherProblems(definition, principal);
     if (d?.kind !== 'Service' || maySetSharing(principal)) return [];
     const current = await store.get('Service', String(d.metadata?.tenant), String(d.metadata?.id));
     return sharingOf(definition) === sharingOf(current?.definition)

@@ -4,6 +4,8 @@ import type { tenantServices as source } from '../nb/tenantServices';
 export const tenantServices = {
   kindService: 'Service',
   kindStepFlow: 'Step flow',
+  kindSkill: 'Skill',
+  kindBlock: 'Interface block',
   loadingVersion: 'Loading version {version}',
   versionYaml: 'Version {version} as YAML',
   loadingVersions: 'Loading the versions',

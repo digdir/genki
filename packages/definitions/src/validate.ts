@@ -3,7 +3,9 @@ import { parse as parseYaml } from 'yaml';
 import { flowSettingRefs } from './flow-settings.js';
 import { checkSettingValue, type SettingDefinition } from './settings.js';
 import type { z } from 'zod';
+import { catalogueBlockIds } from './service-interface.js';
 import {
+  blockDefinition,
   decisionModelOf,
   publicNamesOf,
   residencies,
@@ -14,6 +16,7 @@ import {
   variantId,
   variantModelOf,
   variantStrategyOf,
+  type BlockDefinition,
   type Definition,
   type FlowStep,
   type ServiceDefinition,
@@ -684,8 +687,28 @@ const checkSkill = (definition: SkillDefinition, plugins: PluginSchemas): Valida
       : [{ path: `spec.tools[${i}]`, message: `unknown tool or tool version ${ref}` }],
   );
 
+const checkBlock = (definition: BlockDefinition): ValidationError[] => {
+  const { tier, builtIn } = definition.spec;
+  if (tier !== 'built-in')
+    return [
+      {
+        path: 'spec.tier',
+        message: `${tier} blocks are not drawn by any host yet; only built-in blocks can be published`,
+      },
+    ];
+  return builtIn && catalogueBlockIds.includes(builtIn)
+    ? []
+    : [{ path: 'spec.builtIn', message: `unknown built-in block ${builtIn}` }];
+};
+
 export const validateDefinition = (input: unknown, plugins: PluginSchemas): Validated => {
   const kind = input && typeof input === 'object' ? (input as { kind?: unknown }).kind : undefined;
+  if (kind === 'Block') {
+    const parsed = parse(blockDefinition, input);
+    if (!parsed.ok) return parsed;
+    const errors = checkBlock(parsed.definition);
+    return errors.length > 0 ? { ok: false, errors } : parsed;
+  }
   if (kind === 'Skill') {
     const parsed = parse(skillDefinition, input);
     if (!parsed.ok) return parsed;

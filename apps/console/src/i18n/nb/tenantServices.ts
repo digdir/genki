@@ -3,6 +3,8 @@ import { defineNamespace } from '@genai/i18n';
 export const tenantServices = defineNamespace({
   kindService: 'Tjeneste',
   kindStepFlow: 'Stegflyt',
+  kindSkill: 'Ferdighet',
+  kindBlock: 'Grensesnittblokk',
   loadingVersion: 'Henter versjon {version}',
   versionYaml: 'Versjon {version} som YAML',
   loadingVersions: 'Henter versjonene',
