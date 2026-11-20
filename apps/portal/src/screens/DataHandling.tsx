@@ -29,7 +29,11 @@ export const residencyKeys: Record<Residency, PlainKey> = {
 
 const gatewayPrefix = 'ai-gateway/';
 
-type ModelFacts = ModelOption & { maker?: string; operator?: { name: string; region?: string } };
+type ModelFacts = ModelOption & {
+  maker?: string;
+  operator?: { name: string; region?: string };
+  gateway?: boolean;
+};
 
 type Column = 'model' | 'where' | 'operator' | 'stored' | 'howLong';
 
@@ -53,7 +57,7 @@ interface Row {
 const isPlatformHost = (m: ModelFacts) => /azure|microsoft/i.test(m.operator?.name ?? '');
 
 const isGateway = (m: ModelFacts) =>
-  m.operator ? /gateway/i.test(m.operator.name) : m.id.startsWith(gatewayPrefix);
+  m.gateway ?? (m.operator ? /gateway/i.test(m.operator.name) : m.id.startsWith(gatewayPrefix));
 
 const ModelTable = ({ models }: { models: ModelFacts[] }) => {
   const t = useT();

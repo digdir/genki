@@ -295,6 +295,7 @@ import { playgroundModule } from './playground.js';
 import { proposalsModule } from './proposals.js';
 import { connectorsModule, privateNetworkRegistry } from './connectors.js';
 import { modelDisplayNames, ownedElsewhere } from './model-access.js';
+import { identityOf, type ConnectionFacts } from './model-identity.js';
 import { qualityModule } from './quality.js';
 import { batchRunsModule } from './batch-run-routes.js';
 import { projectsModule } from './project-routes.js';
@@ -2470,6 +2471,7 @@ export const createPlatform = async (input: PlatformInput) => {
           (m) => !principal.tenant || !ownedElsewhere(config.catalog, m.id, principal.tenant),
         );
       const displayNames = modelDisplayNames(visible);
+      const { endpoints } = runtime.catalog.effective().models;
       const policy = principal.tenant
         ? await readBlockPolicy(configEntries, principal.tenant)
         : undefined;
@@ -2484,6 +2486,8 @@ export const createPlatform = async (input: PlatformInput) => {
             model: {
               id,
               family,
+              deployment,
+              endpoint,
               maker,
               operator,
               residency: r,
@@ -2498,8 +2502,10 @@ export const createPlatform = async (input: PlatformInput) => {
             id,
             name: displayNames.get(id) ?? id,
             ...(family ? { family } : {}),
-            ...(maker ? { maker } : {}),
-            ...(operator ? { operator } : {}),
+            ...identityOf(
+              { family, deployment, maker, operator },
+              endpoints[endpoint] as ConnectionFacts | undefined,
+            ),
             residency: r,
             capabilities,
             operations,

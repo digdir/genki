@@ -216,7 +216,7 @@ export const playgroundUi = {
     work: 'Way of working',
     workFlow: '{strategy} “{flow}”, v{version}',
     workFlowShort: '{flow}, v{version}',
-    pricePerMillion: 'NOK\u00a0{input} / NOK\u00a0{output} per 1M tokens',
+    pricePerMillion: 'in NOK\u00a0{input} / out NOK\u00a0{output} per 1M tokens',
     instructionsLocked:
       'The way of working {work} has no instructions to replace. Change the steps in the draft instead.',
     openInLog: 'Open in the Log',

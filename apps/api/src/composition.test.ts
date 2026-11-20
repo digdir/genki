@@ -1243,6 +1243,42 @@ describe('the composed platform', () => {
       });
   });
 
+  it('names a gateway model readably, with its maker, the host it runs at and the gateway it goes through', async () => {
+    const { app } = await boot(undefined, {
+      models: {
+        endpoints: {
+          'ai-gateway': {
+            baseURL: 'https://gateway.example/v1',
+            auth: { kind: 'bearer', secret: 'secret://env/foundry-openai-key' },
+            families: { openai: '' },
+            gateway: true,
+          },
+        },
+        models: [
+          {
+            id: 'ai-gateway/sigma2-borealis2-preview',
+            endpoint: 'ai-gateway',
+            deployment: 'sigma2:borealis2-preview',
+            residency: 'norway',
+          },
+        ],
+      },
+    });
+
+    const res = await app.request('/models', { headers: { authorization: 'Bearer kari' } });
+    const { data } = (await res.json()) as { data: unknown[] };
+
+    expect(data).toEqual([
+      expect.objectContaining({
+        id: 'ai-gateway/sigma2-borealis2-preview',
+        name: 'Borealis 2 Preview',
+        maker: 'NbAiLab',
+        operator: { name: 'Sigma2' },
+        gateway: true,
+      }),
+    ]);
+  });
+
   it('shows the price per 1,000 tokens next to each model, or null when it has none', async () => {
     const price = { inputPerThousand: 0.0238, outputPerThousand: 0.0952 };
     const list = async (prices?: Record<string, typeof price>) => {

@@ -214,7 +214,7 @@ export const playgroundUi = {
     work: 'Arbeidsmåte',
     workFlow: '{strategy} «{flow}», v{version}',
     workFlowShort: '{flow}, v{version}',
-    pricePerMillion: '{input}\u00a0kr / {output}\u00a0kr per 1M tokens',
+    pricePerMillion: 'inn {input}\u00a0kr / ut {output}\u00a0kr per 1M tokens',
     instructionsLocked:
       'Arbeidsmåten {work} har ingen instruksjoner å bytte ut. Endre stegene i utkastet i stedet.',
     openInLog: 'Åpne i Logg',

@@ -835,13 +835,22 @@ const PriceInput = z
 const PublicModel = z
   .object({
     id: z.string(),
-    name: z.string(),
+    name: z.string().describe('A readable name, such as GPT-6 Luna for gpt-6-luna'),
     family: z.string().optional(),
-    maker: z.string().optional().describe('Who made the model, such as OpenAI'),
+    maker: z
+      .string()
+      .optional()
+      .describe('Who made the model, such as OpenAI: from the catalogue, or from the model name'),
     operator: z
       .object({ name: z.string(), region: z.string().optional() })
       .optional()
-      .describe('Who runs the model for genki and where, such as Microsoft Azure in Sweden'),
+      .describe(
+        'Who runs the model for genki and where, such as Microsoft Azure in Sweden: the host a gateway deployment names before its colon, else the operator of the connection, else one read from the connection address',
+      ),
+    gateway: z
+      .literal(true)
+      .optional()
+      .describe('The connection is marked as the AI gateway (ADR 0038)'),
     residency: Residency,
     capabilities: z.array(z.enum(capabilities)),
     operations: z.array(z.string().regex(operationKindPattern)),

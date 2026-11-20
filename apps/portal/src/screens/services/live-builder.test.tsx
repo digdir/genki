@@ -135,7 +135,7 @@ describe('the live builder', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Bytt modell' }));
     const picker = screen.getByRole('dialog', { name: 'Velg modell' });
-    expect(within(picker).getByText('20,00 / 80,00 kr per 1M')).toBeTruthy();
+    expect(within(picker).getByText('inn 20,00 / ut 80,00 kr per 1M tokens')).toBeTruthy();
     expect(within(picker).getAllByText('Ikke priset')).toHaveLength(1);
   });
 
