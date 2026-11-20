@@ -317,22 +317,16 @@ describe('the publish page', () => {
 });
 
 describe('a new service', () => {
-  it('keeps the new-service flow without a draft bar or the section list', async () => {
+  it('opens in the same Oppsett as a published service, with the section list and no draft bar', async () => {
     const auth = mockAnsattporten({ name: 'Ingrid Berg', organisations: exampleOrganisations });
     await auth.login();
     window.location.hash = '#/services/new';
     render(
       <App auth={auth} fetch={mockFetch([], logTimelines, liveModels, exampleDatasets)} live />,
     );
-    await screen.findByRole('heading', { name: 'Lag med KI' });
-    fireEvent.change(screen.getByLabelText('Hva skal tjenesten gjøre?'), {
-      target: { value: 'Svar på spørsmål om permisjon' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Start med assistenten' }));
+    expect(await screen.findByRole('navigation', { name: 'Deler av oppsettet' })).toBeTruthy();
     expect(await screen.findByRole('complementary', { name: 'Byggeassistent' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Bekreft risikonivå' })).toBeTruthy();
     expect(screen.queryByRole('region', { name: 'Utkast' })).toBeNull();
-    expect(screen.queryByRole('navigation', { name: 'Deler av oppsettet' })).toBeNull();
   });
 });
 

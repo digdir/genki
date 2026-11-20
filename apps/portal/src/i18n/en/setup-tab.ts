@@ -404,6 +404,25 @@ export const setupList = {
   datasetAddedLabel: '{name} is added',
   add: 'Add',
   noHits: 'No results',
+  comingTag: 'Coming later',
+  notSavedYet: 'Not saved in the draft yet. What you add here is gone when you close the page.',
+  webPages: 'Web pages',
+  webPagesHelp:
+    'Pages the service should use as a source, for example regulations or guidance online.',
+  webPagesAdd: 'Add web page',
+  webPagesChosen: 'Chosen web pages',
+  webPagesInvalid:
+    'Enter a web address that starts with https://, for example https://www.nav.no/arbeid.',
+  webPagesRemove: 'Remove the web page {url}',
+  ownDocuments: 'Your own documents',
+  ownDocumentsHelp:
+    'Documents the service should use as knowledge, for example guidelines or procedures. PDF, Word or text.',
+  ownDocumentsPick: 'Choose files',
+  ownDocumentsChosen: 'Chosen documents',
+  ownDocumentsRemove: 'Remove the document {name}',
+  resultWish: 'What do you want to get out of the service?',
+  resultWishHelp:
+    'Describe in your own words what the user should end up with, for example a draft that can be sent, or a short answer that points to the regulations.',
   sourcesShown: 'The sources are always shown under the answer.',
   sourcesHidden: 'The sources are not shown under the answer. You choose that under Result.',
   whatUserSends: 'What does the user send?',

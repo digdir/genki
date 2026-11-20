@@ -79,9 +79,7 @@ describe('the Grensesnitt tab', () => {
 
   it('is on the page of a new service, between Oppsett and Utviklerverktøy', async () => {
     await renderAt('#/services/new');
-    await screen.findByRole('heading', { level: 1, name: 'Ny tjeneste' });
-    fireEvent.click(screen.getByRole('button', { name: /Henter ut opplysninger/ }));
-    await screen.findByText('Satte jobb: henter ut opplysninger');
+    await screen.findByRole('navigation', { name: 'Deler av oppsettet' });
     const nav = screen.getByRole('tablist', { name: /^Faner for/ });
     expect(
       within(nav)

@@ -117,6 +117,7 @@ import {
   type DatasetOption,
   type FileInput,
 } from './setup-area-views';
+import { MoreSources, ResultWish } from './not-yet-saved';
 
 export interface OperationModelChoice {
   kind: string;
@@ -1817,6 +1818,7 @@ export const SetupTab = ({
     </>
   );
 
+  const keptKey = `${tenant ?? d.metadata.tenant ?? ''}/${serviceId}`;
   const publishedDatasets = inUse ? datasetsOf(inUse.spec).map((x) => x.dataset) : [];
   const sourcesArea = live ? (
     <SourcesArea
@@ -2016,11 +2018,15 @@ export const SetupTab = ({
           return purposeArea;
         case 'sources':
           return live ? (
-            sourcesArea
+            <div className="stack area-stack">
+              {sourcesArea}
+              <MoreSources service={keptKey} readOnly={readOnly} />
+            </div>
           ) : (
             <>
               {askButton('setupList.askSources')}
               {knowledgeBody}
+              <MoreSources service={keptKey} readOnly={readOnly} />
             </>
           );
         case 'input':
@@ -2028,6 +2034,7 @@ export const SetupTab = ({
         case 'result':
           return (
             <div className="stack area-stack area-result">
+              <ResultWish service={keptKey} readOnly={readOnly} />
               {outputBody}
               {askButton('setupList.askOutcome')}
             </div>

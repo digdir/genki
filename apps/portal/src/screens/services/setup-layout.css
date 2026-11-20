@@ -936,3 +936,14 @@
   align-self: flex-start;
   min-height: 44px;
 }
+
+.not-yet-saved-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.not-yet-saved-head > .area-label {
+  padding: 0;
+}

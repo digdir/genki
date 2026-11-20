@@ -10,6 +10,7 @@ import { refusedUnmaskedInput } from '../../data/unmasked-input';
 import { exampleDatasets, exampleOrganisations, mockFetch } from '../../mock';
 import type { ModelOption, PublishedDefinition, UnmaskedInputUse } from '../../types';
 import { OverviewSection } from '../service/OverviewSection';
+import { openArea } from './setup-areas.test-utils';
 
 document.getAnimations ??= () => [];
 beforeAll(() => {
@@ -77,11 +78,8 @@ const openPublish = async (fetch: typeof globalThis.fetch) => {
   await auth.login();
   window.location.hash = '#/services/new';
   render(<App auth={auth} fetch={fetch} live />);
-  await screen.findByRole('heading', { name: 'Lag med KI' });
-  fireEvent.change(screen.getByLabelText('Hva skal tjenesten gjøre?'), {
-    target: { value: 'Hent ut felter fra innsendte filer' },
-  });
-  fireEvent.click(screen.getByRole('button', { name: 'Start med assistenten' }));
+  await screen.findByRole('navigation', { name: 'Deler av oppsettet' });
+  openArea(/^Risiko/);
   fireEvent.click(await screen.findByRole('button', { name: 'Bekreft risikonivå' }));
   fireEvent.click(screen.getByRole('button', { name: 'Publiser' }));
   const dialog = await screen.findByRole('dialog');
