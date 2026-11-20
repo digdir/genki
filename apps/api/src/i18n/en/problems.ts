@@ -176,6 +176,7 @@ export const problems = {
   status405: 'The method is not supported here',
   status409: 'Conflict',
   serviceArchivedTitle: 'The service is archived',
+  serviceOutdatedTitle: 'The service uses something that no longer exists',
   hostNotFoundTitle: 'No service on this hostname',
   bffProxyRefused: "The request did not come through the host's proxy",
   bffSignedOut: 'You are signed out. Sign in again.',

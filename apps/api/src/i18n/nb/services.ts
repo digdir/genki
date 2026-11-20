@@ -62,6 +62,8 @@ export const services = defineNamespace({
   seedReason: 'Lastet fra den lokale konfigurasjonen',
   archivedByTenant: 'Tjenesten er arkivert og kan ikke kjøres.',
   archivedReadOnly: 'Tjenesten er arkivert og kan bare leses. Gjenopprett den for å endre den.',
+  reactivateOutdated:
+    'Den siste versjonen er ikke lenger gyldig: {problems}. Sett tjenesten på pause, publiser en versjon som retter dette, og aktiver den så.',
   pausedByTenant: 'Tjenesten er satt på pause. Begrunnelse: {reason}',
   variantAnswer: 'Svar med kilder',
   variantDefault: 'Standard',

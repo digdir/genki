@@ -178,6 +178,7 @@ export const problems = defineNamespace({
   status405: 'Metoden støttes ikke her',
   status409: 'Konflikt',
   serviceArchivedTitle: 'Tjenesten er arkivert',
+  serviceOutdatedTitle: 'Tjenesten bruker noe som ikke finnes lenger',
   hostNotFoundTitle: 'Ingen tjeneste på dette vertsnavnet',
   bffProxyRefused: 'Forespørselen kom ikke gjennom vertens mellomtjener',
   bffSignedOut: 'Du er logget ut. Logg inn igjen.',
