@@ -1271,7 +1271,7 @@ const catalogRoutes = (base: Base): RouteConfig[] => {
           method: 'get',
           path: '/operator/catalog/entries',
           summary:
-            'Every catalog entry, with the kinds tenants may own and seed entries skipped (operators)',
+            'Every catalog entry, with the kinds tenants may own and the stored entries left out of the catalog with their reasons (operators)',
           request: {
             query: z.object({ kind: kind.optional(), scope: z.string().optional() }),
           },
@@ -1281,7 +1281,13 @@ const catalogRoutes = (base: Base): RouteConfig[] => {
                 data: z.array(CatalogItem),
                 kinds: z.array(z.enum(catalogKinds)),
                 tenantKinds: z.array(z.enum(catalogKinds)),
-                skipped: z.array(z.string()),
+                skipped: z.array(
+                  z.object({
+                    kind: z.enum(catalogKinds),
+                    id: z.string(),
+                    problems: z.array(z.object({ path: z.string(), message: z.string() })),
+                  }),
+                ),
               }),
               'Entries',
             ),
