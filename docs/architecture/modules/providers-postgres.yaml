@@ -14,13 +14,14 @@ description: Row-level security on tables the API reads, two database roles, and
 responsibilities:
   - Event log, tasks and state
   - Definitions, conversations, identities, API keys
-  - Tenancy, RLS and content keys
+  - Tenancy, RLS and content keys, wrapped by versioned master keys (ADR 0070)
   - Rate-limit windows shared by every API replica
 files:
   - packages/providers-postgres/src/event-log.ts
   - packages/providers-postgres/src/schema.ts
   - packages/providers-postgres/src/tenancy.ts
   - packages/providers-postgres/src/crypto.ts
+  - packages/providers-postgres/src/rewrap.ts
   - packages/providers-postgres/src/retention.ts
   - packages/providers-postgres/src/provider-objects.ts
   - packages/providers-postgres/src/job-runs.ts
