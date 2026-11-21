@@ -24,6 +24,7 @@
     "build": "tsc -b"
   },
   "dependencies": {
+    "@genai/contracts": "0.0.0",
     "@genai/i18n": "0.0.0",
     "@navikt/aksel-icons": "^8.18.0"
   },

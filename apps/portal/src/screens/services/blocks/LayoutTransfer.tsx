@@ -159,7 +159,11 @@ export const LayoutTransfer = ({
     }
     setError({
       message: t(
-        read.problem === 'not-json' ? 'builderBlocks.pasteNotJson' : 'builderBlocks.pasteNotLayout',
+        read.problem === 'not-json'
+          ? 'builderBlocks.pasteNotJson'
+          : read.problem === 'pins-a-block'
+            ? 'builderBlocks.pastePinsBlock'
+            : 'builderBlocks.pasteNotLayout',
       ),
       problems: [],
     });

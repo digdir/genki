@@ -106,6 +106,11 @@ export const catalogErrors = defineNamespace({
   hostOwnBlockHosted:
     '{block} er vertens egen blokk, og genkis assistentvert tegner bare blokker fra katalogen',
   unknownInterfaceBlock: 'ukjent grensesnittblokk {block}',
+  noUsableBlock: 'ingen publisert blokk {publisher}/{id} som denne virksomheten kan bruke',
+  noUsableBlockVersion:
+    'blokken {publisher}/{id} har ingen versjon {version} som denne virksomheten kan bruke',
+  blockRefDrawnAs: '{ref} tegnes som {drawn}, så blokken må være {drawn}',
+  blockRefNotDrawn: '{ref} er en blokk av typen {tier}, som ingen vert tegner ennå',
   hostedServiceOwnBlock:
     'grensesnittet til tjenesten har vertens egen blokk ({block}), som genkis assistentvert ikke tegner',
   noSuchClient: 'klienten finnes ikke',

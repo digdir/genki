@@ -71,6 +71,7 @@ import {
 import { useT } from './i18n.js';
 import type { StepFrame } from './procedure.js';
 import { profileOf, type AssistantProfile, type FieldSpec } from './profile.js';
+import { blockRegistry } from './registry.js';
 import { useStoredValue, type AssistantStorage } from './storage.js';
 import { currentYear, withinYears } from './years.js';
 
@@ -324,7 +325,7 @@ export const useAssistant = ({
   const has = useCallback(
     (id: BlockId) =>
       isOn(layout, id) &&
-      blockSpec(id).status === 'built' &&
+      blockRegistry.has(id) &&
       blockSpec(id).needs.every((n) => n.startsWith('component:') || met(n)),
     [layout, met],
   );

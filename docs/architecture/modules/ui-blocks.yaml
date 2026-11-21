@@ -39,4 +39,11 @@ edges:
     witness:
       file: packages/ui-blocks/src/i18n.ts
       imports: '@genai/i18n'
+  - to: kernel
+    label: The ids of genki's built-in blocks, shared with the definitions
+    kind: call
+    target: call
+    witness:
+      file: packages/ui-blocks/src/builder/catalogue.ts
+      imports: '@genai/contracts'
 keywords: ui blocks building blocks components approach fremgangsmåte sources kilder footnotes document view dokumentvisning filter utvalg corpus documents dokumenter facets designsystemet react

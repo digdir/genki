@@ -91,6 +91,14 @@
             <h2>Where the blocks go</h2>
             <ul>
               <li>
+                Each layout entry is looked up in the block registry (<code>registry.tsx</code>),
+                which holds the built-in blocks this host draws. An entry that pins a Block
+                definition with <code>ref</code> is drawn as the built-in block it names, exactly as
+                the same entry without it. A <code>ref</code> to a block the host has no component
+                for is drawn as a placeholder, «Blokken kan ikke vises», in its zone: in the main
+                column, as a tool of the secondary panel, or in the primary panel.
+              </li>
+              <li>
                 The primary panel holds Tråder and Filter as two views, and Innstillinger in its
                 foot. The main column holds Chat, or the filter strip with «Endre» and Fremgangsmåte
                 over it. The secondary panel's tools are offered by how many there are: a heading,

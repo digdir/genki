@@ -228,6 +228,33 @@ describe('the words kept with the layout', () => {
   });
 });
 
+describe('a layout in the draft that pins a block by ref', () => {
+  it('is left to the YAML, since the builder would lose the ref', () => {
+    const layout = fromTemplate('chat-only').layout;
+    const pinned = {
+      ...layout,
+      zones: {
+        ...layout.zones,
+        main: layout.zones.main.map((placed) => ({ ...placed, ref: '991825827/chat@1' })),
+      },
+    };
+    expect(draftStart(layout)).not.toBe('foreign');
+    expect(draftStart(pinned)).toBe('foreign');
+  });
+
+  it('is refused when pasted, since the builder would lose the ref', () => {
+    const layout = fromTemplate('chat-only').layout;
+    const pinned = {
+      ...layout,
+      zones: {
+        ...layout.zones,
+        main: layout.zones.main.map((placed) => ({ ...placed, ref: '991825827/chat@1' })),
+      },
+    };
+    expect(readLayout(layoutJson(pinned))).toEqual({ problem: 'pins-a-block' });
+  });
+});
+
 describe('the try view', () => {
   const preview = (layout: AssistantLayout, client: ReturnType<typeof fakeClient>) => (
     <ServicePreview

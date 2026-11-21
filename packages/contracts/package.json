@@ -9,6 +9,11 @@
       "source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./blocks": {
+      "source": "./src/blocks.ts",
+      "types": "./dist/blocks.d.ts",
+      "default": "./dist/blocks.js"
     }
   },
   "scripts": {

@@ -1,0 +1,30 @@
+apiVersion: genai/v1
+kind: Block
+metadata:
+  tenant: '991825827'
+  id: approach
+  name: Fremgangsmåte
+spec:
+  tier: built-in
+  builtIn: approach
+  title:
+    nb: Fremgangsmåte
+    en: Approach
+  summary:
+    nb: Hvordan assistenten jobbet
+    en: How the assistant worked
+  zones:
+    - main
+    - secondary
+  sharing: everyone
+  props:
+    type: object
+    properties:
+      level:
+        type: string
+        enum:
+          - standard
+          - detailed
+        default: standard
+        x-label: builder.approachLevel
+        x-widget: radio

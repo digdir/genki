@@ -257,6 +257,7 @@ const interfaceFields: Record<string, Pair> = {
     ['primary', 'main', 'secondary'].flatMap((zone): [string, Pair][] => [
       [`layout.zones.${zone}.block`, ['Byggekloss', 'Building block']],
       [`layout.zones.${zone}.settings`, ['Valg', 'Options']],
+      [`layout.zones.${zone}.ref`, ['Fast blokkversjon', 'Pinned block version']],
     ]),
   ),
   'layout.profile': ['Tekster', 'Texts'],

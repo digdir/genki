@@ -25,6 +25,7 @@ import {
   type Admin,
 } from './admin.js';
 import { confirmedBy } from './governance.js';
+import { blockRefProblems } from './interface-catalogue.js';
 import { riskConfirmationProblems } from './risk-confirmation.js';
 import type { UnmaskedInputUse } from './operation-governance.js';
 import { t } from './i18n/index.js';
@@ -383,6 +384,9 @@ export const registerDefinitionRoutes = (app: OpenAPIHono, options: DefinitionsA
     const errors = [
       ...admin.check(validated.definition, read.files),
       ...(await publishRefusals(store, validated.definition)),
+      ...(validated.definition.kind === 'Service'
+        ? await blockRefProblems(store, validated.definition)
+        : []),
     ];
     if (errors.length > 0)
       return problem(c, 422, 'Invalid definition', { errors, ...unmaskedInput });
