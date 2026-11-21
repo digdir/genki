@@ -172,17 +172,13 @@ const platformTenant = platformTenantFrom(process.env);
 
 const databaseSource = postgresSourceFromEnv(process.env);
 const db = databaseSource
-  ? await createPostgresStores(
-      databaseSource,
-      LocalKeyWrapper.fromBase64(process.env.CONTENT_MASTER_KEY),
-      {
-        onError: (error) => log('postgres connection error', { error: String(error) }),
-        role: workerRole,
-        ...(process.env.DATABASE_RUNTIME_URL
-          ? { runtime: { connectionString: process.env.DATABASE_RUNTIME_URL } }
-          : {}),
-      },
-    )
+  ? await createPostgresStores(databaseSource, LocalKeyWrapper.fromEnv(process.env), {
+      onError: (error) => log('postgres connection error', { error: String(error) }),
+      role: workerRole,
+      ...(process.env.DATABASE_RUNTIME_URL
+        ? { runtime: { connectionString: process.env.DATABASE_RUNTIME_URL } }
+        : {}),
+    })
   : undefined;
 log('storage', { kind: db ? 'postgres' : 'memory' });
 
