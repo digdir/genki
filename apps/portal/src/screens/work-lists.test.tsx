@@ -390,7 +390,7 @@ describe('an archived service', () => {
     expect(within(header).queryByRole('button', { name: 'Sett på pause' })).toBeNull();
     const tabs = screen.getByRole('tablist', { name: /^Faner for/ });
     expect(within(tabs).queryByRole('tab', { name: 'Oppsett' })).toBeNull();
-    expect(within(tabs).getByRole('tab', { name: 'Utviklerverktøy' })).toBeTruthy();
+    expect(within(tabs).getByRole('tab', { name: 'Teknisk' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Gjenopprett' })).toBeTruthy();
   });
 });
@@ -481,12 +481,12 @@ describe('Service header in live mode', () => {
     expect(within(title).queryByText('I bruk')).toBeNull();
   });
 
-  it('keeps only the version tag in the header and names who published it on Oversikt', async () => {
+  it('keeps only the edition tag in the header and names who published it on Oversikt', async () => {
     const title = await openService({ state: 'active' }, 'Kari Nordmann');
 
-    await waitFor(() => expect(within(title).getByText(/^Versjon \d+ i bruk$/)).toBeTruthy());
+    await waitFor(() => expect(within(title).getByText(/^Utgave \d+ i bruk$/)).toBeTruthy());
     expect(title.textContent).not.toContain('publisert');
-    expect(await screen.findByText(/^Versjon \d+, publisert .+ av Kari Nordmann$/)).toBeTruthy();
+    expect(await screen.findByText(/^Kari Nordmann publiserte utgave \d+ .+$/)).toBeTruthy();
   });
 });
 
@@ -508,7 +508,9 @@ describe('Oversikt in live mode', () => {
     await open('#/overview');
 
     const section = await screen.findByRole('region', { name: 'Trenger deg nå' });
-    expect(await within(section).findByRole('link', { name: 'Se datasettet: delt' })).toBeTruthy();
+    expect(
+      await within(section).findByRole('link', { name: 'Se dokumentsamlingen: delt' }),
+    ).toBeTruthy();
     expect(within(section).queryByRole('button', { name: /delt/ })).toBeNull();
   });
 });

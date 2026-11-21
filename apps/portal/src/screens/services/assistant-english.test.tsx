@@ -31,9 +31,9 @@ describe('the services area in English', () => {
         />,
       ),
     );
-    expect(screen.getByText('2 changes since version 2')).toBeTruthy();
+    expect(screen.getByText('2 changes since edition 2')).toBeTruthy();
     expect(screen.getByText('In use')).toBeTruthy();
-    expect(screen.getAllByRole('button', { name: /Roll back to this/ })).toHaveLength(2);
+    expect(screen.getAllByRole('button', { name: /Restore this edition/ })).toHaveLength(2);
   });
 
   it('explains an unavailable assistant in English per reason', () => {

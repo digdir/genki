@@ -44,6 +44,6 @@ describe('the builder in English', () => {
     expect(screen.getByText('Draft')).toBeTruthy();
     fireEvent.click(screen.getAllByRole('button', { name: 'Publish' })[0] as HTMLElement);
     await waitFor(() => expect(screen.getByText('Publish the service')).toBeTruthy());
-    expect(screen.getByText(/Publishing replaces the version in use/)).toBeTruthy();
+    expect(screen.getByText(/Publishing replaces the edition in use/)).toBeTruthy();
   });
 });

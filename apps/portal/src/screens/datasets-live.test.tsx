@@ -75,7 +75,7 @@ describe('live datasets list', () => {
   it('reads the tenant dataset API for source, documents and last ingestion', async () => {
     const { calls, fetch } = recorded();
     await renderLive('#/datasets', fetch);
-    const list = await screen.findByRole('table', { name: 'Datasett' });
+    const list = await screen.findByRole('table', { name: 'Dokumentsamlinger' });
     expect(calls.some((c) => c.url.endsWith('/tenants/999888777/datasets'))).toBe(true);
     expect(calls.some((c) => /\/api\/datasets(\/|$)/.test(c.url))).toBe(false);
     const row = within(list).getByRole('link', { name: 'Veiledere og rundskriv' }).closest('tr');
@@ -85,7 +85,7 @@ describe('live datasets list', () => {
     expect(within(list).getByRole('link', { name: 'Kudos-rapporter' }).getAttribute('href')).toBe(
       `#/datasets/${encodeURIComponent('digdir/kudos')}`,
     );
-    expect(screen.getByRole('button', { name: /Nytt datasett/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Ny dokumentsamling/ })).toBeTruthy();
   });
 });
 
@@ -93,7 +93,9 @@ describe('live new dataset', () => {
   it('creates a website dataset, its pipeline and runs it, then shows the result', async () => {
     const { calls, fetch } = recorded();
     await renderLive('#/datasets/new', fetch);
-    expect(await screen.findByRole('heading', { level: 1, name: 'Nytt datasett' })).toBeTruthy();
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Ny dokumentsamling' }),
+    ).toBeTruthy();
     expect(screen.queryByText(/kan ikke legges til fra portalen/)).toBeNull();
     fireEvent.click(screen.getByRole('radio', { name: /Nettsted/ }));
     fireEvent.change(screen.getByLabelText('Navn'), {
@@ -118,13 +120,13 @@ describe('live new dataset', () => {
     expect(storage.textContent).not.toMatch(/[{}]|platform-pg/);
     expectAccessible();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Lag datasettet og les inn' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Lag dokumentsamlingen og les inn' }));
     expect(screen.getByRole('link', { name: /begrunnelse på minst 10 tegn/ })).toBeTruthy();
     expect(calls.some((c) => c.method !== 'GET')).toBe(false);
     fireEvent.change(screen.getByLabelText('Begrunnelse'), {
       target: { value: 'Nettsidene skal kunne søkes i' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Lag datasettet og les inn' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Lag dokumentsamlingen og les inn' }));
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Nettsidene våre' })).toBeTruthy();
     expect(window.location.hash).toBe(
@@ -170,7 +172,7 @@ describe('live new dataset', () => {
   it('uploads the chosen files before the first ingestion and leaves out unreadable ones', async () => {
     const { calls, fetch } = recorded();
     await renderLive('#/datasets/new', fetch);
-    await screen.findByRole('heading', { level: 1, name: 'Nytt datasett' });
+    await screen.findByRole('heading', { level: 1, name: 'Ny dokumentsamling' });
     fireEvent.click(screen.getByRole('radio', { name: /Last opp filer/ }));
     fireEvent.change(screen.getByLabelText('Navn'), { target: { value: 'Høring' } });
     expect(
@@ -191,7 +193,7 @@ describe('live new dataset', () => {
     fireEvent.change(screen.getByLabelText('Begrunnelse'), {
       target: { value: 'Høringssvarene skal kunne søkes i' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Lag datasettet og les inn' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Lag dokumentsamlingen og les inn' }));
     await screen.findByRole('heading', { level: 1, name: 'Høring' });
     const upload = calls.find((c) => c.url.endsWith('/datasets/horing/uploads'));
     expect(upload?.method).toBe('POST');
@@ -222,7 +224,7 @@ describe('live new dataset', () => {
         : undefined,
     );
     await renderLive('#/datasets/new', fetch);
-    await screen.findByRole('heading', { level: 1, name: 'Nytt datasett' });
+    await screen.findByRole('heading', { level: 1, name: 'Ny dokumentsamling' });
     fireEvent.click(screen.getByRole('radio', { name: /Kudos/ }));
     fireEvent.change(screen.getByLabelText('Navn'), {
       target: { value: 'Evalueringer' },
@@ -231,13 +233,13 @@ describe('live new dataset', () => {
     fireEvent.change(screen.getByLabelText('Begrunnelse'), {
       target: { value: 'Evalueringene skal brukes i rapportassistenten' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Lag datasettet og les inn' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Lag dokumentsamlingen og les inn' }));
     expect(
       await screen.findByText(/må avgrenses med dokumenttyper eller en startdato/),
     ).toBeTruthy();
     expect(screen.queryByText(/needs document types/)).toBeNull();
     refuse = false;
-    fireEvent.click(screen.getByRole('button', { name: 'Lag datasettet og les inn' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Lag dokumentsamlingen og les inn' }));
     await screen.findByRole('heading', { level: 1, name: 'Evalueringer' });
     expect(calls.filter((c) => c.url.includes('/catalog/dataset/'))).toHaveLength(1);
     expect(
@@ -251,7 +253,7 @@ describe('live new dataset', () => {
   it('refuses a name another dataset already has', async () => {
     const { calls, fetch } = recorded();
     await renderLive('#/datasets/new', fetch);
-    await screen.findByRole('heading', { level: 1, name: 'Nytt datasett' });
+    await screen.findByRole('heading', { level: 1, name: 'Ny dokumentsamling' });
     fireEvent.change(screen.getByLabelText('Navn'), {
       target: { value: 'nettsidene til testetaten' },
     });
@@ -264,14 +266,14 @@ describe('live new dataset', () => {
     await waitFor(() =>
       expect(
         screen
-          .getByRole('button', { name: 'Lag datasettet og les inn' })
+          .getByRole('button', { name: 'Lag dokumentsamlingen og les inn' })
           .getAttribute('aria-disabled'),
       ).toBeNull(),
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Lag datasettet og les inn' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Lag dokumentsamlingen og les inn' }));
     expect(
       screen.getByRole('link', {
-        name: 'Det finnes allerede et datasett som heter «nettsidene til testetaten». Velg et annet navn.',
+        name: 'Det finnes allerede en dokumentsamling som heter «nettsidene til testetaten». Velg et annet navn.',
       }),
     ).toBeTruthy();
     expect(calls.some((c) => c.method !== 'GET')).toBe(false);
@@ -280,7 +282,7 @@ describe('live new dataset', () => {
   it('offers only document types that exist in Kudos', async () => {
     const { fetch } = recorded({});
     await renderLive('#/datasets/new', fetch);
-    await screen.findByRole('heading', { level: 1, name: 'Nytt datasett' });
+    await screen.findByRole('heading', { level: 1, name: 'Ny dokumentsamling' });
     fireEvent.click(screen.getByRole('radio', { name: /Kudos/ }));
 
     expect(screen.getByRole('checkbox', { name: 'Statusrapport' })).toBeTruthy();
@@ -290,7 +292,7 @@ describe('live new dataset', () => {
 
   const reviewWebsite = async (fetch: typeof globalThis.fetch) => {
     await renderLive('#/datasets/new', fetch);
-    await screen.findByRole('heading', { level: 1, name: 'Nytt datasett' });
+    await screen.findByRole('heading', { level: 1, name: 'Ny dokumentsamling' });
     fireEvent.click(screen.getByRole('radio', { name: /Nettsted/ }));
     fireEvent.change(screen.getByLabelText('Navn'), { target: { value: 'Sider' } });
     fireEvent.change(screen.getByLabelText('Adresse til nettstedskartet', { exact: false }), {
@@ -315,7 +317,7 @@ describe('live new dataset', () => {
     const storage = screen.getByRole('region', { name: 'Hvor dataene lagres' });
     await within(storage).findByText(/norsk-embed, som kjører i Norge/);
     expect(storage.textContent).toContain('kan brukes av alle tjenester');
-    fireEvent.click(screen.getByRole('button', { name: 'Lag datasettet og les inn' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Lag dokumentsamlingen og les inn' }));
     await screen.findByRole('heading', { level: 1, name: 'Sider' });
     expect(calls.find((c) => c.method === 'PUT')?.body).toMatchObject({
       residency: 'norway',
@@ -333,7 +335,7 @@ describe('live new dataset', () => {
     const storage = screen.getByRole('region', { name: 'Hvor dataene lagres' });
     await within(storage).findByText(/ingen vektormodell satt opp/);
     expect(storage.textContent).not.toMatch(/EU\/EØS eller|text-embedding/);
-    fireEvent.click(screen.getByRole('button', { name: 'Lag datasettet og les inn' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Lag dokumentsamlingen og les inn' }));
     await screen.findByRole('heading', { level: 1, name: 'Sider' });
     const created = calls.find((c) => c.method === 'PUT')?.body as Record<string, unknown>;
     expect(created.embedding).toBeUndefined();
@@ -348,7 +350,7 @@ describe('live new dataset', () => {
     await renderLive('#/overview', fresh);
     const start = await screen.findByRole('region', { name: 'Kom i gang med Testetaten' });
     expect(
-      (await within(start).findByRole('link', { name: 'Nytt datasett' })).getAttribute('href'),
+      (await within(start).findByRole('link', { name: 'Ny dokumentsamling' })).getAttribute('href'),
     ).toBe('#/datasets/new');
     cleanup();
 
@@ -358,7 +360,7 @@ describe('live new dataset', () => {
     await renderLive('#/overview', later);
     const done = await screen.findByRole('region', { name: 'Kom i gang med Testetaten' });
     await within(done).findByRole('heading', { name: /1. Legg til en kilde \(gjort\)/ });
-    expect(within(done).queryByRole('link', { name: 'Nytt datasett' })).toBeNull();
+    expect(within(done).queryByRole('link', { name: 'Ny dokumentsamling' })).toBeNull();
   });
 });
 
@@ -418,7 +420,7 @@ describe('live dataset detail', () => {
     await renderLive(`#/datasets/${encodeURIComponent('digdir/kudos')}`, fetch);
     await screen.findByRole('heading', { level: 1, name: 'Kudos-rapporter' });
     fireEvent.click(screen.getByRole('tab', { name: 'Innstillinger' }));
-    fireEvent.click(screen.getByText('Teknisk'));
+    fireEvent.click(screen.getByText('Tekniske detaljer'));
     expect(screen.getByText('Data behandles').nextElementSibling?.textContent).toBe('Ikke oppgitt');
   });
 
@@ -619,7 +621,7 @@ describe('live dataset detail', () => {
     await screen.findByRole('list', { name: 'Innlesinger' });
     fireEvent.click(screen.getByRole('button', { name: 'Les inn på nytt' }));
 
-    expect(await screen.findByText(/Datasettet leses allerede inn/)).toBeTruthy();
+    expect(await screen.findByText(/Dokumentsamlingen leses allerede inn/)).toBeTruthy();
     expect(screen.queryByText(/already being ingested/)).toBeNull();
     expect(screen.queryByText(/skrivenøkkel/)).toBeNull();
   });
@@ -633,7 +635,7 @@ describe('live dataset detail', () => {
     );
     await renderLive(`${nettsider}?tab=source`, fetch);
     await screen.findByRole('heading', { level: 1, name: 'Nettsidene til Testetaten' });
-    const about = await screen.findByRole('region', { name: 'Om datasettet' });
+    const about = await screen.findByRole('region', { name: 'Om dokumentsamlingen' });
     expect((within(about).getByLabelText('Utelat disse stiene') as HTMLTextAreaElement).value).toBe(
       '/sok',
     );
@@ -666,7 +668,7 @@ describe('live dataset detail', () => {
   it('keeps the unsaved changes bar until the changes are saved or discarded', async () => {
     const { calls, fetch } = recorded();
     await renderLive(`${nettsider}?tab=source`, fetch);
-    const about = await screen.findByRole('region', { name: 'Om datasettet' });
+    const about = await screen.findByRole('region', { name: 'Om dokumentsamlingen' });
     const name = within(about).getByLabelText('Navn') as HTMLInputElement;
     fireEvent.change(name, { target: { value: 'Nettsidene våre' } });
     const bar = screen.getByRole('region', { name: 'Du har endringer som ikke er lagret' });
@@ -684,7 +686,7 @@ describe('live dataset detail', () => {
   it('asks before leaving the settings with unsaved changes', async () => {
     const { fetch } = recorded();
     await renderLive(`${nettsider}?tab=source`, fetch);
-    const about = await screen.findByRole('region', { name: 'Om datasettet' });
+    const about = await screen.findByRole('region', { name: 'Om dokumentsamlingen' });
     const name = within(about).getByLabelText('Navn') as HTMLInputElement;
     fireEvent.change(name, { target: { value: 'Nettsidene våre' } });
 
@@ -696,7 +698,7 @@ describe('live dataset detail', () => {
     );
     expect(name.value).toBe('Nettsidene våre');
 
-    for (const link of screen.getAllByRole('link', { name: 'Datasett' })) {
+    for (const link of screen.getAllByRole('link', { name: 'Dokumentsamlinger' })) {
       fireEvent.click(link);
       expect(window.location.hash).not.toBe('#/datasets');
       fireEvent.click(
@@ -706,7 +708,7 @@ describe('live dataset detail', () => {
         ),
       );
     }
-    fireEvent.click(screen.getAllByRole('link', { name: 'Datasett' })[0] as HTMLElement);
+    fireEvent.click(screen.getAllByRole('link', { name: 'Dokumentsamlinger' })[0] as HTMLElement);
     expect(window.location.hash).not.toBe('#/datasets');
     fireEvent.click(
       within(screen.getByRole('dialog', { name: 'Forlate siden uten å lagre?' })).getByRole(
@@ -816,22 +818,28 @@ describe('deleting a live dataset', () => {
     const { calls, fetch } = recorded();
     await renderLive(`${veiledere}?tab=source`, fetch);
     await screen.findByRole('heading', { level: 1, name: 'Veiledere og rundskriv' });
-    const card = await screen.findByRole('region', { name: 'Slett datasettet' });
-    fireEvent.click(within(card).getByRole('button', { name: 'Slett datasettet' }));
+    const card = await screen.findByRole('region', { name: 'Slett dokumentsamlingen' });
+    fireEvent.click(within(card).getByRole('button', { name: 'Slett dokumentsamlingen' }));
     const dialog = screen.getByRole('dialog', { name: 'Slette Veiledere og rundskriv?' });
-    const confirm = within(dialog).getByRole('button', { name: 'Slett datasettet' });
+    const confirm = within(dialog).getByRole('button', { name: 'Slett dokumentsamlingen' });
     fireEvent.change(within(dialog).getByLabelText('Begrunnelse'), {
       target: { value: 'Feil modell, lager det på nytt' },
     });
     expect(confirm.getAttribute('aria-disabled')).toBe('true');
-    fireEvent.change(within(dialog).getByLabelText('Skriv navnet på datasettet for å bekrefte'), {
-      target: { value: 'Veiledere' },
-    });
+    fireEvent.change(
+      within(dialog).getByLabelText('Skriv navnet på dokumentsamlingen for å bekrefte'),
+      {
+        target: { value: 'Veiledere' },
+      },
+    );
     fireEvent.click(confirm);
     expect(calls.some((c) => c.method === 'DELETE')).toBe(false);
-    fireEvent.change(within(dialog).getByLabelText('Skriv navnet på datasettet for å bekrefte'), {
-      target: { value: 'Veiledere og rundskriv' },
-    });
+    fireEvent.change(
+      within(dialog).getByLabelText('Skriv navnet på dokumentsamlingen for å bekrefte'),
+      {
+        target: { value: 'Veiledere og rundskriv' },
+      },
+    );
     expect(confirm.getAttribute('aria-disabled')).toBeNull();
     fireEvent.click(confirm);
 
@@ -850,19 +858,22 @@ describe('deleting a live dataset', () => {
       ),
     ).toBeTruthy();
     expect(screen.getByText('Ingenting ble igjen i søkemotoren.')).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Gå til Datasett' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Gå til Dokumentsamlinger' })).toBeTruthy();
   });
 
   it('asks for a reason before deleting', async () => {
     const { calls, fetch } = recorded();
     await renderLive(`${veiledere}?tab=source`, fetch);
-    const card = await screen.findByRole('region', { name: 'Slett datasettet' });
-    fireEvent.click(within(card).getByRole('button', { name: 'Slett datasettet' }));
+    const card = await screen.findByRole('region', { name: 'Slett dokumentsamlingen' });
+    fireEvent.click(within(card).getByRole('button', { name: 'Slett dokumentsamlingen' }));
     const dialog = screen.getByRole('dialog');
-    fireEvent.change(within(dialog).getByLabelText('Skriv navnet på datasettet for å bekrefte'), {
-      target: { value: 'Veiledere og rundskriv' },
-    });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Slett datasettet' }));
+    fireEvent.change(
+      within(dialog).getByLabelText('Skriv navnet på dokumentsamlingen for å bekrefte'),
+      {
+        target: { value: 'Veiledere og rundskriv' },
+      },
+    );
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Slett dokumentsamlingen' }));
     expect(within(dialog).getByText('Skriv en begrunnelse på minst 10 tegn.')).toBeTruthy();
     expect(calls.some((c) => c.method === 'DELETE')).toBe(false);
   });
@@ -870,11 +881,11 @@ describe('deleting a live dataset', () => {
   it('the delete is disabled while a service reads the dataset', async () => {
     const { calls, fetch } = recorded();
     await renderLive(`${nettsider}?tab=source`, fetch);
-    const card = await screen.findByRole('region', { name: 'Slett datasettet' });
+    const card = await screen.findByRole('region', { name: 'Slett dokumentsamlingen' });
     expect(
-      within(card).getByText(/kan ikke slettes mens tjenester bruker det: Rapportassistenten/),
+      within(card).getByText(/kan ikke slettes mens tjenester bruker den: Rapportassistenten/),
     ).toBeTruthy();
-    const remove = within(card).getByRole('button', { name: 'Slett datasettet' });
+    const remove = within(card).getByRole('button', { name: 'Slett dokumentsamlingen' });
     expect(remove.getAttribute('aria-disabled')).toBe('true');
     fireEvent.click(remove);
     expect(screen.queryByRole('dialog')).toBeNull();
@@ -937,7 +948,7 @@ describe('live dataset tabs and polling', () => {
     const { fetch } = recorded();
     await renderLive(`${nettsider}/used-by`, fetch);
     expect(
-      await screen.findByRole('heading', { level: 2, name: '1 tjeneste bruker datasettet' }),
+      await screen.findByRole('heading', { level: 2, name: '1 tjeneste bruker dokumentsamlingen' }),
     ).toBeTruthy();
     const table = screen.getByRole('table', { name: 'Brukes av' });
     const row = within(table)
@@ -960,7 +971,7 @@ describe('live dataset tabs and polling', () => {
     const { fetch } = recorded();
     await renderLive(`${veiledere}/used-by`, fetch);
     expect(
-      await screen.findByRole('heading', { name: 'Ingen tjenester bruker datasettet ennå' }),
+      await screen.findByRole('heading', { name: 'Ingen tjenester bruker dokumentsamlingen ennå' }),
     ).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Bruk i en tjeneste' }).getAttribute('href')).toBe(
       '#/services',
@@ -1027,9 +1038,9 @@ describe('live dataset list', () => {
   it('resets the filter when the address has none', async () => {
     const { fetch } = recorded();
     await renderLive('#/datasets', fetch);
-    await screen.findByRole('table', { name: 'Datasett' });
+    await screen.findByRole('table', { name: 'Dokumentsamlinger' });
     fireEvent.click(screen.getByRole('button', { name: /Trenger oppfølging/ }));
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Søk i datasett' }), {
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Søk i dokumentsamlinger' }), {
       target: { value: 'nett' },
     });
     expect(window.location.hash).toBe('#/datasets?filter=attention&q=nett');
@@ -1040,16 +1051,19 @@ describe('live dataset list', () => {
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Alle', pressed: true })).toBeTruthy(),
     );
-    expect(screen.getByRole('searchbox', { name: 'Søk i datasett' })).toHaveProperty('value', '');
-    expect(screen.getByText('3 datasett')).toBeTruthy();
+    expect(screen.getByRole('searchbox', { name: 'Søk i dokumentsamlinger' })).toHaveProperty(
+      'value',
+      '',
+    );
+    expect(screen.getByText('3 dokumentsamlinger')).toBeTruthy();
   });
 
   it('counts the failed and partly ingested datasets as needing follow-up', async () => {
     const { fetch } = recorded();
     await renderLive('#/datasets', fetch);
-    await screen.findByRole('table', { name: 'Datasett' });
+    await screen.findByRole('table', { name: 'Dokumentsamlinger' });
     fireEvent.click(screen.getByRole('button', { name: 'Trenger oppfølging (2)' }));
-    const table = screen.getByRole('table', { name: 'Datasett' });
+    const table = screen.getByRole('table', { name: 'Dokumentsamlinger' });
     expect(within(table).getByRole('link', { name: 'Nettsidene til Testetaten' })).toBeTruthy();
     expect(within(table).getByRole('link', { name: 'Veiledere og rundskriv' })).toBeTruthy();
     expect(within(table).getByText('2 dokumenter ble ikke lest')).toBeTruthy();
@@ -1059,10 +1073,12 @@ describe('live dataset list', () => {
   it('names the count and the filter when nothing matches', async () => {
     const { fetch } = recorded();
     await renderLive('#/datasets?filter=shared&q=nett', fetch);
-    expect(await screen.findByRole('heading', { name: 'Ingen datasett passer' })).toBeTruthy();
+    expect(
+      await screen.findByRole('heading', { name: 'Ingen dokumentsamlinger passer' }),
+    ).toBeTruthy();
     expect(
       screen.getByText(
-        'Ingen av de 3 datasettene passer søket «nett» med filteret «Delt med dere».',
+        'Ingen av de 3 dokumentsamlingene passer søket «nett» med filteret «Delt med dere».',
       ),
     ).toBeTruthy();
   });
@@ -1070,7 +1086,7 @@ describe('live dataset list', () => {
   it('tries a failed ingestion again from the list', async () => {
     const { calls, fetch } = recorded();
     await renderLive('#/datasets', fetch);
-    const table = await screen.findByRole('table', { name: 'Datasett' });
+    const table = await screen.findByRole('table', { name: 'Dokumentsamlinger' });
     fireEvent.click(
       within(table).getByRole('button', {
         name: 'Prøv igjen å lese inn Nettsidene til Testetaten',
@@ -1088,9 +1104,9 @@ describe('live dataset list', () => {
   it('keeps the search and filter in the address', async () => {
     const { fetch } = recorded();
     await renderLive('#/datasets', fetch);
-    await screen.findByRole('heading', { level: 1, name: 'Datasett' });
+    await screen.findByRole('heading', { level: 1, name: 'Dokumentsamlinger' });
     fireEvent.click(screen.getByRole('button', { name: 'Testetatens egne' }));
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Søk i datasett' }), {
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Søk i dokumentsamlinger' }), {
       target: { value: 'nett' },
     });
     expect(window.location.hash).toBe('#/datasets?filter=own&q=nett');
@@ -1099,9 +1115,9 @@ describe('live dataset list', () => {
   it('restores the search and filter from the address', async () => {
     const { fetch } = recorded();
     await renderLive('#/datasets?filter=own&q=nett', fetch);
-    await screen.findByRole('heading', { level: 1, name: 'Datasett' });
+    await screen.findByRole('heading', { level: 1, name: 'Dokumentsamlinger' });
     expect(screen.getByRole('button', { name: 'Testetatens egne', pressed: true })).toBeTruthy();
-    expect(screen.getByRole('searchbox', { name: 'Søk i datasett' })).toHaveProperty(
+    expect(screen.getByRole('searchbox', { name: 'Søk i dokumentsamlinger' })).toHaveProperty(
       'value',
       'nett',
     );
@@ -1110,18 +1126,22 @@ describe('live dataset list', () => {
   it('shows one dataset table and no raw catalogue section, as the design does', async () => {
     const { fetch } = recorded();
     await renderLive('#/datasets', fetch);
-    await screen.findByRole('heading', { level: 1, name: 'Datasett' });
-    expect(screen.getAllByRole('table', { name: 'Datasett' })).toHaveLength(1);
-    expect(screen.queryByRole('heading', { name: 'Egne datasett og endepunkter' })).toBeNull();
+    await screen.findByRole('heading', { level: 1, name: 'Dokumentsamlinger' });
+    expect(screen.getAllByRole('table', { name: 'Dokumentsamlinger' })).toHaveLength(1);
     expect(
-      screen.queryByText('Teknisk: katalogoppføringer for datasett, søkemotorer og modeller'),
+      screen.queryByRole('heading', { name: 'Egne dokumentsamlinger og endepunkter' }),
+    ).toBeNull();
+    expect(
+      screen.queryByText(
+        'Teknisk: katalogoppføringer for dokumentsamlinger, søkemotorer og modeller',
+      ),
     ).toBeNull();
   });
 
   it('counts the documents of a shared dataset from the list, with no call per dataset', async () => {
     const { calls, fetch } = recorded();
     await renderLive('#/datasets', fetch);
-    const table = await screen.findByRole('table', { name: 'Datasett' });
+    const table = await screen.findByRole('table', { name: 'Dokumentsamlinger' });
     const kudos = within(table).getByRole('link', { name: 'Kudos-rapporter' }).closest('tr');
     await waitFor(() => expect(kudos?.textContent).toMatch(/48\s312/));
     expect(calls.some((c) => c.url.includes('/documents'))).toBe(false);
@@ -1130,7 +1150,9 @@ describe('live dataset list', () => {
 
 describe('live new dataset prerequisites', () => {
   const toReview = async () => {
-    expect(await screen.findByRole('heading', { level: 1, name: 'Nytt datasett' })).toBeTruthy();
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Ny dokumentsamling' }),
+    ).toBeTruthy();
     fireEvent.click(screen.getByRole('radio', { name: /Nettsted/ }));
     fireEvent.change(screen.getByLabelText('Navn'), {
       target: { value: 'Nettsidene våre' },
@@ -1152,9 +1174,9 @@ describe('live new dataset prerequisites', () => {
     await renderLive('#/datasets/new', fetch);
     await toReview();
     expect(
-      await screen.findByText(/Vi fikk ikke sjekket hvilke datasett dere har fra før/),
+      await screen.findByText(/Vi fikk ikke sjekket hvilke dokumentsamlinger dere har fra før/),
     ).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Lag datasettet og les inn' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Lag dokumentsamlingen og les inn' }));
     expect(calls.some((c) => c.method !== 'GET')).toBe(false);
   });
 

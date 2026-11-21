@@ -26,7 +26,7 @@ export const chat = defineNamespace({
   askFollowUp: 'Still et oppfølgingsspørsmål',
   send: 'Send',
   batchNotice:
-    'Denne tjenesten kjører som en samlet jobb over mange dokumenter, ikke som en samtale. Start jobben fra tjenesten i portalen.',
+    'Denne tjenesten kjører som en massekjøring over mange dokumenter, ikke som en samtale. Start massekjøringen fra tjenesten i portalen.',
   batchLink: 'Åpne tjenesten i portalen',
   newConversation: 'Ny samtale',
   pastConversations: 'Tidligere samtaler',

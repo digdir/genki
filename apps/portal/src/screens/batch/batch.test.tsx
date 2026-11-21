@@ -54,7 +54,7 @@ const open = async (
   await auth.login();
   window.location.hash = base;
   render(<App auth={auth} fetch={fetch} live />);
-  await screen.findByRole('heading', { name: 'Batch' });
+  await screen.findByRole('heading', { name: 'Massekjøring' });
   return {
     writes: () => calls.filter((c) => c.method !== 'GET'),
     starts: () => calls.filter((c) => c.method === 'POST' && /\/batch-runs$/.test(c.path)),
@@ -63,7 +63,7 @@ const open = async (
 
 const chooseAnnualReports = async () => {
   fireEvent.click(
-    (await screen.findAllByRole('button', { name: 'Ny samlet jobb' }))[0] as HTMLElement,
+    (await screen.findAllByRole('button', { name: 'Ny massekjøring' }))[0] as HTMLElement,
   );
   fireEvent.click(await screen.findByRole('checkbox', { name: 'Årsrapport' }));
   fireEvent.click(await screen.findByRole('checkbox', { name: '2024' }));
@@ -91,21 +91,21 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
-describe('Samlet jobb', () => {
-  it('belongs to the Utviklerverktøy tab of the service and explains an empty list', async () => {
+describe('Massekjøring', () => {
+  it('belongs to the Teknisk tab of the service and explains an empty list', async () => {
     await open();
     const nav = screen.getByRole('tablist', { name: /^Faner for/ });
-    expect(
-      within(nav).getByRole('tab', { name: 'Utviklerverktøy' }).getAttribute('aria-selected'),
-    ).toBe('true');
-    expect(await screen.findByRole('heading', { name: 'Ingen samlede jobber ennå' })).toBeTruthy();
+    expect(within(nav).getByRole('tab', { name: 'Teknisk' }).getAttribute('aria-selected')).toBe(
+      'true',
+    );
+    expect(await screen.findByRole('heading', { name: 'Ingen massekjøringer ennå' })).toBeTruthy();
     expectAccessible();
   });
 
-  it('offers one Ny samlet jobb button when there are no jobs yet', async () => {
+  it('offers one Ny massekjøring button when there are no jobs yet', async () => {
     await open();
-    await screen.findByRole('heading', { name: 'Ingen samlede jobber ennå' });
-    expect(screen.getAllByRole('button', { name: 'Ny samlet jobb' })).toHaveLength(1);
+    await screen.findByRole('heading', { name: 'Ingen massekjøringer ennå' });
+    expect(screen.getAllByRole('button', { name: 'Ny massekjøring' })).toHaveLength(1);
   });
 
   it('chooses documents, takes the inputs, measures the cost and starts with a stop limit', async () => {
@@ -138,7 +138,7 @@ describe('Samlet jobb', () => {
     );
     expect(writes().at(-1)).toMatchObject({
       body: { prompt: 'Hva sier rapporten om digitalisering?' },
-      reason: 'Målte kostnad for samlet jobb med prøvekjøring',
+      reason: 'Målte kostnad for massekjøring med prøvekjøring',
     });
     expect(screen.getByText('høyst 1 800 tokens')).toBeTruthy();
     expect(screen.getByText('Lengre svar blir avkortet')).toBeTruthy();
@@ -157,7 +157,7 @@ describe('Samlet jobb', () => {
     expect(progress.getAttribute('aria-valuetext')).toBe('100 prosent ferdig, 12 av 12');
     expect(starts().at(-1)).toMatchObject({
       body: { estimate: 'est-3', maxCostNok: 2.5 },
-      reason: 'Startet samlet jobb over 12 dokumenter',
+      reason: 'Startet massekjøring over 12 dokumenter',
     });
     expect(
       await screen.findByText(/^Jobben er ferdig\. 11 av 12 dokumenter er kjørt, 1 feilet\./),
@@ -174,7 +174,7 @@ describe('Samlet jobb', () => {
   it('says when no documents match', async () => {
     await open({ documents: [] });
     fireEvent.click(
-      (await screen.findAllByRole('button', { name: 'Ny samlet jobb' }))[0] as HTMLElement,
+      (await screen.findAllByRole('button', { name: 'Ny massekjøring' }))[0] as HTMLElement,
     );
     expect(await screen.findByText('Ingen dokumenter passer')).toBeTruthy();
     expect(screen.getByText(/^Ingen dokumenter passer filtrene\./)).toBeTruthy();
@@ -231,7 +231,7 @@ describe('Samlet jobb', () => {
     await screen.findByRole('progressbar', { name: 'Fremdrift' });
     expect(starts().at(-1)).toMatchObject({
       body: { maxTokens: expect.any(Number) },
-      reason: 'Startet samlet jobb over 12 dokumenter uten pris: Prismodellen kommer neste uke',
+      reason: 'Startet massekjøring over 12 dokumenter uten pris: Prismodellen kommer neste uke',
     });
   });
 
@@ -316,13 +316,13 @@ describe('Samlet jobb', () => {
     await waitFor(() =>
       expect(writes().at(-1)).toMatchObject({
         path: expect.stringMatching(/\/cancel$/),
-        reason: 'Avbrøt samlet jobb',
+        reason: 'Avbrøt massekjøring',
       }),
     );
     expect(await screen.findByText(/^Jobben ble avbrutt/)).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Tilbake til jobbene' }));
-    const jobs = await screen.findByRole('region', { name: 'Samlede jobber' });
+    const jobs = await screen.findByRole('region', { name: 'Massekjøringer' });
     const table = within(jobs).getByRole('table');
     expect(within(table).getByText('Kudos: Årsrapport, 2024')).toBeTruthy();
     expect(within(table).getByText('Avbrutt')).toBeTruthy();
@@ -345,7 +345,7 @@ describe('Samlet jobb', () => {
       expect(starts().at(-1)).toMatchObject({ body: { name: 'Spørsmål fra HR-postkassen' } }),
     );
     fireEvent.click(await screen.findByRole('button', { name: 'Tilbake til jobbene' }));
-    const jobs = await screen.findByRole('region', { name: 'Samlede jobber' });
+    const jobs = await screen.findByRole('region', { name: 'Massekjøringer' });
     expect(within(jobs).getByText('Spørsmål fra HR-postkassen')).toBeTruthy();
   });
 
@@ -357,10 +357,12 @@ describe('Samlet jobb', () => {
         organisations: [{ orgNumber: '999888777', name: 'Testetaten', actions: ['use-services'] }],
       },
     );
-    const section = screen.getByRole('heading', { name: 'Batch' }).closest('.batch') as HTMLElement;
+    const section = screen
+      .getByRole('heading', { name: 'Massekjøring' })
+      .closest('.batch') as HTMLElement;
     expect(
       within(section).getByText('Du trenger rettigheten «Administrere tjenester».'),
     ).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Ny samlet jobb' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Ny massekjøring' })).toBeNull();
   });
 });

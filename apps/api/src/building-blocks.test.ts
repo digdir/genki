@@ -1620,7 +1620,7 @@ describe('building-block settings at run time', () => {
     await expect(atRun).rejects.toMatchObject({
       code: 'forbidden',
       message:
-        'Byggeklossen «foundry/gpt-4o» er slått av for virksomheten. Slå den på igjen under Byggeklosser, eller fjern den fra tjenesten.',
+        'Delen «foundry/gpt-4o» er slått av for virksomheten. Slå den på igjen under Katalog, eller fjern den fra tjenesten.',
     });
     expect(seen).toHaveLength(1);
     expect(seen[0]).not.toHaveProperty(runtimeBlocksKey);

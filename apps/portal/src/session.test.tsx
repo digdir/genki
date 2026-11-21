@@ -54,7 +54,7 @@ describe('the 60 minute session', () => {
     await auth.login();
     window.location.hash = '#/datasets';
     render(<App auth={auth} fetch={mockFetch()} live />);
-    await screen.findByLabelText('Søk i datasett');
+    await screen.findByLabelText('Søk i dokumentsamlinger');
     expect(auth.refreshed).toBe(0);
     vi.advanceTimersByTime(minutes(2));
     await waitFor(() => expect(auth.refreshed).toBe(1));
@@ -70,7 +70,7 @@ describe('the 60 minute session', () => {
     await auth.login();
     window.location.hash = '#/datasets';
     render(<App auth={auth} fetch={mockFetch()} live />);
-    await screen.findByLabelText('Søk i datasett');
+    await screen.findByLabelText('Søk i dokumentsamlinger');
     expect(screen.queryByText(/Økten din utløper/)).toBeNull();
     vi.advanceTimersByTime(minutes(2));
     expect(await screen.findByText(/^Økten din utløper klokka \d\d[.:]\d\d\./)).toBeTruthy();
@@ -86,7 +86,7 @@ describe('the 60 minute session', () => {
     await auth.login();
     window.location.hash = '#/datasets';
     render(<App auth={auth} fetch={mockFetch()} live />);
-    fireEvent.change(await screen.findByLabelText('Søk i datasett'), {
+    fireEvent.change(await screen.findByLabelText('Søk i dokumentsamlinger'), {
       target: { value: 'tilsyn' },
     });
 
@@ -94,7 +94,7 @@ describe('the 60 minute session', () => {
     lifetime = minutes(60);
     fireEvent.click(screen.getByRole('button', { name: 'Logg inn' }));
 
-    const search = (await screen.findByLabelText('Søk i datasett')) as HTMLInputElement;
+    const search = (await screen.findByLabelText('Søk i dokumentsamlinger')) as HTMLInputElement;
     await waitFor(() => expect(search.value).toBe('tilsyn'));
     expect(window.sessionStorage.getItem('genai.unsaved-input')).toBeNull();
   });

@@ -40,8 +40,10 @@ export const apiCall = defineNamespace({
 
 export const runFailure = defineNamespace({
   hintMisconfigured: 'Rett oppsettet av steget i byggeren, og prøv igjen.',
-  hintForbidden: 'Sjekk at tjenesten har tilgang til datasettene og byggeklossene den bruker.',
-  hintSmaller: 'Prøv med mindre inndata, eller øk grensen for tjenesten under Innstillinger.',
+  hintForbidden:
+    'Sjekk at tjenesten har tilgang til dokumentsamlingene og delene fra katalogen den bruker.',
+  hintSmaller:
+    'Prøv med mindre inndata, eller øk grensen for tjenesten under Begrensninger og loggføring.',
   hintDeadline: 'Prøv med mindre inndata, eller del jobben opp.',
   defaultTitle: 'Tjenesten feilet underveis.',
   stepFailed: 'Steget «{step}» feilet.',
@@ -52,39 +54,40 @@ export const runFailure = defineNamespace({
 });
 
 export const publish = defineNamespace({
-  lockedByGate: 'Publiser er låst fordi et kvalitetskrav ikke er oppfylt. Se forklaringen over.',
-  publishedFirst: 'Versjon {next} er publisert og i bruk.',
+  lockedByGate:
+    'Publiser er låst fordi et krav til kvalitet ikke er oppfylt. Se forklaringen over.',
+  publishedFirst: 'Utgave {next} er publisert og i bruk.',
   publishedNext:
-    'Versjon {next} er publisert og i bruk. Versjon {current} kan gjenopprettes under Versjoner.',
+    'Utgave {next} er publisert og i bruk. Du kan angre publiseringen under Historikk.',
   failed: 'Publiseringen feilet. Ingenting er endret. Prøv igjen.',
-  publishedToTest: 'Versjon {next} er publisert til test. Den er bare tilgjengelig i testmiljøet.',
+  publishedToTest: 'Utgave {next} er nå testutgaven. Den er ikke i bruk ennå.',
   updateAvailable: 'Oppdatering tilgjengelig',
   fromDigdir: 'Fra Digdir',
   updateIntro:
-    'Digdir har gjort nye versjoner tilgjengelige. Tjenesten bytter ikke av seg selv. Testsettet ditt er kjørt med de nye versjonene.',
+    'Digdir har gjort nye utgaver tilgjengelige. Tjenesten bytter ikke av seg selv. Testsettet ditt er kjørt med de nye utgavene.',
   testSet: 'Testsett {score}',
   include: 'Ta med i v{next}',
   changes: 'Endringer',
-  firstVersion: 'Versjon {next}, første versjon',
-  changedSince: 'Versjon {next}, endret siden versjon {current}',
-  changedSinceInTest: 'Versjon {next} i test, endret siden versjon {current}',
+  firstVersion: 'Utgave {next}, første utgave',
+  changedSince: 'Utgave {next}, endret siden utgave {current}',
+  changedSinceInTest: 'Testutgave {next}, endret siden utgave {current}',
   updateFromDigdir: 'Oppdatering fra Digdir: {name}',
-  gates: 'Kvalitetskrav',
+  gates: 'Krav til kvalitet',
   passed: 'Bestått',
   notPassed: 'Ikke bestått',
   cannotPublishYet: 'Kan ikke publiseres ennå',
   gatesNotMet: {
-    one: '{failed} av {count} kvalitetskrav er ikke oppfylt. Kravet «{name}» er satt av {tenant} og kan ikke overstyres her. Du kan fortsatt publisere til test.',
+    one: '{failed} av {count} krav til kvalitet er ikke oppfylt. Kravet «{name}» er satt av {tenant} og kan ikke overstyres her. Du kan fortsatt publisere som testutgave.',
     other:
-      '{failed} av {count} kvalitetskrav er ikke oppfylt. Kravet «{name}» er satt av {tenant} og kan ikke overstyres her. Du kan fortsatt publisere til test.',
+      '{failed} av {count} krav til kvalitet er ikke oppfylt. Kravet «{name}» er satt av {tenant} og kan ikke overstyres her. Du kan fortsatt publisere som testutgave.',
   },
   reasonLabel: 'Hva er endret, og hvorfor?',
-  reasonHelp: 'Påkrevd. Vises i versjonshistorikken og i Logg under Endringer.',
+  reasonHelp: 'Påkrevd. Vises i Historikk og i Logg under Endringer.',
   previousStays:
-    'Versjon {current} blir liggende. Du kan rulle tilbake til den når som helst under Versjoner.',
+    'Utgave {current} blir liggende. Du kan angre publiseringen når som helst under Historikk.',
   publish: 'Publiser',
-  publishToTest: 'Publiser til test',
-  statusPublished: 'Versjon {next} er publisert.',
+  publishToTest: 'Publiser som testutgave',
+  statusPublished: 'Utgave {next} er publisert.',
   statusLocked: 'Publiser er låst til alle krav er bestått.',
   statusAllPassed: 'Alle krav er bestått.',
 });

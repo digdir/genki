@@ -1,16 +1,16 @@
 # 0050 Building blocks are made where they are found
 
-Status: proposed, 2026-11-05 (partly built; step flows placed in Utviklerverktøy as ADR 0037 has them, 2026-11-05; the console models area built, 2026-11-05)
+Status: proposed, 2026-11-05 (partly built; step flows placed in Integrasjoner as ADR 0037 has them, 2026-11-05; the console models area built, 2026-11-05)
 
-Builds on ADR 0031, ADR 0037, ADR 0047 and ADR 0048. Where things sit in Utviklerverktøy is ADR 0037's; this record says what the step-flow library, the editor and the model choice do there.
+Builds on ADR 0031, ADR 0037, ADR 0047 and ADR 0048. Where things sit in Integrasjoner is ADR 0037's; this record says what the step-flow library, the editor and the model choice do there.
 
 ## Context
 
 A step flow is a reusable part that several services may pin (ADR 0031), but the portal treats it as part of one service.
 
-- Its editor opens from Oppsett → Arbeidsmåte inside a service, from a placeholder in Utviklerverktøy, or from the hidden route `#/step-flows`. Opening it highlights Tjenester in the menu.
+- Its editor opens from Oppsett → Arbeidsmåte inside a service, from a placeholder in Integrasjoner, or from the hidden route `#/step-flows`. Opening it highlights Tjenester in the menu.
 - The editor shows "I tjenesten" tabs and a service breadcrumb when no service is involved, and loses the service when opened from one.
-- Byggeklosser lists step flows but does not open them. It also lists step types such as `call-operation@1` as step flows.
+- Katalog lists step flows but does not open them. It also lists step types such as `call-operation@1` as step flows.
 - The flow picker is a native select, so typing a name jumps to another flow. A new flow cannot be named outside YAML.
 - "Bruk i en tjeneste" only shows a message.
 
@@ -20,14 +20,14 @@ In the console, adding a new API spans Modeller and Modelloperasjoner, four kind
 
 ## Decision
 
-### Portal: Byggeklosser
+### Portal: Katalog
 
-- **Byggeklosser is where reusable parts are found.** Each kind lists its blocks and opens the place a block is made: skills, tools, guardrails and judges open their editors, Stegflyter opens the library in Utviklerverktøy, and Datasett and Fellestjenester open their own pages.
-- **The step-flow library is Utviklerverktøy → Stegflyter** (ADR 0037), at `/developer/step-flows`, and `/developer/step-flows/{id}` is the editor, with a name field, the services that pin each version, and "Bruk i en tjeneste" that picks a service and pins the flow. Platform flows are listed beside the organisation's own.
+- **Katalog is where reusable parts are found.** Each kind lists its blocks and opens the place a block is made: skills, tools, guardrails and judges open their editors, Arbeidsflyter opens the library in Integrasjoner, and Dokumentsamlinger and Delte tjenester open their own pages.
+- **The step-flow library is Integrasjoner → Arbeidsflyter** (ADR 0037), at `/developer/step-flows`, and `/developer/step-flows/{id}` is the editor, with a name field, the services that pin each version, and "Bruk i en tjeneste" that picks a service and pins the flow. Platform flows are listed beside the organisation's own.
 - **Step types are their own kind**, Stegtyper, listing the step blocks such as `call-operation@1` with what each needs. They are not step flows.
-- **A service picks a flow, it does not contain one.** The service's Utviklerverktøy tab → Stegflyt picks a flow and version with a searchable list and opens the editor with the service as context (`?tjeneste={id}`), so the editor offers "Tilbake til {tjeneste}" and "Fest denne versjonen". Without that context the editor shows no service.
+- **A service picks a flow, it does not contain one.** The service's Teknisk tab → Arbeidsflyt picks a flow and version with a searchable list and opens the editor with the service as context (`?tjeneste={id}`), so the editor offers "Tilbake til {tjeneste}" and "Fest denne utgaven". Without that context the editor shows no service.
 - **Models are a block kind with the facts an owner needs**: provider and connection, where data is processed, the price per unit (ADR 0048), whether the connection has a processor record, and the operations the model offers with the API bound for each. The model picker in Oppsett shows the same facts.
-- **A model per operation is chosen in one place**, the service's Utviklerverktøy tab → Modell og arbeidsmåte, listing each kind its flow uses. A step's own `params.model` is shown there when it overrides. The owner's Oppsett keeps the model in plain words (ADR 0037).
+- **A model per operation is chosen in one place**, the service's Teknisk tab → Modell og arbeidsmåte, listing each kind its flow uses. A step's own `params.model` is shown there when it overrides. The owner's Oppsett keeps the model in plain words (ADR 0037).
 
 ### Console: one models area
 
@@ -44,15 +44,15 @@ In the console, adding a new API spans Modeller and Modelloperasjoner, four kind
 
 ## Why
 
-Things that are reused should be found where reuse happens. A flow edited inside one service invites changes that break the other services pinning it, and a library that cannot open its own items is a dead end. The library sits where ADR 0037 puts the organisation's technical parts, so the portal has one layout, and Byggeklosser links to it so owners still find it.
+Things that are reused should be found where reuse happens. A flow edited inside one service invites changes that break the other services pinning it, and a library that cannot open its own items is a dead end. The library sits where ADR 0037 puts the organisation's technical parts, so the portal has one layout, and Katalog links to it so owners still find it.
 
 The console change follows ADR 0048: once a connection serves many APIs and a model binds one per kind, the screens should show that structure instead of a protocol label.
 
 Turned down:
 
 - Keeping the editor under Tjenester with a library tab: it is how the v5 design draws it, and it is what makes the flow look like it belongs to one service.
-- Moving the library to Byggeklosser: it would split the technical parts ADR 0037 gathers in Utviklerverktøy. Byggeklosser links to it instead.
-- Removing Datasett and Fellestjenester from the menu: owners use them daily and find them there.
+- Moving the library to Katalog: it would split the technical parts ADR 0037 gathers in Integrasjoner. Katalog links to it instead.
+- Removing Dokumentsamlinger and Delte tjenester from the menu: owners use them daily and find them there.
 
 ## Consequences
 
@@ -61,4 +61,4 @@ Turned down:
 - `GET /models` gives each model a readable name from its family or deployment; the maker from the model name when the catalogue sets none; the operator from the host a gateway deployment names (`aivar:`, `sigma2:`), else the connection's operator, else the connection address; and `gateway: true` when the connection is marked as the gateway. The building-block list and the model block use the same name and maker (#861).
 - The screens are redrawn in Claude Design from this record before they are built; the design is a proposal that can be reworked later.
 - Built: the console models area, with Tilkoblinger, models and API-er in one place, the guided path for a new API, a reason per action and Revisjon in plain words. Revisjon cannot yet tell an approval from a send-back or name the API a binding changed from, since the audit entries carry neither.
-- Not built yet: the portal part (Byggeklosser, the step-flow library and editor in Utviklerverktøy, model facts and model choice per kind).
+- Not built yet: the portal part (Katalog, the step-flow library and editor in Integrasjoner, model facts and model choice per kind).

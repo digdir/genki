@@ -35,7 +35,7 @@ const fetchWith = (searchEngines: SearchEnginesMockOptions = {}) =>
 const renderAt = async (hash: string, fetch?: typeof globalThis.fetch) => {
   await render(hash, fetch);
   await screen.findByRole('heading', { level: 1 });
-  fireEvent.click(await screen.findByText('Teknisk'));
+  fireEvent.click(await screen.findByText('Tekniske detaljer'));
 };
 
 const openOwn = async (options: SearchEnginesMockOptions = {}) => {
@@ -61,7 +61,7 @@ afterEach(() => {
   cleanup();
 });
 
-describe('Datasett: søkemotor', () => {
+describe('Dokumentsamlinger: søkemotor', () => {
   it('shows the engine facts, what it can do and the services that search the dataset', async () => {
     await openOwn();
     const section = await block();
@@ -138,7 +138,7 @@ describe('Datasett: søkemotor', () => {
     const table = within(flow).getByRole('region', { name: 'Sammenligning av søkemotorer' });
     expect(within(table).getByRole('columnheader', { name: /Innebygd søk\s*Nå/ })).toBeTruthy();
     const warning = within(flow).getByRole('heading', {
-      name: 'Med Typesense mister datasettet 1 egenskap',
+      name: 'Med Typesense mister dokumentsamlingen 1 egenskap',
     });
     expect(warning.parentElement?.textContent).toMatch(
       /Lese avsnitt i rekkefølge:.*Tjenesten kan ikke lese avsnittene rundt et treff/,
@@ -316,7 +316,9 @@ describe('Datasett: søkemotor', () => {
     expect(
       within(section).getByRole('heading', { name: 'Byttet til OpenSearch feilet' }),
     ).toBeTruthy();
-    expect(within(section).getByText(/Datasettet bruker fortsatt Innebygd søk/)).toBeTruthy();
+    expect(
+      within(section).getByText(/Dokumentsamlingen bruker fortsatt Innebygd søk/),
+    ).toBeTruthy();
     expect(within(section).getByRole('button', { name: 'Prøv å bytte på nytt' })).toBeTruthy();
   });
 
@@ -420,7 +422,7 @@ describe('Datasett: søkemotor', () => {
     expect(estimate).not.toHaveProperty('body');
     const start = calls.find((c) => c.method === 'POST' && c.path === `${path}/engine-switches`);
     expect(start?.body).toEqual({ to: 'opensearch-sev', method: 'copy' });
-    expect(start?.reason).toBe('Bytter søkemotor for datasettet');
+    expect(start?.reason).toBe('Bytter søkemotor for dokumentsamlingen');
     const created = replies.get(`POST ${path}/engine-switches`) as { sid: string };
     expect(created).toMatchObject({ state: 'running', progress: { percent: 0 } });
     expect(

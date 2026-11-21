@@ -3,13 +3,13 @@ kind: Block
 metadata:
   tenant: '991825827'
   id: settings
-  name: Innstillinger
+  name: Mine innstillinger
 spec:
   tier: built-in
   builtIn: settings
   title:
-    nb: Innstillinger
-    en: Settings
+    nb: Mine innstillinger
+    en: My settings
   summary:
     nb: Fargetema, detaljnivå og eksperimenter. Nederst i panelet.
     en: Colour scheme, level of detail and experiments. At the bottom of the panel.

@@ -2,9 +2,9 @@ import { defineNamespace } from '@genai/i18n';
 
 export const tenantServices = defineNamespace({
   kindService: 'Tjeneste',
-  kindStepFlow: 'Stegflyt',
-  kindSkill: 'Ferdighet',
-  kindBlock: 'Grensesnittblokk',
+  kindStepFlow: 'Arbeidsflyt',
+  kindSkill: 'Arbeidsinstruks',
+  kindBlock: 'Designelement',
   loadingVersion: 'Henter versjon {version}',
   versionYaml: 'Versjon {version} som YAML',
   loadingVersions: 'Henter versjonene',
@@ -21,13 +21,13 @@ export const tenantServices = defineNamespace({
   title: 'Tjenester',
   pickTitle: 'Velg en virksomhet',
   pickText: 'Gå til <link>Virksomheter</link> og velg Tjenester på en virksomhet.',
-  headerTitle: 'Tjenester og stegflyter',
+  headerTitle: 'Tjenester og arbeidsflyter',
   intro:
     'Definisjonene virksomheten har publisert, med alle versjoner. Bare visning; endringer gjør virksomheten i portalen.',
   back: 'Tilbake til Virksomheter',
   loadingDefinitions: 'Henter definisjonene',
   emptyTitle: 'Ingen tjenester ennå',
-  emptyText: 'Virksomheten har ikke publisert noen tjenester eller stegflyter.',
+  emptyText: 'Virksomheten har ikke publisert noen tjenester eller arbeidsflyter.',
   definitions: 'Definisjoner',
   colName: 'Navn',
   colType: 'Type',

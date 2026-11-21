@@ -494,7 +494,7 @@ export const doclingConverter = (options: DoclingOptions): DocumentConverter => 
           const left = () =>
             stopBy === undefined
               ? documentTimeoutSeconds
-              : Math.max(1, Math.floor((stopBy - now().getTime()) / 1000));
+              : Math.max(1, Math.ceil((stopBy - now().getTime()) / 1000));
           const placed = await place(file, left, opened, deadline, () =>
             stopBy === undefined
               ? new DoclingFailed(503, 'no replica took the file within the wait limit')

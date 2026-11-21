@@ -62,8 +62,8 @@ export const operations = {
   cancelRun: 'Cancel the run {task}',
   cancel: 'Cancel',
   kindService: 'Service',
-  kindStepFlow: 'Step flow',
-  kindSkill: 'Skill',
+  kindStepFlow: 'Workflow',
+  kindSkill: 'Work instruction',
   quarantineTitle: 'Definitions in quarantine',
   quarantineText:
     'Saved definitions that could not be loaded. They have been set aside, and the rest of the platform keeps running. The organisation must publish a corrected version.',

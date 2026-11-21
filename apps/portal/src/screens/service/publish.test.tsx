@@ -121,20 +121,20 @@ const openPublishPage = async (fetch: typeof globalThis.fetch) => {
   window.location.hash = '#/services/klarsprak';
   render(<App auth={auth} fetch={fetch} live />);
   await screen.findByRole('heading', { level: 1, name: 'Klarspråk' });
-  expect(screen.queryByRole('button', { name: 'Publiser til test' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Publiser som testutgave' })).toBeNull();
   fireEvent.click(await screen.findByRole('button', { name: 'Publiser ...' }));
-  await screen.findByRole('heading', { level: 1, name: 'Publiser Klarspråk, versjon 2' });
+  await screen.findByRole('heading', { level: 1, name: 'Publiser Klarspråk, utgave 2' });
   return document.body;
 };
 
 const publishFromHeader = async (fetch: typeof globalThis.fetch) => {
   const page = await openPublishPage(fetch);
-  expect(within(page).queryByRole('button', { name: 'Publiser til test' })).toBeNull();
+  expect(within(page).queryByRole('button', { name: 'Publiser som testutgave' })).toBeNull();
   await waitFor(() => expect(screen.queryByText('Sjekker utkastet mot plattformen …')).toBeNull());
   fireEvent.change(within(page).getByLabelText(/^Hva endret du, og hvorfor\?/), {
     target: { value: 'Strammer inn instruksjonene' },
   });
-  fireEvent.click(within(page).getByRole('button', { name: 'Publiser versjon 2' }));
+  fireEvent.click(within(page).getByRole('button', { name: 'Publiser' }));
   return page;
 };
 
@@ -151,11 +151,11 @@ describe('publishing the draft in live mode', () => {
     ).toBe('true');
   });
 
-  it('names the next version on the publish page and goes back to Oppsett without publishing', async () => {
+  it('names the next edition on the publish page and goes back to Oppsett without publishing', async () => {
     const { fetch, posts } = platform({});
     await openPublishPage(fetch);
     expect(window.location.hash).toBe('#/services/klarsprak/setup/publish');
-    expect(screen.getByText(/Versjon 1 er i drift til du publiserer/)).toBeTruthy();
+    expect(screen.getByText(/Utgave 1 er i bruk til du publiserer/)).toBeTruthy();
 
     fireEvent.click(screen.getByRole('link', { name: 'Fortsett å redigere' }));
     expect(await screen.findByRole('heading', { level: 1, name: 'Klarspråk' })).toBeTruthy();
@@ -173,7 +173,7 @@ describe('publishing the draft in live mode', () => {
       return base(input, init);
     };
     const page = await openPublishPage(fetch);
-    const button = within(page).getByRole('button', { name: 'Publiser versjon 2' });
+    const button = within(page).getByRole('button', { name: 'Publiser' });
     expect(button.getAttribute('aria-disabled')).toBe('true');
     expect(within(page).getByText('Sjekker utkastet mot plattformen …')).toBeTruthy();
     fireEvent.click(button);
@@ -183,11 +183,11 @@ describe('publishing the draft in live mode', () => {
     await waitFor(() => expect(button.getAttribute('aria-disabled')).toBeNull());
   });
 
-  it('validates, publishes with the files and shows the new version', async () => {
+  it('validates, publishes with the files and shows the new edition', async () => {
     const { fetch, posts } = platform({});
     await publishFromHeader(fetch);
 
-    expect(await screen.findByText('Versjon 2 er publisert.')).toBeTruthy();
+    expect(await screen.findByText('Utgave 2 er publisert.')).toBeTruthy();
     const complete = '/tenants/999888777/definitions/complete';
     expect(posts.map((p) => p.url.replace(/^.*\/api/, ''))).toEqual([
       complete,
@@ -204,7 +204,7 @@ describe('publishing the draft in live mode', () => {
     const { fetch, posts } = platform({});
     await publishFromHeader(fetch);
 
-    expect(await screen.findByText('Versjon 2 er publisert.')).toBeTruthy();
+    expect(await screen.findByText('Utgave 2 er publisert.')).toBeTruthy();
     const sent = (path: string) =>
       posts.filter((p) => p.url.endsWith(path)).at(-1)?.body.definition?.spec.guardrails;
     expect(sent('/definitions/validate')).toEqual({ 'human-approval': true });
@@ -224,9 +224,7 @@ describe('publishing the draft in live mode', () => {
       'Instruksjoner: må fylles ut',
     );
     expect(
-      within(page)
-        .getByRole('button', { name: 'Publiser versjon 2' })
-        .getAttribute('aria-disabled'),
+      within(page).getByRole('button', { name: 'Publiser' }).getAttribute('aria-disabled'),
     ).toBe('true');
     expect(posts.some((p) => p.url.endsWith('/definitions'))).toBe(false);
   });
@@ -237,8 +235,10 @@ describe('publishing the draft in live mode', () => {
     });
     const page = await publishFromHeader(fetch);
 
-    expect(await within(page).findByText(/Kvalitetskravene stoppet publiseringen/)).toBeTruthy();
+    expect(
+      await within(page).findByText(/Kravene til kvalitet stoppet publiseringen/),
+    ).toBeTruthy();
     expect(within(page).getByText(/refused by evaluation gates/)).toBeTruthy();
-    expect(screen.queryByText('Versjon 2 er publisert.')).toBeNull();
+    expect(screen.queryByText('Utgave 2 er publisert.')).toBeNull();
   });
 });

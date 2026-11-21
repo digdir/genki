@@ -40,7 +40,7 @@ export const dataHandling = defineNamespace({
   notDecidedYet: 'Ikke bestemt ennå',
   accessWho: 'Hvem som har tilgang',
   storageTime: 'Hvor lenge data lagres',
-  storageTimeBody: 'Datasett lagres til virksomheten sletter dem.',
+  storageTimeBody: 'Dokumentsamlinger lagres til virksomheten sletter dem.',
   storageTimePlaceholder:
     'Hvor lenge spørsmål, svar og logger lagres, og hva som skjer med data når en virksomhet slutter å bruke plattformen, er ikke bestemt ennå.',
 });
@@ -121,7 +121,7 @@ export const start = defineNamespace({
     'Den som styrer tilganger i Altinn hos dere, gir én person rettigheten «Administrere tjenester». Den personen logger inn i portalen.',
   step4Title: 'Lag den første tjenesten',
   step4Body:
-    'Prøv en fellestjeneste, eller beskriv jobben og la assistenten hjelpe dere. Gi kolleger tilgang i Altinn når tjenesten er klar.',
+    'Prøv en delt tjeneste, eller beskriv jobben og la assistenten hjelpe dere. Gi kolleger tilgang i Altinn når tjenesten er klar.',
   operatedBy: 'Driftes av Digitaliseringsdirektoratet',
   footer: 'Bunntekst',
   privacy: 'Personvernerklæring',

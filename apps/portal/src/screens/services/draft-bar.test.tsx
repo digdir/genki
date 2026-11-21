@@ -95,14 +95,14 @@ const draftWrites = (calls: Call[], method: string) =>
   calls.filter((c) => c.method === method && c.url.endsWith('/rapportassistenten/draft'));
 
 describe('the draft bar on Oppsett for an existing service', () => {
-  it('says there are no changes while the service matches the version in use', async () => {
+  it('says there are no changes while the service matches the edition in use', async () => {
     await openService('#/services/rapportassistenten/setup');
     expect(
       await within(await screen.findByRole('region', { name: 'Utkast' })).findByText(
         'Ingen endringer',
       ),
     ).toBeTruthy();
-    expect(within(bar()).getByText('Det du ser er versjon 7, som er i drift.')).toBeTruthy();
+    expect(within(bar()).getByText('Det du ser er utgave 7, som er i bruk.')).toBeTruthy();
     expect(within(bar()).queryByRole('button', { name: 'Forkast endringer' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Publiser ...' }).getAttribute('aria-disabled')).toBe(
       'true',
@@ -137,8 +137,8 @@ describe('the draft bar on Oppsett for an existing service', () => {
     expect(draftWrites(calls, 'PUT')[0]?.body).toMatchObject({
       definition: { spec: { strategy: { config: { instructions: 'Svar kort og høflig.' } } } },
     });
-    expect(within(bar()).getByText('1 endring siden versjon 7.')).toBeTruthy();
-    expect(within(bar()).getByText('Versjon 7 er i bruk til du publiserer.')).toBeTruthy();
+    expect(within(bar()).getByText('1 endring siden utgave 7.')).toBeTruthy();
+    expect(within(bar()).getByText('Utgave 7 er i bruk til du publiserer.')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Publiser ...' })).toBeTruthy();
   });
 
@@ -176,7 +176,7 @@ describe('the draft bar on Oppsett for an existing service', () => {
     const dialog = await screen.findByRole('alertdialog');
     expect(within(dialog).getByRole('heading', { name: 'Forkaste 1 endring?' })).toBeTruthy();
     expect(within(dialog).getByText(/^Instruksjonene er (endret|skrevet)$/)).toBeTruthy();
-    expect(within(dialog).getByText(/går tilbake til versjon 7, som er i drift/)).toBeTruthy();
+    expect(within(dialog).getByText(/går tilbake til utgave 7, som er i bruk/)).toBeTruthy();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Behold endringene' }));
 
     expect(screen.queryByRole('alertdialog')).toBeNull();
@@ -184,7 +184,7 @@ describe('the draft bar on Oppsett for an existing service', () => {
     expect(draftWrites(calls, 'DELETE')).toHaveLength(0);
   });
 
-  it('discarding deletes the draft and restores the version in use', async () => {
+  it('discarding deletes the draft and restores the edition in use', async () => {
     const calls = await openService('#/services/rapportassistenten/setup/purpose', {
       draft: withInstructions('Svar kort.'),
     });
@@ -193,7 +193,7 @@ describe('the draft bar on Oppsett for an existing service', () => {
     const dialog = await screen.findByRole('alertdialog');
     fireEvent.click(within(dialog).getByRole('button', { name: 'Forkast 1 endring' }));
 
-    expect(await screen.findByText(/^Endringene er forkastet\. Du ser nå versjon 7/)).toBeTruthy();
+    expect(await screen.findByText(/^Endringene er forkastet\. Du ser nå utgave 7/)).toBeTruthy();
     expect(screen.queryByRole('alertdialog')).toBeNull();
     expect(instructions().value).toBe(publishedInstructions);
     expect(within(bar()).getByText('Ingen endringer')).toBeTruthy();
@@ -203,7 +203,7 @@ describe('the draft bar on Oppsett for an existing service', () => {
 
   it('a tab switch sends no request for the definition', async () => {
     const calls = await openService('#/services/rapportassistenten/setup');
-    await screen.findByText('Versjon 7 i bruk');
+    await screen.findByText('Utgave 7 i bruk');
     await new Promise((resolve) => setTimeout(resolve, 50));
     const reads = () =>
       calls.filter(
@@ -228,7 +228,7 @@ describe('the publish page', () => {
         ? Response.json({ service: 'rapportassistenten', revision: 1, ...body })
         : undefined;
 
-  it('shows the instructions sentence by sentence and the model change against the version in use', async () => {
+  it('shows the instructions sentence by sentence and the model change against the edition in use', async () => {
     await openService('#/services/rapportassistenten/setup/publish', {
       draft: withSpec({
         model: { ...published.spec.model, primary: 'foundry-openai/gpt-4.1' },
@@ -244,13 +244,13 @@ describe('the publish page', () => {
     });
     await screen.findByRole('heading', {
       level: 1,
-      name: 'Publiser Rapportassistenten, versjon 8',
+      name: 'Publiser Rapportassistenten, utgave 8',
     });
     expect(screen.getByText('2 endringer')).toBeTruthy();
     expect(screen.getByText('Svar alltid på bokmål.')).toBeTruthy();
     const table = screen.getByRole('table');
-    expect(within(table).getByRole('columnheader', { name: 'Versjon 7, i drift' })).toBeTruthy();
-    expect(within(table).getByRole('columnheader', { name: 'Versjon 8, utkast' })).toBeTruthy();
+    expect(within(table).getByRole('columnheader', { name: 'Utgave 7, i bruk' })).toBeTruthy();
+    expect(within(table).getByRole('columnheader', { name: 'Utgave 8, utkast' })).toBeTruthy();
     expect(within(table).getByRole('rowheader', { name: 'Modell' })).toBeTruthy();
     expect(within(table).getByText('EU/EØS')).toBeTruthy();
     expect(
@@ -289,7 +289,7 @@ describe('the publish page', () => {
     });
     expect(
       await screen.findByText(
-        'Kroker som kjører ved publisering, er ikke sjekket her. De kan fortsatt stoppe publiseringen.',
+        'Kjøringspunkter som kjører ved publisering, er ikke sjekket her. De kan fortsatt stoppe publiseringen.',
       ),
     ).toBeTruthy();
   });
@@ -304,12 +304,12 @@ describe('the publish page', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Publiser ...' }));
     await screen.findByRole('heading', {
       level: 1,
-      name: 'Publiser Rapportassistenten, versjon 8',
+      name: 'Publiser Rapportassistenten, utgave 8',
     });
-    const button = screen.getByRole('button', { name: 'Publiser versjon 8' });
+    const button = screen.getByRole('button', { name: 'Publiser' });
     await waitFor(() => expect(button.getAttribute('aria-disabled')).not.toBe('true'));
     fireEvent.click(button);
-    expect(await screen.findByText('Versjon 8 er publisert.')).toBeTruthy();
+    expect(await screen.findByText('Utgave 8 er publisert.')).toBeTruthy();
     expect(window.location.hash).toBe('#/services/rapportassistenten/setup');
     const post = calls.find((c) => c.method === 'POST' && c.url.endsWith('/api/definitions'));
     expect(post).toBeTruthy();
@@ -328,7 +328,7 @@ describe('a new service', () => {
     fireEvent.change(screen.getByLabelText('Hva skal tjenesten gjøre?'), {
       target: { value: 'Svar på spørsmål om permisjon' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Start med assistenten' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Start med byggeassistenten' }));
     expect(await screen.findByRole('complementary', { name: 'Byggeassistent' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Bekreft risikonivå' })).toBeTruthy();
     expect(screen.queryByRole('region', { name: 'Utkast' })).toBeNull();
@@ -369,7 +369,7 @@ describe('Oppsett wired to the draft, dataset and input API', () => {
 
   it('lists datasets from the dataset list with their document count, update date and owner', async () => {
     await openService('#/services/rapportassistenten/setup/sources');
-    fireEvent.change(await screen.findByLabelText('Datasett'), { target: { value: 'e' } });
+    fireEvent.change(await screen.findByLabelText('Dokumentsamlinger'), { target: { value: 'e' } });
     const hits = await screen.findByRole('list', { name: 'Treff' });
     const row = (name: string) => within(hits).getByText(name).closest('li') as HTMLElement;
     await waitFor(() => expect(within(hits).getByText('Veiledere og rundskriv')).toBeTruthy());
@@ -378,7 +378,7 @@ describe('Oppsett wired to the draft, dataset and input API', () => {
         '48 312 dokumenter · fra Digitaliseringsdirektoratet',
       ),
     ).toBeTruthy();
-    expect(within(row('Kudos-rapporter')).getByText('Fellesdatasett')).toBeTruthy();
+    expect(within(row('Kudos-rapporter')).getByText('Felles dokumentsamling')).toBeTruthy();
     expect(
       within(row('Veiledere og rundskriv')).getByText('6 dokumenter · oppdatert 7. oktober 2026'),
     ).toBeTruthy();
@@ -412,7 +412,9 @@ describe('Oppsett wired to the draft, dataset and input API', () => {
             })
           : undefined,
     });
-    fireEvent.change(await screen.findByLabelText('Datasett'), { target: { value: 'ukjent' } });
+    fireEvent.change(await screen.findByLabelText('Dokumentsamlinger'), {
+      target: { value: 'ukjent' },
+    });
     const hits = await screen.findByRole('list', { name: 'Treff' });
     expect(
       await within(hits).findByText(
@@ -447,17 +449,17 @@ describe('Oppsett wired to the draft, dataset and input API', () => {
     expect([...types.options].map((o) => o.textContent)).toEqual(['Tekst, Markdown, CSV og JSON']);
   });
 
-  it('says which model the version in use has when the draft changes it', async () => {
+  it('says which model the edition in use has when the draft changes it', async () => {
     await openService('#/services/rapportassistenten/setup/model', {
       draft: withSpec({ model: { ...published.spec.model, primary: 'foundry-openai/gpt-4.1' } }),
     });
-    expect(await screen.findByText(/^Endret i utkastet\. Versjon 7 i bruk har /)).toBeTruthy();
+    expect(await screen.findByText(/^Endret i utkastet\. Utgave 7 i bruk har /)).toBeTruthy();
   });
 
   it('shows Grenser og logging as rows, with the full settings behind Endre grenser', async () => {
     await openService('#/services/rapportassistenten/setup/limits');
     expect(await screen.findByText('Logging av spørsmål')).toBeTruthy();
-    const edit = screen.getByRole('button', { name: 'Endre grenser' });
+    const edit = screen.getByRole('button', { name: 'Endre begrensninger' });
     expect(edit.getAttribute('aria-expanded')).toBe('false');
     fireEvent.click(edit);
     expect(edit.getAttribute('aria-expanded')).toBe('true');
@@ -498,7 +500,7 @@ describe('the Prøv pane on Oppsett', () => {
     expect(within(side).getByLabelText('Spørsmål til utkastet')).toBeTruthy();
   });
 
-  it('runs the edited draft, not the version in use, and shows the answer with its sources', async () => {
+  it('runs the edited draft, not the edition in use, and shows the answer with its sources', async () => {
     const calls = await openService('#/services/rapportassistenten/setup/purpose', {
       reply: (url, method) =>
         method === 'POST' && url.endsWith('/playground/runs')

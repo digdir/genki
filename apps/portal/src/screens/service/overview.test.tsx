@@ -447,7 +447,7 @@ describe('the Oversikt tab of a published service', () => {
     );
 
     const who = await screen.findByRole('region', { name: 'Hvem bruker den' });
-    await waitFor(() => expect(within(who).getByText('Ingen brukerflater')).toBeTruthy());
+    await waitFor(() => expect(within(who).getByText('Ingen egne løsninger')).toBeTruthy());
     expect(within(who).getByText('Ingen API-nøkler')).toBeTruthy();
     expect(text(who)).toContain('Ikke delt med andre virksomheter');
   });
@@ -470,7 +470,7 @@ describe('the Oversikt tab of a published service', () => {
 
     expect(
       await screen.findByRole('heading', {
-        name: 'Versjon 7 er publisert. Dette gjenstår før folk tar den i bruk',
+        name: 'Utgave 7 er publisert. Dette gjenstår før folk kan bruke den',
       }),
     ).toBeTruthy();
     expect(screen.getByText('Lag et testsett')).toBeTruthy();
@@ -526,7 +526,7 @@ describe('the Oversikt tab of a published service', () => {
       'API: Saksbehandling',
       'API',
       'Prøveområdet',
-      'Samlet jobb',
+      'Massekjøring',
       'Utløser',
     ]);
     expect(within(table).queryByText('Ola Hansen')).toBeNull();
@@ -632,10 +632,10 @@ describe('the Oversikt tab of a published service', () => {
       <OverviewSection api={api} tenant={tenant} id="rapport" definition={definition} now={now} />,
     );
 
-    const need = await screen.findByText('Utkastet stoppes av en sperre');
+    const need = await screen.findByText('Utkastet stoppes av et krav til kvalitet');
     await waitFor(() =>
       expect(text(need.parentElement)).toContain(
-        'Én sperre stopper publisering: Avslag uten kilde er 89 %, kravet er 90 %.',
+        'Ett krav til kvalitet stopper publisering: Avslag uten kilde er 89 %, kravet er 90 %.',
       ),
     );
     expect(text(need.parentElement)).not.toContain('refused by');
@@ -688,7 +688,7 @@ describe('the Oversikt tab of a published service', () => {
       <OverviewSection api={api} tenant={tenant} id="rapport" definition={definition} now={now} />,
     );
 
-    const need = await screen.findByText('Utkastet stoppes av en sperre');
+    const need = await screen.findByText('Utkastet stoppes av et krav til kvalitet');
     await waitFor(() =>
       expect(text(need.parentElement)).toContain('Avslag uten kilde er 89 %, kravet er 90 %.'),
     );
@@ -777,7 +777,7 @@ describe('the Oversikt tab of a published service', () => {
     expect(text(tile(/^Kvalitet/))).not.toContain('Lag et testsett');
   });
 
-  it('lists the API keys of the service from the same source as Nøkler og kanaler', async () => {
+  it('lists the API keys of the service from the same source as API-nøkler og kanaler', async () => {
     const { api } = health({
       shared: {
         frontends: [],
@@ -841,11 +841,11 @@ describe('the Oversikt tab of a published service', () => {
       <OverviewSection api={api} tenant={tenant} id="rapport" definition={withSources} now={now} />,
     );
 
-    const live = await screen.findByRole('region', { name: 'I drift' });
+    const live = await screen.findByRole('region', { name: 'I bruk' });
     await waitFor(() =>
       expect(within(live).getByRole('link', { name: 'Kudos-rapporter' })).toBeTruthy(),
     );
-    expect(text(live)).toContain('ukjent datasett «borte»');
+    expect(text(live)).toContain('ukjent dokumentsamling «borte»');
   });
 
   it('says where the service processes data as the platform reports it', async () => {
@@ -854,7 +854,7 @@ describe('the Oversikt tab of a published service', () => {
       <OverviewSection api={api} tenant={tenant} id="rapport" definition={definition} now={now} />,
     );
 
-    const live = await screen.findByRole('region', { name: 'I drift' });
+    const live = await screen.findByRole('region', { name: 'I bruk' });
     await waitFor(() => expect(text(live)).toContain('data behandles i EU/EØS'));
   });
 
@@ -864,7 +864,7 @@ describe('the Oversikt tab of a published service', () => {
       <OverviewSection api={api} tenant={tenant} id="rapport" definition={definition} now={now} />,
     );
 
-    const live = await screen.findByRole('region', { name: 'I drift' });
+    const live = await screen.findByRole('region', { name: 'I bruk' });
     await waitFor(() => expect(text(live)).toContain('gpt-5.6-terra'));
     expect(text(live)).not.toContain('data behandles');
   });
@@ -888,7 +888,7 @@ describe('the Oversikt tab of a published service', () => {
       <OverviewSection api={api} tenant={tenant} id="rapport" definition={definition} now={now} />,
     );
 
-    await waitFor(() => expect(text(tile(/^Kvalitet/))).toContain('Samme som 86 % i versjon 6'));
+    await waitFor(() => expect(text(tile(/^Kvalitet/))).toContain('Samme som 86 % i utgave 6'));
     expect(text(tile(/^Kvalitet/))).not.toContain('Opp fra');
   });
 
@@ -917,7 +917,7 @@ describe('the Oversikt tab of a published service', () => {
         '2 API-nøklerSaksbehandling (12 %), Intranett-server, gammel (ikke brukt)',
       ),
     );
-    expect(text(who)).toContain('Brukerflate · 27 % av kjøringene');
+    expect(text(who)).toContain('Egen løsning · 27 % av kjøringene');
     expect(text(who)).not.toContain('Teams (27 %)');
   });
 
@@ -936,7 +936,7 @@ describe('the Oversikt tab of a published service', () => {
     );
 
     const who = await screen.findByRole('region', { name: 'Hvem bruker den' });
-    await waitFor(() => expect(text(who)).toContain('Brukerflate · 61 % av kjøringene'));
+    await waitFor(() => expect(text(who)).toContain('Egen løsning · 61 % av kjøringene'));
   });
 
   it('shows who paused the service, when and why, in a banner', async () => {
@@ -964,7 +964,7 @@ describe('the Oversikt tab of a published service', () => {
             publishedBy: 'employee:ansattporten:ola',
             publishedByName: 'Ola Nordmann',
             publishedAt: '2026-10-01T10:00:00Z',
-            reason: 'Ny versjon',
+            reason: 'Ny utgave',
             definition: definition as unknown as Record<string, unknown>,
           }}
         />,

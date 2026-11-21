@@ -39,7 +39,7 @@ ADR 0053 keeps the UI blocks free of fetching: data in, events out. It left two 
 ## Consequences
 
 - The atlas has a module `ui-assembly` (`docs/architecture/modules/ui-assembly.yaml`), and `docs/components/ui-assembly.html` describes it.
-- The portal's try view, in the service page's «Grensesnitt» tab, is its first host. Kunnskapsassistenten's next client and the workspace can follow.
+- The portal's try view, in the service page's «Utforming» tab, is its first host. Kunnskapsassistenten's next client and the workspace can follow.
 - The layout's version 1, `AssistantApi` and the assembly's props are public once the package is published: changing them then breaks a host.
 - The assembly's stylesheet follows the blocks' rules, and its lint refuses literal colours.
 - In the template `knowledge-assistant-next`, Fremgangsmåte stood in both zones until 2026-11-17, and now stands in `main` alone: Kunnskapsassistenten shows it over each answer, and its panel keeps to the sources. A layout from that template stored earlier keeps Fremgangsmåte in both zones until it is changed. Its look drew the tool for Fremgangsmåte in `main` before this was a choice, so a layout from that template stored earlier with Fremgangsmåte in `main` alone draws the card alone.

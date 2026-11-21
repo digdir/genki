@@ -81,7 +81,10 @@ describe('run timeline search notes', () => {
 
     expect(timeline.steps.map((s) => [s.type, s.summary])).toEqual([
       ['searchnote', '1 dokument hoppet over'],
-      ['note', 'Søket «phrase» ble hoppet over fordi datasettet mangler søkeprofilen phrase.'],
+      [
+        'note',
+        'Søket «phrase» ble hoppet over fordi dokumentsamlingen mangler søkeprofilen phrase.',
+      ],
       ['search', '1 søk: «digital veiledning»'],
       ['result', 'Svaret ble levert'],
     ]);
