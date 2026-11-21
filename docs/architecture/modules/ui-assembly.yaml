@@ -15,11 +15,13 @@ description:
   partner needs is off, such as footnotes without the sources.
 responsibilities:
   - Draw any layout the block catalogue allows, live against a service
+  - Resolve each layout entry, by id or by a Block definition's ref, to a built-in block through the registry, and draw a placeholder for a ref it has no component for
   - Keep the state the blocks share and link their events
   - Call genki for models, threads, facets and answers through one interface
 files:
   - packages/ui-assembly/src/useAssistant.ts
   - packages/ui-assembly/src/Assistant.tsx
+  - packages/ui-assembly/src/registry.tsx
   - packages/ui-assembly/src/api.ts
   - packages/ui-assembly/src/i18n.ts
 input: A layout and its profile, a service, the host's profile if any, and a way to reach genki

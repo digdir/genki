@@ -1,0 +1,32 @@
+apiVersion: genai/v1
+kind: Block
+metadata:
+  tenant: '991825827'
+  id: filter
+  name: Filter
+spec:
+  tier: built-in
+  builtIn: filter
+  title:
+    nb: Filter
+    en: Filter
+  summary:
+    nb: Hvilke dokumenter tråden leser fra
+    en: Which documents the thread reads from
+  zones:
+    - primary
+    - main
+  sharing: everyone
+  props:
+    type: object
+    properties:
+      corpus:
+        type: boolean
+        default: true
+        x-label: builder.filterCorpus
+        x-widget: switch
+      documents:
+        type: boolean
+        default: true
+        x-label: builder.filterDocuments
+        x-widget: switch

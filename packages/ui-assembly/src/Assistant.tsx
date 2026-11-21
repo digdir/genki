@@ -54,6 +54,7 @@ import {
   sameSelection,
   settingsPageIds,
   type AnswerCopied,
+  type BlockId,
   type AnswerFeedbackStatus,
   type ConversationAnswer,
   type SettingsPageId,
@@ -64,14 +65,7 @@ import {
   type SourceSelection,
   type SourceTarget,
 } from '@genai/ui-blocks';
-import {
-  ArrowLeftIcon,
-  ChatIcon,
-  FileSearchIcon,
-  FileTextIcon,
-  PlusIcon,
-  RobotIcon,
-} from '@navikt/aksel-icons';
+import { ArrowLeftIcon, FileTextIcon, PlusIcon } from '@navikt/aksel-icons';
 import {
   useEffect,
   useId,
@@ -84,6 +78,7 @@ import {
 } from 'react';
 import { phrase, useT, type AssemblyTranslator } from './i18n.js';
 import { stepsOf } from './procedure.js';
+import { blockRegistry, builtInOrder, unavailableIn } from './registry.js';
 import { useAssistant, type AssistantOptions, type AssistantState } from './useAssistant.js';
 
 // The next look's field in a conversation is one line until the question grows (dev-chat-samtale).
@@ -123,15 +118,6 @@ const nextFootnotes = {
   '--genai-conversation-question-background': 'var(--ds-color-neutral-background-tinted)',
 } as CSSProperties;
 
-// The tools' icons in the next look, as the dev-verktoy boards draw them: Fremgangsmåte's robot,
-// Kilder's page with a magnifier. Notater's pencil waits for the block.
-const toolIcons: Record<string, ReactNode> = {
-  approach: <RobotIcon aria-hidden />,
-  chat: <ChatIcon aria-hidden />,
-  sources: <FileSearchIcon aria-hidden />,
-  'document-view': <FileTextIcon aria-hidden />,
-};
-
 // A plain main-button click is the host's; any other, for a new tab, is the browser's.
 const plainClick = (event: MouseEvent<HTMLAnchorElement>) =>
   event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
@@ -146,6 +132,18 @@ export interface AssistantProps extends AssistantOptions {
   /** Drawn in a host's preview this wide, on the host's page: no `h1` of its own (`Shell`). */
   frameWidth?: number | undefined;
 }
+
+/** A placeholder where the layout pins a block this host has no component for. */
+const UnavailableBlock = ({ blockRef, level = 3 }: { blockRef: string; level?: 2 | 3 }) => {
+  const t = useT();
+  return (
+    <EmptyState
+      title={t('assembly.unavailableBlock')}
+      description={t('assembly.unavailableBlockHelp', { ref: blockRef })}
+      level={level}
+    />
+  );
+};
 
 /** The assistant a layout describes, live against the service through `api`. */
 export const Assistant = ({ mainId, frameWidth, ...options }: AssistantProps) => (
@@ -343,6 +341,11 @@ export const AssistantView = ({
   const sourcesOn = a.has('sources');
   const documentOn = a.has('document-view');
   const settingsOn = a.has('settings');
+  const unavailable = {
+    primary: unavailableIn(a.layout, 'primary'),
+    main: unavailableIn(a.layout, 'main'),
+    secondary: unavailableIn(a.layout, 'secondary'),
+  };
   const name = a.assistantName;
   // The dev boards' look, the layout's `next`: cards, every panel titled, the thread's title as
   // the `h1`, and the reader at the primary panel's foot with the profile menu.
@@ -906,6 +909,22 @@ export const AssistantView = ({
   } else if (profile) {
     primary = { label: t('builder.settings'), ...nextPrimary };
   }
+  if (unavailable.primary.length > 0) {
+    const placeholders = unavailable.primary.map((ref, i) => (
+      <UnavailableBlock key={`unavailable-${i}`} blockRef={ref} />
+    ));
+    primary = primary
+      ? {
+          ...primary,
+          children: (
+            <>
+              {primary.children}
+              {placeholders}
+            </>
+          ),
+        }
+      : { label: t('assembly.unavailableBlock'), children: placeholders };
+  }
 
   // ── The next look's «Innstillinger» (dev-innstillinger-1 to -4): the primary panel turns into
   // the settings menu, each page stands in the main card, and there is no secondary panel. ──
@@ -1074,55 +1093,45 @@ export const AssistantView = ({
   // The tool is the detailed one, the next look's as the list of the dev-verktoy boards.
   const approachPanel = approachOf(a, a.active?.id, t, 'tool') ?? approachNote;
   // Each tool's icon, as the dev-verktoy boards draw it, in the switcher.
-  const icon = (id: string) =>
-    next ? { icon: toolIcons[id] ?? <FileTextIcon aria-hidden /> } : {};
-  const tools: ShellTool[] = [
-    ...(approachTool
-      ? [
-          {
-            id: 'approach',
-            label: t('builder.approach'),
-            content: approachPanel,
-            ...icon('approach'),
-          },
-        ]
-      : []),
-    ...(chatZone === 'secondary'
-      ? [{ id: 'chat', label: t('builder.chat'), content: chat(true, false), ...icon('chat') }]
-      : []),
-    ...(sourcesOn
-      ? [
-          {
-            id: 'sources',
-            label: t('builder.sources'),
-            content: sourcesView(false),
-            ...icon('sources'),
-          },
-        ]
-      : []),
+  const icon = (id: BlockId) => (next ? { icon: blockRegistry.get(id)?.icon } : {});
+  // What each built-in block draws as a tool of the secondary panel, where it stands there.
+  const toolContent: Partial<Record<BlockId, ReactNode>> = {
+    ...(approachTool ? { approach: approachPanel } : {}),
+    ...(chatZone === 'secondary' ? { chat: chat(true, false) } : {}),
+    ...(sourcesOn ? { sources: sourcesView(false) } : {}),
     ...(a.documentZone === 'secondary'
-      ? [
-          {
-            id: 'document-view',
-            label: t('builder.documentView'),
-            ...icon('document-view'),
-            content: (
-              <div
-                onKeyDownCapture={escapeStaysInDrawer}
-                // Dokumentvisning's jumps stay at the top while the document scrolls: under the
-                // switcher the shell pins there, not behind it, at the height the shell measures.
-                style={
-                  {
-                    '--genai-document-view-jumps-inset': 'var(--uib-shell-pinned-block-size, 0px)',
-                  } as CSSProperties
-                }
-              >
-                {documentView(false)}
-              </div>
-            ),
-          },
-        ]
-      : []),
+      ? {
+          'document-view': (
+            <div
+              onKeyDownCapture={escapeStaysInDrawer}
+              // Dokumentvisning's jumps stay at the top while the document scrolls: under the
+              // switcher the shell pins there, not behind it, at the height the shell measures.
+              style={
+                {
+                  '--genai-document-view-jumps-inset': 'var(--uib-shell-pinned-block-size, 0px)',
+                } as CSSProperties
+              }
+            >
+              {documentView(false)}
+            </div>
+          ),
+        }
+      : {}),
+  };
+  const tools: ShellTool[] = [
+    ...builtInOrder('secondary').flatMap((id) => {
+      const content = toolContent[id];
+      const block = blockRegistry.get(id);
+      return content !== undefined && block
+        ? [{ id, label: t(block.label), content, ...icon(id) }]
+        : [];
+    }),
+    ...unavailable.secondary.map((ref, i) => ({
+      id: `unavailable-${i}`,
+      label: t('assembly.unavailableBlock'),
+      content: <UnavailableBlock blockRef={ref} />,
+      ...(next ? { icon: <FileTextIcon aria-hidden /> } : {}),
+    })),
   ];
   // Kilder alone keeps its own heading, as kunnskapsassistenten draws it; the switcher names the
   // tools only when there is a choice, or for a tool with no heading of its own. In the next look
@@ -1229,46 +1238,71 @@ export const AssistantView = ({
   } else {
     // Chat alone is the shell's child, as in kunnskapsassistenten, with no wrapper around it. With
     // Dokumentvisning beside it the wrapper stays, so opening a document moves nothing.
-    const chatAlone = chatZone === 'main' && filterZone !== 'main' && a.documentZone !== 'main';
-    const parts: ReactNode[] = [];
-    // Without Chat beside it, Fremgangsmåte has the column's head, as wide as the strip under it.
-    // Its note is named by a heading, as the secondary panel's switcher names it there; the steps
-    // name themselves on their own summary.
-    if (approachCard && chatZone !== 'main')
-      parts.push(
-        approachSteps ? (
-          <div key="approach" className="uia-main-approach">
-            {approachSteps}
-          </div>
-        ) : (
-          <section key="approach" className="uia-main-approach" aria-labelledby={approachHeadingId}>
-            <Heading id={approachHeadingId} level={2} data-size="xs">
-              {t('builder.approach')}
-            </Heading>
-            {approachNote}
-          </section>
-        ),
-      );
-    if (filterZone === 'main') parts.push(<div key="filter">{filterStrip}</div>);
-    if (chatZone === 'main')
-      parts.push(
-        // Hidden, not gone, while a document stands in its place: the conversation keeps its
-        // place and the field its text, and the way back finds the footnote.
-        <div key="chat" className="uia-main-chat" hidden={chatHidden || undefined}>
-          {chat(false, false)}
-        </div>,
-      );
-    // Beside Chat only while a document is open; without Chat, the document has the column.
-    if (a.documentZone === 'main' && (!a.documentOverChat || a.openDoc))
-      parts.push(
-        <div
-          key="document-view"
-          className="uia-main-document"
-          onKeyDownCapture={escapeStaysInDrawer}
-        >
-          {documentView(true)}
-        </div>,
-      );
+    const chatAlone =
+      chatZone === 'main' &&
+      filterZone !== 'main' &&
+      a.documentZone !== 'main' &&
+      unavailable.main.length === 0;
+    // What each built-in block draws in the main column, where it stands there.
+    const mainContent: Partial<Record<BlockId, ReactNode>> = {
+      // Without Chat beside it, Fremgangsmåte has the column's head, as wide as the strip under
+      // it. Its note is named by a heading, as the secondary panel's switcher names it there; the
+      // steps name themselves on their own summary.
+      ...(approachCard && chatZone !== 'main'
+        ? {
+            approach: approachSteps ? (
+              <div key="approach" className="uia-main-approach">
+                {approachSteps}
+              </div>
+            ) : (
+              <section
+                key="approach"
+                className="uia-main-approach"
+                aria-labelledby={approachHeadingId}
+              >
+                <Heading id={approachHeadingId} level={2} data-size="xs">
+                  {t('builder.approach')}
+                </Heading>
+                {approachNote}
+              </section>
+            ),
+          }
+        : {}),
+      ...(filterZone === 'main' ? { filter: <div key="filter">{filterStrip}</div> } : {}),
+      ...(chatZone === 'main'
+        ? {
+            // Hidden, not gone, while a document stands in its place: the conversation keeps its
+            // place and the field its text, and the way back finds the footnote.
+            chat: (
+              <div key="chat" className="uia-main-chat" hidden={chatHidden || undefined}>
+                {chat(false, false)}
+              </div>
+            ),
+          }
+        : {}),
+      // Beside Chat only while a document is open; without Chat, the document has the column.
+      ...(a.documentZone === 'main' && (!a.documentOverChat || a.openDoc)
+        ? {
+            'document-view': (
+              <div
+                key="document-view"
+                className="uia-main-document"
+                onKeyDownCapture={escapeStaysInDrawer}
+              >
+                {documentView(true)}
+              </div>
+            ),
+          }
+        : {}),
+    };
+    const parts: ReactNode[] = builtInOrder('main').flatMap((id) =>
+      mainContent[id] === undefined ? [] : [mainContent[id]],
+    );
+    parts.push(
+      ...unavailable.main.map((ref, i) => (
+        <UnavailableBlock key={`unavailable-${i}`} blockRef={ref} level={2} />
+      )),
+    );
     if (!chatZone)
       parts.push(
         <EmptyState

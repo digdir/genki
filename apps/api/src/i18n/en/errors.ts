@@ -108,6 +108,11 @@ export const catalogErrors = {
   hostOwnBlockHosted:
     "{block} is a host's own block, and genki's assistant host draws only catalogue blocks",
   unknownInterfaceBlock: 'unknown interface block {block}',
+  noUsableBlock: 'no published block {publisher}/{id} that this organisation may use',
+  noUsableBlockVersion:
+    'block {publisher}/{id} has no version {version} that this organisation may use',
+  blockRefDrawnAs: '{ref} is drawn as {drawn}, so its block must be {drawn}',
+  blockRefNotDrawn: '{ref} is a {tier} block, which no host draws yet',
   hostedServiceOwnBlock:
     "the service's interface has a host's own block ({block}), which genki's assistant host does not draw",
   riskConfirm:

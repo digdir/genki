@@ -1,5 +1,6 @@
 import type { InputField } from './input-fields.js';
 
+export * from './blocks.js';
 export * from './input-fields.js';
 export * from './kudos-earlier-ids.js';
 export * from './run-errors.js';

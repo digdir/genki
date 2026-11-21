@@ -74,6 +74,7 @@ export const blocksUi = {
     pasteCancel: 'Avbryt',
     pasteNotJson: 'Teksten er ikke gyldig JSON.',
     pasteNotLayout: 'Teksten er ikke et oppsett av byggeklosser.',
+    pastePinsBlock: 'Oppsettet fester en blokk med ref, og den kan bare endres i YAML.',
     pasteBreaksRules: 'Oppsettet bryter reglene for byggeklossene:',
     pasteUnknownBlock: '«{block}» er ikke en byggekloss.',
     pasteWrongPanel: '{block} kan ikke stå i {panel}.',

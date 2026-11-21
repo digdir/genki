@@ -290,6 +290,16 @@ describe('the look of a layout', () => {
     expect(isAssistantLayout({ ...emptyLayout, look: 'shiny' })).toBe(false);
     expect(isAssistantLayout({ ...emptyLayout, look: 1 })).toBe(false);
   });
+
+  it('refuses a placed block whose ref is not a string', () => {
+    const pinned = (ref: unknown) => ({
+      ...emptyLayout,
+      zones: { ...emptyLayout.zones, main: [{ block: 'chat', ref }] },
+    });
+    expect(isAssistantLayout(pinned('991825827/chat@1'))).toBe(true);
+    expect(isAssistantLayout(pinned(null))).toBe(false);
+    expect(isAssistantLayout(pinned(1))).toBe(false);
+  });
 });
 
 describe('the checks on a layout (V2-0006)', () => {

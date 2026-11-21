@@ -1,9 +1,8 @@
-import { checkInputFields, reservedInputFieldIds } from '@genai/contracts';
+import { checkInputFields, isBuiltInBlockId, reservedInputFieldIds } from '@genai/contracts';
 import { parse as parseYaml } from 'yaml';
 import { flowSettingRefs } from './flow-settings.js';
 import { checkSettingValue, type SettingDefinition } from './settings.js';
 import type { z } from 'zod';
-import { catalogueBlockIds } from './service-interface.js';
 import {
   blockDefinition,
   decisionModelOf,
@@ -696,7 +695,7 @@ const checkBlock = (definition: BlockDefinition): ValidationError[] => {
         message: `${tier} blocks are not drawn by any host yet; only built-in blocks can be published`,
       },
     ];
-  return builtIn && catalogueBlockIds.includes(builtIn)
+  return isBuiltInBlockId(builtIn)
     ? []
     : [{ path: 'spec.builtIn', message: `unknown built-in block ${builtIn}` }];
 };

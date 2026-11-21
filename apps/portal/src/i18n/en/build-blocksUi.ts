@@ -74,6 +74,7 @@ export const blocksUi = {
     pasteCancel: 'Cancel',
     pasteNotJson: 'The text is not valid JSON.',
     pasteNotLayout: 'The text is not a layout of building blocks.',
+    pastePinsBlock: 'The layout pins a block by ref, which only the YAML can change.',
     pasteBreaksRules: 'The layout breaks the rules for the building blocks:',
     pasteUnknownBlock: '“{block}” is not a building block.',
     pasteWrongPanel: '{block} cannot stand in the {panel}.',

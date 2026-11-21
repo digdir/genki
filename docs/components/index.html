@@ -31,6 +31,13 @@
         <h2 id="changelog">Change log</h2>
         <ul class="changelog">
           <li>
+            <strong>21 November 2026:</strong> The assembly draws a layout's blocks through a block
+            registry. A layout entry may pin a Block definition with <code>ref</code>, which draws
+            the built-in block it names; a <code>ref</code> the host has no component for is drawn
+            as a placeholder, «Blokken kan ikke vises». Every layout without a <code>ref</code> is
+            drawn as before.
+          </li>
+          <li>
             <strong>19 November 2026:</strong> The «Grensesnitt» tab saves the layout in the
             service's draft, as <code>spec.interface.layout</code>, and publishes it with the next
             version, so it follows the service to other browsers and people. A layout kept only in

@@ -8,6 +8,7 @@ import {
   flowUsesOf,
   InMemoryDefinitionStore,
   isIconDataUrl,
+  parseBlockRef,
   platformSettings,
   resolveSetting,
   resolveSettings,
@@ -1722,6 +1723,40 @@ describe('a service interface (spec.interface)', () => {
     expect(
       errorsOf(withLayout({ zones: { ...layout.zones, main: [{ block: 'Chat' }] } })),
     ).not.toEqual([]);
+  });
+
+  it('takes a ref beside a block, naming a Block definition by its publisher, id and version', () => {
+    const main = [{ block: 'chat', ref: '991825827/chat@3' }];
+    expect(errorsOf(withLayout({ zones: { ...layout.zones, main } }))).toEqual([]);
+    expect(parseBlockRef('991825827/chat@3')).toEqual({
+      publisher: '991825827',
+      id: 'chat',
+      version: 3,
+    });
+  });
+
+  it('refuses a ref that is not <organisation number>/<block id>@<version>', () => {
+    for (const ref of [
+      'chat',
+      'chat@1',
+      'digdir/chat@1',
+      '991825827/chat',
+      '991825827/chat@0',
+      '991825827/Chat@1',
+      '991825827/chat@1.2',
+      ' 991825827/chat@1',
+    ])
+      expect(
+        errorsOf(withLayout({ zones: { ...layout.zones, main: [{ block: 'chat', ref }] } })),
+      ).not.toEqual([]);
+  });
+
+  it('reads a ref in linear time', () => {
+    const long = `991825827/${'a'.repeat(200_000)}@`;
+    const started = performance.now();
+    expect(parseBlockRef(long)).toBeUndefined();
+    expect(parseBlockRef(`991825827/${'a-'.repeat(100_000)}@1`)).toBeUndefined();
+    expect(performance.now() - started).toBeLessThan(100);
   });
 
   it("takes a document link on the host's own site, which opens under any hostname", () => {

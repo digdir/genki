@@ -29,6 +29,8 @@ export interface PlacedBlock {
   block: BlockId;
   /** Only what differs from the option's default. */
   settings?: BlockSettings | undefined;
+  /** The Block definition it pins, `<publisher>/<id>@<version>` (ADR 0067). */
+  ref?: string | undefined;
 }
 
 /** What the builder edits, and what could be stored as a frontend definition (V2-0006). */
@@ -430,7 +432,8 @@ export const isAssistantLayout = (value: unknown): value is AssistantLayout => {
         (placed) =>
           typeof placed === 'object' &&
           placed !== null &&
-          typeof (placed as { block?: unknown }).block === 'string',
+          typeof (placed as { block?: unknown }).block === 'string' &&
+          ['string', 'undefined'].includes(typeof (placed as { ref?: unknown }).ref),
       ),
   );
 };

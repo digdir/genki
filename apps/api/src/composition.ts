@@ -323,7 +323,11 @@ import { skillsModule } from './skills.js';
 import { createKeyPoliciesModule } from './key-policies.js';
 import { maskinportenClientsModule } from './maskinporten-clients.js';
 import { defaultReservedDomains, registerHostRoutes, type HostingRules } from './hosts.js';
-import { hostedByGenki, interfaceCatalogueProblems } from './interface-catalogue.js';
+import {
+  blockRefProblems,
+  hostedByGenki,
+  interfaceCatalogueProblems,
+} from './interface-catalogue.js';
 import { triggersModule } from './triggers.js';
 import { createServiceDeleteModule } from './service-delete.js';
 import { lifecycleOf, pausedMessage, serviceLifecycleModule } from './service-lifecycle.js';
@@ -1645,10 +1649,13 @@ export const createPlatform = async (input: PlatformInput) => {
       return problems.length > 0 ? problems : undefined;
     }
     if (d.kind === 'Service') {
-      const blockProblems = interfaceCatalogueProblems(
-        d,
-        await hostedByGenki(clients, d.metadata.tenant, d.metadata.id),
-      );
+      const blockProblems = [
+        ...interfaceCatalogueProblems(
+          d,
+          await hostedByGenki(clients, d.metadata.tenant, d.metadata.id),
+        ),
+        ...(await blockRefProblems(store, d)),
+      ];
       const unsearchable = [
         ...blockProblems,
         ...missingDatasetProblems(

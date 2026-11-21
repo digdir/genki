@@ -33,6 +33,7 @@ import {
 import { ModelError } from '@genai/port-model';
 import type { Context } from 'hono';
 import { t } from './i18n/index.js';
+import { blockRefProblems } from './interface-catalogue.js';
 import { isOperator, refusedAction, type RightProblem } from './rights.js';
 import { confirmedAs, riskConfirmationProblems } from './risk-confirmation.js';
 import { serviceHealth, type ServiceModels } from './service-health.js';
@@ -351,12 +352,15 @@ export const createAdmin = (options: AdminOptions) => {
     return validated.ok ? checkPromptFiles(validated.definition, files) : validated.errors;
   };
 
-  const checkImport = (definition: unknown, files: PromptFiles): ValidationError[] => {
+  const checkImport = async (definition: unknown, files: PromptFiles) => {
     const validated = validateDefinition(definition, plugins);
     return validated.ok
       ? [
           ...checkPromptFiles(validated.definition, files),
           ...riskConfirmationProblems(validated.definition),
+          ...(validated.definition.kind === 'Service'
+            ? await blockRefProblems(store, validated.definition)
+            : []),
         ]
       : validated.errors;
   };
@@ -382,7 +386,7 @@ export const createAdmin = (options: AdminOptions) => {
   const importCheck =
     (principal: Principal) =>
     async (definition: unknown, files: PromptFiles): Promise<ValidationError[]> => [
-      ...checkImport(definition, files),
+      ...(await checkImport(definition, files)),
       ...(await sharingProblems(definition, principal)),
       ...(await publishRefusals(store, definition)),
       ...(await archivedProblems(definition)),
@@ -507,7 +511,7 @@ export const createAdmin = (options: AdminOptions) => {
           const sharing = await sharingProblems(definition, principal);
           if (sharing.length > 0) sharingRefused = true;
           return [
-            ...checkImport(definition, files),
+            ...(await checkImport(definition, files)),
             ...sharing,
             ...(await archivedProblems(definition)),
           ];

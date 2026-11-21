@@ -6,6 +6,7 @@
 //
 // Fotnoter is not a block here but an option on Chat that needs Kilder or Dokumentvisning: V2-0010
 // pairs every footnote with an excerpt, so a footnote never stands where neither shows it.
+import { builtInBlockIds, type BuiltInBlockId } from '@genai/contracts/blocks';
 import type { BuilderKey } from './i18n.js';
 
 /** The shell's three places: the panel before the main column, the main column, the panel after. */
@@ -53,18 +54,8 @@ export const userNeeds = [
 ] as const;
 export type UserNeed = (typeof userNeeds)[number];
 
-export const blockIds = [
-  'projects',
-  'threads',
-  'settings',
-  'chat',
-  'filter',
-  'approach',
-  'sources',
-  'document-view',
-  'notes',
-] as const;
-export type BlockId = (typeof blockIds)[number];
+export const blockIds = builtInBlockIds;
+export type BlockId = BuiltInBlockId;
 
 /**
  * How a layout's blocks are drawn. `next` is the «_Ready for dev» boards' look (the cards frame,

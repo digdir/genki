@@ -1,12 +1,12 @@
+import { isBuiltInBlockId } from '@genai/contracts';
 import {
-  catalogueBlockIds,
+  parseBlockRef,
+  type BlockDefinition,
   type DefinitionStore,
   type ServiceDefinition,
   type ValidationError,
 } from '@genai/definitions';
 import type { ClientStore } from '@genai/identity';
-
-const catalogue: ReadonlySet<string> = new Set(catalogueBlockIds);
 
 const zones = ['primary', 'main', 'secondary'] as const;
 
@@ -14,7 +14,9 @@ const placedBlocks = (spec: Pick<ServiceDefinition, 'spec'>['spec']) =>
   zones.flatMap((zone) =>
     (spec.interface?.layout?.zones[zone] ?? []).map((placed, i) => ({
       block: placed.block,
+      ref: placed.ref,
       path: `spec.interface.layout.zones.${zone}[${i}].block`,
+      refPath: `spec.interface.layout.zones.${zone}[${i}].ref`,
     })),
   );
 
@@ -35,7 +37,7 @@ export const interfaceCatalogueProblems = (
             },
           ]
         : [];
-    return catalogue.has(block) ? [] : [{ path, message: `unknown interface block ${block}` }];
+    return isBuiltInBlockId(block) ? [] : [{ path, message: `unknown interface block ${block}` }];
   });
 
 export const hostedByGenki = async (clients: ClientStore, tenant: string, service: string) =>
@@ -59,4 +61,46 @@ export const hostedServiceProblems = async (
         },
       ]
     : [];
+};
+
+const specOf = (definition: unknown) => (definition as BlockDefinition).spec;
+
+/** Each `ref` must name a published version of a Block the service's organisation may use, drawn as its `block`. */
+export const blockRefProblems = async (
+  store: Pick<DefinitionStore, 'versions'>,
+  definition: Pick<ServiceDefinition, 'metadata' | 'spec'>,
+): Promise<ValidationError[]> => {
+  const problems: ValidationError[] = [];
+  for (const { block, ref, refPath: path } of placedBlocks(definition.spec)) {
+    const target = ref === undefined ? undefined : parseBlockRef(ref);
+    if (!ref || !target) continue;
+    const { publisher, id, version } = target;
+    const own = publisher === definition.metadata.tenant;
+    const usable = (await store.versions('Block', publisher, id)).filter(
+      (v) => own || specOf(v.definition).sharing === 'everyone',
+    );
+    const pinned = usable.find((v) => v.version === version);
+    if (usable.length === 0)
+      problems.push({
+        path,
+        message: `no published block ${publisher}/${id} that this organisation may use`,
+      });
+    else if (!pinned)
+      problems.push({
+        path,
+        message: `block ${publisher}/${id} has no version ${version} that this organisation may use`,
+      });
+    else {
+      const spec = specOf(pinned.definition);
+      const drawn = spec.tier === 'built-in' ? spec.builtIn : undefined;
+      if (drawn !== block)
+        problems.push({
+          path,
+          message: drawn
+            ? `${ref} is drawn as ${drawn}, so its block must be ${drawn}`
+            : `${ref} is a ${spec.tier} block, which no host draws yet`,
+        });
+    }
+  }
+  return problems;
 };

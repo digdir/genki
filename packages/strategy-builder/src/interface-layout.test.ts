@@ -1,11 +1,5 @@
+import { interfaceLimits, PROFILE_MAX_BYTES, serviceInterface } from '@genai/definitions';
 import {
-  catalogueBlockIds,
-  interfaceLimits,
-  PROFILE_MAX_BYTES,
-  serviceInterface,
-} from '@genai/definitions';
-import {
-  blockIds,
   fromTemplate,
   PROFILE_MAX_BYTES as BUILDER_PROFILE_MAX_BYTES,
   profileLimits,
@@ -58,9 +52,5 @@ describe('the layout the portal builder saves in the draft', () => {
   it('has the same text limits in the definition as in the builder', () => {
     expect(interfaceLimits).toMatchObject(profileLimits);
     expect(PROFILE_MAX_BYTES).toBe(BUILDER_PROFILE_MAX_BYTES);
-  });
-
-  it('knows the same catalogue blocks in the definition as in the builder', () => {
-    expect([...catalogueBlockIds].sort()).toEqual([...blockIds].sort());
   });
 });
