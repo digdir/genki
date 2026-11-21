@@ -160,6 +160,27 @@ const pageText = (items: object[]) => {
     .trim();
 };
 
+/**
+ * A PDF's page count, read from its page tree without reading any page, for Docling's task line
+ * (issue 922). Undefined when pdf.js cannot open the file.
+ */
+export const pdfPageCount = async (bytes: Uint8Array): Promise<number | undefined> => {
+  const task = getDocument({
+    data: new Uint8Array(bytes),
+    disableFontFace: true,
+    useSystemFonts: false,
+    useWorkerFetch: false,
+    verbosity: 0,
+  });
+  try {
+    return (await task.promise).numPages;
+  } catch {
+    return undefined;
+  } finally {
+    await task.destroy();
+  }
+};
+
 /** One markdown string per PDF page; a page with no text layer is empty. */
 const pdfPages = async (
   file: DocumentFile,

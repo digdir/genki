@@ -1,16 +1,20 @@
 import { readFileSync } from 'node:fs';
 import http from 'node:http';
 import net, { type AddressInfo } from 'node:net';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import { buildConnector, errors } from 'undici';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   ConversionRefused,
   doclingConverter,
+  doclingBusyLimitMs,
+  doclingBusyWaitMs,
   doclingDocumentTimeoutSeconds,
   doclingIdentity,
   DoclingFailed,
   doclingPollIntervalMs,
   type DoclingOptions,
+  type DoclingTaskEvent,
 } from './index.js';
 
 const fixture = (name: string) =>
@@ -45,6 +49,12 @@ interface Replica {
   notFound: number;
   /** How many polls of a known task to answer 503 first. */
   failPolls: number;
+  /** How many submits to refuse as busy (503), as genki's middleware in docker/docling does. */
+  busy: number;
+  /** Submits refused as busy. */
+  refused: number;
+  /** How many new connections to refuse, as a replica restarting does. */
+  down: number;
   /** Stops the replica as a scale-in does: its tasks are gone and its connections closed. */
   stop: () => void;
 }
@@ -55,10 +65,14 @@ interface Cluster {
   replicas: Replica[];
   /** Connections the proxy accepted. */
   connections: number;
+  /** Connections the proxy holds open now. */
+  open: number;
   /** Closes every connection the proxy holds, as a network blip would; the replicas keep their tasks. */
   drop: () => void;
   /** Called when a replica takes a task. */
   onTask?: (replica: Replica) => void;
+  /** Called when a replica refuses a submit as busy. */
+  onRefuse?: (replica: Replica) => void;
 }
 
 const servers: { close: (callback: () => void) => void }[] = [];
@@ -82,7 +96,12 @@ const doclingCluster = async (
   { replicas = 1, convertMs = 0, idleMs = 0 } = {},
 ): Promise<Cluster> => {
   const seen: Seen[] = [];
-  const cluster = { seen, replicas: [] as Replica[], connections: 0 } as unknown as Cluster;
+  const cluster = {
+    seen,
+    replicas: [] as Replica[],
+    connections: 0,
+    open: 0,
+  } as unknown as Cluster;
   for (let n = 0; n < replicas; n += 1) {
     const tasks = new Map<string, Task>();
     const sockets = new Set<net.Socket>();
@@ -92,12 +111,16 @@ const doclingCluster = async (
       polls: 0,
       notFound: 0,
       failPolls: 0,
+      busy: 0,
+      refused: 0,
+      down: 0,
     } as unknown as Replica;
+    const name = `replica-${n}`;
     const server = http.createServer(async (req, res) => {
       const chunks: Buffer[] = [];
       for await (const chunk of req) chunks.push(chunk as Buffer);
-      const json = (status: number, body: unknown) => {
-        res.writeHead(status, { 'content-type': 'application/json' });
+      const json = (status: number, body: unknown, headers: Record<string, string> = {}) => {
+        res.writeHead(status, { 'content-type': 'application/json', ...headers });
         res.end(typeof body === 'string' ? body : JSON.stringify(body));
       };
       const path = req.url ?? '';
@@ -112,6 +135,17 @@ const doclingCluster = async (
           key: typeof key === 'string' ? key : undefined,
           form,
         });
+        if (path === '/v1/convert/file/async' && replica.busy > 0) {
+          // A busy replica takes nothing: the answer stays for the replica that takes the file.
+          replica.busy -= 1;
+          replica.refused += 1;
+          cluster.onRefuse?.(replica);
+          return json(
+            503,
+            { detail: 'This replica is converting a file; submit it again on a new connection.' },
+            { 'retry-after': '15', 'x-docling-replica': name },
+          );
+        }
         const answer = recorded(answers.shift() ?? 'success');
         if (path === '/v1/convert/file') {
           // The synchronous route sends nothing until the conversion is done.
@@ -124,7 +158,11 @@ const doclingCluster = async (
         tasks.set(id, { doneAt: Date.now() + convertMs, answer });
         replica.submits += 1;
         cluster.onTask?.(replica);
-        return json(200, { task_id: id, task_type: 'convert', task_status: 'pending' });
+        return json(
+          200,
+          { task_id: id, task_type: 'convert', task_status: 'pending' },
+          { 'x-docling-replica': name },
+        );
       }
       const poll = /^\/v1\/status\/poll\/([\w-]+)/.exec(path);
       if (req.method === 'GET' && poll) {
@@ -168,13 +206,21 @@ const doclingCluster = async (
   const proxy = net.createServer((client) => {
     const replica = cluster.replicas[next % cluster.replicas.length] as Replica;
     next += 1;
+    if (replica.down > 0) {
+      // A replica restarting: the ingress accepts the connection, and it ends with no answer.
+      replica.down -= 1;
+      cluster.connections += 1;
+      client.destroy();
+      return;
+    }
     const upstream = net.connect(replica.port, '127.0.0.1');
     cluster.connections += 1;
+    cluster.open += 1;
     held.add(client);
     let idle: NodeJS.Timeout | undefined;
     const close = () => {
       clearTimeout(idle);
-      held.delete(client);
+      if (held.delete(client)) cluster.open -= 1;
       client.end();
       client.destroy();
       upstream.destroy();
@@ -228,6 +274,7 @@ const converterFor = (url: string, options: Partial<DoclingOptions> = {}) =>
     url,
     credential: { kind: 'api-key', key: async () => 'docling-key' },
     pollIntervalMs: 20,
+    busyWaitMs: 20,
     ...options,
   });
 
@@ -595,5 +642,212 @@ describe('the Docling client', () => {
     }).convert(report);
 
     expect(cluster.seen.map((s) => s.form.get('document_timeout'))).toEqual(['3600', '1800']);
+  });
+
+  it('submits again on a new connection when a busy replica refuses the file, without counting it as a submit', async () => {
+    const cluster = await doclingCluster(['success'], { replicas: 2, convertMs: 100 });
+    (cluster.replicas[0] as Replica).busy = 1;
+    const lost: number[] = [];
+
+    const conversion = await converterFor(cluster.url, {
+      onTaskLost: ({ submits }) => lost.push(submits),
+    }).convert(report);
+
+    expect(conversion.converter).toEqual(doclingIdentity);
+    expect(cluster.replicas.map((r) => [r.refused, r.submits])).toEqual([
+      [1, 0],
+      [0, 1],
+    ]);
+    expect(cluster.connections).toBe(2);
+    expect(lost).toEqual([]);
+  });
+
+  it('keeps asking a busy server every 15 s for at most 50 minutes, then fails the try', async () => {
+    expect(doclingBusyWaitMs).toBe(15_000);
+    expect(doclingBusyLimitMs).toBe(50 * 60_000);
+    let clock = new Date('2026-11-21T10:00:00Z').getTime();
+    const cluster = await doclingCluster(['success']);
+    (cluster.replicas[0] as Replica).busy = Infinity;
+    // Each refusal takes ten minutes: past the 50 minutes after the sixth.
+    cluster.onRefuse = () => {
+      clock += 10 * 60_000;
+    };
+
+    const error = await converterFor(cluster.url, { now: () => new Date(clock) })
+      .convert(report)
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(DoclingFailed);
+    expect(String((error as Error).message)).toContain('no replica took the file');
+    expect(cluster.replicas[0]?.refused).toBe(6);
+    expect(cluster.replicas[0]?.submits).toBe(0);
+  });
+
+  it('asks Docling for the full document timeout after waiting for a replica', async () => {
+    let clock = new Date('2026-11-21T10:00:00Z').getTime();
+    const cluster = await doclingCluster(['success']);
+    (cluster.replicas[0] as Replica).busy = 2;
+    cluster.onRefuse = () => {
+      clock += 20 * 60_000;
+    };
+
+    await converterFor(cluster.url, { now: () => new Date(clock) }).convert(report);
+
+    // The document timeout runs from when a replica takes the file, not from the first ask.
+    expect(cluster.seen.at(-1)?.form.get('document_timeout')).toBe(
+      String(doclingDocumentTimeoutSeconds),
+    );
+  });
+
+  it('keeps a refused connection open while it waits, so a waiting job still counts toward scaling', async () => {
+    const cluster = await doclingCluster(['success'], { replicas: 2, convertMs: 50 });
+    (cluster.replicas[0] as Replica).busy = 1;
+    const during: number[] = [];
+    cluster.onRefuse = () => setTimeout(() => during.push(cluster.open), 100);
+
+    await converterFor(cluster.url, { busyWaitMs: 300 }).convert(report);
+
+    expect(during).toEqual([1]);
+  });
+
+  it('fails a submit answered 503 by something other than a Docling replica, without waiting', async () => {
+    const server = http.createServer((req, res) => {
+      req.resume();
+      res.writeHead(503, { 'content-type': 'application/json' });
+      res.end('{"detail":"Service Unavailable"}');
+    });
+    const port = await listen(server);
+
+    const error = await converterFor(`http://127.0.0.1:${port}`)
+      .convert(report)
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(DoclingFailed);
+    expect((error as DoclingFailed).status).toBe(503);
+  });
+
+  it('fails the try after 8 submits in a row end without an answer', async () => {
+    const cluster = await doclingCluster(['success']);
+    (cluster.replicas[0] as Replica).down = 10;
+
+    const error = await converterFor(cluster.url)
+      .convert(report)
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(Error);
+    expect(cluster.connections).toBe(8);
+    expect(cluster.replicas[0]?.submits).toBe(0);
+  });
+
+  it('reports one task line when a task ends, with its task id, sha256, pages, submit number, replica, times and result', async () => {
+    const cluster = await doclingCluster(['success'], { replicas: 2, convertMs: 100 });
+    const tasks: DoclingTaskEvent[] = [];
+
+    await converterFor(cluster.url, {
+      countPages: async () => 7,
+      onTask: (event) => tasks.push(event),
+    }).convert(report);
+
+    expect(tasks).toEqual([
+      {
+        task: expect.stringMatching(/^[\w-]{36}$/) as unknown,
+        sha256: createHash('sha256').update(report.bytes).digest('hex'),
+        pages: 7,
+        submit: 1,
+        replica: 'replica-0',
+        queuedMs: expect.any(Number) as unknown,
+        convertingMs: expect.any(Number) as unknown,
+        result: 'success',
+        busyWaits: 0,
+      },
+    ]);
+  });
+
+  it('reports a lost task with the pages counted from the PDF before it was submitted', async () => {
+    const cluster = await doclingCluster([], { replicas: 2, convertMs: 300 });
+    const order: string[] = [];
+    const tasks: DoclingTaskEvent[] = [];
+    let stops = 1;
+    cluster.onTask = (replica) => {
+      order.push('submit');
+      if (stops-- > 0) setTimeout(() => replica.stop(), 100);
+    };
+
+    await converterFor(cluster.url, {
+      countPages: async () => {
+        order.push('count');
+        return 452;
+      },
+      onTask: (event) => tasks.push(event),
+    }).convert(report);
+
+    expect(order).toEqual(['count', 'submit', 'submit']);
+    expect(tasks.map((t) => [t.result, t.submit, t.pages])).toEqual([
+      ['lost', 1, 452],
+      ['success', 2, 452],
+    ]);
+    // The lost task names the replica that was stopped, so its kill can be matched to the file.
+    expect(tasks[0]?.replica).toBe('replica-0');
+  });
+
+  it('counts the busy answers before a task in its task line', async () => {
+    const cluster = await doclingCluster(['success'], { convertMs: 50 });
+    (cluster.replicas[0] as Replica).busy = 2;
+    const tasks: DoclingTaskEvent[] = [];
+
+    await converterFor(cluster.url, { onTask: (event) => tasks.push(event) }).convert(report);
+
+    expect(tasks.map((t) => [t.result, t.busyWaits])).toEqual([['success', 2]]);
+  });
+
+  it('submits again on a new connection when the replica is restarting and refuses the connection', async () => {
+    const cluster = await doclingCluster(['success'], { replicas: 2, convertMs: 50 });
+    (cluster.replicas[0] as Replica).down = 1;
+
+    const conversion = await converterFor(cluster.url).convert(report);
+
+    expect(conversion.converter).toEqual(doclingIdentity);
+    expect(cluster.replicas.map((r) => r.submits)).toEqual([0, 1]);
+  });
+
+  it('fails a submit whose answer times out at once, without asking again', async () => {
+    let submits = 0;
+    const server = http.createServer((req) => {
+      // Takes the file and never answers, as a hung server does.
+      submits += 1;
+      req.resume();
+    });
+    const port = await listen(server);
+
+    const error = await converterFor(`http://127.0.0.1:${port}`, { headersTimeoutMs: 100 })
+      .convert(report)
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(Error);
+    expect(submits).toBe(1);
+  });
+
+  it('waits and asks again when a connection to Docling times out, as while replicas start', async () => {
+    const cluster = await doclingCluster(['success'], { convertMs: 50 });
+    const tasks: DoclingTaskEvent[] = [];
+    // The ingress holds a connection while every replica is taken and the next one starts: the
+    // first 12 connects give up as undici's 10 s connect timeout does, more than the 8 early ends.
+    let timeouts = 12;
+    const direct = buildConnector({});
+    const connect: buildConnector.connector = (options, callback) => {
+      if (timeouts-- > 0) {
+        setTimeout(() => callback(new errors.ConnectTimeoutError(), null), 5);
+        return;
+      }
+      direct(options, callback);
+    };
+
+    const conversion = await converterFor(cluster.url, {
+      connect,
+      onTask: (event) => tasks.push(event),
+    }).convert(report);
+
+    expect(conversion.converter).toEqual(doclingIdentity);
+    expect(tasks.map((t) => [t.result, t.submit, t.busyWaits])).toEqual([['success', 1, 12]]);
   });
 });

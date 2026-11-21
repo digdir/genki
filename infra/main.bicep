@@ -647,6 +647,8 @@ module alerts 'modules/alerts.bicep' = if (alertsEnabled && infra) {
     insightsName: infra ? monitoring!.outputs.insightsName : ''
     apiAppName: apps.outputs.appName
     workerAppName: apps.outputs.workerName
+    doclingAppName: apps.outputs.doclingName
+    doclingMemoryGiB: apps.outputs.doclingMemoryGiB
     healthUrl: 'https://${customDomainsStage == 'certificates' && !empty(hostnames.api) ? hostnames.api : apps.outputs.fqdn}/health'
     emails: alertEmails
     healthCheckFrequencySeconds: healthCheckFrequencySeconds

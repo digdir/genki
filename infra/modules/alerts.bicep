@@ -7,6 +7,12 @@ param insightsName string
 param apiAppName string
 param workerAppName string
 
+@description('The Docling server app (issue 922): alerts on a replica out of memory.')
+param doclingAppName string
+
+@description('Memory of a Docling replica in GiB, as the container apps module sets it.')
+param doclingMemoryGiB int
+
 @description('Full URL of the API health endpoint the availability test calls.')
 param healthUrl string
 
@@ -151,6 +157,43 @@ resource postgresConnections 'Microsoft.Insights/metricAlerts@2018-03-01' = {
   }
 }
 
+resource docling 'Microsoft.App/containerApps@2025-02-02-preview' existing = {
+  name: doclingAppName
+}
+
+// The 1-minute peak of any replica above 85 % of its memory: in test on 2026-11-21 the killed replica passed it about
+// six minutes before the kill (issue 922).
+resource doclingMemory 'Microsoft.Insights/metricAlerts@2018-03-01' = {
+  name: '${name}-docling-memory'
+  location: 'global'
+  tags: tags
+  properties: {
+    description: 'A Docling replica used more than 85 % of its ${doclingMemoryGiB} GiB; see docs/runbook.md, "Docling out of memory".'
+    severity: 2
+    enabled: true
+    scopes: [docling.id]
+    evaluationFrequency: 'PT1M'
+    windowSize: 'PT1M'
+    criteria: {
+      'odata.type': 'Microsoft.Azure.Monitor.SingleResourceMultipleMetricCriteria'
+      allOf: [
+        {
+          criterionType: 'StaticThresholdCriterion'
+          name: 'working-set'
+          metricNamespace: 'Microsoft.App/containerApps'
+          metricName: 'WorkingSetBytes'
+          dimensions: [{ name: 'podName', operator: 'Include', values: ['*'] }]
+          operator: 'GreaterThan'
+          threshold: doclingMemoryGiB * 1073741824 * 85 / 100
+          timeAggregation: 'Maximum'
+        }
+      ]
+    }
+    autoMitigate: true
+    actions: [{ actionGroupId: group.id }]
+  }
+}
+
 var consoleLogs = 'ContainerAppConsoleLogs | where ContainerAppName in (\'${apiAppName}\', \'${workerAppName}\')'
 
 var slowByDesignPaths = [
@@ -170,6 +213,18 @@ var slowByDesignPaths = [
 var slowByDesignList = join(map(slowByDesignPaths, path => '\'${path}\''), ', ')
 
 var appLogAlerts = [
+  {
+    key: 'docling-out-of-memory'
+    title: 'Docling replica out of memory'
+    description: 'A Docling replica was killed with exit code 137, which usually means it ran out of its ${doclingMemoryGiB} GiB; the conversions it held are submitted again. See docs/runbook.md, "Docling out of memory" (issue 922).'
+    severity: 2
+    frequency: 'PT5M'
+    window: 'PT5M'
+    query: 'ContainerAppSystemLogs | where ContainerAppName == \'${doclingAppName}\' and Reason == \'ContainerTerminated\' and Log has "exit code \'137\'" | project TimeGenerated, ReplicaName, Log'
+    measure: ''
+    aggregation: 'Count'
+    threshold: 1
+  }
   {
     key: 'api-errors'
     title: 'API error rate'
