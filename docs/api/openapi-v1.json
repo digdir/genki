@@ -78,7 +78,7 @@
         ],
         "responses": {
           "200": {
-            "description": "`spec.interface`: the layout, the menu and the pages",
+            "description": "`spec.interface`: the layout, the menu and the pages, and `blocks`: the pinned edition of every `block: ref` in the layout, keyed by its ref, as `RefBlockPayload`",
             "content": {
               "application/json": {
                 "schema": {
