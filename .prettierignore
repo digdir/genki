@@ -6,3 +6,6 @@ benchmarks/**/results/
 
 # Docling server answers, recorded from docker/docling and kept byte for byte
 packages/ingest/src/fixtures/docling/
+
+# The public /v1 OpenAPI, written by apps/api/src/openapi/public-api.test.ts and kept byte for byte
+docs/api/openapi-v1.json
