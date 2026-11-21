@@ -8,6 +8,7 @@ import {
   type PlacedBlock,
 } from '@genai/ui-blocks';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { RefBlockPayload } from '@genai/contracts';
 import type { AssistantApi } from './api.js';
 import { Assistant } from './Assistant.js';
 import { blockRegistry, resolveBlock } from './registry.js';
@@ -41,11 +42,12 @@ const api: AssistantApi = {
   ask: async function* () {},
 };
 
-const draw = (layout: AssistantLayout) =>
+const draw = (layout: AssistantLayout, refBlocks?: Record<string, RefBlockPayload>) =>
   render(
     <Assistant
       api={api}
       layout={layout}
+      refBlocks={refBlocks}
       service="ka"
       tenant="digdir"
       profile={{ assistantName: 'KA' }}
@@ -189,5 +191,90 @@ describe('the block registry', () => {
       within(panel).getByText('Denne verten har ingen innebygd blokk for 991825827/notes@1.'),
     ).toBeTruthy();
     expect(within(panel).getAllByText('Filtrering').length).toBeGreaterThan(0);
+  });
+  const tenantBlock = (ref: string): RefBlockPayload => ({
+    ref,
+    tier: 'declarative',
+    publisher: '999888777',
+    title: { nb: 'Kilder fra etaten', en: 'Sources from the agency' },
+    zones: ['main', 'secondary'],
+    events: [],
+    states: ['filled'],
+    reads: ['sources.title'],
+    template: { version: 1 },
+  });
+
+  it('draws a ref the interface did not resolve as a placeholder', async () => {
+    draw(
+      withEntry(fromTemplate('knowledge-assistant').layout, 'main', {
+        block: 'ref',
+        ref: '999888777/kort@1',
+      }),
+    );
+
+    const main = await screen.findByRole('main');
+    expect(
+      within(main).getByText('Denne verten har ingen innebygd blokk for 999888777/kort@1.'),
+    ).toBeTruthy();
+  });
+
+  it('never draws a tenant block named like a built-in block as the built-in block', () => {
+    const ref = '999888777/sources@1';
+    const placed = { block: 'ref', ref } as unknown as PlacedBlock;
+
+    expect(resolveBlock(placed, { [ref]: tenantBlock(ref) })).toMatchObject({ kind: 'ref' });
+    expect(resolveBlock(placed)).toMatchObject({ kind: 'unavailable', ref });
+  });
+
+  it("puts an answer's ref blocks on a line of their own, apart from the answer's buttons", async () => {
+    const ref = '999888777/kilder@1';
+    const answered: AssistantApi = {
+      ...api,
+      loadThreads: vi.fn(async () => [
+        { id: 't1', title: 'Klarspråk', updatedAt: 1, service: 'ka' },
+      ]),
+      loadThread: vi.fn(async () => ({
+        title: 'Klarspråk',
+        turns: [
+          {
+            id: 'm1',
+            question: 'Hva er klarspråk?',
+            askedAt: 1,
+            answer: { text: 'Svar', status: 'complete' as const, sources: [], created: 2 },
+          },
+        ],
+      })),
+    };
+    history.replaceState(null, '', '/?t=t1');
+    render(
+      <Assistant
+        api={answered}
+        layout={withEntry(fromTemplate('knowledge-assistant').layout, 'main', {
+          block: 'ref',
+          ref,
+        })}
+        refBlocks={{ [ref]: tenantBlock(ref) }}
+        service="ka"
+        tenant="digdir"
+        profile={{ assistantName: 'KA' }}
+        threadInUrl
+      />,
+    );
+
+    const block = await screen.findByText(`Denne verten har ingen innebygd blokk for ${ref}.`);
+    const line = block.closest('.uia-answer-blocks');
+    expect(line).not.toBeNull();
+    expect(within(line as HTMLElement).queryAllByRole('button')).toEqual([]);
+    history.replaceState(null, '', '/');
+  });
+
+  it('draws a resolved ref block in the secondary panel as a tool titled by the block', async () => {
+    const ref = '999888777/kilder@1';
+    draw(withEntry(fromTemplate('chat-only').layout, 'secondary', { block: 'ref', ref }), {
+      [ref]: tenantBlock(ref),
+    });
+
+    const panel = await screen.findByRole('complementary', { hidden: true });
+    expect(within(panel).getAllByText('Kilder fra etaten').length).toBeGreaterThan(0);
   });
 });

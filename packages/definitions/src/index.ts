@@ -16,3 +16,5 @@ export * from './schema-labels.js';
 export * from './setting-labels.js';
 export * from './settings-schema.js';
 export * from './service-interface.js';
+export * from './block-template.js';
+export * from './block-code.js';

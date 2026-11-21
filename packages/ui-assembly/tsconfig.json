@@ -9,5 +9,10 @@
   },
   "include": ["src"],
   "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"],
-  "references": [{ "path": "../client" }, { "path": "../i18n" }, { "path": "../ui-blocks" }]
+  "references": [
+    { "path": "../client" },
+    { "path": "../contracts" },
+    { "path": "../i18n" },
+    { "path": "../ui-blocks" }
+  ]
 }

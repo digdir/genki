@@ -643,7 +643,7 @@ const routes = {
       401: problems[401],
       403: {
         content: problemContent,
-        description: `Not allowed for this tenant; ${shareOperatorOnlyType}: the bundle changes a service's spec.availableTo, which only operators change; or ${operatorOnlySettingType}: the bundle sets or pins a limit only an operator changes for a tenant`,
+        description: `Not allowed for this tenant; ${shareOperatorOnlyType}: the bundle changes a service's spec.availableTo, which only operators change, or shares a code Block with everyone; or ${operatorOnlySettingType}: the bundle sets or pins a limit only an operator changes for a tenant`,
       },
       409: {
         content: problemContent,

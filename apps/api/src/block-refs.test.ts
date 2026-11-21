@@ -12,6 +12,8 @@ import {
   readGitDefinitions,
   seedDefinitions,
 } from './definition-sources.js';
+import type { PublishedVersion } from '@genai/definitions';
+import { blockRefProblems } from './interface-catalogue.js';
 import { bootPlatform, digdir, files, other, principals, testService } from './testkit.js';
 
 const block = (tenant: string, id: string, spec: Record<string, unknown> = {}) => ({
@@ -187,6 +189,92 @@ describe('a layout that pins a Block definition by ref', () => {
   });
 });
 
+describe('where and how a pinned edition stands', () => {
+  it('refuses a ref placed in a zone the block does not allow', async () => {
+    const { publish, seed, errorsOf } = await boot();
+    await seed(block(digdir, 'side-chat', { zones: ['secondary'] }));
+
+    const refused = await publish(
+      'ola',
+      pinning('klarsprak', other, [{ block: 'chat', ref: `${digdir}/side-chat@1` }]),
+    );
+
+    expect(refused.status).toBe(422);
+    expect(await errorsOf(refused)).toEqual([
+      {
+        path: refPath,
+        message: `${digdir}/side-chat@1 cannot stand in main; it may stand in secondary`,
+      },
+    ]);
+  });
+
+  it('refuses ref as a block without a ref', async () => {
+    const { publish, errorsOf } = await boot();
+
+    const refused = await publish('ola', pinning('klarsprak', other, [{ block: 'ref' }]));
+
+    expect(refused.status).toBe(422);
+    expect(await errorsOf(refused)).toEqual([
+      {
+        path: 'spec.interface.layout.zones.main[0].block',
+        message: 'ref as a block needs a ref to the block it draws',
+      },
+    ]);
+  });
+
+  it('refuses a setting the pinned edition has no prop for, or of another type', async () => {
+    const { publish, seed, errorsOf } = await boot();
+    await seed(
+      block(digdir, 'innstilt-chat', {
+        props: {
+          type: 'object',
+          properties: {
+            copy: { type: 'boolean' },
+            tone: { type: 'string', enum: ['formell', 'uformell'] },
+          },
+        },
+      }),
+    );
+    const placed = (settings: Record<string, unknown>) =>
+      pinning('klarsprak', other, [{ block: 'chat', ref: `${digdir}/innstilt-chat@1`, settings }]);
+    const at = 'spec.interface.layout.zones.main[0].settings';
+
+    const unknown = await publish('ola', placed({ fargerik: true }));
+    const wrongType = await publish('ola', placed({ copy: 'ja', tone: 'streng' }));
+    const allowed = await publish('ola', placed({ copy: false, tone: 'formell' }));
+
+    expect(await errorsOf(unknown)).toEqual([
+      { path: `${at}.fargerik`, message: `${digdir}/innstilt-chat@1 has no setting fargerik` },
+    ]);
+    expect((await errorsOf(wrongType)).map((e) => e.path)).toEqual([`${at}.copy`, `${at}.tone`]);
+    expect(allowed.status).toBe(201);
+  });
+
+  it('draws a declarative or code edition only as block ref', async () => {
+    const edition = (tier: string) =>
+      ({
+        version: 1,
+        definition: {
+          kind: 'Block',
+          metadata: { tenant: digdir, id: 'kort' },
+          spec: { tier, title: { nb: 'Kort' }, zones: ['main'], sharing: 'everyone' },
+        },
+      }) as unknown as PublishedVersion;
+    const placed = (tier: string, main: Record<string, unknown>[]) =>
+      blockRefProblems(
+        { versions: async () => [edition(tier)] },
+        pinning('klarsprak', other, main) as never,
+      );
+
+    for (const tier of ['declarative', 'code']) {
+      expect(await placed(tier, [{ block: 'chat', ref: `${digdir}/kort@1` }])).toEqual([
+        { path: refPath, message: `${digdir}/kort@1 is a ${tier} block, so its block must be ref` },
+      ]);
+      expect(await placed(tier, [{ block: 'ref', ref: `${digdir}/kort@1` }])).toEqual([]);
+    }
+  });
+});
+
 describe('every path that publishes a layout checks its refs', () => {
   const unknown = () => pinning('klarsprak', digdir, [{ block: 'chat', ref: `${digdir}/kart@1` }]);
 
@@ -297,7 +385,7 @@ describe("genki's own blocks", () => {
       (
         await publish(
           'ola',
-          pinning('klarsprak', other, [{ block: 'sources', ref: `${digdir}/sources@1` }]),
+          pinning('klarsprak', other, [{ block: 'chat', ref: `${digdir}/chat@1` }]),
         )
       ).status,
     ).toBe(201);

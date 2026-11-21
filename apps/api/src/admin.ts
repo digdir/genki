@@ -229,12 +229,15 @@ const sharingOf = (definition: unknown) => {
 export const blockPublisherProblems = (
   definition: unknown,
   principal: Principal,
-): ValidationError[] =>
-  (definition as { kind?: unknown }).kind === 'Block' &&
-  (definition as { spec?: { tier?: unknown } }).spec?.tier === 'built-in' &&
-  !maySetSharing(principal)
-    ? [{ path: 'spec.tier', message: t('problems.builtInBlockOperatorOnly') }]
-    : [];
+): ValidationError[] => {
+  const d = definition as { kind?: unknown; spec?: { tier?: unknown; sharing?: unknown } };
+  if (d.kind !== 'Block' || maySetSharing(principal)) return [];
+  if (d.spec?.tier === 'built-in')
+    return [{ path: 'spec.tier', message: t('problems.builtInBlockOperatorOnly') }];
+  if (d.spec?.tier === 'code' && d.spec.sharing === 'everyone')
+    return [{ path: 'spec.sharing', message: t('problems.codeBlockShareOperatorOnly') }];
+  return [];
+};
 
 const engineSwitchSubject = 'engine-switch';
 

@@ -734,6 +734,31 @@ describe('postgres definition store', () => {
     expect((await store.capabilities()).some((c) => c.service.id === 'klarsprak')).toBe(true);
   });
 
+  it('lists the blocks of every tenant once each, and nothing of another kind', async () => {
+    const store = new PostgresDefinitionStore(runtime, plugins);
+    const block = (tenant: string, id: string) => ({
+      apiVersion: 'genai/v1',
+      kind: 'Block',
+      metadata: { tenant, id },
+      spec: { tier: 'built-in', builtIn: 'chat', title: { nb: 'Chat' }, zones: ['main'] },
+    });
+    for (const definition of [
+      block(ORG_A, 'liste-a'),
+      block(ORG_A, 'liste-a'),
+      block(ORG_B, 'liste-b'),
+      service(ORG_A, 'liste-tjeneste'),
+    ])
+      expect((await store.publish(definition, 'platform:seed', 'blokk')).ok).toBe(true);
+
+    const across = await store.listAcross('Block');
+
+    expect(across.filter((b) => b.id.startsWith('liste-'))).toEqual([
+      { tenant: ORG_B, id: 'liste-b' },
+      { tenant: ORG_A, id: 'liste-a' },
+    ]);
+    expect(across.some((b) => b.id === 'liste-tjeneste')).toBe(false);
+  });
+
   it('refuses a public name another tenant uses, a missing step flow, and an empty reason', async () => {
     const store = new PostgresDefinitionStore(runtime, plugins);
     await store.publish(

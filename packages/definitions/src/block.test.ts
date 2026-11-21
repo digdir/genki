@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   blockDefinition,
+  checkPromptFiles,
   definitionKinds,
   InMemoryDefinitionStore,
   validateDefinition,
@@ -59,18 +60,63 @@ describe('a Block definition', () => {
     expect(errorsOf(chatBlock({ builtIn: undefined })).map((e) => e.path)).toEqual([
       'spec.builtIn',
     ]);
-    expect(errorsOf(chatBlock({ tier: 'declarative' })).map((e) => e.path)).toEqual([
-      'spec.builtIn',
+    expect(
+      errorsOf(chatBlock({ tier: 'declarative', template: { version: 1 } })).map((e) => e.path),
+    ).toEqual(['spec.builtIn']);
+  });
+
+  const declarative = { tier: 'declarative', builtIn: undefined, template: { version: 1 } };
+  const code = {
+    tier: 'code',
+    builtIn: undefined,
+    code: { sha256: 'a'.repeat(64), bytes: 120, reads: ['question.text'] },
+  };
+
+  it('takes a template only on a declarative block and code only on a code block', () => {
+    expect(
+      errorsOf(chatBlock({ tier: 'declarative', builtIn: undefined })).map((e) => e.path),
+    ).toEqual(['spec.template']);
+    expect(errorsOf(chatBlock({ tier: 'code', builtIn: undefined })).map((e) => e.path)).toEqual([
+      'spec.code',
+    ]);
+    expect(errorsOf(chatBlock({ template: { version: 1 } })).map((e) => e.path)).toEqual([
+      'spec.template',
+    ]);
+    expect(errorsOf(chatBlock({ ...declarative, code: code.code })).map((e) => e.path)).toEqual([
+      'spec.code',
     ]);
   });
 
-  it.each(['declarative', 'code'])('refuses a %s block until a host draws one', (tier) => {
-    expect(errorsOf(chatBlock({ tier, builtIn: undefined }))).toEqual([
+  it('refuses a declarative block until a host draws it', () => {
+    expect(errorsOf(chatBlock(declarative))).toEqual([
       {
         path: 'spec.tier',
-        message: `${tier} blocks are not drawn by any host yet; only built-in blocks can be published`,
+        message:
+          'declarative blocks are not drawn by any host yet; only built-in blocks can be published',
       },
     ]);
+  });
+
+  it('refuses a code block until a host draws it', () => {
+    expect(errorsOf(chatBlock(code))).toEqual([
+      {
+        path: 'spec.tier',
+        message: 'code blocks are not drawn by any host yet; only built-in blocks can be published',
+      },
+    ]);
+  });
+
+  it('refuses a file under block/ on anything but a code block', () => {
+    const validated = validateDefinition(chatBlock(), plugins);
+    if (!validated.ok) throw new Error('expected a valid block');
+    expect(checkPromptFiles(validated.definition, { 'block/bundle.js': 'genki.emit()' })).toEqual([
+      {
+        path: 'files.block/bundle.js',
+        message: 'a file under block/ belongs only to a code block',
+      },
+    ]);
+    const codeBlock = blockDefinition.parse(chatBlock(code));
+    expect(checkPromptFiles(codeBlock, { 'block/bundle.js': 'genki.emit()' })).toEqual([]);
   });
 
   it('keeps texts as a map by language, so nynorsk is one more key', () => {

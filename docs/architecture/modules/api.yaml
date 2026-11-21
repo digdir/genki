@@ -26,6 +26,7 @@ responsibilities:
     operation@1 before they are stored, record fixtures from their synthetic tries in test, and
     move or withdraw them, audited (ADR 0047)
   - List the operations a step may call in a tenant, with their typed input and the models that offer each kind
+  - List the interface blocks an organisation may use across publishers, preview one, pin an edition in a service draft, and serve each pinned edition with the interface (ADR 0067)
 files:
   - apps/api/src/main.ts
   - apps/api/src/composition.ts
@@ -41,6 +42,8 @@ files:
   - apps/api/src/operation-governance.ts
   - apps/api/src/operation-descriptors.ts
   - apps/api/src/step-operations.ts
+  - apps/api/src/block-catalogue.ts
+  - apps/api/src/interface-blocks.ts
 input: Environment and catalogs at boot; HTTP at runtime
 output: A running platform on :8080
 replaces:
