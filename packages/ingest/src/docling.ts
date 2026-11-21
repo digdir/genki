@@ -76,6 +76,7 @@ export interface DoclingOptions {
   headersTimeoutMs?: number;
   documentTimeoutSeconds?: number;
   pollIntervalMs?: number;
+  now?: () => Date;
   /** Told when no replica knows the try's task any more and the file is submitted again. */
   onTaskLost?: (event: { submits: number }) => void;
 }
@@ -173,20 +174,37 @@ const parsed = <T>(answer: Answer, what: string): T => {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/** A poll the server failed to answer (5xx): the task may still run, so the client asks again. */
+const unanswered = 'unanswered';
+
+const pastDeadline = () => new DoclingFailed(200, 'a task past its document timeout');
+
+/** The `detail` of an error body, or nothing. */
+const detailOf = (answer: Answer) => {
+  try {
+    const detail = (JSON.parse(answer.text) as { detail?: unknown }).detail;
+    return typeof detail === 'string' ? detail : '';
+  } catch {
+    return '';
+  }
+};
+
 export const doclingConverter = (options: DoclingOptions): DocumentConverter => {
   const timeout = options.headersTimeoutMs ?? doclingHeadersTimeoutMs;
   const interval = options.pollIntervalMs ?? doclingPollIntervalMs;
   const documentTimeoutSeconds = options.documentTimeoutSeconds ?? doclingDocumentTimeoutSeconds;
   const base = new URL(options.url);
+  const now = options.now ?? (() => new Date());
 
   // One connection: a job's polls must reach the replica that holds its task, and the ingress
-  // picks a replica per connection. Kept open between polls, below the server's 60 s.
+  // picks a replica per connection. Kept open between polls, 15 s longer than the gap between
+  // them and below the server's 60 s.
   const connection = () =>
     new Client(base.origin, {
       headersTimeout: timeout,
       bodyTimeout: timeout,
-      keepAliveTimeout: interval * 2,
-      keepAliveMaxTimeout: interval * 2,
+      keepAliveTimeout: interval + 15_000,
+      keepAliveMaxTimeout: interval + 15_000,
       pipelining: 1,
     });
 
@@ -217,7 +235,10 @@ export const doclingConverter = (options: DoclingOptions): DocumentConverter => 
     return data;
   };
 
-  /** The task's status on this connection, or undefined when the connection or its replica lost it. */
+  /**
+   * The task's status on this connection: undefined when the connection or its replica lost it,
+   * `unanswered` when the server failed to answer (5xx), which the next poll asks again.
+   */
   const statusOn = async (client: Client, id: string) => {
     let answer: Answer;
     try {
@@ -226,6 +247,7 @@ export const doclingConverter = (options: DoclingOptions): DocumentConverter => 
       return undefined;
     }
     if (answer.status === 404) return undefined;
+    if (answer.status >= 500) return unanswered;
     if (answer.status !== 200) throw new DoclingFailed(answer.status, 'not a task status');
     const status = parsed<TaskStatus>(answer, 'a task status').task_status;
     if (typeof status !== 'string') throw new DoclingFailed(answer.status, 'not a task status');
@@ -238,7 +260,7 @@ export const doclingConverter = (options: DoclingOptions): DocumentConverter => 
       const client = connection();
       opened.push(client);
       const status = await statusOn(client, id);
-      if (status !== undefined) return { client, status };
+      if (status !== undefined && status !== unanswered) return { client, status };
       await client.destroy();
     }
     return undefined;
@@ -248,9 +270,7 @@ export const doclingConverter = (options: DoclingOptions): DocumentConverter => 
    * Follows a task to its result: polls on the job's connection, and after a lost connection
    * looks for the task on new ones. Undefined when no replica knows the task any more.
    */
-  const follow = async (first: Client, id: string, opened: Client[]) => {
-    // The server stops the task at its document timeout; a little past it, the client stops too.
-    const deadline = Date.now() + documentTimeoutSeconds * 1000 + 10 * 60_000;
+  const follow = async (first: Client, id: string, opened: Client[], deadline: number) => {
     let client = first;
     let status = await statusOn(client, id);
     let resultTries = 0;
@@ -260,8 +280,8 @@ export const doclingConverter = (options: DoclingOptions): DocumentConverter => 
         if (!found) return undefined;
         ({ client, status } = found);
       }
-      if (working.has(status)) {
-        if (Date.now() > deadline) throw new DoclingFailed(200, 'a task past its document timeout');
+      if (status === unanswered || working.has(status)) {
+        if (now().getTime() > deadline) throw pastDeadline();
         await sleep(interval);
         status = await statusOn(client, id);
         continue;
@@ -273,7 +293,11 @@ export const doclingConverter = (options: DoclingOptions): DocumentConverter => 
         answer = undefined;
       }
       if (answer && answer.status !== 404) return answer;
-      // The connection was lost between the status and the result, or the result is not there.
+      // docling-serve keeps no result for a task whose conversion raised: the task is there,
+      // so it is not lost, and the file is not submitted again.
+      if (answer && /^Task result not found/.test(detailOf(answer)))
+        throw new DoclingFailed(404, 'a task that ended without a result');
+      // The connection was lost between the status and the result.
       resultTries += 1;
       if (resultTries >= 2) throw new DoclingFailed(answer?.status ?? 404, 'no task result');
       status = undefined;
@@ -284,7 +308,11 @@ export const doclingConverter = (options: DoclingOptions): DocumentConverter => 
     // Docling reads PDFs here; any other file goes to the text layer as a refusal (ADR 0042).
     if (!looksLikePdf(file.bytes)) throw new ConversionRefused(file.name, 'unsupported_type');
     let answer: Answer | undefined;
+    // One deadline for the whole try, from its first submit: the server stops a task at its
+    // document timeout, and the try ends ten minutes after that, within the job's expiry.
+    const deadline = now().getTime() + documentTimeoutSeconds * 1000 + 10 * 60_000;
     for (let submits = 1; !answer; submits += 1) {
+      if (now().getTime() > deadline) throw pastDeadline();
       // The async route: the client polls its task, so no connection is idle for long (issue
       // 906). A task no replica knows any more is submitted again, a few times a try.
       const opened = [connection()];
@@ -295,14 +323,14 @@ export const doclingConverter = (options: DoclingOptions): DocumentConverter => 
         const id = parsed<TaskStatus>(submitted, 'a task').task_id;
         if (typeof id !== 'string' || !taskIdPattern.test(id))
           throw new DoclingFailed(submitted.status, 'not a task');
-        answer = await follow(first, id, opened);
+        answer = await follow(first, id, opened, deadline);
       } finally {
         await Promise.all(opened.map((client) => client.destroy()));
       }
       if (answer) break;
+      options.onTaskLost?.({ submits });
       if (submits >= doclingSubmitsPerTry)
         throw new DoclingFailed(404, `the task was lost ${submits} times`);
-      options.onTaskLost?.({ submits });
     }
     if (answer.status !== 200) throw new DoclingFailed(answer.status, 'not a conversion');
     const conversion = parsed<DoclingAnswer>(answer, 'a body');

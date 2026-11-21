@@ -43,6 +43,8 @@ interface Replica {
   submits: number;
   polls: number;
   notFound: number;
+  /** How many polls of a known task to answer 503 first. */
+  failPolls: number;
   /** Stops the replica as a scale-in does: its tasks are gone and its connections closed. */
   stop: () => void;
 }
@@ -51,6 +53,8 @@ interface Cluster {
   url: string;
   seen: Seen[];
   replicas: Replica[];
+  /** Connections the proxy accepted. */
+  connections: number;
   /** Closes every connection the proxy holds, as a network blip would; the replicas keep their tasks. */
   drop: () => void;
   /** Called when a replica takes a task. */
@@ -78,11 +82,17 @@ const doclingCluster = async (
   { replicas = 1, convertMs = 0, idleMs = 0 } = {},
 ): Promise<Cluster> => {
   const seen: Seen[] = [];
-  const cluster = { seen, replicas: [] as Replica[] } as unknown as Cluster;
+  const cluster = { seen, replicas: [] as Replica[], connections: 0 } as unknown as Cluster;
   for (let n = 0; n < replicas; n += 1) {
     const tasks = new Map<string, Task>();
     const sockets = new Set<net.Socket>();
-    const replica = { tasks, submits: 0, polls: 0, notFound: 0 } as unknown as Replica;
+    const replica = {
+      tasks,
+      submits: 0,
+      polls: 0,
+      notFound: 0,
+      failPolls: 0,
+    } as unknown as Replica;
     const server = http.createServer(async (req, res) => {
       const chunks: Buffer[] = [];
       for await (const chunk of req) chunks.push(chunk as Buffer);
@@ -124,6 +134,10 @@ const doclingCluster = async (
           return json(404, { detail: 'Task not found.' });
         }
         replica.polls += 1;
+        if (replica.failPolls > 0) {
+          replica.failPolls -= 1;
+          return json(503, { detail: 'Service Unavailable' });
+        }
         const done = Date.now() >= task.doneAt;
         return json(200, { task_id: poll[1], task_status: done ? 'success' : 'started' });
       }
@@ -155,6 +169,7 @@ const doclingCluster = async (
     const replica = cluster.replicas[next % cluster.replicas.length] as Replica;
     next += 1;
     const upstream = net.connect(replica.port, '127.0.0.1');
+    cluster.connections += 1;
     held.add(client);
     let idle: NodeJS.Timeout | undefined;
     const close = () => {
@@ -406,21 +421,19 @@ describe('the Docling client', () => {
   });
 
   it("polls a task on the job's own connection, so every poll reaches the replica that holds it", async () => {
-    const { url, replicas } = await doclingCluster(['success', 'success', 'success'], {
-      replicas: 3,
-      convertMs: 200,
-    });
-    const docling = converterFor(url);
+    const cluster = await doclingCluster(['success'], { replicas: 3, convertMs: 200 });
 
-    await Promise.all([docling.convert(report), docling.convert(report), docling.convert(report)]);
+    await converterFor(cluster.url).convert(report);
 
-    expect(replicas.reduce((n, r) => n + r.polls, 0)).toBeGreaterThan(0);
-    expect(replicas.map((r) => r.notFound)).toEqual([0, 0, 0]);
-    expect(replicas.reduce((n, r) => n + r.submits, 0)).toBe(3);
+    expect(cluster.replicas.reduce((n, r) => n + r.polls, 0)).toBeGreaterThan(1);
+    expect(cluster.replicas.map((r) => r.notFound)).toEqual([0, 0, 0]);
+    expect(cluster.connections).toBe(1);
   });
 
   it('finds its task again on a new connection after a drop, without submitting the file twice', async () => {
-    const cluster = await doclingCluster(['success'], { replicas: 2, convertMs: 300 });
+    // Three replicas: the connection after the drop and the first one the search opens both reach
+    // a replica without the task.
+    const cluster = await doclingCluster(['success'], { replicas: 3, convertMs: 300 });
     cluster.onTask = () => setTimeout(() => cluster.drop(), 100);
 
     const conversion = await converterFor(cluster.url).convert(report);
@@ -448,6 +461,54 @@ describe('the Docling client', () => {
     const error = await docling.convert(report).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(DoclingFailed);
     expect(cluster.replicas.reduce((n, r) => n + r.submits, 0)).toBe(5);
+    // Every lost task is told, the last one too, so the count operators read is whole.
+    expect(lost).toEqual([1, 1, 2, 3]);
     expect(String((error as Error).message)).not.toContain(report.name);
+  });
+
+  it('stops ten minutes past the document timeout, counted from the first submit', async () => {
+    let clock = new Date('2026-11-21T10:00:00Z').getTime();
+    const cluster = await doclingCluster([], { replicas: 2, convertMs: 10_000_000 });
+    const docling = converterFor(cluster.url, {
+      documentTimeoutSeconds: 60,
+      now: () => new Date(clock),
+    });
+    // The task is lost after the try's deadline has passed: the file is not submitted again.
+    cluster.onTask = (replica) =>
+      setTimeout(() => {
+        clock += 11 * 60_000 + 1;
+        replica.stop();
+      }, 50);
+
+    const error = await docling.convert(report).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(DoclingFailed);
+    expect(cluster.replicas.reduce((n, r) => n + r.submits, 0)).toBe(1);
+  });
+
+  it('fails a task Docling ended without a result, without searching or submitting again', async () => {
+    const cluster = await doclingCluster(['task-not-found'], { replicas: 2 });
+    const lost: number[] = [];
+
+    const error = await converterFor(cluster.url, {
+      onTaskLost: ({ submits }) => lost.push(submits),
+    })
+      .convert(report)
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(DoclingFailed);
+    expect((error as DoclingFailed).status).toBe(404);
+    expect(cluster.connections).toBe(1);
+    expect(lost).toEqual([]);
+  });
+
+  it('keeps polling a task through a server error, without submitting the file again', async () => {
+    const cluster = await doclingCluster(['success'], { convertMs: 100 });
+    (cluster.replicas[0] as Replica).failPolls = 2;
+
+    const conversion = await converterFor(cluster.url).convert(report);
+
+    expect(conversion.converter).toEqual(doclingIdentity);
+    expect(cluster.replicas[0]?.submits).toBe(1);
   });
 });
