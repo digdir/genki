@@ -32,6 +32,8 @@ SUBMIT = "/v1/convert/file/async"
 # A result never fetched (its client went away) stops counting as waiting after this long.
 ABANDONED_SECONDS = 600
 HOLDING = {"pending", "started"}
+# How long a replica told to stop keeps serving its task: inside the 600 s Azure gives it (terminationGracePeriodSeconds).
+DRAIN_SECONDS = 570
 ENDED = {"success", "failure"}
 
 
@@ -73,13 +75,32 @@ class OneTaskAtATime:
         self.results_seen = {}
         self.watching = False
         self.memory_unread = False
+        self.draining = None
+
+    def holding(self):
+        """Whether the replica holds a task or a result its client has yet to fetch."""
+        return any(_status(t) in HOLDING for t in list(self.orchestrator().tasks.values())) or bool(
+            self.waiting_results()
+        )
+
+    def drain(self, stop):
+        """
+        Told to stop (SIGTERM, as Azure's scale-in does, picking replicas without regard to their work): with a task
+        held, the replica keeps serving it and calls `stop` once its result is fetched, or after DRAIN_SECONDS. True
+        when it drains, False when it can stop now.
+        """
+        if self.draining is not None or not self.holding():
+            return False
+        self.draining = (stop, self.clock() + DRAIN_SECONDS)
+        self.log({"msg": "draining", "replica": self.replica, **self.counts()})
+        return True
 
     def counts(self):
         statuses = [_status(t) for t in list(self.orchestrator().tasks.values())]
         return {"running": statuses.count("started"), "queued": statuses.count("pending")}
 
     def busy(self):
-        return self.restarting or self.admitting > 0 or any(
+        return self.restarting or self.draining is not None or self.admitting > 0 or any(
             _status(t) in HOLDING for t in list(self.orchestrator().tasks.values())
         )
 
@@ -102,6 +123,14 @@ class OneTaskAtATime:
                 continue
             self.accepted.remove(task_id)
             self.log({"msg": "task ended", "task": task_id, "status": status, "replica": self.replica, **self.counts()})
+        if self.draining is not None:
+            stop, until = self.draining
+            if not self.holding() or self.clock() >= until:
+                self.draining = None
+                self.restarting = True
+                self.log({"msg": "stopping", "replica": self.replica, "held": self.holding()})
+                stop()
+            return
         if self.restarting or self.busy() or self.waiting_results():
             return
         used = self.memory()
@@ -184,16 +213,37 @@ class OneTaskAtATime:
             self.log({"msg": "task accepted", "task": task_id, "replica": self.replica, **self.counts()})
 
 
-def working_set():
-    """The container's memory as Azure's WorkingSetBytes counts it: cgroup usage less inactive file pages."""
+def working_set(root="/"):
+    """
+    The replica's memory and where it was read: cgroup v2 or v1 usage less inactive file pages (meant to match Azure's
+    WorkingSetBytes), else this process's resident memory, which holds docling-serve and its models. (None, None)
+    when nothing is readable.
+    """
+
+    def read(path):
+        with open(os.path.join(root, path.lstrip("/"))) as f:
+            return f.read()
+
+    def stat(path):
+        return dict(line.split()[:2] for line in read(path).splitlines() if line.strip())
+
     try:
-        with open("/sys/fs/cgroup/memory.current") as f:
-            current = int(f.read())
-        with open("/sys/fs/cgroup/memory.stat") as f:
-            stat = dict(line.split() for line in f)
-        return current - int(stat.get("inactive_file", 0))
+        used = int(read("/sys/fs/cgroup/memory.current"))
+        return used - int(stat("/sys/fs/cgroup/memory.stat").get("inactive_file", 0)), "cgroup v2"
     except (OSError, ValueError):
-        return None
+        pass
+    try:
+        used = int(read("/sys/fs/cgroup/memory/memory.usage_in_bytes"))
+        return used - int(stat("/sys/fs/cgroup/memory/memory.stat").get("total_inactive_file", 0)), "cgroup v1"
+    except (OSError, ValueError):
+        pass
+    try:
+        for line in read("/proc/self/status").splitlines():
+            if line.startswith("VmRSS:"):
+                return int(line.split()[1]) * 1024, "process"
+    except (OSError, ValueError, IndexError):
+        pass
+    return None, None
 
 
 def _log_line(line):
@@ -217,25 +267,49 @@ def wrap(create_app):
             getattr(orchestrator, "_task_results", None), dict
         ):
             raise RuntimeError("docling-serve's orchestrator no longer keeps tasks and _task_results")
-        return OneTaskAtATime(
+        replica = os.environ.get("CONTAINER_APP_REPLICA_NAME") or socket.gethostname()
+        used, source = working_set()
+        _log_line({"msg": "memory source", "replica": replica, "source": source, "memoryBytes": used})
+        middleware = OneTaskAtATime(
             app,
             orchestrator=get_async_orchestrator,
-            replica=os.environ.get("CONTAINER_APP_REPLICA_NAME") or socket.gethostname(),
-            memory=working_set,
+            replica=replica,
+            memory=lambda: working_set()[0],
             restart=_terminate,
             idle_limit=int(float(os.environ.get("GENKI_DOCLING_RESTART_IDLE_GIB", "4")) * GIB),
             log=_log_line,
             key=os.environ.get("DOCLING_SERVE_API_KEY") or None,
             watch_every=2.0,
         )
+        _current.append(middleware)
+        return middleware
 
     return create
 
 
+# The middleware of this process, for the stop signal.
+_current = []
+
+
+def drain_on_stop(server_class):
+    """A stop signal (SIGTERM) to a replica that holds a task waits for it, as `OneTaskAtATime.drain` says."""
+    original = server_class.handle_exit
+
+    def handle_exit(self, sig, frame):
+        middleware = _current[-1] if _current else None
+        if sig == signal.SIGTERM and middleware is not None and middleware.drain(lambda: original(self, sig, frame)):
+            return
+        original(self, sig, frame)
+
+    server_class.handle_exit = handle_exit
+
+
 def main():
     import docling_serve.app
+    import uvicorn.server
     from docling_serve.__main__ import main as docling_serve_main
 
+    drain_on_stop(uvicorn.server.Server)
     # `docling-serve run` starts uvicorn with "docling_serve.app:create_app" as its factory, read from the module.
     docling_serve.app.create_app = wrap(docling_serve.app.create_app)
     sys.argv = ["docling-serve", "run", *sys.argv[1:]]

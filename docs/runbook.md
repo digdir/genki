@@ -53,7 +53,7 @@ ContainerAppConsoleLogs
 
 ```kusto
 union
-  (ContainerAppConsoleLogs | where ContainerAppName == 'genai-test-docling' and Log has_any ('task accepted', 'task ended', 'busy', 'restarting', 'memory unreadable')
+  (ContainerAppConsoleLogs | where ContainerAppName == 'genai-test-docling' and Log has_any ('task accepted', 'task ended', 'busy', 'restarting', 'draining', 'stopping', 'memory source', 'memory unreadable')
     | extend entry = parse_json(extract('{.*}', 0, Log))),
   (ContainerAppConsoleLogs | where ContainerAppName == 'genai-test-worker' and Log has 'docling task'
     | extend entry = parse_json(Log) | where tostring(entry.msg) == 'docling task')
