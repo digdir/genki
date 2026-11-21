@@ -26,14 +26,19 @@ import {
   fillInKudosFields,
   KudosNotFound,
   kudosClient,
-  retryAfterMs,
   kudosProfiles,
   type KudosDocument,
   type KudosProfile,
   type KudosSearch,
 } from './kudos.js';
 import { kudosEarlierIds } from './kudos-earlier-ids.js';
-import { processKudosLimiter, type KudosRateLimiter } from './kudos-rate.js';
+import {
+  kudosDownloads,
+  kudosDownloadsAtOnce,
+  processKudosDownloads,
+  type KudosDownloads,
+} from './kudos-downloads.js';
+import { type KudosRateLimiter } from './kudos-rate.js';
 import type { DeclaredPhraseArchive } from './phrases.js';
 import { huggingFaceSource, parquetMapping, parquetTableName } from './parquet.js';
 import { PageGone, type ListedDocument, type Listing } from './document-records.js';
@@ -49,6 +54,7 @@ import {
 import {
   crawlSitemap,
   defaultFetchPolicy,
+  type FetchPolicy,
   guardedFetchBytes,
   HttpStatusError,
   urlToDoc,
@@ -286,6 +292,8 @@ export interface KudosAccess {
   limiter?: KudosRateLimiter;
   /** The earlier ids each document's record keeps, by `kudos:` id. */
   earlierIds?: ReadonlyMap<string, string[]>;
+  /** Paces file downloads; by default the one of this process. */
+  downloads?: KudosDownloads;
 }
 
 export interface DatabaseAccess {
@@ -352,13 +360,46 @@ export const kudosFileReadTimeoutMs = 120_000;
 /** KUDOS sometimes takes more than the default 5 s to accept a connection (issue 906). */
 export const kudosFileConnectTimeoutMs = 15_000;
 
-/** How a KUDOS file is downloaded: its own connect and read timeouts, to any host its URL names. */
-export const kudosFilePolicy = () => ({
+/** How a KUDOS file is downloaded: its own timeouts, any host, kept connections (issue 931). */
+export const kudosFilePolicy = (): FetchPolicy => ({
   ...defaultFetchPolicy,
   connectTimeoutMs: kudosFileConnectTimeoutMs,
   readTimeoutMs: kudosFileReadTimeoutMs,
   allowedHosts: new Set<string>(),
+  keptConnections: kudosDownloadsAtOnce,
 });
+
+/** How a KUDOS file's bytes are fetched: paced, guarded, under its policy (issue 931). */
+export const kudosFileDownloader = (
+  kudos: KudosAccess,
+  web: GuardedFetchOptions = {},
+  signal?: AbortSignal,
+) => {
+  const downloads = kudosDownloadsOf(kudos);
+  return (url: string): Promise<Uint8Array> =>
+    downloads.run(
+      url,
+      async () =>
+        (
+          await guardedFetchBytes(url, kudosFilePolicy(), maxDocumentBytes, {
+            ...web,
+            ...(signal ? { signal } : {}),
+            ...(kudos.fetch ? { fetch: kudos.fetch } : {}),
+          })
+        ).bytes,
+      signal,
+    );
+};
+
+/** The pacing a source's downloads go through: its own, one with its limiter and clock, or the process's. */
+const kudosDownloadsOf = (kudos: KudosAccess) =>
+  kudos.downloads ??
+  (kudos.limiter || kudos.sleep
+    ? kudosDownloads({
+        ...(kudos.limiter ? { limiter: kudos.limiter } : {}),
+        ...(kudos.sleep ? { sleep: kudos.sleep } : {}),
+      })
+    : processKudosDownloads);
 
 export const uploadPrefix = (dataset: string, tenant: string) =>
   `datasets/${dataset.startsWith(`${tenant}/`) ? dataset.slice(tenant.length + 1) : dataset}/uploads/`;
@@ -570,30 +611,6 @@ export const kudosListing = (client: ReturnType<typeof kudosClientFor>, filter: 
   return { documents, complete: () => complete };
 };
 
-/** 429s in a row a file download waits out before it fails. */
-const maxDownloadRateLimited = 5;
-
-/** Downloads one Kudos file under the limiter; a 429 waits as long as `Retry-After` asks. */
-const kudosDownload = async (
-  limiter: KudosRateLimiter,
-  download: () => Promise<Uint8Array>,
-): Promise<Uint8Array> => {
-  for (let limited = 0; ; limited++) {
-    await limiter.take();
-    try {
-      return await download();
-    } catch (error) {
-      if (
-        !(error instanceof HttpStatusError) ||
-        error.status !== 429 ||
-        limited >= maxDownloadRateLimited
-      )
-        throw error;
-      limiter.pause(retryAfterMs(error.retryAfter ?? null));
-    }
-  }
-};
-
 const kudosDocuments = (client: ReturnType<typeof kudosClientFor>, filter: KudosFilter) =>
   kudosListing(client, filter).documents();
 
@@ -736,25 +753,12 @@ export const sourceOf = async (
   }
   if (!converter) throw new Error('KUDOS sources need a document converter');
   const kudos = options.kudos ?? {};
-  const filePolicy = kudosFilePolicy();
+  const download = kudosFileDownloader(kudos, options.web, signal);
   return kudosSource({
     documents: kudosDocuments(kudosClientFor(kudos, source.profile), source),
     profile: kudosProfileFor(kudos, source.profile),
     maxFileBytes: maxDocumentBytes,
-    fetchFile: (file) =>
-      fetchKudosFile(file, (url) =>
-        kudosDownload(
-          kudos.limiter ?? processKudosLimiter,
-          async () =>
-            (
-              await guardedFetchBytes(url, filePolicy, maxDocumentBytes, {
-                ...options.web,
-                signal,
-                ...(kudos.fetch ? { fetch: kudos.fetch } : {}),
-              })
-            ).bytes,
-        ),
-      ),
+    fetchFile: (file) => fetchKudosFile(file, download),
     converter,
   });
 };
@@ -1034,10 +1038,9 @@ export const knowledgeListingOf = async (
   if (source.kind !== 'kudos') throw new Error(knowledgeSourceRefusal(source.kind));
   if (!converter) throw new Error('KUDOS sources need a document converter');
   const kudos = options.kudos ?? {};
-  const filePolicy = kudosFilePolicy();
+  const download = kudosFileDownloader(kudos, options.web, signal);
   const client = kudosClientFor(kudos, source.profile);
   const profile = kudosProfileFor(kudos, source.profile);
-  const limiter = kudos.limiter ?? processKudosLimiter;
   const listing = kudosListing(client, source);
   return {
     deletes: 'listed',
@@ -1065,19 +1068,7 @@ export const knowledgeListingOf = async (
     file: async (record, sha256) => {
       const file = ((record as KudosDocument).files ?? []).find((f) => f.sha256 === sha256);
       if (!file) throw new FileGone('the document no longer lists the file');
-      const bytes = await fetchKudosFile(file, (url) =>
-        kudosDownload(
-          limiter,
-          async () =>
-            (
-              await guardedFetchBytes(url, filePolicy, maxDocumentBytes, {
-                ...options.web,
-                signal,
-                ...(kudos.fetch ? { fetch: kudos.fetch } : {}),
-              })
-            ).bytes,
-        ),
-      );
+      const bytes = await fetchKudosFile(file, download);
       return sameFile(
         {
           name: file.url?.split('/').pop() ?? `${sha256}.pdf`,
@@ -1093,20 +1084,7 @@ export const knowledgeListingOf = async (
           documents: [record as KudosDocument],
           profile,
           maxFileBytes: maxDocumentBytes,
-          fetchFile: (file) =>
-            fetchKudosFile(file, (url) =>
-              kudosDownload(
-                limiter,
-                async () =>
-                  (
-                    await guardedFetchBytes(url, filePolicy, maxDocumentBytes, {
-                      ...options.web,
-                      signal,
-                      ...(kudos.fetch ? { fetch: kudos.fetch } : {}),
-                    })
-                  ).bytes,
-              ),
-            ),
+          fetchFile: (file) => fetchKudosFile(file, download),
           converter,
         }),
         'the document',
