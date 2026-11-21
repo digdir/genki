@@ -463,4 +463,34 @@ describe('KUDOS file downloads', () => {
 
     expect(network.pinned).toEqual(addresses);
   });
+  it("a kept KUDOS connection closes after 30 s idle, also when KUDOS's Keep-Alive asks for longer", async () => {
+    localNetwork();
+    let closed = 0;
+    const server = http.createServer((_req, res) => {
+      res.setHeader('keep-alive', 'timeout=600');
+      res.end('%PDF-1.7');
+    });
+    server.keepAliveTimeout = 0;
+    server.on('connection', (socket) => socket.on('close', () => (closed += 1)));
+    const port = await listen(server);
+    const download = kudosFileDownloader(
+      { downloads: kudosDownloads({ limiter: noLimits() }) },
+      web,
+    );
+    await download(`http://kudos.example.test:${port}/files/a.pdf`);
+    vi.useFakeTimers({
+      toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date', 'performance'],
+    });
+    try {
+      for (let s = 0; s < 40 && closed === 0; s++) {
+        vi.advanceTimersByTime(1000);
+        await new Promise((r) => setImmediate(r));
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+    for (let i = 0; i < 20 && closed === 0; i++) await new Promise((r) => setImmediate(r));
+
+    expect(closed).toBe(1);
+  });
 });
