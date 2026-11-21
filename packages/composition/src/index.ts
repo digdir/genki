@@ -12,6 +12,7 @@ export * from './process-guard.js';
 export * from './recipe-shares.js';
 export * from './retrieval-ports.js';
 export * from './runtime.js';
+export * from './model-relist.js';
 export * from './scoped-registry.js';
 export * from './settings-runtime.js';
 export * from './skills.js';

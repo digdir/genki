@@ -113,7 +113,11 @@ export {
 export { PostgresDefinitionStore } from './definitions.js';
 export { erased, PostgresEventLog } from './event-log.js';
 export { PostgresIdentities } from './identities.js';
-export { PostgresModelClassifications } from './models.js';
+export {
+  PostgresDiscoveredModels,
+  PostgresModelClassifications,
+  type StoredListing,
+} from './models.js';
 export { ContentKeys } from './keys.js';
 export { grantRuntimeRole, migrate, platformId, runtimeRole, workerRole } from './schema.js';
 export {

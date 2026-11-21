@@ -154,6 +154,8 @@ Discovery reads the gateway's OpenAI-compatible `GET /v1/models` on the model li
 - `endpoints` lists the paths the model answers on. Genki reads `/chat/completions`, `/embeddings` and `/rerank` when there is no `mode`.
 - A gateway that sends neither still works: genki falls back to the operator's setting and the model name, as [providers.md](../providers.md#what-kind-a-discovered-model-is) says. A model of a kind genki cannot call is listed, never offered for chat.
 
+genki follows every page of the list: `has_more` with `last_id` as `?after=`, or a `next` link on the same origin. One genki replica lists every 30 minutes by default, and every replica serves the last good listing. A model the list leaves out is served until 24 hours after a listing last named it, and dropped at the first listing after that, and a failed listing changes nothing, so a gateway that answers with a short list or an error for a while does not take models away from services ([providers.md](../providers.md#how-discovered-models-are-kept)).
+
 ## Usage
 
 The usage route is the gateway's own contract, not the draft above: `POST {base}/usage`, where `{base}` is the gateway's address without `/v1` (model calls go to `{base}/v1`). It takes a bearer token for genki's app (see Authentication) with the gateway's usage role, and a JSON body:

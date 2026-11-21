@@ -90,6 +90,9 @@ import {
   parseCatalog,
   type Capability,
   type ModelClassificationStore,
+  type DiscoveredModelStore,
+  defaultDiscoveryGraceMs,
+  inMemoryDiscoveredModels,
   type ModelClassification,
 } from '@genai/port-model';
 import { parseRerankCatalog, type RerankAdapter, RerankRouter } from '@genai/port-rerank';
@@ -227,6 +230,18 @@ export const inMemoryClassifications = (): ModelClassificationStore => {
   };
 };
 
+export interface ModelDiscoverySettings {
+  graceMs?: number;
+  relistMs?: number;
+}
+
+export const defaultModelDiscovery = {
+  graceMs: defaultDiscoveryGraceMs,
+  relistMs: 30 * 60 * 1000,
+} satisfies Required<ModelDiscoverySettings>;
+
+const relistClaim = 'model-relist';
+
 export interface Catalogs {
   models: unknown;
   knowledge: unknown;
@@ -321,6 +336,8 @@ export interface RuntimeInput {
   mediaOutput?: MediaOutputConfig;
   connections?: ConnectionRegistry;
   modelClassifications?: ModelClassificationStore;
+  discoveredModels?: DiscoveredModelStore;
+  modelDiscovery?: ModelDiscoverySettings;
   knowledgePool?: PgvectorEngineOptions['pool'];
   knowledgeServer?: KnowledgePools;
   knowledgeGuard?: () => void;
@@ -600,6 +617,8 @@ export const createRuntime = async (input: RuntimeInput) => {
   );
   const providerObjects = input.providerObjects ?? new InMemoryProviderObjects(input.now);
   let followDiscovered = () => {};
+  const discoveredModels = input.discoveredModels ?? inMemoryDiscoveredModels();
+  const discoverySettings = { ...defaultModelDiscovery, ...input.modelDiscovery };
   const models = new ModelRouter({
     onChange: () => followDiscovered(),
     gate,
@@ -620,6 +639,8 @@ export const createRuntime = async (input: RuntimeInput) => {
     sources: discoverySources,
     ...(input.now ? { now: input.now } : {}),
     classifications: input.modelClassifications ?? inMemoryClassifications(),
+    discovered: discoveredModels,
+    discoveryGraceMs: discoverySettings.graceMs,
     priceOf: (id) => unitPrices[id] as PriceSpec | undefined,
     secrets: catalogSecrets,
     ...(input.tokenProviders ? { tokenProviders: input.tokenProviders } : {}),
@@ -1055,10 +1076,30 @@ export const createRuntime = async (input: RuntimeInput) => {
   });
   await catalog.initialize();
   released.catalog = catalog;
-  const modelDiscovery = await discoverWithRetry({
+  const relistDue = () =>
+    discoveredModels
+      .claim(relistClaim, input.now?.() ?? new Date(), discoverySettings.relistMs)
+      .catch(() => true);
+  await models
+    .loadDiscovered()
+    .catch((error: unknown) =>
+      input.onWarning?.(
+        `stored model listings not loaded: ${error instanceof Error ? error.message : String(error)}`,
+      ),
+    );
+  const retrying = await discoverWithRetry({
     refresh: () => models.refresh(),
+    first: async () =>
+      (await relistDue()) ? models.refresh() : { discovered: models.describe().length, failed: [] },
     ...(input.onWarning ? { onWarning: input.onWarning } : {}),
   });
+  const modelDiscovery = {
+    ...retrying,
+    loadDiscovered: () => models.loadDiscovered(),
+    connections: () => models.discoveryStatus(),
+    relistIfDue: async () => ((await relistDue()) ? retrying.refresh() : undefined),
+    relistMs: discoverySettings.relistMs,
+  };
   const pricesMoved = await migratePrices({
     store: configEntries,
     kindsOf,
