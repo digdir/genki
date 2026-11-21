@@ -18,6 +18,11 @@
       "types": "./dist/builder/index.d.ts",
       "default": "./dist/builder/index.js"
     },
+    "./declarative": {
+      "source": "./src/declarative/index.ts",
+      "types": "./dist/declarative/index.d.ts",
+      "default": "./dist/declarative/index.js"
+    },
     "./styles.css": "./src/ui-blocks.css"
   },
   "scripts": {

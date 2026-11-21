@@ -212,7 +212,7 @@ describe('a preview of a block', () => {
 
     expect(response.status).toBe(200);
     expect(body.valid).toBe(false);
-    expect(body.errors.map((e) => e.path)).toEqual(['spec.tier']);
+    expect(body.errors.map((e) => e.path)).toEqual(['spec.template.root']);
     expect(Object.keys(body.fixtures)).toEqual(['filled']);
     expect(body.fixtures.filled?.question?.text).toBe('Hva er klarspråk?');
     expect(await platform.definitions.list(other)).toEqual([]);

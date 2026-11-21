@@ -35,7 +35,7 @@ const edition = (
 const declarative = (sharing = 'everyone') => ({
   tier: 'declarative',
   sharing,
-  template: { version: 1, root: { type: 'paragraph' } },
+  template: { version: 1, root: { type: 'paragraph', text: { t: 'label' } } },
   texts: { nb: { label: 'Spørsmålet ditt:' } },
 });
 const code = {

@@ -1,0 +1,25 @@
+apiVersion: genai/v1
+kind: Block
+metadata: { tenant: '991825827', id: sporsmal-kort, name: Spørsmålskort }
+spec:
+  tier: declarative
+  title: { nb: Spørsmålskort, en: Question card }
+  zones: [main]
+  sharing: everyone
+  events: [ask]
+  states: [filled]
+  texts:
+    nb: { label: 'Spørsmålet ditt:', again: Spør igjen }
+    en: { label: 'Your question:', again: Ask again }
+  template:
+    version: 1
+    root:
+      type: card
+      variant: tinted
+      children:
+        - type: paragraph
+          text: [{ t: label }, ' ', { bind: question.text }]
+        - type: button
+          variant: secondary
+          text: { t: again }
+          event: { name: ask, question: { bind: question.text } }
