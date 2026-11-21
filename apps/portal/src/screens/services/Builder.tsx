@@ -85,6 +85,7 @@ import {
 import { TryPane } from './setup-try-pane';
 import { DraftBar, savedByOf, saverOf, type SaveState, type SavedBy } from './DraftBar';
 import { DiscardDialog } from './DiscardDialog';
+import { HandoverNotice } from './HandoverNotice';
 import { PublishDiff, type ModelFacts, type TestWarning } from './PublishDiff';
 import { SetupLayout, type AreaFact, type SidePane } from './setup-layout';
 import { areaLabelKeys, changeLabel, changeText, type ChangeNames } from './setup-change-text';
@@ -2154,6 +2155,7 @@ export const Builder = ({
             </Paragraph>
           </Alert>
         ) : null}
+        {section === 'setup' ? <HandoverNotice draft={id} /> : null}
         {rebasedNotice !== undefined ? (
           <Alert data-color="success" data-size="sm">
             {t('services.draftRebasedTo', { n: rebasedNotice })}

@@ -51,7 +51,7 @@ const withPlayground = (playground: PlaygroundMockOptions, seen: string[] = []) 
 };
 
 const openPage = async (playground: PlaygroundMockOptions = {}, seen: string[] = []) => {
-  await renderAt('#/playground', withPlayground(playground, seen));
+  await renderAt('#/playground/backend', withPlayground(playground, seen));
   return screen.findByRole('textbox', { name: 'Spørsmål' });
 };
 

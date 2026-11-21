@@ -100,6 +100,21 @@ export interface PlaygroundPanelProps {
   tenantName?: string;
   serviceDraft?: ServiceDraft;
   timelinePanel?: boolean;
+  /** Told what is tried here, or nothing until the person changes the setup or runs it. */
+  onTried?: (tried: TriedHere | undefined) => void;
+}
+
+/** What the page's setup holds now: the setup, the instructions it runs with, and the rest tried. */
+export interface TriedHere {
+  setup: PlaygroundSetup;
+  /** The typed instructions or the started service's; undefined while those are still loading. */
+  instructions: string | undefined;
+  residency: Residency | undefined;
+  /** Building blocks chosen beyond those every setup starts with. */
+  addedBlocks: boolean;
+  answerLanguage: boolean;
+  compare: boolean;
+  conversation: boolean;
 }
 
 export interface ServiceDraft {
@@ -326,6 +341,7 @@ export const PlaygroundPanel = ({
   tenantName: tenantNameProp,
   serviceDraft,
   timelinePanel = false,
+  onTried,
 }: PlaygroundPanelProps) => {
   const t = useT();
   const f = useFormat();
@@ -374,6 +390,8 @@ export const PlaygroundPanel = ({
   const [formErrs, setFormErrs] = useState<Record<string, string>>({});
   const [draftOptions, setDraftOptions] = useState<PlaygroundInputField[]>();
   const draftDefinition = serviceDraft?.definition;
+  // The setup this page started with: only a change from it, or a run, counts as tried.
+  const startedWith = useRef<string | undefined>(undefined);
   const messagesRef = useRef<Message[]>([]);
   messagesRef.current = messages;
   const running = useRef<AbortController | null>(null);
@@ -495,7 +513,9 @@ export const PlaygroundPanel = ({
       });
     const blocked = options.models.find((m) => m.status === 'not_allowed');
     const notAllowed = state === 'not-allowed';
-    setA(notAllowed && page ? { ...first, model: blocked?.id ?? first.model } : first);
+    const startA = notAllowed && page ? { ...first, model: blocked?.id ?? first.model } : first;
+    startedWith.current = JSON.stringify(startA);
+    setA(startA);
     setB(second);
     setEditing(notAllowed && !page ? 'a' : null);
     setDraft(notAllowed && !page ? { ...clone(first), model: blocked?.id ?? first.model } : null);
@@ -520,6 +540,27 @@ export const PlaygroundPanel = ({
       state === 'quota' ? 94 : options.quota.usedPercent >= 90 ? options.quota.usedPercent : null,
     );
   }, [options, state, context, name, hasDraft, tenant, page]);
+
+  const triedRef = useRef(onTried);
+  triedRef.current = onTried;
+  const baseA = baseOf(a?.service);
+  const ran = messages.length > 0;
+  useEffect(() => {
+    if (!a || !options) return;
+    if (!ran && !b && !answerLanguage && JSON.stringify(a) === startedWith.current) {
+      triedRef.current?.(undefined);
+      return;
+    }
+    triedRef.current?.({
+      setup: a,
+      instructions: a.instructions ?? (a.service ? baseA : ''),
+      residency: options.models.find((m) => m.id === a.model)?.dataLocation,
+      addedBlocks: a.blocks.some((block) => !(options.defaultBlocks ?? []).includes(block)),
+      answerLanguage: !!answerLanguage,
+      compare: !!b,
+      conversation: ran,
+    });
+  }, [a, b, baseA, answerLanguage, ran, options]);
 
   const close = useCallback(() => onClose?.(), [onClose]);
   useEscape(overlay && !!onClose && !call, close);
@@ -765,7 +806,7 @@ export const PlaygroundPanel = ({
           <span className="playground-subtle">{contextText}</span>
         </div>
         <div className="playground-head-actions">
-          <Link href="#/playground">{t('playground.openInPlayground')}</Link>
+          <Link href="#/playground/backend">{t('playground.openInPlayground')}</Link>
           {onClose ? (
             <Button
               variant="tertiary"
