@@ -239,22 +239,24 @@ The API audience (`digdir:genai`) has a default in `main.bicep`. genki-test read
 
 Secrets live only in Key Vault. Each name in `keyVaultSecretNames` becomes an environment variable in the API and worker, which the platform reads as `secret://env/<name>`:
 
-| Key Vault secret                 | Env var in the app                                                                                                   |
-| -------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `content-master-key`             | `CONTENT_MASTER_KEY`                                                                                                 |
-| `altinn-pdp-maskinporten-key`    | `ALTINN_PDP_MASKINPORTEN_KEY`                                                                                        |
-| `altinn-subscription-key`        | `ALTINN_SUBSCRIPTION_KEY`                                                                                            |
-| `foundry-openai-key`             | `FOUNDRY_OPENAI_KEY`                                                                                                 |
-| `foundry-claude-key`             | `FOUNDRY_CLAUDE_KEY`                                                                                                 |
-| `typesense-key`                  | `TYPESENSE_KEY` (search only)                                                                                        |
-| `langfuse-public-key`            | `LANGFUSE_PUBLIC_KEY` (test)                                                                                         |
-| `langfuse-secret-key`            | `LANGFUSE_SECRET_KEY` (test)                                                                                         |
-| `access-person-key-secret`       | `ACCESS_PERSON_KEY_SECRET` (test, once `ALTINN_PEOPLE_URL` is set)                                                   |
-| `altinn-people-maskinporten-key` | `ALTINN_PEOPLE_MASKINPORTEN_KEY` (test, once `ALTINN_PEOPLE_URL` and `ALTINN_PEOPLE_MASKINPORTEN_CLIENT_ID` are set) |
+| Key Vault secret                 | Env var in the app                                                                                                                   |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `content-master-key`             | `CONTENT_MASTER_KEY`                                                                                                                 |
+| `content-master-key-<n>`         | `CONTENT_MASTER_KEY_<n>`, only while rotating the content master key ([ADR 0070](../docs/adr/0070-versioned-content-master-keys.md)) |
+| `platform-login-subject-key`     | `PLATFORM_LOGIN_SUBJECT_KEY`, the derived subject key, needed with the platform login on once `content-master-key` is removed        |
+| `altinn-pdp-maskinporten-key`    | `ALTINN_PDP_MASKINPORTEN_KEY`                                                                                                        |
+| `altinn-subscription-key`        | `ALTINN_SUBSCRIPTION_KEY`                                                                                                            |
+| `foundry-openai-key`             | `FOUNDRY_OPENAI_KEY`                                                                                                                 |
+| `foundry-claude-key`             | `FOUNDRY_CLAUDE_KEY`                                                                                                                 |
+| `typesense-key`                  | `TYPESENSE_KEY` (search only)                                                                                                        |
+| `langfuse-public-key`            | `LANGFUSE_PUBLIC_KEY` (test)                                                                                                         |
+| `langfuse-secret-key`            | `LANGFUSE_SECRET_KEY` (test)                                                                                                         |
+| `access-person-key-secret`       | `ACCESS_PERSON_KEY_SECRET` (test, once `ALTINN_PEOPLE_URL` is set)                                                                   |
+| `altinn-people-maskinporten-key` | `ALTINN_PEOPLE_MASKINPORTEN_KEY` (test, once `ALTINN_PEOPLE_URL` and `ALTINN_PEOPLE_MASKINPORTEN_CLIENT_ID` are set)                 |
 
 `docling-api-key` is not in `keyVaultSecretNames`: the template gives it only to the worker (`DOCLING_API_KEY`) and the Docling server (`DOCLING_SERVE_API_KEY`), see [Docling server](#docling-server). Create it like the others.
 
-Create every secret in Key Vault before the first deploy, or remove its name from the parameter file. A name listed without a secret behind it stops the revision from starting. `CONTENT_MASTER_KEY` is 32 random bytes, base64: `openssl rand -base64 32`.
+Create every secret in Key Vault before the first deploy, or remove its name from the parameter file. A name listed without a secret behind it stops the revision from starting. `CONTENT_MASTER_KEY` is 32 random bytes, base64: `openssl rand -base64 32`. To rotate it, follow [ADR 0070](../docs/adr/0070-versioned-content-master-keys.md#rotation-procedure): the new key is one more name in `keyVaultSecretNames` and `CONTENT_MASTER_KEY_ACTIVE` in `appEnv`, with no template change.
 
 Development mode is off: the image sets `NODE_ENV=production`, and the API refuses `GENAI_DEV_MODE=true` there.
 
