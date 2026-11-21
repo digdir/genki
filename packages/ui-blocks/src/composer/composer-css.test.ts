@@ -54,6 +54,28 @@ describe('the Composer styles', () => {
     );
   });
 
+  it('hide the frame border while the field has focus, so the focus ring is the only line round it', () => {
+    expect(rule('.uib-composer-frame:has(.uib-composer-field :focus-visible)')).toContain(
+      'border-color: transparent;',
+    );
+  });
+
+  it('draw no outline of its own on the field in hover or focus, so the frame is the only line', () => {
+    const own = rule(
+      '.uib-composer-field textarea:hover, .uib-composer-field textarea:focus-visible',
+    );
+    expect(own).toContain('outline: none;');
+    expect(own).toContain('box-shadow: none;');
+  });
+
+  it('show hover as a second line of the frame’s border colour, as Designsystemet does on a text field, and not while the ring shows', () => {
+    const hover = rule(
+      '.uib-composer-frame:has(.uib-composer-field:hover):not(:has(.uib-composer-field :focus-visible))',
+    );
+    expect(hover).toContain('outline: var(--ds-border-width-default) solid');
+    expect(hover).toContain('var(--ds-color-border-default)');
+  });
+
   it('take the empty refusal out of the flow, but keep it in the page', () => {
     const empty = rule('.uib-composer-refusal:empty');
     expect(empty).toContain('position: absolute;');
