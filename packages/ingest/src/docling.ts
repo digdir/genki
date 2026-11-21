@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { authHeaders, type Credential } from '@genai/kernel';
-import { Client, fetch, FormData } from 'undici';
+import { type buildConnector, Client, fetch, FormData } from 'undici';
 import {
   ConversionRefused,
   type ConverterIdentity,
@@ -129,6 +129,8 @@ export interface DoclingOptions {
   countPages?: (bytes: Uint8Array) => Promise<number | undefined>;
   /** Told once for each task when it ends. */
   onTask?: (event: DoclingTaskEvent) => void;
+  /** How the client opens a connection; undici's own by default. Tests time connects out with it. */
+  connect?: buildConnector.connector;
 }
 
 interface TaskStatus {
@@ -227,10 +229,18 @@ const parsed = <T>(answer: Answer, what: string): T => {
 /** Codes of a connection refused, reset or closed before its answer, as a restarting replica's are. */
 const earlyEnds = new Set(['ECONNREFUSED', 'ECONNRESET', 'EPIPE', 'UND_ERR_SOCKET']);
 
-const endedEarly = (error: unknown) => {
-  const cause = (error as { cause?: { code?: unknown } } | undefined)?.cause;
-  return typeof cause?.code === 'string' && earlyEnds.has(cause.code);
+const causeCode = (error: unknown) => {
+  const code = (error as { cause?: { code?: unknown } } | undefined)?.cause?.code;
+  return typeof code === 'string' ? code : undefined;
 };
+
+const endedEarly = (error: unknown) => earlyEnds.has(causeCode(error) ?? '');
+
+/**
+ * A connection the ingress did not open in time: it holds one while every replica is taken and
+ * the next starts (about 75 s in genki-test), longer than undici's 10 s to connect (issue 922).
+ */
+const notConnected = (error: unknown) => causeCode(error) === 'UND_ERR_CONNECT_TIMEOUT';
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -267,6 +277,7 @@ export const doclingConverter = (options: DoclingOptions): DocumentConverter => 
       keepAliveTimeout: interval + 15_000,
       keepAliveMaxTimeout: interval + 15_000,
       pipelining: 1,
+      ...(options.connect ? { connect: options.connect } : {}),
     });
 
   const send = async (client: Client, path: string, body?: FormData): Promise<Answer> => {
@@ -418,6 +429,13 @@ export const doclingConverter = (options: DoclingOptions): DocumentConverter => 
         submitted = await send(client, '/v1/convert/file/async', form(file, seconds()));
       } catch (error) {
         await release();
+        // No connection yet, as while replicas start: the job waits for one as for a busy replica.
+        if (notConnected(error)) {
+          await client.destroy();
+          waits += 1;
+          await sleep(busyWait);
+          continue;
+        }
         // Only a connection refused or ended before an answer: a headers timeout already waited long.
         unansweredInARow += 1;
         if (!endedEarly(error) || unansweredInARow >= doclingUnansweredSubmitsInARow) throw error;

@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import http from 'node:http';
 import net, { type AddressInfo } from 'node:net';
 import { createHash, randomUUID } from 'node:crypto';
+import { buildConnector, errors } from 'undici';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   ConversionRefused,
@@ -824,5 +825,29 @@ describe('the Docling client', () => {
 
     expect(error).toBeInstanceOf(Error);
     expect(submits).toBe(1);
+  });
+
+  it('waits and asks again when a connection to Docling times out, as while replicas start', async () => {
+    const cluster = await doclingCluster(['success'], { convertMs: 50 });
+    const tasks: DoclingTaskEvent[] = [];
+    // The ingress holds a connection while every replica is taken and the next one starts: the
+    // first 12 connects give up as undici's 10 s connect timeout does, more than the 8 early ends.
+    let timeouts = 12;
+    const direct = buildConnector({});
+    const connect: buildConnector.connector = (options, callback) => {
+      if (timeouts-- > 0) {
+        setTimeout(() => callback(new errors.ConnectTimeoutError(), null), 5);
+        return;
+      }
+      direct(options, callback);
+    };
+
+    const conversion = await converterFor(cluster.url, {
+      connect,
+      onTask: (event) => tasks.push(event),
+    }).convert(report);
+
+    expect(conversion.converter).toEqual(doclingIdentity);
+    expect(tasks.map((t) => [t.result, t.submit, t.busyWaits])).toEqual([['success', 1, 12]]);
   });
 });
