@@ -22,7 +22,8 @@ import { listedServiceCount, rememberServiceNames } from '../listed-services';
 import { modelLabel } from '../models';
 import { StrategyCatalogue } from '../strategy-catalogue';
 import { ServiceLoading } from './service/ServiceLoading';
-import { availableSections, locate } from './service/sections';
+import { productionEnvironment } from '../api/environments';
+import { availableSections, editionOf, editionView, locate } from './service/sections';
 import { Builder, newDraftId, newServiceInit, type BuilderInit } from './services/Builder';
 import { LiveNewService } from './services/LiveNewService';
 import { NewService } from './services/NewService';
@@ -172,9 +173,24 @@ const BuilderScreen = (
   const p = usePortalFormat();
   const { t } = p;
   const canManage = useRights().has('manage-services');
+  const inUse =
+    editionOf(route.query) === 'inUse' && editionView(location.section, 'inUse') === 'inUse';
   const [state, retry] = useAsync(
     async (signal) => {
       try {
+        if (inUse && props.live) {
+          const [found, pointers] = await Promise.all([
+            api.getDefinition(tenant, 'Service', id, signal),
+            api.environments.list(tenant, id, signal).catch(() => undefined),
+          ]);
+          const prod = pointers?.environments.find((e) => e.name === productionEnvironment);
+          const version = prod?.version ?? found.latest.version;
+          const shown =
+            version === found.latest.version
+              ? found.latest
+              : await api.getVersion(tenant, 'Service', id, version, signal);
+          return { found, draft: undefined, inUse: shown };
+        }
         const [found, opened] = await Promise.all([
           api.getDefinition(tenant, 'Service', id, signal),
           props.live ? api.quality.openDraft(tenant, id, t('services.rebaseReason')) : undefined,
@@ -189,9 +205,15 @@ const BuilderScreen = (
         return unpublished ? { unpublished } : undefined;
       }
     },
-    [api, tenant, id, props.live, canManage],
+    [api, tenant, id, props.live, canManage, inUse],
   );
-  if (state.status === 'loading')
+  const loadedInUse = state.status === 'ready' && state.data !== undefined && 'inUse' in state.data;
+  const otherEdition =
+    state.status === 'ready' &&
+    state.data !== undefined &&
+    'found' in state.data &&
+    loadedInUse !== (inUse && props.live === true);
+  if (state.status === 'loading' || otherEdition)
     return (
       <ServiceLoading
         tenant={tenant}
@@ -233,7 +255,8 @@ const BuilderScreen = (
   }
   const live = state.data?.found;
   const draft = live ? state.data?.draft : undefined;
-  const current = draft ?? live?.latest;
+  const shownInUse = state.data && 'inUse' in state.data ? state.data.inUse : undefined;
+  const current = shownInUse ?? draft ?? live?.latest;
   const row = props.live ? undefined : serviceRows.find((r) => r.id === id);
   const example = props.live ? undefined : exampleDefinitions[id];
   if (!live && !row && !example)
@@ -282,7 +305,7 @@ const BuilderScreen = (
   const pane = paneOf(route.query);
   return (
     <Builder
-      key={`${id}-${live?.latest.version ?? 0}`}
+      key={`${id}-${live?.latest.version ?? 0}-${inUse ? 'in-use' : 'test'}`}
       api={api}
       tenant={tenant}
       tenantName={props.tenantName}
@@ -293,6 +316,8 @@ const BuilderScreen = (
       detail={location.detail}
       pane={pane}
       openPublish={route.query.get('publiser') === '1'}
+      edition={inUse ? 'inUse' : 'test'}
+      {...(shownInUse ? { inUseEdition: shownInUse } : {})}
       onPublished={retry}
     />
   );

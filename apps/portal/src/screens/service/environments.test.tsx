@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createApiClient } from '../../api';
 import { exampleUsage, mockFetch } from '../../mock';
 import { useRoute } from '../../hooks';
@@ -13,10 +13,18 @@ import { draftOf, specOf } from './ClientForm';
 import { LogSection } from './LogSection';
 import { ServiceKeys } from './ServiceKeys';
 import { EnvironmentsSection } from './EnvironmentsSection';
-import { Versions } from './Versions';
+import { History } from './History';
 
 document.getAnimations ??= () => [];
 afterEach(cleanup);
+beforeAll(() => {
+  HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {
+    this.open = true;
+  };
+  HTMLDialogElement.prototype.close ??= function (this: HTMLDialogElement) {
+    this.open = false;
+  };
+});
 
 const tenant = '991825827';
 const asManager = (ui: ReactNode) => (
@@ -299,19 +307,98 @@ describe('service environments in the portal', () => {
     expect(screen.getByRole('button', { name: 'Angre publisering (I bruk)' })).toBeTruthy();
   });
 
-  it('marks each edition with the places that run it', async () => {
+  it('lists only the editions users have had, and marks the one in use', async () => {
     const { api } = platform({
       [`GET ${definitionPath}`]: history,
       [`GET ${environmentsPath}`]: staged,
     });
-    render(asManager(<Versions api={api} tenant={tenant} serviceId="klarsprak" />));
+    render(asManager(<History api={api} tenant={tenant} serviceId="klarsprak" />));
 
-    const versions = await screen.findByRole('list', { name: 'Utgaver' });
-    await waitFor(() => expect(within(versions).getByText('Kjører nå: I bruk')).toBeTruthy());
-    const items = within(versions).getAllByRole('listitem');
-    expect(within(items[0] as HTMLElement).getByText('Kjører nå: test')).toBeTruthy();
-    expect(within(items[1] as HTMLElement).getByText('Kjører nå: I bruk')).toBeTruthy();
-    expect(within(versions).queryByText('I bruk')).toBeNull();
+    const table = await screen.findByRole('table', { name: 'Utgavene' });
+    await waitFor(() => expect(within(table).getAllByRole('row')).toHaveLength(2));
+    const [first, second] = within(table).getAllByRole('row');
+    expect(within(first as HTMLElement).getByText('Versjon 2')).toBeTruthy();
+    expect(within(first as HTMLElement).getByText('I bruk')).toBeTruthy();
+    expect(within(second as HTMLElement).queryByText('I bruk')).toBeNull();
+    expect(within(table).queryByText('Versjon 3')).toBeNull();
+  });
+
+  it('undoes publishing by moving the edition in use back, without publishing', async () => {
+    const { api, calls } = platform({
+      [`GET ${definitionPath}`]: history,
+      [`GET ${environmentsPath}`]: staged,
+      [`POST ${environmentsPath}/prod/rollback`]: staged,
+    });
+    render(asManager(<History api={api} tenant={tenant} serviceId="klarsprak" />));
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Angre publisering' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Angre publisering?' });
+    expect(
+      within(dialog).getByText(
+        /^Brukerne får utgaven fra .+ igjen\. Testutgaven beholder endringene\.$/,
+      ),
+    ).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Angre publisering' }));
+
+    await waitFor(() =>
+      expect(calls.some((c) => c.path === `${environmentsPath}/prod/rollback`)).toBe(true),
+    );
+    const rollback = calls.find((c) => c.path === `${environmentsPath}/prod/rollback`);
+    expect(rollback?.body).toEqual({ version: 1 });
+    expect(reasonOf(rollback)).toMatch(/^Angret publisering, tilbake til utgaven fra /);
+    expect(calls.some((c) => c.path === '/definitions')).toBe(false);
+  });
+
+  it('asks to undo publishing at once when opened from the header link', async () => {
+    const { api } = platform({
+      [`GET ${definitionPath}`]: history,
+      [`GET ${environmentsPath}`]: staged,
+    });
+    render(asManager(<History api={api} tenant={tenant} serviceId="klarsprak" askUndo />));
+
+    expect(await screen.findByRole('dialog', { name: 'Angre publisering?' })).toBeTruthy();
+  });
+
+  it('closes the undo link once the owner has answered it', async () => {
+    const { api } = platform({
+      [`GET ${definitionPath}`]: history,
+      [`GET ${environmentsPath}`]: staged,
+    });
+    const onAsked = vi.fn();
+    render(
+      asManager(
+        <History api={api} tenant={tenant} serviceId="klarsprak" askUndo onAsked={onAsked} />,
+      ),
+    );
+
+    const dialog = await screen.findByRole('dialog', { name: 'Angre publisering?' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Avbryt' }));
+    expect(onAsked).toHaveBeenCalledTimes(1);
+  });
+
+  it('offers neither undo nor restore while it cannot tell which edition users have', async () => {
+    const { api } = platform({
+      [`GET ${definitionPath}`]: history,
+    });
+    render(asManager(<History api={api} tenant={tenant} serviceId="klarsprak" askUndo />));
+
+    await screen.findByRole('table', { name: 'Utgavene' });
+    expect(screen.queryByRole('button', { name: 'Angre publisering' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Gjenopprett denne utgaven' })).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('offers neither undo nor restore to a member who may not manage services', async () => {
+    const { api } = platform({
+      [`GET ${definitionPath}`]: history,
+      [`GET ${environmentsPath}`]: staged,
+    });
+    render(<History api={api} tenant={tenant} serviceId="klarsprak" askUndo />);
+
+    await screen.findByRole('table', { name: 'Utgavene' });
+    expect(screen.queryByRole('button', { name: 'Angre publisering' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Gjenopprett denne utgaven' })).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 
   it('sends who uses a new test edition with it when the owner says', async () => {
@@ -342,7 +429,7 @@ describe('service environments in the portal', () => {
     );
   });
 
-  it('says who uses a test edition apart from its runs today, which may come from anyone', async () => {
+  it('says on the card who uses a test edition apart from its runs today, which may come from anyone', async () => {
     const { api } = platform({
       [`GET ${definitionPath}`]: history,
       [`GET ${environmentsPath}`]: () => ({

@@ -67,8 +67,6 @@ describe('the Teknisk side menu', () => {
     expect(document.activeElement).toBe(tab('API-nøkler og kanaler'));
     fireEvent.keyDown(tab('API-nøkler og kanaler'), { key: 'ArrowUp' });
     fireEvent.keyDown(tab('Logg'), { key: 'ArrowUp' });
-    expect(document.activeElement).toBe(tab('Historikk'));
-    fireEvent.keyDown(tab('Historikk'), { key: 'ArrowUp' });
     expect(document.activeElement).toBe(tab('Teknisk tekst (YAML)'));
   });
 
@@ -121,7 +119,6 @@ describe('the Teknisk side menu', () => {
       ),
     );
     expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual([
-      'Historikk 7',
       'Logg 412 i dag',
       'API-nøkler og kanaler 2 aktive',
       'Testutgave og i bruk 2',

@@ -129,6 +129,36 @@ describe('comparing two versions on Kvalitet', () => {
     expect(within(section).queryByRole('button', { name: /^Bedre/ })).toBeNull();
   });
 
+  it('links the setup difference of a test edition run to the publish page and of editions to Historikk', async () => {
+    const { api } = platform();
+    const draft = { ...run('d1', 7, 0.9, '2026-11-18T10:00:00Z'), version: 'draft' as const };
+    const { unmount } = render(
+      <CompareSection
+        api={api}
+        tenant={tenant}
+        serviceId="rapport"
+        runs={runs}
+        publishedVersion={6}
+      />,
+    );
+    expect(
+      screen.getByRole('link', { name: 'Se forskjellen i oppsettet' }).getAttribute('href'),
+    ).toBe('#/services/rapport/versions');
+    unmount();
+    render(
+      <CompareSection
+        api={api}
+        tenant={tenant}
+        serviceId="rapport"
+        runs={[draft, ...runs]}
+        publishedVersion={6}
+      />,
+    );
+    expect(
+      screen.getByRole('link', { name: 'Se forskjellen i oppsettet' }).getAttribute('href'),
+    ).toBe('#/services/rapport/setup/publish');
+  });
+
   it('says the comparison could not be fetched and fetches it again on retry', async () => {
     let failing = true;
     const { api } = platform();

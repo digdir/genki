@@ -172,8 +172,9 @@ describe('rights in the UI', () => {
 
     await renderAs('#/services/rapportassistenten', mockFetch(), useOnly);
     await screen.findByRole('heading', { level: 1, name: 'Rapportassistenten' });
-    expect(screen.queryByRole('button', { name: 'Publiser' })).toBeNull();
-    expect(screen.getByText('Du trenger rettigheten «Administrere tjenester».')).toBeTruthy();
+    const publish = screen.getByRole('button', { name: 'Publiser' });
+    expect(publish.getAttribute('aria-disabled')).toBe('true');
+    expect(publish.getAttribute('title')).toBe('Bare eiere kan publisere');
   });
 });
 

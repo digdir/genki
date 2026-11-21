@@ -21,16 +21,20 @@ describe('service pages in English', () => {
     render(
       inEnglish(
         <>
-          <ServiceNav id="klarsprak" sections={['overview', 'channels', 'log']} current="log" />
-          <ServiceSubNav id="klarsprak" sections={['overview', 'versions', 'log']} current="log" />
+          <ServiceNav
+            id="klarsprak"
+            sections={['overview', 'versions', 'channels', 'log']}
+            current="log"
+          />
+          <ServiceSubNav id="klarsprak" sections={['overview', 'channels', 'log']} current="log" />
         </>,
       ),
     );
     const nav = screen.getByRole('tablist', { name: /^Tabs for/ });
     expect(within(nav).getByText('Overview')).toBeTruthy();
     expect(within(nav).getByText('Technical')).toBeTruthy();
+    expect(within(nav).getByText('History')).toBeTruthy();
     const sub = screen.getByRole('tablist', { name: 'Technical' });
-    expect(within(sub).getByText('History')).toBeTruthy();
     expect(within(sub).getByText('Log')).toBeTruthy();
     expect(within(nav).queryByText('Advanced settings')).toBeNull();
   });
