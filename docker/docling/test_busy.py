@@ -13,7 +13,13 @@ from starlette.testclient import TestClient
 
 import importlib.util
 
-from genki_busy import OneTaskAtATime, wrap
+import os
+import tempfile
+
+import signal
+
+import genki_busy
+from genki_busy import DRAIN_SECONDS, OneTaskAtATime, drain_on_stop, working_set, wrap
 
 GIB = 1024**3
 KEY = "docling-key"
@@ -300,6 +306,113 @@ class OneTaskAtATimeTest(unittest.TestCase):
 
         self.assertEqual(chunks, [])
         self.assertEqual(events[:6], ["read"] * 5 + ["http.response.start"])
+
+    def test_keeps_serving_a_held_task_after_a_stop_signal_and_stops_once_its_result_is_fetched(self):
+        replica = Replica()
+        task_id = replica.submit().json()["task_id"]
+        stops = []
+
+        self.assertTrue(replica.middleware.drain(lambda: stops.append(True)))
+        replica.middleware.check()
+        self.assertEqual(stops, [])
+        # The worker still polls its task while the replica drains.
+        self.assertEqual(replica.client.get(f"/v1/status/poll/{task_id}").status_code, 200)
+        replica.orchestrator.finish(task_id)
+        replica.middleware.check()
+        self.assertEqual(stops, [])
+        replica.orchestrator.fetch(task_id)
+        replica.middleware.check()
+
+        self.assertEqual(stops, [True])
+        self.assertEqual([line["msg"] for line in replica.lines if line["msg"] in ("draining", "stopping")], ["draining", "stopping"])
+
+    def test_stops_at_once_on_a_stop_signal_when_it_holds_no_task(self):
+        replica = Replica()
+
+        self.assertFalse(replica.middleware.drain(lambda: None))
+
+    def test_stops_after_570_s_of_draining_even_if_its_task_has_not_ended(self):
+        self.assertEqual(DRAIN_SECONDS, 570)
+        replica = Replica()
+        replica.orchestrator.add("held", "started")
+        stops = []
+        replica.middleware.drain(lambda: stops.append(True))
+
+        replica.now += 569
+        replica.middleware.check()
+        self.assertEqual(stops, [])
+        replica.now += 1
+        replica.middleware.check()
+        self.assertEqual(stops, [True])
+
+    def test_refuses_new_submits_while_draining(self):
+        replica = Replica()
+        replica.orchestrator.add("done", "success")
+        replica.orchestrator._task_results["done"] = object()
+        replica.middleware.drain(lambda: None)
+
+        self.assertEqual(replica.submit().status_code, 503)
+
+    def test_a_stop_signal_to_a_replica_holding_a_task_does_not_stop_uvicorn_until_it_is_done(self):
+        class Server:
+            should_exit = False
+
+            def handle_exit(self, sig, frame):
+                self.should_exit = True
+
+        drain_on_stop(Server)
+        replica = Replica()
+        genki_busy._current.append(replica.middleware)
+        try:
+            task_id = replica.submit().json()["task_id"]
+            server = Server()
+            server.handle_exit(signal.SIGTERM, None)
+            self.assertFalse(server.should_exit)
+            replica.orchestrator.finish(task_id)
+            replica.orchestrator.fetch(task_id)
+            replica.middleware.check()
+            self.assertTrue(server.should_exit)
+            # Idle, a stop signal stops at once.
+            idle = Server()
+            genki_busy._current.append(Replica().middleware)
+            idle.handle_exit(signal.SIGTERM, None)
+            self.assertTrue(idle.should_exit)
+        finally:
+            genki_busy._current.clear()
+
+
+class WorkingSetTest(unittest.TestCase):
+    """The replica's memory, read under a root that stands in for / ."""
+
+    def root(self, files):
+        root = tempfile.mkdtemp()
+        for path, text in files.items():
+            full = os.path.join(root, path.lstrip("/"))
+            os.makedirs(os.path.dirname(full), exist_ok=True)
+            with open(full, "w") as f:
+                f.write(text)
+        return root
+
+    def test_reads_cgroup_v2_usage_less_inactive_file_pages(self):
+        root = self.root({"/sys/fs/cgroup/memory.current": "5000\n", "/sys/fs/cgroup/memory.stat": "anon 3000\ninactive_file 1200\n"})
+
+        self.assertEqual(working_set(root), (3800, "cgroup v2"))
+
+    def test_reads_memory_from_cgroup_v1_when_cgroup_v2_is_missing(self):
+        root = self.root({
+            "/sys/fs/cgroup/memory/memory.usage_in_bytes": "9000\n",
+            "/sys/fs/cgroup/memory/memory.stat": "cache 100\ntotal_inactive_file 2500\n",
+        })
+
+        self.assertEqual(working_set(root), (6500, "cgroup v1"))
+
+    def test_falls_back_to_the_processs_resident_memory_when_no_cgroup_file_is_readable(self):
+        root = self.root({"/proc/self/status": "Name:\tpython\nVmRSS:\t  2048 kB\nThreads:\t9\n"})
+
+        self.assertEqual(working_set(root), (2048 * 1024, "process"))
+
+    def test_has_no_memory_when_nothing_is_readable(self):
+        self.assertEqual(working_set(self.root({})), (None, None))
 
 
 @unittest.skipUnless(importlib.util.find_spec("docling_serve"), "docling-serve is in the image, not the CI venv")
