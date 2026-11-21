@@ -466,8 +466,8 @@ describe('the live builder and the server draft', () => {
     const header = (
       await screen.findByRole('heading', { level: 1, name: 'Rapportassistenten' })
     ).closest('header') as HTMLElement;
-    expect(await within(header).findByText('Versjon 5 i bruk')).toBeTruthy();
-    expect(within(header).queryByText('Versjon 7 i bruk')).toBeNull();
+    expect(await within(header).findByText('Utgave 5 i bruk')).toBeTruthy();
+    expect(within(header).queryByText('Utgave 7 i bruk')).toBeNull();
   });
 
   it('opening a service opens its draft once', async () => {

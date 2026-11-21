@@ -672,7 +672,7 @@ const publishDefinition = tool({
     const environments = service && before ? await placementsOf(client, parsed.id) : [];
     if (environments.find((e) => e.name === production)?.followsPublishes)
       return fail(
-        `Not published: ${parsed.id} has no testutgave, so a publish would reach its users at once. A coding agent changes only the testutgave: ask the person to add a test environment in the portal${link ? `: ${link}` : ''}, then publish again.`,
+        `Not published: ${parsed.id} has no testutgave, so a publish would reach its users at once. A coding agent changes only the testutgave: ask the person to add a test edition in the portal${link ? `: ${link}` : ''}, then publish again.`,
       );
     try {
       const result = await client.request<{

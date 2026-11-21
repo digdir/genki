@@ -174,7 +174,7 @@ Details worth knowing:
 
 ### Risk classes
 
-`publish_definition` changes only the testutgave (`test`): users keep the version «I bruk» until a person publishes it from the portal, and the answer says both versions. It refuses a service whose `prod` follows every publish, since there users would get the change at once; a person adds a test environment in the portal first. A new service's first version is the exception, as nobody uses it yet.
+`publish_definition` changes only the testutgave (`test`): users keep the version «I bruk» until a person publishes it from the portal, and the answer says both versions. It refuses a service whose `prod` follows every publish, since there users would get the change at once; a person adds a test edition in the portal first. A new service's first version is the exception, as nobody uses it yet.
 
 `publish_definition` also refuses a new service with a risk class above `minimal`, and any change to `riskClass` or `riskConfirmation`, before it calls the API. The error gives a link to the service in the portal, where a person confirms the risk class. Publish the other changes without touching those fields, or let the person publish in the portal.
 
