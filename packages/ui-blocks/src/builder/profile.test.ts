@@ -14,7 +14,9 @@ import {
   isProfileData,
   PROFILE_MAX_BYTES,
   profileLimits,
+  profileIn,
   profileProblems,
+  withTextIn,
   type ProfileData,
 } from './profile.js';
 import { changeTemplate, fromTemplate } from './templates.js';
@@ -70,7 +72,7 @@ describe('the profile as data in a layout', () => {
       { suggestions: 'Hva er fast?' },
       { suggestions: [1] },
       { corpora: [] },
-      kudos({ label: { nb: 'Kudos', en: 'Kudos' } }),
+      kudos({ label: { nb: 'Kudos' } }),
       kudos({ fields: [{ id: 'type' }] }),
       kudos({ typePlurals: { Årsrapport: 1 } }),
       kudos({ about: { idField: 'doc_num' } }),
@@ -206,6 +208,63 @@ describe('the profile as data in a layout', () => {
     expect(layoutProblems(withKa(profile))).toEqual([
       { rule: 'unknown-kind', path: 'profile.corpora.kudos.fields[0].kind', kind: 'date' },
     ]);
+  });
+});
+
+// Kunnskapsassistenten's profile as genki-test stores it: its texts in both languages.
+const bilingualKa: ProfileData = {
+  ...ka,
+  assistantName: { nb: 'Kunnskapsassistenten', en: 'The Knowledge Assistant' },
+  suggestions: [
+    { nb: 'Hva handler dokumentene i Kudos om?', en: 'What are the Kudos documents about?' },
+  ],
+  corpora: {
+    kudos: {
+      label: 'Kudos',
+      description: { nb: 'dokumenter fra kudos.dfo.no', en: 'documents from kudos.dfo.no' },
+      fields: [{ id: 'type', label: { nb: 'Dokumenttyper', en: 'Document types' } }],
+      typePlurals: { Årsrapport: { nb: 'årsrapporter', en: 'annual reports' } },
+    },
+  },
+  settingsNote: {
+    nb: 'Valgene huskes i denne nettleseren.',
+    en: 'Your choices are kept in this browser.',
+  },
+};
+
+describe('a profile with its texts in both languages', () => {
+  it('reads a layout whose texts are language maps as its own', () => {
+    expect(isProfileData(bilingualKa)).toBe(true);
+    expect(isAssistantLayout(withKa(bilingualKa))).toBe(true);
+    expect(layoutProblems(withKa(bilingualKa), [])).toEqual([]);
+  });
+
+  it('refuses a language map with a language the platform does not have', () => {
+    expect(isProfileData({ assistantName: { nb: 'Assistenten', sv: 'Assistenten' } })).toBe(false);
+  });
+
+  it('finds a wording longer than its limit in either language', () => {
+    const long = 'x'.repeat(profileLimits.name + 1);
+    expect(profileProblems({ assistantName: { nb: 'Kort', en: long } })).toEqual([
+      { rule: 'text-too-long', path: 'profile.assistantName', max: profileLimits.name },
+    ]);
+  });
+
+  it('keeps the other language when one wording is changed', () => {
+    expect(withTextIn(bilingualKa.assistantName, 'KA', 'nb')).toEqual({
+      nb: 'KA',
+      en: 'The Knowledge Assistant',
+    });
+    expect(withTextIn('Kunnskapsassistenten', 'KA', 'en')).toBe('KA');
+  });
+
+  it('draws every text in the reader’s language', () => {
+    const drawn = profileIn(bilingualKa, 'en');
+    expect(drawn.assistantName).toBe('The Knowledge Assistant');
+    expect(drawn.suggestions).toEqual(['What are the Kudos documents about?']);
+    expect(drawn.corpora?.kudos?.fields?.[0]?.label).toBe('Document types');
+    expect(drawn.corpora?.kudos?.typePlurals).toEqual({ Årsrapport: 'annual reports' });
+    expect(drawn.settingsNote).toBe('Your choices are kept in this browser.');
   });
 });
 

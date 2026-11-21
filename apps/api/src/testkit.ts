@@ -13,6 +13,7 @@ import {
 } from '@genai/definitions';
 import { createAdmin, type ModelAdmin } from './admin.js';
 import { createApp, type PlatformOptions } from './app.js';
+import { environmentsOf } from './service-environments.js';
 import type { Authenticator } from './http.js';
 import {
   altinnPolicy,
@@ -360,6 +361,7 @@ export const bootPlatform = async (options: BootOptions = {}) => {
       registered: platform.registered,
       caller: platform.caller,
       unmaskedInput: platform.unmaskedInput,
+      environments: (tenant, service) => environmentsOf(configEntries, tenant, service),
       tasks: kernelTaskReader(platform.kernel, {
         kind: 'operator',
         issuer: 'platform',

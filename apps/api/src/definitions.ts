@@ -38,6 +38,7 @@ import {
 } from './http.js';
 import { draftOutdatedTitle, draftOutdatedType, type ServiceDrafts } from './service-drafts.js';
 import { tenantNotRegistered } from './tenant-gate.js';
+import { environmentViews, type EnvironmentPointers } from './service-environments.js';
 
 export interface DefinitionsApiOptions {
   store: DefinitionStore;
@@ -46,6 +47,7 @@ export interface DefinitionsApiOptions {
   admin: Admin;
   access: Access;
   drafts?: Pick<ServiceDrafts, 'outdated' | 'followPublish'>;
+  environments?: (tenant: string, service: string) => Promise<EnvironmentPointers>;
   unmaskedInput?: (definition: Definition) => Promise<UnmaskedInputUse[]>;
   names?: ActorNames;
   now?: () => Date;
@@ -97,6 +99,21 @@ const PublishedDefinition = VersionSummary.extend({
   files: z.record(z.string(), z.string()),
   warnings: z.array(Warning).optional(),
 }).openapi('PublishedDefinition');
+
+const PublishedEnvironment = z
+  .object({
+    name: z.string(),
+    version: z.number().int().nullable(),
+    followsPublishes: z.boolean(),
+  })
+  .openapi('PublishedEnvironment');
+
+const PublishResult = PublishedDefinition.extend({
+  environments: z.array(PublishedEnvironment).optional().openapi({
+    description:
+      "A service's environments after the publish: those that follow publishes run the new version, a pinned prod keeps the version in use until it is promoted",
+  }),
+}).openapi('PublishResult');
 
 const DefinitionOverview = z
   .object({
@@ -176,7 +193,7 @@ const routes = {
     },
     responses: {
       201: {
-        content: { 'application/json': { schema: PublishedDefinition } },
+        content: { 'application/json': { schema: PublishResult } },
         description: 'Published',
       },
       400: { content: problemContent, description: 'The body or reason could not be read' },
@@ -468,9 +485,19 @@ export const registerDefinitionRoutes = (app: OpenAPIHono, options: DefinitionsA
         )
         .catch(() => undefined);
     const warnings = definitionWarnings(validated.definition);
+    const pointers = service
+      ? await options.environments?.(tenant, service).catch(() => undefined)
+      : undefined;
     const body = {
       ...published(result.value, await namesOf([result.value])),
       ...(warnings.length ? { warnings } : {}),
+      ...(pointers
+        ? {
+            environments: environmentViews(pointers, result.value.version).map(
+              ({ name, version, followsPublishes }) => ({ name, version, followsPublishes }),
+            ),
+          }
+        : {}),
     };
     c.header(
       'location',

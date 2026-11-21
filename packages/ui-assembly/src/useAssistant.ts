@@ -282,7 +282,10 @@ export const useAssistant = ({
   const t = useT();
   // The host's profile, the layout's filling the rest; the host's own object when the layout has
   // none, so a host that passes one keeps its identity.
-  const profile = useMemo(() => profileOf(layout, hostProfile), [layout.profile, hostProfile]);
+  const profile = useMemo(
+    () => profileOf(layout, hostProfile, language === 'en' ? 'en' : 'nb'),
+    [layout.profile, hostProfile, language],
+  );
   const [models, setModels] = useState<ModelRow[]>();
   // Why genki could not say: the status it answered with, or none when it was not reached. The
   // error's own message is the browser's or genki's, in their language, so it goes to the console.

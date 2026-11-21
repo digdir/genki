@@ -83,6 +83,7 @@ import {
   type SectionId,
 } from './SetupTab';
 import { TryPane } from './setup-try-pane';
+import { productionEnvironment } from '../../api/environments';
 import { DraftBar, savedByOf, saverOf, type SaveState, type SavedBy } from './DraftBar';
 import { DiscardDialog } from './DiscardDialog';
 import { PublishDiff, type ModelFacts, type TestWarning } from './PublishDiff';
@@ -905,6 +906,19 @@ export const Builder = ({
 
   const draftBar = serverDraft && !isNew;
   const liveVersion = baseline ?? remoteLatest;
+  const [pointers] = useAsync(
+    async (signal) =>
+      draftBar && liveVersion ? api.environments.list(tenant, id, signal) : undefined,
+    [api, tenant, id, draftBar, liveVersion?.version],
+    { keepPreviousFor: id },
+  );
+  const inUseVersion =
+    pointers.status === 'ready'
+      ? (pointers.data?.environments?.find((e) => e.name === productionEnvironment)?.version ??
+        undefined)
+      : pointers.status === 'error'
+        ? liveVersion?.version
+        : undefined;
   const fileKey = JSON.stringify([
     service.spec.input.accepts,
     service.spec.knowledge?.runtimeDocuments === true,
@@ -1963,8 +1977,8 @@ export const Builder = ({
           status={status}
           meta={meta}
           tag={
-            draftBar && status === 'I bruk' && liveVersion
-              ? t('serviceDraft.versionInUse', { n: liveVersion.version })
+            draftBar && status === 'I bruk' && inUseVersion !== undefined
+              ? t('serviceDraft.versionInUse', { n: inUseVersion })
               : live && shown && status === 'I bruk'
                 ? t('services.metaInUse', { n: shown.n })
                 : undefined

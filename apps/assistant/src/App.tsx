@@ -199,7 +199,7 @@ const AssistantPane = ({
       createGenkiApi({
         baseUrl: '/api',
         tenant: host.tenant,
-        profile: profileOf(shown),
+        profile: profileOf(shown, undefined, locale),
         language: locale,
         headers: () => session.headers,
       }),

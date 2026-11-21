@@ -453,6 +453,23 @@ describe('the live builder and the server draft', () => {
     });
   });
 
+  it('shows the version prod runs as in use, not the latest published one', async () => {
+    const fetch = mockFetch(exampleServices, logTimelines, liveModels, exampleDatasets, {
+      features: {
+        environments: { initial: { rapportassistenten: { prod: { version: 5 }, test: {} } } },
+      },
+    });
+    const auth = mockAnsattporten({ name: 'Ingrid Berg', organisations: exampleOrganisations });
+    await auth.login();
+    window.location.hash = '#/services/rapportassistenten/setup';
+    render(<App auth={auth} fetch={fetch} live />);
+    const header = (
+      await screen.findByRole('heading', { level: 1, name: 'Rapportassistenten' })
+    ).closest('header') as HTMLElement;
+    expect(await within(header).findByText('Versjon 5 i bruk')).toBeTruthy();
+    expect(within(header).queryByText('Versjon 7 i bruk')).toBeNull();
+  });
+
   it('opening a service opens its draft once', async () => {
     const { calls } = await openService('#/services/rapportassistenten/setup');
     await screen.findByRole('heading', { level: 1, name: 'Rapportassistenten' });

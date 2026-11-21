@@ -342,7 +342,7 @@ describe('service environments in the portal', () => {
     );
   });
 
-  it('says on the card who uses a test edition, with its runs today', async () => {
+  it('says who uses a test edition apart from its runs today, which may come from anyone', async () => {
     const { api } = platform({
       [`GET ${definitionPath}`]: history,
       [`GET ${environmentsPath}`]: () => ({
@@ -358,8 +358,9 @@ describe('service environments in the portal', () => {
 
     const list = await screen.findByRole('list', { name: 'Testutgave og i bruk' });
     await waitFor(() =>
-      expect(list.textContent).toContain('14 kjøringer i dag, fra testerne i HR.'),
+      expect(list.textContent).toContain('14 kjøringer i dag. Brukes av testerne i HR.'),
     );
+    expect(list.textContent).not.toContain('fra testerne i HR');
   });
 
   it('lists the history of the environments newest first', async () => {
