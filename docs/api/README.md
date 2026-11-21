@@ -63,6 +63,18 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ## API changes
 
+The public `/v1` routes are what other systems build on, so CI refuses a breaking change to them unless this list announces it. [openapi-v1.json](openapi-v1.json) is the `/v1` part of `/openapi.json`, written by `apps/api/src/openapi/public-api.test.ts` (refresh it with `npx vitest run apps/api/src/openapi/public-api.test.ts -u`). `npm run api:compat` compares it with the copy on `origin/main`, or the base of the pull request in CI. These are breaking:
+
+- a removed path or method;
+- a removed response field, a field that is no longer always present, or a removed success response;
+- a new required request field, parameter or body;
+- a narrowed type or enum: a request accepts less than before, or a response can send a type or value it could not before (such as `null`);
+- a changed auth requirement: an open operation that starts to need a credential, the reverse, or another security scheme.
+
+To announce one, add a line to a new dated entry below that names the operation in backticks as the method and path, such as `` `POST /v1/chat/completions` ``. Only lines added in the same change count. Changes outside `/v1` are listed here too, but CI does not check them, nor path parameter schemas or `additionalProperties`.
+
+`npm run definitions:compat` checks every YAML or JSON file in the repository that is a service, step flow, skill or block definition (seeds, examples and fixtures) against the current schema, including the strategy, tool and guardrail settings. Models, datasets, rerankers, tools and blocks are not looked up, since each environment has its own. Give it the path to a tenant export (`GET /tenants/{tenant}/export`) or a folder of definitions to check those instead.
+
 ### 2026-11-20: archived services and catalog references
 
 - An archived service no longer keeps a catalog model or reranker in use, so `DELETE /operator/catalog/{kind}/{id}` can delete one only archived services name, and a skipped model only they name is marked `unused`.

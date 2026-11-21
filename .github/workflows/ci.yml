@@ -52,6 +52,14 @@ jobs:
         run: npm run typecheck
       - if: needs.scope.outputs.static == 'true'
         run: npm run boundaries
+      - if: needs.scope.outputs.static == 'true'
+        run: npm run definitions:compat
+      - if: needs.scope.outputs.static == 'true' && (github.event.pull_request.base.sha || github.event.merge_group.base_sha)
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+        run: |
+          git fetch --no-tags --depth=1 origin "$BASE"
+          npm run api:compat -- "$BASE"
 
   test:
     needs: scope
