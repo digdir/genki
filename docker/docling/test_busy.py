@@ -11,7 +11,9 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 from starlette.testclient import TestClient
 
-from genki_busy import OneTaskAtATime
+import importlib.util
+
+from genki_busy import OneTaskAtATime, wrap
 
 GIB = 1024**3
 KEY = "docling-key"
@@ -298,6 +300,19 @@ class OneTaskAtATimeTest(unittest.TestCase):
 
         self.assertEqual(chunks, [])
         self.assertEqual(events[:6], ["read"] * 5 + ["http.response.start"])
+
+
+@unittest.skipUnless(importlib.util.find_spec("docling_serve"), "docling-serve is in the image, not the CI venv")
+class WrapTest(unittest.TestCase):
+    def test_wraps_docling_serves_app_and_finds_the_orchestrator_internals_it_reads(self):
+        import docling_serve.app
+
+        app = wrap(docling_serve.app.create_app)()
+
+        self.assertIsInstance(app, OneTaskAtATime)
+        orchestrator = app.orchestrator()
+        self.assertIsInstance(orchestrator.tasks, dict)
+        self.assertIsInstance(orchestrator._task_results, dict)
 
 
 if __name__ == "__main__":
