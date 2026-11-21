@@ -144,6 +144,12 @@ class OneTaskAtATime:
         name = [(b"x-docling-replica", self.replica.encode())]
         if self.busy():
             self.log({"msg": "busy", "replica": self.replica, "restarting": self.restarting, **self.counts()})
+            # The whole upload is read first: a server that answers before it closes the connection, and the worker
+            # keeps a refused connection open while it waits, so the waiting job counts toward scaling.
+            while True:
+                message = await receive()
+                if message["type"] != "http.request" or not message.get("more_body", False):
+                    break
             body = json.dumps({"detail": "This replica is converting a file; submit it again on a new connection."})
             await send(
                 {

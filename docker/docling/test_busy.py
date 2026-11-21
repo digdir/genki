@@ -274,6 +274,31 @@ class OneTaskAtATimeTest(unittest.TestCase):
         self.assertEqual(replica.middleware.admitting, 0)
         self.assertEqual(replica.logged("busy"), [])
 
+    def test_reads_the_whole_upload_before_it_answers_busy_so_the_connection_stays_open(self):
+        replica = Replica()
+        replica.orchestrator.add("held", "started")
+        chunks = [b"x" * 65536 for _ in range(5)]
+        events = []
+
+        async def receive():
+            body = chunks.pop(0)
+            events.append("read")
+            return {"type": "http.request", "body": body, "more_body": bool(chunks)}
+
+        async def send(message):
+            events.append(message["type"])
+
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "path": "/v1/convert/file/async",
+            "headers": [(b"x-api-key", KEY.encode())],
+        }
+        asyncio.run(replica.middleware(scope, receive, send))
+
+        self.assertEqual(chunks, [])
+        self.assertEqual(events[:6], ["read"] * 5 + ["http.response.start"])
+
 
 if __name__ == "__main__":
     logging.disable(logging.CRITICAL)

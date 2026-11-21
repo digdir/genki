@@ -108,6 +108,10 @@ describe.skipIf(!hasAz && !process.env.CI)('the Docling alerts', () => {
       `"memory":"[format('{0}Gi', parameters('doclingMemoryGiB'))]"`,
     );
     expect(apps.outputs?.doclingMemoryGiB?.value).toBe("[parameters('doclingMemoryGiB')]");
+    // The idle restart limit is half the memory, also for an odd size: 7 GiB gives 3.5.
+    expect(text(docling?.properties)).toContain(
+      `"name":"GENKI_DOCLING_RESTART_IDLE_GIB","value":"[format('{0}{1}', div(parameters('doclingMemoryGiB'), 2), if(equals(mod(parameters('doclingMemoryGiB'), 2), 1), '.5', ''))]"`,
+    );
     const module = list(main.resources).find(
       (r) => r.type === 'Microsoft.Resources/deployments' && r.name === 'alerts',
     );
