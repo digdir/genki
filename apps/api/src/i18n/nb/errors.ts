@@ -110,7 +110,22 @@ export const catalogErrors = defineNamespace({
   noUsableBlockVersion:
     'blokken {publisher}/{id} har ingen versjon {version} som denne virksomheten kan bruke',
   blockRefDrawnAs: '{ref} tegnes som {drawn}, så blokken må være {drawn}',
-  blockRefNotDrawn: '{ref} er en blokk av typen {tier}, som ingen vert tegner ennå',
+  blockRefNotDrawn: '{ref} er en blokk av typen {tier}, så blokken må være ref',
+  refBlockNeedsRef: 'ref som blokk trenger en ref til blokken den tegner',
+  blockRefZone: '{ref} kan ikke stå i {zone}; den kan stå i {zones}',
+  previewShowsBlock: 'en forhåndsvisning viser en Block',
+  pinVersion: 'version er en publisert utgave av blokken',
+  pinZone: 'zone er primary, main eller secondary',
+  codeBlockNotDrawn: 'ingen vert tegner kodeblokker ennå; bare innebygde blokker kan publiseres',
+  declarativeBlockNotDrawn:
+    'ingen vert tegner deklarative blokker ennå; bare innebygde blokker kan publiseres',
+  blockFileNotCode: 'en fil under block/ hører bare til en kodeblokk',
+  pinNoLayout: 'tjenesten har ingen utforming å legge blokken i',
+  pinSettings: 'settings knytter navn til true, false eller en tekst',
+  blockRefNoSetting: '{ref} har ingen innstilling {key}',
+  blockRefSettingBoolean: 'innstillingen {key} for {ref} må være true eller false',
+  blockRefSettingText: 'innstillingen {key} for {ref} må være en tekst',
+  blockRefSettingEnum: 'innstillingen {key} for {ref} må være en av {allowed}',
   hostedServiceOwnBlock:
     'utformingen til tjenesten har vertens eget designelement ({block}), som genkis assistentvert ikke tegner',
   noSuchClient: 'klienten finnes ikke',

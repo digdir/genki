@@ -91,6 +91,13 @@
             <h2>Where the blocks go</h2>
             <ul>
               <li>
+                An entry <code>block: ref</code> is drawn from the edition the interface serves with
+                it (<code>refBlocks</code>), never as a built-in block, whatever its id. It gets
+                only the fields it reads (<code>pickReads</code>): its own turn under each answer in
+                the main column, the latest turn as a tool of the secondary panel or after the
+                primary panel's sections. A ref the interface did not serve is the placeholder.
+              </li>
+              <li>
                 Each layout entry is looked up in the block registry (<code>registry.tsx</code>),
                 which holds the built-in blocks this host draws. An entry that pins a Block
                 definition with <code>ref</code> is drawn as the built-in block it names, exactly as
@@ -397,6 +404,11 @@
                   <td><code>--genai-assembly-main-gap</code></td>
                   <td><code>--ds-size-6</code></td>
                   <td>between the blocks in the main column</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-assembly-answer-blocks-gap</code></td>
+                  <td><code>--ds-size-4</code></td>
+                  <td>between the ref blocks under an answer</td>
                 </tr>
                 <tr>
                   <td><code>--genai-assembly-approach-gap</code></td>

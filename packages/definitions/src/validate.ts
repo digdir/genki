@@ -1,4 +1,6 @@
 import { checkInputFields, isBuiltInBlockId, reservedInputFieldIds } from '@genai/contracts';
+import { checkBlockCode } from './block-code.js';
+import { checkBlockTemplate } from './block-template.js';
 import { parse as parseYaml } from 'yaml';
 import { flowSettingRefs } from './flow-settings.js';
 import { checkSettingValue, type SettingDefinition } from './settings.js';
@@ -687,17 +689,12 @@ const checkSkill = (definition: SkillDefinition, plugins: PluginSchemas): Valida
   );
 
 const checkBlock = (definition: BlockDefinition): ValidationError[] => {
-  const { tier, builtIn } = definition.spec;
-  if (tier !== 'built-in')
-    return [
-      {
-        path: 'spec.tier',
-        message: `${tier} blocks are not drawn by any host yet; only built-in blocks can be published`,
-      },
-    ];
-  return isBuiltInBlockId(builtIn)
+  const { spec } = definition;
+  if (spec.tier === 'declarative') return checkBlockTemplate(spec);
+  if (spec.tier === 'code') return checkBlockCode(spec);
+  return isBuiltInBlockId(spec.builtIn)
     ? []
-    : [{ path: 'spec.builtIn', message: `unknown built-in block ${builtIn}` }];
+    : [{ path: 'spec.builtIn', message: `unknown built-in block ${spec.builtIn}` }];
 };
 
 export const validateDefinition = (input: unknown, plugins: PluginSchemas): Validated => {

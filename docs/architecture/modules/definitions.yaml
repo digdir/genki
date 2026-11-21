@@ -15,12 +15,15 @@ responsibilities:
   - Validate and compile service definitions
   - Resolve settings with provenance and locks
   - Definition store interface
+  - The Block kind, with the seams for the declarative template and the code bundle
 files:
   - packages/definitions/src/schema.ts
   - packages/definitions/src/compile.ts
   - packages/definitions/src/settings.ts
   - packages/definitions/src/store.ts
   - packages/definitions/src/settings-catalogue.ts
+  - packages/definitions/src/block-template.ts
+  - packages/definitions/src/block-code.ts
 input: Service definition YAML
 output: Compiled capabilities, resolved config
 replaces:
@@ -46,4 +49,7 @@ contract:
   - name: StepFlow
     file: packages/definitions/src/schema.ts
     export: stepFlowDefinition
+  - name: Block
+    file: packages/definitions/src/schema.ts
+    export: blockDefinition
 keywords: definitions settings config yaml schema publish version layers

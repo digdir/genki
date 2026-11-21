@@ -10,6 +10,7 @@ import {
   type PlacedBlock,
   type Zone,
 } from '@genai/ui-blocks';
+import { isRefBlockId, type RefBlockPayload } from '@genai/contracts/blocks';
 import { ChatIcon, FileSearchIcon, FileTextIcon, RobotIcon } from '@navikt/aksel-icons';
 import type { ReactNode } from 'react';
 
@@ -40,10 +41,22 @@ export const blockRegistry: ReadonlyMap<BlockId, BuiltInBlock> = new Map(
 
 export type ResolvedBlock =
   | { kind: 'built-in'; block: BuiltInBlock; placed: PlacedBlock }
+  | { kind: 'ref'; payload: RefBlockPayload; placed: PlacedBlock }
   | { kind: 'unavailable'; ref: string; placed: PlacedBlock };
 
-/** A layout entry as this host draws it: its built-in block, a placeholder, or nothing. */
-export const resolveBlock = (placed: PlacedBlock): ResolvedBlock | undefined => {
+export type RefBlocks = Readonly<Record<string, RefBlockPayload>>;
+
+/** A layout entry as this host draws it: its built-in block, a ref block, a placeholder, or nothing. */
+export const resolveBlock = (
+  placed: PlacedBlock,
+  blocks: RefBlocks = {},
+): ResolvedBlock | undefined => {
+  if (isRefBlockId(placed.block)) {
+    const payload =
+      placed.ref && Object.hasOwn(blocks, placed.ref) ? blocks[placed.ref] : undefined;
+    if (payload) return { kind: 'ref', payload, placed };
+    return placed.ref ? { kind: 'unavailable', ref: placed.ref, placed } : undefined;
+  }
   const block = isBlockId(placed.block) ? blockRegistry.get(placed.block) : undefined;
   if (block) return { kind: 'built-in', block, placed };
   return placed.ref ? { kind: 'unavailable', ref: placed.ref, placed } : undefined;
@@ -53,9 +66,20 @@ export const resolveBlock = (placed: PlacedBlock): ResolvedBlock | undefined => 
 export const builtInOrder = (zone: Zone): BlockId[] =>
   blocksAllowedIn(zone).filter((id) => blockRegistry.has(id));
 
-/** The refs in a zone this host has no component for, in the layout's order. */
-export const unavailableIn = (layout: AssistantLayout, zone: Zone): string[] =>
+/** The refs in a zone this host cannot draw, in the layout's order. */
+export const unavailableIn = (
+  layout: AssistantLayout,
+  zone: Zone,
+  blocks: RefBlocks = {},
+): string[] =>
   layout.zones[zone].flatMap((placed) => {
-    const resolved = resolveBlock(placed);
+    const resolved = resolveBlock(placed, blocks);
     return resolved?.kind === 'unavailable' ? [resolved.ref] : [];
+  });
+
+/** The ref blocks the interface resolved in a zone, in the layout's order. */
+export const refBlocksIn = (layout: AssistantLayout, zone: Zone, blocks: RefBlocks = {}) =>
+  layout.zones[zone].flatMap((placed) => {
+    const resolved = resolveBlock(placed, blocks);
+    return resolved?.kind === 'ref' ? [{ payload: resolved.payload, placed }] : [];
   });

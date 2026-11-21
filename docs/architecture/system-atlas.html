@@ -2093,6 +2093,10 @@
             responsibilities: [
               'Draw any layout the block catalogue allows, live against a service',
               "Resolve each layout entry, by id or by a Block definition's ref, to a built-in block through the registry, and draw a placeholder for a ref it has no component for",
+              {
+                'Pick a `block':
+                  "ref` entry's edition and only the fields it reads from what the interface serves, and draw a placeholder until its tier has a renderer",
+              },
               'Keep the state the blocks share and link their events',
               'Call genki for models, threads, facets and answers through one interface',
             ],
@@ -2100,6 +2104,8 @@
               'packages/ui-assembly/src/useAssistant.ts',
               'packages/ui-assembly/src/Assistant.tsx',
               'packages/ui-assembly/src/registry.tsx',
+              'packages/ui-assembly/src/ref-block.tsx',
+              'packages/ui-assembly/src/block-data.ts',
               'packages/ui-assembly/src/api.ts',
               'packages/ui-assembly/src/i18n.ts',
             ],
@@ -2131,6 +2137,16 @@
                 kind: 'call',
                 target: 'call',
                 witness: { file: 'packages/ui-assembly/src/api.ts', imports: '@genai/client' },
+              },
+              {
+                to: 'kernel',
+                label: 'The field list a block reads and the payload of a pinned block',
+                kind: 'call',
+                target: 'call',
+                witness: {
+                  file: 'packages/ui-assembly/src/block-data.ts',
+                  imports: '@genai/contracts',
+                },
               },
             ],
             keywords: 'ui assembly app builder layout wiring assistant preview byggeklosser',
@@ -2390,6 +2406,7 @@
               "Let operators set the maturity of operation kinds and the processor records of model endpoints, and refuse a service's call-operation step at publish unless both allow it (ADR 0047)",
               'Let operators upload operation descriptors with their fixtures, checked by the loader rules and operation@1 before they are stored, record fixtures from their synthetic tries in test, and move or withdraw them, audited (ADR 0047)',
               'List the operations a step may call in a tenant, with their typed input and the models that offer each kind',
+              'List the interface blocks an organisation may use across publishers, preview one, pin an edition in a service draft, and serve each pinned edition with the interface (ADR 0067)',
             ],
             files: [
               'apps/api/src/main.ts',
@@ -2406,6 +2423,8 @@
               'apps/api/src/operation-governance.ts',
               'apps/api/src/operation-descriptors.ts',
               'apps/api/src/step-operations.ts',
+              'apps/api/src/block-catalogue.ts',
+              'apps/api/src/interface-blocks.ts',
             ],
             input: 'Environment and catalogs at boot; HTTP at runtime',
             output: 'A running platform on :8080',
@@ -3479,6 +3498,7 @@
               'Validate and compile service definitions',
               'Resolve settings with provenance and locks',
               'Definition store interface',
+              'The Block kind, with the seams for the declarative template and the code bundle',
             ],
             files: [
               'packages/definitions/src/schema.ts',
@@ -3486,6 +3506,8 @@
               'packages/definitions/src/settings.ts',
               'packages/definitions/src/store.ts',
               'packages/definitions/src/settings-catalogue.ts',
+              'packages/definitions/src/block-template.ts',
+              'packages/definitions/src/block-code.ts',
             ],
             input: 'Service definition YAML',
             output: 'Compiled capabilities, resolved config',
@@ -4928,6 +4950,149 @@
                       additionalProperties: false,
                     },
                   },
+                },
+              },
+              {
+                name: 'Block',
+                file: 'packages/definitions/src/schema.ts',
+                export: 'blockDefinition',
+                schema: {
+                  $schema: 'https://json-schema.org/draft/2020-12/schema',
+                  type: 'object',
+                  properties: {
+                    apiVersion: { type: 'string', const: 'genai/v1' },
+                    kind: { type: 'string', const: 'Block' },
+                    metadata: {
+                      type: 'object',
+                      properties: {
+                        tenant: { type: 'string', pattern: '^\\d{9}$' },
+                        id: { type: 'string', pattern: '^[a-z0-9][a-z0-9-]{0,62}$' },
+                        name: { type: 'string', minLength: 1 },
+                        version: {
+                          type: 'integer',
+                          exclusiveMinimum: 0,
+                          maximum: 9007199254740991,
+                        },
+                      },
+                      required: ['tenant', 'id'],
+                      additionalProperties: false,
+                    },
+                    spec: {
+                      type: 'object',
+                      properties: {
+                        tier: { type: 'string', enum: ['built-in', 'declarative', 'code'] },
+                        builtIn: { type: 'string', pattern: '^[a-z0-9][a-z0-9-]{0,62}$' },
+                        title: {
+                          type: 'object',
+                          propertyNames: { type: 'string', enum: ['nb', 'nn', 'en'] },
+                          additionalProperties: { type: 'string', minLength: 1, maxLength: 80 },
+                        },
+                        summary: {
+                          type: 'object',
+                          propertyNames: { type: 'string', enum: ['nb', 'nn', 'en'] },
+                          additionalProperties: { type: 'string', minLength: 1, maxLength: 500 },
+                        },
+                        zones: {
+                          minItems: 1,
+                          type: 'array',
+                          items: { type: 'string', enum: ['primary', 'main', 'secondary'] },
+                        },
+                        sharing: {
+                          default: 'private',
+                          type: 'string',
+                          enum: ['private', 'organisation', 'everyone'],
+                        },
+                        props: {
+                          type: 'object',
+                          properties: {
+                            type: { type: 'string', const: 'object' },
+                            properties: {
+                              type: 'object',
+                              propertyNames: {
+                                type: 'string',
+                                pattern: '^[a-zA-Z][a-zA-Z0-9-]{0,63}$',
+                              },
+                              additionalProperties: {
+                                type: 'object',
+                                propertyNames: { type: 'string' },
+                                additionalProperties: {},
+                              },
+                            },
+                            required: {
+                              type: 'array',
+                              items: { type: 'string', pattern: '^[a-zA-Z][a-zA-Z0-9-]{0,63}$' },
+                            },
+                          },
+                          required: ['type', 'properties'],
+                          additionalProperties: false,
+                        },
+                        events: {
+                          default: [],
+                          type: 'array',
+                          items: {
+                            type: 'string',
+                            enum: [
+                              'ask',
+                              'open-document',
+                              'set-filter',
+                              'open-page',
+                              'notify',
+                              'resize',
+                            ],
+                          },
+                        },
+                        states: {
+                          default: [],
+                          type: 'array',
+                          items: {
+                            type: 'string',
+                            enum: ['empty', 'loading', 'error', 'partial', 'disabled', 'filled'],
+                          },
+                        },
+                        texts: {
+                          type: 'object',
+                          propertyNames: { type: 'string', enum: ['nb', 'nn', 'en'] },
+                          additionalProperties: {
+                            type: 'object',
+                            propertyNames: {
+                              type: 'string',
+                              pattern: '^[a-zA-Z][a-zA-Z0-9.-]{0,63}$',
+                            },
+                            additionalProperties: { type: 'string', maxLength: 1000 },
+                          },
+                        },
+                        template: {
+                          type: 'object',
+                          propertyNames: { type: 'string' },
+                          additionalProperties: {},
+                        },
+                        code: {
+                          type: 'object',
+                          properties: {
+                            sha256: { type: 'string', pattern: '^[a-f0-9]{64}$' },
+                            bytes: {
+                              type: 'integer',
+                              exclusiveMinimum: 0,
+                              maximum: 9007199254740991,
+                            },
+                            reads: {
+                              default: [],
+                              maxItems: 32,
+                              type: 'array',
+                              items: { type: 'string', maxLength: 160 },
+                            },
+                            height: { type: 'integer', minimum: 40, maximum: 2000 },
+                          },
+                          required: ['sha256', 'bytes'],
+                          additionalProperties: false,
+                        },
+                      },
+                      required: ['tier', 'title', 'zones'],
+                      additionalProperties: false,
+                    },
+                  },
+                  required: ['apiVersion', 'kind', 'metadata', 'spec'],
+                  additionalProperties: false,
                 },
               },
             ],

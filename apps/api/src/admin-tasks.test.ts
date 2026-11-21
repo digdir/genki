@@ -212,6 +212,8 @@ const throughAdminTasks = [
   'PUT /tenants/:tenant/secrets/:name',
   'PUT /tenants/:tenant/secrets/:name/hosts',
   'PUT /tenants/:tenant/services/:id/draft',
+  'PUT /tenants/:tenant/services/:id/draft/blocks/:publisher/:blockId',
+  'DELETE /tenants/:tenant/services/:id/draft/blocks/:publisher/:blockId',
   'PUT /tenants/:tenant/tracing/connections/:id',
   'PUT /tenants/:tenant/services/:id/lifecycle',
   'PUT /tenants/:tenant/settings/:key',

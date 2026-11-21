@@ -78,7 +78,16 @@ import {
 } from 'react';
 import { phrase, useT, type AssemblyTranslator } from './i18n.js';
 import { stepsOf } from './procedure.js';
-import { blockRegistry, builtInOrder, unavailableIn } from './registry.js';
+import { blockData, blockState, type BlockContext } from './block-data.js';
+import { BlockPlaceholder } from './block-placeholder.js';
+import { RefBlock } from './ref-block.js';
+import {
+  blockRegistry,
+  builtInOrder,
+  refBlocksIn,
+  unavailableIn,
+  type RefBlocks,
+} from './registry.js';
 import { useAssistant, type AssistantOptions, type AssistantState } from './useAssistant.js';
 
 // The next look's field in a conversation is one line until the question grows (dev-chat-samtale).
@@ -131,23 +140,18 @@ export interface AssistantProps extends AssistantOptions {
   mainId?: string | undefined;
   /** Drawn in a host's preview this wide, on the host's page: no `h1` of its own (`Shell`). */
   frameWidth?: number | undefined;
+  /** The pinned edition of each `block: ref`, from the interface's `blocks`. */
+  refBlocks?: RefBlocks | undefined;
 }
 
-/** A placeholder where the layout pins a block this host has no component for. */
-const UnavailableBlock = ({ blockRef, level = 3 }: { blockRef: string; level?: 2 | 3 }) => {
-  const t = useT();
-  return (
-    <EmptyState
-      title={t('assembly.unavailableBlock')}
-      description={t('assembly.unavailableBlockHelp', { ref: blockRef })}
-      level={level}
-    />
-  );
-};
-
 /** The assistant a layout describes, live against the service through `api`. */
-export const Assistant = ({ mainId, frameWidth, ...options }: AssistantProps) => (
-  <AssistantView assistant={useAssistant(options)} mainId={mainId} frameWidth={frameWidth} />
+export const Assistant = ({ mainId, frameWidth, refBlocks, ...options }: AssistantProps) => (
+  <AssistantView
+    assistant={useAssistant(options)}
+    mainId={mainId}
+    frameWidth={frameWidth}
+    refBlocks={refBlocks}
+  />
 );
 
 const AnswerRow = ({
@@ -324,10 +328,12 @@ export const AssistantView = ({
   assistant: a,
   mainId = 'main-content',
   frameWidth,
+  refBlocks = {},
 }: {
   assistant: AssistantState;
   mainId?: string | undefined;
   frameWidth?: number | undefined;
+  refBlocks?: RefBlocks | undefined;
 }) => {
   const t = useT();
   const approachHeadingId = useId();
@@ -342,10 +348,41 @@ export const AssistantView = ({
   const documentOn = a.has('document-view');
   const settingsOn = a.has('settings');
   const unavailable = {
-    primary: unavailableIn(a.layout, 'primary'),
-    main: unavailableIn(a.layout, 'main'),
-    secondary: unavailableIn(a.layout, 'secondary'),
+    primary: unavailableIn(a.layout, 'primary', refBlocks),
+    main: unavailableIn(a.layout, 'main', refBlocks),
+    secondary: unavailableIn(a.layout, 'secondary', refBlocks),
   };
+  const refs = {
+    primary: refBlocksIn(a.layout, 'primary', refBlocks),
+    main: refBlocksIn(a.layout, 'main', refBlocks),
+    secondary: refBlocksIn(a.layout, 'secondary', refBlocks),
+  };
+  const blockContext: BlockContext = {
+    serviceName: a.assistantName,
+    locale: a.language === 'en' ? 'en' : 'nb',
+    threadTitle: a.threadTitle,
+    threads: a.threads,
+    currentThread: a.currentId,
+  };
+  const latestTurn = a.turns.at(-1);
+  const titleOf = (title: RefBlocks[string]['title']) =>
+    (a.language === 'en' ? title.en : undefined) ?? title.nb ?? '';
+  const refView = (
+    zone: 'primary' | 'main' | 'secondary',
+    { payload, placed }: ReturnType<typeof refBlocksIn>[number],
+    turn: AssistantState['turns'][number] | undefined,
+    key: string,
+    level?: 2 | 3,
+  ) => (
+    <RefBlock
+      key={key}
+      payload={payload}
+      data={blockData(zone, turn, blockContext)}
+      state={blockState(turn)}
+      settings={placed.settings as Record<string, boolean | string> | undefined}
+      level={level}
+    />
+  );
   const name = a.assistantName;
   // The dev boards' look, the layout's `next`: cards, every panel titled, the thread's title as
   // the `h1`, and the reader at the primary panel's foot with the profile menu.
@@ -522,7 +559,21 @@ export const AssistantView = ({
           closingQuestion
           onAtEndChange={setAtEnd}
           actions={(turn, parts) => (
-            <AnswerRow a={a} turn={turn} end={parts.end} search={parts.search} />
+            <>
+              <AnswerRow a={a} turn={turn} end={parts.end} search={parts.search} />
+              {refs.main.length > 0 ? (
+                <div className="uia-answer-blocks">
+                  {refs.main.map((ref, i) =>
+                    refView(
+                      'main',
+                      ref,
+                      a.turns.find((one) => one.id === turn.id),
+                      `ref-${turn.id}-${i}`,
+                    ),
+                  )}
+                </div>
+              ) : null}
+            </>
           )}
         />
       );
@@ -909,10 +960,13 @@ export const AssistantView = ({
   } else if (profile) {
     primary = { label: t('builder.settings'), ...nextPrimary };
   }
-  if (unavailable.primary.length > 0) {
-    const placeholders = unavailable.primary.map((ref, i) => (
-      <UnavailableBlock key={`unavailable-${i}`} blockRef={ref} />
-    ));
+  if (unavailable.primary.length > 0 || refs.primary.length > 0) {
+    const placeholders = [
+      ...refs.primary.map((ref, i) => refView('primary', ref, latestTurn, `ref-${i}`)),
+      ...unavailable.primary.map((ref, i) => (
+        <BlockPlaceholder key={`unavailable-${i}`} blockRef={ref} />
+      )),
+    ];
     primary = primary
       ? {
           ...primary,
@@ -1126,10 +1180,16 @@ export const AssistantView = ({
         ? [{ id, label: t(block.label), content, ...icon(id) }]
         : [];
     }),
+    ...refs.secondary.map((ref, i) => ({
+      id: `ref-${i}`,
+      label: titleOf(ref.payload.title),
+      content: refView('secondary', ref, latestTurn, `ref-${i}`),
+      ...(next ? { icon: <FileTextIcon aria-hidden /> } : {}),
+    })),
     ...unavailable.secondary.map((ref, i) => ({
       id: `unavailable-${i}`,
       label: t('assembly.unavailableBlock'),
-      content: <UnavailableBlock blockRef={ref} />,
+      content: <BlockPlaceholder blockRef={ref} />,
       ...(next ? { icon: <FileTextIcon aria-hidden /> } : {}),
     })),
   ];
@@ -1300,7 +1360,7 @@ export const AssistantView = ({
     );
     parts.push(
       ...unavailable.main.map((ref, i) => (
-        <UnavailableBlock key={`unavailable-${i}`} blockRef={ref} level={2} />
+        <BlockPlaceholder key={`unavailable-${i}`} blockRef={ref} level={2} />
       )),
     );
     if (!chatZone)

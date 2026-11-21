@@ -6,6 +6,7 @@ import { serviceIntents, skillIntents, unavailableReasons } from '@genai/strateg
 import { turnBody } from '../assistant.js';
 import { InputField } from '../frontend-openapi.js';
 import { changeReason, problemContent } from '../http.js';
+import { blockRoutes } from './blocks.js';
 import type { PlatformModuleFactory } from '../platform-modules.js';
 import { runSchema } from '../playground.js';
 
@@ -3232,7 +3233,7 @@ type DocumentedApp = { openAPIRegistry?: { registerPath(route: RouteConfig): voi
 export const documentServiceRoutes = (app: unknown) => {
   const registry = (app as DocumentedApp).openAPIRegistry;
   if (!registry) return;
-  for (const route of serviceRoutes) registry.registerPath(route);
+  for (const route of [...serviceRoutes, ...blockRoutes]) registry.registerPath(route);
 };
 
 export const servicesOpenApiModule: PlatformModuleFactory = () => ({

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { shareOperatorOnlyType } from './admin.js';
-import { digdir, files, klarsprak, setup } from './testkit.js';
+import { blockPublisherProblems, shareOperatorOnlyType } from './admin.js';
+import { digdir, files, klarsprak, principals, setup } from './testkit.js';
 
 const block = (spec: Record<string, unknown> = {}) => ({
   apiVersion: 'genai/v1',
@@ -132,11 +132,29 @@ describe('Block definitions through the definition API', () => {
     const { send } = setup();
 
     const declarative = await send('/definitions/validate', 'kari', {
-      body: block({ tier: 'declarative', builtIn: undefined }),
+      body: block({ tier: 'declarative', builtIn: undefined, template: { version: 1 } }),
     });
 
     expect(declarative.status).toBe(422);
     expect(await declarative.json()).toMatchObject({ errors: [{ path: 'spec.tier' }] });
+  });
+
+  it('refuses a code block shared with everyone from anyone but an operator', () => {
+    const code = (sharing: string) =>
+      block({
+        tier: 'code',
+        builtIn: undefined,
+        sharing,
+        code: { sha256: 'a'.repeat(64), bytes: 120, reads: [] },
+      });
+    const member = principals.kari as NonNullable<typeof principals.kari>;
+    const operator = principals.operator as NonNullable<typeof principals.operator>;
+
+    expect(blockPublisherProblems(code('everyone'), member)).toEqual([
+      { path: 'spec.sharing', message: expect.stringContaining('kodeblokk') },
+    ]);
+    expect(blockPublisherProblems(code('organisation'), member)).toEqual([]);
+    expect(blockPublisherProblems(code('everyone'), operator)).toEqual([]);
   });
 
   it('refuses an import with a built-in block from anyone but an operator, and writes nothing', async () => {

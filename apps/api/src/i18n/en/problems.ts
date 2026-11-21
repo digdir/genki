@@ -165,6 +165,11 @@ export const problems = {
   shareOperatorOnlyTitle: 'Only operators change sharing',
   builtInBlockOperatorOnly:
     'Only platform operators publish built-in blocks. They belong to genki and are shared with everyone.',
+  codeBlockShareOperatorOnly:
+    'Only platform operators share a code block with everyone, after one of them has read its code. Share it with your own organisation.',
+  blockNotPinned: 'The block is not in the service draft',
+  blockNotFound: 'No edition of the block that this organisation may use',
+  blockOtherTenant: 'The block belongs to another organisation than the one in the address',
   internalOperatorOnly: 'Only operators make a service internal.',
   serviceIdTaken: 'The id is already in use.',
   operatorOnlySettingTitle: 'Only Digdir changes this limit for an organisation',
