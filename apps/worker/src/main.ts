@@ -197,6 +197,8 @@ const docling = process.env.DOCLING_URL
   ? doclingConverter({
       url: process.env.DOCLING_URL,
       credential: { kind: 'api-key', key: async () => process.env.DOCLING_API_KEY ?? '' },
+      // A task no replica knows any more, such as after a scale-in, is submitted again (issue 906).
+      onTaskLost: ({ submits }) => log('docling task lost', { submits }),
     })
   : undefined;
 log('document converter', { converter: docling ? 'docling' : 'text-layer', convertConcurrency });

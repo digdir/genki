@@ -322,8 +322,9 @@ resource worker 'Microsoft.App/containerApps@2025-02-02-preview' = {
 }
 
 // The Docling server (ADR 0042, issue 476): PDF conversions for knowledge.convert. Internal TCP ingress, since
-// HTTP ingress ends a request after 240 s and a conversion takes minutes; the worker holds one request open
-// until Docling answers. One conversion per replica (one Docling worker on 4 vCPU), and replicas start on open
+// HTTP ingress ends a request after 240 s and a conversion takes minutes; the worker submits a file on the async
+// route and polls its task every 30 s on one connection, since TCP ingress closes a connection idle for 300 s
+// (issue 906). One conversion per replica (one Docling worker on 4 vCPU), and replicas start on open
 // connections, from zero: a connection to the app's name is held until the first replica is up (74 s in test,
 // issue 867). It keeps nothing past a replica: no volume, results dropped once fetched, OCR page images
 // in /tmp deleted after each region, and WARNING logs, which still name the file and page when Tesseract fails on
@@ -383,7 +384,8 @@ resource docling 'Microsoft.App/containerApps@2025-02-02-preview' = {
           ]
         }
       ]
-      // A replica stopped while it converts (scale-in, a new revision) gets 10 minutes to finish; not checked in Azure
+      // A stopped replica (scale-in, a new revision) gets 10 minutes, but docling-serve waits only for a request in
+      // flight, not for a task between polls: the worker submits a lost task again (issue 906)
       terminationGracePeriodSeconds: 600
       scale: {
         minReplicas: 0
