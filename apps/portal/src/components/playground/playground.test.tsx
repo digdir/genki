@@ -777,6 +777,146 @@ describe('Prøveområde', () => {
     });
   });
 
+  it('on the test page of a service, shows and runs its draft with the datasets the draft searches', async () => {
+    const runs: PlaygroundRunRequest[] = [];
+    const setup = examplePlaygroundOptions.services[0]?.versions[0]?.setup;
+    if (!setup) throw new Error('example has no service');
+    const options: PlaygroundOptions = {
+      ...examplePlaygroundOptions,
+      services: [
+        {
+          id: 'smoke',
+          name: 'Smoke',
+          latestVersion: 1,
+          versions: [{ version: 1, draft: false, inUse: true, setup }],
+        },
+      ],
+    };
+    const api = createApiClient({
+      baseUrl: '/api',
+      fetch: withPlayground({ options, runs }),
+      token: () => 'kari',
+    });
+    const definition = {
+      apiVersion: 'genai/v1',
+      kind: 'Service',
+      metadata: { tenant: '991825827', id: 'smoke', name: 'Smoke' },
+      spec: {
+        output: { kind: 'answer' },
+        knowledge: {
+          datasets: [{ dataset: 'digdir/kudos' }, { dataset: '999888777/tilsynsrapporter-2025' }],
+        },
+      },
+    };
+    render(
+      <PlaygroundPanel
+        layout="full"
+        context="service"
+        name="smoke"
+        api={api}
+        tenant="991825827"
+        tenantName="Testetaten"
+        serviceDraft={{ definition }}
+      />,
+    );
+
+    fireEvent.change(await screen.findByRole('textbox', { name: 'Spørsmål' }), {
+      target: { value: 'Hva er smoke?' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    expect(screen.getByText('Datasett: Kudos-rapporter, Tilsynsrapporter 2025')).toBeTruthy();
+    await waitFor(() => expect(runs).toHaveLength(1));
+    expect(runs[0]?.setup.service).toMatchObject({ id: 'smoke', version: 'draft' });
+    expect(runs[0]?.setup.datasets).toEqual(['digdir/kudos', '999888777/tilsynsrapporter-2025']);
+  });
+
+  it('runs a draft with the datasets it names, not those a remembered setup kept', async () => {
+    const runs: PlaygroundRunRequest[] = [];
+    const api = createApiClient({
+      baseUrl: '/api',
+      fetch: withPlayground({ options: { ...examplePlaygroundOptions, services: [] }, runs }),
+      token: () => 'kari',
+    });
+    const model = examplePlaygroundOptions.models.find((m) => m.status === 'allowed')?.id;
+    localStorage.setItem(
+      'genai.playground.setup:991825827:service:smoke',
+      JSON.stringify({
+        a: {
+          model,
+          datasets: ['999888777/nettsider'],
+          skills: [],
+          blocks: examplePlaygroundOptions.defaultBlocks ?? [],
+          output: 'text',
+          service: { id: 'smoke', version: 'draft' },
+        },
+      }),
+    );
+    const definition = {
+      apiVersion: 'genai/v1',
+      kind: 'Service',
+      metadata: { tenant: '991825827', id: 'smoke', name: 'Smoke' },
+      spec: { output: { kind: 'answer' }, knowledge: { datasets: [{ dataset: 'regelverk' }] } },
+    };
+    render(
+      <PlaygroundPanel
+        layout="full"
+        context="service"
+        name="smoke"
+        api={api}
+        tenant="991825827"
+        tenantName="Testetaten"
+        serviceDraft={{ definition }}
+      />,
+    );
+
+    fireEvent.change(await screen.findByRole('textbox', { name: 'Spørsmål' }), {
+      target: { value: 'Hva er smoke?' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    await waitFor(() => expect(runs).toHaveLength(1));
+    expect(runs[0]?.setup.datasets).toEqual(['regelverk']);
+  });
+
+  it('runs a draft with the datasets it names now, after the builder changed them', async () => {
+    const runs: PlaygroundRunRequest[] = [];
+    const api = createApiClient({
+      baseUrl: '/api',
+      fetch: withPlayground({ options: { ...examplePlaygroundOptions, services: [] }, runs }),
+      token: () => 'kari',
+    });
+    const withDatasets = (...ids: string[]) => ({
+      apiVersion: 'genai/v1',
+      kind: 'Service',
+      metadata: { tenant: '991825827', id: 'smoke', name: 'Smoke' },
+      spec: {
+        output: { kind: 'answer' },
+        knowledge: { datasets: ids.map((dataset) => ({ dataset })) },
+      },
+    });
+    const panel = (definition: Record<string, unknown>) => (
+      <PlaygroundPanel
+        layout="full"
+        context="service"
+        name="smoke"
+        api={api}
+        tenant="991825827"
+        tenantName="Testetaten"
+        serviceDraft={{ definition }}
+      />
+    );
+    const { rerender } = render(panel(withDatasets('regelverk', 'felles/plankart')));
+    const question = await screen.findByRole('textbox', { name: 'Spørsmål' });
+    rerender(panel(withDatasets('regelverk')));
+
+    fireEvent.change(question, { target: { value: 'Hva er smoke?' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    await waitFor(() => expect(runs).toHaveLength(1));
+    expect(runs[0]?.setup.datasets).toEqual(['regelverk']);
+  });
+
   it('on the test page of a published service, the setup lists the draft and the published versions, and runs the chosen published one', async () => {
     const runs: PlaygroundRunRequest[] = [];
     const setup = examplePlaygroundOptions.services[0]?.versions[0]?.setup;

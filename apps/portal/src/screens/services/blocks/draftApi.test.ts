@@ -453,6 +453,18 @@ describe('the draft API for the try view', () => {
     await expect(draftApi.loadThread('annen')).rejects.toMatchObject({ status: 404 });
   });
 
+  it('searches the datasets the draft names, not none', async () => {
+    const { draftApi, requests } = draft({ definition });
+    await ask(draftApi, 'Hei');
+    expect(requests[0]?.setup.datasets).toEqual(['felles/byggeregler', 'felles/plankart']);
+  });
+
+  it('searches only the collection the reader chose, so the run’s datasets do not widen it again', async () => {
+    const { draftApi, requests } = draft({ definition });
+    await ask(draftApi, 'Hei', { dataset: { tenant: 'felles', key: 'plankart' } });
+    expect(requests[0]?.setup.datasets).toEqual(['felles/plankart']);
+  });
+
   it('runs the variant the reader picked', async () => {
     const { draftApi, requests } = draft({ definition });
     await ask(draftApi, 'Hei', { model: 'byggesak__kort' });

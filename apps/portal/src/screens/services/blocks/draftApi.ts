@@ -401,6 +401,8 @@ export const createDraftApi = ({
         narrowed && setup.service
           ? {
               ...setup,
+              // The narrowed draft's datasets, so the playground does not widen it again.
+              datasets: datasetsOfDefinition(narrowed),
               service: { ...setup.service, ...(variant ? { variant } : {}), definition: narrowed },
             }
           : setup;
