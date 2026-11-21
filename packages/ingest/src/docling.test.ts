@@ -511,4 +511,54 @@ describe('the Docling client', () => {
     expect(conversion.converter).toEqual(doclingIdentity);
     expect(cluster.replicas[0]?.submits).toBe(1);
   });
+
+  it('stops polling a task that runs past the document timeout', async () => {
+    let clock = new Date('2026-11-21T10:00:00Z').getTime();
+    const cluster = await doclingCluster([], { convertMs: 10_000_000 });
+    cluster.onTask = () =>
+      setTimeout(() => {
+        clock += 11 * 60_000 + 1;
+      }, 50);
+
+    const error = await converterFor(cluster.url, {
+      documentTimeoutSeconds: 60,
+      now: () => new Date(clock),
+    })
+      .convert(report)
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(DoclingFailed);
+    expect(String((error as Error).message)).toContain('past its document timeout');
+  });
+
+  it('fails the try after 10 server errors in a row, without submitting the file again', async () => {
+    const cluster = await doclingCluster(['success'], { convertMs: 10_000_000 });
+    (cluster.replicas[0] as Replica).failPolls = Infinity;
+
+    const error = await converterFor(cluster.url)
+      .convert(report)
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(DoclingFailed);
+    expect((error as DoclingFailed).status).toBe(503);
+    expect(cluster.replicas[0]?.submits).toBe(1);
+  });
+
+  it('keeps a replica that answers a server error during the search, without submitting the file again', async () => {
+    const cluster = await doclingCluster(['success'], { replicas: 3, convertMs: 300 });
+    const lost: number[] = [];
+    cluster.onTask = (replica) =>
+      setTimeout(() => {
+        replica.failPolls = 6;
+        cluster.drop();
+      }, 100);
+
+    const conversion = await converterFor(cluster.url, {
+      onTaskLost: ({ submits }) => lost.push(submits),
+    }).convert(report);
+
+    expect(conversion.converter).toEqual(doclingIdentity);
+    expect(cluster.replicas.reduce((n, r) => n + r.submits, 0)).toBe(1);
+    expect(lost).toEqual([]);
+  });
 });

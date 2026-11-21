@@ -48,10 +48,13 @@ export const doclingPollIntervalMs = 30_000;
 export const doclingTaskSearchConnections = 16;
 
 /**
- * How many times a try submits its file when no replica knows its task any more, such as after
- * Azure stopped the replica (scale-in). Then the job fails and the queue tries it again.
+ * How many times, in all, a try submits its file: again when no replica knows its task any more,
+ * such as after Azure stopped the replica (scale-in). Then the job fails and the queue tries it again.
  */
 export const doclingSubmitsPerTry = 3;
+
+/** How many polls in a row the server may fail (5xx, about 5 minutes) before the try fails. */
+export const doclingServerErrorsInARow = 10;
 
 /**
  * An answer that is not about the file: a status, a body the client cannot read or a failure of a
@@ -77,7 +80,7 @@ export interface DoclingOptions {
   documentTimeoutSeconds?: number;
   pollIntervalMs?: number;
   now?: () => Date;
-  /** Told when no replica knows the try's task any more and the file is submitted again. */
+  /** Told each time no replica knows the try's task any more, the last time too. */
   onTaskLost?: (event: { submits: number }) => void;
 }
 
@@ -260,7 +263,8 @@ export const doclingConverter = (options: DoclingOptions): DocumentConverter => 
       const client = connection();
       opened.push(client);
       const status = await statusOn(client, id);
-      if (status !== undefined && status !== unanswered) return { client, status };
+      // A 5xx comes from a replica that knows the task, or may: its connection is kept.
+      if (status !== undefined) return { client, status };
       await client.destroy();
     }
     return undefined;
@@ -274,12 +278,16 @@ export const doclingConverter = (options: DoclingOptions): DocumentConverter => 
     let client = first;
     let status = await statusOn(client, id);
     let resultTries = 0;
+    let errors = 0;
     for (;;) {
       if (status === undefined) {
         const found = await search(id, opened);
         if (!found) return undefined;
         ({ client, status } = found);
       }
+      errors = status === unanswered ? errors + 1 : 0;
+      if (errors >= doclingServerErrorsInARow)
+        throw new DoclingFailed(503, `${errors} server errors in a row`);
       if (status === unanswered || working.has(status)) {
         if (now().getTime() > deadline) throw pastDeadline();
         await sleep(interval);
