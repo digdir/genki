@@ -115,6 +115,7 @@ const boot = async () => {
     policy: { decide: async () => ({ allow: true }) },
     apiKeys: keys,
     environmentTier: 'test',
+    testRunnerKeys: true,
     lockdown: { configuredKeys: new Set<string>() },
     authenticate: async (request) => {
       const person = people[request.headers.get('authorization')?.slice(7) ?? ''];

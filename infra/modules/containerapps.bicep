@@ -1,5 +1,5 @@
 param name string
-param environmentName string
+param platformTier string
 param location string
 param tags object
 param appsSubnetId string
@@ -163,7 +163,7 @@ var identityPlainEnv = filter(map(items(identityEnv), item => { name: item.key, 
 
 var serverEnv = concat(
   [
-    { name: 'GENAI_ENV', value: environmentName }
+    { name: 'GENAI_ENV', value: platformTier }
     { name: 'AZURE_CLIENT_ID', value: identityClientId }
     { name: 'PGHOST', value: postgresHost }
     { name: 'PGDATABASE', value: postgresDatabase }
@@ -606,7 +606,7 @@ var webApps = [
       OIDC_ISSUER: webSettings.consoleIssuer
       OIDC_CLIENT_ID: webSettings.consoleClientId
       OIDC_TOKEN_ENDPOINT: webSettings.consoleTokenEndpoint
-      ENVIRONMENT: environmentName
+      ENVIRONMENT: platformTier
     }
   }
 ]
