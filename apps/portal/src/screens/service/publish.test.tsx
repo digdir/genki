@@ -281,7 +281,7 @@ describe('publishing the draft in live mode', () => {
     expect(screen.queryByText('Utgave 2 er publisert.')).toBeNull();
   });
 
-  it('gives users the new edition when a test edition would otherwise keep it from them', async () => {
+  it('publishing from the portal gives users exactly the published version even when another publish lands first', async () => {
     const { fetch, posts } = platform({ staged: true });
     await publishFromHeader(fetch);
 
@@ -290,6 +290,7 @@ describe('publishing the draft in live mode', () => {
     );
     expect(posts.find((p) => p.url.endsWith('/environments/prod/promote'))?.body).toEqual({
       from: 'test',
+      version: 2,
     });
   });
 

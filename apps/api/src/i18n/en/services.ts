@@ -80,6 +80,8 @@ export const services = {
   environmentProdFixed: 'The edition in use always exists and cannot be added or removed.',
   environmentTooMany: 'A service can have at most {max} environments.',
   environmentSame: 'An environment cannot be promoted to itself.',
+  environmentMoved:
+    'The environment {environment} now runs version {version}, not version {expected}. Check the versions and try again.',
   environmentNoVersion: 'The service has no published version {version}.',
   environmentNoEarlier: 'The environment {environment} has no earlier version to roll back to.',
   environmentProdBehind:

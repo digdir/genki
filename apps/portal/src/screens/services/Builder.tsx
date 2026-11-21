@@ -1388,7 +1388,14 @@ export const Builder = ({
       if (!prod || prod.version === result.version) return;
       const follower = environments.find((e) => e.followsPublishes && e.version === result.version);
       if (follower)
-        await api.environments.promote(tenant, id, productionEnvironment, follower.name, reason);
+        await api.environments.promote(
+          tenant,
+          id,
+          productionEnvironment,
+          follower.name,
+          reason,
+          result.version,
+        );
       else
         await api.environments.rollback(tenant, id, productionEnvironment, result.version, reason);
     } catch {
