@@ -373,10 +373,14 @@ export const kudosFilePolicy = (): FetchPolicy => ({
 });
 
 /** How a KUDOS file's bytes are fetched: paced, guarded, under its policy (issue 931). */
-export const kudosFileDownloader =
-  (kudos: KudosAccess, web: GuardedFetchOptions = {}, signal?: AbortSignal) =>
-  (url: string): Promise<Uint8Array> =>
-    kudosDownloadsOf(kudos).run(
+export const kudosFileDownloader = (
+  kudos: KudosAccess,
+  web: GuardedFetchOptions = {},
+  signal?: AbortSignal,
+) => {
+  const downloads = kudosDownloadsOf(kudos);
+  return (url: string): Promise<Uint8Array> =>
+    downloads.run(
       url,
       async () =>
         (
@@ -386,7 +390,9 @@ export const kudosFileDownloader =
             ...(kudos.fetch ? { fetch: kudos.fetch } : {}),
           })
         ).bytes,
+      signal,
     );
+};
 
 /** The pacing a source's downloads go through: its own, one with its limiter and clock, or the process's. */
 const kudosDownloadsOf = (kudos: KudosAccess) =>

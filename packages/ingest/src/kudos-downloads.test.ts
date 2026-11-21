@@ -46,6 +46,8 @@ const freePort = async () => {
 
 /** Real sockets: the public fixture address is routed to loopback only at the OS boundary. */
 const localNetwork = () => {
+  /** The pinned address each new connection asked for. */
+  const pinned: string[] = [];
   const route =
     (lookup?: LookupFunction): LookupFunction =>
     (host, options, callback) => {
@@ -54,11 +56,16 @@ const localNetwork = () => {
           ? callback(null, [{ address: '127.0.0.1', family: 4 }])
           : callback(null, '127.0.0.1', 4);
       if (!lookup) return done();
-      lookup(host, options, (error) => (error ? callback(error, '') : done()));
+      lookup(host, options, (error, address) => {
+        if (error) return callback(error, '');
+        pinned.push(Array.isArray(address) ? (address[0]?.address ?? '') : address);
+        done();
+      });
     };
   const connect = net.connect;
   vi.spyOn(net, 'connect').mockImplementation(((options: TcpNetConnectOpts) =>
     connect({ ...options, lookup: route(options.lookup) })) as typeof net.connect);
+  return { pinned };
 };
 
 const web = { resolve: async () => [publicAddress] };
@@ -73,6 +80,7 @@ const fakeClock = () => {
   let t = 0;
   return {
     now: () => t,
+    advance: (ms: number) => void (t += ms),
     sleep: async (ms: number) => {
       const wake = t + ms;
       await Promise.resolve();
@@ -247,7 +255,11 @@ describe('KUDOS file downloads', () => {
       web,
     );
 
-    for (let i = 0; i < 5; i++) await download(`http://kudos.example.test:${port}/files/${i}.pdf`);
+    await Promise.all(
+      Array.from({ length: 5 }, (_, i) =>
+        download(`http://kudos.example.test:${port}/files/${i}.pdf`),
+      ),
+    );
 
     expect(connections).toBeLessThanOrEqual(kudosDownloadsAtOnce);
   });
@@ -274,5 +286,181 @@ describe('KUDOS file downloads', () => {
       { host: 'kudos.dfo.no', cause: 'UND_ERR_CONNECT_TIMEOUT', waitMs: 5000 },
     ]);
     expect(JSON.stringify(waits)).not.toMatch(/dokument|secret|def\.pdf/);
+  });
+  it('a KUDOS download whose DNS answer says try again waits like a refused connection', async () => {
+    localNetwork();
+    const port = await listen(http.createServer((_req, res) => res.end('%PDF-1.7')));
+    const waits: KudosDownloadWait[] = [];
+    let lookups = 0;
+    const download = kudosFileDownloader(
+      {
+        downloads: kudosDownloads({
+          limiter: noLimits(),
+          ...fakeClock(),
+          random: () => 1,
+          onWait: (w) => waits.push(w),
+        }),
+      },
+      {
+        resolve: async () => {
+          lookups += 1;
+          if (lookups === 1)
+            throw Object.assign(new Error('getaddrinfo EAI_AGAIN'), { code: 'EAI_AGAIN' });
+          return [publicAddress];
+        },
+      },
+    );
+
+    const bytes = await download(`http://kudos.example.test:${port}/files/abc.pdf`);
+
+    expect(new TextDecoder().decode(bytes)).toBe('%PDF-1.7');
+    expect(waits.map((w) => w.cause)).toEqual(['EAI_AGAIN']);
+  });
+
+  it('a hold set while downloads wait for their turn holds them too', async () => {
+    const clock = fakeClock();
+    const downloads = kudosDownloads({
+      limiter: noLimits(),
+      now: clock.now,
+      // Wakes on a later turn of the event loop, so a download that skipped the hold starts first.
+      sleep: async (ms) => {
+        const wake = clock.now() + ms;
+        await new Promise((r) => setImmediate(r));
+        clock.advance(Math.max(0, wake - clock.now()));
+      },
+      atOnce: 1,
+      random: () => 1,
+    });
+    const started: Array<[string, number]> = [];
+    let refuse!: () => void;
+    const refused = new Promise<void>((resolve) => (refuse = resolve));
+    let first = true;
+    const a = downloads.run(url, async () => {
+      started.push(['a', clock.now()]);
+      if (first) {
+        first = false;
+        await refused;
+        throw connectError('ECONNREFUSED');
+      }
+      return 'a';
+    });
+    await new Promise((r) => setImmediate(r));
+    // b waits for a's turn, and a is then refused.
+    const b = downloads.run(url, async () => {
+      started.push(['b', clock.now()]);
+      return 'b';
+    });
+    await new Promise((r) => setImmediate(r));
+    refuse();
+
+    expect(await Promise.all([a, b])).toEqual(['a', 'b']);
+    expect(started.find(([who]) => who === 'b')?.[1]).toBeGreaterThanOrEqual(5000);
+  });
+
+  it('the wait drops back to its first length after a download succeeds', async () => {
+    const waits: KudosDownloadWait[] = [];
+    const downloads = kudosDownloads({
+      limiter: noLimits(),
+      ...fakeClock(),
+      random: () => 1,
+      onWait: (w) => waits.push(w),
+    });
+    for (let i = 0; i < 2; i++) {
+      let refused = false;
+      await downloads.run(url, async () => {
+        if (!refused) {
+          refused = true;
+          throw connectError('ECONNREFUSED');
+        }
+        return 'bytes';
+      });
+    }
+
+    expect(waits.map((w) => w.waitMs)).toEqual([5000, 5000]);
+  });
+
+  it('a wait is a random share of its ceiling', async () => {
+    const waits: KudosDownloadWait[] = [];
+    const downloads = kudosDownloads({
+      limiter: noLimits(),
+      ...fakeClock(),
+      random: () => 0.5,
+      onWait: (w) => waits.push(w),
+    });
+    let refused = false;
+
+    await downloads.run(url, async () => {
+      if (!refused) {
+        refused = true;
+        throw connectError('ECONNREFUSED');
+      }
+      return 'bytes';
+    });
+
+    expect(waits.map((w) => w.waitMs)).toEqual([2500]);
+  });
+
+  it('the 30 minutes count only the waits, not the downloads between them', async () => {
+    const clock = fakeClock();
+    let waited = 0;
+    const downloads = kudosDownloads({
+      limiter: noLimits(),
+      now: clock.now,
+      sleep: async (ms) => {
+        waited += ms;
+        await clock.sleep(ms);
+      },
+      random: () => 1,
+    });
+
+    await downloads
+      .run(url, async () => {
+        // Each try takes the 15 s connect timeout.
+        clock.advance(15_000);
+        throw connectError('UND_ERR_CONNECT_TIMEOUT');
+      })
+      .catch(() => undefined);
+
+    expect(waited).toBeLessThanOrEqual(kudosDownloadWaitLimitMs);
+    expect(waited).toBeGreaterThan(kudosDownloadWaitLimitMs - 2 * 60_000);
+    expect(clock.now()).toBeGreaterThan(kudosDownloadWaitLimitMs);
+  });
+
+  it("a KUDOS download stops waiting when its job's signal is aborted", async () => {
+    const controller = new AbortController();
+    const downloads = kudosDownloads({
+      limiter: noLimits(),
+      now: () => 0,
+      // A hold that would never end on its own.
+      sleep: () => new Promise<void>(() => undefined),
+      random: () => 1,
+    });
+    const running = downloads.run(
+      url,
+      async () => {
+        throw connectError('ECONNREFUSED');
+      },
+      controller.signal,
+    );
+    await new Promise((r) => setImmediate(r));
+    controller.abort(new Error('the job was cancelled'));
+
+    await expect(running).rejects.toThrow('the job was cancelled');
+  });
+
+  it('a KUDOS host whose checked addresses change gets a connection pinned to the new ones', async () => {
+    const network = localNetwork();
+    const port = await listen(http.createServer((_req, res) => res.end('%PDF-1.7')));
+    const addresses = ['93.184.216.34', '93.184.216.35'];
+    let lookups = 0;
+    const download = kudosFileDownloader(
+      { downloads: kudosDownloads({ limiter: noLimits() }) },
+      { resolve: async () => [addresses[Math.min(lookups++, 1)] as string] },
+    );
+
+    await download(`http://kudos.example.test:${port}/files/a.pdf`);
+    await download(`http://kudos.example.test:${port}/files/b.pdf`);
+
+    expect(network.pinned).toEqual(addresses);
   });
 });

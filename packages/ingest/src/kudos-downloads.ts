@@ -36,8 +36,11 @@ export interface KudosDownloadsOptions {
 }
 
 export interface KudosDownloads {
-  /** Runs one download of `url` when a turn is free; waits out refusals without failing. */
-  run<T>(url: string, download: () => Promise<T>): Promise<T>;
+  /**
+   * Runs one download of `url` when a turn is free; waits out refusals without failing, until
+   * `signal`, the job's, is aborted.
+   */
+  run<T>(url: string, download: () => Promise<T>, signal?: AbortSignal): Promise<T>;
 }
 
 /** Codes undici gives a request that never got an answer: the connection was not taken. */
@@ -46,7 +49,6 @@ const notTakenCodes = new Set([
   'ECONNREFUSED',
   'ECONNRESET',
   'UND_ERR_SOCKET',
-  'EAI_AGAIN',
   'ENETUNREACH',
   'EHOSTUNREACH',
   'ETIMEDOUT',
@@ -54,11 +56,13 @@ const notTakenCodes = new Set([
 ]);
 
 /**
- * Why KUDOS did not take a download, when it is a reason to wait: no connection or no answer at
- * all (undici's `fetch failed`, unlike `terminated` for a body cut off after the answer), 429 or
- * 503. Anything else is the try's to fail.
+ * Why KUDOS did not take a download, when it is a reason to wait: a DNS answer to try again (the
+ * guard's lookup, before any connection), no connection or no answer at all (undici's `fetch
+ * failed`, unlike `terminated` for a body cut off after the answer), 429 or 503. Anything else is
+ * the try's to fail.
  */
 export const kudosWaitCause = (error: unknown): string | undefined => {
+  if ((error as { code?: unknown } | null)?.code === 'EAI_AGAIN') return 'EAI_AGAIN';
   if (error instanceof HttpStatusError)
     return error.status === 429 || error.status === 503 ? `HTTP ${error.status}` : undefined;
   if (!(error instanceof TypeError) || error.message !== 'fetch failed') return undefined;
@@ -76,11 +80,18 @@ const hostOf = (url: string) => {
 
 const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+/** Settles when `signal` is aborted, with its reason. */
+const abortOf = (signal: AbortSignal) =>
+  new Promise<never>((_resolve, reject) => {
+    if (signal.aborted) reject(signal.reason as Error);
+    else signal.addEventListener('abort', () => reject(signal.reason as Error), { once: true });
+  });
+
 /**
  * Paces one process's KUDOS file downloads (issue 931): at most `atOnce` at a time, and a refusal
  * holds back every download for a wait that doubles with refusals in a row, with full jitter, so a
- * minute when KUDOS takes no connections uses no try. A download that has waited `waitLimitMs` in
- * all fails with its last error.
+ * minute when KUDOS takes no connections uses no try. A download whose waits add up to more than
+ * `waitLimitMs` fails with its last error; the time spent downloading between them does not count.
  */
 export const kudosDownloads = (options: KudosDownloadsOptions = {}): KudosDownloads => {
   const atOnce = options.atOnce ?? kudosDownloadsAtOnce;
@@ -107,21 +118,31 @@ export const kudosDownloads = (options: KudosDownloadsOptions = {}): KudosDownlo
     if (next) next();
     else running -= 1;
   };
-  /** Waits out the hold, again only when a refusal made it longer meanwhile; returns the hold seen. */
-  const held = async () => {
+  /**
+   * Waits out the hold, again only when a refusal made it longer meanwhile; returns the hold seen
+   * and how long this download slept.
+   */
+  const held = async (signal?: AbortSignal) => {
+    let slept = 0;
     for (;;) {
       const until = heldUntil;
       const wait = until - now();
-      if (wait > 0) await sleep(wait);
-      if (heldUntil === until) return until;
+      if (wait > 0) {
+        const from = now();
+        await (signal ? Promise.race([sleep(wait), abortOf(signal)]) : sleep(wait));
+        slept += now() - from;
+      }
+      if (heldUntil === until) return { seen: until, slept };
     }
   };
 
   return {
-    async run(url, download) {
-      const started = now();
+    async run(url, download, signal) {
+      let waited = 0;
       for (;;) {
-        const seen = await held();
+        signal?.throwIfAborted();
+        const { seen, slept } = await held(signal);
+        waited += slept;
         await acquire();
         let cause: string | undefined;
         let error: unknown;
@@ -151,7 +172,7 @@ export const kudosDownloads = (options: KudosDownloadsOptions = {}): KudosDownlo
           wait = Math.max(wait, asked);
         }
         const until = Math.max(heldUntil, now() + wait);
-        if (until - started > waitLimit) throw error;
+        if (waited + (until - now()) > waitLimit) throw error;
         heldUntil = until;
         options.onWait?.({ host: hostOf(url), cause, waitMs: until - now() });
       }

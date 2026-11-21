@@ -190,16 +190,17 @@ export interface FetchedBody {
   contentType?: string;
 }
 
-/** Consume a guarded response with backpressure, without buffering the full body. */
 /** Kept agents, by host, port, pinned addresses and connect timeout; the oldest is closed past the limit. */
 const keptAgents = new Map<string, Agent>();
 const mostKeptAgents = 16;
-/** How long a kept connection may stay idle; a server's own `Keep-Alive` shortens it. */
+/** How long a kept connection may stay idle, also when a server's `Keep-Alive` asks for longer. */
 const keptIdleMs = 30_000;
 
 const pinnedAgent = (addresses: string[], connectTimeoutMs: number, connections?: number) =>
   new Agent({
-    ...(connections ? { connections, keepAliveTimeout: keptIdleMs } : {}),
+    ...(connections
+      ? { connections, keepAliveTimeout: keptIdleMs, keepAliveMaxTimeout: keptIdleMs }
+      : {}),
     connect: {
       timeout: connectTimeoutMs,
       lookup: (_host, lookupOptions, callback) => {
@@ -244,6 +245,7 @@ const hopAgent = (parsed: URL, addresses: string[], policy: FetchPolicy) => {
   return { agent, kept: true };
 };
 
+/** Consume a guarded response with backpressure, without buffering the full body. */
 export const guardedFetchStream = async (
   url: string,
   policy: FetchPolicy,
