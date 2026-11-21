@@ -250,9 +250,9 @@ export const integrationsArea = {
     rotatedToday: 'rotated today by you',
     unknownDate: 'unknown date',
     createdBy: '{date} by {who}',
-    modelsAllowed: 'Can use models in the locked genki-test',
+    modelsAllowed: 'Can use models while genki is locked',
     modelsRefused:
-      'Cannot use models in the locked genki-test: created by a login that is not admitted. Rotate it while signed in with Entra ID.',
+      'Cannot use models while genki is locked: created by a login that is not admitted. Rotate it while signed in with Entra ID.',
     nameProblem: 'Give the key a name.',
     selectionProblem: 'Choose at least one service or document collection, or choose "All".',
     rateProblem: 'Enter a whole number from 1 to 6,000.',
@@ -282,7 +282,7 @@ export const integrationsArea = {
     rateHelp: 'From 1 to 6,000.',
     testRunner: 'Test runner for smoke tests',
     testRunnerHelp:
-      'The key can read everything in the organisation and the platform configuration in the operator overviews, try services in the playground when it reaches all services, and create and archive definitions whose id starts with smoke-. It expires after 90 days. Only in the locked genki-test.',
+      'The key can read everything in the organisation and the platform configuration in the operator overviews, try services in the playground when it reaches all services, and create and archive definitions whose id starts with smoke-. It expires after 90 days. Only while genki is locked.',
     testRunnerTag: 'Test runner',
     createKey: 'Create key',
     none: 'No API keys yet',

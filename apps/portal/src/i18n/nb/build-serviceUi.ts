@@ -203,7 +203,8 @@ export const serviceUi = {
       'Navnet må begynne med en liten bokstav og ha bare små bokstaver, tall og bindestrek, for eksempel test.',
     nameTaken: 'Tjenesten har allerede en testutgave som heter {name}.',
     addSubmit: 'Legg til',
-    added: '{name} er lagt til. Nye utgaver fra kodeagenter går dit, og utgave {version} er fortsatt i bruk.',
+    added:
+      '{name} er lagt til. Nye utgaver fra kodeagenter går dit, og utgave {version} er fortsatt i bruk.',
     promote: 'Publiser',
     promoteLabel: 'Publiser utgaven {name} kjører',
     promoteConfirm:
@@ -379,9 +380,9 @@ export const serviceUi = {
     revokedTag: 'Trukket tilbake',
     created: ' · laget {when}',
     createdBy: ' · laget {when} av {who}',
-    modelsAllowed: 'Kan bruke modeller i den låste genki-test',
+    modelsAllowed: 'Kan bruke modeller når genki er låst',
     modelsRefused:
-      'Kan ikke bruke modeller i den låste genki-test: laget av en innlogging som ikke er sluppet inn. Roter den mens du er logget inn med Entra ID.',
+      'Kan ikke bruke modeller når genki er låst: laget av en innlogging som ikke er sluppet inn. Roter den mens du er logget inn med Entra ID.',
     unknownDate: 'ukjent dato',
     rotated: ' · rotert',
     clientLine: 'Egen løsning: {client}',

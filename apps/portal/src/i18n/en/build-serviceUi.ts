@@ -203,7 +203,8 @@ export const serviceUi = {
       'The name must start with a lowercase letter and have only lowercase letters, digits and dashes, for example test.',
     nameTaken: 'The service already has a test edition called {name}.',
     addSubmit: 'Add',
-    added: '{name} is added. New editions from coding agents go there, and edition {version} stays in use.',
+    added:
+      '{name} is added. New editions from coding agents go there, and edition {version} stays in use.',
     promote: 'Publish',
     promoteLabel: 'Publish the edition {name} runs',
     promoteConfirm:
@@ -378,9 +379,9 @@ export const serviceUi = {
     revokedTag: 'Revoked',
     created: ' · created {when}',
     createdBy: ' · created {when} by {who}',
-    modelsAllowed: 'Can use models in the locked genki-test',
+    modelsAllowed: 'Can use models while genki is locked',
     modelsRefused:
-      'Cannot use models in the locked genki-test: created by a login that is not admitted. Rotate it while signed in with Entra ID.',
+      'Cannot use models while genki is locked: created by a login that is not admitted. Rotate it while signed in with Entra ID.',
     unknownDate: 'unknown date',
     rotated: ' · rotated',
     clientLine: 'Own frontend: {client}',

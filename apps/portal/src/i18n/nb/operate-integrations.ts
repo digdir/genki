@@ -248,9 +248,9 @@ export const integrationsArea = {
     rotatedToday: 'rotert i dag av deg',
     unknownDate: 'ukjent dato',
     createdBy: '{date} av {who}',
-    modelsAllowed: 'Kan bruke modeller i den låste genki-test',
+    modelsAllowed: 'Kan bruke modeller når genki er låst',
     modelsRefused:
-      'Kan ikke bruke modeller i den låste genki-test: laget av en innlogging som ikke er sluppet inn. Roter den mens du er logget inn med Entra ID.',
+      'Kan ikke bruke modeller når genki er låst: laget av en innlogging som ikke er sluppet inn. Roter den mens du er logget inn med Entra ID.',
     nameProblem: 'Gi nøkkelen et navn.',
     selectionProblem: 'Velg minst én tjeneste eller én dokumentsamling, eller velg «Alle».',
     rateProblem: 'Skriv et helt tall fra 1 til 6 000.',
@@ -281,7 +281,7 @@ export const integrationsArea = {
     rateHelp: 'Fra 1 til 6 000.',
     testRunner: 'Testkjører for røyktester',
     testRunnerHelp:
-      'Nøkkelen kan lese alt i virksomheten og plattformoppsettet i driftsoversiktene, prøve tjenester i prøveområdet når den gjelder alle tjenester, og opprette og arkivere definisjoner som begynner med smoke-. Den utløper etter 90 dager. Bare i den låste genki-test.',
+      'Nøkkelen kan lese alt i virksomheten og plattformoppsettet i driftsoversiktene, prøve tjenester i prøveområdet når den gjelder alle tjenester, og opprette og arkivere definisjoner som begynner med smoke-. Den utløper etter 90 dager. Bare når genki er låst.',
     testRunnerTag: 'Testkjører',
     createKey: 'Lag nøkkel',
     none: 'Ingen API-nøkler ennå',

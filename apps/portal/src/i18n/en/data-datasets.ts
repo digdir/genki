@@ -145,8 +145,7 @@ const datasets = {
   changesNotSaved: 'The changes were not saved. {problem}',
   saving: 'Saving',
   runningLeave: 'The ingestion is in progress. The page updates itself, and you can leave it.',
-  admission:
-    'The ingestion is admitted until {time}. It then stops in the locked genki-test, unless it is admitted again.',
+  admission: 'The ingestion is admitted until {time}. It then stops, unless it is admitted again.',
   admissionSoon:
     'The ingestion is admitted only until {time}. Admit it again before then, or it stops and must start over.',
   readmit: 'Admit again',
@@ -674,7 +673,7 @@ export const searchEngine = {
     '{target} did not respond. {current} is still in use, and the services notice nothing. What has been transferred stays until you try again or cancel.',
   swTechnical: 'Technical message: {message}',
   swAdmission:
-    'The ingestion is admitted until {time}. The transfer then stops in the locked genki-test, unless it is admitted again.',
+    'The ingestion is admitted until {time}. The transfer then stops, unless it is admitted again.',
   swAdmissionSoon:
     'The ingestion is admitted only until {time}. Admit it again before then, or the transfer stops and must start over.',
   swReadmit: 'Admit again',

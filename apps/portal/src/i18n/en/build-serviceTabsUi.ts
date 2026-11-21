@@ -424,8 +424,8 @@ export const serviceTabsUi = {
     chipAllChannels: 'All channels',
     chipOverrides: 'May override: {list}',
     chipNoOverrides: 'May not override',
-    chipLockdownModels: 'May use models in genki-test (locked)',
-    chipNoLockdownModels: 'May not use models in genki-test (locked)',
+    chipLockdownModels: 'May use models while genki is locked',
+    chipNoLockdownModels: 'May not use models while genki is locked',
     usedToday: 'Today {time}',
     neverUsed: 'Never',
     keysEmpty:

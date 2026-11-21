@@ -145,7 +145,7 @@ export const datasets = defineNamespace({
   saving: 'Lagrer',
   runningLeave: 'Innlesingen pågår. Siden oppdateres av seg selv, og du kan gå fra den.',
   admission:
-    'Innlesingen er sluppet inn til {time}. Da stopper den i den låste genki-test, om den ikke slippes inn igjen.',
+    'Innlesingen er sluppet inn til {time}. Da stopper den, om den ikke slippes inn igjen.',
   admissionSoon:
     'Innlesingen er sluppet inn bare til {time}. Slipp den inn igjen før det, ellers stopper den og må startes på nytt.',
   readmit: 'Slipp inn igjen',
@@ -669,7 +669,7 @@ export const searchEngine = defineNamespace({
     '{target} svarte ikke. {current} brukes fortsatt, og tjenestene merker ingenting. Det som er overført, blir liggende til du prøver igjen eller avbryter.',
   swTechnical: 'Teknisk melding: {message}',
   swAdmission:
-    'Innlesingen er sluppet inn til {time}. Da stopper overføringen i den låste genki-test, om den ikke slippes inn igjen.',
+    'Innlesingen er sluppet inn til {time}. Da stopper overføringen, om den ikke slippes inn igjen.',
   swAdmissionSoon:
     'Innlesingen er sluppet inn bare til {time}. Slipp den inn igjen før det, ellers stopper overføringen og må startes på nytt.',
   swReadmit: 'Slipp inn igjen',

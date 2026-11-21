@@ -24,7 +24,7 @@ export const shell = {
   brandFull: 'Generative AI platform',
   owner: 'Digdir',
   lockdownReadOnly:
-    'genki-test (locked): you can look around, but changes, models and ingestion need an Entra ID login.',
+    'Genki is locked: you can look around, but changes, models and ingestion need an Entra ID login.',
   orgMeta: 'Org. no. {orgNr}',
   orgMetaUnregistered: 'Org. no. {orgNr} · not registered',
   actingForLabel: 'Acting for',
@@ -120,7 +120,7 @@ export const devTools = {
   statusApiCheck: 'The API answers',
   statusApiHow: 'Asks /health when you open the page or press "Check now".',
   statusAnsweredIn: 'Answered in {ms} ms',
-  statusLockdown: 'genki-test (locked)',
+  statusLockdown: 'Locked',
   statusLockdownOn: 'Yes, only some people can change things now',
   statusLockdownOff: 'No',
 } satisfies Translation<typeof devToolsSource>;

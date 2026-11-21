@@ -629,7 +629,7 @@ describe('a locked environment', () => {
 
     expect(
       await screen.findByText(
-        'genki-test (låst): du kan se deg rundt, men endringer, modeller og innlesing krever innlogging med Entra ID.',
+        'Genki er låst: du kan se deg rundt, men endringer, modeller og innlesing krever innlogging med Entra ID.',
       ),
     ).toBeTruthy();
   });

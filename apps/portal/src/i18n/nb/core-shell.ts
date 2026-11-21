@@ -17,7 +17,7 @@ export const shell = defineNamespace({
   brandFull: 'Generativ KI-plattform',
   owner: 'Digdir',
   lockdownReadOnly:
-    'genki-test (låst): du kan se deg rundt, men endringer, modeller og innlesing krever innlogging med Entra ID.',
+    'Genki er låst: du kan se deg rundt, men endringer, modeller og innlesing krever innlogging med Entra ID.',
   orgMeta: 'Org.nr. {orgNr}',
   orgMetaUnregistered: 'Org.nr. {orgNr} · ikke registrert',
   actingForLabel: 'Handler for',
@@ -113,7 +113,7 @@ export const devTools = defineNamespace({
   statusApiCheck: 'API-et svarer',
   statusApiHow: 'Spør /health når du åpner siden eller trykker «Sjekk nå».',
   statusAnsweredIn: 'Svarte på {ms} ms',
-  statusLockdown: 'genki-test (låst)',
+  statusLockdown: 'Låst',
   statusLockdownOn: 'Ja, bare noen kan endre noe nå',
   statusLockdownOff: 'Nei',
 });
