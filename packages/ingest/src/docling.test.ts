@@ -262,6 +262,20 @@ describe('the Docling client', () => {
     ]);
   });
 
+  it('asks Docling for the full document timeout on the first submit even when the clock moves', async () => {
+    const { url, seen } = await doclingServer(['success']);
+    let clock = new Date('2026-11-21T10:00:00Z').getTime();
+    const docling = converterFor(url, {
+      now: () => new Date((clock += 1)),
+    });
+
+    await docling.convert(report);
+
+    expect((seen[0] as Seen).form.get('document_timeout')).toBe(
+      String(doclingDocumentTimeoutSeconds),
+    );
+  });
+
   it('reads a successful conversion into pages and keeps its native output', async () => {
     const { url } = await doclingServer(['success']);
 

@@ -329,7 +329,7 @@ export const doclingConverter = (options: DoclingOptions): DocumentConverter => 
       try {
         const first = opened[0] as Client;
         // A file submitted again asks only for the time left, so Docling stops by the try's end.
-        const left = Math.max(1, Math.floor((stopBy - now().getTime()) / 1000));
+        const left = Math.max(1, Math.ceil((stopBy - now().getTime()) / 1000));
         const submitted = await send(first, '/v1/convert/file/async', form(file, left));
         if (submitted.status !== 200) throw new DoclingFailed(submitted.status, 'not a task');
         const id = parsed<TaskStatus>(submitted, 'a task').task_id;
