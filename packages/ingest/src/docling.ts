@@ -221,7 +221,8 @@ export const doclingConverter = (options: DoclingOptions): DocumentConverter => 
     return { status: response.status, text: await response.text() };
   };
 
-  const form = (file: DocumentFile) => {
+  /** The form of one submit, asking Docling to stop after `seconds`: the time left in the try. */
+  const form = (file: DocumentFile, seconds: number) => {
     const data = new FormData();
     // A name that says nothing: the server logs the name of a file it fails to read.
     data.append(
@@ -234,7 +235,7 @@ export const doclingConverter = (options: DoclingOptions): DocumentConverter => 
     data.append('ocr_lang', 'nor');
     data.append('table_mode', 'accurate');
     data.append('image_export_mode', 'placeholder');
-    data.append('document_timeout', String(documentTimeoutSeconds));
+    data.append('document_timeout', String(seconds));
     return data;
   };
 
@@ -318,7 +319,8 @@ export const doclingConverter = (options: DoclingOptions): DocumentConverter => 
     let answer: Answer | undefined;
     // One deadline for the whole try, from its first submit: the server stops a task at its
     // document timeout, and the try ends ten minutes after that, within the job's expiry.
-    const deadline = now().getTime() + documentTimeoutSeconds * 1000 + 10 * 60_000;
+    const stopBy = now().getTime() + documentTimeoutSeconds * 1000;
+    const deadline = stopBy + 10 * 60_000;
     for (let submits = 1; !answer; submits += 1) {
       if (now().getTime() > deadline) throw pastDeadline();
       // The async route: the client polls its task, so no connection is idle for long (issue
@@ -326,7 +328,9 @@ export const doclingConverter = (options: DoclingOptions): DocumentConverter => 
       const opened = [connection()];
       try {
         const first = opened[0] as Client;
-        const submitted = await send(first, '/v1/convert/file/async', form(file));
+        // A file submitted again asks only for the time left, so Docling stops by the try's end.
+        const left = Math.max(1, Math.floor((stopBy - now().getTime()) / 1000));
+        const submitted = await send(first, '/v1/convert/file/async', form(file, left));
         if (submitted.status !== 200) throw new DoclingFailed(submitted.status, 'not a task');
         const id = parsed<TaskStatus>(submitted, 'a task').task_id;
         if (typeof id !== 'string' || !taskIdPattern.test(id))

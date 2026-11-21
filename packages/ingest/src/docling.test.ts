@@ -561,4 +561,25 @@ describe('the Docling client', () => {
     expect(cluster.replicas.reduce((n, r) => n + r.submits, 0)).toBe(1);
     expect(lost).toEqual([]);
   });
+
+  it('asks Docling for only the time left in the try when it submits the file again', async () => {
+    let clock = new Date('2026-11-21T10:00:00Z').getTime();
+    const cluster = await doclingCluster([], { replicas: 2, convertMs: 300 });
+    let stops = 1;
+    // The first task is lost half an hour into the try.
+    cluster.onTask = (replica) => {
+      if (stops-- > 0)
+        setTimeout(() => {
+          clock += 30 * 60_000;
+          replica.stop();
+        }, 50);
+    };
+
+    await converterFor(cluster.url, {
+      documentTimeoutSeconds: 3_600,
+      now: () => new Date(clock),
+    }).convert(report);
+
+    expect(cluster.seen.map((s) => s.form.get('document_timeout'))).toEqual(['3600', '1800']);
+  });
 });
