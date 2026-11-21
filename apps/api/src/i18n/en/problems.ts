@@ -30,8 +30,9 @@ export const problems = {
     'A test-runner key reads in its own organisation, checks definitions, gives feedback, tries published services it reaches and smoke- services in the playground, and changes only definitions whose id starts with smoke-.',
   testRunnerRefused: 'The key cannot get test-runner access',
   testRunnerEnvironmentDetail:
-    'Test-runner access can only be given in a locked test environment (GENAI_LOCKDOWN=true and GENAI_ENV=test).',
-  testRunnerCreatorDetail: 'Only operators who log in with Entra ID can give test-runner access.',
+    'Test-runner access is off in this environment (GENAI_TEST_RUNNER_KEYS is not true).',
+  testRunnerCreatorDetail:
+    'Only an operator acting in the platform organisation can give test-runner access; in a locked environment, one who logs in with Entra ID.',
   tenantNotRegisteredDetail: 'Organisation {tenant} has not been registered by Digdir.',
   modelsLocked:
     'The environment is locked: only registered clients and Entra ID logins may use models here',

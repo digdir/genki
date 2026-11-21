@@ -2,7 +2,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { usageUnits, type Event, type Principal, type Task, type Usage } from '@genai/contracts';
 import { invalidInputProblem } from '@genai/adapter-openai';
-import { isAdmittedEntraLogin, isTrustedEntraLogin } from '@genai/composition';
+import { isAdmittedEntraLogin } from '@genai/composition';
 import type { CompiledCapability, DefinitionStore, ServiceDefinition } from '@genai/definitions';
 import {
   ALL_GRANT,
@@ -49,7 +49,7 @@ import { failureDetail } from '../run-steps.js';
 import type { Lockdown } from '../lockdown.js';
 import { erasureOf } from '../timeline.js';
 import { t } from '../i18n/index.js';
-import { testRunnerRefusedType } from '../test-runner.js';
+import { mayGiveTestRunnerKeys, testRunnerRefusedType } from '../test-runner.js';
 import { fileInputOf } from '../runtime-documents.js';
 import type { ServiceHealth } from '../service-health.js';
 import { pausedMessage, type LifecycleView } from '../service-lifecycle.js';
@@ -220,6 +220,7 @@ export interface PortalRouteDeps {
   gatewayUsage?: UsageReads;
   countingRule?(): CountingRule;
   testRunnerKeys?: boolean;
+  isOperator?: (principal: Principal) => boolean;
   now?(): Date;
   newKey?(): string;
   newId?(): string;
@@ -247,10 +248,15 @@ export const quotaView = ({
 const forTenant = (principal: Principal, tenant: string) =>
   principal.kind === 'operator' || principal.tenant === tenant;
 
-const testRunnerRefusal = (c: Context, allowed: boolean, principal: Principal) => {
+const testRunnerRefusal = (
+  c: Context,
+  allowed: boolean,
+  principal: Principal,
+  isOperator: ((principal: Principal) => boolean) | undefined,
+) => {
   const detail = !allowed
     ? t('problems.testRunnerEnvironmentDetail')
-    : isTrustedEntraLogin(principal)
+    : mayGiveTestRunnerKeys(principal, isOperator)
       ? undefined
       : t('problems.testRunnerCreatorDetail');
   if (detail === undefined) return undefined;
@@ -365,6 +371,7 @@ export const portalAdminHandlers = (deps: {
   apiKeys: TenantApiKeys;
   policies?: KeyPolicyStore;
   testRunnerKeys?: boolean;
+  isOperator?: (principal: Principal) => boolean;
 }): Record<string, AdminHandler> => ({
   'platform.apikeys.create': async (input, principal) => {
     const target = `api-key:${input.tenant}/${String(input.id ?? '')}`;
@@ -400,7 +407,7 @@ export const portalAdminHandlers = (deps: {
       ...(isAdmittedEntraLogin(principal) ? { admittedInLockdown: true } : {}),
       ...(input.testRunner === true &&
       deps.testRunnerKeys === true &&
-      isTrustedEntraLogin(principal)
+      mayGiveTestRunnerKeys(principal, deps.isOperator)
         ? { testRunner: true }
         : {}),
     };
@@ -1605,7 +1612,7 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       keys,
       testRunnerKeys:
         deps.testRunnerKeys === true &&
-        isTrustedEntraLogin(g.principal) &&
+        mayGiveTestRunnerKeys(g.principal, deps.isOperator) &&
         g.principal.kind !== 'operator' &&
         g.principal.tenant === g.tenant,
     });
@@ -1667,7 +1674,12 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
     if (body.testRunner === true) {
       const member = await guard(c, 'manage-services');
       if (member instanceof Response) return member;
-      const refused = testRunnerRefusal(c, deps.testRunnerKeys === true, principal);
+      const refused = testRunnerRefusal(
+        c,
+        deps.testRunnerKeys === true,
+        member.principal,
+        deps.isOperator,
+      );
       if (refused) return refused;
       const limits = testRunnerLimitErrors(body.expiresInDays, body.callsPerMinute);
       if (limits.length > 0) return problem(c, 400, 'Invalid request', limits);

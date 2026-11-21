@@ -281,7 +281,7 @@ export const integrationsArea = {
     rateHelp: 'Fra 1 til 6 000.',
     testRunner: 'Testkjører for røyktester',
     testRunnerHelp:
-      'Nøkkelen kan lese alt i virksomheten og plattformoppsettet i driftsoversiktene, prøve tjenester i prøveområdet når den gjelder alle tjenester, og opprette og arkivere definisjoner som begynner med smoke-. Den utløper etter 90 dager. Bare når genki er låst.',
+      'Nøkkelen kan lese alt i virksomheten og plattformoppsettet i driftsoversiktene, prøve tjenester i prøveområdet når den gjelder alle tjenester, og opprette og arkivere definisjoner som begynner med smoke-. Den utløper etter 90 dager.',
     testRunnerTag: 'Testkjører',
     createKey: 'Lag nøkkel',
     none: 'Ingen API-nøkler ennå',

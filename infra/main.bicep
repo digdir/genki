@@ -29,6 +29,19 @@ param infraFingerprint string = ''
 @description('Plain settings for the api and worker, e.g. FOUNDRY_OPENAI_BASE_URL, TYPESENSE_URL.')
 param appEnv object = {}
 
+@description('The platform tier the apps run as (GENAI_ENV, and the console\'s environment label), apart from the resource names: only test turns on the test-tier exceptions.')
+@allowed(['test', 'prod', 'production'])
+param platformTier string = environmentName
+
+@description('Locks the environment (GENAI_LOCKDOWN, ADR 0033).')
+param lockdown bool = false
+
+@description('The environment genki\'s own traces are tagged with (TRACES_ENVIRONMENT). Empty: none.')
+param tracesEnvironment string = ''
+
+@description('Lets an operator give the post-deploy smoke test a test-runner key (GENAI_TEST_RUNNER_KEYS, ADR 0033).')
+param testRunnerKeys bool = false
+
 @description('Ansattporten issuer for people. Required outside development mode.')
 param ansattportenIssuer string = ''
 param ansattportenJwksUri string = ''
@@ -497,7 +510,6 @@ module apps 'modules/containerapps.bicep' = {
   name: 'containerapps'
   params: {
     name: baseName
-    environmentName: environmentName
     location: location
     tags: allTags
     appsSubnetId: infra
@@ -524,7 +536,12 @@ module apps 'modules/containerapps.bicep' = {
     doclingImage: doclingImage
     appVersion: appVersion
     workerVersion: workerVersion
-    appEnv: appEnv
+    platformTier: platformTier
+    appEnv: union(appEnv, {
+      GENAI_LOCKDOWN: lockdown ? 'true' : ''
+      TRACES_ENVIRONMENT: tracesEnvironment
+      GENAI_TEST_RUNNER_KEYS: testRunnerKeys ? 'true' : ''
+    })
     identityEnv: {
       ANSATTPORTEN_ISSUER: ansattportenIssuer
       ANSATTPORTEN_JWKS_URI: ansattportenJwksUri

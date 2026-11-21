@@ -29,9 +29,9 @@ export const problems = defineNamespace({
     'En testkjørernøkkel leser i egen virksomhet, sjekker definisjoner, gir tilbakemelding, prøver publiserte tjenester den når og smoke-tjenester i prøveområdet og endrer bare definisjoner som begynner med smoke-.',
   testRunnerRefused: 'Nøkkelen kan ikke få testkjørertilgang',
   testRunnerEnvironmentDetail:
-    'Testkjørertilgang kan bare gis i et låst testmiljø (GENAI_LOCKDOWN=true og GENAI_ENV=test).',
+    'Testkjørertilgang er slått av i dette miljøet (GENAI_TEST_RUNNER_KEYS er ikke true).',
   testRunnerCreatorDetail:
-    'Bare driftsoperatører som logger inn med Entra ID kan gi testkjørertilgang.',
+    'Bare en driftsoperatør i plattformvirksomheten kan gi testkjørertilgang; i et låst miljø en som logger inn med Entra ID.',
   tenantNotRegisteredDetail: 'Virksomheten {tenant} er ikke registrert av Digdir.',
   modelsLocked:
     'Miljøet er låst: bare registrerte klienter og Entra ID-innlogging kan bruke modeller her',
