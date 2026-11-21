@@ -247,6 +247,35 @@ describe('openapi-compat', () => {
     ]);
   });
 
+  it('compares a field across every union branch, not only the last', () => {
+    const model = at([...schemas, 'Model']) as Record<string, unknown>;
+    const props = model.properties as Record<string, unknown>;
+    const integerId = { ...model, properties: { ...props, id: { type: 'integer' } } };
+    const response = changed([[...schemas, 'Model'], { anyOf: [integerId, model] }]);
+    expect(rulesOf(response)).toEqual([
+      'GET /v1/models narrowed-type response 200 application/json: data[].id',
+    ]);
+    const chat = at([...schemas, 'ChatRequest']) as Record<string, unknown>;
+    const fields = chat.properties as Record<string, unknown>;
+    const textStream = { ...chat, properties: { ...fields, stream: { type: 'string' } } };
+    const request = changed([[...schemas, 'ChatRequest'], { anyOf: [textStream, chat] }]);
+    expect(breakingChanges(request, base()).map((f) => `${f.rule} ${f.where}`)).toEqual([
+      'narrowed-type request application/json: stream',
+    ]);
+  });
+
+  it('a request array that gains an item schema is breaking, a response array is not', () => {
+    const tags = (schema: Record<string, unknown>) =>
+      [[...schemas, 'ChatRequest', 'properties', 'tags'], schema] as Edit;
+    const before = changed(tags({ type: 'array' }));
+    const after = changed(tags({ type: 'array', items: { type: 'string' } }));
+    expect(breakingChanges(before, after).map((f) => `${f.rule} ${f.where}`)).toEqual([
+      'narrowed-type request application/json: tags[]',
+    ]);
+    const untyped = changed([[...schemas, 'ModelList', 'properties', 'data'], { type: 'array' }]);
+    expect(breakingChanges(untyped, base())).toEqual([]);
+  });
+
   it('a new required parameter declared on the path item is breaking', () => {
     const head = changed([
       [...hosts, 'parameters'],

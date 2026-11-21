@@ -66,6 +66,8 @@ const typeOfValue = (value: unknown) =>
         ? 'integer'
         : typeof value;
 
+const anyOf = (list: Schema[]): Schema => (list.length === 1 ? (list[0] ?? {}) : { anyOf: list });
+
 const viewOf = (spec: Spec, raw: unknown, depth = 0): View => {
   const schema = resolve(spec, raw);
   const view: View = {
@@ -91,11 +93,15 @@ const viewOf = (spec: Spec, raw: unknown, depth = 0): View => {
       ? new Set(views.flatMap((v) => [...(valuesOf(v) as Set<string>)]))
       : undefined;
     const objects = views.filter((v) => v.properties.size > 0);
-    for (const v of objects) for (const [k, s] of v.properties) view.properties.set(k, s);
+    const byName = new Map<string, Schema[]>();
+    for (const v of objects)
+      for (const [k, s] of v.properties) byName.set(k, [...(byName.get(k) ?? []), s]);
+    for (const [k, list] of byName) view.properties.set(k, anyOf(list));
     view.required = new Set(
       [...view.properties.keys()].filter((k) => objects.every((v) => v.required.has(k))),
     );
-    view.items = views.find((v) => v.items)?.items;
+    const items = views.flatMap((v) => (v.items ? [v.items] : []));
+    if (items.length > 0) view.items = anyOf(items);
   }
   for (const part of Array.isArray(schema.allOf) ? schema.allOf : []) {
     const v = viewOf(spec, part, depth + 1);
@@ -162,7 +168,8 @@ const compare = (
     const other = h.properties.get(k);
     if (other) compare(spec, s, other, mode, field(where, k), add, depth + 1);
   }
-  if (b.items && h.items) compare(spec, b.items, h.items, mode, `${where}[]`, add, depth + 1);
+  if (h.items && (b.items || mode === 'request'))
+    compare(spec, b.items ?? {}, h.items, mode, `${where}[]`, add, depth + 1);
   else if (b.items && mode === 'response') add('narrowed-type', `${where}[]`);
 };
 
