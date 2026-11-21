@@ -1893,6 +1893,7 @@ const doclingFor = (url: string, headersTimeoutMs?: number) =>
   doclingConverter({
     url,
     credential: { kind: 'api-key', key: async () => 'docling-key' },
+    busyWaitMs: 10,
     ...(headersTimeoutMs ? { headersTimeoutMs } : {}),
   });
 /** Docling's answer for a file it read, one body paragraph per page. */

@@ -27,6 +27,9 @@ param doclingImage string
 
 @description('Most Docling replicas at once; each converts one PDF at a time.')
 param doclingMaxReplicas int = 8
+
+@description('Memory of a Docling replica in GiB, with 4 vCPU (Consumption allows at most 8). The memory alert and the idle restart read it (issue 922).')
+param doclingMemoryGiB int = 8
 param appVersion string
 param workerVersion string = ''
 param appEnv object
@@ -358,9 +361,11 @@ resource docling 'Microsoft.App/containerApps@2025-02-02-preview' = {
         {
           name: 'docling'
           image: doclingImage
-          resources: { cpu: json('4'), memory: '8Gi' }
+          resources: { cpu: json('4'), memory: '${doclingMemoryGiB}Gi' }
           env: [
             { name: 'DOCLING_SERVE_API_KEY', secretRef: doclingKeySecret.name }
+            // A replica keeps memory after a conversion; idle above half its memory, it restarts (genki_busy.py, issue 922)
+            { name: 'GENKI_DOCLING_RESTART_IDLE_GIB', value: string(doclingMemoryGiB / 2) }
             { name: 'DOCLING_SERVE_ENG_LOC_NUM_WORKERS', value: '1' }
             { name: 'DOCLING_NUM_THREADS', value: '4' }
             { name: 'OMP_NUM_THREADS', value: '4' }
@@ -665,6 +670,7 @@ output appName string = api.name
 output workerName string = worker.name
 output webAppNames array = [for (item, i) in webApps: web[i].name]
 output doclingName string = docling.name
+output doclingMemoryGiB int = doclingMemoryGiB
 output knowledgeSetupJobName string = setupOn ? knowledgeSetupJob.name : ''
 output platformBackupJobName string = backupOn ? platformBackupJob.name : ''
 output fqdn string = api.properties.configuration.ingress.fqdn

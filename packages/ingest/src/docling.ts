@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { authHeaders, type Credential } from '@genai/kernel';
 import { Client, fetch, FormData } from 'undici';
 import {
@@ -53,6 +54,41 @@ export const doclingTaskSearchConnections = 16;
  */
 export const doclingSubmitsPerTry = 3;
 
+/**
+ * How long a job waits before it submits its file again on a new connection after a replica
+ * answered that it is busy (503), or the connection ended before an answer, as while a replica
+ * restarts (issue 922). A busy answer starts nothing, so it is not a submit.
+ */
+export const doclingBusyWaitMs = 15_000;
+
+/** How many submits in a row may end without an answer before the try fails: about 2 minutes. */
+export const doclingUnansweredSubmitsInARow = 8;
+
+/** How a Docling task ended: converted, refused about the file, failed otherwise, or lost. */
+export type DoclingTaskResult = 'success' | 'too_large' | 'conversion_failed' | 'failed' | 'lost';
+
+/**
+ * One Docling task, told when it ends (issue 922): the worker logs it, so a replica's kill can be
+ * matched to the files it held. Names no file: the sha256 is the file's key in stored conversions.
+ */
+export interface DoclingTaskEvent {
+  task: string;
+  sha256: string;
+  /** The PDF's page count, read before the submit; absent when it could not be read. */
+  pages?: number;
+  /** Which submit of the try this task was, from 1. */
+  submit: number;
+  /** The replica that took the task, as its answer named it. */
+  replica?: string;
+  /** From the submit until a poll first saw the task started, to the poll interval. */
+  queuedMs: number;
+  /** From then until the task ended. */
+  convertingMs: number;
+  result: DoclingTaskResult;
+  /** Busy answers and unanswered submits before this task was taken. */
+  busyWaits: number;
+}
+
 /** How many polls in a row the server may fail (5xx, about 5 minutes) before the try fails. */
 export const doclingServerErrorsInARow = 10;
 
@@ -82,6 +118,11 @@ export interface DoclingOptions {
   now?: () => Date;
   /** Told each time no replica knows the try's task any more, the last time too. */
   onTaskLost?: (event: { submits: number }) => void;
+  busyWaitMs?: number;
+  /** Counts a PDF's pages before it is submitted, for the task line; never throws on a bad file. */
+  countPages?: (bytes: Uint8Array) => Promise<number | undefined>;
+  /** Told once for each task when it ends. */
+  onTask?: (event: DoclingTaskEvent) => void;
 }
 
 interface TaskStatus {
@@ -92,6 +133,8 @@ interface TaskStatus {
 interface Answer {
   status: number;
   text: string;
+  /** The replica that answered, when it names itself (`X-Docling-Replica`, docker/docling). */
+  replica?: string;
 }
 
 /** The task statuses a task leaves; docling-serve reports these while it works on one. */
@@ -175,6 +218,14 @@ const parsed = <T>(answer: Answer, what: string): T => {
   }
 };
 
+/** Codes of a connection refused, reset or closed before its answer, as a restarting replica's are. */
+const earlyEnds = new Set(['ECONNREFUSED', 'ECONNRESET', 'EPIPE', 'UND_ERR_SOCKET']);
+
+const endedEarly = (error: unknown) => {
+  const cause = (error as { cause?: { code?: unknown } } | undefined)?.cause;
+  return typeof cause?.code === 'string' && earlyEnds.has(cause.code);
+};
+
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** A poll the server failed to answer (5xx): the task may still run, so the client asks again. */
@@ -195,6 +246,7 @@ const detailOf = (answer: Answer) => {
 export const doclingConverter = (options: DoclingOptions): DocumentConverter => {
   const timeout = options.headersTimeoutMs ?? doclingHeadersTimeoutMs;
   const interval = options.pollIntervalMs ?? doclingPollIntervalMs;
+  const busyWait = options.busyWaitMs ?? doclingBusyWaitMs;
   const documentTimeoutSeconds = options.documentTimeoutSeconds ?? doclingDocumentTimeoutSeconds;
   const base = new URL(options.url);
   const now = options.now ?? (() => new Date());
@@ -218,7 +270,12 @@ export const doclingConverter = (options: DoclingOptions): DocumentConverter => 
       headers: await authHeaders(options.credential, 'x-api-key'),
       dispatcher: client,
     });
-    return { status: response.status, text: await response.text() };
+    const replica = response.headers.get('x-docling-replica');
+    return {
+      status: response.status,
+      text: await response.text(),
+      ...(replica ? { replica } : {}),
+    };
   };
 
   /** The form of one submit, asking Docling to stop after `seconds`: the time left in the try. */
@@ -275,7 +332,13 @@ export const doclingConverter = (options: DoclingOptions): DocumentConverter => 
    * Follows a task to its result: polls on the job's connection, and after a lost connection
    * looks for the task on new ones. Undefined when no replica knows the task any more.
    */
-  const follow = async (first: Client, id: string, opened: Client[], deadline: number) => {
+  const follow = async (
+    first: Client,
+    id: string,
+    opened: Client[],
+    deadline: number,
+    seen: (status: string) => void,
+  ) => {
     let client = first;
     let status = await statusOn(client, id);
     let resultTries = 0;
@@ -286,6 +349,7 @@ export const doclingConverter = (options: DoclingOptions): DocumentConverter => 
         if (!found) return undefined;
         ({ client, status } = found);
       }
+      if (status !== unanswered) seen(status);
       errors = status === unanswered ? errors + 1 : 0;
       if (errors >= doclingServerErrorsInARow)
         throw new DoclingFailed(503, `${errors} server errors in a row`);
@@ -313,52 +377,143 @@ export const doclingConverter = (options: DoclingOptions): DocumentConverter => 
     }
   };
 
+  /**
+   * Submits the file on new connections until a replica takes it: a busy replica (503) and a
+   * connection that ends without an answer, as while a replica restarts, start nothing, so the job
+   * waits and asks again (issue 922). Unanswered submits in a row are bounded; busy answers last
+   * until the try's deadline.
+   */
+  const place = async (
+    file: DocumentFile,
+    seconds: () => number,
+    opened: Client[],
+    deadline: number,
+  ) => {
+    let waits = 0;
+    let unansweredInARow = 0;
+    for (;;) {
+      if (now().getTime() > deadline) throw pastDeadline();
+      const client = connection();
+      opened.push(client);
+      let submitted: Answer;
+      try {
+        submitted = await send(client, '/v1/convert/file/async', form(file, seconds()));
+      } catch (error) {
+        // Only a connection refused or ended before an answer: a headers timeout already waited long.
+        unansweredInARow += 1;
+        if (!endedEarly(error) || unansweredInARow >= doclingUnansweredSubmitsInARow) throw error;
+        await client.destroy();
+        waits += 1;
+        await sleep(busyWait);
+        continue;
+      }
+      unansweredInARow = 0;
+      if (submitted.status === 503) {
+        await client.destroy();
+        waits += 1;
+        await sleep(busyWait);
+        continue;
+      }
+      if (submitted.status !== 200) throw new DoclingFailed(submitted.status, 'not a task');
+      const id = parsed<TaskStatus>(submitted, 'a task').task_id;
+      if (typeof id !== 'string' || !taskIdPattern.test(id))
+        throw new DoclingFailed(submitted.status, 'not a task');
+      return { client, id, replica: submitted.replica, waits };
+    }
+  };
+
   const convert = async (file: DocumentFile) => {
     // Docling reads PDFs here; any other file goes to the text layer as a refusal (ADR 0042).
     if (!looksLikePdf(file.bytes)) throw new ConversionRefused(file.name, 'unsupported_type');
+    const sha256 = createHash('sha256').update(file.bytes).digest('hex');
+    const pages = await options.countPages?.(file.bytes).catch(() => undefined);
     let answer: Answer | undefined;
     // One deadline for the whole try, from its first submit: the server stops a task at its
     // document timeout, and the try ends ten minutes after that, within the job's expiry.
     const stopBy = now().getTime() + documentTimeoutSeconds * 1000;
     const deadline = stopBy + 10 * 60_000;
-    for (let submits = 1; !answer; submits += 1) {
-      if (now().getTime() > deadline) throw pastDeadline();
-      // The async route: the client polls its task, so no connection is idle for long (issue
-      // 906). A task no replica knows any more is submitted again, a few times a try.
-      const opened = [connection()];
-      try {
-        const first = opened[0] as Client;
-        // A file submitted again asks only for the time left, so Docling stops by the try's end.
-        const left = Math.max(1, Math.floor((stopBy - now().getTime()) / 1000));
-        const submitted = await send(first, '/v1/convert/file/async', form(file, left));
-        if (submitted.status !== 200) throw new DoclingFailed(submitted.status, 'not a task');
-        const id = parsed<TaskStatus>(submitted, 'a task').task_id;
-        if (typeof id !== 'string' || !taskIdPattern.test(id))
-          throw new DoclingFailed(submitted.status, 'not a task');
-        answer = await follow(first, id, opened, deadline);
-      } finally {
-        await Promise.all(opened.map((client) => client.destroy()));
-      }
-      if (answer) break;
-      options.onTaskLost?.({ submits });
-      if (submits >= doclingSubmitsPerTry)
-        throw new DoclingFailed(404, `the task was lost ${submits} times`);
-    }
-    if (answer.status !== 200) throw new DoclingFailed(answer.status, 'not a conversion');
-    const conversion = parsed<DoclingAnswer>(answer, 'a body');
-    const refusal = refusalOf(conversion);
-    if (refusal) throw new ConversionRefused(file.name, refusal);
-    const document = conversion.document?.json_content;
-    if (conversion.status !== 'success' || !isDoclingDocument(document))
-      throw new DoclingFailed(
-        answer.status,
-        `status ${String(conversion.status)} with errors ${categories(conversion).join(', ') || 'none'}`,
-      );
-    return {
-      pages: doclingPages(document),
-      output: new TextEncoder().encode(JSON.stringify(document)),
-      converter: doclingIdentity,
+    // The task the try is on, told once when it ends.
+    let task:
+      | {
+          id: string;
+          submit: number;
+          replica?: string;
+          waits: number;
+          at: number;
+          started?: number;
+        }
+      | undefined;
+    const told = (result: DoclingTaskResult) => {
+      if (!task) return;
+      const end = now().getTime();
+      const started = task.started ?? task.at;
+      options.onTask?.({
+        task: task.id,
+        sha256,
+        ...(pages === undefined ? {} : { pages }),
+        submit: task.submit,
+        ...(task.replica ? { replica: task.replica } : {}),
+        queuedMs: started - task.at,
+        convertingMs: end - started,
+        result,
+        busyWaits: task.waits,
+      });
+      task = undefined;
     };
+    try {
+      for (let submits = 1; !answer; submits += 1) {
+        if (now().getTime() > deadline) throw pastDeadline();
+        // The async route: the client polls its task, so no connection is idle for long (issue
+        // 906). A task no replica knows any more is submitted again, a few times a try.
+        const opened: Client[] = [];
+        try {
+          // A file submitted again asks only for the time left, so Docling stops by the try's end.
+          const left = () => Math.max(1, Math.floor((stopBy - now().getTime()) / 1000));
+          const placed = await place(file, left, opened, deadline);
+          task = {
+            id: placed.id,
+            submit: submits,
+            waits: placed.waits,
+            at: now().getTime(),
+            ...(placed.replica ? { replica: placed.replica } : {}),
+          };
+          const current = task;
+          answer = await follow(placed.client, placed.id, opened, deadline, (status) => {
+            if (status === 'started' && current.started === undefined)
+              current.started = now().getTime();
+          });
+        } finally {
+          await Promise.all(opened.map((client) => client.destroy()));
+        }
+        if (answer) break;
+        told('lost');
+        options.onTaskLost?.({ submits });
+        if (submits >= doclingSubmitsPerTry)
+          throw new DoclingFailed(404, `the task was lost ${submits} times`);
+      }
+      if (answer.status !== 200) throw new DoclingFailed(answer.status, 'not a conversion');
+      const conversion = parsed<DoclingAnswer>(answer, 'a body');
+      const refusal = refusalOf(conversion);
+      if (refusal) {
+        told(refusal);
+        throw new ConversionRefused(file.name, refusal);
+      }
+      const document = conversion.document?.json_content;
+      if (conversion.status !== 'success' || !isDoclingDocument(document))
+        throw new DoclingFailed(
+          answer.status,
+          `status ${String(conversion.status)} with errors ${categories(conversion).join(', ') || 'none'}`,
+        );
+      told('success');
+      return {
+        pages: doclingPages(document),
+        output: new TextEncoder().encode(JSON.stringify(document)),
+        converter: doclingIdentity,
+      };
+    } catch (error) {
+      told('failed');
+      throw error;
+    }
   };
 
   return { extensions: ['.pdf'], convert };
