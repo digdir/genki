@@ -51,7 +51,12 @@ const boot = async () => {
       files: found.files,
     };
   };
-  return { ...platform, client, call, latest, copy };
+  const addTest = () =>
+    client.request('POST', `/tenants/${digdir}/services/hjelper/environments`, {
+      body: { name: 'test' },
+      reason: 'Legger til testutgave',
+    });
+  return { ...platform, client, call, latest, copy, addTest };
 };
 
 describe('the admin MCP tools against the API', () => {
@@ -97,7 +102,8 @@ describe('the admin MCP tools against the API', () => {
   });
 
   it('publishes a valid definition as the person who logged in, with the reason marked as made through a coding agent', async () => {
-    const { call, copy } = await boot();
+    const { call, copy, addTest } = await boot();
+    await addTest();
     const { definition, files } = await copy();
     definition.spec.purpose = 'Svar kort og presist på spørsmål';
 
@@ -114,6 +120,68 @@ describe('the admin MCP tools against the API', () => {
       'Kortere formål etter test i lekeplassen (via kodeagent, genki-admin)',
     );
     expect(read.text).toContain('test:kari');
+  });
+
+  it('says a publish went to the testutgave and users keep the version in use', async () => {
+    const { call, copy, addTest } = await boot();
+    await addTest();
+    const { definition, files } = await copy();
+    definition.spec.purpose = 'Svar kort og presist på spørsmål';
+
+    const published = await call('publish_definition', {
+      yaml: stringify(definition),
+      files,
+      reason: 'Kortere formål etter test i lekeplassen',
+    });
+
+    expect(published.isError).toBeUndefined();
+    expect(published.text).toContain('It went to the testutgave (test).');
+    expect(published.text).toContain('Users still have version 1 («I bruk»)');
+    expect(published.data).toMatchObject({
+      environments: [
+        { name: 'prod', version: 1, followsPublishes: false },
+        { name: 'test', version: 2, followsPublishes: true },
+      ],
+    });
+  });
+
+  it('says no environment runs the version when none follows publishes', async () => {
+    const { call, copy, addTest, client } = await boot();
+    await addTest();
+    await client.request('POST', `/tenants/${digdir}/services/hjelper/environments/test/rollback`, {
+      body: { version: 1 },
+      reason: 'Holder testutgaven på versjon 1',
+    });
+    const { definition, files } = await copy();
+    definition.spec.purpose = 'Svar kort og presist på spørsmål';
+
+    const published = await call('publish_definition', {
+      yaml: stringify(definition),
+      files,
+      reason: 'Kortere formål etter test i lekeplassen',
+    });
+
+    expect(published.text).toContain(
+      'No environment follows publishes, so none runs version 2 yet.',
+    );
+    expect(published.text).not.toContain('It went to the testutgave');
+  });
+
+  it('never publishes to a service whose users would get it at once', async () => {
+    const { call, copy, latest } = await boot();
+    const { definition, files } = await copy();
+    definition.spec.purpose = 'Svar kort og presist på spørsmål';
+
+    const refused = await call('publish_definition', {
+      yaml: stringify(definition),
+      files,
+      reason: 'Kortere formål etter test i lekeplassen',
+    });
+
+    expect(refused.isError).toBe(true);
+    expect(refused.text).toContain('hjelper has no testutgave');
+    expect(refused.text).toContain('https://portal.genki.test/#/services/hjelper');
+    expect((await latest()).version).toBe(1);
   });
 
   it('publishes nothing without a reason, or when the definition is not valid', async () => {

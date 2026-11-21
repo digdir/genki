@@ -306,10 +306,29 @@ describe('the layout saved in the draft', () => {
     );
   });
 
+  it('opens a layout whose texts are in both languages, and keeps the other language when saving', async () => {
+    const layout = {
+      ...fromTemplate('chat-only').layout,
+      profile: { assistantName: { nb: 'Kunnskapsassistenten', en: 'The Knowledge Assistant' } },
+    };
+    await openInterface(withDraftLayout(layout));
+    fireEvent.click(screen.getByRole('radio', { name: 'Tekster' }));
+    const name = screen.getByRole('textbox', { name: 'Navn' }) as HTMLInputElement;
+    expect(name.value).toBe('Kunnskapsassistenten');
+    fireEvent.change(name, { target: { value: 'KA' } });
+    await waitFor(
+      () =>
+        expect(savedLayout()?.profile).toEqual({
+          assistantName: { nb: 'KA', en: 'The Knowledge Assistant' },
+        }),
+      { timeout: 3000 },
+    );
+  });
+
   it('will not edit a draft layout it cannot show without losing it, and writes nothing', async () => {
     const layout = {
       ...fromTemplate('chat-only').layout,
-      profile: { assistantName: { nb: 'Svarhjelpen', en: 'The answer helper' } },
+      profile: { assistantName: { nb: 'Svarhjelpen', sv: 'Svarshjälpen' } },
     };
     const auth = mockAnsattporten(kari);
     await auth.login();

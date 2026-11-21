@@ -120,6 +120,7 @@ export type PlatformOptions = Authentication & {
   lifecycle?: PlatformApiOptions['lifecycle'];
   models?: ModelAdmin;
   drafts?: Pick<ServiceDrafts, 'outdated' | 'followPublish'>;
+  environments?: DefinitionsApiOptions['environments'];
   unmaskedInput?: DefinitionsApiOptions['unmaskedInput'];
   names?: ActorNames;
   now?: () => Date;
@@ -276,6 +277,7 @@ export const createApp = (version: string, options: AppOptions = {}) => {
       admin,
       access,
       ...(options.platform.drafts ? { drafts: options.platform.drafts } : {}),
+      ...(options.platform.environments ? { environments: options.platform.environments } : {}),
       ...(options.platform.unmaskedInput ? { unmaskedInput: options.platform.unmaskedInput } : {}),
       ...(options.platform.names ? { names: options.platform.names } : {}),
       ...(options.platform.registered ? { registered: options.platform.registered } : {}),
@@ -300,6 +302,7 @@ export const createApp = (version: string, options: AppOptions = {}) => {
         : {}),
       ...(options.platform.lifecycle ? { lifecycle: options.platform.lifecycle } : {}),
       ...(options.platform.names ? { names: options.platform.names } : {}),
+      ...(options.platform.drafts ? { drafts: options.platform.drafts } : {}),
       ...(options.platform.now ? { now: options.platform.now } : {}),
       lockdown,
     });

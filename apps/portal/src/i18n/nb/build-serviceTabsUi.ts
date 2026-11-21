@@ -336,10 +336,6 @@ export const serviceTabsUi = {
       one: 'Én kjøring i dag.',
       other: '{count} kjøringer i dag.',
     },
-    envRunsTodayFrom: {
-      one: 'Én kjøring i dag, fra {who}.',
-      other: '{count} kjøringer i dag, fra {who}.',
-    },
     envUsedBy: 'Brukes av {who}.',
     envKeys: {
       one: 'Én nøkkel.',

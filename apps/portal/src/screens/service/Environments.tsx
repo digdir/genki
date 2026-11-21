@@ -235,12 +235,8 @@ export const Environments = ({
               runs: f.number(fact.runsToday),
               total: f.number(fact.totalToday),
             })
-          : e.description
-            ? t('serviceDev.envRunsTodayFrom', { count: fact.runsToday, who: e.description })
-            : t('serviceDev.envRunsToday', { count: fact.runsToday }),
-      fact.runsToday === undefined && e.description
-        ? t('serviceDev.envUsedBy', { who: e.description })
-        : '',
+          : t('serviceDev.envRunsToday', { count: fact.runsToday }),
+      e.description ? t('serviceDev.envUsedBy', { who: e.description }) : '',
       e.followsPublishes && e.name !== productionEnvironment ? '' : users(fact),
     ]
       .filter(Boolean)
