@@ -40,8 +40,7 @@ describe('the builder in English', () => {
         </RightsProvider>,
       ),
     );
-    expect(screen.getByText('Not published · saved automatically')).toBeTruthy();
-    expect(screen.getByText('Draft')).toBeTruthy();
+    expect(screen.getByText(/^Saved to the test edition at once\./)).toBeTruthy();
     fireEvent.click(screen.getAllByRole('button', { name: 'Publish' })[0] as HTMLElement);
     await waitFor(() => expect(screen.getByText('Publish the service')).toBeTruthy());
     expect(screen.getByText(/Publishing replaces the edition in use/)).toBeTruthy();

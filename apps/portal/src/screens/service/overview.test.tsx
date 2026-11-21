@@ -561,7 +561,7 @@ describe('the Oversikt tab of a published service', () => {
       <OverviewSection api={api} tenant={tenant} id="rapport" definition={definition} now={now} />,
     );
 
-    const need = await screen.findByText('Utkastet er endret etter siste test');
+    const need = await screen.findByText('Testutgaven er endret etter siste test');
     expect(text(need.parentElement)).toContain('Testet 11:40, endret 10:00.');
     cleanup();
 
@@ -632,7 +632,7 @@ describe('the Oversikt tab of a published service', () => {
       <OverviewSection api={api} tenant={tenant} id="rapport" definition={definition} now={now} />,
     );
 
-    const need = await screen.findByText('Utkastet stoppes av et krav til kvalitet');
+    const need = await screen.findByText('Testutgaven stoppes av et krav til kvalitet');
     await waitFor(() =>
       expect(text(need.parentElement)).toContain(
         'Ett krav til kvalitet stopper publisering: Avslag uten kilde er 89 %, kravet er 90 %.',
@@ -688,7 +688,7 @@ describe('the Oversikt tab of a published service', () => {
       <OverviewSection api={api} tenant={tenant} id="rapport" definition={definition} now={now} />,
     );
 
-    const need = await screen.findByText('Utkastet stoppes av et krav til kvalitet');
+    const need = await screen.findByText('Testutgaven stoppes av et krav til kvalitet');
     await waitFor(() =>
       expect(text(need.parentElement)).toContain('Avslag uten kilde er 89 %, kravet er 90 %.'),
     );
@@ -715,7 +715,7 @@ describe('the Oversikt tab of a published service', () => {
       <OverviewSection api={api} tenant={tenant} id="rapport" definition={definition} now={now} />,
     );
 
-    const need = await screen.findByText('Utkastet er ikke testet');
+    const need = await screen.findByText('Testutgaven er ikke testet');
     expect(text(need.parentElement)).not.toContain('Testet');
   });
 
@@ -741,7 +741,7 @@ describe('the Oversikt tab of a published service', () => {
       <OverviewSection api={api} tenant={tenant} id="rapport" definition={definition} now={now} />,
     );
 
-    const need = await screen.findByText('Utkastet er endret etter siste test');
+    const need = await screen.findByText('Testutgaven er endret etter siste test');
     expect(text(need.parentElement)).toContain('Testet 13. nov 11:59, endret i går 15:26.');
   });
 
@@ -856,6 +856,17 @@ describe('the Oversikt tab of a published service', () => {
 
     const live = await screen.findByRole('region', { name: 'I bruk' });
     await waitFor(() => expect(text(live)).toContain('data behandles i EU/EØS'));
+  });
+
+  it('names the edition users have I bruk, not by its technical name', async () => {
+    const { api } = health({});
+    render(
+      <OverviewSection api={api} tenant={tenant} id="rapport" definition={definition} now={now} />,
+    );
+
+    const live = await screen.findByRole('region', { name: 'I bruk' });
+    await waitFor(() => expect(text(live)).toMatch(/I bruk: utgave \d+/));
+    expect(text(live)).not.toContain('prod');
   });
 
   it('says nothing about where data is processed when the platform does not know', async () => {

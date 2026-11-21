@@ -22,7 +22,7 @@ export const assistantUi = {
     showApiCall: 'Vis API-kall',
     previousMessage: 'Forrige melding',
     sideIntro:
-      'Spør om endringer i oppsettet. Det jeg foreslår havner i utkastet, ikke i utgaven i bruk.',
+      'Spør om endringer i oppsettet. Det jeg foreslår havner i testutgaven, ikke hos brukerne.',
     sidePlaceholder: 'Spør om noe …',
     composerLabel: 'Skriv til assistenten',
     send: 'Send',

@@ -82,6 +82,8 @@ export const services = defineNamespace({
   environmentProdFixed: 'Utgaven i bruk finnes alltid og kan ikke legges til eller fjernes.',
   environmentTooMany: 'En tjeneste kan ha høyst {max} miljøer.',
   environmentSame: 'Et miljø kan ikke fremmes til seg selv.',
+  environmentMoved:
+    'Miljøet {environment} kjører nå versjon {version}, ikke versjon {expected}. Sjekk versjonene og prøv igjen.',
   environmentNoVersion: 'Tjenesten har ingen publisert versjon {version}.',
   environmentNoEarlier: 'Miljøet {environment} har ingen tidligere versjon å rulle tilbake til.',
   environmentProdBehind:

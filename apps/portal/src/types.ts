@@ -22,6 +22,10 @@ export interface PublishedDefinition extends VersionSummary {
   files?: Record<string, string>;
 }
 
+export interface PublishResult extends PublishedDefinition {
+  environments?: { name: string; version: number | null; followsPublishes: boolean }[];
+}
+
 export interface DefinitionWithHistory {
   kind: DefinitionKind;
   tenant: string;

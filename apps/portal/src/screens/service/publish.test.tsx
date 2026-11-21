@@ -54,7 +54,16 @@ const published = {
 type Problem = { path: string; message: string };
 
 const platform = (
-  outcome: { validate?: Problem[]; publish?: Problem[] },
+  outcome: {
+    validate?: Problem[];
+    publish?: Problem[];
+    staged?: boolean | 'pinned';
+    promoteFails?: boolean;
+    draftSpec?: Record<string, unknown>;
+    gates?: unknown[] | 'fails';
+    runs?: unknown[];
+    testSets?: unknown[];
+  },
   draft: boolean = true,
 ) => {
   const posts: {
@@ -88,7 +97,26 @@ const platform = (
       if (url.endsWith('/definitions'))
         return outcome.publish
           ? json({ title: 'Avvist', status: 422, errors: outcome.publish }, 422)
-          : json({ ...published, version: 2, publishedBy: 'employee:kari' });
+          : json({
+              ...published,
+              version: 2,
+              publishedBy: 'employee:kari',
+              ...(outcome.staged
+                ? {
+                    environments: [
+                      { name: 'prod', version: 1, followsPublishes: false },
+                      outcome.staged === 'pinned'
+                        ? { name: 'test', version: 1, followsPublishes: false }
+                        : { name: 'test', version: 2, followsPublishes: true },
+                    ],
+                  }
+                : { environments: [{ name: 'prod', version: 2, followsPublishes: true }] }),
+            });
+      if (url.endsWith('/environments/prod/promote'))
+        return outcome.promoteFails
+          ? json({ title: 'Nede', status: 503 }, 503)
+          : json({ environments: [] });
+      if (url.endsWith('/environments/prod/rollback')) return json({ environments: [] });
     }
     const served = strategyRoutes(new URL(url, 'http://x').pathname.replace(/^\/api/, ''));
     if (served) return json(served);
@@ -96,7 +124,7 @@ const platform = (
       return draft
         ? json({
             revision: 1,
-            definition,
+            definition: { ...definition, spec: { ...definition.spec, ...outcome.draftSpec } },
             files: published.files,
             at: '2026-10-08T08:00:00Z',
             reason: 'utkast',
@@ -108,6 +136,12 @@ const platform = (
       return json({ latest: published, versions: [published] });
     if (url.endsWith('/definitions')) return json([{ kind: 'Service', id: 'klarsprak' }]);
     if (url.endsWith('/tasks')) return json({ data: [], total: 0 });
+    if (outcome.runs && url.endsWith('/eval-runs')) return json({ data: outcome.runs });
+    if (outcome.testSets && url.endsWith('/test-sets')) return json({ data: outcome.testSets });
+    if (url.endsWith('/gates'))
+      return outcome.gates === 'fails'
+        ? json({ title: 'Nede', status: 503 }, 503)
+        : json({ data: outcome.gates ?? [] });
     if (url.includes('/usage')) return json({ totals: {}, daily: [], byService: [], byModel: [] });
     if (url.includes('/models')) return json({ data: [] });
     return json({});
@@ -122,16 +156,18 @@ const openPublishPage = async (fetch: typeof globalThis.fetch) => {
   render(<App auth={auth} fetch={fetch} live />);
   await screen.findByRole('heading', { level: 1, name: 'Klarspråk' });
   expect(screen.queryByRole('button', { name: 'Publiser som testutgave' })).toBeNull();
-  fireEvent.click(await screen.findByRole('button', { name: 'Publiser ...' }));
-  await screen.findByRole('heading', { level: 1, name: 'Publiser Klarspråk, utgave 2' });
+  fireEvent.click(await screen.findByRole('button', { name: 'Publiser' }));
+  await screen.findByRole('heading', { level: 1, name: 'Publiser Klarspråk' });
   return document.body;
 };
 
 const publishFromHeader = async (fetch: typeof globalThis.fetch) => {
   const page = await openPublishPage(fetch);
   expect(within(page).queryByRole('button', { name: 'Publiser som testutgave' })).toBeNull();
-  await waitFor(() => expect(screen.queryByText('Sjekker utkastet mot plattformen …')).toBeNull());
-  fireEvent.change(within(page).getByLabelText(/^Hva endret du, og hvorfor\?/), {
+  await waitFor(() =>
+    expect(screen.queryByText('Sjekker testutgaven mot plattformen …')).toBeNull(),
+  );
+  fireEvent.change(within(page).getByLabelText(/^Hva er endret, og hvorfor\?/), {
     target: { value: 'Strammer inn instruksjonene' },
   });
   fireEvent.click(within(page).getByRole('button', { name: 'Publiser' }));
@@ -147,17 +183,18 @@ describe('publishing the draft in live mode', () => {
     render(<App auth={auth} fetch={fetch} live />);
     await screen.findByRole('heading', { level: 1, name: 'Klarspråk' });
     expect(
-      (await screen.findByRole('button', { name: 'Publiser ...' })).getAttribute('aria-disabled'),
+      (await screen.findByRole('button', { name: 'Publiser' })).getAttribute('aria-disabled'),
     ).toBe('true');
   });
 
-  it('names the next edition on the publish page and goes back to Oppsett without publishing', async () => {
+  it('says users get everything in the test edition and goes back to Oppsett on Avbryt without publishing', async () => {
     const { fetch, posts } = platform({});
     await openPublishPage(fetch);
     expect(window.location.hash).toBe('#/services/klarsprak/setup/publish');
-    expect(screen.getByText(/Utgave 1 er i bruk til du publiserer/)).toBeTruthy();
+    expect(screen.getByText('Brukerne får alt som er i testutgaven nå.')).toBeTruthy();
+    expect(screen.getByText('Du kan angre publiseringen i Historikk.')).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('link', { name: 'Fortsett å redigere' }));
+    fireEvent.click(screen.getByRole('link', { name: 'Avbryt' }));
     expect(await screen.findByRole('heading', { level: 1, name: 'Klarspråk' })).toBeTruthy();
     expect(window.location.hash).toBe('#/services/klarsprak/setup');
     expect(posts.some((p) => p.url.endsWith('/definitions'))).toBe(false);
@@ -175,7 +212,7 @@ describe('publishing the draft in live mode', () => {
     const page = await openPublishPage(fetch);
     const button = within(page).getByRole('button', { name: 'Publiser' });
     expect(button.getAttribute('aria-disabled')).toBe('true');
-    expect(within(page).getByText('Sjekker utkastet mot plattformen …')).toBeTruthy();
+    expect(within(page).getByText('Sjekker testutgaven mot plattformen …')).toBeTruthy();
     fireEvent.click(button);
     expect(posts.some((p) => p.url.endsWith('/definitions'))).toBe(false);
 
@@ -218,7 +255,9 @@ describe('publishing the draft in live mode', () => {
     const page = await publishFromHeader(fetch);
 
     expect(
-      await within(page).findByRole('heading', { name: 'Plattformen godtar ikke utkastet ennå' }),
+      await within(page).findByRole('heading', {
+        name: 'Plattformen godtar ikke testutgaven ennå',
+      }),
     ).toBeTruthy();
     expect(within(page).getByText('Instruksjoner:').parentElement?.textContent).toBe(
       'Instruksjoner: må fylles ut',
@@ -240,5 +279,192 @@ describe('publishing the draft in live mode', () => {
     ).toBeTruthy();
     expect(within(page).getByText(/refused by evaluation gates/)).toBeTruthy();
     expect(screen.queryByText('Utgave 2 er publisert.')).toBeNull();
+  });
+
+  it('publishing from the portal gives users exactly the published version even when another publish lands first', async () => {
+    const { fetch, posts } = platform({ staged: true });
+    await publishFromHeader(fetch);
+
+    await waitFor(() =>
+      expect(posts.some((p) => p.url.endsWith('/environments/prod/promote'))).toBe(true),
+    );
+    expect(posts.find((p) => p.url.endsWith('/environments/prod/promote'))?.body).toEqual({
+      from: 'test',
+      version: 2,
+    });
+  });
+
+  it('moves users to the new edition when no test edition holds it', async () => {
+    const { fetch, posts } = platform({ staged: 'pinned' });
+    await publishFromHeader(fetch);
+
+    await waitFor(() =>
+      expect(posts.some((p) => p.url.endsWith('/environments/prod/rollback'))).toBe(true),
+    );
+    expect(posts.find((p) => p.url.endsWith('/environments/prod/rollback'))?.body).toEqual({
+      version: 2,
+    });
+  });
+
+  it('says users did not get the new edition when moving it to them fails', async () => {
+    const { fetch } = platform({ staged: true, promoteFails: true });
+    await publishFromHeader(fetch);
+
+    expect(
+      await screen.findByText(
+        'Publisert, men brukerne har ikke fått den. Prøv igjen under Teknisk.',
+      ),
+    ).toBeTruthy();
+  });
+
+  it('leaves the edition in use alone when the publish already moved it', async () => {
+    const { fetch, posts } = platform({});
+    await publishFromHeader(fetch);
+
+    expect(await screen.findByText('Utgave 2 er publisert.')).toBeTruthy();
+    expect(posts.some((p) => p.url.includes('/environments/'))).toBe(false);
+  });
+
+  it('asks what users get from a new variant and publishes it in place of Standard when chosen', async () => {
+    const fast = {
+      id: 'fast',
+      title: { nb: 'Raskere svar', en: 'Faster' },
+      aliases: [],
+      overrides: {},
+    };
+    const { fetch, posts } = platform({
+      draftSpec: { variants: ['default', { ...fast, chat: false }] },
+    });
+    const page = await openPublishPage(fetch);
+    const choice = await within(page).findByRole('group', { name: 'Ny variant: Raskere svar' });
+    expect(
+      (within(choice).getByRole('radio', { name: 'Skjult for brukerne' }) as HTMLInputElement)
+        .checked,
+    ).toBe(true);
+    expect(within(page).getByRole('row', { name: /Varianter/ }).textContent).toContain(
+      'Standard, Raskere svar (skjult)',
+    );
+    fireEvent.click(within(choice).getByRole('radio', { name: 'Erstatter Standard' }));
+    expect(within(page).getByRole('row', { name: /Varianter/ }).textContent).toContain(
+      'Raskere svar, Standard',
+    );
+    await waitFor(() =>
+      expect(screen.queryByText('Sjekker testutgaven mot plattformen …')).toBeNull(),
+    );
+    fireEvent.change(within(page).getByLabelText(/^Hva er endret, og hvorfor\?/), {
+      target: { value: 'Raskere svar for alle' },
+    });
+    fireEvent.click(within(page).getByRole('button', { name: 'Publiser' }));
+
+    expect(await screen.findByText('Utgave 2 er publisert.')).toBeTruthy();
+    const variants = posts.filter((p) => p.url.endsWith('/definitions')).at(-1)?.body.definition
+      ?.spec.variants as unknown[];
+    expect(variants).toEqual([{ ...fast }, 'default']);
+  });
+
+  it('shows what each changed area is in use now and after publishing', async () => {
+    const { fetch } = platform({ draftSpec: { purpose: 'Skriver kortere tekst' } });
+    const page = await openPublishPage(fetch);
+    const row = await within(page).findByRole('row', { name: /Formål/ });
+    expect(within(row).getByText('Skriver om tekst til klarspråk')).toBeTruthy();
+    expect(within(row).getByText('Skriver kortere tekst')).toBeTruthy();
+  });
+
+  it('never lists a new risk confirmation as a change', async () => {
+    const { fetch } = platform({
+      draftSpec: {
+        riskConfirmation: { by: 'employee:kari', at: '2026-11-20', reasons: ['Sjekket på nytt'] },
+      },
+    });
+    const page = await openPublishPage(fetch);
+    expect(await within(page).findByText('Testutgaven er lik den i bruk.')).toBeTruthy();
+    expect(within(page).queryByRole('row', { name: /Risiko/ })).toBeNull();
+  });
+
+  it('names the quality requirement the test edition is under, with Kjør testsettet after the text', async () => {
+    const { fetch } = platform({
+      gates: [
+        {
+          id: 'avslag-uten-kilde',
+          version: 1,
+          mandatory: true,
+          spec: { kind: 'threshold', metric: 'refusal', threshold: 0.9 },
+        },
+      ],
+      runs: [
+        {
+          id: 'd1',
+          status: 'completed',
+          testSet: 'kjerne',
+          version: 'draft',
+          draftRevision: 1,
+          startedAt: '2026-10-08T09:00:00Z',
+          endedAt: '2026-10-08T09:10:00Z',
+          score: 0.9,
+          passed: 9,
+          total: 10,
+          metrics: { refusal: { mean: 0.89, n: 9 } },
+        },
+      ],
+    });
+    const page = await openPublishPage(fetch);
+    const below = await within(page).findByText(
+      'Under kravet på ett punkt: avslag uten kilde er 89 %, kravet er 90 %.',
+    );
+    const run = within(below.closest('[role="status"]') as HTMLElement).getByRole('link', {
+      name: 'Kjør testsettet',
+    });
+    expect(below.compareDocumentPosition(run) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('says the quality requirements could not be checked instead of saying they are met', async () => {
+    const { fetch } = platform({
+      gates: 'fails',
+      testSets: [{ id: 'kjerne', name: 'Kjerne', cases: 10 }],
+      runs: [
+        {
+          id: 'd1',
+          status: 'completed',
+          testSet: 'kjerne',
+          version: 'draft',
+          draftRevision: 1,
+          startedAt: '2026-10-08T09:00:00Z',
+          endedAt: '2026-10-08T09:10:00Z',
+          score: 1,
+          passed: 10,
+          total: 10,
+        },
+      ],
+    });
+    const page = await openPublishPage(fetch);
+    expect(await within(page).findByText('Kunne ikke sjekke kravene til kvalitet.')).toBeTruthy();
+    expect(within(page).queryByText('Alle krav er nådd.')).toBeNull();
+  });
+
+  it('lets only one new variant replace Standard', async () => {
+    const variant = (id: string, nb: string) => ({
+      id,
+      title: { nb, en: nb },
+      aliases: [],
+      overrides: {},
+      chat: false,
+    });
+    const { fetch } = platform({
+      draftSpec: {
+        variants: ['default', variant('fast', 'Raskere svar'), variant('long', 'Lengre svar')],
+      },
+    });
+    const page = await openPublishPage(fetch);
+    const fast = await within(page).findByRole('group', { name: 'Ny variant: Raskere svar' });
+    const long = within(page).getByRole('group', { name: 'Ny variant: Lengre svar' });
+    fireEvent.click(within(fast).getByRole('radio', { name: 'Erstatter Standard' }));
+    fireEvent.click(within(long).getByRole('radio', { name: 'Erstatter Standard' }));
+    expect(
+      (within(fast).getByRole('radio', { name: 'Brukerne kan velge den' }) as HTMLInputElement)
+        .checked,
+    ).toBe(true);
+    expect(
+      (within(long).getByRole('radio', { name: 'Erstatter Standard' }) as HTMLInputElement).checked,
+    ).toBe(true);
   });
 });

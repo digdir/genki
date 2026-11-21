@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { afterEach, describe, expect, it } from 'vitest';
 import { createApiClient } from '../../api';
 import { DefinitionEditor } from './DefinitionEditor';
-import { Versions } from './Versions';
+import { History } from './History';
 
 afterEach(cleanup);
 
@@ -66,7 +66,7 @@ describe('the Teknisk tekst (YAML) page', () => {
 
   it('says a service that was never published has no editions yet, not that loading failed', async () => {
     const { api } = platform();
-    render(<Versions api={api} tenant={tenant} serviceId="ny" />);
+    render(<History api={api} tenant={tenant} serviceId="ny" />);
 
     expect(await screen.findByRole('heading', { name: 'Ingen utgaver ennå' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: /Prøv igjen/ })).toBeNull();
@@ -109,5 +109,12 @@ describe('the Teknisk tekst (YAML) page', () => {
     );
     expect(writes.some((w) => w.path === '/definitions')).toBe(false);
     expect(await screen.findByText('Gyldig.')).toBeTruthy();
+  });
+
+  it('links the changes to the publish page, where they are shown against the edition in use', async () => {
+    const { api } = platform();
+    render(<DefinitionEditor api={api} tenant={tenant} serviceId="rapport" />);
+    const link = await screen.findByRole('link', { name: 'Se endringene mot utgaven i bruk' });
+    expect(link.getAttribute('href')).toBe('#/services/rapport/setup/publish');
   });
 });

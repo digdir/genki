@@ -23,7 +23,7 @@ export const assistantUi = {
     showApiCall: 'Show API call',
     previousMessage: 'Previous message',
     sideIntro:
-      'Ask about changes to the setup. What I suggest goes into the draft, not the edition in use.',
+      'Ask about changes to the setup. What I suggest goes into the test edition, not to the users.',
     sidePlaceholder: 'Ask about something …',
     composerLabel: 'Write to the assistant',
     send: 'Send',

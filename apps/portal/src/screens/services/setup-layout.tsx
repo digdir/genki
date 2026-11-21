@@ -71,7 +71,8 @@ export const SetupLayout = ({
 }) => {
   const t = useT();
   const [advancedOpen, setAdvancedOpen] = useState(advancedAreas.includes(current));
-  const [tried, setTried] = useState(pane === 'try');
+  const shown: SidePane = assistant === undefined ? 'try' : pane;
+  const [tried, setTried] = useState(shown === 'try');
   const side = useRef<HTMLDivElement>(null);
   const toSide = (to: SidePane) => {
     if (to === 'try') setTried(true);
@@ -150,9 +151,11 @@ export const SetupLayout = ({
             </Heading>
             <Paragraph className="meta">{t(helpKeys[current])}</Paragraph>
             <div className="setup-side-jump">
-              <Button variant="secondary" data-size="sm" onClick={() => toSide('assistant')}>
-                {t('setupList.toAssistant')}
-              </Button>
+              {assistant === undefined ? null : (
+                <Button variant="secondary" data-size="sm" onClick={() => toSide('assistant')}>
+                  {t('setupList.toAssistant')}
+                </Button>
+              )}
               <Button variant="tertiary" data-size="sm" onClick={() => toSide('try')}>
                 {t('setupList.toTry')}
               </Button>
@@ -187,7 +190,7 @@ export const SetupLayout = ({
           aria-label={t('setupList.sideLabel')}
         >
           <Tabs
-            value={pane}
+            value={shown}
             onChange={(v) => {
               if (v === 'try') setTried(true);
               onPane(v as SidePane);
@@ -195,11 +198,13 @@ export const SetupLayout = ({
             data-size="sm"
           >
             <TabsList aria-label={t('setupList.sideTabs')}>
-              <TabsTab value="assistant">{t('setupList.tabAssistant')}</TabsTab>
+              {assistant === undefined ? null : (
+                <TabsTab value="assistant">{t('setupList.tabAssistant')}</TabsTab>
+              )}
               <TabsTab value="try">{t('setupList.tabTry')}</TabsTab>
             </TabsList>
-            <TabsPanel value="assistant">{assistant}</TabsPanel>
-            <TabsPanel value="try">{tried || pane === 'try' ? tryPane : null}</TabsPanel>
+            {assistant === undefined ? null : <TabsPanel value="assistant">{assistant}</TabsPanel>}
+            <TabsPanel value="try">{tried || shown === 'try' ? tryPane : null}</TabsPanel>
           </Tabs>
         </div>
       </div>

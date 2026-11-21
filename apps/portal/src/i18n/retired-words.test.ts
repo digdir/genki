@@ -156,7 +156,18 @@ const covers = (exception: Exception, key: string) =>
 const excepted = (key: string, name: string) =>
   exceptions.some((exception) => covers(exception, key) && exception.word === name);
 
+const editionWordsNb = /(?<![\p{L}])(prod|versjon\p{L}*|miljø\p{L}*|utkast\p{L}*)(?![\p{L}])/iu;
+const editionWordsEn = /(?<![\p{L}])(prod|versions?|environments?|drafts?)(?![\p{L}])/iu;
+
 describe('portal naming', () => {
+  it('keeps prod, versjon, miljø and utkast off the test edition and in use texts', () => {
+    const found = [
+      ...strings(nb.edition).filter(([, text]) => editionWordsNb.test(withoutPlaceholders(text))),
+      ...strings(en.edition).filter(([, text]) => editionWordsEn.test(withoutPlaceholders(text))),
+    ];
+    expect(found).toEqual([]);
+  });
+
   it('never uses a retired word in the bokmål catalogue', () => {
     expect(offenders(nb, retiredNb)).toEqual([]);
   });

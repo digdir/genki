@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import type { ApiClient } from '../../api';
 import type { DatasetView } from '../../api/datasets';
 import { productionEnvironment } from '../../api/environments';
+import { placeName } from './dev-format';
 import { asServiceDefinition, type ServiceDefinition } from '../../data/service-definition';
 import { datasetsOf } from '../../data/service-form';
 import { mediaKind } from '../../data/unmasked-input';
@@ -982,7 +983,7 @@ export const OverviewSection = ({
                 ).map((e) => (
                   <span key={e.name} className="ov-chip">
                     {t('serviceHealth.environmentVersion', {
-                      name: e.name,
+                      name: placeName(t, e.name),
                       version: e.version ?? '',
                     })}
                   </span>

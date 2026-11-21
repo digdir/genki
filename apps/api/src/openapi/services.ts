@@ -1979,18 +1979,20 @@ export const serviceRoutes: RouteConfig[] = [
     method: 'post',
     path: '/tenants/{tenant}/services/{id}/environments/{environment}/promote',
     summary:
-      'Set the environment, usually prod, to the version another environment runs (test unless from says otherwise), without publishing. Needs manage-services; audited',
+      'Set the environment, usually prod, to the version another environment runs (test unless from says otherwise), without publishing. With version, refused unless the source still runs that version. Needs manage-services; audited',
     request: {
       params: z.object({ tenant, id: service, environment }),
       headers: changeReason,
-      body: body(z.object({ from: z.string().optional() })),
+      body: body(
+        z.object({ from: z.string().optional(), version: z.number().int().positive().optional() }),
+      ),
     },
     responses: {
       200: audited(ServiceEnvironments, 'Promoted'),
       400: problem('Missing reason, or promoting an environment to itself'),
       ...tenantErrors,
       404: problem('No such service or environment'),
-      409: problem('prod is the only environment'),
+      409: problem('prod is the only environment, or the source no longer runs version'),
     },
   }),
   createRoute({

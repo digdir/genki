@@ -142,7 +142,7 @@ describe('new service', () => {
     fireEvent.click(screen.getByRole('button', { name: /Henter ut opplysninger/ }));
     expect(await screen.findByText('Satte jobb: henter ut opplysninger')).toBeTruthy();
     expect(screen.getByRole('heading', { level: 1, name: 'Ny tjeneste' })).toBeTruthy();
-    expect(screen.getByText('Ikke publisert · lagres automatisk')).toBeTruthy();
+    expect(screen.getByText(/^Lagres i testutgaven med en gang\./)).toBeTruthy();
     expect(screen.getByRole('button', { name: /^Formål og målgruppe/ })).toBeTruthy();
     expectAccessible();
   });
@@ -172,21 +172,18 @@ describe('builder', () => {
       ['Oppsett', '#/services/rapportassistenten/setup'],
       ['Utforming', '#/services/rapportassistenten/interface'],
       ['Kvalitet', '#/services/rapportassistenten/quality'],
-      ['Teknisk', '#/services/rapportassistenten/versions'],
+      ['Historikk', '#/services/rapportassistenten/versions'],
+      ['Teknisk', '#/services/rapportassistenten/log'],
     ]);
     expect(navLink('Oversikt').getAttribute('aria-selected')).toBe('true');
     expect(await screen.findByRole('heading', { level: 2, name: 'Slik går det' })).toBeTruthy();
-    expect(screen.getByText('Utkast basert på utgave 7 · lagres automatisk')).toBeTruthy();
     expect(screen.queryByRole('complementary', { name: 'Byggeassistent' })).toBeNull();
     expect(screen.queryByRole('navigation', { name: 'Brødsmuler' })).toBeNull();
     expectAccessible();
 
     go('#/services/rapportassistenten/versions');
-    expect(await screen.findByText('Utgave 7')).toBeTruthy();
-    expect(navLink('Teknisk').getAttribute('aria-selected')).toBe('true');
-    expect(subLink('Teknisk', 'Historikk').getAttribute('aria-selected')).toBe('true');
-    expect(screen.getByText('Utgave 6')).toBeTruthy();
-    expect(screen.getByText('«Strammere krav til kilder»')).toBeTruthy();
+    expect(await screen.findByText('Strammere krav til kilder')).toBeTruthy();
+    expect(navLink('Historikk').getAttribute('aria-selected')).toBe('true');
     expectAccessible();
   });
 
@@ -421,20 +418,17 @@ describe('pasting the example definitions', () => {
 });
 
 describe('versions', () => {
-  it('compares an edition with the one before and publishes it again as a new edition', async () => {
+  it('restores the edition before the one in use by publishing it again', async () => {
     const { calls, fetch } = recording();
     await openBuilder('#/services/rapportassistenten/versions', 'Rapportassistenten', fetch);
-    fireEvent.click(await screen.findByRole('button', { name: /^Utgave 6/ }));
-    expect(await screen.findByRole('heading', { name: 'Utgave 6, første utgave' })).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Gjenopprett denne utgaven' }));
-    const confirm = screen.getByRole('alertdialog', { name: 'Gjenopprett utgave 6' });
-    expect(within(confirm).getByText(/publiseres som utgave 8/)).toBeTruthy();
-    fireEvent.change(within(confirm).getByLabelText('Begrunnelse'), {
-      target: { value: 'Utgave 7 avslår for sjelden' },
-    });
-    fireEvent.click(within(confirm).getByRole('button', { name: 'Publiser som utgave 8' }));
-    expect(await screen.findByText('Utgave 6 er publisert på nytt som utgave 8.')).toBeTruthy();
-    expect(calls.some((c) => c.url.endsWith('/rapportassistenten/versions/6'))).toBe(true);
+    const [restore] = await screen.findAllByRole('button', { name: 'Gjenopprett denne utgaven' });
+    fireEvent.click(restore as HTMLElement);
+    const confirm = await screen.findByRole('dialog', { name: /^Gjenopprette utgaven fra / });
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Gjenopprett denne utgaven' }));
+    await waitFor(() =>
+      expect(calls.some((c) => c.url.endsWith('/rapportassistenten/versions/6'))).toBe(true),
+    );
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(calls.some((c) => c.method === 'POST' && c.url.endsWith('/definitions'))).toBe(true);
     expectAccessible();
   });
@@ -481,7 +475,7 @@ describe('publishing', () => {
     expect(definition.metadata?.version).toBe(8);
     expect(definition.spec?.riskConfirmation).toBeTruthy();
     go('#/services/rapportassistenten/versions');
-    expect(await screen.findByText('Utgave 8')).toBeTruthy();
+    expect(await screen.findByText('Bekreftet risikonivå før lansering')).toBeTruthy();
   });
 
   it('publishes to test without changing the live version', async () => {

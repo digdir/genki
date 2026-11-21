@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import type { ReactNode } from 'react';
 import { createApiClient } from '../../api';
 import { RightsProvider } from '../../Shell';
@@ -9,7 +9,7 @@ import { LiveNewService } from '../services/LiveNewService';
 import { LiveTransfer } from '../settings/LiveTransfer';
 import { DefinitionEditor } from './DefinitionEditor';
 import { TestRun } from './TestRun';
-import { Versions } from './Versions';
+import { History } from './History';
 
 const asManager = (ui: ReactNode) => (
   <RightsProvider value={['manage-services']}>{ui}</RightsProvider>
@@ -17,6 +17,14 @@ const asManager = (ui: ReactNode) => (
 
 document.getAnimations ??= () => [];
 afterEach(cleanup);
+beforeAll(() => {
+  HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {
+    this.open = true;
+  };
+  HTMLDialogElement.prototype.close ??= function (this: HTMLDialogElement) {
+    this.open = false;
+  };
+});
 
 const tenant = '991825827';
 const definition = (instructions: string, version: number) => ({
@@ -79,6 +87,9 @@ const platform = (routes: Record<string, (call: Call) => unknown>) => {
 };
 
 const service = `/tenants/${tenant}/definitions/services/klarsprak`;
+const prodOnly = () => ({
+  environments: [{ name: 'prod', version: 2, followsPublishes: true }],
+});
 const history = () => ({
   kind: 'Service',
   tenant,
@@ -154,34 +165,38 @@ describe('service definition sections', () => {
     expect(calls.some((c) => c.method === 'PUT' || c.path === '/definitions')).toBe(false);
   });
 
-  it('lists the version history and republishes an earlier version as a new one', async () => {
+  it('restores an earlier edition by publishing its content again, without asking for a reason or promising the test edition keeps its changes', async () => {
     const { api, calls } = platform({
       [`GET ${service}`]: history,
       [`GET ${service}/versions/1`]: () => ({
         ...published(1),
         definition: definition('Svar langt.', 1),
       }),
+      [`GET /tenants/${tenant}/services/klarsprak/environments`]: prodOnly,
       'POST /definitions': () => published(3),
     });
-    render(asManager(<Versions api={api} tenant={tenant} serviceId="klarsprak" />));
+    render(asManager(<History api={api} tenant={tenant} serviceId="klarsprak" />));
 
-    expect(await screen.findByText('«Kortere»')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: /^Utgave 1\b/ }));
-    fireEvent.click(await screen.findByRole('button', { name: /Gjenopprett denne utgaven/ }));
-    fireEvent.change(screen.getByLabelText('Begrunnelse'), {
-      target: { value: 'Tilbake til lange svar' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Publiser som utgave 3' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Gjenopprett denne utgaven' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByRole('heading').textContent).toMatch(/^Gjenopprette utgaven fra /);
+    expect(within(dialog).queryByText(/Testutgaven beholder/)).toBeNull();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Gjenopprett denne utgaven' }));
 
-    expect(await screen.findByText('Utgave 1 er publisert på nytt som utgave 3.')).toBeTruthy();
+    await waitFor(() =>
+      expect(calls.some((c) => c.method === 'POST' && c.path === '/definitions')).toBe(true),
+    );
     const publish = calls.find((c) => c.method === 'POST' && c.path === '/definitions');
     const sent = (publish?.body as { definition: { metadata: Record<string, unknown> } })
       .definition;
     expect(sent.metadata.version).toBeUndefined();
     expect(JSON.stringify(sent)).toContain('Svar langt.');
+    expect(decodeURIComponent(publish?.headers.get('change-reason') ?? '')).toMatch(
+      /^Gjenopprettet utgaven fra /,
+    );
   });
 
-  it('restores an earlier version with the sharing of the version in use', async () => {
+  it('restores an earlier edition with the sharing of the edition in use', async () => {
     const withSharing = (version: number, availableTo: string[]) => {
       const d = definition('Svar langt.', version);
       return { ...d, spec: { ...d.spec, availableTo } };
@@ -195,19 +210,18 @@ describe('service definition sections', () => {
         ...published(1),
         definition: withSharing(1, ['111222333']),
       }),
+      [`GET /tenants/${tenant}/services/klarsprak/environments`]: prodOnly,
       'POST /definitions': () => published(3),
     });
-    render(asManager(<Versions api={api} tenant={tenant} serviceId="klarsprak" />));
+    render(asManager(<History api={api} tenant={tenant} serviceId="klarsprak" />));
 
-    await screen.findByText('«Kortere»');
-    fireEvent.click(screen.getByRole('button', { name: /^Utgave 1\b/ }));
-    fireEvent.click(await screen.findByRole('button', { name: /Gjenopprett denne utgaven/ }));
-    fireEvent.change(screen.getByLabelText('Begrunnelse'), {
-      target: { value: 'Tilbake til lange svar' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Publiser som utgave 3' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Gjenopprett denne utgaven' }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Gjenopprett denne utgaven' }));
 
-    await screen.findByText('Utgave 1 er publisert på nytt som utgave 3.');
+    await waitFor(() =>
+      expect(calls.some((c) => c.method === 'POST' && c.path === '/definitions')).toBe(true),
+    );
     const publish = calls.find((c) => c.method === 'POST' && c.path === '/definitions');
     const sent = (publish?.body as { definition: { spec: { availableTo?: unknown } } }).definition;
     expect(sent.spec.availableTo).toEqual(['999888777']);
