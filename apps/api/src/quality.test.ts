@@ -2641,7 +2641,7 @@ describe('Langfuse judges on a run', () => {
 
       expect(started.status).toBe(409);
       expect(messages).toEqual([
-        `prosjektet til koblingen lokal har aktive dommere som genki ikke leser: ${judgeRule}; ta dem i bruk eller slå dem av i Langfuse`,
+        `prosjektet til koblingen lokal har aktive automatiske vurderinger som genki ikke leser: ${judgeRule}; ta dem i bruk eller slå dem av i Langfuse`,
         'alle_spenn ville vurdert hvert spenn i testtilfellene; legg til filteret isExperimentItemRootSpan = true, eller hold genkis testkjøringer utenfor med environment none of genki-test-runs',
       ]);
     });
@@ -2788,7 +2788,7 @@ describe('Langfuse judges on a run', () => {
     });
     // The portal asks in bokmål, and the API answers in it.
     expect(translateMessage(error?.message ?? '', 'nb')).toBe(
-      `kvalitetskravet kriterier-minst-80 leser Langfuse-dommeren ${judgeRule} på koblingen lokal, som er rådgivende og aldri stopper en publisering`,
+      `kvalitetskravet kriterier-minst-80 leser den automatiske vurderingen ${judgeRule} i Langfuse på koblingen lokal, som er rådgivende og aldri stopper en publisering`,
     );
     expect(saved.status).toBe(200);
   });

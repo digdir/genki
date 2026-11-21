@@ -55,20 +55,20 @@ const platform = () => {
   return { writes, api: createApiClient({ baseUrl: '/api', fetch, token: () => 'kari' }) };
 };
 
-describe('the Definisjon (YAML) page', () => {
-  it('says a service that was never published has no definition yet, not that loading failed', async () => {
+describe('the Teknisk tekst (YAML) page', () => {
+  it('says a service that was never published has no technical text yet, not that loading failed', async () => {
     const { api } = platform();
     render(<DefinitionEditor api={api} tenant={tenant} serviceId="ny" />);
 
-    expect(await screen.findByRole('heading', { name: 'Ingen definisjon ennå' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Ingen teknisk tekst ennå' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: /Prøv igjen/ })).toBeNull();
   });
 
-  it('says a service that was never published has no versions yet, not that loading failed', async () => {
+  it('says a service that was never published has no editions yet, not that loading failed', async () => {
     const { api } = platform();
     render(<Versions api={api} tenant={tenant} serviceId="ny" />);
 
-    expect(await screen.findByRole('heading', { name: 'Ingen versjoner ennå' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Ingen utgaver ennå' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: /Prøv igjen/ })).toBeNull();
   });
 
@@ -76,7 +76,7 @@ describe('the Definisjon (YAML) page', () => {
     const { api } = platform();
     render(<DefinitionEditor api={api} tenant={tenant} serviceId="rapport" />);
 
-    const editor = (await screen.findByLabelText('Definisjonen')) as HTMLTextAreaElement;
+    const editor = (await screen.findByLabelText('Teknisk tekst')) as HTMLTextAreaElement;
     const jump = screen.getByRole('navigation', { name: 'Hopp til' });
     expect(
       within(jump)
@@ -94,7 +94,7 @@ describe('the Definisjon (YAML) page', () => {
     const { api, writes } = platform();
     render(<DefinitionEditor api={api} tenant={tenant} serviceId="rapport" />);
 
-    const editor = (await screen.findByLabelText('Definisjonen')) as HTMLTextAreaElement;
+    const editor = (await screen.findByLabelText('Teknisk tekst')) as HTMLTextAreaElement;
     fireEvent.change(editor, {
       target: { value: editor.value.replace('Svarer på spørsmål', 'Svarer på flere spørsmål') },
     });

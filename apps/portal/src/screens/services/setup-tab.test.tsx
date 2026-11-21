@@ -145,7 +145,7 @@ describe('the default instructions in the setup', () => {
     fireEvent.click(summary);
     expect(shown().value).toBe(ragDefault);
     expect(shown().readOnly).toBe(true);
-    expect(screen.getByText(/plattformen legger til ferdighetene/)).toBeTruthy();
+    expect(screen.getByText(/plattformen legger til arbeidsinstruksene/)).toBeTruthy();
   });
 
   it('Bruk som utgangspunkt copies the default instructions into the editor', () => {

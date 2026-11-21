@@ -93,8 +93,8 @@ describe('who created a key, and whether it may use models in lockdown', () => {
       />,
     );
 
-    expect(await itemOf('Med skaper')).toContain('Kan bruke modeller i låst miljø');
-    expect(await itemOf('Uten skaper')).toContain('Kan ikke bruke modeller i låst miljø');
+    expect(await itemOf('Med skaper')).toContain('Kan bruke modeller i genki-test (låst)');
+    expect(await itemOf('Uten skaper')).toContain('Kan ikke bruke modeller i genki-test (låst)');
   });
 
   it('shows only the date when the creator has no known name', async () => {
@@ -149,9 +149,9 @@ describe('who created a key, and whether it may use models in lockdown', () => {
     );
 
     expect(await itemOf('Med skaper')).toMatch(/created 3 Nov 2026 by Kari Nordmann/);
-    expect(await itemOf('Med skaper')).toContain('Can use models in the locked environment');
+    expect(await itemOf('Med skaper')).toContain('Can use models in the locked genki-test');
     expect(await itemOf('Uten skaper')).toContain(
-      'Cannot use models in the locked environment: created by a login that is not admitted',
+      'Cannot use models in the locked genki-test: created by a login that is not admitted',
     );
   });
 });

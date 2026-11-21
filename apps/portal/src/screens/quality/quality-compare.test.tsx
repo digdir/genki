@@ -110,7 +110,7 @@ describe('comparing two versions on Kvalitet', () => {
       />,
     );
 
-    const section = screen.getByRole('region', { name: 'Sammenlign to versjoner' });
+    const section = screen.getByRole('region', { name: 'Sammenligning' });
     const items = await within(section).findAllByRole('listitem');
     expect(items.map((i) => i.textContent)).toEqual([
       'Dårligere«Hvem fører tilsyn med barnehager?» Nevner ikke kommunen',
@@ -125,7 +125,7 @@ describe('comparing two versions on Kvalitet', () => {
     );
     expect(within(section).getByText('bedre i B').previousElementSibling?.textContent).toBe('1');
     const a = within(section).getByRole('combobox', { name: 'A' }) as HTMLSelectElement;
-    expect(a.selectedOptions[0]?.textContent?.replace(/\s/g, ' ')).toBe('Versjon 6 (i bruk), 80 %');
+    expect(a.selectedOptions[0]?.textContent?.replace(/\s/g, ' ')).toBe('Utgave 6 (i bruk), 80 %');
     expect(within(section).queryByRole('button', { name: /^Bedre/ })).toBeNull();
   });
 
@@ -190,7 +190,7 @@ describe('the cases of the last run', () => {
     const table = await screen.findByRole('table');
     await waitFor(() => expect(within(table).getAllByRole('row')).toHaveLength(4));
     expect(asked.at(-1)?.get('baseline')).toBe('r6');
-    expect(within(table).getByRole('columnheader', { name: 'Versjon 6' })).toBeTruthy();
+    expect(within(table).getByRole('columnheader', { name: 'Utgave 6' })).toBeTruthy();
     const worse = within(table).getByText('Hvem fører tilsyn med barnehager?').closest('tr');
     expect(
       within(worse as HTMLElement)
@@ -205,7 +205,7 @@ describe('the cases of the last run', () => {
     ]);
     expect(within(table).getByText('Eksakt tekst')).toBeTruthy();
     expect(within(table).getByText('Skal avslå')).toBeTruthy();
-    expect(screen.getByText('Versjon 7, testsettet Kjernespørsmål. Feilede først')).toBeTruthy();
+    expect(screen.getByText('Utgave 7, testsettet Kjernespørsmål. Feilede først')).toBeTruthy();
   });
 
   it('filters the cases by result and searches the questions', async () => {

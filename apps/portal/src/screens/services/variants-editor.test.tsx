@@ -91,13 +91,13 @@ describe('the way of working of a variant', () => {
     fireEvent.change(within(row).getByLabelText('Arbeidsmåte for Rask'), {
       target: { value: 'step-flow' },
     });
-    const picker = await within(row).findByRole('combobox', { name: 'Stegflyt' });
+    const picker = await within(row).findByRole('combobox', { name: 'Arbeidsflyt' });
     await waitFor(() =>
-      expect(within(row).getByText('postruting, versjon 2 (nyeste)')).toBeTruthy(),
+      expect(within(row).getByText('postruting, utgave 2 (nyeste)')).toBeTruthy(),
     );
     const item = document.createElement('data');
     item.value = 'postruting@2';
-    item.textContent = 'postruting, versjon 2 (nyeste)';
+    item.textContent = 'postruting, utgave 2 (nyeste)';
     act(() => {
       picker
         .closest('ds-suggestion')
@@ -275,17 +275,17 @@ describe('recipe versions', () => {
     },
   };
 
-  it('a variant shows the recipe version it is pinned to, marks a shared recipe, and updates only when asked', async () => {
+  it('a variant shows the recipe edition it is pinned to, marks a shared recipe, and updates only when asked', async () => {
     const { state } = renderVariants(ka([{ ...mini, id: 'default' }, pinned]), newer);
     const row = card('Rask');
 
-    expect(await within(row).findByText('Versjon 1')).toBeTruthy();
+    expect(await within(row).findByText('Utgave 1')).toBeTruthy();
     expect(within(row).getAllByText(/Delt av Digdir\./).length).toBeGreaterThan(0);
     expect(published(state.latest)[1]).toMatchObject({
       strategy: { config: { flow: 'answer-briefly-with-sources@1' } },
     });
 
-    fireEvent.click(within(row).getByRole('button', { name: 'Oppdater til versjon 2' }));
+    fireEvent.click(within(row).getByRole('button', { name: 'Oppdater til utgave 2' }));
 
     expect(published(state.latest)[1]).toMatchObject({
       strategy: {

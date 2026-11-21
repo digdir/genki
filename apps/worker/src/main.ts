@@ -664,7 +664,7 @@ log('traces', { enabled: Boolean(traces) });
 
 const blockTexts: BlockTexts = {
   disabled: (name) =>
-    `Byggeklossen «${name}» er slått av for virksomheten. Slå den på igjen under Byggeklosser, eller fjern den fra tjenesten.`,
+    `Delen «${name}» er slått av for virksomheten. Slå den på igjen under Katalog, eller fjern den fra tjenesten.`,
   toolTimedOut: (seconds) => `Verktøyet svarte ikke innen ${seconds} sekunder.`,
 };
 const knowledgeDatasets =

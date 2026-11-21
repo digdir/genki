@@ -38,7 +38,7 @@ const Fullscreen = () => (
 
 const widthHandle = () =>
   screen.getByRole('separator', {
-    name: 'Endre bredden på klossene ved siden av forhåndsvisningen',
+    name: 'Endre bredden på designelementene ved siden av forhåndsvisningen',
   });
 const heightHandle = () =>
   screen.getByRole('separator', { name: 'Endre høyden på forhåndsvisningen' });

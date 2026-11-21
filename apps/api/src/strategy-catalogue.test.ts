@@ -92,7 +92,7 @@ describe('the strategy catalogue', () => {
     });
     expect(defaults['rag-single-shot']?.text.nb).toBe(datedSystemPromptTemplate);
     expect(defaults['rag-single-shot']?.note?.nb).toContain('{date}');
-    expect(defaults['agent-loop']?.note?.en).toContain('skills');
+    expect(defaults['agent-loop']?.note?.en).toContain('work instructions');
     expect(defaults['single-call']).toBeUndefined();
     expect(defaults['step-flow']).toBeUndefined();
     expect(defaults['remote-agent']).toBeUndefined();

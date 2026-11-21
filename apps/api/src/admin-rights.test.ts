@@ -126,7 +126,7 @@ describe('rights on admin actions', () => {
     });
   });
 
-  it('approving a level-3 proposal needs Registrere byggeklosser', async () => {
+  it('approving a level-3 proposal needs Legge til i katalogen', async () => {
     const { admin } = setup();
     const input = { tenant: digdir, reason: 'Godkjent', id: 'forslag-1', op: 'approve' };
 
@@ -135,7 +135,7 @@ describe('rights on admin actions', () => {
       await admin.perform(kari, 'platform.proposal.decide', { ...input, level: 3 }),
     ).toMatchObject({
       ok: false,
-      problem: { title: 'Du trenger rettigheten «Registrere byggeklosser»' },
+      problem: { title: 'Du trenger rettigheten «Legge til i katalogen»' },
     });
   });
 

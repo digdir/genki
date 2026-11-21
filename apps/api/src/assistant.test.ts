@@ -498,13 +498,13 @@ describe('the builder assistant API', () => {
 
     expect(nb.proposals[0]?.approval).toEqual({
       right: 'register-building-blocks',
-      label: 'Registrere byggeklosser',
-      message: 'Må godkjennes av noen med rettigheten «Registrere byggeklosser».',
+      label: 'Legge til i katalogen',
+      message: 'Må godkjennes av noen med rettigheten «Legge til i katalogen».',
     });
     expect(en.proposals[0]?.approval).toEqual({
       right: 'register-building-blocks',
-      label: 'Register building blocks',
-      message: 'Needs approval from someone with the right "Register building blocks".',
+      label: 'Add to the catalogue',
+      message: 'Needs approval from someone with the right "Add to the catalogue".',
     });
   });
 

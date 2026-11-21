@@ -2,20 +2,20 @@ import { defineNamespace } from '@genai/i18n';
 
 export const batchUi = {
   batch: defineNamespace({
-    heading: 'Samlet jobb',
+    heading: 'Massekjøring',
     intro:
       'Kjør tjenesten på mange dokumenter, for eksempel alle årsrapportene for ett år. Du ser kostnaden før du starter.',
     dialogTitle: 'Kjør på mange dokumenter',
-    newJob: 'Ny samlet jobb',
-    loadingSources: 'Henter datasett',
+    newJob: 'Ny massekjøring',
+    loadingSources: 'Henter dokumentsamlinger',
     loadingJob: 'Henter jobben',
     loadingJobs: 'Henter jobbene',
     started: 'Jobben er startet.',
     backToJobs: 'Tilbake til jobbene',
     history: 'Tidligere jobber',
-    emptyHeading: 'Ingen samlede jobber ennå',
+    emptyHeading: 'Ingen massekjøringer ennå',
     emptyBody:
-      'En samlet jobb kjører tjenesten på mange dokumenter, for eksempel alle årsrapportene for 2025 fra virksomhetene under et departement. Du ser kostnaden før du starter.',
+      'En massekjøring kjører tjenesten på mange dokumenter, for eksempel alle årsrapportene for 2025 fra virksomhetene under et departement. Du ser kostnaden før du starter.',
     colSelection: 'Utvalg',
     colStartedBy: 'Startet av',
     colDocuments: 'Dokumenter',
@@ -55,8 +55,8 @@ export const batchUi = {
     unknownError: 'Ukjent feil',
     all: 'Alle',
     noneStatus: 'Ingen dokumenter har denne statusen.',
-    jobStartedBy: 'Startet av {by} {when} · {documents} · versjon {version}',
-    jobStartedByModel: 'Startet av {by} {when} · {documents} · versjon {version}, {model}',
+    jobStartedBy: 'Startet av {by} {when} · {documents} · utgave {version}',
+    jobStartedByModel: 'Startet av {by} {when} · {documents} · utgave {version}, {model}',
     documents: { one: '{count} dokument', other: '{count} dokumenter' },
     pausedHeading: 'Jobben er satt på pause: kostnadsgrensen er nådd',
     pausedBody: 'Jobben har brukt {spent}. {done} av {total} dokumenter er ferdige. Resten venter.',
@@ -112,7 +112,7 @@ export const batchUi = {
     failGroup: '{count}: {error}',
     canRetry: 'Kan kjøres på nytt',
     retryFailed: 'Kjør de feilede på nytt ({count})',
-    estimatedRange: 'Anslått {low}–{high}.',
+    estimatedRange: 'Anslått {low} til {high}.',
     retryFlash: '{count} dokumenter kjøres på nytt.',
     results: 'Resultater',
     aiDraft: 'Utkast laget med KI',
@@ -121,7 +121,7 @@ export const batchUi = {
     downloadJson: 'Last ned JSON',
     downloadWhat: 'Hva er med i nedlastingen?',
     downloadWhatBody:
-      'Hver rad har med seg hvor den kommer fra: tittel, id og lenke til kildedokumentet, datasettet, svaret, kildene svaret bygger på, om svaret ble avkortet, kjørings-id, og tjenesteversjon, modell, tokens og kostnad.',
+      'Hver rad har med seg hvor den kommer fra: tittel, id og lenke til kildedokumentet, dokumentsamlingen, svaret, kildene svaret bygger på, om svaret ble avkortet, kjørings-id, og utgaven av tjenesten, modell, tokens og kostnad.',
     downloadFilters: 'Filtre: {filters}.',
     retention: 'Hvor lenge resultatene lagres:',
     undecided: 'Ikke bestemt',
@@ -133,7 +133,7 @@ export const batchUi = {
     seeRunFor: 'Se kjøringen for {title}',
     limitHeading: 'Fortsett med ny grense',
     remaining: '{count} dokumenter gjenstår.',
-    remainingEstimate: ' Anslått {low}–{high} til.',
+    remainingEstimate: ' Anslått {low} til {high} til.',
     newLimit: 'Ny grense i kroner',
     newLimitHint: 'Gjelder hele jobben, også det den har brukt.',
     reason: 'Begrunnelse',
@@ -147,9 +147,9 @@ export const batchUi = {
 
   batchSetup: defineNamespace({
     noSources:
-      'Ingen datasett du har tilgang til kan liste dokumentene sine. Be en som administrerer datasett om å koble til et.',
+      'Ingen dokumentsamling du har tilgang til, kan liste dokumentene sine. Be en som administrerer dokumentsamlinger om å koble til en.',
     pickDocuments: 'Velg dokumenter',
-    dataset: 'Datasett',
+    dataset: 'Dokumentsamling',
     usedByService: ' (brukes av tjenesten)',
     task: 'Oppgave for hvert dokument',
     taskHint:
@@ -164,13 +164,13 @@ export const batchUi = {
     documents: { one: '{count} dokument', other: '{count} dokumenter' },
     andMore: 'og {count} til',
     excluded:
-      'Utvalget fant {found} dokumenter. {duplicates} eldre versjoner av samme rapport og {otherYear} fra andre år er utelatt.',
+      'Utvalget fant {found} dokumenter. {duplicates} eldre utgaver av samme rapport og {otherYear} fra andre år er utelatt.',
     estimatedCost: 'Anslått kostnad',
     noPrice: 'Modellen har ingen pris',
     estimatedUse: 'Anslått forbruk',
     tokensRange: '{range} tokens',
     model: 'Modell',
-    serviceVersion: 'Tjenesteversjon',
+    serviceVersion: 'Utgave av tjenesten',
     basisMeasured: 'Målt: anslaget bygger på en prøvekjøring på {count} dokumenter, med margin.',
     basisAssumed:
       'Antatt: anslaget bygger på størrelsen på dokumentene og hvordan tjenesten jobber, uten prøvekjøring. Det er derfor bredt.',
@@ -193,8 +193,8 @@ export const batchUi = {
     stepsNav: 'Steg',
     stepCount: 'Steg {step} av {total}',
     noSources:
-      'Ingen datasett du har tilgang til kan liste dokumentene sine. Be en som administrerer datasett om å koble til et.',
-    dataset: 'Datasett',
+      'Ingen dokumentsamling du har tilgang til, kan liste dokumentene sine. Be en som administrerer dokumentsamlinger om å koble til en.',
+    dataset: 'Dokumentsamling',
     usedByService: ' (brukes av tjenesten)',
     all: 'Alle',
     showApi: 'Vis API-kall',
@@ -203,7 +203,7 @@ export const batchUi = {
     noneFit: 'Ingen dokumenter passer',
     noneFitFilters: 'Ingen dokumenter passer filtrene. Prøv et annet år eller flere dokumenttyper.',
     bigSelection:
-      'Utvalget er stort: {count} dokumenter. En samlet jobb kan ta høyst {max}. Snevre inn utvalget.',
+      'Utvalget er stort: {count} dokumenter. En massekjøring kan ta høyst {max}. Snevre inn utvalget.',
     firstDocuments: 'De første dokumentene i utvalget',
     colTitle: 'Tittel',
     colAction: 'Handling',
@@ -233,7 +233,7 @@ export const batchUi = {
     assumed: 'Antatt',
     model: 'Modell',
     unknownModel: 'Ukjent',
-    serviceVersion: 'Tjenesteversjon {version}',
+    serviceVersion: 'Utgave {version} av tjenesten',
     cost: 'Kostnad',
     forDocuments: 'For {count} dokumenter',
     answerPerDocument: 'Svar per dokument',
@@ -284,8 +284,8 @@ export const batchUi = {
   batchRun: defineNamespace({
     stoppedAtCap: 'Stoppet ved taket',
     startedAt: 'Kjøring startet {when}',
-    versionLine: '{dataset} · versjon {version}',
-    versionLineModel: '{dataset} · versjon {version} · {model}',
+    versionLine: '{dataset} · utgave {version}',
+    versionLineModel: '{dataset} · utgave {version} · {model}',
     totalTime: 'Total tid',
     soFar: '{time} hittil',
     tokens: 'Tokens',

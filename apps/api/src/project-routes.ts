@@ -235,7 +235,7 @@ export const createProjectsModule =
             ]);
           if (error instanceof KnowledgeError) {
             if (error.code === 'forbidden' || error.code === 'residency')
-              return problem(c, 403, 'Du har ikke tilgang til datasettet');
+              return problem(c, 403, 'Du har ikke tilgang til dokumentsamlingen');
             return problem(c, 422, error.message, [{ path: 'filters', message: error.message }]);
           }
           throw error;

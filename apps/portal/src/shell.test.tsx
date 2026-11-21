@@ -137,11 +137,11 @@ describe('shell', () => {
     ).toEqual([
       'Oversikt',
       'Tjenester',
-      'Fellestjenester',
-      'Datasett',
-      'Byggeklosser',
+      'Delte tjenester',
+      'Dokumentsamlinger',
+      'Katalog',
       'Prøveområde',
-      'Utviklerverktøy',
+      'Integrasjoner',
       'Statistikk',
       'Logg',
       'Tilgang',
@@ -182,12 +182,12 @@ describe('shell', () => {
     await waitFor(() => expect(window.location.hash).toBe(to));
   });
 
-  it('marks Utviklerverktøy, not Tjenester, as the current menu item on the step-flow page', async () => {
+  it('marks Integrasjoner, not Tjenester, as the current menu item on the step-flow page', async () => {
     await renderAt('#/developer/step-flows/ai-overview');
 
     const menu = screen.getByRole('navigation', { name: 'Hovedmeny' });
     expect(
-      within(menu).getByRole('link', { name: 'Utviklerverktøy' }).getAttribute('aria-current'),
+      within(menu).getByRole('link', { name: 'Integrasjoner' }).getAttribute('aria-current'),
     ).toBe('page');
     expect(within(menu).getByRole('link', { name: 'Tjenester' }).getAttribute('aria-current')).toBe(
       null,
@@ -388,8 +388,8 @@ describe('shell', () => {
   });
 
   it.each([
-    ['/building-blocks', 'Byggeklosser', 'Byggeklosser'],
-    ['/skills', 'Ferdigheter', 'Byggeklosser'],
+    ['/building-blocks', 'Katalog', 'Katalog'],
+    ['/skills', 'Arbeidsinstrukser', 'Katalog'],
     ['/playground', 'Prøveområdet', 'Prøveområde'],
   ])('renders the %s page and highlights %s in the menu', async (path, heading, item) => {
     await renderAt(`#${path}`);
@@ -509,8 +509,8 @@ describe('login through Ansattporten in live mode', () => {
     ).toEqual([
       'Bruke tjenester',
       'Administrere tjenester',
-      'Administrere datasett',
-      'Registrere byggeklosser',
+      'Administrere dokumentsamlinger',
+      'Legge til i katalogen',
       'Se forbruk og kostnad',
     ]);
   });
@@ -533,14 +533,16 @@ describe('login through Ansattporten in live mode', () => {
   });
 });
 
-it('shows the Datasett badge on a deep link with the same count as the Trenger oppfølging filter', async () => {
+it('shows the Dokumentsamlinger badge on a deep link with the same count as the Trenger oppfølging filter', async () => {
   const auth = mockAnsattporten(kari);
   await auth.login();
   window.location.hash = '#/services';
   render(<App auth={auth} fetch={mockFetch()} live />);
   const menu = await screen.findByRole('navigation', { name: 'Hovedmeny' });
   await waitFor(() =>
-    expect(within(menu).getByRole('link', { name: /Datasett/ }).textContent).toBe('Datasett2'),
+    expect(within(menu).getByRole('link', { name: /Dokumentsamlinger/ }).textContent).toBe(
+      'Dokumentsamlinger2',
+    ),
   );
 
   await go('#/datasets');
@@ -559,6 +561,13 @@ it('derives rights from the old read and write actions the same way as the API',
   ]);
   expect(rightsFor(['write', 'manage-services']).rights).toEqual(['manage-services']);
   expect(rightsFor(['read', 'write', 'use-services']).labels).toEqual(['Bruke tjenester']);
+});
+
+it('reads a right from its Altinn action name and shows the portal label for it', () => {
+  expect(rightsFor(['Administrere datasett', 'Registrere byggeklosser'])).toEqual({
+    rights: ['manage-datasets', 'register-building-blocks'],
+    labels: ['Administrere dokumentsamlinger', 'Legge til i katalogen'],
+  });
 });
 
 describe('language choice on the profile page', () => {
@@ -620,7 +629,7 @@ describe('a locked environment', () => {
 
     expect(
       await screen.findByText(
-        'Låst testmiljø: du kan se deg rundt, men endringer, modeller og innlesing krever innlogging med Entra ID.',
+        'genki-test (låst): du kan se deg rundt, men endringer, modeller og innlesing krever innlogging med Entra ID.',
       ),
     ).toBeTruthy();
   });
@@ -635,14 +644,14 @@ describe('a locked environment', () => {
 
     await waitFor(() => expect(seen.some((url) => url.endsWith('/me'))).toBe(true));
     expect(await screen.findAllByRole('navigation', { name: 'Hovedmeny' })).toHaveLength(1);
-    expect(screen.queryByText(/Låst testmiljø/)).toBeNull();
+    expect(screen.queryByText(/genki-test \(låst\)/)).toBeNull();
   });
 
   it('shows no banner when the environment is not locked', async () => {
     await renderAt('/overview', locked(false));
 
     expect(await screen.findAllByRole('navigation', { name: 'Hovedmeny' })).toHaveLength(1);
-    expect(screen.queryByText(/Låst testmiljø/)).toBeNull();
+    expect(screen.queryByText(/genki-test \(låst\)/)).toBeNull();
   });
 });
 

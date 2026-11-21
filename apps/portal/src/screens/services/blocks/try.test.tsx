@@ -118,7 +118,7 @@ describe('the try view', () => {
 
   it('says what to do when the layout has no Chat, and shows no example content', async () => {
     tryOut({ version: 1, zones: { primary: [{ block: 'threads' }], main: [], secondary: [] } });
-    expect(await screen.findByText('Legg Chat i innholdet for å prøve assistenten.')).toBeTruthy();
+    expect(await screen.findByText('Legg Samtale i midten for å prøve assistenten.')).toBeTruthy();
     expect(screen.queryByText(/Eksempelinnhold/)).toBeNull();
   });
 });

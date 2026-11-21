@@ -36,7 +36,7 @@ export const modelWords = defineNamespace({
   useSpeak: 'Tale',
   useRealtime: 'Sanntid',
   useAudioChat: 'Lydsamtale',
-  useBatchChat: 'Chat i samlet jobb',
+  useBatchChat: 'Chat i massekjøring',
   useEditImage: 'Bilderedigering',
   useExtractFields: 'Uthenting av felt',
   useLiveTranscription: 'Direkte transkripsjon',

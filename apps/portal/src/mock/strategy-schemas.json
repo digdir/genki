@@ -61,8 +61,8 @@
             "equals": "step-flow"
           },
           "title": {
-            "nb": "Fast stegflyt",
-            "en": "Fixed step flow"
+            "nb": "Fast arbeidsflyt",
+            "en": "Fixed workflow"
           },
           "href": "/schemas/Strategy.step-flow%401"
         },
@@ -872,8 +872,8 @@
           "type": "string",
           "pattern": "^[a-z0-9][a-z0-9.-]*@\\d+(\\.\\d+)*$",
           "x-label": {
-            "nb": "Stegflyt",
-            "en": "Step flow"
+            "nb": "Arbeidsflyt",
+            "en": "Workflow"
           },
           "x-help": {
             "nb": "En versjonert referanse, for eksempel saksoppslag-flyt@1.",
@@ -964,8 +964,8 @@
       "x-right": "manage-services",
       "$id": "/schemas/Strategy.step-flow@1",
       "x-label": {
-        "nb": "Fast stegflyt",
-        "en": "Fixed step flow"
+        "nb": "Fast arbeidsflyt",
+        "en": "Fixed workflow"
       }
     },
     "/schemas/Strategy.live-session%401": {
