@@ -1,7 +1,8 @@
 """Tests of genki's busy middleware for docling-serve (issue 922). Run in the image build."""
 
-import json
+import asyncio
 import logging
+import threading
 import unittest
 from types import SimpleNamespace
 
@@ -13,6 +14,7 @@ from starlette.testclient import TestClient
 from genki_busy import OneTaskAtATime
 
 GIB = 1024**3
+KEY = "docling-key"
 
 
 class FakeOrchestrator:
@@ -40,11 +42,16 @@ class FakeOrchestrator:
         self.tasks.pop(task_id, None)
 
 
-def docling_app(orchestrator):
-    """The routes the worker calls, answering as docling-serve does."""
+def docling_app(orchestrator, gate=None):
+    """The routes the worker calls, answering as docling-serve does: the key is checked after the upload."""
     count = {"n": 0}
 
     async def submit(request):
+        await request.form()
+        if request.headers.get("x-api-key") != KEY:
+            return JSONResponse({"detail": "Invalid API key"}, status_code=401)
+        if gate is not None:
+            await asyncio.to_thread(gate.wait, 5)
         count["n"] += 1
         task_id = f"00000000-0000-0000-0000-{count['n']:012d}"
         orchestrator.add(task_id, "pending")
@@ -79,27 +86,33 @@ def docling_app(orchestrator):
 class Replica:
     """A replica with the middleware in front, its memory set by the test."""
 
-    def __init__(self, memory=1 * GIB):
+    def __init__(self, memory=1 * GIB, gate=None):
         self.orchestrator = FakeOrchestrator()
         self.memory = memory
         self.restarts = 0
         self.lines = []
+        self.now = 1000.0
         self.middleware = OneTaskAtATime(
-            docling_app(self.orchestrator),
+            docling_app(self.orchestrator, gate),
             orchestrator=lambda: self.orchestrator,
             replica="genai-test-docling--0000020-697dfcff7c-6948n",
             memory=lambda: self.memory,
             restart=self._restart,
             idle_limit=4 * GIB,
             log=self.lines.append,
+            key=KEY,
+            clock=lambda: self.now,
         )
         self.client = TestClient(self.middleware)
 
     def _restart(self):
         self.restarts += 1
 
-    def submit(self):
-        return self.client.post("/v1/convert/file/async", files={"files": ("document.pdf", b"%PDF-1.7")})
+    def submit(self, key=KEY, client=None):
+        headers = {"x-api-key": key} if key else {}
+        return (client or self.client).post(
+            "/v1/convert/file/async", files={"files": ("document.pdf", b"%PDF-1.7")}, headers=headers
+        )
 
     def logged(self, msg):
         return [line for line in self.lines if line["msg"] == msg]
@@ -208,6 +221,58 @@ class OneTaskAtATimeTest(unittest.TestCase):
         waiting.orchestrator._task_results["done"] = object()
         waiting.middleware.check()
         self.assertEqual(waiting.restarts, 0)
+
+    def test_refuses_a_second_submit_while_the_first_is_still_uploading(self):
+        gate = threading.Event()
+        replica = Replica(gate=gate)
+        answers = {}
+        with TestClient(replica.middleware) as first:
+            held = threading.Thread(target=lambda: answers.setdefault("first", replica.submit(client=first)))
+            held.start()
+            # The first submit is inside docling-serve, not yet a task.
+            for _ in range(200):
+                if replica.middleware.admitting:
+                    break
+                threading.Event().wait(0.01)
+            answers["second"] = replica.submit()
+            gate.set()
+            held.join()
+
+        self.assertEqual(answers["second"].status_code, 503)
+        self.assertEqual(answers["first"].status_code, 200)
+
+    def test_restarts_with_a_result_left_unfetched_for_10_minutes_but_not_before(self):
+        replica = Replica(memory=5 * GIB)
+        replica.orchestrator.add("done", "success")
+        replica.orchestrator._task_results["done"] = object()
+        replica.middleware.check()
+
+        replica.now += 599
+        replica.middleware.check()
+        self.assertEqual(replica.restarts, 0)
+        replica.now += 1
+        replica.middleware.check()
+        self.assertEqual(replica.restarts, 1)
+
+    def test_logs_once_when_it_cannot_read_its_memory_and_does_not_restart(self):
+        replica = Replica(memory=None)
+
+        replica.middleware.check()
+        replica.middleware.check()
+
+        self.assertEqual(replica.restarts, 0)
+        self.assertEqual(len(replica.logged("memory unreadable")), 1)
+
+    def test_leaves_a_submit_without_the_key_to_docling_serve_even_while_busy(self):
+        replica = Replica()
+        replica.orchestrator.add("held", "started")
+
+        for key in (None, "wrong-key"):
+            answer = replica.submit(key=key)
+            self.assertEqual(answer.status_code, 401)
+            self.assertNotIn("x-docling-replica", answer.headers)
+        self.assertEqual(replica.middleware.admitting, 0)
+        self.assertEqual(replica.logged("busy"), [])
 
 
 if __name__ == "__main__":

@@ -365,7 +365,7 @@ resource docling 'Microsoft.App/containerApps@2025-02-02-preview' = {
           env: [
             { name: 'DOCLING_SERVE_API_KEY', secretRef: doclingKeySecret.name }
             // A replica keeps memory after a conversion; idle above half its memory, it restarts (genki_busy.py, issue 922)
-            { name: 'GENKI_DOCLING_RESTART_IDLE_GIB', value: string(doclingMemoryGiB / 2) }
+            { name: 'GENKI_DOCLING_RESTART_IDLE_GIB', value: '${doclingMemoryGiB / 2}${doclingMemoryGiB % 2 == 1 ? '.5' : ''}' }
             { name: 'DOCLING_SERVE_ENG_LOC_NUM_WORKERS', value: '1' }
             { name: 'DOCLING_NUM_THREADS', value: '4' }
             { name: 'OMP_NUM_THREADS', value: '4' }

@@ -61,6 +61,12 @@ export const doclingSubmitsPerTry = 3;
  */
 export const doclingBusyWaitMs = 15_000;
 
+/**
+ * How long a try may wait for a replica to take its file: within the job's 7-hour expiry, beside
+ * the document timeout (5 h 50 min) and the 10 minutes after it.
+ */
+export const doclingBusyLimitMs = 50 * 60_000;
+
 /** How many submits in a row may end without an answer before the try fails: about 2 minutes. */
 export const doclingUnansweredSubmitsInARow = 8;
 
@@ -387,18 +393,31 @@ export const doclingConverter = (options: DoclingOptions): DocumentConverter => 
     file: DocumentFile,
     seconds: () => number,
     opened: Client[],
-    deadline: number,
+    until: number,
+    past: () => Error,
   ) => {
     let waits = 0;
     let unansweredInARow = 0;
+    // A refused connection stays open through the wait, so a waiting job still counts toward the
+    // replicas the ingress scales to (one a connection); it is closed once the next ask is answered.
+    let held: Client | undefined;
+    const release = async () => {
+      await held?.destroy();
+      held = undefined;
+    };
     for (;;) {
-      if (now().getTime() > deadline) throw pastDeadline();
+      if (now().getTime() > until) {
+        await release();
+        throw past();
+      }
       const client = connection();
       opened.push(client);
       let submitted: Answer;
+      const sentAt = now().getTime();
       try {
         submitted = await send(client, '/v1/convert/file/async', form(file, seconds()));
       } catch (error) {
+        await release();
         // Only a connection refused or ended before an answer: a headers timeout already waited long.
         unansweredInARow += 1;
         if (!endedEarly(error) || unansweredInARow >= doclingUnansweredSubmitsInARow) throw error;
@@ -407,9 +426,11 @@ export const doclingConverter = (options: DoclingOptions): DocumentConverter => 
         await sleep(busyWait);
         continue;
       }
+      await release();
       unansweredInARow = 0;
-      if (submitted.status === 503) {
-        await client.destroy();
+      // Busy is genki's middleware in docker/docling, which names its replica; any other 503 is not.
+      if (submitted.status === 503 && submitted.replica) {
+        held = client;
         waits += 1;
         await sleep(busyWait);
         continue;
@@ -418,7 +439,7 @@ export const doclingConverter = (options: DoclingOptions): DocumentConverter => 
       const id = parsed<TaskStatus>(submitted, 'a task').task_id;
       if (typeof id !== 'string' || !taskIdPattern.test(id))
         throw new DoclingFailed(submitted.status, 'not a task');
-      return { client, id, replica: submitted.replica, waits };
+      return { client, id, replica: submitted.replica, waits, sentAt };
     }
   };
 
@@ -428,10 +449,12 @@ export const doclingConverter = (options: DoclingOptions): DocumentConverter => 
     const sha256 = createHash('sha256').update(file.bytes).digest('hex');
     const pages = await options.countPages?.(file.bytes).catch(() => undefined);
     let answer: Answer | undefined;
-    // One deadline for the whole try, from its first submit: the server stops a task at its
-    // document timeout, and the try ends ten minutes after that, within the job's expiry.
-    const stopBy = now().getTime() + documentTimeoutSeconds * 1000;
-    const deadline = stopBy + 10 * 60_000;
+    // One deadline for the whole try, from the submit a replica first took: the server stops a task
+    // at its document timeout, and the try ends ten minutes after that. Before a replica takes the
+    // file, the try waits at most `doclingBusyLimitMs`, so all of it fits in the job's expiry.
+    const waitUntil = now().getTime() + doclingBusyLimitMs;
+    let stopBy: number | undefined;
+    let deadline = waitUntil;
     // The task the try is on, told once when it ends.
     let task:
       | {
@@ -468,8 +491,19 @@ export const doclingConverter = (options: DoclingOptions): DocumentConverter => 
         const opened: Client[] = [];
         try {
           // A file submitted again asks only for the time left, so Docling stops by the try's end.
-          const left = () => Math.max(1, Math.floor((stopBy - now().getTime()) / 1000));
-          const placed = await place(file, left, opened, deadline);
+          const left = () =>
+            stopBy === undefined
+              ? documentTimeoutSeconds
+              : Math.max(1, Math.floor((stopBy - now().getTime()) / 1000));
+          const placed = await place(file, left, opened, deadline, () =>
+            stopBy === undefined
+              ? new DoclingFailed(503, 'no replica took the file within the wait limit')
+              : pastDeadline(),
+          );
+          if (stopBy === undefined) {
+            stopBy = placed.sentAt + documentTimeoutSeconds * 1000;
+            deadline = stopBy + 10 * 60_000;
+          }
           task = {
             id: placed.id,
             submit: submits,

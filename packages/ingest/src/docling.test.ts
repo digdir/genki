@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   ConversionRefused,
   doclingConverter,
+  doclingBusyLimitMs,
   doclingBusyWaitMs,
   doclingDocumentTimeoutSeconds,
   doclingIdentity,
@@ -63,6 +64,8 @@ interface Cluster {
   replicas: Replica[];
   /** Connections the proxy accepted. */
   connections: number;
+  /** Connections the proxy holds open now. */
+  open: number;
   /** Closes every connection the proxy holds, as a network blip would; the replicas keep their tasks. */
   drop: () => void;
   /** Called when a replica takes a task. */
@@ -92,7 +95,12 @@ const doclingCluster = async (
   { replicas = 1, convertMs = 0, idleMs = 0 } = {},
 ): Promise<Cluster> => {
   const seen: Seen[] = [];
-  const cluster = { seen, replicas: [] as Replica[], connections: 0 } as unknown as Cluster;
+  const cluster = {
+    seen,
+    replicas: [] as Replica[],
+    connections: 0,
+    open: 0,
+  } as unknown as Cluster;
   for (let n = 0; n < replicas; n += 1) {
     const tasks = new Map<string, Task>();
     const sockets = new Set<net.Socket>();
@@ -206,11 +214,12 @@ const doclingCluster = async (
     }
     const upstream = net.connect(replica.port, '127.0.0.1');
     cluster.connections += 1;
+    cluster.open += 1;
     held.add(client);
     let idle: NodeJS.Timeout | undefined;
     const close = () => {
       clearTimeout(idle);
-      held.delete(client);
+      if (held.delete(client)) cluster.open -= 1;
       client.end();
       client.destroy();
       upstream.destroy();
@@ -638,26 +647,80 @@ describe('the Docling client', () => {
     expect(lost).toEqual([]);
   });
 
-  it("keeps asking a busy server every 15 s until the try's deadline, then fails the try", async () => {
+  it('keeps asking a busy server every 15 s for at most 50 minutes, then fails the try', async () => {
     expect(doclingBusyWaitMs).toBe(15_000);
+    expect(doclingBusyLimitMs).toBe(50 * 60_000);
     let clock = new Date('2026-11-21T10:00:00Z').getTime();
     const cluster = await doclingCluster(['success']);
     (cluster.replicas[0] as Replica).busy = Infinity;
-    // Each refusal takes five minutes of the try: past its deadline (1 min + 10 min) after the third.
+    // Each refusal takes ten minutes: past the 50 minutes after the sixth.
     cluster.onRefuse = () => {
-      clock += 5 * 60_000;
+      clock += 10 * 60_000;
     };
 
-    const error = await converterFor(cluster.url, {
-      documentTimeoutSeconds: 60,
-      now: () => new Date(clock),
-    })
+    const error = await converterFor(cluster.url, { now: () => new Date(clock) })
       .convert(report)
       .catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(DoclingFailed);
-    expect(String((error as Error).message)).toContain('past its document timeout');
-    expect(cluster.replicas[0]?.refused).toBe(3);
+    expect(String((error as Error).message)).toContain('no replica took the file');
+    expect(cluster.replicas[0]?.refused).toBe(6);
+    expect(cluster.replicas[0]?.submits).toBe(0);
+  });
+
+  it('asks Docling for the full document timeout after waiting for a replica', async () => {
+    let clock = new Date('2026-11-21T10:00:00Z').getTime();
+    const cluster = await doclingCluster(['success']);
+    (cluster.replicas[0] as Replica).busy = 2;
+    cluster.onRefuse = () => {
+      clock += 20 * 60_000;
+    };
+
+    await converterFor(cluster.url, { now: () => new Date(clock) }).convert(report);
+
+    // The document timeout runs from when a replica takes the file, not from the first ask.
+    expect(cluster.seen.at(-1)?.form.get('document_timeout')).toBe(
+      String(doclingDocumentTimeoutSeconds),
+    );
+  });
+
+  it('keeps a refused connection open while it waits, so a waiting job still counts toward scaling', async () => {
+    const cluster = await doclingCluster(['success'], { replicas: 2, convertMs: 50 });
+    (cluster.replicas[0] as Replica).busy = 1;
+    const during: number[] = [];
+    cluster.onRefuse = () => setTimeout(() => during.push(cluster.open), 100);
+
+    await converterFor(cluster.url, { busyWaitMs: 300 }).convert(report);
+
+    expect(during).toEqual([1]);
+  });
+
+  it('fails a submit answered 503 by something other than a Docling replica, without waiting', async () => {
+    const server = http.createServer((req, res) => {
+      req.resume();
+      res.writeHead(503, { 'content-type': 'application/json' });
+      res.end('{"detail":"Service Unavailable"}');
+    });
+    const port = await listen(server);
+
+    const error = await converterFor(`http://127.0.0.1:${port}`)
+      .convert(report)
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(DoclingFailed);
+    expect((error as DoclingFailed).status).toBe(503);
+  });
+
+  it('fails the try after 8 submits in a row end without an answer', async () => {
+    const cluster = await doclingCluster(['success']);
+    (cluster.replicas[0] as Replica).down = 10;
+
+    const error = await converterFor(cluster.url)
+      .convert(report)
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(Error);
+    expect(cluster.connections).toBe(8);
     expect(cluster.replicas[0]?.submits).toBe(0);
   });
 

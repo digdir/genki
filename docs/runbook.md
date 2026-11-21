@@ -49,14 +49,14 @@ ContainerAppConsoleLogs
 
 **API down.** Check whether the API answers at all: `curl -i https://api.genki-test.digdir.cloud/health`. Then look at the revision and its replicas (`az containerapp revision list -n genai-test-api -g <resource group> -o table`) and at `ContainerAppSystemLogs` for `ProbeFailed`, `ContainerTerminated` or a failed revision. A `refusing to start` line in the console log names the missing setting. If the last deploy broke it, run the `rollback` workflow (`gh workflow run rollback.yml`), which moves users back to the previous API revision; for the worker or the web apps, run the deploy workflow on the previous good commit ([Deploys users do not notice](../infra/README.md#deploys-users-do-not-notice)). A failing certificate check means the managed certificate on the custom domain did not renew.
 
-**Docling out of memory.** A Docling replica takes one conversion at a time and restarts itself when it is idle with more than half its memory (`genki_busy.py`, infra/README.md, "Docling server"), so a kill means one file took more than the replica has, or the restart did not happen. The worker logs one `docling task` line for each task when it ends, with the file's `sha256`, `pages`, the `replica` that took it, `queuedMs`, `convertingMs` and `result` (`lost` for a killed one); Docling logs `task accepted`, `task ended`, `busy` and `restarting`, each with its replica and the tasks it holds (`running`, `queued`). The tasks each replica held, and the files the worker lost:
+**Docling out of memory.** A Docling replica takes one conversion at a time and restarts itself when it is idle with more than half its memory (`genki_busy.py`, infra/README.md, "Docling server"), so a kill means one file took more than the replica has, or the restart did not happen (a `memory unreadable` line means the replica cannot read its memory, so it never restarts). The worker logs one `docling task` line for each task when it ends, with the file's `sha256`, `pages`, the `replica` that took it, `queuedMs`, `convertingMs` and `result` (`lost` for a killed one); Docling logs `task accepted`, `task ended`, `busy` and `restarting`, each with its replica and the tasks it holds (`running`, `queued`). The tasks each replica held, and the files the worker lost:
 
 ```kusto
 union
   (ContainerAppConsoleLogs | where ContainerAppName == 'genai-test-docling' and Log has_any ('task accepted', 'task ended', 'busy', 'restarting')
     | extend entry = parse_json(extract('{.*}', 0, Log))),
   (ContainerAppConsoleLogs | where ContainerAppName == 'genai-test-worker' and Log has 'docling task'
-    | extend entry = parse_json(Log))
+    | extend entry = parse_json(Log) | where tostring(entry.msg) == 'docling task')
 | where TimeGenerated > ago(6h)
 | project TimeGenerated, msg = tostring(entry.msg), replica = tostring(entry.replica), task = tostring(entry.task),
     running = toint(entry.running), queued = toint(entry.queued), result = tostring(entry.result), sha256 = tostring(entry.sha256),

@@ -4,10 +4,12 @@ docling-serve's local engine runs one task at a time but accepts more and queues
 Apps TCP ingress spreads connections, not work: on 2026-11-21 three conversions sat on one replica until it ran out
 of memory (exit 137) while four others idled. So a replica that holds a task answers a new submit with 503 and
 `Retry-After`, and the worker submits it again on a new connection, which the ingress may send to another replica.
+Only a submit with the server's key is judged here; any other request goes on to docling-serve, which checks it.
 
 A replica also keeps memory after a conversion (locally 0.8 GiB at start, 4.7 after a 452-page file, 5.5 after a
 331-page one), so one task at a time still climbs. When it holds no task and no result waits, and its memory is
-above a limit, it ends its own process; Azure starts the container again.
+above a limit, it ends its own process; Azure starts the container again. A fetched result is removed after
+`DOCLING_SERVE_RESULT_REMOVAL_DELAY` (1 s in the template), so the restart follows the last fetch within seconds.
 
 It logs, at WARNING so the server's log level keeps them, each task it accepts and ends with its replica and the
 replica's running and queued tasks, each busy answer, and each restart. No file name or text.
@@ -16,6 +18,7 @@ Run as `python -m genki_busy`: docling-serve's own `run`, with its app wrapped.
 """
 
 import asyncio
+import hmac
 import json
 import logging
 import os
@@ -50,6 +53,7 @@ class OneTaskAtATime:
         restart,
         idle_limit,
         log,
+        key=None,
         clock=time.monotonic,
         watch_every=None,
     ):
@@ -61,12 +65,14 @@ class OneTaskAtATime:
         self.idle_limit = idle_limit
         self.log = log
         self.clock = clock
+        self.key = key
         self.watch_every = watch_every
         self.admitting = 0
         self.restarting = False
         self.accepted = []
         self.results_seen = {}
         self.watching = False
+        self.memory_unread = False
 
     def counts(self):
         statuses = [_status(t) for t in list(self.orchestrator().tasks.values())]
@@ -99,7 +105,13 @@ class OneTaskAtATime:
         if self.restarting or self.busy() or self.waiting_results():
             return
         used = self.memory()
-        if used is None or used <= self.idle_limit:
+        if used is None:
+            # Without its memory the replica cannot restart itself: said once, so it is seen.
+            if not self.memory_unread:
+                self.memory_unread = True
+                self.log({"msg": "memory unreadable", "replica": self.replica})
+            return
+        if used <= self.idle_limit:
             return
         self.restarting = True
         self.log({"msg": "restarting", "replica": self.replica, "memoryBytes": used, "limitBytes": self.idle_limit})
@@ -113,13 +125,21 @@ class OneTaskAtATime:
             except Exception as error:  # the watch must outlive one bad read
                 self.log({"msg": "check failed", "replica": self.replica, "error": type(error).__name__})
 
+    def keyed(self, scope):
+        """Whether a request carries the server's key (`X-Api-Key`), compared in constant time."""
+        if self.key is None:
+            return True
+        sent = dict(scope.get("headers", [])).get(b"x-api-key", b"")
+        return hmac.compare_digest(sent, self.key.encode())
+
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http":
             return await self.app(scope, receive, send)
         if self.watch_every and not self.watching:
             self.watching = True
             asyncio.get_running_loop().create_task(self._watch())
-        if not (scope["method"] == "POST" and scope["path"] == SUBMIT):
+        if not (scope["method"] == "POST" and scope["path"] == SUBMIT) or not self.keyed(scope):
+            # Everything but a submit with the right key goes to docling-serve, which checks the key itself.
             return await self.app(scope, receive, send)
         name = [(b"x-docling-replica", self.replica.encode())]
         if self.busy():
@@ -199,6 +219,7 @@ def wrap(create_app):
             restart=_terminate,
             idle_limit=int(float(os.environ.get("GENKI_DOCLING_RESTART_IDLE_GIB", "4")) * GIB),
             log=_log_line,
+            key=os.environ.get("DOCLING_SERVE_API_KEY") or None,
             watch_every=2.0,
         )
 
