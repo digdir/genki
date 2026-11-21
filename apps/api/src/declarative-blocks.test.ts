@@ -122,17 +122,41 @@ describe('a declarative block through the API', () => {
     expect(published.status).toBe(422);
   });
 
-  it('refuses a template nested 10,000 deep with a validation error, not a crash', async () => {
-    const { send } = await boot();
-    let deep: unknown = { type: 'divider' };
-    for (let i = 0; i < 10_000; i += 1) deep = { type: 'card', children: [deep] };
+  it('refuses a template nested 10,000 deep on validate, publish and preview alike, not with a crash', async () => {
+    const { app, platform } = await boot();
+    const deep =
+      '{"type":"card","children":['.repeat(10_000) + '{"type":"divider"}' + ']}'.repeat(10_000);
+    // JSON.stringify overflows on this depth in Node 24, so the body is built as text.
+    const definition = JSON.stringify(
+      card('organisation', { template: { version: 1, root: 'DEEP' } }),
+    ).replace('"DEEP"', deep);
+    const post = (path: string, body: string) =>
+      app.request(path, {
+        method: 'POST',
+        headers: {
+          authorization: 'Bearer kari',
+          'content-type': 'application/json',
+          'change-reason': 'første versjon',
+        },
+        body,
+      });
 
-    const response = await send('/definitions/validate', 'kari', {
-      body: card('organisation', { template: { version: 1, root: deep } }),
+    const validated = await post('/definitions/validate', definition);
+    const published = await post('/definitions', `{"definition":${definition}}`);
+    const previewed = await post(
+      `/tenants/${digdir}/blocks/preview`,
+      `{"definition":${definition}}`,
+    );
+
+    expect(validated.status).toBe(422);
+    expect(await validated.json()).toMatchObject({ errors: [{ path: 'spec.template' }] });
+    expect(published.status).toBe(422);
+    expect(await published.json()).toMatchObject({ errors: [{ path: 'spec.template' }] });
+    expect(await previewed.json()).toMatchObject({
+      valid: false,
+      errors: [{ path: 'spec.template' }],
     });
-
-    expect(response.status).toBe(422);
-    expect(await response.json()).toMatchObject({ errors: [{ path: 'spec.template' }] });
+    expect(await platform.definitions.list(digdir)).toEqual([]);
   });
 
   it('previews an unsaved declarative block with what a host draws it from', async () => {

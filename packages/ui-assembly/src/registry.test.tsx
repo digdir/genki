@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import {
   blockCatalogue,
   fromTemplate,
@@ -7,7 +7,7 @@ import {
   type ModelRow,
   type PlacedBlock,
 } from '@genai/ui-blocks';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import type { RefBlockPayload } from '@genai/contracts';
 import type { AssistantApi } from './api.js';
 import { Assistant } from './Assistant.js';
@@ -348,5 +348,147 @@ describe('the block registry', () => {
     screen.getAllByRole('button', { name: 'Spør igjen' })[0]?.click();
     await waitFor(() => expect(asked).toEqual(['Hva er klarspråk?']));
     history.replaceState(null, '', '/');
+  });
+
+  describe('the events of a declarative block hosted by the assistant', () => {
+    const ref = '991825827/handlinger@1';
+    const sourced = {
+      ...api,
+      loadFacets: vi.fn(async () => [
+        {
+          id: 'type',
+          label: 'Dokumenttyper',
+          options: [
+            { value: 'Årsrapport', count: 3 },
+            { value: 'Tildelingsbrev', count: 2 },
+          ],
+        },
+      ]),
+      loadThreads: vi.fn(async () => [
+        { id: 't1', title: 'Klarspråk', updatedAt: 1, service: 'ka' },
+      ]),
+      loadThread: vi.fn(async () => ({
+        title: 'Klarspråk',
+        turns: [
+          {
+            id: 'm1',
+            question: 'Hva er klarspråk?',
+            askedAt: 1,
+            answer: {
+              text: 'Klarspråk er viktig [1][2].',
+              status: 'complete' as const,
+              sources: [
+                {
+                  index: 1,
+                  title: 'Tildelingsbrev 2022',
+                  documentId: '42',
+                  excerpts: [{ chunkId: 'c1', text: 'Rapporteringen skjer hvert år.' }],
+                },
+                {
+                  index: 2,
+                  title: 'Årsrapport 2023',
+                  documentId: '43',
+                  excerpts: [{ chunkId: 'c2', text: 'Året var godt.' }],
+                },
+              ],
+              created: 2,
+            },
+          },
+        ],
+      })),
+    } satisfies AssistantApi;
+    const button = (text: string, event: object) => ({ type: 'button', text, event });
+    const block: RefBlockPayload = {
+      ref,
+      tier: 'declarative',
+      publisher: '991825827',
+      title: { nb: 'Handlinger' },
+      zones: ['main'],
+      events: ['set-filter', 'open-page', 'open-document'],
+      states: ['filled'],
+      reads: ['sources'],
+      template: {
+        version: 1,
+        root: {
+          type: 'card',
+          children: [
+            button('Bare årsrapporter', {
+              name: 'set-filter',
+              field: 'type',
+              values: ['Årsrapport'],
+            }),
+            button('Om tjenesten', { name: 'open-page', page: 'om-tjenesten' }),
+            {
+              type: 'each',
+              of: 'sources',
+              as: 'source',
+              children: [button('Åpne kilde', { name: 'open-document', source: 'source.index' })],
+            },
+          ],
+        },
+      },
+    } as RefBlockPayload;
+
+    const drawHosted = async () => {
+      history.replaceState(null, '', '/?t=t1');
+      render(
+        <Assistant
+          api={sourced}
+          layout={withEntry(fromTemplate('knowledge-assistant-next').layout, 'main', {
+            block: 'ref',
+            ref,
+          })}
+          refBlocks={{ [ref]: block }}
+          service="ka"
+          tenant="digdir"
+          profile={{ assistantName: 'KA' }}
+          threadInUrl
+        />,
+      );
+      return screen.findAllByRole('button', { name: 'Åpne kilde' });
+    };
+
+    it("a block's set-filter button selects that filter in the assistant", async () => {
+      await drawHosted();
+      const chosen = () =>
+        screen
+          .getAllByRole('checkbox', { name: /^Årsrapport/ })
+          .map((box) => (box as HTMLInputElement).checked);
+      await waitFor(() => expect(chosen()).toEqual([false]));
+
+      fireEvent.click(screen.getByRole('button', { name: 'Bare årsrapporter' }));
+
+      await waitFor(() => expect(chosen()).toEqual([true]));
+    });
+
+    it("a block's open-page button goes to that page", async () => {
+      await drawHosted();
+      const assign = vi.fn();
+      vi.stubGlobal('location', { ...window.location, assign });
+      onTestFinished(() => vi.unstubAllGlobals());
+
+      fireEvent.click(screen.getByRole('button', { name: 'Om tjenesten' }));
+
+      expect(assign).toHaveBeenCalledWith('/om-tjenesten');
+    });
+
+    it("a block's open-document button shows the source of that index in Kilder", async () => {
+      const buttons = await drawHosted();
+
+      fireEvent.click(buttons[1] as HTMLElement);
+
+      const tab = await screen.findByRole('tab', { name: 'Kilder', hidden: true });
+      await waitFor(() => expect(tab.getAttribute('aria-selected')).toBe('true'));
+      const panel = screen.getByRole('complementary', { hidden: true });
+      const card = (name: string) =>
+        within(panel).getByRole('button', { name, hidden: true }).closest('.uib-sources-document');
+      const back = (name: string) =>
+        within(card(name) as HTMLElement).queryByRole('button', {
+          name: 'Tilbake til svaret',
+          hidden: true,
+        });
+      expect(back('Årsrapport 2023')).not.toBeNull();
+      expect(back('Tildelingsbrev 2022')).toBeNull();
+    });
   });
 });
