@@ -201,7 +201,8 @@ describe('the block registry', () => {
     events: [],
     states: ['filled'],
     reads: ['sources.title'],
-    template: { version: 1 },
+    template: { version: 1, root: { type: 'paragraph', text: { t: 'label' } } },
+    texts: { nb: { label: 'Kilder fra etaten' } },
   });
 
   it('draws a ref the interface did not resolve as a placeholder', async () => {
@@ -261,7 +262,7 @@ describe('the block registry', () => {
       />,
     );
 
-    const block = await screen.findByText(`Denne verten har ingen innebygd blokk for ${ref}.`);
+    const block = await screen.findByText('Kilder fra etaten');
     const line = block.closest('.uia-answer-blocks');
     expect(line).not.toBeNull();
     expect(within(line as HTMLElement).queryAllByRole('button')).toEqual([]);
@@ -276,5 +277,76 @@ describe('the block registry', () => {
 
     const panel = await screen.findByRole('complementary', { hidden: true });
     expect(within(panel).getAllByText('Kilder fra etaten').length).toBeGreaterThan(0);
+  });
+
+  it('draws a declarative ref block under each answer of a hosted assistant', async () => {
+    const ref = '991825827/sporsmal-kort@1';
+    const card: RefBlockPayload = {
+      ref,
+      tier: 'declarative',
+      publisher: '991825827',
+      title: { nb: 'Spørsmålskort' },
+      zones: ['main'],
+      events: ['ask'],
+      states: ['filled'],
+      reads: ['question.text'],
+      texts: { nb: { label: 'Spørsmålet ditt:', again: 'Spør igjen' } },
+      template: {
+        version: 1,
+        root: {
+          type: 'card',
+          children: [
+            { type: 'paragraph', text: [{ t: 'label' }, ' ', { bind: 'question.text' }] },
+            {
+              type: 'button',
+              text: { t: 'again' },
+              event: { name: 'ask', question: { bind: 'question.text' } },
+            },
+          ],
+        },
+      },
+    };
+    const turn = (id: string, question: string) => ({
+      id,
+      question,
+      askedAt: 1,
+      answer: { text: `Svar på ${question}`, status: 'complete' as const, sources: [], created: 2 },
+    });
+    const asked: string[] = [];
+    const hosted: AssistantApi = {
+      ...api,
+      loadThreads: vi.fn(async () => [
+        { id: 't1', title: 'Klarspråk', updatedAt: 1, service: 'ka' },
+      ]),
+      loadThread: vi.fn(async () => ({
+        title: 'Klarspråk',
+        turns: [turn('m1', 'Hva er klarspråk?'), turn('m2', 'Hvem bestemmer?')],
+      })),
+      ask: (params) => {
+        asked.push(params.question);
+        return api.ask(params);
+      },
+    };
+    history.replaceState(null, '', '/?t=t1');
+    render(
+      <Assistant
+        api={hosted}
+        layout={withEntry(fromTemplate('knowledge-assistant').layout, 'main', {
+          block: 'ref',
+          ref,
+        })}
+        refBlocks={{ [ref]: card }}
+        service="ka"
+        tenant="digdir"
+        profile={{ assistantName: 'KA' }}
+        threadInUrl
+      />,
+    );
+
+    expect(await screen.findByText('Spørsmålet ditt: Hva er klarspråk?')).toBeTruthy();
+    expect(screen.getByText('Spørsmålet ditt: Hvem bestemmer?')).toBeTruthy();
+    screen.getAllByRole('button', { name: 'Spør igjen' })[0]?.click();
+    await waitFor(() => expect(asked).toEqual(['Hva er klarspråk?']));
+    history.replaceState(null, '', '/');
   });
 });

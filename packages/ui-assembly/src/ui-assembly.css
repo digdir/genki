@@ -186,4 +186,8 @@
   .uia-notice:empty {
     display: none;
   }
+
+  .uia-declarative-notice {
+    margin: 0;
+  }
 }

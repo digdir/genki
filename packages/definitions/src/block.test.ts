@@ -29,6 +29,8 @@ const chatBlock = (spec: Record<string, unknown> = {}) => ({
   },
 });
 
+const divider = { version: 1, root: { type: 'divider' } };
+
 const errorsOf = (input: unknown) => {
   const result = validateDefinition(input, plugins);
   return result.ok ? [] : result.errors;
@@ -61,11 +63,11 @@ describe('a Block definition', () => {
       'spec.builtIn',
     ]);
     expect(
-      errorsOf(chatBlock({ tier: 'declarative', template: { version: 1 } })).map((e) => e.path),
+      errorsOf(chatBlock({ tier: 'declarative', template: divider })).map((e) => e.path),
     ).toEqual(['spec.builtIn']);
   });
 
-  const declarative = { tier: 'declarative', builtIn: undefined, template: { version: 1 } };
+  const declarative = { tier: 'declarative', builtIn: undefined, template: divider };
   const code = {
     tier: 'code',
     builtIn: undefined,
@@ -79,7 +81,7 @@ describe('a Block definition', () => {
     expect(errorsOf(chatBlock({ tier: 'code', builtIn: undefined })).map((e) => e.path)).toEqual([
       'spec.code',
     ]);
-    expect(errorsOf(chatBlock({ template: { version: 1 } })).map((e) => e.path)).toEqual([
+    expect(errorsOf(chatBlock({ template: divider })).map((e) => e.path)).toEqual([
       'spec.template',
     ]);
     expect(errorsOf(chatBlock({ ...declarative, code: code.code })).map((e) => e.path)).toEqual([
@@ -87,14 +89,8 @@ describe('a Block definition', () => {
     ]);
   });
 
-  it('refuses a declarative block until a host draws it', () => {
-    expect(errorsOf(chatBlock(declarative))).toEqual([
-      {
-        path: 'spec.tier',
-        message:
-          'declarative blocks are not drawn by any host yet; only built-in blocks can be published',
-      },
-    ]);
+  it('accepts a declarative block once a host draws it', () => {
+    expect(errorsOf(chatBlock(declarative))).toEqual([]);
   });
 
   it('refuses a code block until a host draws it', () => {

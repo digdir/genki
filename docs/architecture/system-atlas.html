@@ -2040,6 +2040,7 @@
               "Pair an answer's footnotes with the excerpts they cite, both ways",
               "Narrow the documents by the dataset's facets, and show the collection and its documents",
               "Every token a block's stylesheet reads can be changed through its own CSS variable",
+              "Draw a declarative block's template with Designsystemet components, data only as text (`@genai/ui-blocks/declarative`)",
             ],
             files: [
               'packages/ui-blocks/src/approach/Approach.tsx',
@@ -2049,6 +2050,7 @@
               'packages/ui-blocks/src/filter/Filter.tsx',
               'packages/ui-blocks/src/corpus/Corpus.tsx',
               'packages/ui-blocks/src/documents/Documents.tsx',
+              'packages/ui-blocks/src/declarative/Render.tsx',
               'packages/ui-blocks/src/i18n.ts',
             ],
             input: 'Steps, sources, footnotes, counts, facets, documents and state as props',
@@ -2074,7 +2076,7 @@
               },
             ],
             keywords:
-              'ui blocks building blocks components approach fremgangsmåte sources kilder footnotes document view dokumentvisning filter utvalg corpus documents dokumenter facets designsystemet react',
+              'ui blocks declarative template designelement uten kode building blocks components approach fremgangsmåte sources kilder footnotes document view dokumentvisning filter utvalg corpus documents dokumenter facets designsystemet react',
             schemas: [],
           },
           {
@@ -2095,7 +2097,7 @@
               "Resolve each layout entry, by id or by a Block definition's ref, to a built-in block through the registry, and draw a placeholder for a ref it has no component for",
               {
                 'Pick a `block':
-                  "ref` entry's edition and only the fields it reads from what the interface serves, and draw a placeholder until its tier has a renderer",
+                  "ref` entry's edition and only the fields it reads from what the interface serves, draw a declarative edition with its template and send its events to the assistant, and draw a placeholder for a code edition until its sandbox is built",
               },
               'Keep the state the blocks share and link their events',
               'Call genki for models, threads, facets and answers through one interface',
@@ -2106,6 +2108,7 @@
               'packages/ui-assembly/src/registry.tsx',
               'packages/ui-assembly/src/ref-block.tsx',
               'packages/ui-assembly/src/block-data.ts',
+              'packages/ui-assembly/src/declarative-block.tsx',
               'packages/ui-assembly/src/api.ts',
               'packages/ui-assembly/src/i18n.ts',
             ],
@@ -3499,6 +3502,7 @@
               'Resolve settings with provenance and locks',
               'Definition store interface',
               'The Block kind, with the seams for the declarative template and the code bundle',
+              'Check a declarative template in linear time against the element set, the field list and the limits',
             ],
             files: [
               'packages/definitions/src/schema.ts',
@@ -5061,11 +5065,7 @@
                             additionalProperties: { type: 'string', maxLength: 1000 },
                           },
                         },
-                        template: {
-                          type: 'object',
-                          propertyNames: { type: 'string' },
-                          additionalProperties: {},
-                        },
+                        template: {},
                         code: {
                           type: 'object',
                           properties: {

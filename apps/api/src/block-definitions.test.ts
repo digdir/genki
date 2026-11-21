@@ -128,17 +128,6 @@ describe('Block definitions through the definition API', () => {
     expect(byOperator.status).toBe(200);
   });
 
-  it('refuses a declarative block on validate until a host draws one', async () => {
-    const { send } = setup();
-
-    const declarative = await send('/definitions/validate', 'kari', {
-      body: block({ tier: 'declarative', builtIn: undefined, template: { version: 1 } }),
-    });
-
-    expect(declarative.status).toBe(422);
-    expect(await declarative.json()).toMatchObject({ errors: [{ path: 'spec.tier' }] });
-  });
-
   it('refuses a code block shared with everyone from anyone but an operator', () => {
     const code = (sharing: string) =>
       block({

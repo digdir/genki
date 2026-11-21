@@ -19,6 +19,7 @@ responsibilities:
   - Pair an answer's footnotes with the excerpts they cite, both ways
   - Narrow the documents by the dataset's facets, and show the collection and its documents
   - Every token a block's stylesheet reads can be changed through its own CSS variable
+  - Draw a declarative block's template with Designsystemet components, data only as text (`@genai/ui-blocks/declarative`)
 files:
   - packages/ui-blocks/src/approach/Approach.tsx
   - packages/ui-blocks/src/sources/Sources.tsx
@@ -27,6 +28,7 @@ files:
   - packages/ui-blocks/src/filter/Filter.tsx
   - packages/ui-blocks/src/corpus/Corpus.tsx
   - packages/ui-blocks/src/documents/Documents.tsx
+  - packages/ui-blocks/src/declarative/Render.tsx
   - packages/ui-blocks/src/i18n.ts
 input: Steps, sources, footnotes, counts, facets, documents and state as props
 output: Rendered components and callbacks
@@ -46,4 +48,4 @@ edges:
     witness:
       file: packages/ui-blocks/src/builder/catalogue.ts
       imports: '@genai/contracts'
-keywords: ui blocks building blocks components approach fremgangsmåte sources kilder footnotes document view dokumentvisning filter utvalg corpus documents dokumenter facets designsystemet react
+keywords: ui blocks declarative template designelement uten kode building blocks components approach fremgangsmåte sources kilder footnotes document view dokumentvisning filter utvalg corpus documents dokumenter facets designsystemet react

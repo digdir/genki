@@ -16,6 +16,7 @@ responsibilities:
   - Resolve settings with provenance and locks
   - Definition store interface
   - The Block kind, with the seams for the declarative template and the code bundle
+  - Check a declarative template in linear time against the element set, the field list and the limits
 files:
   - packages/definitions/src/schema.ts
   - packages/definitions/src/compile.ts

@@ -79,6 +79,7 @@ import {
 import { phrase, useT, type AssemblyTranslator } from './i18n.js';
 import { stepsOf } from './procedure.js';
 import { blockData, blockState, type BlockContext } from './block-data.js';
+import { BlockHostContext, type BlockHost } from './block-events.js';
 import { BlockPlaceholder } from './block-placeholder.js';
 import { RefBlock } from './ref-block.js';
 import {
@@ -365,6 +366,19 @@ export const AssistantView = ({
     currentThread: a.currentId,
   };
   const latestTurn = a.turns.at(-1);
+  const blockHost = (turn: AssistantState['turns'][number] | undefined): BlockHost => ({
+    locale: blockContext.locale ?? 'nb',
+    onEvent: (event) => {
+      if (event.name === 'ask') a.send(event.question);
+      else if (event.name === 'set-filter')
+        a.setSelection({ ...a.selection, [event.field]: event.values });
+      else if (event.name === 'open-page') window.location.assign(`/${event.page}`);
+      else if (event.name === 'open-document' && turn) {
+        if (sourcesOn) a.showSources(turn.id, { index: event.index }, event.index);
+        else if (documentOn) a.openDocument(turn.id, { index: event.index }, 'answer');
+      }
+    },
+  });
   const titleOf = (title: RefBlocks[string]['title']) =>
     (a.language === 'en' ? title.en : undefined) ?? title.nb ?? '';
   const refView = (
@@ -374,14 +388,15 @@ export const AssistantView = ({
     key: string,
     level?: 2 | 3,
   ) => (
-    <RefBlock
-      key={key}
-      payload={payload}
-      data={blockData(zone, turn, blockContext)}
-      state={blockState(turn)}
-      settings={placed.settings as Record<string, boolean | string> | undefined}
-      level={level}
-    />
+    <BlockHostContext.Provider key={key} value={blockHost(turn)}>
+      <RefBlock
+        payload={payload}
+        data={blockData(zone, turn, blockContext)}
+        state={blockState(turn)}
+        settings={placed.settings as Record<string, boolean | string> | undefined}
+        level={level}
+      />
+    </BlockHostContext.Provider>
   );
   const name = a.assistantName;
   // The dev boards' look, the layout's `next`: cards, every panel titled, the thread's title as
