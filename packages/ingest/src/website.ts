@@ -21,6 +21,11 @@ export interface FetchPolicy {
   maxSitemapDepth: number;
   maxSitemaps: number;
   maxSitemapEntries: number;
+  /**
+   * Connections kept open to each host and pinned address set between fetches, for a source that
+   * fetches many files from one host (KUDOS, issue 931). Left out, each fetch opens its own.
+   */
+  keptConnections?: number;
 }
 
 export const defaultFetchPolicy = {
@@ -186,6 +191,59 @@ export interface FetchedBody {
 }
 
 /** Consume a guarded response with backpressure, without buffering the full body. */
+/** Kept agents, by host, port, pinned addresses and connect timeout; the oldest is closed past the limit. */
+const keptAgents = new Map<string, Agent>();
+const mostKeptAgents = 16;
+/** How long a kept connection may stay idle; a server's own `Keep-Alive` shortens it. */
+const keptIdleMs = 30_000;
+
+const pinnedAgent = (addresses: string[], connectTimeoutMs: number, connections?: number) =>
+  new Agent({
+    ...(connections ? { connections, keepAliveTimeout: keptIdleMs } : {}),
+    connect: {
+      timeout: connectTimeoutMs,
+      lookup: (_host, lookupOptions, callback) => {
+        const pinned = addresses.map((address) => ({ address, family: isIP(address) }));
+        if (lookupOptions.all) callback(null, pinned);
+        else callback(null, pinned[0]?.address ?? '', pinned[0]?.family ?? 0);
+      },
+    },
+  });
+
+/** Closes every kept connection, as when a process stops or a test starts afresh. */
+export const closeKeptConnections = async () => {
+  const agents = [...keptAgents.values()];
+  keptAgents.clear();
+  await Promise.all(agents.map((agent) => agent.close().catch(() => undefined)));
+};
+
+/**
+ * The agent for one hop: kept between fetches when the policy keeps connections, so the same
+ * host and the same checked addresses reuse their connections; otherwise a fresh one, closed after.
+ */
+const hopAgent = (parsed: URL, addresses: string[], policy: FetchPolicy) => {
+  if (!policy.keptConnections)
+    return { agent: pinnedAgent(addresses, policy.connectTimeoutMs), kept: false };
+  const key = [
+    parsed.protocol,
+    parsed.host,
+    [...addresses].sort().join(','),
+    policy.connectTimeoutMs,
+    policy.keptConnections,
+  ].join('|');
+  let agent = keptAgents.get(key);
+  if (!agent) {
+    agent = pinnedAgent(addresses, policy.connectTimeoutMs, policy.keptConnections);
+    keptAgents.set(key, agent);
+    while (keptAgents.size > mostKeptAgents) {
+      const [oldest, old] = keptAgents.entries().next().value as [string, Agent];
+      keptAgents.delete(oldest);
+      void old.close().catch(() => undefined);
+    }
+  }
+  return { agent, kept: true };
+};
+
 export const guardedFetchStream = async (
   url: string,
   policy: FetchPolicy,
@@ -202,17 +260,8 @@ export const guardedFetchStream = async (
     const { parsed, addresses } = await validatedFetchTarget(current, policy, resolve);
     options.signal?.throwIfAborted();
     current = parsed.toString();
-    // A fresh agent per hop pins this hop's addresses; Host, SNI and certificates keep the URL name.
-    const dispatcher = new Agent({
-      connect: {
-        timeout: policy.connectTimeoutMs,
-        lookup: (_host, lookupOptions, callback) => {
-          const pinned = addresses.map((address) => ({ address, family: isIP(address) }));
-          if (lookupOptions.all) callback(null, pinned);
-          else callback(null, pinned[0]?.address ?? '', pinned[0]?.family ?? 0);
-        },
-      },
-    });
+    // The agent pins this hop's addresses; Host, SNI and certificates keep the URL name.
+    const { agent: dispatcher, kept } = hopAgent(parsed, addresses, policy);
     const timeout = AbortSignal.timeout(policy.connectTimeoutMs + policy.readTimeoutMs);
     const signal = options.signal ? AbortSignal.any([options.signal, timeout]) : timeout;
     try {
@@ -271,7 +320,7 @@ export const guardedFetchStream = async (
         reader.releaseLock();
       }
     } finally {
-      await dispatcher.destroy();
+      if (!kept) await dispatcher.destroy();
     }
   }
 };

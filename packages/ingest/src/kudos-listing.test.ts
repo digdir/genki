@@ -7,7 +7,7 @@ import { planRun, type ListedDocument, type Listing } from './document-records.j
 import { kudosRateLimiter } from './kudos-rate.js';
 import { kudosClient, kudosProd, type KudosDocument } from './kudos.js';
 import { knowledgeListingOf, pipelineSpec, type KudosAccess } from './pipeline-sources.js';
-import { defaultFetchPolicy } from './website.js';
+import { closeKeptConnections, defaultFetchPolicy } from './website.js';
 
 /** The options of every undici Agent a download builds: the connect timeout it was given. */
 const agents = vi.hoisted(() => [] as { connect?: { timeout?: number } }[]);
@@ -178,6 +178,7 @@ describe('a Kudos listing', () => {
     const { access } = fakeKudos({ docs: [doc(1)] });
     const listing = await listingFor({ types: ['Årsrapport'] }, access);
     const [listed] = await all(listing);
+    await closeKeptConnections();
     agents.length = 0;
 
     await listing.file?.(listed?.record ?? {}, doc(1).files?.[0]?.sha256 as string);

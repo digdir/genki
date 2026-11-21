@@ -13,6 +13,7 @@ export * from './ids.js';
 export * from './index-writer.js';
 export * from './kudos.js';
 export * from './kudos-earlier-ids.js';
+export * from './kudos-downloads.js';
 export * from './kudos-rate.js';
 export * from './phrase-archive.js';
 export * from './phrases.js';

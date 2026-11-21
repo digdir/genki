@@ -75,6 +75,7 @@ import {
   doclingConverter,
   knowledgeListingOf,
   kudosClient,
+  kudosDownloads,
   kudosProd,
   type CopyIds,
 } from '@genai/ingest';
@@ -148,6 +149,11 @@ import { createWorker, ownTenantOnly } from './worker.js';
 const log = (msg: string, extra: Record<string, unknown> = {}) =>
   console.log(JSON.stringify({ msg, ...extra }));
 keepRunningOnRejection(log);
+
+/** One pacing for every KUDOS file download this worker runs; each wait is logged (issue 931). */
+const kudosFileDownloads = kudosDownloads({
+  onWait: (wait) => log('a KUDOS download waits', { ...wait }),
+});
 
 const root = join(import.meta.dirname, '..', '..', '..');
 const envFile = join(root, '.env.local');
@@ -484,6 +490,7 @@ const knowledgeHandlers =
             {
               uploads: new FileSystemBlobStore(blobDir),
               converter: converter ?? createLocalConverter(),
+              kudos: { downloads: kudosFileDownloads },
               ...(process.env.INGEST_FOLDER_ROOT
                 ? { folderRoot: process.env.INGEST_FOLDER_ROOT }
                 : {}),
