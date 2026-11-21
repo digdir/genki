@@ -19,6 +19,15 @@
     flex-direction: column;
   }
 
+  /* An answer's ref blocks: a line of their own under its buttons. */
+  .uia-answer-blocks {
+    display: flex;
+    flex: 1 0 100%;
+    flex-direction: column;
+    gap: var(--genai-assembly-answer-blocks-gap, var(--ds-size-4));
+    min-inline-size: 0;
+  }
+
   /* While a document stands in the conversation's place. */
   .uia-main > .uia-main-chat[hidden] {
     display: none;

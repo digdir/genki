@@ -202,6 +202,14 @@ export class PostgresDefinitionStore implements DefinitionStore {
     return found.rows.map((r) => ({ kind: r.kind, id: r.id }));
   }
 
+  async listAcross(kind: 'Block') {
+    const found = await this.pool.query<{ tenant: string; id: string }>(
+      'select distinct tenant, id from definition_versions where kind = $1 order by tenant, id',
+      [kind],
+    );
+    return found.rows.map((r) => ({ tenant: r.tenant, id: r.id }));
+  }
+
   async resolve(name: string, version?: number): Promise<CompiledCapability | undefined> {
     const rows =
       version === undefined

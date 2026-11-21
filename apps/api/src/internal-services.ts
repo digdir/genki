@@ -238,6 +238,7 @@ export const hidingInternalServices = (
       return hidesInternalServices() ? all.filter((c) => !c.internal) : all;
     },
     remove: (tenant, definitions) => store.remove(tenant, definitions),
+    ...(store.listAcross ? { listAcross: store.listAcross.bind(store) } : {}),
     publish: async (input, actor, reason, files) => {
       const refused = await publishRefusals(view, input);
       if (refused.length > 0) return { ok: false, errors: refused };

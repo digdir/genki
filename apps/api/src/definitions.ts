@@ -178,7 +178,7 @@ const routes = {
       401: { content: problemContent, description: 'Not authenticated' },
       403: {
         content: problemContent,
-        description: `Not allowed for this tenant, or ${shareOperatorOnlyType}: only an operator publishes a built-in Block`,
+        description: `Not allowed for this tenant, or ${shareOperatorOnlyType}: only an operator publishes a built-in Block or shares a code Block with everyone`,
       },
       422: { content: problemContent, description: 'The definition is invalid' },
     },
@@ -200,7 +200,7 @@ const routes = {
       401: { content: problemContent, description: 'Not authenticated' },
       403: {
         content: problemContent,
-        description: `Not allowed for this tenant, or ${shareOperatorOnlyType}: the definition changes spec.availableTo, which only operators change, or is a built-in Block, which only operators publish`,
+        description: `Not allowed for this tenant, or ${shareOperatorOnlyType}: the definition changes spec.availableTo, which only operators change, or is a built-in Block, which only operators publish, or shares a code Block with everyone`,
       },
       409: {
         content: problemContent,

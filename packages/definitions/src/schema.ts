@@ -1,4 +1,12 @@
-import { inputFieldId, inputFieldKinds } from '@genai/contracts';
+import {
+  blockEvents,
+  blockSharings,
+  blockStates,
+  blockTiers,
+  blockZones,
+  inputFieldId,
+  inputFieldKinds,
+} from '@genai/contracts';
 
 const validPattern = (pattern: string) => {
   try {
@@ -9,6 +17,8 @@ const validPattern = (pattern: string) => {
   }
 };
 import { z } from 'zod';
+import { blockCode } from './block-code.js';
+import { blockTemplate } from './block-template.js';
 import { flowSettingsSchema } from './flow-settings.js';
 import { serviceInterface } from './service-interface.js';
 
@@ -403,18 +413,7 @@ export const skillDefinition = z.strictObject({
   spec: skillSpec,
 });
 
-export const blockTiers = ['built-in', 'declarative', 'code'] as const;
-export const blockSharings = ['private', 'organisation', 'everyone'] as const;
-export const blockZones = ['primary', 'main', 'secondary'] as const;
-export const blockEvents = [
-  'ask',
-  'open-document',
-  'set-filter',
-  'open-page',
-  'notify',
-  'resize',
-] as const;
-export const blockStates = ['empty', 'loading', 'error', 'partial', 'disabled', 'filled'] as const;
+export { blockEvents, blockSharings, blockStates, blockTiers, blockZones };
 
 export const BLOCK_PROPS_MAX_BYTES = 32 * 1024;
 export const BLOCK_TEXTS_MAX_BYTES = 64 * 1024;
@@ -485,10 +484,20 @@ export const blockSpec = z
     events: z.array(z.enum(blockEvents)).default([]).refine(unique, 'events must differ'),
     states: z.array(z.enum(blockStates)).default([]).refine(unique, 'states must differ'),
     texts: blockTexts.optional(),
+    template: blockTemplate.optional(),
+    code: blockCode.optional(),
   })
   .refine((spec) => (spec.tier === 'built-in') === (spec.builtIn !== undefined), {
     message: 'builtIn names the host block of a built-in block, and only a built-in block',
     path: ['builtIn'],
+  })
+  .refine((spec) => (spec.tier === 'declarative') === (spec.template !== undefined), {
+    message: 'a declarative block has a template, and only a declarative block',
+    path: ['template'],
+  })
+  .refine((spec) => (spec.tier === 'code') === (spec.code !== undefined), {
+    message: 'a code block has code, and only a code block',
+    path: ['code'],
   });
 
 export const blockDefinition = z.strictObject({

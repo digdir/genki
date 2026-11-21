@@ -429,7 +429,7 @@ describe('a service’s interface (/v1/models/{id}/interface)', () => {
     const own = await call('/v1/models/klarsprak__default/interface', { as: 'kari' });
     expect(own.status).toBe(200);
     expect(own.headers.get('cache-control')).toBe('private, no-store');
-    expect(await own.json()).toEqual(shown);
+    expect(await own.json()).toEqual({ ...shown, blocks: {} });
 
     const otherTenant = await call('/v1/models/klarsprak__default/interface', { as: 'ola' });
     expect(otherTenant.status).toBe(404);

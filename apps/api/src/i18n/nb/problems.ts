@@ -169,6 +169,11 @@ export const problems = defineNamespace({
   shareOperatorOnlyTitle: 'Bare operatører endrer deling',
   builtInBlockOperatorOnly:
     'Bare plattformoperatører publiserer innebygde blokker. De er genkis egne og deles med alle.',
+  codeBlockShareOperatorOnly:
+    'Bare plattformoperatører deler en kodeblokk med alle, etter at en av dem har lest koden. Del den med egen virksomhet.',
+  blockNotPinned: 'Blokken er ikke i testutgaven',
+  blockNotFound: 'Fant ingen utgave av blokken som virksomheten kan bruke',
+  blockOtherTenant: 'Blokken tilhører en annen virksomhet enn den i adressen',
   internalOperatorOnly: 'Bare operatører gjør en tjeneste intern.',
   serviceIdTaken: 'Id-en er allerede i bruk.',
   operatorOnlySettingTitle: 'Bare Digdir endrer denne grensen for en virksomhet',

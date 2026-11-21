@@ -234,6 +234,9 @@ import { cachedOrganizationLookup, organizationLookup } from './organizations.js
 import { locationOf } from './residency.js';
 import { retiredModelMessage, serviceHealth, type ServiceModels } from './service-health.js';
 import { serviceDrafts } from './service-drafts.js';
+import { resolveInterfaceBlocks } from './interface-blocks.js';
+import { blockFrameUrl } from './block-origin.js';
+import { blockCatalogueModule } from './block-catalogue.js';
 import { serviceSchemaOf } from './service-schema.js';
 import { problem } from './http.js';
 
@@ -393,6 +396,7 @@ import {
 export const platformModules: PlatformModuleFactory[] = [
   buildingBlocksModule,
   blockUsageModule,
+  blockCatalogueModule,
   skillsModule,
   playgroundModule,
   engineSwitchesModule,
@@ -1743,6 +1747,7 @@ export const createPlatform = async (input: PlatformInput) => {
       get: (...args) => store.get(...args),
       versions: (...args) => store.versions(...args),
       list: (...args) => store.list(...args),
+      ...(store.listAcross ? { listAcross: store.listAcross.bind(store) } : {}),
       resolve: (...args) => store.resolve(...args),
       capabilities: () => compiled.get(),
       remove: async (...args) => {
@@ -2585,7 +2590,16 @@ export const createPlatform = async (input: PlatformInput) => {
               : undefined;
           const shown = (found?.definition as Pick<ServiceDefinition, 'spec'> | undefined)?.spec
             .interface;
-          return shown?.layout ? { ...shown } : undefined;
+          if (!tenant || !shown?.layout) return undefined;
+          const blocks = await resolveInterfaceBlocks(
+            definitions,
+            tenant,
+            shown.layout,
+            blockFrameUrl,
+            async (publisher) =>
+              (await directory.list()).find((t) => t.orgNumber === publisher)?.name,
+          );
+          return { ...shown, blocks };
         },
         serviceSchema: async (entry) => {
           const [tenant, service] = entry.capability.split('/');

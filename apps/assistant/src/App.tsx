@@ -19,6 +19,7 @@ import {
   isPageLink,
   loadHost,
   loadLayout,
+  type ShownInterface,
   loadPage,
   showIcon,
   textIn,
@@ -185,14 +186,15 @@ const AssistantPane = ({
   const t = useT();
   const { locale, setPreference } = useLocale();
   const [colorScheme, setColorScheme] = useStoredColorScheme('assistant.colorScheme');
-  const layout = useLoaded<AssistantLayout>(
+  const layout = useLoaded<ShownInterface>(
     () => loadLayout(fetcher, host.service, session.headers),
     [host.service, session],
   );
   const shown = useMemo(
-    () => (layout.kind === 'ok' ? inLanguage(layout.value, locale) : undefined),
+    () => (layout.kind === 'ok' ? inLanguage(layout.value.layout, locale) : undefined),
     [layout, locale],
   );
+  const refBlocks = layout.kind === 'ok' ? layout.value.blocks : undefined;
   const api = useMemo(
     () =>
       shown &&
@@ -235,6 +237,7 @@ const AssistantPane = ({
         <Assistant
           api={api}
           layout={shown}
+          refBlocks={refBlocks}
           service={host.service}
           tenant={host.tenant}
           profile={profile}
