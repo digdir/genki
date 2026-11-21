@@ -103,7 +103,13 @@ export {
   type StoredKeyPolicy,
 } from './api-keys.js';
 export { PostgresConversationStore, threadScope } from './conversations.js';
-export { LocalKeyWrapper, type KeyWrapper } from './crypto.js';
+export { LocalKeyWrapper, type KeyWrapper, type MasterKey } from './crypto.js';
+export {
+  rewrapContentKeys,
+  type RewrapFailure,
+  type RewrapProgress,
+  type RewrapResult,
+} from './rewrap.js';
 export { PostgresDefinitionStore } from './definitions.js';
 export { erased, PostgresEventLog } from './event-log.js';
 export { PostgresIdentities } from './identities.js';

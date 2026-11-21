@@ -30,6 +30,7 @@
     "parity": "npm run parity --workspace apps/parity --",
     "atlas:build": "tsx --conditions=source scripts/build-atlas.ts",
     "atlas:test": "vitest run scripts/",
+    "content:rewrap": "tsx --conditions=source scripts/content-rewrap.ts",
     "conversions:check": "tsx --conditions=source scripts/conversions-check.ts",
     "conversions:seed": "tsx --conditions=source scripts/conversions-seed.ts",
     "service:pull": "tsx --conditions=source scripts/service-pull.ts"
