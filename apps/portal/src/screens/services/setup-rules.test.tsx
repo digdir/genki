@@ -137,14 +137,14 @@ describe('what Oppsett says is missing', () => {
         {
           path: 'spec.knowledge.datasets[0].dataset',
           message:
-            'Datasettet kudos lagres utenfor EU/EØS. Tjenesten krever at data behandles i EU/EØS.',
+            'Dokumentsamlingen kudos lagres utenfor EU/EØS. Tjenesten krever at data behandles i EU/EØS.',
         },
       ]),
     });
-    const alert = await screen.findByText(/Datasettet kudos lagres utenfor EU\/EØS/);
+    const alert = await screen.findByText(/Dokumentsamlingen kudos lagres utenfor EU\/EØS/);
     expect(alert.closest('section')?.getAttribute('aria-labelledby')).toBe('setup-area-h');
     expect(screen.getByRole('heading', { name: 'Dette mangler før publisering' })).toBeTruthy();
-    expect(screen.getByText('Kilder mangler før publisering')).toBeTruthy();
+    expect(screen.getByText('Kunnskap mangler før publisering')).toBeTruthy();
   });
 
   it('marks an unconfirmed limited risk as missing and locks Publiser until it is confirmed', async () => {
@@ -291,7 +291,7 @@ describe('the section list', () => {
     });
     const nav = setupNav();
     expect(
-      within(within(nav).getByRole('button', { name: /^Sluttresultat/ })).getByText(
+      within(within(nav).getByRole('button', { name: /^Resultat/ })).getByText(
         'Svar som tekst med kilder',
       ),
     ).toBeTruthy();
@@ -307,10 +307,10 @@ describe('Arbeidsmåte', () => {
         strategy: { id: 'step-flow', version: 1, config: { flow: 'postsortering-flyt@1' } },
       }),
     });
-    const change = await screen.findByRole('button', { name: 'Bytt stegflyt' });
+    const change = await screen.findByRole('button', { name: 'Bytt arbeidsflyt' });
     expect(screen.queryByRole('combobox', { name: 'Arbeidsmåte' })).toBeNull();
     expect(screen.queryByText(/@1$/)).toBeNull();
-    expect(screen.getByRole('link', { name: 'Rediger stegflyten' }).getAttribute('href')).toBe(
+    expect(screen.getByRole('link', { name: 'Rediger arbeidsflyten' }).getAttribute('href')).toBe(
       '#/developer/step-flows/postsortering-flyt?service=rapportassistenten',
     );
     fireEvent.click(change);
@@ -377,7 +377,7 @@ describe('a redirect to an area of Oppsett', () => {
 describe('Oversikt of a service', () => {
   it('fetches the strategies, the service drafts and the datasets once when the page loads', async () => {
     const calls = await openService('#/services/rapportassistenten');
-    await screen.findByText('Versjon 7 i bruk');
+    await screen.findByText('Utgave 7 i bruk');
     await new Promise((resolve) => setTimeout(resolve, 300));
     const gets = (suffix: string) =>
       calls.filter((c) => c.method === 'GET' && c.url.endsWith(suffix)).length;

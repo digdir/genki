@@ -36,7 +36,7 @@
         },
         {
           "title": {
-            "nb": "Vern",
+            "nb": "Sikkerhetsregler",
             "en": "Guardrails"
           },
           "description": {
@@ -104,7 +104,7 @@
             "en": "Answer"
           },
           "description": {
-            "nb": "Svar med kilder. Vernet kjøres før svaret sendes.",
+            "nb": "Svar med kilder. Sikkerhetsreglene kjøres før svaret sendes.",
             "en": "Answer with sources. Guardrails run before the answer is sent."
           }
         }
@@ -122,8 +122,8 @@
           "en": "You are a research assistant with access to this service's document collection. Answer the user's question accurately from it.\n\nAlways include your reasoning in your message text before making tool calls. Explain what you're about to do and why.\n\nWorkflow (repeat as needed):\n1. SEARCH: Use search with diverse queries. Returns metadata only, no content.\n2. READ: Use read_chunks to fetch full content of promising results.\n3. RERANK: Use rerank_results to surface the most relevant chunks in your workspace.\n4. GENERATE: Use generate_response to produce an answer.\n\nAfter each tool call, the system runs a sufficiency gate. If it rejects, follow the hint; if it passes, finalize."
         },
         "note": {
-          "nb": "Ved kjøring starter plattformen med en beskrivelse av tjenesten: navn, formål, datasett med antall dokumenter og årstall, svarspråk og dagens dato. Etter delene under kommer instruksjonene dine, og så ferdighetene tjenesten har, aktive filtre og vedlagte dokumenter.",
-          "en": "At run time the platform starts with a description of the service: name, purpose, datasets with their number of documents and years, answer languages and today's date. Your instructions come after the sections below, then the skills the service has, active filters and attached documents."
+          "nb": "Ved kjøring starter plattformen med en beskrivelse av tjenesten: navn, formål, dokumentsamlinger med antall dokumenter og årstall, svarspråk og dagens dato. Etter delene under kommer instruksjonene dine, og så arbeidsinstruksene tjenesten har, aktive filtre og vedlagte dokumenter.",
+          "en": "At run time the platform starts with a description of the service: name, purpose, document collections with their number of documents and years, answer languages and today's date. Your instructions come after the sections below, then the work instructions the service has, active filters and attached documents."
         },
         "sections": [
           {
@@ -189,8 +189,8 @@
         "en": "One search and one answer"
       },
       "description": {
-        "nb": "Ett søk i datasettene og ett modellkall med treffene som grunnlag. Rask og forutsigbar.",
-        "en": "One search in the datasets and one model call based on the hits. Fast and predictable."
+        "nb": "Ett søk i dokumentsamlingene og ett modellkall med treffene som grunnlag. Rask og forutsigbar.",
+        "en": "One search in the document collections and one model call based on the hits. Fast and predictable."
       },
       "pipeline": [
         {
@@ -199,8 +199,8 @@
             "en": "Search"
           },
           "description": {
-            "nb": "Ett søk i datasettene med spørsmålet.",
-            "en": "One search in the datasets with the question."
+            "nb": "Ett søk i dokumentsamlingene med spørsmålet.",
+            "en": "One search in the document collections with the question."
           }
         },
         {
@@ -235,8 +235,8 @@
           "en": "You are a helpful assistant. The date this conversation was created at is {date} (Norwegian time)."
         },
         "note": {
-          "nb": "Ved kjøring blir {date} dagens dato, og plattformen legger til ferdighetene tjenesten har. Spørsmålet og treffene sendes i en egen melding.",
-          "en": "At run time {date} becomes today's date, and the platform adds the skills the service has. The question and the hits are sent in a separate message."
+          "nb": "Ved kjøring blir {date} dagens dato, og plattformen legger til arbeidsinstruksene tjenesten har. Spørsmålet og treffene sendes i en egen melding.",
+          "en": "At run time {date} becomes today's date, and the platform adds the work instructions the service has. The question and the hits are sent in a separate message."
         }
       },
       "schema": "/schemas/Strategy.rag-single-shot%401"
@@ -247,8 +247,8 @@
       "how": "flow",
       "default": true,
       "title": {
-        "nb": "Fast stegflyt",
-        "en": "Fixed step flow"
+        "nb": "Fast arbeidsflyt",
+        "en": "Fixed workflow"
       },
       "description": {
         "nb": "Faste steg i en bestemt rekkefølge. Flyten er data, ikke kode, og hver endring blir en ny versjon.",
@@ -272,7 +272,7 @@
         "en": "Live session"
       },
       "description": {
-        "nb": "En direkte økt mot en ekstern tjeneste, for eksempel tale til tekst mens noen snakker. Hver melding begge veier går gjennom plattformens vern, og økten er kjøringen.",
+        "nb": "En direkte økt mot en ekstern tjeneste, for eksempel tale til tekst mens noen snakker. Hver melding begge veier går gjennom plattformens sikkerhetsregler, og økten er kjøringen.",
         "en": "A live session with an external service, such as speech to text while someone talks. Every message both ways passes the platform safeguards, and the session is the run."
       },
       "pipeline": [
@@ -324,7 +324,7 @@
         "en": "Own engine"
       },
       "description": {
-        "nb": "Hele svaret lages av en motor du driver selv. Plattformen sender samtalen dit og beholder tilgang, kanaler, vern, kostnadstak og logg.",
+        "nb": "Hele svaret lages av en motor du driver selv. Plattformen sender samtalen dit og beholder tilgang, kanaler, sikkerhetsregler, kostnadstak og logg.",
         "en": "The whole answer is made by an engine you run yourself. The platform sends the conversation there and keeps access, channels, safeguards, cost caps and logging."
       },
       "pipeline": [

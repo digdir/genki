@@ -6,9 +6,9 @@ import { renderAt } from '../test-utils';
 afterEach(cleanup);
 
 describe('Lane 5 pages use the shared back link, not slash crumbs', () => {
-  it('the hook editor links back to Kroker', async () => {
+  it('the hook editor links back to Kjøringspunkter', async () => {
     await renderAt('#/developer/hooks/new');
-    const back = await screen.findByRole('link', { name: 'Kroker' });
+    const back = await screen.findByRole('link', { name: 'Kjøringspunkter' });
     expect(back.className).toBe('back-link');
     expect(screen.queryByRole('navigation', { name: 'Brødsmuler' })).toBeNull();
   });

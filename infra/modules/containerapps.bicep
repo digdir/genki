@@ -27,6 +27,9 @@ param doclingImage string
 
 @description('Most Docling replicas at once; each converts one PDF at a time.')
 param doclingMaxReplicas int = 8
+
+@description('Memory of a Docling replica in GiB, with 4 vCPU (Consumption allows at most 8). The memory alert and the idle restart read it (issue 922).')
+param doclingMemoryGiB int = 8
 param appVersion string
 param workerVersion string = ''
 param appEnv object
@@ -322,8 +325,9 @@ resource worker 'Microsoft.App/containerApps@2025-02-02-preview' = {
 }
 
 // The Docling server (ADR 0042, issue 476): PDF conversions for knowledge.convert. Internal TCP ingress, since
-// HTTP ingress ends a request after 240 s and a conversion takes minutes; the worker holds one request open
-// until Docling answers. One conversion per replica (one Docling worker on 4 vCPU), and replicas start on open
+// HTTP ingress ends a request after 240 s and a conversion takes minutes; the worker submits a file on the async
+// route and polls its task every 30 s on one connection, since TCP ingress closes a connection idle for 300 s
+// (issue 906). One conversion per replica (one Docling worker on 4 vCPU), and replicas start on open
 // connections, from zero: a connection to the app's name is held until the first replica is up (74 s in test,
 // issue 867). It keeps nothing past a replica: no volume, results dropped once fetched, OCR page images
 // in /tmp deleted after each region, and WARNING logs, which still name the file and page when Tesseract fails on
@@ -357,9 +361,11 @@ resource docling 'Microsoft.App/containerApps@2025-02-02-preview' = {
         {
           name: 'docling'
           image: doclingImage
-          resources: { cpu: json('4'), memory: '8Gi' }
+          resources: { cpu: json('4'), memory: '${doclingMemoryGiB}Gi' }
           env: [
             { name: 'DOCLING_SERVE_API_KEY', secretRef: doclingKeySecret.name }
+            // A replica keeps memory after a conversion; idle above half its memory, it restarts (genki_busy.py, issue 922)
+            { name: 'GENKI_DOCLING_RESTART_IDLE_GIB', value: '${doclingMemoryGiB / 2}${doclingMemoryGiB % 2 == 1 ? '.5' : ''}' }
             { name: 'DOCLING_SERVE_ENG_LOC_NUM_WORKERS', value: '1' }
             { name: 'DOCLING_NUM_THREADS', value: '4' }
             { name: 'OMP_NUM_THREADS', value: '4' }
@@ -383,7 +389,8 @@ resource docling 'Microsoft.App/containerApps@2025-02-02-preview' = {
           ]
         }
       ]
-      // A replica stopped while it converts (scale-in, a new revision) gets 10 minutes to finish; not checked in Azure
+      // A stopped replica (scale-in, a new revision) gets 10 minutes, but docling-serve waits only for a request in
+      // flight, not for a task between polls: the worker submits a lost task again (issue 906)
       terminationGracePeriodSeconds: 600
       scale: {
         minReplicas: 0
@@ -663,6 +670,7 @@ output appName string = api.name
 output workerName string = worker.name
 output webAppNames array = [for (item, i) in webApps: web[i].name]
 output doclingName string = docling.name
+output doclingMemoryGiB int = doclingMemoryGiB
 output knowledgeSetupJobName string = setupOn ? knowledgeSetupJob.name : ''
 output platformBackupJobName string = backupOn ? platformBackupJob.name : ''
 output fqdn string = api.properties.configuration.ingress.fqdn

@@ -103,7 +103,7 @@ describe('screens in English', () => {
       screen.getByRole('heading', { level: 1, name: 'You do not have access yet' }),
     ).toBeTruthy();
     expect(screen.getByRole('textbox').textContent).toContain('give me the right "Use services"');
-    expect(screen.getByText('Manage datasets')).toBeTruthy();
+    expect(screen.getByText('Manage document collections')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Check again' }));
     expect(screen.getByRole('button', { name: 'Checking Altinn' })).toBeTruthy();
   });

@@ -55,7 +55,7 @@ describe('footer pages', () => {
     expect(
       screen.getByRole('heading', { level: 2, name: /2. Lag tjenesten \(gjort\)/ }),
     ).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Se datasettene' }).getAttribute('href')).toBe(
+    expect(screen.getByRole('link', { name: 'Se dokumentsamlingene' }).getAttribute('href')).toBe(
       '#/datasets',
     );
     expect(screen.getByRole('link', { name: 'Slik behandles data' }).getAttribute('href')).toBe(
@@ -112,7 +112,7 @@ describe('footer pages', () => {
 
   it('shows the footer pages in English when the language is English', async () => {
     await open('#/developer/status', health([up('dev')]), ['en']);
-    expect(await screen.findByRole('heading', { level: 1, name: 'Developer tools' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { level: 1, name: 'Integrations' })).toBeTruthy();
     expect(await screen.findByText('Everything works')).toBeTruthy();
     cleanup();
     await open('#/contact', mockFetch(), ['en']);

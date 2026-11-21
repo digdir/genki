@@ -11,8 +11,8 @@ spec:
     nb: Filter
     en: Filter
   summary:
-    nb: Hvilke dokumenter tråden leser fra
-    en: Which documents the thread reads from
+    nb: Hvilke dokumenter samtalen leser fra
+    en: Which documents the conversation reads from
   zones:
     - primary
     - main

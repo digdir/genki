@@ -78,8 +78,8 @@ export const statusArea = {
     moreFailed: 'Vi fikk ikke hentet flere endringer.',
   }),
   usageParts: defineNamespace({
-    ingestion: 'Innlesing i datasett',
-    ingestionSub: 'Tokens brukt til å lese inn dokumenter i datasettene. Teller mot kvoten.',
+    ingestion: 'Innlesing i dokumentsamlinger',
+    ingestionSub: 'Tokens brukt til å lese inn dokumenter i dokumentsamlingene. Teller mot kvoten.',
   }),
   account: defineNamespace({
     email: 'E-post',
@@ -92,7 +92,7 @@ export const statusArea = {
     somethingSlow: 'Noe går tregt',
     lastKnownOk: 'Siste kjente status var «Alt virker» kl. {time}.',
     lastKnownNotOk: 'Siste kjente status kl. {time} var at noe ikke virket som vanlig.',
-    environment: 'Miljø',
+    environment: 'Installasjon',
     pastIncidents: 'Tidligere hendelser',
   }),
 } as const;

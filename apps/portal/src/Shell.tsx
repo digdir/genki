@@ -159,9 +159,22 @@ const legacyRights: Record<string, readonly PortalRight[]> = {
   write: ['manage-services', 'manage-datasets', 'register-building-blocks', 'view-usage'],
 };
 
+// The action names in the Altinn resource; the portal's own labels may differ.
+const altinnActionNames: Record<PortalRight, string> = {
+  'use-services': 'Bruke tjenester',
+  'manage-services': 'Administrere tjenester',
+  'manage-datasets': 'Administrere datasett',
+  'register-building-blocks': 'Registrere byggeklosser',
+  'view-usage': 'Se forbruk og kostnad',
+};
+
 const toRight = (action: string) =>
   allRights.find(
-    (r) => r === action || rightLabel(nbT, r) === action || rightLabel(enT, r) === action,
+    (r) =>
+      r === action ||
+      altinnActionNames[r] === action ||
+      rightLabel(nbT, r) === action ||
+      rightLabel(enT, r) === action,
   );
 
 export const rightsFor = (actions: readonly string[], t: T = nbT) => {

@@ -57,7 +57,7 @@ const openService = async (query = '', fetch?: typeof globalThis.fetch) => {
 
 const openHome = async (fetch?: typeof globalThis.fetch) => {
   await renderAt('#/developer/step-flows', fetch);
-  await screen.findByRole('heading', { level: 2, name: 'Stegflyter' });
+  await screen.findByRole('heading', { level: 2, name: 'Arbeidsflyter' });
 };
 
 const choose = (input: HTMLElement, value: string, label: string) => {
@@ -70,7 +70,7 @@ const choose = (input: HTMLElement, value: string, label: string) => {
       ?.dispatchEvent(new CustomEvent('comboboxbeforeselect', { detail: item, cancelable: true }));
   });
 };
-const yamlBox = () => screen.getByLabelText('Stegflyt som YAML') as HTMLTextAreaElement;
+const yamlBox = () => screen.getByLabelText('Arbeidsflyt som YAML') as HTMLTextAreaElement;
 
 beforeAll(() => {
   HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {
@@ -91,10 +91,10 @@ const pickBlock = (name: RegExp) => {
 };
 
 const pasteYaml = async (text: string) => {
-  fireEvent.click(screen.getByRole('tab', { name: 'YAML' }));
+  fireEvent.click(screen.getByRole('tab', { name: 'Teknisk tekst' }));
   fireEvent.change(yamlBox(), { target: { value: text } });
   fireEvent.click(screen.getByRole('button', { name: 'Bruk endringene' }));
-  await screen.findByText('YAML er brukt. Diagrammet er oppdatert.');
+  await screen.findByText('Den tekniske teksten er brukt. Diagrammet er oppdatert.');
   fireEvent.click(screen.getByRole('tab', { name: 'Diagram' }));
 };
 afterEach(() => {
@@ -103,17 +103,17 @@ afterEach(() => {
 });
 
 describe('the step flow editor', () => {
-  it('opens on the flow itself with a back link to Stegflyter and its diagram, with no strategy chooser and no library tab', async () => {
+  it('opens on the flow itself with a back link to Arbeidsflyter and its diagram, with no strategy chooser and no library tab', async () => {
     await openService();
-    expect(screen.queryByRole('tab', { name: 'Bibliotek: Stegflyter' })).toBeNull();
+    expect(screen.queryByRole('tab', { name: 'Bibliotek: Arbeidsflyter' })).toBeNull();
     expect(
       within(screen.getByRole('main'))
-        .getByRole('link', { name: 'Stegflyter' })
+        .getByRole('link', { name: 'Arbeidsflyter' })
         .getAttribute('href'),
     ).toBe('#/developer/step-flows');
     expect(screen.getByRole('heading', { level: 1, name: 'Svar med kilder' })).toBeTruthy();
     expect(screen.queryByRole('radiogroup', { name: 'Arbeidsmåte' })).toBeNull();
-    expect(screen.queryByRole('combobox', { name: 'Stegflyt' })).toBeNull();
+    expect(screen.queryByRole('combobox', { name: 'Arbeidsflyt' })).toBeNull();
     expect(screen.getByText(/Brukes også av Spør veilederen, Intern spørsmålsbank/)).toBeTruthy();
     expect(screen.getByRole('list', { name: 'Stegene i flyten' })).toBeTruthy();
     expect(
@@ -226,7 +226,7 @@ describe('live validation and step editor', () => {
     ])
       expect(labels).toContain(label);
     fireEvent.change(picker, { target: { value: 'documents' } });
-    expect(within(panel).getByText(/Lister dokumenter fra datasettene/)).toBeTruthy();
+    expect(within(panel).getByText(/Lister dokumenter fra dokumentsamlingene/)).toBeTruthy();
     expectAccessible();
   });
 
@@ -277,7 +277,7 @@ describe('editing real building blocks', () => {
     });
     await waitFor(() => expectAccessible());
     fireEvent.click(within(panel).getByRole('button', { name: 'Bruk' }));
-    fireEvent.click(screen.getByRole('tab', { name: 'YAML' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Teknisk tekst' }));
 
     const text = yamlBox().value;
     expect(text).toContain('block: table@1');
@@ -376,7 +376,7 @@ describe('new step flow fields', () => {
     });
     await waitFor(() => expectAccessible());
     fireEvent.click(within(panel).getByRole('button', { name: 'Bruk' }));
-    fireEvent.click(screen.getByRole('tab', { name: 'YAML' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Teknisk tekst' }));
     expect(yamlBox().value).toMatch(
       /- key: goal\s+label: Mål\s+from: goal\s+- key: document\s+label: Dokument\s+from: document\.title/,
     );
@@ -396,7 +396,7 @@ describe('new step flow fields', () => {
     expect(within(group).getByText(/står i resultatet med grunnen/)).toBeTruthy();
     fireEvent.click(within(group).getByRole('radio', { name: /Stopp flyten/ }));
     fireEvent.click(within(panel).getByRole('button', { name: 'Bruk' }));
-    fireEvent.click(screen.getByRole('tab', { name: 'YAML' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Teknisk tekst' }));
     expect(yamlBox().value).not.toContain('onError: skip');
   });
 
@@ -416,7 +416,7 @@ describe('new step flow fields', () => {
     expect(within(panel).getByText('x_reasoning_effort')).toBeTruthy();
     expect(within(panel).getByText('["###"]')).toBeTruthy();
     fireEvent.click(within(panel).getByRole('button', { name: 'Bruk' }));
-    fireEvent.click(screen.getByRole('tab', { name: 'YAML' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Teknisk tekst' }));
     expect(yamlBox().value).toContain('x_reasoning_effort: low');
   });
 });
@@ -442,7 +442,9 @@ describe('YAML tab', () => {
     });
     expect(screen.getByText('Ulagrede endringer')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Bruk endringene' }));
-    expect(await screen.findByText('YAML er brukt. Diagrammet er oppdatert.')).toBeTruthy();
+    expect(
+      await screen.findByText('Den tekniske teksten er brukt. Diagrammet er oppdatert.'),
+    ).toBeTruthy();
     fireEvent.click(screen.getByRole('tab', { name: 'Diagram' }));
     expect(screen.getByRole('button', { name: 'Endre steget Planlegg søket' })).toBeTruthy();
   });
@@ -453,7 +455,9 @@ describe('YAML tab', () => {
       await openService('?visning=yaml');
       fireEvent.change(yamlBox(), { target: { value: text } });
       fireEvent.click(screen.getByRole('button', { name: 'Bruk endringene' }));
-      expect(await screen.findByText('YAML er brukt. Diagrammet er oppdatert.')).toBeTruthy();
+      expect(
+        await screen.findByText('Den tekniske teksten er brukt. Diagrammet er oppdatert.'),
+      ).toBeTruthy();
       const original = parseYaml(text) as { metadata: { name: string }; spec: { steps: unknown } };
       const written = parseYaml(yamlBox().value) as typeof original;
       expect(written.metadata.name).toBe(original.metadata.name);
@@ -597,11 +601,11 @@ describe('YAML model', () => {
   });
 });
 
-describe('Stegflyter in Utviklerverktøy', () => {
+describe('Arbeidsflyter in Integrasjoner', () => {
   it('lists the step flows in a table with their version and the services that use them', async () => {
     await openHome();
-    expect(screen.getByRole('heading', { level: 1, name: 'Utviklerverktøy' })).toBeTruthy();
-    const table = await screen.findByRole('table', { name: 'Stegflyter' });
+    expect(screen.getByRole('heading', { level: 1, name: 'Integrasjoner' })).toBeTruthy();
+    const table = await screen.findByRole('table', { name: 'Arbeidsflyter' });
     const postruting = within(table).getByRole('link', { name: 'Postruting' });
     expect(postruting.getAttribute('href')).toBe('#/developer/step-flows/postruting');
     expect(within(table).getByRole('link', { name: 'Høringsoppsummering' })).toBeTruthy();
@@ -609,8 +613,8 @@ describe('Stegflyter in Utviklerverktøy', () => {
       within(table)
         .getAllByRole('columnheader')
         .map((c) => c.textContent),
-    ).toEqual(['Stegflyt', 'Gjeldende versjon', 'Brukes av']);
-    expect(screen.getByRole('link', { name: 'Ny stegflyt' }).getAttribute('href')).toBe(
+    ).toEqual(['Arbeidsflyt', 'Gjeldende utgave', 'Brukes av']);
+    expect(screen.getByRole('link', { name: 'Ny arbeidsflyt' }).getAttribute('href')).toBe(
       '#/developer/step-flows/new',
     );
     expectAccessible();
@@ -618,7 +622,7 @@ describe('Stegflyter in Utviklerverktøy', () => {
 
   it('filters the step flows by who made them', async () => {
     await openHome();
-    const table = await screen.findByRole('table', { name: 'Stegflyter' });
+    const table = await screen.findByRole('table', { name: 'Arbeidsflyter' });
     const own = screen.getByRole('button', { name: /^Våre/ });
     fireEvent.click(own);
     expect(own.getAttribute('aria-pressed')).toBe('true');
@@ -629,7 +633,7 @@ describe('Stegflyter in Utviklerverktøy', () => {
 
   it('shows the Fra andre filter only when another organisation has shared a step flow', async () => {
     await openHome();
-    await screen.findByRole('table', { name: 'Stegflyter' });
+    await screen.findByRole('table', { name: 'Arbeidsflyter' });
     expect(screen.getByRole('button', { name: /^Fra andre \d+$/ })).toBeTruthy();
     cleanup();
 
@@ -646,7 +650,7 @@ describe('Stegflyter in Utviklerverktøy', () => {
       });
     };
     await openHome(ownOnly);
-    await screen.findByRole('table', { name: 'Stegflyter' });
+    await screen.findByRole('table', { name: 'Arbeidsflyter' });
     expect(screen.queryByRole('button', { name: /^Fra andre/ })).toBeNull();
     expect(screen.getByRole('button', { name: /^Våre/ })).toBeTruthy();
   });
@@ -687,7 +691,7 @@ describe('Stegflyter in Utviklerverktøy', () => {
   };
 
   const archiveFirst = async () => {
-    const table = await screen.findByRole('table', { name: 'Stegflyter' });
+    const table = await screen.findByRole('table', { name: 'Arbeidsflyter' });
     const button = within(table).getByRole('button', { name: /^Arkiver / });
     fireEvent.click(button);
     const dialog = await screen.findByRole('dialog');
@@ -720,13 +724,13 @@ describe('Stegflyter in Utviklerverktøy', () => {
     await archiveFirst();
 
     expect(
-      await screen.findByText('En tjeneste bruker stegflyten, så den kan ikke arkiveres.'),
+      await screen.findByText('En tjeneste bruker arbeidsflyten, så den kan ikke arkiveres.'),
     ).toBeTruthy();
   });
 
   it('offers to archive only our own step flows that no service uses', async () => {
     await openHome(archiving(200).fetch);
-    const table = await screen.findByRole('table', { name: 'Stegflyter' });
+    const table = await screen.findByRole('table', { name: 'Arbeidsflyter' });
     const row = within(table)
       .getByRole('button', { name: /^Arkiver / })
       .closest('tr') as HTMLElement;
@@ -734,15 +738,15 @@ describe('Stegflyter in Utviklerverktøy', () => {
     expect(within(row).queryByText(/^Fra /)).toBeNull();
   });
 
-  it('marks Utviklerverktøy in the menu while a step flow is open', async () => {
+  it('marks Integrasjoner in the menu while a step flow is open', async () => {
     await openService();
     const nav = screen.getByRole('navigation', { name: /hovedmeny|meny/i });
     expect(
-      within(nav).getByRole('link', { name: 'Utviklerverktøy' }).getAttribute('aria-current'),
+      within(nav).getByRole('link', { name: 'Integrasjoner' }).getAttribute('aria-current'),
     ).toBe('page');
   });
 
-  it('sends the old step flow addresses to Utviklerverktøy, keeping the flow and the query', async () => {
+  it('sends the old step flow addresses to Integrasjoner, keeping the flow and the query', async () => {
     await renderAt('#/step-flows/postruting?flyt=sak');
     await waitFor(() =>
       expect(window.location.hash).toBe('#/developer/step-flows/postruting?flyt=sak'),
@@ -760,16 +764,16 @@ describe('Stegflyter in Utviklerverktøy', () => {
   it('says a save makes a new version of the step flow, not of a service, when one service uses it', async () => {
     await renderAt('#/developer/step-flows/postruting');
     expect(
-      await screen.findByText('Endringer lagres som en ny versjon av stegflyten.'),
+      await screen.findByText('Endringer lagres som en ny utgave av arbeidsflyten.'),
     ).toBeTruthy();
     expect(screen.queryByText(/ny versjon av tjenesten/)).toBeNull();
   });
 
-  it('lists the published versions of a flow under Versjoner in the editor', async () => {
+  it('lists the published versions of a flow under Historikk in the editor', async () => {
     await renderAt('#/developer/step-flows/postruting');
-    expect(await screen.findByRole('tab', { name: 'Versjoner' })).toBeTruthy();
+    expect(await screen.findByRole('tab', { name: 'Historikk' })).toBeTruthy();
     const versions = await screen.findByRole('region', {
-      name: 'Versjoner av Postruting',
+      name: 'Historikk for Postruting',
       hidden: true,
     });
     expect(await within(versions).findByText('v2')).toBeTruthy();
@@ -785,7 +789,7 @@ describe('Stegflyter in Utviklerverktøy', () => {
         .getByRole('link', { name: /^Tilbake til/ })
         .getAttribute('href'),
     ).toBe('#/services/rapportassistent');
-    expect(screen.getByRole('button', { name: 'Fest denne versjonen i tjenesten' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Fest denne utgaven i tjenesten' })).toBeTruthy();
   });
 
   it('pins the current version of a flow to a chosen service through its draft', async () => {
@@ -849,12 +853,12 @@ describe('Stegflyter in Utviklerverktøy', () => {
     expect((await screen.findAllByText('Klassifiser')).length).toBeGreaterThan(0);
     expect(screen.queryByRole('radiogroup', { name: 'Arbeidsmåte' })).toBeNull();
     expect(screen.queryByRole('button', { name: /Lagre som v/ })).toBeNull();
-    fireEvent.click(screen.getByRole('tab', { name: 'YAML' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Teknisk tekst' }));
     await waitFor(() =>
       expect(window.location.hash).toBe('#/developer/step-flows/sf-hoering/yaml'),
     );
     expect(
-      (await screen.findByRole('region', { name: 'Stegflyten som YAML' })).textContent,
+      (await screen.findByRole('region', { name: 'Arbeidsflyten som YAML' })).textContent,
     ).toContain('id: sf-hoering # as published');
   });
 
@@ -891,7 +895,7 @@ describe('saving', () => {
       target: { value: 'Kortere navn på planleggingen' },
     });
     fireEvent.click(save);
-    expect(await screen.findByText(/Stegflyten er lagret som v\d+\./)).toBeTruthy();
+    expect(await screen.findByText(/Arbeidsflyten er lagret som v\d+\./)).toBeTruthy();
     const validate = calls.find((c) => c.url.endsWith('/definitions/validate'));
     const publish = calls.find((c) => c.url.endsWith('/definitions') && c.method === 'POST');
     expect((validate?.body as { definition: { kind: string } }).definition.kind).toBe('StepFlow');
@@ -907,7 +911,7 @@ describe('saving', () => {
   it('asks a new flow for a name before its first save and derives the id from it', async () => {
     const { calls, fetch } = recording();
     await renderAt('#/developer/step-flows/new', fetch);
-    await screen.findByRole('heading', { level: 1, name: 'Ny stegflyt' });
+    await screen.findByRole('heading', { level: 1, name: 'Ny arbeidsflyt' });
     fireEvent.click(screen.getByRole('button', { name: /Legg til (et )?steg/ }));
     pickBlock(/^Klassifiser/);
     fireEvent.click(screen.getByRole('button', { name: 'Slett steget' }));
@@ -938,7 +942,7 @@ describe('saving', () => {
 
   it('shows server validation errors for an empty new flow', async () => {
     await renderAt('#/developer/step-flows/new');
-    await screen.findByRole('heading', { level: 1, name: 'Ny stegflyt' });
+    await screen.findByRole('heading', { level: 1, name: 'Ny arbeidsflyt' });
     fireEvent.click(screen.getByRole('button', { name: /Legg til (et )?steg/ }));
     pickBlock(/^Klassifiser/);
     fireEvent.click(screen.getByRole('button', { name: 'Slett steget' }));
@@ -967,6 +971,6 @@ describe('saving', () => {
       target: { value: 'Prøver å lagre' },
     });
     fireEvent.click(screen.getByRole('button', { name: /Lagre som v/ }));
-    expect(await screen.findByText('Kunne ikke lagre stegflyten. Prøv igjen.')).toBeTruthy();
+    expect(await screen.findByText('Kunne ikke lagre arbeidsflyten. Prøv igjen.')).toBeTruthy();
   });
 });

@@ -99,7 +99,7 @@ const reasonOf = (call: Call | undefined) =>
   decodeURIComponent(call?.headers.get('change-reason') ?? '');
 
 describe('service environments in the portal', () => {
-  it('adds a test environment with a reason and says prod stays on the version it ran', async () => {
+  it('adds a test edition with a reason and says the edition in use stays on the edition it ran', async () => {
     let added = false;
     const { api, calls } = platform({
       [`GET ${definitionPath}`]: history,
@@ -112,22 +112,22 @@ describe('service environments in the portal', () => {
     });
     render(asManager(<EnvironmentsSection api={api} tenant={tenant} serviceId="klarsprak" />));
 
-    expect(await screen.findByText(/Tjenesten har bare prod/)).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Legg til miljø' }));
+    expect(await screen.findByText(/Tjenesten har ingen testutgave/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Legg til testutgave' }));
     expect((screen.getByLabelText('Navn') as HTMLInputElement).value).toBe('test');
     fireEvent.change(screen.getByLabelText('Begrunnelse'), {
-      target: { value: 'Testerne skal prøve nye versjoner' },
+      target: { value: 'Testerne skal prøve nye utgaver' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Legg til' }));
 
     expect(
       await screen.findByText(
-        'test er lagt til. Nye versjoner går dit, og prod står på versjon 3.',
+        'test er lagt til. Nye utgaver fra kodeagenter går dit, og utgave 3 er fortsatt i bruk.',
       ),
     ).toBeTruthy();
     const post = calls.find((c) => c.method === 'POST' && c.path === environmentsPath);
     expect(post?.body).toEqual({ name: 'test' });
-    expect(reasonOf(post)).toBe('Testerne skal prøve nye versjoner');
+    expect(reasonOf(post)).toBe('Testerne skal prøve nye utgaver');
     expect(await screen.findByRole('button', { name: 'Flere valg for test' })).toBeTruthy();
   });
 
@@ -141,10 +141,10 @@ describe('service environments in the portal', () => {
     });
     render(asManager(<EnvironmentsSection api={api} tenant={tenant} serviceId="klarsprak" />));
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Legg til miljø' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Legg til testutgave' }));
     fireEvent.change(screen.getByLabelText('Navn'), { target: { value: 'Test miljø' } });
     fireEvent.change(screen.getByLabelText('Begrunnelse'), {
-      target: { value: 'Testerne skal prøve nye versjoner' },
+      target: { value: 'Testerne skal prøve nye utgaver' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Legg til' }));
 
@@ -152,7 +152,7 @@ describe('service environments in the portal', () => {
     expect(calls.some((c) => c.method === 'POST')).toBe(false);
   });
 
-  it('puts the version test runs in prod without publishing', async () => {
+  it('publishes the edition test runs as the edition in use without publishing again', async () => {
     const { api, calls } = platform({
       [`GET ${definitionPath}`]: history,
       [`GET ${environmentsPath}`]: staged,
@@ -163,25 +163,23 @@ describe('service environments in the portal', () => {
     });
     render(asManager(<EnvironmentsSection api={api} tenant={tenant} serviceId="klarsprak" />));
 
-    fireEvent.click(
-      await screen.findByRole('button', { name: 'Ta versjonen test kjører i bruk i prod' }),
-    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Publiser utgaven test kjører' }));
     expect(
-      screen.getByText(/prod går fra versjon 2 til versjon 3, som test kjører nå/),
+      screen.getByText(/Utgaven i bruk går fra utgave 2 til utgave 3, som test kjører nå/),
     ).toBeTruthy();
     fireEvent.change(screen.getByLabelText('Begrunnelse'), {
       target: { value: 'Testerne er fornøyde' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Ta i bruk i prod' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Publiser' }));
 
-    expect(await screen.findByText('prod kjører nå versjon 3.')).toBeTruthy();
+    expect(await screen.findByText('Utgave 3 er i bruk nå.')).toBeTruthy();
     const promote = calls.find((c) => c.path.endsWith('/prod/promote'));
     expect(promote?.body).toEqual({ from: 'test' });
     expect(reasonOf(promote)).toBe('Testerne er fornøyde');
     expect(calls.some((c) => c.method === 'POST' && c.path === '/definitions')).toBe(false);
   });
 
-  it('rolls an environment back to the version it ran before its last change by default', async () => {
+  it('undoes publishing to the edition it ran before its last change by default', async () => {
     const { api, calls } = platform({
       [`GET ${definitionPath}`]: history,
       [`GET ${environmentsPath}`]: staged,
@@ -192,25 +190,25 @@ describe('service environments in the portal', () => {
     });
     render(asManager(<EnvironmentsSection api={api} tenant={tenant} serviceId="klarsprak" />));
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Rull tilbake prod' }));
-    const choice = screen.getByLabelText('Versjonen prod skal kjøre') as HTMLSelectElement;
+    fireEvent.click(await screen.findByRole('button', { name: 'Angre publisering (I bruk)' }));
+    const choice = screen.getByLabelText('Utgaven som skal kjøre (I bruk)') as HTMLSelectElement;
     expect(choice.value).toBe('1');
     expect(
       within(choice)
         .getAllByRole('option')
         .map((o) => o.textContent),
-    ).toEqual(['Versjon 3', 'Versjon 1, som kjørte før siste endring']);
+    ).toEqual(['Utgave 3', 'Utgave 1, som kjørte før siste endring']);
     fireEvent.change(screen.getByLabelText('Begrunnelse'), {
-      target: { value: 'Versjon 2 svarer feil' },
+      target: { value: 'Utgave 2 svarer feil' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Rull tilbake prod' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Angre publisering (I bruk)' }));
 
-    expect(await screen.findByText('prod kjører nå versjon 1.')).toBeTruthy();
+    expect(await screen.findByText('I bruk: utgave 1 kjører nå.')).toBeTruthy();
     const rollback = calls.find((c) => c.path.endsWith('/prod/rollback'));
     expect(rollback?.body).toEqual({ version: 1 });
   });
 
-  it('keeps the success message on screen while the versions reload after a change', async () => {
+  it('keeps the success message on screen while the editions reload after a change', async () => {
     let promoted = false;
     const after = () => ({
       latestVersion: 3,
@@ -229,21 +227,19 @@ describe('service environments in the portal', () => {
     );
     render(asManager(<EnvironmentsSection api={api} tenant={tenant} serviceId="klarsprak" />));
 
-    fireEvent.click(
-      await screen.findByRole('button', { name: 'Ta versjonen test kjører i bruk i prod' }),
-    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Publiser utgaven test kjører' }));
     fireEvent.change(screen.getByLabelText('Begrunnelse'), {
       target: { value: 'Testerne er fornøyde' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Ta i bruk i prod' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Publiser' }));
 
-    expect(await screen.findByText('prod kjører nå versjon 3.')).toBeTruthy();
-    const list = screen.getByRole('list', { name: 'Miljøer' });
-    await waitFor(() => expect(within(list).getAllByText('Kjører versjon 3')).toHaveLength(2));
-    expect(screen.getByText('prod kjører nå versjon 3.')).toBeTruthy();
+    expect(await screen.findByText('Utgave 3 er i bruk nå.')).toBeTruthy();
+    const list = screen.getByRole('list', { name: 'Testutgave og i bruk' });
+    await waitFor(() => expect(within(list).getAllByText('Kjører utgave 3')).toHaveLength(2));
+    expect(screen.getByText('Utgave 3 er i bruk nå.')).toBeTruthy();
   });
 
-  it('removes an environment with a reason after the owner confirms', async () => {
+  it('removes a test edition with a reason after the owner confirms', async () => {
     let removed = false;
     const { api, calls } = platform({
       [`GET ${definitionPath}`]: history,
@@ -264,18 +260,18 @@ describe('service environments in the portal', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Fjern test' }));
     expect(calls.some((c) => c.method === 'DELETE')).toBe(false);
     fireEvent.change(screen.getByLabelText('Begrunnelse'), {
-      target: { value: 'Testmiljøet trengs ikke lenger' },
+      target: { value: 'Testutgaven trengs ikke lenger' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Fjern test' }));
 
     expect(await screen.findByText('test er fjernet.')).toBeTruthy();
     const remove = calls.find((c) => c.method === 'DELETE');
     expect(remove?.path).toBe(`${environmentsPath}/test`);
-    expect(reasonOf(remove)).toBe('Testmiljøet trengs ikke lenger');
-    expect(await screen.findByText(/Tjenesten har bare prod/)).toBeTruthy();
+    expect(reasonOf(remove)).toBe('Testutgaven trengs ikke lenger');
+    expect(await screen.findByText(/Tjenesten har ingen testutgave/)).toBeTruthy();
   });
 
-  it('keeps Rull tilbake and Fjern for a non-prod environment in a menu that works by keyboard', async () => {
+  it('keeps Angre publisering and Fjern for a test edition in a menu that works by keyboard', async () => {
     const { api } = platform({
       [`GET ${definitionPath}`]: history,
       [`GET ${environmentsPath}`]: staged,
@@ -289,7 +285,7 @@ describe('service environments in the portal', () => {
     fireEvent.click(more);
 
     expect(more.getAttribute('aria-expanded')).toBe('true');
-    const rollback = screen.getByRole('button', { name: 'Rull tilbake test' });
+    const rollback = screen.getByRole('button', { name: 'Angre publisering (test)' });
     const remove = screen.getByRole('button', { name: 'Fjern test' });
     expect(document.activeElement).toBe(rollback);
     fireEvent.keyDown(rollback, { key: 'ArrowDown' });
@@ -300,25 +296,25 @@ describe('service environments in the portal', () => {
 
     expect(screen.queryByRole('button', { name: 'Fjern test' })).toBeNull();
     expect(document.activeElement).toBe(more);
-    expect(screen.getByRole('button', { name: 'Rull tilbake prod' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Angre publisering (I bruk)' })).toBeTruthy();
   });
 
-  it('marks each version with the environments that run it', async () => {
+  it('marks each edition with the places that run it', async () => {
     const { api } = platform({
       [`GET ${definitionPath}`]: history,
       [`GET ${environmentsPath}`]: staged,
     });
     render(asManager(<Versions api={api} tenant={tenant} serviceId="klarsprak" />));
 
-    const versions = await screen.findByRole('list', { name: 'Versjoner' });
-    await waitFor(() => expect(within(versions).getByText('I bruk i prod')).toBeTruthy());
+    const versions = await screen.findByRole('list', { name: 'Utgaver' });
+    await waitFor(() => expect(within(versions).getByText('Kjører nå: I bruk')).toBeTruthy());
     const items = within(versions).getAllByRole('listitem');
-    expect(within(items[0] as HTMLElement).getByText('I bruk i test')).toBeTruthy();
-    expect(within(items[1] as HTMLElement).getByText('I bruk i prod')).toBeTruthy();
+    expect(within(items[0] as HTMLElement).getByText('Kjører nå: test')).toBeTruthy();
+    expect(within(items[1] as HTMLElement).getByText('Kjører nå: I bruk')).toBeTruthy();
     expect(within(versions).queryByText('I bruk')).toBeNull();
   });
 
-  it('sends who uses a new environment with it when the owner says', async () => {
+  it('sends who uses a new test edition with it when the owner says', async () => {
     const { api, calls } = platform({
       [`GET ${definitionPath}`]: history,
       [`GET ${environmentsPath}`]: () => ({
@@ -329,12 +325,12 @@ describe('service environments in the portal', () => {
     });
     render(asManager(<EnvironmentsSection api={api} tenant={tenant} serviceId="klarsprak" />));
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Legg til miljø' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Legg til testutgave' }));
     fireEvent.change(screen.getByLabelText('Hvem bruker det (valgfritt)'), {
       target: { value: ' testerne i HR ' },
     });
     fireEvent.change(screen.getByLabelText('Begrunnelse'), {
-      target: { value: 'Testerne skal prøve nye versjoner' },
+      target: { value: 'Testerne skal prøve nye utgaver' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Legg til' }));
 
@@ -346,7 +342,7 @@ describe('service environments in the portal', () => {
     );
   });
 
-  it('says on the card who uses an environment, with its runs today', async () => {
+  it('says on the card who uses a test edition, with its runs today', async () => {
     const { api } = platform({
       [`GET ${definitionPath}`]: history,
       [`GET ${environmentsPath}`]: () => ({
@@ -360,7 +356,7 @@ describe('service environments in the portal', () => {
     });
     render(asManager(<EnvironmentsSection api={api} tenant={tenant} serviceId="klarsprak" />));
 
-    const list = await screen.findByRole('list', { name: 'Miljøer' });
+    const list = await screen.findByRole('list', { name: 'Testutgave og i bruk' });
     await waitFor(() =>
       expect(list.textContent).toContain('14 kjøringer i dag, fra testerne i HR.'),
     );
@@ -405,14 +401,14 @@ describe('service environments in the portal', () => {
         .getAllByRole('listitem')
         .map((li) => li.textContent),
     ).toEqual([
-      '12. nov 10:14 · prod gikk fra versjon 1 til 2, tatt i bruk av Kari Nordmann: «Testet i HR»',
-      '3. okt 12:00 · test fikk versjon 3 ved publisering',
-      '2. okt 12:00 · test fikk versjon 2 ved publisering',
-      '1. okt 10:00 · test ble lagt til av Ola Hansen',
+      '12. nov 10:14 · Kari Nordmann publiserte utgave 2 (I bruk), som før kjørte utgave 1: «Testet i HR»',
+      '3. okt 12:00 · utgave 3 ble publisert (test)',
+      '2. okt 12:00 · utgave 2 ble publisert (test)',
+      '1. okt 10:00 · Ola Hansen la til test',
     ]);
   });
 
-  it('keeps Ta i bruk i prod disabled with the reason when prod runs that version', async () => {
+  it('keeps Publiser disabled with the reason when the edition in use is that edition', async () => {
     const { api, calls } = platform({
       [`GET ${definitionPath}`]: history,
       [`GET ${environmentsPath}`]: () => ({
@@ -423,19 +419,19 @@ describe('service environments in the portal', () => {
     render(asManager(<EnvironmentsSection api={api} tenant={tenant} serviceId="klarsprak" />));
 
     const promote = await screen.findByRole('button', {
-      name: 'Ta versjonen test kjører i bruk i prod',
+      name: 'Publiser utgaven test kjører',
     });
     expect(promote.getAttribute('aria-disabled')).toBe('true');
     expect(promote.getAttribute('aria-describedby')).toBeTruthy();
     expect(
       document.getElementById(promote.getAttribute('aria-describedby') ?? '')?.textContent,
-    ).toBe('prod kjører allerede versjon 3.');
+    ).toBe('Utgave 3 er allerede i bruk.');
     fireEvent.click(promote);
     expect(screen.queryByRole('alertdialog')).toBeNull();
     expect(calls.some((c) => c.method === 'POST')).toBe(false);
   });
 
-  it('puts the menu for a non-prod environment right after Ta i bruk i prod, before the reason', async () => {
+  it('puts the menu for a test edition right after Publiser, before the reason', async () => {
     const { api } = platform({
       [`GET ${definitionPath}`]: history,
       [`GET ${environmentsPath}`]: () => ({
@@ -446,28 +442,28 @@ describe('service environments in the portal', () => {
     render(asManager(<EnvironmentsSection api={api} tenant={tenant} serviceId="klarsprak" />));
 
     const promote = await screen.findByRole('button', {
-      name: 'Ta versjonen test kjører i bruk i prod',
+      name: 'Publiser utgaven test kjører',
     });
     const more = screen.getByRole('button', { name: 'Flere valg for test' });
-    const reason = screen.getByText('prod kjører allerede versjon 3.');
+    const reason = screen.getByText('Utgave 3 er allerede i bruk.');
     expect(promote.compareDocumentPosition(more) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(more.compareDocumentPosition(reason) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it('shows the environments without actions to a member who may not manage services', async () => {
+  it('shows the editions without actions to a member who may not manage services', async () => {
     const { api } = platform({
       [`GET ${definitionPath}`]: history,
       [`GET ${environmentsPath}`]: staged,
     });
     render(<EnvironmentsSection api={api} tenant={tenant} serviceId="klarsprak" />);
 
-    const list = await screen.findByRole('list', { name: 'Miljøer' });
-    expect(within(list).getByText('Kjører versjon 2')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Legg til miljø' })).toBeNull();
-    expect(screen.queryByRole('button', { name: /Rull tilbake/ })).toBeNull();
+    const list = await screen.findByRole('list', { name: 'Testutgave og i bruk' });
+    expect(within(list).getByText('Kjører utgave 2')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Legg til testutgave' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Angre publisering/ })).toBeNull();
   });
 
-  it('filters the service run log by environment', async () => {
+  it('filters the service run log by test edition or in use', async () => {
     const run = (id: string, environment: string) => ({
       id,
       status: 'completed',
@@ -488,11 +484,15 @@ describe('service environments in the portal', () => {
     render(<LogSection api={api} tenant={tenant} id="klarsprak" runId={undefined} live />);
 
     expect(await screen.findByText('Kjøring t1')).toBeTruthy();
-    fireEvent.change(await screen.findByLabelText('Miljø'), { target: { value: 'test' } });
+    fireEvent.change(await screen.findByLabelText('Testutgave eller i bruk'), {
+      target: { value: 'test' },
+    });
 
     await waitFor(() => expect(screen.queryByText('Kjøring t1')).toBeNull());
     expect(screen.getByText('Kjøring t2')).toBeTruthy();
-    expect((screen.getByLabelText('Miljø') as HTMLSelectElement).value).toBe('test');
+    expect((screen.getByLabelText('Testutgave eller i bruk') as HTMLSelectElement).value).toBe(
+      'test',
+    );
     const asked = calls
       .filter((c) => c.path.includes('/tasks?'))
       .map((c) => new URL(c.path, 'http://portal').searchParams);
@@ -501,7 +501,7 @@ describe('service environments in the portal', () => {
     ).toBe(true);
   });
 
-  it('filters the run log by environment only once a service is chosen', async () => {
+  it('filters the run log by test edition or in use only once a service is chosen', async () => {
     const { api, calls } = platform({
       [`GET /tenants/${tenant}/services`]: () => ({
         data: [{ id: 'klarsprak', name: 'Klarspråk' }],
@@ -517,9 +517,11 @@ describe('service environments in the portal', () => {
     render(<Routed />);
 
     expect(await screen.findByRole('option', { name: 'Klarspråk' })).toBeTruthy();
-    expect(screen.queryByLabelText('Miljø')).toBeNull();
+    expect(screen.queryByLabelText('Testutgave eller i bruk')).toBeNull();
     fireEvent.change(screen.getByLabelText('Tjeneste'), { target: { value: 'klarsprak' } });
-    fireEvent.change(await screen.findByLabelText('Miljø'), { target: { value: 'test' } });
+    fireEvent.change(await screen.findByLabelText('Testutgave eller i bruk'), {
+      target: { value: 'test' },
+    });
 
     await waitFor(() =>
       expect(
@@ -598,12 +600,14 @@ describe('service environments in the portal', () => {
       return base(input, init);
     });
 
-    fireEvent.change(await screen.findByLabelText('Miljø'), { target: { value: 'test' } });
+    fireEvent.change(await screen.findByLabelText('Testutgave eller i bruk'), {
+      target: { value: 'test' },
+    });
 
-    expect(
-      await screen.findByText(/Viser bare bruken fra kjøringene i miljøet test\./),
-    ).toBeTruthy();
+    expect(await screen.findByText(/Viser bare bruken fra kjøringene i test\./)).toBeTruthy();
     expect(calls.some((c) => /\/usage\?days=190&environment=test$/.test(c))).toBe(true);
-    expect((screen.getByLabelText('Miljø') as HTMLSelectElement).value).toBe('test');
+    expect((screen.getByLabelText('Testutgave eller i bruk') as HTMLSelectElement).value).toBe(
+      'test',
+    );
   });
 });

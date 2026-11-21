@@ -349,6 +349,17 @@ export const maxDocumentBytes = 50 * 1024 * 1024;
 
 export const kudosFileReadTimeoutMs = 120_000;
 
+/** KUDOS sometimes takes more than the default 5 s to accept a connection (issue 906). */
+export const kudosFileConnectTimeoutMs = 15_000;
+
+/** How a KUDOS file is downloaded: its own connect and read timeouts, to any host its URL names. */
+export const kudosFilePolicy = () => ({
+  ...defaultFetchPolicy,
+  connectTimeoutMs: kudosFileConnectTimeoutMs,
+  readTimeoutMs: kudosFileReadTimeoutMs,
+  allowedHosts: new Set<string>(),
+});
+
 export const uploadPrefix = (dataset: string, tenant: string) =>
   `datasets/${dataset.startsWith(`${tenant}/`) ? dataset.slice(tenant.length + 1) : dataset}/uploads/`;
 
@@ -725,11 +736,7 @@ export const sourceOf = async (
   }
   if (!converter) throw new Error('KUDOS sources need a document converter');
   const kudos = options.kudos ?? {};
-  const filePolicy = {
-    ...defaultFetchPolicy,
-    readTimeoutMs: kudosFileReadTimeoutMs,
-    allowedHosts: new Set<string>(),
-  };
+  const filePolicy = kudosFilePolicy();
   return kudosSource({
     documents: kudosDocuments(kudosClientFor(kudos, source.profile), source),
     profile: kudosProfileFor(kudos, source.profile),
@@ -1027,11 +1034,7 @@ export const knowledgeListingOf = async (
   if (source.kind !== 'kudos') throw new Error(knowledgeSourceRefusal(source.kind));
   if (!converter) throw new Error('KUDOS sources need a document converter');
   const kudos = options.kudos ?? {};
-  const filePolicy = {
-    ...defaultFetchPolicy,
-    readTimeoutMs: kudosFileReadTimeoutMs,
-    allowedHosts: new Set<string>(),
-  };
+  const filePolicy = kudosFilePolicy();
   const client = kudosClientFor(kudos, source.profile);
   const profile = kudosProfileFor(kudos, source.profile);
   const limiter = kudos.limiter ?? processKudosLimiter;

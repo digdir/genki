@@ -54,6 +54,6 @@ describe('the variants on the channels page', () => {
         ]}
       />,
     );
-    expect(screen.getByText('Egen arbeidsmåte: Fast stegflyt')).toBeTruthy();
+    expect(screen.getByText('Egen arbeidsmåte: Fast arbeidsflyt')).toBeTruthy();
   });
 });

@@ -182,9 +182,9 @@ describe('using a model in a service', () => {
 });
 
 describe('required guardrails', () => {
-  it('counts the required guardrails on the Vern card from the list counts', async () => {
+  it('counts the required guardrails on the Sikkerhetsregler card from the list counts', async () => {
     await renderAt('#/building-blocks');
-    const card = await screen.findByRole('link', { name: /^Vern/ });
+    const card = await screen.findByRole('link', { name: /^Sikkerhetsregler/ });
     expect(card.textContent).toContain('2 i bruk, 1 påkrevd');
   });
 

@@ -84,7 +84,7 @@ describe('API languages', () => {
       'Varianten «rask» finnes to ganger.',
     );
     expect(translateMessage('no published step flow arsrapport-forst@1', 'nb')).toBe(
-      'Stegflyten arsrapport-forst@1 er ikke publisert.',
+      'Arbeidsflyten arsrapport-forst@1 er ikke publisert.',
     );
   });
 

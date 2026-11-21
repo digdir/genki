@@ -60,8 +60,8 @@ export const operations = defineNamespace({
   cancelRun: 'Avbryt kjøringen {task}',
   cancel: 'Avbryt',
   kindService: 'Tjeneste',
-  kindStepFlow: 'Stegflyt',
-  kindSkill: 'Ferdighet',
+  kindStepFlow: 'Arbeidsflyt',
+  kindSkill: 'Arbeidsinstruks',
   quarantineTitle: 'Definisjoner i karantene',
   quarantineText:
     'Lagrede definisjoner som ikke kunne lastes. De er satt til side, og resten av plattformen kjører videre. Virksomheten må publisere en rettet versjon.',

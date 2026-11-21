@@ -1,7 +1,7 @@
 import { defineNamespace } from '@genai/i18n';
 
 export const catalog = defineNamespace({
-  title: 'Katalog',
+  title: 'Endepunkter og priser',
   introTenant:
     'Virksomhetens egne endepunkter, modeller og datasett, ved siden av det plattformen deler med den. Hver endring blir en ny versjon.',
   introPlatform:

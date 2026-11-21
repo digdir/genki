@@ -19,7 +19,7 @@ import { useAsync } from '../../hooks';
 import { useT, type T } from '../../i18n';
 import { useFormat } from '@genai/i18n/react';
 import type { Format } from '@genai/i18n';
-import { clock, sameDay, shortDay } from './dev-format';
+import { clock, placeName, sameDay, shortDay } from './dev-format';
 import { dayMs } from './overview-model';
 import { ErrorState, Loading } from '../../states';
 import type { ClientView, ServiceKeyView } from '../../types';
@@ -389,7 +389,12 @@ export const ServiceKeys = ({
                       ? t('serviceDev.withReason', { text: revokedText, reason: revocation.reason })
                       : revokedText;
                   const environmentChip = k.environments?.length
-                    ? t('serviceDev.chipEnvironment', { list: listText(t, k.environments) })
+                    ? t('serviceDev.chipEnvironment', {
+                        list: listText(
+                          t,
+                          k.environments.map((name) => placeName(t, name)),
+                        ),
+                      })
                     : t('serviceDev.chipAllEnvironments');
                   const overridesChip = k.allowedOverrides.length
                     ? t('serviceDev.chipOverrides', {

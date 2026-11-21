@@ -20,7 +20,7 @@ export const connectors = defineNamespace({
   readsHead: 'Tabellen <code>{table}</code>: tittel fra <code>{title}</code>, tekst fra',
   readsWhere: ', bare der',
   readsAnd: 'og',
-  readsEnd: '. Fyller datasettet «{dataset}».',
+  readsEnd: '. Fyller dokumentsamlingen «{dataset}».',
   ruleReadOnly: 'Plattformen leser bare. Den sender aldri INSERT, UPDATE eller DELETE.',
   ruleLimits: 'Hver lesing har en tidsgrense på 15 sekunder og høyst 10 000 rader.',
   ruleSync: 'Synkroniseres når du ber om det.',
@@ -76,7 +76,7 @@ export const connectors = defineNamespace({
   retry: 'Prøv igjen',
   syncNow: 'Synkroniser nå',
   changePassword: 'Bytt passord',
-  rightManageDatasets: 'Administrere datasett',
+  rightManageDatasets: 'Administrere dokumentsamlinger',
   pollFailing:
     'Vi får ikke oppdatert statusen akkurat nå. Vi prøver igjen av oss selv, sjeldnere for hvert forsøk.',
   listHeading: 'Koblinger',
@@ -84,7 +84,7 @@ export const connectors = defineNamespace({
   networksNone: 'Ingen private nett er åpnet. Databaser på private nett må åpnes av Digdir.',
   listEmpty:
     'Ingen koblinger ennå. Byggeassistenten foreslår en kobling når en tjeneste trenger data fra en database.',
-  summaryHeading: 'Koblinger til egne databaser',
+  summaryHeading: 'Koblinger',
   summaryPending: {
     one: '{count} ny kobling venter på godkjenning.',
     other: '{count} nye koblinger venter på godkjenning.',
@@ -99,11 +99,11 @@ export const connectors = defineNamespace({
   },
   summaryLinkPending: 'Se og godkjenn koblingene',
   summaryLink: 'Se koblingene',
-  pageBlocks: 'Byggeklosser',
+  pageBlocks: 'Katalog',
   pageCrumb: 'Koblinger',
-  pageHeading: 'Koblinger til egne databaser',
+  pageHeading: 'Koblinger',
   pageLead:
-    'Plattformen leser tabeller i databasene til {tenantName} og fyller datasett med dem. Den skriver aldri.',
+    'Plattformen leser tabeller i databasene til {tenantName} og fyller dokumentsamlinger med dem. Den skriver aldri.',
   pageLoading: 'Henter koblingene',
 });
 
@@ -123,7 +123,7 @@ export const connectorApproval = defineNamespace({
   readFailed: 'Fikk ikke lest fra databasen',
   defaultName: 'Kobling for {service}',
   approved:
-    'Koblingen er godkjent. Første synkronisering er i gang. Dataene blir datasettet «{name}», som {service} kan søke i.',
+    'Koblingen er godkjent. Første synkronisering er i gang. Dataene blir dokumentsamlingen «{name}», som {service} kan søke i.',
   rejected: 'Forslaget er avvist. Byggeassistenten får beskjed, og ingenting er tatt i bruk.',
   addressUnusable: 'Adressen kan ikke brukes',
   notSaved: 'Vi fikk ikke lagret valget. Prøv igjen om litt.',

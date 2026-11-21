@@ -86,7 +86,7 @@ import {
 } from '@genai/providers-ai-gateway';
 import { EgressGuard } from '@genai/providers-mcp-client';
 import { nativeOutputStoreFromEnv } from '@genai/providers-azure-blob';
-import { createLocalConverter } from '@genai/providers-documents';
+import { createLocalConverter, pdfPageCount } from '@genai/providers-documents';
 import {
   createTraceExporter,
   langfuseTraceSink,
@@ -197,6 +197,11 @@ const docling = process.env.DOCLING_URL
   ? doclingConverter({
       url: process.env.DOCLING_URL,
       credential: { kind: 'api-key', key: async () => process.env.DOCLING_API_KEY ?? '' },
+      // A task no replica knows any more, such as after a scale-in, is submitted again (issue 906).
+      onTaskLost: ({ submits }) => log('docling task lost', { submits }),
+      // One line a task, with its file's sha256, pages and replica, so a kill names the files it held (issue 922).
+      countPages: pdfPageCount,
+      onTask: (task) => log('docling task', { ...task }),
     })
   : undefined;
 log('document converter', { converter: docling ? 'docling' : 'text-layer', convertConcurrency });
@@ -664,7 +669,7 @@ log('traces', { enabled: Boolean(traces) });
 
 const blockTexts: BlockTexts = {
   disabled: (name) =>
-    `Byggeklossen «${name}» er slått av for virksomheten. Slå den på igjen under Byggeklosser, eller fjern den fra tjenesten.`,
+    `Delen «${name}» er slått av for virksomheten. Slå den på igjen under Katalog, eller fjern den fra tjenesten.`,
   toolTimedOut: (seconds) => `Verktøyet svarte ikke innen ${seconds} sekunder.`,
 };
 const knowledgeDatasets =

@@ -40,7 +40,7 @@ export const settingSchemaLabels: SchemaLabels = {
     },
     'retrieval.autoFilter.aliases': {
       label: 'Andre navn på verdier',
-      help: 'Navn som betyr det samme som en verdi i datasettet, for eksempel en forkortelse. Hver oppføring er en gruppe navn. Når søket nevner ett av dem, gjelder det verdien slik den er lagret i datasettet.',
+      help: 'Navn som betyr det samme som en verdi i dokumentsamlingen, for eksempel en forkortelse. Hver oppføring er en gruppe navn. Når søket nevner ett av dem, gjelder det verdien slik den er lagret i dokumentsamlingen.',
     },
     'retrieval.docTitle.fanout': {
       label: 'Tekstbiter per titteltreff',
@@ -128,7 +128,7 @@ export const settingSchemaLabels: SchemaLabels = {
     },
     'knowledge.switchRetentionDays': {
       label: 'Dager forrige søkemotor beholdes',
-      help: 'Dager den forrige kopien i søkemotoren beholdes etter at et datasett bytter motor.',
+      help: 'Dager den forrige kopien i søkemotoren beholdes etter at en dokumentsamling bytter motor.',
     },
     'assistant.enabled': {
       label: 'Byggeassistenten er på',
@@ -175,12 +175,12 @@ export const settingSchemaLabels: SchemaLabels = {
       help: 'Legges til etter instruksjonene til tjenesten når svaret er på engelsk. Virksomheten kan overstyre teksten fra Digdir.',
     },
     'skills.defaultPassThreshold': {
-      label: 'Krav for publisering av ferdigheter',
+      label: 'Krav for publisering av arbeidsinstrukser',
       help: 'Andel testtilfeller som må bestå når testsettet ikke har eget krav.',
     },
     'skills.testModel': {
-      label: 'Modell for testkjøring av ferdigheter',
-      help: 'Modellen som kjører testsett for ferdigheter. Tomt velger den billigste modellen virksomheten kan bruke.',
+      label: 'Modell for testkjøring av arbeidsinstrukser',
+      help: 'Modellen som kjører testsett for arbeidsinstrukser. Tomt velger den billigste modellen virksomheten kan bruke.',
     },
     'skills.judgeModel': {
       label: 'Modell som vurderer testsvar',
@@ -188,15 +188,15 @@ export const settingSchemaLabels: SchemaLabels = {
     },
     'playground.enabled': {
       label: 'Prøveområdet er på',
-      help: 'Tilby prøveområdet for å prøve tjenester, ferdigheter og byggeklosser.',
+      help: 'Tilby prøveområdet for å prøve tjenester, arbeidsinstrukser og deler fra katalogen.',
     },
     'usage.monthlyTokens': {
       label: 'Tokens per måned',
       help: 'Tokens en virksomhet kan bruke per kalendermåned. Prøveområdet nekter kjøringer når de er brukt opp.',
     },
     'batch.approvalLimitNok': {
-      label: 'Grense per samlet jobb før godkjenning (kr)',
-      help: 'Kroner en gruppekjøring kan anslås å koste før noen med tjenesterett må godkjenne den med begrunnelse. 0 slår godkjenning av.',
+      label: 'Grense per massekjøring før godkjenning (kr)',
+      help: 'Kroner en massekjøring kan anslås å koste før noen med tjenesterett må godkjenne den med begrunnelse. 0 slår godkjenning av.',
     },
     'retention.class': {
       label: 'Hvor lenge innhold beholdes',
@@ -250,7 +250,7 @@ export const settingSchemaLabels: SchemaLabels = {
     },
     'retrieval.autoFilter.aliases': {
       label: 'Other names for values',
-      help: 'Names that mean the same as a value in the dataset, such as an abbreviation. Each entry is a group of names. When the search names one of them, it counts as the value as stored in the dataset.',
+      help: 'Names that mean the same as a value in the document collection, such as an abbreviation. Each entry is a group of names. When the search names one of them, it counts as the value as stored in the document collection.',
     },
     'retrieval.docTitle.fanout': {
       label: 'Text chunks per title match',
@@ -338,7 +338,7 @@ export const settingSchemaLabels: SchemaLabels = {
     },
     'knowledge.switchRetentionDays': {
       label: 'Days the previous search engine is kept',
-      help: 'Days the previous search engine copy is kept after a dataset switches engine.',
+      help: 'Days the previous search engine copy is kept after a document collection switches engine.',
     },
     'assistant.enabled': {
       label: 'The build assistant is on',
@@ -385,12 +385,12 @@ export const settingSchemaLabels: SchemaLabels = {
       help: 'Added after the service instructions when the answer is in English. An organisation can override the text from Digdir.',
     },
     'skills.defaultPassThreshold': {
-      label: 'Requirement for publishing skills',
+      label: 'Requirement for publishing work instructions',
       help: 'Share of test cases that must pass when the test set has no requirement of its own.',
     },
     'skills.testModel': {
-      label: 'Model for test runs of skills',
-      help: 'The model that runs test sets for skills. Empty picks the cheapest model the organisation may use.',
+      label: 'Model for test runs of work instructions',
+      help: 'The model that runs test sets for work instructions. Empty picks the cheapest model the organisation may use.',
     },
     'skills.judgeModel': {
       label: 'Model that judges test answers',
@@ -398,14 +398,14 @@ export const settingSchemaLabels: SchemaLabels = {
     },
     'playground.enabled': {
       label: 'The playground is on',
-      help: 'Offer the playground for trying services, skills and building blocks.',
+      help: 'Offer the playground for trying services, work instructions and catalogue parts.',
     },
     'usage.monthlyTokens': {
       label: 'Tokens per month',
       help: 'Tokens an organisation may use per calendar month. The playground refuses runs once they are used up.',
     },
     'batch.approvalLimitNok': {
-      label: 'Limit per batch job before approval (NOK)',
+      label: 'Limit per batch run before approval (NOK)',
       help: 'Kroner a batch run may be estimated to cost before someone who manages services must approve it with a reason. 0 turns approval off.',
     },
     'retention.class': {
@@ -682,20 +682,20 @@ export const settingSchemaLabels: SchemaLabels = {
     },
     'skills.defaultPassThreshold': {
       'x-group': {
-        nb: 'Ferdigheter',
-        en: 'Skills',
+        nb: 'Arbeidsinstrukser',
+        en: 'Work instructions',
       },
     },
     'skills.testModel': {
       'x-group': {
-        nb: 'Ferdigheter',
-        en: 'Skills',
+        nb: 'Arbeidsinstrukser',
+        en: 'Work instructions',
       },
     },
     'skills.judgeModel': {
       'x-group': {
-        nb: 'Ferdigheter',
-        en: 'Skills',
+        nb: 'Arbeidsinstrukser',
+        en: 'Work instructions',
       },
     },
     'playground.enabled': {

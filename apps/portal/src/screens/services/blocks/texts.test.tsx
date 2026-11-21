@@ -74,7 +74,7 @@ describe('the Tekster panel', () => {
     type('Navn', 'Byggehjelpen');
     fireEvent.click(screen.getByRole('button', { name: 'Legg til forslag' }));
     type('Forslag 1', 'Trenger jeg søknad?');
-    type('Notat i Innstillinger', 'Valgene huskes her.');
+    type('Notat i Mine innstillinger', 'Valgene huskes her.');
     expect(profile()).toEqual({
       assistantName: 'Byggehjelpen',
       suggestions: ['Trenger jeg søknad?'],
@@ -82,7 +82,7 @@ describe('the Tekster panel', () => {
     });
     type('Navn', '');
     fireEvent.click(screen.getByRole('button', { name: 'Fjern forslag 1' }));
-    type('Notat i Innstillinger', '');
+    type('Notat i Mine innstillinger', '');
     expect(profile()).toBeNull();
   });
 
@@ -198,7 +198,7 @@ describe('the Tekster panel', () => {
       assistantName: 'Kunnskapsassistenten',
       corpora: { kudos: { label: 'Kudos', typeField: 'type' } },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Bruk Bare chat' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Bruk Bare samtale' }));
     expect(profile()?.assistantName).toBe('Kunnskapsassistenten');
     expect(screen.queryByRole('button', { name: 'Fyll inn som Kunnskapsassistenten' })).toBeNull();
     // Words for a collection the service does not search can be taken away.

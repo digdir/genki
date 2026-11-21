@@ -496,8 +496,8 @@ describe('live mode without invented data', () => {
 
     const block = (await screen.findByText('Chat')).closest('tr') as HTMLElement;
     const skill = screen.getByText('Klarspråk').closest('tr') as HTMLElement;
-    expect(within(block).getByText('Grensesnittblokk')).toBeTruthy();
-    expect(within(skill).getByText('Ferdighet')).toBeTruthy();
+    expect(within(block).getByText('Designelement')).toBeTruthy();
+    expect(within(skill).getByText('Arbeidsinstruks')).toBeTruthy();
 
     fireEvent.click(within(block).getByRole('button', { name: /Versjoner/ }));
     await waitFor(() => expect(window.location.hash).toContain('kind=block'));
@@ -655,13 +655,13 @@ describe('live mode without invented data', () => {
 });
 
 describe('sidebar', () => {
-  it('marks Kvalitetsmatrise og dommere as the current page on every tab of the matrix', async () => {
+  it('marks Kvalitet i alle tjenester as the current page on every tab of the matrix', async () => {
     await openLive('#/quality-matrix?tab=judges');
     const menu = screen.getByRole('navigation', { name: 'Konsollmeny' });
 
     expect(
       within(menu)
-        .getByRole('link', { name: 'Kvalitetsmatrise og dommere' })
+        .getByRole('link', { name: 'Kvalitet i alle tjenester' })
         .getAttribute('aria-current'),
     ).toBe('page');
     expect(within(menu).queryByRole('link', { name: 'Dommere' })).toBeNull();

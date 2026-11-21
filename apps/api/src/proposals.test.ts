@@ -212,7 +212,7 @@ describe('assistant proposals', () => {
 
     expect(withoutRight.status).toBe(403);
     expect(((await withoutRight.json()) as { title: string }).title).toContain(
-      'Registrere byggeklosser',
+      'Legge til i katalogen',
     );
     expect(shortReason.status).toBe(400);
     expect(failing.status).toBe(422);
@@ -234,7 +234,7 @@ describe('assistant proposals', () => {
     ]);
   });
 
-  it('a direct call cannot approve a level-3 proposal without Registrere byggeklosser', async () => {
+  it('a direct call cannot approve a level-3 proposal without Legge til i katalogen', async () => {
     const { create, admin } = await setup();
     const stored = await create(3);
 
@@ -246,7 +246,7 @@ describe('assistant proposals', () => {
     });
 
     expect(result.ok).toBe(false);
-    expect(JSON.stringify(result)).toContain('Registrere byggeklosser');
+    expect(JSON.stringify(result)).toContain('Legge til i katalogen');
   });
 
   it('users without the right send a proposal for approval instead', async () => {
@@ -262,7 +262,7 @@ describe('assistant proposals', () => {
     expect(listed.data.map((p) => p.id)).toEqual([stored.id]);
   });
 
-  it('approving a level-2 proposal needs Administrere datasett and a platform that reads databases', async () => {
+  it('approving a level-2 proposal needs Administrere dokumentsamlinger and a platform that reads databases', async () => {
     const { send, create, configEntries } = await setup();
     const stored = await create(2);
 
@@ -275,7 +275,7 @@ describe('assistant proposals', () => {
 
     expect(withoutRight.status).toBe(403);
     expect(await json(withoutRight)).toMatchObject({
-      title: 'Du trenger rettigheten «Administrere datasett»',
+      title: 'Du trenger rettigheten «Administrere dokumentsamlinger»',
     });
     expect(turnedOff.status).toBe(409);
     expect(JSON.stringify(await json(turnedOff))).not.toContain('hemmelig');

@@ -3,12 +3,12 @@ kind: Block
 metadata:
   tenant: '991825827'
   id: chat
-  name: Chat
+  name: Samtale
 spec:
   tier: built-in
   builtIn: chat
   title:
-    nb: Chat
+    nb: Samtale
     en: Chat
   summary:
     nb: Spørsmålsfeltet og samtalen

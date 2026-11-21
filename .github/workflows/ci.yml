@@ -111,8 +111,21 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm run size
 
+  # genki's middleware in front of docling-serve (docker/docling/genki_busy.py, issue 922), with the versions the image
+  # pins; the image build runs the same tests, but only on main.
+  docling:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install --disable-pip-version-check -c docker/docling/requirements.txt starlette httpx python-multipart
+      - working-directory: docker/docling
+        run: '"$RUNNER_TEMP/venv/bin/python" -m unittest test_busy'
+
   check:
-    needs: [scope, static, test, size]
+    needs: [scope, static, test, size, docling]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -124,9 +137,10 @@ jobs:
           TESTS_IN_SCOPE: ${{ needs.scope.outputs.tests != 'none' }}
           SIZE: ${{ needs.size.result }}
           SIZE_IN_SCOPE: ${{ needs.scope.outputs.size }}
+          DOCLING: ${{ needs.docling.result }}
         run: |
           passed() { [ "$1" = success ] || { [ "$1" = skipped ] && [ "$2" = false ]; }; }
-          test "$SCOPE" = success && test "$STATIC" = success && passed "$TEST" "$TESTS_IN_SCOPE" && passed "$SIZE" "$SIZE_IN_SCOPE"
+          test "$SCOPE" = success && test "$STATIC" = success && passed "$TEST" "$TESTS_IN_SCOPE" && passed "$SIZE" "$SIZE_IN_SCOPE" && test "$DOCLING" = success
 
   secrets:
     runs-on: ubuntu-latest

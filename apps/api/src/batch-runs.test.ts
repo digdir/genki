@@ -754,10 +754,14 @@ describe('batch runs over a document set', () => {
     const nb = await env.send('GET', `${base}/${String(run.id)}/export?format=csv`);
 
     const [enHeader, ...enRows] = String(en.body).replace('\uFEFF', '').split('\r\n');
-    expect(enHeader).toContain('No.;Document ID;Title;Link;Dataset;Status;Answer;Truncated');
+    expect(enHeader).toContain(
+      'No.;Document ID;Title;Link;Document collection;Status;Answer;Truncated',
+    );
     expect(enRows.join('\n')).toContain(';Completed;');
     expect(enRows.join('\n')).toContain(';Nothing found;I could not find it in the report.;No;');
-    expect(String(nb.body)).toContain('Nr;Dokument-ID;Tittel;Lenke;Datasett;Status;Svar;Avkortet');
+    expect(String(nb.body)).toContain(
+      'Nr;Dokument-ID;Tittel;Lenke;Dokumentsamling;Status;Svar;Avkortet',
+    );
     expect(String(nb.body)).toContain(';Ikke funnet;I could not find it in the report.;Nei;');
   });
 
@@ -843,7 +847,7 @@ describe('batch runs over a document set', () => {
       .replace(/^\uFEFF/, '')
       .split('\r\n');
     expect(lines[0]).toBe(
-      'Nr;Dokument-ID;Tittel;Lenke;Datasett;Status;Svar;Avkortet;Feil;Kilder;Tjeneste;Tjenesteversjon;Modell;Tokens inn;Tokens ut;Kostnad (kr);Oppgave',
+      'Nr;Dokument-ID;Tittel;Lenke;Dokumentsamling;Status;Svar;Avkortet;Feil;Kilder;Tjeneste;Tjenesteversjon;Modell;Tokens inn;Tokens ut;Kostnad (kr);Oppgave',
     );
     expect(lines[2]).toContain(
       'd2;Årsrapport 2024 Digdir;;digdir/kudos;Fullført;Sammendrag av Årsrapport 2024 Digdir;Nei;',

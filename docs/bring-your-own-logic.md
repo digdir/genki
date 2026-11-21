@@ -43,7 +43,7 @@ These routes let your own logic run outside the platform, with the platform's id
 
 Later steps read `{{sok.text}}`, `{{sok.json.<field>}}`, `{{sok.parts}}` and `{{sok.sources}}`. If the step is the last one, its parts become the answer. `onError` works as for other steps; a tool that reports an error counts as a failure. The call shows in **Hva skjedde** with the argument names, not the values.
 
-Try it in the portal: Stegflyter, add a step, choose **Kall et verktøy**. A complete example is `packages/definitions/examples/saksoppslag-flyt.yaml` with the service `saksoppslag.yaml`.
+Try it in the portal: Arbeidsflyter, add a step, choose **Kall et verktøy**. A complete example is `packages/definitions/examples/saksoppslag-flyt.yaml` with the service `saksoppslag.yaml`.
 
 ### Own engine (`remote-agent`): a whole turn answered by your agent
 

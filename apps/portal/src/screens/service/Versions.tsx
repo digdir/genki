@@ -23,7 +23,7 @@ import { lineDiff, type DiffOp } from '../quality/diff';
 import { changeText } from '../services/setup-change-text';
 import { draftChanges } from '../services/setup-diff';
 import type { T } from '../../i18n';
-import { clock, sameDay, shortWhen } from './dev-format';
+import { clock, placeName, sameDay, shortWhen } from './dev-format';
 import { definitionYaml, problemErrors, withoutVersion } from './definition';
 import { servicePath } from './sections';
 import './sections.css';
@@ -381,7 +381,9 @@ export const Versions = ({ api, tenant, serviceId, onPublished }: Props) => {
                         runningIn(v.version).includes(productionEnvironment) ? 'success' : 'info'
                       }
                     >
-                      {t('serviceDev.inEnvironments', { list: list(runningIn(v.version)) })}
+                      {t('serviceDev.inEnvironments', {
+                        list: list(runningIn(v.version).map((name) => placeName(t, name))),
+                      })}
                     </Tag>
                   ) : null}
                   {!staged && v.version === current ? (

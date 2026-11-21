@@ -75,9 +75,9 @@ const Harness = ({ seen }: { seen: (d: ServiceDefinition) => void }) => {
 };
 
 describe('the step flow a service uses', () => {
-  it('lists every published version of a flow, not only the newest', async () => {
+  it('lists every published edition of a flow, not only the newest', async () => {
     render(<Harness seen={() => undefined} />);
-    const picker = await screen.findByRole('combobox', { name: 'Stegflyt' });
+    const picker = await screen.findByRole('combobox', { name: 'Arbeidsflyt' });
     const options = () => [
       ...(picker.closest('ds-suggestion')?.querySelectorAll<HTMLOptionElement>('u-option') ?? []),
     ];
@@ -86,7 +86,7 @@ describe('the step flow a service uses', () => {
         options()
           .filter((o) => o.value)
           .map((o) => o.textContent),
-      ).toEqual(['postruting, versjon 2 (nyeste)', 'postruting, versjon 1']),
+      ).toEqual(['postruting, utgave 2 (nyeste)', 'postruting, utgave 1']),
     );
   });
 
@@ -96,10 +96,10 @@ describe('the step flow a service uses', () => {
     const steps = await screen.findByRole('list', { name: 'Stegene i postruting' });
     expect(within(steps).getByText('Gammel sortering')).toBeTruthy();
     expect(within(steps).queryByText('Ny sortering')).toBeNull();
-    expect(screen.getByText('Ny versjon er tilgjengelig: postruting v2.')).toBeTruthy();
+    expect(screen.getByText('Ny utgave er tilgjengelig: postruting v2.')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Oppdater til v2' }));
     expect(latest?.spec.strategy.config).toEqual({ flow: 'postruting@2' });
     expect(await screen.findByText('Ny sortering')).toBeTruthy();
-    expect(screen.queryByText(/Ny versjon er tilgjengelig/)).toBeNull();
+    expect(screen.queryByText(/Ny utgave er tilgjengelig/)).toBeNull();
   });
 });
