@@ -45,7 +45,8 @@ export const platformBlocks = defineNamespace({
   blockClassifyName: 'Klassifiser',
   blockClassifyDescription: 'Velger nøyaktig én kategori for en tekst.',
   blockRetrieveName: 'Søk',
-  blockRetrieveDescription: 'Planlegger søk og henter tekstbiter fra datasettene til tjenesten.',
+  blockRetrieveDescription:
+    'Planlegger søk og henter tekstbiter fra dokumentsamlingene til tjenesten.',
   blockRerankName: 'Ranger treff',
   blockRerankDescription: 'Rangerer tekstbitene og setter sammen grunnlaget modellen leser.',
   blockSynthesizeName: 'Skriv svar fra grunnlaget',
@@ -67,7 +68,7 @@ export const platformBlocks = defineNamespace({
   blockAgentDescription: 'Lar modellen søke, lese og svare selv, som ett steg i flyten.',
   blockDocumentsName: 'Finn dokumenter',
   blockDocumentsDescription:
-    'Lister dokumenter fra datasettene til tjenesten etter type, virksomhet, år eller id. Lager ingen tekst.',
+    'Lister dokumenter fra dokumentsamlingene til tjenesten etter type, virksomhet, år eller id. Lager ingen tekst.',
   blockReadDocumentName: 'Les ett dokument',
   blockReadDocumentDescription:
     'Henter tekstbitene i ett dokument, og kan rangere dem etter et spørsmål og beholde de beste.',
@@ -76,7 +77,7 @@ export const platformBlocks = defineNamespace({
     'Setter sammen resultatene fra en løkke til en tabell der hver celle har kilden sin. Kan lastes ned som CSV.',
   blockToolName: 'Kall et verktøy',
   blockToolDescription:
-    'Kaller ett verktøy fra en registrert verktøykilde med verdier fra flyten, og gir resultatet videre til stegene etter.',
+    'Kaller ett verktøy fra en registrert kobling med verdier fra flyten, og gir resultatet videre til stegene etter.',
   blockCallOperationName: 'Kall en operasjon',
   blockCallOperationDescription:
     'Kaller en gjennomgått type modellkall på en av modellene til tjenesten, med verdier fra flyten. Kallet følger rammene til tjenesten og blir maskert, målt og logget.',

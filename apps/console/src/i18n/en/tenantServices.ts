@@ -3,9 +3,9 @@ import type { tenantServices as source } from '../nb/tenantServices';
 
 export const tenantServices = {
   kindService: 'Service',
-  kindStepFlow: 'Step flow',
-  kindSkill: 'Skill',
-  kindBlock: 'Interface block',
+  kindStepFlow: 'Workflow',
+  kindSkill: 'Work instruction',
+  kindBlock: 'Design element',
   loadingVersion: 'Loading version {version}',
   versionYaml: 'Version {version} as YAML',
   loadingVersions: 'Loading the versions',
@@ -22,13 +22,13 @@ export const tenantServices = {
   title: 'Services',
   pickTitle: 'Choose an organisation',
   pickText: 'Go to <link>Organisations</link> and choose Services on an organisation.',
-  headerTitle: 'Services and step flows',
+  headerTitle: 'Services and workflows',
   intro:
     'The definitions the organisation has published, with all versions. View only; the organisation makes changes in the portal.',
   back: 'Back to Organisations',
   loadingDefinitions: 'Loading the definitions',
   emptyTitle: 'No services yet',
-  emptyText: 'The organisation has not published any services or step flows.',
+  emptyText: 'The organisation has not published any services or workflows.',
   definitions: 'Definitions',
   colName: 'Name',
   colType: 'Type',

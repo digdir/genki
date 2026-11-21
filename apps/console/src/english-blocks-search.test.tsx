@@ -46,9 +46,9 @@ describe('search engines in English', () => {
 describe('building blocks in English', () => {
   it('groups the registry with English labels', async () => {
     render(inEnglish(<BuildingBlocks api={api()} />));
-    expect(await screen.findByRole('heading', { level: 1, name: 'Building blocks' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { level: 1, name: 'Plug-ins' })).toBeTruthy();
     expect(screen.getByRole('radio', { name: 'Failed' })).toBeTruthy();
-    expect(screen.getByText('Register an external building block')).toBeTruthy();
+    expect(screen.getByText('Register an external plug-in')).toBeTruthy();
   });
 
   it('previews a new version in English and asks for a reason', async () => {

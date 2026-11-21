@@ -103,7 +103,7 @@ export const problems = {
   diagnosticsSearchInvalid: 'The search cannot run',
   diagnosticsSearchFailed: 'The search failed',
   datasetSearchTimedOut: 'The search took too long',
-  datasetSearchNeedsRight: 'You need the right «Manage services» or «Manage datasets»',
+  datasetSearchNeedsRight: 'You need the right «Manage services» or «Manage document collections»',
   datasetSearchNoProfile: 'The dataset {dataset} has no search profile «{profile}»',
   datasetSearchRefused: 'The search was not let through',
   datasetDocumentsOffsetNotPage: 'offset must be a multiple of limit',

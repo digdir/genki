@@ -41,8 +41,8 @@ export const common = {
 export const rights = {
   useServices: 'Use services',
   manageServices: 'Manage services',
-  manageDatasets: 'Manage datasets',
-  registerBuildingBlocks: 'Register building blocks',
+  manageDatasets: 'Manage document collections',
+  registerBuildingBlocks: 'Add to the catalogue',
   viewUsage: 'See usage and cost',
   read: 'Read',
   write: 'Write',

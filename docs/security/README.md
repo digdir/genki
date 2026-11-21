@@ -105,14 +105,14 @@ No security mechanism uses MD5 or SHA-1.
 
 Credentials are kept apart from code and configuration. Most can be replaced without a rebuild:
 
-| Credential                                           | How to rotate                                                                                                                                                                                                        |
-| ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Model, search, reranker and Altinn keys in Key Vault | Add a new version of the secret in Key Vault, then restart the API and worker revisions, or deploy, so they read it. Revoke the old key at the provider afterwards                                                   |
-| The Maskinporten key for the Altinn decision point   | Add a new key to the Maskinporten client, put the private JWK in Key Vault as a new version of `altinn-pdp-maskinporten-key`, restart, then remove the old key from the client                                       |
-| An organisation's API key                            | In the portal under **Utviklerverktøy**, **Nøkler**, or `POST /tenants/{tenant}/api-keys/{id}/rotate`, with the right to manage services. The new key keeps the old one's grants, and the old one is revoked at once |
-| A tenant secret                                      | `PUT /tenants/{tenant}/secrets/{name}` with the new value. Values are write-only and never returned                                                                                                                  |
-| Signing keys of Ansattporten and Maskinporten        | Nothing to do: genki reads the issuers' published keys and fetches them again when a token names a key it does not know                                                                                              |
-| `CONTENT_MASTER_KEY`                                 | **Not supported yet.** Content keys are wrapped with it, and there is no re-wrap step, so replacing it makes stored content unreadable. Keep it in Key Vault and do not replace it                                   |
+| Credential                                           | How to rotate                                                                                                                                                                                                          |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Model, search, reranker and Altinn keys in Key Vault | Add a new version of the secret in Key Vault, then restart the API and worker revisions, or deploy, so they read it. Revoke the old key at the provider afterwards                                                     |
+| The Maskinporten key for the Altinn decision point   | Add a new key to the Maskinporten client, put the private JWK in Key Vault as a new version of `altinn-pdp-maskinporten-key`, restart, then remove the old key from the client                                         |
+| An organisation's API key                            | In the portal under **Integrasjoner**, **API-nøkler**, or `POST /tenants/{tenant}/api-keys/{id}/rotate`, with the right to manage services. The new key keeps the old one's grants, and the old one is revoked at once |
+| A tenant secret                                      | `PUT /tenants/{tenant}/secrets/{name}` with the new value. Values are write-only and never returned                                                                                                                    |
+| Signing keys of Ansattporten and Maskinporten        | Nothing to do: genki reads the issuers' published keys and fetches them again when a token names a key it does not know                                                                                                |
+| `CONTENT_MASTER_KEY`                                 | **Not supported yet.** Content keys are wrapped with it, and there is no re-wrap step, so replacing it makes stored content unreadable. Keep it in Key Vault and do not replace it                                     |
 
 ### Changing algorithms
 

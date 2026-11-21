@@ -152,7 +152,7 @@ export const BatchJob = ({
 
   const cancel = () =>
     act(async () => {
-      await api.batchRuns.cancel(tenant, serviceId, run.id, 'Avbrøt samlet jobb');
+      await api.batchRuns.cancel(tenant, serviceId, run.id, 'Avbrøt massekjøring');
       setFlash(tRef.current('batch.cancelFlash'), 'info');
       onChanged();
     });

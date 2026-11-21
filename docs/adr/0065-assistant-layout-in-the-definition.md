@@ -6,7 +6,7 @@ Left: the bounds `available` and `required`, and the theme (ADR 0063). Each need
 
 ## Context
 
-ADR 0054 made an assistant's layout data, `AssistantLayout` version 1 with its profile, and left where it is stored. The portal's «Grensesnitt» tab kept it only in the browser's session storage, per tenant and service, so a layout did not reach another browser, another person or a host, and it had no versions.
+ADR 0054 made an assistant's layout data, `AssistantLayout` version 1 with its profile, and left where it is stored. The portal's «Utforming» tab kept it only in the browser's session storage, per tenant and service, so a layout did not reach another browser, another person or a host, and it had no versions.
 
 The proposal for ADR 0056 in pull request #570 is the prior work this record builds on: the interface lives in the service definition as `spec.interface`, versioned with it, drafted, validated and published per environment, with room for a host's own `x-` blocks. This record takes the part a builder needs to save to the API now, and the changes the hosted assistant asks for: texts in each of the service's languages, and room for a theme, a menu and pages.
 
@@ -37,7 +37,7 @@ The proposal for ADR 0056 in pull request #570 is the prior work this record bui
 
 ### The builder
 
-- **The «Grensesnitt» tab saves to the draft.** A change the person makes writes the layout into `spec.interface.layout`, and the draft saves it as any other change. Opening the tab writes nothing.
+- **The «Utforming» tab saves to the draft.** A change the person makes writes the layout into `spec.interface.layout`, and the draft saves it as any other change. Opening the tab writes nothing.
 - **A block the draft cannot back yet is stored where it was chosen.** The builder holds it off in its preview and puts it back once the draft can back it, after a reload too.
 - **A layout the builder cannot edit without losing something is not edited.** When the draft's layout has texts per language, an `x-` block or a block the catalogue refuses, the tab says so and points to the YAML, and writes nothing.
 - **A layout kept in the browser before is offered once.** When the draft has no layout and the browser kept one, the tab opens it and offers «Lagre i utkastet» or «Forkast». Saving it or changing it writes it into the draft and forgets the browser's copy; discarding forgets it and starts from the template.

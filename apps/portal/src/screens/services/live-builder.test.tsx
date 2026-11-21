@@ -66,7 +66,7 @@ const startBuilder = async (fetch: typeof globalThis.fetch) => {
   fireEvent.change(screen.getByLabelText('Hva skal tjenesten gjøre?'), {
     target: { value: 'Svar på spørsmål om permisjon' },
   });
-  fireEvent.click(screen.getByRole('button', { name: 'Start med assistenten' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Start med byggeassistenten' }));
   return screen.findByRole('complementary', { name: 'Byggeassistent' });
 };
 
@@ -74,7 +74,7 @@ const publishPage = async (reason: string) => {
   window.location.hash = '#/services/rapportassistenten/setup/risk';
   fireEvent.click(await screen.findByRole('button', { name: 'Bekreft risikonivå' }));
   fireEvent.click(await screen.findByRole('button', { name: 'Publiser ...' }));
-  await screen.findByRole('heading', { level: 1, name: /^Publiser Rapportassistenten, versjon/ });
+  await screen.findByRole('heading', { level: 1, name: /^Publiser Rapportassistenten, utgave/ });
   fireEvent.change(screen.getByLabelText(/^Hva endret du, og hvorfor\?/), {
     target: { value: reason },
   });
@@ -82,7 +82,7 @@ const publishPage = async (reason: string) => {
 };
 
 const publishOnPage = async (page: HTMLElement) => {
-  const button = within(page).getByRole('button', { name: /^Publiser versjon \d+$/ });
+  const button = within(page).getByRole('button', { name: 'Publiser' });
   await waitFor(() => expect(button.getAttribute('aria-disabled')).not.toBe('true'));
   fireEvent.click(button);
 };
@@ -156,7 +156,7 @@ describe('the live builder', () => {
     await startBuilder(fetch);
     await openSection(/^Kunnskap/);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Legg til datasett' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Legg til dokumentsamling' }));
     expect(await screen.findByText('Delt med dere')).toBeTruthy();
     expect(screen.queryByText('Statsbudsjettet 2026')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Legg til Kudos-rapporter' }));
@@ -164,10 +164,10 @@ describe('the live builder', () => {
     expect(screen.queryByText('612 dokumenter')).toBeNull();
 
     fireEvent.click(
-      screen.getByRole('button', { name: 'Fjern datasettet Veiledere og rundskriv' }),
+      screen.getByRole('button', { name: 'Fjern dokumentsamlingen Veiledere og rundskriv' }),
     );
     expect(
-      screen.queryByRole('button', { name: 'Fjern datasettet Veiledere og rundskriv' }),
+      screen.queryByRole('button', { name: 'Fjern dokumentsamlingen Veiledere og rundskriv' }),
     ).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'Publiser' }));
@@ -214,8 +214,8 @@ describe('the live builder', () => {
     expect(within(dialog).getByText(/Modellen behandler data i global region/)).toBeTruthy();
     expect(within(dialog).getByText('Formål og målgruppe:')).toBeTruthy();
     expect(within(dialog).queryByText('Alle krav er bestått.')).toBeNull();
-    expect(within(dialog).getByRole('heading', { name: 'Versjon 1, første versjon' })).toBeTruthy();
-    expect(within(dialog).queryByText('Ingen endringer siden forrige versjon')).toBeNull();
+    expect(within(dialog).getByRole('heading', { name: 'Utgave 1, første utgave' })).toBeTruthy();
+    expect(within(dialog).queryByText('Ingen endringer siden forrige utgave')).toBeNull();
 
     fireEvent.change(within(dialog).getByLabelText('Hva er endret, og hvorfor?'), {
       target: { value: 'Første versjon av tjenesten' },
@@ -256,7 +256,7 @@ describe('the live builder', () => {
     await waitFor(() => expect(window.location.hash).toBe('#/services/ny-tjeneste'));
     const published = await waitFor(() => {
       const head = document.querySelector('.service-head') as HTMLElement;
-      expect(within(head).getByText('Versjon 1 i bruk')).toBeTruthy();
+      expect(within(head).getByText('Utgave 1 i bruk')).toBeTruthy();
       return head;
     });
     expect(within(published).queryByText('Utkast')).toBeNull();
@@ -308,7 +308,7 @@ describe('the live builder', () => {
     await auth.login();
     window.location.hash = '#/services/rapportassistenten/setup?publiser=1';
     render(<App auth={auth} fetch={fetch} live />);
-    await screen.findByRole('heading', { level: 1, name: /^Publiser Rapportassistenten, versjon/ });
+    await screen.findByRole('heading', { level: 1, name: /^Publiser Rapportassistenten, utgave/ });
     return document.body;
   };
 
@@ -456,7 +456,7 @@ describe('the live builder and the server draft', () => {
   it('opening a service opens its draft once', async () => {
     const { calls } = await openService('#/services/rapportassistenten/setup');
     await screen.findByRole('heading', { level: 1, name: 'Rapportassistenten' });
-    await screen.findByText('Versjon 7 i bruk');
+    await screen.findByText('Utgave 7 i bruk');
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(calls.filter((c) => c.url.endsWith('/draft?rebase=clean'))).toHaveLength(1);
   });
@@ -482,14 +482,14 @@ describe('the live builder and the server draft', () => {
     const header = (
       await screen.findByRole('heading', { level: 1, name: 'Rapportassistenten' })
     ).closest('header') as HTMLElement;
-    await within(header).findByText('Versjon 7 i bruk');
+    await within(header).findByText('Utgave 7 i bruk');
 
     for (const [section, tab] of [
-      ['interface', 'Grensesnitt'],
-      ['versions', 'Utviklerverktøy'],
+      ['interface', 'Utforming'],
+      ['versions', 'Teknisk'],
       ['quality', 'Kvalitet'],
       ['settings', 'Oppsett'],
-      ['log', 'Utviklerverktøy'],
+      ['log', 'Teknisk'],
       ['setup', 'Oppsett'],
     ] as const) {
       window.location.hash = `#/services/rapportassistenten/${section}`;
@@ -500,7 +500,7 @@ describe('the live builder and the server draft', () => {
           }).textContent,
         ).toBe(tab),
       );
-      expect(within(header).getByText('Versjon 7 i bruk')).toBeTruthy();
+      expect(within(header).getByText('Utgave 7 i bruk')).toBeTruthy();
     }
     expect(header.isConnected).toBe(true);
     expect(
@@ -510,7 +510,7 @@ describe('the live builder and the server draft', () => {
 
   it('switching tabs while the definition is fresh sends no request for it again', async () => {
     const { calls } = await openService('#/services/rapportassistenten/setup');
-    await screen.findByText('Versjon 7 i bruk');
+    await screen.findByText('Utgave 7 i bruk');
     await new Promise((resolve) => setTimeout(resolve, 50));
     const definitionReads = () =>
       calls.filter(
@@ -576,7 +576,7 @@ describe('the live builder and the server draft', () => {
     const header = (
       await screen.findByRole('heading', { level: 1, name: 'Rapportassistenten' })
     ).closest('header') as HTMLElement;
-    expect(await within(header).findByText('Versjon 7 i bruk')).toBeTruthy();
+    expect(await within(header).findByText('Utgave 7 i bruk')).toBeTruthy();
 
     const found = exampleServices.find((s) => s.id === 'rapportassistenten');
     await fetch('/api/definitions', {
@@ -597,7 +597,7 @@ describe('the live builder and the server draft', () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
 
     expect(definitionReads()).toBe(before);
-    expect(within(header).getByText('Versjon 7 i bruk')).toBeTruthy();
+    expect(within(header).getByText('Utgave 7 i bruk')).toBeTruthy();
   });
 });
 
@@ -659,7 +659,7 @@ describe('the live builder when the draft is outdated', () => {
   const instructionsField = () =>
     screen.getByLabelText('Instruksjoner til tjenesten') as HTMLTextAreaElement;
 
-  it('a draft based on an older version opens rebased onto the latest by the API, not the portal', async () => {
+  it('a draft based on an older edition opens rebased onto the latest by the API, not the portal', async () => {
     const { calls } = await startOutdated(
       {
         ...published,
@@ -667,18 +667,18 @@ describe('the live builder when the draft is outdated', () => {
       },
       false,
     );
-    expect(await screen.findByText('Utkastet er oppdatert til versjon 8.')).toBeTruthy();
+    expect(await screen.findByText('Utkastet er oppdatert til utgave 8.')).toBeTruthy();
     expect(instructionsField().value).toBe('Svar kort.');
     expect(calls.some((c) => c.method === 'GET' && c.url.endsWith('/draft?rebase=clean'))).toBe(
       true,
     );
     expect(calls.some((c) => c.url.endsWith('/draft/rebase'))).toBe(false);
-    expect(screen.queryByText('Utkastet bygger på en eldre versjon')).toBeNull();
+    expect(screen.queryByText('Utkastet bygger på en eldre utgave')).toBeNull();
   });
 
   it('conflicting fields are shown, not silently overwritten', async () => {
     await startOutdated(withInstructions('Svar utfyllende.'), false);
-    const alert = (await screen.findByText('Utkastet bygger på en eldre versjon')).closest(
+    const alert = (await screen.findByText('Utkastet bygger på en eldre utgave')).closest(
       '[role="alert"]',
     ) as HTMLElement;
     const group = within(alert).getByRole('group', { name: /Instruksjoner/ });
@@ -693,7 +693,7 @@ describe('the live builder when the draft is outdated', () => {
       spec: { ...published.spec, model: { ...published.spec.model, primary: 'aivar/qwen3-8' } },
     });
     await publishIn(dialog);
-    const warning = await within(dialog).findByText('Utkastet bygger på en eldre versjon');
+    const warning = await within(dialog).findByText('Utkastet bygger på en eldre utgave');
     const alert = warning.closest('[role="alert"]') as HTMLElement;
     expect(within(alert).getByText('Modell')).toBeTruthy();
     expect(publishes(calls)[0]?.body).toMatchObject({ draftRevision: 2 });
@@ -712,7 +712,7 @@ describe('the live builder when the draft is outdated', () => {
         },
       },
     });
-    expect(await screen.findByText('Versjon 9 er publisert.')).toBeTruthy();
+    expect(await screen.findByText('Utgave 9 er publisert.')).toBeTruthy();
   });
 
   it('lets the user pick the published value when both changed the same setting', async () => {
@@ -723,8 +723,8 @@ describe('the live builder when the draft is outdated', () => {
     const group = await within(dialog).findByRole('group', { name: /Instruksjoner/ });
     expect(within(group).getByText('Svar kort.')).toBeTruthy();
     expect(within(group).getByText('Svar utfyllende.')).toBeTruthy();
-    fireEvent.click(within(group).getByLabelText(/Bruk publisert versjon/));
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Lagre valgene i utkastet' }));
+    fireEvent.click(within(group).getByLabelText(/Bruk publisert utgave/));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Lagre valgene' }));
 
     expect(await within(dialog).findByText(/Utkastet er oppdatert/)).toBeTruthy();
     const saved = calls.filter((c) => c.method === 'PUT' && c.url.endsWith('/draft')).at(-1);
@@ -952,7 +952,7 @@ describe('a new service saved as a draft on the server', () => {
     expect(await screen.findByRole('button', { name: 'Slett utkastet' })).toBeTruthy();
 
     window.location.hash = '#/services/rapportassistenten';
-    await screen.findByText(/^Versjon \d+ i bruk$/);
+    await screen.findByText(/^Utgave \d+ i bruk$/);
     expect(screen.queryByRole('button', { name: 'Slett utkastet' })).toBeNull();
   });
 

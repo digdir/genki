@@ -49,7 +49,7 @@ describe('the service tab bar', () => {
   });
 });
 
-describe('the Utviklerverktøy side menu', () => {
+describe('the Teknisk side menu', () => {
   it('moves the focus between its tabs with the up and down arrow keys', () => {
     render(
       <ServiceSubNav
@@ -58,21 +58,21 @@ describe('the Utviklerverktøy side menu', () => {
         current="log"
       />,
     );
-    const menu = screen.getByRole('tablist', { name: 'Utviklerverktøy' });
+    const menu = screen.getByRole('tablist', { name: 'Teknisk' });
     expect(menu.getAttribute('aria-orientation')).toBe('vertical');
     const tab = (name: string) => screen.getByRole('tab', { name });
     tab('Logg').focus();
 
     fireEvent.keyDown(tab('Logg'), { key: 'ArrowDown' });
-    expect(document.activeElement).toBe(tab('Nøkler og kanaler'));
-    fireEvent.keyDown(tab('Nøkler og kanaler'), { key: 'ArrowUp' });
+    expect(document.activeElement).toBe(tab('API-nøkler og kanaler'));
+    fireEvent.keyDown(tab('API-nøkler og kanaler'), { key: 'ArrowUp' });
     fireEvent.keyDown(tab('Logg'), { key: 'ArrowUp' });
-    expect(document.activeElement).toBe(tab('Versjoner'));
-    fireEvent.keyDown(tab('Versjoner'), { key: 'ArrowUp' });
-    expect(document.activeElement).toBe(tab('Definisjon (YAML)'));
+    expect(document.activeElement).toBe(tab('Historikk'));
+    fireEvent.keyDown(tab('Historikk'), { key: 'ArrowUp' });
+    expect(document.activeElement).toBe(tab('Teknisk tekst (YAML)'));
   });
 
-  it('counts versions, runs today, active keys, environments and running jobs, and nothing for YAML', async () => {
+  it('counts editions, runs today, active keys, test edition and in use and running jobs, and nothing for YAML', async () => {
     const reply = (path: string): unknown => {
       if (path.includes('/definitions/'))
         return {
@@ -116,15 +116,17 @@ describe('the Utviklerverktøy side menu', () => {
     );
 
     await waitFor(() =>
-      expect(screen.getByRole('tab', { name: /^Batch/ }).textContent).toBe('Batch 1 pågår'),
+      expect(screen.getByRole('tab', { name: /^Massekjøring/ }).textContent).toBe(
+        'Massekjøring 1 pågår',
+      ),
     );
     expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual([
-      'Versjoner 7',
+      'Historikk 7',
       'Logg 412 i dag',
-      'Nøkler og kanaler 2 aktive',
-      'Miljøer 2',
-      'Batch 1 pågår',
-      'Definisjon (YAML)',
+      'API-nøkler og kanaler 2 aktive',
+      'Testutgave og i bruk 2',
+      'Massekjøring 1 pågår',
+      'Teknisk tekst (YAML)',
     ]);
     expect(screen.getByRole('tab', { name: /^Logg/ }).getAttribute('aria-selected')).toBe('true');
     expect(

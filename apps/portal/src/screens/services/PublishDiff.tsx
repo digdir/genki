@@ -425,7 +425,7 @@ export const PublishDiff = ({
               aria-disabled={blocked || undefined}
               onClick={() => !blocked && void submit()}
             >
-              {t('serviceDraft.publishVersion', { n: next })}
+              {t('serviceDraft.publishVersion')}
             </BusyButton>
             <Button asChild variant="secondary">
               <a href={backHref}>{t('serviceDraft.keepEditing')}</a>

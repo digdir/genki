@@ -3,13 +3,13 @@ kind: Block
 metadata:
   tenant: '991825827'
   id: threads
-  name: Tråder
+  name: Tidligere samtaler
 spec:
   tier: built-in
   builtIn: threads
   title:
-    nb: Tråder
-    en: Threads
+    nb: Tidligere samtaler
+    en: Previous chats
   summary:
     nb: Samtalene, gruppert etter dato
     en: The conversations, grouped by date

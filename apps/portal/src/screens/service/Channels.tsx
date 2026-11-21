@@ -25,7 +25,7 @@ import type {
   ServiceKeyView,
 } from '../../types';
 import { BackLink } from '../../components/BackLink';
-import { clock } from './dev-format';
+import { clock, placeName } from './dev-format';
 import { servicePath } from './sections';
 import { ClientForm, draftOf, slugFrom, specOf, type ClientDraft } from './ClientForm';
 import { problemText, ServiceKeys } from './ServiceKeys';
@@ -215,7 +215,9 @@ const ClientCard = ({
           </span>
           {spec.environments?.length ? (
             <span className="meta">
-              {t('serviceChannels.environmentsLine', { list: spec.environments.join(', ') })}
+              {t('serviceChannels.environmentsLine', {
+                list: spec.environments.map((name) => placeName(t, name)).join(', '),
+              })}
             </span>
           ) : null}
           {spec.url ? (

@@ -1219,7 +1219,9 @@ describe('playground changes on top of a service version', () => {
 
     expect(res.status).toBe(422);
     expect(res.body).toMatchObject({
-      errors: [{ path: 'setup.instructions', message: expect.stringContaining('Fast stegflyt') }],
+      errors: [
+        { path: 'setup.instructions', message: expect.stringContaining('Fast arbeidsflyt') },
+      ],
     });
     expect(model.seen.length).toBe(before);
   });
@@ -1307,7 +1309,7 @@ describe('playground changes on top of a service version', () => {
     expect(strategyOf('flyt')).toEqual({
       id: 'step-flow',
       version: 1,
-      title: { nb: 'Fast stegflyt', en: 'Fixed step flow' },
+      title: { nb: 'Fast arbeidsflyt', en: 'Fixed workflow' },
       takesInstructions: false,
       flow: {
         ref: 'les-dokumentet@1',

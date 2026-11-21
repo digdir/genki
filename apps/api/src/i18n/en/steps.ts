@@ -11,7 +11,7 @@ export const steps = {
   toolGenerate: 'Wrote the answer',
   toolInspect: 'Looked at the filters',
   toolSourceFacts: 'Looked at what the source holds',
-  toolSkill: 'Used a skill',
+  toolSkill: 'Used a work instruction',
   toolOther: 'Tool "{name}"',
   remoteAgent: 'Own engine "{host}"',
   externalFailed: 'The call failed',

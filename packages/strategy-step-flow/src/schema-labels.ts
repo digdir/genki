@@ -1,7 +1,7 @@
 import type { LabelText, SchemaLabels } from '@genai/contracts';
 
 const configNb = {
-  flow: { label: 'Stegflyt', help: 'En versjonert referanse, for eksempel saksoppslag-flyt@1.' },
+  flow: { label: 'Arbeidsflyt', help: 'En versjonert referanse, for eksempel saksoppslag-flyt@1.' },
   vars: { label: 'Variabler' },
   result: { label: 'Resultat fra steget' },
   maxSteps: { label: 'Flest steg som kjøres' },
@@ -12,7 +12,7 @@ const configNb = {
 } satisfies Record<string, LabelText>;
 
 const configEn: Record<keyof typeof configNb, LabelText> = {
-  flow: { label: 'Step flow', help: 'A versioned reference, for example case-lookup-flow@1.' },
+  flow: { label: 'Workflow', help: 'A versioned reference, for example case-lookup-flow@1.' },
   vars: { label: 'Variables' },
   result: { label: 'Result from the step' },
   maxSteps: { label: 'Most steps run' },
@@ -30,7 +30,7 @@ export const stepFlowConfigSchemaLabels: SchemaLabels = {
     maxSteps: { 'x-advanced': true },
     settings: { 'x-advanced': true },
   },
-  titles: { 'step-flow': { nb: 'Fast stegflyt', en: 'Fixed step flow' } },
+  titles: { 'step-flow': { nb: 'Fast arbeidsflyt', en: 'Fixed workflow' } },
 };
 
 const nb = {
@@ -82,11 +82,11 @@ const nb = {
   'pair.group': { label: 'Felt som må være like' },
   'pair.threshold': { label: 'Laveste likhet' },
   tool: { label: 'Verktøy' },
-  source: { label: 'Verktøykilde' },
+  source: { label: 'Kobling' },
   arguments: { label: 'Verdier til verktøyet' },
   timeoutMs: { label: 'Tidsavbrudd (millisekunder)' },
   inOrder: { label: 'Søk i disse verdiene, én om gangen og i rekkefølge' },
-  'inOrder.field': { label: 'Feltet i datasettet' },
+  'inOrder.field': { label: 'Feltet i dokumentsamlingen' },
   'inOrder.values': { label: 'Verdier, i rekkefølge' },
   keepOrder: { label: 'Behold rekkefølgen fra søket' },
   descriptor: {
@@ -152,11 +152,11 @@ const en: Record<keyof typeof nb, LabelText> = {
   'pair.group': { label: 'Fields that must match' },
   'pair.threshold': { label: 'Lowest similarity' },
   tool: { label: 'Tool' },
-  source: { label: 'Tool source' },
+  source: { label: 'Connection' },
   arguments: { label: 'Values for the tool' },
   timeoutMs: { label: 'Timeout (milliseconds)' },
   inOrder: { label: 'Search these values, one at a time and in order' },
-  'inOrder.field': { label: 'Field in the dataset' },
+  'inOrder.field': { label: 'Field in the document collection' },
   'inOrder.values': { label: 'Values, in order' },
   keepOrder: { label: 'Keep the order from the search' },
   descriptor: {

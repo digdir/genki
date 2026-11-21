@@ -117,7 +117,7 @@ describe('service definition sections', () => {
     });
     render(<DefinitionEditor api={api} tenant={tenant} serviceId="klarsprak" />);
 
-    const editor = (await screen.findByLabelText('Definisjonen')) as HTMLTextAreaElement;
+    const editor = (await screen.findByLabelText('Teknisk tekst')) as HTMLTextAreaElement;
     expect(editor.value).toContain('instructions: Svar kort.');
     expect(editor.value).not.toMatch(/version: 2/);
     fireEvent.change(editor, {
@@ -147,7 +147,7 @@ describe('service definition sections', () => {
       }),
     });
     render(<DefinitionEditor api={api} tenant={tenant} serviceId="klarsprak" />);
-    const editor = await screen.findByLabelText('Definisjonen');
+    const editor = await screen.findByLabelText('Teknisk tekst');
     fireEvent.change(editor, { target: { value: 'kind: Service' } });
 
     expect(await screen.findByText('spec.riskClass', {}, { timeout: 3000 })).toBeTruthy();
@@ -166,14 +166,14 @@ describe('service definition sections', () => {
     render(asManager(<Versions api={api} tenant={tenant} serviceId="klarsprak" />));
 
     expect(await screen.findByText('«Kortere»')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: /^Versjon 1\b/ }));
-    fireEvent.click(await screen.findByRole('button', { name: /Ta i bruk igjen/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Utgave 1\b/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Gjenopprett denne utgaven/ }));
     fireEvent.change(screen.getByLabelText('Begrunnelse'), {
       target: { value: 'Tilbake til lange svar' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Publiser som versjon 3' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Publiser som utgave 3' }));
 
-    expect(await screen.findByText('Versjon 1 er publisert på nytt som versjon 3.')).toBeTruthy();
+    expect(await screen.findByText('Utgave 1 er publisert på nytt som utgave 3.')).toBeTruthy();
     const publish = calls.find((c) => c.method === 'POST' && c.path === '/definitions');
     const sent = (publish?.body as { definition: { metadata: Record<string, unknown> } })
       .definition;
@@ -200,14 +200,14 @@ describe('service definition sections', () => {
     render(asManager(<Versions api={api} tenant={tenant} serviceId="klarsprak" />));
 
     await screen.findByText('«Kortere»');
-    fireEvent.click(screen.getByRole('button', { name: /^Versjon 1\b/ }));
-    fireEvent.click(await screen.findByRole('button', { name: /Ta i bruk igjen/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Utgave 1\b/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Gjenopprett denne utgaven/ }));
     fireEvent.change(screen.getByLabelText('Begrunnelse'), {
       target: { value: 'Tilbake til lange svar' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Publiser som versjon 3' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Publiser som utgave 3' }));
 
-    await screen.findByText('Versjon 1 er publisert på nytt som versjon 3.');
+    await screen.findByText('Utgave 1 er publisert på nytt som utgave 3.');
     const publish = calls.find((c) => c.method === 'POST' && c.path === '/definitions');
     const sent = (publish?.body as { definition: { spec: { availableTo?: unknown } } }).definition;
     expect(sent.spec.availableTo).toEqual(['999888777']);
@@ -396,7 +396,7 @@ describe('tenant export and import in live mode', () => {
     const file = new File([JSON.stringify(bundle)], 'eksport.json', { type: 'application/json' });
     fireEvent.change(screen.getByLabelText('Eksportfil (JSON)'), { target: { files: [file] } });
     await screen.findByText('eksport.json');
-    await screen.findByText('Tjenester og stegflyter');
+    await screen.findByText('Tjenester og arbeidsflyter');
     fireEvent.click(screen.getByRole('button', { name: 'Kjør prøvekjøring' }));
 
     expect(await screen.findByText('Prøvekjøring: ingenting er endret ennå')).toBeTruthy();
@@ -482,8 +482,8 @@ describe('the change log in live mode', () => {
     render(asManager(<LiveChanges api={api} tenant={tenant} />));
 
     const items = await screen.findAllByRole('listitem');
-    expect(items[0]?.textContent).toMatch(/^Digdir publiserte versjon 3 av klarsprak/);
-    expect(items[1]?.textContent).toMatch(/^Kari Nordmann lagret testsettet kjerne, versjon 2/);
+    expect(items[0]?.textContent).toMatch(/^Digdir publiserte utgave 3 av klarsprak/);
+    expect(items[1]?.textContent).toMatch(/^Kari Nordmann lagret testsettet kjerne, utgave 2/);
     expect(screen.queryByText(/Ansatt i virksomheten/)).toBeNull();
   });
 });

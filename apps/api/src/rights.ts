@@ -22,8 +22,8 @@ export const rights: readonly Right[] = PLATFORM_RIGHTS;
 export const rightLabels: Readonly<Record<Right, string>> = {
   'use-services': 'Bruke tjenester',
   'manage-services': 'Administrere tjenester',
-  'manage-datasets': 'Administrere datasett',
-  'register-building-blocks': 'Registrere byggeklosser',
+  'manage-datasets': 'Administrere dokumentsamlinger',
+  'register-building-blocks': 'Legge til i katalogen',
   'view-usage': 'Se forbruk og kostnad',
 };
 

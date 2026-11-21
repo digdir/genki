@@ -34,8 +34,9 @@ export const about = defineNamespace({
   factCostTitle: 'Hva det koster',
   factCost: 'Gratis under utprøving. Bruken måles etter hvor mye tekst modellene leser og skriver.',
   buildHeading: 'Hva dere kan lage',
-  buildLede: 'Bruk fellestjenestene som de er, eller lag egne tjenester på de samme byggeklossene.',
-  sharedHeading: 'Fellestjenester, klare fra første dag',
+  buildLede:
+    'Bruk de delte tjenestene som de er, eller lag egne tjenester på de samme byggeklossene.',
+  sharedHeading: 'Delte tjenester, klare fra første dag',
   examplesHeading: 'Tre eksempler',
   layersLabel: 'Lagene i Genki',
   architectureFigure: 'Målarkitekturen',
@@ -103,19 +104,20 @@ export const about = defineNamespace({
   dhWhereGlobal: 'Global behandling, kan være utenfor EU/EØS',
   dhStoredWhere: 'Azure, Nederland',
   dhHowLongStandard: '90 dager (standard)',
-  dhHowLongDataset: 'Til datasettet slettes',
+  dhHowLongDataset: 'Til dokumentsamlingen slettes',
   dhStoredHeading: 'Hva som lagres, og hvor lenge',
   dhStoredLede:
     'Spørsmål, svar og kildene svaret bygger på lagres i Azure i Nederland, slik at virksomheten kan se hva tjenestene har svart og rette feil.',
   dhStored1: 'Standard er 90 dager. Virksomheten kan velge 7 dager eller 1 år under Innstillinger.',
   dhStored2:
     'Tjenester med høy risiko lagrer i minst 183 dager, tjenester med begrenset risiko i minst 30 dager.',
-  dhStored3: 'Dokumentene i datasettene lagres til virksomheten sletter datasettet.',
+  dhStored3: 'Dokumentene i dokumentsamlingene lagres til virksomheten sletter dokumentsamlingen.',
   dhSubprocessorsHeading: 'Underleverandører',
   dhMicrosoft: 'Microsoft (Azure)',
   dhMicrosoftText:
-    'Drifter plattformen og kjører modellene i Azure AI Foundry. Lagrer spørsmål, svar og datasett i Nederland.',
-  dhMicrosoftRuns: 'Kjører {models} i {regions}. Lagrer spørsmål, svar og datasett i Nederland.',
+    'Drifter plattformen og kjører modellene i Azure AI Foundry. Lagrer spørsmål, svar og dokumentsamlinger i Nederland.',
+  dhMicrosoftRuns:
+    'Kjører {models} i {regions}. Lagrer spørsmål, svar og dokumentsamlinger i Nederland.',
   dhGateway: 'KI-gatewayen i Norge',
   dhGatewayText: 'Kjører {models}. Data forlater ikke Norge.',
   siteName: 'Genki',

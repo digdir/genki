@@ -81,7 +81,7 @@ const openPublish = async (fetch: typeof globalThis.fetch) => {
   fireEvent.change(screen.getByLabelText('Hva skal tjenesten gjøre?'), {
     target: { value: 'Hent ut felter fra innsendte filer' },
   });
-  fireEvent.click(screen.getByRole('button', { name: 'Start med assistenten' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Start med byggeassistenten' }));
   fireEvent.click(await screen.findByRole('button', { name: 'Bekreft risikonivå' }));
   fireEvent.click(screen.getByRole('button', { name: 'Publiser' }));
   const dialog = await screen.findByRole('dialog');
