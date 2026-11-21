@@ -25,7 +25,7 @@ import {
 } from '@genai/identity';
 import type { EnvironmentTier } from '@genai/composition';
 import type { BlobStore } from '@genai/port-blob';
-import type { ProcessorRecordCheck } from '@genai/port-model';
+import type { DiscoveredModelStore, ProcessorRecordCheck } from '@genai/port-model';
 import type { FederatedTokens } from '@genai/kernel';
 import type { TriggerRunStore } from '@genai/jobs';
 import type { EgressOptions } from '@genai/providers-mcp-client';
@@ -279,6 +279,7 @@ export interface BootOptions {
   configEntries?: InMemoryConfigEntryStore;
   federatedTokens?: FederatedTokens;
   onWarning?: (message: string) => void;
+  discoveredModels?: DiscoveredModelStore;
   policy?: (inner: PolicyDecisionPoint, configEntries: ConfigEntryStore) => PolicyDecisionPoint;
 }
 
@@ -314,6 +315,7 @@ export const bootPlatform = async (options: BootOptions = {}) => {
     ...(options.blobStore ? { blobStore: options.blobStore } : {}),
     ...(options.federatedTokens ? { federatedTokens: options.federatedTokens } : {}),
     ...(options.onWarning ? { onWarning: options.onWarning } : {}),
+    ...(options.discoveredModels ? { discoveredModels: options.discoveredModels } : {}),
     ...(options.demoRecorderKeyDigest
       ? { demoRecorderKeyDigest: options.demoRecorderKeyDigest }
       : {}),
@@ -351,6 +353,8 @@ export const bootPlatform = async (options: BootOptions = {}) => {
     lifecycle: platform.lifecycle,
   });
   const app = createApp('test', {
+    modelDiscovery: platform.modelDiscovery.state,
+    discoveryConnections: platform.modelDiscovery.connections,
     platform: {
       store: platform.definitions,
       plugins: platform.plugins,

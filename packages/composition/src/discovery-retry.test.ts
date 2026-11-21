@@ -46,6 +46,27 @@ describe('model discovery retry', () => {
     expect(timer.queued).toEqual([]);
   });
 
+  it('runs the start attempt once and retries a failed start with the full refresh', async () => {
+    const timer = manual();
+    const ran: string[] = [];
+    await discoverWithRetry({
+      first: async () => {
+        ran.push('first');
+        return { failed: [{ endpoint: 'foundry', error: '408 timeout' }] };
+      },
+      refresh: async () => {
+        ran.push('refresh');
+        return { failed: [] };
+      },
+      random: () => 1,
+      schedule: timer.schedule,
+    });
+
+    await timer.next();
+
+    expect(ran).toEqual(['first', 'refresh']);
+  });
+
   it('a discovery that throws counts as failed and is retried', async () => {
     const timer = manual();
     const discovery = await discoverWithRetry({

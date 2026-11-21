@@ -3,6 +3,7 @@ import type { DescriptorRegistry } from '@genai/operations';
 import {
   type Catalogs,
   type EnvironmentTier,
+  type ModelDiscoverySettings,
   createRuntime,
   defaultPlatformTenant,
   defaultServiceLimits,
@@ -190,6 +191,7 @@ import {
   residencies,
   residencyAllows,
   type Capability,
+  type DiscoveredModelStore,
   type ModelClassificationStore,
   servesModelPort,
   type ProcessorRecordCheck,
@@ -513,6 +515,8 @@ export interface PlatformInput {
   conversations?: ConversationStore;
   threadErasure?: ThreadErasure;
   modelClassifications?: ModelClassificationStore;
+  discoveredModels?: DiscoveredModelStore;
+  modelDiscovery?: ModelDiscoverySettings;
   providerObjects?: ProviderObjectStore;
   onWarning?: (message: string) => void;
   observe?: (log: EventLog) => EventLog;
@@ -1431,6 +1435,8 @@ export const createPlatform = async (input: PlatformInput) => {
     ...(input.mediaOutput ? { mediaOutput: input.mediaOutput } : {}),
     ...(input.connections ? { connections: input.connections } : {}),
     ...(input.modelClassifications ? { modelClassifications: input.modelClassifications } : {}),
+    ...(input.discoveredModels ? { discoveredModels: input.discoveredModels } : {}),
+    ...(input.modelDiscovery ? { modelDiscovery: input.modelDiscovery } : {}),
     ...(input.providerObjects ? { providerObjects: input.providerObjects } : {}),
     foreignFetch: (hosts) =>
       pluginEgress.fetch(

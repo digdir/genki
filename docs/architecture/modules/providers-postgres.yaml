@@ -16,6 +16,7 @@ responsibilities:
   - Definitions, conversations, identities, API keys
   - Tenancy, RLS and content keys, wrapped by versioned master keys (ADR 0070)
   - Rate-limit windows shared by every API replica
+  - The last good model listing per connection and the claim on the next re-list
 files:
   - packages/providers-postgres/src/event-log.ts
   - packages/providers-postgres/src/schema.ts
@@ -25,6 +26,7 @@ files:
   - packages/providers-postgres/src/retention.ts
   - packages/providers-postgres/src/provider-objects.ts
   - packages/providers-postgres/src/job-runs.ts
+  - packages/providers-postgres/src/models.ts
 input: Store calls
 output: SQL
 replaces:

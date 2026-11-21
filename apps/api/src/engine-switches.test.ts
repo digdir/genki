@@ -766,7 +766,7 @@ describe('switching the search engine of a dataset', () => {
       supportSessions: unused,
       catalog: b.platform.catalog,
       definitions: unused,
-      models: { refresh: async () => undefined },
+      models: { loadDiscovered: async () => undefined },
       toolConnections: unused,
     });
     const ready = await switchTo(a, 'ka-delt');

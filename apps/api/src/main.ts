@@ -14,7 +14,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { serve } from '@hono/node-server';
 import { InMemoryDefinitionStore, platformSettings, SettingsRegistry } from '@genai/definitions';
-import { residencies, type Residency } from '@genai/port-model';
+import { residencies, type DiscoveryListing, type Residency } from '@genai/port-model';
 import {
   altinnPolicy,
   apiKeyDigest,
@@ -41,6 +41,7 @@ import {
   LocalKeyWrapper,
   managedIdentityTokenSource,
   PostgresDefinitionStore,
+  PostgresDiscoveredModels,
   PostgresJobRuns,
   postgresSourceFromEnv,
 } from '@genai/providers-postgres';
@@ -71,6 +72,8 @@ import {
   ownedByPlatformTenant,
   platformTenantFrom,
   keepRunningOnRejection,
+  modelDiscoveryFromEnv,
+  scheduleModelRelist,
   tenantSampleRate,
 } from '@genai/composition';
 import { buildTimeOf, createApp } from './app.js';
@@ -616,6 +619,7 @@ const platform = await createPlatform({
         conversations: db.conversations,
         threadErasure: db.threadErasure,
         modelClassifications: db.modelClassifications,
+        discoveredModels: new PostgresDiscoveredModels<DiscoveryListing>(db.runtimePool),
         providerObjects: db.providerObjects,
         tenantSecrets: db.tenantSecrets,
         connections: db.connections,
@@ -647,6 +651,7 @@ const platform = await createPlatform({
   logger: log,
   logFailureMessages: process.env.LOG_FAILURE_MESSAGES === 'true',
   evalSlots: evalSlotLimitsFromEnv(process.env),
+  modelDiscovery: modelDiscoveryFromEnv(process.env),
   ...(documentConverter ? { documentConverter } : {}),
   ...(phraseArchive ? { phraseArchive } : {}),
 });
@@ -684,11 +689,17 @@ const admin = createAdmin({
   names: actorNames(configEntries),
   ...(db ? { records: db.adminRecords } : {}),
 });
+const relist = scheduleModelRelist({
+  relistIfDue: platform.modelDiscovery.relistIfDue,
+  everyMs: platform.modelDiscovery.relistMs,
+  onError: (error) => log('scheduled model listing failed', { error: String(error) }),
+});
 const builtAt = buildTimeOf(process.env.APP_BUILT_AT);
 const app = createApp(version, {
   ...(builtAt ? { builtAt } : {}),
   ...(process.env.GENAI_ENV ? { environment: process.env.GENAI_ENV } : {}),
   modelDiscovery: platform.modelDiscovery.state,
+  discoveryConnections: platform.modelDiscovery.connections,
   catalogSkipped: () => platform.catalog.skipped(),
   requestTiming: {
     write: (entry) => log('request', { ...entry }),
@@ -911,6 +922,7 @@ let stopping = false;
 const stop = (signal: string) => {
   if (stopping) process.exit(1);
   stopping = true;
+  relist.stop();
   log('api stopping', {
     signal,
     casesInFlight: platform.evalSlots.inFlight(),

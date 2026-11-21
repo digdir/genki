@@ -655,6 +655,116 @@ describe('OpenAI model list discovery', () => {
     ]);
   });
 
+  it('listing follows every page', async () => {
+    const server = await fakeHttp((_body, _attempt, path) => {
+      if (path === '/v1/models')
+        return {
+          status: 200,
+          json: {
+            object: 'list',
+            data: [{ id: 'aivar:borealis' }],
+            has_more: true,
+            last_id: 'aivar:borealis',
+          },
+        };
+      if (path === '/v1/models?after=aivar%3Aborealis')
+        return {
+          status: 200,
+          json: { object: 'list', data: [{ id: 'sigma2:normistral' }], next: '/v1/models?page=3' },
+        };
+      return {
+        status: 200,
+        json: { object: 'list', data: [{ id: 'sigma2:qwen' }], has_more: false },
+      };
+    });
+    servers.push(server);
+    const { url, seen } = server;
+
+    const found = await openAiModels.list({
+      baseURL: `${url}/v1`,
+      credential: { kind: 'bearer', token: async () => 'test-key' },
+      timeoutMs: 5000,
+    });
+
+    expect(found.map((f) => f.deployment)).toEqual([
+      'aivar:borealis',
+      'sigma2:normistral',
+      'sigma2:qwen',
+    ]);
+    expect(seen.map((s) => s.path)).toEqual([
+      '/v1/models',
+      '/v1/models?after=aivar%3Aborealis',
+      '/v1/models?page=3',
+    ]);
+  });
+
+  it('a next page on another origin fails the listing before the key is sent there', async () => {
+    const elsewhere = await fake(() => ({ status: 200, json: { data: [] } }));
+    const { url } = await fake(() => ({
+      status: 200,
+      json: { data: [{ id: 'aivar:borealis' }], next: `${elsewhere.url}/v1/models?page=2` },
+    }));
+
+    await expect(
+      openAiModels.list({
+        baseURL: `${url}/v1`,
+        credential: { kind: 'bearer', token: async () => 'test-key' },
+        timeoutMs: 5000,
+      }),
+    ).rejects.toThrow(/another host/);
+    expect(elsewhere.seen).toEqual([]);
+  });
+
+  it('an Azure deployment list follows nextLink, and a page seen twice fails the listing', async () => {
+    const pages = await fake((_body, attempt) =>
+      attempt === 1
+        ? {
+            status: 200,
+            json: {
+              data: [{ id: 'gpt-6-sol', model: 'gpt-6-sol', status: 'succeeded' }],
+              nextLink: '/openai/deployments?api-version=2022-12-01&page=2',
+            },
+          }
+        : {
+            status: 200,
+            json: {
+              data: [{ id: 'gpt-6-luna', model: 'gpt-6-luna', status: 'succeeded' }],
+              nextLink: '/openai/deployments?api-version=2022-12-01&page=2',
+            },
+          },
+    );
+
+    await expect(
+      azureDeployments.list({
+        baseURL: pages.url,
+        credential: { kind: 'api-key', key: async () => 'x' },
+        timeoutMs: 5000,
+      }),
+    ).rejects.toThrow(/repeats a page/);
+    expect(pages.seen.map((s) => s.path)).toEqual([
+      '/openai/deployments?api-version=2022-12-01',
+      '/openai/deployments?api-version=2022-12-01&page=2',
+    ]);
+  });
+
+  it('a listing that redirects fails instead of following the redirect', async () => {
+    const elsewhere = await fake(() => ({ status: 200, json: { data: [] } }));
+    const { url } = await fake(() => ({
+      status: 302,
+      headers: { location: `${elsewhere.url}/v1/models` },
+      json: {},
+    }));
+
+    await expect(
+      openAiModels.list({
+        baseURL: `${url}/v1`,
+        credential: { kind: 'bearer', token: async () => 'test-key' },
+        timeoutMs: 5000,
+      }),
+    ).rejects.toThrow();
+    expect(elsewhere.seen).toEqual([]);
+  });
+
   it('include and exclude patterns apply to the listed model ids', async () => {
     const { url } = await fake(() => ({ status: 200, json: gatewayModels }));
 

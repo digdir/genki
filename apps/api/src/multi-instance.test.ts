@@ -59,7 +59,12 @@ class CachedAdminRecords implements AdminRecordStore {
   }
 }
 
-const unused = { reload: async () => {}, refresh: async () => {}, sync: async () => {} };
+const unused = {
+  reload: async () => {},
+  refresh: async () => {},
+  sync: async () => {},
+  loadDiscovered: async () => {},
+};
 
 const instance = async (shared: {
   settings: InMemorySettingsStore;
