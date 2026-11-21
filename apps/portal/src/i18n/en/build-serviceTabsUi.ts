@@ -338,10 +338,6 @@ export const serviceTabsUi = {
       one: 'One run today.',
       other: '{count} runs today.',
     },
-    envRunsTodayFrom: {
-      one: 'One run today, from {who}.',
-      other: '{count} runs today, from {who}.',
-    },
     envUsedBy: 'Used by {who}.',
     envKeys: {
       one: 'One key.',

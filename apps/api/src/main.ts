@@ -108,6 +108,7 @@ import {
   tracesContent,
 } from './boot-guard.js';
 import { loginIssuers } from './login-issuers.js';
+import { environmentsOf } from './service-environments.js';
 import { documentMockRoutes } from './openapi/access.js';
 import { unknownTestPerson } from './dev-login.js';
 import { asPlatformResource } from './platform-resource.js';
@@ -719,6 +720,7 @@ const app = createApp(version, {
     caller: platform.caller,
     lifecycle: platform.lifecycle,
     drafts: platform.serviceDrafts,
+    environments: (tenant, service) => environmentsOf(configEntries, tenant, service),
     unmaskedInput: platform.unmaskedInput,
     names: actorNames(configEntries),
     lockdown,

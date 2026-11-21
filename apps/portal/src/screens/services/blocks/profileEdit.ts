@@ -1,12 +1,16 @@
 // The «Tekster» panel's edits of a layout's profile, as data. The panel keeps what the person
 // types; the try view draws it cleaned, so an empty text draws nothing rather than an empty one.
-import type {
-  DatasetFilter,
-  DocumentIdPattern,
-  ProfileCorpus,
-  ProfileData,
-  ProfileField,
-  ProfileProblem,
+import {
+  withTextIn,
+  type DatasetFilter,
+  type DocumentIdPattern,
+  type DrawnProfile,
+  type ProfileCorpus,
+  type ProfileData,
+  type ProfileField,
+  type ProfileLanguage,
+  type ProfileProblem,
+  type ProfileText,
 } from '@genai/ui-blocks/builder';
 
 /** One collection the draft searches: its key, as `/v1/models` names it, and its filter fields. */
@@ -27,6 +31,19 @@ export const collectionsOf = (
 
 const blank = (value: string | undefined) => value === undefined || value.trim() === '';
 
+const blankText = (text: ProfileText) =>
+  typeof text === 'string' ? blank(text) : blank(text.nb) && blank(text.en);
+
+/** A text with the language's wording typed in; nothing when no wording is left. */
+export const typedText = (
+  text: ProfileText | undefined,
+  value: string,
+  language: ProfileLanguage,
+): ProfileText | undefined => {
+  const next = withTextIn(text, value, language);
+  return blankText(next) ? undefined : next;
+};
+
 /** The object without one of its keys. */
 const omit = <V extends object>(value: V, key: string): V =>
   Object.fromEntries(Object.entries(value).filter(([k]) => k !== key)) as V;
@@ -40,14 +57,16 @@ export const withText = (
   profile: ProfileData | undefined,
   key: 'assistantName' | 'settingsNote',
   value: string,
+  language: ProfileLanguage,
 ): ProfileData | undefined => {
-  return settled(blank(value) ? omit({ ...profile }, key) : { ...profile, [key]: value });
+  const next = typedText(profile?.[key], value, language);
+  return settled(next === undefined ? omit({ ...profile }, key) : { ...profile, [key]: next });
 };
 
 /** The suggestions as typed; none at all takes the list away. */
 export const withSuggestions = (
   profile: ProfileData | undefined,
-  suggestions: readonly string[],
+  suggestions: readonly ProfileText[],
 ): ProfileData | undefined => {
   const next: ProfileData = { ...profile };
   if (suggestions.length === 0) delete next.suggestions;
@@ -76,11 +95,17 @@ export const withCorpus = (
 /** A corpus text set, or taken away when it is empty. */
 export const corpusText = (
   corpus: ProfileCorpus,
-  key: 'label' | 'description' | 'typeField',
+  key: 'label' | 'description',
   value: string,
+  language: ProfileLanguage,
 ): ProfileCorpus => {
-  return blank(value) ? omit(corpus, key) : { ...corpus, [key]: value };
+  const next = typedText(corpus[key], value, language);
+  return next === undefined ? omit(corpus, key) : { ...corpus, [key]: next };
 };
+
+/** The field a collection's document type is in, or none. */
+export const corpusTypeField = (corpus: ProfileCorpus, value: string): ProfileCorpus =>
+  blank(value) ? omit(corpus, 'typeField') : { ...corpus, typeField: value };
 
 /** A link template for one kind of document number set, or taken away when it is empty. */
 export const corpusLink = (
@@ -129,13 +154,13 @@ export const withField = (
 };
 
 /** The plurals as rows, in the order they were written. */
-export const pluralRows = (corpus: ProfileCorpus | undefined): [string, string][] =>
+export const pluralRows = (corpus: ProfileCorpus | undefined): [string, ProfileText][] =>
   Object.entries(corpus?.typePlurals ?? {});
 
 /** The plurals from rows; a later row of the same type wins, and none takes them away. */
 export const withPlurals = (
   corpus: ProfileCorpus,
-  rows: readonly (readonly [string, string])[],
+  rows: readonly (readonly [string, ProfileText])[],
 ): ProfileCorpus => {
   const next = { ...corpus };
   if (rows.length === 0) delete next.typePlurals;
@@ -144,7 +169,7 @@ export const withPlurals = (
 };
 
 /** The profile as the try view draws it: an empty text draws nothing, an empty label the id. */
-export const drawnProfile = (profile: ProfileData): ProfileData => ({
+export const drawnProfile = (profile: DrawnProfile): DrawnProfile => ({
   ...profile,
   ...(profile.suggestions ? { suggestions: profile.suggestions.filter((s) => !blank(s)) } : {}),
   ...(profile.corpora

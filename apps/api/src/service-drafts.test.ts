@@ -8,6 +8,7 @@ import { createApp } from './app.js';
 import { createPlatform } from './composition.js';
 import { draftOutdatedType, mergeThreeWay, type DraftConflict } from './service-drafts.js';
 import { trustedEntraScope } from './lockdown.js';
+import { environmentsOf } from './service-environments.js';
 import { digdir, other, principals, settingDefinitions } from './testkit.js';
 
 const service = {
@@ -92,6 +93,7 @@ const boot = async (lockdown = false) => {
       caller: platform.caller,
       admin,
       drafts: platform.serviceDrafts,
+      environments: (tenant, id) => environmentsOf(platform.configEntries, tenant, id),
       lockdown,
     },
   });
@@ -173,6 +175,40 @@ describe('service drafts and newer published versions', () => {
       purpose: 'Svarer grundig',
       settings: { 'search.topK': 5 },
     });
+  });
+
+  it('leaves no draft after a publish without a draft revision that holds every edit of the draft', async () => {
+    const env = await boot();
+    await env.saveDraft({ purpose: 'Svarer grundig' });
+    expect((await env.publish({ purpose: 'Svarer grundig' })).status).toBe(201);
+
+    expect(await env.draft()).toBeNull();
+  });
+
+  it('leaves no draft after a publish without a draft revision when the draft held no edits', async () => {
+    const env = await boot();
+    await env.saveDraft({});
+    expect((await env.publish({ settings: { 'search.topK': 5 } })).status).toBe(201);
+
+    expect(await env.draft()).toBeNull();
+  });
+
+  it('leaves no draft after an import that publishes every edit of the draft', async () => {
+    const env = await boot();
+    await env.saveDraft({ purpose: 'Svarer grundig' });
+    const bundle = (await env.send('GET', `/tenants/${digdir}/export`)).body as {
+      definitions: { definition: { spec: Spec } }[];
+    };
+    for (const d of bundle.definitions) d.definition.spec.purpose = 'Svarer grundig';
+    const imported = await env.send(
+      'POST',
+      `/tenants/${digdir}/import?onConflict=overwrite`,
+      bundle,
+    );
+    expect(imported.status).toBe(200);
+    expect((await env.latest()).purpose).toBe('Svarer grundig');
+
+    expect(await env.draft()).toBeNull();
   });
 
   it('refuses to publish a draft that would undo a newer published change, and lists the paths', async () => {
@@ -574,5 +610,30 @@ describe('a service’s interface in its draft', () => {
     expect((checked.body.problems as { path: string }[]).map((p) => p.path)).toContain(
       'spec.interface.layout.profile.assistantName',
     );
+  });
+});
+
+describe('where a publish goes', () => {
+  it('says a publish went to test and prod keeps the version in use', async () => {
+    const env = await boot();
+    const added = await env.send('POST', `/tenants/${digdir}/services/svar/environments`, {
+      name: 'test',
+    });
+    expect(added.status).toBe(201);
+
+    const result = await env.publish({ purpose: 'Svarer grundig' });
+    expect(result.status).toBe(201);
+    expect(result.body.environments).toEqual([
+      { name: 'prod', version: 1, followsPublishes: false },
+      { name: 'test', version: 2, followsPublishes: true },
+    ]);
+  });
+
+  it('says prod follows a publish when the service has no other environment', async () => {
+    const env = await boot();
+    const result = await env.publish({ purpose: 'Svarer grundig' });
+    expect(result.body.environments).toEqual([
+      { name: 'prod', version: 2, followsPublishes: true },
+    ]);
   });
 });
