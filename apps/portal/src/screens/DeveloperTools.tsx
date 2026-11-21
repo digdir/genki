@@ -130,7 +130,7 @@ export const DeveloperToolsFrame = ({
       </Heading>
       <Paragraph className="dev-tools-intro">{t('devTools.intro')}</Paragraph>
       <div className="dev-tools">
-        <nav aria-label={t('devTools.menu')} className="dev-tools-nav">
+        <nav aria-label={t('devTools.menu')} className="dev-tools-nav sticky-rail">
           <ul className="nav-list">
             {tools.map((tool) => {
               const active = tool.id === currentId;

@@ -78,6 +78,37 @@ describe('side by side columns', () => {
   });
 });
 
+describe('side rails', () => {
+  const rails = [
+    ['screens/services/setup-layout.css', '.setup-nav', '@container setup (max-width: 1179px)'],
+    ['screens/models/models.css', '.mc-filters', '@container page (max-width: 823px)'],
+    ['app.css', '.dev-tools-nav', '@media (max-width: 900px)'],
+    ['screens/service/service.css', '.service-subnav', '@container page (max-width: 1179px)'],
+    ['screens/apiref.css', '.ar-nav', '@container apiref (max-width: 699px)'],
+  ] as const;
+
+  it('stick through the shared class, clear the draft bar, and have their own scroll', () => {
+    const app = css('app.css');
+    expect(app).toMatch(/:where\(\.sticky-rail\) \{[^}]*position: sticky;[^}]*overflow-y: auto;/);
+    expect(app).toMatch(/\.draft-bar ~ \* \{\s*--rail-top:/);
+    for (const [file, selector] of rails)
+      expect(
+        rules(css(file)).filter((r) => r.selector === selector && /position: sticky/.test(r.body)),
+      ).toEqual([]);
+  });
+
+  it('stop sticking where their columns stack', () => {
+    for (const [file, selector, query] of rails) {
+      const sheet = css(file);
+      const start = sheet.indexOf(query);
+      const block = start < 0 ? '' : sheet.slice(start, sheet.indexOf('\n}', start));
+      expect(block, `${file} ${selector}`).toMatch(
+        new RegExp(`\\${selector} \\{[^}]*position: static;[^}]*max-height: none;`),
+      );
+    }
+  });
+});
+
 describe('long words', () => {
   it('break in headings and text instead of widening the page', () => {
     expect(css('app.css')).toMatch(/body \{[^}]*overflow-wrap: break-word;/);

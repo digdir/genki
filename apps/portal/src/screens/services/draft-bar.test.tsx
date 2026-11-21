@@ -319,6 +319,13 @@ describe('the publish page', () => {
     expect(screen.queryByText(/mangler før publisering$/)).toBeNull();
   });
 
+  it('keeps the list of setup parts as a sticky rail below the draft bar', async () => {
+    await openService('#/services/rapportassistenten/setup');
+    const nav = screen.getByRole('navigation', { name: 'Deler av oppsettet' });
+    expect(nav.classList).toContain('sticky-rail');
+    expect(nav.matches('.draft-bar ~ * .sticky-rail')).toBe(true);
+  });
+
   it('says honestly that publish hooks were not checked when the API skipped them', async () => {
     await openService('#/services/rapportassistenten/setup/publish', {
       draft: withInstructions('Svar kort.'),
