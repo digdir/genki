@@ -1,3 +1,4 @@
+import { getEventListeners } from 'node:events';
 import http from 'node:http';
 import net, { type AddressInfo, type LookupFunction, type TcpNetConnectOpts } from 'node:net';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -492,5 +493,21 @@ describe('KUDOS file downloads', () => {
     for (let i = 0; i < 20 && closed === 0; i++) await new Promise((r) => setImmediate(r));
 
     expect(closed).toBe(1);
+  });
+  it("a KUDOS download's waits leave no listener on its job's signal", async () => {
+    const controller = new AbortController();
+    const downloads = kudosDownloads({ limiter: noLimits(), ...fakeClock(), random: () => 1 });
+    let refusals = 3;
+
+    await downloads.run(
+      url,
+      async () => {
+        if (refusals-- > 0) throw connectError('ECONNREFUSED');
+        return 'bytes';
+      },
+      controller.signal,
+    );
+
+    expect(getEventListeners(controller.signal, 'abort')).toHaveLength(0);
   });
 });

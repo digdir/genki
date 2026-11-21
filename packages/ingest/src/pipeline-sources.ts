@@ -360,10 +360,7 @@ export const kudosFileReadTimeoutMs = 120_000;
 /** KUDOS sometimes takes more than the default 5 s to accept a connection (issue 906). */
 export const kudosFileConnectTimeoutMs = 15_000;
 
-/**
- * How a KUDOS file is downloaded: its own connect and read timeouts, to any host its URL names, on
- * as many kept connections a host as downloads run at once (issue 931).
- */
+/** How a KUDOS file is downloaded: its own timeouts, any host, kept connections (issue 931). */
 export const kudosFilePolicy = (): FetchPolicy => ({
   ...defaultFetchPolicy,
   connectTimeoutMs: kudosFileConnectTimeoutMs,

@@ -21,10 +21,7 @@ export interface FetchPolicy {
   maxSitemapDepth: number;
   maxSitemaps: number;
   maxSitemapEntries: number;
-  /**
-   * Connections kept open to each host and pinned address set between fetches, for a source that
-   * fetches many files from one host (KUDOS, issue 931). Left out, each fetch opens its own.
-   */
+  /** Connections kept open per host and pinned address set; left out, each fetch opens its own. */
   keptConnections?: number;
 }
 
@@ -218,10 +215,7 @@ export const closeKeptConnections = async () => {
   await Promise.all(agents.map((agent) => agent.close().catch(() => undefined)));
 };
 
-/**
- * The agent for one hop: kept between fetches when the policy keeps connections, so the same
- * host and the same checked addresses reuse their connections; otherwise a fresh one, closed after.
- */
+/** The hop's agent: kept per host and checked addresses when the policy keeps connections. */
 const hopAgent = (parsed: URL, addresses: string[], policy: FetchPolicy) => {
   if (!policy.keptConnections)
     return { agent: pinnedAgent(addresses, policy.connectTimeoutMs), kept: false };

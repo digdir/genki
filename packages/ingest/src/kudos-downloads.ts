@@ -2,16 +2,13 @@ import { retryAfterMs } from './kudos.js';
 import { processKudosLimiter, type KudosRateLimiter } from './kudos-rate.js';
 import { HttpStatusError } from './website.js';
 
-/**
- * KUDOS file downloads one worker runs at once (issue 931). From the worker, 7 of 8 new
- * connections opened at once to `kudos.dfo.no` went unanswered for 10 s, while a kept one answered.
- */
+/** KUDOS file downloads one worker runs at once (issue 931, ADR 0042). */
 export const kudosDownloadsAtOnce = 2;
 
-/** How long one download may wait in all for KUDOS to take it before its try fails. */
+/** Waits one download may add up before its try fails. */
 export const kudosDownloadWaitLimitMs = 30 * 60_000;
 
-/** The first wait after a refusal; it doubles with each refusal in a row, up to the longest. */
+/** The first wait after a refusal, doubling with each refusal in a row up to the longest. */
 export const kudosDownloadFirstWaitMs = 5_000;
 export const kudosDownloadLongestWaitMs = 2 * 60_000;
 
@@ -36,10 +33,7 @@ export interface KudosDownloadsOptions {
 }
 
 export interface KudosDownloads {
-  /**
-   * Runs one download of `url` when a turn is free; waits out refusals without failing, until
-   * `signal`, the job's, is aborted.
-   */
+  /** Runs one download of `url` in its turn, waiting out refusals until the job's `signal` aborts. */
   run<T>(url: string, download: () => Promise<T>, signal?: AbortSignal): Promise<T>;
 }
 
@@ -55,12 +49,7 @@ const notTakenCodes = new Set([
   'EPIPE',
 ]);
 
-/**
- * Why KUDOS did not take a download, when it is a reason to wait: a DNS answer to try again (the
- * guard's lookup, before any connection), no connection or no answer at all (undici's `fetch
- * failed`, unlike `terminated` for a body cut off after the answer), 429 or 503. Anything else is
- * the try's to fail.
- */
+/** Why KUDOS did not take a download, when that is a reason to wait (ADR 0042); else undefined. */
 export const kudosWaitCause = (error: unknown): string | undefined => {
   if ((error as { code?: unknown } | null)?.code === 'EAI_AGAIN') return 'EAI_AGAIN';
   if (error instanceof HttpStatusError)
@@ -80,19 +69,27 @@ const hostOf = (url: string) => {
 
 const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-/** Settles when `signal` is aborted, with its reason. */
-const abortOf = (signal: AbortSignal) =>
-  new Promise<never>((_resolve, reject) => {
-    if (signal.aborted) reject(signal.reason as Error);
-    else signal.addEventListener('abort', () => reject(signal.reason as Error), { once: true });
+/** Sleeps, or rejects with the signal's reason once it is aborted; leaves no listener behind. */
+const sleepUnless = async (
+  sleep: (ms: number) => Promise<void>,
+  ms: number,
+  signal: AbortSignal,
+) => {
+  signal.throwIfAborted();
+  let stop: () => void = () => undefined;
+  const aborted = new Promise<never>((_resolve, reject) => {
+    const abort = () => reject(signal.reason as Error);
+    signal.addEventListener('abort', abort, { once: true });
+    stop = () => signal.removeEventListener('abort', abort);
   });
+  try {
+    await Promise.race([sleep(ms), aborted]);
+  } finally {
+    stop();
+  }
+};
 
-/**
- * Paces one process's KUDOS file downloads (issue 931): at most `atOnce` at a time, and a refusal
- * holds back every download for a wait that doubles with refusals in a row, with full jitter, so a
- * minute when KUDOS takes no connections uses no try. A download whose waits add up to more than
- * `waitLimitMs` fails with its last error; the time spent downloading between them does not count.
- */
+/** Paces one process's KUDOS file downloads: a cap, and a shared hold with jittered backoff (ADR 0042). */
 export const kudosDownloads = (options: KudosDownloadsOptions = {}): KudosDownloads => {
   const atOnce = options.atOnce ?? kudosDownloadsAtOnce;
   const waitLimit = options.waitLimitMs ?? kudosDownloadWaitLimitMs;
@@ -118,10 +115,7 @@ export const kudosDownloads = (options: KudosDownloadsOptions = {}): KudosDownlo
     if (next) next();
     else running -= 1;
   };
-  /**
-   * Waits out the hold, again only when a refusal made it longer meanwhile; returns the hold seen
-   * and how long this download slept.
-   */
+  /** Waits out the hold, and again if it grew meanwhile; returns the hold seen and the time slept. */
   const held = async (signal?: AbortSignal) => {
     let slept = 0;
     for (;;) {
@@ -129,7 +123,7 @@ export const kudosDownloads = (options: KudosDownloadsOptions = {}): KudosDownlo
       const wait = until - now();
       if (wait > 0) {
         const from = now();
-        await (signal ? Promise.race([sleep(wait), abortOf(signal)]) : sleep(wait));
+        await (signal ? sleepUnless(sleep, wait, signal) : sleep(wait));
         slept += now() - from;
       }
       if (heldUntil === until) return { seen: until, slept };
