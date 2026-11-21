@@ -1,14 +1,16 @@
 import { readFileSync } from 'node:fs';
 import http from 'node:http';
 import net, { type AddressInfo } from 'node:net';
+import { randomUUID } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   ConversionRefused,
   doclingConverter,
   doclingDocumentTimeoutSeconds,
-  doclingHeadersTimeoutMs,
   doclingIdentity,
   DoclingFailed,
+  doclingPollIntervalMs,
+  type DoclingOptions,
 } from './index.js';
 
 const fixture = (name: string) =>
@@ -17,6 +19,7 @@ const fixture = (name: string) =>
 /** A recorded answer: its status and body, or the raw bytes of a success. */
 const recorded = (name: string): { status: number; body: string } => {
   if (name === 'success') return { status: 200, body: fixture('success') };
+  if (name.startsWith('{')) return { status: 200, body: name };
   const { status, body } = JSON.parse(fixture(name)) as { status: number; body: unknown };
   return { status, body: JSON.stringify(body) };
 };
@@ -28,36 +31,172 @@ interface Seen {
   form: FormData;
 }
 
-const servers: http.Server[] = [];
+interface Task {
+  doneAt: number;
+  answer: { status: number; body: string };
+}
 
-/** A Docling server that answers each request with the next recorded answer. */
-const doclingServer = async (answers: string[]) => {
-  const seen: Seen[] = [];
-  const server = http.createServer(async (req, res) => {
-    const chunks: Buffer[] = [];
-    for await (const chunk of req) chunks.push(chunk as Buffer);
-    const form = await new Response(Buffer.concat(chunks), {
-      headers: { 'content-type': req.headers['content-type'] ?? '' },
-    }).formData();
-    const key = req.headers['x-api-key'];
-    seen.push({
-      method: req.method ?? '',
-      path: req.url ?? '',
-      key: typeof key === 'string' ? key : undefined,
-      form,
-    });
-    const answer = recorded(answers.shift() ?? 'success');
-    res.writeHead(answer.status, { 'content-type': 'application/json' });
-    res.end(answer.body);
-  });
+/** One Docling replica: its own tasks in memory, as docling-serve's `local` engine keeps them. */
+interface Replica {
+  port: number;
+  tasks: Map<string, Task>;
+  submits: number;
+  polls: number;
+  notFound: number;
+  /** Stops the replica as a scale-in does: its tasks are gone and its connections closed. */
+  stop: () => void;
+}
+
+interface Cluster {
+  url: string;
+  seen: Seen[];
+  replicas: Replica[];
+  /** Closes every connection the proxy holds, as a network blip would; the replicas keep their tasks. */
+  drop: () => void;
+  /** Called when a replica takes a task. */
+  onTask?: (replica: Replica) => void;
+}
+
+const servers: { close: (callback: () => void) => void }[] = [];
+const closing: (() => void)[] = [];
+
+const listen = async (server: http.Server | net.Server) => {
   servers.push(server);
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-  const { port } = server.address() as AddressInfo;
-  return { url: `http://127.0.0.1:${port}`, seen };
+  return (server.address() as AddressInfo).port;
 };
+
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Docling behind the Container Apps TCP ingress, in miniature: replicas that answer the synchronous
+ * and the async routes, each converting for `convertMs`, and a proxy that sends each new
+ * connection to the next replica and closes a connection idle for `idleMs` (300 s in genki-test).
+ */
+const doclingCluster = async (
+  answers: string[],
+  { replicas = 1, convertMs = 0, idleMs = 0 } = {},
+): Promise<Cluster> => {
+  const seen: Seen[] = [];
+  const cluster = { seen, replicas: [] as Replica[] } as unknown as Cluster;
+  for (let n = 0; n < replicas; n += 1) {
+    const tasks = new Map<string, Task>();
+    const sockets = new Set<net.Socket>();
+    const replica = { tasks, submits: 0, polls: 0, notFound: 0 } as unknown as Replica;
+    const server = http.createServer(async (req, res) => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of req) chunks.push(chunk as Buffer);
+      const json = (status: number, body: unknown) => {
+        res.writeHead(status, { 'content-type': 'application/json' });
+        res.end(typeof body === 'string' ? body : JSON.stringify(body));
+      };
+      const path = req.url ?? '';
+      if (req.method === 'POST' && path.startsWith('/v1/convert/file')) {
+        const form = await new Response(Buffer.concat(chunks), {
+          headers: { 'content-type': req.headers['content-type'] ?? '' },
+        }).formData();
+        const key = req.headers['x-api-key'];
+        seen.push({
+          method: req.method,
+          path,
+          key: typeof key === 'string' ? key : undefined,
+          form,
+        });
+        const answer = recorded(answers.shift() ?? 'success');
+        if (path === '/v1/convert/file') {
+          // The synchronous route sends nothing until the conversion is done.
+          await delay(convertMs);
+          if (!res.destroyed) json(answer.status, answer.body);
+          return;
+        }
+        if (answer.status === 401 || answer.status === 422) return json(answer.status, answer.body);
+        const id = randomUUID();
+        tasks.set(id, { doneAt: Date.now() + convertMs, answer });
+        replica.submits += 1;
+        cluster.onTask?.(replica);
+        return json(200, { task_id: id, task_type: 'convert', task_status: 'pending' });
+      }
+      const poll = /^\/v1\/status\/poll\/([\w-]+)/.exec(path);
+      if (req.method === 'GET' && poll) {
+        const task = tasks.get(poll[1] ?? '');
+        if (!task) {
+          replica.notFound += 1;
+          return json(404, { detail: 'Task not found.' });
+        }
+        replica.polls += 1;
+        const done = Date.now() >= task.doneAt;
+        return json(200, { task_id: poll[1], task_status: done ? 'success' : 'started' });
+      }
+      const result = /^\/v1\/result\/([\w-]+)$/.exec(path);
+      if (req.method === 'GET' && result) {
+        const task = tasks.get(result[1] ?? '');
+        if (!task) return json(404, { detail: 'Task not found.' });
+        // A result is removed once fetched; a missing one leaves its task, as docling-serve does.
+        if (task.answer.status === 200) tasks.delete(result[1] ?? '');
+        return json(task.answer.status, task.answer.body);
+      }
+      json(404, { detail: 'Not Found' });
+    });
+    server.on('connection', (socket: net.Socket) => {
+      sockets.add(socket);
+      socket.on('close', () => sockets.delete(socket));
+    });
+    replica.port = await listen(server);
+    replica.stop = () => {
+      tasks.clear();
+      for (const socket of sockets) socket.destroy();
+    };
+    cluster.replicas.push(replica);
+    closing.push(() => replica.stop());
+  }
+  const held = new Set<net.Socket>();
+  let next = 0;
+  const proxy = net.createServer((client) => {
+    const replica = cluster.replicas[next % cluster.replicas.length] as Replica;
+    next += 1;
+    const upstream = net.connect(replica.port, '127.0.0.1');
+    held.add(client);
+    let idle: NodeJS.Timeout | undefined;
+    const close = () => {
+      clearTimeout(idle);
+      held.delete(client);
+      client.end();
+      client.destroy();
+      upstream.destroy();
+    };
+    const active = () => {
+      clearTimeout(idle);
+      if (idleMs > 0) idle = setTimeout(close, idleMs);
+    };
+    active();
+    client.on('data', (data) => {
+      active();
+      upstream.write(data);
+    });
+    upstream.on('data', (data) => {
+      active();
+      client.write(data);
+    });
+    client.on('close', close);
+    upstream.on('close', close);
+    client.on('error', close);
+    upstream.on('error', close);
+  });
+  const port = await listen(proxy);
+  cluster.url = `http://127.0.0.1:${port}`;
+  cluster.drop = () => {
+    for (const socket of held) socket.destroy();
+  };
+  closing.push(() => cluster.drop());
+  return cluster;
+};
+
+/** A Docling server that answers each request with the next recorded answer. */
+const doclingServer = async (answers: string[]) => doclingCluster(answers);
 
 afterEach(async () => {
   vi.restoreAllMocks();
+  for (const close of closing.splice(0)) close();
   await Promise.all(
     servers.splice(0).map((s) => new Promise((resolve) => s.close(() => resolve(undefined)))),
   );
@@ -69,12 +208,17 @@ const report = {
   mimetype: 'application/pdf',
 };
 
-const converterFor = (url: string) =>
-  doclingConverter({ url, credential: { kind: 'api-key', key: async () => 'docling-key' } });
+const converterFor = (url: string, options: Partial<DoclingOptions> = {}) =>
+  doclingConverter({
+    url,
+    credential: { kind: 'api-key', key: async () => 'docling-key' },
+    pollIntervalMs: 20,
+    ...options,
+  });
 
 describe('the Docling client', () => {
-  it('the Docling client makes one request per job and asks the server to keep nothing', async () => {
-    const { url, seen } = await doclingServer(['sync-wait-504', 'success']);
+  it('the Docling client submits each file once to the async route', async () => {
+    const { url, seen } = await doclingServer(['unauthorized', 'success']);
     const docling = converterFor(url);
 
     await expect(docling.convert(report)).rejects.toBeInstanceOf(DoclingFailed);
@@ -83,9 +227,9 @@ describe('the Docling client', () => {
     await docling.convert(report);
     expect(seen).toHaveLength(2);
     const request = seen[1] as Seen;
-    // The synchronous route, so no task or result is left on the server to fetch later.
+    // The async route: the client polls the task, so no connection waits in silence (issue 906).
     expect(request.method).toBe('POST');
-    expect(request.path).toBe('/v1/convert/file');
+    expect(request.path).toBe('/v1/convert/file/async');
     expect(request.key).toBe('docling-key');
     const file = request.form.get('files') as File;
     // A name that says nothing: the server's logs name the file it was sent.
@@ -179,7 +323,6 @@ describe('the Docling client', () => {
     ['unauthorized', 401],
     ['invalid-option', 422],
     ['task-not-found', 404],
-    ['sync-wait-504', 504],
   ])(
     'fails an answer that is not about the file (%s) without naming the file',
     async (answer, status) => {
@@ -196,23 +339,13 @@ describe('the Docling client', () => {
   );
 
   it('fails a failure body of a category it does not know, so the job tries again', async () => {
-    const { url, seen } = await doclingServer([]);
-    seen.length = 0;
-    const server = servers[0] as http.Server;
-    server.removeAllListeners('request');
-    server.on('request', (req: http.IncomingMessage, res: http.ServerResponse) => {
-      req.resume();
-      req.on('end', () => {
-        res.writeHead(200, { 'content-type': 'application/json' });
-        res.end(
-          JSON.stringify({
-            status: 'failure',
-            errors: [{ component_type: 'pipeline', category: 'something_new', page_no: null }],
-            document: { filename: 'document.pdf', json_content: null },
-          }),
-        );
-      });
-    });
+    const { url } = await doclingServer([
+      JSON.stringify({
+        status: 'failure',
+        errors: [{ component_type: 'pipeline', category: 'something_new', page_no: null }],
+        document: { filename: 'document.pdf', json_content: null },
+      }),
+    ]);
 
     await expect(converterFor(url).convert(report)).rejects.toBeInstanceOf(DoclingFailed);
   });
@@ -251,20 +384,70 @@ describe('the Docling client', () => {
     });
   });
 
-  it("the Docling client keeps its connection alive and waits past the server's own limit", async () => {
-    const keepAlive = vi.spyOn(net.Socket.prototype, 'setKeepAlive');
-    const { url } = await doclingServer(['success']);
-
-    await converterFor(url).convert(report);
-
-    // Probes every 30 seconds keep a connection that sends nothing while Docling works open.
-    expect(keepAlive).toHaveBeenCalledWith(true, 30_000);
-    const template = readFileSync(
-      new URL('../../../infra/modules/containerapps.bicep', import.meta.url),
+  it('polls well inside the ingress idle limit and the server keep-alive', () => {
+    // genki-test closes a TCP connection idle for 300 s (issue 906); docling-serve closes an idle
+    // keep-alive connection after 60 s (uvicorn's timeout_keep_alive), which would move the next
+    // poll to a new connection and perhaps another replica.
+    expect(doclingPollIntervalMs).toBeLessThan(60_000);
+    const dockerfile = readFileSync(
+      new URL('../../../docker/docling/Dockerfile', import.meta.url),
       'utf8',
     );
-    const serverWait = Number(/DOCLING_SERVE_MAX_SYNC_WAIT', value: '(\d+)'/.exec(template)?.[1]);
-    expect(serverWait).toBeGreaterThan(doclingDocumentTimeoutSeconds);
-    expect(doclingHeadersTimeoutMs).toBeGreaterThan(serverWait * 1000);
+    expect(dockerfile).not.toContain('UVICORN_TIMEOUT_KEEP_ALIVE');
+  });
+
+  it('keeps a conversion alive through a proxy that closes connections idle longer than its limit', async () => {
+    const { url, replicas } = await doclingCluster(['success'], { convertMs: 600, idleMs: 150 });
+
+    const conversion = await converterFor(url).convert(report);
+
+    expect(conversion.converter).toEqual(doclingIdentity);
+    expect(replicas[0]?.submits).toBe(1);
+  });
+
+  it("polls a task on the job's own connection, so every poll reaches the replica that holds it", async () => {
+    const { url, replicas } = await doclingCluster(['success', 'success', 'success'], {
+      replicas: 3,
+      convertMs: 200,
+    });
+    const docling = converterFor(url);
+
+    await Promise.all([docling.convert(report), docling.convert(report), docling.convert(report)]);
+
+    expect(replicas.reduce((n, r) => n + r.polls, 0)).toBeGreaterThan(0);
+    expect(replicas.map((r) => r.notFound)).toEqual([0, 0, 0]);
+    expect(replicas.reduce((n, r) => n + r.submits, 0)).toBe(3);
+  });
+
+  it('finds its task again on a new connection after a drop, without submitting the file twice', async () => {
+    const cluster = await doclingCluster(['success'], { replicas: 2, convertMs: 300 });
+    cluster.onTask = () => setTimeout(() => cluster.drop(), 100);
+
+    const conversion = await converterFor(cluster.url).convert(report);
+
+    expect(conversion.converter).toEqual(doclingIdentity);
+    expect(cluster.replicas.reduce((n, r) => n + r.submits, 0)).toBe(1);
+  });
+
+  it('submits the file again when no replica knows its task, at most 3 times a try', async () => {
+    const cluster = await doclingCluster([], { replicas: 2, convertMs: 300 });
+    const lost: number[] = [];
+    const docling = converterFor(cluster.url, { onTaskLost: ({ submits }) => lost.push(submits) });
+    // The replica that took the task is stopped once, as a scale-in does.
+    let stops = 1;
+    cluster.onTask = (replica) => {
+      if (stops-- > 0) setTimeout(() => replica.stop(), 100);
+    };
+
+    await docling.convert(report);
+    expect(cluster.replicas.reduce((n, r) => n + r.submits, 0)).toBe(2);
+    expect(lost).toEqual([1]);
+
+    // Stopped every time: the try ends after its third submit, and the job tries again.
+    stops = Infinity;
+    const error = await docling.convert(report).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(DoclingFailed);
+    expect(cluster.replicas.reduce((n, r) => n + r.submits, 0)).toBe(5);
+    expect(String((error as Error).message)).not.toContain(report.name);
   });
 });

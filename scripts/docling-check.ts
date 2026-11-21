@@ -1,16 +1,17 @@
 // Checks the environment's Docling server from where the worker runs (ADR 0042, issue 476). In Azure:
 //   az containerapp exec -g <resource group> -n genai-<env>-worker --command "node scripts/docling-check.ts <PDF URL>"
-// It converts one PDF the way knowledge.convert will (Tesseract `nor`, TableFormer accurate, one held request),
-// then sends the same request without the key, which the server must refuse with 401. Reads DOCLING_URL and
+// It converts one PDF the way knowledge.convert does (Tesseract `nor`, TableFormer accurate, on the async route,
+// polled every 30 s on one connection), then sends the same request without the key, which the server must refuse with 401. Reads DOCLING_URL and
 // DOCLING_API_KEY; prints one JSON line per step, never the key or the converted text.
 import { request, Agent } from 'node:http';
 import { readFile } from 'node:fs/promises';
 
 const usage = 'node scripts/docling-check.ts <PDF URL or path>';
 
-// One request held open until Docling answers: no header or body timeout, and TCP keepalive probes every 30 s so
-// a silent connection is not taken for an idle one while Docling converts.
-const agent = new Agent({ keepAlive: true, keepAliveMsecs: 30_000 });
+// One connection for the whole conversion: the task lives on the replica that took it, and the ingress picks a
+// replica per connection. Polled every 30 s, so it is never idle for the ingress's 300 s (issue 906).
+const agent = new Agent({ keepAlive: true, maxSockets: 1 });
+const pollMs = 30_000;
 
 export const conversionForm = (pdf: Uint8Array, name: string) => {
   const form = new FormData();
@@ -23,20 +24,27 @@ export const conversionForm = (pdf: Uint8Array, name: string) => {
   return form;
 };
 
-const post = async (base: string, form: FormData, key: string | undefined) => {
-  const encoded = new Response(form);
-  const body = Buffer.from(await encoded.arrayBuffer());
-  const url = new URL('/v1/convert/file', base);
-  const started = Date.now();
-  return new Promise<{ status: number; seconds: number; json: unknown }>((resolve, reject) => {
+const call = async (
+  base: string,
+  path: string,
+  key: string | undefined,
+  form?: FormData,
+): Promise<{ status: number; json: unknown }> => {
+  const encoded = form ? new Response(form) : undefined;
+  const body = encoded ? Buffer.from(await encoded.arrayBuffer()) : undefined;
+  return new Promise((resolve, reject) => {
     const req = request(
-      url,
+      new URL(path, base),
       {
-        method: 'POST',
+        method: form ? 'POST' : 'GET',
         agent,
         headers: {
-          'content-type': encoded.headers.get('content-type') ?? '',
-          'content-length': body.length,
+          ...(encoded
+            ? {
+                'content-type': encoded.headers.get('content-type') ?? '',
+                'content-length': body?.length ?? 0,
+              }
+            : {}),
           ...(key ? { 'x-api-key': key } : {}),
         },
       },
@@ -51,17 +59,38 @@ const post = async (base: string, form: FormData, key: string | undefined) => {
           } catch {
             json = undefined;
           }
-          resolve({ status: res.statusCode ?? 0, seconds: (Date.now() - started) / 1000, json });
+          resolve({ status: res.statusCode ?? 0, json });
         });
         res.on('error', reject);
       },
     );
-    req.setTimeout(0);
-    req.on('error', (error) =>
-      reject(Object.assign(error, { seconds: (Date.now() - started) / 1000 })),
-    );
+    req.on('error', reject);
     req.end(body);
   });
+};
+
+/** Submits the file, polls its task and fetches the result, as the worker's client does. */
+const post = async (base: string, form: FormData, key: string | undefined) => {
+  const started = Date.now();
+  const seconds = () => (Date.now() - started) / 1000;
+  try {
+    const submitted = await call(base, '/v1/convert/file/async', key, form);
+    const id = (submitted.json as { task_id?: unknown } | undefined)?.task_id;
+    if (submitted.status !== 200 || typeof id !== 'string' || !/^[\w-]{1,100}$/.test(id))
+      return { status: submitted.status, seconds: seconds(), json: submitted.json };
+    for (;;) {
+      const polled = await call(base, `/v1/status/poll/${id}`, key);
+      const status = (polled.json as { task_status?: unknown } | undefined)?.task_status;
+      if (polled.status !== 200)
+        return { status: polled.status, seconds: seconds(), json: polled.json };
+      if (status !== 'pending' && status !== 'started') break;
+      await new Promise((resolve) => setTimeout(resolve, pollMs));
+    }
+    const result = await call(base, `/v1/result/${id}`, key);
+    return { ...result, seconds: seconds() };
+  } catch (error) {
+    throw Object.assign(error as Error, { seconds: seconds() });
+  }
 };
 
 interface Converted {

@@ -1844,7 +1844,10 @@ describe('seeded conversions', () => {
   }, 60_000);
 });
 
-/** A Docling server on this machine: each request gets the answer `answer` gives for it. */
+/**
+ * A Docling server on this machine, on docling-serve's async routes: each submitted file gets the
+ * answer `answer` gives for it, as its task's result; `drop` and `hang` happen to the submit.
+ */
 const doclingServers: http.Server[] = [];
 afterAll(async () => {
   await Promise.all(
@@ -1855,15 +1858,30 @@ const doclingServer = async (
   answer: (n: number) => { status: number; body: string } | 'drop' | 'hang',
 ) => {
   let requests = 0;
+  const tasks = new Map<string, { status: number; body: string }>();
   const server = http.createServer((req, res) => {
     req.resume();
     req.on('end', () => {
-      requests += 1;
-      const a = answer(requests);
-      if (a === 'hang') return;
-      if (a === 'drop') return req.socket.destroy();
-      res.writeHead(a.status, { 'content-type': 'application/json' });
-      res.end(a.body);
+      const json = (status: number, body: string) => {
+        res.writeHead(status, { 'content-type': 'application/json' });
+        res.end(body);
+      };
+      const path = req.url ?? '';
+      const id = /^\/v1\/(?:status\/poll|result)\/(t\d+)/.exec(path)?.[1] ?? '';
+      if (req.method === 'POST') {
+        requests += 1;
+        const a = answer(requests);
+        if (a === 'hang') return;
+        if (a === 'drop') return req.socket.destroy();
+        if (a.status === 401 || a.status === 422) return json(a.status, a.body);
+        tasks.set(`t${requests}`, a);
+        return json(200, JSON.stringify({ task_id: `t${requests}`, task_status: 'pending' }));
+      }
+      const task = tasks.get(id);
+      if (!task) return json(404, JSON.stringify({ detail: 'Task not found.' }));
+      if (path.startsWith('/v1/status/poll/'))
+        return json(200, JSON.stringify({ task_id: id, task_status: 'success' }));
+      return json(task.status, task.body);
     });
   });
   doclingServers.push(server);
@@ -2045,7 +2063,7 @@ describe('Docling conversions', () => {
   });
 
   it('a Docling answer that is not about the file is tried again and then dead-lettered', async () => {
-    for (const answer of ['unauthorized', 'invalid-option', 'task-not-found', 'sync-wait-504']) {
+    for (const answer of ['unauthorized', 'invalid-option', 'task-not-found']) {
       await clearConvertJobs();
       const server = await doclingServer(() => recordedAnswer(answer));
       const s = await scenario({ docling: { current: doclingFor(server.url) } });
