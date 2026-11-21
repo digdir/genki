@@ -249,7 +249,7 @@ import {
 } from './rate-limit.js';
 import { trackedWork } from './tracked-work.js';
 import { tenantGate } from './tenant-gate.js';
-import { testRunnerView } from './test-runner.js';
+import { platformOperator, testRunnerView } from './test-runner.js';
 import { compiledCapabilityCache } from './compiled-capabilities.js';
 import {
   hidingInternalServices,
@@ -587,6 +587,8 @@ export interface PlatformInput {
   phraseArchive?: DeclaredPhraseArchive;
   lockdown?: Lockdown;
   environmentTier?: EnvironmentTier;
+  testRunnerKeys?: boolean;
+  isOperator?: (principal: Principal) => boolean;
   processorRecords?: ProcessorRecordCheck;
   descriptors?: DescriptorRegistry;
 }
@@ -1924,7 +1926,10 @@ export const createPlatform = async (input: PlatformInput) => {
     }
     return [...used];
   };
-  const testRunnersAllowed = input.lockdown !== undefined && input.environmentTier === 'test';
+  const testRunnersAllowed = input.testRunnerKeys === true;
+  const testRunnerOperator = input.isOperator
+    ? platformOperator(input.isOperator, platformTenant)
+    : undefined;
   const callers = new WeakMap<Request, Promise<Caller | undefined>>();
   const callerOf = (request: Request) => {
     const known = callers.get(request);
@@ -2185,7 +2190,7 @@ export const createPlatform = async (input: PlatformInput) => {
           modelAdmission: mayUseModels,
           readOnly: (p: Principal) => readOnlyInLockdown(p) || isTestRunnerKey(p),
         }
-      : {}),
+      : { readOnly: isTestRunnerKey }),
     evalStores,
     evalCapability: evalCapability.descriptor.id,
     ...(input.appVersion ? { appVersion: input.appVersion } : {}),
@@ -2321,6 +2326,7 @@ export const createPlatform = async (input: PlatformInput) => {
       apiKeys,
       policies: keyPolicies,
       testRunnerKeys: testRunnersAllowed,
+      ...(testRunnerOperator ? { isOperator: testRunnerOperator } : {}),
     }),
     ...frontendAdminHandlers({
       clients,
@@ -2451,6 +2457,7 @@ export const createPlatform = async (input: PlatformInput) => {
         ...(input.lockdown ? { lockdown: input.lockdown } : {}),
         lifecycle: (tenant, service) => lifecycleOf(configEntries, tenant, service),
         testRunnerKeys: testRunnersAllowed,
+        ...(testRunnerOperator ? { isOperator: testRunnerOperator } : {}),
       });
       registerConsoleRoutes(app, { ...consoleDeps, admin, authenticate });
       config.mount(app, admin, authenticate);

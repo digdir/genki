@@ -98,6 +98,7 @@ import { readTestSets, seedTestSets, testSetsOfServices } from './seed-test-sets
 import { readPipelineSeeds, seedPipelines } from './pipeline-seeds.js';
 import { readDemoSeeds, seedDemos } from './demos.js';
 import { operatorDirectory, operatorSubjectsFrom, splitOperators } from './operators.js';
+import { testRunnerKeysAllowed } from './test-runner.js';
 import { altinnPdpFrom, withPdpActions } from './altinn-pdp.js';
 import { federatedAppTokens, gatewayUsageConfigFromEnv } from '@genai/providers-ai-gateway';
 import {
@@ -482,6 +483,10 @@ const environmentTier = environmentTierOf(process.env);
 if (environmentTier === 'test')
   log('GENAI_ENV=test: operators may try descriptors in review on synthetic data');
 
+const testRunnerKeys = testRunnerKeysAllowed(process.env);
+if (testRunnerKeys)
+  log('GENAI_TEST_RUNNER_KEYS=true: operators may give test-runner keys for the smoke test');
+
 const processorRecords = processorRecordCheckOf(process.env);
 
 const hostedHostnames = hostedHostnamesFrom(process.env);
@@ -507,6 +512,8 @@ const platform = await createPlatform({
   },
   ...(lockdown ? { lockdown: { configuredKeys } } : {}),
   environmentTier,
+  testRunnerKeys,
+  isOperator: operators.isOperator,
   processorRecords,
   modules: [
     ...platformModules,

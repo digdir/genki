@@ -116,7 +116,7 @@ const ApiKey = z
     testRunner: z
       .boolean()
       .describe(
-        'The key has the test-runner grant (ADR 0033); it only takes effect in a locked test environment.',
+        'The key has the test-runner grant (ADR 0033); it only takes effect where GENAI_TEST_RUNNER_KEYS=true.',
       ),
   })
   .openapi('TenantApiKey');
@@ -989,7 +989,7 @@ export const accessRoutes: RouteConfig[] = [
             .boolean()
             .optional()
             .describe(
-              'Give the key the test-runner grant (ADR 0033). Only in a locked test environment and only by a trusted Entra ID login (an operator acting in its own organisation).',
+              'Give the key the test-runner grant (ADR 0033). Only where GENAI_TEST_RUNNER_KEYS=true, and only by an operator acting in the platform organisation (in lockdown, a trusted Entra ID login).',
             ),
         }),
       ),
