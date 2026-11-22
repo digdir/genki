@@ -55,6 +55,13 @@ export const doclingTaskSearchConnections = 16;
 export const doclingSubmitsPerTry = 3;
 
 /**
+ * After this many lost tasks in a try, the file is submitted with pypdfium2 as Docling's PDF reader
+ * (`pdf_backend`). A lost task is most often a replica killed out of memory (exit 137): one Kudos
+ * page took docling-parse past 16 GiB, while pypdfium2 read the whole file in 4 GiB (issue 922).
+ */
+export const doclingLostBeforePdfium = 2;
+
+/**
  * How long a job waits before it submits its file again on a new connection after a replica
  * answered that it is busy (503), or the connection ended before an answer, as while a replica
  * restarts (issue 922). A busy answer starts nothing, so it is not a submit.
@@ -93,6 +100,8 @@ export interface DoclingTaskEvent {
   result: DoclingTaskResult;
   /** Busy answers and unanswered submits before this task was taken. */
   busyWaits: number;
+  /** The PDF reader Docling was asked for, when not its own: `pypdfium2` after lost tasks. */
+  pdfBackend?: 'pypdfium2';
 }
 
 /** How many polls in a row the server may fail (5xx, about 5 minutes) before the try fails. */
@@ -296,7 +305,7 @@ export const doclingConverter = (options: DoclingOptions): DocumentConverter => 
   };
 
   /** The form of one submit, asking Docling to stop after `seconds`: the time left in the try. */
-  const form = (file: DocumentFile, seconds: number) => {
+  const form = (file: DocumentFile, seconds: number, pdfBackend?: 'pypdfium2') => {
     const data = new FormData();
     // A name that says nothing: the server logs the name of a file it fails to read.
     data.append(
@@ -311,6 +320,7 @@ export const doclingConverter = (options: DoclingOptions): DocumentConverter => 
     data.append('table_mode', 'fast');
     data.append('image_export_mode', 'placeholder');
     data.append('document_timeout', String(seconds));
+    if (pdfBackend) data.append('pdf_backend', pdfBackend);
     return data;
   };
 
@@ -407,6 +417,7 @@ export const doclingConverter = (options: DoclingOptions): DocumentConverter => 
     opened: Client[],
     until: number,
     past: () => Error,
+    pdfBackend?: 'pypdfium2',
   ) => {
     let waits = 0;
     let unansweredInARow = 0;
@@ -427,7 +438,7 @@ export const doclingConverter = (options: DoclingOptions): DocumentConverter => 
       let submitted: Answer;
       const sentAt = now().getTime();
       try {
-        submitted = await send(client, '/v1/convert/file/async', form(file, seconds()));
+        submitted = await send(client, '/v1/convert/file/async', form(file, seconds(), pdfBackend));
       } catch (error) {
         await release();
         // No connection yet, as while replicas start: the job waits for one as for a busy replica.
@@ -483,6 +494,7 @@ export const doclingConverter = (options: DoclingOptions): DocumentConverter => 
           waits: number;
           at: number;
           started?: number;
+          pdfBackend?: 'pypdfium2';
         }
       | undefined;
     const told = (result: DoclingTaskResult) => {
@@ -499,6 +511,7 @@ export const doclingConverter = (options: DoclingOptions): DocumentConverter => 
         convertingMs: end - started,
         result,
         busyWaits: task.waits,
+        ...(task.pdfBackend ? { pdfBackend: task.pdfBackend } : {}),
       });
       task = undefined;
     };
@@ -514,10 +527,17 @@ export const doclingConverter = (options: DoclingOptions): DocumentConverter => 
             stopBy === undefined
               ? documentTimeoutSeconds
               : Math.max(1, Math.ceil((stopBy - now().getTime()) / 1000));
-          const placed = await place(file, left, opened, deadline, () =>
-            stopBy === undefined
-              ? new DoclingFailed(503, 'no replica took the file within the wait limit')
-              : pastDeadline(),
+          const pdfBackend = submits > doclingLostBeforePdfium ? 'pypdfium2' : undefined;
+          const placed = await place(
+            file,
+            left,
+            opened,
+            deadline,
+            () =>
+              stopBy === undefined
+                ? new DoclingFailed(503, 'no replica took the file within the wait limit')
+                : pastDeadline(),
+            pdfBackend,
           );
           if (stopBy === undefined) {
             stopBy = placed.sentAt + documentTimeoutSeconds * 1000;
@@ -529,6 +549,7 @@ export const doclingConverter = (options: DoclingOptions): DocumentConverter => 
             waits: placed.waits,
             at: now().getTime(),
             ...(placed.replica ? { replica: placed.replica } : {}),
+            ...(pdfBackend ? { pdfBackend } : {}),
           };
           const current = task;
           answer = await follow(placed.client, placed.id, opened, deadline, (status) => {

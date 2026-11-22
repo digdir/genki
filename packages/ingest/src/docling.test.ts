@@ -528,6 +528,34 @@ describe('the Docling client', () => {
     expect(String((error as Error).message)).not.toContain(report.name);
   });
 
+  it('submits a file whose task was lost twice once more with the pdfium reader, and names that reader in its task line', async () => {
+    // A page docling-parse cannot read in 16 GiB killed every replica it reached (exit 137), while
+    // pypdfium2 read the whole file in 4 GiB (issue 922).
+    const cluster = await doclingCluster([], { replicas: 2, convertMs: 300 });
+    const tasks: DoclingTaskEvent[] = [];
+    const docling = converterFor(cluster.url, { onTask: (task) => tasks.push(task) });
+    let stops = 2;
+    cluster.onTask = (replica) => {
+      if (stops-- > 0) setTimeout(() => replica.stop(), 100);
+    };
+
+    await docling.convert(report);
+
+    const readers = cluster.seen
+      .filter((r) => r.path === '/v1/convert/file/async')
+      .map((r) => r.form.get('pdf_backend'));
+    expect(readers).toEqual([null, null, 'pypdfium2']);
+    expect(tasks.map((t) => [t.result, t.pdfBackend])).toEqual([
+      ['lost', undefined],
+      ['lost', undefined],
+      ['success', 'pypdfium2'],
+    ]);
+
+    // The next try starts with Docling's own reader again.
+    await docling.convert(report);
+    expect(cluster.seen.at(-1)?.form.get('pdf_backend')).toBeNull();
+  });
+
   it('stops ten minutes past the document timeout, counted from the first submit', async () => {
     let clock = new Date('2026-11-21T10:00:00Z').getTime();
     const cluster = await doclingCluster([], { replicas: 2, convertMs: 10_000_000 });
