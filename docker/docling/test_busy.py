@@ -140,9 +140,26 @@ class OneTaskAtATimeTest(unittest.TestCase):
             self.assertEqual(len(replica.logged("busy")), 1)
         free = Replica()
         self.assertEqual(free.submit().status_code, 200)
-        # A finished task whose result waits does not make the replica busy.
-        free.orchestrator.finish(free.orchestrator.queue[0])
-        self.assertEqual(free.submit().status_code, 200)
+
+    def test_refuses_a_submit_while_a_finished_tasks_result_waits_to_be_fetched_and_takes_one_once_it_is(self):
+        replica = Replica()
+        self.assertEqual(replica.submit().status_code, 200)
+        task = replica.orchestrator.queue[0]
+        replica.orchestrator.finish(task)
+
+        # A kill by the next file would take the finished result with it (test, 2026-11-21 22:50 UTC).
+        self.assertEqual(replica.submit().status_code, 503)
+        replica.orchestrator.fetch(task)
+        self.assertEqual(replica.submit().status_code, 200)
+
+    def test_takes_a_submit_once_a_result_has_waited_10_minutes_unfetched(self):
+        replica = Replica()
+        replica.submit()
+        replica.orchestrator.finish(replica.orchestrator.queue[0])
+        self.assertEqual(replica.submit().status_code, 503)
+
+        replica.now += 600
+        self.assertEqual(replica.submit().status_code, 200)
 
     def test_lets_status_result_and_health_requests_through_while_busy(self):
         replica = Replica()

@@ -100,9 +100,11 @@ class OneTaskAtATime:
         return {"running": statuses.count("started"), "queued": statuses.count("pending")}
 
     def busy(self):
-        return self.restarting or self.draining is not None or self.admitting > 0 or any(
-            _status(t) in HOLDING for t in list(self.orchestrator().tasks.values())
-        )
+        """
+        Whether a submit is refused: also while a finished task's result waits for its client, so the next file's kill
+        (exit 137) cannot take that result with it.
+        """
+        return self.restarting or self.draining is not None or self.admitting > 0 or self.holding()
 
     def waiting_results(self):
         now = self.clock()
@@ -131,7 +133,7 @@ class OneTaskAtATime:
                 self.log({"msg": "stopping", "replica": self.replica, "held": self.holding()})
                 stop()
             return
-        if self.restarting or self.busy() or self.waiting_results():
+        if self.busy():
             return
         used = self.memory()
         if used is None:
