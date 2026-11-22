@@ -369,6 +369,8 @@ resource docling 'Microsoft.App/containerApps@2025-02-02-preview' = {
             { name: 'DOCLING_SERVE_ENG_LOC_NUM_WORKERS', value: '1' }
             { name: 'DOCLING_NUM_THREADS', value: '4' }
             { name: 'OMP_NUM_THREADS', value: '4' }
+            // At most 4 pages wait between the steps of a conversion, not 100: a 248-page file peaked at 4.75 GiB instead of 11.0 (issue 922)
+            { name: 'DOCLING_SERVE_QUEUE_MAX_SIZE', value: '4' }
             { name: 'DOCLING_SERVE_MAX_SYNC_WAIT', value: '21600' }
             { name: 'DOCLING_SERVE_SINGLE_USE_RESULTS', value: 'true' }
             { name: 'DOCLING_SERVE_RESULT_REMOVAL_DELAY', value: '1' }
