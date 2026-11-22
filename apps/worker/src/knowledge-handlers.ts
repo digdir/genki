@@ -261,9 +261,9 @@ export const convertConcurrencyOf = (env: NodeJS.ProcessEnv): number => {
   const raw = env.KNOWLEDGE_CONVERT_CONCURRENCY;
   if (raw === undefined) return 2;
   const value = Number(raw);
-  if (raw.trim() === '' || !Number.isInteger(value) || value < 1 || value > 8)
+  if (raw.trim() === '' || !Number.isInteger(value) || value < 1 || value > 32)
     throw new Error(
-      `KNOWLEDGE_CONVERT_CONCURRENCY must be a whole number from 1 to 8, not "${raw}"`,
+      `KNOWLEDGE_CONVERT_CONCURRENCY must be a whole number from 1 to 32, not "${raw}"`,
     );
   return value;
 };
