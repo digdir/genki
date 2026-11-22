@@ -3626,7 +3626,10 @@ describe('conversion parts', () => {
 
 describe('a change of Docling settings', () => {
   /** Docling's settings before the change: the worker converts with `doclingIdentity`'s. */
-  const settingsBefore = { ...doclingIdentity.settings, tableformer: 'fast' };
+  const settingsBefore = {
+    ...doclingIdentity.settings,
+    tableformer: doclingIdentity.settings.tableformer === 'fast' ? 'accurate' : 'fast',
+  };
   const doclingKeyOf = (sha256: string, settings: Readonly<Record<string, unknown>>) =>
     conversionKey({ sha256, converter: 'docling', version: doclingIdentity.version, settings });
 
