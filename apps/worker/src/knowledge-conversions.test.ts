@@ -3787,6 +3787,61 @@ describe('a change of Docling settings', () => {
     ).toEqual(['5']);
   }, 60_000);
 
+  it("ending a record's waits never deadlocks with a conversion that ends them under its job's earlier key", async () => {
+    const file = randomBytes(32).toString('hex');
+    // Earlier settings whose key sorts above today's, so a sorted lock order takes today's first.
+    const earlier = [
+      settingsBefore,
+      { ...settingsBefore, ocr: 'easyocr' },
+      { ...settingsBefore, languages: ['nor', 'eng'] },
+      { ...settingsBefore, pipeline: 'vlm' },
+    ].find(
+      (settings) => doclingKeyOf(file, settings) > doclingKeyOf(file, doclingIdentity.settings),
+    );
+    if (!earlier) throw new Error('no earlier settings sort above today');
+    const docling = (settings: Readonly<Record<string, unknown>>) => ({
+      sha256: file,
+      converter: 'docling',
+      version: doclingIdentity.version,
+      settings,
+    });
+    const waiter = {
+      dataset: `${ORG}/vranglas-etter-endring`,
+      record: '737373',
+      generation: 'g-vranglas-etter-endring',
+      run: crypto.randomUUID(),
+      tenant: ORG,
+    };
+    await conversions.wait(docling(earlier), waiter, async () => undefined);
+    const client = await writer().connect();
+    try {
+      await client.query('begin');
+      // A run clears the record's wait under the earlier key, then a conversion for the job of
+      // that key starts, then the run makes the record wait under today's key.
+      await conversions.clear(client, waiter.dataset, waiter.record);
+      const storing = conversions.store(
+        {
+          ...docling(doclingIdentity.settings),
+          derivation: doclingPagesDerivation,
+          pages: ['Side'],
+        },
+        async () => 'sent',
+        doclingKeyOf(file, earlier),
+      );
+      await new Promise((r) => setTimeout(r, 200));
+      await conversions.wait(
+        docling(doclingIdentity.settings),
+        waiter,
+        async () => undefined,
+        client,
+      );
+      await client.query('commit');
+      await storing;
+    } finally {
+      client.release();
+    }
+  }, 30_000);
+
   it('a record whose index job is busy keeps its wait under the key its convert job was sent with', async () => {
     const file = randomBytes(32).toString('hex');
     const waiter = {

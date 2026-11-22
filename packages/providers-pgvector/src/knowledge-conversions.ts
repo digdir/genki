@@ -30,9 +30,9 @@ const lock = async (client: RecordTransaction, key: string) => {
 };
 
 /**
- * Locks several keys in one order for every path, JavaScript's string order (by UTF-16 code unit,
- * the same as byte order for these ASCII keys), never the server's collation, which skips the dots
- * of a version: two transactions that lock the same keys never wait on each other's locks.
+ * Locks a record's or a run's keys, as `clear` and `release` take them, in JavaScript's string
+ * order (by UTF-16 code unit, the same as byte order for these ASCII keys), never the server's
+ * collation, which skips the dots of a version: the two never wait on each other's locks.
  */
 const lockAll = async (client: RecordTransaction, keys: Iterable<string>) => {
   for (const key of [...new Set(keys)].sort()) await lock(client, key);
@@ -219,9 +219,10 @@ export const knowledgeConversionsOf = (writer: Pool): StoredConversions => ({
         !jobKey.startsWith(`${conversion.sha256}:${conversion.converter}:`)
       )
         throw new Error('a convert job key names another file or converter');
-      // The waits the job was sent for and those under the conversion's own key.
-      const keys = [...new Set([key, jobKey ?? key])];
-      await lockAll(client, keys);
+      // The job's key first, then the conversion's own, the order a record's ingest takes them:
+      // `clear` locks the key it waited under before, then `wait` locks today's (issue 945).
+      const keys = [...new Set([jobKey ?? key, key])];
+      for (const each of keys) await lock(client, each);
       const { rows: stored } = await client.query<{ id: string }>(
         `insert into src_conversions (sha256, converter, version, settings_hash, settings,
            derivation, derivation_version, pages, output_path, failure, page_count, blank_end)
