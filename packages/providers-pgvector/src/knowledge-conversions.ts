@@ -201,10 +201,19 @@ export const knowledgeConversionsOf = (writer: Pool): StoredConversions => ({
     return given ? run(given) : transaction(writer, run);
   },
 
-  store: (conversion, send) =>
+  store: (conversion, send, jobKey) =>
     transaction(writer, async (client) => {
       const key = conversionKey(conversion);
-      await lock(client, key);
+      // A job's key names its file and converter; only its version and settings may differ (issue 945).
+      if (
+        jobKey !== undefined &&
+        !jobKey.startsWith(`${conversion.sha256}:${conversion.converter}:`)
+      )
+        throw new Error('a convert job key names another file or converter');
+      // The waits the job was sent for and those under the conversion's own key, locked in key order
+      // as `clear` and `release` take them.
+      const keys = [...new Set([key, jobKey ?? key])].sort();
+      for (const each of keys) await lock(client, each);
       const { rows: stored } = await client.query<{ id: string }>(
         `insert into src_conversions (sha256, converter, version, settings_hash, settings,
            derivation, derivation_version, pages, output_path, failure, page_count, blank_end)
@@ -248,21 +257,15 @@ export const knowledgeConversionsOf = (writer: Pool): StoredConversions => ({
         );
       // Parts end no wait: the waits are for pages until a pipeline asks for parts (issue 635).
       if (isPartsDerivation(conversion.derivation)) return { sent: [], busy: [], held: [] };
-      const { rows } = await client.query<{
-        dataset: string;
-        record: string;
-        generation: string;
-        run: string;
-        tenant: string;
-      }>(
-        `delete from src_conversion_waits where key = $1
-         returning dataset, record::text, generation, run, tenant`,
-        [key],
+      const { rows } = await client.query<{ key: string } & ConversionWaiter>(
+        `delete from src_conversion_waits where key = any($1::text[])
+         returning key, dataset, record::text, generation, run, tenant`,
+        [keys],
       );
       const sent: ConversionWaiter[] = [];
       const busy: ConversionWaiter[] = [];
       const held: ConversionWaiter[] = [];
-      for (const waiter of rows) {
+      for (const { key: waitedOn, ...waiter } of rows) {
         // A record with another file still converting gets its index job from that conversion.
         const { rows: other } = await client.query(
           `select 1 from src_conversion_waits where dataset = $1 and record = $2::bigint limit 1`,
@@ -277,11 +280,11 @@ export const knowledgeConversionsOf = (writer: Pool): StoredConversions => ({
           continue;
         }
         // Its index job is still queued or running, and may have read the record before this
-        // conversion: the record keeps waiting, and the convert job is tried again.
+        // conversion: the record keeps waiting under the key it had, and the convert job is tried again.
         await client.query(
           `insert into src_conversion_waits (key, dataset, record, generation, run, tenant)
            values ($1, $2, $3::bigint, $4, $5, $6) on conflict do nothing`,
-          [key, waiter.dataset, waiter.record, waiter.generation, waiter.run, waiter.tenant],
+          [waitedOn, waiter.dataset, waiter.record, waiter.generation, waiter.run, waiter.tenant],
         );
         busy.push(waiter);
       }
@@ -302,7 +305,7 @@ export const knowledgeConversionsOf = (writer: Pool): StoredConversions => ({
     );
   },
 
-  waiting: async (target) => {
+  waiting: async (key) => {
     const { rows } = await writer.query<{
       run: string;
       tenant: string;
@@ -311,7 +314,7 @@ export const knowledgeConversionsOf = (writer: Pool): StoredConversions => ({
     }>(
       `select run, tenant, dataset, record::text from src_conversion_waits
         where key = $1 order by run, dataset, record`,
-      [conversionKey(target)],
+      [key],
     );
     return rows;
   },

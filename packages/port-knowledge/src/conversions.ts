@@ -165,26 +165,28 @@ export interface StoredConversions {
   ): Promise<boolean>;
   /**
    * Stores a conversion under the same lock, with its units in the same transaction, replacing any
-   * stored before under the same key. A pages conversion ends every wait on its file and converter, and calls
-   * `send` in that transaction for each waiting record that waits on nothing else. A record whose
+   * stored before under the same key. A pages conversion ends the waits under its own key and under
+   * `jobKey`, the key its convert job was sent with, which names an earlier version or settings of
+   * the same converter when they changed while the job was queued (issue 945); a `jobKey` of another
+   * file or converter is refused. It calls `send` in that transaction for each waiting record that
+   * waits on nothing else. A record whose
    * index job could not be sent, since one is still queued or running (`send` answered null), keeps
-   * its wait and is answered as `busy`: the convert job is tried again. A record that still waits on
+   * its wait, under the key it had, and is answered as `busy`: the convert job is tried again. A record that still waits on
    * another file is answered as `held`: its wait on this file has ended, and that file's conversion
    * sends its index job. The conversion keeps its page count and its blank end (`blankEndOf`).
    */
   store(
     conversion: StoredConversion,
     send: (waiter: ConversionWaiter, transaction: RecordTransaction) => Promise<unknown>,
+    jobKey?: string,
   ): Promise<{ sent: ConversionWaiter[]; busy: ConversionWaiter[]; held: ConversionWaiter[] }>;
   /**
    * Ends a record's waits, inside the transaction that writes it, so a wait on a file the record no
    * longer holds, or on a conversion that ended as a dead letter, does not hold its index job back.
    */
   clear(transaction: RecordTransaction, dataset: string, record: string): Promise<void>;
-  /** The records waiting on a file's conversion, with their runs and organisations. */
-  waiting(
-    target: ConversionTarget,
-  ): Promise<{ run: string; tenant: string; dataset: string; record: string }[]>;
+  /** The records waiting under a convert key, with their runs and organisations. */
+  waiting(key: string): Promise<{ run: string; tenant: string; dataset: string; record: string }[]>;
   /** The convert keys a run's records wait on. */
   waitKeys(run: string): Promise<string[]>;
   /** The files a run's records wait on, each with when its first record began waiting. */

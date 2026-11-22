@@ -258,7 +258,12 @@ const scenario = async (options: ScenarioOptions = {}) => {
     },
   };
   const sent: { queue: string; data: Record<string, string>; options?: SendOptions }[] = [];
-  const sentAgain: { queue: string; data: Record<string, string>; startAfter: Date }[] = [];
+  const sentAgain: {
+    queue: string;
+    data: Record<string, string>;
+    startAfter: Date;
+    key?: string;
+  }[] = [];
   const knowledge = {
     send: async <T extends JobData>(
       queue: QueueDefinition<T>,
@@ -289,6 +294,7 @@ const scenario = async (options: ScenarioOptions = {}) => {
           queue: queue.name,
           data: j.data as unknown as Record<string, string>,
           startAfter: again.startAfter,
+          ...(again.key === undefined ? {} : { key: again.key }),
         });
       },
       serveAlso: (queue, key, t, o) => knowledgeQueue.serveAlso(queue, key, t, o),
@@ -368,12 +374,13 @@ const startRun = async (s: Scenario, admittedAt = new Date()) => {
   return id;
 };
 
-const job = <T extends JobData>(queue: string, data: T): Job<T> => ({
+const job = <T extends JobData>(queue: string, data: T, key?: string): Job<T> => ({
   id: crypto.randomUUID(),
   queue,
   data,
   retryCount: 0,
   signal,
+  ...(key === undefined ? {} : { key }),
 });
 
 const handler = (work: QueueWork[], queue: string) => {
@@ -3333,7 +3340,7 @@ describe('conversion parts', () => {
     const stored = await conversions.store(partsConversion(file, ['Side.']), noIndex);
 
     expect(stored).toEqual({ sent: [], busy: [], held: [] });
-    expect(await conversions.waiting(target)).toHaveLength(1);
+    expect(await conversions.waiting(conversionKey(target))).toHaveLength(1);
     // With only parts stored, a record still waits on the file's pages.
     expect(
       await conversions.wait(target, { ...waiter, record: '828282' }, async () => undefined),
@@ -3614,5 +3621,223 @@ describe('conversion parts', () => {
 
     const parts = await conversions.find(await sha(pdf), textLayerPartsOnly);
     expect(parts?.units?.map((u) => u.parts.length)).toEqual([1, 1]);
+  }, 60_000);
+});
+
+describe('a change of Docling settings', () => {
+  /** Docling's settings before the change: the worker converts with `doclingIdentity`'s. */
+  const settingsBefore = { ...doclingIdentity.settings, tableformer: 'fast' };
+  const doclingKeyOf = (sha256: string, settings: Readonly<Record<string, unknown>>) =>
+    conversionKey({ sha256, converter: 'docling', version: doclingIdentity.version, settings });
+
+  /**
+   * A file's Docling convert job and its waits as a worker of the settings before sent them: under
+   * the key those settings give, which the queue keeps with the job.
+   */
+  const sentBeforeChange = async (sha256: string) => {
+    const before = doclingKeyOf(sha256, settingsBefore);
+    const now = doclingKeyOf(sha256, doclingIdentity.settings);
+    await admin.query(`update src_conversion_waits set key = $1 where key = $2`, [before, now]);
+    await admin.query(
+      `update pgboss.job set singleton_key = $1 where name = 'knowledge.convert' and singleton_key = $2`,
+      [before, now],
+    );
+    return before;
+  };
+
+  const waitsOf = async (run: string) =>
+    (
+      await admin.query<{ key: string }>(
+        `select key from src_conversion_waits where run = $1 order by key`,
+        [run],
+      )
+    ).rows.map((r) => r.key);
+
+  const indexJobsOf = (s: Scenario, run: string) =>
+    s.sent.filter((j) => j.queue === 'knowledge.index' && j.data.run === run);
+
+  /** Works the queued convert jobs as the worker's queue hands them over, until none is left. */
+  const workConverts = async (s: Scenario) => {
+    const stop = await knowledgeQueue.work(convertQueue(), (j) =>
+      handler(s.work.knowledge, 'knowledge.convert')(j),
+    );
+    try {
+      await expect.poll(() => convertJobs(), { timeout: 30_000 }).toEqual([]);
+    } finally {
+      await stop();
+    }
+  };
+
+  it("a Docling convert job sent before a change of Docling's settings releases its waiting records when it converts after the change", async () => {
+    await clearConvertJobs();
+    const server = await doclingServer(() => doclingRead(['Lest etter endringen.']));
+    const a = await scenario({ docling: { current: doclingFor(server.url) } });
+    const b = await scenario({ docling: { current: doclingFor(server.url) } });
+    const report = reportOf('settings-change');
+    await a.file('rapport.pdf', report);
+    await b.file('rapport.pdf', report);
+    const first = await ingest(a);
+    const second = await ingest(b);
+    const sha256 = await sha(report);
+    await sentBeforeChange(sha256);
+
+    await workConverts(a);
+
+    expect(server.requests()).toBe(1);
+    expect(await waitsOf(first.run)).toEqual([]);
+    expect(await waitsOf(second.run)).toEqual([]);
+    expect(indexJobsOf(a, first.run)).toHaveLength(1);
+    expect(indexJobsOf(a, second.run)).toHaveLength(1);
+    // Stored under the settings it was made with, so later waits on today's key find it.
+    expect(
+      (await stored(sha256)).filter((c) => c.converter === 'docling').map((c) => c.settings),
+    ).toEqual([doclingIdentity.settings]);
+  }, 60_000);
+
+  it("a Docling convert job whose sending run is gone finds its records after a change of Docling's settings", async () => {
+    await clearConvertJobs();
+    const server = await doclingServer(() => doclingRead(['Avsenderen er borte etter endringen.']));
+    const a = await scenario({ docling: { current: doclingFor(server.url) } });
+    const b = await scenario({ docling: { current: doclingFor(server.url) } });
+    const report = reportOf('settings-change-sender-gone');
+    await a.file('borte.pdf', report);
+    await b.file('borte.pdf', report);
+    const first = await ingest(a);
+    const second = await ingest(b);
+    await sentBeforeChange(await sha(report));
+    await platform.pool.query(`delete from ingestion_executions where id = $1`, [first.run]);
+
+    await workConverts(b);
+
+    expect(server.requests()).toBe(1);
+    expect(await waitsOf(second.run)).toEqual([]);
+    expect(indexJobsOf(b, second.run)).toHaveLength(1);
+    expect(await deadLettersFor(ORG)).toEqual([]);
+  }, 60_000);
+
+  it('a conversion ends no wait of another file or another converter', async () => {
+    // Files of this test alone: stored conversions are shared across tests.
+    const file = randomBytes(32).toString('hex');
+    const other = randomBytes(32).toString('hex');
+    const waiter = (record: string) => ({
+      dataset: `${ORG}/andre-ventere`,
+      record,
+      generation: 'g-andre',
+      run: crypto.randomUUID(),
+      tenant: ORG,
+    });
+    const docling = (sha256: string, settings: Readonly<Record<string, unknown>>) => ({
+      sha256,
+      converter: 'docling',
+      version: doclingIdentity.version,
+      settings,
+    });
+    const textLayerOf = (sha256: string) => ({
+      sha256,
+      converter: 'text-layer',
+      version: '1',
+      settings: {},
+    });
+    const none = async () => undefined;
+    await conversions.wait(docling(file, settingsBefore), waiter('1'), none);
+    await conversions.wait(docling(file, doclingIdentity.settings), waiter('2'), none);
+    await conversions.wait(textLayerOf(file), waiter('3'), none);
+    await conversions.wait(docling(other, settingsBefore), waiter('4'), none);
+    await conversions.wait(docling(other, doclingIdentity.settings), waiter('5'), none);
+
+    const sent: string[] = [];
+    await conversions.store(
+      {
+        ...docling(file, doclingIdentity.settings),
+        derivation: doclingPagesDerivation,
+        pages: ['Bare denne filen.'],
+      },
+      async (w) => void sent.push(w.record),
+      doclingKeyOf(file, settingsBefore),
+    );
+
+    // A job key that names another file or converter is refused, and ends nothing.
+    for (const wrong of [doclingKeyOf(other, settingsBefore), conversionKey(textLayerOf(file))])
+      await expect(
+        conversions.store(
+          {
+            ...docling(file, doclingIdentity.settings),
+            derivation: doclingPagesDerivation,
+            pages: ['Bare denne filen.'],
+          },
+          async (w) => void sent.push(w.record),
+          wrong,
+        ),
+      ).rejects.toThrow(/another file or converter/);
+
+    expect(sent.sort()).toEqual(['1', '2']);
+    expect(
+      (await conversions.waiting(conversionKey(textLayerOf(file)))).map((w) => w.record),
+    ).toEqual(['3']);
+    expect(
+      (await conversions.waiting(doclingKeyOf(other, settingsBefore))).map((w) => w.record),
+    ).toEqual(['4']);
+    expect(
+      (await conversions.waiting(doclingKeyOf(other, doclingIdentity.settings))).map(
+        (w) => w.record,
+      ),
+    ).toEqual(['5']);
+  }, 60_000);
+
+  it("a convert job queued before this release, with no key in its data, converts after a change of Docling's settings and ends its waits", async () => {
+    await clearConvertJobs();
+    const server = await doclingServer(() => doclingRead(['Gammel jobb, nye innstillinger.']));
+    const s = await scenario({ docling: { current: doclingFor(server.url) } });
+    const report = reportOf('old-data-shape');
+    await s.file('rapport.pdf', report);
+    const { run, sent } = await ingest(s);
+    const convert = sent.find((j) => j.queue === 'knowledge.convert');
+    // The data a convert job of the release before this one carries: no key of its own.
+    expect(Object.keys(convert?.data ?? {}).sort()).toEqual([
+      'converter',
+      'dataset',
+      'file',
+      'record',
+      'run',
+      'tenant',
+      'tenants',
+    ]);
+    const before = await sentBeforeChange(await sha(report));
+    expect((await convertJobs()).map((j) => j.singleton_key)).toEqual([before]);
+
+    await workConverts(s);
+
+    expect(server.requests()).toBe(1);
+    expect(await waitsOf(run)).toEqual([]);
+    expect(indexJobsOf(s, run)).toHaveLength(1);
+  }, 60_000);
+
+  it('a convert job sent again for the night window keeps the key it was sent with', async () => {
+    await clearConvertJobs();
+    const docling: { current?: DocumentConverter } = {};
+    const server = await doclingServer(() => doclingRead(['Neste natt.']));
+    const s = await scenario({ docling, now: () => noon });
+    const report = reportOf('night-key');
+    await s.file('rapport.pdf', report);
+    const run = await fill(s);
+    docling.current = doclingFor(server.url);
+    const replacement = await replace(s, run);
+    const [replaceJob] = s.sent.filter((j) => j.queue === 'knowledge.replace');
+    await handler(
+      s.work.knowledge,
+      'knowledge.replace',
+    )(job('knowledge.replace', replaceJob?.data ?? {}));
+    const convert = s.sent.find(
+      (j) => j.queue === 'knowledge.convert' && j.data.run === replacement?.id,
+    );
+    const before = await sentBeforeChange(await sha(report));
+
+    await handler(
+      s.work.knowledge,
+      'knowledge.convert',
+    )(job('knowledge.convert', convert?.data ?? {}, before));
+
+    expect(s.sentAgain.map((j) => j.key)).toEqual([before]);
+    expect(server.requests()).toBe(0);
   }, 60_000);
 });
