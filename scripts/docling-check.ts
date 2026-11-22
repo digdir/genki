@@ -1,6 +1,6 @@
 // Checks the environment's Docling server from where the worker runs (ADR 0042, issue 476). In Azure:
 //   az containerapp exec -g <resource group> -n genai-<env>-worker --command "node scripts/docling-check.ts <PDF URL>"
-// It converts one PDF the way knowledge.convert does (Tesseract `nor`, TableFormer accurate, on the async route,
+// It converts one PDF the way knowledge.convert does (Tesseract `nor`, TableFormer fast, on the async route,
 // polled every 30 s on one connection), then sends the same request without the key, which the server must refuse with 401. Reads DOCLING_URL and
 // DOCLING_API_KEY; prints one JSON line per step, never the key or the converted text.
 import { request, Agent } from 'node:http';
@@ -19,7 +19,7 @@ export const conversionForm = (pdf: Uint8Array, name: string) => {
   form.append('to_formats', 'json');
   form.append('ocr_preset', 'tesseract');
   form.append('ocr_lang', 'nor');
-  form.append('table_mode', 'accurate');
+  form.append('table_mode', 'fast');
   form.append('image_export_mode', 'placeholder');
   return form;
 };

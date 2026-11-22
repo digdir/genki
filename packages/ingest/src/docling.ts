@@ -18,7 +18,7 @@ import { doclingPages, type DoclingDocument } from './docling-pages.js';
 export const doclingIdentity: ConverterIdentity = {
   name: 'docling',
   version: '2.146.0',
-  settings: { pipeline: 'standard', ocr: 'tesseract', languages: ['nor'], tableformer: 'accurate' },
+  settings: { pipeline: 'standard', ocr: 'tesseract', languages: ['nor'], tableformer: 'fast' },
 };
 
 /**
@@ -307,7 +307,8 @@ export const doclingConverter = (options: DoclingOptions): DocumentConverter => 
     data.append('to_formats', 'json');
     data.append('ocr_preset', 'tesseract');
     data.append('ocr_lang', 'nor');
-    data.append('table_mode', 'accurate');
+    // fast, not accurate: 17% faster on 11 Kudos files with the same table and text page-test scores (issue 922).
+    data.append('table_mode', 'fast');
     data.append('image_export_mode', 'placeholder');
     data.append('document_timeout', String(seconds));
     return data;

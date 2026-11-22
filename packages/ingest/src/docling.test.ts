@@ -303,7 +303,8 @@ describe('the Docling client', () => {
       ['to_formats', 'json'],
       ['ocr_preset', 'tesseract'],
       ['ocr_lang', 'nor'],
-      ['table_mode', 'accurate'],
+      // TableFormer fast: as good as accurate on the parser benchmark's table tests, and faster (issue 922).
+      ['table_mode', 'fast'],
       ['image_export_mode', 'placeholder'],
       ['document_timeout', String(doclingDocumentTimeoutSeconds)],
     ]);
@@ -455,7 +456,7 @@ describe('the Docling client', () => {
         pipeline: 'standard',
         ocr: 'tesseract',
         languages: ['nor'],
-        tableformer: 'accurate',
+        tableformer: 'fast',
       },
     });
   });
