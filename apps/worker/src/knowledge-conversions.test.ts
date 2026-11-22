@@ -3787,6 +3787,66 @@ describe('a change of Docling settings', () => {
     ).toEqual(['5']);
   }, 60_000);
 
+  it('a record whose index job is busy keeps its wait under the key its convert job was sent with', async () => {
+    const file = randomBytes(32).toString('hex');
+    const waiter = {
+      dataset: `${ORG}/opptatt-etter-endring`,
+      record: '717171',
+      generation: 'g-opptatt-etter-endring',
+      run: crypto.randomUUID(),
+      tenant: ORG,
+    };
+    const before = doclingKeyOf(file, settingsBefore);
+    await conversions.wait(
+      {
+        sha256: file,
+        converter: 'docling',
+        version: doclingIdentity.version,
+        settings: settingsBefore,
+      },
+      waiter,
+      async () => undefined,
+    );
+
+    // Its index job is still queued: `send` answers null.
+    const stored = await conversions.store(
+      {
+        sha256: file,
+        converter: 'docling',
+        version: doclingIdentity.version,
+        settings: doclingIdentity.settings,
+        derivation: doclingPagesDerivation,
+        pages: ['Side'],
+      },
+      async () => null,
+      before,
+    );
+
+    expect(stored.busy.map((w) => w.record)).toEqual(['717171']);
+    expect((await conversions.waiting(before)).map((w) => w.record)).toEqual(['717171']);
+    expect(await conversions.waiting(doclingKeyOf(file, doclingIdentity.settings))).toEqual([]);
+  }, 30_000);
+
+  it("a convert job whose queue key names another file ends its own file's waits", async () => {
+    await clearConvertJobs();
+    const server = await doclingServer(() => doclingRead(['Feil nøkkel i køen.']));
+    const s = await scenario({ docling: { current: doclingFor(server.url) } });
+    const report = reportOf('foreign-queue-key');
+    await s.file('rapport.pdf', report);
+    const { run, sent } = await ingest(s);
+    const convert = sent.find((j) => j.queue === 'knowledge.convert');
+    const otherFile = randomBytes(32).toString('hex');
+
+    await handler(
+      s.work.knowledge,
+      'knowledge.convert',
+    )(job('knowledge.convert', convert?.data ?? {}, doclingKeyOf(otherFile, settingsBefore)));
+
+    expect(server.requests()).toBe(1);
+    expect(await waitsOf(run)).toEqual([]);
+    expect(indexJobsOf(s, run)).toHaveLength(1);
+  }, 60_000);
+
   it("a convert job queued before this release, with no key in its data, converts after a change of Docling's settings and ends its waits", async () => {
     await clearConvertJobs();
     const server = await doclingServer(() => doclingRead(['Gammel jobb, nye innstillinger.']));
@@ -3795,18 +3855,24 @@ describe('a change of Docling settings', () => {
     await s.file('rapport.pdf', report);
     const { run, sent } = await ingest(s);
     const convert = sent.find((j) => j.queue === 'knowledge.convert');
-    // The data a convert job of the release before this one carries: no key of its own.
-    expect(Object.keys(convert?.data ?? {}).sort()).toEqual([
-      'converter',
-      'dataset',
-      'file',
-      'record',
-      'run',
-      'tenant',
-      'tenants',
-    ]);
     const before = await sentBeforeChange(await sha(report));
-    expect((await convertJobs()).map((j) => j.singleton_key)).toEqual([before]);
+    // The job as the release before this one sent it: these fields and no others, under the key
+    // of the settings it had then.
+    await clearConvertJobs();
+    const queued = await knowledgeQueue.send(
+      convertQueue(),
+      {
+        run: String(convert?.data.run),
+        tenant: String(convert?.data.tenant),
+        file: String(convert?.data.file),
+        dataset: String(convert?.data.dataset),
+        record: String(convert?.data.record),
+        tenants: String(convert?.data.tenants),
+        converter: 'docling',
+      },
+      { key: before },
+    );
+    expect(queued).toEqual(expect.any(String));
 
     await workConverts(s);
 

@@ -29,6 +29,15 @@ const lock = async (client: RecordTransaction, key: string) => {
   await client.query(`select 1 from src_conversion_keys where key = $1 for update`, [key]);
 };
 
+/**
+ * Locks several keys in one order for every path, JavaScript's string order (by UTF-16 code unit,
+ * the same as byte order for these ASCII keys), never the server's collation, which skips the dots
+ * of a version: two transactions that lock the same keys never wait on each other's locks.
+ */
+const lockAll = async (client: RecordTransaction, keys: Iterable<string>) => {
+  for (const key of [...new Set(keys)].sort()) await lock(client, key);
+};
+
 const acceptedJson = (accepted: readonly AcceptedConverter[]) =>
   JSON.stringify(
     accepted.map((a, rank) => ({
@@ -210,10 +219,9 @@ export const knowledgeConversionsOf = (writer: Pool): StoredConversions => ({
         !jobKey.startsWith(`${conversion.sha256}:${conversion.converter}:`)
       )
         throw new Error('a convert job key names another file or converter');
-      // The waits the job was sent for and those under the conversion's own key, locked in key order
-      // as `clear` and `release` take them.
-      const keys = [...new Set([key, jobKey ?? key])].sort();
-      for (const each of keys) await lock(client, each);
+      // The waits the job was sent for and those under the conversion's own key.
+      const keys = [...new Set([key, jobKey ?? key])];
+      await lockAll(client, keys);
       const { rows: stored } = await client.query<{ id: string }>(
         `insert into src_conversions (sha256, converter, version, settings_hash, settings,
            derivation, derivation_version, pages, output_path, failure, page_count, blank_end)
@@ -292,13 +300,15 @@ export const knowledgeConversionsOf = (writer: Pool): StoredConversions => ({
     }),
 
   clear: async (client, dataset, record) => {
-    // The keys' locks first, in key order, as a conversion takes them before it ends the same waits.
+    // The keys' locks first, in the order a conversion takes them before it ends the same waits.
     const { rows } = await client.query(
-      `select distinct key from src_conversion_waits
-        where dataset = $1 and record = $2::bigint order by key`,
+      `select distinct key from src_conversion_waits where dataset = $1 and record = $2::bigint`,
       [dataset, record],
     );
-    for (const { key } of rows as { key: string }[]) await lock(client, key);
+    await lockAll(
+      client,
+      (rows as { key: string }[]).map((r) => r.key),
+    );
     await client.query(
       `delete from src_conversion_waits where dataset = $1 and record = $2::bigint`,
       [dataset, record],
@@ -333,8 +343,11 @@ export const knowledgeConversionsOf = (writer: Pool): StoredConversions => ({
         `select distinct key from src_conversion_waits where run = $1 order by key`,
         [run],
       );
-      // In key order, so two runs cancelled together never wait on each other's locks.
-      for (const { key } of keys) await lock(client, key);
+      // In one order, so two runs cancelled together never wait on each other's locks.
+      await lockAll(
+        client,
+        keys.map((k) => k.key),
+      );
       await client.query(`delete from src_conversion_waits where run = $1`, [run]);
       const { rows: still } = await client.query<{ key: string } & ConversionWaiter>(
         `select distinct on (key) key, dataset, record::text, generation, run, tenant
