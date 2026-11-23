@@ -161,6 +161,7 @@ export const servicesUi = {
     publishFallbackName: 'the service',
     publishTestInfo:
       'Publishing as test edition makes the edition available to those with test access. The edition in use does not change.',
+    publishFirstInfo: 'Users get the service when you publish it.',
     publishProdInfo: 'Publishing replaces the edition in use. You can undo publishing at any time.',
     noTestsetWarning:
       'Without a test set you cannot see whether changes make the results worse. Make a test set under Quality first.',

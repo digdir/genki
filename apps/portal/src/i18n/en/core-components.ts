@@ -83,10 +83,11 @@ export const publish = {
   notPassed: 'Not passed',
   cannotPublishYet: 'Cannot be published yet',
   gatesNotMet: {
-    one: '{failed} of {count} quality requirement is not met. The requirement "{name}" is set by {tenant} and cannot be overridden here. You can still publish as a test edition.',
+    one: '{failed} of {count} quality requirement is not met. The requirement "{name}" is set by {tenant} and cannot be overridden here.',
     other:
-      '{failed} of {count} quality requirements are not met. The requirement "{name}" is set by {tenant} and cannot be overridden here. You can still publish as a test edition.',
+      '{failed} of {count} quality requirements are not met. The requirement "{name}" is set by {tenant} and cannot be overridden here.',
   },
+  gatesNotMetTest: 'You can still publish as a test edition.',
   reasonLabel: 'What changed, and why?',
   reasonHelp: 'Required. Shown in History and in Log under Changes.',
   previousStays:

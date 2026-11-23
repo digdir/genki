@@ -157,6 +157,7 @@ export const servicesUi = {
     publishFallbackName: 'tjenesten',
     publishTestInfo:
       'Publiser som testutgave gjør utgaven tilgjengelig for dem som har testtilgang. Utgaven som er i bruk, endres ikke.',
+    publishFirstInfo: 'Tjenesten blir tilgjengelig for brukerne når du publiserer.',
     publishProdInfo:
       'Publiser erstatter utgaven som er i bruk. Du kan angre publiseringen når som helst.',
     noTestsetWarning:

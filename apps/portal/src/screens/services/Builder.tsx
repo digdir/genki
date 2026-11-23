@@ -2146,7 +2146,11 @@ export const Builder = ({
         })}
       </Heading>
       <Paragraph>
-        {publish === 'test' ? t('services.publishTestInfo') : t('services.publishProdInfo')}
+        {publish === 'test'
+          ? t('services.publishTestInfo')
+          : current === 0
+            ? t('services.publishFirstInfo')
+            : t('services.publishProdInfo')}
       </Paragraph>
       {publishNotes}
       <PublishSummary

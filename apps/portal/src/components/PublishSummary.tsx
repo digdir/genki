@@ -240,6 +240,7 @@ export const PublishSummary = ({
               name: failed[0].name.toLowerCase(),
               tenant: tenantName,
             })}
+            {onPublishToTest ? ` ${t('publish.gatesNotMetTest')}` : null}
           </Paragraph>
         </Alert>
       ) : null}
