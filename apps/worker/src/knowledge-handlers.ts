@@ -261,9 +261,9 @@ export const convertConcurrencyOf = (env: NodeJS.ProcessEnv): number => {
   const raw = env.KNOWLEDGE_CONVERT_CONCURRENCY;
   if (raw === undefined) return 2;
   const value = Number(raw);
-  if (raw.trim() === '' || !Number.isInteger(value) || value < 1 || value > 8)
+  if (raw.trim() === '' || !Number.isInteger(value) || value < 1 || value > 32)
     throw new Error(
-      `KNOWLEDGE_CONVERT_CONCURRENCY must be a whole number from 1 to 8, not "${raw}"`,
+      `KNOWLEDGE_CONVERT_CONCURRENCY must be a whole number from 1 to 32, not "${raw}"`,
     );
   return value;
 };
@@ -354,6 +354,19 @@ type ConvertData = typeof convertQueue extends QueueDefinition<infer T> ? T : ne
 
 /** The converter a convert job's data names: Docling, or the text layer when it names none. */
 const converterOf = (data: ConvertData) => ('converter' in data ? data.converter : undefined);
+
+/**
+ * The key a convert job was sent with, as the queue keeps it, which its records wait under: it
+ * names the converter's version and settings when the job was sent, which a deploy may have changed
+ * since (issue 945). A job the queue holds no key for, or one naming another file or converter, has
+ * the key this worker's converter gives.
+ */
+const jobKeyOf = (job: { data: ConvertData; key?: string }) => {
+  const target = conversionTarget(job.data.file, converterOf(job.data));
+  return job.key?.startsWith(`${target.sha256}:${target.converter}:`)
+    ? job.key
+    : conversionKey(target);
+};
 type ConvertJob = KnowledgeJob<ConvertData> & {
   sender?: IngestionExecution;
   /** The open, admitted runs the conversion is for: its sender and the runs waiting on it. */
@@ -662,7 +675,8 @@ export const knowledgeWork = (
     const window = deps.heavy.window();
     if (inNightWindow(window, now)) return false;
     await deps.knowledge.sendAgain(convertQueue, job, {
-      key: conversionKey(conversionTarget(job.data.file, converterOf(job.data))),
+      // The key it was sent with, which its records wait under and its run counts it by.
+      key: jobKeyOf(job),
       startAfter: nextNightWindowStart(window, now),
       priority: convertPriority.replacement,
     });
@@ -681,10 +695,8 @@ export const knowledgeWork = (
     },
     {
       ...deps.admission,
-      waiting: async (data) =>
-        (
-          (await deps.conversions?.waiting(conversionTarget(data.file, converterOf(data)))) ?? []
-        ).map((w) => w.run),
+      waiting: async (job) =>
+        ((await deps.conversions?.waiting(jobKeyOf(job))) ?? []).map((w) => w.run),
     },
   );
 
@@ -701,9 +713,7 @@ export const knowledgeWork = (
     try {
       const waiter = sender
         ? { dataset: job.data.dataset, record: job.data.record }
-        : (
-            await deps.conversions?.waiting(conversionTarget(job.data.file, converterOf(job.data)))
-          )?.find((w) => w.run === run.id);
+        : (await deps.conversions?.waiting(jobKeyOf(job)))?.find((w) => w.run === run.id);
       if (!waiter) throw new Error(`no waiting record of run ${run.id} names the file`);
       const record = await deps.records.find(waiter.record);
       if (!record || record.dataset !== waiter.dataset)
@@ -798,7 +808,8 @@ export const knowledgeWork = (
   async function convertFile({ job, run, sender, cancelled }: ConvertJob) {
     deps.bound?.();
     const conversions = deps.conversions;
-    // Stored under the key its job and waits name, so the conversion always ends those waits.
+    // Stored under the converter's version and settings as this worker has them; it also ends the
+    // waits under the key the job was sent with (issue 945).
     const key = conversionTarget(job.data.file, converterOf(job.data));
     const converter = key.converter === doclingIdentity.name ? deps.docling : deps.converter;
     if (!conversions || !converter)
@@ -874,6 +885,7 @@ export const knowledgeWork = (
         ...(stored.failure ? { failure: stored.failure } : {}),
       },
       sendIndex,
+      jobKeyOf(job),
     );
     // A replacement run's text-layer fill sends its records on to Docling (issue 749).
     if (run.replaces && key.converter === textLayer.name && deps.docling) {

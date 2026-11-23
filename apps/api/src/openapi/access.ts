@@ -116,7 +116,7 @@ const ApiKey = z
     testRunner: z
       .boolean()
       .describe(
-        'The key has the test-runner grant (ADR 0033); it only takes effect in a locked test environment.',
+        'The key has the test-runner grant (ADR 0033); it only takes effect where GENAI_TEST_RUNNER_KEYS=true.',
       ),
   })
   .openapi('TenantApiKey');
@@ -777,7 +777,7 @@ const blockIdParam = z.string().openapi({
 });
 
 const definitionKind = z
-  .enum(['services', 'step-flows', 'skills'])
+  .enum(['services', 'step-flows', 'skills', 'blocks'])
   .openapi({ param: { name: 'kind', in: 'path' }, example: 'services' });
 
 const TraceConnection = z
@@ -989,7 +989,7 @@ export const accessRoutes: RouteConfig[] = [
             .boolean()
             .optional()
             .describe(
-              'Give the key the test-runner grant (ADR 0033). Only in a locked test environment and only by a trusted Entra ID login (an operator acting in its own organisation).',
+              'Give the key the test-runner grant (ADR 0033). Only where GENAI_TEST_RUNNER_KEYS=true, and only by an operator acting in the platform organisation (in lockdown, a trusted Entra ID login).',
             ),
         }),
       ),
@@ -2560,7 +2560,7 @@ export const accessRoutes: RouteConfig[] = [
     responses: {
       200: json(
         z.object({
-          kind: z.enum(['Service', 'StepFlow', 'Skill']),
+          kind: z.enum(['Service', 'StepFlow', 'Skill', 'Block']),
           tenant: z.string(),
           id: z.string(),
           latest: DefinitionVersion,

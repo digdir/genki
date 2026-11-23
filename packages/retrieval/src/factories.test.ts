@@ -189,6 +189,23 @@ describe('agent retrieval factory', () => {
     expect(outcome.attribution).toEqual({ phrase: 0, metadata: 0, content: 2 });
   });
 
+  it('gives the agent each hit with its search types, hit count and a snippet of its text', async () => {
+    const s = stub();
+    const agent = createAgentRetrieval({
+      knowledge: s.knowledge,
+      config: { autoFilter: { enabled: false } },
+    });
+
+    const outcome = await agent.search(['årsverk'], {}, signal);
+
+    expect(outcome.chunks[0]).toMatchObject({
+      chunkId: 'c1',
+      searchTypes: ['content'],
+      hitCount: 1,
+      snippet: 'Digdir hadde 326 årsverk i 2022.',
+    });
+  });
+
   it("tells the agent which strategy's search failed, in the attribution", async () => {
     const s = stub([], {}, 'canceling statement due to statement timeout');
     const agent = createAgentRetrieval({ knowledge: s.knowledge, config: metadataOnly });

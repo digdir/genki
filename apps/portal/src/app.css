@@ -258,7 +258,7 @@ a:not([class^='ds-'], [class*=' ds-']):hover {
 
 .sidebar {
   flex: none;
-  width: 256px;
+  width: 288px;
   box-sizing: border-box;
   padding: 20px 12px;
   display: flex;

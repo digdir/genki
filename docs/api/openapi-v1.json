@@ -1,0 +1,1565 @@
+{
+  "openapi": "3.1.0",
+  "paths": {
+    "/v1/models/{id}/schema": {
+      "get": {
+        "summary": "The input form and the output shape of one service as JSON Schema 2020-12 with UI metadata",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "example": "kunnskapsassistenten__default"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "example": "nb"
+            },
+            "required": false,
+            "name": "accept-language",
+            "in": "header"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Object with `input` (validates `input` in POST /v1/chat/completions) and `output` schemas; texts in one language when Accept-Language names one",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V1Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such service for this credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V1Error"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Frontend"
+        ]
+      }
+    },
+    "/v1/models/{id}/interface": {
+      "get": {
+        "summary": "The assistant interface of the service version the caller's environment runs",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "example": "kunnskapsassistenten__default"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "`spec.interface`: the layout, the menu and the pages, and `blocks`: the pinned edition of every `block: ref` in the layout, keyed by its ref, as `RefBlockPayload`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V1Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such service for this credential, or interface_not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V1Error"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Frontend"
+        ]
+      }
+    },
+    "/v1/models": {
+      "get": {
+        "summary": "List the services the credential may use",
+        "responses": {
+          "200": {
+            "description": "OpenAI model list with the platform extension fields",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V1Error"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Frontend"
+        ]
+      }
+    },
+    "/v1/sessions": {
+      "get": {
+        "summary": "Open a live session on a service whose way of working is live-session@1",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "model",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "101": {
+            "description": "The connection is upgraded to a WebSocket. Text and binary messages go through the same gate as a chat call; the run is the session. The server closes with 1000 when done, 1001 when cancelled, 4001 at the longest duration, 4002 when the kind is moved back to test and 1011 on an error."
+          },
+          "400": {
+            "description": "missing_model, invalid_version, not_a_live_service",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V1Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V1Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The credential may not reach the service",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V1Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "model_not_found, agent_not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V1Error"
+                }
+              }
+            }
+          },
+          "426": {
+            "description": "upgrade_required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V1Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "service_paused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V1Error"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Frontend"
+        ]
+      }
+    },
+    "/v1/chat/completions": {
+      "post": {
+        "summary": "Ask a service, whole or streamed",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The answer. With `stream: true` the body is `text/event-stream` of `chat.completion.chunk` frames ending with `data: [DONE]`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatResponse"
+                }
+              },
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_input, invalid_filters, invalid_version, invalid_documents, missing_model, missing_messages, invalid_messages, conversations_unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V1Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V1Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The credential may not reach the service or dataset",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V1Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "model_not_found, agent_not_found, conversation_not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V1Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "version_not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V1Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "document_too_large, request_too_large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V1Error"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "unsupported_document_type",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V1Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "service_paused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V1Error"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Frontend"
+        ]
+      }
+    },
+    "/v1/tasks/{task}/cancel": {
+      "post": {
+        "summary": "Stop a run the caller started through /v1",
+        "description": "Stops the run whose `genai-task` header the caller got from a streamed `POST /v1/chat/completions`, or a live session, on whichever instance runs it. When the run belongs to a conversation, its turn is stored as stopped. Closing the stream does not stop a run.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "task",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The run is stopped. Sending it again answers the same.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "object": {
+                      "type": "string",
+                      "enum": [
+                        "task"
+                      ]
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "cancelled"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "object",
+                    "status"
+                  ]
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "The stop is recorded and has not landed yet: another instance runs it, or the instance that ran it has stopped.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "object": {
+                      "type": "string",
+                      "enum": [
+                        "task"
+                      ]
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "object",
+                    "status"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V1Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "task_not_found: no such run, another caller or organisation started it, or its conversation belongs to another `X-User-Id`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V1Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "run_finished when the run has completed or failed; run_not_cancellable when it was not started through /v1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V1Error"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Frontend"
+        ]
+      }
+    },
+    "/v1/tasks/{task}/media/{id}": {
+      "get": {
+        "summary": "Fetch media an answer returned in `attachments`",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "task",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The bytes, with the media type as `content-type`. Only a caller that may read the run gets them.",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V1Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: no such media, or the caller may not read the run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V1Error"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Frontend"
+        ]
+      }
+    },
+    "/v1/hosts/{hostname}": {
+      "get": {
+        "summary": "What genki's assistant host draws on a hostname before anyone logs in (public, cached 60 seconds)",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "example": "kunnskap.digdir.cloud"
+            },
+            "required": true,
+            "name": "hostname",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The hosted service",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "hostname": {
+                      "type": "string"
+                    },
+                    "tenant": {
+                      "type": "string"
+                    },
+                    "service": {
+                      "type": "string"
+                    },
+                    "environment": {
+                      "type": "string"
+                    },
+                    "name": {},
+                    "login": {
+                      "type": "object",
+                      "properties": {
+                        "issuer": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "clientId": {
+                          "type": "string"
+                        },
+                        "audience": {
+                          "type": "string"
+                        },
+                        "altinnResource": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "issuer",
+                        "clientId",
+                        "audience",
+                        "altinnResource"
+                      ]
+                    },
+                    "languages": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "nb",
+                          "en"
+                        ]
+                      },
+                      "description": "The service's languages the host's own words come in, in the service's order; bokmål when none do"
+                    },
+                    "theme": {
+                      "type": "null",
+                      "description": "Designsystemet's default (Digdir) theme, until a service's own is built"
+                    },
+                    "icon": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "The service's icon for the browser tab, a base64 PNG or SVG data: address"
+                    },
+                    "menu": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": {}
+                      }
+                    },
+                    "pages": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "title": {}
+                        },
+                        "required": [
+                          "id"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "hostname",
+                    "tenant",
+                    "service",
+                    "environment",
+                    "login",
+                    "languages",
+                    "theme",
+                    "icon",
+                    "menu",
+                    "pages"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "urn:genai:problem:host-not-found: the hostname is not active",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Frontend"
+        ]
+      }
+    },
+    "/v1/hosts/{hostname}/pages/{id}": {
+      "get": {
+        "summary": "One page of a hosted service's menu, in Markdown (public, cached 60 seconds)",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "example": "kunnskap.digdir.cloud"
+            },
+            "required": true,
+            "name": "hostname",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "example": "om"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The page",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "title": {},
+                    "body": {}
+                  },
+                  "required": [
+                    "id"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "urn:genai:problem:host-not-found: the hostname is not active or has no such page",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Frontend"
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Attachment": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "The top-level media type, such as `image` or `audio`."
+          },
+          "id": {
+            "type": "string"
+          },
+          "mediaType": {
+            "type": "string",
+            "example": "image/png"
+          },
+          "bytes": {
+            "type": "integer"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "step": {
+            "type": "string",
+            "description": "The step in the service that made it."
+          },
+          "url": {
+            "type": "string",
+            "example": "/v1/tasks/6f1c.../media/0b9e..."
+          }
+        },
+        "required": [
+          "type",
+          "id",
+          "mediaType",
+          "bytes",
+          "sha256",
+          "url"
+        ]
+      },
+      "ChatRequest": {
+        "type": "object",
+        "properties": {
+          "model": {
+            "type": "string"
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "role": {
+                  "type": "string",
+                  "enum": [
+                    "system",
+                    "user",
+                    "assistant"
+                  ]
+                },
+                "content": {}
+              },
+              "required": [
+                "role"
+              ]
+            },
+            "description": "Required unless the service has an input form and `input` is sent. The last user message may be a list of parts: `text`, `input_audio` and `image_url` for the types in `_media`, and `{ \"type\": \"file\", \"file\": { \"filename\", \"file_data\": \"data:<type>;base64,...\" } }` for the types in `_files`, which reach a step flow as `{{input.files.N}}`."
+          },
+          "input": {
+            "type": "object",
+            "additionalProperties": {},
+            "description": "Form values, keyed by `input_fields[].id`."
+          },
+          "conversation_id": {
+            "type": "string"
+          },
+          "genai_conversation": {
+            "type": "boolean"
+          },
+          "filters": {
+            "type": "object",
+            "properties": {
+              "fields": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                }
+              }
+            },
+            "required": [
+              "fields"
+            ]
+          },
+          "tenant": {
+            "type": "string"
+          },
+          "dataset_config_key": {
+            "type": "string"
+          },
+          "stream": {
+            "type": "boolean"
+          },
+          "genai_stream": {
+            "type": "string",
+            "enum": [
+              "live"
+            ]
+          },
+          "genai_steps": {
+            "type": "boolean"
+          },
+          "genai_documents": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "media_type": {
+                  "type": "string"
+                },
+                "data": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "media_type",
+                "data"
+              ]
+            }
+          },
+          "metadata": {
+            "type": "object",
+            "properties": {
+              "version": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "required": [
+          "model"
+        ],
+        "additionalProperties": {}
+      },
+      "ChatResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "object": {
+            "type": "string",
+            "enum": [
+              "chat.completion"
+            ]
+          },
+          "created": {
+            "type": "integer"
+          },
+          "model": {
+            "type": "string"
+          },
+          "choices": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "index": {
+                  "type": "integer"
+                },
+                "message": {
+                  "type": "object",
+                  "properties": {
+                    "role": {
+                      "type": "string",
+                      "enum": [
+                        "assistant"
+                      ]
+                    },
+                    "content": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "role",
+                    "content"
+                  ]
+                },
+                "finish_reason": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "index",
+                "message",
+                "finish_reason"
+              ]
+            }
+          },
+          "usage": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "conversation_id": {
+            "type": "string"
+          },
+          "citations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Source"
+            }
+          },
+          "markers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "marker": {
+                  "type": "string"
+                },
+                "chunk_id": {
+                  "type": "string"
+                },
+                "document": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "marker",
+                "chunk_id",
+                "document"
+              ]
+            },
+            "description": "Present only when the service cites excerpts: every marker in the answer, in order, with the one excerpt and the document it leads to. `marker` is written as in the text, without brackets (ADR 0052)."
+          },
+          "attachments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Attachment"
+            },
+            "description": "Media that steps of the run made, each fetched from its `url` with the same credential."
+          },
+          "no_answer": {
+            "type": "boolean"
+          },
+          "notice": {
+            "type": "string"
+          },
+          "table": {
+            "type": "object",
+            "properties": {
+              "columns": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "key": {
+                      "type": "string"
+                    },
+                    "label": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "key",
+                    "label"
+                  ]
+                }
+              },
+              "rows": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "document": {
+                      "type": "string"
+                    },
+                    "cells": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "object",
+                        "properties": {
+                          "value": {},
+                          "sources": {
+                            "type": "array",
+                            "items": {}
+                          }
+                        },
+                        "required": [
+                          "sources"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "cells"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "columns",
+              "rows"
+            ]
+          },
+          "csv": {
+            "type": "string"
+          },
+          "ai_generated": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "object",
+          "created",
+          "model",
+          "choices",
+          "ai_generated"
+        ]
+      },
+      "InputField": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "text",
+              "long-text",
+              "choice",
+              "multi-choice",
+              "number",
+              "year",
+              "date",
+              "organisation"
+            ]
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "help": {
+            "type": "string"
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "optionsFrom": {
+            "type": "object",
+            "properties": {
+              "dataset": {
+                "type": "string"
+              },
+              "facet": {
+                "type": "string"
+              },
+              "min": {
+                "type": "number"
+              },
+              "max": {
+                "type": "number"
+              },
+              "pattern": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "dataset",
+              "facet"
+            ]
+          },
+          "default": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            ]
+          },
+          "dependsOn": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "kind"
+        ]
+      },
+      "Model": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Send as `model`. Format `<service>__<variant>`."
+          },
+          "object": {
+            "type": "string",
+            "enum": [
+              "model"
+            ]
+          },
+          "created": {
+            "type": "integer"
+          },
+          "owned_by": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "description": "The purpose of the service, as plain text."
+          },
+          "_agent_id": {
+            "type": "string",
+            "description": "Same as `_service`, kept for headless-rag compatibility."
+          },
+          "_mode": {
+            "type": "string",
+            "description": "Same as `_variant`, kept for headless-rag compatibility."
+          },
+          "_service": {
+            "type": "string",
+            "description": "The service id. Group rows by this field."
+          },
+          "_service_title": {
+            "type": "string",
+            "description": "The service name, the same on every row of the service."
+          },
+          "_variant": {
+            "type": "string",
+            "description": "The variant id within the service."
+          },
+          "_variant_title": {
+            "type": "string",
+            "description": "The variant name only, in the language of `Accept-Language`."
+          },
+          "_pickable": {
+            "type": "boolean",
+            "description": "Always present. `true` when an end user may pick this variant in chat. Never show a variant as a separate service."
+          },
+          "_alias_of": {
+            "type": "string",
+            "description": "On an alias row: the `id` it points to. Skip these rows in pickers."
+          },
+          "_default": {
+            "type": "boolean",
+            "enum": [
+              true
+            ],
+            "description": "One entry per service: list these."
+          },
+          "_chat": {
+            "type": "boolean",
+            "description": "Always present. `true` when the service wants a place in chat screens."
+          },
+          "_batch": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "input_fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InputField"
+            }
+          },
+          "_datasets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ServiceDataset"
+            },
+            "description": "The datasets the service searches. Absent: the service takes no `filters`."
+          },
+          "_documents": {
+            "type": "object",
+            "properties": {
+              "accepts": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "max_bytes": {
+                "type": "integer"
+              },
+              "max_count": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "accepts",
+              "max_bytes",
+              "max_count"
+            ]
+          },
+          "_media": {
+            "type": "object",
+            "properties": {
+              "accepts": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "max_bytes": {
+                "type": "integer"
+              },
+              "max_count": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "accepts",
+              "max_bytes",
+              "max_count"
+            ],
+            "description": "Audio and image types the service takes as `input_audio` or `image_url` parts."
+          },
+          "_files": {
+            "type": "object",
+            "properties": {
+              "accepts": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "max_bytes": {
+                "type": "integer"
+              },
+              "max_count": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "accepts",
+              "max_bytes",
+              "max_count"
+            ],
+            "description": "File types a step of the service takes, sent as `file` parts."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "paused"
+            ]
+          },
+          "status_reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "object",
+          "created",
+          "owned_by",
+          "_pickable",
+          "_chat"
+        ]
+      },
+      "ModelList": {
+        "type": "object",
+        "properties": {
+          "object": {
+            "type": "string",
+            "enum": [
+              "list"
+            ]
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Model"
+            }
+          }
+        },
+        "required": [
+          "object",
+          "data"
+        ]
+      },
+      "Problem": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path",
+                "message"
+              ]
+            }
+          }
+        },
+        "required": [
+          "type",
+          "title",
+          "status"
+        ]
+      },
+      "ServiceDataset": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The dataset id, as in `/api/datasets/{id}`."
+          },
+          "tenant": {
+            "type": "string",
+            "description": "The owner tenant: `tenant` for `/api/facets` and the ask body."
+          },
+          "dataset-config-key": {
+            "type": "string",
+            "description": "`dataset-config-key` for `/api/facets`, `dataset_config_key` in the ask body."
+          },
+          "filters": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "field": {
+                  "type": "string"
+                },
+                "kinds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "value-type": {
+                  "type": "string",
+                  "enum": [
+                    "string",
+                    "integer"
+                  ],
+                  "description": "Send as `value-type` in `filters`; integer fields take integer options."
+                }
+              },
+              "required": [
+                "field",
+                "kinds",
+                "value-type"
+              ]
+            }
+          }
+        },
+        "required": [
+          "id",
+          "tenant",
+          "dataset-config-key",
+          "filters"
+        ]
+      },
+      "Source": {
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "integer",
+            "description": "The N in `[N]` in the answer text. When the service cites excerpts, the lowest marker that cites this document; resolve `[N]` through `markers`."
+          },
+          "title": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string",
+            "description": "Present only for an http or https link people can open."
+          },
+          "document_id": {
+            "type": "string"
+          },
+          "excerpts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "chunk_id": {
+                  "type": "string"
+                },
+                "text": {
+                  "type": "string"
+                },
+                "position": {
+                  "type": "integer"
+                },
+                "heading": {
+                  "type": "string",
+                  "description": "The section the excerpt is from: its heading path as plain text, levels joined by ` › `. Present only when the index gives the excerpt a heading."
+                },
+                "page": {
+                  "type": "integer",
+                  "description": "The page of its file the excerpt starts on. Present only when the index gives the excerpt a page; answers stored before pages were kept have none."
+                },
+                "page_end": {
+                  "type": "integer",
+                  "description": "The page the excerpt ends on, present only when it is after `page`."
+                },
+                "url": {
+                  "type": "string",
+                  "description": "The excerpt's PDF opened at its page, `…#page=N`: the address the document's own record gives the excerpt's file. Present only for an http or https PDF; the source's `url` stays the document's page."
+                },
+                "markers": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "When the service cites excerpts: the markers that cite this excerpt."
+                }
+              },
+              "required": [
+                "chunk_id",
+                "text"
+              ]
+            }
+          },
+          "markers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "When the service cites excerpts: the markers that cite this document."
+          },
+          "version": {
+            "type": "string",
+            "description": "The document version, when known."
+          },
+          "published_at": {
+            "type": "string",
+            "description": "The publish date, when known."
+          },
+          "publisher": {
+            "type": "string",
+            "description": "The organisation that published the document, several joined with a comma. Present only when the document's fields name one; on Kudos stored in the knowledge database, the publisher, or the owners when Kudos lists none; Kudos served from Typesense has none."
+          }
+        },
+        "required": [
+          "title",
+          "excerpts"
+        ],
+        "additionalProperties": {}
+      },
+      "V1Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              },
+              "param": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "code": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "message",
+              "type",
+              "param",
+              "code"
+            ]
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path",
+                "message"
+              ]
+            }
+          }
+        },
+        "required": [
+          "error"
+        ]
+      }
+    }
+  }
+}

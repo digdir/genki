@@ -6,6 +6,7 @@ import { serviceIntents, skillIntents, unavailableReasons } from '@genai/strateg
 import { turnBody } from '../assistant.js';
 import { InputField } from '../frontend-openapi.js';
 import { changeReason, problemContent } from '../http.js';
+import { blockRoutes } from './blocks.js';
 import type { PlatformModuleFactory } from '../platform-modules.js';
 import { runSchema } from '../playground.js';
 
@@ -223,11 +224,29 @@ const StrategyCatalogueEntry = z
         note: UiText.optional().openapi({
           description: 'What the platform adds to the instructions at run time',
         }),
+        sections: z
+          .array(
+            z.object({
+              id: z.string(),
+              title: UiText,
+              reason: UiText.openapi({ description: 'Why the platform has the section' }),
+              text: z.string(),
+            }),
+          )
+          .optional()
+          .openapi({
+            description:
+              'The sections of the built-in instructions, in order. A service edits one in spec.strategy.config.promptSections under its id; an empty text leaves it out',
+          }),
+        layered: z.literal(true).optional().openapi({
+          description:
+            'Instructions written in the service are added after the sections instead of replacing them',
+        }),
       })
       .optional()
       .openapi({
         description:
-          'The built-in instructions, only for a strategy that has them. Writing instructions in the service replaces them',
+          'The built-in instructions, only for a strategy that has them. Writing instructions in the service replaces them, unless layered is true',
       }),
     schema: z.string().openapi({ description: 'The config schema, with labels, under /schemas' }),
   })
@@ -1960,18 +1979,20 @@ export const serviceRoutes: RouteConfig[] = [
     method: 'post',
     path: '/tenants/{tenant}/services/{id}/environments/{environment}/promote',
     summary:
-      'Set the environment, usually prod, to the version another environment runs (test unless from says otherwise), without publishing. Needs manage-services; audited',
+      'Set the environment, usually prod, to the version another environment runs (test unless from says otherwise), without publishing. With version, refused unless the source still runs that version. Needs manage-services; audited',
     request: {
       params: z.object({ tenant, id: service, environment }),
       headers: changeReason,
-      body: body(z.object({ from: z.string().optional() })),
+      body: body(
+        z.object({ from: z.string().optional(), version: z.number().int().positive().optional() }),
+      ),
     },
     responses: {
       200: audited(ServiceEnvironments, 'Promoted'),
       400: problem('Missing reason, or promoting an environment to itself'),
       ...tenantErrors,
       404: problem('No such service or environment'),
-      409: problem('prod is the only environment'),
+      409: problem('prod is the only environment, or the source no longer runs version'),
     },
   }),
   createRoute({
@@ -3214,7 +3235,7 @@ type DocumentedApp = { openAPIRegistry?: { registerPath(route: RouteConfig): voi
 export const documentServiceRoutes = (app: unknown) => {
   const registry = (app as DocumentedApp).openAPIRegistry;
   if (!registry) return;
-  for (const route of serviceRoutes) registry.registerPath(route);
+  for (const route of [...serviceRoutes, ...blockRoutes]) registry.registerPath(route);
 };
 
 export const servicesOpenApiModule: PlatformModuleFactory = () => ({

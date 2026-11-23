@@ -262,6 +262,11 @@ describe.skipIf(!hasAz && !process.env.CI)('the Docling server in the template',
     expect(env()).not.toMatch(/"volumes"|"volumeMounts"/);
   });
 
+  it('holds at most 4 pages between the steps of a Docling conversion', () => {
+    // At 100, the default, a 248-page Kudos file peaked at 11.0 GiB locally and killed 8 GiB replicas; at 4, 4.75 GiB (issue 922).
+    expect(env()).toContain('{"name":"DOCLING_SERVE_QUEUE_MAX_SIZE","value":"4"}');
+  });
+
   it('lets the Docling server use the platform identity only to pull its image and read its key', () => {
     const { identitySettings } = docling().properties.configuration as {
       identitySettings?: { identity: string; lifecycle: string }[];
@@ -278,13 +283,13 @@ describe.skipIf(!hasAz && !process.env.CI)('the Docling server in the template',
     expect(terminationGracePeriodSeconds).toBe(600);
   });
 
-  it('the template gives the Docling server a 6-hour wait and the worker 8 conversions at once', () => {
+  it('the template gives the Docling server a 6-hour wait and the worker 24 conversions at once', () => {
     // The worker's client waits a minute longer and asks Docling to stop after 5 h 50 min (issue 477).
     expect(env()).toContain('{"name":"DOCLING_SERVE_MAX_SYNC_WAIT","value":"21600"}');
     // One conversion a replica, so as many at once as the server has replicas.
     expect(workerDocling().env).toContain(
       `{"name":"KNOWLEDGE_CONVERT_CONCURRENCY","value":"[string(parameters('doclingMaxReplicas'))]"}`,
     );
-    expect(read('infra/modules/containerapps.bicep')).toMatch(/param doclingMaxReplicas int = 8/);
+    expect(read('infra/modules/containerapps.bicep')).toMatch(/param doclingMaxReplicas int = 24/);
   });
 });

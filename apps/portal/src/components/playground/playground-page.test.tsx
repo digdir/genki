@@ -156,7 +156,7 @@ describe('the playground page', () => {
     expect(
       document.getElementById(instructions.getAttribute('aria-describedby') ?? '')?.textContent,
     ).toMatch(/har ingen instruksjoner å bytte ut/);
-    expect(within(panel).getByText('Fast stegflyt «Sorter posten», v1')).toBeTruthy();
+    expect(within(panel).getByText('Fast arbeidsflyt «Sorter posten», v1')).toBeTruthy();
     expect(runs).toHaveLength(0);
   });
 
@@ -186,12 +186,8 @@ describe('the playground page', () => {
     await waitFor(() => expect((instructions as HTMLTextAreaElement).value).toBe(promptText));
     fireEvent.change(instructions, { target: { value: 'Svar kort. Vis kilden.' } });
 
-    fireEvent.click(
-      within(panel).getByRole('button', { name: 'Lagre i utkastet til Rapportassistenten' }),
-    );
-    fireEvent.click(
-      within(screen.getByRole('dialog')).getByRole('button', { name: 'Lagre i utkastet' }),
-    );
+    fireEvent.click(within(panel).getByRole('button', { name: 'Lagre i Rapportassistenten' }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Lagre' }));
     await screen.findByText(/Endringene er lagret i utkastet/);
 
     expect(puts[0]?.definition).toMatchObject({
@@ -220,16 +216,14 @@ describe('the playground page', () => {
     );
     fireEvent.change(instructions, { target: { value: 'Svar kort. Vis kilden.' } });
 
-    fireEvent.click(
-      within(panel).getByRole('button', { name: 'Lagre i utkastet til Rapportassistenten' }),
-    );
-    const dialog = screen.getByRole('dialog', { name: 'Lagre i utkastet til Rapportassistenten?' });
+    fireEvent.click(within(panel).getByRole('button', { name: 'Lagre i Rapportassistenten' }));
+    const dialog = screen.getByRole('dialog', { name: 'Lagre i Rapportassistenten?' });
     expect(within(dialog).getByText('instruksjoner')).toBeTruthy();
     expect(within(dialog).getByText(/blir ikke publisert/)).toBeTruthy();
     const writes = () => requests.filter((r) => r.method !== 'GET');
     expect(writes().filter((r) => r.url.endsWith('/draft'))).toHaveLength(0);
 
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Lagre i utkastet' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Lagre' }));
     expect(
       await screen.findByText(
         'Endringene er lagret i utkastet til Rapportassistenten. Ingenting er publisert.',
@@ -260,12 +254,8 @@ describe('the playground page', () => {
     fireEvent.change(instructions, { target: { value: 'Svar kort. Vis kilden.' } });
     expect(within(panel).getByText('1 endring fra utkastet: instruksjoner.')).toBeTruthy();
 
-    fireEvent.click(
-      within(panel).getByRole('button', { name: 'Lagre i utkastet til Rapportassistenten' }),
-    );
-    fireEvent.click(
-      within(screen.getByRole('dialog')).getByRole('button', { name: 'Lagre i utkastet' }),
-    );
+    fireEvent.click(within(panel).getByRole('button', { name: 'Lagre i Rapportassistenten' }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Lagre' }));
     await screen.findByText(/Endringene er lagret i utkastet/);
 
     await waitFor(() => expect(within(panel).queryByText(/endring fra utkastet/)).toBeNull());
@@ -285,12 +275,8 @@ describe('the playground page', () => {
     await renderAt('#/playground', recording);
     const panel = await screen.findByRole('complementary', { name: 'Oppsett' });
     const save = async () => {
-      fireEvent.click(
-        within(panel).getByRole('button', { name: 'Lagre i utkastet til Rapportassistenten' }),
-      );
-      fireEvent.click(
-        within(screen.getByRole('dialog')).getByRole('button', { name: 'Lagre i utkastet' }),
-      );
+      fireEvent.click(within(panel).getByRole('button', { name: 'Lagre i Rapportassistenten' }));
+      fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Lagre' }));
       await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     };
 
@@ -298,10 +284,10 @@ describe('the playground page', () => {
       within(panel).getByRole('checkbox', { name: 'Veiledere fra Statens eksempelverk' }),
     );
     await save();
-    chooseStart(panel, 'Rapportassistenten, versjon 7');
+    chooseStart(panel, 'Rapportassistenten, utgave 7');
     fireEvent.click(within(panel).getByRole('checkbox', { name: 'Tilsynsrapporter 2025' }));
     expect(
-      within(panel).getByText('1 endring fra versjon 7: Tilsynsrapporter 2025 på.'),
+      within(panel).getByText('1 endring fra utgave 7: Tilsynsrapporter 2025 på.'),
     ).toBeTruthy();
     await save();
 
@@ -322,7 +308,7 @@ describe('the playground page', () => {
     expect(within(sideA).queryByRole('button', { name: 'Bruk A i utkastet' })).toBeNull();
 
     fireEvent.click(within(sideB).getByRole('button', { name: 'Bruk B i utkastet' }));
-    const dialog = screen.getByRole('dialog', { name: 'Lagre i utkastet til Rapportassistenten?' });
+    const dialog = screen.getByRole('dialog', { name: 'Lagre i Rapportassistenten?' });
     expect(within(dialog).getByText('modell Qwen3.8-27B')).toBeTruthy();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Avbryt' }));
     expect(screen.queryByRole('dialog')).toBeNull();

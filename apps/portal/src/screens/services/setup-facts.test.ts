@@ -23,7 +23,7 @@ describe('setup summaries', () => {
 
   it('point to the step flow when a step flow service has no own instructions', () => {
     const c = definition({ strategy: { id: 'step-flow', config: { flow: 'flyt@1' } } });
-    expect(summaries(t, c).instructions).toBe('I stegene i stegflyten flyt@1');
+    expect(summaries(t, c).instructions).toBe('I stegene i arbeidsflyten flyt@1');
   });
 
   it('show written instructions as written', () => {
@@ -92,7 +92,7 @@ describe('who and numbers shown for versions', () => {
     const c = applySpec(definition({}), { exposure: { chat: true } });
 
     expect(summaries(t, c, undefined, undefined, ['Kunnskapsassistenten']).start).toBe(
-      'KI-arbeidsflaten (plattformens chat), egne brukerflater: Kunnskapsassistenten',
+      'KI-arbeidsflaten (plattformens chat), egne løsninger: Kunnskapsassistenten',
     );
     expect(summaries(en, c, undefined, undefined, ['Kunnskapsassistenten']).start).toBe(
       "AI workspace (the platform's chat), own frontends: Kunnskapsassistenten",
@@ -104,7 +104,7 @@ describe('who and numbers shown for versions', () => {
     const c = definition({});
 
     expect(summaries(t, c, undefined, undefined, ['Kunnskapsassistenten']).start).toBe(
-      'egne brukerflater: Kunnskapsassistenten',
+      'egne løsninger: Kunnskapsassistenten',
     );
   });
 });

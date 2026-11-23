@@ -100,7 +100,7 @@ const questionOnScreen = () => {
 
 const openTry = async (fetch: typeof globalThis.fetch) => {
   await renderAt('#/services/rapportassistenten/interface', fetch);
-  await screen.findByRole('group', { name: 'Byggeklosser og maler' });
+  await screen.findByRole('group', { name: 'Designelementer og maler' });
 };
 
 // «Spørsmål til …» in the current look, «Still et spørsmål» or «Spør videre» in the next.
@@ -150,7 +150,7 @@ const renameElsewhere = async (name: string) => {
     target: { value: name },
   });
   go('#/services/rapportassistenten/interface');
-  await screen.findByRole('group', { name: 'Byggeklosser og maler' });
+  await screen.findByRole('group', { name: 'Designelementer og maler' });
 };
 
 /** As in a browser, an element put into the page again has lost where it was scrolled to. */
@@ -206,12 +206,12 @@ describe('the try view drawn again', () => {
 
   it('keeps the answer coming, and its thread on screen, while the reader looks at «Oppsett»', async () => {
     const run = await askHeld();
-    await click(screen.getByRole('radio', { name: 'Oppsett' }));
+    await click(screen.getByRole('radio', { name: 'Plasser' }));
     expect(questionOnScreen()).toBeNull();
     expect(screen.queryByRole('textbox', { name: questionField })).toBeNull();
     // Out of sight, but in the page.
     expect(screen.getByText(question, { selector: 'p' }).closest('[hidden]')).not.toBeNull();
-    await click(screen.getByRole('radio', { name: 'Prøv assistenten' }));
+    await click(screen.getByRole('radio', { name: 'Prøv' }));
     await stillComing(run);
   });
 
@@ -219,11 +219,11 @@ describe('the try view drawn again', () => {
     const run = await askHeld();
     go('#/services/rapportassistenten/setup');
     await waitFor(() =>
-      expect(screen.queryByRole('group', { name: 'Byggeklosser og maler' })).toBeNull(),
+      expect(screen.queryByRole('group', { name: 'Designelementer og maler' })).toBeNull(),
     );
     await run.release();
     go('#/services/rapportassistenten/interface');
-    await screen.findByRole('group', { name: 'Byggeklosser og maler' });
+    await screen.findByRole('group', { name: 'Designelementer og maler' });
     await waitFor(() => expect(answerText()).toBe('Første svar.'));
     expect(questionOnScreen()).toBeTruthy();
     expect(run.stopped).toEqual([]);
@@ -237,7 +237,7 @@ describe('the try view drawn again', () => {
     try {
       go('#/services/rapportassistenten/setup');
       await waitFor(() =>
-        expect(screen.queryByRole('group', { name: 'Byggeklosser og maler' })).toBeNull(),
+        expect(screen.queryByRole('group', { name: 'Designelementer og maler' })).toBeNull(),
       );
       expect(screen.queryByText(question, { selector: 'p' })).not.toBeNull();
       await act(async () => {
@@ -249,7 +249,7 @@ describe('the try view drawn again', () => {
       vi.useRealTimers();
     }
     go('#/services/rapportassistenten/interface');
-    await screen.findByRole('group', { name: 'Byggeklosser og maler' });
+    await screen.findByRole('group', { name: 'Designelementer og maler' });
     expect(await screen.findByRole('link', { name: new RegExp(question) })).toBeTruthy();
   });
 
@@ -259,7 +259,7 @@ describe('the try view drawn again', () => {
     await click(await screen.findByRole('tab', { name: 'Forhåndsvisning' }));
     await stillComing(run);
     await resizeTo(wide);
-    await screen.findByRole('group', { name: 'Byggeklosser og maler' });
+    await screen.findByRole('group', { name: 'Designelementer og maler' });
     expect(questionOnScreen()).toBeTruthy();
     expect(answerText()).toBe('Første svar.');
   });

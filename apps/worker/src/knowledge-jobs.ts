@@ -323,11 +323,11 @@ export const admittedConversion = <T extends JobData & { run: string }>(
   handler: (
     job: KnowledgeJob<T> & { sender?: IngestionExecution; running: IngestionExecution[] },
   ) => Promise<void>,
-  deps: AdmissionDeps & { waiting(data: T): Promise<string[]> },
+  deps: AdmissionDeps & { waiting(job: Job<T>): Promise<string[]> },
 ): QueueWork<T> =>
   queueWork(queue, async (job) => {
     const now = deps.now?.() ?? new Date();
-    const ids = [...new Set([job.data.run, ...(await deps.waiting(job.data))])];
+    const ids = [...new Set([job.data.run, ...(await deps.waiting(job))])];
     const runs = (await Promise.all(ids.map((id) => deps.records.find(id)))).filter(
       (r): r is IngestionExecution => r !== undefined,
     );

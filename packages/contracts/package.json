@@ -9,6 +9,26 @@
       "source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./blocks": {
+      "source": "./src/blocks.ts",
+      "types": "./dist/blocks.d.ts",
+      "default": "./dist/blocks.js"
+    },
+    "./block-template": {
+      "source": "./src/block-template.ts",
+      "types": "./dist/block-template.d.ts",
+      "default": "./dist/block-template.js"
+    },
+    "./block-fields": {
+      "source": "./src/block-fields.ts",
+      "types": "./dist/block-fields.d.ts",
+      "default": "./dist/block-fields.js"
+    },
+    "./block-fixtures": {
+      "source": "./src/block-fixtures.ts",
+      "types": "./dist/block-fixtures.d.ts",
+      "default": "./dist/block-fixtures.js"
     }
   },
   "scripts": {

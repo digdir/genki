@@ -38,7 +38,7 @@ export const settingLabels: Record<string, { label: string; cat: string; desc?: 
   'retrieval.autoFilter.aliases': {
     label: 'Andre navn på verdier',
     cat: 'Søk',
-    desc: 'Navn som betyr det samme som en verdi i datasettet, for eksempel en forkortelse. Hver oppføring er en gruppe navn. Når søket nevner ett av dem, gjelder det verdien slik den er lagret i datasettet.',
+    desc: 'Navn som betyr det samme som en verdi i dokumentsamlingen, for eksempel en forkortelse. Hver oppføring er en gruppe navn. Når søket nevner ett av dem, gjelder det verdien slik den er lagret i dokumentsamlingen.',
   },
   'retrieval.docTitle.fanout': { label: 'Tekstbiter per titteltreff', cat: 'Søk' },
   'retrieval.merge.mode': { label: 'Måte å flette søkene på', cat: 'Søk' },
@@ -119,11 +119,11 @@ export const settingLabels: Record<string, { label: string; cat: string; desc?: 
   },
   'services.defaultModel': { label: 'Standardmodell for nye tjenester', cat: 'Modell' },
   'skills.defaultPassThreshold': {
-    label: 'Krav for publisering av ferdigheter',
+    label: 'Krav for publisering av arbeidsinstrukser',
     cat: 'Ferdigheter',
     desc: 'Andel testtilfeller som må bestå når testsettet ikke har eget krav.',
   },
-  'skills.testModel': { label: 'Modell for testkjøring av ferdigheter', cat: 'Ferdigheter' },
+  'skills.testModel': { label: 'Modell for testkjøring av arbeidsinstrukser', cat: 'Ferdigheter' },
   'skills.judgeModel': { label: 'Modell som vurderer testsvar', cat: 'Ferdigheter' },
   'playground.enabled': { label: 'Prøveområdet er på', cat: 'Prøveområde' },
   'usage.monthlyTokens': { label: 'Tokens per måned', cat: 'Forbruk' },
@@ -131,7 +131,7 @@ export const settingLabels: Record<string, { label: string; cat: string; desc?: 
   'retention.class': { label: 'Hvor lenge innhold beholdes', cat: 'Oppbevaring' },
   'retention.auditDays': { label: 'Dager revisjonsspor beholdes', cat: 'Oppbevaring' },
   'batch.approvalLimitNok': {
-    label: 'Grense per samlet jobb før godkjenning (kr)',
+    label: 'Grense per massekjøring før godkjenning (kr)',
     cat: 'Forbruk',
   },
 };

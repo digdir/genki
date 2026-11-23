@@ -2,7 +2,7 @@
 
 Status: proposed, 2026-11-19 (platform login for hosted Clients, 2026-11-19)
 
-Left: a logo and images other than the tab icon in a hosted assistant; a host's own `x-` blocks (ADR 0065) in the generic host, which draws only catalogue blocks; and production Ansattporten, which #464 decides. Each needs its own change.
+Left: a logo and images other than the tab icon in a hosted assistant; a host's own `x-` blocks (ADR 0065) in the generic host, which draws only built-in and declarative blocks; and production Ansattporten, which #464 decides. Each needs its own change.
 
 ## Context
 
@@ -16,7 +16,7 @@ genki has the parts for a hosted assistant but no host. `@genai/ui-assembly` dra
 
 - **genki runs one generic assistant host.** It is a fifth app in the apps image, `APP=assistant`, deployed as its own container app (`${baseName}-assistant`) in an environment of its own, with an identity of its own that has no right on genki's Key Vault or Postgres (ADR 0062). It serves every hosted hostname. For a request it looks the `Host` up, and draws the service that hostname belongs to, with the interface of the version the hostname's environment runs (ADR 0065, ADR 0064). An unknown hostname gets a plain 404 page and no login.
 - **A hosted assistant is configuration, not code.** A service, a published `spec.interface`, a Client with `spec.hosted: true` and its hostnames, and DNS records. No build, no image and no Ansattporten client per service. A hostname is an entry in the environment's parameter file and a deploy for now, and a self-service claim later (ADR 0062).
-- **The host draws only catalogue blocks, and the service's theme, menu and pages.** It draws the layout through `@genai/ui-assembly`, the theme from ADR 0063, and the menu and pages below. It runs no code from the service owner.
+- **The host draws built-in and declarative blocks in its own origin, and the service's theme, menu and pages.** It draws the layout through `@genai/ui-assembly`, a declarative block as data with its own Designsystemet components (ADR 0067), the theme from ADR 0063, and the menu and pages below. It still runs no code from the service owner there.
 - **A service that needs its own frontend code runs it itself.** It runs its own container in its own Azure (or anywhere), and registers it as a genki frontend: a Client of kind `browser` with bearer tokens, as today (ADR 0032), or `server` with a service key. genki runs no team's container in its own Container Apps environment.
 - **No Front Door.** Custom hostnames bind to the host container app with free managed certificates (ADR 0062). Apex names use the environment's static IP.
 
@@ -71,7 +71,7 @@ ADR 0033 lets a service-group login through only a client listed in `LOCKDOWN_SE
 
 - **A thread's owner is the tenant and `issuer|sub`** (`userKey` in `packages/conversations/src/routes.ts`). Ansattporten's `sub` is pairwise per client, as in ID-porten, so the same person gets the same `sub` only from the same client id.
 - **A frontend that moves to the host keeps its Ansattporten client id** when its threads must stay. Its Client registration becomes hosted, with the same `oidc.clientId`, and its people see their threads. A new client id, the platform login's included, gives everyone new owner keys.
-- **A platform login has a subject per Client.** One client gives a person the same Ansattporten `sub` on every service and tenant, so the verifier never passes it on: a login confined through the platform client gets as `subject` the base64url HMAC-SHA256 of `tenant|client|sub`, the Client being the registration id, under a key derived with HKDF from `CONTENT_MASTER_KEY` (`platformLoginSubject` in `packages/identity/src/verify.ts`). The same person keeps it on the same Client across logins, and gets another on every other Client. Everything keyed by the subject is then kept per Client: threads, runs and their feedback and documents, and the identity a remote backend is sent (`send.identity: subject`), so two tenants' backends cannot join their data on a person. Without `CONTENT_MASTER_KEY`, as in dev mode without Postgres, the key is random per process and subjects change on a restart.
+- **A platform login has a subject per Client.** One client gives a person the same Ansattporten `sub` on every service and tenant, so the verifier never passes it on: a login confined through the platform client gets as `subject` the base64url HMAC-SHA256 of `tenant|client|sub`, the Client being the registration id, under `PLATFORM_LOGIN_SUBJECT_KEY`, or when that is unset a key derived with HKDF from `CONTENT_MASTER_KEY` ([ADR 0070](0070-versioned-content-master-keys.md)) (`platformLoginSubject` in `packages/identity/src/verify.ts`). The same person keeps it on the same Client across logins, and gets another on every other Client. Everything keyed by the subject is then kept per Client: threads, runs and their feedback and documents, and the identity a remote backend is sent (`send.identity: subject`), so two tenants' backends cannot join their data on a person. Without either, as in dev mode without Postgres, the key is random per process and subjects change on a restart; with a database set, the API refuses to start the platform login without one of them.
 
 ## Why
 

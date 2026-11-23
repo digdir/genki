@@ -1,13 +1,5 @@
-import {
-  Button,
-  Card,
-  Chip,
-  Heading,
-  Link,
-  Paragraph,
-  Textfield,
-} from '@digdir/designsystemet-react';
-import { ArrowLeftIcon, ExternalLinkIcon } from '@navikt/aksel-icons';
+import { Button, Card, Chip, Heading, Paragraph, Textfield } from '@digdir/designsystemet-react';
+import { ArrowLeftIcon } from '@navikt/aksel-icons';
 import {
   useEffect,
   useId,
@@ -19,8 +11,8 @@ import {
   type ReactNode,
 } from 'react';
 import { useT } from './i18n.js';
+import { PdfView } from './PdfView.js';
 import { Markdown } from '../markdown/Markdown.js';
-import { useMedia } from '../shell/hooks.js';
 import { excerptMarkdown, headingText } from '../sources/excerptMarkdown.js';
 import {
   orderedExcerpts,
@@ -86,6 +78,18 @@ const isPdf = (file: DocumentFile) =>
   (file.mediaType.split(';')[0] ?? '').trim().toLowerCase() === 'application/pdf';
 
 /** An address the browser may open in a frame: http or https, and never `javascript:` or `data:`. */
+const fileAddress = (url: string) => {
+  try {
+    const parsed = new URL(url, document.baseURI);
+    parsed.hash = '';
+    return parsed.href;
+  } catch {
+    return url.split('#', 1)[0];
+  }
+};
+
+const sameFile = (a: string, b: string) => fileAddress(a) === fileAddress(b);
+
 const isFileAddress = (url: string) => {
   try {
     const { protocol } = new URL(url, document.baseURI);
@@ -94,9 +98,6 @@ const isFileAddress = (url: string) => {
     return false;
   }
 };
-
-// A phone, upright or sideways: a framed PDF there shows one page that cannot scroll, or nothing.
-const SMALL_SCREEN = '(width < 40rem), (height < 30rem)';
 
 export interface DocumentViewProps {
   /** The answer's sources, as Sources takes them; the view shows the targeted one's excerpts. */
@@ -253,7 +254,6 @@ export const DocumentView = ({
   // Read from the target itself, so a new document never shows the last one's mark for a render.
   const marked = source && !strayChunk ? shown?.chunkId : undefined;
   const shownKey = source ? documentKey(source) : '';
-  const smallScreen = useMedia(SMALL_SCREEN);
   // The file is the targeted document's: a jump to another document shows that one's excerpts.
   const fileState =
     file && sources && source && source === sources[targetPosition(sources, target)]
@@ -271,13 +271,11 @@ export const DocumentView = ({
     pdf.source !== undefined &&
     pageExcerpt?.page !== undefined &&
     pageExcerpt.url !== undefined &&
-    pageExcerpt.url.split('#', 1)[0] === pdf.source.split('#', 1)[0]
+    sameFile(pageExcerpt.url, pdf.source)
       ? `${pdf.url.split('#', 1)[0]}#page=${pageExcerpt.page}`
       : pdf?.url;
   // A file the view cannot show is as none: the excerpts, and a line saying so.
   const fileMissed = fileState !== undefined && !fileLoading && !pdf;
-  const inline =
-    !smallScreen && !(typeof navigator !== 'undefined' && navigator.pdfViewerEnabled === false);
 
   useEffect(() => {
     if (target && !own && (missing || strayChunk)) onTargetMissing?.(target);
@@ -455,28 +453,8 @@ export const DocumentView = ({
             <Paragraph data-size="sm" className="uib-document-view-file-note">
               {t('documentView.fileLoading')}
             </Paragraph>
-          ) : pdf && inline ? (
-            // The browser's own viewer, the whole document in place of the excerpts.
-            // Keyed by its address, so another page loads anew: a changed fragment alone does not
-            // move every browser's PDF viewer.
-            <iframe
-              key={framed}
-              className="uib-document-view-file"
-              src={framed}
-              title={t('documentView.fileTitle', { title: documentTitle })}
-            />
-          ) : pdf ? (
-            <Link
-              href={framed}
-              target="_blank"
-              rel="noopener noreferrer"
-              data-size="sm"
-              className="uib-document-view-link"
-              aria-label={`${t('documentView.openFile')}, ${documentTitle} ${t('sources.opensInNewTab')}`}
-            >
-              <span>{t('documentView.openFile')}</span>
-              <ExternalLinkIcon aria-hidden />
-            </Link>
+          ) : pdf && framed ? (
+            <PdfView url={framed} title={documentTitle} />
           ) : (
             <>
               {fileMissed ? (

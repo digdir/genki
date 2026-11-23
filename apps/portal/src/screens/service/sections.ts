@@ -46,14 +46,26 @@ const order: ServiceSection[] = [
 
 const forNew: ServiceSection[] = ['setup', 'interface', 'test', 'channels', 'definition'];
 
-export type ServiceTab = 'overview' | 'setup' | 'interface' | 'quality' | 'developer';
+export type ServiceTab = 'overview' | 'setup' | 'interface' | 'quality' | 'history' | 'developer';
+
+export const historyHasOwnTab = true;
+
+const historySections: ServiceSection[] = ['versions'];
 
 const tabSections: Record<ServiceTab, ServiceSection[]> = {
   overview: ['overview'],
   setup: ['setup', 'test', 'settings'],
   interface: ['interface'],
   quality: ['quality'],
-  developer: ['versions', 'log', 'channels', 'environments', 'batch', 'definition'],
+  history: historyHasOwnTab ? historySections : [],
+  developer: [
+    ...(historyHasOwnTab ? [] : historySections),
+    'log',
+    'channels',
+    'environments',
+    'batch',
+    'definition',
+  ],
 };
 
 export const tabLabels: Record<ServiceTab, PlainKey> = {
@@ -61,6 +73,7 @@ export const tabLabels: Record<ServiceTab, PlainKey> = {
   setup: 'service.sectionSetup',
   interface: 'service.sectionInterface',
   quality: 'service.sectionQuality',
+  history: 'service.sectionVersions',
   developer: 'service.tabDeveloper',
 };
 
@@ -135,3 +148,28 @@ export const locate = (
     return { section: fallback, detail: undefined, redirect: servicePath(id, fallback) };
   return { section: known, detail };
 };
+
+export type Edition = 'test' | 'inUse';
+
+export type EditionView = Edition | 'both' | 'shared';
+
+const inUseQuery = 'edition=in-use';
+
+export const editionOf = (query: URLSearchParams): Edition =>
+  query.get('edition') === 'in-use' ? 'inUse' : 'test';
+
+export const editionView = (section: ServiceSection, edition: Edition): EditionView => {
+  const tab = tabOf(section);
+  if (tab === 'developer') return 'both';
+  return tab === 'history' ? 'inUse' : edition;
+};
+
+export const editionPath = (id: string, section: ServiceSection, edition: Edition) =>
+  edition === 'inUse' && editionView(section, 'test') === 'test'
+    ? servicePath(id, section, `?${inUseQuery}`)
+    : servicePath(id, section);
+
+export const switchPaths = (id: string, section: ServiceSection) => ({
+  test: servicePath(id, editionView(section, 'test') === 'test' ? section : 'overview'),
+  inUse: editionPath(id, section, 'inUse'),
+});

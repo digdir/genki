@@ -28,7 +28,7 @@ describe('API reference in English', () => {
     render(inEnglish(<EndpointNav selected="tj-pub" onPick={() => undefined} />));
     const nav = screen.getByRole('navigation', { name: 'Endpoints' });
     expect(within(nav).getByText('Export and import')).toBeTruthy();
-    expect(within(nav).getByRole('button', { name: /Publish a version/ })).toBeTruthy();
+    expect(within(nav).getByRole('button', { name: /Publish an edition/ })).toBeTruthy();
     expect(screen.getByLabelText('Search endpoints')).toBeTruthy();
   });
 
@@ -45,7 +45,7 @@ describe('API reference in English', () => {
     );
     const detail = screen.getByRole('article');
     expect(
-      within(detail).getByRole('heading', { level: 4, name: 'Publish a version' }),
+      within(detail).getByRole('heading', { level: 4, name: 'Publish an edition' }),
     ).toBeTruthy();
     expect(within(detail).getByText('Manage services')).toBeTruthy();
     expect(within(detail).getByRole('region', { name: 'Parameters' })).toBeTruthy();
@@ -57,7 +57,7 @@ describe('API reference in English', () => {
 
   it('shows portal actions in English', () => {
     render(inEnglish(<Actions tenant="999888777" />));
-    expect(screen.getByText('Publish version 8')).toBeTruthy();
+    expect(screen.getByText('Publish edition 8')).toBeTruthy();
     expect(screen.getByText('Services › Kunnskapsassistenten › Publish')).toBeTruthy();
   });
 

@@ -28,6 +28,7 @@ import { createPlanner } from './planner.js';
 import type { Chunk, Detection } from './stages.js';
 import {
   bestContentWindows,
+  contentSnippet,
   formatMetadataHeaders,
   metadataHeaders,
   truncateHeadTail,
@@ -56,6 +57,13 @@ export interface RetrievedSummary {
   publisher?: string;
   /** Hits on the same page of other records of this report, left out for this one (issue 677). */
   copies?: { chunkId: string; document?: string }[];
+}
+
+export interface SearchHitSummary extends RetrievedSummary {
+  searchTypes: string[];
+  hitCount: number;
+  matchedQuestions?: string[];
+  snippet?: string;
 }
 
 export interface RetrievedChunk extends RetrievedSummary {
@@ -384,15 +392,25 @@ export const createAgentRetrieval = (options: RetrievalFactoryOptions) => {
       queries: string[],
       opts: { filters?: FilterSelection[]; userIntent?: string },
       signal: AbortSignal,
-    ): Promise<{ chunks: RetrievedSummary[]; attribution?: RetrievalAttribution }> => {
+    ): Promise<{ chunks: SearchHitSummary[]; attribution?: RetrievalAttribution }> => {
       const result = await backend.run(
         queries,
         opts.userIntent,
         backend.toFilters(opts.filters, textFieldsOf(options.knowledge)),
         signal,
       );
+      const snippetQuery = opts.userIntent ?? queries.join(' ');
       return {
-        chunks: result.chunks.map(backend.summarize),
+        chunks: result.chunks.map((c) => {
+          const snippet = c.snippet ?? contentSnippet(c.text, snippetQuery);
+          return {
+            ...backend.summarize(c),
+            searchTypes: c.searchTypes,
+            hitCount: c.hitCount,
+            ...(c.matchedQuestions?.length ? { matchedQuestions: c.matchedQuestions } : {}),
+            ...(snippet ? { snippet } : {}),
+          };
+        }),
         attribution: backend.attribution(result.trace.expansion),
       };
     },

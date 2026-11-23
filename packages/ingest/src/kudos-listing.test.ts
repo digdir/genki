@@ -1,11 +1,26 @@
 import { createHash } from 'node:crypto';
-import { describe, expect, it } from 'vitest';
+import type { Agent as UndiciAgent } from 'undici';
+import { describe, expect, it, vi } from 'vitest';
 import { ConversionPending, onePage } from './converter.js';
 import { storedConverter } from './stored-converter.js';
 import { planRun, type ListedDocument, type Listing } from './document-records.js';
 import { kudosRateLimiter } from './kudos-rate.js';
 import { kudosClient, kudosProd, type KudosDocument } from './kudos.js';
 import { knowledgeListingOf, pipelineSpec, type KudosAccess } from './pipeline-sources.js';
+import { closeKeptConnections, defaultFetchPolicy } from './website.js';
+
+/** The options of every undici Agent a download builds: the connect timeout it was given. */
+const agents = vi.hoisted(() => [] as { connect?: { timeout?: number } }[]);
+vi.mock('undici', async (original) => {
+  const undici = await original<typeof import('undici')>();
+  class RecordingAgent extends undici.Agent {
+    constructor(options?: ConstructorParameters<typeof UndiciAgent>[0]) {
+      agents.push((options ?? {}) as { connect?: { timeout?: number } });
+      super(options);
+    }
+  }
+  return { ...undici, Agent: RecordingAgent };
+});
 
 const signal = new AbortController().signal;
 const scope = { tenant: '991825827', dataset: 'digdir/kudos', owner: 'digdir' };
@@ -155,6 +170,21 @@ describe('a Kudos listing', () => {
     await expect(listing.file?.(listed?.record ?? {}, 'c'.repeat(64))).rejects.toThrow(
       /no longer lists the file/,
     );
+  });
+
+  it('gives KUDOS file downloads a 15 s connect timeout and leaves website fetches at 5 s', async () => {
+    // KUDOS sometimes takes more than 5 s to accept a connection, and convert jobs failed on it
+    // (issue 906, UND_ERR_CONNECT_TIMEOUT about 5 s after start).
+    const { access } = fakeKudos({ docs: [doc(1)] });
+    const listing = await listingFor({ types: ['Årsrapport'] }, access);
+    const [listed] = await all(listing);
+    await closeKeptConnections();
+    agents.length = 0;
+
+    await listing.file?.(listed?.record ?? {}, doc(1).files?.[0]?.sha256 as string);
+
+    expect(agents.map((a) => a.connect?.timeout)).toEqual([15_000]);
+    expect(defaultFetchPolicy.connectTimeoutMs).toBe(5_000);
   });
 
   it("an index job reads a Kudos file's stored conversion without downloading it", async () => {

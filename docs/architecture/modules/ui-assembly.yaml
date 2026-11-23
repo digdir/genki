@@ -15,11 +15,17 @@ description:
   partner needs is off, such as footnotes without the sources.
 responsibilities:
   - Draw any layout the block catalogue allows, live against a service
+  - Resolve each layout entry, by id or by a Block definition's ref, to a built-in block through the registry, and draw a placeholder for a ref it has no component for
+  - Pick a `block: ref` entry's edition and only the fields it reads from what the interface serves, draw a declarative edition with its template and send its events to the assistant, and draw a placeholder for a code edition until its sandbox is built
   - Keep the state the blocks share and link their events
   - Call genki for models, threads, facets and answers through one interface
 files:
   - packages/ui-assembly/src/useAssistant.ts
   - packages/ui-assembly/src/Assistant.tsx
+  - packages/ui-assembly/src/registry.tsx
+  - packages/ui-assembly/src/ref-block.tsx
+  - packages/ui-assembly/src/block-data.ts
+  - packages/ui-assembly/src/declarative-block.tsx
   - packages/ui-assembly/src/api.ts
   - packages/ui-assembly/src/i18n.ts
 input: A layout and its profile, a service, the host's profile if any, and a way to reach genki
@@ -47,4 +53,11 @@ edges:
     witness:
       file: packages/ui-assembly/src/api.ts
       imports: '@genai/client'
+  - to: kernel
+    label: The field list a block reads and the payload of a pinned block
+    kind: call
+    target: call
+    witness:
+      file: packages/ui-assembly/src/block-data.ts
+      imports: '@genai/contracts'
 keywords: ui assembly app builder layout wiring assistant preview byggeklosser

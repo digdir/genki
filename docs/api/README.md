@@ -63,6 +63,18 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ## API changes
 
+The public `/v1` routes are what other systems build on, so CI refuses a breaking change to them unless this list announces it. [openapi-v1.json](openapi-v1.json) is the `/v1` part of `/openapi.json`, written by `apps/api/src/openapi/public-api.test.ts` (refresh it with `npx vitest run apps/api/src/openapi/public-api.test.ts -u`). `npm run api:compat` compares it with the copy on `origin/main`, or the base of the pull request in CI. These are breaking:
+
+- a removed path or method;
+- a removed response field, a field that is no longer always present, or a removed success response;
+- a new required request field, parameter or body;
+- a narrowed type or enum: a request accepts less than before, or a response can send a type or value it could not before (such as `null`);
+- a changed auth requirement: an open operation that starts to need a credential, the reverse, or another security scheme.
+
+To announce one, add a line to a new dated entry below that names the operation in backticks as the method and path, such as `` `POST /v1/chat/completions` ``. Only lines added in the same change count. Changes outside `/v1` are listed here too, but CI does not check them, nor path parameter schemas or `additionalProperties`.
+
+`npm run definitions:compat` checks every YAML or JSON file in the repository that is a service, step flow, skill or block definition (seeds, examples and fixtures) against the current schema, including the strategy, tool and guardrail settings. Models, datasets, rerankers, tools and blocks are not looked up, since each environment has its own. Give it the path to a tenant export (`GET /tenants/{tenant}/export`) or a folder of definitions to check those instead.
+
 ### 2026-11-20: archived services and catalog references
 
 - An archived service no longer keeps a catalog model or reranker in use, so `DELETE /operator/catalog/{kind}/{id}` can delete one only archived services name, and a skipped model only they name is marked `unused`.
@@ -82,7 +94,7 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ### 2026-11-19: removing unused step flows, operation kinds and platform secrets
 
-- New `DELETE /tenants/{tenant}/step-flows/{id}` (manage-services, `change-reason`, audited as `platform.step-flow.archive`) archives one of the organisation's own step flows: Stegflyter and Byggeklosser stop listing it, its versions stay, and publishing it again lists it again. It answers `409` with `urn:genai:problem:step-flow-in-use` while the latest version, or a version an environment is pinned to, of a service that is not archived runs it, directly or as a subflow, in any organisation for a Digdir flow. Internal services count. `usedBy` names only services in the caller's own organisation; `otherOrganisations` counts the rest, and `internalServices` the internal ones the caller may not see.
+- New `DELETE /tenants/{tenant}/step-flows/{id}` (manage-services, `change-reason`, audited as `platform.step-flow.archive`) archives one of the organisation's own step flows: Arbeidsflyter and Katalog stop listing it, its versions stay, and publishing it again lists it again. It answers `409` with `urn:genai:problem:step-flow-in-use` while the latest version, or a version an environment is pinned to, of a service that is not archived runs it, directly or as a subflow, in any organisation for a Digdir flow. Internal services count. `usedBy` names only services in the caller's own organisation; `otherOrganisations` counts the rest, and `internalServices` the internal ones the caller may not see.
 - New `DELETE /operator/operation-kinds/{kind}` (operators, `change-reason`, audited as `platform.operations.kind.delete`) deletes a kind that is not built in and that no descriptor describes; `409` with `urn:genai:problem:operation-kind-built-in` or `urn:genai:problem:operation-kind-in-use`.
 - New `DELETE /operator/secrets/{name}` (operators, `change-reason`, audited as `platform.platform-secret.delete` without the value) deletes a stored platform secret nothing names; `409` with `urn:genai:problem:platform-secret-in-use` and `usedBy` while a catalog entry, a configuration entry such as an operator hook, or a definition in any organisation, internal services included, names it. It answers `503` and deletes nothing when the platform cannot check the uses.
 

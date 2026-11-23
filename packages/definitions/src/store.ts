@@ -138,6 +138,8 @@ export interface DefinitionStore {
   ): Promise<PublishedVersion | undefined>;
   versions(kind: Definition['kind'], tenant: string, id: string): Promise<PublishedVersion[]>;
   list(tenant: string): Promise<{ kind: Definition['kind']; id: string }[]>;
+  /** Every tenant's definitions of one kind, for a catalogue across publishers. */
+  listAcross?(kind: 'Block'): Promise<{ tenant: string; id: string }[]>;
   resolve(name: string, version?: number): Promise<CompiledCapability | undefined>;
   capabilities(onInvalid?: OnInvalidStored): Promise<CompiledCapability[]>;
   remove(tenant: string, definitions: StoredDefinitionRef[]): Promise<void>;
@@ -378,6 +380,15 @@ export class InMemoryDefinitionStore implements DefinitionStore {
       .filter((d) => d.metadata.tenant === tenant)
       .map((d) => ({ kind: d.kind, id: d.metadata.id }))
       .sort((a, b) => `${a.kind}:${a.id}`.localeCompare(`${b.kind}:${b.id}`));
+  }
+
+  async listAcross(kind: 'Block') {
+    return [...this.#definitions.values()]
+      .flatMap((history) => history.slice(-1))
+      .map((v) => v.definition)
+      .filter((d) => d.kind === kind)
+      .map((d) => ({ tenant: d.metadata.tenant, id: d.metadata.id }))
+      .sort((a, b) => `${a.tenant}/${a.id}`.localeCompare(`${b.tenant}/${b.id}`));
   }
 
   async resolve(name: string, version?: number) {

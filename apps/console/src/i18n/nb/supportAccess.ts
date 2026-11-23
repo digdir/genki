@@ -23,8 +23,6 @@ export const supportAccess = defineNamespace({
   operatorsPublish: ' Om operatører kan publisere for virksomheten.',
   loadingServices: 'Henter tjenestene',
   noServices: '{tenant} har ingen tjenester ennå.',
-  kindService: 'Tjeneste',
-  kindStepFlow: 'Stegflyt',
   publishedVersion: '{kind} · publisert versjon {version}',
   publishedVersionOn: '{kind} · publisert versjon {version}, {date}',
   keysPath: 'Integrasjoner › Nøkler',

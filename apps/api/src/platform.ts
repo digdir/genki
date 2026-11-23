@@ -20,6 +20,7 @@ import {
 import { refusedRight, type Access } from './access.js';
 import { requireRight, rights, rightsOf, seesUsage } from './rights.js';
 import {
+  actorOf,
   operatorOnlyRefused,
   operatorOnlySettingType,
   settingsConflictMessage,
@@ -48,6 +49,7 @@ import { t } from './i18n/index.js';
 import { readOnlyInLockdown } from './lockdown.js';
 import { onlyTypes, toTimeline, type TaskReader } from './timeline.js';
 import type { ActorNames } from './actor-names.js';
+import type { ServiceDrafts } from './service-drafts.js';
 
 const draftOriginNames: Record<DraftOrigin, () => string> = {
   builder: () => t('runs.originBuilder'),
@@ -73,6 +75,7 @@ export interface PlatformApiOptions {
   tenantQuota?: (tenant: string) => Promise<{ usedPercent: number }>;
   lifecycle?: (tenant: string, service: string) => Promise<{ state: string }>;
   names?: ActorNames;
+  drafts?: Pick<ServiceDrafts, 'followPublish'>;
   now?: () => Date;
   lockdown?: boolean;
 }
@@ -643,7 +646,7 @@ const routes = {
       401: problems[401],
       403: {
         content: problemContent,
-        description: `Not allowed for this tenant; ${shareOperatorOnlyType}: the bundle changes a service's spec.availableTo, which only operators change; or ${operatorOnlySettingType}: the bundle sets or pins a limit only an operator changes for a tenant`,
+        description: `Not allowed for this tenant; ${shareOperatorOnlyType}: the bundle changes a service's spec.availableTo, which only operators change, or shares a code Block with everyone; or ${operatorOnlySettingType}: the bundle sets or pins a limit only an operator changes for a tenant`,
       },
       409: {
         content: problemContent,
@@ -1328,6 +1331,21 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
     if (!result.ok && result.type === operatorOnlySettingType)
       return operatorOnlyRefused(c, result.errors);
     if (!result.ok) return problem(c, 422, 'Invalid bundle', { errors: result.errors });
+    for (const item of result.value) {
+      const service = item.target.startsWith('Service:') ? item.target.slice(8) : undefined;
+      if (!service || (item.action !== 'create' && item.action !== 'update')) continue;
+      const latest = await store.get('Service', tenant, service);
+      if (latest)
+        await options.drafts
+          ?.followPublish(
+            actorOf(acting.actor ?? acting),
+            tenant,
+            service,
+            latest,
+            `Fulgte publisert versjon ${latest.version}: ${reason}`,
+          )
+          .catch(() => undefined);
+    }
     return c.json({ dryRun: false, task: result.task, plan: result.value }, 200);
   });
 

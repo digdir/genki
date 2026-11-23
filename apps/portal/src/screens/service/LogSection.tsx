@@ -21,7 +21,7 @@ import type { TaskRow } from '../../types';
 import { EmptyState, ErrorState, Loading } from '../../states';
 import { RunDetail } from '../log/RunDetail';
 import { actorText } from '../log/format';
-import { clockSeconds, sameDay, shortWhen } from './dev-format';
+import { clockSeconds, placeName, sameDay, shortWhen } from './dev-format';
 import { servicePath } from './sections';
 import '../log.css';
 import './sections.css';
@@ -63,7 +63,10 @@ const byText = (r: TaskRow, t: T) =>
   r.actor?.kind === 'api-key' && r.channel !== 'interface' && r.actor.name
     ? t('serviceDev.byKey', { name: r.actor.name })
     : r.actor?.kind === 'person' && r.environment && r.environment !== productionEnvironment
-      ? t('serviceDev.byPersonIn', { name: actorText(r.actor, t), environment: r.environment })
+      ? t('serviceDev.byPersonIn', {
+          name: actorText(r.actor, t),
+          environment: placeName(t, r.environment),
+        })
       : actorText(r.actor, t);
 
 const pageKeys = {
@@ -279,7 +282,7 @@ export const LogSection = ({
               <Select.Option value="">{t('serviceLog.allEnvironments')}</Select.Option>
               {names.map((name) => (
                 <Select.Option key={name} value={name}>
-                  {name}
+                  {placeName(t, name)}
                 </Select.Option>
               ))}
             </Select>
@@ -357,7 +360,7 @@ export const LogSection = ({
                         ) : null}
                       </Table.Cell>
                       <Table.Cell className="dv-log-by">{byText(r, t)}</Table.Cell>
-                      <Table.Cell>{r.environment ?? '–'}</Table.Cell>
+                      <Table.Cell>{r.environment ? placeName(t, r.environment) : '–'}</Table.Cell>
                       <Table.Cell>
                         <Tag data-size="sm" data-color={s.color}>
                           {s.text}

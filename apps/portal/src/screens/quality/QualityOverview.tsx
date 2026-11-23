@@ -1234,7 +1234,13 @@ export const CompareSection = ({
               ) : null}
             </>
           )}
-          <Link href={`#${servicePath(serviceId, 'versions')}`}>
+          <Link
+            href={`#${
+              a?.version === 'draft' || b?.version === 'draft'
+                ? servicePath(serviceId, 'setup', '/publish')
+                : servicePath(serviceId, 'versions')
+            }`}
+          >
             {t('qualityTabs.seeSetupDiff')}
           </Link>
         </>

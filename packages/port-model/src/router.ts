@@ -45,6 +45,19 @@ import {
 } from './adapter.js';
 import { apiRegistry, type ApiDescriptors, type ApiRegistry } from './apis.js';
 import {
+  defaultDiscoveryGraceMs,
+  failedNow,
+  inMemoryDiscoveredModels,
+  listedNow,
+  listingTarget,
+  listingErrorKind,
+  listingKey,
+  ListingMisconfigured,
+  type DiscoveredModelStore,
+  type DiscoveryListing,
+  type ListingErrorKind,
+} from './discovery.js';
+import {
   bindingProblem,
   defaultBindings,
   familyURL,
@@ -103,6 +116,9 @@ export interface ModelRouterOptions {
   secrets: SecretResolver;
   sources?: DiscoverySource[];
   classifications?: ModelClassificationStore;
+  discovered?: DiscoveredModelStore;
+  /** How long a model a listing no longer names is kept, from when a listing last named it. */
+  discoveryGraceMs?: number;
   priceOf?: (id: string) => PriceSpec | undefined;
   /** Built-in APIs other ports implement, so models can bind them. */
   portApis?: readonly BuiltInApi[];
@@ -164,6 +180,15 @@ export interface RefreshResult {
   failed: { endpoint: string; error: string }[];
 }
 
+export interface ListingStatus {
+  connection: string;
+  source: string;
+  discovered: number;
+  listed: number;
+  listedAt?: string;
+  lastError?: { kind: ListingErrorKind; at: string };
+}
+
 export interface LearnOptions {
   maxCalls?: number;
   freshForMs?: number;
@@ -196,6 +221,7 @@ interface Route {
   kind?: string;
   kindFrom?: KindSource;
   endpoints?: string[];
+  listing?: string;
 }
 
 /** Where a discovered model's kind came from: the provider's listing, the operator's rule, or its name. */
@@ -247,6 +273,8 @@ export class ModelRouter implements PortProvider<ModelPort> {
   readonly #credentials = new Map<string, Credential>();
   readonly #static = new Map<string, Route>();
   #discovered = new Map<string, Route>();
+  #listings = new Map<string, DiscoveryListing>();
+  readonly #store: DiscoveredModelStore;
   #classes: Record<string, ModelClassification> = {};
   readonly #live = new Map<string, LiveModel>();
   readonly #gate: Gate;
@@ -256,6 +284,7 @@ export class ModelRouter implements PortProvider<ModelPort> {
     this.#continuations = options.adapters.flatMap((a) => (a.continuation ? [a.continuation] : []));
     this.#gate = options.gate ?? createGate();
     this.#apis = apiRegistry(options.adapters, options.descriptors, options.portApis);
+    this.#store = options.discovered ?? inMemoryDiscoveredModels();
     this.#catalog = this.#load(options.catalog);
   }
 
@@ -307,10 +336,8 @@ export class ModelRouter implements PortProvider<ModelPort> {
     for (const [k, v] of connections) this.#connections.set(k, v);
     for (const [k, v] of credentials) this.#credentials.set(k, v);
     for (const [k, v] of routes) this.#static.set(k, v);
-    this.#discovered = new Map(
-      [...this.#discovered].filter(([, r]) => result.catalog.endpoints[r.model.endpoint]),
-    );
     this.#catalog = result.catalog;
+    this.#discovered = this.#discoveredFrom(this.#listings);
     this.#rebuild();
     return result.catalog;
   }
@@ -457,97 +484,154 @@ export class ModelRouter implements PortProvider<ModelPort> {
     return api ? { [kind]: api } : {};
   }
 
-  async refresh(): Promise<RefreshResult> {
-    if (this.options.classifications) this.#classes = await this.options.classifications.load();
+  #listingsToRead() {
     const sources = new Map((this.options.sources ?? []).map((s) => [s.kind, s]));
+    const read = new Map<string, { source: string; from: string; endpoints: string[] }>();
+    for (const [name, endpoint] of Object.entries(this.#catalog.endpoints))
+      for (const rule of endpoint.discovery) {
+        if (!sources.has(rule.source)) continue;
+        const from = rule.from ?? name;
+        const key = listingKey(rule.source, from);
+        const found = read.get(key) ?? { source: rule.source, from, endpoints: [] };
+        if (!found.endpoints.includes(name)) found.endpoints.push(name);
+        read.set(key, found);
+      }
+    return read;
+  }
+
+  #discoveredFrom(listings: Map<string, DiscoveryListing>): Map<string, Route> {
+    const sources = new Set((this.options.sources ?? []).map((s) => s.kind));
     const discovered = new Map<string, Route>();
-    const failed: RefreshResult['failed'] = [];
-    const listed = new Map<string, Promise<DiscoveredDeployment[]>>();
     const staticPairs = new Set(
       [...this.#static.values()].map((r) => `${r.model.endpoint}/${r.model.deployment}`),
     );
-
     for (const [name, endpoint] of Object.entries(this.#catalog.endpoints))
       for (const rule of endpoint.discovery) {
-        const source = sources.get(rule.source);
-        if (!source) continue;
+        if (!sources.has(rule.source)) continue;
         const from = rule.from ?? name;
-        const listing = this.#catalog.endpoints[from] as CatalogEndpoint;
-        const key = `${rule.source}:${from}`;
-        if (!listed.has(key)) {
-          const base = source.family ? listing.families[source.family] : '';
-          listed.set(
-            key,
-            base === undefined
-              ? Promise.reject(
-                  new Error(`${from} does not offer the ${source.family} family to list through`),
-                )
-              : source.list({
-                  baseURL: source.family ? familyURL(listing, base) : listing.baseURL,
-                  credential: this.#credentials.get(from) as Credential,
-                  timeoutMs: this.options.timeoutMs ?? 15_000,
-                }),
-          );
-        }
+        const key = listingKey(rule.source, from);
+        const stored = listings.get(key);
+        const url = this.#listedURL(rule.source, from);
+        if (stored?.target && (url === undefined || stored.target !== listingTarget(url))) continue;
         const apis = rule.apis ?? defaultBindings(Object.keys(endpoint.families), this.#apis) ?? {};
         const prefix = rule.idPrefix ?? name;
-        try {
-          for (const found of await (listed.get(key) as Promise<DiscoveredDeployment[]>)) {
-            if (!matches(found.deployment, rule.include, rule.exclude)) continue;
-            if (staticPairs.has(`${name}/${found.deployment}`)) continue;
-            const slug = modelSlug(found.deployment);
-            if (!slug) continue;
-            const id = `${prefix.toLowerCase()}/${slug}`;
-            if (discovered.has(id)) continue;
-            const settings = rule.models?.[found.deployment];
-            const kind = settings?.kind ?? found.kind ?? 'chat';
-            const chats = kind === 'chat';
-            const bound = chats
-              ? Object.fromEntries(
-                  Object.entries(apis).filter(([k]) => !otherPortKinds.includes(k)),
-                )
-              : this.#bindingFor(kind, rule.apis, Object.keys(endpoint.families));
-            discovered.set(id, {
-              model: {
-                id,
-                endpoint: name,
-                deployment: found.deployment,
-                residency: rule.residency ?? 'global',
-                capabilities: chats ? rule.capabilities : [],
-                apis: bound,
-                ...(rule.maker ? { maker: rule.maker } : {}),
-                ...(rule.releaseDates?.[found.deployment]
-                  ? { releaseDate: rule.releaseDates[found.deployment] }
-                  : {}),
-                ...(settings?.embed ? { embed: settings.embed } : {}),
-                ...(settings?.rerank ? { rerank: settings.rerank } : {}),
-                options: {},
-              },
-              ...(found.model ? { family: found.model } : {}),
-              origin: 'discovered',
-              apis: bound,
-              kind,
-              kindFrom: settings?.kind ? 'operator' : (found.kindFrom ?? 'name'),
-              ...(found.endpoints ? { endpoints: found.endpoints } : {}),
-              ...(chats && found.capabilities?.length ? { listed: found.capabilities } : {}),
-            });
-          }
-        } catch (error) {
-          if (!failed.some((f) => f.endpoint === name))
-            failed.push({
+        for (const found of stored?.deployments ?? []) {
+          if (!matches(found.deployment, rule.include, rule.exclude)) continue;
+          if (staticPairs.has(`${name}/${found.deployment}`)) continue;
+          const slug = modelSlug(found.deployment);
+          if (!slug) continue;
+          const id = `${prefix.toLowerCase()}/${slug}`;
+          if (discovered.has(id)) continue;
+          const settings = rule.models?.[found.deployment];
+          const kind = settings?.kind ?? found.kind ?? 'chat';
+          const chats = kind === 'chat';
+          const bound = chats
+            ? Object.fromEntries(Object.entries(apis).filter(([k]) => !otherPortKinds.includes(k)))
+            : this.#bindingFor(kind, rule.apis, Object.keys(endpoint.families));
+          discovered.set(id, {
+            model: {
+              id,
               endpoint: name,
-              error: error instanceof Error ? error.message : String(error),
-            });
+              deployment: found.deployment,
+              residency: rule.residency ?? 'global',
+              capabilities: chats ? rule.capabilities : [],
+              apis: bound,
+              ...(rule.maker ? { maker: rule.maker } : {}),
+              ...(rule.releaseDates?.[found.deployment]
+                ? { releaseDate: rule.releaseDates[found.deployment] }
+                : {}),
+              ...(settings?.embed ? { embed: settings.embed } : {}),
+              ...(settings?.rerank ? { rerank: settings.rerank } : {}),
+              options: {},
+            },
+            ...(found.model ? { family: found.model } : {}),
+            origin: 'discovered',
+            apis: bound,
+            kind,
+            kindFrom: settings?.kind ? 'operator' : (found.kindFrom ?? 'name'),
+            ...(found.endpoints ? { endpoints: found.endpoints } : {}),
+            ...(chats && found.capabilities?.length ? { listed: found.capabilities } : {}),
+            listing: key,
+          });
         }
       }
-    for (const [id, route] of this.#discovered)
-      if (failed.some((f) => f.endpoint === route.model.endpoint) && !discovered.has(id))
-        discovered.set(id, route);
-    this.#discovered = discovered;
+    return discovered;
+  }
+
+  #listedURL(source: string, from: string): string | undefined {
+    const family = this.options.sources?.find((s) => s.kind === source)?.family;
+    const listing = this.#catalog.endpoints[from];
+    if (!listing) return undefined;
+    if (!family) return listing.baseURL;
+    const base = listing.families[family];
+    return base === undefined ? undefined : familyURL(listing, base);
+  }
+
+  async #list(source: DiscoverySource, from: string): Promise<DiscoveredDeployment[]> {
+    const baseURL = this.#listedURL(source.kind, from);
+    if (baseURL === undefined)
+      throw new ListingMisconfigured(
+        `${from} does not offer the ${source.family} family to list through`,
+      );
+    return source.list({
+      baseURL,
+      credential: this.#credentials.get(from) as Credential,
+      timeoutMs: this.options.timeoutMs ?? 15_000,
+    });
+  }
+
+  /** Lists every connection now, keeps what each listing found in the store, and serves the stored set. */
+  async refresh(): Promise<RefreshResult> {
+    if (this.options.classifications) this.#classes = await this.options.classifications.load();
+    const sources = new Map((this.options.sources ?? []).map((s) => [s.kind, s]));
+    const graceMs = this.options.discoveryGraceMs ?? defaultDiscoveryGraceMs;
+    const failed: RefreshResult['failed'] = [];
+    const listings = new Map(this.#listings);
+    await Promise.all(
+      [...this.#listingsToRead()].map(async ([key, read]) => {
+        const id = { connection: read.from, source: read.source };
+        const url = this.#listedURL(read.source, read.from);
+        const target = url === undefined ? undefined : listingTarget(url);
+        const fail = (message: string) => {
+          for (const endpoint of read.endpoints)
+            if (!failed.some((f) => f.endpoint === endpoint))
+              failed.push({ endpoint, error: message });
+        };
+        let found: DiscoveredDeployment[];
+        try {
+          found = await this.#list(sources.get(read.source) as DiscoverySource, read.from);
+        } catch (error) {
+          fail(error instanceof Error ? error.message : String(error));
+          const kind = listingErrorKind(error);
+          const at = this.#now();
+          await this.#store
+            .update(read.from, read.source, (current) => failedNow(current, id, kind, at, target))
+            .then((stored) => listings.set(key, stored))
+            .catch(() => undefined);
+          return;
+        }
+        const at = this.#now();
+        try {
+          listings.set(
+            key,
+            await this.#store.update(read.from, read.source, (current) =>
+              listedNow(current, id, found, at, graceMs, target),
+            ),
+          );
+        } catch {
+          fail('the listing was not stored');
+          listings.set(key, listedNow(listings.get(key), id, found, at, graceMs, target));
+        }
+      }),
+    );
+    const order = Object.keys(this.#catalog.endpoints);
+    failed.sort((a, b) => order.indexOf(a.endpoint) - order.indexOf(b.endpoint));
+    this.#listings = listings;
+    this.#discovered = this.#discoveredFrom(listings);
     this.#rebuild();
     const at = this.#now().toISOString();
     let remembered = false;
-    for (const route of discovered.values())
+    for (const route of this.#discovered.values())
       if (route.listed)
         remembered =
           (await this.#remember(
@@ -556,7 +640,42 @@ export class ModelRouter implements PortProvider<ModelPort> {
           )) || remembered;
     if (remembered) this.#rebuild();
     this.options.onChange?.();
-    return { discovered: discovered.size, failed };
+    return { discovered: this.#discovered.size, failed };
+  }
+
+  /** Serves the stored listings and classifications another replica wrote, without listing anything. */
+  async loadDiscovered(): Promise<void> {
+    const [classes, stored] = await Promise.all([
+      this.options.classifications?.load(),
+      this.#store.load(),
+    ]);
+    if (classes) this.#classes = classes;
+    this.#listings = new Map(stored.map((l) => [listingKey(l.source, l.connection), l]));
+    this.#discovered = this.#discoveredFrom(this.#listings);
+    this.#rebuild();
+    this.options.onChange?.();
+  }
+
+  /** What each listing the catalogue reads last found, and its last failure; never a URL or a key. */
+  discoveryStatus(): ListingStatus[] {
+    const counts = new Map<string, number>();
+    for (const route of this.#discovered.values())
+      if (route.listing) counts.set(route.listing, (counts.get(route.listing) ?? 0) + 1);
+    return [...this.#listingsToRead()]
+      .map(([key, read]) => {
+        const listing = this.#listings.get(key);
+        return {
+          connection: read.from,
+          source: read.source,
+          discovered: counts.get(key) ?? 0,
+          listed: listing?.deployments.length ?? 0,
+          ...(listing?.listedAt ? { listedAt: listing.listedAt } : {}),
+          ...(listing?.errorKind && listing.failedAt
+            ? { lastError: { kind: listing.errorKind, at: listing.failedAt } }
+            : {}),
+        };
+      })
+      .sort((a, b) => a.connection.localeCompare(b.connection) || a.source.localeCompare(b.source));
   }
 
   /** Merges what a check found into the stored row as it is now; a capability that passed once is never taken away. */

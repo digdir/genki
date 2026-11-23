@@ -20,7 +20,7 @@ const open = async () => {
       languages={['en']}
     />,
   );
-  await screen.findByRole('heading', { name: 'Batch', level: 2 });
+  await screen.findByRole('heading', { name: 'Batch run', level: 2 });
 };
 
 beforeAll(() => {
@@ -33,17 +33,17 @@ beforeAll(() => {
 });
 afterEach(cleanup);
 
-describe('Batch job in English', () => {
+describe('Batch run in English', () => {
   it('explains an empty list', async () => {
     await open();
-    expect(await screen.findByRole('heading', { name: 'No batch jobs yet' })).toBeTruthy();
-    expect(screen.getAllByRole('button', { name: 'New batch job' }).length).toBeGreaterThan(0);
+    expect(await screen.findByRole('heading', { name: 'No batch runs yet' })).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: 'New batch run' }).length).toBeGreaterThan(0);
   });
 
   it('walks the wizard in English', async () => {
     await open();
     fireEvent.click(
-      (await screen.findAllByRole('button', { name: 'New batch job' }))[0] as HTMLElement,
+      (await screen.findAllByRole('button', { name: 'New batch run' }))[0] as HTMLElement,
     );
     expect(await screen.findByRole('heading', { name: 'Choose documents' })).toBeTruthy();
     expect(screen.getByRole('navigation', { name: 'Steps' })).toBeTruthy();

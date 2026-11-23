@@ -273,7 +273,7 @@ const draftIn = (out: Awaited<ReturnType<typeof run>>) =>
 describe('an answer after running out of rounds', () => {
   const rejectedThenExhausted = (final: string, synth: string[]) =>
     run({
-      config: { ...baseConfig, strategy: { ...baseConfig.strategy, maxIterations: 3 } },
+      config: { ...baseConfig, strategy: { ...baseConfig.strategy, maxIterations: 4 } },
       scripts: {
         primary: {
           loop: [
@@ -290,9 +290,7 @@ describe('an answer after running out of rounds', () => {
     });
 
   it('asks the model to cite the sources it read by chunk_id', async () => {
-    const out = await rejectedThenExhausted('Digdir skal levere en strategi [c2].', [
-      'Utkast [1].',
-    ]);
+    const out = await rejectedThenExhausted('Digdir skal levere en strategi [c2].', ['Utkast.']);
 
     expect(exhaustionNudge).toContain('[chunk_id]');
     expect(out.text).toBe('Digdir skal levere en strategi [1].');
@@ -303,7 +301,7 @@ describe('an answer after running out of rounds', () => {
   it('cites the sources it read when the fallback answer has no citations', async () => {
     const partial = 'Jeg fant bare delvis svargrunnlag: Digdir skal levere en strategi i 2025.';
     const out = await rejectedThenExhausted(partial, [
-      'Utkast [1].',
+      'Utkast.',
       'Jeg fant bare delvis svargrunnlag: Digdir skal levere en strategi i 2025 [2].',
     ]);
 

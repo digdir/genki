@@ -7,6 +7,7 @@ import type {
   AnswerMarker,
   AnswerStatus,
   CorpusOption,
+  DocumentFile,
   FilterField,
   FilterSelection,
   ModelRow,
@@ -403,7 +404,20 @@ export interface GenkiApi extends AssistantApi {
   sendFeedback(feedback: AssistantFeedback): Promise<void>;
   renameThread(thread: ThreadRow, title: string): Promise<void>;
   deleteThread(thread: ThreadRow): Promise<void>;
+  documentFile(
+    documentId: string,
+    signal: AbortSignal,
+    excerpt?: { file?: string },
+  ): Promise<DocumentFile | undefined>;
 }
+
+type FileAnswer =
+  | { kind: 'original'; mediaType: string }
+  | { kind: 'source'; url: string; mediaType: string | null }
+  | { kind: 'served'; mediaType: string; source: string };
+
+const pdfType = (mediaType: string | null | undefined) =>
+  (mediaType?.split(';')[0] ?? '').trim().toLowerCase() === 'application/pdf';
 
 const httpError = async (response: Response) => {
   let detail = response.statusText;
@@ -479,7 +493,32 @@ export const createGenkiApi = ({
   const conversationPath = (thread: ThreadRow) =>
     `/api/conversations/${encodeURIComponent(thread.id)}`;
 
+  const fileDataset = (documentId: string) => {
+    const [qualifier, ...rest] = documentId.split('::');
+    if (rest.length > 0) return { dataset: qualifier, doc: rest.join('::') };
+    const keys = Object.keys(profile?.corpora ?? {});
+    return keys.length === 1 ? { dataset: keys[0], doc: documentId } : undefined;
+  };
+
   return {
+    documentFile: async (documentId, signal, excerpt) => {
+      const place = fileDataset(documentId);
+      if (!place?.dataset || !place.doc) return undefined;
+      const dataset = place.dataset.split('/').map(encodeURIComponent).join('/');
+      const base = `${baseUrl}/api/datasets/${dataset}/documents/${encodeURIComponent(place.doc)}/file`;
+      const address = excerpt?.file ? `${base}?file=${encodeURIComponent(excerpt.file)}` : base;
+      const response = await send(address, { headers: { Accept: 'application/json' }, signal });
+      if (response.status === 404) return undefined;
+      if (!response.ok) throw await httpError(response);
+      const answer = (await response.json()) as FileAnswer;
+      if (answer.kind === 'served' && pdfType(answer.mediaType))
+        return { url: address, mediaType: 'application/pdf', source: answer.source };
+      if (answer.kind === 'original' && pdfType(answer.mediaType))
+        return { url: base, mediaType: 'application/pdf' };
+      if (answer.kind === 'source' && pdfType(answer.mediaType))
+        return { url: answer.url, mediaType: 'application/pdf', source: answer.url };
+      return undefined;
+    },
     sendFeedback: async ({ runId, rating, reasons, comment }) => {
       if (!runId) throw new HttpError(400, 'the answer has no run to rate');
       await sendJson('POST', '/api/feedback', {

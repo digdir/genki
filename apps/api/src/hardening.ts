@@ -41,16 +41,28 @@ const withHeaders = (c: Context, headers: Record<string, string>) => {
   }
 };
 
+const lockedPolicies = new Set([
+  "default-src 'none'; frame-ancestors 'self'",
+  "sandbox; default-src 'none'",
+  "default-src 'none'; sandbox",
+]);
+
+const ownLockedPolicy = (c: Context) => {
+  const own = c.res.headers.get('Content-Security-Policy');
+  return own !== null && lockedPolicies.has(own) ? own : undefined;
+};
+
 export const securityHeaders: MiddlewareHandler = async (c, next) => {
   await next();
+  const own = ownLockedPolicy(c);
+  const framedBySelf = own?.split(';').some((part) => part.trim() === "frame-ancestors 'self'");
   withHeaders(c, {
-    'Content-Security-Policy': c.req.path.startsWith('/mock/')
-      ? loginPagePolicy
-      : contentSecurityPolicy,
+    'Content-Security-Policy':
+      own ?? (c.req.path.startsWith('/mock/') ? loginPagePolicy : contentSecurityPolicy),
     'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=()',
     'Referrer-Policy': 'no-referrer',
     'X-Content-Type-Options': 'nosniff',
-    'X-Frame-Options': 'DENY',
+    'X-Frame-Options': framedBySelf ? 'SAMEORIGIN' : 'DENY',
     ...(securedOverHttps(c)
       ? { 'Strict-Transport-Security': 'max-age=31536000; includeSubDomains' }
       : {}),

@@ -31,7 +31,7 @@ export const startTemplate: TemplateId = 'knowledge-assistant-next';
 /** What a text holds as a layout: one that keeps every rule, or why it is not one. */
 export type ReadLayout =
   | { layout: AssistantLayout }
-  | { problem: 'not-json' | 'not-a-layout' }
+  | { problem: 'not-json' | 'not-a-layout' | 'pins-a-block' }
   | { problem: 'breaks-rules'; problems: LayoutProblem[]; pasted: AssistantLayout };
 
 /** Reads a layout from JSON, the shape and the rules; a draft's needs are checked by the tab. */
@@ -43,6 +43,8 @@ export const readLayout = (text: string): ReadLayout => {
     return { problem: 'not-json' };
   }
   if (!isAssistantLayout(value)) return { problem: 'not-a-layout' };
+  if (zones.some((zone) => value.zones[zone].some((placed) => placed.ref !== undefined)))
+    return { problem: 'pins-a-block' };
   const problems = layoutProblems(value);
   if (problems.length > 0) return { problem: 'breaks-rules', problems, pasted: value };
   return { layout: normalised(value) };
@@ -98,7 +100,9 @@ const heldOf = (value: unknown): HeldBlock[] =>
 
 const editable = (layout: unknown): layout is AssistantLayout =>
   isAssistantLayout(layout) &&
-  zones.every((zone) => layout.zones[zone].every((placed) => isBlockId(placed.block))) &&
+  zones.every((zone) =>
+    layout.zones[zone].every((placed) => isBlockId(placed.block) && placed.ref === undefined),
+  ) &&
   // A text past a limit is kept as typed, where «Tekster» says what to shorten.
   !layoutProblems(layout).some((p) => !profileRules.has(p.rule));
 
@@ -147,7 +151,7 @@ export const draftLayoutOf = (definition: Record<string, unknown>): unknown => {
   return spec?.interface?.layout;
 };
 
-/** `foreign` when the builder cannot edit the layout without losing something, such as an `x-` block. */
+/** `foreign` when the builder cannot edit the layout without losing something, such as an `x-` block or a `ref`. */
 export const draftStart = (layout: unknown): BlocksStart | 'foreign' | undefined => {
   if (layout === undefined) return undefined;
   const start = startOf(layout, undefined, undefined);

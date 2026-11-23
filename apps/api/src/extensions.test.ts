@@ -106,7 +106,7 @@ const boot = async (options: { quotaExhausted?: boolean } = {}) => {
         errors: [{ path: 'principal', message: 'mangler rett' }],
         problem: {
           type: 'about:blank',
-          title: 'Du trenger rettigheten «Registrere byggeklosser»',
+          title: 'Du trenger rettigheten «Legge til i katalogen»',
           status: 403,
           errors: [{ path: 'right', message: 'register-building-blocks' }],
         },
@@ -303,7 +303,7 @@ describe('tenant access', () => {
 
     expect(refused.status).toBe(403);
     expect(refused.body).toMatchObject({
-      title: 'Du trenger rettigheten «Registrere byggeklosser»',
+      title: 'Du trenger rettigheten «Legge til i katalogen»',
       errors: [{ path: 'right', message: 'register-building-blocks' }],
     });
   });

@@ -4,6 +4,7 @@ import type { useT } from './i18n.js';
 
 /** «Generelt»'s rows, by their props' names, in the order the page draws them. */
 export const settingsGeneralRows = [
+  'language',
   'answerLanguage',
   'answerLength',
   'openWith',
@@ -19,6 +20,7 @@ export const generalRowsOf = (
 ): SettingsGeneralRow[] => settingsGeneralRows.filter((row) => !!props[row]);
 
 const words = {
+  language: { name: 'settings.generalLanguage', lead: 'settings.generalServiceLanguageLead' },
   answerLanguage: { name: 'settings.generalLanguage', lead: 'settings.generalLanguageLead' },
   answerLength: { name: 'settings.generalLength', lead: 'settings.generalLengthLead' },
   openWith: { name: 'settings.generalOpenWith', lead: 'settings.generalOpenWithLead' },
@@ -36,7 +38,7 @@ const inOrder = (rows: readonly SettingsGeneralRow[]) =>
 
 /** «Språk, svarlengde, utseende»; nothing for no rows. */
 export const generalSummary = (t: Translate, rows: readonly SettingsGeneralRow[]) => {
-  const named = inOrder(rows).map((row) => t(words[row].name));
+  const named = [...new Set(inOrder(rows).map((row) => t(words[row].name)))];
   return named.length > 0 ? capital(named.join(', ')) : undefined;
 };
 

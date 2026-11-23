@@ -86,12 +86,12 @@ describe('Integrasjoner: oversikt', () => {
   });
 });
 
-describe('Integrasjoner: Nøkler', () => {
+describe('Integrasjoner: API-nøkler', () => {
   it('lists keys from the API with access, rate and last use', async () => {
     await renderAt('#/developer/keys');
     const list = await screen.findByRole('list', { name: 'API-nøkler' });
     expect(within(list).getByText('Publiseringssystemet')).toBeTruthy();
-    expect(within(list).getByText('Alle tjenester og datasett')).toBeTruthy();
+    expect(within(list).getByText('Alle tjenester og dokumentsamlinger')).toBeTruthy();
     expect(within(list).queryByText('Tilbakekalt')).toBeNull();
     expect(within(list).getByText(/60 kall per minutt · sist brukt i dag kl. 02:03/)).toBeTruthy();
     expectAccessible();
@@ -353,19 +353,19 @@ describe('Integrasjoner: dokumentasjon og kode', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Referanse' }));
     await waitFor(() => expect(window.location.hash).toBe('#/developer/api/reference'));
     expect(await screen.findByRole('navigation', { name: 'Endepunkter' })).toBeTruthy();
-    expect(screen.getByRole('navigation', { name: 'Utviklerverktøy' })).toBeTruthy();
+    expect(screen.getByRole('navigation', { name: 'Integrasjoner' })).toBeTruthy();
   });
 
-  it('marks Systemer and Utløsere in the submenu when something needs follow-up', async () => {
+  it('marks Koblinger and Utløsere in the submenu when something needs follow-up', async () => {
     await renderAt('#/developer/status');
-    const menu = await screen.findByRole('navigation', { name: 'Utviklerverktøy' });
+    const menu = await screen.findByRole('navigation', { name: 'Integrasjoner' });
     await waitFor(() =>
       expect(
-        within(menu).getByRole('link', { name: 'Systemer 1 trenger oppfølging' }),
+        within(menu).getByRole('link', { name: 'Koblinger 1 trenger oppfølging' }),
       ).toBeTruthy(),
     );
     expect(within(menu).getByRole('link', { name: 'Utløsere 1 trenger oppfølging' })).toBeTruthy();
-    expect(within(menu).getByRole('link', { name: 'Nøkler' })).toBeTruthy();
+    expect(within(menu).getByRole('link', { name: 'API-nøkler' })).toBeTruthy();
   });
 
   it('shows how to call a service from code in each channel', async () => {
@@ -459,7 +459,7 @@ describe('Integrasjoner: Maskinporten-klienter', () => {
     await auth.login();
     window.location.hash = '#/developer/systems';
     render(<App auth={auth} fetch={fetch} live />);
-    return screen.findByRole('region', { name: 'Systemer' });
+    return screen.findByRole('region', { name: 'Koblinger' });
   };
 
   it('shows the clients as rows in the one list of systems, with no second section', async () => {
@@ -560,7 +560,7 @@ describe('Integrasjoner: Maskinporten-klienter', () => {
   });
 });
 
-describe('Integrasjoner: kroker', () => {
+describe('Integrasjoner: kjøringspunkter', () => {
   const renderAtHash = async (fetch: typeof globalThis.fetch, hash: string) => {
     const auth = mockAnsattporten({ name: 'Kari Nordmann', organisations: exampleOrganisations });
     await auth.login();
@@ -569,14 +569,14 @@ describe('Integrasjoner: kroker', () => {
   };
   const renderHooks = async (fetch: typeof globalThis.fetch) => {
     await renderAtHash(fetch, '#/developer/hooks');
-    await screen.findByRole('heading', { level: 2, name: 'Kroker' });
+    await screen.findByRole('heading', { level: 2, name: 'Kjøringspunkter' });
     return screen.getByRole('main');
   };
 
-  it('names the hooks page once, with the Utviklerverktøy heading', async () => {
+  it('names the hooks page once, with the Integrasjoner heading', async () => {
     await renderHooks(mockFetch());
 
-    expect(screen.getAllByRole('heading', { name: 'Kroker' })).toHaveLength(1);
+    expect(screen.getAllByRole('heading', { name: 'Kjøringspunkter' })).toHaveLength(1);
   });
 
   it('lists own hooks as the design list: name, address or type, when, services and a switch', async () => {
@@ -611,18 +611,18 @@ describe('Integrasjoner: kroker', () => {
     const put = calls.find((c) => c.method === 'PUT');
     expect(put?.url).toMatch(/\/hooks\/fodselsnummer$/);
     expect(put?.body).toMatchObject({ enabled: false });
-    expect(put?.reason).toMatch(/Slo av kroken/);
+    expect(put?.reason).toMatch(/Slo av kjøringspunktet/);
   });
 
   it('adds a webhook hook on its own page with a reason after checking the address and secret', async () => {
     const { calls, fetch } = recording();
     await renderAtHash(fetch, '#/developer/hooks/new');
-    const form = await screen.findByRole('form', { name: 'Ny krok' });
+    const form = await screen.findByRole('form', { name: 'Nytt kjøringspunkt' });
 
     fireEvent.change(within(form).getByLabelText('Navn'), {
       target: { value: 'Logg svar til arkivet' },
     });
-    fireEvent.change(within(form).getByLabelText('Når kroken kjører'), {
+    fireEvent.change(within(form).getByLabelText('Når kjøringspunktet kjører'), {
       target: { value: 'after_model' },
     });
     fireEvent.change(within(form).getByLabelText('Adresse'), {
@@ -644,7 +644,9 @@ describe('Integrasjoner: kroker', () => {
     });
     fireEvent.click(within(form).getByRole('button', { name: 'Lagre' }));
 
-    expect(await screen.findByText('Kroken er lagret. Den kjører fra neste kall.')).toBeTruthy();
+    expect(
+      await screen.findByText('Kjøringspunktet er lagret. Det kjører fra neste kall.'),
+    ).toBeTruthy();
     const put = calls.find((c) => c.method === 'PUT');
     expect(put?.url).toMatch(/\/hooks\/logg-svar-til-arkivet$/);
     expect(put?.reason).toBe('Arkivet skal få kopi av svarene');
@@ -658,8 +660,8 @@ describe('Integrasjoner: kroker', () => {
 
   it('tests a saved hook and shows how long it took and what it did', async () => {
     await renderAtHash(mockFetch(), '#/developer/hooks/fodselsnummer');
-    const panel = await screen.findByRole('region', { name: 'Test kroken' });
-    fireEvent.click(within(panel).getByRole('button', { name: 'Test kroken' }));
+    const panel = await screen.findByRole('region', { name: 'Test kjøringspunktet' });
+    fireEvent.click(within(panel).getByRole('button', { name: 'Test kjøringspunktet' }));
 
     expect(await within(panel).findByText('Svarte på 212 ms')).toBeTruthy();
     expect(within(panel).getByText('Stoppet kallet')).toBeTruthy();

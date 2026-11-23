@@ -50,7 +50,7 @@ describe('config screens in English', () => {
     expect(screen.getByText(/2026.*Digdir/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /Open/ }));
     expect(screen.getByLabelText('Content (JSON)')).toBeTruthy();
-    expect(screen.getByText('Save new version')).toBeTruthy();
+    expect(screen.getByText('Save new edition')).toBeTruthy();
   });
 
   it('asks for a longer reason in English when a case is saved', async () => {

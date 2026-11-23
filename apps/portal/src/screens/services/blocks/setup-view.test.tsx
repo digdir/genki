@@ -20,7 +20,7 @@ const Harness = ({ start }: { start: AssistantLayout }) => (
 
 const setupView = (start: AssistantLayout = defaultLayout) => {
   render(<Harness start={start} />);
-  fireEvent.click(screen.getByRole('radio', { name: 'Oppsett' }));
+  fireEvent.click(screen.getByRole('radio', { name: 'Plasser' }));
 };
 
 const frame = () => document.querySelector('.service-preview-frame') as HTMLElement;
@@ -45,8 +45,8 @@ const switchIn = (group: string, name: string) =>
 /** Fremgangsmåte in the content and the right panel, in Oppsett. */
 const inTwoPanels = () => {
   render(<Harness start={defaultLayout} />);
-  fireEvent.click(switchIn('Høyre panel', 'Fremgangsmåte'));
-  fireEvent.click(screen.getByRole('radio', { name: 'Oppsett' }));
+  fireEvent.click(switchIn('Høyre', 'Fremgangsmåte'));
+  fireEvent.click(screen.getByRole('radio', { name: 'Plasser' }));
 };
 
 describe('«Fjern» in the preview’s Oppsett', () => {
@@ -66,16 +66,18 @@ describe('«Fjern» in the preview’s Oppsett', () => {
 
   it('moves the focus to what the preview says when no block is left', async () => {
     setupView({ version: 1, zones: { primary: [], main: [{ block: 'chat' }], secondary: [] } });
-    await remove('Fjern Chat');
-    expect(document.activeElement?.textContent).toBe('Slå på byggeklosser for å se tjenesten her.');
+    await remove('Fjern Samtale');
+    expect(document.activeElement?.textContent).toBe(
+      'Slå på designelementer for å se tjenesten her.',
+    );
   });
 
   it('names each «Fjern» of a block that stands in two panels by its panel', () => {
     inTwoPanels();
     expect(removeButtons()).toEqual(
       expect.arrayContaining([
-        'Fjern Fremgangsmåte fra innhold',
-        'Fjern Fremgangsmåte fra høyre panel',
+        'Fjern Fremgangsmåte fra feltet midten',
+        'Fjern Fremgangsmåte fra feltet høyre',
       ]),
     );
     expect(removeButtons()).not.toContain('Fjern Fremgangsmåte');
@@ -83,9 +85,9 @@ describe('«Fjern» in the preview’s Oppsett', () => {
 
   it('takes a block that stands in two panels out of the panel whose «Fjern» is pressed only', async () => {
     inTwoPanels();
-    await remove('Fjern Fremgangsmåte fra høyre panel');
-    expect(switchIn('Høyre panel', 'Fremgangsmåte').checked).toBe(false);
-    expect(switchIn('Innhold', 'Fremgangsmåte').checked).toBe(true);
+    await remove('Fjern Fremgangsmåte fra feltet høyre');
+    expect(switchIn('Høyre', 'Fremgangsmåte').checked).toBe(false);
+    expect(switchIn('Midten', 'Fremgangsmåte').checked).toBe(true);
     expect(removeButtons()).toContain('Fjern Fremgangsmåte');
   });
 });

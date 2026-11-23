@@ -53,15 +53,15 @@ export const catalogErrors = defineNamespace({
   notRemovePipeline: 'ikke tillatt å fjerne denne innlesingen',
   notRunPipeline: 'ikke tillatt å kjøre denne innlesingen',
   noPipeline: 'ingen innlesing {id}',
-  noDataset: 'ingen datasett {dataset}',
+  noDataset: 'ingen dokumentsamling {dataset}',
   onlyTenantTestSets: 'bare virksomheten eller en operatør endrer testsettene',
   onlyTenantChangesServiceState: 'bare virksomheten endrer tilstanden til tjenestene sine',
   onlyTenantDeletesServices: 'bare virksomheten sletter tjenestene sine',
   onlyTenantChangesEnvironments: 'bare virksomheten endrer miljøene til tjenestene sine',
   serviceStateValues: 'tilstanden må være active, paused eller archived',
   indexRequired: 'en indeks er påkrevd',
-  datasetExists: 'datasettet {datasetId} finnes',
-  endpointSourceOnCreate: 'et endepunkt som kilde gis når virksomhetens datasett opprettes',
+  datasetExists: 'dokumentsamlingen {datasetId} finnes',
+  endpointSourceOnCreate: 'et endepunkt som kilde gis når virksomhetens dokumentsamling opprettes',
   endpointSourceOrIndex: 'gi et endepunkt som kilde eller en indeks, ikke begge',
   endpointSourceConnectionExists: 'tilkoblingen {endpoint} finnes',
   endpointSourceSecretExists: 'hemmeligheten {secretName} finnes',
@@ -69,7 +69,7 @@ export const catalogErrors = defineNamespace({
   cannotEstimate: 'Antallet dokumenter kan ikke anslås for denne kilden',
   ingestionUnavailable: 'Innlesing er ikke tilgjengelig',
   modelOtherTenant: 'modellen {model} tilhører en annen virksomhet',
-  datasetOtherTenant: 'datasettet {dataset} tilhører en annen virksomhet',
+  datasetOtherTenant: 'dokumentsamlingen {dataset} tilhører en annen virksomhet',
   unknownRule: 'ukjent regel for rammer {entry}',
   onlyOperatorsCreateTenants: 'bare operatører oppretter virksomheter',
   invalidOrgNumber: 'ikke et gyldig organisasjonsnummer',
@@ -105,9 +105,29 @@ export const catalogErrors = defineNamespace({
   hostnameTaken: '{hostname} tilhører klienten {id}',
   hostOwnBlockHosted:
     '{block} er vertens egen blokk, og genkis assistentvert tegner bare blokker fra katalogen',
-  unknownInterfaceBlock: 'ukjent grensesnittblokk {block}',
+  unknownInterfaceBlock: 'ukjent designelement {block}',
+  noUsableBlock: 'ingen publisert blokk {publisher}/{id} som denne virksomheten kan bruke',
+  noUsableBlockVersion:
+    'blokken {publisher}/{id} har ingen versjon {version} som denne virksomheten kan bruke',
+  blockRefDrawnAs: '{ref} tegnes som {drawn}, så blokken må være {drawn}',
+  blockRefNotDrawn: '{ref} er en blokk av typen {tier}, så blokken må være ref',
+  refBlockNeedsRef: 'ref som blokk trenger en ref til blokken den tegner',
+  blockRefZone: '{ref} kan ikke stå i {zone}; den kan stå i {zones}',
+  previewShowsBlock: 'en forhåndsvisning viser en Block',
+  pinVersion: 'version er en publisert utgave av blokken',
+  pinZone: 'zone er primary, main eller secondary',
+  codeBlockNotDrawn: 'ingen vert tegner kodeblokker ennå; bare innebygde blokker kan publiseres',
+  declarativeBlockNotDrawn:
+    'ingen vert tegner deklarative blokker ennå; bare innebygde blokker kan publiseres',
+  blockFileNotCode: 'en fil under block/ hører bare til en kodeblokk',
+  pinNoLayout: 'tjenesten har ingen utforming å legge blokken i',
+  pinSettings: 'settings knytter navn til true, false eller en tekst',
+  blockRefNoSetting: '{ref} har ingen innstilling {key}',
+  blockRefSettingBoolean: 'innstillingen {key} for {ref} må være true eller false',
+  blockRefSettingText: 'innstillingen {key} for {ref} må være en tekst',
+  blockRefSettingEnum: 'innstillingen {key} for {ref} må være en av {allowed}',
   hostedServiceOwnBlock:
-    'grensesnittet til tjenesten har vertens egen blokk ({block}), som genkis assistentvert ikke tegner',
+    'utformingen til tjenesten har vertens eget designelement ({block}), som genkis assistentvert ikke tegner',
   noSuchClient: 'klienten finnes ikke',
   noClientFor: 'ingen klient {client} for {service}',
   riskConfirm:
@@ -116,11 +136,11 @@ export const catalogErrors = defineNamespace({
     'bekreftelsen gjelder risikoklasse {confirmed}, men tjenesten er {riskClass}; bekreft risikoklassen på nytt',
   riskClassValues: 'riskClass er limited eller high',
   onlyOperatorsHooks: 'bare operatører forvalter plattformens kroker',
-  hooksBelongTenant: 'krokene tilhører virksomheten',
+  hooksBelongTenant: 'kjøringspunktene tilhører virksomheten',
   hookId: 'små bokstaver, sifre og -, høyst 63 tegn',
-  hookChanged: 'kroken er endret; last inn på nytt',
-  noHook: 'ingen krok {id}',
-  hooksOff: 'kroker er slått av',
+  hookChanged: 'kjøringspunktet er endret; last inn på nytt',
+  noHook: 'ingen kjøringspunkt {id}',
+  hooksOff: 'kjøringspunkter er slått av',
   endpointId: 'små bokstaver, sifre, punktum og bindestrek',
   httpsAddress: 'en HTTPS-adresse uten påloggingsopplysninger',
   familyAndBase: 'oppgi minst én API-familie og stien eller adressen til den',
@@ -162,15 +182,16 @@ export const catalogErrors = defineNamespace({
   tracingResidencyForbids:
     'tjenestens lagringssted {residency} tillater ikke koblingens {connection}',
   gateOnSinkJudge:
-    'kvalitetskravet {gate} leser Langfuse-dommeren {judge} på koblingen {connection}, som er rådgivende og aldri stopper en publisering',
+    'kvalitetskravet {gate} leser den automatiske vurderingen {judge} i Langfuse på koblingen {connection}, som er rådgivende og aldri stopper en publisering',
   sinkJudgeGone:
-    'dommeren {id} er ikke lenger en aktiv eksperimentdommer i prosjektet til koblingen {connection}',
+    'den automatiske vurderingen {id} er ikke lenger aktiv for eksperimenter i prosjektet til koblingen {connection}',
   sinkJudgeNoContent: '{rule} har ingenting å vurdere: koblingen {connection} får ikke svartekst',
-  sinkJudgesUnreadable: 'dommerne til koblingen {connection} kunne ikke leses: {error}',
+  sinkJudgesUnreadable:
+    'de automatiske vurderingene til koblingen {connection} kunne ikke leses: {error}',
   sinkDatasetUnavailable:
     'datasettet til testsettet {testSet} kunne verken finnes eller lages i prosjektet til koblingen {connection}: {error}',
   sinkJudgesDiffer:
-    'prosjektet til koblingen {connection} har aktive dommere som genki ikke leser: {judges}; ta dem i bruk eller slå dem av i Langfuse',
+    'prosjektet til koblingen {connection} har aktive automatiske vurderinger som genki ikke leser: {judges}; ta dem i bruk eller slå dem av i Langfuse',
   sinkJudgeNotAModel:
     '{rule} er ikke en LLM-som-dommer-evaluator, så den har ingen modell genki kan navngi',
   sinkJudgeSampled:
@@ -179,7 +200,7 @@ export const catalogErrors = defineNamespace({
   sinkRuleEverySpan:
     '{rule} ville vurdert hvert spenn i testtilfellene; legg til filteret isExperimentItemRootSpan = true, eller hold genkis testkjøringer utenfor med environment none of genki-test-runs',
   sinkRuleRootOnly:
-    '{rule} vurderer rotspennene i kjøringen uten isExperimentItemRootSpan = true, som genki trenger for å lese en dommer',
+    '{rule} vurderer rotspennene i kjøringen uten isExperimentItemRootSpan = true, som genki trenger for å lese en automatisk vurdering',
   sinkRuleUnreadEvaluator: '{rule} kjører en evaluator genki ikke kan lese',
   sinkJudgeDefaultModel:
     '{rule} bruker prosjektets eller organisasjonens standardmodell, som ikke kan leses gjennom Langfuses API',
@@ -261,13 +282,13 @@ export const knowledgeErrors = defineNamespace({
   notSendRunBack: 'du har ikke lov til å sende denne kjøringen tilbake',
   onlyOperatorRefreshesFields: 'bare en driftsoperatør fyller nye felt',
   fillMustBeOneOf: 'fill må være en av {fieldFills}',
-  runOpenRefreshAfter: 'en kjøring av datasettet pågår; fyll feltene når den er ferdig',
+  runOpenRefreshAfter: 'en kjøring av dokumentsamlingen pågår; fyll feltene når den er ferdig',
   onlyJobRunsSentBack: 'bare en kjøring som går som jobber, kan sendes tilbake',
   notReadmitRun: 'du har ikke lov til å slippe denne kjøringen inn igjen',
   onlyJobRunsReadmitted: 'bare en kjøring som går som jobber, kan slippes inn igjen',
   jobRunNotReadmitted:
     'bare en kjøring i kø eller som pågår, som går som jobber og ikke er i ferd med å avbrytes, kan slippes inn igjen',
-  datasetGone: 'datasettet finnes ikke lenger',
+  datasetGone: 'dokumentsamlingen finnes ikke lenger',
   parquetOneLocation: 'en Parquet-kilde trenger nøyaktig én av url, urls og huggingface',
   parquetGlob: 'må være et .parquet-filmønster',
   parquetTableRequired: 'table kreves akkurat når urls er satt',
@@ -305,20 +326,20 @@ export const knowledgeErrors = defineNamespace({
     'den siste innlesingsjobben for {dataset}/{pipeline} avslutter fortsatt; start kjøringen igjen om et minutt',
   noRunningIngestion: 'ingen pågående innlesing {execution}',
   ingestionRunLocked:
-    'datasettet {dataset} leses allerede inn av kjøring {execution}; vent til den er ferdig eller avbryt den',
+    'dokumentsamlingen {dataset} leses allerede inn av kjøring {execution}; vent til den er ferdig eller avbryt den',
   switchHold:
-    'datasettet {dataset} byttes til en annen søkemotor ({engineSwitch}); innlesingene kjører igjen når byttet er klart, tatt i bruk eller avsluttet',
+    'dokumentsamlingen {dataset} byttes til en annen søkemotor ({engineSwitch}); innlesingene kjører igjen når byttet er klart, tatt i bruk eller avsluttet',
   generationNotBuilt:
     'generasjonen {generation} ble ikke bygget: byggejobben sluttet uten å koble den til; prøv byttet på nytt',
 });
 
 export const blockErrors = defineNamespace({
-  onlyTenantAdopts: 'bare virksomheten tar i bruk byggeklosser',
-  noBlock: 'ingen byggekloss {kind}:{id}',
-  needsApproval: 'denne byggeklossen må godkjennes først',
+  onlyTenantAdopts: 'bare virksomheten tar i bruk deler',
+  noBlock: 'ingen del {kind}:{id}',
+  needsApproval: 'denne delen må godkjennes først',
   onlyTenantAsks: 'bare virksomheten ber om godkjenning',
   noPendingApproval: 'ingen ventende godkjenningsforespørsel {id}',
-  blockIs: 'byggeklossen er {status}',
+  blockIs: 'delen er {status}',
   onlyOperatorsDecideApprovals: 'bare operatører avgjør godkjenningsforespørsler',
   approvedOrRejected: 'må være approved eller rejected',
   approverApproves: '{approver} godkjenner denne forespørselen',
@@ -333,7 +354,7 @@ export const blockErrors = defineNamespace({
   onlyOperatorsMoveChanges: 'bare operatører flytter endringer i plattformen',
   noPlatformChange: 'ingen endring i plattformen {id}',
   platformChangeAlready: 'endringen i plattformen er allerede {was}',
-  missingAddress: 'Forslaget mangler adressen til byggeklossen',
+  missingAddress: 'Forslaget mangler adressen til delen',
   networkPermission: 'en nettverkstillatelse med URL-en til endepunktet trengs',
   approveBoolean: 'approve må være true eller false',
   clientNotRegistered: 'Maskinporten-klienten er ikke registrert hos virksomheten',
@@ -396,7 +417,7 @@ export const blockErrors = defineNamespace({
 });
 
 export const projectErrors = defineNamespace({
-  datasetRequired: 'et datasett er påkrevd',
+  datasetRequired: 'en dokumentsamling er påkrevd',
   filtersFieldValues: 'filters må være feltverdier',
   documentsList: 'documents er en liste med dokument-id-er',
   inputObject: 'input er et objekt med feltverdier',
@@ -428,7 +449,7 @@ export const projectErrors = defineNamespace({
   subscriptionNotFound: 'Fant ikke abonnementet',
   atMostSelections: 'høyst {max} utvalg',
   idTwice: 'id-en er brukt to ganger',
-  unknownDataset: 'ukjent datasett {dataset}',
+  unknownDataset: 'ukjent dokumentsamling {dataset}',
   serviceNotPublished: 'tjenesten {service} er ikke publisert',
   listOfEdits: 'en liste med endringer',
   rowColumnValue: 'row, column og value er påkrevd',
@@ -521,13 +542,13 @@ export const qualityErrors = defineNamespace({
   noCasesToRun: 'ingen testtilfeller å kjøre',
   approveTrueFalse: 'approve er true eller false',
   skillId: 'må være små bokstaver, sifre og bindestrek, og ikke import eller imports',
-  notSkill: 'utkastet er ikke en ferdighet',
+  notSkill: 'utkastet er ikke en arbeidsinstruks',
   noTestCases: 'ingen testtilfeller',
   judgeUnavailable:
     'modellen {judge} er ikke tilgjengelig for virksomheten som dommer fra en annen modellfamilie',
-  invalidSkill: 'Ugyldig ferdighet',
-  skillExists: 'ferdigheten {id} finnes',
-  invalidPackage: 'Ugyldig pakke for ferdighet',
+  invalidSkill: 'Ugyldig arbeidsinstruks',
+  skillExists: 'arbeidsinstruksen {id} finnes',
+  invalidPackage: 'Ugyldig arbeidsinstrukspakke',
   testSetCannotRun: 'Testsettet kan ikke kjøres',
   caseNotFound: 'Fant ikke testtilfellet',
   noSuchCase: 'testtilfellet finnes ikke',
@@ -541,16 +562,16 @@ export const qualityErrors = defineNamespace({
   draftChangedSince: 'Utkastet er endret siden forslaget ble laget',
   draftRevision: 'utkastet er på revisjon {version}',
   nothingToPublish: 'Ingen endringer å publisere',
-  cannotPublish: 'Ferdigheten kan ikke publiseres',
-  confirmNoPersonal: 'Bekreft at ferdigheten ikke inneholder personopplysninger',
+  cannotPublish: 'Arbeidsinstruksen kan ikke publiseres',
+  confirmNoPersonal: 'Bekreft at arbeidsinstruksen ikke inneholder personopplysninger',
   confirmNoPersonalDetail:
-    'bekreft at ferdigheten ikke har personopplysninger eller unntatte opplysninger',
-  publishBeforeShare: 'Publiser ferdigheten før du deler den',
-  noPublishedSkill: 'ferdigheten har ingen publisert versjon',
-  skillAlready: 'ferdigheten er allerede {state}',
+    'bekreft at arbeidsinstruksen ikke har personopplysninger eller unntatte opplysninger',
+  publishBeforeShare: 'Publiser arbeidsinstruksen før du deler den',
+  noPublishedSkill: 'arbeidsinstruksen har ingen publisert utgave',
+  skillAlready: 'arbeidsinstruksen er allerede {state}',
   noPublishedVersion: 'ingen publisert versjon',
-  cannotExport: 'Ferdigheten kan ikke eksporteres',
-  skillIncomplete: 'ferdigheten er ikke komplett',
+  cannotExport: 'Arbeidsinstruksen kan ikke eksporteres',
+  skillIncomplete: 'arbeidsinstruksen er ikke komplett',
   invalidAttachment: 'Ugyldig vedlegg',
   fileNeedsName: 'fila trenger et navn',
   fileLarge: 'fila er for stor',
@@ -578,9 +599,9 @@ export const operationErrors = defineNamespace({
   noProcessorRecordForService:
     'endepunktet {endpoint} for {modelId} har ingen databehandleropplysninger, så det kan ikke betjene en tjeneste med ekte data',
   decideOnlyThroughPurposeCheck:
-    'decide brukes bare gjennom vernregelen purpose-check, som sender et avslag eller et usikkert svar til en person',
+    'decide brukes bare gjennom sikkerhetsregelen purpose-check, som sender et avslag eller et usikkert svar til en person',
   callOperationNeedsMasking:
-    'et steg som kaller en operasjon, trenger vernregelen pii-before-model, slik at teksten det sender, er maskert',
+    'et steg som kaller en operasjon, trenger sikkerhetsregelen pii-before-model, slik at teksten det sender, er maskert',
   operatorsGovernOperations: 'bare operatører styrer operasjoner',
   noOperationDescriptors: 'denne plattformen har ingen operasjonsbeskrivelser',
   noDescriptorForKind: 'ingen beskrivelse beskriver {kind}',
@@ -635,8 +656,9 @@ export const adapterErrors = defineNamespace({
   conversationIdString: '`conversation_id` må være en tekst som ikke er tom.',
   conversationsUnavailable: 'Samtaler er ikke tilgjengelige her.',
   noFilterFields:
-    'Tjenesten søker ikke i et datasett med filterfelt, så den tar ikke imot `filters`.',
-  unknownFilterField: 'Ukjent filterfelt «{field}». Datasettene til tjenesten oppgir: {declared}.',
+    'Tjenesten søker ikke i en dokumentsamling med filterfelt, så den tar ikke imot `filters`.',
+  unknownFilterField:
+    'Ukjent filterfelt «{field}». Dokumentsamlingene til tjenesten oppgir: {declared}.',
   overridesRefused: 'Overstyringer tas ikke imot her.',
   inputMustBeObject: '`input` må være et objekt.',
   invocationFailed: 'Kjøringen av agenten feilet.',
@@ -658,9 +680,9 @@ export const definitionErrors = defineNamespace({
     'Modellen «{id}» mangler {capabilities}, som oppsettet {strategy} trenger. Genki sjekket {checked} {date}.',
   tooManyEvents: 'Kjøringen ble stoppet fordi den laget mer enn {count} hendelser.',
   firstVariantChat: 'Den første varianten er standard og må kunne brukes i chat.',
-  onlyFlowTable: 'Bare arbeidsmåten Fast stegflyt kan lage en tabell.',
+  onlyFlowTable: 'Bare arbeidsmåten Fast arbeidsflyt kan lage en tabell.',
   duplicateVariant: 'Varianten «{id}» finnes to ganger.',
-  noPublishedFlow: 'Stegflyten {flow} er ikke publisert.',
+  noPublishedFlow: 'Arbeidsflyten {flow} er ikke publisert.',
 });
 
 export const routeErrors = defineNamespace({

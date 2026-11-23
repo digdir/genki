@@ -52,11 +52,11 @@ describe('change texts', () => {
     const nb = translator('nb');
     const en = translator('en');
     expect(changeText(row('platform.service.publish', 'Service:kunnskapsassistenten@4'), nb)).toBe(
-      'publiserte versjon 4 av kunnskapsassistenten',
+      'publiserte utgave 4 av kunnskapsassistenten',
     );
     expect(
       changeText(row('platform.testset.save', 'test-set:991825827/ka-kudos-utkast@11'), en),
-    ).toBe('saved the test set ka-kudos-utkast, version 11');
+    ).toBe('saved the test set ka-kudos-utkast, edition 11');
     expect(changeText(row('platform.audit.export', 'audit:export'), nb)).toBe(
       'eksporterte endringsloggen',
     );

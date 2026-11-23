@@ -181,7 +181,9 @@ const specChangesOf = (was: ServiceSpec, now: ServiceSpec): DraftChange[] => {
       ...(was.riskClass ? { before: was.riskClass } : {}),
       ...(now.riskClass ? { after: now.riskClass } : {}),
     });
-  if (differs('riskConfirmation'))
+  const confirmation = (spec: ServiceSpec) =>
+    spec.riskConfirmation && without(tree(spec.riskConfirmation), ['by', 'at']);
+  if (!sameValue(confirmation(was), confirmation(now)))
     out.push({
       area: 'risk',
       topic: 'riskConfirmation',

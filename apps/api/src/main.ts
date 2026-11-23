@@ -1,4 +1,5 @@
 import { actingClient, createBff, InMemoryBffSessions } from './bff/index.js';
+import { remoteFileOriginsFrom } from '@genai/adapter-rest';
 import { platformLoginFrom } from './platform-login.js';
 import {
   assistantHostnameFrom,
@@ -13,7 +14,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { serve } from '@hono/node-server';
 import { InMemoryDefinitionStore, platformSettings, SettingsRegistry } from '@genai/definitions';
-import { residencies, type Residency } from '@genai/port-model';
+import { residencies, type DiscoveryListing, type Residency } from '@genai/port-model';
 import {
   altinnPolicy,
   apiKeyDigest,
@@ -40,6 +41,7 @@ import {
   LocalKeyWrapper,
   managedIdentityTokenSource,
   PostgresDefinitionStore,
+  PostgresDiscoveredModels,
   PostgresJobRuns,
   postgresSourceFromEnv,
 } from '@genai/providers-postgres';
@@ -70,6 +72,8 @@ import {
   ownedByPlatformTenant,
   platformTenantFrom,
   keepRunningOnRejection,
+  modelDiscoveryFromEnv,
+  scheduleModelRelist,
   tenantSampleRate,
 } from '@genai/composition';
 import { buildTimeOf, createApp } from './app.js';
@@ -97,6 +101,7 @@ import { readTestSets, seedTestSets, testSetsOfServices } from './seed-test-sets
 import { readPipelineSeeds, seedPipelines } from './pipeline-seeds.js';
 import { readDemoSeeds, seedDemos } from './demos.js';
 import { operatorDirectory, operatorSubjectsFrom, splitOperators } from './operators.js';
+import { testRunnerKeysAllowed } from './test-runner.js';
 import { altinnPdpFrom, withPdpActions } from './altinn-pdp.js';
 import { federatedAppTokens, gatewayUsageConfigFromEnv } from '@genai/providers-ai-gateway';
 import {
@@ -107,6 +112,7 @@ import {
   tracesContent,
 } from './boot-guard.js';
 import { loginIssuers } from './login-issuers.js';
+import { environmentsOf } from './service-environments.js';
 import { documentMockRoutes } from './openapi/access.js';
 import { unknownTestPerson } from './dev-login.js';
 import { asPlatformResource } from './platform-resource.js';
@@ -201,16 +207,12 @@ if (altinnPdp.kind === 'altinn')
 
 const databaseSource = postgresSourceFromEnv(process.env);
 const db = databaseSource
-  ? await createPostgresStores(
-      databaseSource,
-      LocalKeyWrapper.fromBase64(process.env.CONTENT_MASTER_KEY),
-      {
-        onError: (error) => log('postgres connection error', { error: String(error) }),
-        ...(process.env.DATABASE_RUNTIME_URL
-          ? { runtime: { connectionString: process.env.DATABASE_RUNTIME_URL } }
-          : {}),
-      },
-    )
+  ? await createPostgresStores(databaseSource, LocalKeyWrapper.fromEnv(process.env), {
+      onError: (error) => log('postgres connection error', { error: String(error) }),
+      ...(process.env.DATABASE_RUNTIME_URL
+        ? { runtime: { connectionString: process.env.DATABASE_RUNTIME_URL } }
+        : {}),
+    })
   : undefined;
 log('storage', { kind: db ? 'postgres' : 'memory' });
 
@@ -481,6 +483,10 @@ const environmentTier = environmentTierOf(process.env);
 if (environmentTier === 'test')
   log('GENAI_ENV=test: operators may try descriptors in review on synthetic data');
 
+const testRunnerKeys = testRunnerKeysAllowed(process.env);
+if (testRunnerKeys)
+  log('GENAI_TEST_RUNNER_KEYS=true: operators may give test-runner keys for the smoke test');
+
 const processorRecords = processorRecordCheckOf(process.env);
 
 const hostedHostnames = hostedHostnamesFrom(process.env);
@@ -506,6 +512,8 @@ const platform = await createPlatform({
   },
   ...(lockdown ? { lockdown: { configuredKeys } } : {}),
   environmentTier,
+  testRunnerKeys,
+  isOperator: operators.isOperator,
   processorRecords,
   modules: [
     ...platformModules,
@@ -517,6 +525,7 @@ const platform = await createPlatform({
   clients,
   reservedClientIds,
   hosting,
+  documentFileOrigins: remoteFileOriginsFrom(process.env.GENAI_DOCUMENT_FILE_ORIGINS),
   ...(platformLogin
     ? { platformLogin: { clientId: platformLogin.clientId, audience: platformLogin.audience } }
     : {}),
@@ -617,6 +626,7 @@ const platform = await createPlatform({
         conversations: db.conversations,
         threadErasure: db.threadErasure,
         modelClassifications: db.modelClassifications,
+        discoveredModels: new PostgresDiscoveredModels<DiscoveryListing>(db.runtimePool),
         providerObjects: db.providerObjects,
         tenantSecrets: db.tenantSecrets,
         connections: db.connections,
@@ -648,6 +658,7 @@ const platform = await createPlatform({
   logger: log,
   logFailureMessages: process.env.LOG_FAILURE_MESSAGES === 'true',
   evalSlots: evalSlotLimitsFromEnv(process.env),
+  modelDiscovery: modelDiscoveryFromEnv(process.env),
   ...(documentConverter ? { documentConverter } : {}),
   ...(phraseArchive ? { phraseArchive } : {}),
 });
@@ -685,11 +696,17 @@ const admin = createAdmin({
   names: actorNames(configEntries),
   ...(db ? { records: db.adminRecords } : {}),
 });
+const relist = scheduleModelRelist({
+  relistIfDue: platform.modelDiscovery.relistIfDue,
+  everyMs: platform.modelDiscovery.relistMs,
+  onError: (error) => log('scheduled model listing failed', { error: String(error) }),
+});
 const builtAt = buildTimeOf(process.env.APP_BUILT_AT);
 const app = createApp(version, {
   ...(builtAt ? { builtAt } : {}),
   ...(process.env.GENAI_ENV ? { environment: process.env.GENAI_ENV } : {}),
   modelDiscovery: platform.modelDiscovery.state,
+  discoveryConnections: platform.modelDiscovery.connections,
   catalogSkipped: () => platform.catalog.skipped(),
   requestTiming: {
     write: (entry) => log('request', { ...entry }),
@@ -717,6 +734,7 @@ const app = createApp(version, {
     caller: platform.caller,
     lifecycle: platform.lifecycle,
     drafts: platform.serviceDrafts,
+    environments: (tenant, service) => environmentsOf(configEntries, tenant, service),
     unmaskedInput: platform.unmaskedInput,
     names: actorNames(configEntries),
     lockdown,
@@ -911,6 +929,7 @@ let stopping = false;
 const stop = (signal: string) => {
   if (stopping) process.exit(1);
   stopping = true;
+  relist.stop();
   log('api stopping', {
     signal,
     casesInFlight: platform.evalSlots.inFlight(),

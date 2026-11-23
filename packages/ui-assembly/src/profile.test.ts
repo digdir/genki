@@ -144,4 +144,18 @@ describe('the profile a layout is drawn with', () => {
       constructor: { label: 'Konstruktør' },
     });
   });
+
+  it('draws a layout’s bilingual texts in the reader’s language, bokmål by default', () => {
+    const bilingual = {
+      profile: {
+        assistantName: { nb: 'Kunnskapsassistenten', en: 'The Knowledge Assistant' },
+        settingsNote: { nb: 'Valgene huskes.', en: 'Your choices are remembered.' },
+      },
+    } as unknown as Pick<typeof layout, 'profile'>;
+    expect(profileOf(bilingual)?.assistantName).toBe('Kunnskapsassistenten');
+    expect(profileOf(bilingual, undefined, 'nb')?.assistantName).toBe('Kunnskapsassistenten');
+    const english = profileOf(bilingual, undefined, 'en');
+    expect(english?.assistantName).toBe('The Knowledge Assistant');
+    expect(english?.settingsNote).toBe('Your choices are remembered.');
+  });
 });

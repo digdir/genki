@@ -2,6 +2,7 @@ import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
 import type { MiddlewareHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import type { DiscoveryState } from '@genai/composition/discovery-retry';
+import { listingErrorKinds, type ListingStatus } from '@genai/port-model';
 import type { Principal } from '@genai/contracts';
 import type { DefinitionStore, PluginSchemas, SettingsRegistry } from '@genai/definitions';
 import { isApiKeyPrincipal, isTestRunnerKey } from '@genai/identity';
@@ -61,6 +62,34 @@ const Health = z
         attempts: z.number().int(),
         lastError: z.string().optional(),
         since: z.string().optional().openapi({ description: 'When discovery first failed' }),
+        connections: z
+          .array(
+            z.object({
+              connection: z.string(),
+              source: z.string().openapi({ description: 'The discovery source that lists it' }),
+              discovered: z.number().int().openapi({
+                description: 'Models served from the last good listing, after the rules',
+              }),
+              listed: z.number().int().openapi({
+                description:
+                  'Deployments the stored listing holds, including those kept through the grace period',
+              }),
+              listedAt: z.string().optional().openapi({
+                description: 'When a listing last succeeded, on any replica',
+              }),
+              lastError: z
+                .object({
+                  kind: z.enum(listingErrorKinds),
+                  at: z.string(),
+                })
+                .optional()
+                .openapi({
+                  description:
+                    'The last failed listing; it is past when listedAt is later. It never holds a URL or a key',
+                }),
+            }),
+          )
+          .optional(),
       })
       .optional()
       .openapi({ description: 'Whether the models listed by the providers have been found' }),
@@ -120,6 +149,7 @@ export type PlatformOptions = Authentication & {
   lifecycle?: PlatformApiOptions['lifecycle'];
   models?: ModelAdmin;
   drafts?: Pick<ServiceDrafts, 'outdated' | 'followPublish'>;
+  environments?: DefinitionsApiOptions['environments'];
   unmaskedInput?: DefinitionsApiOptions['unmaskedInput'];
   names?: ActorNames;
   now?: () => Date;
@@ -141,6 +171,7 @@ export interface AppOptions {
   builtAt?: string;
   environment?: string;
   modelDiscovery?: () => DiscoveryState;
+  discoveryConnections?: () => ListingStatus[];
   catalogSkipped?: () => readonly SkippedSource[];
   platform?: PlatformOptions;
   requestTiming?: RequestTimingOptions;
@@ -196,7 +227,16 @@ export const createApp = (version: string, options: AppOptions = {}) => {
         ...(options.environment ? { environment: options.environment } : {}),
         lockdown,
         ...builtAt,
-        ...(discovery ? { modelDiscovery: discovery } : {}),
+        ...(discovery
+          ? {
+              modelDiscovery: {
+                ...discovery,
+                ...(options.discoveryConnections
+                  ? { connections: options.discoveryConnections() }
+                  : {}),
+              },
+            }
+          : {}),
         ...(skipped ? { catalog: { skipped } } : {}),
       },
       200,
@@ -276,6 +316,7 @@ export const createApp = (version: string, options: AppOptions = {}) => {
       admin,
       access,
       ...(options.platform.drafts ? { drafts: options.platform.drafts } : {}),
+      ...(options.platform.environments ? { environments: options.platform.environments } : {}),
       ...(options.platform.unmaskedInput ? { unmaskedInput: options.platform.unmaskedInput } : {}),
       ...(options.platform.names ? { names: options.platform.names } : {}),
       ...(options.platform.registered ? { registered: options.platform.registered } : {}),
@@ -300,6 +341,7 @@ export const createApp = (version: string, options: AppOptions = {}) => {
         : {}),
       ...(options.platform.lifecycle ? { lifecycle: options.platform.lifecycle } : {}),
       ...(options.platform.names ? { names: options.platform.names } : {}),
+      ...(options.platform.drafts ? { drafts: options.platform.drafts } : {}),
       ...(options.platform.now ? { now: options.platform.now } : {}),
       lockdown,
     });

@@ -89,17 +89,17 @@ const insufficientSignals: { signal: string; pattern: RegExp }[] = [
   {
     signal: 'ingen-nok-informasjon',
     pattern:
-      /(?<![\p{L}\p{N}])(ikke nok|utilstrekkelig|ingen)(?![\p{L}\p{N}])[\s\S]{0,80}(?<![\p{L}\p{N}])(informasjon|kontekst|kilder)(?![\p{L}\p{N}])/u,
+      /(?<![\p{L}\p{N}])(ikke nok|ikkje nok|utilstrekkelig|utilstrekkeleg|ingen)(?![\p{L}\p{N}])[\s\S]{0,80}(?<![\p{L}\p{N}])(informasjon|kontekst|kilder|kjelder|kjeldene)(?![\p{L}\p{N}])/u,
   },
   {
     signal: 'kan-ikke-svare-fra-kilder',
     pattern:
-      /(?<![\p{L}\p{N}])(kan ikke|klarer ikke|kunne ikke)(?![\p{L}\p{N}])[\s\S]{0,100}(?<![\p{L}\p{N}])(svare|finne)(?![\p{L}\p{N}])[\s\S]{0,120}(?<![\p{L}\p{N}])(informasjon|kontekst|kilder)(?![\p{L}\p{N}])/u,
+      /(?<![\p{L}\p{N}])(kan ikke|klarer ikke|kunne ikke|kan ikkje|klarer ikkje|kunne ikkje)(?![\p{L}\p{N}])[\s\S]{0,100}(?<![\p{L}\p{N}])(svare|finne)(?![\p{L}\p{N}])[\s\S]{0,120}(?<![\p{L}\p{N}])(informasjon|kontekst|kilder|kjelder|kjeldene)(?![\p{L}\p{N}])/u,
   },
   {
     signal: 'finner-ikke-i-kildene',
     pattern:
-      /(?<![\p{L}\p{N}])(jeg (har|finner) ikke)(?![\p{L}\p{N}])[\s\S]{0,120}(?<![\p{L}\p{N}])(informasjon|grunnlag|kilder)(?![\p{L}\p{N}])/u,
+      /(?<![\p{L}\p{N}])(jeg (har|finner) ikke|eg (har|finn) ikkje)(?![\p{L}\p{N}])[\s\S]{0,120}(?<![\p{L}\p{N}])(informasjon|grunnlag|kilder|kjelder|kjeldene)(?![\p{L}\p{N}])/u,
   },
 ];
 

@@ -7,7 +7,7 @@ import {
   stripSourceLists,
   validateCitations,
 } from './citations.js';
-import { citeDraftPrompt, exhaustionDefault, noToolCallHonestMiss } from './prompts.js';
+import { citeDraftPrompt, isFallbackText } from './prompts.js';
 import { skillsSection } from './skills.js';
 import { insufficientContextResponse, runBuiltinTool, type ToolEnvironment } from './tools.js';
 import type { Chunk, Workspace } from './workspace.js';
@@ -27,13 +27,21 @@ const refusalPatterns = [
   /(?<![\p{L}\p{N}])umulig å (forutsi|si|svare|fastslå)(?![\p{L}\p{N}])/u,
   /(?<![\p{L}\p{N}])(dekker ikke|foreligger ikke)(?![\p{L}\p{N}])/u,
   /^ønsker du\b/u,
+  /(?<![\p{L}\p{N}])(fann|finn|funne)\s+(eg\s+)?(ikkje|ingen)(?![\p{L}\p{N}])/u,
+  /(?<![\p{L}\p{N}])(har|hadde)\s+(dessverre\s+)?ikkje\s+(funne|klart å finne|informasjon)(?![\p{L}\p{N}])/u,
+  /(?<![\p{L}\p{N}])ikkje\s+(har\s+)?(funne|klart å finne|tilgang)(?![\p{L}\p{N}])/u,
+  /(?<![\p{L}\p{N}])(kunne|kan) ikkje finne(?![\p{L}\p{N}])/u,
+  /(?<![\p{L}\p{N}])ser ikkje ut til(?![\p{L}\p{N}])/u,
+  /(?<![\p{L}\p{N}])ikkje\s+(spesifikt\s+)?(nemnt|omtalt|oppgitt|spesifisert|tilgjengeleg)(?![\p{L}\p{N}])/u,
+  /(?<![\p{L}\p{N}])(ikkje inneheld|inneheld ikkje|dekkjer ikkje|ligg ikkje føre)(?![\p{L}\p{N}])/u,
+  /^ønskjer du\b/u,
   /\b(could not|couldn't|did not|didn't) find\b/,
 ];
 
 export const soundsLikeRefusal = (text: string): boolean => {
   const normalized = text.toLowerCase().replace(/\s+/g, ' ').trim();
   if (normalized === '') return true;
-  if (text === exhaustionDefault || text === noToolCallHonestMiss) return true;
+  if (isFallbackText(text)) return true;
   return (
     detectInsufficientContext(normalized).insufficient ||
     refusalPatterns.some((p) => p.test(normalized))

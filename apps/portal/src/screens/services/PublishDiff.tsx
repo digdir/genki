@@ -1,41 +1,90 @@
 import {
   Alert,
   Button,
+  Checkbox,
   Field,
+  Fieldset,
   Heading,
   Label,
+  Link,
   Paragraph,
-  Tag,
+  Radio,
   Textarea,
   ValidationMessage,
 } from '@digdir/designsystemet-react';
-import { useFormat } from '@genai/i18n/react';
-import { useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { BackLink } from '../../components/BackLink';
 import { BusyButton } from '../../components/BusyButton';
 import { minimumReasonLength, reasonProblem } from '../../components/ReasonField';
-import { useModelText } from '../../components/model-text';
 import type { ServiceDefinition } from '../../data/service-definition';
-import { datasetsOf } from '../../data/service-form';
 import type { AsyncState } from '../../hooks';
-import { useT } from '../../i18n';
-import { perMillion } from '../../models';
-import type { ModelPrice, Residency } from '../../types';
+import { useT, type PlainKey, type T } from '../../i18n';
+import { definitionYaml } from '../service/definition';
 import { describeProblem } from '../service/publish';
-import { changeLabel, changeText, guardName, type ChangeNames } from './setup-change-text';
+import { changedLines, LineDiff } from '../service/VersionDiff';
+import { changeLabel, changeText, type ChangeNames } from './setup-change-text';
 import type { DraftChecks } from './setup-checks';
-import { sentenceDiff, type DraftChange } from './setup-diff';
+import type { DraftChange } from './setup-diff';
+import type { NewVariant, VariantChoice } from './publish-choices';
 import './setup-layout.css';
-
-export interface ModelFacts {
-  name: string;
-  residency?: Residency | undefined;
-  price?: ModelPrice | null | undefined;
-}
 
 export type TestWarning = 'model' | 'draft' | undefined;
 
-const KnownChecks = ({
+export type QualityState = 'met' | 'stale' | 'none' | 'unknown' | 'checking';
+
+const riskKeys: Record<string, PlainKey> = {
+  minimal: 'setup.riskMinimal',
+  limited: 'setup.riskLimited',
+  high: 'setup.riskHigh',
+};
+
+export interface EditionSummaries {
+  before: Record<string, string>;
+  after: Record<string, string>;
+}
+
+const instructionTopics = new Set(['instructions', 'examples', 'languages']);
+
+const sides = (
+  t: T,
+  c: DraftChange,
+  names: ChangeNames,
+  summaries: EditionSummaries | undefined,
+): [string, string] => {
+  const key = instructionTopics.has(c.topic) ? 'instructions' : c.area;
+  const before = summaries?.before[key];
+  const after = summaries?.after[key];
+  if (c.topic === 'model' || c.topic === 'fallback')
+    return [c.before ? names.model(c.before) : '', c.after ? names.model(c.after) : ''];
+  if (c.topic === 'name') return [c.before ?? '', c.after ?? ''];
+  if (c.topic === 'riskClass') {
+    const label = (v: string | undefined) => (v ? (riskKeys[v] ? t(riskKeys[v]) : v) : '');
+    return [label(c.before), label(c.after)];
+  }
+  if (before !== undefined && after !== undefined && before !== after) return [before, after];
+  if (c.topic === 'dataset' && c.kind === 'removed')
+    return [names.dataset(c.subject ?? ''), changeText(t, c, names)];
+  return ['', changeText(t, c, names)];
+};
+
+const rowsOf = (
+  t: T,
+  changes: DraftChange[],
+  names: ChangeNames,
+  summaries: EditionSummaries | undefined,
+) => {
+  const seen = new Set<string>();
+  return changes.flatMap((c) => {
+    const label = changeLabel(t, c);
+    const [before, after] = sides(t, c, names, summaries);
+    const key = `${label}|${before}|${after}`;
+    if (seen.has(key)) return [];
+    seen.add(key);
+    return [{ key, label, before, after }];
+  });
+};
+
+const ProblemChecks = ({
   checks,
   onRetry,
 }: {
@@ -43,8 +92,6 @@ const KnownChecks = ({
   onRetry: () => void;
 }) => {
   const t = useT();
-  if (checks.status === 'loading')
-    return <Paragraph data-size="sm">{t('serviceDraft.checksRunning')}</Paragraph>;
   if (checks.status === 'error')
     return (
       <Alert data-color="danger" data-size="sm">
@@ -54,358 +101,246 @@ const KnownChecks = ({
         </Button>
       </Alert>
     );
-  const found = checks.data;
-  if (!found) return null;
+  const problems = checks.status === 'ready' ? (checks.data?.problems ?? []) : [];
+  const skipped = checks.status === 'ready' && checks.data?.hooksSkipped;
+  if (!problems.length)
+    return skipped ? (
+      <Paragraph data-size="sm" className="meta">
+        {t('serviceDraft.checksHooksSkipped')}
+      </Paragraph>
+    ) : null;
   return (
-    <>
-      {found.problems.length ? (
-        <Alert data-color="danger" data-size="sm" role="alert">
-          <Heading level={3} data-size="2xs">
-            {t('serviceDraft.checksProblems')}
-          </Heading>
-          <ul className="bullets">
-            {found.problems.map((p) => {
-              const problem = describeProblem(p, t);
-              return (
-                <li key={`${p.path}-${p.message}`}>
-                  <strong>{problem.section}:</strong> {problem.message}
-                </li>
-              );
-            })}
-          </ul>
-        </Alert>
-      ) : found.ready ? (
-        <Alert data-color="success" data-size="sm">
-          {t('serviceDraft.checksReady')}
-        </Alert>
-      ) : null}
-      {found.hooksSkipped ? (
-        <Alert data-color="info" data-size="sm">
-          {t('serviceDraft.checksHooksSkipped')}
-        </Alert>
-      ) : null}
-    </>
+    <Alert data-color="danger" data-size="sm" role="alert">
+      <Heading level={2} data-size="2xs">
+        {t('serviceDraft.checksProblems')}
+      </Heading>
+      <ul className="bullets">
+        {problems.map((p) => {
+          const problem = describeProblem(p, t);
+          return (
+            <li key={`${p.path}-${p.message}`}>
+              <strong>{problem.section}:</strong> {problem.message}
+            </li>
+          );
+        })}
+      </ul>
+    </Alert>
   );
 };
 
 export const PublishDiff = ({
   name,
-  current,
   published,
   draft,
   changes,
   names,
-  modelFacts,
+  summaries,
+  variants = [],
+  choices = {},
+  onChoose,
+  variantName,
+  standardName,
   checks,
   onRetryChecks,
-  testWarning,
+  quality,
+  qualityBelow,
   testHref,
   backHref,
   canPublish,
   blocked,
   blockedReason,
+  riskLevel,
   children,
   onPublish,
 }: {
   name: string;
-  current: number;
   published: ServiceDefinition;
   draft: ServiceDefinition;
   changes: DraftChange[];
   names: ChangeNames;
-  modelFacts: (id: string) => ModelFacts;
+  summaries?: EditionSummaries | undefined;
+  variants?: NewVariant[];
+  choices?: Record<string, VariantChoice>;
+  onChoose?: (id: string, choice: VariantChoice) => void;
+  variantName?: (variant: NewVariant) => string;
+  standardName?: string;
   checks: AsyncState<DraftChecks | null>;
   onRetryChecks: () => void;
-  testWarning: TestWarning;
+  quality: QualityState;
+  qualityBelow?: string | undefined;
   testHref: string;
   backHref: string;
   canPublish: boolean;
   blocked: boolean;
   blockedReason?: string | undefined;
+  riskLevel?: string | undefined;
   children?: ReactNode;
-  onPublish: (reason: string) => Promise<void>;
+  onPublish: (reason: string, stampRisk: boolean) => Promise<void>;
 }) => {
   const t = useT();
-  const f = useFormat();
-  const text = useModelText();
-  const next = current + 1;
   const [reason, setReason] = useState('');
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
-  const labels = [...new Set(changes.map((c) => changeLabel(t, c)))];
-  const instructions = changes.find((c) => c.topic === 'instructions');
-  const modelChange = changes.find((c) => c.topic === 'model');
-  const listed = changes.filter((c) => c.topic === 'dataset' || c.topic === 'guard');
-  const others = changes.filter(
-    (c) => !['instructions', 'model', 'dataset', 'guard'].includes(c.topic),
+  const [lines, setLines] = useState(false);
+  const [riskTicked, setRiskTicked] = useState(false);
+  const [riskError, setRiskError] = useState<string>();
+  const diff = useMemo(
+    () =>
+      lines
+        ? changedLines(
+            definitionYaml(published as unknown as Record<string, unknown>),
+            definitionYaml(draft as unknown as Record<string, unknown>),
+          ).rows
+        : [],
+    [lines, published, draft],
   );
-  const parts = instructions
-    ? sentenceDiff(instructions.before ?? '', instructions.after ?? '')
-    : [];
-  const added = parts.filter((p) => p.kind === 'added').length;
-  const removed = parts.filter((p) => p.kind === 'removed').length;
-  const kept = datasetsOf(draft.spec)
-    .map((d) => d.dataset)
-    .filter(
-      (ref) =>
-        datasetsOf(published.spec).some((d) => d.dataset === ref) &&
-        !listed.some((c) => c.topic === 'dataset' && c.subject === ref),
-    );
-  const price = (p: ModelPrice | null | undefined, side: 'in' | 'out') =>
-    p
-      ? `${f.number(perMillion(p)[side === 'in' ? 'input' : 'output'], {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2,
-        })} kr`
-      : t('common.notPriced');
-  const where = (m: ModelFacts) =>
-    m.residency ? text.where(m.residency) : t('setup.wordNotStated');
   const submit = async () => {
     const written = reason.trim();
     const problem = written ? reasonProblem(written, t, minimumReasonLength) : undefined;
-    if (problem) {
-      setError(problem);
-      return;
-    }
-    setError(undefined);
+    setError(problem);
+    const riskMissing = riskLevel !== undefined && !riskTicked;
+    setRiskError(riskMissing ? t('service.required') : undefined);
+    if (problem || riskMissing) return;
     setBusy(true);
     try {
-      await onPublish(written || t('serviceDraft.defaultReason', { n: next }));
+      await onPublish(written || t('edition.defaultReason'), riskLevel !== undefined);
     } catch {
       setBusy(false);
     }
   };
 
-  const tagFor = (kind: DraftChange['kind'] | 'same') =>
-    kind === 'added' ? (
-      <Tag data-size="sm" data-color="success">
-        {t('serviceDraft.tagAdded')}
-      </Tag>
-    ) : kind === 'removed' ? (
-      <Tag data-size="sm" data-color="danger">
-        {t('serviceDraft.tagRemoved')}
-      </Tag>
-    ) : kind === 'changed' ? (
-      <Tag data-size="sm" data-color="info">
-        {t('serviceDraft.tagChanged')}
-      </Tag>
-    ) : (
-      <Tag data-size="sm" data-color="neutral">
-        {t('serviceDraft.tagUnchanged')}
-      </Tag>
-    );
-
   return (
     <div className="publish-diff stack">
       <header className="stack-xs">
-        <BackLink label={t('serviceDraft.publishBack')} href={backHref} />
+        <BackLink label={t('edition.back')} href={backHref} />
         <Heading level={1} data-size="md">
-          {t('serviceDraft.publishHeading', { name, n: next })}
+          {t('edition.publishTitle', { name })}
         </Heading>
-        <Paragraph className="publish-diff-intro">
-          {t('serviceDraft.publishIntro', { current })}
-        </Paragraph>
+        <Paragraph className="meta">{t('edition.publishLead')}</Paragraph>
       </header>
 
-      <div className="tag-row">
-        <Tag data-size="sm" data-color="info">
-          {t('serviceDraft.changeCount', { count: changes.length })}
-        </Tag>
-        {labels.map((label) => (
-          <Tag key={label} data-size="sm" data-color="neutral">
-            {label}
-          </Tag>
-        ))}
-      </div>
-      {changes.length ? null : (
-        <Paragraph>{t('serviceDraft.noChangesToPublish', { n: current })}</Paragraph>
-      )}
-
-      {instructions ? (
-        <section aria-labelledby="diff-instructions" className="diff-block">
-          <div className="diff-block-head">
-            <Heading level={2} data-size="2xs" id="diff-instructions">
-              {t('setupList.areaInstructions')}
-            </Heading>
-            <span className="meta">
-              {[
-                added ? t('serviceDraft.sentencesAdded', { count: added }) : '',
-                removed ? t('serviceDraft.sentencesRemoved', { count: removed }) : '',
-              ]
-                .filter(Boolean)
-                .join(', ')}
-            </span>
-          </div>
-          <div className="diff-block-body diff-sentences">
-            {parts.map((part, i) =>
-              part.kind === 'same' ? (
-                <p key={i}>{part.text}</p>
-              ) : part.kind === 'removed' ? (
-                <p key={i} className="diff-removed">
-                  <strong>{t('serviceDraft.removedLabel')}</strong> <del>{part.text}</del>
-                </p>
-              ) : (
-                <p key={i} className="diff-added">
-                  <strong>{t('serviceDraft.addedLabel')}</strong> <ins>{part.text}</ins>
-                </p>
-              ),
-            )}
-          </div>
-        </section>
-      ) : null}
-
-      {modelChange ? (
-        <section aria-labelledby="diff-model" className="diff-block">
-          <div className="diff-block-head">
-            <Heading level={2} data-size="2xs" id="diff-model">
-              {t('setupList.areaModel')}
-            </Heading>
-          </div>
+      <section aria-labelledby="publish-changes" className="stack-xs">
+        <div className="row-between">
+          <Heading level={2} data-size="xs" id="publish-changes">
+            {t('edition.changeCount', { count: changes.length })}
+          </Heading>
+          {changes.length ? (
+            <Link asChild>
+              <button
+                type="button"
+                className="link-button"
+                aria-expanded={lines}
+                onClick={() => setLines((open) => !open)}
+              >
+                {t('edition.showLines')}
+              </button>
+            </Link>
+          ) : null}
+        </div>
+        {changes.length ? (
           <div className="diff-table-wrap">
-            {(() => {
-              const was = modelFacts(modelChange.before ?? '');
-              const now = modelFacts(modelChange.after ?? '');
-              const row = (label: string, a: string, b: string, strong = false) => (
+            <table className="publish-table">
+              <thead>
                 <tr>
-                  <th scope="row">{label}</th>
-                  <td>{strong ? <del>{a}</del> : a}</td>
-                  <td>
-                    {strong ? (
-                      <ins>{b}</ins>
-                    ) : a === b ? (
-                      t('serviceDraft.unchanged', { value: b })
-                    ) : (
-                      b
-                    )}
-                  </td>
+                  <td />
+                  <th scope="col">{t('edition.colInUseNow')}</th>
+                  <th scope="col">{t('edition.colAfter')}</th>
                 </tr>
-              );
-              return (
-                <table className="diff-table">
-                  <thead>
-                    <tr>
-                      <td />
-                      <th scope="col">{t('serviceDraft.versionLive', { n: current })}</th>
-                      <th scope="col">{t('serviceDraft.versionDraft', { n: next })}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {row(t('serviceDraft.rowModel'), was.name, now.name, true)}
-                    {row(t('serviceDraft.rowResidency'), where(was), where(now))}
-                    {row(
-                      t('serviceDraft.rowPriceIn'),
-                      price(was.price, 'in'),
-                      price(now.price, 'in'),
-                    )}
-                    {row(
-                      t('serviceDraft.rowPriceOut'),
-                      price(was.price, 'out'),
-                      price(now.price, 'out'),
-                    )}
-                  </tbody>
-                </table>
-              );
-            })()}
+              </thead>
+              <tbody>
+                {rowsOf(t, changes, names, summaries).map((row) => (
+                  <tr key={row.key}>
+                    <th scope="row">{row.label}</th>
+                    <td className="meta">{row.before}</td>
+                    <td>{row.after}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        </section>
-      ) : null}
-
-      {listed.length ? (
-        <section aria-labelledby="diff-lists" className="diff-block">
-          <div className="diff-block-head">
-            <Heading level={2} data-size="2xs" id="diff-lists">
-              {t('serviceDraft.sourcesAndGuards')}
-            </Heading>
-          </div>
-          <ul className="diff-list">
-            {listed
-              .filter((c) => c.topic === 'dataset')
-              .map((c) => (
-                <li key={`d-${c.subject}`}>
-                  {tagFor(c.kind)}
-                  <span>
-                    {t('serviceDraft.datasetItem', { name: names.dataset(c.subject ?? '') })}
-                  </span>
-                </li>
-              ))}
-            {kept.map((ref) => (
-              <li key={`k-${ref}`}>
-                {tagFor('same')}
-                <span>{t('serviceDraft.datasetItem', { name: names.dataset(ref) })}</span>
-              </li>
-            ))}
-            {listed
-              .filter((c) => c.topic === 'guard')
-              .map((c) => (
-                <li key={`g-${c.subject}`}>
-                  {tagFor(c.kind)}
-                  <span>
-                    {t('serviceDraft.guardItem', { name: guardName(t, c.subject ?? '') })}
-                  </span>
-                </li>
-              ))}
-          </ul>
-        </section>
-      ) : null}
-
-      {others.length ? (
-        <section aria-labelledby="diff-other" className="diff-block">
-          <div className="diff-block-head">
-            <Heading level={2} data-size="2xs" id="diff-other">
-              {t('serviceDraft.otherChanges')}
-            </Heading>
-          </div>
-          <ul className="diff-list">
-            {others.map((c, i) => (
-              <li key={`${c.topic}-${c.subject ?? ''}-${i}`}>
-                {tagFor(c.kind)}
-                <span>
-                  <span className="meta">{changeLabel(t, c)}:</span> {changeText(t, c, names)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-
-      <section aria-labelledby="diff-checks" className="stack-xs">
-        <Heading level={2} data-size="2xs" id="diff-checks">
-          {t('serviceDraft.checksHeading')}
-        </Heading>
-        <KnownChecks checks={checks} onRetry={onRetryChecks} />
+        ) : (
+          <Paragraph>{t('edition.noChanges')}</Paragraph>
+        )}
+        {lines ? <LineDiff rows={diff} /> : null}
       </section>
 
-      {testWarning ? (
-        <section aria-labelledby="diff-test" className="diff-warning">
-          <div className="stack-xs">
-            <Heading level={2} data-size="2xs" id="diff-test">
-              {t('serviceDraft.testNotRun')}
-            </Heading>
+      {variants.map((v) => (
+        <Fieldset key={v.id} data-size="sm">
+          <Fieldset.Legend>
+            {t('edition.newVariant', { name: variantName?.(v) ?? v.id })}
+          </Fieldset.Legend>
+          {(['hidden', 'choosable', 'replaces'] as const).map((choice) => (
+            <Radio
+              key={choice}
+              name={`variant-${v.id}`}
+              value={choice}
+              checked={choices[v.id] === choice}
+              onChange={() => onChoose?.(v.id, choice)}
+              label={
+                choice === 'hidden'
+                  ? t('edition.variantHidden')
+                  : choice === 'choosable'
+                    ? t('edition.variantChoosable')
+                    : t('edition.variantReplaces', {
+                        name: standardName ?? t('edition.variantStandard'),
+                      })
+              }
+            />
+          ))}
+        </Fieldset>
+      ))}
+
+      <ProblemChecks checks={checks} onRetry={onRetryChecks} />
+
+      <section aria-labelledby="publish-quality" className="stack-xs">
+        <Heading level={2} data-size="xs" id="publish-quality">
+          {t('edition.qualityHeading')}
+        </Heading>
+        {quality === 'stale' || qualityBelow ? (
+          <div role="status" className="diff-warning publish-quality">
             <span>
-              {testWarning === 'model'
-                ? t('serviceDraft.testNotRunModel')
-                : t('serviceDraft.testNotRunText')}
+              {[qualityBelow, quality === 'stale' ? t('edition.qualityStale') : '']
+                .filter(Boolean)
+                .join(' ')}
             </span>
+            <Button asChild variant="secondary" data-size="sm">
+              <a href={testHref}>{t('edition.runTestSet')}</a>
+            </Button>
           </div>
-          <Button asChild variant="secondary" data-size="sm">
-            <a href={testHref}>{t('serviceDraft.runTestSet')}</a>
-          </Button>
-        </section>
-      ) : null}
+        ) : quality === 'none' ? (
+          <Paragraph>
+            {t('edition.qualityNone')} <Link href={testHref}>{t('services.makeTestSet')}</Link>
+          </Paragraph>
+        ) : quality === 'unknown' ? (
+          <Paragraph>{t('edition.qualityUnknown')}</Paragraph>
+        ) : quality === 'met' ? (
+          <Paragraph>{t('edition.qualityMet')}</Paragraph>
+        ) : null}
+      </section>
 
       {children}
 
       {canPublish ? (
         <>
+          {riskLevel !== undefined ? (
+            <Checkbox
+              label={t('edition.riskConfirm', { level: riskLevel })}
+              checked={riskTicked}
+              onChange={(e) => {
+                setRiskTicked(e.target.checked);
+                setRiskError(undefined);
+              }}
+              error={riskError}
+              aria-required
+            />
+          ) : null}
           <Field className="publish-diff-reason">
             <Label htmlFor="publish-reason">
-              {t('serviceDraft.reasonLabel')}{' '}
-              <span className="meta">{t('serviceDraft.reasonOptional')}</span>
+              {t('edition.reasonLabel')} <span className="meta">{t('edition.reasonOptional')}</span>
             </Label>
-            <Field.Description>{t('serviceDraft.reasonHelp', { n: next })}</Field.Description>
             <Textarea
               id="publish-reason"
-              rows={3}
+              rows={2}
               value={reason}
               aria-invalid={error ? true : undefined}
               onChange={(e) => setReason(e.target.value)}
@@ -425,11 +360,12 @@ export const PublishDiff = ({
               aria-disabled={blocked || undefined}
               onClick={() => !blocked && void submit()}
             >
-              {t('serviceDraft.publishVersion', { n: next })}
+              {t('edition.publish')}
             </BusyButton>
             <Button asChild variant="secondary">
-              <a href={backHref}>{t('serviceDraft.keepEditing')}</a>
+              <a href={backHref}>{t('edition.cancel')}</a>
             </Button>
+            <span className="meta">{t('edition.undoLater')}</span>
           </div>
         </>
       ) : null}

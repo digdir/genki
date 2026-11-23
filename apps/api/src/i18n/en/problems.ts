@@ -30,8 +30,9 @@ export const problems = {
     'A test-runner key reads in its own organisation, checks definitions, gives feedback, tries published services it reaches and smoke- services in the playground, and changes only definitions whose id starts with smoke-.',
   testRunnerRefused: 'The key cannot get test-runner access',
   testRunnerEnvironmentDetail:
-    'Test-runner access can only be given in a locked test environment (GENAI_LOCKDOWN=true and GENAI_ENV=test).',
-  testRunnerCreatorDetail: 'Only operators who log in with Entra ID can give test-runner access.',
+    'Test-runner access is off in this environment (GENAI_TEST_RUNNER_KEYS is not true).',
+  testRunnerCreatorDetail:
+    'Only an operator acting in the platform organisation can give test-runner access; in a locked environment, one who logs in with Entra ID.',
   tenantNotRegisteredDetail: 'Organisation {tenant} has not been registered by Digdir.',
   modelsLocked:
     'The environment is locked: only registered clients and Entra ID logins may use models here',
@@ -103,7 +104,7 @@ export const problems = {
   diagnosticsSearchInvalid: 'The search cannot run',
   diagnosticsSearchFailed: 'The search failed',
   datasetSearchTimedOut: 'The search took too long',
-  datasetSearchNeedsRight: 'You need the right «Manage services» or «Manage datasets»',
+  datasetSearchNeedsRight: 'You need the right «Manage services» or «Manage document collections»',
   datasetSearchNoProfile: 'The dataset {dataset} has no search profile «{profile}»',
   datasetSearchRefused: 'The search was not let through',
   datasetDocumentsOffsetNotPage: 'offset must be a multiple of limit',
@@ -163,6 +164,13 @@ export const problems = {
   shareOperatorOnly:
     'Only platform operators change who the service is shared with. Keep spec.availableTo as it is in the published version.',
   shareOperatorOnlyTitle: 'Only operators change sharing',
+  builtInBlockOperatorOnly:
+    'Only platform operators publish built-in blocks. They belong to genki and are shared with everyone.',
+  codeBlockShareOperatorOnly:
+    'Only platform operators share a code block with everyone, after one of them has read its code. Share it with your own organisation.',
+  blockNotPinned: 'The block is not in the service draft',
+  blockNotFound: 'No edition of the block that this organisation may use',
+  blockOtherTenant: 'The block belongs to another organisation than the one in the address',
   internalOperatorOnly: 'Only operators make a service internal.',
   serviceIdTaken: 'The id is already in use.',
   operatorOnlySettingTitle: 'Only Digdir changes this limit for an organisation',

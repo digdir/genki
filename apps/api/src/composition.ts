@@ -3,6 +3,7 @@ import type { DescriptorRegistry } from '@genai/operations';
 import {
   type Catalogs,
   type EnvironmentTier,
+  type ModelDiscoverySettings,
   createRuntime,
   defaultPlatformTenant,
   defaultServiceLimits,
@@ -190,6 +191,7 @@ import {
   residencies,
   residencyAllows,
   type Capability,
+  type DiscoveredModelStore,
   type ModelClassificationStore,
   servesModelPort,
   type ProcessorRecordCheck,
@@ -234,6 +236,9 @@ import { cachedOrganizationLookup, organizationLookup } from './organizations.js
 import { locationOf } from './residency.js';
 import { retiredModelMessage, serviceHealth, type ServiceModels } from './service-health.js';
 import { serviceDrafts } from './service-drafts.js';
+import { resolveInterfaceBlocks } from './interface-blocks.js';
+import { blockFrameUrl } from './block-origin.js';
+import { blockCatalogueModule } from './block-catalogue.js';
 import { serviceSchemaOf } from './service-schema.js';
 import { problem } from './http.js';
 
@@ -249,7 +254,7 @@ import {
 } from './rate-limit.js';
 import { trackedWork } from './tracked-work.js';
 import { tenantGate } from './tenant-gate.js';
-import { testRunnerView } from './test-runner.js';
+import { platformOperator, testRunnerView } from './test-runner.js';
 import { compiledCapabilityCache } from './compiled-capabilities.js';
 import {
   hidingInternalServices,
@@ -323,7 +328,11 @@ import { skillsModule } from './skills.js';
 import { createKeyPoliciesModule } from './key-policies.js';
 import { maskinportenClientsModule } from './maskinporten-clients.js';
 import { defaultReservedDomains, registerHostRoutes, type HostingRules } from './hosts.js';
-import { hostedByGenki, interfaceCatalogueProblems } from './interface-catalogue.js';
+import {
+  blockRefProblems,
+  hostedByGenki,
+  interfaceCatalogueProblems,
+} from './interface-catalogue.js';
 import { triggersModule } from './triggers.js';
 import { createServiceDeleteModule } from './service-delete.js';
 import { lifecycleOf, pausedMessage, serviceLifecycleModule } from './service-lifecycle.js';
@@ -389,6 +398,7 @@ import {
 export const platformModules: PlatformModuleFactory[] = [
   buildingBlocksModule,
   blockUsageModule,
+  blockCatalogueModule,
   skillsModule,
   playgroundModule,
   engineSwitchesModule,
@@ -505,6 +515,8 @@ export interface PlatformInput {
   conversations?: ConversationStore;
   threadErasure?: ThreadErasure;
   modelClassifications?: ModelClassificationStore;
+  discoveredModels?: DiscoveredModelStore;
+  modelDiscovery?: ModelDiscoverySettings;
   providerObjects?: ProviderObjectStore;
   onWarning?: (message: string) => void;
   observe?: (log: EventLog) => EventLog;
@@ -537,6 +549,7 @@ export interface PlatformInput {
   clients?: ClientStore;
   reservedClientIds?: string[];
   hosting?: HostingRules;
+  documentFileOrigins?: readonly string[];
   platformLogin?: { clientId: string; audience: string };
   webhookDeliveries?: WebhookDeliveryStore;
   triggerRuns?: TriggerRunStore;
@@ -582,6 +595,8 @@ export interface PlatformInput {
   phraseArchive?: DeclaredPhraseArchive;
   lockdown?: Lockdown;
   environmentTier?: EnvironmentTier;
+  testRunnerKeys?: boolean;
+  isOperator?: (principal: Principal) => boolean;
   processorRecords?: ProcessorRecordCheck;
   descriptors?: DescriptorRegistry;
 }
@@ -1422,6 +1437,8 @@ export const createPlatform = async (input: PlatformInput) => {
     ...(input.mediaOutput ? { mediaOutput: input.mediaOutput } : {}),
     ...(input.connections ? { connections: input.connections } : {}),
     ...(input.modelClassifications ? { modelClassifications: input.modelClassifications } : {}),
+    ...(input.discoveredModels ? { discoveredModels: input.discoveredModels } : {}),
+    ...(input.modelDiscovery ? { modelDiscovery: input.modelDiscovery } : {}),
     ...(input.providerObjects ? { providerObjects: input.providerObjects } : {}),
     foreignFetch: (hosts) =>
       pluginEgress.fetch(
@@ -1644,10 +1661,13 @@ export const createPlatform = async (input: PlatformInput) => {
       return problems.length > 0 ? problems : undefined;
     }
     if (d.kind === 'Service') {
-      const blockProblems = interfaceCatalogueProblems(
-        d,
-        await hostedByGenki(clients, d.metadata.tenant, d.metadata.id),
-      );
+      const blockProblems = [
+        ...interfaceCatalogueProblems(
+          d,
+          await hostedByGenki(clients, d.metadata.tenant, d.metadata.id),
+        ),
+        ...(await blockRefProblems(store, d)),
+      ];
       const unsearchable = [
         ...blockProblems,
         ...missingDatasetProblems(
@@ -1735,6 +1755,7 @@ export const createPlatform = async (input: PlatformInput) => {
       get: (...args) => store.get(...args),
       versions: (...args) => store.versions(...args),
       list: (...args) => store.list(...args),
+      ...(store.listAcross ? { listAcross: store.listAcross.bind(store) } : {}),
       resolve: (...args) => store.resolve(...args),
       capabilities: () => compiled.get(),
       remove: async (...args) => {
@@ -1916,7 +1937,10 @@ export const createPlatform = async (input: PlatformInput) => {
     }
     return [...used];
   };
-  const testRunnersAllowed = input.lockdown !== undefined && input.environmentTier === 'test';
+  const testRunnersAllowed = input.testRunnerKeys === true;
+  const testRunnerOperator = input.isOperator
+    ? platformOperator(input.isOperator, platformTenant)
+    : undefined;
   const callers = new WeakMap<Request, Promise<Caller | undefined>>();
   const callerOf = (request: Request) => {
     const known = callers.get(request);
@@ -2177,7 +2201,7 @@ export const createPlatform = async (input: PlatformInput) => {
           modelAdmission: mayUseModels,
           readOnly: (p: Principal) => readOnlyInLockdown(p) || isTestRunnerKey(p),
         }
-      : {}),
+      : { readOnly: isTestRunnerKey }),
     evalStores,
     evalCapability: evalCapability.descriptor.id,
     ...(input.appVersion ? { appVersion: input.appVersion } : {}),
@@ -2313,6 +2337,7 @@ export const createPlatform = async (input: PlatformInput) => {
       apiKeys,
       policies: keyPolicies,
       testRunnerKeys: testRunnersAllowed,
+      ...(testRunnerOperator ? { isOperator: testRunnerOperator } : {}),
     }),
     ...frontendAdminHandlers({
       clients,
@@ -2443,6 +2468,7 @@ export const createPlatform = async (input: PlatformInput) => {
         ...(input.lockdown ? { lockdown: input.lockdown } : {}),
         lifecycle: (tenant, service) => lifecycleOf(configEntries, tenant, service),
         testRunnerKeys: testRunnersAllowed,
+        ...(testRunnerOperator ? { isOperator: testRunnerOperator } : {}),
       });
       registerConsoleRoutes(app, { ...consoleDeps, admin, authenticate });
       config.mount(app, admin, authenticate);
@@ -2577,7 +2603,16 @@ export const createPlatform = async (input: PlatformInput) => {
               : undefined;
           const shown = (found?.definition as Pick<ServiceDefinition, 'spec'> | undefined)?.spec
             .interface;
-          return shown?.layout ? { ...shown } : undefined;
+          if (!tenant || !shown?.layout) return undefined;
+          const blocks = await resolveInterfaceBlocks(
+            definitions,
+            tenant,
+            shown.layout,
+            blockFrameUrl,
+            async (publisher) =>
+              (await directory.list()).find((t) => t.orgNumber === publisher)?.name,
+          );
+          return { ...shown, blocks };
         },
         serviceSchema: async (entry) => {
           const [tenant, service] = entry.capability.split('/');
@@ -2666,6 +2701,7 @@ export const createPlatform = async (input: PlatformInput) => {
             (await boundServiceReads(principal, names))
           );
         },
+        remoteFile: { origins: input.documentFileOrigins ?? [] },
         originalFile: documentOriginals(
           blobStore,
           (dataset) => config.catalog.get('dataset', dataset)?.scope,
