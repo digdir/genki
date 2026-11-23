@@ -10,6 +10,7 @@ import {
   TabsPanel,
   TabsTab,
 } from '@digdir/designsystemet-react';
+import { BackLink } from '../../components/BackLink';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ApiError, type ApiClient } from '../../api';
 import type { AssistantProposal } from '../../api/assistant';
@@ -1685,8 +1686,8 @@ export const Builder = ({
   useEffect(() => {
     if (!firstPublishPage) return;
     setPublish('prod');
-    window.location.replace(`#${servicePath(routeId, 'setup')}`);
-  }, [firstPublishPage, routeId]);
+    void saveDraft();
+  }, [firstPublishPage]);
   const screenProps = { api, tenant, tenantName, route, live };
   const versionsView = section === 'definition' ? 'yaml' : 'history';
   const latest = versions[0];
@@ -2137,6 +2138,121 @@ export const Builder = ({
     </>
   );
 
+  const publishBody = (
+    <div className="stack">
+      <Heading level={firstPublishPage ? 1 : 2} data-size="sm" id="pub-h">
+        {t('services.publishTitle', {
+          name: service.metadata.name || t('services.publishFallbackName'),
+        })}
+      </Heading>
+      <Paragraph>
+        {publish === 'test' ? t('services.publishTestInfo') : t('services.publishProdInfo')}
+      </Paragraph>
+      {publishNotes}
+      <PublishSummary
+        tenantName={tenantName}
+        currentVersion={current}
+        nextVersion={current + 1}
+        changes={
+          changes.length
+            ? changes
+            : current === 0
+              ? [t('services.changeFirstVersion')]
+              : draftRevision > 0
+                ? [t('services.changeDraft')]
+                : edited
+                  ? [t('services.changeForm')]
+                  : [t('services.changeNone')]
+        }
+        inTest={publish === 'test'}
+        blockedBy={blockedBy}
+        updates={live ? [] : (exampleUpdates[id] ?? [])}
+        facts={[
+          { label: t('services.factTestset'), value: testsetFact },
+          {
+            label: t('services.factCost'),
+            value: live
+              ? notPricedLabel(t)
+              : per1000
+                ? t('services.factCostPer1000', { cost: per1000 })
+                : t('services.factNotCalculated'),
+          },
+          {
+            label: t('services.factResidency'),
+            value: fallback
+              ? t('services.residencyWithReserve', {
+                  where: modelWord(t, model?.where ?? 'Norge'),
+                  reserve: modelWord(t, fallback.where),
+                })
+              : modelWord(t, model?.where ?? 'Norge'),
+          },
+          { label: t('services.factRisk'), value: riskNote },
+        ]}
+        gates={[
+          {
+            name: t('services.gateNoForbidden'),
+            value: forbidden ? t('services.gateChecked') : t('services.gateNone'),
+            passed: !forbidden,
+            explanation: t('services.gateForbiddenWhy'),
+          },
+          {
+            name: t('services.gateRiskConfirmed'),
+            value: !riskSet
+              ? t('services.unset')
+              : riskConfirmed
+                ? t('services.gateConfirmed')
+                : t('services.gateNotConfirmed'),
+            passed: riskPassed,
+            explanation: t('services.gateRiskWhy'),
+          },
+          ...(unmaskedTypeList.length
+            ? [
+                {
+                  name: t('unmaskedInput.gate'),
+                  value: unmaskedMissing
+                    ? t('unmaskedInput.gateMissing', {
+                        missing: unmaskedMissing,
+                        count: unmaskedTypeList.length,
+                      })
+                    : t('services.gateConfirmed'),
+                  passed: unmaskedMissing === 0,
+                  explanation: t('unmaskedInput.gateWhy'),
+                },
+              ]
+            : []),
+        ]}
+        apiCall={{
+          action: t('services.publishAction'),
+          method: 'POST',
+          path: '/definitions',
+          body: { definition: publishable, files },
+          right: rightLabel(t, 'manage-services'),
+        }}
+        {...(riskPassed && !forbidden
+          ? {}
+          : {
+              fixAction: {
+                label: t('services.fixRisk'),
+                onClick: () => {
+                  setPublish(null);
+                  go('setup', isNew ? '/purpose' : '/risk');
+                  showPane('tjeneste');
+                  setOpen((o) => ({ ...o, purpose: true }));
+                },
+              },
+            })}
+        headingLevel={3}
+        onPublish={doPublish}
+        {...(live ? {} : { onPublishToTest: doPublishToTest })}
+        onCancel={() => {
+          setPublish(null);
+          setProblems(undefined);
+          if (firstPublishPage) go('setup');
+        }}
+      />
+    </div>
+  );
+
   const view = editionView(section, edition);
   const shownInUse =
     inUseEdition ??
@@ -2412,7 +2528,7 @@ export const Builder = ({
             <TabsPanel value="tjeneste">{pane === 'tjeneste' ? content : null}</TabsPanel>
           </Tabs>
         )}
-        {publish && canPublish && !draftBar ? (
+        {publish && canPublish && !draftBar && !firstPublishPage ? (
           <Dialog
             open
             modal
@@ -2424,122 +2540,20 @@ export const Builder = ({
             aria-labelledby="pub-h"
             className="publish-dialog"
           >
-            <div className="stack">
-              <Heading level={2} data-size="sm" id="pub-h">
-                {t('services.publishTitle', {
-                  name: service.metadata.name || t('services.publishFallbackName'),
-                })}
-              </Heading>
-              <Paragraph>
-                {publish === 'test' ? t('services.publishTestInfo') : t('services.publishProdInfo')}
-              </Paragraph>
-              {publishNotes}
-              <PublishSummary
-                tenantName={tenantName}
-                currentVersion={current}
-                nextVersion={current + 1}
-                changes={
-                  changes.length
-                    ? changes
-                    : current === 0
-                      ? [t('services.changeFirstVersion')]
-                      : draftRevision > 0
-                        ? [t('services.changeDraft')]
-                        : edited
-                          ? [t('services.changeForm')]
-                          : [t('services.changeNone')]
-                }
-                inTest={publish === 'test'}
-                blockedBy={blockedBy}
-                updates={live ? [] : (exampleUpdates[id] ?? [])}
-                facts={[
-                  { label: t('services.factTestset'), value: testsetFact },
-                  {
-                    label: t('services.factCost'),
-                    value: live
-                      ? notPricedLabel(t)
-                      : per1000
-                        ? t('services.factCostPer1000', { cost: per1000 })
-                        : t('services.factNotCalculated'),
-                  },
-                  {
-                    label: t('services.factResidency'),
-                    value: fallback
-                      ? t('services.residencyWithReserve', {
-                          where: modelWord(t, model?.where ?? 'Norge'),
-                          reserve: modelWord(t, fallback.where),
-                        })
-                      : modelWord(t, model?.where ?? 'Norge'),
-                  },
-                  { label: t('services.factRisk'), value: riskNote },
-                ]}
-                gates={[
-                  {
-                    name: t('services.gateNoForbidden'),
-                    value: forbidden ? t('services.gateChecked') : t('services.gateNone'),
-                    passed: !forbidden,
-                    explanation: t('services.gateForbiddenWhy'),
-                  },
-                  {
-                    name: t('services.gateRiskConfirmed'),
-                    value: !riskSet
-                      ? t('services.unset')
-                      : riskConfirmed
-                        ? t('services.gateConfirmed')
-                        : t('services.gateNotConfirmed'),
-                    passed: riskPassed,
-                    explanation: t('services.gateRiskWhy'),
-                  },
-                  ...(unmaskedTypeList.length
-                    ? [
-                        {
-                          name: t('unmaskedInput.gate'),
-                          value: unmaskedMissing
-                            ? t('unmaskedInput.gateMissing', {
-                                missing: unmaskedMissing,
-                                count: unmaskedTypeList.length,
-                              })
-                            : t('services.gateConfirmed'),
-                          passed: unmaskedMissing === 0,
-                          explanation: t('unmaskedInput.gateWhy'),
-                        },
-                      ]
-                    : []),
-                ]}
-                apiCall={{
-                  action: t('services.publishAction'),
-                  method: 'POST',
-                  path: '/definitions',
-                  body: { definition: publishable, files },
-                  right: rightLabel(t, 'manage-services'),
-                }}
-                {...(riskPassed && !forbidden
-                  ? {}
-                  : {
-                      fixAction: {
-                        label: t('services.fixRisk'),
-                        onClick: () => {
-                          setPublish(null);
-                          go('setup', isNew ? '/purpose' : '/risk');
-                          showPane('tjeneste');
-                          setOpen((o) => ({ ...o, purpose: true }));
-                        },
-                      },
-                    })}
-                headingLevel={3}
-                onPublish={doPublish}
-                {...(live ? {} : { onPublishToTest: doPublishToTest })}
-                onCancel={() => {
-                  setPublish(null);
-                  setProblems(undefined);
-                }}
-              />
-            </div>
+            {publishBody}
           </Dialog>
         ) : null}
       </div>
     </ServicePageContext.Provider>
   );
+  const firstPublishView = firstPublishPage ? (
+    <ServicePageContext.Provider value>
+      <div className="service-page">
+        <BackLink label={t('edition.back')} href={`#${servicePath(routeId, 'setup')}`} />
+        {publishBody}
+      </div>
+    </ServicePageContext.Provider>
+  ) : null;
   const publishView =
     publishPage && liveVersion && publishedDefinition ? (
       <ServicePageContext.Provider value>
@@ -2600,5 +2614,5 @@ export const Builder = ({
       </ServicePageContext.Provider>
     ) : null;
   // The «Grensesnitt» tab's try view goes on while the reader is on another tab of the page.
-  return <TryViewKeeper>{publishView ?? page}</TryViewKeeper>;
+  return <TryViewKeeper>{firstPublishView ?? publishView ?? page}</TryViewKeeper>;
 };
