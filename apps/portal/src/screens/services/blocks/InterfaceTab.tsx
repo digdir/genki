@@ -43,6 +43,7 @@ export const InterfaceTab = ({
   onAdded,
   onFullscreen,
   onExitFullscreen,
+  simple = false,
 }: {
   api: ApiClient;
   tenant: string;
@@ -54,6 +55,11 @@ export const InterfaceTab = ({
   narrow: boolean;
   /** Writes a layout into the draft; without it the builder changes nothing that is kept. */
   onLayout?: ((layout: AssistantLayout) => void) | undefined;
+  /**
+   * Only Maler and Designelementer, as in the new Oppsett: Tekster wait for a later step, and
+   * the layout as JSON is under Avansert.
+   */
+  simple?: boolean;
   /** The preview on its own, larger. */
   fullscreen: boolean;
   backHref: string;
@@ -122,8 +128,9 @@ export const InterfaceTab = ({
       onAdded={onAdded}
       fullscreen={fullscreen}
       narrow={narrow}
-      assistant={assistant}
-      collections={collections}
+      assistant={simple ? undefined : assistant}
+      collections={simple ? undefined : collections}
+      transfer={!simple}
       run={run}
       address={address}
       backHref={backHref}
@@ -190,6 +197,7 @@ const InterfaceBuilder = ({
   narrow,
   assistant,
   collections,
+  transfer,
   run,
   address,
   backHref,
@@ -204,7 +212,8 @@ const InterfaceBuilder = ({
   fullscreen: boolean;
   narrow: boolean;
   assistant?: ReactNode;
-  collections: Collection[];
+  collections: Collection[] | undefined;
+  transfer: boolean;
   run: TryRun;
   address: string;
   backHref: string;
@@ -249,6 +258,7 @@ const InterfaceBuilder = ({
       narrow={narrow}
       assistant={assistant}
       collections={collections}
+      transfer={transfer}
       run={run}
       address={address}
       onFullscreen={onFullscreen}

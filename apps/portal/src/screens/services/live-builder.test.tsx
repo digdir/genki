@@ -57,18 +57,32 @@ const recorded = (validate?: (body: unknown) => Response | undefined) => {
   return { calls, fetch };
 };
 
+/** Starts a new service, which opens in its Oppsett, and returns the builder assistant beside it. */
 const startBuilder = async (fetch: typeof globalThis.fetch) => {
   const auth = mockAnsattporten({ name: 'Ingrid Berg', organisations: exampleOrganisations });
   await auth.login();
   window.location.hash = '#/services/new';
   render(<App auth={auth} fetch={fetch} live />);
-  await screen.findByRole('heading', { name: 'Lag med KI' });
-  fireEvent.change(screen.getByLabelText('Hva skal tjenesten gjøre?'), {
-    target: { value: 'Svar på spørsmål om permisjon' },
-  });
-  fireEvent.click(screen.getByRole('button', { name: 'Start med byggeassistenten' }));
-  return screen.findByRole('complementary', { name: 'Byggeassistent' });
+  await screen.findByRole('heading', { level: 2, name: 'Grunnleggende' });
+  return screen.getByRole('complementary', { name: 'Byggeassistent' });
 };
+
+const tellAssistant = (panel: HTMLElement, text: string) => {
+  fireEvent.change(within(panel).getByLabelText('Skriv til assistenten'), {
+    target: { value: text },
+  });
+  fireEvent.click(within(panel).getByRole('button', { name: 'Send' }));
+};
+
+/** Goes from the Oppsett of a new service to its first publish page. */
+const toFirstPublish = async () => {
+  fireEvent.click(screen.getByRole('button', { name: 'Publiser' }));
+  return (await screen.findByRole('heading', { level: 1, name: /^Publiser / })).closest(
+    '.first-publish',
+  ) as HTMLElement;
+};
+
+const leftHeading = 'Dette gjenstår før du kan publisere';
 
 const publishPage = async (reason: string) => {
   window.location.hash = '#/services/rapportassistenten/setup/risk';
@@ -87,10 +101,6 @@ const publishOnPage = async (page: HTMLElement) => {
   fireEvent.click(button);
 };
 
-const openSection = async (name: RegExp) => {
-  fireEvent.click(await screen.findByRole('button', { name }));
-};
-
 type Spec = {
   model: { primary: string };
   tools: string[];
@@ -98,6 +108,13 @@ type Spec = {
   guardrails: Record<string, { categories?: string[] }>;
   riskConfirmation?: Record<string, unknown>;
 };
+
+const lastDraft = (calls: Call[]) =>
+  (
+    calls
+      .filter((c) => c.method === 'PUT' && /\/services\/utkast-[0-9a-f]{8}\/draft$/.test(c.url))
+      .at(-1)?.body as { definition: { spec: Spec } } | undefined
+  )?.definition.spec;
 
 const lastValidated = (calls: Call[]) =>
   (
@@ -112,10 +129,11 @@ describe('the live builder', () => {
     const panel = await startBuilder(fetch);
 
     expect(calls.some((c) => /\/definitions\/template\?kind=Service$/.test(c.url))).toBe(true);
+    tellAssistant(panel, 'Svar på spørsmål om permisjon');
     expect(await within(panel).findByText('Ingrid Berg')).toBeTruthy();
     expect(within(panel).queryByText('Kari Nordmann')).toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Publiser' }));
+    await toFirstPublish();
     await waitFor(() => expect(calls.some((c) => c.url.endsWith('/validate'))).toBe(true));
     const spec = lastValidated(calls);
     expect(spec.model.primary).toBe('foundry-openai/gpt-4.1-mini');
@@ -131,7 +149,6 @@ describe('the live builder', () => {
   it('shows the price per 1M tokens the API returns and "Ikke priset" only for a model without one', async () => {
     const { fetch } = recorded();
     await startBuilder(fetch);
-    await openSection(/^Modell/);
 
     fireEvent.click(await screen.findByRole('button', { name: 'Bytt modell' }));
     const picker = screen.getByRole('dialog', { name: 'Velg modell' });
@@ -142,7 +159,6 @@ describe('the live builder', () => {
   it('lists only live models with residency in words and no invented cost or speed', async () => {
     const { fetch } = recorded();
     await startBuilder(fetch);
-    await openSection(/^Modell/);
 
     fireEvent.click(await screen.findByRole('button', { name: 'Bytt modell' }));
     const picker = screen.getByRole('dialog', { name: 'Velg modell' });
@@ -154,23 +170,33 @@ describe('the live builder', () => {
   it('picks datasets from the catalog, writes the full id and removes them again', async () => {
     const { calls, fetch } = recorded();
     await startBuilder(fetch);
-    await openSection(/^Kunnskap/);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Legg til dokumentsamling' }));
-    expect(await screen.findByText('Delt med dere')).toBeTruthy();
-    expect(screen.queryByText('Statsbudsjettet 2026')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Legg til Kudos-rapporter' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Legg til Veiledere og rundskriv' }));
-    expect(screen.queryByText('612 dokumenter')).toBeNull();
-
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Fjern dokumentsamlingen Veiledere og rundskriv' }),
-    );
+    const sources = screen.getByRole('region', { name: 'Kunnskap' });
+    const datasets = within(sources).getByRole('combobox', { name: 'Dokumentsamlinger' });
+    // jsdom has no popover support, so the open list counts as hidden to the accessibility tree.
+    const option = (name: string) => within(sources).findByRole('option', { name, hidden: true });
+    fireEvent.click(datasets);
     expect(
-      screen.queryByRole('button', { name: 'Fjern dokumentsamlingen Veiledere og rundskriv' }),
+      within(sources).queryByRole('option', { name: 'Statsbudsjettet 2026', hidden: true }),
     ).toBeNull();
+    fireEvent.click(await option('Kudos-rapporter'));
+    fireEvent.click(await option('Veiledere og rundskriv'));
+    await waitFor(() =>
+      expect(
+        within(sources)
+          .getByRole('option', { name: 'Veiledere og rundskriv', hidden: true })
+          .getAttribute('aria-selected'),
+      ).toBe('true'),
+    );
+    fireEvent.click(await option('Veiledere og rundskriv'));
+    await waitFor(() =>
+      expect(
+        within(sources)
+          .getByRole('option', { name: 'Veiledere og rundskriv', hidden: true })
+          .getAttribute('aria-selected'),
+      ).toBe('false'),
+    );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Publiser' }));
+    await toFirstPublish();
     await waitFor(() => expect(calls.some((c) => c.url.endsWith('/validate'))).toBe(true));
     expect(lastValidated(calls).knowledge.datasets).toEqual([{ dataset: 'digdir/kudos' }]);
   });
@@ -178,19 +204,22 @@ describe('the live builder', () => {
   it('adds tools from the connected tool servers with their versioned reference', async () => {
     const { calls, fetch } = recorded();
     await startBuilder(fetch);
-    await openSection(/^Verktøy/);
+    const tools = window.location.hash.replace(/\/setup$/, '/advanced/tools');
+    window.location.hash = tools;
+    await screen.findByRole('heading', { level: 2, name: 'Verktøy' });
 
+    fireEvent.click(screen.getByRole('button', { name: 'Legg til verktøy' }));
     fireEvent.click(screen.getByRole('button', { name: 'Legg til verktøy fra katalogen' }));
     expect(await screen.findByRole('button', { name: 'Legg til arkiv.hent' })).toBeTruthy();
     expect(screen.queryByText(/klarsprak|Enhetsregisteret|lovdata/i)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Legg til arkiv.sok' }));
 
-    fireEvent.click(screen.getByRole('button', { name: 'Publiser' }));
+    await toFirstPublish();
     await waitFor(() => expect(calls.some((c) => c.url.endsWith('/validate'))).toBe(true));
     expect(lastValidated(calls).tools).toEqual(['arkiv.sok@1.2']);
   });
 
-  it('shows validation errors by section, locks Publiser and never sends who confirmed the risk', async () => {
+  it('lists validation errors by area on the publish page, refuses to publish and never sends who confirmed the risk', async () => {
     const { calls, fetch } = recorded(
       () =>
         new Response(
@@ -199,57 +228,54 @@ describe('the live builder', () => {
             status: 422,
             errors: [
               { path: 'spec.model', message: 'model x runs in global, outside norway' },
-              { path: 'spec.riskConfirmation', message: 'a limited service needs a confirmation' },
+              { path: 'spec.purpose', message: 'a service needs a purpose' },
             ],
           }),
           { status: 422, headers: { 'content-type': 'application/problem+json' } },
         ),
     );
     await startBuilder(fetch);
-    fireEvent.click(await screen.findByRole('button', { name: 'Bekreft risikonivå' }));
+    const page = await toFirstPublish();
+    fireEvent.click(within(page).getByRole('button', { name: 'Bekreft risikonivå' }));
 
-    fireEvent.click(screen.getByRole('button', { name: 'Publiser' }));
-    const dialog = await screen.findByRole('dialog');
-    expect(await within(dialog).findByText('Modell:')).toBeTruthy();
-    expect(within(dialog).getByText(/Modellen behandler data i global region/)).toBeTruthy();
-    expect(within(dialog).getByText('Formål og målgruppe:')).toBeTruthy();
-    expect(within(dialog).queryByText('Alle krav er bestått.')).toBeNull();
-    expect(within(dialog).getByRole('heading', { name: 'Utgave 1, første utgave' })).toBeTruthy();
-    expect(within(dialog).queryByText('Ingen endringer siden forrige utgave')).toBeNull();
+    expect(
+      await within(page).findByRole('link', {
+        name: /^Modell: Modellen behandler data i global region/,
+      }),
+    ).toBeTruthy();
+    expect(within(page).getByRole('link', { name: /^Formål og målgruppe: / })).toBeTruthy();
+    expect(within(page).getByRole('heading', { name: 'Utgave 1, første utgave' })).toBeTruthy();
 
-    fireEvent.change(within(dialog).getByLabelText('Hva er endret, og hvorfor?'), {
+    fireEvent.change(within(page).getByLabelText('Hva er endret, og hvorfor?'), {
       target: { value: 'Første versjon av tjenesten' },
     });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Publiser' }));
+    fireEvent.click(within(page).getByRole('button', { name: 'Publiser' }));
+    expect(within(page).getByText(/^Du kan ikke publisere ennå\./)).toBeTruthy();
     expect(calls.some((c) => c.method === 'POST' && c.url.endsWith('/api/definitions'))).toBe(
       false,
     );
 
-    const confirmation = lastValidated(calls).riskConfirmation;
-    expect(confirmation).toMatchObject({ riskClass: 'limited' });
-    expect(confirmation).not.toHaveProperty('by');
+    await waitFor(() =>
+      expect(lastDraft(calls)?.riskConfirmation).toMatchObject({ riskClass: 'limited' }),
+    );
+    expect(lastDraft(calls)?.riskConfirmation).not.toHaveProperty('by');
   });
 
   it('opens the published service with its status in the header right after the first publish', async () => {
     const { calls, fetch } = recorded();
     await startBuilder(fetch);
-    fireEvent.click(await screen.findByRole('button', { name: 'Bekreft risikonivå' }));
     const header = document.querySelector('.service-head') as HTMLElement;
     expect(
       within(header).queryByRole('navigation', { name: 'Testutgave eller i bruk' }),
     ).toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Publiser' }));
-    const dialog = await screen.findByRole('dialog');
-    fireEvent.change(within(dialog).getByLabelText('Hva er endret, og hvorfor?'), {
+    const page = await toFirstPublish();
+    fireEvent.click(within(page).getByRole('button', { name: 'Bekreft risikonivå' }));
+    fireEvent.change(within(page).getByLabelText('Hva er endret, og hvorfor?'), {
       target: { value: 'Første versjon av tjenesten' },
     });
-    await waitFor(() =>
-      expect(
-        within(dialog).getByRole('button', { name: 'Publiser' }).getAttribute('aria-disabled'),
-      ).not.toBe('true'),
-    );
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Publiser' }));
+    await waitFor(() => expect(within(page).queryByText(leftHeading)).toBeNull());
+    fireEvent.click(within(page).getByRole('button', { name: 'Publiser' }));
     await waitFor(() =>
       expect(calls.some((c) => c.method === 'POST' && c.url.endsWith('/api/definitions'))).toBe(
         true,
@@ -269,10 +295,12 @@ describe('the live builder', () => {
   it('drops the risk confirmation when the risk level changes', async () => {
     const { fetch } = recorded();
     await startBuilder(fetch);
-    fireEvent.click(await screen.findByRole('button', { name: 'Bekreft risikonivå' }));
-    expect(await screen.findByText('Bekreftet av Ingrid Berg i dag')).toBeTruthy();
-    fireEvent.click(screen.getByRole('radio', { name: /^Høy/ }));
-    expect(screen.queryByText('Bekreftet av Ingrid Berg i dag')).toBeNull();
+    const page = await toFirstPublish();
+    fireEvent.click(within(page).getByRole('button', { name: 'Bekreft risikonivå' }));
+    expect(await within(page).findByText('Bekreftet av Ingrid Berg i dag')).toBeTruthy();
+    fireEvent.click(within(page).getByRole('button', { name: 'Velg et annet nivå' }));
+    fireEvent.click(within(page).getByRole('radio', { name: /^Høy/ }));
+    expect(within(page).queryByText('Bekreftet av Ingrid Berg i dag')).toBeNull();
   });
 
   const openPublish = async (runs: unknown[], testSets: unknown[]) => {
@@ -645,14 +673,16 @@ describe('the live builder and the server draft', () => {
     expect(definitionReads()).toBe(before);
   });
 
-  it('offers Prøv in the header of a draft too', async () => {
+  it('offers Test tjenesten in the header of a new service, leading to its preview in Utforming', async () => {
     await startBuilder(mockFetch(exampleServices, logTimelines, liveModels, exampleDatasets));
     const header = screen
       .getAllByRole('heading', { level: 1 })[0]
       ?.closest('header') as HTMLElement;
-    expect(within(header).getByRole('link', { name: 'Prøv' }).getAttribute('href')).toMatch(
-      /^#\/services\/[^/]+\/test$/,
-    );
+    expect(
+      within(header).getByRole('link', { name: 'Test tjenesten' }).getAttribute('href'),
+    ).toMatch(/^#\/services\/utkast-[0-9a-f]{8}\/interface\/preview$/);
+    expect(within(header).queryByRole('link', { name: 'Prøv' })).toBeNull();
+    expect(within(header).queryByRole('button', { name: 'Prøv' })).toBeNull();
   });
 
   it('makes a copy as a new draft named Kopi av, with the files, and opens it at Oppsett', async () => {
@@ -921,42 +951,44 @@ describe('a new service saved as a draft on the server', () => {
     render(<App auth={auth} fetch={fetch} live />);
   };
 
-  it('saves nothing while nothing has changed, and saves the first change the person makes', async () => {
+  it('saves an empty draft from the platform template under its own id at once, and opens its Oppsett', async () => {
     const { calls, fetch } = quiet();
-    const panel = await startBuilder(fetch);
-    await within(panel).findAllByText('Jeg venter på mer fra deg.');
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    expect(calls.filter((c) => c.url.includes('/draft'))).toEqual([]);
-
-    await rename('Permisjonssvar');
-    await savedAs(calls, 'Permisjonssvar');
-    expect(revisions(calls)).toEqual([0]);
-  });
-
-  it('saves the work as a draft under its own id from the first change, and moves the address there', async () => {
-    const { calls, fetch } = recorded();
     await startBuilder(fetch);
 
-    await waitFor(() => expect(draftWrites(calls, 'PUT').length).toBeGreaterThan(0), {
-      timeout: 3000,
-    });
-    const id = idOf(draftWrites(calls, 'PUT')[0]);
-    expect(revisions(calls)[0]).toBe(0);
-    await waitFor(() => expect(window.location.hash).toBe(`#/services/${id}`));
+    const [first, ...more] = draftWrites(calls, 'PUT');
+    expect(more).toEqual([]);
+    expect(first?.body).toMatchObject({ revision: 0 });
+    expect(nameIn(first)).toBe('');
+    expect(window.location.hash).toBe(`#/services/${idOf(first)}/setup`);
     expect(screen.getByText(/^Lagres i testutgaven med en gang\./)).toBeTruthy();
   });
 
-  it('keeps the conversation when the address moves, saves every change to the same draft and never reloads it', async () => {
-    const { calls, panel, id } = await startNamed('Permisjonssvar');
-    await waitFor(() => expect(window.location.hash).toBe(`#/services/${id}`));
+  it('saves nothing more while nothing has changed, and saves the first change the person makes', async () => {
+    const { calls, fetch } = quiet();
+    await startBuilder(fetch);
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    expect(revisions(calls)).toEqual([0]);
 
-    expect(screen.getByRole('complementary', { name: 'Byggeassistent' })).toBe(panel);
-    expect(within(panel).getByText('Svar på spørsmål om permisjon')).toBeTruthy();
+    await rename('Permisjonssvar');
+    await savedAs(calls, 'Permisjonssvar');
+    expect(revisions(calls)).toEqual([0, 1]);
+  });
+
+  it('keeps the conversation, saves every change to the same draft and never reloads it', async () => {
+    const { calls, panel, id } = await startNamed('Permisjonssvar');
+    const opened = () => calls.filter((c) => c.url.includes(`/services/${id}/draft?`)).length;
+    const openedAtStart = opened();
+    tellAssistant(panel, 'Svar på spørsmål om permisjon');
+    expect(await within(panel).findByText('Svar på spørsmål om permisjon')).toBeTruthy();
+
     await rename('Permisjonssvar for ledere');
     await savedAs(calls, 'Permisjonssvar for ledere');
+    expect(screen.getByRole('complementary', { name: 'Byggeassistent' })).toBe(panel);
+    expect(within(panel).getByText('Svar på spørsmål om permisjon')).toBeTruthy();
+    expect(window.location.hash).toBe(`#/services/${id}/setup`);
     expect(new Set(draftWrites(calls, 'PUT').map(idOf))).toEqual(new Set([id]));
     expect(revisions(calls)).toEqual(revisions(calls).map((_, i) => i));
-    expect(calls.filter((c) => c.url.endsWith(`/services/${id}/draft?rebase=clean`))).toEqual([]);
+    expect(opened()).toBe(openedAtStart);
   });
 
   it('lists the draft under Tjenester as Utkast and resumes it in another browser', async () => {
@@ -990,24 +1022,27 @@ describe('a new service saved as a draft on the server', () => {
     ).toBeTruthy();
   });
 
-  it('opens a saved draft-only service in the setup layout, with the assistant and Prøv beside it', async () => {
+  it('opens a saved draft-only service in the one-form Oppsett, with the assistant beside it', async () => {
     const { fetch, id } = await startNamed('Permisjonssvar');
 
     await elsewhere(fetch, `#/services/${id}/setup`);
 
-    expect(await screen.findByRole('navigation', { name: 'Deler av oppsettet' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { level: 2, name: 'Grunnleggende' })).toBeTruthy();
+    expect(screen.queryByRole('navigation', { name: 'Deler av oppsettet' })).toBeNull();
     const side = screen.getByRole('region', { name: 'Byggeassistent og prøving' });
-    expect(within(side).getByRole('tab', { name: 'Prøv' })).toBeTruthy();
     expect(side.contains(screen.getByRole('complementary', { name: 'Byggeassistent' }))).toBe(true);
   });
 
-  it('opens the publish dialog of a draft-only service from /setup/publish', async () => {
+  it('opens the first publish page of a draft-only service from /setup/publish', async () => {
     const { fetch, id } = await startNamed('Permisjonssvar');
 
     await elsewhere(fetch, `#/services/${id}/setup/publish`);
 
-    expect(await screen.findByRole('dialog', { name: 'Publiser Permisjonssvar' })).toBeTruthy();
-    await waitFor(() => expect(window.location.hash).toBe(`#/services/${id}/setup`));
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Publiser Permisjonssvar' }),
+    ).toBeTruthy();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(window.location.hash).toBe(`#/services/${id}/setup/publish`);
   });
 
   it('opens a draft-only service at its setup when the address names a section it does not have', async () => {
@@ -1021,7 +1056,18 @@ describe('a new service saved as a draft on the server', () => {
     expect(screen.getByRole('tab', { name: 'Oppsett', selected: true })).toBeTruthy();
   });
 
-  it.each(['settings', 'quality', 'log', 'bogus'])(
+  it('moves the address of a draft-only service from /settings to its limits under Avansert', async () => {
+    const { fetch, id } = await startNamed('Permisjonssvar');
+
+    await elsewhere(fetch, `#/services/${id}/settings`);
+
+    await waitFor(() => expect(window.location.hash).toBe(`#/services/${id}/advanced/limits`));
+    expect(
+      await screen.findByRole('heading', { level: 2, name: 'Begrensninger og loggføring' }),
+    ).toBeTruthy();
+  });
+
+  it.each(['quality', 'log', 'bogus'])(
     'moves the address of a draft-only service from /%s to Oppsett, the section it shows',
     async (section) => {
       const { fetch, id } = await startNamed('Permisjonssvar');
@@ -1055,16 +1101,12 @@ describe('a new service saved as a draft on the server', () => {
     expect(await screen.findByText('Ingen tjenester ennå')).toBeTruthy();
   });
 
-  it('offers to delete only a saved draft of a service never published', async () => {
+  it('offers to delete the draft of a service never published, and not the draft of a published one', async () => {
     const published = exampleServices.find((s) => s.id === 'rapportassistenten');
     const { fetch } = quiet(undefined, {
       rapportassistenten: { definition: published?.latest.definition ?? {} },
     });
     await startBuilder(fetch);
-    await screen.findByRole('button', { name: 'Publiser' });
-    expect(screen.queryByRole('button', { name: 'Slett utkastet' })).toBeNull();
-
-    await rename('Permisjonssvar');
     expect(await screen.findByRole('button', { name: 'Slett utkastet' })).toBeTruthy();
 
     window.location.hash = '#/services/rapportassistenten';
@@ -1085,25 +1127,20 @@ describe('a new service saved as a draft on the server', () => {
     fireEvent.click(within(await confirmBox()).getByRole('button', { name: 'Slett utkastet' }));
 
     expect(await screen.findByText('Kunne ikke slette utkastet. Prøv igjen om litt.')).toBeTruthy();
-    expect(window.location.hash).toBe(`#/services/${id}`);
+    expect(window.location.hash).toBe(`#/services/${id}/setup`);
     await rename('Permisjonssvar for ledere');
     await savedAs(calls, 'Permisjonssvar for ledere');
   });
 
   it('publishing clears the draft, opens the published service and drops the draft from the list', async () => {
     const { calls, id } = await startNamed('Permisjonssvar');
-    fireEvent.click(await screen.findByRole('button', { name: 'Bekreft risikonivå' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Publiser' }));
-    const dialog = await screen.findByRole('dialog');
-    fireEvent.change(within(dialog).getByLabelText('Hva er endret, og hvorfor?'), {
+    const page = await toFirstPublish();
+    fireEvent.click(within(page).getByRole('button', { name: 'Bekreft risikonivå' }));
+    fireEvent.change(within(page).getByLabelText('Hva er endret, og hvorfor?'), {
       target: { value: 'Første versjon av tjenesten' },
     });
-    await waitFor(() =>
-      expect(
-        within(dialog).getByRole('button', { name: 'Publiser' }).getAttribute('aria-disabled'),
-      ).not.toBe('true'),
-    );
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Publiser' }));
+    await waitFor(() => expect(within(page).queryByText(leftHeading)).toBeNull());
+    fireEvent.click(within(page).getByRole('button', { name: 'Publiser' }));
 
     await waitFor(() => expect(window.location.hash).toBe('#/services/permisjonssvar'));
     expect(draftWrites(calls, 'DELETE').map(idOf)).toEqual([id]);

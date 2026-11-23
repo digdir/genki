@@ -115,9 +115,12 @@ const problemText = (problem: LayoutProblem, t: T, labels: ReadonlyMap<string, s
 export const LayoutTransfer = ({
   layout,
   onPaste,
+  titled = true,
 }: {
   layout: AssistantLayout;
   onPaste: (layout: AssistantLayout) => void;
+  /** Without its own heading and help, for a page whose heading already says what it is. */
+  titled?: boolean;
 }) => {
   const t = useT();
   const ids = { heading: useId(), paste: useId(), copied: useId() };
@@ -170,13 +173,20 @@ export const LayoutTransfer = ({
   };
 
   return (
-    <section className="blocks-transfer stack-sm" aria-labelledby={ids.heading}>
-      <Heading level={3} data-size="2xs" id={ids.heading}>
-        {t('builderBlocks.transferTitle')}
-      </Heading>
-      <Paragraph data-size="sm" className="meta">
-        {t('builderBlocks.transferHelp')}
-      </Paragraph>
+    <section
+      className="blocks-transfer stack-sm"
+      {...(titled ? { 'aria-labelledby': ids.heading } : {})}
+    >
+      {titled ? (
+        <>
+          <Heading level={3} data-size="2xs" id={ids.heading}>
+            {t('builderBlocks.transferTitle')}
+          </Heading>
+          <Paragraph data-size="sm" className="meta">
+            {t('builderBlocks.transferHelp')}
+          </Paragraph>
+        </>
+      ) : null}
       <div className="blocks-transfer-actions">
         <Button variant="secondary" data-size="sm" onClick={() => void copyLayout()}>
           {t('builderBlocks.copyLayout')}

@@ -189,6 +189,7 @@ export const BlocksStep = ({
   narrow,
   assistant,
   collections,
+  transfer = true,
   run,
   address,
   onFullscreen,
@@ -197,6 +198,8 @@ export const BlocksStep = ({
   narrow: boolean;
   /** The builder assistant. Without it there is no Chat tab. */
   assistant?: ReactNode;
+  /** «Kopier oppsettet» and «Lim inn oppsett» under the panels; off where they live elsewhere. */
+  transfer?: boolean;
   /** The collections the draft searches, whose words «Tekster» edits. Without it, no such tab. */
   collections?: readonly Collection[] | undefined;
   run: TryRun | undefined;
@@ -244,7 +247,9 @@ export const BlocksStep = ({
       {state.tab === 'texts' && collections ? (
         <TextsPanel layout={state.layout} collections={collections} onChange={state.setProfile} />
       ) : null}
-      {state.tab === 'chat' ? null : <LayoutTransfer layout={state.layout} onPaste={state.paste} />}
+      {state.tab === 'chat' || !transfer ? null : (
+        <LayoutTransfer layout={state.layout} onPaste={state.paste} />
+      )}
     </div>
   );
   const preview = (

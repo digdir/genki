@@ -1,0 +1,8 @@
+.first-publish {
+  max-width: 720px;
+}
+
+.first-publish-part:focus-visible {
+  outline: 3px solid var(--ds-color-focus-outer);
+  outline-offset: 4px;
+}

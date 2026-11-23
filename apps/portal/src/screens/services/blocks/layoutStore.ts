@@ -171,6 +171,16 @@ export const storedLayout = (start: BlocksStart): AssistantLayout => {
   return normalised({ ...start.layout, zones: placed });
 };
 
+/**
+ * The layout a draft shows: the one it stores, or the start template when it has none.
+ * Nothing when the builder cannot edit the stored layout without losing something.
+ */
+export const shownLayoutOf = (definition: Record<string, unknown>): AssistantLayout | undefined => {
+  const start = draftStart(draftLayoutOf(definition));
+  if (start === 'foreign') return undefined;
+  return start ? storedLayout(start) : fromTemplate(startTemplate).layout;
+};
+
 /** The layout this browser kept for a service before layouts were saved in the draft, if any. */
 export const keptStart = (tenant: string, service: string): BlocksStart | undefined => {
   try {

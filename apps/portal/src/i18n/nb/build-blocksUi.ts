@@ -24,7 +24,7 @@ export const blocksUi = {
     panelLeftShort: 'Venstre',
     panelMainShort: 'Midten',
     panelRightShort: 'Høyre',
-    planned: '{block} (kommer)',
+    plannedNote: '{block} kommer senere.',
     optionsFor: 'Valg for {block}',
     templatesIntro:
       'Malene er vanlige sammensetninger av designelementene. Malen fyller feltene i forhåndsvisningen, og du kan bygge videre med designelementene. Å bytte mal erstatter oppsettet du har nå.',

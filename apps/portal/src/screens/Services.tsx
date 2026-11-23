@@ -150,8 +150,19 @@ const ListScreen = ({ api, tenant, tenantName, live }: ScreenProps) => {
   );
 };
 
+// Whether a service is published is known only once it has loaded, so its address may name a
+// section of either kind until then. BuilderScreen settles it.
+const eitherKind = [
+  ...new Set([...availableSections({ isNew: false }), ...availableSections({ isNew: true })]),
+];
+
 const useLocation = (id: string, route: ScreenProps['route'], isNew: boolean) => {
-  const location = locate(id, route.segments, route.query, availableSections({ isNew }));
+  const location = locate(
+    id,
+    route.segments,
+    route.query,
+    isNew ? availableSections({ isNew }) : eitherKind,
+  );
   const { redirect } = location;
   useEffect(() => {
     if (redirect) window.location.replace(`#${redirect}`);
@@ -211,6 +222,18 @@ const BuilderScreen = (
     state.data !== undefined &&
     'found' in state.data &&
     loadedInUse !== (inUse && props.live === true);
+  const unpublishedDraft =
+    state.status === 'ready' && state.data !== undefined && 'unpublished' in state.data;
+  const settled = locate(
+    id,
+    route.segments,
+    route.query,
+    availableSections({ isNew: unpublishedDraft }),
+  );
+  const settledRedirect = state.status === 'ready' ? settled.redirect : undefined;
+  useEffect(() => {
+    if (settledRedirect) window.location.replace(`#${settledRedirect}`);
+  }, [settledRedirect, route]);
   if (state.status === 'loading' || otherEdition)
     return (
       <ServiceLoading
@@ -244,8 +267,8 @@ const BuilderScreen = (
           status: 'Utkast',
         }}
         route={route}
-        section={sections.includes(location.section) ? location.section : 'setup'}
-        detail={location.detail}
+        section={sections.includes(settled.section) ? settled.section : 'setup'}
+        detail={settled.detail}
         pane={paneOf(route.query)}
         openPublish={false}
       />
@@ -310,8 +333,8 @@ const BuilderScreen = (
       live={props.live}
       init={init}
       route={route}
-      section={location.section}
-      detail={location.detail}
+      section={settled.section}
+      detail={settled.detail}
       pane={pane}
       openPublish={route.query.get('publiser') === '1'}
       edition={inUse ? 'inUse' : 'test'}

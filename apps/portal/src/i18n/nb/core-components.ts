@@ -54,6 +54,21 @@ export const runFailure = defineNamespace({
 });
 
 export const publish = defineNamespace({
+  leftHeading: 'Dette gjenstår før du kan publisere',
+  leftProblem: '{area}: {problem}',
+  leftConfirmRisk: 'Bekreft risikonivået',
+  leftForbidden: 'Fjern det som er forbudt i KI-forordningen, under Risiko og KI-forordningen',
+  leftUnmasked: 'Begrunn innholdet som sendes umaskert',
+  leftChecking: 'Vent til utkastet er sjekket',
+  testsetHeading: 'Anbefalt: lag et testsett',
+  testsetFirst:
+    'Uten testsett ser du ikke om endringer gjør resultatene dårligere. Testsett lages under Kvalitet når tjenesten er publisert. Det stopper ikke publiseringen.',
+  colWhat: 'Hva',
+  colVersion: 'Utgave {next}',
+  confirmed: 'Bekreftet',
+  notConfirmed: 'Ikke bekreftet',
+  cannotYet:
+    'Du kan ikke publisere ennå. Gjør det som står under «Dette gjenstår før du kan publisere» først.',
   lockedByGate:
     'Publiser er låst fordi et krav til kvalitet ikke er oppfylt. Se forklaringen over.',
   publishedFirst: 'Utgave {next} er publisert og i bruk.',

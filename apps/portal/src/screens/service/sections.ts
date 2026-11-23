@@ -12,7 +12,8 @@ export type ServiceSection =
   | 'versions'
   | 'log'
   | 'environments'
-  | 'definition';
+  | 'definition'
+  | 'advanced';
 
 export const sectionLabels: Record<ServiceSection, PlainKey> = {
   overview: 'service.sectionOverview',
@@ -27,6 +28,7 @@ export const sectionLabels: Record<ServiceSection, PlainKey> = {
   log: 'service.sectionLog',
   environments: 'service.sectionEnvironments',
   definition: 'service.sectionDefinition',
+  advanced: 'service.tabAdvanced',
 };
 
 const order: ServiceSection[] = [
@@ -42,11 +44,26 @@ const order: ServiceSection[] = [
   'environments',
   'batch',
   'definition',
+  'advanced',
 ];
 
-const forNew: ServiceSection[] = ['setup', 'interface', 'test', 'channels', 'definition'];
+/**
+ * The new Oppsett (one long form, the builder assistant beside it, and the Avansert tab) is for
+ * services not published yet. Return true here to give it to every service.
+ */
+export const usesNewSetup = ({ isNew }: { isNew: boolean }) => isNew;
 
-export type ServiceTab = 'overview' | 'setup' | 'interface' | 'quality' | 'history' | 'developer';
+const forNew: ServiceSection[] = [
+  'setup',
+  'interface',
+  'test',
+  'channels',
+  'definition',
+  'advanced',
+];
+
+export type ServiceTab =
+  'overview' | 'setup' | 'interface' | 'quality' | 'history' | 'developer' | 'advanced';
 
 export const historyHasOwnTab = true;
 
@@ -66,6 +83,7 @@ const tabSections: Record<ServiceTab, ServiceSection[]> = {
     'batch',
     'definition',
   ],
+  advanced: ['advanced'],
 };
 
 export const tabLabels: Record<ServiceTab, PlainKey> = {
@@ -75,6 +93,29 @@ export const tabLabels: Record<ServiceTab, PlainKey> = {
   quality: 'service.sectionQuality',
   history: 'service.sectionVersions',
   developer: 'service.tabDeveloper',
+  advanced: 'service.tabAdvanced',
+};
+
+/** The parts of the Avansert tab, in the order of its menu. */
+export const advancedItems = [
+  'how',
+  'tools',
+  'variants',
+  'limits',
+  'channels',
+  'json',
+  'yaml',
+] as const;
+
+export type AdvancedItem = (typeof advancedItems)[number];
+
+export const advancedItemOf = (detail: string | undefined): AdvancedItem =>
+  advancedItems.find((item) => item === detail?.split('/')[0]) ?? 'how';
+
+const movedToAdvanced: Partial<Record<ServiceSection, AdvancedItem>> = {
+  channels: 'channels',
+  definition: 'yaml',
+  settings: 'limits',
 };
 
 const notListed: ServiceSection[] = ['test', 'settings'];
@@ -92,8 +133,12 @@ export const serviceTabs = (sections: ServiceSection[]) =>
 export const subSections = (tab: ServiceTab, sections: ServiceSection[]) =>
   tabSections[tab].filter((s) => sections.includes(s) && !notListed.includes(s));
 
-export const availableSections = ({ isNew }: { isNew: boolean }) =>
-  isNew ? order.filter((s) => forNew.includes(s)) : order;
+export const availableSections = ({ isNew }: { isNew: boolean }) => {
+  const fresh = usesNewSetup({ isNew });
+  return (isNew ? order.filter((s) => forNew.includes(s)) : order).filter((s) =>
+    fresh ? !movedToAdvanced[s] : s !== 'advanced',
+  );
+};
 
 export const servicePath = (id: string, section?: ServiceSection, rest = '') => {
   const base = `/services/${encodeURIComponent(id)}`;
@@ -125,7 +170,11 @@ export const locate = (
   const keep = new URLSearchParams(query);
   keep.delete('tab');
   const suffix = () => (keep.size ? `?${keep.toString()}` : '');
-  const go = (section: ServiceSection, rest = '') => {
+  const go = (wanted: ServiceSection, wantedRest = '') => {
+    const moved = allowed.includes(wanted) ? undefined : movedToAdvanced[wanted];
+    const into = moved && allowed.includes('advanced');
+    const section: ServiceSection = into ? 'advanced' : wanted;
+    const rest = into ? `/${moved}` : wantedRest;
     const target = allowed.includes(section) ? section : fallback;
     return {
       section: target,
@@ -141,11 +190,22 @@ export const locate = (
     return go('definition');
   }
   if (raw === 'how-it-works') return go('setup', '/how');
+  // Only the sections of the new Oppsett, where Kanaler and the YAML live under Avansert.
+  const fresh = allowed.includes('advanced') && !allowed.includes('channels');
+  if (fresh) {
+    if (raw === 'settings') return go('settings');
+    if (raw === 'setup' && detail && (advancedItems as readonly string[]).includes(detail))
+      return go('advanced', `/${detail}`);
+    if (raw === 'setup' && (detail === 'risk' || detail === 'guards'))
+      return go('setup', '/publish');
+  }
   if (raw === 'settings' && allowed.includes('setup')) return go('setup', '/limits');
   const known = (Object.keys(sectionLabels) as ServiceSection[]).find((s) => s === raw);
   if (!raw || !known) return { section: fallback, detail: undefined };
-  if (!allowed.includes(known))
+  if (!allowed.includes(known)) {
+    if (movedToAdvanced[known] && allowed.includes('advanced')) return go(known);
     return { section: fallback, detail: undefined, redirect: servicePath(id, fallback) };
+  }
   return { section: known, detail };
 };
 

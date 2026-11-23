@@ -1,6 +1,15 @@
-import { Button, Input, Tag, Textarea, ValidationMessage } from '@digdir/designsystemet-react';
-import { XMarkIcon } from '@navikt/aksel-icons';
-import { useId, useRef, useState, type ReactNode } from 'react';
+import {
+  Button,
+  Chip,
+  EXPERIMENTAL_FileUpload as FileUpload,
+  Input,
+  Paragraph,
+  Tag,
+  Textarea,
+  ValidationMessage,
+} from '@digdir/designsystemet-react';
+import { GlobeIcon } from '@navikt/aksel-icons';
+import { useId, useState, type ReactNode } from 'react';
 import { Icon } from '../../components/Icon';
 import { useT } from '../../i18n';
 import './setup-layout.css';
@@ -19,9 +28,11 @@ const empty: Kept = { pages: [], documents: [], wish: '' };
 /** What was entered for this service in this page session, kept across area switches. */
 const useKept = (service: string) => {
   const [value, setValue] = useState<Kept>(() => kept.get(service) ?? empty);
+  // Web pages, documents and the wish are shown by different parts of one form, so each change
+  // starts from what is kept, not from this part's own copy, or one part would undo another.
   const update = (change: (current: Kept) => Kept) =>
-    setValue((current) => {
-      const next = change(current);
+    setValue(() => {
+      const next = change(kept.get(service) ?? empty);
       kept.set(service, next);
       return next;
     });
@@ -87,17 +98,19 @@ const ChosenList = ({
   items.length ? (
     <ul className="chosen-list" aria-label={label}>
       {items.map((item, i) => (
-        <li key={`${item}-${i}`} className="chosen-chip">
-          <span className="chosen-name">{item}</span>
-          {readOnly ? null : (
-            <button
-              type="button"
-              className="chosen-remove"
+        <li key={`${item}-${i}`}>
+          {readOnly ? (
+            <Tag data-size="sm" data-color="neutral">
+              {item}
+            </Tag>
+          ) : (
+            <Chip.Removable
+              data-size="sm"
               aria-label={removeLabel(item)}
               onClick={() => onRemove(i)}
             >
-              <Icon icon={XMarkIcon} size={14} />
-            </button>
+              {item}
+            </Chip.Removable>
           )}
         </li>
       ))}
@@ -111,7 +124,6 @@ export const MoreSources = ({ service, readOnly }: { service: string; readOnly: 
   const [value, update] = useKept(service);
   const [address, setAddress] = useState('');
   const [invalid, setInvalid] = useState(false);
-  const picker = useRef<HTMLInputElement>(null);
   const addPage = () => {
     const url = webAddress(address);
     setInvalid(!url);
@@ -151,6 +163,7 @@ export const MoreSources = ({ service, readOnly }: { service: string; readOnly: 
               }}
             />
             <Button variant="secondary" data-size="sm" onClick={addPage}>
+              <Icon icon={GlobeIcon} />
               {t('setupList.webPagesAdd')}
             </Button>
           </div>
@@ -176,29 +189,26 @@ export const MoreSources = ({ service, readOnly }: { service: string; readOnly: 
           readOnly={readOnly}
         />
         {readOnly ? null : (
-          <>
+          <FileUpload className="own-documents-drop" data-color="accent">
+            <Paragraph data-size="sm" data-field="description">
+              {t('setupList.ownDocumentsDrop')}
+            </Paragraph>
+            <Button asChild variant="secondary" data-size="sm">
+              <span>{t('setupList.ownDocumentsPick')}</span>
+            </Button>
             <input
-              ref={picker}
               type="file"
               multiple
-              hidden
               accept=".pdf,.doc,.docx,.txt,.md"
+              aria-labelledby={`${id}-docs-label`}
+              aria-describedby={`${id}-docs-help`}
               onChange={(e) => {
                 const names = Array.from(e.target.files ?? [], (f) => f.name);
                 update((cur) => ({ ...cur, documents: [...cur.documents, ...names] }));
                 e.target.value = '';
               }}
             />
-            <Button
-              variant="secondary"
-              data-size="sm"
-              className="align-start"
-              aria-describedby={`${id}-docs-help`}
-              onClick={() => picker.current?.click()}
-            >
-              {t('setupList.ownDocumentsPick')}
-            </Button>
-          </>
+          </FileUpload>
         )}
       </Part>
       <p className="meta">{t('setupList.notSavedYet')}</p>

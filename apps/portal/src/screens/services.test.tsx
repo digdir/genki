@@ -63,7 +63,17 @@ const subLink = (tab: string, name: string) =>
     name: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`),
   });
 
-const yamlField = () => screen.getByLabelText('Teknisk tekst (YAML)') as HTMLTextAreaElement;
+const yamlField = () =>
+  screen.getByRole('textbox', { name: 'Oppsettet som YAML' }) as HTMLTextAreaElement;
+
+/** Opens a new service in the example portal at its YAML, under Avansert. */
+const openNewYaml = async () => {
+  await renderAt('#/services/new');
+  await screen.findByRole('heading', { level: 1, name: 'Ny tjeneste' });
+  go('#/services/new/definition');
+  await waitFor(() => expect(window.location.hash).toBe('#/services/new/advanced/yaml'));
+  await screen.findByRole('textbox', { name: 'Oppsettet som YAML' });
+};
 
 describe('service list', () => {
   it('lists services from the design and the live API, with filters and search', async () => {
@@ -133,28 +143,15 @@ describe('the service page against the mock', () => {
 });
 
 describe('new service', () => {
-  it('starts the builder from a job with the assistant asking questions', async () => {
+  it('opens a new service straight in its Oppsett, as one form with every basic area', async () => {
     await renderAt('#/services/new');
     await screen.findByRole('heading', { level: 1, name: 'Ny tjeneste' });
-    expect(screen.getByRole('heading', { name: 'Lag med KI' })).toBeTruthy();
-    expectAccessible();
-
-    fireEvent.click(screen.getByRole('button', { name: /Henter ut opplysninger/ }));
-    expect(await screen.findByText('Satte jobb: henter ut opplysninger')).toBeTruthy();
-    expect(screen.getByRole('heading', { level: 1, name: 'Ny tjeneste' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Lag med KI' })).toBeNull();
+    expect(screen.getByRole('heading', { level: 2, name: 'Grunnleggende' })).toBeTruthy();
+    for (const area of ['Formål og målgruppe', 'Kunnskap', 'Inndata', 'Resultat', 'Modell'])
+      expect(screen.getByRole('heading', { level: 3, name: area })).toBeTruthy();
     expect(screen.getByText(/^Lagres i testutgaven med en gang\./)).toBeTruthy();
-    expect(screen.getByRole('button', { name: /^Formål og målgruppe/ })).toBeTruthy();
     expectAccessible();
-  });
-
-  it('guesses the job from free text', async () => {
-    await renderAt('#/services/new');
-    await screen.findByRole('heading', { level: 1, name: 'Ny tjeneste' });
-    fireEvent.change(screen.getByLabelText('Hva skal tjenesten gjøre?'), {
-      target: { value: 'Utkast til svarbrev på klager' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Start med byggeassistenten' }));
-    expect(await screen.findByText('Satte jobb: lager utkast')).toBeTruthy();
   });
 });
 
@@ -291,7 +288,7 @@ describe('risk level and v3 checks', () => {
   it('offers only the audiences the platform supports under Formål og målgruppe', async () => {
     await openBuilder('#/services/soknadsuttrekk/setup', 'Søknadsuttrekk');
     openArea(/^Formål og målgruppe/);
-    const audience = screen.getByLabelText(/Innbyggere og næringsliv · Kommer senere/);
+    const audience = screen.getByRole('radio', { name: /^Innbyggere og næringsliv\s*Kommer$/ });
     expect(audience.getAttribute('aria-disabled')).toBe('true');
   });
 
@@ -376,12 +373,7 @@ describe('developer view', () => {
   });
 
   it('applies and discards YAML edits', async () => {
-    await renderAt('#/services/new');
-    await screen.findByRole('heading', { level: 1, name: 'Ny tjeneste' });
-    fireEvent.click(screen.getByRole('button', { name: /^Svarer/ }));
-    await screen.findByText('Satte jobb: svarer på spørsmål');
-    go('#/services/new/definition');
-    await screen.findByLabelText('Teknisk tekst (YAML)');
+    await openNewYaml();
     const apply = screen.getByRole('button', { name: 'Bruk endringene' });
     expect(apply.getAttribute('aria-disabled')).toBe('true');
     fireEvent.change(yamlField(), {
@@ -402,12 +394,7 @@ describe('developer view', () => {
 
 describe('pasting the example definitions', () => {
   it.each(serviceExamples)('applies %s in the builder YAML tab', async (_, text) => {
-    await renderAt('#/services/new');
-    await screen.findByRole('heading', { level: 1, name: 'Ny tjeneste' });
-    fireEvent.click(screen.getByRole('button', { name: /^Svarer/ }));
-    await screen.findByText('Satte jobb: svarer på spørsmål');
-    go('#/services/new/definition');
-    await screen.findByLabelText('Teknisk tekst (YAML)');
+    await openNewYaml();
     fireEvent.change(yamlField(), { target: { value: text } });
     fireEvent.click(screen.getByRole('button', { name: 'Bruk endringene' }));
     expect(await screen.findByText('Endringene er brukt i oppsettet.')).toBeTruthy();
@@ -435,20 +422,26 @@ describe('versions', () => {
 });
 
 describe('publishing', () => {
+  const publishPage = async (name: string) =>
+    screen.findByRole('heading', { level: 1, name: `Publiser ${name}` });
+
   it('blocks publishing until the risk level is confirmed', async () => {
-    await openBuilder('#/services?visning=uttrekk-publiser', 'Søknadsuttrekk');
-    const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByRole('heading', { name: 'Publiser Søknadsuttrekk' })).toBeTruthy();
-    expect(within(dialog).getByText(/Publiser erstatter utgaven som er i bruk/)).toBeTruthy();
-    expect(within(dialog).getByText(/Uten testsett ser du ikke/)).toBeTruthy();
-    expect(within(dialog).getByText('Risikonivå bekreftet')).toBeTruthy();
-    expect(
-      within(dialog).getByRole('button', { name: 'Publiser' }).getAttribute('aria-disabled'),
-    ).toBe('true');
-    expectAccessible();
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Gå til risikonivå' }));
+    await renderAt('#/services?visning=uttrekk-publiser');
+    await publishPage('Søknadsuttrekk');
+    await waitFor(() =>
+      expect(window.location.hash).toBe('#/services/soknadsuttrekk/setup/publish'),
+    );
     expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByText(/Publiser erstatter utgaven som er i bruk/)).toBeTruthy();
+    expect(screen.getByText(/Uten testsett ser du ikke/)).toBeTruthy();
+    expect(screen.getByText('Risikonivå bekreftet')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Publiser' }).getAttribute('aria-disabled')).toBe(
+      'true',
+    );
+    expectAccessible();
+    fireEvent.click(screen.getByRole('button', { name: 'Gå til risikonivå' }));
     expect(await screen.findByRole('button', { name: 'Bekreft risikonivå' })).toBeTruthy();
+    expect(window.location.hash).toBe('#/services/soknadsuttrekk/setup/risk');
   });
 
   it('publishes with a reason through the API', async () => {
@@ -457,11 +450,16 @@ describe('publishing', () => {
     openArea(/^Risiko og KI-forordningen/);
     fireEvent.click(screen.getByRole('button', { name: 'Bekreft risikonivå' }));
     fireEvent.click(screen.getAllByRole('button', { name: 'Publiser' })[0] as HTMLElement);
-    const dialog = await screen.findByRole('dialog');
-    const publish = within(dialog).getByRole('button', { name: 'Publiser' });
+    await publishPage('Rapportassistenten');
+    // The draft is checked against the platform first; Publiser waits for it.
+    await waitFor(() =>
+      expect(calls.some((c) => c.url.endsWith('/definitions/validate'))).toBe(true),
+    );
+    expect(await screen.findByText('Alle krav er bestått.')).toBeTruthy();
+    const publish = screen.getByRole('button', { name: 'Publiser' });
     fireEvent.click(publish);
-    expect(within(dialog).getByText(/minst 10 tegn/)).toBeTruthy();
-    fireEvent.change(within(dialog).getByLabelText('Hva er endret, og hvorfor?'), {
+    expect(screen.getByText(/minst 10 tegn/)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Hva er endret, og hvorfor?'), {
       target: { value: 'Bekreftet risikonivå før lansering' },
     });
     fireEvent.click(publish);
@@ -481,11 +479,9 @@ describe('publishing', () => {
   it('publishes to test without changing the live version', async () => {
     await openBuilder('#/services/rapportassistenten', 'Rapportassistenten');
     fireEvent.click(screen.getByRole('button', { name: 'Publiser som testutgave' }));
-    const dialog = await screen.findByRole('dialog');
-    expect(
-      within(dialog).getByText(/Publiser som testutgave gjør utgaven tilgjengelig/),
-    ).toBeTruthy();
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Publiser som testutgave' }));
+    await publishPage('Rapportassistenten');
+    expect(screen.getByText(/Publiser som testutgave gjør utgaven tilgjengelig/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Publiser som testutgave' }));
     expect(await screen.findByText('Utgave 8 er publisert som testutgave.')).toBeTruthy();
   });
 });

@@ -616,6 +616,12 @@ a:not([class^='ds-'], [class*=' ds-']):hover {
   border-bottom: 3px solid transparent;
 }
 
+.link-tabs a.link-tab-with-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .link-tabs a:hover {
   border-bottom-color: var(--ds-color-accent-border-subtle);
 }

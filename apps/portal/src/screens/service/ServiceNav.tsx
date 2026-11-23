@@ -1,7 +1,9 @@
 import { useFormat } from '@genai/i18n/react';
+import { CpuIcon, PaletteIcon, PencilBoardIcon } from '@navikt/aksel-icons';
 import { useEffect } from 'react';
 import type { ApiClient } from '../../api';
 import { isActiveBatch } from '../../api/batch-runs';
+import type { IconComponent } from '../../components/Icon';
 import { LinkTabs } from '../../components/LinkTabs';
 import { useAsync } from '../../hooks';
 import { useT } from '../../i18n';
@@ -16,7 +18,14 @@ import {
   tabOf,
   type Edition,
   type ServiceSection,
+  type ServiceTab,
 } from './sections';
+
+const tabIcons: Partial<Record<ServiceTab, IconComponent>> = {
+  setup: PencilBoardIcon,
+  interface: PaletteIcon,
+  advanced: CpuIcon,
+};
 
 export const ServiceNav = ({
   id,
@@ -24,12 +33,15 @@ export const ServiceNav = ({
   sections,
   current,
   edition = 'test',
+  icons = false,
 }: {
   id: string;
   name?: string | undefined;
   sections: ServiceSection[];
   current: ServiceSection;
   edition?: Edition;
+  /** The tabs of the new Oppsett carry icons; the other tabs have none to match. */
+  icons?: boolean;
 }) => {
   const t = useT();
   const tab = tabOf(current);
@@ -47,6 +59,7 @@ export const ServiceNav = ({
         key: each,
         label: t(tabLabels[each]),
         href: `#${editionPath(id, target, edition)}`,
+        icon: icons ? tabIcons[each] : undefined,
       }))}
     />
   );

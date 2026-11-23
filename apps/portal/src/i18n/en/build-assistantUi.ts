@@ -237,7 +237,7 @@ export const assistantUi = {
     applied: 'The changes are applied to the setup.',
     discarded: 'The changes are discarded.',
     unreadable: 'The YAML could not be read.',
-    label: 'Technical text (YAML)',
+    label: 'The setup as YAML',
     description:
       'The whole setup as text. Stored with each edition, and can be checked in to a code repository.',
     apply: 'Apply the changes',
