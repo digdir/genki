@@ -1079,7 +1079,8 @@ export const knowledgeWork = (
           )
         : undefined;
     // A parts job ends the waits on pages only under the conversion's own key, and stores its pages
-    // before it fails on its parts, so its retry reads them and asks no converter again.
+    // before it fails on its parts, so a Docling job's retry derives its parts from Blob and does
+    // not call Docling again.
     const { sent, busy, held } = await conversions.store(
       {
         ...key,

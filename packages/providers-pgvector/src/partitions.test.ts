@@ -449,15 +449,26 @@ describe('generations as partitions on the knowledge server', () => {
         await busy.query(
           `lock table ${partitionOf('kn_chunks', 'g-20261123-0401')} in row exclusive mode`,
         );
-        const step = addChunkColumns(owner, { lockTimeoutMs: 1500 });
-        await new Promise((resolve) => setTimeout(resolve, 200));
+        const step = addChunkColumns(owner, { lockTimeoutMs: 3000 });
+        // Until the step waits for the lock on the table being written.
+        for (let i = 0; i < 100; i++) {
+          const { rows } = await admin.query(
+            `select 1 from pg_locks where relation = to_regclass($1) and not granted`,
+            [partitionOf('kn_chunks', 'g-20261123-0401')],
+          );
+          if (rows.length > 0) break;
+          await new Promise((resolve) => setTimeout(resolve, 20));
+        }
 
-        const started = Date.now();
-        await admin.query(`select count(*) from kn_chunks`);
-        const waited = Date.now() - started;
-
+        const search = await admin.connect();
+        try {
+          await search.query(`set lock_timeout = '100ms'`);
+          await expect(search.query(`select count(*) from kn_chunks`)).resolves.toBeDefined();
+        } finally {
+          await search.query('reset lock_timeout');
+          search.release();
+        }
         expect(await step).toBe(false);
-        expect(waited).toBeLessThan(500);
       } finally {
         await busy.query('rollback');
         busy.release();

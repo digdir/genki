@@ -555,6 +555,10 @@ export const createEngineSwitchesModule =
           ? t('operations.switchMissingModel', { model: embedding.model })
           : undefined;
       const knowledge = onKnowledge(target.id);
+      const pipelines = (await deps.ingestion.list(tenant, item.id)).filter((p) => p.spec.enabled);
+      // A parts pipeline reads parts only the knowledge database has: neither a copy nor a
+      // re-ingestion off it leaves a dataset its pipeline can fill (issue 635).
+      const parts = knowledge ? undefined : partsProblem(pipelines);
       const copyProblem = knowledge
         ? (missingModel ??
           (embedding && !modelAllowed(item, embedding.model)
@@ -565,6 +569,7 @@ export const createEngineSwitchesModule =
             : undefined) ??
           (!copyable(item) ? t('operations.switchKnowledgeCopyExport') : undefined))
         : (missingModel ??
+          parts ??
           (current && embedding && current.model !== embedding.model
             ? t('operations.switchCopyNeedsSameModel', {
                 current: current.model,
@@ -573,14 +578,13 @@ export const createEngineSwitchesModule =
             : !readable(item)
               ? t('operations.switchCannotRead')
               : undefined));
-      const pipelines = (await deps.ingestion.list(tenant, item.id)).filter((p) => p.spec.enabled);
       const reingestProblem =
         missingModel ??
         (pipelines.length === 0
           ? t('operations.switchNoPipeline')
           : knowledge
             ? await knowledgeProblem(tenant, item)
-            : partsProblem(pipelines));
+            : parts);
       return {
         target,
         engine,

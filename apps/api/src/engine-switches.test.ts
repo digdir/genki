@@ -937,7 +937,7 @@ describe('operators switching the engine of a platform dataset', () => {
     });
   });
 
-  it('a switch off the knowledge database cannot re-ingest with a parts chunking', async () => {
+  it('a switch to an engine other than the knowledge database cannot re-ingest or copy a parts pipeline', async () => {
     const entries = new InMemoryConfigEntryStore();
     const booted = await boot({ entries });
     const { call } = booted;
@@ -975,6 +975,13 @@ describe('operators switching the engine of a platform dataset', () => {
         as: 'drift',
       }),
     );
+
+    // A copy would leave a pipeline whose every document fails to chunk.
+    expect(estimate.copy).toMatchObject({
+      available: false,
+      reason:
+        'Innlesingen kudos deler opp etter konverteringens deler, som bare finnes i kunnskapsdatabasen.',
+    });
 
     expect(estimate.reingest).toMatchObject({
       available: false,
