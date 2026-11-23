@@ -438,6 +438,49 @@ describe('generations as partitions on the knowledge server', () => {
       expect(await addChunkColumns(owner)).toBe(true);
     });
 
+    it('searches do not wait while the chunk columns step waits on a generation being written', async () => {
+      await withoutColumns();
+      const d = dataset('digdir/deler-skrives', 8);
+      const writer = writerFor();
+      await writer.prepare(d, 'g-20261123-0401');
+      const busy = await admin.connect();
+      try {
+        await busy.query('begin');
+        await busy.query(
+          `lock table ${partitionOf('kn_chunks', 'g-20261123-0401')} in row exclusive mode`,
+        );
+        const step = addChunkColumns(owner, { lockTimeoutMs: 1500 });
+        await new Promise((resolve) => setTimeout(resolve, 200));
+
+        const started = Date.now();
+        await admin.query(`select count(*) from kn_chunks`);
+        const waited = Date.now() - started;
+
+        expect(await step).toBe(false);
+        expect(waited).toBeLessThan(500);
+      } finally {
+        await busy.query('rollback');
+        busy.release();
+      }
+      expect(await addChunkColumns(owner)).toBe(true);
+    });
+
+    it('a generation table that lacks the columns its parent has gets them from the next step', async () => {
+      expect(await addChunkColumns(owner)).toBe(true);
+      const d = dataset('digdir/deler-etter', 8);
+      const writer = writerFor();
+      await writer.prepare(d, 'g-20261123-0501');
+      const table = partitionOf('kn_chunks', 'g-20261123-0501');
+      // As when it was prepared while the step ran.
+      await admin.query(
+        `alter table ${table} ${partsColumns.map((c) => `drop column ${c}`).join(', ')}`,
+      );
+
+      expect(await addChunkColumns(owner)).toBe(true);
+
+      expect(await columnsOf(table)).toEqual(partsColumns);
+    });
+
     it('the chunk columns step answers false after its lock timeout and leaves the migration alone', async () => {
       await withoutColumns();
       const holder = await admin.connect();

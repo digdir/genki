@@ -23,6 +23,7 @@ responsibilities:
   - Knowledge listings: list a source without fetching what its listing can compare, and load one document from its record
   - Document records on the knowledge database: plan a run against a pipeline's records, write its changes, and index one document (ADR 0042)
   - Wait out a throttled embedding model in an index job, with one pause per model shared by the worker's jobs (throttledEmbedder)
+  - Chunk a file's stored conversion parts a page a chunk, with no furniture and each chunk's span of the conversion's text (partsUnitChunks, ADR 0055)
 files:
   - packages/ingest/src/throttled-embedder.ts
   - packages/ingest/src/pipeline.ts
@@ -38,6 +39,7 @@ files:
   - packages/ingest/src/docling-parts.ts
   - packages/ingest/src/docling-output.ts
   - packages/ingest/src/text-layer-parts.ts
+  - packages/ingest/src/parts-unit.ts
   - packages/ingest/src/docling-walk.ts
   - packages/ingest/src/docling.ts
 input: Source config

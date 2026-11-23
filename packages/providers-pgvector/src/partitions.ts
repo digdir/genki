@@ -595,8 +595,9 @@ const chunkColumnsLockTimeoutMs = 1000;
  * server's migration, which every knowledge use waits for: adding a column to the partitioned
  * parent locks every attached partition, which searches read all day, so only a parts index job
  * waits for it. One statement a table, so the lock is taken once; nullable columns with no default
- * change only the catalog. Tables that have the columns take no lock. False when a lock was not had
- * in `lockTimeoutMs`, 1 s by default; nothing is changed then.
+ * change only the catalog. Tables that have the columns take no lock, so it is cheap to run before
+ * every parts write: a generation prepared while it ran gets its columns from the next run. False
+ * when a lock was not had in `lockTimeoutMs`, 1 s by default; nothing is changed then.
  */
 export const addChunkColumns = async (
   owner: Pool,
@@ -611,7 +612,9 @@ export const addChunkColumns = async (
     const { rows: standalone } = await client.query<{ generation: string }>(
       `select generation from kn_generations where state = 'standalone' order by generation`,
     );
-    const tables = ['kn_chunks', ...standalone.map((g) => partitionOf('kn_chunks', g.generation))];
+    // The parent last: its lock holds every attached partition, which searches read, so it is
+    // taken only once every table being written has its columns.
+    const tables = [...standalone.map((g) => partitionOf('kn_chunks', g.generation)), 'kn_chunks'];
     for (const table of tables) {
       const { rows } = await client.query<{ name: string }>(
         `select attname as name from pg_attribute

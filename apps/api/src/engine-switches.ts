@@ -6,7 +6,13 @@ import {
   type RetrievalComparison,
   type RetrievalRun,
 } from '@genai/eval';
-import { copyOwner, embedIndexDocument, knowledgeSourceRefusal } from '@genai/ingest';
+import {
+  copyOwner,
+  embedIndexDocument,
+  isPartsStrategy,
+  knowledgeSourceRefusal,
+  type PipelineSpec,
+} from '@genai/ingest';
 import { onKnowledgeServer } from '@genai/composition';
 import { residencyAllows, type PortContext } from '@genai/kernel';
 import {
@@ -417,6 +423,12 @@ export const createEngineSwitchesModule =
       return undefined;
     };
 
+    /** A parts chunking reads conversion parts, which only the knowledge database stores (issue 635). */
+    const partsProblem = (pipelines: { id: string; spec: PipelineSpec }[]) => {
+      const parts = pipelines.find((p) => isPartsStrategy(p.spec.chunking.strategy));
+      return parts ? t('operations.switchPartsPipeline', { pipeline: parts.id }) : undefined;
+    };
+
     const exporterOf = (item: CatalogItem, signal: AbortSignal) => {
       try {
         return deps.knowledge.open(
@@ -568,7 +580,7 @@ export const createEngineSwitchesModule =
           ? t('operations.switchNoPipeline')
           : knowledge
             ? await knowledgeProblem(tenant, item)
-            : undefined);
+            : partsProblem(pipelines));
       return {
         target,
         engine,

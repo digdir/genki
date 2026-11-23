@@ -197,7 +197,8 @@ export interface StoredConversions {
    * the same converter when they changed while the job was queued (issue 945); a `jobKey` of another
    * file or converter is refused. A parts conversion does the same with the parts keys, so storing
    * parts ends only the waits on parts and storing pages only the waits on pages (issue 635); a
-   * `jobKey` of the other kind is refused. It calls `send` in that transaction for each waiting record that
+   * `jobKey` of the other kind is refused. A parts `jobKey` may name another converter of the same
+   * file, as a text-layer job whose parts come from Docling's output in Blob. It calls `send` in that transaction for each waiting record that
    * waits on nothing else. A record whose
    * index job could not be sent, since one is still queued or running (`send` answered null), keeps
    * its wait, under the key it had, and is answered as `busy`: the convert job is tried again. A record that still waits on

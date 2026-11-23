@@ -36,6 +36,7 @@ Saving a pipeline into such a dataset answers `400` with one of these errors:
 
 - `spec.source.kind`: `a source of kind database cannot fill a dataset on the knowledge database yet`, and the same for `episerver` and `parquet`.
 - `spec.phrases`: `search phrases cannot fill a dataset on the knowledge database until recipes hold them`.
+- `spec.chunking.strategy.kind`: `a parts chunking reads stored conversion parts, which only a kudos source has yet`, for a `parts-unit` chunking of any other source. Saving a `parts-unit` chunking into a dataset that is not on the knowledge database answers `a parts chunking needs a dataset on the knowledge database, where conversion parts are stored`, and an engine switch off the knowledge database cannot re-ingest a dataset whose pipeline chunks parts.
 - `id`: `a dataset on the knowledge database is filled by one pipeline until co-owners are built; it has <pipelines>`, when another pipeline already fills the dataset.
 - `spec.chunking`: `chunking changes through a new generation, which is not built yet; the dataset's generation keeps the chunking it was filled with`, when a saved pipeline's `chunking` changes, also after the pipeline was deleted and saved again. A pipeline's first run also records its chunking on the generation, which keeps it.
 

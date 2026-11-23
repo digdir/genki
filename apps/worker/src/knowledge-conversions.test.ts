@@ -4083,7 +4083,7 @@ describe('parts chunking (issue 635)', () => {
     expect(await conversions.waiting(key)).toHaveLength(1);
   }, 60_000);
 
-  it('a PDF with only a stored text layer is fetched again and gets text-layer-parts when a pipeline asks for parts', async () => {
+  it('a PDF with only a stored text layer is fetched again and gets text-layer-parts on a worker without Docling', async () => {
     await clearConvertJobs();
     const { report, file, pages } = await textLayerOnly('deler-tekstlag');
     const s = await scenario({ chunking: partsChunking });
@@ -4255,6 +4255,124 @@ describe('parts chunking (issue 635)', () => {
       'parts.text-layer-parts': 1,
     });
     expect((await runRecords.find(run))?.report).not.toHaveProperty('parts.docling-parts');
+  }, 60_000);
+
+  it("a parts job on a worker without Docling reads Docling's parts from Blob", async () => {
+    await clearConvertJobs();
+    const report = reportOf('deler-uten-docling');
+    const file = await sha(report);
+    const blob = seedContainer();
+    await blob.put(file, ['Docling leste forsiden.', 'Docling leste baksiden.']);
+    const s = await scenario({ chunking: partsChunking, nativeOutputs: blob.store });
+    await seed(s, file.slice(0, 2));
+    await s.file('rapport.pdf', report);
+
+    await ingest(s);
+    await drain(s);
+
+    expect(s.converted).toEqual([]);
+    expect((await partsChunks(s.generation)).map((c) => c.text)).toEqual([
+      'Docling leste forsiden.',
+      'Docling leste baksiden.',
+    ]);
+  }, 60_000);
+
+  it('a parts convert job whose parts derivation throws stores the pages and calls Docling once', async () => {
+    await clearConvertJobs();
+    const server = await doclingServer(() => ({
+      status: 200,
+      body: JSON.stringify({
+        status: 'success',
+        errors: [],
+        document: { filename: 'document.pdf', json_content: partsBreaking() },
+      }),
+    }));
+    const blob = seedContainer();
+    const s = await scenario({
+      chunking: partsChunking,
+      nativeOutputs: blob.store,
+      docling: { current: doclingFor(server.url) },
+    });
+    const pdf = reportOf('deler-feiler');
+    const file = await sha(pdf);
+    await s.file('rapport.pdf', pdf);
+    const { sent } = await ingest(s);
+    const convert = sent.find((j) => j.queue === 'knowledge.convert');
+    if (!convert) throw new Error('no convert job');
+    const run = () =>
+      handler(
+        s.work.knowledge,
+        convert.queue,
+      )(job(convert.queue, convert.data)).catch((error: Error) => error.message);
+
+    expect(await run()).toMatch(/failed/);
+    expect((await doclingRows(file)).map((r) => r.derivation)).toEqual(['docling-pages']);
+    await run();
+
+    expect(server.requests()).toBe(1);
+  }, 60_000);
+
+  it('a parts job uses a stored Docling refusal and does not call Docling again', async () => {
+    await clearConvertJobs();
+    const server = await doclingServer(() => recordedAnswer('failure-corrupt'));
+    const holder = { current: doclingFor(server.url) };
+    const pages = await scenario({ docling: holder });
+    const pdf = reportOf('deler-avvist');
+    const file = await sha(pdf);
+    await pages.file('rapport.pdf', pdf);
+    await ingest(pages);
+    await drain(pages);
+    await admin.query(
+      `delete from src_conversions where sha256 = $1 and derivation like '%-parts'`,
+      [file],
+    );
+    const before = server.requests();
+    const s = await scenario({ chunking: partsChunking, docling: holder });
+    await s.file('rapport.pdf', pdf);
+
+    await ingest(s);
+    await drain(s);
+
+    expect(server.requests() - before).toBe(0);
+    expect((await partsChunks(s.generation)).map((c) => c.page_from)).toEqual([1, 2]);
+  }, 60_000);
+
+  it('a chunk from parts longer than maximumLength is stored whole', async () => {
+    await clearConvertJobs();
+    const { report, pages } = await textLayerOnly('deler-lange');
+    const s = await scenario({
+      chunking: {
+        ...partsChunking,
+        maximumLength: 20,
+        strategy: { kind: 'parts-unit', splitMaxLength: 20 },
+      },
+    });
+    await s.file('rapport.pdf', report);
+
+    await ingest(s);
+    await drain(s);
+
+    expect(pages.every((p) => p.length > 20)).toBe(true);
+    expect((await partsChunks(s.generation)).map((c) => c.text)).toEqual(pages);
+  }, 60_000);
+
+  it('the recipe records the derivations a parts chunking reads', async () => {
+    await clearConvertJobs();
+    const s = await scenario({ chunking: partsChunking });
+
+    await ingest(s);
+
+    const { rows } = await admin.query<{ chunking: Record<string, unknown> }>(
+      `select recipe -> 'chunking' -> 'docs' as chunking from kn_generations where generation = $1`,
+      [s.generation],
+    );
+    expect(rows[0]?.chunking).toMatchObject({
+      strategy: { kind: 'parts-unit', splitMaxLength: 4000 },
+      reads: [
+        { converter: 'docling', derivation: 'docling-parts', version: 1 },
+        { converter: 'text-layer', derivation: 'text-layer-parts', version: 1 },
+      ],
+    });
   }, 60_000);
 
   it('a missed lock on the chunk columns fails only a parts index job', async () => {

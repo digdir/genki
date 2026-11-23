@@ -117,6 +117,10 @@ describe('pipelines into a dataset on the knowledge database', () => {
       source: { kind: 'kudos', types: ['Årsrapport'] },
     });
     expect(kudos.ok).toBe(true);
+  });
+
+  it('a parts strategy is refused for a dataset off the knowledge database', async () => {
+    const parts = { chunking: { strategy: { kind: 'parts-unit', splitMaxLength: 4000 } } };
     const elsewhere = await boot().save(onPlatform, 'kudos', {
       ...parts,
       source: { kind: 'kudos', types: ['Årsrapport'] },

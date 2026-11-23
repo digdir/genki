@@ -133,8 +133,9 @@ export interface KnowledgeHandlerDeps {
   /** Whether the generation exists, read as the writer, so only a missing one needs the owner. */
   generationExists?(generation: string): Promise<boolean>;
   /**
-   * Adds the columns a chunk made from parts fills to `kn_chunks`, as the knowledge server's owner,
-   * once: false when it could not get its lock in time (issue 635). Only a parts index job waits for
+   * Adds the columns a chunk made from parts fills to `kn_chunks` and to tables not yet attached, as
+   * the knowledge server's owner, before every parts write: false when it could not get its lock in
+   * time (issue 635). Only a parts index job waits for
    * it; chunks from pages never name those columns. Without it, the columns are taken as there.
    */
   chunkColumns?(): Promise<boolean>;
@@ -999,9 +1000,12 @@ export const knowledgeWork = (
     const found = await conversions.find(job.data.file, [
       { converter: key.converter, derivation: derivationOf(key.converter), kept: false },
     ]);
-    const kept =
-      !partsKey && found && conversionKey(found) === conversionKey(key) ? found : undefined;
-    if (kept && kept.failure !== 'unreachable')
+    const kept = found && conversionKey(found) === conversionKey(key) ? found : undefined;
+    // A job asked for parts converts again to make them, but never asks a converter again about a
+    // file it refused: the refusal stands, and the text layer may still give parts (issue 635).
+    const keptRefusal =
+      partsKey && kept?.failure && kept.failure !== 'unreachable' ? kept.failure : undefined;
+    if (!partsKey && kept && kept.failure !== 'unreachable')
       stored = {
         pages: kept.pages,
         // Kept with its Blob path, so a later try never stores the conversion without it.
@@ -1012,6 +1016,8 @@ export const knowledgeWork = (
       let file: DocumentFile | undefined;
       try {
         file = await fetchFile(job, run, sender);
+        if (keptRefusal)
+          throw new ConversionRefused(file.name, keptRefusal as ConversionRefused['reason']);
         const conversion = await converter.convert(file);
         const made = conversion.converter;
         if (made.name !== key.converter || made.version !== key.version)
@@ -1072,8 +1078,8 @@ export const knowledgeWork = (
             partsKey,
           )
         : undefined;
-    if (partsKey) endParts(madeParts);
-    // A parts job ends the waits on pages only under the conversion's own key.
+    // A parts job ends the waits on pages only under the conversion's own key, and stores its pages
+    // before it fails on its parts, so its retry reads them and asks no converter again.
     const { sent, busy, held } = await conversions.store(
       {
         ...key,
@@ -1085,6 +1091,7 @@ export const knowledgeWork = (
       sendIndex,
       partsKey ? undefined : jobKeyOf(job),
     );
+    if (partsKey) endParts(madeParts);
     // A replacement run's text-layer fill sends its records on to Docling (issue 749).
     if (run.replaces && key.converter === textLayer.name && deps.docling) {
       const startAfter = heavyWorkStart(deps.heavy.window(), deps.heavy.now?.() ?? new Date());

@@ -227,10 +227,14 @@ export const knowledgeConversionsOf = (writer: Pool): StoredConversions => ({
       const parts = isPartsDerivation(conversion.derivation);
       const key = conversionKey({ ...conversion, parts });
       // A job's key names its file and converter; only its version and settings may differ (issue
-      // 945). It waits on parts or pages as the conversion is.
+      // 945). It waits on parts or pages as the conversion is. A job asked for parts names its
+      // file and may get parts of another converter, as Docling's from Blob for a text-layer job
+      // (issue 635).
       if (
         jobKey !== undefined &&
-        (!jobKey.startsWith(`${conversion.sha256}:${conversion.converter}:`) ||
+        (!jobKey.startsWith(
+          parts ? `${conversion.sha256}:` : `${conversion.sha256}:${conversion.converter}:`,
+        ) ||
           isPartsKey(jobKey) !== parts)
       )
         throw new Error('a convert job key names another file or converter');
