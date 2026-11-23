@@ -26,7 +26,7 @@ resource hostVault 'Microsoft.KeyVault/vaults@2024-11-01' existing = {
   name: take('${name}-hostkv', 24)
 }
 
-resource environment 'Microsoft.App/managedEnvironments@2025-02-02-preview' existing = {
+resource environment 'Microsoft.App/managedEnvironments@2025-07-01' existing = {
   name: '${name}-hosted-env'
 }
 
@@ -34,7 +34,7 @@ var bound = filter(hostedHostnames, h => h.stage != 'none')
 var certified = filter(bound, h => h.stage == 'certificates')
 var certificateName = toObject(hostedHostnames, h => toLower(h.hostname), h => replace(toLower(h.hostname), '.', '-'))
 
-resource certificates 'Microsoft.App/managedEnvironments/managedCertificates@2025-02-02-preview' = [for h in certified: {
+resource certificates 'Microsoft.App/managedEnvironments/managedCertificates@2025-07-01' = [for h in certified: {
   parent: environment
   name: certificateName[toLower(h.hostname)]
   location: location
@@ -45,7 +45,7 @@ resource certificates 'Microsoft.App/managedEnvironments/managedCertificates@202
   }
 }]
 
-resource host 'Microsoft.App/containerApps@2025-02-02-preview' = {
+resource host 'Microsoft.App/containerApps@2025-07-01' = {
   name: '${name}-assistant'
   location: location
   tags: tags

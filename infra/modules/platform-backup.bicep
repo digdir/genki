@@ -50,7 +50,7 @@ resource blobDnsLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2024
   properties: { registrationEnabled: false, virtualNetwork: { id: vnetId } }
 }
 
-resource endpoint 'Microsoft.Network/privateEndpoints@2024-05-01' = {
+resource endpoint 'Microsoft.Network/privateEndpoints@2024-10-01' = {
   name: '${name}-blob'
   location: location
   tags: tags
@@ -62,7 +62,7 @@ resource endpoint 'Microsoft.Network/privateEndpoints@2024-05-01' = {
   }
 }
 
-resource endpointDns 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2024-05-01' = {
+resource endpointDns 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2024-10-01' = {
   parent: endpoint
   name: 'default'
   properties: {

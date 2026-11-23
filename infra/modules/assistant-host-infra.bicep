@@ -38,7 +38,7 @@ module hostVault 'keyvault.bicep' = {
   }
 }
 
-resource environment 'Microsoft.App/managedEnvironments@2025-02-02-preview' = {
+resource environment 'Microsoft.App/managedEnvironments@2025-07-01' = {
   name: '${name}-hosted-env'
   location: location
   tags: tags

@@ -9,7 +9,7 @@ param postgresSubnetPrefix string
 param endpointsSubnetPrefix string = ''
 param postgresServerName string
 
-resource vnet 'Microsoft.Network/virtualNetworks@2024-05-01' = {
+resource vnet 'Microsoft.Network/virtualNetworks@2024-10-01' = {
   name: name
   location: location
   tags: tags

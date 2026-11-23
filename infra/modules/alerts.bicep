@@ -157,7 +157,7 @@ resource postgresConnections 'Microsoft.Insights/metricAlerts@2018-03-01' = {
   }
 }
 
-resource docling 'Microsoft.App/containerApps@2025-02-02-preview' existing = {
+resource docling 'Microsoft.App/containerApps@2025-07-01' existing = {
   name: doclingAppName
 }
 

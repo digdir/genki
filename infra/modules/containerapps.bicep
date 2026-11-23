@@ -78,7 +78,7 @@ resource storage 'Microsoft.Storage/storageAccounts@2023-05-01' existing = {
   name: storageAccountName
 }
 
-resource environment 'Microsoft.App/managedEnvironments@2025-02-02-preview' = {
+resource environment 'Microsoft.App/managedEnvironments@2025-07-01' = {
   name: '${name}-env'
   location: location
   tags: tags
@@ -106,7 +106,7 @@ resource environmentLogs 'Microsoft.Insights/diagnosticSettings@2021-05-01-previ
   }
 }
 
-resource dataStorage 'Microsoft.App/managedEnvironments/storages@2025-02-02-preview' = {
+resource dataStorage 'Microsoft.App/managedEnvironments/storages@2025-07-01' = {
   parent: environment
   name: 'data'
   properties: {
@@ -124,7 +124,7 @@ var withHost = filter(appNames, app => !empty(hostnames[app]))
 
 var certificateNames = toObject(appNames, app => app, app => existingCertificates[?app] ?? replace(hostnames[app], '.', '-'))
 
-resource certificates 'Microsoft.App/managedEnvironments/managedCertificates@2025-02-02-preview' = [for app in withHost: if (customDomainsStage == 'certificates' && empty(existingCertificates[?app] ?? '')) {
+resource certificates 'Microsoft.App/managedEnvironments/managedCertificates@2025-07-01' = [for app in withHost: if (customDomainsStage == 'certificates' && empty(existingCertificates[?app] ?? '')) {
   parent: environment
   name: certificateNames[app]
   location: location
@@ -237,7 +237,7 @@ var apiTraffic = empty(apiLiveRevision)
         : [{ revisionName: apiPreviousRevision, weight: 0, label: 'previous' }]
     )
 
-resource api 'Microsoft.App/containerApps@2025-02-02-preview' = {
+resource api 'Microsoft.App/containerApps@2025-07-01' = {
   name: '${name}-api'
   location: location
   tags: tags
@@ -284,7 +284,7 @@ resource api 'Microsoft.App/containerApps@2025-02-02-preview' = {
   }
 }
 
-resource worker 'Microsoft.App/containerApps@2025-02-02-preview' = {
+resource worker 'Microsoft.App/containerApps@2025-07-01' = {
   name: '${name}-worker'
   location: location
   tags: tags
@@ -333,7 +333,7 @@ resource worker 'Microsoft.App/containerApps@2025-02-02-preview' = {
 // in /tmp deleted after each region, and WARNING logs, which still name the file and page when Tesseract fails on
 // one. The platform identity is there only to pull the image and read the key: code in the container, which
 // parses untrusted PDFs, cannot get a token for it.
-resource docling 'Microsoft.App/containerApps@2025-02-02-preview' = {
+resource docling 'Microsoft.App/containerApps@2025-07-01' = {
   name: '${name}-docling'
   location: location
   tags: tags
@@ -421,7 +421,7 @@ var platformTenantEnv = filter(identityPlainEnv, pair => pair.name == 'PLATFORM_
 // Azure evaluates a resource it does not deploy, so each read of knowledgeSetup sits behind `setupOn ?`.
 var setupOn = !empty(knowledgeSetup)
 
-resource knowledgeSetupJob 'Microsoft.App/jobs@2025-02-02-preview' = if (setupOn) {
+resource knowledgeSetupJob 'Microsoft.App/jobs@2025-07-01' = if (setupOn) {
   name: '${name}-knowledge-setup'
   location: location
   tags: tags
@@ -480,7 +480,7 @@ var platformLoginEnv = [
 var dumpFile = '/work/platform.dump'
 var tokenFile = '/work/pgtoken'
 
-resource platformBackupJob 'Microsoft.App/jobs@2025-02-02-preview' = if (backupOn) {
+resource platformBackupJob 'Microsoft.App/jobs@2025-07-01' = if (backupOn) {
   name: '${name}-pg-backup'
   location: location
   tags: tags
@@ -548,7 +548,7 @@ resource platformBackupJob 'Microsoft.App/jobs@2025-02-02-preview' = if (backupO
 }
 
 // The restore drill's row counts, run by .github/workflows/platform-restore-drill.yml against the throwaway server.
-resource restoreCheckJob 'Microsoft.App/jobs@2025-02-02-preview' = if (backupOn) {
+resource restoreCheckJob 'Microsoft.App/jobs@2025-07-01' = if (backupOn) {
   name: '${name}-pg-restore-check'
   location: location
   tags: tags
@@ -613,7 +613,7 @@ var webApps = [
   }
 ]
 
-resource web 'Microsoft.App/containerApps@2025-02-02-preview' = [for item in webApps: {
+resource web 'Microsoft.App/containerApps@2025-07-01' = [for item in webApps: {
   name: '${name}-${item.app}'
   location: location
   tags: tags
