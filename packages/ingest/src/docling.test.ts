@@ -676,7 +676,11 @@ describe('the Docling client', () => {
     const cluster = await doclingServer([
       JSON.stringify({
         status: `Partial Success of hemmelig-rapport.pdf ${long}`,
-        errors: [{ component_type: 'pipeline', category: long, page_no: 1 }],
+        errors: [
+          { component_type: 'pipeline', category: long, page_no: 1 },
+          // Letters all the way to the end make a backtracking pattern do its work.
+          { component_type: 'pipeline', category: `${'a'.repeat(50_000)}!`, page_no: 2 },
+        ],
         document: { filename: 'hemmelig-rapport.pdf', json_content: null },
       }),
     ]);
