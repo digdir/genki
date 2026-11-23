@@ -38,8 +38,8 @@ const recording = (base: typeof globalThis.fetch = mockFetch()) => {
 
 const newFlow = async (fetch?: typeof globalThis.fetch) => {
   await renderAt('#/developer/step-flows', fetch);
-  fireEvent.click(await screen.findByRole('link', { name: 'Ny stegflyt' }));
-  await screen.findByRole('heading', { level: 1, name: 'Ny stegflyt' });
+  fireEvent.click(await screen.findByRole('link', { name: 'Ny arbeidsflyt' }));
+  await screen.findByRole('heading', { level: 1, name: 'Ny arbeidsflyt' });
 };
 
 const addStep = (name: RegExp) => {
@@ -65,7 +65,7 @@ describe('a new step flow', () => {
   it('opens with a back link to the step flows, not under a new service', async () => {
     await newFlow();
     expect(screen.queryByRole('navigation', { name: 'Brødsmuler' })).toBeNull();
-    expect(screen.getByRole('link', { name: 'Stegflyter' }).getAttribute('href')).toBe(
+    expect(screen.getByRole('link', { name: 'Arbeidsflyter' }).getAttribute('href')).toBe(
       '#/developer/step-flows',
     );
     expect(screen.queryByRole('link', { name: 'Ny tjeneste' })).toBeNull();
@@ -127,7 +127,7 @@ describe('a step that calls an operation', () => {
         .map((li) => li.textContent),
     ).toEqual([
       'OppfyltOperasjonen er gjennomgått og tatt i bruk her',
-      'OppfyltTypen operasjon er i produksjon i dette miljøet',
+      'OppfyltTypen operasjon er i produksjon her',
       'Sjekkes når tjenesten publiseresTjenesten fjerner personopplysninger før modellkall',
       'Sjekkes når tjenesten publiseresModellen har databehandleropplysninger',
     ]);
@@ -230,6 +230,6 @@ describe('saving a step flow and rights', () => {
     expect(
       await screen.findByText('Du trenger rettigheten «Administrere tjenester».'),
     ).toBeTruthy();
-    expect(screen.queryByText('Kunne ikke lagre stegflyten. Prøv igjen.')).toBeNull();
+    expect(screen.queryByText('Kunne ikke lagre arbeidsflyten. Prøv igjen.')).toBeNull();
   });
 });

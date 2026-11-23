@@ -211,7 +211,7 @@ describe('Prøveområde', () => {
     expect(panel.style.position).toBe('fixed');
     expect(panel.style.inset).toMatch(/^0(px)?$/);
     expect(screen.getByText('Søk og svar med Kudos-rapporter')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Datasett: Kudos-rapporter' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Dokumentsamlinger: Kudos-rapporter' })).toBeTruthy();
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(onClose).toHaveBeenCalledOnce();
     cleanup();
@@ -222,7 +222,9 @@ describe('Prøveområde', () => {
     expect(wide.getAttribute('aria-modal')).toBe('false');
     expect(wide.style.position).toBe('');
     expect(
-      screen.getByText('Med ferdigheten Skrive vedtaksbrev slik den er i siste publiserte versjon'),
+      screen.getByText(
+        'Med arbeidsinstruksen Skrive vedtaksbrev slik den er i siste publiserte utgave',
+      ),
     ).toBeTruthy();
   });
 
@@ -235,7 +237,9 @@ describe('Prøveområde', () => {
     });
 
     expect(
-      screen.getByText('Med ferdigheten Klarspråk i vedtak slik den er i siste publiserte versjon'),
+      screen.getByText(
+        'Med arbeidsinstruksen Klarspråk i vedtak slik den er i siste publiserte utgave',
+      ),
     ).toBeTruthy();
     expect(
       screen.queryByRole('button', { name: 'Hva sier evalueringene om digital veiledning?' }),
@@ -408,7 +412,7 @@ describe('Prøveområde', () => {
     expect(
       (within(setupPanel()).getByRole('combobox', { name: 'Start fra' }) as HTMLSelectElement)
         .selectedOptions[0]?.textContent,
-    ).toBe('Svar, versjon 2');
+    ).toBe('Svar, utgave 2');
     expect(within(setupPanel()).getByText('Kudos-rapporter')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Sammenlign med et annet oppsett' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'Spørsmål til begge' }), {
@@ -506,7 +510,7 @@ describe('Prøveområde', () => {
     expect(within(setupPanel()).queryByRole('combobox', { name: 'Variant' })).toBeNull();
   });
 
-  it('the answer language sits inside the Ferdigheter, byggeklosser og svarform disclosure', async () => {
+  it('the answer language sits inside the Arbeidsinstrukser, deler fra katalogen og svarform disclosure', async () => {
     await openPage();
 
     const language = within(setupPanel()).getByRole('combobox', {
@@ -515,7 +519,7 @@ describe('Prøveområde', () => {
     });
     const disclosure = language.closest('details');
     expect(disclosure?.querySelector('summary')?.textContent).toBe(
-      'Ferdigheter, byggeklosser og svarform',
+      'Arbeidsinstrukser, deler fra katalogen og svarform',
     );
   });
 
@@ -578,7 +582,7 @@ describe('Prøveområde', () => {
         errors: [
           {
             path: 'setup.spec.knowledge.datasets[0].dataset',
-            message: 'Datasettet digdir/kudos lagres utenfor EU/EØS.',
+            message: 'Dokumentsamlingen digdir/kudos lagres utenfor EU/EØS.',
           },
         ],
       },

@@ -67,7 +67,12 @@ const stable = (value: unknown): string => {
   return JSON.stringify(value) ?? 'null';
 };
 
-const publishOrder: Record<Definition['kind'], number> = { StepFlow: 0, Skill: 1, Service: 2 };
+const publishOrder: Record<Definition['kind'], number> = {
+  StepFlow: 0,
+  Skill: 1,
+  Block: 2,
+  Service: 3,
+};
 
 const comparable = (definition: unknown, files: PromptFiles) => stable({ definition, files });
 

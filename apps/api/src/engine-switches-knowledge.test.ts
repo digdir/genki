@@ -6,7 +6,7 @@ import { Hono } from 'hono';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Principal } from '@genai/contracts';
 import { InMemoryDefinitionStore, SettingsRegistry } from '@genai/definitions';
-import { testSet } from '@genai/eval';
+import { testSet, type SourceRef } from '@genai/eval';
 import { envSecrets } from '@genai/kernel';
 import { fakeEmbeddingAdapter } from '@genai/port-embedding/testing';
 import type { IndexDocument, KnowledgePort } from '@genai/port-knowledge';
@@ -306,7 +306,16 @@ const boot = async (
         });
         if (shared.hang) return new Promise(() => undefined);
         return {
-          hits: [{ id: 'veileder#0', document: 'veileder', position: 0, text: 'x', score: 1 }],
+          hits: [
+            {
+              id: 'veileder#0',
+              document: 'veileder',
+              position: 0,
+              text: 'x',
+              score: 1,
+              fields: { page: 2, pageEnd: 3 },
+            },
+          ],
         };
       },
     } as unknown as KnowledgePort;
@@ -1356,6 +1365,7 @@ const copyDataset = async (
   booted: Booted,
   id: string,
   docs: IndexDocument[] = typesenseDocs(3),
+  sources: SourceRef[] = [{ document: 'veileder' }],
 ) => {
   const created = await booted.call(`/tenants/${digdir}/datasets`, {
     body: { id, name: 'Rapporter', residency: 'norway', index: { endpoint: 'lokal' } },
@@ -1374,7 +1384,7 @@ const copyDataset = async (
             id: 'veileder',
             split: 'validation',
             input: 'Hva sier rapporten?',
-            expected: { sources: [{ document: 'veileder' }] },
+            expected: { sources },
           },
         ],
       },
@@ -1482,6 +1492,15 @@ describe('copying a dataset into the knowledge database', () => {
       endpoint: 'knowledge-pg',
       generation: ready.generation,
     });
+  });
+
+  it("a switch's comparison matches a hit by its page range, whatever its position", async () => {
+    const booted = await boot();
+    await copyDataset(booted, 'sider', typesenseDocs(3), [
+      { document: 'veileder', position: 7, page: 3 },
+    ]);
+    const ready = await copiedToReady(booted, 'sider');
+    expect(ready.comparison?.hitAt5[1]).toBe(1);
   });
 
   it('a copy of named documents compares but cannot be activated', async () => {

@@ -383,47 +383,47 @@ describe('grouping by area', () => {
 });
 
 describe('the weekly window', () => {
-  it('runs the 12:00 UTC schedule in winter, when Oslo is UTC+1', () => {
-    expect(weeklyDue('0 12 * * 5', new Date('2026-11-13T12:03:00Z'))).toBe(true);
-    expect(weeklyDue('0 11 * * 5', new Date('2026-11-13T11:03:00Z'))).toBe(false);
+  it('runs the 11:00 UTC schedule in winter, when Oslo is UTC+1', () => {
+    expect(weeklyDue('0 11 * * 5', new Date('2026-11-13T11:03:00Z'))).toBe(true);
+    expect(weeklyDue('0 10 * * 5', new Date('2026-11-13T10:03:00Z'))).toBe(false);
   });
 
-  it('switches to the 11:00 UTC schedule across the March daylight saving change', () => {
-    expect(weeklyDue('0 12 * * 5', new Date('2026-03-27T12:00:00Z'))).toBe(true);
-    expect(weeklyDue('0 11 * * 5', new Date('2026-03-27T11:00:00Z'))).toBe(false);
-    expect(weeklyDue('0 11 * * 5', new Date('2026-04-03T11:00:00Z'))).toBe(true);
-    expect(weeklyDue('0 12 * * 5', new Date('2026-04-03T12:00:00Z'))).toBe(false);
+  it('switches to the 10:00 UTC schedule across the March daylight saving change', () => {
+    expect(weeklyDue('0 11 * * 5', new Date('2026-03-27T11:00:00Z'))).toBe(true);
+    expect(weeklyDue('0 10 * * 5', new Date('2026-03-27T10:00:00Z'))).toBe(false);
+    expect(weeklyDue('0 10 * * 5', new Date('2026-04-03T10:00:00Z'))).toBe(true);
+    expect(weeklyDue('0 11 * * 5', new Date('2026-04-03T11:00:00Z'))).toBe(false);
   });
 
   it('switches back across the October daylight saving change', () => {
-    expect(weeklyDue('0 11 * * 5', new Date('2026-10-23T11:00:00Z'))).toBe(true);
-    expect(weeklyDue('0 12 * * 5', new Date('2026-10-30T12:00:00Z'))).toBe(true);
-    expect(weeklyDue('0 11 * * 5', new Date('2026-10-30T11:00:00Z'))).toBe(false);
+    expect(weeklyDue('0 10 * * 5', new Date('2026-10-23T10:00:00Z'))).toBe(true);
+    expect(weeklyDue('0 11 * * 5', new Date('2026-10-30T11:00:00Z'))).toBe(true);
+    expect(weeklyDue('0 10 * * 5', new Date('2026-10-30T10:00:00Z'))).toBe(false);
   });
 
   it('judges a late scheduled run by its schedule, not by when it started', () => {
-    expect(weeklyDue('0 11 * * 5', new Date('2026-11-13T12:40:00Z'))).toBe(false);
+    expect(weeklyDue('0 10 * * 5', new Date('2026-11-13T11:40:00Z'))).toBe(false);
   });
 
   it('skips a scheduled run that started seven hours late', () => {
-    expect(weeklyDue('0 12 * * 5', new Date('2026-11-13T19:17:00Z'))).toBe(false);
+    expect(weeklyDue('0 11 * * 5', new Date('2026-11-13T18:17:00Z'))).toBe(false);
   });
 
-  it('runs a scheduled run that started at 13:05 in Oslo', () => {
-    expect(weeklyDue('0 12 * * 5', new Date('2026-11-13T12:05:00Z'))).toBe(true);
-    expect(weeklyDue('0 11 * * 5', new Date('2026-07-10T11:05:00Z'))).toBe(true);
+  it('runs a scheduled run that started at 12:05 in Oslo', () => {
+    expect(weeklyDue('0 11 * * 5', new Date('2026-11-13T11:05:00Z'))).toBe(true);
+    expect(weeklyDue('0 10 * * 5', new Date('2026-07-10T10:05:00Z'))).toBe(true);
   });
 
   it('allows two hours of slack and no more, in winter and in summer', () => {
-    expect(weeklyDue('0 12 * * 5', new Date('2026-11-13T14:00:00Z'))).toBe(true);
-    expect(weeklyDue('0 12 * * 5', new Date('2026-11-13T14:01:00Z'))).toBe(false);
-    expect(weeklyDue('0 11 * * 5', new Date('2026-07-10T13:00:00Z'))).toBe(true);
-    expect(weeklyDue('0 11 * * 5', new Date('2026-07-10T13:01:00Z'))).toBe(false);
-    expect(weeklyDue('0 12 * * 5', new Date('2026-07-10T12:05:00Z'))).toBe(false);
+    expect(weeklyDue('0 11 * * 5', new Date('2026-11-13T13:00:00Z'))).toBe(true);
+    expect(weeklyDue('0 11 * * 5', new Date('2026-11-13T13:01:00Z'))).toBe(false);
+    expect(weeklyDue('0 10 * * 5', new Date('2026-07-10T12:00:00Z'))).toBe(true);
+    expect(weeklyDue('0 10 * * 5', new Date('2026-07-10T12:01:00Z'))).toBe(false);
+    expect(weeklyDue('0 11 * * 5', new Date('2026-07-10T11:05:00Z'))).toBe(false);
   });
 
   it('skips a scheduled run that crossed into the next day', () => {
-    expect(weeklyDue('0 12 * * 5', new Date('2026-11-14T00:30:00Z'))).toBe(false);
+    expect(weeklyDue('0 11 * * 5', new Date('2026-11-14T00:30:00Z'))).toBe(false);
   });
 
   it('always runs when started by hand', () => {
@@ -902,18 +902,18 @@ describe('the weekly summary once a week', () => {
     }) as Api;
     return api;
   };
-  const at = () => new Date('2026-11-13T12:05:00Z');
-  const decide = (api: Api, schedule = '0 12 * * 5') =>
+  const at = () => new Date('2026-11-13T11:05:00Z');
+  const decide = (api: Api, schedule = '0 11 * * 5') =>
     weeklyDecision({ schedule, now: at, api, repo, runId: 3 });
 
   it('skips a second post in the same week', async () => {
-    const api = runs([{ id: 2, created_at: '2026-11-13T10:00:00Z' }], [2]);
+    const api = runs([{ id: 2, created_at: '2026-11-13T09:00:00Z' }], [2]);
     expect((await decide(api)).due).toBe(false);
     expect((await decide(api, '')).due).toBe(false);
   });
 
   it('posts when the earlier run of the week did not post', async () => {
-    expect((await decide(runs([{ id: 2, created_at: '2026-11-13T10:00:00Z' }], []))).due).toBe(
+    expect((await decide(runs([{ id: 2, created_at: '2026-11-13T09:00:00Z' }], []))).due).toBe(
       true,
     );
   });
@@ -921,8 +921,8 @@ describe('the weekly summary once a week', () => {
   it('ignores a post from another week and the run itself', async () => {
     const api = runs(
       [
-        { id: 1, created_at: '2026-11-06T12:00:00Z' },
-        { id: 3, created_at: '2026-11-13T12:00:00Z' },
+        { id: 1, created_at: '2026-11-06T11:00:00Z' },
+        { id: 3, created_at: '2026-11-13T11:00:00Z' },
       ],
       [1, 3],
     );

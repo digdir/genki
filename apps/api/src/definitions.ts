@@ -17,8 +17,15 @@ import {
 } from '@genai/definitions';
 import { refusedRight, type Access } from './access.js';
 import type { ActorNames } from './actor-names.js';
-import { actorOf, shareOperatorOnlyType, sharingRefused, type Admin } from './admin.js';
+import {
+  actorOf,
+  blockPublisherProblems,
+  shareOperatorOnlyType,
+  sharingRefused,
+  type Admin,
+} from './admin.js';
 import { confirmedBy } from './governance.js';
+import { blockRefProblems } from './interface-catalogue.js';
 import { riskConfirmationProblems } from './risk-confirmation.js';
 import type { UnmaskedInputUse } from './operation-governance.js';
 import { t } from './i18n/index.js';
@@ -31,6 +38,7 @@ import {
 } from './http.js';
 import { draftOutdatedTitle, draftOutdatedType, type ServiceDrafts } from './service-drafts.js';
 import { tenantNotRegistered } from './tenant-gate.js';
+import { environmentViews, type EnvironmentPointers } from './service-environments.js';
 
 export interface DefinitionsApiOptions {
   store: DefinitionStore;
@@ -39,17 +47,24 @@ export interface DefinitionsApiOptions {
   admin: Admin;
   access: Access;
   drafts?: Pick<ServiceDrafts, 'outdated' | 'followPublish'>;
+  environments?: (tenant: string, service: string) => Promise<EnvironmentPointers>;
   unmaskedInput?: (definition: Definition) => Promise<UnmaskedInputUse[]>;
   names?: ActorNames;
   now?: () => Date;
   registered?: (tenant: string) => Promise<boolean>;
 }
 
-const kinds = { services: 'Service', 'step-flows': 'StepFlow', skills: 'Skill' } as const;
+const kinds = {
+  services: 'Service',
+  'step-flows': 'StepFlow',
+  skills: 'Skill',
+  blocks: 'Block',
+} as const;
 const segments = {
   Service: 'services',
   StepFlow: 'step-flows',
   Skill: 'skills',
+  Block: 'blocks',
 } as const satisfies Record<Definition['kind'], keyof typeof kinds>;
 
 const VersionSummary = z
@@ -84,6 +99,21 @@ const PublishedDefinition = VersionSummary.extend({
   files: z.record(z.string(), z.string()),
   warnings: z.array(Warning).optional(),
 }).openapi('PublishedDefinition');
+
+const PublishedEnvironment = z
+  .object({
+    name: z.string(),
+    version: z.number().int().nullable(),
+    followsPublishes: z.boolean(),
+  })
+  .openapi('PublishedEnvironment');
+
+const PublishResult = PublishedDefinition.extend({
+  environments: z.array(PublishedEnvironment).optional().openapi({
+    description:
+      "A service's environments after the publish: those that follow publishes run the new version, a pinned prod keeps the version in use until it is promoted",
+  }),
+}).openapi('PublishResult');
 
 const DefinitionOverview = z
   .object({
@@ -121,7 +151,7 @@ const tenantParam = z
   .string()
   .openapi({ param: { name: 'tenant', in: 'path' }, example: '991825827' });
 const kindParam = z
-  .enum(['services', 'step-flows', 'skills'])
+  .enum(['services', 'step-flows', 'skills', 'blocks'])
   .openapi({ param: { name: 'kind', in: 'path' } });
 const idParam = z.string().openapi({ param: { name: 'id', in: 'path' } });
 
@@ -146,7 +176,10 @@ const routes = {
       },
       400: { content: problemContent, description: 'The body could not be read' },
       401: { content: problemContent, description: 'Not authenticated' },
-      403: { content: problemContent, description: 'Not allowed for this tenant' },
+      403: {
+        content: problemContent,
+        description: `Not allowed for this tenant, or ${shareOperatorOnlyType}: only an operator publishes a built-in Block or shares a code Block with everyone`,
+      },
       422: { content: problemContent, description: 'The definition is invalid' },
     },
   }),
@@ -160,14 +193,14 @@ const routes = {
     },
     responses: {
       201: {
-        content: { 'application/json': { schema: PublishedDefinition } },
+        content: { 'application/json': { schema: PublishResult } },
         description: 'Published',
       },
       400: { content: problemContent, description: 'The body or reason could not be read' },
       401: { content: problemContent, description: 'Not authenticated' },
       403: {
         content: problemContent,
-        description: `Not allowed for this tenant, or ${shareOperatorOnlyType}: the definition changes spec.availableTo, which only operators change`,
+        description: `Not allowed for this tenant, or ${shareOperatorOnlyType}: the definition changes spec.availableTo, which only operators change, or is a built-in Block, which only operators publish, or shares a code Block with everyone`,
       },
       409: {
         content: problemContent,
@@ -355,17 +388,22 @@ export const registerDefinitionRoutes = (app: OpenAPIHono, options: DefinitionsA
       return problem(c, 400, 'Unreadable definition', { detail: read.unreadable });
     const { validated } = read;
     const tenant = validated.ok ? validated.definition.metadata.tenant : undefined;
-    if (tenant && !access(principal, tenant, c.req.raw))
-      return problem(c, 403, 'Not allowed for this tenant');
+    const acting = tenant ? access(principal, tenant, c.req.raw) : undefined;
+    if (tenant && !acting) return problem(c, 403, 'Not allowed for this tenant');
     if (tenant && (await unregistered(principal, tenant))) return tenantNotRegistered(c, tenant);
     const lacking = tenant && refusedRight(c, principal, tenant, 'manage-services');
     if (lacking) return lacking;
     if (!validated.ok) return problem(c, 422, 'Invalid definition', { errors: validated.errors });
+    const unpublishable = blockPublisherProblems(validated.definition, acting ?? principal);
+    if (unpublishable.length > 0) return sharingRefused(c, unpublishable);
     const unmasked = (await options.unmaskedInput?.(validated.definition)) ?? [];
     const unmaskedInput = unmasked.length ? { unmaskedInput: unmasked } : {};
     const errors = [
       ...admin.check(validated.definition, read.files),
       ...(await publishRefusals(store, validated.definition)),
+      ...(validated.definition.kind === 'Service'
+        ? await blockRefProblems(store, validated.definition)
+        : []),
     ];
     if (errors.length > 0)
       return problem(c, 422, 'Invalid definition', { errors, ...unmaskedInput });
@@ -447,9 +485,19 @@ export const registerDefinitionRoutes = (app: OpenAPIHono, options: DefinitionsA
         )
         .catch(() => undefined);
     const warnings = definitionWarnings(validated.definition);
+    const pointers = service
+      ? await options.environments?.(tenant, service).catch(() => undefined)
+      : undefined;
     const body = {
       ...published(result.value, await namesOf([result.value])),
       ...(warnings.length ? { warnings } : {}),
+      ...(pointers
+        ? {
+            environments: environmentViews(pointers, result.value.version).map(
+              ({ name, version, followsPublishes }) => ({ name, version, followsPublishes }),
+            ),
+          }
+        : {}),
     };
     c.header(
       'location',

@@ -18,22 +18,36 @@ export const platformLoginFrom = (
   const clientId = env.PLATFORM_LOGIN_CLIENT_ID?.trim();
   const hostname = env.PLATFORM_LOGIN_HOSTNAME?.trim().toLowerCase();
   if (!clientId || !hostname || !isHostname(hostname)) return undefined;
+  const subjectKey = env.PLATFORM_LOGIN_SUBJECT_KEY?.trim();
+  const master = env.CONTENT_MASTER_KEY?.trim();
+  for (const [name, value] of [
+    ['PLATFORM_LOGIN_SUBJECT_KEY', subjectKey],
+    ['CONTENT_MASTER_KEY', master],
+  ] as const)
+    if (value && Buffer.from(value, 'base64').length !== 32)
+      throw new Error(`${name} must be 32 bytes in base64`);
+  if (!subjectKey && !master && (env.DATABASE_URL || env.PGHOST))
+    throw new Error(
+      'the platform login needs PLATFORM_LOGIN_SUBJECT_KEY or CONTENT_MASTER_KEY when a database is set',
+    );
   return {
     clientId,
     secret: env.PLATFORM_LOGIN_CLIENT_SECRET?.trim() || undefined,
     hostname,
     audience,
-    ...subjectKeyFrom(env.CONTENT_MASTER_KEY),
+    ...subjectKeyFrom(subjectKey, master),
   };
 };
 
-/** Derived from the content master key, so a person keeps their subject on a Client across restarts. */
-const subjectKeyFrom = (master: string | undefined) =>
-  master
-    ? {
-        subjectKey: new Uint8Array(
-          hkdfSync('sha256', Buffer.from(master, 'base64'), '', 'genki platform login subject', 32),
-        ),
-        subjectKeyKept: true,
-      }
-    : { subjectKey: new Uint8Array(randomBytes(32)), subjectKeyKept: false };
+const platformLoginSubjectKey = (master: string): Uint8Array =>
+  new Uint8Array(
+    hkdfSync('sha256', Buffer.from(master, 'base64'), '', 'genki platform login subject', 32),
+  );
+
+/** PLATFORM_LOGIN_SUBJECT_KEY, or derived from the content master key, so a person keeps their subject on a Client across restarts. */
+const subjectKeyFrom = (subjectKey: string | undefined, master: string | undefined) =>
+  subjectKey
+    ? { subjectKey: new Uint8Array(Buffer.from(subjectKey, 'base64')), subjectKeyKept: true }
+    : master
+      ? { subjectKey: platformLoginSubjectKey(master), subjectKeyKept: true }
+      : { subjectKey: new Uint8Array(randomBytes(32)), subjectKeyKept: false };

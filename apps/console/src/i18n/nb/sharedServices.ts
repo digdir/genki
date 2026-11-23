@@ -1,8 +1,8 @@
 import { defineNamespace } from '@genai/i18n';
 
 export const sharedServices = defineNamespace({
-  title: 'Fellestjenester',
-  intro: 'Fellestjenestene Digdir drifter og alle virksomheter kan bruke.',
+  title: 'Delte tjenester',
+  intro: 'De delte tjenestene Digdir drifter og alle virksomheter kan bruke.',
   note: 'Tjenester som er delt med alle virksomheter, vises i alle virksomheters portal. En endring publiserer en ny versjon av tjenesten.',
   reasonHint: 'Kreves for å endre delingen. Begrunnelsen lagres i revisjonsloggen.',
   sharedAll: '{name} er nå delt med alle virksomheter.',

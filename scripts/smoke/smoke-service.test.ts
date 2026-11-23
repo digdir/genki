@@ -28,7 +28,7 @@ const plugins: PluginSchemas = {
   guardrails: new Map(),
   blocks: new Set(),
   retrieval: retrievalConfig,
-  rerankers: new Set(['colbert']),
+  rerankers: new Set(['omrangering']),
   models: new Map(
     [...models].map((id) => [
       id,

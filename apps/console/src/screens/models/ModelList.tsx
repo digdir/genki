@@ -38,6 +38,17 @@ import { ModelForm, residencyLabel } from './Endpoints';
 export const KindTags = ({ model }: { model: OperatorModel }) => {
   const t = useT();
   const bound = Object.entries(boundOf(model));
+  if (bound.length === 0 && model.kind)
+    return (
+      <span className="two-line">
+        <Tag data-size="sm" data-color="warning">
+          {t('models.kindUnbound', {
+            kind: model.kind === 'unknown' ? t('models.kindUnknown') : operationName(model.kind, t),
+          })}
+        </Tag>
+        <span className="meta">{t('models.kindNeedsDescriptor')}</span>
+      </span>
+    );
   if (bound.length === 0) return <span className="meta">{t('models.noKinds')}</span>;
   return (
     <span className="tag-row">

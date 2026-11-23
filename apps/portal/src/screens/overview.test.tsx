@@ -115,7 +115,7 @@ describe('Oversikt', () => {
       ),
     );
 
-    expect(await screen.findByText(/Vi fikk ikke sjekket datasettene/)).toBeTruthy();
+    expect(await screen.findByText(/Vi fikk ikke sjekket dokumentsamlingene/)).toBeTruthy();
     expect(screen.queryByText(/Ingenting trenger deg nå/)).toBeNull();
     expect(screen.getAllByRole('button', { name: 'Prøv igjen' }).length).toBeGreaterThan(0);
   });
@@ -438,14 +438,16 @@ describe('Oversikt', () => {
     expectAccessible();
   });
 
-  it('marks the Datasett menu item with the number of datasets to follow up', async () => {
+  it('marks the Dokumentsamlinger menu item with the number of document collections to follow up', async () => {
     await renderAt('#/overview', withUsage(normalUsage));
 
     const menu = await screen.findByRole('navigation', { name: 'Hovedmeny' });
-    expect(await within(menu).findByLabelText('2 datasett trenger oppfølging')).toBeTruthy();
+    expect(
+      await within(menu).findByLabelText('2 dokumentsamlinger trenger oppfølging'),
+    ).toBeTruthy();
   });
 
-  it('lists a dataset without a source as needing you, as the Datasett filter counts it', async () => {
+  it('lists a dataset without a source as needing you, as the Dokumentsamlinger filter counts it', async () => {
     const withoutSource = {
       features: {
         datasets: {
@@ -479,13 +481,15 @@ describe('Oversikt', () => {
     const attention = await screen.findByRole('region', { name: 'Trenger deg nå' });
     expect(await within(attention).findByText('Ingen kilde')).toBeTruthy();
     expect(
-      within(attention).getByRole('link', { name: 'Se datasettet: Arkivet' }).getAttribute('href'),
+      within(attention)
+        .getByRole('link', { name: 'Se dokumentsamlingen: Arkivet' })
+        .getAttribute('href'),
     ).toBe('#/datasets/999888777%2Farkiv');
     const menu = screen.getByRole('navigation', { name: 'Hovedmeny' });
-    expect(await within(menu).findByLabelText('1 datasett trenger oppfølging')).toBeTruthy();
+    expect(await within(menu).findByLabelText('1 dokumentsamling trenger oppfølging')).toBeTruthy();
   });
 
-  it('lists a Digdir dataset that needs follow-up, since the Datasett badge counts it', async () => {
+  it('lists a Digdir dataset that needs follow-up, since the Dokumentsamlinger badge counts it', async () => {
     const sharedDegraded = {
       features: {
         datasets: {
@@ -523,18 +527,22 @@ describe('Oversikt', () => {
     await renderAt('#/overview', withUsage(normalUsage, sharedDegraded));
 
     const menu = await screen.findByRole('navigation', { name: 'Hovedmeny' });
-    expect(await within(menu).findByLabelText('1 datasett trenger oppfølging')).toBeTruthy();
+    expect(await within(menu).findByLabelText('1 dokumentsamling trenger oppfølging')).toBeTruthy();
     const attention = screen.getByRole('region', { name: 'Trenger deg nå' });
-    expect(within(attention).getByRole('link', { name: 'Se datasettet: Kudos' })).toBeTruthy();
+    expect(
+      within(attention).getByRole('link', { name: 'Se dokumentsamlingen: Kudos' }),
+    ).toBeTruthy();
     expect(within(attention).queryByText(/Ingenting trenger deg nå/)).toBeNull();
   });
 
-  it('shows no Datasett badge for a tenant without datasets', async () => {
+  it('shows no Dokumentsamlinger badge for a tenant without document collections', async () => {
     await renderAt('#/overview', withUsage(normalUsage, noFailedDatasets));
 
     await screen.findByRole('heading', { name: 'Trenger deg nå' });
     const menu = screen.getByRole('navigation', { name: 'Hovedmeny' });
-    expect(within(menu).getByRole('link', { name: 'Datasett' }).textContent).toBe('Datasett');
+    expect(within(menu).getByRole('link', { name: 'Dokumentsamlinger' }).textContent).toBe(
+      'Dokumentsamlinger',
+    );
   });
 });
 

@@ -1,0 +1,64 @@
+apiVersion: genai/v1
+kind: Block
+metadata: { tenant: '991825827', id: kildeliste-kompakt, name: Kildeliste kompakt }
+spec:
+  tier: declarative
+  title: { nb: Kildeliste kompakt, en: Compact source list }
+  zones: [main]
+  sharing: organisation
+  events: [open-document]
+  states: [empty, filled]
+  texts:
+    nb:
+      {
+        heading.one: '{count} kilde',
+        heading.other: '{count} kilder',
+        open: Åpne,
+        none: Ingen kilder,
+      }
+    en:
+      {
+        heading.one: '{count} source',
+        heading.other: '{count} sources',
+        open: Open,
+        none: No sources,
+      }
+  template:
+    version: 1
+    states:
+      empty: { type: paragraph, variant: subtle, text: { t: none } }
+    root:
+      type: card
+      children:
+        - {
+            type: heading,
+            level: 3,
+            size: xs,
+            text: { t: heading, args: { count: { count: sources } } },
+          }
+        - type: list
+          ordered: true
+          items:
+            - type: each
+              of: sources
+              as: source
+              max: 10
+              children:
+                - type: row
+                  children:
+                    - type: paragraph
+                      size: sm
+                      text:
+                        [
+                          { bind: source.title },
+                          ', ',
+                          { bind: source.publisher },
+                          ', ',
+                          { bind: source.publishedAt, format: date },
+                        ]
+                    - {
+                        type: button,
+                        variant: tertiary,
+                        text: { t: open },
+                        event: { name: open-document, source: source.index },
+                      }

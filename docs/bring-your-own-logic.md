@@ -13,7 +13,7 @@ You do not need code or an endpoint for these. They are definitions you publish,
 | Fixed steps in a fixed order          | A `StepFlow` definition built from the built-in step blocks, with branches, loops and approvals                                                                                                                              |
 | Which model, with fallback            | `spec.model`, from the model catalogue                                                                                                                                                                                       |
 | Where data may be processed           | `spec.model.residency`                                                                                                                                                                                                       |
-| Search over your documents            | Datasets, rerankers and `spec.knowledge`                                                                                                                                                                                     |
+| Search over your documents            | Datasets and `spec.knowledge`; no reranker yet                                                                                                                                                                               |
 | Tools the service may call            | A tool source (MCP, OpenAPI or A2A) registered under `/tenants/{tenant}/tool-connections`, then `spec.tools`                                                                                                                 |
 | Facts about the service's own sources | `source-facts@1` in `spec.tools` of an `agent-loop` service with datasets. The agent gets the tool `source_facts`: document count, last import, newest documents and filter values with counts, within the service's filters |
 | Reusable instructions and examples    | Skills                                                                                                                                                                                                                       |
@@ -43,7 +43,7 @@ These routes let your own logic run outside the platform, with the platform's id
 
 Later steps read `{{sok.text}}`, `{{sok.json.<field>}}`, `{{sok.parts}}` and `{{sok.sources}}`. If the step is the last one, its parts become the answer. `onError` works as for other steps; a tool that reports an error counts as a failure. The call shows in **Hva skjedde** with the argument names, not the values.
 
-Try it in the portal: Stegflyter, add a step, choose **Kall et verktøy**. A complete example is `packages/definitions/examples/saksoppslag-flyt.yaml` with the service `saksoppslag.yaml`.
+Try it in the portal: Arbeidsflyter, add a step, choose **Kall et verktøy**. A complete example is `packages/definitions/examples/saksoppslag-flyt.yaml` with the service `saksoppslag.yaml`.
 
 ### Own engine (`remote-agent`): a whole turn answered by your agent
 

@@ -1,14 +1,14 @@
 import { ApiError, type ApiClient } from '../../api';
 import { residencyName } from '../../data/services';
 import { translator, type PlainKey, type T } from '../../i18n';
-import type { PublishedDefinition } from '../../types';
+import type { PublishResult } from '../../types';
 import { mediaKind } from '../../data/unmasked-input';
 import { problemErrors } from './definition';
 
 export type PublishProblem = { path: string; message: string };
 
 export type PublishOutcome =
-  | { ok: true; published: PublishedDefinition }
+  | { ok: true; published: PublishResult }
   | { ok: false; errors: PublishProblem[]; refusedByGates: boolean; outdated?: true };
 
 export const draftOutdated = 'urn:genai:problem:draft-outdated';

@@ -36,8 +36,8 @@ export const common = defineNamespace({
 export const rights = defineNamespace({
   useServices: 'Bruke tjenester',
   manageServices: 'Administrere tjenester',
-  manageDatasets: 'Administrere datasett',
-  registerBuildingBlocks: 'Registrere byggeklosser',
+  manageDatasets: 'Administrere dokumentsamlinger',
+  registerBuildingBlocks: 'Legge til i katalogen',
   viewUsage: 'Se forbruk og kostnad',
   read: 'Lese',
   write: 'Skrive',

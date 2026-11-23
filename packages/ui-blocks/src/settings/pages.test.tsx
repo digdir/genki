@@ -194,6 +194,42 @@ describe('«Generelt»', () => {
     expect(onLength).toHaveBeenLastCalledWith('long');
   });
 
+  it('draws the service’s language first, in the slot of the boards’ language row, with the platform’s locales', () => {
+    const onLanguage = vi.fn();
+    render(
+      <SettingsGeneral
+        language={{ value: 'nb', onChange: onLanguage }}
+        colorScheme={{ value: 'auto', onChange: () => {} }}
+      />,
+    );
+    expect(rowTitles()).toEqual(['Språk', 'Utseende']);
+    const language = screen.getByRole('group', { name: 'Språk' });
+    expect(within(language).getAllByRole('radio')).toHaveLength(2);
+    expect(within(language).getByRole('radio', { name: 'Bokmål' })).toBeTruthy();
+    fireEvent.click(within(language).getByRole('radio', { name: 'Engelsk' }));
+    expect(onLanguage).toHaveBeenLastCalledWith('en');
+    expect(lead()).toBe('Språket i tjenesten og hvordan tjenesten ser ut.');
+    expect(notice()).toBeNull();
+  });
+
+  it('names a language once in the menu’s line when both language rows are drawn', () => {
+    render(
+      <SettingsMenu
+        onChange={() => {}}
+        pages={[
+          {
+            id: 'general',
+            rows: generalRowsOf({ language: answerLanguage, answerLanguage, colorScheme }),
+          },
+        ]}
+        value="general"
+      />,
+    );
+    expect(
+      screen.getByRole('button', { name: 'Generelt', description: 'Språk, utseende' }),
+    ).toBeTruthy();
+  });
+
   it('says there is nothing to choose rather than draw a dead control', () => {
     render(<SettingsGeneral />);
     expect(nothingYet()).toBeTruthy();

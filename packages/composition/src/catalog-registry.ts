@@ -71,6 +71,13 @@ export interface CatalogProblem {
   message: string;
 }
 
+export interface SkippedCatalogEntry {
+  kind: CatalogKind;
+  id: string;
+  problems: CatalogProblem[];
+  unused?: true;
+}
+
 export interface CatalogSeed {
   models: unknown;
   knowledge: unknown;
@@ -123,6 +130,7 @@ export interface CatalogRegistryOptions {
   references?: () => Promise<CatalogReferences>;
   localEngines?: () => ReadonlySet<string>;
   derive?: (entries: ConfigEntry<unknown>[]) => ConfigEntry<unknown>[];
+  logger?: (msg: string, fields: Record<string, unknown>) => void;
   /** The operation kinds a model binds, which a price in the shape before ADR 0048 is set for. */
   priceKinds?: (model: string) => string[];
   /** The open units a model's API for a kind reports, so a price cannot name a unit by mistake. */
@@ -188,6 +196,12 @@ const publicHost = (raw: unknown): string | undefined => {
 
 const keyOf = (kind: string, id: string) => `${kind}\u0000${id}`;
 
+const timeOf = (entry: ConfigEntry<unknown>) => new Date(entry.at).getTime();
+
+const endpointsFirst = (a: ConfigEntry<unknown>, b: ConfigEntry<unknown>) =>
+  Number(!isEndpoint(a.kind as CatalogKind)) - Number(!isEndpoint(b.kind as CatalogKind)) ||
+  timeOf(a) - timeOf(b);
+
 interface Slot {
   kind: CatalogKind;
   id: string;
@@ -231,7 +245,7 @@ export class CatalogRegistry {
   readonly #options: CatalogRegistryOptions;
   readonly #serial = serialized();
   #slots = new Map<string, Slot>();
-  #skipped: string[] = [];
+  #skipped: SkippedCatalogEntry[] = [];
   #derived = new Map<string, string>();
 
   constructor(options: CatalogRegistryOptions) {
@@ -243,8 +257,8 @@ export class CatalogRegistry {
     return this.#options.policy?.tenantKinds ?? defaultTenantKinds;
   }
 
-  skipped() {
-    return [...this.#skipped];
+  skipped(): SkippedCatalogEntry[] {
+    return structuredClone(this.#skipped);
   }
 
   async initialize() {
@@ -254,20 +268,81 @@ export class CatalogRegistry {
     const entries = [
       ...latest.filter((e) => !derived.some((d) => d.kind === e.kind && d.id === e.id)),
       ...derived,
-    ].sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
+    ]
+      .filter((e) => catalogKinds.includes(e.kind as CatalogKind))
+      .sort(endpointsFirst);
     this.#derived = new Map(derived.map((d) => [keyOf(d.kind, d.id), d.reason] as const));
-    const skipped: string[] = [];
-    for (const entry of entries) {
-      if (!catalogKinds.includes(entry.kind as CatalogKind)) continue;
-      const next = new Map(slots);
-      this.#place(next, entry);
-      const problems = this.#check(next, groupOf[entry.kind as CatalogKind]);
-      if (problems.length > 0) skipped.push(`${entry.kind} ${entry.id}`);
-      else this.#place(slots, entry);
-    }
+    this.#skipped = await this.#markUnused(this.#replay(slots, entries), slots);
     this.#slots = slots;
-    this.#skipped = skipped;
+    this.#report();
     await this.#options.apply(this.effective());
+  }
+
+  /** Marks a skipped model or reranker that no published service and no dataset uses. */
+  async #markUnused(
+    skipped: SkippedCatalogEntry[],
+    slots: Map<string, Slot>,
+  ): Promise<SkippedCatalogEntry[]> {
+    const references = this.#options.references;
+    if (!references || !skipped.some((s) => s.kind === 'model' || s.kind === 'reranker'))
+      return skipped;
+    const used = await references().catch(() => undefined);
+    if (!used) return skipped;
+    const embedders = new Set(
+      [...slots.values()]
+        .filter((slot) => slot.kind === 'dataset')
+        .map((slot) => record(slot.spec.embedding).model),
+    );
+    const unused = (entry: SkippedCatalogEntry) =>
+      (entry.kind === 'model' && !used.models.has(entry.id) && !embedders.has(entry.id)) ||
+      (entry.kind === 'reranker' && !used.rerankers.has(entry.id) && !used.models.has(entry.id));
+    return skipped.map((entry) => (unused(entry) ? { ...entry, unused: true } : entry));
+  }
+
+  /** Places entries pass after pass until a pass places none; returns those left out. */
+  #replay(slots: Map<string, Slot>, entries: ConfigEntry<unknown>[]): SkippedCatalogEntry[] {
+    let pending = entries;
+    for (;;) {
+      const left: { entry: ConfigEntry<unknown>; problems: CatalogProblem[] }[] = [];
+      for (const entry of pending) {
+        const next = new Map(slots);
+        this.#place(next, entry);
+        const problems = this.#check(next, groupOf[entry.kind as CatalogKind]);
+        if (problems.length > 0) left.push({ entry, problems });
+        else this.#place(slots, entry);
+      }
+      if (left.length === pending.length)
+        return left.map(({ entry, problems }) => ({
+          kind: entry.kind as CatalogKind,
+          id: entry.id,
+          problems,
+        }));
+      pending = left.map((l) => l.entry);
+    }
+  }
+
+  #report() {
+    const log = this.#options.logger;
+    if (!log) return;
+    for (const { kind, id, problems } of this.#skipped)
+      log('catalog entry skipped', {
+        level: 'error',
+        kind,
+        id,
+        reason: problems.map((p) => `${p.path}: ${p.message}`).join('; '),
+      });
+    for (const slot of this.#slots.values()) {
+      if (slot.kind !== 'dataset') continue;
+      const endpoint = String(slot.spec.endpoint ?? '');
+      const engine = this.#slots.get(keyOf('knowledge-endpoint', endpoint))?.spec.engine;
+      log('catalog dataset endpoint', {
+        level: 'info',
+        dataset: slot.id,
+        endpoint,
+        engine,
+        ...(slot.spec.generation !== undefined ? { generation: slot.spec.generation } : {}),
+      });
+    }
   }
 
   refresh(): Promise<void> {
@@ -740,8 +815,10 @@ export class CatalogRegistry {
   }): Promise<CatalogResult> {
     return this.#serial(async () => {
       const id = this.qualify(input.scope, input.id);
-      const existing = this.#slots.get(keyOf(input.kind, id));
-      if (!existing || existing.scope !== input.scope)
+      const slot = this.#slots.get(keyOf(input.kind, id));
+      const existing = slot?.scope === input.scope ? slot : undefined;
+      const left = existing ? undefined : await this.#skippedEntry(input.kind, input.scope, id);
+      if (!existing && !left)
         return { ok: false, errors: [{ path: 'id', message: `no ${input.kind} ${id}` }] };
       if (this.#derived.has(keyOf(input.kind, id)))
         return {
@@ -758,12 +835,23 @@ export class CatalogRegistry {
             errors: [{ path: 'id', message: `${id} is used by a published service` }],
           };
       }
-      const candidate = new Map(this.#slots);
-      candidate.delete(keyOf(input.kind, id));
-      const problems = this.#check(candidate, groupOf[input.kind]);
-      if (problems.length > 0) return { ok: false, errors: problems };
-      return this.#commit(input, id, existing.spec, true);
+      if (existing) {
+        const candidate = new Map(this.#slots);
+        candidate.delete(keyOf(input.kind, id));
+        const problems = this.#check(candidate, groupOf[input.kind]);
+        if (problems.length > 0) return { ok: false, errors: problems };
+      }
+      const result = await this.#commit(input, id, existing?.spec ?? record(left?.spec), true);
+      if (result.ok)
+        this.#skipped = this.#skipped.filter((s) => !(s.kind === input.kind && s.id === id));
+      return result;
     });
+  }
+
+  async #skippedEntry(kind: CatalogKind, scope: string, id: string) {
+    if (!this.#skipped.some((s) => s.kind === kind && s.id === id)) return undefined;
+    const last = (await this.#options.store.history(kind, scope, id)).at(-1);
+    return last && !last.deleted ? last : undefined;
   }
 
   async #commit(

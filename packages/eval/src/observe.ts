@@ -1,7 +1,12 @@
 import type { Event, Part } from '@genai/contracts';
 import type { SourceRef } from './schema.js';
 
-export interface ObservedSource extends SourceRef {
+/** A hit as it is matched: a source, with the last page of a chunk that runs over several. */
+export interface HitRef extends SourceRef {
+  pageEnd?: number;
+}
+
+export interface ObservedSource extends HitRef {
   url?: string;
   title?: string;
   text?: string;
@@ -46,6 +51,7 @@ const asSources = (value: unknown): ObservedSource[] => {
         ...(document === undefined ? {} : { document }),
         ...(typeof s.position === 'number' ? { position: s.position } : {}),
         ...(typeof s.page === 'number' ? { page: s.page } : {}),
+        ...(typeof s.pageEnd === 'number' ? { pageEnd: s.pageEnd } : {}),
         ...(typeof s.url === 'string' ? { url: s.url } : {}),
         ...(typeof s.title === 'string' ? { title: s.title } : {}),
         ...(typeof s.text === 'string' ? { text: s.text } : {}),
@@ -110,7 +116,7 @@ export const defaultObserve: Observe = (parts, events) => {
   };
 };
 
-export const sameSource = (expected: SourceRef, actual: SourceRef) => {
+export const sameSource = (expected: SourceRef, actual: HitRef) => {
   if (expected.chunkId !== undefined && actual.chunkId !== undefined) {
     if (expected.chunkId === actual.chunkId) return true;
     // A copy into another engine gives chunks new ids and keeps their document and position, so a
@@ -121,7 +127,10 @@ export const sameSource = (expected: SourceRef, actual: SourceRef) => {
   // An index from before the source renumbered names the document by its earlier id.
   if (expected.document !== actual.document && expected.earlierDocument !== actual.document)
     return false;
-  if (expected.position !== undefined && expected.position !== actual.position) return false;
-  // Only an index that knows pages is held to the page; an older one is matched by document.
-  return expected.page === undefined || actual.page === undefined || expected.page === actual.page;
+  // An index that knows pages is held to the page, any from the hit's first to its last, and not to
+  // the position: its chunks need not be numbered as in the index the source was written from.
+  if (expected.page !== undefined && actual.page !== undefined)
+    return expected.page >= actual.page && expected.page <= (actual.pageEnd ?? actual.page);
+  // An index without pages is held to the position, or matched by document when there is none.
+  return expected.position === undefined || expected.position === actual.position;
 };

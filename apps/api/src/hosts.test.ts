@@ -168,9 +168,21 @@ describe('the assistant host', () => {
       },
       languages: ['nb', 'en'],
       theme: null,
+      icon: null,
       menu: shown.menu,
       pages: [{ id: 'om', title: 'Om tjenesten' }],
     });
+  });
+
+  it('gives the service’s icon for the browser tab before login', async () => {
+    const { call, publish, saveClient } = await boot();
+    const icon = 'data:image/svg+xml;base64,PHN2Zy8+';
+    expect((await publish(service('klarsprak', { ...shown, icon }))).ok).toBe(true);
+    expect((await saveClient('klarsprak-host', client())).status).toBe(200);
+
+    const res = await call('/v1/hosts/ka.example.no');
+
+    expect(((await res.json()) as { icon: string | null }).icon).toBe(icon);
   });
 
   it('offers the languages the service answers in that the host has words for, bokmål when none', async () => {
@@ -417,7 +429,7 @@ describe('a service’s interface (/v1/models/{id}/interface)', () => {
     const own = await call('/v1/models/klarsprak__default/interface', { as: 'kari' });
     expect(own.status).toBe(200);
     expect(own.headers.get('cache-control')).toBe('private, no-store');
-    expect(await own.json()).toEqual(shown);
+    expect(await own.json()).toEqual({ ...shown, blocks: {} });
 
     const otherTenant = await call('/v1/models/klarsprak__default/interface', { as: 'ola' });
     expect(otherTenant.status).toBe(404);

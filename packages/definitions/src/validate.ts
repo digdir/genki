@@ -1,9 +1,12 @@
-import { checkInputFields, reservedInputFieldIds } from '@genai/contracts';
+import { checkInputFields, isBuiltInBlockId, reservedInputFieldIds } from '@genai/contracts';
+import { checkBlockCode } from './block-code.js';
+import { checkBlockTemplate } from './block-template.js';
 import { parse as parseYaml } from 'yaml';
 import { flowSettingRefs } from './flow-settings.js';
 import { checkSettingValue, type SettingDefinition } from './settings.js';
 import type { z } from 'zod';
 import {
+  blockDefinition,
   decisionModelOf,
   publicNamesOf,
   residencies,
@@ -14,6 +17,7 @@ import {
   variantId,
   variantModelOf,
   variantStrategyOf,
+  type BlockDefinition,
   type Definition,
   type FlowStep,
   type ServiceDefinition,
@@ -684,8 +688,23 @@ const checkSkill = (definition: SkillDefinition, plugins: PluginSchemas): Valida
       : [{ path: `spec.tools[${i}]`, message: `unknown tool or tool version ${ref}` }],
   );
 
+const checkBlock = (definition: BlockDefinition): ValidationError[] => {
+  const { spec } = definition;
+  if (spec.tier === 'declarative') return checkBlockTemplate(spec);
+  if (spec.tier === 'code') return checkBlockCode(spec);
+  return isBuiltInBlockId(spec.builtIn)
+    ? []
+    : [{ path: 'spec.builtIn', message: `unknown built-in block ${spec.builtIn}` }];
+};
+
 export const validateDefinition = (input: unknown, plugins: PluginSchemas): Validated => {
   const kind = input && typeof input === 'object' ? (input as { kind?: unknown }).kind : undefined;
+  if (kind === 'Block') {
+    const parsed = parse(blockDefinition, input);
+    if (!parsed.ok) return parsed;
+    const errors = checkBlock(parsed.definition);
+    return errors.length > 0 ? { ok: false, errors } : parsed;
+  }
   if (kind === 'Skill') {
     const parsed = parse(skillDefinition, input);
     if (!parsed.ok) return parsed;

@@ -79,8 +79,9 @@ export const statusArea = {
     moreFailed: 'We could not load more changes.',
   },
   usageParts: {
-    ingestion: 'Ingestion into datasets',
-    ingestionSub: 'Tokens used to read documents into the datasets. Counts towards the quota.',
+    ingestion: 'Ingestion into document collections',
+    ingestionSub:
+      'Tokens used to read documents into the document collections. Counts towards the quota.',
   },
   account: {
     email: 'Email',
@@ -93,7 +94,7 @@ export const statusArea = {
     somethingSlow: 'Something is slow',
     lastKnownOk: 'The last known status was «Everything works» at {time}.',
     lastKnownNotOk: 'The last known status at {time} was that something did not work as usual.',
-    environment: 'Environment',
+    environment: 'Installation',
     pastIncidents: 'Earlier incidents',
   },
 } satisfies Translation<typeof source>;

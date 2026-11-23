@@ -773,7 +773,7 @@ describe('switching the search engine of a dataset', () => {
       supportSessions: unused,
       catalog: b.platform.catalog,
       definitions: unused,
-      models: { refresh: async () => undefined },
+      models: { loadDiscovered: async () => undefined },
       toolConnections: unused,
     });
     const ready = await switchTo(a, 'ka-delt');
@@ -871,6 +871,44 @@ describe('operators switching the engine of a platform dataset', () => {
     expect(back.status).toBe(200);
     expect(platformEngineOf(platform, id)).toBe('typesense');
     expect(writes).toEqual([]);
+  });
+
+  it("compares a platform dataset's switch with the platform organisation's test sets", async () => {
+    const booted = await boot();
+    const id = 'digdir/kudos-sammenlign';
+    await createPlatformDataset(booted, id);
+    await booted.platform.evalStores.testSets.put(
+      testSet.parse({
+        apiVersion: 'genai/v1',
+        kind: 'TestSet',
+        metadata: { tenant: digdir, id: 'kudos-sporsmal', name: 'Spørsmål', version: 1 },
+        spec: {
+          corpus: id,
+          cases: [
+            {
+              id: 'tilskudd',
+              split: 'validation',
+              input: 'Hvem gir tilskudd til foreninger?',
+              expected: { sources: [{ document: 'tilskudd' }] },
+            },
+          ],
+        },
+      }),
+    );
+
+    const started = await booted.call(`${operatorBase(id)}/engine-switches`, {
+      as: 'drift',
+      body: {
+        to: 'lokal',
+        method: 'copy',
+        embedding: { model: 'fake/embed', dimensions: 8 },
+        reason: 'Sammenligner før Kudos flytter',
+      },
+    });
+    expect(started.status).toBe(202);
+    const ready = await settledAt(booted, id, (await json<EngineSwitchView>(started)).sid);
+
+    expect(ready.comparison).toMatchObject({ cases: 1, testSets: ['kudos-sporsmal'] });
   });
 
   it('tells the portal the default embedding model for new pgvector datasets', async () => {

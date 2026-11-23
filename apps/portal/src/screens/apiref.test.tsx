@@ -32,7 +32,7 @@ describe('API-referanse', () => {
     expect(within(nav()).getByText('Eksport og import')).toBeTruthy();
     const detail = screen.getByRole('article');
     expect(
-      within(detail).getByRole('heading', { level: 4, name: 'Publiser en versjon' }),
+      within(detail).getByRole('heading', { level: 4, name: 'Publiser en utgave' }),
     ).toBeTruthy();
     expect(within(detail).getByText('/definitions')).toBeTruthy();
     expect(within(detail).getByText('POST')).toBeTruthy();
@@ -62,8 +62,8 @@ describe('API-referanse', () => {
     for (const area of [
       'Byggeassistenten',
       'Forslag',
-      'Ferdigheter',
-      'Byggeklosser',
+      'Arbeidsinstrukser',
+      'Katalog',
       'Prøveområdet',
       'Søkemotorer',
     ])
@@ -71,13 +71,13 @@ describe('API-referanse', () => {
 
     fireEvent.click(within(nav()).getByRole('button', { name: /Spør byggeassistenten/ }));
     expect(await screen.findByText('/tenants/{tenant}/services/{id}/assistant/turns')).toBeTruthy();
-    fireEvent.click(within(nav()).getByRole('button', { name: /Registrer en byggekloss/ }));
-    expect(await screen.findByText('Registrere byggeklosser')).toBeTruthy();
-    fireEvent.click(within(nav()).getByRole('button', { name: /Ta i bruk den nye søkemotoren/ }));
+    fireEvent.click(within(nav()).getByRole('button', { name: /Legg til en del i katalogen/ }));
+    expect(await screen.findByText('Legge til i katalogen')).toBeTruthy();
+    fireEvent.click(within(nav()).getByRole('button', { name: /Bytt til den nye søkemotoren/ }));
     expect(
       await screen.findByText('/tenants/{tenant}/datasets/{id}/engine-switches/{sid}/activate'),
     ).toBeTruthy();
-    expect(screen.getByText('Administrere datasett')).toBeTruthy();
+    expect(screen.getByText('Administrere dokumentsamlinger')).toBeTruthy();
   });
 
   it('searches the endpoints', async () => {
@@ -86,7 +86,7 @@ describe('API-referanse', () => {
       target: { value: 'api-keys' },
     });
     expect(within(nav()).getAllByRole('button', { name: /API-nøkkel/ })).toHaveLength(2);
-    expect(within(nav()).queryByText('Datasett')).toBeNull();
+    expect(within(nav()).queryByText('Dokumentsamlinger')).toBeNull();
     fireEvent.change(screen.getByLabelText('Søk i endepunkter'), {
       target: { value: 'finnesikke' },
     });
@@ -170,7 +170,7 @@ describe('API-referanse', () => {
     expect(screen.queryByRole('button', { name: 'Send' })).toBeNull();
   });
 
-  it('sends the old address #/api-reference on to the reference under Utviklerverktøy', async () => {
+  it('sends the old address #/api-reference on to the reference under Integrasjoner', async () => {
     await renderAt('#/api-reference?endpoint=oa-chat');
     await waitFor(() =>
       expect(window.location.hash).toBe('#/developer/api/reference?endpoint=oa-chat'),
@@ -234,13 +234,13 @@ describe('Tjenesten som API', () => {
     expect(within(variants).getByText('ka__retrieve-only')).toBeTruthy();
     expect(within(variants).getByText('ka')).toBeTruthy();
     expect(within(variants).getByText('ka-retrieve-only')).toBeTruthy();
-    const example = screen.getByLabelText('Eksempel på å velge versjon');
-    expect(example.textContent).toContain('uten versjon brukes siste publiserte');
-    fireEvent.change(screen.getByLabelText('Versjon'), { target: { value: '6' } });
+    const example = screen.getByLabelText('Eksempel på å velge utgave');
+    expect(example.textContent).toContain('uten utgave brukes siste publiserte');
+    fireEvent.change(screen.getByLabelText('Utgave'), { target: { value: '6' } });
     expect(example.textContent).toContain('GenAI-Version: 6');
     expect(example.textContent).toContain('metadata.version = "6"');
     expect(screen.queryByText('ka__v7')).toBeNull();
-    expect(screen.getByText(/med versjonen som kjørte/).textContent).toContain('GenAI-Version');
+    expect(screen.getByText(/med utgaven som kjørte/).textContent).toContain('GenAI-Version');
     await screen.findByRole('option', { name: /Klarspråk/ });
     expectAccessible();
   });

@@ -3,7 +3,7 @@ import { defineNamespace } from '@genai/i18n';
 const settings = defineNamespace({
   titleTenant: 'Innstillinger for {name}',
   introTenant:
-    'Det dere setter her, gjelder alle tjenester og datasett i {name} som ikke har satt noe selv.',
+    'Det dere setter her, gjelder alle tjenester og dokumentsamlinger i {name} som ikke har satt noe selv.',
   introOrganisation: 'Gjelder alle tjenestene i {name}, med mindre en tjeneste sier noe annet.',
   loadFailedTitle: 'Vi fikk ikke hentet innstillingene deres',
   loadFailedNoForm:
@@ -11,7 +11,7 @@ const settings = defineNamespace({
   introLayered:
     'Hver innstilling kan arves fra laget til venstre eller settes her. Det som står lengst til høyre, gjelder.',
   targetService: 'Tjeneste',
-  targetDataset: 'Datasett',
+  targetDataset: 'Dokumentsamling',
   goToPublish: 'Gå til Publiser',
   tabsLabel: 'Innstillinger',
   tabGrid: 'Innstillinger',
@@ -97,7 +97,7 @@ const settings = defineNamespace({
   layerP: 'Plattformstandard',
   layerV: 'Virksomhet',
   layerT: 'Tjeneste',
-  layerD: 'Datasett',
+  layerD: 'Dokumentsamling',
   digdir: 'Digdir',
   sensLow: 'Lav',
   sensMedium: 'Middels',
@@ -120,7 +120,7 @@ const settings = defineNamespace({
   srcTenantSet: 'Satt av virksomheten',
   srcTenantOverride: 'Overstyrt av virksomheten',
   srcService: 'Satt på tjenesten',
-  srcDataset: 'Satt på datasettet',
+  srcDataset: 'Satt på dokumentsamlingen',
   srcNone: 'Ikke satt',
 
   errNumber: 'Skriv et tall.',
@@ -228,20 +228,20 @@ const settings = defineNamespace({
   panelPreviewReason: 'Forhåndsvisning',
   panelPreviewFailed: 'Kunne ikke vise hva endringen gjør. Prøv igjen om litt.',
   panelSaveFailed: 'Endringen ble ikke lagret. Prøv igjen om litt.',
-  panelNewVersion: 'Ny versjon av tjenesten ({version})',
+  panelNewVersion: 'Ny utgave av tjenesten ({version})',
   panelPinChanged: 'Festing endret for virksomheten',
   panelChangedTenant: 'Endret for virksomheten',
   panelPlatformDefault: 'Plattformstandard v{version}: {value}',
   panelResetInherited: 'Tilbakestill til arvet',
   panelResetPlatform: 'Tilbakestill til plattformstandard',
-  panelPin: 'Fest til denne versjonen (v12)',
+  panelPin: 'Fest til denne utgaven (v12)',
   panelUnpin: 'Fjern festing',
   panelWhatReset: 'tilbakestilt til arvet',
   panelWhatPin: 'festet til v12',
   panelWhatUnpin: 'festing fjernet',
   panelWhatSecret: 'hemmelighet erstattet',
   panelLogLine: '{label}: {what}',
-  panelPublishCall: 'Publiser ny versjon med «{label}»',
+  panelPublishCall: 'Publiser ny utgave med «{label}»',
   panelDraftCall: 'Legg «{label}» i utkastet til v{version}',
   panelChangeCall: 'Endre «{label}»',
   panelResetCall: 'Tilbakestill «{label}»',
@@ -280,7 +280,7 @@ const settings = defineNamespace({
   panelAfter: 'Etter',
   panelReasonHelp: 'Lagres i revisjonsloggen.',
   panelSaveDraft: 'Legg i utkastet',
-  panelNoDatasetApi: 'Innstillinger per datasett kan ikke lagres gjennom API-et ennå.',
+  panelNoDatasetApi: 'Innstillinger per dokumentsamling kan ikke lagres gjennom API-et ennå.',
   panelDraftHint: 'Legges i utkastet til v{version}. Tas i bruk når du publiserer.',
   panelChanges: 'Endringer her',
 
@@ -307,14 +307,14 @@ const settings = defineNamespace({
   fileMustBeYaml: 'Filen må være en YAML-fil eksportert fra plattformen.',
   downloaded: 'Filen er lastet ned. Eksporten er logget.',
   fileYaml: 'Konfigurasjonsfil (YAML)',
-  useExample: 'Bruk eksempelfil fra testmiljøet',
+  useExample: 'Bruk eksempelfil fra genki-test',
   include: 'Ta med',
   itemTenant: 'Virksomhetsinnstillinger',
   itemTenantDesc: '{count} innstillinger satt, hvorav {secrets} hemmeligheter (bare referanse)',
   itemService: 'Tjeneste: {name}',
   itemServiceSet: '{count} innstillinger satt på tjenesten',
   itemInheritsAll: 'Arver alt',
-  itemDataset: 'Datasett: {name}',
+  itemDataset: 'Dokumentsamling: {name}',
   itemDatasetSet: '{count} innstillinger satt. Dokumentene følger ikke med.',
   itemDatasetInherits: 'Arver alt. Dokumentene følger ikke med.',
   exportCount: '{count} innstillinger',
@@ -353,7 +353,7 @@ const settings = defineNamespace({
   liveInfo:
     'Filen inneholder tjenestedefinisjoner, promptfiler og innstillinger. Hemmeligheter eksporteres aldri, bare referansen til dem.',
   liveLoadingExport: 'Henter eksporten',
-  liveServicesAndFlows: 'Tjenester og stegflyter',
+  liveServicesAndFlows: 'Tjenester og arbeidsflyter',
   liveSettings: 'Innstillinger',
   liveSettingsDesc: '{count} innstillinger satt. Hemmeligheter følger bare som referanse.',
   liveDefinitionsCount: '{definitions} definisjoner, {settings} innstillinger',
@@ -368,9 +368,9 @@ const settings = defineNamespace({
   liveDoneText:
     '{changed} endret eller opprettet, {skipped} hoppet over. Endringen er logget i revisjonsloggen.',
   liveWhereService: 'Tjeneste',
-  liveWhereFlow: 'Stegflyt',
+  liveWhereFlow: 'Arbeidsflyt',
   liveWhereSetting: 'Innstilling',
-  liveWherePin: 'Låst versjon',
+  liveWherePin: 'Låst utgave',
 
   wsLevelTenant: 'Virksomhet',
   wsLevelService: 'Tjeneste: {name}',
@@ -398,11 +398,11 @@ const settingDefs = defineNamespace({
   cat_Sok: 'Søk',
   cat_Svar: 'Svar',
   cat_Modell: 'Modell',
-  cat_Vern: 'Vern',
+  cat_Vern: 'Sikkerhetsregler',
   cat_Innlesing: 'Innlesing',
-  cat_Grenser: 'Grenser',
+  cat_Grenser: 'Begrensninger',
   cat_Assistent: 'Assistent',
-  cat_Ferdigheter: 'Ferdigheter',
+  cat_Ferdigheter: 'Arbeidsinstrukser',
   cat_Proveomrade: 'Prøveområde',
   cat_Forbruk: 'Forbruk',
   group_planner: 'Søkeplanlegging',
@@ -487,7 +487,7 @@ const settingDefs = defineNamespace({
     'Hvor store biter dokumentene deles i. Mindre biter gir mer presise treff, større gir mer sammenheng.',
   ingest_ocr_label: 'Tekstgjenkjenning',
   ingest_ocr_desc: 'Leser skannede dokumenter. Omtrent 1 øre per side.',
-  ingest_schedule_label: 'Oppdater datasett',
+  ingest_schedule_label: 'Oppdater dokumentsamlingen',
   ingest_schedule_desc: 'Hvor ofte kilden leses inn på nytt.',
   ingest_schedule_opt_natt: 'Hver natt',
   ingest_schedule_opt_uke: 'Hver uke',
@@ -525,7 +525,7 @@ const settingDefs = defineNamespace({
   retrieval_autoFilter_rules_label: 'Regler for automatisk filter',
   retrieval_autoFilter_aliases_label: 'Andre navn på verdier',
   retrieval_autoFilter_aliases_desc:
-    'Navn som betyr det samme som en verdi i datasettet, for eksempel en forkortelse. Hver oppføring er en gruppe navn. Når søket nevner ett av dem, gjelder det verdien slik den er lagret i datasettet.',
+    'Navn som betyr det samme som en verdi i dokumentsamlingen, for eksempel en forkortelse. Hver oppføring er en gruppe navn. Når søket nevner ett av dem, gjelder det verdien slik den er lagret i dokumentsamlingen.',
   retrieval_docTitle_fanout_label: 'Tekstbiter per titteltreff',
   retrieval_merge_mode_label: 'Måte å flette søkene på',
   retrieval_merge_rrfK_label: 'Utjevning ved fletting (RRF k)',
@@ -572,15 +572,15 @@ const settingDefs = defineNamespace({
   answers_languageInstructions_en_desc:
     'Legges til etter instruksjonene til tjenesten når svaret er på engelsk.',
   services_defaultModel_label: 'Standardmodell for nye tjenester',
-  skills_defaultPassThreshold_label: 'Krav for publisering av ferdigheter',
+  skills_defaultPassThreshold_label: 'Krav for publisering av arbeidsinstrukser',
   skills_defaultPassThreshold_desc:
     'Andel testtilfeller som må bestå når testsettet ikke har eget krav.',
-  skills_testModel_label: 'Modell for testkjøring av ferdigheter',
+  skills_testModel_label: 'Modell for testkjøring av arbeidsinstrukser',
   skills_judgeModel_label: 'Modell som vurderer testsvar',
   playground_enabled_label: 'Prøveområdet er på',
   usage_monthlyTokens_label: 'Tokens per måned',
   usage_tenantCallsPerMinute_label: 'Kall per minutt for virksomheten',
-  batch_approvalLimitNok_label: 'Grense per samlet jobb før godkjenning (kr)',
+  batch_approvalLimitNok_label: 'Grense per massekjøring før godkjenning (kr)',
   planner_prompt_desc:
     'Ledetekst som erstatter den innebygde for planleggeren. Tomt bruker den innebygde.',
   retrieval_queryAwareBoost_desc: 'Gi treff som deler ord med spørsmålet høyere plass.',
@@ -603,29 +603,30 @@ const settingDefs = defineNamespace({
   synthesis_generationPrompt_desc:
     'Ledetekst som erstatter den innebygde for å lage svaret. Tomt bruker den innebygde.',
   synthesis_instructions_desc:
-    'Systemledetekst som erstatter den innebygde for modellen som svarer. Tomt bruker den innebygde.',
+    'Systemledetekst for modellen som svarer. Den erstatter den innebygde; for en agent legges den til etter de innebygde delene. Tomt bruker bare den innebygde.',
   knowledge_nightWindow_desc:
     'Tidsrom (norsk tid) der indeksbygg, store innlesinger og VACUUM kjøres, skrevet som 01:00-06:00, eller «always» for å la dem kjøre når som helst, som før lansering.',
   knowledge_heavyThreshold_desc:
     'Antall tekstbiter et indeksbygg, en innlesing eller en VACUUM må gå over for å vente til nattvinduet.',
   knowledge_switchRetentionDays_desc:
-    'Dager den forrige kopien i søkemotoren beholdes etter at et datasett bytter søkemotor.',
+    'Dager den forrige kopien i søkemotoren beholdes etter at en dokumentsamling bytter søkemotor.',
   assistant_enabled_desc: 'Tilby byggeassistenten i byggeren for tjenester.',
   assistant_model_desc:
     'Modellen byggeassistenten bruker. Tomt velger den første påslåtte modellen med verktøy innenfor tillatt behandlingssted.',
   services_defaultModel_desc:
     'Modellen nye tjenester starter med. Tomt velger den billigste prisede modellen virksomheten kan bruke.',
   skills_testModel_desc:
-    'Modellen som kjører testsett for ferdigheter. Tomt velger den billigste modellen virksomheten kan bruke.',
+    'Modellen som kjører testsett for arbeidsinstrukser. Tomt velger den billigste modellen virksomheten kan bruke.',
   skills_judgeModel_desc:
-    'Modellen som vurderer testsvar for ferdigheter. Tomt velger den billigste modellen fra en annen modellfamilie.',
-  playground_enabled_desc: 'Tilby prøveområdet for å prøve tjenester, ferdigheter og byggeklosser.',
+    'Modellen som vurderer testsvar for arbeidsinstrukser. Tomt velger den billigste modellen fra en annen modellfamilie.',
+  playground_enabled_desc:
+    'Tilby prøveområdet for å prøve tjenester, arbeidsinstrukser og andre deler fra katalogen.',
   usage_monthlyTokens_desc:
     'Tokens virksomheten kan bruke per kalendermåned. Prøveområdet avviser kjøringer når de er brukt opp.',
   usage_tenantCallsPerMinute_desc:
-    'Kall per minutt virksomheten kan gjøre, samlet for alle nøkler og personer.',
+    'Kall per minutt virksomheten kan gjøre, samlet for alle API-nøkler og personer.',
   batch_approvalLimitNok_desc:
-    'Kroner en samlet jobb kan anslås å koste før en som administrerer tjenester må godkjenne den med en begrunnelse. 0 slår av godkjenning.',
+    'Kroner en massekjøring kan anslås å koste før en som administrerer tjenester må godkjenne den med en begrunnelse. 0 slår av godkjenning.',
   cat_Oppbevaring: 'Oppbevaring',
   retention_class_label: 'Hvor lenge innhold beholdes',
   retention_class_desc:
@@ -635,7 +636,7 @@ const settingDefs = defineNamespace({
   retention_class_opt_case: 'Saksbehandling (365 dager)',
   retention_auditDays_label: 'Dager revisjonsspor beholdes',
   retention_auditDays_desc:
-    'Dager revisjonssporet for en kjøring (id-er, type, hvem, forbruk, versjoner og tidspunkter) beholdes etter at den er ferdig. Aldri kortere enn innholdet.',
+    'Dager revisjonssporet for en kjøring (id-er, type, hvem, forbruk, utgaver og tidspunkter) beholdes etter at den er ferdig. Aldri kortere enn innholdet.',
 });
 
 export const settingsArea = { settings, settingDefs } as const;

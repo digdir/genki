@@ -87,7 +87,7 @@ export interface SkippedDocument {
   reason: SkipReason;
 }
 
-export type RerankStatus = 'off' | 'unconfigured' | 'reranked' | 'empty' | 'degraded';
+export type RerankStatus = 'off' | 'reranked' | 'empty' | 'degraded';
 
 export interface PassTrace {
   queries: string[];
@@ -143,6 +143,13 @@ const unsupportedOr = async <T>(
     if (!isUnsupported(error)) throw error;
     return fallback(error as Error);
   }
+};
+
+/** A search error carries what detection found, so a caller can still give it as a hint. */
+export const withDetections = (error: unknown, detections: Detection[]): unknown => {
+  if (detections.length > 0 && error instanceof Object && Object.isExtensible(error))
+    Object.assign(error, { detections });
+  return error;
 };
 
 const inBatches = async (
@@ -495,11 +502,9 @@ export const retrieve = async (input: RetrieveInput): Promise<RetrievalResult> =
     if (list.length === 0) return { chunks: list, trace };
     const candidates = list.slice(0, config.rerank.candidateK);
     const tail = list.slice(config.rerank.candidateK);
+    // Without a reranker, rerank is off: the search order stays and nothing claims a rerank.
+    if (!input.rerank) return { chunks: [...candidates.map(withSnippet), ...tail], trace };
     trace.candidates = candidates.length;
-    if (!input.rerank) {
-      trace.status = 'unconfigured';
-      return { chunks: [...candidates.map(withSnippet), ...tail], trace };
-    }
     const started = now();
     const response = await input.rerank.rerank({
       query,
@@ -618,10 +623,17 @@ export const retrieve = async (input: RetrieveInput): Promise<RetrievalResult> =
     const detected = await detect(queries, note);
     const explicit = toSet(input.filters);
     const effective = toInput(mergeTyped(explicit, detected.filter ?? {}));
-    let result = await runStrategies(queries, portFilters(effective), note);
+    const strategies = async (filters: Record<string, FilterValue> | undefined) => {
+      try {
+        return await runStrategies(queries, filters, note);
+      } catch (error) {
+        throw withDetections(error, detected.detections);
+      }
+    };
+    let result = await strategies(portFilters(effective));
     let fallback = false;
     if (detected.filter && effective && result.merged.length === 0) {
-      result = await runStrategies(queries, portFilters(toInput(explicit)), note);
+      result = await strategies(portFilters(toInput(explicit)));
       fallback = true;
     }
 
@@ -672,7 +684,7 @@ export const retrieve = async (input: RetrieveInput): Promise<RetrievalResult> =
     const query = queries[0] ?? '';
     const reranked = !config.rerank.enabled
       ? { chunks: final, trace: { status: 'off' as RerankStatus, candidates: 0, ms: 0 } }
-      : config.rerank.perStrategy
+      : config.rerank.perStrategy && input.rerank
         ? await perStrategyRerank(result.baseLists, query, result.seen, note).then(
             ({ droppedAsReportCopy: dropped, texts: reranked, ...r }) => {
               droppedAsReportCopy = dropped;

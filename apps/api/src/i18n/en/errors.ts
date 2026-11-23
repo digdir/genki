@@ -57,6 +57,7 @@ export const catalogErrors = {
   noDataset: 'no dataset {dataset}',
   onlyTenantTestSets: 'only the tenant or an operator changes its test sets',
   onlyTenantChangesServiceState: 'only the tenant changes the state of its services',
+  onlyTenantDeletesServices: 'only the tenant deletes its services',
   onlyTenantChangesEnvironments: 'only the tenant changes the environments of its services',
   serviceStateValues: 'state must be active, paused or archived',
   indexRequired: 'an index is required',
@@ -107,6 +108,27 @@ export const catalogErrors = {
   hostOwnBlockHosted:
     "{block} is a host's own block, and genki's assistant host draws only catalogue blocks",
   unknownInterfaceBlock: 'unknown interface block {block}',
+  noUsableBlock: 'no published block {publisher}/{id} that this organisation may use',
+  noUsableBlockVersion:
+    'block {publisher}/{id} has no version {version} that this organisation may use',
+  blockRefDrawnAs: '{ref} is drawn as {drawn}, so its block must be {drawn}',
+  blockRefNotDrawn: '{ref} is a {tier} block, so its block must be ref',
+  refBlockNeedsRef: 'ref as a block needs a ref to the block it draws',
+  blockRefZone: '{ref} cannot stand in {zone}; it may stand in {zones}',
+  previewShowsBlock: 'a preview shows a Block',
+  pinVersion: 'version is a published edition of the block',
+  pinZone: 'zone is primary, main or secondary',
+  codeBlockNotDrawn:
+    'code blocks are not drawn by any host yet; only built-in blocks can be published',
+  declarativeBlockNotDrawn:
+    'declarative blocks are not drawn by any host yet; only built-in blocks can be published',
+  blockFileNotCode: 'a file under block/ belongs only to a code block',
+  pinNoLayout: 'the service has no layout to pin a block into',
+  pinSettings: 'settings map names to true, false or a text',
+  blockRefNoSetting: '{ref} has no setting {key}',
+  blockRefSettingBoolean: 'setting {key} of {ref} must be true or false',
+  blockRefSettingText: 'setting {key} of {ref} must be a text',
+  blockRefSettingEnum: 'setting {key} of {ref} must be one of {allowed}',
   hostedServiceOwnBlock:
     "the service's interface has a host's own block ({block}), which genki's assistant host does not draw",
   riskConfirm:

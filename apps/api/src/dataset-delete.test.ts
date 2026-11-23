@@ -345,7 +345,7 @@ describe('deleting a dataset', () => {
     expect(refused.status).toBe(409);
     expect(await json(refused)).toMatchObject({
       type: datasetInUseType,
-      errors: [{ path: 'usedBy', message: `service ${digdir}/leser bruker datasettet` }],
+      errors: [{ path: 'usedBy', message: `service ${digdir}/leser bruker dokumentsamlingen` }],
     });
     expect((await booted.call(base('veiledere'), 'kari')).status).toBe(200);
   });

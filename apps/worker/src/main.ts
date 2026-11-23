@@ -6,6 +6,8 @@ import {
   type BlockTexts,
   boundPlatformId,
   createRuntime,
+  modelDiscoveryFromEnv,
+  type DiscoveryListing,
   databaseHosts,
   knowledgeServerEndpoints,
   savedKnowledgeCatalog,
@@ -76,6 +78,7 @@ import {
   doclingConverter,
   knowledgeListingOf,
   kudosClient,
+  kudosDownloads,
   kudosProd,
   type CopyIds,
 } from '@genai/ingest';
@@ -87,7 +90,7 @@ import {
 } from '@genai/providers-ai-gateway';
 import { EgressGuard } from '@genai/providers-mcp-client';
 import { nativeOutputStoreFromEnv } from '@genai/providers-azure-blob';
-import { createLocalConverter } from '@genai/providers-documents';
+import { createLocalConverter, pdfPageCount } from '@genai/providers-documents';
 import {
   createTraceExporter,
   langfuseTraceSink,
@@ -109,6 +112,7 @@ import {
   managedIdentityTokenSource,
   platformId,
   PostgresDefinitionStore,
+  PostgresDiscoveredModels,
   PostgresJobRunRecords,
   PostgresLeases,
   postgresSourceFromEnv,
@@ -150,6 +154,11 @@ const log = (msg: string, extra: Record<string, unknown> = {}) =>
   console.log(JSON.stringify({ msg, ...extra }));
 keepRunningOnRejection(log);
 
+/** One pacing for every KUDOS file download this worker runs; each wait is logged (issue 931). */
+const kudosFileDownloads = kudosDownloads({
+  onWait: (wait) => log('a KUDOS download waits', { ...wait }),
+});
+
 const root = join(import.meta.dirname, '..', '..', '..');
 const envFile = join(root, '.env.local');
 if (existsSync(envFile)) process.loadEnvFile(envFile);
@@ -173,17 +182,13 @@ const platformTenant = platformTenantFrom(process.env);
 
 const databaseSource = postgresSourceFromEnv(process.env);
 const db = databaseSource
-  ? await createPostgresStores(
-      databaseSource,
-      LocalKeyWrapper.fromBase64(process.env.CONTENT_MASTER_KEY),
-      {
-        onError: (error) => log('postgres connection error', { error: String(error) }),
-        role: workerRole,
-        ...(process.env.DATABASE_RUNTIME_URL
-          ? { runtime: { connectionString: process.env.DATABASE_RUNTIME_URL } }
-          : {}),
-      },
-    )
+  ? await createPostgresStores(databaseSource, LocalKeyWrapper.fromEnv(process.env), {
+      onError: (error) => log('postgres connection error', { error: String(error) }),
+      role: workerRole,
+      ...(process.env.DATABASE_RUNTIME_URL
+        ? { runtime: { connectionString: process.env.DATABASE_RUNTIME_URL } }
+        : {}),
+    })
   : undefined;
 log('storage', { kind: db ? 'postgres' : 'memory' });
 
@@ -198,6 +203,11 @@ const docling = process.env.DOCLING_URL
   ? doclingConverter({
       url: process.env.DOCLING_URL,
       credential: { kind: 'api-key', key: async () => process.env.DOCLING_API_KEY ?? '' },
+      // A task no replica knows any more, such as after a scale-in, is submitted again (issue 906).
+      onTaskLost: ({ submits }) => log('docling task lost', { submits }),
+      // One line a task, with its file's sha256, pages and replica, so a kill names the files it held (issue 922).
+      countPages: pdfPageCount,
+      onTask: (task) => log('docling task', { ...task }),
     })
   : undefined;
 log('document converter', { converter: docling ? 'docling' : 'text-layer', convertConcurrency });
@@ -484,6 +494,7 @@ const knowledgeHandlers =
             {
               uploads: new FileSystemBlobStore(blobDir),
               converter: converter ?? createLocalConverter(),
+              kudos: { downloads: kudosFileDownloads },
               ...(process.env.INGEST_FOLDER_ROOT
                 ? { folderRoot: process.env.INGEST_FOLDER_ROOT }
                 : {}),
@@ -665,7 +676,7 @@ log('traces', { enabled: Boolean(traces) });
 
 const blockTexts: BlockTexts = {
   disabled: (name) =>
-    `Byggeklossen «${name}» er slått av for virksomheten. Slå den på igjen under Byggeklosser, eller fjern den fra tjenesten.`,
+    `Delen «${name}» er slått av for virksomheten. Slå den på igjen under Katalog, eller fjern den fra tjenesten.`,
   toolTimedOut: (seconds) => `Verktøyet svarte ikke innen ${seconds} sekunder.`,
 };
 const knowledgeDatasets =
@@ -752,9 +763,11 @@ const runtime = await createRuntime({
         ...knowledgeRuntimeInput(knowledgeServer, knowledgeBinding),
         connections: db.connections,
         modelClassifications: db.modelClassifications,
+        discoveredModels: new PostgresDiscoveredModels<DiscoveryListing>(db.runtimePool),
       }
     : {}),
   searchOnlyClusters: [process.env.TYPESENSE_URL],
+  modelDiscovery: modelDiscoveryFromEnv(process.env),
   onWarning: (message) => log('warning', { message }),
   logger: log,
   logFailureMessages: process.env.LOG_FAILURE_MESSAGES === 'true',

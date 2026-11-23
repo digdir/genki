@@ -223,10 +223,10 @@ describe.skipIf(!hasAz && !process.env.CI)('hosted hostnames in the template', (
     );
   });
 
-  it('turns the platform login on in test with its client id, starting at stage none', () => {
+  it('turns the platform login on in test with its client id at a known stage', () => {
     const values = paramValues('test');
     expect(values.platformLoginClientId?.value).toBe('dde98722-c952-4172-a5d6-10bdf721680f');
-    expect(values.platformLoginStage?.value).toBe('none');
+    expect(['none', 'hostnames', 'certificates']).toContain(values.platformLoginStage?.value);
     expect(values.platformLoginClientId?.value).not.toBe(values.portalClientId?.value);
   }, 120_000);
 

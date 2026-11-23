@@ -18,9 +18,20 @@ import { callerFrom, createPlatform, platformModules } from './composition.js';
 import { InMemoryConfigEntryStore, platformScope } from './config-store.js';
 import { refusedAction, rights, rightsOf } from './rights.js';
 import { InMemoryTenantApiKeys, portalAdminHandlers } from './routes/portal-routes.js';
-import { testRunnerRefusedType, testRunnerScopeType, testRunnerView } from './test-runner.js';
-import { configuredCredentialScope, mayUseModels, readOnlyInLockdown } from './lockdown.js';
+import {
+  testRunnerKeysAllowed,
+  testRunnerRefusedType,
+  testRunnerScopeType,
+  testRunnerView,
+} from './test-runner.js';
+import {
+  configuredCredentialScope,
+  lockedEnvironmentType,
+  mayUseModels,
+  readOnlyInLockdown,
+} from './lockdown.js';
 import { kernelTaskReader } from './timeline.js';
+import { operatorDirectory } from './operators.js';
 import { keyScopeType } from './tenant-gate.js';
 import { digdir, files, other, testService } from './testkit.js';
 
@@ -61,7 +72,31 @@ const people: Record<string, Principal> = {
     tenant: digdir,
     scopes: [lockdownUserScope],
   },
+  ola: {
+    kind: 'operator',
+    issuer: 'test',
+    subject: 'ola',
+    client: 'console',
+    tenant: digdir,
+    authorizedFor: [{ org: digdir }, { org: other }],
+  },
+  olaElsewhere: {
+    kind: 'operator',
+    issuer: 'test',
+    subject: 'ola',
+    client: 'unlisted',
+    tenant: digdir,
+    authorizedFor: [{ org: digdir }],
+  },
+  per: {
+    kind: 'employee',
+    issuer: 'test',
+    subject: 'per',
+    tenant: digdir,
+  },
 };
+
+const isOperator = operatorDirectory({ subjects: ['test|ola'], clientIds: ['console'] }).isOperator;
 
 const completion = (body: Record<string, unknown>) =>
   body.stream
@@ -107,7 +142,8 @@ const completion = (body: Record<string, unknown>) =>
 const boot = async ({
   lockdown = true,
   tier = 'test',
-}: { lockdown?: boolean; tier?: EnvironmentTier } = {}) => {
+  testRunnerKeys = true,
+}: { lockdown?: boolean; tier?: EnvironmentTier; testRunnerKeys?: boolean } = {}) => {
   const model = await fakeHttp(completion);
   servers.push(model);
   const keys = new InMemoryTenantApiKeys();
@@ -157,6 +193,8 @@ const boot = async ({
     policy: { decide: async () => ({ allow: true }) },
     apiKeys: keys,
     environmentTier: tier,
+    testRunnerKeys,
+    isOperator,
     ...(lockdown ? { lockdown: { configuredKeys: new Set<string>() } } : {}),
     authenticate: async (request) => {
       const person = people[request.headers.get('authorization')?.slice(7) ?? ''];
@@ -218,7 +256,7 @@ const boot = async ({
       },
     });
   const testRunnerKey = async (agents = ['klarsprak']) => {
-    const created = await createKey('eva', { testRunner: true, agents });
+    const created = await createKey(lockdown ? 'eva' : 'ola', { testRunner: true, agents });
     expect(created.status).toBe(201);
     return ((await created.json()) as { key: string }).key;
   };
@@ -229,6 +267,15 @@ const problemType = async (response: Response) =>
   ((await response.json()) as { type?: string }).type;
 
 const throwaway = (id: string) => ({ definition: testService(id), files });
+
+describe('the test-runner switch', () => {
+  it('is on only with GENAI_TEST_RUNNER_KEYS=true, whatever the tier and lockdown', () => {
+    expect(testRunnerKeysAllowed({ GENAI_TEST_RUNNER_KEYS: 'true' })).toBe(true);
+    expect(testRunnerKeysAllowed({ GENAI_ENV: 'test', GENAI_LOCKDOWN: 'true' })).toBe(false);
+    expect(testRunnerKeysAllowed({ GENAI_TEST_RUNNER_KEYS: 'TRUE' })).toBe(false);
+    expect(testRunnerKeysAllowed({ GENAI_TEST_RUNNER_KEYS: '1' })).toBe(false);
+  });
+});
 
 describe('creating a test-runner key', () => {
   it('gives the grant to an admitted Entra login in lockdown on the test tier', async () => {
@@ -272,23 +319,81 @@ describe('creating a test-runner key', () => {
     expect(await keys.list(digdir)).toHaveLength(0);
   });
 
-  it('refuses the grant outside lockdown', async () => {
-    const { createKey } = await boot({ lockdown: false });
+  it('refuses the grant when the switch is off, also in lockdown on the test tier', async () => {
+    const { createKey, keys } = await boot({ testRunnerKeys: false });
 
     const refused = await createKey('eva', { testRunner: true });
 
     expect(refused.status).toBe(403);
     expect(await problemType(refused)).toBe(testRunnerRefusedType);
+    expect(await keys.list(digdir)).toHaveLength(0);
   });
 
-  it('refuses the grant outside the test tier', async () => {
-    const { createKey } = await boot({ tier: 'production' });
+  it('gives the grant on the production tier without lockdown when the switch is on', async () => {
+    const { createKey } = await boot({ lockdown: false, tier: 'production' });
 
-    const refused = await createKey('eva', { testRunner: true });
+    const created = await createKey('ola', { testRunner: true });
+
+    expect(created.status).toBe(201);
+    expect(await created.json()).toMatchObject({ apiKey: { testRunner: true } });
+  });
+
+  it('refuses the grant outside lockdown to a person who is not an operator', async () => {
+    const { createKey } = await boot({ lockdown: false, tier: 'production' });
+
+    const refused = await createKey('per', { testRunner: true });
 
     expect(refused.status).toBe(403);
     expect(await problemType(refused)).toBe(testRunnerRefusedType);
   });
+
+  it('refuses the grant in lockdown to an operator who is not a trusted Entra login', async () => {
+    const { createKey, keys } = await boot();
+
+    const refused = await createKey('ola', { testRunner: true });
+
+    expect(refused.status).toBe(403);
+    expect(await problemType(refused)).toBe(lockedEnvironmentType);
+    expect(await keys.list(digdir)).toHaveLength(0);
+  });
+
+  it('refuses the grant to an operator acting in an organisation other than the platform one', async () => {
+    const { send, keys } = await boot({ lockdown: false, tier: 'production' });
+
+    const refused = await send(`/tenants/${other}/api-keys`, 'ola', {
+      body: { name: 'Røyktest', expiresInDays: 30, callsPerMinute: 600, testRunner: true },
+    });
+
+    expect(refused.status).toBe(403);
+    expect(await problemType(refused)).toBe(testRunnerRefusedType);
+    expect(await keys.list(other)).toHaveLength(0);
+  });
+
+  it('refuses the grant to an operator subject logging in through a client outside OPERATOR_CLIENT_IDS', async () => {
+    const { createKey } = await boot({ lockdown: false, tier: 'production' });
+
+    const refused = await createKey('olaElsewhere', { testRunner: true });
+
+    expect(refused.status).toBe(403);
+    expect(await problemType(refused)).toBe(testRunnerRefusedType);
+  });
+
+  it.each([
+    ['no expiry', { expiresInDays: undefined }, 'expiresInDays'],
+    ['an expiry over 90 days', { expiresInDays: 91 }, 'expiresInDays'],
+    ['no rate limit', { callsPerMinute: undefined }, 'callsPerMinute'],
+  ])(
+    'keeps the expiry and rate limit on the production tier: refuses %s',
+    async (_name, limits, path) => {
+      const { createKey, keys } = await boot({ lockdown: false, tier: 'production' });
+
+      const refused = await createKey('ola', { testRunner: true, ...limits });
+
+      expect(refused.status).toBe(400);
+      expect(await refused.json()).toMatchObject({ errors: [{ path }] });
+      expect(await keys.list(digdir)).toHaveLength(0);
+    },
+  );
 
   it('refuses the grant to a creator who is not an admitted Entra login', async () => {
     const { createKey } = await boot();
@@ -310,7 +415,8 @@ describe('creating a test-runner key', () => {
 
   it('says through the access view whether the caller may give the grant here', async () => {
     const allowed = await boot();
-    const production = await boot({ tier: 'production' });
+    const off = await boot({ testRunnerKeys: false });
+    const unlocked = await boot({ lockdown: false, tier: 'production' });
     const view = async (b: typeof allowed, as: string) =>
       (
         (await (await b.send(`/tenants/${digdir}/access`, as)).json()) as {
@@ -321,7 +427,9 @@ describe('creating a test-runner key', () => {
     expect(await view(allowed, 'eva')).toBe(true);
     expect(await view(allowed, 'system')).toBe(false);
     expect(await view(allowed, 'user')).toBe(false);
-    expect(await view(production, 'eva')).toBe(false);
+    expect(await view(off, 'eva')).toBe(false);
+    expect(await view(unlocked, 'ola')).toBe(true);
+    expect(await view(unlocked, 'per')).toBe(false);
   });
 });
 
@@ -342,8 +450,11 @@ describe('rotating a test-runner key', () => {
 });
 
 describe('a stored test-runner grant', () => {
-  it('is ignored when the server is not in lockdown on the test tier', async () => {
-    for (const setting of [{ lockdown: false }, { tier: 'production' as const }]) {
+  it('is ignored when the switch is off, whatever the lockdown and tier', async () => {
+    for (const setting of [
+      { testRunnerKeys: false },
+      { testRunnerKeys: false, lockdown: false, tier: 'production' as const },
+    ]) {
       const { send, keys } = await boot(setting);
       await keys.add({
         id: 'stored',
@@ -366,6 +477,29 @@ describe('a stored test-runner grant', () => {
       expect(await problemType(read)).toBe(keyScopeType);
       expect(validate.status).toBe(401);
     }
+  });
+});
+
+describe('a test-runner key on the production tier with the switch on', () => {
+  it('reads its own tenant without lockdown', async () => {
+    const { send, testRunnerKey } = await boot({ lockdown: false, tier: 'production' });
+    const key = await testRunnerKey();
+
+    const read = await send(`/tenants/${digdir}/services`, key);
+
+    expect(read.status).toBe(200);
+  });
+
+  it('still changes only smoke- definitions', async () => {
+    const { send, testRunnerKey } = await boot({ lockdown: false, tier: 'production' });
+    const key = await testRunnerKey();
+
+    const refused = await send('/definitions', key, { body: throwaway('klarsprak') });
+    const published = await send('/definitions', key, { body: throwaway('smoke-prod') });
+
+    expect(refused.status).toBe(403);
+    expect(await problemType(refused)).toBe(testRunnerScopeType);
+    expect(published.status).toBe(201);
   });
 });
 
@@ -479,6 +613,24 @@ describe('a test-runner key in its own tenant', () => {
 
   it('opens a draft that is behind without rebasing it', async () => {
     const { send, testRunnerKey } = await boot();
+    const key = await testRunnerKey();
+    await send('/definitions', key, { body: throwaway('smoke-bak') });
+    await send(`/tenants/${digdir}/services/smoke-bak/draft`, key, {
+      method: 'PUT',
+      body: { definition: testService('smoke-bak'), files, baseVersion: 1 },
+    });
+    const newer = testService('smoke-bak');
+    await send('/definitions', key, {
+      body: { definition: { ...newer, metadata: { ...newer.metadata, name: 'Nyere' } }, files },
+    });
+
+    const opened = await send(`/tenants/${digdir}/services/smoke-bak/draft?rebase=clean`, key);
+
+    expect(opened.status).toBe(200);
+  });
+
+  it('lets a test-runner key read a draft that is behind its version outside lockdown without rebasing it', async () => {
+    const { send, testRunnerKey } = await boot({ lockdown: false, tier: 'production' });
     const key = await testRunnerKey();
     await send('/definitions', key, { body: throwaway('smoke-bak') });
     await send(`/tenants/${digdir}/services/smoke-bak/draft`, key, {
@@ -803,7 +955,7 @@ describe('the principal a test-runner key acts as', () => {
       expect(testRunnerView(admitted, request(method, path), true).kind).toBe('agency-system');
   });
 
-  it('loses the grant when the server is not in lockdown on the test tier', () => {
+  it('loses the grant when the switch is off', () => {
     const view = testRunnerView(admitted, request('GET', '/operator/tenants'), false);
 
     expect(view).toMatchObject({ kind: 'agency-system', scopes: [configuredCredentialScope] });
@@ -844,17 +996,33 @@ describe('the key creation handler', () => {
     expect((await apiKeys.list(digdir))[0]).not.toHaveProperty('testRunner');
   });
 
-  it('stores the grant only for a trusted Entra login', async () => {
+  it('stores the grant only for a trusted Entra login or an operator acting in its organisation', async () => {
+    const apiKeys = new InMemoryTenantApiKeys();
+    const create = portalAdminHandlers({ apiKeys, testRunnerKeys: true, isOperator })[
+      'platform.apikeys.create'
+    ];
+    const ola = { ...people.ola, kind: 'employee' } as Principal;
+
+    await create?.(input, people.user as Principal);
+    await create?.({ ...input, id: 'k2', digest: 'cd'.repeat(32) }, eva);
+    await create?.({ ...input, id: 'k3', digest: 'ef'.repeat(32) }, ola);
+    await create?.({ ...input, id: 'k4', digest: '01'.repeat(32) }, people.per as Principal);
+
+    const stored = await apiKeys.list(digdir);
+    expect(stored.find((k) => k.id === 'k1')).not.toHaveProperty('testRunner');
+    expect(stored.find((k) => k.id === 'k2')).toMatchObject({ testRunner: true });
+    expect(stored.find((k) => k.id === 'k3')).toMatchObject({ testRunner: true });
+    expect(stored.find((k) => k.id === 'k4')).not.toHaveProperty('testRunner');
+  });
+
+  it('stores no grant for an operator when no operator directory is given', async () => {
     const apiKeys = new InMemoryTenantApiKeys();
     const create = portalAdminHandlers({ apiKeys, testRunnerKeys: true })[
       'platform.apikeys.create'
     ];
 
-    await create?.(input, people.user as Principal);
-    await create?.({ ...input, id: 'k2', digest: 'cd'.repeat(32) }, eva);
+    await create?.(input, { ...people.ola, kind: 'employee' } as Principal);
 
-    const stored = await apiKeys.list(digdir);
-    expect(stored.find((k) => k.id === 'k1')).not.toHaveProperty('testRunner');
-    expect(stored.find((k) => k.id === 'k2')).toMatchObject({ testRunner: true });
+    expect((await apiKeys.list(digdir))[0]).not.toHaveProperty('testRunner');
   });
 });

@@ -99,6 +99,7 @@
 
   /* Private defaults, so the container query changes a default and never a host's value. */
   .uib-sources-document {
+    --dsc-card-border-radius: var(--genai-sources-border-radius, var(--ds-border-radius-xl));
     --_head-padding: var(--ds-size-3);
     --_body-padding: var(--ds-size-3);
     --_excerpt-padding: var(--ds-size-3);
@@ -115,8 +116,8 @@
     padding: var(--genai-sources-head-padding, var(--_head-padding));
     border: var(--genai-sources-head-border-width, var(--ds-border-width-default)) solid
       var(--genai-sources-head-border-color, var(--ds-color-border-subtle));
-    border-start-start-radius: var(--genai-sources-border-radius, var(--ds-border-radius-lg));
-    border-start-end-radius: var(--genai-sources-border-radius, var(--ds-border-radius-lg));
+    border-start-start-radius: var(--genai-sources-border-radius, var(--ds-border-radius-xl));
+    border-start-end-radius: var(--genai-sources-border-radius, var(--ds-border-radius-xl));
     hyphens: auto;
     background: var(--genai-sources-head-background, var(--ds-color-surface-tinted));
     color: var(--genai-sources-head-color, var(--ds-color-text-default));
@@ -183,8 +184,8 @@
     border: var(--genai-sources-body-border-width, var(--ds-border-width-default)) solid
       var(--genai-sources-body-border-color, var(--ds-color-border-subtle));
     border-block-start: 0;
-    border-end-start-radius: var(--genai-sources-border-radius, var(--ds-border-radius-lg));
-    border-end-end-radius: var(--genai-sources-border-radius, var(--ds-border-radius-lg));
+    border-end-start-radius: var(--genai-sources-border-radius, var(--ds-border-radius-xl));
+    border-end-end-radius: var(--genai-sources-border-radius, var(--ds-border-radius-xl));
     background: var(--genai-sources-body-background, var(--ds-color-background-tinted));
   }
   .uib-sources-document-body > * {
@@ -209,7 +210,7 @@
     gap: var(--genai-sources-excerpt-gap, var(--ds-size-2));
     padding: var(--genai-sources-excerpt-padding, var(--_excerpt-padding));
     background: var(--genai-sources-excerpt-background, var(--ds-color-surface-default));
-    border-radius: var(--genai-sources-excerpt-border-radius, var(--ds-border-radius-lg));
+    border-radius: var(--genai-sources-excerpt-border-radius, var(--ds-border-radius-xl));
   }
   .uib-sources-excerpt-head {
     display: flex;
@@ -257,6 +258,7 @@
     hyphens: none;
   }
   .uib-sources-excerpt-toggle {
+    --dsc-button-border-radius: var(--genai-sources-toggle-radius, var(--ds-border-radius-xl));
     --dsc-button-color: var(--genai-sources-toggle-color, var(--ds-color-accent-text-subtle));
     --dsc-button-color--hover: var(
       --genai-sources-toggle-color,
@@ -407,6 +409,11 @@
     }
   }
 
+  /* The search field in the assistant's one corner (kunnskapsassistenten#266). */
+  .uib-sources-search .ds-input {
+    --dsc-input-border-radius: var(--genai-sources-search-radius, var(--ds-border-radius-xl));
+  }
+
   /* ── The excerpts when the answer cites them (dev-kilder-hoyre and -2-detalj) ── */
 
   .uib-sources-ex-overview,
@@ -431,6 +438,7 @@
   }
   /* The whole card is the button; its hover is pinned to accent, as the board draws it. */
   .uib-sources-ex-card {
+    --dsc-card-border-radius: var(--genai-sources-ex-card-radius, var(--ds-border-radius-xl));
     display: flex;
     flex-direction: column;
     gap: var(--genai-sources-ex-card-gap, var(--ds-size-2));
@@ -567,7 +575,7 @@
   }
   .uib-sources-ex-text {
     padding: var(--genai-sources-ex-text-padding, var(--ds-size-4));
-    border-radius: var(--genai-sources-ex-text-border-radius, var(--ds-border-radius-md));
+    border-radius: var(--genai-sources-ex-text-border-radius, var(--ds-border-radius-xl));
     background: var(--genai-sources-ex-text-background, var(--ds-color-background-tinted));
   }
   .uib-sources-ex-quote {

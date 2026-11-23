@@ -172,7 +172,7 @@ Accepting this record does not let a Langfuse judge block a publish. That needs 
 - The portal changes:
   - the Tracing screen manages a tenant's connections, shows each one's residency and has the switch that brings labels back as pending calibration labels, not feedback; the console's quality screen fetches them and accepts or rejects each batch
   - the Quality screen shows Langfuse scores as advisory, apart from the platform's metrics, with not-applicable counts, missing scores, `judge changed`, each case's verdict and reason, and a link to the experiment (`/project/<project>/experiments/results?baseline=<run>`, seen in 4.4.0); with each judge's reported cost and its agreement with its accepted labels
-  - Byggeklosser lists each experiment judge with its model, evaluator version, data type and mapped fields, says why a refused one cannot be taken in use, and shows a connection whose judges cannot be read as one refused block
+  - Katalog lists each experiment judge with its model, evaluator version, data type and mapped fields, says why a refused one cannot be taken in use, and shows a connection whose judges cannot be read as one refused block
   - a run started in the portal is sent to Langfuse only when its checkbox is ticked, and a run not sent says which judges in use did not score it
 - The operator of a Langfuse that receives content must meet ADR 0011's conditions.
 - Langfuse hides deleted rows in ClickHouse at once and removes them from disk later. The platform cannot speed that up.

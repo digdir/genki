@@ -51,7 +51,6 @@
 - providers-anthropic
 - providers-typesense
 - providers-typesense-writer
-- providers-colbert
 - providers-documents
 - providers-mcp-client
 - providers-a2a-client
@@ -66,7 +65,6 @@
 - providers-postgres-source
 - azure-foundry
 - typesense-cluster
-- colbert-service
 - postgres-db
 - tenant-databases
 - ansattporten

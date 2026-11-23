@@ -22,7 +22,7 @@ import { OverflowMenu } from '../../components/OverflowMenu';
 import { reasonProblem } from '../../components/ReasonField';
 import { usePortalFormat } from '../../format';
 import { problemErrors } from './definition';
-import { shortWhen } from './dev-format';
+import { placeName, shortWhen } from './dev-format';
 import './sections.css';
 
 export interface EnvironmentFacts {
@@ -139,10 +139,17 @@ export const Environments = ({
       } else if (action.kind === 'rollback') {
         if (version === undefined) return;
         await api.environments.rollback(tenant, serviceId, action.environment.name, version, why);
-        setMessage(t('serviceEnvironments.rolledBack', { name: action.environment.name, version }));
+        setMessage(
+          t('serviceEnvironments.rolledBack', {
+            name: placeName(t, action.environment.name),
+            version,
+          }),
+        );
       } else {
         await api.environments.remove(tenant, serviceId, action.environment.name, why);
-        setMessage(t('serviceEnvironments.removed', { name: action.environment.name }));
+        setMessage(
+          t('serviceEnvironments.removed', { name: placeName(t, action.environment.name) }),
+        );
       }
       setAction(undefined);
       onChanged();
@@ -228,12 +235,8 @@ export const Environments = ({
               runs: f.number(fact.runsToday),
               total: f.number(fact.totalToday),
             })
-          : e.description
-            ? t('serviceDev.envRunsTodayFrom', { count: fact.runsToday, who: e.description })
-            : t('serviceDev.envRunsToday', { count: fact.runsToday }),
-      fact.runsToday === undefined && e.description
-        ? t('serviceDev.envUsedBy', { who: e.description })
-        : '',
+          : t('serviceDev.envRunsToday', { count: fact.runsToday }),
+      e.description ? t('serviceDev.envUsedBy', { who: e.description }) : '',
       e.followsPublishes && e.name !== productionEnvironment ? '' : users(fact),
     ]
       .filter(Boolean)
@@ -260,12 +263,15 @@ export const Environments = ({
       return (
         <Alert data-color="warning" data-size="sm">
           <Paragraph data-size="sm">
-            {t('serviceEnvironments.rollbackConfirm', { name: e.name, from: e.version ?? '' })}
+            {t('serviceEnvironments.rollbackConfirm', {
+              name: placeName(t, e.name),
+              from: e.version ?? '',
+            })}
           </Paragraph>
           {errorAlert}
           <Field className="fe-field-md" data-size="sm">
             <Label htmlFor="env-version">
-              {t('serviceEnvironments.rollbackVersion', { name: e.name })}
+              {t('serviceEnvironments.rollbackVersion', { name: placeName(t, e.name) })}
             </Label>
             <Select
               id="env-version"
@@ -284,17 +290,17 @@ export const Environments = ({
             </Select>
           </Field>
           {reasonField}
-          {buttons(t('serviceEnvironments.rollbackSubmit', { name: e.name }))}
+          {buttons(t('serviceEnvironments.rollbackSubmit', { name: placeName(t, e.name) }))}
         </Alert>
       );
     return (
       <Alert data-color="danger" data-size="sm">
         <Paragraph data-size="sm">
-          {t('serviceEnvironments.removeConfirm', { name: e.name })}
+          {t('serviceEnvironments.removeConfirm', { name: placeName(t, e.name) })}
         </Paragraph>
         {errorAlert}
         {reasonField}
-        {buttons(t('serviceEnvironments.removeSubmit', { name: e.name }), true)}
+        {buttons(t('serviceEnvironments.removeSubmit', { name: placeName(t, e.name) }), true)}
       </Alert>
     );
   };
@@ -365,7 +371,7 @@ export const Environments = ({
             <li key={e.name} className="env-card">
               <div className="row-wrap">
                 <Heading level={3} data-size="xs" id={`env-${e.name}-h`}>
-                  {e.name}
+                  {placeName(t, e.name)}
                 </Heading>
                 <Tag data-size="sm" data-color={e.followsPublishes ? 'info' : 'neutral'}>
                   {e.followsPublishes
@@ -384,7 +390,9 @@ export const Environments = ({
                       <Button
                         variant="secondary"
                         data-size="sm"
-                        aria-label={t('serviceEnvironments.rollbackLabel', { name: e.name })}
+                        aria-label={t('serviceEnvironments.rollbackLabel', {
+                          name: placeName(t, e.name),
+                        })}
                         onClick={() => open({ kind: 'rollback', environment: e })}
                       >
                         {t('serviceEnvironments.rollback')}
@@ -395,7 +403,9 @@ export const Environments = ({
                       <Button
                         variant="secondary"
                         data-size="sm"
-                        aria-label={t('serviceEnvironments.promoteLabel', { name: e.name })}
+                        aria-label={t('serviceEnvironments.promoteLabel', {
+                          name: placeName(t, e.name),
+                        })}
                         aria-disabled={e.version === prod?.version || undefined}
                         aria-describedby={
                           e.version === prod?.version ? `env-${e.name}-same` : undefined
@@ -407,21 +417,25 @@ export const Environments = ({
                         {t('serviceEnvironments.promote')}
                       </Button>
                       <OverflowMenu
-                        label={t('serviceEnvironments.moreFor', { name: e.name })}
+                        label={t('serviceEnvironments.moreFor', { name: placeName(t, e.name) })}
                         trigger={<MenuElipsisHorizontalIcon aria-hidden />}
                         items={[
                           ...(versions.some((v) => v !== e.version)
                             ? [
                                 {
                                   key: 'rollback',
-                                  label: t('serviceEnvironments.rollbackLabel', { name: e.name }),
+                                  label: t('serviceEnvironments.rollbackLabel', {
+                                    name: placeName(t, e.name),
+                                  }),
                                   onSelect: () => open({ kind: 'rollback', environment: e }),
                                 },
                               ]
                             : []),
                           {
                             key: 'remove',
-                            label: t('serviceEnvironments.removeLabel', { name: e.name }),
+                            label: t('serviceEnvironments.removeLabel', {
+                              name: placeName(t, e.name),
+                            }),
                             onSelect: () => open({ kind: 'remove', environment: e }),
                             danger: true,
                           },

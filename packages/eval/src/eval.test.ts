@@ -952,7 +952,7 @@ describe('eval runner', () => {
   it("checks the judge's family only against language models the run used", async () => {
     const others = [
       { kind: 'embedder', id: 'foundry/text-embedding-3-small', tenant: '991825827' },
-      { kind: 'reranker', id: 'colbert', tenant: '991825827' },
+      { kind: 'reranker', id: 'omrangering', tenant: '991825827' },
       { kind: 'transcriber', id: 'foundry/whisper', tenant: '991825827' },
     ];
     const mixed: Strategy = {
@@ -989,10 +989,10 @@ describe('eval runner', () => {
       });
 
     expect((await run('anthropic')).provenance.servedModels).toEqual([
-      'colbert',
       'foundry/gpt-4o',
       'foundry/text-embedding-3-small',
       'foundry/whisper',
+      'omrangering',
     ]);
     await expect(run('openai')).rejects.toThrow(/same family \(openai\)/);
   });

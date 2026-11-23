@@ -36,7 +36,10 @@ const filterKeys = {
 } as const;
 
 export const needsAttention = (d: { status: DatasetStatus; needsSource?: boolean }) =>
-  d.status === 'Feilet' || d.status === 'Delvis lest inn' || d.needsSource === true;
+  d.status === 'Feilet' ||
+  d.status === 'Delvis lest inn' ||
+  d.status === 'Avbrutt' ||
+  d.needsSource === true;
 
 export const matchesFilter = (
   filter: ListFilter,

@@ -11,17 +11,20 @@ import {
   type Translation,
 } from '@genai/i18n';
 import type { MiddlewareHandler } from 'hono';
+import { templateErrors as enTemplateErrors } from './en/block-template.js';
 import { content as enContent } from './en/content.js';
 import { errors as enErrors } from './en/errors.js';
 import { problems as enProblems } from './en/problems.js';
+import { templateErrors } from './nb/block-template.js';
 import { content } from './nb/content.js';
 import { errors } from './nb/errors.js';
 import { problems } from './nb/problems.js';
 
-export const nb = defineCatalogue({ problems, ...errors, ...content });
+export const nb = defineCatalogue({ problems, ...errors, templateErrors, ...content });
 export const en = {
   problems: enProblems,
   ...enErrors,
+  templateErrors: enTemplateErrors,
   ...enContent,
 } satisfies Translation<typeof nb>;
 export type ApiKey = MessageKey<typeof nb>;

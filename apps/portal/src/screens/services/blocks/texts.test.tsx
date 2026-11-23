@@ -74,7 +74,7 @@ describe('the Tekster panel', () => {
     type('Navn', 'Byggehjelpen');
     fireEvent.click(screen.getByRole('button', { name: 'Legg til forslag' }));
     type('Forslag 1', 'Trenger jeg søknad?');
-    type('Notat i Innstillinger', 'Valgene huskes her.');
+    type('Notat i Mine innstillinger', 'Valgene huskes her.');
     expect(profile()).toEqual({
       assistantName: 'Byggehjelpen',
       suggestions: ['Trenger jeg søknad?'],
@@ -82,7 +82,7 @@ describe('the Tekster panel', () => {
     });
     type('Navn', '');
     fireEvent.click(screen.getByRole('button', { name: 'Fjern forslag 1' }));
-    type('Notat i Innstillinger', '');
+    type('Notat i Mine innstillinger', '');
     expect(profile()).toBeNull();
   });
 
@@ -198,7 +198,7 @@ describe('the Tekster panel', () => {
       assistantName: 'Kunnskapsassistenten',
       corpora: { kudos: { label: 'Kudos', typeField: 'type' } },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Bruk Bare chat' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Bruk Bare samtale' }));
     expect(profile()?.assistantName).toBe('Kunnskapsassistenten');
     expect(screen.queryByRole('button', { name: 'Fyll inn som Kunnskapsassistenten' })).toBeNull();
     // Words for a collection the service does not search can be taken away.
@@ -225,6 +225,33 @@ describe('the words kept with the layout', () => {
     expect(start !== 'foreign' && start?.layout.profile).toEqual({ assistantName: 'x'.repeat(81) });
     // A pasted layout past a limit is still refused, with why.
     expect(readLayout(layoutJson(layout))).toMatchObject({ problem: 'breaks-rules' });
+  });
+});
+
+describe('a layout in the draft that pins a block by ref', () => {
+  it('is left to the YAML, since the builder would lose the ref', () => {
+    const layout = fromTemplate('chat-only').layout;
+    const pinned = {
+      ...layout,
+      zones: {
+        ...layout.zones,
+        main: layout.zones.main.map((placed) => ({ ...placed, ref: '991825827/chat@1' })),
+      },
+    };
+    expect(draftStart(layout)).not.toBe('foreign');
+    expect(draftStart(pinned)).toBe('foreign');
+  });
+
+  it('is refused when pasted, since the builder would lose the ref', () => {
+    const layout = fromTemplate('chat-only').layout;
+    const pinned = {
+      ...layout,
+      zones: {
+        ...layout.zones,
+        main: layout.zones.main.map((placed) => ({ ...placed, ref: '991825827/chat@1' })),
+      },
+    };
+    expect(readLayout(layoutJson(pinned))).toEqual({ problem: 'pins-a-block' });
   });
 });
 

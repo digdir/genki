@@ -12,6 +12,7 @@ export interface DiscoveryState {
 
 export interface DiscoveryRetryOptions<R extends { failed: DiscoveryFailure[] }> {
   refresh: () => Promise<R>;
+  first?: () => Promise<R>;
   onWarning?: (message: string) => void;
   delaysMs?: number[];
   maxAttempts?: number;
@@ -72,9 +73,9 @@ export const discoverWithRetry = async <R extends { failed: DiscoveryFailure[] }
     ).unref?.();
   };
 
-  const run = async (): Promise<R> => {
+  const run = async (refresh = options.refresh): Promise<R> => {
     try {
-      const result = await options.refresh();
+      const result = await refresh();
       record(result.failed);
       return result;
     } catch (error) {
@@ -90,7 +91,10 @@ export const discoverWithRetry = async <R extends { failed: DiscoveryFailure[] }
     return inFlight;
   };
 
-  await attempt().catch(() => undefined);
+  inFlight = run(options.first).finally(() => {
+    inFlight = undefined;
+  });
+  await inFlight.catch(() => undefined);
   return {
     state: (): DiscoveryState => current,
     refresh: attempt,

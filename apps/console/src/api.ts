@@ -1,4 +1,5 @@
 import { translator, type Locale, type T } from './i18n';
+import { definitionKindSegments } from './definition-kinds';
 import { tenantLabel } from './tenant-names';
 import type {
   AuditEntry,
@@ -832,7 +833,7 @@ export const createApiClient = ({
     ) =>
       call<TenantDefinitionHistory>(
         'GET',
-        `/operator/tenants/${encodeURIComponent(tenant)}/definitions/${kind === 'Service' ? 'services' : 'step-flows'}/${encodeURIComponent(id)}`,
+        `/operator/tenants/${encodeURIComponent(tenant)}/definitions/${definitionKindSegments[kind]}/${encodeURIComponent(id)}`,
         { signal },
       ),
     tenantDefinitionVersion: (
@@ -844,7 +845,7 @@ export const createApiClient = ({
     ) =>
       call<DefinitionVersion>(
         'GET',
-        `/operator/tenants/${encodeURIComponent(tenant)}/definitions/${kind === 'Service' ? 'services' : 'step-flows'}/${encodeURIComponent(id)}/versions/${version}`,
+        `/operator/tenants/${encodeURIComponent(tenant)}/definitions/${definitionKindSegments[kind]}/${encodeURIComponent(id)}/versions/${version}`,
         { signal },
       ),
     configList: (path: string, signal?: AbortSignal) =>

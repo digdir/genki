@@ -361,11 +361,11 @@ const reranker = (
           auth: { kind: 'api-key', secret: 'secret://env/k' },
         },
       },
-      rerankers: [{ id: 'colbert', endpoint: 'r', residency: 'norway' }],
+      rerankers: [{ id: 'omrangering', endpoint: 'r', residency: 'norway' }],
     },
     adapters: [adapter],
     secrets: envSecrets({ K: 'k' }),
-  }).open({ kind: 'reranker', id: 'colbert' }, ctx);
+  }).open({ kind: 'reranker', id: 'omrangering' }, ctx);
 };
 
 describe('enrichment, hierarchical mode and per-strategy rerank', () => {

@@ -145,7 +145,7 @@ describe('platform rights on the tenant routes', () => {
       body: searchEndpoint,
     });
     expect(endpoint.status).toBe(403);
-    expect(await endpoint.json()).toMatchObject(refusal('Administrere datasett'));
+    expect(await endpoint.json()).toMatchObject(refusal('Administrere dokumentsamlinger'));
     const created = await call(`/tenants/${digdir}/datasets`, 'per', { body: dataset });
     expect(created.status).toBe(403);
     expect(

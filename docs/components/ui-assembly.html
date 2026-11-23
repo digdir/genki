@@ -45,8 +45,8 @@
               </dd>
               <dt>Drawn by</dt>
               <dd>
-                The app builder's «Prøv assistenten», and the UI blocks preview, which is
-                kunnskapsassistenten built from blocks
+                The app builder's «Prøv», and the UI blocks preview, which is kunnskapsassistenten
+                built from blocks
               </dd>
               <dt>Made from</dt>
               <dd>The UI blocks preview's own wiring, and kunnskapsassistenten's views</dd>
@@ -91,6 +91,27 @@
             <h2>Where the blocks go</h2>
             <ul>
               <li>
+                An entry <code>block: ref</code> is drawn from the edition the interface serves with
+                it (<code>refBlocks</code>), never as a built-in block, whatever its id. It gets
+                only the fields it reads (<code>pickReads</code>): its own turn under each answer in
+                the main column, the latest turn as a tool of the secondary panel or after the
+                primary panel's sections. A declarative edition is drawn with
+                <a href="declarative.html"><code>Render</code></a
+                >: <code>ask</code> sends the question, <code>open-document</code> opens the source,
+                <code>set-filter</code> sets the filter, <code>open-page</code> opens a page of the
+                service, and <code>notify</code> stays in the block as a status line under it. An
+                event the block did not declare is dropped. A code edition, and a ref the interface
+                did not serve, is the placeholder.
+              </li>
+              <li>
+                Each layout entry is looked up in the block registry (<code>registry.tsx</code>),
+                which holds the built-in blocks this host draws. An entry that pins a Block
+                definition with <code>ref</code> is drawn as the built-in block it names, exactly as
+                the same entry without it. A <code>ref</code> to a block the host has no component
+                for is drawn as a placeholder, «Blokken kan ikke vises», in its zone: in the main
+                column, as a tool of the secondary panel, or in the primary panel.
+              </li>
+              <li>
                 The primary panel holds Tråder and Filter as two views, and Innstillinger in its
                 foot. The main column holds Chat, or the filter strip with «Endre» and Fremgangsmåte
                 over it. The secondary panel's tools are offered by how many there are: a heading,
@@ -102,8 +123,11 @@
                 each step's time as genki reports it for the step's tool calls, the filter the
                 answer read from with its values, the sources used, how long it took, and the step
                 frames at the detailed level. Beside the tool, the card keeps only the steps, the
-                totals, «filteret er endret» and, in the next look, how many documents the answer
-                read from.
+                totals and «filteret er endret». In the next look the card is Approach's
+                <code>sections</code> card (dev-fremgangsmate-1 and -2), wherever the tool is: when
+                the service has a filter, «Filteret svaret bygger på» with how many documents the
+                answer read from and used, each field's values and what changed since the answer
+                before (<code>FilterBasis</code>), then «Prosess» and the time.
               </li>
               <li>
                 Dokumentvisning is a tool in the secondary panel, or takes the conversation's place
@@ -138,7 +162,10 @@
                 <strong>The next look's answer</strong> (dev-kilder-hoyre): no card and no name over
                 it (the Conversation block's <code>answerLabel</code> off), and footnote marks 16 px
                 tall, <code>--genai-answer-footnote-size</code> set to <code>--ds-size-4</code> on
-                the chat column.
+                the chat column. The reader's question is a neutral grey card
+                (<code>questionColor="neutral"</code>), not the accent's tint, on
+                <code>--ds-color-neutral-background-tinted</code>: lighter than the summaries of
+                Fremgangsmåte, Kilder and the Kildeliste.
               </li>
               <li>
                 <strong>The next look's thread list</strong> is the Threads block's
@@ -177,13 +204,13 @@
                 profile's <code>typeField</code>.
               </li>
               <li>
-                <strong>A narrower filter</strong>, the trial <code>compact-filter</code>, when the
-                profile offers it and the reader turns it on: the next look's filter panel beside
-                the threads is 230 px wide, its ticks in one column, and the threads take the rest
-                of the card. Resizing the card changes the threads' width only; the card goes no
-                narrower than the threads' 220 beside the filter. Where the panel fills the shell,
-                the filter stands under the threads at the shell's width, its ticks in one column.
-                Off, the filter is as before: 440 of the card's 660, which goes no narrower.
+                <strong>The threads' and the filter's widths</strong>: the next look's filter panel
+                beside the threads is 280 px wide, its ticks in one column, and the threads 220.
+                Resizing the card changes the threads' width only, from 220 to 400, so the card is
+                500 to 680 wide. Without the filter beside them the threads go from 220 to 400 too.
+                Where the panel fills the shell, the filter stands under the threads at the shell's
+                width, its ticks in one column. This was the trial <code>compact-filter</code>,
+                which no longer changes anything.
               </li>
               <li>
                 <strong>Under the next look's answer</strong>: no follow-up questions over the
@@ -385,6 +412,11 @@
                   <td>between the blocks in the main column</td>
                 </tr>
                 <tr>
+                  <td><code>--genai-assembly-answer-blocks-gap</code></td>
+                  <td><code>--ds-size-4</code></td>
+                  <td>between the ref blocks under an answer</td>
+                </tr>
+                <tr>
                   <td><code>--genai-assembly-approach-gap</code></td>
                   <td><code>--ds-size-2</code></td>
                   <td>
@@ -463,7 +495,7 @@
                 </tr>
                 <tr>
                   <td><code>--genai-assembly-strip-radius</code></td>
-                  <td><code>--ds-border-radius-lg</code></td>
+                  <td><code>--ds-border-radius-xl</code></td>
                   <td>the strip's corners</td>
                 </tr>
                 <tr>
@@ -584,11 +616,8 @@
                 in other threads go on.
               </li>
               <li>
-                In the next look, the front page gives way to the question: while the field holds
-                text, the greeting and the suggestions are hidden (<code>data-typing</code> on the
-                chat column, <code>visibility: hidden</code>), and they come back when it is
-                emptied. They keep their room, so the field does not move under the caret, and focus
-                stays in the field.
+                In the next look, the greeting and the suggestions stay on the front page while the
+                reader writes a question, so nothing around the field changes under the caret.
               </li>
               <li>
                 Dokumentvisning's hint names what opens a document in the layout: «Vis i dokumentet»
@@ -653,6 +682,7 @@
 
       <nav class="pager" aria-label="Other components">
         <a class="prev" href="branding.html" rel="prev"><small>Previous</small>Branding</a>
+        <a class="next" href="declarative.html" rel="next"><small>Next</small>Declarative blocks</a>
       </nav>
     </main>
   </body>

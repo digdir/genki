@@ -98,13 +98,13 @@ describe('the step flow editor and the API agree', () => {
     expect(nb.name).toBe('Kall et verktøy');
     expect(en.name).toBe('Call a tool');
     expect(nb.params.map((p) => p.label)).toEqual([
-      'Verktøykilde',
+      'Kobling',
       'Verktøy',
       'Verdier til verktøyet',
       'Tidsavbrudd (millisekunder)',
     ]);
     expect(en.params.map((p) => p.label)).toEqual([
-      'Tool source',
+      'Connection',
       'Tool',
       'Values for the tool',
       'Timeout (milliseconds)',

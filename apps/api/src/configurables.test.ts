@@ -761,6 +761,92 @@ describe('tenant catalog entries', () => {
   });
 });
 
+describe('a catalog model an archived service names', () => {
+  const extra = encodeURIComponent('fake/ekstra');
+  const lifecycle = `/tenants/${digdir}/services/svar/lifecycle`;
+
+  const published = async () => {
+    const booted = await boot();
+    const added = await booted.call(`/operator/catalog/model/${extra}`, 'drift', {
+      method: 'PUT',
+      body: {
+        endpoint: 'fake',
+        deployment: 'ekstra',
+        residency: 'norway',
+        capabilities: ['stream'],
+      },
+    });
+    expect(added.status).toBe(200);
+    const ours = await booted.platform.definitions.publish(
+      service({ model: 'fake/ekstra' }),
+      'test',
+      'test',
+      files,
+    );
+    expect(ours.ok).toBe(true);
+    return booted;
+  };
+  const moveTo = (call: Awaited<ReturnType<typeof boot>>['call'], state: string) =>
+    call(lifecycle, 'kari', { method: 'PUT', body: { state } });
+
+  it('is still refused deletion while the service is not archived', async () => {
+    const { call } = await published();
+
+    const removed = await call(`/operator/catalog/model/${extra}`, 'drift', { method: 'DELETE' });
+
+    expect(removed.status).toBe(400);
+    expect(JSON.stringify(await json(removed))).toContain('used by a published service');
+  });
+
+  it('can be deleted once the service is archived', async () => {
+    const { call, platform } = await published();
+    expect((await moveTo(call, 'archived')).status).toBe(200);
+
+    const removed = await call(`/operator/catalog/model/${extra}`, 'drift', { method: 'DELETE' });
+
+    expect(removed.status).toBe(200);
+    expect(platform.plugins.models.has('fake/ekstra')).toBe(false);
+  });
+
+  it('reactivating an archived service whose model was deleted is refused', async () => {
+    const { call } = await published();
+    await moveTo(call, 'archived');
+    await call(`/operator/catalog/model/${extra}`, 'drift', { method: 'DELETE' });
+
+    const reactivated = await moveTo(call, 'active');
+
+    expect(reactivated.status).toBe(409);
+    const body = await json<{ type: string; detail: string; errors: { message: string }[] }>(
+      reactivated,
+    );
+    expect(body.type).toBe('urn:genai:problem:service-outdated');
+    expect(body.errors.map((e) => e.message)).toContain('unknown model fake/ekstra');
+    expect(body.detail).toContain('unknown model fake/ekstra');
+    expect(await json(await call(lifecycle, 'kari'))).toMatchObject({ state: 'archived' });
+  });
+
+  it('pausing an archived service whose model was deleted works, so a fixed version can be published', async () => {
+    const { call, platform } = await published();
+    await moveTo(call, 'archived');
+    await call(`/operator/catalog/model/${extra}`, 'drift', { method: 'DELETE' });
+
+    expect((await moveTo(call, 'paused')).status).toBe(200);
+    const fixed = await platform.definitions.publish(service(), 'test', 'test', files);
+    expect(fixed.ok).toBe(true);
+    expect((await moveTo(call, 'active')).status).toBe(200);
+  });
+
+  it('reactivating an archived service whose models all exist works', async () => {
+    const { call } = await published();
+    await moveTo(call, 'archived');
+
+    const reactivated = await moveTo(call, 'active');
+
+    expect(reactivated.status).toBe(200);
+    expect(await json(reactivated)).toMatchObject({ state: 'active' });
+  });
+});
+
 describe('the dataset list', () => {
   it("counts only the tenant's own services that read each dataset", async () => {
     const { platform, call } = await boot();

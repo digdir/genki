@@ -57,7 +57,7 @@ describe('platform screens in English', () => {
     const api = apiFor({ 'GET /operator/gates': { data: [] } });
     render(inEnglish(<Policies api={api} tab="gates" />));
     expect(
-      screen.getByRole('heading', { level: 1, name: 'Quality requirements and safeguards' }),
+      screen.getByRole('heading', { level: 1, name: 'Quality requirements and guardrails' }),
     ).toBeTruthy();
     expect(await screen.findByText('No quality requirements yet')).toBeTruthy();
     cleanup();

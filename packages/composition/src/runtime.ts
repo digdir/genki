@@ -29,7 +29,7 @@ import {
   type PiiCategory,
 } from '@genai/guardrails';
 import { withHooks } from '@genai/hooks';
-import { batchCapabilityFor, batchStrategy } from '@genai/jobs';
+import { batchCapabilityFor, batchStrategy, serviceLifecycleKind } from '@genai/jobs';
 import {
   CapabilityRegistry,
   checkCapability,
@@ -90,13 +90,15 @@ import {
   parseCatalog,
   type Capability,
   type ModelClassificationStore,
+  type DiscoveredModelStore,
+  defaultDiscoveryGraceMs,
+  inMemoryDiscoveredModels,
   type ModelClassification,
 } from '@genai/port-model';
-import { parseRerankCatalog, RerankRouter } from '@genai/port-rerank';
+import { parseRerankCatalog, type RerankAdapter, RerankRouter } from '@genai/port-rerank';
 import { parseToolRef, textOf, ToolRegistry } from '@genai/port-tools';
 import { A2aToolSource } from '@genai/providers-a2a-client';
 import { anthropicMessages } from '@genai/providers-anthropic';
-import { colbert } from '@genai/providers-colbert';
 import {
   ConnectionToolSources,
   EgressGuard,
@@ -222,10 +224,22 @@ export const inMemoryClassifications = (): ModelClassificationStore => {
   };
 };
 
+export interface ModelDiscoverySettings {
+  graceMs?: number;
+  relistMs?: number;
+}
+
+export const defaultModelDiscovery = {
+  graceMs: defaultDiscoveryGraceMs,
+  relistMs: 30 * 60 * 1000,
+} satisfies Required<ModelDiscoverySettings>;
+
+const relistClaim = 'model-relist';
+
 export interface Catalogs {
   models: unknown;
   knowledge: unknown;
-  /** Rerankers on engines without an API; colbert rerankers here move into the model catalogue. */
+  /** Rerankers on engines without an API; a reranker whose engine has an API moves into the model catalogue. */
   rerank: unknown;
   /** An embedding catalogue from before ADR 0048; its embedders move into the model catalogue. */
   embeddings?: unknown;
@@ -316,11 +330,15 @@ export interface RuntimeInput {
   mediaOutput?: MediaOutputConfig;
   connections?: ConnectionRegistry;
   modelClassifications?: ModelClassificationStore;
+  discoveredModels?: DiscoveredModelStore;
+  modelDiscovery?: ModelDiscoverySettings;
   knowledgeServer?: KnowledgePools;
   knowledgeGuard?: () => void;
   /** Search engines beside the built-in ones, such as a test's in-memory engine. */
   knowledgeEngines?: { adapter: KnowledgeAdapter; writer: IndexWriterAdapter }[];
   embeddingAdapters?: EmbeddingAdapter[];
+  /** Rerank engines for rerankers without an API; none is built in (ADR 0048). */
+  rerankAdapters?: RerankAdapter[];
   processorRecords?: ProcessorRecordCheck;
   searchOnlyClusters?: (string | undefined)[];
   catalogPolicy?: CatalogPolicy;
@@ -383,6 +401,22 @@ export const referencesOf = (configs: unknown[]): CatalogReferences => {
   return found;
 };
 
+export const liveServiceReferences = async (
+  capabilities: CompiledCapability[],
+  entries: Pick<ConfigEntryStore, 'latest'>,
+): Promise<CatalogReferences> => {
+  const archived = new Set(
+    (await entries.latest({ kind: serviceLifecycleKind }))
+      .filter((e) => !e.deleted && (e.spec as { state?: string } | null)?.state === 'archived')
+      .map((e) => `${e.scope}/${e.id}`),
+  );
+  return referencesOf(
+    capabilities
+      .filter((c) => !archived.has(`${c.service.tenant}/${c.service.id}`))
+      .map((c) => c.capability.config),
+  );
+};
+
 export const createRuntime = async (input: RuntimeInput) => {
   const { platformTenant, vault } = input;
   const configEntries = input.configEntries ?? new InMemoryConfigEntryStore();
@@ -442,7 +476,7 @@ export const createRuntime = async (input: RuntimeInput) => {
   const modelAdapters = [openAiChat, anthropicMessages];
   const discoverySources = [azureDeployments, openAiModels];
   const embeddingAdapters = [openAiEmbeddings, ...(input.embeddingAdapters ?? [])];
-  const rerankAdapters = [colbert];
+  const rerankAdapters = input.rerankAdapters ?? [];
   const portApis: BuiltInApi[] = [
     ...embeddingAdapters.map((a) => ({
       id: a.api.id,
@@ -568,7 +602,11 @@ export const createRuntime = async (input: RuntimeInput) => {
     ? input.catalogs.knowledge
     : withoutKnowledgeServer(input.catalogs.knowledge, input.onWarning);
   const providerObjects = input.providerObjects ?? new InMemoryProviderObjects(input.now);
+  let followDiscovered = () => {};
+  const discoveredModels = input.discoveredModels ?? inMemoryDiscoveredModels();
+  const discoverySettings = { ...defaultModelDiscovery, ...input.modelDiscovery };
   const models = new ModelRouter({
+    onChange: () => followDiscovered(),
     gate,
     descriptors,
     governance,
@@ -587,6 +625,8 @@ export const createRuntime = async (input: RuntimeInput) => {
     sources: discoverySources,
     ...(input.now ? { now: input.now } : {}),
     classifications: input.modelClassifications ?? inMemoryClassifications(),
+    discovered: discoveredModels,
+    discoveryGraceMs: discoverySettings.graceMs,
     priceOf: (id) => unitPrices[id] as PriceSpec | undefined,
     secrets: catalogSecrets,
     ...(input.tokenProviders ? { tokenProviders: input.tokenProviders } : {}),
@@ -611,6 +651,7 @@ export const createRuntime = async (input: RuntimeInput) => {
   });
   const rerank = new RerankRouter({
     gate,
+    descriptors,
     catalog: rerankSeed,
     models: modelSeed,
     adapters: rerankAdapters,
@@ -659,10 +700,6 @@ export const createRuntime = async (input: RuntimeInput) => {
       });
     return result;
   };
-  const modelDiscovery = await discoverWithRetry({
-    refresh: () => models.refresh(),
-    ...(input.onWarning ? { onWarning: input.onWarning } : {}),
-  });
   const tools = new ToolRegistry();
   tools.register(
     stateOrganisationTool({
@@ -953,14 +990,29 @@ export const createRuntime = async (input: RuntimeInput) => {
         input.onWarning?.(`knowledge filter indexes not updated: ${String(error)}`),
       );
   };
-  const apply = (catalogs: EffectiveCatalogs) => {
-    models.reload(catalogs.models);
-    embedders.reload(catalogs.models);
-    rerank.reloadModels(catalogs.models);
+  let modelCatalog: unknown = modelSeed;
+  /** Serves discovered embedders and rerankers on their ports, next to the catalogue's own. */
+  followDiscovered = () => {
+    const merged = withDiscoveredModels(modelCatalog, models.discoveredForOtherPorts());
+    try {
+      embedders.reload(merged);
+      rerank.reloadModels(merged);
+    } catch (error) {
+      input.onWarning?.(
+        `discovered embedders and rerankers not served: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      embedders.reload(modelCatalog);
+      rerank.reloadModels(modelCatalog);
+    }
     replaceSet(
       embeddingModels,
       embedders.describe().map((e) => e.id),
     );
+    replaceSet(plugins.rerankers, rerank.rerankers());
+  };
+  const apply = (catalogs: EffectiveCatalogs) => {
+    modelCatalog = catalogs.models;
+    models.reload(catalogs.models);
     knowledge.reload(catalogs.knowledge);
     writers.reload(catalogs.knowledge);
     knowledgeCatalog = catalogs.knowledge;
@@ -996,11 +1048,11 @@ export const createRuntime = async (input: RuntimeInput) => {
     },
     apply,
     ...(input.catalogPolicy ? { policy: input.catalogPolicy } : {}),
-    references: async () =>
-      referencesOf((await store.capabilities()).map((c) => c.capability.config)),
+    references: async () => liveServiceReferences(await store.capabilities(), configEntries),
     localEngines: () =>
       new Set(knowledgeAdapters.filter((a) => a.requiresBaseURL === false).map((a) => a.engine)),
     ...(input.derivedCatalog ? { derive: input.derivedCatalog } : {}),
+    ...(input.logger ? { logger: input.logger } : {}),
     priceKinds: kindsOf,
     priceUnits: (id, kind) => {
       const api = models.describe().find((m) => m.id === id)?.apis[kind];
@@ -1010,6 +1062,30 @@ export const createRuntime = async (input: RuntimeInput) => {
   });
   await catalog.initialize();
   released.catalog = catalog;
+  const relistDue = () =>
+    discoveredModels
+      .claim(relistClaim, input.now?.() ?? new Date(), discoverySettings.relistMs)
+      .catch(() => true);
+  await models
+    .loadDiscovered()
+    .catch((error: unknown) =>
+      input.onWarning?.(
+        `stored model listings not loaded: ${error instanceof Error ? error.message : String(error)}`,
+      ),
+    );
+  const retrying = await discoverWithRetry({
+    refresh: () => models.refresh(),
+    first: async () =>
+      (await relistDue()) ? models.refresh() : { discovered: models.describe().length, failed: [] },
+    ...(input.onWarning ? { onWarning: input.onWarning } : {}),
+  });
+  const modelDiscovery = {
+    ...retrying,
+    loadDiscovered: () => models.loadDiscovered(),
+    connections: () => models.discoveryStatus(),
+    relistIfDue: async () => ((await relistDue()) ? retrying.refresh() : undefined),
+    relistMs: discoverySettings.relistMs,
+  };
   const pricesMoved = await migratePrices({
     store: configEntries,
     kindsOf,
@@ -1193,6 +1269,17 @@ export const createRuntime = async (input: RuntimeInput) => {
 };
 
 export type Runtime = Awaited<ReturnType<typeof createRuntime>>;
+
+const withDiscoveredModels = (catalog: unknown, discovered: readonly unknown[]): unknown => {
+  const base =
+    typeof catalog === 'object' && catalog !== null ? (catalog as Record<string, unknown>) : {};
+  const own = Array.isArray(base.models) ? (base.models as unknown[]) : [];
+  const ids = new Set(own.map((m) => (m as { id?: unknown }).id));
+  return {
+    ...base,
+    models: [...own, ...discovered.filter((m) => !ids.has((m as { id?: unknown }).id))],
+  };
+};
 
 const replaceSet = (target: Set<string> | undefined, values: Iterable<string>) => {
   if (!target) return;

@@ -157,19 +157,10 @@ const boot = async () => {
       ),
     },
   }));
-  const colbert = await fakeHttp((body) => ({
-    status: 200,
-    json: (body.documents as unknown[]).map((_, i) => ({
-      index: i,
-      score: 1 - i * 0.1,
-      rank: i + 1,
-    })),
-  }));
-  fakes.push(model, search, colbert);
+  fakes.push(model, search);
   const env = {
     FOUNDRY_OPENAI_BASE_URL: `${model.url}/v1`,
     TYPESENSE_URL: search.url,
-    COLBERT_API_URL: colbert.url,
   };
   const blobs = new InMemoryBlobStore();
   const people: Record<string, Principal> = {
@@ -202,7 +193,7 @@ const boot = async () => {
       knowledge: resolveCatalog(yaml('knowledge.yaml'), 'datasets', env).catalog,
       rerank: resolveCatalog(yaml('rerank.yaml'), 'rerankers', env).catalog,
     },
-    secrets: envSecrets({ FOUNDRY_OPENAI_KEY: 'm', TYPESENSE_KEY: 't', COLBERT_API_KEY: 'c' }),
+    secrets: envSecrets({ FOUNDRY_OPENAI_KEY: 'm', TYPESENSE_KEY: 't' }),
     definitions: (plugins) => new InMemoryDefinitionStore(plugins),
     policy: { decide: async () => ({ allow: true }) },
     authenticate: async (request) => {

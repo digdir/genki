@@ -42,7 +42,7 @@
             </p>
             <dl class="facts">
               <dt>UI name</dt>
-              <dd>«Byggeklosser» and «Maler»</dd>
+              <dd>«Designelementer» and «Maler»</dd>
               <dt>Sits in</dt>
               <dd>The app builder, not in an assistant</dd>
               <dt>Code</dt>
@@ -148,17 +148,16 @@
           <div class="wide">
             <h2>The blocks</h2>
             <p>
-              The zones are the shell's: <code>primary</code> «Venstre panel»,
-              <code>main</code> «Innhold» and <code>secondary</code> «Høyre panel». A block's first
-              zone is where it stands when it is turned on. A lower order comes first in the zone,
-              so the order in a zone is the catalogue's, whatever order the blocks were turned on
-              in.
+              The zones are the shell's: <code>primary</code> «Venstre», <code>main</code> «Midten»
+              and <code>secondary</code> «Høyre». A block's first zone is where it stands when it is
+              turned on. A lower order comes first in the zone, so the order in a zone is the
+              catalogue's, whatever order the blocks were turned on in.
             </p>
             <p>
               A block marked <code>both</code> may also stand in both its zones at once, each
-              drawing it its own way. Only Fremgangsmåte is: the card over each answer in «Innhold»,
-              the detailed tool in «Høyre panel», or both. <code>placesOf</code> lists the places
-              the builder offers a block, its zones and then <code>both</code>;
+              drawing it its own way. Only Fremgangsmåte is: the card over each answer in «Midten»,
+              the detailed tool in «Høyre», or both. <code>placesOf</code> lists the places the
+              builder offers a block, its zones and then <code>both</code>;
               <code>placeKey</code> names each, «Begge steder» for both, and
               <code>placesHelpKey</code> says what each place draws.
             </p>
@@ -182,21 +181,21 @@
                     <td>none</td>
                   </tr>
                   <tr>
-                    <th scope="row"><code>threads</code> <small>«Tråder»</small></th>
+                    <th scope="row"><code>threads</code> <small>«Tidligere samtaler»</small></th>
                     <td>primary (1)</td>
                     <td><code>Threads</code>, <code>SignedIn</code></td>
                     <td><code>channel:conversations</code></td>
                     <td>none</td>
                   </tr>
                   <tr>
-                    <th scope="row"><code>settings</code> <small>«Innstillinger»</small></th>
+                    <th scope="row"><code>settings</code> <small>«Mine innstillinger»</small></th>
                     <td>primary (3), in the panel's foot</td>
                     <td><code>SettingsLinks</code>, <code>Settings</code></td>
                     <td>none</td>
                     <td>none</td>
                   </tr>
                   <tr>
-                    <th scope="row"><code>chat</code> <small>«Chat»</small></th>
+                    <th scope="row"><code>chat</code> <small>«Samtale»</small></th>
                     <td>main (2), secondary (1)</td>
                     <td>
                       <code>Conversation</code>, <code>Answer</code>, <code>Composer</code>,
@@ -245,8 +244,8 @@
                     <td><code>DocumentView</code></td>
                     <td><code>service:datasets|documents</code></td>
                     <td>
-                      <code>file</code>, «Vis hele dokumentet (beta)»: the whole document from the
-                      host's <code>documentFile</code>
+                      <code>file</code>, «PDF-visning (beta)»: the whole document from the host's
+                      <code>documentFile</code>
                     </td>
                   </tr>
                   <tr>
@@ -423,7 +422,7 @@
                 <code>knowledge-assistant-next</code>, <code>current</code> for the rest, as before
                 the look was a setting. <code>withLook</code> changes it, and every other change to
                 the blocks and their options keeps it. <code>lookKey</code> gives a look's name in
-                the catalogue's words, «Dagens» and «Ny utgave».
+                the catalogue's words, «Nåværende utseende» and «Nytt utseende».
               </li>
               <li>
                 <code>BuilderState</code> adds the builder's screen state: <code>chosen</code>,
@@ -530,7 +529,7 @@
             <h2>Open questions</h2>
             <ul>
               <li>
-                A layout the builder cannot edit. The «Grensesnitt» tab saves a service's layout in
+                A layout the builder cannot edit. The «Utforming» tab saves a service's layout in
                 the draft's <code>spec.interface.layout</code> (ADR 0065), with the blocks the draft
                 cannot back yet where they were chosen. A layout with texts per language or a host's
                 own <code>x-</code> blocks is changed in the YAML, since the builder edits one

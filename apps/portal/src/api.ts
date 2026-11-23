@@ -38,6 +38,7 @@ import type {
   DefinitionWithHistory,
   Problem,
   PublishedDefinition,
+  PublishResult,
   TaskTimeline,
   CapabilityModel,
   EvalRunSummary,
@@ -465,7 +466,7 @@ export const createApiClient = ({
       return (await get<{ data: ModelOption[] }>(`/models${suffix}`, signal)).data;
     },
     publish: (definition: Record<string, unknown>, files: Record<string, string>, reason: string) =>
-      request<PublishedDefinition>(
+      request<PublishResult>(
         'POST',
         '/definitions',
         { definition, files },
@@ -595,7 +596,7 @@ export const createApiClient = ({
       reason: string,
       draftRevision?: number,
     ) =>
-      request<PublishedDefinition>(
+      request<PublishResult>(
         'POST',
         '/definitions',
         { definition, files, ...(draftRevision === undefined ? {} : { draftRevision }) },
@@ -659,6 +660,13 @@ export const createApiClient = ({
         'PUT',
         `${tenantPath(tenant)}/services/${encodeURIComponent(id)}/lifecycle`,
         { state },
+        { 'change-reason': reason },
+      ),
+    deleteService: (tenant: string, id: string, reason: string) =>
+      request<{ id: string; deleted: true; versions: number; stepFlows: string[] }>(
+        'DELETE',
+        `${tenantPath(tenant)}/services/${encodeURIComponent(id)}`,
+        undefined,
         { 'change-reason': reason },
       ),
     task: (tenant: string, task: string, signal?: AbortSignal) =>

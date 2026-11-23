@@ -2,13 +2,13 @@ import type { Translation } from '@genai/i18n';
 import type { policies as source } from '../nb/policies';
 
 export const policies = {
-  title: 'Quality requirements and safeguards',
+  title: 'Quality requirements and guardrails',
   introTenant:
     "The organisation's own requirements and rules, alongside those the platform applies to everyone. Required rules are only set in the platform view.",
   introPlatform:
     'Requirements and rules that apply across organisations. Organisations cannot turn off a required rule.',
   tabGates: 'Quality requirements',
-  tabGuardrails: 'Safeguard rules',
+  tabGuardrails: 'Guardrails',
   chooseTenant: 'Choose an organisation',
   atLeast: 'at least {threshold}',
   noRegression: 'no regression',

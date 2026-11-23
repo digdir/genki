@@ -52,7 +52,7 @@ const agentLoop: PlaygroundStrategy = {
 const stepFlow = (id: string, version: number, nb: string, en: string): PlaygroundStrategy => ({
   id: 'step-flow',
   version: 1,
-  title: { nb: 'Fast stegflyt', en: 'Fixed step flow' },
+  title: { nb: 'Fast arbeidsflyt', en: 'Fixed workflow' },
   takesInstructions: false,
   flow: { ref: `${id}@${version}`, id, version, title: { nb, en } },
 });

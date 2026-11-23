@@ -97,7 +97,7 @@ const openRunStatus: Partial<Record<ExecutionStatus, DatasetStatus>> = {
   running: 'Innlesing pågår',
   waiting: 'Venter',
   failed: 'Feilet',
-  cancelled: 'Delvis lest inn',
+  cancelled: 'Avbrutt',
 };
 
 export const runDatasetStatus = (run: {

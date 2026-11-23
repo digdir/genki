@@ -25,8 +25,6 @@ export const supportAccess = {
   operatorsPublish: ' Whether operators can publish for the organisation.',
   loadingServices: 'Loading the services',
   noServices: '{tenant} has no services yet.',
-  kindService: 'Service',
-  kindStepFlow: 'Step flow',
   publishedVersion: '{kind} · published version {version}',
   publishedVersionOn: '{kind} · published version {version}, {date}',
   keysPath: 'Integrations › Keys',

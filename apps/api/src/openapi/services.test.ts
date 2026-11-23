@@ -29,6 +29,7 @@ const withoutBody = new Set([
   'delete /tenants/{tenant}/services/{id}/environments/{environment}',
   'put /operator/recipes/shares/{flow}',
   'delete /tenants/{tenant}/step-flows/{id}',
+  'delete /tenants/{tenant}/services/{id}',
   'delete /operator/recipes/shares/{flow}',
 ]);
 

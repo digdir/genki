@@ -13,6 +13,7 @@ import {
   KnowledgeError,
   type DatasetEmbedding,
   type DatasetOverrides,
+  type Hit,
   type IndexDocument,
   type IndexWriterRoute,
   type IndexWriterRouter,
@@ -295,6 +296,15 @@ const copiedChunksPerMinute = 80;
 const tokensPerChunk = 300;
 const defaultEmbeddingNokPerThousand = 0.0013;
 const defaultModelPrice = { inputPerThousand: 0.025, outputPerThousand: 0.1 };
+
+/** A hit's pages, which an engine with pages keeps in its fields, so a comparison holds it to them. */
+const pagesOf = (hit: Hit) => {
+  const { page, pageEnd } = (hit.fields as Record<string, unknown> | undefined) ?? {};
+  return {
+    ...(typeof page === 'number' ? { page } : {}),
+    ...(typeof pageEnd === 'number' ? { pageEnd } : {}),
+  };
+};
 
 const hasVectors = (doc: IndexDocument, dimensions: number) =>
   [...doc.chunks, ...doc.phrases].every((t) => t.vector?.length === dimensions);
@@ -752,6 +762,7 @@ export const createEngineSwitchesModule =
             chunkId: hit.id,
             ...(hit.document !== undefined ? { document: hit.document } : {}),
             ...(hit.position !== undefined ? { position: hit.position } : {}),
+            ...pagesOf(hit),
             ...(hit.title !== undefined ? { title: hit.title } : {}),
           })),
           latencyMs: performance.now() - started,
@@ -772,7 +783,8 @@ export const createEngineSwitchesModule =
       signal: AbortSignal,
     ) => {
       const short = shortOf(scope, item.id);
-      const sets = (await deps.evalStores.testSets.list(scope)).filter(
+      // A platform dataset's test sets are the platform organisation's, as the seed stores them.
+      const sets = (await deps.evalStores.testSets.list(tenantOf(scope))).filter(
         (s) => s.spec.corpus === short || s.spec.corpus === item.id,
       );
       const cases: RetrievalCase[] = sets.flatMap((s) =>

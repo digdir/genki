@@ -1652,7 +1652,7 @@ describeContract('pgvector on the knowledge server', knowledgeContract, async ()
   };
 });
 
-/** Two rules the platform database's tests held until issue 151, on the knowledge server. */
+/** Rules the platform database's tests held until issue 151, on the knowledge server. */
 describe('search rules carried over from the platform database', () => {
   it('hybrid ranks an exact phrase match above a merely similar chunk', async () => {
     const d = dataset('pgvector/hybrid', 3, { filters: {} });
@@ -1706,5 +1706,71 @@ describe('search rules carried over from the platform database', () => {
     );
     expect(vector?.hits.map((h) => h.id)).toEqual(['dok-1-2']);
     expect(fields?.hits.map((h) => h.document)).toEqual(['dok-5']);
+  });
+
+  it('a search batch larger than the pool does not fail every request waiting for a connection', async () => {
+    const d = dataset('pgvector/small-pool', 3, { filters: {} });
+    const generation = 'g-20261123-small-pool';
+    await fill(d, generation, [
+      {
+        id: 'frist',
+        title: 'Frist',
+        fields: {},
+        chunks: [
+          {
+            id: 'frist-0',
+            position: 0,
+            text: 'Søknadsfristen for tilskudd er 1. mars.',
+            metadata: {},
+            vector: [1, 0, 0],
+          },
+        ],
+        phrases: [],
+      },
+    ]);
+    const small = new pg.Pool({
+      ...primary.source,
+      user: 'knowledge_api',
+      options: `-c role=${knowledgeRoles.reader}`,
+      max: 2,
+      connectionTimeoutMillis: 200,
+    });
+    let slow = false;
+    small.on('connect', (client) => {
+      client.on('error', () => undefined);
+      const query = client.query.bind(client) as (...args: unknown[]) => Promise<unknown>;
+      Object.assign(client, {
+        query: async (...args: unknown[]) => {
+          if (slow) await new Promise((resolve) => setTimeout(resolve, 50));
+          return query(...args);
+        },
+      });
+    });
+    try {
+      const connection = connectionOf(
+        readEngine({ reader: small }, () => ({
+          embed: async (texts) => texts.map(() => [1, 0, 0]),
+        })),
+      );
+      await connection.search(
+        routed(d, generation),
+        [{ query: 'tilskudd', profile: 'content' }],
+        signal,
+      );
+      slow = true;
+      const results = await connection.search(
+        routed(d, generation),
+        Array.from({ length: 10 }, (_, i) => ({
+          query: `tilskudd ${i}`,
+          profile: 'content',
+          limit: 3,
+        })),
+        signal,
+      );
+      expect(results.map((r) => r.warning)).toEqual(Array(10).fill(undefined));
+      expect(results.every((r) => r.hits[0]?.document === 'frist')).toBe(true);
+    } finally {
+      await small.end();
+    }
   });
 });
