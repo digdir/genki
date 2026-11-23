@@ -19,7 +19,8 @@ import {
 import { knowledgeRoles } from './knowledge-setup.js';
 import { readFunctionMigrations } from './read-functions.js';
 
-// Issue 800: a filtered vector search ranks small filters exactly and raises the index limits for large ones.
+// Issue 800: a filtered vector search ranks small filters exactly and raises the index limits for large ones;
+// issue 674: an unfiltered search reads the index deeper too.
 type Dataset = DatasetConfig<PgvectorDatasetOptions>;
 
 const signal = new AbortController().signal;
@@ -29,7 +30,12 @@ const dims = 8;
 
 /** Small enough that the partitions below fall on both sides of it. */
 const exactChunks = 100;
-const raised = { efSearch: 120, maxScanTuples: 50_000, scanMemMultiplier: 3 };
+const raised = {
+  efSearch: 120,
+  maxScanTuples: 50_000,
+  scanMemMultiplier: 3,
+  unfilteredEfSearch: 80,
+};
 /** The server's own settings, low enough that today's search falls short on a rare value. */
 const server = { efSearch: 10, maxScanTuples: 200 };
 
@@ -339,10 +345,16 @@ describe('filtered vector search on the knowledge server', () => {
     }
   });
 
-  it("an unfiltered search keeps the server's hnsw.ef_search", async () => {
-    const { during } = await settingsAround([]);
-    expect(during?.ef).toBe(String(server.efSearch));
+  it('an unfiltered search raises hnsw.ef_search for its own transaction, and leaves the other limits', async () => {
+    const { during, after } = await settingsAround([]);
+    expect(during?.ef).toBe(String(raised.unfilteredEfSearch));
     expect(during?.tuples).toBe(String(server.maxScanTuples));
+    expect(after?.ef).toBe(String(server.efSearch));
+  });
+
+  it('an unfiltered search never lowers a higher hnsw.ef_search', async () => {
+    const { during } = await settingsAround([], generation, { ef: 400, tuples: 90_000, mem: 5 });
+    expect(during?.ef).toBe('400');
   });
 
   it("the filter's chunk count is read from the generation's own partition", async () => {

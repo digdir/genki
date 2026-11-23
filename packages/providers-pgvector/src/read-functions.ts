@@ -267,6 +267,11 @@ const createFunctions = (filtered: FilteredSearch) => [
                      set_config('hnsw.scan_mem_multiplier', greatest(coalesce(current_setting('hnsw.scan_mem_multiplier', true), '0')::float8,
                        ${Number(filtered.scanMemMultiplier)})::text, true);
            end if;
+         else
+           -- An unfiltered search reads the index deeper too (issue 674), for this read's transaction only and
+           -- never below the server's own; its other limits stay the server's.
+           perform set_config('hnsw.ef_search', greatest(coalesce(current_setting('hnsw.ef_search', true), '0')::int,
+                     ${Math.trunc(filtered.unfilteredEfSearch)})::text, true);
          end if;
          if exact then
            -- Sorted above the documents-first join, so no HNSW scan; each distance computed once, a zero vector's NaN left out.
@@ -448,7 +453,7 @@ const createFunctions = (filtered: FilteredSearch) => [
      end $$`,
 ];
 
-/** How a filtered vector search reads a generation (issue 800). */
+/** How a vector search reads a generation: filtered (issue 800) and unfiltered (issue 674). */
 export interface FilteredSearch {
   /** A filter that keeps at most this many rows (chunks, or phrases) is ranked exactly, without the HNSW index. */
   exactChunks: number;
@@ -456,6 +461,8 @@ export interface FilteredSearch {
   efSearch: number;
   maxScanTuples: number;
   scanMemMultiplier: number;
+  /** An unfiltered search's `hnsw.ef_search`, for its transaction; never below the server's own (issue 674). */
+  unfilteredEfSearch: number;
 }
 
 // Measured on Kudos in test (issue 800); the numbers are in ADR 0042.
@@ -464,6 +471,8 @@ export const filteredSearch: FilteredSearch = {
   efSearch: 200,
   maxScanTuples: 100_000,
   scanMemMultiplier: 4,
+  // Issue 674: on Kudos, real questions without a filter got recall@10 0.914 at 40, 0.942 at 100 and 0.966 at 200.
+  unfilteredEfSearch: 200,
 };
 
 /** Read-function migrations for the knowledge-server list; the reader reaches data only through these. */
