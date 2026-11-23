@@ -13,14 +13,14 @@ const adapter = (engine: string): KnowledgeAdapter => ({
     throw new Error('not used');
   },
 });
-const adapters = [adapter('typesense'), adapter('knowledge')];
+const adapters = [adapter('typesense'), adapter('pgvector')];
 
 const problemsOf = (catalog: unknown): CatalogProblem[] => {
   const parsed = parseKnowledgeCatalog(catalog, adapters);
   return parsed.ok ? [] : parsed.errors;
 };
 
-const knowledgeServer = { engine: 'knowledge', options: { connection: 'knowledge' } };
+const knowledgeServer = { engine: 'pgvector', options: { connection: 'knowledge' } };
 const typesense = { engine: 'typesense' };
 const dataset = (endpoint: string, extra: Record<string, unknown> = {}) => ({
   endpoint,
@@ -192,7 +192,7 @@ describe('catalog replay', () => {
           level: 'info',
           dataset: 'digdir/docs',
           endpoint: 'server',
-          engine: 'knowledge',
+          engine: 'pgvector',
           generation: 'g-20261116-abc123',
         },
       },

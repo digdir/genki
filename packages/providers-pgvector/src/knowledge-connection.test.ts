@@ -59,25 +59,21 @@ const everyCall = async (engine: ReturnType<typeof pgvectorEngine>) => {
 };
 
 describe('a pgvector endpoint on the knowledge server', () => {
-  it('a `knowledge` endpoint never reads or writes the platform database', async () => {
-    const platform = fakePool();
+  it('a `knowledge` endpoint reads and writes only the knowledge server', async () => {
     const reader = fakePool();
     const writer = fakePool();
     const owner = fakePool();
     const engine = pgvectorEngine({
-      pool: platform.pool,
       knowledge: { reader: reader.pool, writer: writer.pool, owner: owner.pool },
     });
     await everyCall(engine);
     await engine.adapter.probe?.(knowledgeEndpoint as never, signal);
-    expect(platform.query).not.toHaveBeenCalled();
-    expect(platform.connect).not.toHaveBeenCalled();
     expect(reader.query.mock.calls.length + writer.query.mock.calls.length).toBeGreaterThan(0);
   });
 
   it('a knowledge connection refuses a dataset the router did not hand it', async () => {
     const reader = fakePool();
-    const engine = pgvectorEngine({ pool: fakePool().pool, knowledge: { reader: reader.pool } });
+    const engine = pgvectorEngine({ knowledge: { reader: reader.pool } });
     const connection = engine.adapter.connect(knowledgeEndpoint as never);
     const unrouted = { ...dataset, generation: 'g-1' };
     const other = { ...unrouted, allowed: ['digdir/annet'] };
@@ -116,10 +112,7 @@ describe('a pgvector endpoint on the knowledge server', () => {
       query,
       options: {},
     };
-    const engine = pgvectorEngine({
-      pool: fakePool().pool,
-      knowledge: { reader: reader as unknown as Pool },
-    });
+    const engine = pgvectorEngine({ knowledge: { reader: reader as unknown as Pool } });
     const connection = engine.adapter.connect(knowledgeEndpoint as never);
     const routed = { ...dataset, generation: 'g-1', allowed: [dataset.id] };
 
@@ -138,7 +131,7 @@ describe('a pgvector endpoint on the knowledge server', () => {
   });
 
   it('saving or probing a `knowledge` endpoint without a knowledge server is refused', async () => {
-    const options: PgvectorEngineOptions = { pool: fakePool().pool };
+    const options: PgvectorEngineOptions = {};
     const engine = pgvectorEngine(options);
     const parsed = parseKnowledgeCatalog(
       {
@@ -162,17 +155,13 @@ describe('a pgvector endpoint on the knowledge server', () => {
     expect(() => engine.adapter.connect(knowledgeEndpoint as never)).toThrow(
       'no knowledge server configured',
     );
-    expect(
-      parseKnowledgeCatalog(
-        { endpoints: { platform: { engine: 'pgvector', options: {} } }, datasets: [] },
-        [engine.adapter as KnowledgeAdapter],
-      ).ok,
-    ).toBe(true);
+    expect(() => engine.writer.connect(knowledgeEndpoint, { signal })).toThrow(
+      'no knowledge server configured',
+    );
   });
 
   it('a `knowledge` writer refuses to start while the knowledge server is bound to another platform server', () => {
     const engine = pgvectorEngine({
-      pool: fakePool().pool,
       knowledge: { writer: fakePool().pool },
       knowledgeGuard: () => {
         throw new Error('the knowledge server is bound to platform server b, not a');
@@ -184,8 +173,5 @@ describe('a pgvector endpoint on the knowledge server', () => {
         'the knowledge server is bound to platform server b, not a',
       ),
     );
-    expect(() =>
-      engine.writer.connect({ options: { connection: 'platform' }, timeoutMs: 5000 }, { signal }),
-    ).not.toThrow();
   });
 });

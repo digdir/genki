@@ -1212,7 +1212,7 @@ describe('search engines in the catalogue', () => {
     });
     const items = [
       endpoint('kudos-typesense', 'typesense'),
-      endpoint('platform-pg', 'pgvector', { tenants: '*' }),
+      endpoint('kunnskapsserveren', 'pgvector', { tenants: '*' }),
       {
         kind: 'dataset' as const,
         id: 'digdir/kudos',
@@ -1223,7 +1223,9 @@ describe('search engines in the catalogue', () => {
     ];
     const catalog = {
       visibleTo: (tenant: string) =>
-        items.filter((i) => i.kind !== 'knowledge-endpoint' || i.id === 'platform-pg' || !tenant),
+        items.filter(
+          (i) => i.kind !== 'knowledge-endpoint' || i.id === 'kunnskapsserveren' || !tenant,
+        ),
       list: ({ kind }: { kind?: string } = {}) => items.filter((i) => !kind || i.kind === kind),
       get: (kind: string, id: string) => items.find((i) => i.kind === kind && i.id === id),
       history: async () => [],
@@ -1240,13 +1242,13 @@ describe('search engines in the catalogue', () => {
 
     const list = await json<BuildingBlockList>(await send(`${base}?kind=search_engine`, 'kari'));
 
-    expect(list.data.map((b) => b.id).sort()).toEqual(['kudos-typesense', 'platform-pg']);
+    expect(list.data.map((b) => b.id).sort()).toEqual(['kudos-typesense', 'kunnskapsserveren']);
     expect(list.data.find((b) => b.id === 'kudos-typesense')).toMatchObject({
       version: '3',
       kind: 'search_engine',
       usedBy: [{ id: 'ka' }],
     });
-    expect(list.data.find((b) => b.id === 'platform-pg')?.usedBy).toEqual([]);
+    expect(list.data.find((b) => b.id === 'kunnskapsserveren')?.usedBy).toEqual([]);
   });
 });
 

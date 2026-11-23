@@ -65,7 +65,8 @@ export const cachedDocumentCount = (knowledge: KnowledgeRouter) => {
       },
     );
     const count = (await port.documents?.({ limit: 1 }))?.found;
-    cache.set(input.dataset, { at: Date.now(), count });
+    // An empty dataset is read again, so its first read-in does not show 0 documents for minutes.
+    if (count) cache.set(input.dataset, { at: Date.now(), count });
     return count;
   };
 };

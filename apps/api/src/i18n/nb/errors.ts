@@ -276,6 +276,7 @@ export const knowledgeErrors = defineNamespace({
   engineNotUsed: 'Søkemotoren kunne ikke tas i bruk',
   onlyActiveBack: 'Bare en søkemotor som er tatt i bruk kan byttes tilbake.',
   previousGone: 'Den forrige søkemotoren er ikke lenger beholdt.',
+  previousEndpointGone: 'Den forrige søkemotoren finnes ikke lenger.',
   datasetChangedEngine: 'Datasettet er endret siden søkemotoren ble tatt i bruk.',
   previousNotRestored: 'Den forrige søkemotoren kunne ikke tas i bruk igjen',
   pipelineOff: 'innlesingen er slått av',

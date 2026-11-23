@@ -503,7 +503,7 @@ export const endpoints: Endpoint[] = [
       dataset: '999888777/kudos',
       pipeline: 'natt',
       pipelineVersion: 3,
-      backend: 'platform-pg',
+      backend: 'kunnskapsserveren',
       status: 'running',
       startedBy: 'employee:ansattporten:kari',
       startedAt: '2026-10-06T12:00:00Z',
@@ -2355,8 +2355,8 @@ export const endpoints: Endpoint[] = [
     response: {
       data: [
         {
-          id: 'platform-pg',
-          title: 'Plattformens database',
+          id: 'kunnskapsserveren',
+          title: 'Kunnskapsserveren',
           builtin: true,
           dataLocation: 'norway',
           writeKeyRequired: false,
@@ -2402,7 +2402,7 @@ export const endpoints: Endpoint[] = [
     ],
     response: {
       from: 'ka-typesense',
-      to: 'platform-pg',
+      to: 'kunnskapsserveren',
       copy: { available: true, costNok: { min: 4, max: 6 } },
       reingest: { available: true, costNok: { min: 40, max: 60 } },
     },
@@ -2417,8 +2417,8 @@ export const endpoints: Endpoint[] = [
     desc: 'apirefData.sm-start.desc',
     right: 'ds',
     params: [tenant, ['id', 'path', 'text', 'apirefData.pipelineParams.p.dataset']],
-    body: { to: 'platform-pg', method: 'copy', reason: 'Flytter til plattformens database' },
-    response: { sid: '1', state: 'running', from: 'ka-typesense', to: 'platform-pg' },
+    body: { to: 'kunnskapsserveren', method: 'copy', reason: 'Flytter til kunnskapsserveren' },
+    response: { sid: '1', state: 'running', from: 'ka-typesense', to: 'kunnskapsserveren' },
     status: 202,
   },
   {

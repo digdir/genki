@@ -15,7 +15,7 @@ import type { Format, PlainKey, T } from '../../i18n';
 import type { Residency } from '../../types';
 import { needsAttention, type DatasetListItem } from './DatasetList';
 
-export const platformEngine = 'platform-pg';
+export const platformEngine = 'kunnskapsserveren';
 
 export const maxUploadBytes = 50 * 1024 * 1024;
 export const uploadAccept = '.pdf,.docx,.txt,.md,.html';

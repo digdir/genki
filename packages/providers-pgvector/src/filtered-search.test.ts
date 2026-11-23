@@ -55,7 +55,7 @@ let owner: pg.Pool;
 const queryVector = Array.from({ length: dims }, (_, i) => Math.cos(i * 3 + 1));
 
 const fill = async (g: string, rareOnEvery: boolean) => {
-  const w = pgvectorEngine({ pool: admin, knowledge: worker.pools }).writer.connect(endpoint, {
+  const w = pgvectorEngine({ knowledge: worker.pools }).writer.connect(endpoint, {
     signal,
   }) as IndexWriter<PgvectorDatasetOptions>;
   const seed: IndexDocument = { id: 'seed', title: 'seed', fields: {}, chunks: [], phrases: [] };
@@ -85,7 +85,6 @@ const fill = async (g: string, rareOnEvery: boolean) => {
 /** The search as the API runs it: the knowledge port, as the reader, through `kn_search`. */
 const search = async (type?: string) => {
   const connection = pgvectorEngine({
-    pool: admin,
     knowledge: api.pools,
     embedder: () => ({ embed: async (texts) => texts.map(() => queryVector) }),
   }).adapter.connect(endpoint as never) as KnowledgeConnection<PgvectorDatasetOptions>;

@@ -87,7 +87,7 @@ export const searchEngines = {
   settingsFor: 'Settings for {engine}',
   schemaGenerated:
     'The fields and rules are generated from the JSON schema the search engine is registered with.',
-  builtinNote: "Runs in the platform's database. No address or key is needed.",
+  builtinNote: 'Runs inside the platform. No address or key is needed.',
   schemaFromApi: 'The schema from the API',
   jsonSchema: 'JSON schema',
   testConnection: 'Test the connection',

@@ -27,7 +27,7 @@ import { requireRight, rightRefused, type Right } from './rights.js';
 
 export const connectorMappingKind = 'connector-mapping';
 export const connectorPipeline = 'kobling';
-export const defaultConnectorEndpoint = 'platform-pg';
+export const defaultConnectorEndpoint = 'kunnskapsserveren';
 
 export interface ConnectorLink {
   dataset: string;

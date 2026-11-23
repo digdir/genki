@@ -275,6 +275,7 @@ export const knowledgeErrors = {
   engineNotUsed: 'The search engine could not be put into use',
   onlyActiveBack: 'Only a search engine that is in use can be switched back.',
   previousGone: 'The previous search engine is no longer kept.',
+  previousEndpointGone: 'The previous search engine no longer exists.',
   datasetChangedEngine: 'The dataset has changed since the search engine was put into use.',
   previousNotRestored: 'The previous search engine could not be put back into use',
   pipelineOff: 'the pipeline is turned off',

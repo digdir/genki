@@ -93,9 +93,9 @@ const fixtureEmbedder = (dataset: DatasetConfig): QueryEmbedder => ({
 const readEngine = (
   knowledge: KnowledgePools = api.pools,
   embedder: (dataset: DatasetConfig) => QueryEmbedder = fixtureEmbedder,
-) => pgvectorEngine({ pool: primary.admin, knowledge, embedder });
+) => pgvectorEngine({ knowledge, embedder });
 
-const writerEngine = () => pgvectorEngine({ pool: primary.admin, knowledge: worker.pools });
+const writerEngine = () => pgvectorEngine({ knowledge: worker.pools });
 
 const writer = () =>
   writerEngine().writer.connect(endpoint, { signal }) as IndexWriter<PgvectorDatasetOptions>;
@@ -406,7 +406,6 @@ describe('read functions on the knowledge server', () => {
     );
     try {
       const elsewhereWriter = pgvectorEngine({
-        pool: elsewhere.admin,
         knowledge: elsewhereWorker.pools,
       }).writer.connect(endpoint, { signal }) as IndexWriter<PgvectorDatasetOptions>;
       const docs = [doc('v', 8, { type: ['rapport'] })];
@@ -1177,7 +1176,6 @@ describe('text search on the knowledge server', () => {
 
     it('a hybrid search whose text half runs past its limit returns the vector hits with a warning', async () => {
       const slow = pgvectorEngine({
-        pool: primary.admin,
         knowledge: api.pools,
         embedder: fixtureEmbedder,
         textSearchMs: 1,
@@ -1652,4 +1650,127 @@ describeContract('pgvector on the knowledge server', knowledgeContract, async ()
       generation,
     }),
   };
+});
+
+/** Rules the platform database's tests held until issue 151, on the knowledge server. */
+describe('search rules carried over from the platform database', () => {
+  it('hybrid ranks an exact phrase match above a merely similar chunk', async () => {
+    const d = dataset('pgvector/hybrid', 3, { filters: {} });
+    const generation = 'g-20261120-hybrid';
+    const one = (id: string, text: string, vec: number[]): IndexDocument => ({
+      id,
+      title: id,
+      fields: {},
+      chunks: [{ id: `${id}-0`, position: 0, text, metadata: {}, vector: vec }],
+      phrases: [],
+    });
+    await fill(d, generation, [
+      one('eksakt', 'Søknadsfristen for tilskudd er 1. mars.', [0.8, 0.6, 0]),
+      one('lignende', 'Midler kan bes om før våren.', [1, 0, 0]),
+      one('annet', 'Rapporter leveres årlig.', [0, 0, 1]),
+    ]);
+    const engine = readEngine(api.pools, () => ({
+      embed: async (texts) => texts.map(() => [1, 0, 0]),
+    }));
+    const [result] = await connectionOf(engine).search(
+      routed(d, generation),
+      [{ query: 'søknadsfristen for tilskudd', profile: 'content', limit: 3 }],
+      signal,
+    );
+    expect(result?.hits.map((h) => h.document).slice(0, 2)).toEqual(['eksakt', 'lignende']);
+  });
+
+  it('custom profiles search vectors alone and named document fields', async () => {
+    const config: Dataset = {
+      id: 'pgvector/profiler',
+      filters: fixtureFilters,
+      embedding: { model: 'fixture', dimensions: 32 },
+      options: {
+        profiles: {
+          vektor: { target: 'phrases', mode: 'vector' },
+          sammendrag: { target: 'docs', mode: 'text', fields: ['sammendrag', 'title'] },
+        },
+      },
+    };
+    const generation = 'g-20261120-profiler';
+    await seedCorpus(writer(), config, undefined, generation);
+    const connection = connectionOf();
+    expect(connection.profiles(config)).toEqual(['vektor', 'sammendrag']);
+    const [vector, fields] = await connection.search(
+      routed(config, generation),
+      [
+        { query: 'Kan tilskudd brukes til skyplattform?', profile: 'vektor', limit: 1 },
+        { query: 'innovasjon', profile: 'sammendrag', filters: { aar: { gte: 2024 } } },
+      ],
+      signal,
+    );
+    expect(vector?.hits.map((h) => h.id)).toEqual(['dok-1-2']);
+    expect(fields?.hits.map((h) => h.document)).toEqual(['dok-5']);
+  });
+
+  it('a search batch larger than the pool does not fail every request waiting for a connection', async () => {
+    const d = dataset('pgvector/small-pool', 3, { filters: {} });
+    const generation = 'g-20261123-small-pool';
+    await fill(d, generation, [
+      {
+        id: 'frist',
+        title: 'Frist',
+        fields: {},
+        chunks: [
+          {
+            id: 'frist-0',
+            position: 0,
+            text: 'Søknadsfristen for tilskudd er 1. mars.',
+            metadata: {},
+            vector: [1, 0, 0],
+          },
+        ],
+        phrases: [],
+      },
+    ]);
+    const small = new pg.Pool({
+      ...primary.source,
+      user: 'knowledge_api',
+      options: `-c role=${knowledgeRoles.reader}`,
+      max: 2,
+      connectionTimeoutMillis: 200,
+    });
+    let slow = false;
+    small.on('connect', (client) => {
+      client.on('error', () => undefined);
+      const query = client.query.bind(client) as (...args: unknown[]) => Promise<unknown>;
+      Object.assign(client, {
+        query: async (...args: unknown[]) => {
+          if (slow) await new Promise((resolve) => setTimeout(resolve, 50));
+          return query(...args);
+        },
+      });
+    });
+    try {
+      const connection = connectionOf(
+        readEngine({ reader: small }, () => ({
+          embed: async (texts) => texts.map(() => [1, 0, 0]),
+        })),
+      );
+      await connection.search(
+        routed(d, generation),
+        [{ query: 'tilskudd', profile: 'content' }],
+        signal,
+      );
+      slow = true;
+      const results = await connection.search(
+        routed(d, generation),
+        Array.from({ length: 10 }, (_, i) => ({
+          query: `tilskudd ${i}`,
+          profile: 'content',
+          limit: 3,
+        })),
+        signal,
+      );
+      expect(results.map((r) => r.warning)).toEqual(Array(10).fill(undefined));
+      expect(results.every((r) => r.hits[0]?.document === 'frist')).toBe(true);
+    } finally {
+      await small.end();
+    }
+  });
 });

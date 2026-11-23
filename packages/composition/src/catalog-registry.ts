@@ -17,6 +17,7 @@ import {
   type ConfigEntry,
   type ConfigEntryStore,
 } from './config-store.js';
+import { onKnowledgeServer } from './knowledge-context.js';
 import { checkedPrice } from './prices.js';
 
 export const catalogKinds = [
@@ -732,14 +733,14 @@ export class CatalogRegistry {
     });
   }
 
-  /** Whether a dataset's entry is on an endpoint with `connection: knowledge`: its runs run as jobs (ADR 0042). */
+  /** Whether a dataset's entry is on a pgvector endpoint, on the knowledge server: its runs run as jobs (ADR 0042). */
   datasetOnKnowledgeServer(id: string) {
     return this.#onKnowledgeServer(this.#slots.get(keyOf('dataset', id))?.spec.endpoint);
   }
 
   #onKnowledgeServer(endpoint: unknown) {
     const slot = this.#slots.get(keyOf('knowledge-endpoint', String(endpoint ?? '')));
-    return record(record(slot?.spec).options).connection === 'knowledge';
+    return onKnowledgeServer(slot?.spec);
   }
 
   async #heldAfterDeletion(scope: string, id: string) {

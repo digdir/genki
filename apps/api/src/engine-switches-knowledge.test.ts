@@ -10,6 +10,7 @@ import { testSet, type SourceRef } from '@genai/eval';
 import { envSecrets } from '@genai/kernel';
 import { fakeEmbeddingAdapter } from '@genai/port-embedding/testing';
 import type { IndexDocument, KnowledgePort } from '@genai/port-knowledge';
+import { memoryEngine } from '@genai/port-knowledge/testing';
 import { createPool } from '@genai/providers-postgres';
 import { stopPostgres } from '@genai/providers-postgres/testing';
 import { PLATFORM_RIGHTS, trustedEntraScope } from '@genai/identity';
@@ -151,6 +152,9 @@ const fakeWorker = () => {
 
 type Worker = ReturnType<typeof fakeWorker>;
 
+/** The engine datasets start on, kept across restarts as a database would be. */
+const localEngine = memoryEngine();
+
 /** Documents of datasets whose current engine can hand them over, by dataset id. */
 const exports = new Map<string, IndexDocument[]>();
 
@@ -165,6 +169,10 @@ const boot = async (
     as?: string;
     /** Only models outside Norway, so a Norway dataset has none to be embedded with. */
     globalModelsOnly?: boolean;
+    /** A release whose catalog no longer has the engine datasets moved from, as platform-pg. */
+    withoutLocal?: boolean;
+    /** The engine datasets moved from, shared with only this organisation. */
+    localSharedWith?: string;
   } = {},
 ) => {
   const entries = shared.entries ?? new InMemoryConfigEntryStore();
@@ -176,16 +184,22 @@ const boot = async (
       models: { endpoints: {}, models: [] },
       knowledge: {
         endpoints: {
-          'platform-pg': {
-            engine: 'pgvector',
-            options: { connection: 'platform' },
-            sharing: { tenants: '*' },
-          },
+          // The engine datasets move from: an in-memory one, as platform-pg went with issue 151.
+          ...(shared.withoutLocal
+            ? {}
+            : {
+                lokal: {
+                  engine: 'memory',
+                  sharing: { tenants: shared.localSharedWith ? [shared.localSharedWith] : '*' },
+                },
+              }),
           'knowledge-pg': {
             engine: 'pgvector',
             options: { connection: 'knowledge' },
             sharing: { tenants: '*' },
           },
+          // A second pgvector endpoint, with the connection left to its default.
+          kunnskapsserveren: { engine: 'pgvector', sharing: { tenants: '*' } },
         },
         datasets: [],
       },
@@ -228,7 +242,7 @@ const boot = async (
       const principal = principals[request.headers.get('authorization')?.slice(7) ?? ''];
       return principal ? { principal } : undefined;
     },
-    knowledgePool: pool,
+    knowledgeEngines: [localEngine],
     knowledgeServer: { reader: pool },
     ingestFolderRoot: folder,
     ...(shared.lockdown ? { lockdown: { configuredKeys: new Set<string>() } } : {}),
@@ -352,7 +366,7 @@ const folderDataset = async (
       id,
       name: 'Veiledning',
       residency: 'norway',
-      index: { endpoint: 'platform-pg' },
+      index: { endpoint: 'lokal' },
       embedding,
     },
   });
@@ -559,7 +573,7 @@ describe('switching a dataset into the knowledge database', () => {
     const booted = await boot();
     await folderDataset(booted, 'tjenester');
     const opened = await toReady(booted, 'tjenester');
-    expect((await engineView(booted, 'tjenester')).endpoint).toBe('platform-pg');
+    expect((await engineView(booted, 'tjenester')).endpoint).toBe('lokal');
     const activating = await booted.call(
       `${base('tjenester')}/engine-switches/${opened.sid}/activate`,
       {
@@ -568,7 +582,7 @@ describe('switching a dataset into the knowledge database', () => {
     );
     expect(activating.status).toBe(202);
     expect((await json<EngineSwitchView>(activating)).state).toBe('activating');
-    expect((await engineView(booted, 'tjenester')).endpoint).toBe('platform-pg');
+    expect((await engineView(booted, 'tjenester')).endpoint).toBe('lokal');
     await booted.worker.end(runOf(booted.worker, opened.id, 1), 'succeeded');
     await booted.module.follow();
     expect((await engineView(booted, 'tjenester')).endpoint).toBe('knowledge-pg');
@@ -596,6 +610,72 @@ describe('switching a dataset into the knowledge database', () => {
     expect(booted.worker.started.at(-1)?.engineSwitch).toBeUndefined();
   });
 
+  it('roll back is not offered when the old engine is no longer shared with the organisation', async () => {
+    const worker = fakeWorker();
+    const entries = new InMemoryConfigEntryStore();
+    const first = await boot({ worker, entries });
+    await folderDataset(first, 'ikke-delt');
+    const opened = await toReady(first, 'ikke-delt');
+    await first.call(`${base('ikke-delt')}/engine-switches/${opened.sid}/activate`, { body: {} });
+    await worker.end(runOf(worker, opened.id, 1), 'succeeded');
+    await first.module.follow();
+
+    const next = await boot({ worker, entries, localSharedWith: '999888777' });
+    expect((await engineView(next, 'ikke-delt')).previous).toBeUndefined();
+    expect((await view(next, 'ikke-delt', opened.sid)).canRollback).toBe(false);
+    const refused = await next.call(`${base('ikke-delt')}/engine-switches/${opened.sid}/rollback`, {
+      body: {},
+      reason: 'Tilbake til den gamle søkemotoren',
+    });
+    expect(refused.status).toBe(409);
+  });
+
+  it('a switch between two pgvector endpoints is refused, since both keep their data on the knowledge server', async () => {
+    const booted = await boot();
+    const created = await booted.call(`/tenants/${digdir}/datasets`, {
+      body: {
+        id: 'delt',
+        name: 'Delt lagring',
+        residency: 'norway',
+        index: { endpoint: 'kunnskapsserveren' },
+        embedding,
+      },
+    });
+    expect(created.status).toBe(201);
+    const refused = await booted.call(`${base('delt')}/engine-switches`, {
+      body: { to: 'knowledge-pg', method: 'reingest', embedding },
+    });
+    expect(refused.status).toBe(409);
+    expect(await refused.text()).toContain('Søkemotorene deler lagring');
+  });
+
+  it("roll back is not offered when the old engine's endpoint is gone", async () => {
+    const worker = fakeWorker();
+    const entries = new InMemoryConfigEntryStore();
+    const first = await boot({ worker, entries });
+    await folderDataset(first, 'flyttet');
+    const opened = await toReady(first, 'flyttet');
+    await first.call(`${base('flyttet')}/engine-switches/${opened.sid}/activate`, { body: {} });
+    await worker.end(runOf(worker, opened.id, 1), 'succeeded');
+    await first.module.follow();
+    expect((await engineView(first, 'flyttet')).previous).toMatchObject({ endpoint: 'lokal' });
+    expect((await view(first, 'flyttet', opened.sid)).canRollback).toBe(true);
+
+    const next = await boot({ worker, entries, withoutLocal: true });
+    const engine = await engineView(next, 'flyttet');
+    expect(engine.endpoint).toBe('knowledge-pg');
+    expect(engine.previous).toBeUndefined();
+    expect((await view(next, 'flyttet', opened.sid)).canRollback).toBe(false);
+    const refused = await next.call(`${base('flyttet')}/engine-switches/${opened.sid}/rollback`, {
+      body: {},
+      reason: 'Tilbake til den gamle søkemotoren',
+    });
+    expect(refused.status).toBe(409);
+    expect(next.platform.catalog.get('dataset', `${digdir}/flyttet`)?.spec).toMatchObject({
+      endpoint: 'knowledge-pg',
+    });
+  });
+
   it('activating a switch first applies what changed in the source since its fill', async () => {
     const booted = await boot();
     await folderDataset(booted, 'oppfrisket');
@@ -606,7 +686,7 @@ describe('switching a dataset into the knowledge database', () => {
     expect(refresh).toMatchObject({ generation: fill?.generation, engineSwitch: opened.id });
     await booted.module.follow();
     expect((await view(booted, 'oppfrisket', opened.sid)).state).toBe('activating');
-    expect((await engineView(booted, 'oppfrisket')).endpoint).toBe('platform-pg');
+    expect((await engineView(booted, 'oppfrisket')).endpoint).toBe('lokal');
     await booted.worker.end(refresh, 'succeeded', { changed: 1, stored: 1 });
     await booted.module.follow();
     expect((await view(booted, 'oppfrisket', opened.sid)).state).toBe('active');
@@ -623,7 +703,7 @@ describe('switching a dataset into the knowledge database', () => {
       state: 'ready',
       error: { message: 'the source is down' },
     });
-    expect((await engineView(booted, 'tilbake')).endpoint).toBe('platform-pg');
+    expect((await engineView(booted, 'tilbake')).endpoint).toBe('lokal');
   });
 
   it('a retry after a failed comparison does not fill again', async () => {
@@ -1158,7 +1238,7 @@ describe('operators switching a platform dataset into the knowledge database', (
         id,
         name: 'GenKI-dokumentasjonen',
         residency: 'norway',
-        index: { endpoint: 'platform-pg' },
+        index: { endpoint: 'lokal' },
         embedding,
       },
     });
@@ -1221,7 +1301,7 @@ describe('operators switching a platform dataset into the knowledge database', (
     const { data } = await json<{ data: KnowledgeEndpointView[] }>(
       await booted.call('/operator/knowledge/endpoints'),
     );
-    expect(data.find((e) => e.id === 'platform-pg')?.datasets).toEqual([
+    expect(data.find((e) => e.id === 'lokal')?.datasets).toEqual([
       { id: `${digdir}/veiledning`, scope: digdir, name: 'Veiledning', pipelines: 1 },
       { id, scope: 'platform', name: 'GenKI-dokumentasjonen', pipelines: 1 },
     ]);
@@ -1288,7 +1368,7 @@ const copyDataset = async (
   sources: SourceRef[] = [{ document: 'veileder' }],
 ) => {
   const created = await booted.call(`/tenants/${digdir}/datasets`, {
-    body: { id, name: 'Rapporter', residency: 'norway', index: { endpoint: 'platform-pg' } },
+    body: { id, name: 'Rapporter', residency: 'norway', index: { endpoint: 'lokal' } },
   });
   expect(created.status).toBe(201);
   exports.set(`${digdir}/${id}`, docs);
