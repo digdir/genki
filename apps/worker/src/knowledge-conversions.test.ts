@@ -8,6 +8,7 @@ import { gunzipSync } from 'node:zlib';
 import { join } from 'node:path';
 import {
   doclingConverter,
+  DoclingFailed,
   doclingIdentity,
   doclingPages,
   doclingParts,
@@ -1030,6 +1031,33 @@ describe('stored conversions', () => {
     expect(JSON.stringify({ message: failure?.message, code: failure?.code })).not.toMatch(
       /hemmelig|Connect Timeout|fetch failed/,
     );
+  }, 60_000);
+
+  it("names Docling's status and error categories in a DoclingFailed dead letter, never the file's name", async () => {
+    await clearConvertJobs();
+    const s = await scenario({
+      converter: {
+        extensions: ['.pdf'],
+        convert: async () => {
+          throw new DoclingFailed(200, 'status partial_success with errors backend_failure');
+        },
+      },
+    });
+    await s.file('hemmelig-rapport.pdf', reportOf('hemmelig'));
+    const { sent } = await ingest(s);
+
+    const failure = await handler(
+      s.work.knowledge,
+      'knowledge.convert',
+    )(job('knowledge.convert', sent[0]?.data ?? {})).then(
+      () => undefined,
+      (error: unknown) => error as Error & { code?: string },
+    );
+    expect(failure?.message).toMatch(
+      /failed: DoclingFailed \(HTTP 200: status partial_success with errors backend_failure\)$/,
+    );
+    expect(failure?.code).toBe('DoclingFailed');
+    expect(failure?.message).not.toMatch(/hemmelig/);
   }, 60_000);
 
   it('a file stored as unreachable is fetched again when its record is written again', async () => {
