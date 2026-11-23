@@ -9,7 +9,7 @@ packages:
   - '@genai/providers-typesense'
 summary: Knowledge adapter for Typesense that refuses anything but search.
 description: Searches and fetches documents with a timeout and asserts the client is search-only,
-  because the shared cluster serves production.
+  so a search key is all an organisation's Typesense endpoint needs.
 responsibilities:
   - Search and fetch
   - Search-only guard
@@ -43,11 +43,4 @@ edges:
     witness:
       file: packages/providers-typesense/src/client.ts
       imports: '@genai/port-knowledge'
-  - to: typesense-cluster
-    label: multi_search and document fetch
-    kind: http
-    target: http
-    witness:
-      file: packages/providers-typesense/src/client.ts
-      contains: await fetch(url
 keywords: typesense search provider

@@ -2,8 +2,6 @@ import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import type { KnowledgePort } from '@genai/port-knowledge';
-import { measureProfiles } from './profiles.js';
 import {
   jaccard,
   overlap,
@@ -261,31 +259,5 @@ describe('running the comparison', () => {
         call: async () => run({ isError: true, error: 'down' }),
       }),
     ).rejects.toBeInstanceOf(TooManyErrors);
-  });
-});
-
-describe('search profiles', () => {
-  it('measures which profile finds the expected source, and which found it alone', async () => {
-    const knowledge = {
-      searchMany: async (requests: { profile?: string }[]) =>
-        requests.map((r) => ({
-          hits:
-            r.profile === 'phrase'
-              ? [{ id: 'c1', score: 1, text: '', fields: {} }]
-              : [{ id: 'x', score: 1, text: '', fields: {} }],
-        })),
-    } as unknown as KnowledgePort;
-
-    const summary = await measureProfiles(
-      [factual, uncovered],
-      knowledge,
-      ['phrase', 'content'],
-      30,
-    );
-
-    expect(summary.cases).toBe(1);
-    expect(summary.recall).toEqual({ phrase: 1, content: 0 });
-    expect(summary.onlyFoundBy).toEqual({ phrase: 1, content: 0 });
-    expect(summary.union).toBe(1);
   });
 });

@@ -21,6 +21,7 @@ import { createPlatform, platformModules } from './composition.js';
 import { appendVersion, InMemoryConfigEntryStore } from './config-store.js';
 import { serviceLifecycleKind } from './service-lifecycle.js';
 import type { ModelPrice } from './draft-runner.js';
+import { seedOnTypesense } from '@genai/composition/typesense-seed.test-utils';
 
 const servers: FakeServer[] = [];
 afterEach(async () => {
@@ -303,7 +304,7 @@ const boot = async (options: BootOptions = {}) => {
   const platform = await createPlatform({
     catalogs: {
       models: resolveCatalog(yaml('models.yaml'), 'models', env).catalog as ModelCatalog,
-      knowledge: resolveCatalog(yaml('knowledge.yaml'), 'datasets', env).catalog,
+      knowledge: resolveCatalog(seedOnTypesense(yaml('knowledge.yaml')), 'datasets', env).catalog,
       rerank: resolveCatalog(yaml('rerank.yaml'), 'rerankers', env).catalog,
     },
     secrets: envSecrets({ FOUNDRY_OPENAI_KEY: 'm', TYPESENSE_KEY: 't' }),

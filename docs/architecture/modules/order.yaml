@@ -64,7 +64,6 @@
 - providers-azure-blob
 - providers-postgres-source
 - azure-foundry
-- typesense-cluster
 - postgres-db
 - tenant-databases
 - ansattporten

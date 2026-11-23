@@ -214,7 +214,7 @@ Nobody is on call: the targets count office hours.
 
 - **Uploads:** the Recovery Services vault `genai-<env>-files-rsv` snapshots the share `data` every day at 01:00 UTC and keeps 30 days; the vault has soft delete, and the share keeps deleted shares for 14 days. The snapshots live in the same storage account, and Azure Backup puts its own delete lock on it.
 - **Secrets:** Key Vault soft delete for 90 days, with purge protection.
-- **Not backed up:** container images (built again from git) and Typesense, which is the shared headless-rag server, an external dependency genki only searches.
+- **Not backed up:** container images (built again from git), and a Typesense server an organisation registers, which its owner backs up.
 
 ### Restore the platform database
 

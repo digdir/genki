@@ -1,9 +1,11 @@
-"""Step 1a: fetch what pairing needs. Run with no argument for all three, or name the parts:
-fetch_lists.py dictionaries ours listing
+"""Step 1a: fetch what pairing needs. Run with no argument for both, or name the parts:
+fetch_lists.py dictionaries listing
 
 .data/kudos-listing.jsonl   every KUDOS prod document (GET /documents, 50 a page)
-.data/ts-documents.jsonl    every Kudos document in our Typesense index
 .data/dict/                 nb and nn Hunspell dictionaries, pinned LibreOffice commit
+
+.data/ts-documents.jsonl, every Kudos document in our Typesense index, came from the shared
+Typesense server, which genki no longer configures (#690); pair.py reads it from disk.
 
 /documents/search stops paging after 10,000 results, so the listing uses /documents. Each page
 lands in .data/listing/<n>.json first, so a rerun resumes where it stopped. Two workers, each
@@ -14,7 +16,7 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-from common import DATA, DICTIONARIES, KUDOS_API, TS_DOCUMENTS, get, setting
+from common import DATA, DICTIONARIES, KUDOS_API, get
 
 PAGE_DELAY_S = 0.5
 
@@ -42,13 +44,6 @@ def listing():
     print(f"listing: {len(rows)} documents, API says {first['meta']['total']}")
 
 
-def ours():
-    url, key = setting("TYPESENSE_URL"), setting("TYPESENSE_KEY")
-    body = get(f"{url}/collections/{TS_DOCUMENTS}/documents/export", {"X-TYPESENSE-API-KEY": key})
-    (DATA / "ts-documents.jsonl").write_bytes(body)
-    print(f"ours: {len(body.splitlines())} documents")
-
-
 def dictionaries():
     d = DATA / "dict"
     d.mkdir(parents=True, exist_ok=True)
@@ -60,6 +55,6 @@ def dictionaries():
 
 if __name__ == "__main__":
     DATA.mkdir(parents=True, exist_ok=True)
-    parts = {"dictionaries": dictionaries, "ours": ours, "listing": listing}
+    parts = {"dictionaries": dictionaries, "listing": listing}
     for name in sys.argv[1:] or parts:
         parts[name]()

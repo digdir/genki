@@ -1,9 +1,9 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fakeHttp, type FakeReply, type FakeServer } from '@genai/port-model/testing';
 import { contractSchemas } from './contract.test-utils.js';
-import { createTypesenseWriter, generationNames, SharedClusterRefused } from './index.js';
+import { createTypesenseWriter, generationNames } from './index.js';
 
 const servers: FakeServer[] = [];
 const fake = async (reply: (body: Record<string, unknown>, attempt: number) => FakeReply) => {
@@ -19,30 +19,16 @@ const credential = { kind: 'api-key' as const, key: async () => 'local-key' };
 const names = { docs: 'test_documents_x', chunks: 'test_chunks_x', phrases: 'test_phrases_x' };
 
 describe('typesense writer', () => {
-  it('refuses to start against the shared cluster, by host, whatever the port or scheme', () => {
-    const shared = ['search.example.no:8108', 'https://other.example:443/'];
-    for (const baseURL of [
-      'https://search.example.no:8108',
-      'http://SEARCH.example.no:9999',
-      'https://other.example.',
-    ]) {
-      expect(() =>
-        createTypesenseWriter({
-          baseURL,
-          credential,
-          schemas: contractSchemas(),
-          sharedClusterUrls: shared,
-        }),
-      ).toThrow(SharedClusterRefused);
+  it('writes to any host it has a write key for, also one named in TYPESENSE_URL', () => {
+    vi.stubEnv('TYPESENSE_URL', 'https://search.example.no:8108');
+    try {
+      for (const baseURL of ['https://search.example.no:8108', 'http://localhost:8108'])
+        expect(() =>
+          createTypesenseWriter({ baseURL, credential, schemas: contractSchemas() }),
+        ).not.toThrow();
+    } finally {
+      vi.unstubAllEnvs();
     }
-    expect(() =>
-      createTypesenseWriter({
-        baseURL: 'http://localhost:8108',
-        credential,
-        schemas: contractSchemas(),
-        sharedClusterUrls: shared,
-      }),
-    ).not.toThrow();
   });
 
   it('creates only missing collections from the contract, with references and optional embeddings', async () => {
@@ -60,7 +46,6 @@ describe('typesense writer', () => {
       baseURL: url,
       credential,
       schemas: contractSchemas(),
-      sharedClusterUrls: [],
       embeddings: false,
     });
 
@@ -83,7 +68,6 @@ describe('typesense writer', () => {
       baseURL: ok.url,
       credential,
       schemas: contractSchemas(),
-      sharedClusterUrls: [],
       batchSize: 2,
       fetch: async (input, init) => {
         bodies.push(String(init?.body));
@@ -112,7 +96,6 @@ describe('typesense writer', () => {
       baseURL: url,
       credential,
       schemas: contractSchemas(),
-      sharedClusterUrls: [],
     });
 
     await writer.deleteOrphans(names.chunks, '12345', ['ab90aa0c353d', '5a9ebad21a18']);
@@ -133,7 +116,6 @@ describe('typesense writer', () => {
       baseURL: 'http://localhost:1',
       credential,
       schemas: contractSchemas(),
-      sharedClusterUrls: [],
       fetch: async (input, init) => {
         const path = new URL(String(input)).pathname;
         const alias = decodeURIComponent(path.replace('/aliases/', ''));
@@ -162,21 +144,3 @@ describe('typesense writer', () => {
 
 const envFile = join(import.meta.dirname, '..', '..', '..', '.env.local');
 if (existsSync(envFile)) process.loadEnvFile(envFile);
-
-describe.skipIf(!process.env.TYPESENSE_URL)('the configured shared cluster', () => {
-  it('is refused by default, before any request is sent', () => {
-    let requests = 0;
-    expect(() =>
-      createTypesenseWriter({
-        baseURL: process.env.TYPESENSE_URL ?? '',
-        credential,
-        schemas: contractSchemas(),
-        fetch: async () => {
-          requests += 1;
-          return new Response('{}');
-        },
-      }),
-    ).toThrow(SharedClusterRefused);
-    expect(requests).toBe(0);
-  });
-});

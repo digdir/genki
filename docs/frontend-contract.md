@@ -461,7 +461,7 @@ genki-test is locked (ADR 0033), so a server key reaches a model there only when
 2. Open the service `kunnskapsassistenten`, go to "API-nøkler for tjenesten" and create a key. Copy it now; it is shown once.
 3. Give the key to KA test's backend as a secret, with the base URL `https://api.genki-test.digdir.cloud`, and call `POST /v1/chat/completions` with `"model": "kunnskapsassistenten"`.
 
-Answers with sources need the Typesense search key in test: the Key Vault secret `typesense-key` must be set. A key created before this rule, or rotated by someone without an Entra login, is refused with `urn:genai:problem:locked-environment`; create a new one.
+A key created before this rule, or rotated by someone without an Entra login, is refused with `urn:genai:problem:locked-environment`; create a new one.
 
 ## Contract tests (repository only)
 

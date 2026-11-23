@@ -194,7 +194,7 @@ The example services, such as Kunnskapsassistenten, Klarspråk and Nynorsk, need
 | Works on a fresh clone, no secrets                           | Needs settings in `.env.local`                      |
 | ------------------------------------------------------------ | --------------------------------------------------- |
 | Login with test persons, rights, portal, console, workspace  | Real models: `FOUNDRY_OPENAI_*`, `FOUNDRY_CLAUDE_*` |
-| Postgres storage, migrations, API keys, conversations, audit | Kudos and public-docs search: `TYPESENSE_*`         |
+| Postgres storage, migrations, API keys, conversations, audit | Kudos content: a run of the local `kudos` pipeline  |
 | Lokal testchat, and your own services on the local model     | Langfuse, Maskinporten, real Altinn                 |
 
 Every setting is listed in [`.env.example`](.env.example), with what happens when it is empty. Restart after you change `.env.local`.

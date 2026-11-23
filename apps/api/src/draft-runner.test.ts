@@ -15,6 +15,7 @@ import { createPlatform } from './composition.js';
 import { appendVersion } from './config-store.js';
 import { assistantCapabilityPrefix } from '@genai/jobs';
 import { kernelTaskReader } from './timeline.js';
+import { seedOnTypesense } from '@genai/composition/typesense-seed.test-utils';
 
 const servers: FakeServer[] = [];
 afterEach(async () => {
@@ -113,7 +114,7 @@ const boot = async (searchReply: Record<string, unknown> = {}) => {
   const platform = await createPlatform({
     catalogs: {
       models: resolveCatalog(yaml('models.yaml'), 'models', env).catalog,
-      knowledge: resolveCatalog(yaml('knowledge.yaml'), 'datasets', env).catalog,
+      knowledge: resolveCatalog(seedOnTypesense(yaml('knowledge.yaml')), 'datasets', env).catalog,
       rerank: resolveCatalog(yaml('rerank.yaml'), 'rerankers', env).catalog,
     },
     prices: { [modelId]: { inputPerThousand: 1, outputPerThousand: 2 } },

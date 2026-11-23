@@ -208,7 +208,6 @@ const boot = async (
   servers.push(model, search);
   const env = {
     FOUNDRY_OPENAI_BASE_URL: `${model.url}/v1`,
-    TYPESENSE_URL: search.url,
   };
   const background: Promise<void>[] = [];
   const stored = new Map<string, StoredTask>();
@@ -227,7 +226,7 @@ const boot = async (
       knowledge: resolveCatalog(yaml('knowledge.yaml'), 'datasets', env).catalog,
       rerank: resolveCatalog(yaml('rerank.yaml'), 'rerankers', env).catalog,
     },
-    secrets: envSecrets({ FOUNDRY_OPENAI_KEY: 'm', TYPESENSE_KEY: 't', RERANK_KEY: 'r' }),
+    secrets: envSecrets({ FOUNDRY_OPENAI_KEY: 'm', RERANK_KEY: 'r' }),
     rerankAdapters: [testRerankAdapter],
     definitions: (plugins) =>
       restart.definitions

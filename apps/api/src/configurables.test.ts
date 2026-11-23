@@ -98,7 +98,6 @@ export const boot = async (
     ingestion?: IngestionBackend;
     jobRuns?: JobRuns;
     answer?: string;
-    searchOnlyClusters?: string[];
     tenants?: { orgNumber: string; name: string }[];
   } = {},
 ) => {
@@ -141,7 +140,6 @@ export const boot = async (
       rerank: { endpoints: {}, rerankers: [] },
     },
     prices: { 'fake/gpt': { inputPerThousand: 0.01, outputPerThousand: 0.02 } },
-    ...(options.searchOnlyClusters ? { searchOnlyClusters: options.searchOnlyClusters } : {}),
     secrets: envSecrets({ FAKE_KEY: 'k', SEARCH_KEY: 's' }),
     definitions: (plugins) => new InMemoryDefinitionStore(plugins),
     policy: { decide: async () => ({ allow: true }) },
@@ -927,45 +925,6 @@ describe('ingestion pipelines', () => {
       [1, false],
       [2, true],
     ]);
-  });
-
-  it('ingestion refuses the shared search-only Typesense cluster', async () => {
-    const fetchSpy = vi.spyOn(globalThis, 'fetch');
-    const { call } = await boot({ searchOnlyClusters: ['https://search.example.no'] });
-    const base = `/operator/datasets/${encodeURIComponent('digdir/kudos')}/pipelines`;
-
-    expect((await call(base, 'drift', { body: pipeline })).status).toBe(201);
-    expect((await call(base, 'drift', { body: pipeline })).status).toBe(409);
-    expect(
-      (
-        await call(`${base}/nettsider`, 'drift', {
-          method: 'PUT',
-          body: { ...pipeline, parallelism: 4 },
-        })
-      ).status,
-    ).toBe(200);
-    expect(
-      (
-        await call(`${base}/nettsider`, 'drift', {
-          method: 'PUT',
-          body: { name: 'x', source: { kind: 'ftp' } },
-        })
-      ).status,
-    ).toBe(400);
-    const listed = await json<{
-      data: { id: string; version: number }[];
-      backend: { available: boolean; reason: string };
-    }>(await call(base, 'drift'));
-    expect(listed.data).toEqual([expect.objectContaining({ id: 'nettsider', version: 2 })]);
-    expect(listed.backend).toMatchObject({ available: false });
-    expect(listed.backend.reason).toMatch(/search-only/);
-
-    const run = await call(`${base}/nettsider/execute`, 'drift', { body: {} });
-    expect(run.status).toBe(409);
-    expect(JSON.stringify(await json(run))).toMatch(/shared, search-only Typesense cluster/);
-    expect((await call(base, 'kari')).status).toBe(403);
-    expect(fetchSpy).not.toHaveBeenCalled();
-    fetchSpy.mockRestore();
   });
 
   it('refuses a Kudos pipeline that would read the whole archive, and tells when a scheduled one runs', async () => {

@@ -166,7 +166,6 @@ const boot = async (replies: Reply[], { publish = true } = {}) => {
   servers.push(model, search);
   const env = {
     FOUNDRY_OPENAI_BASE_URL: `${model.url}/v1`,
-    TYPESENSE_URL: search.url,
   };
   const settings = new SettingsRegistry(platformSettings);
   const platform = await createPlatform({
@@ -175,7 +174,7 @@ const boot = async (replies: Reply[], { publish = true } = {}) => {
       knowledge: resolveCatalog(yaml('knowledge.yaml'), 'datasets', env).catalog,
       rerank: resolveCatalog(yaml('rerank.yaml'), 'rerankers', env).catalog,
     },
-    secrets: envSecrets({ FOUNDRY_OPENAI_KEY: 'm', TYPESENSE_KEY: 't' }),
+    secrets: envSecrets({ FOUNDRY_OPENAI_KEY: 'm' }),
     definitions: (plugins) => new InMemoryDefinitionStore(plugins),
     settings,
     policy: { decide: async () => ({ allow: true }) },
