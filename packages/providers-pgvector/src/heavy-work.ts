@@ -245,7 +245,8 @@ export interface RecallSample {
 
 /**
  * recall@k of the generation's chunk index against exact search, for a random sample of its own
- * vectors as queries, at the `hnsw.ef_search` search uses. Nothing when it holds no vectors.
+ * vectors as queries, at the server's own `hnsw.ef_search`, below the 200 an unfiltered search
+ * raises it to (issue 674). Nothing when it holds no vectors.
  * `stop` is asked before each exact search, and `signal` cancels the running query (issue 615).
  */
 export const sampleRecall = async (
