@@ -632,6 +632,84 @@ describe('the Docling client', () => {
     expect(tasks.at(-1)).toMatchObject({ result: 'conversion_failed', pdfBackend: 'pypdfium2' });
   });
 
+  it('tries again a pdfium failure with an inference_failure error after unparsed pages', async () => {
+    // Only a page pdfium cannot parse either is about the file; a model that failed may not fail
+    // on the next try, and a refusal is never converted again (ADR 0042).
+    const cluster = await doclingServer([
+      'partial-page-parse',
+      JSON.stringify({
+        status: 'failure',
+        errors: [{ component_type: 'model', category: 'inference_failure', page_no: 1 }],
+        document: { filename: 'document.pdf', json_content: null },
+      }),
+    ]);
+
+    const error = await converterFor(cluster.url)
+      .convert(report)
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(DoclingFailed);
+    expect(readersOf(cluster)).toEqual([null, 'pypdfium2']);
+  });
+
+  it('names only the lost tasks in the error of a try whose pdfium tasks were lost after unparsed pages', async () => {
+    const cluster = await doclingCluster(['partial-page-parse'], { replicas: 2, convertMs: 300 });
+    // The own reader's task ends partial; both pdfium tasks are lost.
+    let taken = 0;
+    cluster.onTask = (replica) => {
+      taken += 1;
+      if (taken > 1) setTimeout(() => replica.stop(), 100);
+    };
+
+    const error = await converterFor(cluster.url)
+      .convert(report)
+      .catch((e: unknown) => e);
+
+    expect(readersOf(cluster)).toEqual([null, 'pypdfium2', 'pypdfium2']);
+    expect((error as DoclingFailed).detail).toBe('HTTP 404: the task was lost 2 times');
+  });
+
+  it('names a Docling status and category that are not one word as other in a DoclingFailed, in linear time', async () => {
+    // Docling's answer is untrusted text, and the detail goes into a dead letter every waiting
+    // organisation sees (issue 951).
+    const long = 'Page 1 of hemmelig-rapport.pdf failed to parse. '.repeat(20_000);
+    const cluster = await doclingServer([
+      JSON.stringify({
+        status: `Partial Success of hemmelig-rapport.pdf ${long}`,
+        errors: [{ component_type: 'pipeline', category: long, page_no: 1 }],
+        document: { filename: 'hemmelig-rapport.pdf', json_content: null },
+      }),
+    ]);
+
+    const started = performance.now();
+    const error = await converterFor(cluster.url)
+      .convert(report)
+      .catch((e: unknown) => e);
+
+    expect((error as DoclingFailed).detail).toBe('HTTP 200: status other with errors other');
+    expect(performance.now() - started).toBeLessThan(2_000);
+  });
+
+  it("names each error category once in a DoclingFailed's detail", async () => {
+    // Docling reports one error per page: a long file must not fill its dead letter with them.
+    const errors = Array.from({ length: 300 }, (_, n) => ({
+      component_type: 'pipeline',
+      category: n % 2 ? 'something_new' : 'backend_failure',
+      page_no: n + 1,
+    }));
+    const cluster = await doclingServer([
+      JSON.stringify({ status: 'failure', errors, document: { json_content: null } }),
+    ]);
+
+    const error = await converterFor(cluster.url)
+      .convert(report)
+      .catch((e: unknown) => e);
+
+    expect((error as DoclingFailed).detail).toBe(
+      'HTTP 200: status failure with errors backend_failure, something_new',
+    );
+  });
+
   it('fails a file whose pdfium submit after two lost tasks comes back partial, so it is still a dead letter', async () => {
     // Keeping partial pages and the text layer follow only pages Docling's own reader could not
     // parse (issue 951); a file sent to pdfium after lost tasks fails as before (issue 944).

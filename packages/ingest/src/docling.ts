@@ -204,22 +204,31 @@ const exactJson = (text: string): unknown => {
 /** A category as Docling names one, such as `backend_failure`: one word, never a sentence. */
 const categoryShape = /^[a-z][a-z_]{0,39}$/;
 
-/** The answer's error categories, each one word or `other`: they go into a dead letter (issue 951). */
-const categories = (answer: DoclingAnswer) =>
-  (answer.errors ?? []).map((e) =>
-    e.category === undefined
-      ? 'none'
-      : typeof e.category === 'string' && categoryShape.test(e.category)
-        ? e.category
-        : 'other',
-  );
+/**
+ * The answer's error categories, each once and one word or `other`: they go into a dead letter
+ * (issue 951), and Docling reports one error per page.
+ */
+const categories = (answer: DoclingAnswer) => [
+  ...new Set(
+    (answer.errors ?? []).map((e) =>
+      e.category === undefined
+        ? 'none'
+        : typeof e.category === 'string' && categoryShape.test(e.category)
+          ? e.category
+          : 'other',
+    ),
+  ),
+];
 
 /**
  * A page Docling's own reader could not parse, the same way each try: `partial_success` whose
  * errors are all `backend_failure`. pypdfium2 read such a Kudos file whole (issue 951).
  */
 const unparsedPages = (answer: DoclingAnswer) =>
-  answer.status === 'partial_success' &&
+  answer.status === 'partial_success' && onlyBackendFailures(answer);
+
+/** Whether every error of the answer, and there is one, is a reader's `backend_failure`. */
+const onlyBackendFailures = (answer: DoclingAnswer) =>
   (answer.errors ?? []).length > 0 &&
   (answer.errors ?? []).every((e) => e.category === 'backend_failure');
 
@@ -546,6 +555,7 @@ export const doclingConverter = (options: DoclingOptions): DocumentConverter => 
     };
     // Set once Docling's own reader left pages unparsed: the try submits the file again with pdfium.
     let unparsed = false;
+    let lost = 0;
     try {
       for (let submits = 1; ; submits += 1) {
         if (now().getTime() > deadline) throw pastDeadline();
@@ -593,9 +603,10 @@ export const doclingConverter = (options: DoclingOptions): DocumentConverter => 
         }
         if (!answer) {
           told('lost');
+          lost += 1;
           options.onTaskLost?.({ submits });
           if (submits >= doclingSubmitsPerTry)
-            throw new DoclingFailed(404, `the task was lost ${submits} times`);
+            throw new DoclingFailed(404, `the task was lost ${lost} times`);
           continue;
         }
         if (answer.status !== 200) throw new DoclingFailed(answer.status, 'not a conversion');
@@ -627,9 +638,11 @@ export const doclingConverter = (options: DoclingOptions): DocumentConverter => 
         }
         if (
           unparsed &&
-          (conversion.status === 'partial_success' || conversion.status === 'failure')
+          (conversion.status === 'partial_success' || conversion.status === 'failure') &&
+          onlyBackendFailures(conversion)
         ) {
-          // pdfium made no document of it either: the text layer is stored instead (ADR 0042).
+          // pdfium could not parse it either: the text layer is stored instead (ADR 0042). Any other
+          // failure, such as a model's, is tried again.
           told('conversion_failed');
           throw new ConversionRefused(file.name, 'conversion_failed');
         }
