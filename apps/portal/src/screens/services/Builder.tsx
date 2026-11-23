@@ -2377,7 +2377,13 @@ export const Builder = ({
                   {t('edition.publish')}
                 </Button>
               ) : (
-                <Button variant="primary" data-size="sm" onClick={() => setPublish('prod')}>
+                <Button
+                  variant="primary"
+                  data-size="sm"
+                  onClick={() =>
+                    isNew && serverDraft ? go('setup', '/publish') : setPublish('prod')
+                  }
+                >
                   {t('edition.publish')}
                 </Button>
               )}
