@@ -204,8 +204,7 @@ const boot = async (
     const knows = body.model !== 'kandidat' || candidateKnowsDeadlines;
     return reply(knows ? 'Fristen er 1. mai.' : 'Vi svarer snart.', stream);
   });
-  const search = await fakeHttp(() => ({ status: 200, json: {} }));
-  servers.push(model, search);
+  servers.push(model);
   const env = {
     FOUNDRY_OPENAI_BASE_URL: `${model.url}/v1`,
   };

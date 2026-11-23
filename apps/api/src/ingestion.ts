@@ -103,7 +103,7 @@ export class IngestionUnavailable extends Error {
 }
 
 export const pendingWriteKeyReason =
-  'Real ingestion is pending a separate search write key and a decision by the platform owner. The shared search key is search-only.';
+  'Real ingestion is pending a search write key and a decision by the platform owner.';
 
 export const pendingIngestionBackend = (): IngestionBackend => ({
   name: 'pending',

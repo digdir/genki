@@ -236,8 +236,7 @@ const boot = async (prices?: Record<string, ModelPrice>, options: BootOptions = 
       stream,
     );
   });
-  const search = await fakeHttp(() => ({ status: 200, json: {} }));
-  servers.push(model, search);
+  servers.push(model);
   const env = {
     FOUNDRY_OPENAI_BASE_URL: `${model.url}/v1`,
     // local/echo, whose catalogue entry says norway, for a draft that leaves its residency out.

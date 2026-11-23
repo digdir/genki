@@ -76,8 +76,7 @@ const boot = async () => {
         }
       : { status: 200, json: completion('Saken gjelder en tilskuddssøknad.') },
   );
-  const idle = await fakeHttp(() => ({ status: 200, json: {} }));
-  fakes.push(model, idle);
+  fakes.push(model);
   const env = {
     FOUNDRY_OPENAI_BASE_URL: `${model.url}/v1`,
   };

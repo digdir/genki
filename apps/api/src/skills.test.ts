@@ -126,8 +126,7 @@ const boot = async (fieldOutput: Record<string, unknown> = { dato: '2026-10-07' 
       stream,
     );
   });
-  const search = await fakeHttp(() => ({ status: 200, json: {} }));
-  servers.push(model, search);
+  servers.push(model);
   const env = {
     FOUNDRY_OPENAI_BASE_URL: `${model.url}/v1`,
   };

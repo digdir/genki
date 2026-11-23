@@ -1,5 +1,3 @@
-import { existsSync } from 'node:fs';
-import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fakeHttp, type FakeReply, type FakeServer } from '@genai/port-model/testing';
 import { contractSchemas } from './contract.test-utils.js';
@@ -141,6 +139,3 @@ describe('typesense writer', () => {
     expect(() => generationNames(names, '../x')).toThrow(/plain/);
   });
 });
-
-const envFile = join(import.meta.dirname, '..', '..', '..', '.env.local');
-if (existsSync(envFile)) process.loadEnvFile(envFile);

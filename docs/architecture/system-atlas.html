@@ -10362,7 +10362,7 @@
             packages: ['@genai/providers-typesense'],
             summary: 'Knowledge adapter for Typesense that refuses anything but search.',
             description:
-              "Searches and fetches documents with a timeout and asserts the client is search-only, so a search key is all an organisation's Typesense endpoint needs.",
+              'Searches and fetches documents with a timeout and asserts the client is search-only.',
             responsibilities: ['Search and fetch', 'Search-only guard'],
             files: [
               'packages/providers-typesense/src/index.ts',
@@ -10417,7 +10417,7 @@
             packages: ['@genai/providers-typesense-writer'],
             summary: 'Writes ingest output to Typesense in generations.',
             description:
-              'Creates collections, upserts documents and swaps generations, on a Typesense endpoint that has a write key of its own.',
+              "Creates collections, upserts documents and swaps generations, with the Typesense endpoint's own key, which must be allowed to write.",
             responsibilities: ['Collection generations', 'Upsert and delete'],
             files: [
               'packages/providers-typesense-writer/src/writer.ts',

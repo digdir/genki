@@ -8,8 +8,8 @@ status: Provider
 packages:
   - '@genai/providers-typesense-writer'
 summary: Writes ingest output to Typesense in generations.
-description: Creates collections, upserts documents and swaps generations, on a Typesense
-  endpoint that has a write key of its own.
+description: Creates collections, upserts documents and swaps generations, with the Typesense
+  endpoint's own key, which must be allowed to write.
 responsibilities:
   - Collection generations
   - Upsert and delete

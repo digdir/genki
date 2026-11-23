@@ -162,8 +162,7 @@ const boot = async (replies: Reply[], { publish = true } = {}) => {
     if (reply.fail) return { status: 400, json: { error: { message: 'nede' } } };
     return body.stream ? streamed(reply) : completion(reply);
   });
-  const search = await fakeHttp(() => ({ status: 200, json: {} }));
-  servers.push(model, search);
+  servers.push(model);
   const env = {
     FOUNDRY_OPENAI_BASE_URL: `${model.url}/v1`,
   };

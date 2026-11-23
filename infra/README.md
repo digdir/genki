@@ -269,6 +269,7 @@ Secrets live only in Key Vault. Each name in `keyVaultSecretNames` becomes an en
 | `altinn-subscription-key`        | `ALTINN_SUBSCRIPTION_KEY`                                                                                                            |
 | `foundry-openai-key`             | `FOUNDRY_OPENAI_KEY`                                                                                                                 |
 | `foundry-claude-key`             | `FOUNDRY_CLAUDE_KEY`                                                                                                                 |
+| `typesense-key`                  | No env var. Kept on the API only until its revision from before #690 is gone, then removed from `containerapps.bicep` and Key Vault  |
 | `langfuse-public-key`            | `LANGFUSE_PUBLIC_KEY` (test)                                                                                                         |
 | `langfuse-secret-key`            | `LANGFUSE_SECRET_KEY` (test)                                                                                                         |
 | `access-person-key-secret`       | `ACCESS_PERSON_KEY_SECRET` (test, once `ALTINN_PEOPLE_URL` is set)                                                                   |

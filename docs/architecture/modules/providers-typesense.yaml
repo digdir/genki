@@ -8,8 +8,7 @@ status: Provider
 packages:
   - '@genai/providers-typesense'
 summary: Knowledge adapter for Typesense that refuses anything but search.
-description: Searches and fetches documents with a timeout and asserts the client is search-only,
-  so a search key is all an organisation's Typesense endpoint needs.
+description: Searches and fetches documents with a timeout and asserts the client is search-only.
 responsibilities:
   - Search and fetch
   - Search-only guard
