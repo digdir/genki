@@ -24,6 +24,7 @@ const toolTitles = {
   plan_queries: 'assembly.stepPlanQueries',
   inspect_filters: 'assembly.stepInspectFilters',
   source_facts: 'assembly.stepSourceFacts',
+  service_facts: 'assembly.stepServiceFacts',
   search: 'assembly.stepSearch',
   read_chunks: 'assembly.stepReadChunks',
   rerank_results: 'assembly.stepRerankResults',

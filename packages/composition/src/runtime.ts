@@ -123,7 +123,12 @@ import {
   retrievalConfig,
   sourceFacts,
 } from '@genai/retrieval';
-import { agentLoopConfig, createAgentLoop, sourceFactsToolRef } from '@genai/strategy-agent-loop';
+import {
+  agentLoopConfig,
+  createAgentLoop,
+  serviceFactsToolRef,
+  sourceFactsToolRef,
+} from '@genai/strategy-agent-loop';
 import { createRagSingleShot, ragConfig } from '@genai/strategy-rag';
 import {
   createRemoteAgent,
@@ -185,6 +190,7 @@ import {
   usingRetrievalPorts,
   type RuntimeConfig,
 } from './retrieval-ports.js';
+import { serviceFactsLookup, type ServiceFactsDeps } from './service-facts.js';
 import { stateOrganisationTool, stateOrganisationToolRef } from './state-organisation-tool.js';
 import { createGuardrailRuleRegistry, resolveRules } from './scoped-registry.js';
 import {
@@ -359,6 +365,10 @@ export interface RuntimeInput {
   derivedCatalog?: (entries: ConfigEntry<unknown>[]) => ConfigEntry<unknown>[];
   sharedTools?: (connection: string) => string | undefined;
   lastImport?: (dataset: string) => Promise<string | undefined>;
+  /** The owner organisation's name for the service-facts@1 tool (ADR 0068). */
+  organisationName?: ServiceFactsDeps['organisationName'];
+  /** A model's readable name for the service-facts@1 tool; its family when left out. */
+  modelName?: ServiceFactsDeps['modelName'];
   endpointFetch?: (endpoint: string) => typeof fetch | undefined;
   foreignFetch?: (hosts: string[]) => typeof fetch;
   providerObjects?: ProviderObjectStore;
@@ -753,6 +763,12 @@ export const createRuntime = async (input: RuntimeInput) => {
     });
   const agentLoop = usingRetrievalPorts(
     createAgentLoop({
+      serviceFacts: serviceFactsLookup({
+        definitions: () => late.store,
+        models: () => models.describe(),
+        organisationName: input.organisationName,
+        modelName: input.modelName,
+      }),
       retrieval: async (ctx, config, request) => {
         if (!hasDataset(config as RuntimeConfig)) return undefined;
         const ports = await openRetrievalPorts(ctx, config as RuntimeConfig, request);
@@ -859,6 +875,7 @@ export const createRuntime = async (input: RuntimeInput) => {
     ]),
     tools: new Map<string, z.ZodType>([
       [sourceFactsToolRef, zod.strictObject({})],
+      [serviceFactsToolRef, zod.strictObject({})],
       [stateOrganisationToolRef, zod.strictObject({})],
     ]),
     guardrails: guardrailSchemas,

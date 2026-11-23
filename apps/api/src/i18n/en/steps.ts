@@ -11,6 +11,7 @@ export const steps = {
   toolGenerate: 'Wrote the answer',
   toolInspect: 'Looked at the filters',
   toolSourceFacts: 'Looked at what the source holds',
+  toolServiceFacts: 'Looked at facts about the service',
   toolSkill: 'Used a work instruction',
   toolOther: 'Tool "{name}"',
   remoteAgent: 'Own engine "{host}"',

@@ -307,7 +307,7 @@ import { playgroundModule } from './playground.js';
 import { proposalsModule } from './proposals.js';
 import { connectorsModule, privateNetworkRegistry } from './connectors.js';
 import { modelDisplayNames, ownedElsewhere } from './model-access.js';
-import { identityOf, type ConnectionFacts } from './model-identity.js';
+import { identityOf, makerOf, readableModelName, type ConnectionFacts } from './model-identity.js';
 import { qualityModule } from './quality.js';
 import { batchRunsModule } from './batch-run-routes.js';
 import { projectsModule } from './project-routes.js';
@@ -1370,6 +1370,15 @@ export const createPlatform = async (input: PlatformInput) => {
   };
 
   const runtime = await createRuntime({
+    organisationName: async (tenant) =>
+      (await directory.list()).find((t) => t.orgNumber === tenant)?.name,
+    modelName: (model) =>
+      model.family
+        ? {
+            name: readableModelName(model.family),
+            maker: makerOf({ family: model.family, maker: model.maker }),
+          }
+        : undefined,
     lastImport: async (dataset) => {
       const item = runtime.catalog.get('dataset', dataset);
       return item ? lastImportAt(config.ingestion, item) : undefined;
