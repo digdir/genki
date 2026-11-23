@@ -8,7 +8,7 @@ import {
   type RunJobs,
 } from '@genai/jobs';
 import { describe, expect, it, vi } from 'vitest';
-import { openWorkerJobs } from './knowledge-jobs.js';
+import { KnowledgeJobFailed, openWorkerJobs } from './knowledge-jobs.js';
 
 const platformQueue = {
   ...knowledgeSeedQueue,
@@ -127,6 +127,44 @@ describe('failed knowledge jobs', () => {
 
     expect(w.logged[0]?.fields).toMatchObject({ error: 'Error', code: 'ENOENT' });
     expect(JSON.stringify(w.logged)).not.toMatch(/permisjon|konv-2|\/data/);
+    await w.stop();
+  });
+
+  it("logs a DoclingFailed's detail in the failed-job log", async () => {
+    const w = await workerJobs(
+      () =>
+        new KnowledgeJobFailed(
+          'converting a file of record 44217 failed: DoclingFailed (HTTP 200: status partial_success with errors backend_failure)',
+          'DoclingFailed',
+          'HTTP 200: status partial_success with errors backend_failure',
+        ),
+    );
+    await w.jobs.knowledge?.send(knowledgeSeedQueue, seedBatch);
+
+    await vi.waitFor(() => expect(w.logged).toHaveLength(1));
+
+    expect(w.logged[0]?.fields).toMatchObject({
+      code: 'DoclingFailed',
+      detail: 'HTTP 200: status partial_success with errors backend_failure',
+    });
+    await w.stop();
+  });
+
+  it("logs no library error's own detail, which can quote a row", async () => {
+    // node-postgres puts the failing row's values in `detail`.
+    const w = await workerJobs(() =>
+      Object.assign(new Error('duplicate key value violates unique constraint'), {
+        name: 'error',
+        code: '23505',
+        detail: 'Key (title)=(Permisjon for Ola Nordmann) already exists.',
+      }),
+    );
+    await w.jobs.knowledge?.send(knowledgeSeedQueue, seedBatch);
+
+    await vi.waitFor(() => expect(w.logged).toHaveLength(1));
+
+    expect(w.logged[0]?.fields).toMatchObject({ code: '23505' });
+    expect(JSON.stringify(w.logged)).not.toMatch(/Ola Nordmann|detail/);
     await w.stop();
   });
 

@@ -77,8 +77,12 @@ export const doclingBusyLimitMs = 50 * 60_000;
 /** How many submits in a row may end without an answer before the try fails: about 2 minutes. */
 export const doclingUnansweredSubmitsInARow = 8;
 
-/** How a Docling task ended: converted, refused about the file, failed otherwise, or lost. */
-export type DoclingTaskResult = 'success' | 'too_large' | 'conversion_failed' | 'failed' | 'lost';
+/**
+ * How a Docling task ended: converted, converted with pages it could not parse (`partial`), refused
+ * about the file, failed otherwise, or lost.
+ */
+export type DoclingTaskResult =
+  'success' | 'partial' | 'too_large' | 'conversion_failed' | 'failed' | 'lost';
 
 /**
  * One Docling task, told when it ends (issue 922): the worker logs it, so a replica's kill can be
@@ -100,7 +104,10 @@ export interface DoclingTaskEvent {
   result: DoclingTaskResult;
   /** Busy answers and unanswered submits before this task was taken. */
   busyWaits: number;
-  /** The PDF reader Docling was asked for, when not its own: `pypdfium2` after lost tasks. */
+  /**
+   * The PDF reader Docling was asked for, when not its own: `pypdfium2` after lost tasks or pages
+   * its own reader could not parse.
+   */
   pdfBackend?: 'pypdfium2';
 }
 
@@ -110,15 +117,18 @@ export const doclingServerErrorsInARow = 10;
 /**
  * An answer that is not about the file: a status, a body the client cannot read or a failure of a
  * kind it does not know. Its job is tried again and then dead-lettered (ADR 0042). The message
- * names no file, since the server's details can.
+ * names no file, since the server's details can: its detail is fixed text, numbers and Docling's
+ * status and error categories, so the dead letter can carry it (issue 951).
  */
 export class DoclingFailed extends Error {
   override readonly name = 'DoclingFailed';
+  readonly detail: string;
   constructor(
     readonly status: number,
     detail: string,
   ) {
     super(`Docling answered HTTP ${status}: ${detail}`);
+    this.detail = `HTTP ${status}: ${detail}`;
   }
 }
 
@@ -191,8 +201,27 @@ const exactJson = (text: string): unknown => {
   return JSON.parse(text, reviver as Parameters<typeof JSON.parse>[1]);
 };
 
+/** A category as Docling names one, such as `backend_failure`: one word, never a sentence. */
+const categoryShape = /^[a-z][a-z_]{0,39}$/;
+
+/** The answer's error categories, each one word or `other`: they go into a dead letter (issue 951). */
 const categories = (answer: DoclingAnswer) =>
-  (answer.errors ?? []).map((e) => e.category ?? 'none');
+  (answer.errors ?? []).map((e) =>
+    e.category === undefined
+      ? 'none'
+      : typeof e.category === 'string' && categoryShape.test(e.category)
+        ? e.category
+        : 'other',
+  );
+
+/**
+ * A page Docling's own reader could not parse, the same way each try: `partial_success` whose
+ * errors are all `backend_failure`. pypdfium2 read such a Kudos file whole (issue 951).
+ */
+const unparsedPages = (answer: DoclingAnswer) =>
+  answer.status === 'partial_success' &&
+  (answer.errors ?? []).length > 0 &&
+  (answer.errors ?? []).every((e) => e.category === 'backend_failure');
 
 /**
  * What a failure body means: a file Docling cannot open (`backend_failure` from the user's input)
@@ -515,8 +544,10 @@ export const doclingConverter = (options: DoclingOptions): DocumentConverter => 
       });
       task = undefined;
     };
+    // Set once Docling's own reader left pages unparsed: the try submits the file again with pdfium.
+    let unparsed = false;
     try {
-      for (let submits = 1; !answer; submits += 1) {
+      for (let submits = 1; ; submits += 1) {
         if (now().getTime() > deadline) throw pastDeadline();
         // The async route: the client polls its task, so no connection is idle for long (issue
         // 906). A task no replica knows any more is submitted again, a few times a try.
@@ -527,7 +558,8 @@ export const doclingConverter = (options: DoclingOptions): DocumentConverter => 
             stopBy === undefined
               ? documentTimeoutSeconds
               : Math.max(1, Math.ceil((stopBy - now().getTime()) / 1000));
-          const pdfBackend = submits > doclingLostBeforePdfium ? 'pypdfium2' : undefined;
+          const pdfBackend =
+            unparsed || submits > doclingLostBeforePdfium ? 'pypdfium2' : undefined;
           const placed = await place(
             file,
             left,
@@ -559,31 +591,53 @@ export const doclingConverter = (options: DoclingOptions): DocumentConverter => 
         } finally {
           await Promise.all(opened.map((client) => client.destroy()));
         }
-        if (answer) break;
-        told('lost');
-        options.onTaskLost?.({ submits });
-        if (submits >= doclingSubmitsPerTry)
-          throw new DoclingFailed(404, `the task was lost ${submits} times`);
-      }
-      if (answer.status !== 200) throw new DoclingFailed(answer.status, 'not a conversion');
-      const conversion = parsed<DoclingAnswer>(answer, 'a body');
-      const refusal = refusalOf(conversion);
-      if (refusal) {
-        told(refusal);
-        throw new ConversionRefused(file.name, refusal);
-      }
-      const document = conversion.document?.json_content;
-      if (conversion.status !== 'success' || !isDoclingDocument(document))
+        if (!answer) {
+          told('lost');
+          options.onTaskLost?.({ submits });
+          if (submits >= doclingSubmitsPerTry)
+            throw new DoclingFailed(404, `the task was lost ${submits} times`);
+          continue;
+        }
+        if (answer.status !== 200) throw new DoclingFailed(answer.status, 'not a conversion');
+        const conversion = parsed<DoclingAnswer>(answer, 'a body');
+        const refusal = refusalOf(conversion);
+        if (refusal) {
+          told(refusal);
+          throw new ConversionRefused(file.name, refusal);
+        }
+        const document = conversion.document?.json_content;
+        if (conversion.status === 'success' && isDoclingDocument(document)) {
+          told('success');
+          return converted(document);
+        }
+        const withPdfium = task?.pdfBackend === 'pypdfium2';
+        // Docling's own reader left pages unparsed: the same try submits the file once more with
+        // pdfium, as after lost tasks; the submit counts among the try's (issue 951).
+        if (!withPdfium && unparsedPages(conversion)) {
+          told('partial');
+          unparsed = true;
+          answer = undefined;
+          continue;
+        }
+        // Only after unparsed pages: a file sent to pdfium after lost tasks fails as before (issue 944).
+        if (unparsed && conversion.status === 'partial_success' && isDoclingDocument(document)) {
+          // No reader is left to try: the pages pdfium parsed are kept, the others are empty.
+          told('partial');
+          return converted(document);
+        }
+        if (
+          unparsed &&
+          (conversion.status === 'partial_success' || conversion.status === 'failure')
+        ) {
+          // pdfium made no document of it either: the text layer is stored instead (ADR 0042).
+          told('conversion_failed');
+          throw new ConversionRefused(file.name, 'conversion_failed');
+        }
         throw new DoclingFailed(
           answer.status,
-          `status ${String(conversion.status)} with errors ${categories(conversion).join(', ') || 'none'}`,
+          `status ${statusOf(conversion)} with errors ${categories(conversion).join(', ') || 'none'}`,
         );
-      told('success');
-      return {
-        pages: doclingPages(document),
-        output: new TextEncoder().encode(JSON.stringify(document)),
-        converter: doclingIdentity,
-      };
+      }
     } catch (error) {
       told('failed');
       throw error;
@@ -592,3 +646,17 @@ export const doclingConverter = (options: DoclingOptions): DocumentConverter => 
 
   return { extensions: ['.pdf'], convert };
 };
+
+const converted = (document: DoclingDocument) => ({
+  pages: doclingPages(document),
+  output: new TextEncoder().encode(JSON.stringify(document)),
+  converter: doclingIdentity,
+});
+
+/** Docling's status for the conversion, one word or `other`: it goes into a dead letter. */
+const statusOf = (answer: DoclingAnswer) =>
+  typeof answer.status === 'string' && categoryShape.test(answer.status)
+    ? answer.status
+    : answer.status === undefined
+      ? 'none'
+      : 'other';

@@ -3,6 +3,7 @@ import type { Principal } from '@genai/contracts';
 import {
   chunkingOf,
   ConversionRefused,
+  DoclingFailed,
   copyOwner,
   doclingIdentity,
   FileUnreachable,
@@ -70,6 +71,7 @@ import {
   admissionRefusal,
   admittedConversion,
   admittedWork,
+  KnowledgeJobFailed,
   type AdmissionDeps,
   type KnowledgeJob,
 } from './knowledge-jobs.js';
@@ -319,6 +321,16 @@ const causeCodes = (error: unknown) => {
     level = (level as { cause?: unknown }).cause;
   }
   return codes.length > 0 ? codes.join(' ← ') : 'Error';
+};
+
+/** The detail of a `DoclingFailed` the error is or was caused by, as deep as `causeCodes` looks. */
+const doclingDetailOf = (error: unknown) => {
+  let level: unknown = error;
+  for (let depth = 0; depth < deepestCause && level instanceof Error; depth++) {
+    if (level instanceof DoclingFailed) return level.detail;
+    level = level.cause;
+  }
+  return undefined;
 };
 
 /** A convert job's converter by the name its data gives: Docling, else the text layer (issue 477). */
@@ -653,15 +665,16 @@ export const knowledgeWork = (
   /**
    * A convert job's error names its record by number and the error by its code, never a file name,
    * a path or a dataset: its dead letter is shown to every organisation waiting on it (ADR 0042).
+   * A `DoclingFailed` adds its detail, which is fixed text and Docling's categories (issue 951).
    */
   const convertError = (record: string, error: unknown) => {
     const code = causeCodes(error);
-    // The code goes on the error too, so the failed-job log can name it (issue 532).
-    return Object.assign(
-      new Error(`converting a file of record ${record} failed: ${String(code)}`),
-      {
-        code: String(code),
-      },
+    const detail = doclingDetailOf(error);
+    // The code and detail go on the error too, so the failed-job log can name them (issue 532).
+    return new KnowledgeJobFailed(
+      `converting a file of record ${record} failed: ${code}${detail ? ` (${detail})` : ''}`,
+      code,
+      detail,
     );
   };
 
