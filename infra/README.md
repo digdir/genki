@@ -269,13 +269,14 @@ Secrets live only in Key Vault. Each name in `keyVaultSecretNames` becomes an en
 | `altinn-subscription-key`        | `ALTINN_SUBSCRIPTION_KEY`                                                                                                            |
 | `foundry-openai-key`             | `FOUNDRY_OPENAI_KEY`                                                                                                                 |
 | `foundry-claude-key`             | `FOUNDRY_CLAUDE_KEY`                                                                                                                 |
-| `typesense-key`                  | No env var. Kept on the API only until its revision from before #690 is gone, then removed from `containerapps.bicep` and Key Vault  |
 | `langfuse-public-key`            | `LANGFUSE_PUBLIC_KEY` (test)                                                                                                         |
 | `langfuse-secret-key`            | `LANGFUSE_SECRET_KEY` (test)                                                                                                         |
 | `access-person-key-secret`       | `ACCESS_PERSON_KEY_SECRET` (test, once `ALTINN_PEOPLE_URL` is set)                                                                   |
 | `altinn-people-maskinporten-key` | `ALTINN_PEOPLE_MASKINPORTEN_KEY` (test, once `ALTINN_PEOPLE_URL` and `ALTINN_PEOPLE_MASKINPORTEN_CLIENT_ID` are set)                 |
 
 `docling-api-key` is not in `keyVaultSecretNames`: the template gives it only to the worker (`DOCLING_API_KEY`) and the Docling server (`DOCLING_SERVE_API_KEY`), see [Docling server](#docling-server). Create it like the others.
+
+`typesense-key` is not in `keyVaultSecretNames` either: the template still gives it to the API with no env var until the API's revision from before #690 is gone. Until then every environment's vault needs it, prod included.
 
 Create every secret in Key Vault before the first deploy, or remove its name from the parameter file. A name listed without a secret behind it stops the revision from starting. `CONTENT_MASTER_KEY` is 32 random bytes, base64: `openssl rand -base64 32`. To rotate it, follow [ADR 0070](../docs/adr/0070-versioned-content-master-keys.md#rotation-procedure): the new key is one more name in `keyVaultSecretNames` and `CONTENT_MASTER_KEY_ACTIVE` in `appEnv`, with no template change.
 
