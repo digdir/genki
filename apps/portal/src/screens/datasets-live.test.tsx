@@ -93,7 +93,9 @@ describe('live new dataset', () => {
   it('a new dataset in the portal defaults to kunnskapsserveren', async () => {
     const { calls, fetch } = recorded();
     await renderLive('#/datasets/new', fetch);
-    expect(await screen.findByRole('heading', { level: 1, name: 'Nytt datasett' })).toBeTruthy();
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Ny dokumentsamling' }),
+    ).toBeTruthy();
     fireEvent.click(screen.getByRole('radio', { name: /Nettsted/ }));
     fireEvent.change(screen.getByLabelText('Navn'), { target: { value: 'Nettsidene våre' } });
     fireEvent.change(screen.getByLabelText('Adresse til nettstedskartet', { exact: false }), {
@@ -102,7 +104,7 @@ describe('live new dataset', () => {
     fireEvent.change(screen.getByLabelText('Begrunnelse'), {
       target: { value: 'Nettsidene skal kunne søkes i' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Lag datasettet og les inn' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Lag dokumentsamlingen og les inn' }));
 
     await waitFor(() =>
       expect(calls.some((c) => c.method === 'PUT' && c.url.includes('/catalog/dataset/'))).toBe(
