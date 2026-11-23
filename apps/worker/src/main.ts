@@ -100,6 +100,7 @@ import {
 import type { DatasetConfig } from '@genai/port-knowledge';
 import { openJobQueue, PgBossRunJobs } from '@genai/providers-pgboss';
 import {
+  addChunkColumns,
   knowledgeConversionsOf,
   knowledgeHeavyWork,
   prepareGeneration,
@@ -150,6 +151,18 @@ import { reconcileKnowledgeRuns } from './reconciler.js';
 import { runProgress } from './run-progress.js';
 import { scheduleUsagePolls, usagePollWork, type PolledSource } from './usage-poll.js';
 import { createWorker, ownTenantOnly } from './worker.js';
+
+/**
+ * The chunk columns of parts, added once a parts index job first needs them and not tried again
+ * once they are there (issue 635); a step that missed its lock is tried by the next such job.
+ */
+const chunkColumnsOnce = (owner: Parameters<typeof addChunkColumns>[0]) => {
+  let added = false;
+  return async () => {
+    if (!added) added = await addChunkColumns(owner);
+    return added;
+  };
+};
 
 const log = (msg: string, extra: Record<string, unknown> = {}) =>
   console.log(JSON.stringify({ msg, ...extra }));
@@ -487,6 +500,9 @@ const knowledgeHandlers =
                   dataset,
                   generation,
                 ),
+              chunkColumns: chunkColumnsOnce(
+                knowledgeServer.pools.owner as Parameters<typeof addChunkColumns>[0],
+              ),
             }
           : {}),
         listingOf: (spec, scope, signal, converter) =>

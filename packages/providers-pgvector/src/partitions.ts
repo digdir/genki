@@ -338,6 +338,28 @@ export const generationOf = async (db: Pool | PoolClient, generation: string) =>
     )
   ).rows[0];
 
+/**
+ * Adds to a generation table the nullable columns its parent gained after it was made `like` it,
+ * such as the chunk columns of parts (issue 635), so it can attach: a partition needs every column
+ * of its parent.
+ */
+const addParentColumns = async (client: PoolClient, parent: string, child: string) => {
+  const { rows } = await client.query<{ name: string; type: string }>(
+    `select quote_ident(p.attname) as name, format_type(p.atttypid, p.atttypmod) as type
+       from pg_attribute p
+      where p.attrelid = to_regclass($1) and p.attnum > 0 and not p.attisdropped
+        and not exists (select 1 from pg_attribute c
+                         where c.attrelid = to_regclass($2) and c.attname = p.attname
+                           and not c.attisdropped)
+      order by p.attnum`,
+    [parent, child],
+  );
+  if (rows.length > 0)
+    await client.query(
+      `alter table ${child} ${rows.map((r) => `add column ${r.name} ${r.type}`).join(', ')}`,
+    );
+};
+
 const attached = async (client: PoolClient, table: string) =>
   Boolean(
     (await client.query(`select 1 from pg_inherits where inhrelid = to_regclass($1)`, [table]))
@@ -521,10 +543,12 @@ export const attachGeneration = (
     for (const sql of build) await client.query(sql);
     await syncTableFilters(client, dataset, docs, false);
     for (const table of knowledgeTables)
-      if (!(await attached(client, partitionOf(table, generation))))
+      if (!(await attached(client, partitionOf(table, generation)))) {
+        await addParentColumns(client, table, partitionOf(table, generation));
         await client.query(
           `alter table ${table} attach partition ${partitionOf(table, generation)} for values in (${literal(generation)})`,
         );
+      }
     await client.query(`update kn_generations set state = 'attached' where generation = $1`, [
       generation,
     ]);
@@ -552,3 +576,65 @@ export const dropGeneration = (
     await client.query(`delete from kn_applied where generation = $1`, [generation]);
     await client.query(`delete from kn_generations where generation = $1`, [generation]);
   });
+
+/** The columns a chunk made from parts fills (ADR 0055, "Chunks and reads"); a page chunk leaves them null. */
+export const chunkPartsColumns = [
+  ['conversion', 'bigint'],
+  ['seq_from', 'integer'],
+  ['seq_to', 'integer'],
+  ['text_start', 'integer'],
+  ['text_end', 'integer'],
+] as const;
+
+/** How long the chunk columns step waits for its lock: searches queue behind it while it waits. */
+const chunkColumnsLockTimeoutMs = 1000;
+
+/**
+ * Adds the chunk columns of parts to `kn_chunks` and to every generation table not yet attached,
+ * which was made `like kn_chunks` before they were there (issue 635). It is not a step of the
+ * server's migration, which every knowledge use waits for: adding a column to the partitioned
+ * parent locks every attached partition, which searches read all day, so only a parts index job
+ * waits for it. One statement a table, so the lock is taken once; nullable columns with no default
+ * change only the catalog. Tables that have the columns take no lock. False when a lock was not had
+ * in `lockTimeoutMs`, 1 s by default; nothing is changed then.
+ */
+export const addChunkColumns = async (
+  owner: Pool,
+  options: PartitionOptions = {},
+): Promise<boolean> => {
+  const client = await owner.connect();
+  try {
+    await client.query('begin');
+    await client.query(`select set_config('lock_timeout', $1, true)`, [
+      `${options.lockTimeoutMs ?? chunkColumnsLockTimeoutMs}ms`,
+    ]);
+    const { rows: standalone } = await client.query<{ generation: string }>(
+      `select generation from kn_generations where state = 'standalone' order by generation`,
+    );
+    const tables = ['kn_chunks', ...standalone.map((g) => partitionOf('kn_chunks', g.generation))];
+    for (const table of tables) {
+      const { rows } = await client.query<{ name: string }>(
+        `select attname as name from pg_attribute
+          where attrelid = to_regclass($1) and attnum > 0 and not attisdropped`,
+        [table],
+      );
+      if (rows.length === 0) continue;
+      const has = new Set(rows.map((r) => r.name));
+      const missing = chunkPartsColumns.filter(([name]) => !has.has(name));
+      if (missing.length > 0)
+        await client.query(
+          `alter table ${table} ${missing
+            .map(([name, type]) => `add column if not exists ${name} ${type}`)
+            .join(', ')}`,
+        );
+    }
+    await client.query('commit');
+    return true;
+  } catch (error) {
+    await client.query('rollback').catch(() => undefined);
+    if ((error as { code?: string }).code === '55P03') return false;
+    throw error;
+  } finally {
+    client.release();
+  }
+};

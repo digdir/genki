@@ -9,6 +9,7 @@ import {
 } from '@genai/port-knowledge';
 import { stopPostgres } from '@genai/providers-postgres/testing';
 import {
+  addChunkColumns,
   attachGeneration,
   migrateKnowledgeServer,
   syncFilterIndexes,
@@ -354,6 +355,109 @@ describe('generations as partitions on the knowledge server', () => {
       await holder.query('rollback');
       holder.release();
     }
+  });
+
+  describe('the chunk columns of parts (issue 635)', () => {
+    const partsColumns = ['conversion', 'seq_from', 'seq_to', 'text_start', 'text_end'];
+    const columnsOf = async (table: string) =>
+      (
+        await admin.query<{ name: string }>(
+          `select attname as name from pg_attribute
+            where attrelid = to_regclass($1) and attnum > 0 and not attisdropped
+              and attname = any($2) order by attnum`,
+          [table, partsColumns],
+        )
+      ).rows.map((r) => r.name);
+    const withoutColumns = () =>
+      admin.query(
+        `alter table kn_chunks ${partsColumns.map((c) => `drop column if exists ${c}`).join(', ')}`,
+      );
+    const partsDoc = (id: string): IndexDocument => ({
+      ...doc(id, 8, {}),
+      chunks: doc(id, 8, {}).chunks.map((chunk, i) => ({
+        ...chunk,
+        pageFrom: i + 1,
+        pageTo: i + 1,
+        conversion: '42',
+        seqFrom: i,
+        seqTo: i,
+        textStart: i * 40,
+        textEnd: i * 40 + 30,
+      })),
+    });
+
+    it("a page chunk is written with today's columns", async () => {
+      await withoutColumns();
+      const d = dataset('digdir/sider-uten-kolonner', 8);
+
+      await fill(d, 'g-20261123-0101', [doc('a', 8, {})]);
+
+      const { rows } = await admin.query(
+        `select count(*)::int as n from ${partitionOf('kn_chunks', 'g-20261123-0101')}`,
+      );
+      expect(rows).toEqual([{ n: 2 }]);
+    });
+
+    it('a generation table prepared before the migration gets the new columns and attaches', async () => {
+      await withoutColumns();
+      const d = dataset('digdir/deler-før', 8);
+      const writer = writerFor();
+      await writer.prepare(d, 'g-20261123-0201');
+      const table = partitionOf('kn_chunks', 'g-20261123-0201');
+      expect(await columnsOf(table)).toEqual([]);
+
+      expect(await addChunkColumns(owner)).toBe(true);
+      await writer.store(d, 'g-20261123-0201', partsDoc('a'));
+      await writer.promote(d, 'g-20261123-0201');
+
+      expect(await columnsOf('kn_chunks')).toEqual(partsColumns);
+      expect(await columnsOf(table)).toEqual(partsColumns);
+      const { rows } = await admin.query(
+        `select conversion::text, seq_from, seq_to, text_start, text_end from kn_chunks
+          where generation = 'g-20261123-0201' order by position`,
+      );
+      expect(rows).toEqual([
+        { conversion: '42', seq_from: 0, seq_to: 0, text_start: 0, text_end: 30 },
+        { conversion: '42', seq_from: 1, seq_to: 1, text_start: 40, text_end: 70 },
+      ]);
+    });
+
+    it('a standalone generation that lacks columns its parent has gets them when it attaches', async () => {
+      await withoutColumns();
+      const d = dataset('digdir/deler-feste', 8);
+      const writer = writerFor();
+      await writer.prepare(d, 'g-20261123-0301');
+      await admin.query(
+        `alter table kn_chunks ${partsColumns.map((c) => `add column ${c} integer`).join(', ')}`,
+      );
+
+      await writer.promote(d, 'g-20261123-0301');
+
+      expect(await columnsOf(partitionOf('kn_chunks', 'g-20261123-0301'))).toEqual(partsColumns);
+      await withoutColumns();
+      expect(await addChunkColumns(owner)).toBe(true);
+    });
+
+    it('the chunk columns step answers false after its lock timeout and leaves the migration alone', async () => {
+      await withoutColumns();
+      const holder = await admin.connect();
+      try {
+        await holder.query('begin');
+        await holder.query(`lock table kn_chunks in access share mode`);
+
+        const started = Date.now();
+        expect(await addChunkColumns(owner, { lockTimeoutMs: 200 })).toBe(false);
+        expect(Date.now() - started).toBeLessThan(3000);
+        await expect(
+          migrateKnowledgeServer(owner, { lockTimeoutMs: 300 }),
+        ).resolves.toBeUndefined();
+      } finally {
+        await holder.query('rollback');
+        holder.release();
+      }
+      expect(await addChunkColumns(owner)).toBe(true);
+      expect(await columnsOf('kn_chunks')).toEqual(partsColumns);
+    });
   });
 
   it('attaching a generation does not scan it', async () => {

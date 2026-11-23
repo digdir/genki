@@ -10,7 +10,11 @@ import { assignChunkIds } from './ids.js';
 export type ChunkStrategy =
   | { kind: 'header-based'; splitMaxLength?: number; overlap?: number }
   | { kind: 'fixed-width'; width: number; overlap: number }
-  | { kind: 'page'; splitMaxLength?: number };
+  | { kind: 'page'; splitMaxLength?: number }
+  | { kind: 'parts-unit'; splitMaxLength: number };
+
+/** A strategy that chunks a file's stored conversion parts, not its pages (ADR 0055). */
+export const isPartsStrategy = (strategy: { kind: string }) => strategy.kind.startsWith('parts-');
 
 export interface ChunkDocumentConfig {
   strategy: ChunkStrategy;
@@ -92,8 +96,11 @@ const pageChunks = (text: string, max: number): RawChunk[] =>
     .filter((page) => page !== '')
     .flatMap((page) => pieces(page, max).map((piece) => ({ content_markdown: piece })));
 
-const raw = (config: ChunkDocumentConfig, text: string): RawChunk[] =>
-  config.strategy.kind === 'page'
+const raw = (config: ChunkDocumentConfig, text: string): RawChunk[] => {
+  // Parts are chunked from the stored parts (`partsUnitChunks`), never from a file's text.
+  if (config.strategy.kind === 'parts-unit')
+    throw new Error('a parts chunking reads conversion parts, not text');
+  return config.strategy.kind === 'page'
     ? pageChunks(
         text,
         Math.min(config.strategy.splitMaxLength ?? config.maximumLength, config.maximumLength),
@@ -109,6 +116,7 @@ const raw = (config: ChunkDocumentConfig, text: string): RawChunk[] =>
           text,
           config.metadataStyle,
         );
+};
 
 export const chunkDocument = (
   docNum: string,

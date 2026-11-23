@@ -9,6 +9,7 @@ export {
   type KnowledgeSetupOptions,
 } from './knowledge-setup.js';
 export {
+  addChunkColumns,
   attachGeneration,
   dropGeneration,
   migrateKnowledgeServer,

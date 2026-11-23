@@ -2,6 +2,7 @@ import type { Principal, Usage } from '@genai/contracts';
 import {
   knowledgeSourceRefusal,
   kudosNarrowing,
+  partsChunkingRefusal,
   pipelineSpec,
   type PipelineSpec,
   type SkipReason,
@@ -592,6 +593,7 @@ export class IngestionService {
           })),
         };
       const refused =
+        partsChunkingRefusal(parsed.data, this.options.jobs?.runsAsJobs(input.dataset) ?? false) ??
         (await this.#kudosNarrowing(input, parsed.data)) ??
         (this.options.jobs?.runsAsJobs(input.dataset)
           ? await this.#knowledgeRefusal(input, parsed.data)
