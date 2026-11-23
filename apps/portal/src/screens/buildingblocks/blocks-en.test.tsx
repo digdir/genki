@@ -39,12 +39,12 @@ describe('building blocks in English', () => {
         </RightsProvider>,
       ),
     );
-    expect(screen.getByRole('heading', { level: 1, name: 'Building blocks' })).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Register a building block' })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 1, name: 'Catalogue' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Add to the catalogue' })).toBeTruthy();
     expect(screen.getByRole('heading', { level: 2, name: 'Types' })).toBeTruthy();
     expect(screen.getByRole('link', { name: /^Models/ }).textContent).toMatch(/\d+ in use/);
-    expect(screen.getByRole('link', { name: /^Step flows/ }).textContent).toContain(
-      'Opens in Developer tools, Step flows',
+    expect(screen.getByRole('link', { name: /^Workflows/ }).textContent).toContain(
+      'Opens in Integrations, Workflows',
     );
   });
 
@@ -90,8 +90,8 @@ describe('building blocks in English', () => {
     );
     expect(screen.getByRole('heading', { name: 'What it is good at' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Where data is processed' })).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'See version 2.2 under Versions' })).toBeTruthy();
-    expect(screen.getByRole('tab', { name: 'Versions' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'See edition 2.2 under History' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'History' })).toBeTruthy();
   });
 
   it('shows the price and the request for approval of a model the organisation must ask for', async () => {
@@ -152,7 +152,7 @@ describe('building blocks in English', () => {
         </RightsProvider>,
       ),
     );
-    expect(screen.getByText(/You can see the building block but not change it/)).toBeTruthy();
+    expect(screen.getByText(/You can see the part but not change it/)).toBeTruthy();
   });
 
   it('labels a proposal and its mapping in English', () => {
@@ -170,7 +170,7 @@ describe('building blocks in English', () => {
       ),
     );
     expect(screen.getByText('Proposed by the build assistant')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Approve and adopt' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Apply' })).toBeTruthy();
     const table = screen.getByRole('region', { name: 'What the tables become' });
     expect(within(table).getByText('Not included')).toBeTruthy();
     expect(

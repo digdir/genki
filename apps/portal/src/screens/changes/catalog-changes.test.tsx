@@ -106,26 +106,26 @@ describe('Logg, Endringer: Digdir catalogue changes', () => {
     await open();
     fireEvent.click(await screen.findByRole('switch', { name: /Vis endringer fra Digdir/ }));
 
-    const link = within(await list()).getByRole('link', { name: 'Nimbrel Cortex, versjon 3' });
+    const link = within(await list()).getByRole('link', { name: 'Nimbrel Cortex, utgave 3' });
     expect(link.getAttribute('href')).toBe('#/building-blocks/model/nimbrel-cortex%2Fcortex');
     expect(screen.queryByText(/model\/nimbrel-cortex/)).toBeNull();
   });
 
-  it('files a catalogue dataset change under Datasett', async () => {
+  it('files a catalogue dataset change under Dokumentsamlinger', async () => {
     await open();
     fireEvent.click(await screen.findByRole('switch', { name: /Vis endringer fra Digdir/ }));
-    fireEvent.click(screen.getByRole('radio', { name: 'Datasett' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'Dokumentsamlinger' }));
 
     const items = within(await list()).getAllByRole('listitem');
     expect(items).toHaveLength(2);
-    expect(items[0]?.textContent).toContain('kudos, versjon 2');
+    expect(items[0]?.textContent).toContain('kudos, utgave 2');
   });
 
   it('names a dataset of the organisation and links it instead of its raw catalogue id', async () => {
     await open();
 
     const link = within(await list()).getByRole('link', {
-      name: 'Tilsynsrapporter 2025, versjon 1',
+      name: 'Tilsynsrapporter 2025, utgave 1',
     });
     expect(link.getAttribute('href')).toBe('#/datasets/999888777%2Ftilsyn');
     expect(screen.queryByText(/999888777\/tilsyn/)).toBeNull();

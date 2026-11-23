@@ -1,8 +1,16 @@
 import { Button, Chip, Paragraph, Textfield } from '@digdir/designsystemet-react';
-import { ArrowDownIcon, PaperclipIcon, PaperplaneIcon, StopIcon } from '@navikt/aksel-icons';
+import {
+  ArrowDownIcon,
+  ArrowUpIcon,
+  PaperclipIcon,
+  PaperplaneIcon,
+  PlusIcon,
+  StopIcon,
+} from '@navikt/aksel-icons';
 import {
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
   type DragEvent,
@@ -29,6 +37,10 @@ export interface ComposerProps {
   /** Makes the send button «Avbryt» while the assistant answers. */
   onCancel?: (() => void) | undefined;
   placeholder?: string | undefined;
+  /** The field's accessible name, for a host that names it itself. «Spørsmål til {name}» unless given. */
+  label?: string | undefined;
+  /** `stacked`, the default, puts the field over its buttons; `inline` is the dev-chat boards' one row. */
+  variant?: 'stacked' | 'inline' | undefined;
   /** What the assistant is called, in the field's name and the disclaimer. */
   assistantName?: string | undefined;
   showDisclaimer?: boolean | undefined;
@@ -99,6 +111,8 @@ export const Composer = ({
   working = false,
   onCancel,
   placeholder,
+  label,
+  variant = 'stacked',
   assistantName,
   showDisclaimer = true,
   followUps,
@@ -127,7 +141,34 @@ export const Composer = ({
   const announcement = useUploadAnnouncement(items, text.error);
   const uploading = items.some((item) => item.status === 'uploading');
   const unavailable = attachments !== undefined && attachments.onAdd === undefined;
+  const inline = variant === 'inline';
   useComposerShortcut(field, shortcut);
+
+  // Inline, a question longer than a line goes over the buttons until it is shorter than when it went.
+  const [wrapAt, setWrapAt] = useState<number>();
+  const wrapped =
+    inline && (value.includes('\n') || (wrapAt !== undefined && value.length >= wrapAt));
+  useLayoutEffect(() => {
+    if (!inline) return;
+    if (wrapAt !== undefined && value.length < wrapAt) {
+      setWrapAt(undefined);
+      return;
+    }
+    const node = field.current;
+    if (wrapped || !node) return;
+    const style = getComputedStyle(node);
+    const line = Number.parseFloat(style.lineHeight);
+    if (!Number.isFinite(line)) return;
+    // The text's own height, without the room the field keeps when it is empty.
+    const kept = node.style.minBlockSize;
+    node.style.minBlockSize = '0';
+    const height =
+      node.scrollHeight -
+      Number.parseFloat(style.paddingBlockStart || '0') -
+      Number.parseFloat(style.paddingBlockEnd || '0');
+    node.style.minBlockSize = kept;
+    if (height > line * 1.5) setWrapAt(value.length);
+  }, [inline, value, wrapped, wrapAt, field]);
 
   const own = useRef<HTMLDivElement | null>(null);
   const setRoot = (node: HTMLDivElement | null) => {
@@ -218,6 +259,52 @@ export const Composer = ({
       }
     : {};
 
+  // The upload button: at the start of the row inline, with the controls under the field when stacked.
+  const attach =
+    unavailable && !inline ? (
+      <Button
+        aria-disabled="true"
+        aria-label={t('composer.attachSoonLabel')}
+        className="uib-composer-attach"
+        // Pinned to neutral, as kunnskapsassistenten draws it: a tool, not the action.
+        data-color="neutral"
+        variant="tertiary"
+      >
+        <PaperclipIcon aria-hidden />
+        <span className="uib-composer-attach-text">{t('composer.attachSoon')}</span>
+      </Button>
+    ) : attachments?.onAdd ? (
+      <>
+        <input
+          accept={attachments.accept}
+          className="uib-composer-file-input"
+          multiple
+          onChange={(event) => {
+            const picked = event.currentTarget.files;
+            if (picked?.length) {
+              setRefusal(undefined);
+              attachments.onAdd?.([...picked]);
+            }
+            event.currentTarget.value = '';
+          }}
+          ref={picker}
+          tabIndex={-1}
+          type="file"
+        />
+        <Button
+          aria-label={text.attach}
+          className="uib-composer-attach"
+          // Pinned to neutral, as kunnskapsassistenten draws it: a tool, not the action.
+          data-color="neutral"
+          icon
+          onClick={() => picker.current?.click()}
+          variant="tertiary"
+        >
+          {inline ? <PlusIcon aria-hidden /> : <PaperclipIcon aria-hidden />}
+        </Button>
+      </>
+    ) : null;
+
   return (
     <div
       className={classes('uib-composer', className)}
@@ -261,13 +348,21 @@ export const Composer = ({
         />
       ) : null}
 
-      <div className="uib-composer-frame" data-dragging={dragDepth > 0 || undefined} {...drop}>
+      <div
+        className="uib-composer-frame"
+        data-dragging={dragDepth > 0 || undefined}
+        data-variant={variant}
+        data-wrapped={wrapped || undefined}
+        {...drop}
+      >
+        {inline ? attach : null}
         <Textfield
           aria-describedby={shortcut ? descriptionId : undefined}
           aria-label={
-            assistantName
+            label ??
+            (assistantName
               ? t('composer.field', { name: assistantName })
-              : t('composer.fieldUnnamed')
+              : t('composer.fieldUnnamed'))
           }
           className="uib-composer-field"
           multiline
@@ -280,49 +375,7 @@ export const Composer = ({
           value={value}
         />
         <div className="uib-composer-controls">
-          {unavailable ? (
-            <Button
-              aria-disabled="true"
-              aria-label={t('composer.attachSoonLabel')}
-              className="uib-composer-attach"
-              // Pinned to neutral, as kunnskapsassistenten draws it: a tool, not the action.
-              data-color="neutral"
-              variant="tertiary"
-            >
-              <PaperclipIcon aria-hidden />
-              <span className="uib-composer-attach-text">{t('composer.attachSoon')}</span>
-            </Button>
-          ) : attachments?.onAdd ? (
-            <>
-              <input
-                accept={attachments.accept}
-                className="uib-composer-file-input"
-                multiple
-                onChange={(event) => {
-                  const picked = event.currentTarget.files;
-                  if (picked?.length) {
-                    setRefusal(undefined);
-                    attachments.onAdd?.([...picked]);
-                  }
-                  event.currentTarget.value = '';
-                }}
-                ref={picker}
-                tabIndex={-1}
-                type="file"
-              />
-              <Button
-                aria-label={text.attach}
-                className="uib-composer-attach"
-                // Pinned to neutral, as kunnskapsassistenten draws it: a tool, not the action.
-                data-color="neutral"
-                icon
-                onClick={() => picker.current?.click()}
-                variant="tertiary"
-              >
-                <PaperclipIcon aria-hidden />
-              </Button>
-            </>
-          ) : null}
+          {inline ? null : attach}
           {actions ? <div className="uib-composer-actions">{actions}</div> : null}
           {working && onCancel ? (
             <Button
@@ -351,7 +404,8 @@ export const Composer = ({
             <Button
               aria-label={t('composer.send')}
               className="uib-composer-send"
-              data-color={actionColor}
+              // Inline, neutral until there is something to send.
+              data-color={inline && sendBlocked ? 'neutral' : actionColor}
               // Blocked, not disabled: it stays in the tab order, as genki's screens keep it.
               aria-disabled={sendBlocked || undefined}
               icon
@@ -359,8 +413,9 @@ export const Composer = ({
                 if (!sendBlocked) trySubmit(value);
               }}
               ref={sendRef}
+              variant={inline && sendBlocked ? 'tertiary' : 'primary'}
             >
-              <PaperplaneIcon aria-hidden />
+              {inline ? <ArrowUpIcon aria-hidden /> : <PaperplaneIcon aria-hidden />}
             </Button>
           )}
         </div>

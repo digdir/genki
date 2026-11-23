@@ -19,6 +19,22 @@ app.get('/mock/ansattporten/login', (c) =>
   c.html('<form method="post" action="authorize"></form>'),
 );
 
+app.get('/framed-pdf', (c) =>
+  c.body('%PDF-', 200, {
+    'content-type': 'application/pdf',
+    'content-security-policy': "default-src 'none'; frame-ancestors 'self'",
+  }),
+);
+app.get('/sandboxed', (c) =>
+  c.body('x', 200, { 'content-security-policy': "sandbox; default-src 'none'" }),
+);
+app.get('/loose', (c) =>
+  c.body('x', 200, { 'content-security-policy': 'default-src *; frame-ancestors *' }),
+);
+app.get('/framed-anywhere', (c) =>
+  c.body('x', 200, { 'content-security-policy': "default-src 'none'; frame-ancestors *" }),
+);
+
 const gzipped = { 'accept-encoding': 'gzip, deflate, br' };
 
 describe('security headers as headless-rag sends them', () => {
@@ -42,6 +58,26 @@ describe('security headers as headless-rag sends them', () => {
       "form-action 'self'",
     ])
       expect(contentSecurityPolicy).toContain(directive);
+  });
+
+  it('keeps a route’s own known locked policy, and lets only its own site frame it when it says so', async () => {
+    const framed = await app.request('/framed-pdf');
+    const sandboxed = await app.request('/sandboxed');
+
+    expect(framed.headers.get('content-security-policy')).toBe(
+      "default-src 'none'; frame-ancestors 'self'",
+    );
+    expect(framed.headers.get('x-frame-options')).toBe('SAMEORIGIN');
+    expect(sandboxed.headers.get('content-security-policy')).toBe("sandbox; default-src 'none'");
+    expect(sandboxed.headers.get('x-frame-options')).toBe('DENY');
+  });
+
+  it('replaces a route’s own policy that is not one of the known locked ones, even one that starts locked', async () => {
+    for (const path of ['/loose', '/framed-anywhere']) {
+      const res = await app.request(path);
+      expect(res.headers.get('content-security-policy')).toBe(contentSecurityPolicy);
+      expect(res.headers.get('x-frame-options')).toBe('DENY');
+    }
   });
 
   it('sends HSTS only for requests that arrived over HTTPS', async () => {

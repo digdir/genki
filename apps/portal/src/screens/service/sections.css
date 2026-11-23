@@ -444,3 +444,26 @@
   flex-direction: column;
   gap: 6px;
 }
+
+.edition-history {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.edition-history td {
+  padding: 12px 12px 12px 0;
+  border-bottom: 1px solid var(--ds-color-neutral-border-subtle);
+  vertical-align: top;
+}
+
+.edition-history-when {
+  width: 150px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.edition-history-action {
+  text-align: right;
+  vertical-align: middle;
+  white-space: nowrap;
+}

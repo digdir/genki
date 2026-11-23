@@ -49,6 +49,7 @@ export const contractQueues = {
   cancelled: contractQueue('cancelled'),
   keyed: contractQueue('keyed', { policy: 'short' }),
   rekeyed: contractQueue('rekeyed', { policy: 'short' }),
+  carried: contractQueue('carried'),
   prioritised: contractQueue('prioritised'),
   expiring: contractQueue('expiring', { expireInSeconds: 11, retryLimit: 1 }),
   listed: contractQueue('listed'),
@@ -330,6 +331,27 @@ export const describeJobQueueContract = (
       await waitFor(() => done.length === 1);
       await pause(1_000);
       expect(done).toEqual(['free']);
+    });
+
+    it('a worked job carries the key it was sent with, also after a dead letter and a redrive', async () => {
+      let fixed = false;
+      const keys: (string | undefined)[] = [];
+      await target.queue.work(q.carried, async (job) => {
+        keys.push(job.key);
+        if (!fixed) throw new Error('not yet');
+      });
+      await target.queue.send(q.carried, { tenant: ORG_A, item: 'keyed' }, { key: 'k:a:1' });
+      const letters = await waitFor(async () => {
+        const found = await deadLetters(q.carried);
+        return found.length ? found : undefined;
+      });
+      fixed = true;
+      await target.queue.redrive(
+        q.carried,
+        letters.map((l) => l.id),
+      );
+      await waitFor(() => keys.length === 2);
+      expect(keys).toEqual(['k:a:1', 'k:a:1']);
     });
 
     it('takes jobs in priority order', async () => {

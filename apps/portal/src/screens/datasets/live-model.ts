@@ -15,7 +15,7 @@ import type { Format, PlainKey, T } from '../../i18n';
 import type { Residency } from '../../types';
 import { needsAttention, type DatasetListItem } from './DatasetList';
 
-export const platformEngine = 'platform-pg';
+export const platformEngine = 'kunnskapsserveren';
 
 export const maxUploadBytes = 50 * 1024 * 1024;
 export const uploadAccept = '.pdf,.docx,.txt,.md,.html';
@@ -97,7 +97,7 @@ const openRunStatus: Partial<Record<ExecutionStatus, DatasetStatus>> = {
   running: 'Innlesing pågår',
   waiting: 'Venter',
   failed: 'Feilet',
-  cancelled: 'Delvis lest inn',
+  cancelled: 'Avbrutt',
 };
 
 export const runDatasetStatus = (run: {

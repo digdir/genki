@@ -23,7 +23,6 @@ spec:
     datasets:
       - dataset: digdir/kudos
         filters: { type: multiselect, concerned_years: multiselect }
-    reranker: colbert
     retrieval: { maxPerDocument: 10 }
   tools: [rag@1]
   model: { primary: foundry/gpt-4o, fallback: aivar/borealis, residency: norway }

@@ -21,16 +21,20 @@ describe('service pages in English', () => {
     render(
       inEnglish(
         <>
-          <ServiceNav id="klarsprak" sections={['overview', 'channels', 'log']} current="log" />
-          <ServiceSubNav id="klarsprak" sections={['overview', 'versions', 'log']} current="log" />
+          <ServiceNav
+            id="klarsprak"
+            sections={['overview', 'versions', 'channels', 'log']}
+            current="log"
+          />
+          <ServiceSubNav id="klarsprak" sections={['overview', 'channels', 'log']} current="log" />
         </>,
       ),
     );
     const nav = screen.getByRole('tablist', { name: /^Tabs for/ });
     expect(within(nav).getByText('Overview')).toBeTruthy();
-    expect(within(nav).getByText('Developer tools')).toBeTruthy();
-    const sub = screen.getByRole('tablist', { name: 'Developer tools' });
-    expect(within(sub).getByText('Versions')).toBeTruthy();
+    expect(within(nav).getByText('Technical')).toBeTruthy();
+    expect(within(nav).getByText('History')).toBeTruthy();
+    const sub = screen.getByRole('tablist', { name: 'Technical' });
     expect(within(sub).getByText('Log')).toBeTruthy();
     expect(within(nav).queryByText('Advanced settings')).toBeNull();
   });
@@ -75,10 +79,10 @@ describe('service pages in English', () => {
         </RightsProvider>,
       ),
     );
-    const cards = await screen.findByRole('list', { name: 'Frontends' });
+    const cards = await screen.findByRole('list', { name: 'Own frontends' });
     expect(within(cards).getByRole('link', { name: 'Details for Intranettet' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Endpoints' })).toBeTruthy();
-    fireEvent.click(screen.getByRole('link', { name: 'Register frontend' }));
+    fireEvent.click(screen.getByRole('link', { name: 'Register own frontend' }));
     expect(screen.getByLabelText('Name')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Register' }));
     expect(

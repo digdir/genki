@@ -41,14 +41,12 @@ param keyVaultSecretNames = [
   'foundry-openai-key'
   'foundry-claude-key'
   'typesense-key'
-  'colbert-api-key'
 ]
 
 param appEnv = {
   FOUNDRY_OPENAI_BASE_URL: readEnvironmentVariable('FOUNDRY_OPENAI_BASE_URL', '')
   FOUNDRY_CLAUDE_BASE_URL: readEnvironmentVariable('FOUNDRY_CLAUDE_BASE_URL', '')
   TYPESENSE_URL: readEnvironmentVariable('TYPESENSE_URL', '')
-  COLBERT_API_URL: readEnvironmentVariable('COLBERT_API_URL', '')
   LANGFUSE_BASE_URL: readEnvironmentVariable('LANGFUSE_BASE_URL', '')
   LANGFUSE_INSTANCE_RECEIVES_CONTENT: readEnvironmentVariable('LANGFUSE_INSTANCE_RECEIVES_CONTENT', 'false')
 }

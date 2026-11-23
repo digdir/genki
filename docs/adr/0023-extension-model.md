@@ -28,7 +28,7 @@ Some extension points are not plug-in kinds, because the platform already takes 
 
 **Two lanes for change.**
 
-- The fast lane: configuration and plug-ins. Tenants and operators add them, they are versioned, and a tenant adopts an operator plug-in in Byggeklosser (with Digdir approval where the block policy asks for it) before its services may use it, and every API instance picks them up live through the change feed. Digdir can promote a tenant tool connection to the shared catalog (`POST /operator/plugins/promotions`, audited); services in other tenants then call its tools, which still run with the publishing tenant's connection and secret.
+- The fast lane: configuration and plug-ins. Tenants and operators add them, they are versioned, and a tenant adopts an operator plug-in in Katalog (with Digdir approval where the block policy asks for it) before its services may use it, and every API instance picks them up live through the change feed. Digdir can promote a tenant tool connection to the shared catalog (`POST /operator/plugins/promotions`, audited); services in other tenants then call its tools, which still run with the publishing tenant's connection and secret.
 - The core lane: new plug-in kinds, new modalities, changed contracts. These are changes to this repository, with tests and an ADR, reviewed by Digdir developers and released normally. The core is never patched at run time.
 
 **Self-extension follows a ladder,** and the builder assistant and other agents always try the lowest rung that works:
@@ -48,5 +48,5 @@ New models, protocols and ways of building AI services arrive faster than any ro
 
 - Vendor names never appear outside `packages/providers-*`. A boundaries rule in `npm run check` enforces it.
 - Search is the first kind brought fully in line: a vendor-neutral writer port, declared capabilities, a shared contract suite, and Postgres with pgvector as the built-in engine beside Typesense.
-- Plug-in manifests, the hook kind, A2A and a plug-in catalog in the portal (Byggeklosser) are built. There is no sandbox runtime for code in the platform, by decision: hooks and generated plug-ins run as isolated external endpoints under manifest permissions.
+- Plug-in manifests, the hook kind, A2A and a plug-in catalog in the portal (Katalog) are built. There is no sandbox runtime for code in the platform, by decision: hooks and generated plug-ins run as isolated external endpoints under manifest permissions.
 - The catalog, skills and playground screens follow the October 2026 design round.

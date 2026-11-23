@@ -61,8 +61,8 @@
             "equals": "step-flow"
           },
           "title": {
-            "nb": "Fast stegflyt",
-            "en": "Fixed step flow"
+            "nb": "Fast arbeidsflyt",
+            "en": "Fixed workflow"
           },
           "href": "/schemas/Strategy.step-flow%401"
         },
@@ -292,6 +292,28 @@
           "x-widget": "prompt",
           "x-right": "manage-services"
         },
+        "promptSections": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "enum": ["role", "reasoning", "workflow", "gate"]
+          },
+          "additionalProperties": {
+            "type": "string",
+            "maxLength": 65536
+          },
+          "x-label": {
+            "nb": "Endrede deler av standardinstruksjonene",
+            "en": "Changed sections of the default instructions"
+          },
+          "x-help": {
+            "nb": "Erstatter bare den delen du endrer. Tom tekst tar delen ut. Instruksjonene dine kommer etter delene.",
+            "en": "Replaces only the section you change. An empty text leaves the section out. Your instructions come after the sections."
+          },
+          "x-advanced": true,
+          "x-widget": "map",
+          "x-right": "manage-services"
+        },
         "languageInstructions": {
           "type": "object",
           "propertyNames": {
@@ -361,6 +383,20 @@
                 "en": "Most characters read"
               },
               "x-widget": "number"
+            },
+            "seconds": {
+              "type": "integer",
+              "minimum": 10,
+              "maximum": 600,
+              "x-label": {
+                "nb": "Lengste tid (sekunder)",
+                "en": "Longest time (seconds)"
+              },
+              "x-help": {
+                "nb": "Når tiden er brukt, svarer agenten med det den har lest. Ikke satt gir ingen tidsgrense.",
+                "en": "When the time is used up, the agent answers from what it has read. Not set means no time limit."
+              },
+              "x-widget": "number"
             }
           },
           "additionalProperties": false,
@@ -378,6 +414,10 @@
           "x-label": {
             "nb": "Flest runder",
             "en": "Most rounds"
+          },
+          "x-help": {
+            "nb": "Den siste runden er alltid et svar uten verktøy.",
+            "en": "The last round is always an answer without tools."
           },
           "x-widget": "number",
           "x-right": "manage-services"
@@ -557,8 +597,8 @@
               "minimum": 1,
               "maximum": 100,
               "x-label": {
-                "nb": "Treff som vises til modellen",
-                "en": "Results shown to the model"
+                "nb": "Dokumenter som vises til modellen per side",
+                "en": "Documents shown to the model per page"
               },
               "x-widget": "number"
             },
@@ -832,8 +872,8 @@
           "type": "string",
           "pattern": "^[a-z0-9][a-z0-9.-]*@\\d+(\\.\\d+)*$",
           "x-label": {
-            "nb": "Stegflyt",
-            "en": "Step flow"
+            "nb": "Arbeidsflyt",
+            "en": "Workflow"
           },
           "x-help": {
             "nb": "En versjonert referanse, for eksempel saksoppslag-flyt@1.",
@@ -924,8 +964,8 @@
       "x-right": "manage-services",
       "$id": "/schemas/Strategy.step-flow@1",
       "x-label": {
-        "nb": "Fast stegflyt",
-        "en": "Fixed step flow"
+        "nb": "Fast arbeidsflyt",
+        "en": "Fixed workflow"
       }
     },
     "/schemas/Strategy.live-session%401": {

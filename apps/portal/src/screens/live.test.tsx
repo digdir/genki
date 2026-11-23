@@ -3,7 +3,6 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { App } from '../App';
 import { mockAnsattporten } from '../auth';
-import { mockFetch } from '../mock';
 import { strategyRoutes } from '../mock/strategies';
 import { go, kari } from '../test-utils';
 
@@ -96,7 +95,7 @@ const kaDefinition = {
       version: 1,
       config: { budget: { searches: 4, reads: 6, readChars: 12000 } },
     },
-    knowledge: { datasets: [{ dataset: 'digdir/kudos' }], reranker: 'colbert' },
+    knowledge: { datasets: [{ dataset: 'digdir/kudos' }] },
     model: { primary: 'foundry-openai/gpt-4o-2m-tps', residency: 'global' },
     exposure: { chat: true, mcp: true, openai: true, rest: true },
   },
@@ -182,7 +181,7 @@ describe('live mode shows only platform data', () => {
     await screen.findByRole('tab', { name: 'Tjenester' });
     for (const name of ['Mona Hauge', 'Per Hansen', 'Ahmed Ali'])
       expect(screen.queryByText(name)).toBeNull();
-    expect(screen.queryByRole('tab', { name: 'Datasett' })).toBeNull();
+    expect(screen.queryByRole('tab', { name: 'Dokumentsamlinger' })).toBeNull();
     expect(screen.queryByRole('tab', { name: 'Grupper' })).toBeNull();
   });
 
@@ -325,10 +324,10 @@ describe('live mode shows only platform data', () => {
   it('shows no example systems or frontends', async () => {
     await renderLive('#/developer/systems');
 
-    await screen.findByRole('heading', { level: 1, name: 'Utviklerverktøy' });
+    await screen.findByRole('heading', { level: 1, name: 'Integrasjoner' });
     expect(screen.queryByText('Saksbehandlingssystemet')).toBeNull();
     go('#/developer/frontends');
-    expect(await screen.findByText('Ingen brukerflater er registrert')).toBeTruthy();
+    expect(await screen.findByText('Ingen egne løsninger er registrert')).toBeTruthy();
   });
 
   it('reads the change log from the audit log instead of showing example entries', async () => {
@@ -338,13 +337,13 @@ describe('live mode shows only platform data', () => {
     expect(screen.queryByText('Ola Nordmann')).toBeNull();
   });
 
-  it('shows the empty state for step flows and datasets', async () => {
+  it('shows the empty state for workflows and document collections', async () => {
     await renderLive('#/developer/step-flows');
-    expect(await screen.findByText('Ingen stegflyter ennå')).toBeTruthy();
+    expect(await screen.findByText('Ingen arbeidsflyter ennå')).toBeTruthy();
     cleanup();
 
     await renderLive('#/datasets');
-    expect(await screen.findByText('Ingen datasett ennå')).toBeTruthy();
+    expect(await screen.findByText('Ingen dokumentsamlinger ennå')).toBeTruthy();
   });
 
   it('exports from the platform and offers no example targets in settings', async () => {
@@ -354,19 +353,31 @@ describe('live mode shows only platform data', () => {
     expect(screen.queryByRole('combobox', { name: 'Tjeneste' })).toBeNull();
   });
 
-  it('live mode opens Ny tjeneste straight in Oppsett with the builder assistant beside it', async () => {
-    await renderLive('#/services/new', mockFetch([]));
+  it('live mode opens the builder with the assistant', async () => {
+    await renderLive('#/services/new');
 
-    const nav = await screen.findByRole('navigation', { name: 'Deler av oppsettet' });
-    expect(within(nav).getByRole('button', { name: /^Formål og målgruppe/ })).toBeTruthy();
-    expect(await screen.findByRole('complementary', { name: 'Byggeassistent' })).toBeTruthy();
+    await screen.findByRole('heading', { name: 'Lag med KI' });
+    fireEvent.change(screen.getByLabelText('Hva skal tjenesten gjøre?'), {
+      target: { value: 'Svar på spørsmål om permisjon' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Start med byggeassistenten' }));
+    const panel = await screen.findByRole('complementary', { name: 'Byggeassistent' });
+    expect(await within(panel).findByText('Svar på spørsmål om permisjon')).toBeTruthy();
+    expect(
+      await within(panel.querySelector('.assistant-log') as HTMLElement).findByText(
+        /Hva skal tjenesten svare på\?/,
+        {},
+        { timeout: 3000 },
+      ),
+    ).toBeTruthy();
     expect(screen.queryByText(/Da setter jeg opp/)).toBeNull();
-    expect(window.location.hash).toMatch(/^#\/services\/utkast-[0-9a-f]{8}\/setup$/);
+    expect(screen.getByRole('button', { name: /^Formål og målgruppe/ })).toBeTruthy();
   });
 
   it('keeps the plain form for creating a service', async () => {
-    await renderLive('#/services/new?skjema=1');
+    await renderLive('#/services/new');
 
+    fireEvent.click(await screen.findByRole('link', { name: 'Bruk skjemaet' }));
     expect(await screen.findByRole('textbox', { name: 'Navn' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Opprett og publiser' })).toBeTruthy();
   });
@@ -387,10 +398,17 @@ describe('live mode shows only platform data', () => {
     expect(await screen.findByRole('heading', { level: 2, name: 'Kanaler' })).toBeTruthy();
     expect(screen.getByLabelText('Offentlig navn')).toBeTruthy();
     go('#/services/kunnskapsassistenten');
-    expect(await screen.findByRole('heading', { level: 2, name: 'I drift' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { level: 2, name: 'I bruk' })).toBeTruthy();
     expect((await screen.findAllByText(/gpt-4o-2m-tps/)).length).toBeGreaterThan(0);
     expect(await screen.findByText(/digdir\/kudos/)).toBeTruthy();
     expect(screen.queryByText(/Qwen|Borealis/)).toBeNull();
+  });
+
+  it('offers no example templates in Ny tjeneste', async () => {
+    await renderLive('#/services/new');
+
+    await screen.findByRole('heading', { name: 'Lag med KI' });
+    expect(screen.queryByRole('button', { name: /Som Kunnskapsassistenten/ })).toBeNull();
   });
 });
 
@@ -430,7 +448,7 @@ describe('live service page', () => {
       '6',
     );
     expect((screen.getByLabelText(/Flest tegn som leses/) as HTMLInputElement).value).toBe('12000');
-    expect(screen.queryByText(/Fast stegflyt/, { selector: 'h3' })).toBeNull();
+    expect(screen.queryByText(/Fast arbeidsflyt/, { selector: 'h3' })).toBeNull();
     expect(screen.queryByText(/Ukjent stegtype/)).toBeNull();
   });
 
@@ -455,8 +473,8 @@ describe('live service page', () => {
     ],
     [
       { id: 'step-flow', version: 1, config: { flow: 'fact-checker@1' } },
-      'Fast stegflyt',
-      'Stegflyt',
+      'Fast arbeidsflyt',
+      'Arbeidsflyt',
       'fact-checker@1 (ikke publisert hos virksomheten)',
     ],
     [
@@ -472,7 +490,9 @@ describe('live service page', () => {
   ])('maps strategy %#: %s', async (strategy, name, field, value) => {
     await renderLive('#/services/kunnskapsassistenten/setup/how', serviceWith(strategy));
 
-    fireEvent.click(await screen.findByRole('button', { name: /^Bytt (arbeidsmåte|stegflyt)$/ }));
+    fireEvent.click(
+      await screen.findByRole('button', { name: /^Bytt (arbeidsmåte|arbeidsflyt)$/ }),
+    );
     expect(await screen.findByRole('heading', { level: 3, name })).toBeTruthy();
     expect(screen.queryByText(`${strategy.id}@1`)).toBeNull();
     expect(

@@ -3,20 +3,20 @@ import type { batchUi as source } from '../nb/build-batchUi';
 
 export const batchUi = {
   batch: {
-    heading: 'Batch job',
+    heading: 'Batch run',
     intro:
       'Run the service on many documents, for example all the annual reports for one year. You see the cost before you start.',
     dialogTitle: 'Run on many documents',
-    newJob: 'New batch job',
-    loadingSources: 'Loading datasets',
+    newJob: 'New batch run',
+    loadingSources: 'Loading document collections',
     loadingJob: 'Loading the job',
     loadingJobs: 'Loading the jobs',
     started: 'The job has started.',
     backToJobs: 'Back to the jobs',
     history: 'Earlier jobs',
-    emptyHeading: 'No batch jobs yet',
+    emptyHeading: 'No batch runs yet',
     emptyBody:
-      'A batch job runs the service on many documents, for example all the 2025 annual reports from the agencies under a ministry. You see the cost before you start.',
+      'A batch run uses the service on many documents, for example all the 2025 annual reports from the agencies under a ministry. You see the cost before you start.',
     colSelection: 'Selection',
     colStartedBy: 'Started by',
     colDocuments: 'Documents',
@@ -56,8 +56,8 @@ export const batchUi = {
     unknownError: 'Unknown error',
     all: 'All',
     noneStatus: 'No documents have this status.',
-    jobStartedBy: 'Started by {by} {when} · {documents} · version {version}',
-    jobStartedByModel: 'Started by {by} {when} · {documents} · version {version}, {model}',
+    jobStartedBy: 'Started by {by} {when} · {documents} · edition {version}',
+    jobStartedByModel: 'Started by {by} {when} · {documents} · edition {version}, {model}',
     documents: { one: '{count} document', other: '{count} documents' },
     pausedHeading: 'The job is paused: the cost limit has been reached',
     pausedBody:
@@ -113,7 +113,7 @@ export const batchUi = {
     failGroup: '{count}: {error}',
     canRetry: 'Can be run again',
     retryFailed: 'Run the failed ones again ({count})',
-    estimatedRange: 'Estimated {low}–{high}.',
+    estimatedRange: 'Estimated {low} to {high}.',
     retryFlash: '{count} documents are being run again.',
     results: 'Results',
     aiDraft: 'Draft made with AI',
@@ -122,7 +122,7 @@ export const batchUi = {
     downloadJson: 'Download JSON',
     downloadWhat: 'What is in the download?',
     downloadWhatBody:
-      'Each row carries where it comes from: title, id and link to the source document, the dataset, the answer, the sources the answer is based on, whether the answer was truncated, the run id, and the service version, model, tokens and cost.',
+      'Each row carries where it comes from: title, id and link to the source document, the document collection, the answer, the sources the answer is based on, whether the answer was truncated, the run id, and the service edition, model, tokens and cost.',
     downloadFilters: 'Filters: {filters}.',
     retention: 'How long the results are kept:',
     undecided: 'Not decided',
@@ -134,7 +134,7 @@ export const batchUi = {
     seeRunFor: 'See the run for {title}',
     limitHeading: 'Continue with a new limit',
     remaining: '{count} documents remain.',
-    remainingEstimate: ' Estimated {low}–{high} more.',
+    remainingEstimate: ' Estimated {low} to {high} more.',
     newLimit: 'New limit in kroner',
     newLimitHint: 'Applies to the whole job, including what it has already used.',
     reason: 'Reason',
@@ -148,9 +148,9 @@ export const batchUi = {
 
   batchSetup: {
     noSources:
-      'No dataset you can access is able to list its documents. Ask someone who manages datasets to connect one.',
+      'No document collection you can access is able to list its documents. Ask someone who manages document collections to connect one.',
     pickDocuments: 'Choose documents',
-    dataset: 'Dataset',
+    dataset: 'Document collection',
     usedByService: ' (used by the service)',
     task: 'Task for each document',
     taskHint:
@@ -165,13 +165,13 @@ export const batchUi = {
     documents: { one: '{count} document', other: '{count} documents' },
     andMore: 'and {count} more',
     excluded:
-      'The selection found {found} documents. {duplicates} older versions of the same report and {otherYear} from other years are left out.',
+      'The selection found {found} documents. {duplicates} older editions of the same report and {otherYear} from other years are left out.',
     estimatedCost: 'Estimated cost',
     noPrice: 'The model has no price',
     estimatedUse: 'Estimated usage',
     tokensRange: '{range} tokens',
     model: 'Model',
-    serviceVersion: 'Service version',
+    serviceVersion: 'Service edition',
     basisMeasured:
       'Measured: the estimate is based on a trial run on {count} documents, with a margin.',
     basisAssumed:
@@ -194,8 +194,8 @@ export const batchUi = {
     stepsNav: 'Steps',
     stepCount: 'Step {step} of {total}',
     noSources:
-      'No dataset you can access is able to list its documents. Ask someone who manages datasets to connect one.',
-    dataset: 'Dataset',
+      'No document collection you can access is able to list its documents. Ask someone who manages document collections to connect one.',
+    dataset: 'Document collection',
     usedByService: ' (used by the service)',
     all: 'All',
     showApi: 'Show API call',
@@ -204,7 +204,7 @@ export const batchUi = {
     noneFit: 'No documents match',
     noneFitFilters: 'No documents match the filters. Try another year or more document types.',
     bigSelection:
-      'The selection is large: {count} documents. A batch job can take at most {max}. Narrow down the selection.',
+      'The selection is large: {count} documents. A batch run can take at most {max}. Narrow down the selection.',
     firstDocuments: 'The first documents in the selection',
     colTitle: 'Title',
     colAction: 'Action',
@@ -234,7 +234,7 @@ export const batchUi = {
     assumed: 'Assumed',
     model: 'Model',
     unknownModel: 'Unknown',
-    serviceVersion: 'Service version {version}',
+    serviceVersion: 'Service edition {version}',
     cost: 'Cost',
     forDocuments: 'For {count} documents',
     answerPerDocument: 'Answer per document',
@@ -285,8 +285,8 @@ export const batchUi = {
   batchRun: {
     stoppedAtCap: 'Stopped at the cap',
     startedAt: 'Run started {when}',
-    versionLine: '{dataset} · version {version}',
-    versionLineModel: '{dataset} · version {version} · {model}',
+    versionLine: '{dataset} · edition {version}',
+    versionLineModel: '{dataset} · edition {version} · {model}',
     totalTime: 'Total time',
     soFar: '{time} so far',
     tokens: 'Tokens',

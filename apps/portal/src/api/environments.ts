@@ -51,11 +51,18 @@ export const environmentsApi = ({ get, request, tenantPath }: ApiContext) => {
         {},
         { 'change-reason': reason },
       ),
-    promote: (tenant: string, service: string, name: string, from: string, reason: string) =>
+    promote: (
+      tenant: string,
+      service: string,
+      name: string,
+      from: string,
+      reason: string,
+      version?: number,
+    ) =>
       request<ServiceEnvironments>(
         'POST',
         `${one(tenant, service, name)}/promote`,
-        { from },
+        version === undefined ? { from } : { from, version },
         { 'change-reason': reason },
       ),
     rollback: (tenant: string, service: string, name: string, version: number, reason: string) =>

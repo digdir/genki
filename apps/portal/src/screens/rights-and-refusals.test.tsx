@@ -10,7 +10,6 @@ import type { DatasetView } from '../api/datasets';
 import type { AccessRequest } from '../api/onboarding';
 import type { OnboardingMockOptions } from '../mock/onboarding';
 import type { Organisation } from '../types';
-import { openArea } from './services/setup-areas.test-utils';
 
 document.getAnimations ??= () => [];
 beforeEach(() => {
@@ -120,12 +119,12 @@ describe('refusals from the API', () => {
       forbidden('Du trenger rettigheten «Administrere tjenester»'),
     );
     await renderAs('#/services/new', fetch);
-    const panel = await screen.findByRole('complementary', { name: 'Byggeassistent' });
-    fireEvent.change(within(panel).getByLabelText('Skriv til assistenten'), {
+    fireEvent.change(await screen.findByLabelText('Hva skal tjenesten gjøre?'), {
       target: { value: 'Svar på spørsmål' },
     });
-    fireEvent.click(within(panel).getByRole('button', { name: 'Send' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Start med byggeassistenten' }));
 
+    const panel = await screen.findByRole('complementary', { name: 'Byggeassistent' });
     expect(
       await within(panel).findByText('Du trenger rettigheten «Administrere tjenester»'),
     ).toBeTruthy();
@@ -153,9 +152,9 @@ describe('rights in the UI', () => {
 
     const start = await screen.findByRole('region', { name: /^Kom i gang med/ });
     expect(
-      await within(start).findByText('Du trenger rettigheten «Administrere datasett».'),
+      await within(start).findByText('Du trenger rettigheten «Administrere dokumentsamlinger».'),
     ).toBeTruthy();
-    expect(within(start).queryByRole('link', { name: 'Nytt datasett' })).toBeNull();
+    expect(within(start).queryByRole('link', { name: 'Ny dokumentsamling' })).toBeNull();
     expect(within(start).queryByRole('link', { name: 'Ny tjeneste' })).toBeNull();
     expect(screen.queryByRole('link', { name: 'Ny tjeneste' })).toBeNull();
     cleanup();
@@ -166,15 +165,16 @@ describe('rights in the UI', () => {
     cleanup();
 
     await renderAs('#/datasets', mockFetch(), useOnly);
-    await screen.findByRole('heading', { level: 1, name: 'Datasett' });
-    expect(screen.queryByRole('button', { name: 'Nytt datasett' })).toBeNull();
+    await screen.findByRole('heading', { level: 1, name: 'Dokumentsamlinger' });
+    expect(screen.queryByRole('button', { name: 'Ny dokumentsamling' })).toBeNull();
     expect(screen.queryByText(/Teknisk: katalogoppføringer/)).toBeNull();
     cleanup();
 
     await renderAs('#/services/rapportassistenten', mockFetch(), useOnly);
     await screen.findByRole('heading', { level: 1, name: 'Rapportassistenten' });
-    expect(screen.queryByRole('button', { name: 'Publiser' })).toBeNull();
-    expect(screen.getByText('Du trenger rettigheten «Administrere tjenester».')).toBeTruthy();
+    const publish = screen.getByRole('button', { name: 'Publiser' });
+    expect(publish.getAttribute('aria-disabled')).toBe('true');
+    expect(publish.getAttribute('title')).toBe('Bare eiere kan publisere');
   });
 });
 
@@ -474,16 +474,18 @@ describe('the step flow picker', () => {
       }),
     );
     await renderAs('#/services/new', fetch);
-    await screen.findByRole('navigation', { name: 'Deler av oppsettet' });
-    openArea(/^Arbeidsmåte/);
-    fireEvent.click(await screen.findByRole('button', { name: 'Bytt arbeidsmåte' }));
+    fireEvent.change(await screen.findByLabelText('Hva skal tjenesten gjøre?'), {
+      target: { value: 'Sorter innkommende post' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Start med byggeassistenten' }));
+    fireEvent.click(await screen.findByRole('button', { name: /^Arbeidsmåte/ }));
 
-    const picker = await screen.findByRole('combobox', { name: 'Stegflyt' });
+    const picker = await screen.findByRole('combobox', { name: 'Arbeidsflyt' });
     expect(picker.tagName).toBe('INPUT');
-    await screen.findByText('postruting, versjon 2 (nyeste)');
+    await screen.findByText('postruting, utgave 2 (nyeste)');
     const item = document.createElement('data');
     item.value = 'postruting@2';
-    item.textContent = 'postruting, versjon 2 (nyeste)';
+    item.textContent = 'postruting, utgave 2 (nyeste)';
     act(() => {
       picker
         .closest('ds-suggestion')
@@ -491,9 +493,8 @@ describe('the step flow picker', () => {
           new CustomEvent('comboboxbeforeselect', { detail: item, cancelable: true }),
         );
     });
-    const links = screen.getAllByRole('link', { name: 'Rediger stegflyten' });
-    expect(links.map((l) => l.getAttribute('href')?.split('?')[0])).toEqual(
-      links.map(() => '#/developer/step-flows/postruting'),
+    expect(screen.getByRole('link', { name: 'Rediger arbeidsflyten' }).getAttribute('href')).toBe(
+      '#/developer/step-flows/postruting',
     );
   });
 });

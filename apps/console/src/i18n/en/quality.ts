@@ -5,7 +5,7 @@ export const quality = {
   title: 'Quality',
   intro:
     'Scores on the test sets over time. Regressions after changes to a model or the platform are marked.',
-  openMatrix: 'Open the quality matrix and the judges',
+  openMatrix: 'Open quality across services',
   loading: 'Loading quality data',
   metric: '{mean} ({low} to {high}, n={n})',
   regressions: { one: '{count} regression', other: '{count} regressions' },

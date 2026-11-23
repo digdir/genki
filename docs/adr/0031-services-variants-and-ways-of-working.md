@@ -8,7 +8,7 @@ Amends 0004, 0007 and 0017. Touches 0026 and 0030.
 
 ## Decision
 
-- **Five nouns.** Portal, workspace, console, docs and API texts use one model: a **service** has one or more **variants**; each variant has a **way of working**; a fixed way of working is a step flow made of **steps**; services use **building blocks** from the catalogue.
+- **Five nouns.** Portal, workspace, console, docs and API texts use one model: a **service** has one or more **variants**; each variant has a **way of working**; a fixed way of working is a step flow made of **steps**; services use **parts** from the catalogue.
 
   | Bokmål      | English        | In the definition                                                |
   | ----------- | -------------- | ---------------------------------------------------------------- |
@@ -16,7 +16,7 @@ Amends 0004, 0007 and 0017. Touches 0026 and 0030.
   | Variant     | Variant        | `spec.variants[]`, public name `<service>__<variant>`            |
   | Arbeidsmåte | Way of working | `strategy: { id, version, config }`, on the service or a variant |
   | Steg        | Step           | `StepFlow.spec.steps[]`                                          |
-  | Byggekloss  | Building block | catalogue entries: models, datasets, tools, skills               |
+  | Katalog     | Catalogue      | catalogue entries: models, datasets, tools, skills               |
 
 - **"Modus" and "mode" are not used** for a variant in any text a person reads. Field names that already exist (`_mode`, `modes` in key grants) stay.
 - **"Agent" has one meaning for owners and end users:** the way of working where the model plans and searches by itself, `agent-loop`, shown as "Agent (søker selv)" / "Agent (searches by itself)". Everything else gets another word:

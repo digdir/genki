@@ -12,7 +12,7 @@ import {
   type Chunk,
   type FilterInput,
 } from '@genai/retrieval';
-import { defaultSearchDisplayLimit } from '@genai/strategy-agent-loop';
+import { defaultSearchDisplayLimit, shownOnPage } from '@genai/strategy-agent-loop';
 import type { Context, Env, Hono, Schema } from 'hono';
 import { z } from 'zod';
 import { enterTenant, type Access } from './access.js';
@@ -212,7 +212,7 @@ export const stageAttribution = (events: Event[], displayLimit: number) => {
       return {
         queries: Array.isArray(d.queries) ? d.queries.filter((q) => typeof q === 'string') : [],
         hits,
-        displayed: hits.slice(0, displayLimit),
+        displayed: shownOnPage(hits, displayLimit, typeof d.page === 'number' ? d.page : 1),
       };
     });
   const reads = notices

@@ -7,6 +7,8 @@ import fc from 'fast-check';
 import {
   flowUsesOf,
   InMemoryDefinitionStore,
+  isIconDataUrl,
+  parseBlockRef,
   platformSettings,
   resolveSetting,
   resolveSettings,
@@ -99,7 +101,7 @@ const plugins: PluginSchemas = {
     'model@1',
   ]),
   retrieval: z.strictObject({ maxPerDocument: z.number().int().positive().optional() }),
-  rerankers: new Set(['colbert']),
+  rerankers: new Set(['omrangering']),
   strategyResidency: (id, config) =>
     id === strategyKey('remote-agent', 1)
       ? (config as { endpoint?: { residency?: 'norway' | 'eu' | 'global' } } | null)?.endpoint
@@ -272,7 +274,7 @@ describe('service definitions', () => {
     });
     const spec = specOf({
       model: { primary: 'foundry/gpt-4o', residency: 'global' },
-      knowledge: { datasets: [{ dataset: 'digdir/kudos' }], reranker: 'colbert' },
+      knowledge: { datasets: [{ dataset: 'digdir/kudos' }], reranker: 'omrangering' },
     });
 
     expect(serviceDataLocation(spec, located('norway', 'norway'))).toBe('norway');
@@ -353,7 +355,7 @@ describe('service definitions', () => {
     const service = (residency: string) =>
       withSpec({
         model: { primary: 'foundry/gpt-4o', residency },
-        knowledge: { datasets: [{ dataset: 'digdir/kudos' }], reranker: 'colbert' },
+        knowledge: { datasets: [{ dataset: 'digdir/kudos' }], reranker: 'omrangering' },
       });
     const outsideEu = { ...plugins, rerankerResidency: () => 'global' as const };
 
@@ -363,7 +365,7 @@ describe('service definitions', () => {
         {
           path: 'spec.knowledge.reranker',
           message:
-            'Omrangeringen colbert behandler data utenfor EU/EØS. Tjenesten krever at data behandles i EU/EØS.',
+            'Omrangeringen omrangering behandler data utenfor EU/EØS. Tjenesten krever at data behandles i EU/EØS.',
         },
       ],
     });
@@ -1052,14 +1054,12 @@ describe('compiling a service into capabilities', () => {
     expect(compiled[0]?.capability.grants.map((g) => `${g.port}:${g.ref.id}`)).toEqual([
       'knowledge:digdir/kudos',
       'tools:rag@1',
-      'rerank:colbert',
       'model:foundry/gpt-4o',
       'model:aivar/borealis',
     ]);
     expect(compiled[0]?.capability.config).toMatchObject({
       knowledge: {
         datasets: [{ dataset: 'digdir/kudos' }],
-        reranker: 'colbert',
         retrieval: { maxPerDocument: 10 },
       },
       tools: ['rag@1'],
@@ -1725,6 +1725,40 @@ describe('a service interface (spec.interface)', () => {
     ).not.toEqual([]);
   });
 
+  it('takes a ref beside a block, naming a Block definition by its publisher, id and version', () => {
+    const main = [{ block: 'chat', ref: '991825827/chat@3' }];
+    expect(errorsOf(withLayout({ zones: { ...layout.zones, main } }))).toEqual([]);
+    expect(parseBlockRef('991825827/chat@3')).toEqual({
+      publisher: '991825827',
+      id: 'chat',
+      version: 3,
+    });
+  });
+
+  it('refuses a ref that is not <organisation number>/<block id>@<version>', () => {
+    for (const ref of [
+      'chat',
+      'chat@1',
+      'digdir/chat@1',
+      '991825827/chat',
+      '991825827/chat@0',
+      '991825827/Chat@1',
+      '991825827/chat@1.2',
+      ' 991825827/chat@1',
+    ])
+      expect(
+        errorsOf(withLayout({ zones: { ...layout.zones, main: [{ block: 'chat', ref }] } })),
+      ).not.toEqual([]);
+  });
+
+  it('reads a ref in linear time', () => {
+    const long = `991825827/${'a'.repeat(200_000)}@`;
+    const started = performance.now();
+    expect(parseBlockRef(long)).toBeUndefined();
+    expect(parseBlockRef(`991825827/${'a-'.repeat(100_000)}@1`)).toBeUndefined();
+    expect(performance.now() - started).toBeLessThan(100);
+  });
+
   it("takes a document link on the host's own site, which opens under any hostname", () => {
     const any = '/api/datasets/kudos/documents/{id}/file';
     expect(
@@ -1819,6 +1853,25 @@ describe('a service interface (spec.interface)', () => {
       expect(errorsOf(withPages({ pages: pages(4, 30 * 1024) }))).toEqual([]);
       expect(errorsOf(withPages({ pages: pages(5, 30 * 1024) }))).not.toEqual([]);
     });
+  });
+
+  it('takes an icon only as a base64 PNG or SVG data address', () => {
+    const icon = (value: string) => errorsOf(withSpec({ interface: { layout, icon: value } }));
+    expect(icon('data:image/svg+xml;base64,PHN2Zy8+')).toEqual([]);
+    expect(icon('data:image/png;base64,iVBORw0KGgo=')).toEqual([]);
+    expect(icon('https://example.no/icon.svg')).not.toEqual([]);
+    expect(icon('data:image/svg+xml,<svg onload="x()"/>')).not.toEqual([]);
+    expect(icon('data:text/html;base64,PHN2Zy8+')).not.toEqual([]);
+    expect(icon(`data:image/png;base64,${'A'.repeat(24 * 1024)}`)).not.toEqual([]);
+  });
+
+  it('checks an icon in linear time', () => {
+    const long = `data:image/png;base64,${'A'.repeat(200_000)}!`;
+    const started = performance.now();
+    expect(isIconDataUrl(long)).toBe(false);
+    expect(isIconDataUrl(long.slice(0, 20_000))).toBe(true);
+    expect(isIconDataUrl(`${long.slice(0, 20_000)}!`)).toBe(false);
+    expect(performance.now() - started).toBeLessThan(100);
   });
 
   it('refuses an interface over 256 KiB, and takes one just under', () => {

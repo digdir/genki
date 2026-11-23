@@ -128,6 +128,7 @@ export interface HostView {
   languages: HostLanguage[];
   /** Designsystemet's default (Digdir) theme until a service's own is built (ADR 0063). */
   theme: null;
+  icon: string | null;
   menu: ({ label: Text; page: string } | { label: Text; href: string })[];
   pages: { id: string; title: Text }[];
 }
@@ -195,6 +196,7 @@ const resolve = async (
     },
     languages: languagesOf(definition.spec.languages),
     theme: null,
+    icon: shown.icon ?? null,
     menu: (shown.menu ?? []).map((item) =>
       'page' in item
         ? { label: item.label, page: item.page }

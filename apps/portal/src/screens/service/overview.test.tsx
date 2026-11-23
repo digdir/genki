@@ -7,7 +7,7 @@ import type { ServiceDefinition } from '../../data/service-definition';
 import { RightsProvider } from '../../Shell';
 import type { TaskRow } from '../../types';
 import { OverviewSection } from './OverviewSection';
-import { ArchivedBanner, LifecycleDialog } from './ServiceLifecycle';
+import { ArchivedBanner, DeleteServiceDialog, LifecycleDialog } from './ServiceLifecycle';
 
 document.getAnimations ??= () => [];
 beforeAll(() => {
@@ -67,6 +67,7 @@ const platform = (
     limits?: unknown[];
     operator?: { name: string; region?: string };
     failure?: Record<string, unknown>;
+    deleteRefused?: string;
   } = {},
 ) => {
   const calls: Call[] = [];
@@ -88,6 +89,17 @@ const platform = (
         headers: { 'content-type': 'application/json' },
       });
     if (path.endsWith('/access/services')) return reply({ services: overrides.limits ?? [] });
+    if (method === 'DELETE' && /\/services\/[^/]+$/.test(path))
+      return overrides.deleteRefused
+        ? new Response(
+            JSON.stringify({
+              type: 'urn:genai:problem:service-in-use',
+              status: 409,
+              errors: [{ path: 'frontends', message: overrides.deleteRefused }],
+            }),
+            { status: 409, headers: { 'content-type': 'application/problem+json' } },
+          )
+        : reply({ id: 'rapport', deleted: true, versions: 7, stepFlows: [] });
     if (path.endsWith('/lifecycle')) {
       if (method === 'PUT') lifecycle = JSON.parse(String(init?.body)) as unknown;
       return reply(lifecycle);
@@ -435,7 +447,7 @@ describe('the Oversikt tab of a published service', () => {
     );
 
     const who = await screen.findByRole('region', { name: 'Hvem bruker den' });
-    await waitFor(() => expect(within(who).getByText('Ingen brukerflater')).toBeTruthy());
+    await waitFor(() => expect(within(who).getByText('Ingen egne løsninger')).toBeTruthy());
     expect(within(who).getByText('Ingen API-nøkler')).toBeTruthy();
     expect(text(who)).toContain('Ikke delt med andre virksomheter');
   });
@@ -458,7 +470,7 @@ describe('the Oversikt tab of a published service', () => {
 
     expect(
       await screen.findByRole('heading', {
-        name: 'Versjon 7 er publisert. Dette gjenstår før folk tar den i bruk',
+        name: 'Utgave 7 er publisert. Dette gjenstår før folk kan bruke den',
       }),
     ).toBeTruthy();
     expect(screen.getByText('Lag et testsett')).toBeTruthy();
@@ -514,7 +526,7 @@ describe('the Oversikt tab of a published service', () => {
       'API: Saksbehandling',
       'API',
       'Prøveområdet',
-      'Samlet jobb',
+      'Massekjøring',
       'Utløser',
     ]);
     expect(within(table).queryByText('Ola Hansen')).toBeNull();
@@ -549,7 +561,7 @@ describe('the Oversikt tab of a published service', () => {
       <OverviewSection api={api} tenant={tenant} id="rapport" definition={definition} now={now} />,
     );
 
-    const need = await screen.findByText('Utkastet er endret etter siste test');
+    const need = await screen.findByText('Testutgaven er endret etter siste test');
     expect(text(need.parentElement)).toContain('Testet 11:40, endret 10:00.');
     cleanup();
 
@@ -620,10 +632,10 @@ describe('the Oversikt tab of a published service', () => {
       <OverviewSection api={api} tenant={tenant} id="rapport" definition={definition} now={now} />,
     );
 
-    const need = await screen.findByText('Utkastet stoppes av en sperre');
+    const need = await screen.findByText('Testutgaven stoppes av et krav til kvalitet');
     await waitFor(() =>
       expect(text(need.parentElement)).toContain(
-        'Én sperre stopper publisering: Avslag uten kilde er 89 %, kravet er 90 %.',
+        'Ett krav til kvalitet stopper publisering: Avslag uten kilde er 89 %, kravet er 90 %.',
       ),
     );
     expect(text(need.parentElement)).not.toContain('refused by');
@@ -676,7 +688,7 @@ describe('the Oversikt tab of a published service', () => {
       <OverviewSection api={api} tenant={tenant} id="rapport" definition={definition} now={now} />,
     );
 
-    const need = await screen.findByText('Utkastet stoppes av en sperre');
+    const need = await screen.findByText('Testutgaven stoppes av et krav til kvalitet');
     await waitFor(() =>
       expect(text(need.parentElement)).toContain('Avslag uten kilde er 89 %, kravet er 90 %.'),
     );
@@ -703,7 +715,7 @@ describe('the Oversikt tab of a published service', () => {
       <OverviewSection api={api} tenant={tenant} id="rapport" definition={definition} now={now} />,
     );
 
-    const need = await screen.findByText('Utkastet er ikke testet');
+    const need = await screen.findByText('Testutgaven er ikke testet');
     expect(text(need.parentElement)).not.toContain('Testet');
   });
 
@@ -729,7 +741,7 @@ describe('the Oversikt tab of a published service', () => {
       <OverviewSection api={api} tenant={tenant} id="rapport" definition={definition} now={now} />,
     );
 
-    const need = await screen.findByText('Utkastet er endret etter siste test');
+    const need = await screen.findByText('Testutgaven er endret etter siste test');
     expect(text(need.parentElement)).toContain('Testet 13. nov 11:59, endret i går 15:26.');
   });
 
@@ -765,7 +777,7 @@ describe('the Oversikt tab of a published service', () => {
     expect(text(tile(/^Kvalitet/))).not.toContain('Lag et testsett');
   });
 
-  it('lists the API keys of the service from the same source as Nøkler og kanaler', async () => {
+  it('lists the API keys of the service from the same source as API-nøkler og kanaler', async () => {
     const { api } = health({
       shared: {
         frontends: [],
@@ -829,11 +841,11 @@ describe('the Oversikt tab of a published service', () => {
       <OverviewSection api={api} tenant={tenant} id="rapport" definition={withSources} now={now} />,
     );
 
-    const live = await screen.findByRole('region', { name: 'I drift' });
+    const live = await screen.findByRole('region', { name: 'I bruk' });
     await waitFor(() =>
       expect(within(live).getByRole('link', { name: 'Kudos-rapporter' })).toBeTruthy(),
     );
-    expect(text(live)).toContain('ukjent datasett «borte»');
+    expect(text(live)).toContain('ukjent dokumentsamling «borte»');
   });
 
   it('says where the service processes data as the platform reports it', async () => {
@@ -842,8 +854,19 @@ describe('the Oversikt tab of a published service', () => {
       <OverviewSection api={api} tenant={tenant} id="rapport" definition={definition} now={now} />,
     );
 
-    const live = await screen.findByRole('region', { name: 'I drift' });
+    const live = await screen.findByRole('region', { name: 'I bruk' });
     await waitFor(() => expect(text(live)).toContain('data behandles i EU/EØS'));
+  });
+
+  it('names the edition users have I bruk, not by its technical name', async () => {
+    const { api } = health({});
+    render(
+      <OverviewSection api={api} tenant={tenant} id="rapport" definition={definition} now={now} />,
+    );
+
+    const live = await screen.findByRole('region', { name: 'I bruk' });
+    await waitFor(() => expect(text(live)).toMatch(/I bruk: utgave \d+/));
+    expect(text(live)).not.toContain('prod');
   });
 
   it('says nothing about where data is processed when the platform does not know', async () => {
@@ -852,7 +875,7 @@ describe('the Oversikt tab of a published service', () => {
       <OverviewSection api={api} tenant={tenant} id="rapport" definition={definition} now={now} />,
     );
 
-    const live = await screen.findByRole('region', { name: 'I drift' });
+    const live = await screen.findByRole('region', { name: 'I bruk' });
     await waitFor(() => expect(text(live)).toContain('gpt-5.6-terra'));
     expect(text(live)).not.toContain('data behandles');
   });
@@ -876,7 +899,7 @@ describe('the Oversikt tab of a published service', () => {
       <OverviewSection api={api} tenant={tenant} id="rapport" definition={definition} now={now} />,
     );
 
-    await waitFor(() => expect(text(tile(/^Kvalitet/))).toContain('Samme som 86 % i versjon 6'));
+    await waitFor(() => expect(text(tile(/^Kvalitet/))).toContain('Samme som 86 % i utgave 6'));
     expect(text(tile(/^Kvalitet/))).not.toContain('Opp fra');
   });
 
@@ -905,7 +928,7 @@ describe('the Oversikt tab of a published service', () => {
         '2 API-nøklerSaksbehandling (12 %), Intranett-server, gammel (ikke brukt)',
       ),
     );
-    expect(text(who)).toContain('Brukerflate · 27 % av kjøringene');
+    expect(text(who)).toContain('Egen løsning · 27 % av kjøringene');
     expect(text(who)).not.toContain('Teams (27 %)');
   });
 
@@ -924,7 +947,7 @@ describe('the Oversikt tab of a published service', () => {
     );
 
     const who = await screen.findByRole('region', { name: 'Hvem bruker den' });
-    await waitFor(() => expect(text(who)).toContain('Brukerflate · 61 % av kjøringene'));
+    await waitFor(() => expect(text(who)).toContain('Egen løsning · 61 % av kjøringene'));
   });
 
   it('shows who paused the service, when and why, in a banner', async () => {
@@ -952,7 +975,7 @@ describe('the Oversikt tab of a published service', () => {
             publishedBy: 'employee:ansattporten:ola',
             publishedByName: 'Ola Nordmann',
             publishedAt: '2026-10-01T10:00:00Z',
-            reason: 'Ny versjon',
+            reason: 'Ny utgave',
             definition: definition as unknown as Record<string, unknown>,
           }}
         />,
@@ -1099,6 +1122,64 @@ describe('the archived banner', () => {
     expect(text(screen.getByText(/^Kari Nordmann arkiverte/))).toBe(
       'Kari Nordmann arkiverte den 3. oktober 2026: «Erstattet av Rapportassistenten». Den svarer ikke, og ingen kan endre den.',
     );
+  });
+});
+
+describe('deleting an archived service', () => {
+  const open = (api: ReturnType<typeof platform>['api']) =>
+    render(
+      <DeleteServiceDialog
+        api={api}
+        tenant={tenant}
+        id="rapport"
+        name="Rapportassistenten"
+        onClose={() => undefined}
+      />,
+    );
+
+  it('deletes only after the user types the service id and a reason', async () => {
+    const { api, calls } = platform();
+    open(api);
+    const dialog = await screen.findByRole('dialog');
+    const confirm = within(dialog).getByRole('textbox', { name: 'Skriv rapport for å bekrefte' });
+    const reason = within(dialog).getByRole('textbox', { name: /Begrunnelse/ });
+    fireEvent.change(confirm, { target: { value: 'rapp' } });
+    fireEvent.change(reason, { target: { value: 'Testtjenesten trengs ikke lenger' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Slett for godt' }));
+
+    expect(within(dialog).getByText('Skriv tjenestens id nøyaktig slik den står.')).toBeTruthy();
+    expect(calls.some((c) => c.method === 'DELETE')).toBe(false);
+
+    fireEvent.change(confirm, { target: { value: 'rapport' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Slett for godt' }));
+
+    await waitFor(() =>
+      expect(
+        calls
+          .filter((c) => c.method === 'DELETE')
+          .map((c) => [c.url.pathname, decodeURIComponent(c.headers.get('change-reason') ?? '')]),
+      ).toEqual([[`/tenants/${tenant}/services/rapport`, 'Testtjenesten trengs ikke lenger']]),
+    );
+  });
+
+  it('shows what still depends on the service when the delete is refused', async () => {
+    const { api } = platform({ deleteRefused: 'Frontenden Rapportappen bruker tjenesten' });
+    open(api);
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.change(
+      within(dialog).getByRole('textbox', { name: 'Skriv rapport for å bekrefte' }),
+      {
+        target: { value: 'rapport' },
+      },
+    );
+    fireEvent.change(within(dialog).getByRole('textbox', { name: /Begrunnelse/ }), {
+      target: { value: 'Testtjenesten trengs ikke lenger' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Slett for godt' }));
+
+    expect(
+      await within(dialog).findByText('Frontenden Rapportappen bruker tjenesten'),
+    ).toBeTruthy();
   });
 });
 

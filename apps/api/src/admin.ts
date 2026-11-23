@@ -33,6 +33,7 @@ import {
 import { ModelError } from '@genai/port-model';
 import type { Context } from 'hono';
 import { t } from './i18n/index.js';
+import { blockRefProblems } from './interface-catalogue.js';
 import { isOperator, refusedAction, type RightProblem } from './rights.js';
 import { confirmedAs, riskConfirmationProblems } from './risk-confirmation.js';
 import { serviceHealth, type ServiceModels } from './service-health.js';
@@ -225,6 +226,19 @@ const sharingOf = (definition: unknown) => {
   return Array.isArray(value) ? [...new Set(value.map(String))].sort().join(',') : '';
 };
 
+export const blockPublisherProblems = (
+  definition: unknown,
+  principal: Principal,
+): ValidationError[] => {
+  const d = definition as { kind?: unknown; spec?: { tier?: unknown; sharing?: unknown } };
+  if (d.kind !== 'Block' || maySetSharing(principal)) return [];
+  if (d.spec?.tier === 'built-in')
+    return [{ path: 'spec.tier', message: t('problems.builtInBlockOperatorOnly') }];
+  if (d.spec?.tier === 'code' && d.spec.sharing === 'everyone')
+    return [{ path: 'spec.sharing', message: t('problems.codeBlockShareOperatorOnly') }];
+  return [];
+};
+
 const engineSwitchSubject = 'engine-switch';
 
 /**
@@ -341,12 +355,15 @@ export const createAdmin = (options: AdminOptions) => {
     return validated.ok ? checkPromptFiles(validated.definition, files) : validated.errors;
   };
 
-  const checkImport = (definition: unknown, files: PromptFiles): ValidationError[] => {
+  const checkImport = async (definition: unknown, files: PromptFiles) => {
     const validated = validateDefinition(definition, plugins);
     return validated.ok
       ? [
           ...checkPromptFiles(validated.definition, files),
           ...riskConfirmationProblems(validated.definition),
+          ...(validated.definition.kind === 'Service'
+            ? await blockRefProblems(store, validated.definition)
+            : []),
         ]
       : validated.errors;
   };
@@ -356,6 +373,7 @@ export const createAdmin = (options: AdminOptions) => {
     principal: Principal,
   ): Promise<ValidationError[]> => {
     const d = definition as { kind?: unknown; metadata?: { tenant?: unknown; id?: unknown } };
+    if (d?.kind === 'Block') return blockPublisherProblems(definition, principal);
     if (d?.kind !== 'Service' || maySetSharing(principal)) return [];
     const current = await store.get('Service', String(d.metadata?.tenant), String(d.metadata?.id));
     return sharingOf(definition) === sharingOf(current?.definition)
@@ -371,7 +389,7 @@ export const createAdmin = (options: AdminOptions) => {
   const importCheck =
     (principal: Principal) =>
     async (definition: unknown, files: PromptFiles): Promise<ValidationError[]> => [
-      ...checkImport(definition, files),
+      ...(await checkImport(definition, files)),
       ...(await sharingProblems(definition, principal)),
       ...(await publishRefusals(store, definition)),
       ...(await archivedProblems(definition)),
@@ -496,7 +514,7 @@ export const createAdmin = (options: AdminOptions) => {
           const sharing = await sharingProblems(definition, principal);
           if (sharing.length > 0) sharingRefused = true;
           return [
-            ...checkImport(definition, files),
+            ...(await checkImport(definition, files)),
             ...sharing,
             ...(await archivedProblems(definition)),
           ];

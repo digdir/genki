@@ -6,12 +6,15 @@ import { LinkTabs } from '../../components/LinkTabs';
 import { useAsync } from '../../hooks';
 import { useT } from '../../i18n';
 import {
+  editionPath,
+  servicePath,
+  historyHasOwnTab,
   sectionLabels,
   serviceTabs,
-  servicePath,
   subSections,
   tabLabels,
   tabOf,
+  type Edition,
   type ServiceSection,
 } from './sections';
 
@@ -20,11 +23,13 @@ export const ServiceNav = ({
   name,
   sections,
   current,
+  edition = 'test',
 }: {
   id: string;
   name?: string | undefined;
   sections: ServiceSection[];
   current: ServiceSection;
+  edition?: Edition;
 }) => {
   const t = useT();
   const tab = tabOf(current);
@@ -41,7 +46,7 @@ export const ServiceNav = ({
       tabs={serviceTabs(sections).map(({ tab: each, target }) => ({
         key: each,
         label: t(tabLabels[each]),
-        href: `#${servicePath(id, target)}`,
+        href: `#${editionPath(id, target, edition)}`,
       }))}
     />
   );
@@ -64,7 +69,7 @@ const useDeveloperCounts = (
       const today = new Date(now());
       today.setHours(0, 0, 0, 0);
       const [definition, runs, keys, environments, batches] = await Promise.allSettled([
-        api.getDefinition(tenant, 'Service', id, signal),
+        historyHasOwnTab ? undefined : api.getDefinition(tenant, 'Service', id, signal),
         api.tasks(tenant, { service: id, from: today.toISOString(), limit: 1 }, signal),
         api.listServiceKeys(tenant, id, signal),
         api.environments.list(tenant, id, signal),

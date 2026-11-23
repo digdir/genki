@@ -7,11 +7,13 @@ import {
   type RetrievalRun,
 } from '@genai/eval';
 import { copyOwner, embedIndexDocument, knowledgeSourceRefusal } from '@genai/ingest';
+import { onKnowledgeServer } from '@genai/composition';
 import { residencyAllows, type PortContext } from '@genai/kernel';
 import {
   KnowledgeError,
   type DatasetEmbedding,
   type DatasetOverrides,
+  type Hit,
   type IndexDocument,
   type IndexWriterRoute,
   type IndexWriterRouter,
@@ -295,6 +297,15 @@ const tokensPerChunk = 300;
 const defaultEmbeddingNokPerThousand = 0.0013;
 const defaultModelPrice = { inputPerThousand: 0.025, outputPerThousand: 0.1 };
 
+/** A hit's pages, which an engine with pages keeps in its fields, so a comparison holds it to them. */
+const pagesOf = (hit: Hit) => {
+  const { page, pageEnd } = (hit.fields as Record<string, unknown> | undefined) ?? {};
+  return {
+    ...(typeof page === 'number' ? { page } : {}),
+    ...(typeof pageEnd === 'number' ? { pageEnd } : {}),
+  };
+};
+
 const hasVectors = (doc: IndexDocument, dimensions: number) =>
   [...doc.chunks, ...doc.phrases].every((t) => t.vector?.length === dimensions);
 
@@ -359,6 +370,12 @@ export const createEngineSwitchesModule =
             (i.id === catalog.qualify(tenant, ref) || i.id === ref),
         );
 
+    /**
+     * Whether a switch can go back to its previous endpoint: it is still in the catalog (platform-pg
+     * went with issue 151) and still shared with the dataset's organisation.
+     */
+    const previousExists = (scope: string, from: string) => Boolean(endpointFor(scope, from));
+
     const ownDataset = (tenant: string, id: string) => {
       const item = catalog.get('dataset', catalog.qualify(tenant, id));
       return item?.scope === tenant ? item : undefined;
@@ -377,16 +394,9 @@ export const createEngineSwitchesModule =
 
     const sourceEngine = (item: CatalogItem) =>
       catalog.get('knowledge-endpoint', String(item.spec.endpoint))?.spec.engine;
-    // pgvector on the platform database and on the knowledge server is one engine with two stores.
-    const connectionOf = (spec: Record<string, unknown> | undefined) =>
-      (spec?.options as { connection?: unknown } | undefined)?.connection ?? 'platform';
-    const sharesStorage = (item: CatalogItem, target: CatalogItem) =>
-      connectionOf(catalog.get('knowledge-endpoint', String(item.spec.endpoint))?.spec) ===
-      connectionOf(target.spec);
-
     /** A switch into the knowledge database fills its generation through ingestion runs (ADR 0025). */
     const onKnowledge = (endpoint: string) =>
-      connectionOf(catalog.get('knowledge-endpoint', endpoint)?.spec) === 'knowledge';
+      onKnowledgeServer(catalog.get('knowledge-endpoint', endpoint)?.spec);
     const intoKnowledge = (spec: Pick<EngineSwitchSpec, 'to'>) => onKnowledge(spec.to);
     const sameRun = (a: EngineSwitchSpec, b: EngineSwitchSpec) =>
       a.generation === b.generation && a.attempt === b.attempt;
@@ -521,11 +531,8 @@ export const createEngineSwitchesModule =
         throw new Refusal(409, t('operations.switchWriteKeyRequired'));
       if (!deps.writers.engines().includes(engine))
         throw new Refusal(409, t('operations.switchCannotWrite'));
-      if (
-        engine === sourceEngine(item) &&
-        engineOf(deps, engine)?.builtin &&
-        sharesStorage(item, target)
-      )
+      // A built-in engine keeps one store: two pgvector endpoints share the knowledge server.
+      if (engine === sourceEngine(item) && engineOf(deps, engine)?.builtin)
         throw new Refusal(409, t('operations.switchSharedStorage'));
       const description = engineOf(deps, engine);
       const needsVectors = description?.writer?.needsVectors ?? false;
@@ -679,7 +686,8 @@ export const createEngineSwitchesModule =
         canRollback:
           spec.state === 'active' &&
           keptUntil !== undefined &&
-          new Date(keptUntil).getTime() > now().getTime(),
+          new Date(keptUntil).getTime() > now().getTime() &&
+          previousExists(entry.scope, spec.from),
         ...(decision ? { decision } : {}),
       };
     };
@@ -754,6 +762,7 @@ export const createEngineSwitchesModule =
             chunkId: hit.id,
             ...(hit.document !== undefined ? { document: hit.document } : {}),
             ...(hit.position !== undefined ? { position: hit.position } : {}),
+            ...pagesOf(hit),
             ...(hit.title !== undefined ? { title: hit.title } : {}),
           })),
           latencyMs: performance.now() - started,
@@ -774,7 +783,8 @@ export const createEngineSwitchesModule =
       signal: AbortSignal,
     ) => {
       const short = shortOf(scope, item.id);
-      const sets = (await deps.evalStores.testSets.list(scope)).filter(
+      // A platform dataset's test sets are the platform organisation's, as the seed stores them.
+      const sets = (await deps.evalStores.testSets.list(tenantOf(scope))).filter(
         (s) => s.spec.corpus === short || s.spec.corpus === item.id,
       );
       const cases: RetrievalCase[] = sets.flatMap((s) =>
@@ -1642,7 +1652,12 @@ export const createEngineSwitchesModule =
         canSwitch: item.scope === tenant,
         retentionDays: retentionDays(tenant),
         ...(open ? { activeSwitch: await withAdmission(open) } : {}),
-        ...(last && lastSpec && keptUntil && new Date(keptUntil).getTime() > now().getTime()
+        // A previous engine whose endpoint is gone, such as platform-pg (issue 151), has nothing to roll back to.
+        ...(last &&
+        lastSpec &&
+        keptUntil &&
+        new Date(keptUntil).getTime() > now().getTime() &&
+        previousExists(tenant, lastSpec.from)
           ? {
               previous: {
                 endpoint: lastSpec.from,
@@ -2263,6 +2278,10 @@ export const createEngineSwitchesModule =
             if (new Date(spec.previous.keptUntil).getTime() <= now().getTime())
               return problem(c, 409, 'Den forrige søkemotoren er ikke lenger beholdt.', [
                 { path: 'keptUntil', message: spec.previous.keptUntil },
+              ]);
+            if (!previousExists(g.tenant, spec.from))
+              return problem(c, 409, 'Den forrige søkemotoren finnes ikke lenger.', [
+                { path: 'from', message: spec.from },
               ]);
             if (!isReasonLongEnough(reason))
               return problem(c, 400, 'Begrunnelsen er for kort', [

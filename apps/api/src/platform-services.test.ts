@@ -155,6 +155,7 @@ const restartedFrom =
     list: (...args) => previous.list(...args),
     resolve: (...args) => previous.resolve(...args),
     publish: (...args) => previous.publish(...args),
+    remove: (...args) => previous.remove(...args),
     capabilities: async (onInvalid) => {
       const stored = await Promise.all(
         [builderServiceId, optimiserServiceId].map((id) => previous.get('Service', tenant, id)),
@@ -189,7 +190,6 @@ const boot = async (
   const env = {
     FOUNDRY_OPENAI_BASE_URL: `${model.url}/v1`,
     TYPESENSE_URL: search.url,
-    COLBERT_API_URL: search.url,
   };
   const created = await createPlatform({
     catalogs: {
@@ -197,7 +197,7 @@ const boot = async (
       knowledge: resolveCatalog(yaml('knowledge.yaml'), 'datasets', env).catalog,
       rerank: resolveCatalog(yaml('rerank.yaml'), 'rerankers', env).catalog,
     },
-    secrets: envSecrets({ FOUNDRY_OPENAI_KEY: 'm', TYPESENSE_KEY: 't', COLBERT_API_KEY: 'c' }),
+    secrets: envSecrets({ FOUNDRY_OPENAI_KEY: 'm', TYPESENSE_KEY: 't' }),
     definitions: definitions ?? ((plugins) => new InMemoryDefinitionStore(plugins)),
     settings: new SettingsRegistry(platformSettings),
     policy: { decide: async () => ({ allow: true }) },

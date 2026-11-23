@@ -85,7 +85,7 @@ export const searchEngines = defineNamespace({
   engineLine: 'Søkemotor: <strong>{engine}</strong>',
   settingsFor: 'Innstillinger for {engine}',
   schemaGenerated: 'Feltene og reglene lages fra JSON-skjemaet søkemotoren er registrert med.',
-  builtinNote: 'Kjører i plattformens database. Ingen adresse eller nøkkel trengs.',
+  builtinNote: 'Kjører i plattformen. Ingen adresse eller nøkkel trengs.',
   schemaFromApi: 'Skjemaet fra API-et',
   jsonSchema: 'JSON-skjema',
   testConnection: 'Test tilkoblingen',

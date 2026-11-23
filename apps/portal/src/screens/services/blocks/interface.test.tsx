@@ -48,7 +48,7 @@ const openInterface = async (fetch = recording()) => {
   window.location.hash = '#/services/rapportassistenten/interface';
   render(<App auth={auth} fetch={fetch} live />);
   await screen.findByRole('heading', { level: 1, name: 'Rapportassistenten' });
-  await screen.findByRole('group', { name: 'Byggeklosser og maler' });
+  await screen.findByRole('group', { name: 'Designelementer og maler' });
   return fetch;
 };
 
@@ -65,19 +65,19 @@ const savedLayout = () => (writes.at(-1) as Saved | undefined)?.definition.spec.
 const keepStart = (tenant: string, service: string, start: BlocksStart) =>
   sessionStorage.setItem(`genki.blocks.${tenant}/${service}`, JSON.stringify(start));
 
-describe('the Grensesnitt tab', () => {
+describe('the Utforming tab', () => {
   it('is on the page of a service that is published, and starts from the next look of Kunnskapsassistenten', async () => {
     await openInterface();
-    expect(navLink('Grensesnitt').getAttribute('aria-selected')).toBe('true');
+    expect(navLink('Utforming').getAttribute('aria-selected')).toBe('true');
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
     fireEvent.click(screen.getByRole('radio', { name: 'Maler' }));
     expect(
-      screen.getByRole('button', { name: 'Bruk Kunnskapsassistenten, ny utgave' }).ariaPressed,
+      screen.getByRole('button', { name: 'Bruk Kunnskapsassistenten, nytt utseende' }).ariaPressed,
     ).toBe('true');
     expectAccessible();
   });
 
-  it('is on the page of a new service, between Oppsett and Utviklerverktøy', async () => {
+  it('is on the page of a new service, between Oppsett and Teknisk', async () => {
     await renderAt('#/services/new');
     await screen.findByRole('navigation', { name: 'Deler av oppsettet' });
     const nav = screen.getByRole('tablist', { name: /^Faner for/ });
@@ -85,16 +85,16 @@ describe('the Grensesnitt tab', () => {
       within(nav)
         .getAllByRole('tab')
         .map((a) => a.textContent),
-    ).toEqual(['Oppsett', 'Grensesnitt', 'Utviklerverktøy']);
-    fireEvent.click(navLink('Grensesnitt'));
-    expect(await screen.findByRole('group', { name: 'Byggeklosser og maler' })).toBeTruthy();
+    ).toEqual(['Oppsett', 'Utforming', 'Teknisk']);
+    fireEvent.click(navLink('Utforming'));
+    expect(await screen.findByRole('group', { name: 'Designelementer og maler' })).toBeTruthy();
     expectAccessible();
   });
 
-  it('has «Tekster» beside «Maler» and «Byggeklosser», and keeps the words with the layout', async () => {
+  it('has «Tekster» beside «Maler» and «Designelementer», and keeps the words with the layout', async () => {
     await openInterface();
-    const switcher = within(screen.getByRole('group', { name: 'Byggeklosser og maler' }));
-    for (const name of ['Maler', 'Byggeklosser', 'Tekster'])
+    const switcher = within(screen.getByRole('group', { name: 'Designelementer og maler' }));
+    for (const name of ['Maler', 'Designelementer', 'Tekster'])
       expect(switcher.getByRole('radio', { name })).toBeTruthy();
     fireEvent.click(switcher.getByRole('radio', { name: 'Tekster' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'Navn' }), {
@@ -111,13 +111,13 @@ describe('the Grensesnitt tab', () => {
 
   it('keeps the layout when the person goes to another tab and back', async () => {
     await openInterface();
-    expect(switchIn('Høyre panel', 'Kilder').checked).toBe(true);
-    fireEvent.click(switchIn('Høyre panel', 'Kilder'));
+    expect(switchIn('Høyre', 'Kilder').checked).toBe(true);
+    fireEvent.click(switchIn('Høyre', 'Kilder'));
     go('#/services/rapportassistenten/setup');
     await waitFor(() => expect(navLink('Oppsett').getAttribute('aria-selected')).toBe('true'));
     go('#/services/rapportassistenten/interface');
-    await screen.findByRole('group', { name: 'Byggeklosser og maler' });
-    expect(switchIn('Høyre panel', 'Kilder').checked).toBe(false);
+    await screen.findByRole('group', { name: 'Designelementer og maler' });
+    expect(switchIn('Høyre', 'Kilder').checked).toBe(false);
   });
 });
 
@@ -154,8 +154,8 @@ describe('«Lim inn oppsett»', () => {
     await openInterface();
     paste(layoutJson(defaultLayout));
     await screen.findByText('Oppsettet du limte inn, er i bruk.');
-    expect(switchIn('Høyre panel', 'Fremgangsmåte').checked).toBe(false);
-    expect(switchIn('Innhold', 'Fremgangsmåte').checked).toBe(true);
+    expect(switchIn('Høyre', 'Fremgangsmåte').checked).toBe(false);
+    expect(switchIn('Midten', 'Fremgangsmåte').checked).toBe(true);
     await waitFor(() => expect(savedLayout()).toBeDefined(), { timeout: 3000 });
     expect(savedLayout()?.zones.main.map((placed) => placed.block)).toEqual(
       defaultLayout.zones.main.map((placed) => placed.block),
@@ -177,8 +177,8 @@ describe('«Lim inn oppsett»', () => {
     );
     const said = screen.getByText(/^Oppsettet bryter reglene/).textContent ?? '';
     for (const text of [
-      'Navn (Assistenten) er lengre enn 80 tegn.',
-      'Forslag 2 (Assistenten) er lengre enn 200 tegn.',
+      'Navn (Utformingen) er lengre enn 80 tegn.',
+      'Forslag 2 (Utformingen) er lengre enn 200 tegn.',
       'Navn på samlingen (Samlingen kudos) er lengre enn 80 tegn.',
       'Navn i filteret (Samlingen kudos, Feltet doctype) er lengre enn 80 tegn.',
     ])
@@ -232,7 +232,7 @@ describe('«Lim inn oppsett»', () => {
       target: { value: '{"version":2}' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Bruk oppsettet' }));
-    expect(screen.getByText('Teksten er ikke et oppsett av byggeklosser.')).toBeTruthy();
+    expect(screen.getByText('Teksten er ikke et oppsett av designelementer.')).toBeTruthy();
     const twice = {
       version: 1,
       zones: { primary: [{ block: 'chat' }], main: [{ block: 'chat' }], secondary: [] },
@@ -243,11 +243,11 @@ describe('«Lim inn oppsett»', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Bruk oppsettet' }));
     expect(
       screen.getByText(
-        'Oppsettet bryter reglene for byggeklossene: Chat kan ikke stå i venstre panel. Chat står flere steder.',
+        'Oppsettet bryter reglene for designelementene: Samtale kan ikke stå i feltet venstre. Samtale står flere steder.',
       ),
     ).toBeTruthy();
     expect(screen.getByLabelText('Oppsett som JSON').getAttribute('aria-invalid')).toBe('true');
-    expect(switchIn('Høyre panel', 'Kilder').checked).toBe(true);
+    expect(switchIn('Høyre', 'Kilder').checked).toBe(true);
     expectAccessible();
   });
 });
@@ -255,14 +255,14 @@ describe('«Lim inn oppsett»', () => {
 describe('the layout in the draft', () => {
   it('keeps a block the draft cannot back yet where it was chosen, so it comes back after a reload', async () => {
     const fetch = await openInterface();
-    expect(switchIn('Venstre panel', 'Filter').checked).toBe(true);
-    fireEvent.click(switchIn('Høyre panel', 'Kilder'));
+    expect(switchIn('Venstre', 'Filter').checked).toBe(true);
+    fireEvent.click(switchIn('Høyre', 'Kilder'));
     await waitFor(() => expect(savedLayout()).toBeDefined(), { timeout: 3000 });
     expect(blocksIn(savedLayout() as AssistantLayout, 'primary')).toContain('filter');
     cleanup();
     await openInterface(fetch);
-    expect(switchIn('Venstre panel', 'Filter').checked).toBe(true);
-    expect(switchIn('Høyre panel', 'Kilder').checked).toBe(false);
+    expect(switchIn('Venstre', 'Filter').checked).toBe(true);
+    expect(switchIn('Høyre', 'Kilder').checked).toBe(false);
   });
 });
 
@@ -296,25 +296,44 @@ describe('the layout saved in the draft', () => {
       profile: { assistantName: 'Svarhjelpen' },
     };
     await openInterface(withDraftLayout(layout));
-    expect(switchIn('Høyre panel', 'Kilder').checked).toBe(false);
-    expect(switchIn('Innhold', 'Chat').checked).toBe(true);
+    expect(switchIn('Høyre', 'Kilder').checked).toBe(false);
+    expect(switchIn('Midten', 'Samtale').checked).toBe(true);
     fireEvent.click(screen.getByRole('radio', { name: 'Tekster' }));
     expect((screen.getByRole('textbox', { name: 'Navn' }) as HTMLInputElement).value).toBe(
       'Svarhjelpen',
     );
   });
 
+  it('opens a layout whose texts are in both languages, and keeps the other language when saving', async () => {
+    const layout = {
+      ...fromTemplate('chat-only').layout,
+      profile: { assistantName: { nb: 'Kunnskapsassistenten', en: 'The Knowledge Assistant' } },
+    };
+    await openInterface(withDraftLayout(layout));
+    fireEvent.click(screen.getByRole('radio', { name: 'Tekster' }));
+    const name = screen.getByRole('textbox', { name: 'Navn' }) as HTMLInputElement;
+    expect(name.value).toBe('Kunnskapsassistenten');
+    fireEvent.change(name, { target: { value: 'KA' } });
+    await waitFor(
+      () =>
+        expect(savedLayout()?.profile).toEqual({
+          assistantName: { nb: 'KA', en: 'The Knowledge Assistant' },
+        }),
+      { timeout: 3000 },
+    );
+  });
+
   it('will not edit a draft layout it cannot show without losing it, and writes nothing', async () => {
     const layout = {
       ...fromTemplate('chat-only').layout,
-      profile: { assistantName: { nb: 'Svarhjelpen', en: 'The answer helper' } },
+      profile: { assistantName: { nb: 'Svarhjelpen', sv: 'Svarshjälpen' } },
     };
     const auth = mockAnsattporten(kari);
     await auth.login();
     window.location.hash = '#/services/rapportassistenten/interface';
     render(<App auth={auth} fetch={withDraftLayout(layout)} live />);
     expect(await screen.findByText('Byggeren kan ikke endre dette oppsettet')).toBeTruthy();
-    expect(screen.queryByRole('group', { name: 'Byggeklosser og maler' })).toBeNull();
+    expect(screen.queryByRole('group', { name: 'Designelementer og maler' })).toBeNull();
     await new Promise((resolve) => setTimeout(resolve, 1000));
     expect(interfaceWrites()).toEqual([]);
   });
@@ -323,10 +342,10 @@ describe('the layout saved in the draft', () => {
     const chat = fromTemplate('chat-only').layout;
     keepStart(tenant, 'rapportassistenten', { layout: chat });
     await openInterface();
-    expect(switchIn('Høyre panel', 'Kilder').checked).toBe(false);
-    fireEvent.click(screen.getByRole('button', { name: 'Lagre i utkastet' }));
+    expect(switchIn('Høyre', 'Kilder').checked).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Lagre' }));
     await waitFor(() => expect(savedLayout()).toEqual(chat), { timeout: 3000 });
-    expect(screen.queryByRole('button', { name: 'Lagre i utkastet' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Lagre' })).toBeNull();
     expect(keptStart(tenant, 'rapportassistenten')).toBeUndefined();
     expectAccessible();
   });
@@ -335,17 +354,17 @@ describe('the layout saved in the draft', () => {
     keepStart(tenant, 'rapportassistenten', { layout: fromTemplate('chat-only').layout });
     await openInterface();
     fireEvent.click(screen.getByRole('button', { name: 'Forkast' }));
-    expect(switchIn('Høyre panel', 'Kilder').checked).toBe(true);
+    expect(switchIn('Høyre', 'Kilder').checked).toBe(true);
     expect(keptStart(tenant, 'rapportassistenten')).toBeUndefined();
-    expect(screen.queryByRole('button', { name: 'Lagre i utkastet' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Lagre' })).toBeNull();
     expect(interfaceWrites()).toEqual([]);
   });
 
   it('offers no layout kept in this browser when the draft already holds one', async () => {
     keepStart(tenant, 'rapportassistenten', { layout: defaultLayout });
     await openInterface(withDraftLayout(fromTemplate('chat-only').layout));
-    expect(screen.queryByRole('button', { name: 'Lagre i utkastet' })).toBeNull();
-    expect(switchIn('Høyre panel', 'Kilder').checked).toBe(false);
+    expect(screen.queryByRole('button', { name: 'Lagre' })).toBeNull();
+    expect(switchIn('Høyre', 'Kilder').checked).toBe(false);
   });
 });
 
@@ -438,10 +457,10 @@ describe('the layout when the draft changes under the open tab', () => {
     const view = render(
       tab(definitionWith(fromTemplate('knowledge-assistant-next').layout), onLayout),
     );
-    await screen.findByRole('group', { name: 'Byggeklosser og maler' });
-    expect(switchIn('Høyre panel', 'Kilder').checked).toBe(true);
+    await screen.findByRole('group', { name: 'Designelementer og maler' });
+    expect(switchIn('Høyre', 'Kilder').checked).toBe(true);
     view.rerender(tab(definitionWith(fromTemplate('chat-only').layout), onLayout));
-    await waitFor(() => expect(switchIn('Høyre panel', 'Kilder').checked).toBe(false));
+    await waitFor(() => expect(switchIn('Høyre', 'Kilder').checked).toBe(false));
     expect(onLayout).not.toHaveBeenCalled();
   });
 
@@ -453,8 +472,8 @@ describe('the layout when the draft changes under the open tab', () => {
     const view = render(
       tab(definitionWith(fromTemplate('knowledge-assistant-next').layout), onLayout),
     );
-    await screen.findByRole('group', { name: 'Byggeklosser og maler' });
-    fireEvent.click(switchIn('Høyre panel', 'Kilder'));
+    await screen.findByRole('group', { name: 'Designelementer og maler' });
+    fireEvent.click(switchIn('Høyre', 'Kilder'));
     await waitFor(() => expect(saved).toBeDefined());
     fireEvent.click(screen.getByRole('radio', { name: 'Tekster' }));
     view.rerender(tab(definitionWith(saved as AssistantLayout), onLayout));

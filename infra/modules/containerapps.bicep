@@ -1,5 +1,5 @@
 param name string
-param environmentName string
+param platformTier string
 param location string
 param tags object
 param appsSubnetId string
@@ -25,8 +25,11 @@ param appsImage string
 @description('The Docling server image by digest (docker/docling).')
 param doclingImage string
 
-@description('Most Docling replicas at once; each converts one PDF at a time.')
-param doclingMaxReplicas int = 8
+@description('Most Docling replicas at once; each converts one PDF at a time. 24 × 4 vCPU (issue 922): one conversion uses about 2.6 cores however many it gets, so more replicas, not bigger ones, convert more pages an hour.')
+param doclingMaxReplicas int = 24
+
+@description('Memory of a Docling replica in GiB, with 4 vCPU (Consumption allows at most 8). The memory alert and the idle restart read it (issue 922).')
+param doclingMemoryGiB int = 8
 param appVersion string
 param workerVersion string = ''
 param appEnv object
@@ -160,7 +163,7 @@ var identityPlainEnv = filter(map(items(identityEnv), item => { name: item.key, 
 
 var serverEnv = concat(
   [
-    { name: 'GENAI_ENV', value: environmentName }
+    { name: 'GENAI_ENV', value: platformTier }
     { name: 'AZURE_CLIENT_ID', value: identityClientId }
     { name: 'PGHOST', value: postgresHost }
     { name: 'PGDATABASE', value: postgresDatabase }
@@ -218,6 +221,9 @@ var platformLoginSecretEnv = platformLoginSecret
   ? [{ name: 'PLATFORM_LOGIN_CLIENT_SECRET', secretRef: 'platform-login-client-secret' }]
   : []
 
+// The API's revision from before PR 880 still reads colbert-api-key, so the secret stays with no env var; it goes in a later PR once that revision is gone (#690).
+var colbertKeySecret = { name: 'colbert-api-key', keyVaultUrl: '${keyVaultUri}secrets/colbert-api-key', identity: identityId }
+
 var apiAppName = '${name}-api'
 var apiCandidateRevision = empty(apiRevisionSuffix) ? '' : '${apiAppName}--${apiRevisionSuffix}'
 var apiCandidateLabelled = !empty(apiCandidateRevision) && !contains([apiLiveRevision, apiPreviousRevision], apiCandidateRevision)
@@ -254,7 +260,7 @@ resource api 'Microsoft.App/containerApps@2025-02-02-preview' = {
         traffic: apiTraffic
       }
       registries: [{ server: registryServer, identity: identityId }]
-      secrets: concat(secrets, proxyKeySecret, platformLoginSecretRef)
+      secrets: concat(secrets, proxyKeySecret, platformLoginSecretRef, [colbertKeySecret])
     }
     template: {
       revisionSuffix: empty(apiRevisionSuffix) ? null : apiRevisionSuffix
@@ -319,9 +325,11 @@ resource worker 'Microsoft.App/containerApps@2025-02-02-preview' = {
 }
 
 // The Docling server (ADR 0042, issue 476): PDF conversions for knowledge.convert. Internal TCP ingress, since
-// HTTP ingress ends a request after 240 s and a conversion takes minutes; the worker holds one request open
-// until Docling answers. One conversion per replica (one Docling worker on 4 vCPU), and replicas start on open
-// connections, from zero. It keeps nothing past a replica: no volume, results dropped once fetched, OCR page images
+// HTTP ingress ends a request after 240 s and a conversion takes minutes; the worker submits a file on the async
+// route and polls its task every 30 s on one connection, since TCP ingress closes a connection idle for 300 s
+// (issue 906). One conversion per replica (one Docling worker on 4 vCPU), and replicas start on open
+// connections, from zero: a connection to the app's name is held until the first replica is up (74 s in test,
+// issue 867). It keeps nothing past a replica: no volume, results dropped once fetched, OCR page images
 // in /tmp deleted after each region, and WARNING logs, which still name the file and page when Tesseract fails on
 // one. The platform identity is there only to pull the image and read the key: code in the container, which
 // parses untrusted PDFs, cannot get a token for it.
@@ -353,12 +361,16 @@ resource docling 'Microsoft.App/containerApps@2025-02-02-preview' = {
         {
           name: 'docling'
           image: doclingImage
-          resources: { cpu: json('4'), memory: '8Gi' }
+          resources: { cpu: json('4'), memory: '${doclingMemoryGiB}Gi' }
           env: [
             { name: 'DOCLING_SERVE_API_KEY', secretRef: doclingKeySecret.name }
+            // A replica keeps memory after a conversion; idle above half its memory, it restarts (genki_busy.py, issue 922)
+            { name: 'GENKI_DOCLING_RESTART_IDLE_GIB', value: '${doclingMemoryGiB / 2}${doclingMemoryGiB % 2 == 1 ? '.5' : ''}' }
             { name: 'DOCLING_SERVE_ENG_LOC_NUM_WORKERS', value: '1' }
             { name: 'DOCLING_NUM_THREADS', value: '4' }
             { name: 'OMP_NUM_THREADS', value: '4' }
+            // At most 4 pages wait between the steps of a conversion, not 100: a 248-page file peaked at 4.75 GiB instead of 11.0 (issue 922)
+            { name: 'DOCLING_SERVE_QUEUE_MAX_SIZE', value: '4' }
             { name: 'DOCLING_SERVE_MAX_SYNC_WAIT', value: '21600' }
             { name: 'DOCLING_SERVE_SINGLE_USE_RESULTS', value: 'true' }
             { name: 'DOCLING_SERVE_RESULT_REMOVAL_DELAY', value: '1' }
@@ -379,7 +391,8 @@ resource docling 'Microsoft.App/containerApps@2025-02-02-preview' = {
           ]
         }
       ]
-      // A replica stopped while it converts (scale-in, a new revision) gets 10 minutes to finish; not checked in Azure
+      // A stopped replica (scale-in, a new revision) gets 10 minutes, but docling-serve waits only for a request in
+      // flight, not for a task between polls: the worker submits a lost task again (issue 906)
       terminationGracePeriodSeconds: 600
       scale: {
         minReplicas: 0
@@ -390,7 +403,9 @@ resource docling 'Microsoft.App/containerApps@2025-02-02-preview' = {
   }
 }
 
-var doclingUrl = 'http://${docling.properties.configuration.ingress.fqdn}:5001'
+// By the app's name: the internal FQDN goes to the environment's HTTP ingress, which has nothing on 5001, so no
+// connection ever reached Docling by it, awake or not (issue 867).
+var doclingUrl = 'http://${docling.name}:5001'
 var doclingEnv = [
   { name: 'DOCLING_URL', value: doclingUrl }
   { name: 'DOCLING_API_KEY', secretRef: doclingKeySecret.name }
@@ -593,7 +608,7 @@ var webApps = [
       OIDC_ISSUER: webSettings.consoleIssuer
       OIDC_CLIENT_ID: webSettings.consoleClientId
       OIDC_TOKEN_ENDPOINT: webSettings.consoleTokenEndpoint
-      ENVIRONMENT: environmentName
+      ENVIRONMENT: platformTier
     }
   }
 ]
@@ -657,6 +672,7 @@ output appName string = api.name
 output workerName string = worker.name
 output webAppNames array = [for (item, i) in webApps: web[i].name]
 output doclingName string = docling.name
+output doclingMemoryGiB int = doclingMemoryGiB
 output knowledgeSetupJobName string = setupOn ? knowledgeSetupJob.name : ''
 output platformBackupJobName string = backupOn ? platformBackupJob.name : ''
 output fqdn string = api.properties.configuration.ingress.fqdn

@@ -53,6 +53,7 @@ import {
   type VariantOption,
   type Zone,
 } from '@genai/ui-blocks';
+import type { Locale } from '@genai/i18n';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   failureOf,
@@ -70,6 +71,7 @@ import {
 import { useT } from './i18n.js';
 import type { StepFrame } from './procedure.js';
 import { profileOf, type AssistantProfile, type FieldSpec } from './profile.js';
+import { blockRegistry } from './registry.js';
 import { useStoredValue, type AssistantStorage } from './storage.js';
 import { currentYear, withinYears } from './years.js';
 
@@ -120,6 +122,8 @@ export interface AssistantOptions {
   /** The reader's colour scheme, kept by the host, which «Innstillinger» changes. */
   colorScheme?: ColorScheme | undefined;
   onColorSchemeChange?: ((scheme: ColorScheme) => void) | undefined;
+  language?: Locale | undefined;
+  onLanguageChange?: ((language: Locale) => void) | undefined;
   /** Feedback on an answer. Without it, no feedback is offered. */
   onFeedback?: ((feedback: AssistantFeedback) => Promise<void> | void) | undefined;
   /** A thread renamed or deleted in the list. Without them, neither is offered. */
@@ -265,6 +269,8 @@ export const useAssistant = ({
   onNotice,
   colorScheme = 'auto',
   onColorSchemeChange,
+  language,
+  onLanguageChange,
   onFeedback,
   onRename,
   onDelete,
@@ -276,7 +282,10 @@ export const useAssistant = ({
   const t = useT();
   // The host's profile, the layout's filling the rest; the host's own object when the layout has
   // none, so a host that passes one keeps its identity.
-  const profile = useMemo(() => profileOf(layout, hostProfile), [layout.profile, hostProfile]);
+  const profile = useMemo(
+    () => profileOf(layout, hostProfile, language === 'en' ? 'en' : 'nb'),
+    [layout.profile, hostProfile, language],
+  );
   const [models, setModels] = useState<ModelRow[]>();
   // Why genki could not say: the status it answered with, or none when it was not reached. The
   // error's own message is the browser's or genki's, in their language, so it goes to the console.
@@ -319,7 +328,7 @@ export const useAssistant = ({
   const has = useCallback(
     (id: BlockId) =>
       isOn(layout, id) &&
-      blockSpec(id).status === 'built' &&
+      blockRegistry.has(id) &&
       blockSpec(id).needs.every((n) => n.startsWith('component:') || met(n)),
     [layout, met],
   );
@@ -1503,6 +1512,8 @@ export const useAssistant = ({
     threadInUrl,
     colorScheme,
     onColorSchemeChange,
+    language,
+    onLanguageChange,
     onFeedback,
   };
 };

@@ -36,6 +36,11 @@ export interface Job<T extends JobData = JobData> {
   data: T;
   retryCount: number;
   signal: AbortSignal;
+  /**
+   * The key the job was sent with, kept through its retries, its dead letter and a redrive: a
+   * convert job ends the waits its key names, not a key rebuilt from today's settings (issue 945).
+   */
+  key?: string;
 }
 
 export type JobHandler<T extends JobData = JobData> = (job: Job<T>) => Promise<void>;
@@ -565,6 +570,7 @@ export class InMemoryJobQueue implements JobQueue {
         data,
         retryCount: job.retryCount,
         signal: abort.signal,
+        ...(job.key === undefined ? {} : { key: job.key }),
       });
       if (current()) job.state = 'completed';
     } catch (error) {

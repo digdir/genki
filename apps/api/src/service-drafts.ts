@@ -222,6 +222,7 @@ export const serviceDrafts = (
       draft: { ...fromTree(tree), baseVersion: latest.version } satisfies ServiceDraft,
       conflicts,
       unchanged: same(tree, mine),
+      redundant: same(tree, published),
     };
   };
 
@@ -263,7 +264,10 @@ export const serviceDrafts = (
     if (!draft || draft.spec.baseVersion === undefined) return undefined;
     if (draft.spec.baseVersion >= published.version) return undefined;
     const result = await merged(tenant, service, draft.spec, published);
-    if (result.conflicts.length > 0 || result.unchanged) return undefined;
+    if (result.conflicts.length > 0) return undefined;
+    if (result.redundant)
+      return write(actor, tenant, service, draft.spec, true, reason, draft.version);
+    if (result.unchanged) return undefined;
     return write(actor, tenant, service, result.draft, false, reason, draft.version);
   };
 

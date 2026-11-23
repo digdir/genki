@@ -453,6 +453,70 @@ describe('live mode without invented data', () => {
     );
   });
 
+  it("names a tenant's blocks and skills by their kind and opens each under its own path", async () => {
+    const history = (kind: string, id: string) =>
+      json({
+        kind,
+        tenant: '991825827',
+        id,
+        latest: {
+          version: 1,
+          publishedBy: 'operator:drift',
+          publishedAt: '2026-10-02T10:00:00Z',
+          reason: 'Første versjon',
+          definition: { apiVersion: 'genai/v1', kind, metadata: { tenant: '991825827', id } },
+          files: {},
+        },
+        versions: [
+          {
+            version: 1,
+            publishedBy: 'operator:drift',
+            publishedAt: '2026-10-02T10:00:00Z',
+            reason: 'Første versjon',
+          },
+        ],
+      });
+    const row = (kind: string, id: string, name: string) => ({
+      kind,
+      id,
+      name,
+      latestVersion: 1,
+      publishedAt: '2026-10-02T10:00:00Z',
+      publishedBy: 'operator:drift',
+    });
+    const api = await openLive('#/tenants/services?tenant=991825827', (path) =>
+      path === '/api/operator/tenants/991825827/definitions'
+        ? json({ data: [row('Block', 'chat', 'Chat'), row('Skill', 'klarsprak', 'Klarspråk')] })
+        : path === '/api/operator/tenants/991825827/definitions/blocks/chat'
+          ? history('Block', 'chat')
+          : path === '/api/operator/tenants/991825827/definitions/skills/klarsprak'
+            ? history('Skill', 'klarsprak')
+            : undefined,
+    );
+
+    const block = (await screen.findByText('Chat')).closest('tr') as HTMLElement;
+    const skill = screen.getByText('Klarspråk').closest('tr') as HTMLElement;
+    expect(within(block).getByText('Designelement')).toBeTruthy();
+    expect(within(skill).getByText('Arbeidsinstruks')).toBeTruthy();
+
+    fireEvent.click(within(block).getByRole('button', { name: /Versjoner/ }));
+    await waitFor(() => expect(window.location.hash).toContain('kind=block'));
+    await waitFor(() =>
+      expect(
+        api.calls.some((c) => c.path === '/api/operator/tenants/991825827/definitions/blocks/chat'),
+      ).toBe(true),
+    );
+    fireEvent.click(within(skill).getByRole('button', { name: /Versjoner/ }));
+    await waitFor(() =>
+      expect(
+        api.calls.some(
+          (c) => c.path === '/api/operator/tenants/991825827/definitions/skills/klarsprak',
+        ),
+      ).toBe(true),
+    );
+    expect(api.calls.some((c) => c.path.includes('/definitions/step-flows/'))).toBe(false);
+  });
+
   it('marks an internal service in the tenant service list', async () => {
     await openLive('#/tenants/services?tenant=991825827', (path) =>
       path === '/api/operator/tenants/991825827/definitions'
@@ -591,13 +655,13 @@ describe('live mode without invented data', () => {
 });
 
 describe('sidebar', () => {
-  it('marks Kvalitetsmatrise og dommere as the current page on every tab of the matrix', async () => {
+  it('marks Kvalitet i alle tjenester as the current page on every tab of the matrix', async () => {
     await openLive('#/quality-matrix?tab=judges');
     const menu = screen.getByRole('navigation', { name: 'Konsollmeny' });
 
     expect(
       within(menu)
-        .getByRole('link', { name: 'Kvalitetsmatrise og dommere' })
+        .getByRole('link', { name: 'Kvalitet i alle tjenester' })
         .getAttribute('aria-current'),
     ).toBe('page');
     expect(within(menu).queryByRole('link', { name: 'Dommere' })).toBeNull();

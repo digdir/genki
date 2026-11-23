@@ -129,7 +129,7 @@ Flags are on only for the exact value `true`.
 | `list_models`          | The models the organisation can choose, whether it may use them, where data is processed and the price per 1,000 tokens                    | Reads       |
 | `search_dataset`       | Searches a dataset as a service run does, with filters, and shows the raw hits; no chat model call                                         | Reads       |
 | `validate_definition`  | Checks a definition without saving it and lists the fields that differ from the published version                                          | Reads       |
-| `publish_definition`   | Validates, then publishes the next version with a `reason` of at least 10 characters                                                       | Writes      |
+| `publish_definition`   | Validates, then publishes the next version to the testutgave with a `reason` of at least 10 characters                                     | Writes      |
 | `run_playground`       | Runs a published version or an unsaved `yaml`, optionally next to a second setup in `compareWith`, and returns answer, sources, cost, time | Costs money |
 | `list_runs`            | Recent service runs or playground runs (`origin`), filtered by `service` or `status`                                                       | Reads       |
 | `get_run`              | One run with its timeline, compact by default; `full: true` gives the steps as JSON; read steps name the chunks they read                  | Reads       |
@@ -174,7 +174,9 @@ Details worth knowing:
 
 ### Risk classes
 
-`publish_definition` refuses a new service with a risk class above `minimal`, and any change to `riskClass` or `riskConfirmation`, before it calls the API. The error gives a link to the service in the portal, where a person confirms the risk class. Publish the other changes without touching those fields, or let the person publish in the portal.
+`publish_definition` changes only the testutgave (`test`): users keep the version «I bruk» until a person publishes it from the portal, and the answer says both versions. It refuses a service whose `prod` follows every publish, since there users would get the change at once; a person adds a test edition in the portal first. A new service's first version is the exception, as nobody uses it yet.
+
+`publish_definition` also refuses a new service with a risk class above `minimal`, and any change to `riskClass` or `riskConfirmation`, before it calls the API. The error gives a link to the service in the portal, where a person confirms the risk class. Publish the other changes without touching those fields, or let the person publish in the portal.
 
 ## The skill
 

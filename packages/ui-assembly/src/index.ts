@@ -8,6 +8,7 @@ export {
   type AnswerData,
   type AskParams,
   type AssistantApi,
+  type GenkiApi,
   type GenkiApiOptions,
   type ThreadRow,
   type Turn,
@@ -33,3 +34,8 @@ export {
   type AssistantOptions,
   type AssistantState,
 } from './useAssistant.js';
+export type { BlockData } from '@genai/contracts/block-fields';
+export type { RefBlockPayload } from '@genai/contracts/blocks';
+export { blockData, blockState, pickReads, type BlockContext } from './block-data.js';
+export { RefBlock, type RefBlockProps } from './ref-block.js';
+export { resolveBlock, type RefBlocks, type ResolvedBlock } from './registry.js';

@@ -65,7 +65,7 @@ const endpoint = (
 
 export const exampleEndpoints: KnowledgeEndpointView[] = [
   endpoint({
-    id: 'platform-pg',
+    id: 'kunnskapsserveren',
     engine: 'pgvector',
     title: 'Innebygd søk',
     tech: 'Postgres med pgvector',
@@ -118,7 +118,7 @@ export const exampleEndpoints: KnowledgeEndpointView[] = [
 ];
 
 const latency: Record<string, number> = {
-  'platform-pg': 180,
+  kunnskapsserveren: 180,
   'typesense-digdir': 90,
   'azure-sverige': 210,
   'opensearch-sev': 120,
@@ -273,7 +273,7 @@ export const searchEnginesMock = (options: SearchEnginesMockOptions = {}): MockH
           ? 'typesense-digdir'
           : dataset === target && options.scenario === 'no-facets'
             ? 'opensearch-sev'
-            : 'platform-pg';
+            : 'kunnskapsserveren';
     const fresh: DatasetState = { endpoint, count: 0 };
     if (dataset === target) {
       if (options.scenario === 'switching')

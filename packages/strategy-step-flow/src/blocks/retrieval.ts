@@ -40,6 +40,8 @@ const hits = (chunks: FlowChunk[]) =>
     id: c.chunkId,
     ...(c.document === undefined ? {} : { document: c.document }),
     ...(c.position === undefined ? {} : { position: c.position }),
+    ...(c.page === undefined ? {} : { page: c.page }),
+    ...(c.pageEnd === undefined ? {} : { pageEnd: c.pageEnd }),
     ...(c.score === undefined ? {} : { score: c.score }),
     ...(c.title === undefined ? {} : { title: c.title }),
   }));

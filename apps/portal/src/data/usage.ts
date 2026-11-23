@@ -86,7 +86,7 @@ export const usageServices: UsageServiceInfo[] = [
     model: 'aivar/borealis-27b',
     limit: 1e6,
     limitNote:
-      'En samlet jobb med 214 høringssvar kjører nå og trenger omtrent 0,3 mill. til. Når grensen er nådd, stopper jobben, og resten av høringssvarene venter til grensen økes eller ny måned starter.',
+      'En massekjøring med 214 høringssvar kjører nå og trenger omtrent 0,3 mill. til. Når grensen er nådd, stopper jobben, og resten av høringssvarene venter til grensen økes eller ny måned starter.',
   },
   {
     id: 'motereferat',

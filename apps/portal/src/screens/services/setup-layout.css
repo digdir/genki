@@ -325,6 +325,7 @@
 .draft-bar {
   position: sticky;
   top: 0;
+  margin-top: 16px;
   z-index: 2;
   display: flex;
   flex-wrap: wrap;
@@ -334,16 +335,6 @@
   background: var(--ds-color-accent-surface-tinted);
   border-radius: 8px;
   padding: 10px 16px;
-}
-
-.draft-bar.clean {
-  border-color: var(--ds-color-neutral-border-subtle);
-  background: var(--ds-color-neutral-background-default);
-}
-
-.draft-bar.unsaved {
-  border-color: var(--ds-color-warning-border-subtle);
-  background: var(--ds-color-warning-surface-tinted);
 }
 
 .draft-bar.failed {
@@ -357,14 +348,6 @@
   height: 10px;
   border-radius: 50%;
   background: var(--ds-color-accent-base-default);
-}
-
-.draft-bar.clean .draft-bar-dot {
-  background: var(--ds-color-success-base-default);
-}
-
-.draft-bar.unsaved .draft-bar-dot {
-  background: var(--ds-color-warning-base-default);
 }
 
 .draft-bar.failed .draft-bar-dot {
@@ -946,4 +929,42 @@
 
 .not-yet-saved-head > .area-label {
   padding: 0;
+}
+
+.diff-warning > span {
+  flex: 1 1 360px;
+  color: var(--ds-color-warning-text-default);
+}
+
+.diff-warning.publish-quality {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.diff-warning.publish-quality > span {
+  flex: none;
+}
+
+.publish-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.publish-table th,
+.publish-table td {
+  text-align: left;
+  vertical-align: top;
+  padding: 12px 12px 12px 0;
+  border-bottom: 1px solid var(--ds-color-neutral-border-subtle);
+}
+
+.publish-table thead th {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ds-color-neutral-text-subtle);
+}
+
+.publish-table tbody th {
+  width: 140px;
+  font-weight: 500;
 }

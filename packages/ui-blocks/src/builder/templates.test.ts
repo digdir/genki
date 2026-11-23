@@ -61,15 +61,14 @@ describe('the templates', () => {
     expect(blocksIn(layout, 'secondary')).toEqual(['sources']);
   });
 
-  it('give Kunnskapsassistenten’s next look the same blocks, with Approach also as the tool and Dokumentvisning after Kilder', () => {
+  it('give Kunnskapsassistenten’s next look Fremgangsmåte only over each answer, and Dokumentvisning after Kilder in the panel', () => {
     const next = templates['knowledge-assistant-next'];
     const today = templates['knowledge-assistant'];
     expect(next.primary).toEqual(today.primary);
     expect(next.main).toEqual(today.main);
-    expect(next.secondary).toEqual(['approach', 'sources', 'document-view', 'notes']);
-    expect(placedAt(fromTemplate('knowledge-assistant-next').layout, 'approach')).toBe('both');
+    expect(next.secondary).toEqual(['sources', 'document-view', 'notes']);
+    expect(placedAt(fromTemplate('knowledge-assistant-next').layout, 'approach')).toBe('main');
     expect(blocksIn(fromTemplate('knowledge-assistant-next').layout, 'secondary')).toEqual([
-      'approach',
       'sources',
       'document-view',
     ]);

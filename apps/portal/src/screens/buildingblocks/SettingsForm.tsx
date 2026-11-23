@@ -140,7 +140,7 @@ export const SettingsForm = ({
     <section aria-labelledby={headingId} className="bb-settings">
       <div className="bb-stack-xs">
         <Heading level={2} data-size="xs" id={headingId}>
-          {t('blocks.settingsTitle', { tenant: tenantName })}
+          {t('blocks.settingsTitle')}
         </Heading>
         <span className="bb-meta">
           {t('blocks.settingsIntro', {

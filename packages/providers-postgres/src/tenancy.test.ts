@@ -734,6 +734,31 @@ describe('postgres definition store', () => {
     expect((await store.capabilities()).some((c) => c.service.id === 'klarsprak')).toBe(true);
   });
 
+  it('lists the blocks of every tenant once each, and nothing of another kind', async () => {
+    const store = new PostgresDefinitionStore(runtime, plugins);
+    const block = (tenant: string, id: string) => ({
+      apiVersion: 'genai/v1',
+      kind: 'Block',
+      metadata: { tenant, id },
+      spec: { tier: 'built-in', builtIn: 'chat', title: { nb: 'Chat' }, zones: ['main'] },
+    });
+    for (const definition of [
+      block(ORG_A, 'liste-a'),
+      block(ORG_A, 'liste-a'),
+      block(ORG_B, 'liste-b'),
+      service(ORG_A, 'liste-tjeneste'),
+    ])
+      expect((await store.publish(definition, 'platform:seed', 'blokk')).ok).toBe(true);
+
+    const across = await store.listAcross('Block');
+
+    expect(across.filter((b) => b.id.startsWith('liste-'))).toEqual([
+      { tenant: ORG_B, id: 'liste-b' },
+      { tenant: ORG_A, id: 'liste-a' },
+    ]);
+    expect(across.some((b) => b.id === 'liste-tjeneste')).toBe(false);
+  });
+
   it('refuses a public name another tenant uses, a missing step flow, and an empty reason', async () => {
     const store = new PostgresDefinitionStore(runtime, plugins);
     await store.publish(
@@ -854,6 +879,29 @@ describe('postgres definition store', () => {
     expect((await store.versions('Service', ORG_B, 'samtidig')).map((v) => v.version)).toEqual([
       1, 2, 3, 4, 5, 6,
     ]);
+  });
+
+  it('removes every version of the named definitions in one tenant and none in another', async () => {
+    const store = new PostgresDefinitionStore(runtime, plugins);
+    await store.publish(flow(ORG_A, 'slett-flyt'), 'a', 'r');
+    await store.publish(service(ORG_A, 'slett-meg'), 'a', 'r1');
+    await store.publish(service(ORG_A, 'slett-meg'), 'a', 'r2');
+    await store.publish(service(ORG_B, 'slett-meg-b'), 'b', 'r');
+
+    await store.remove(ORG_A, [
+      { kind: 'Service', id: 'slett-meg' },
+      { kind: 'StepFlow', id: 'slett-flyt' },
+    ]);
+    await store.remove(ORG_A, [{ kind: 'Service', id: 'slett-meg-b' }]);
+
+    expect(await store.versions('Service', ORG_A, 'slett-meg')).toEqual([]);
+    expect(await store.versions('StepFlow', ORG_A, 'slett-flyt')).toEqual([]);
+    expect((await store.capabilities()).some((c) => c.service.id === 'slett-meg')).toBe(false);
+    expect(await store.versions('Service', ORG_B, 'slett-meg-b')).toHaveLength(1);
+    expect(await store.publish(service(ORG_A, 'slett-meg'), 'a', 'igjen')).toMatchObject({
+      ok: true,
+    });
+    expect((await store.get('Service', ORG_A, 'slett-meg'))?.version).toBe(1);
   });
 });
 

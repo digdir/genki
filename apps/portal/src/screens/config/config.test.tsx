@@ -110,7 +110,7 @@ describe("the tenant's own datasets and endpoints", () => {
     expect(
       screen.getByText('Denne kommer fra plattformen og kan bare endres av Digdir.'),
     ).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Lagre ny versjon' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Lagre ny utgave' })).toBeNull();
   });
 
   it('explains that running ingestion needs a separate write key and a decision', async () => {

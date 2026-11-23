@@ -40,5 +40,15 @@ WORKDIR /home/docling
 ENV HF_HUB_OFFLINE=1 \
     DOCLING_SERVE_ALLOWED_OCR_PRESETS='["tesseract"]' \
     DOCLING_SERVE_CUSTOM_OCR_PRESETS='{"auto": {"kind": "tesseract", "lang": ["nor"]}}'
+# genki's middleware in front of docling-serve (genki_busy.py, issue 922): a replica takes one task at a time and answers
+# a second submit with 503, and restarts itself when it is idle with more memory than GENKI_DOCLING_RESTART_IDLE_GIB.
+# Its tests run here, so an image whose middleware is broken is never built.
+COPY --chown=1001 genki_busy.py test_busy.py /opt/genki/
+# glibc gives freed memory back to the system sooner: idle after a 452-page Kudos PDF, 2.4 GiB instead of 4.4, with the
+# same peak and time (locally, 4 CPUs, 2026-11-21, issue 922). The idle restart above stays the bound.
+ENV PYTHONPATH=/opt/genki \
+    MALLOC_ARENA_MAX=2 \
+    MALLOC_TRIM_THRESHOLD_=131072
+RUN cd /opt/genki && python -m unittest test_busy && rm test_busy.py
 EXPOSE 5001
-CMD ["docling-serve", "run", "--host", "0.0.0.0", "--port", "5001"]
+CMD ["python", "-m", "genki_busy", "--host", "0.0.0.0", "--port", "5001"]

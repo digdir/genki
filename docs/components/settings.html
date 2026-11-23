@@ -39,7 +39,7 @@
             </p>
             <dl class="facts">
               <dt>UI name</dt>
-              <dd>«Innstillinger»</dd>
+              <dd>«Mine innstillinger»</dd>
               <dt>Sits in</dt>
               <dd>A page of its own, or a dialog</dd>
               <dt>Issues</dt>
@@ -271,7 +271,9 @@
                 named by its title, with its line as the description.
               </li>
               <li>
-                <code>SettingsGeneral</code>: <code>colorScheme</code> («Utseende», through
+                <code>SettingsGeneral</code>: <code>language</code> («Språk», the service's own
+                language, one of the platform's locales, drawn first where the boards draw «Språk i
+                svarene»), <code>colorScheme</code> («Utseende», through
                 <code>ColorSchemeToggle</code> with <code>look="full"</code>),
                 <code>answerLanguage</code>, <code>answerLength</code>, <code>openWith</code> and
                 <code>textSize</code>, each a <code>SettingsChoice</code>: <code>value</code> and
@@ -351,6 +353,16 @@
                     <td>the corners of the quiet boxes</td>
                   </tr>
                   <tr>
+                    <td><code>--genai-settings-toggle-radius</code></td>
+                    <td><code>--ds-border-radius-xl</code></td>
+                    <td>the corners of the toggle groups</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-notice-radius</code></td>
+                    <td><code>--ds-border-radius-xl</code></td>
+                    <td>the corners of a page's notice</td>
+                  </tr>
+                  <tr>
                     <td><code>--genai-settings-count-font-size</code></td>
                     <td><code>--ds-body-sm-font-size</code></td>
                     <td>«2 av 5 slått på»</td>
@@ -367,7 +379,7 @@
                   </tr>
                   <tr>
                     <td><code>--genai-settings-divider-color</code></td>
-                    <td><code>--ds-color-neutral-surface-tinted</code></td>
+                    <td><code>--ds-color-neutral-border-subtle</code></td>
                     <td>the line over each row, pinned to neutral, as the shell's dividers</td>
                   </tr>
                   <tr>

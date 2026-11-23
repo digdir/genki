@@ -8,7 +8,7 @@ export const runs = defineNamespace({
   originBuilder: 'Byggeren (utkast)',
   originTrial: 'Prøvekjøring i byggeren (utkast)',
   originPlayground: 'Prøveområdet (utkast)',
-  originSkillTest: 'Test av ferdighet (utkast)',
+  originSkillTest: 'Test av arbeidsinstruks (utkast)',
   originAssistant: 'Byggeassistenten',
   failBudget: 'Kjøringen brukte opp budsjettet sitt.',
   failDeadline: 'Kjøringen tok for lang tid.',
@@ -34,9 +34,9 @@ export const runs = defineNamespace({
     'Filteret på virksomhet ble ikke brukt fordi feltet {field} ikke har flere verdier.',
   warnOrgFacets: 'Filteret på virksomhet ble ikke brukt fordi søkemotoren ikke kan telle verdier.',
   warnProfileMissing:
-    'Søket «{search}» ble hoppet over fordi datasettet mangler søkeprofilen {profile}.',
+    'Søket «{search}» ble hoppet over fordi dokumentsamlingen mangler søkeprofilen {profile}.',
   warnNoProfile:
-    'Datasettet har ingen av søkeprofilene tjenesten ber om, så det ble søkt i {profile}.',
+    'Dokumentsamlingen har ingen av søkeprofilene tjenesten ber om, så det ble søkt i {profile}.',
   warnDocTitles: 'Søket på dokumenttitler ble hoppet over fordi søkemotoren ikke støtter det.',
   warnAutoFilter:
     'Det automatiske filteret på {field} ble ikke brukt fordi søkemotoren ikke støtter det.',
@@ -65,7 +65,7 @@ export const runs = defineNamespace({
   batchCsvDocumentId: 'Dokument-ID',
   batchCsvTitle: 'Tittel',
   batchCsvLink: 'Lenke',
-  batchCsvDataset: 'Datasett',
+  batchCsvDataset: 'Dokumentsamling',
   batchCsvStatus: 'Status',
   batchCsvAnswer: 'Svar',
   batchCsvTruncated: 'Avkortet',

@@ -123,12 +123,12 @@ describe('variants of a service in the setup', () => {
 
 describe('the default instructions in the setup', () => {
   registerStrategies(platformStrategies);
-  const agentDefault =
-    platformStrategies.find((e) => e.id === 'agent-loop')?.defaultInstructions?.text.nb ?? '';
-  const agent = (instructions?: string) =>
+  const ragDefault =
+    platformStrategies.find((e) => e.id === 'rag-single-shot')?.defaultInstructions?.text.nb ?? '';
+  const rag = (instructions?: string) =>
     applySpec(exampleTemplate('answers'), {
       strategy: {
-        id: 'agent-loop',
+        id: 'rag-single-shot',
         version: 1,
         config: instructions ? { instructions } : {},
       },
@@ -138,18 +138,18 @@ describe('the default instructions in the setup', () => {
   const editor = () => screen.getByLabelText('Instruksjoner til tjenesten') as HTMLTextAreaElement;
 
   it('shows the default instructions read-only, collapsed, when the service uses them', () => {
-    render(<SetupHarness sections={['instructions']} initial={agent()} />);
+    render(<SetupHarness sections={['instructions']} initial={rag()} />);
 
     const summary = screen.getByText('Se standardinstruksjonene');
     expect(summary.closest('details')?.open).toBe(false);
     fireEvent.click(summary);
-    expect(shown().value).toBe(agentDefault);
+    expect(shown().value).toBe(ragDefault);
     expect(shown().readOnly).toBe(true);
-    expect(screen.getByText(/legger plattformen til ferdighetene/)).toBeTruthy();
+    expect(screen.getByText(/plattformen legger til arbeidsinstruksene/)).toBeTruthy();
   });
 
   it('Bruk som utgangspunkt copies the default instructions into the editor', () => {
-    let latest = agent();
+    let latest = rag();
     render(
       <SetupHarness sections={['instructions']} initial={latest} onChange={(d) => (latest = d)} />,
     );
@@ -157,16 +157,16 @@ describe('the default instructions in the setup', () => {
     fireEvent.click(screen.getByText('Se standardinstruksjonene'));
     fireEvent.click(screen.getByRole('button', { name: 'Bruk som utgangspunkt' }));
 
-    expect(editor().value).toBe(agentDefault);
-    expect(latest.spec.strategy.config.instructions).toBe(agentDefault);
+    expect(editor().value).toBe(ragDefault);
+    expect(latest.spec.strategy.config.instructions).toBe(ragDefault);
   });
 
   it('offers the default for comparison, without copying, when the service has its own instructions', () => {
-    render(<SetupHarness sections={['instructions']} initial={agent('Svar kort.')} />);
+    render(<SetupHarness sections={['instructions']} initial={rag('Svar kort.')} />);
 
     fireEvent.click(screen.getByText('Sammenlign med standardinstruksjonene'));
 
-    expect(shown().value).toBe(agentDefault);
+    expect(shown().value).toBe(ragDefault);
     expect(editor().value).toBe('Svar kort.');
     expect(screen.queryByRole('button', { name: 'Bruk som utgangspunkt' })).toBeNull();
   });
@@ -175,5 +175,61 @@ describe('the default instructions in the setup', () => {
     render(<SetupHarness sections={['instructions']} initial={exampleTemplate('answers')} />);
 
     expect(screen.queryByText('Se standardinstruksjonene')).toBeNull();
+  });
+});
+
+describe('the sections of the agent instructions in the setup', () => {
+  registerStrategies(platformStrategies);
+  const sections =
+    platformStrategies.find((e) => e.id === 'agent-loop')?.defaultInstructions?.sections ?? [];
+  const workflow = sections.find((s) => s.id === 'workflow')?.text ?? '';
+  const agent = (config: Record<string, unknown> = {}) =>
+    applySpec(exampleTemplate('answers'), {
+      strategy: { id: 'agent-loop', version: 1, config },
+    });
+  const section = (name: string) => screen.getByLabelText(name) as HTMLTextAreaElement;
+
+  it('shows each section with its reason and says that the instructions are added after them', () => {
+    render(<SetupHarness sections={['instructions']} initial={agent()} />);
+
+    fireEvent.click(screen.getByText('Se og endre standardinstruksjonene'));
+
+    expect(section('Arbeidsmåte').value).toBe(workflow);
+    expect(screen.getByText(/Lar agenten søke, lese og så svare/)).toBeTruthy();
+    expect(screen.getByText(/kommer her, etter delene over/)).toBeTruthy();
+    expect(screen.getByText(/legges til etter dem/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Bruk som utgangspunkt' })).toBeNull();
+  });
+
+  it('an edited section is written to promptSections and can be reset', () => {
+    let latest = agent({ maxIterations: 8 });
+    render(
+      <SetupHarness sections={['instructions']} initial={latest} onChange={(d) => (latest = d)} />,
+    );
+
+    fireEvent.click(screen.getByText('Se og endre standardinstruksjonene'));
+    fireEvent.change(section('Arbeidsmåte'), { target: { value: 'Søk, les, svar.' } });
+
+    expect(latest.spec.strategy.config.promptSections).toEqual({ workflow: 'Søk, les, svar.' });
+    expect(latest.spec.strategy.config.instructions).toBeUndefined();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Tilbakestill Arbeidsmåte' }));
+
+    expect(latest.spec.strategy.config).toEqual({ maxIterations: 8 });
+    expect(section('Arbeidsmåte').value).toBe(workflow);
+  });
+
+  it('opens the sections when the service has changed one', () => {
+    render(
+      <SetupHarness
+        sections={['instructions']}
+        initial={agent({ promptSections: { gate: '' } })}
+      />,
+    );
+
+    expect(screen.getByText('Se og endre standardinstruksjonene').closest('details')?.open).toBe(
+      true,
+    );
+    expect(section('Kontroll (endret)').value).toBe('');
   });
 });

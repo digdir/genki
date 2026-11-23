@@ -181,7 +181,7 @@ interface Strategy {
   description: { en: string };
   takes: { instructions: string; examples: string };
   newConfig: Record<string, unknown>;
-  defaultInstructions?: { text: { en: string } };
+  defaultInstructions?: { text: { en: string }; layered?: boolean };
   schema: string;
 }
 
@@ -476,7 +476,7 @@ const describeStrategy = tool({
   name: 'describe_strategy',
   title: 'Describe a way of working',
   description:
-    'Without an id, list the strategies a service can use. With an id, give the keys its config takes (also the keys a variant may override in overrides), the starting config and the built-in instructions it uses when the service has none.',
+    'Without an id, list the strategies a service can use. With an id, give the keys its config takes (also the keys a variant may override in overrides), the starting config and its built-in instructions: used when the service has none, or for a layered strategy always used, with the instructions of the service added after them.',
   kind: 'read',
   args: z.strictObject({
     id: z.string().min(1).optional().describe('A strategy id, e.g. rag-single-shot'),
@@ -513,8 +513,11 @@ const describeStrategy = tool({
     const schema = await client.request<Record<string, unknown>>('GET', found.schema);
     const config = full ? schema : trimSchema(schema);
     const builtIn = found.defaultInstructions?.text.en;
+    const builtInLead = found.defaultInstructions?.layered
+      ? "Built-in sections, always used; the service's instructions are added after them, and promptSections edits one section:"
+      : 'Built-in instructions, used when the service has none:';
     return {
-      text: `${found.id}@${found.version}: ${found.description.en}\nInstructions: ${found.takes.instructions}, examples: ${found.takes.examples}\nStarting config:\n${stringify(found.newConfig)}${builtIn ? `\nBuilt-in instructions, used when the service has none:\n${builtIn}\n` : ''}\nConfig keys:\n${JSON.stringify(config, null, 1)}`,
+      text: `${found.id}@${found.version}: ${found.description.en}\nInstructions: ${found.takes.instructions}, examples: ${found.takes.examples}\nStarting config:\n${stringify(found.newConfig)}${builtIn ? `\n${builtInLead}\n${builtIn}\n` : ''}\nConfig keys:\n${JSON.stringify(config, null, 1)}`,
       data: { ...found, config },
     };
   },
@@ -603,11 +606,39 @@ const riskOf = (definition: Definition | undefined) =>
     riskConfirmation: definition?.spec?.riskConfirmation,
   });
 
+interface Placement {
+  name: string;
+  version: number | null;
+  followsPublishes: boolean;
+}
+
+const production = 'prod';
+
+const placementsOf = async (client: GenkiClient, id: string) =>
+  (
+    await client.request<{ environments: Placement[] }>(
+      'GET',
+      `${tenantPath(client.tenant)}/services/${segment(id)}/environments`,
+    )
+  ).environments;
+
+const whereItWent = (version: number, environments: Placement[]) => {
+  const inUse = environments.find((e) => e.name === production);
+  if (!inUse || inUse.followsPublishes)
+    return 'It is the first version, so it is also the one in use («I bruk»).';
+  const testing = environments
+    .filter((e) => e.name !== production && e.version === version)
+    .map((e) => e.name);
+  if (testing.length === 0)
+    return `No environment follows publishes, so none runs version ${version} yet. Users still have version ${inUse.version} («I bruk»).`;
+  return `It went to the testutgave (${testing.join(', ')}). Users still have version ${inUse.version} («I bruk») until someone publishes it from the portal.`;
+};
+
 const publishDefinition = tool({
   name: 'publish_definition',
   title: 'Publish a definition',
   description:
-    'Publish a definition as the next version, after validating it. Only when the person has asked for this change. Needs a reason that says what changed and why; it is shown in the version history and Logg, marked as made through a coding agent. The usual rights and quality gates apply. A new service with a risk class above minimal, or a change to riskClass or riskConfirmation, must be confirmed by a person in the portal: this tool refuses it and gives the link.',
+    'Publish a definition as the next version to the testutgave (test), after validating it. Users keep the version in use («I bruk») until a person publishes it from the portal; this tool never changes what users have, and refuses a service without a testutgave. Only when the person has asked for this change. Needs a reason that says what changed and why; it is shown in the version history and Logg, marked as made through a coding agent. The usual rights and quality gates apply. A new service with a risk class above minimal, or a change to riskClass or riskConfirmation, must be confirmed by a person in the portal: this tool refuses it and gives the link.',
   kind: 'write',
   args: z.strictObject({
     yaml: z.string().min(1).describe('The whole definition as YAML'),
@@ -637,15 +668,28 @@ const publishDefinition = tool({
         `Not published, the definition is not valid:\n${await describeInvalid(client, checked.errors)}`,
         { errors: checked.errors },
       );
+    const service = parsed.definition.kind === 'Service';
+    const environments = service && before ? await placementsOf(client, parsed.id) : [];
+    if (environments.find((e) => e.name === production)?.followsPublishes)
+      return fail(
+        `Not published: ${parsed.id} has no testutgave, so a publish would reach its users at once. A coding agent changes only the testutgave: ask the person to add a test edition in the portal${link ? `: ${link}` : ''}, then publish again.`,
+      );
     try {
-      const result = await client.request<{ id: string; version: number }>('POST', '/definitions', {
+      const result = await client.request<{
+        id: string;
+        version: number;
+        environments?: Placement[];
+      }>('POST', '/definitions', {
         body: definitionBody(yaml, files),
         reason: markedReason(reason),
       });
+      const placed =
+        result.environments ??
+        (service ? await placementsOf(client, result.id).catch(() => []) : []);
       const changes = before ? changedPaths(before.latest.definition, parsed.definition) : [];
       return {
-        text: `Published ${result.id} version ${result.version}.${changes.length ? `\nChanged:\n${untrusted(changes.map((c) => `- ${c}`).join('\n'))}` : ''}${link ? `\n${link}` : ''}`,
-        data: { id: result.id, version: result.version, changes },
+        text: `Published ${result.id} version ${result.version}.${placed.length ? ` ${whereItWent(result.version, placed)}` : ''}${changes.length ? `\nChanged:\n${untrusted(changes.map((c) => `- ${c}`).join('\n'))}` : ''}${link ? `\n${link}` : ''}`,
+        data: { id: result.id, version: result.version, changes, environments: placed },
       };
     } catch (error) {
       if (error instanceof GenkiError)

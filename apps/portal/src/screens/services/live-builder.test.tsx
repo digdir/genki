@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { StrictMode } from 'react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../../App';
 import { mockAnsattporten } from '../../auth';
@@ -63,30 +62,33 @@ const startBuilder = async (fetch: typeof globalThis.fetch) => {
   await auth.login();
   window.location.hash = '#/services/new';
   render(<App auth={auth} fetch={fetch} live />);
-  await screen.findByRole('navigation', { name: 'Deler av oppsettet' });
+  await screen.findByRole('heading', { name: 'Lag med KI' });
+  fireEvent.change(screen.getByLabelText('Hva skal tjenesten gjøre?'), {
+    target: { value: 'Svar på spørsmål om permisjon' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Start med byggeassistenten' }));
   return screen.findByRole('complementary', { name: 'Byggeassistent' });
 };
 
 const publishPage = async (reason: string) => {
   window.location.hash = '#/services/rapportassistenten/setup/risk';
   fireEvent.click(await screen.findByRole('button', { name: 'Bekreft risikonivå' }));
-  fireEvent.click(await screen.findByRole('button', { name: 'Publiser ...' }));
-  await screen.findByRole('heading', { level: 1, name: /^Publiser Rapportassistenten, versjon/ });
-  fireEvent.change(screen.getByLabelText(/^Hva endret du, og hvorfor\?/), {
+  fireEvent.click(await screen.findByRole('button', { name: 'Publiser' }));
+  await screen.findByRole('heading', { level: 1, name: 'Publiser Rapportassistenten' });
+  fireEvent.change(screen.getByLabelText(/^Hva er endret, og hvorfor\?/), {
     target: { value: reason },
   });
   return document.body;
 };
 
 const publishOnPage = async (page: HTMLElement) => {
-  const button = within(page).getByRole('button', { name: /^Publiser versjon \d+$/ });
+  const button = within(page).getByRole('button', { name: 'Publiser' });
   await waitFor(() => expect(button.getAttribute('aria-disabled')).not.toBe('true'));
   fireEvent.click(button);
 };
 
 const openSection = async (name: RegExp) => {
-  await screen.findByRole('navigation', { name: 'Deler av oppsettet' });
-  openArea(name);
+  fireEvent.click(await screen.findByRole('button', { name }));
 };
 
 type Spec = {
@@ -110,10 +112,6 @@ describe('the live builder', () => {
     const panel = await startBuilder(fetch);
 
     expect(calls.some((c) => /\/definitions\/template\?kind=Service$/.test(c.url))).toBe(true);
-    fireEvent.change(within(panel).getByLabelText('Skriv til assistenten'), {
-      target: { value: 'Svar på spørsmål om permisjon' },
-    });
-    fireEvent.click(within(panel).getByRole('button', { name: 'Send' }));
     expect(await within(panel).findByText('Ingrid Berg')).toBeTruthy();
     expect(within(panel).queryByText('Kari Nordmann')).toBeNull();
 
@@ -156,21 +154,20 @@ describe('the live builder', () => {
   it('picks datasets from the catalog, writes the full id and removes them again', async () => {
     const { calls, fetch } = recorded();
     await startBuilder(fetch);
-    await openSection(/^Kilder/);
+    await openSection(/^Kunnskap/);
 
-    const search = screen.getByRole('combobox');
-    fireEvent.change(search, { target: { value: 'Statsbudsjettet' } });
-    expect(await screen.findByText('Ingen treff')).toBeTruthy();
-    fireEvent.change(search, { target: { value: 'Kudos' } });
-    fireEvent.click(await screen.findByRole('button', { name: 'Legg til Kudos-rapporter' }));
-    fireEvent.change(search, { target: { value: 'Veiledere' } });
-    fireEvent.click(await screen.findByRole('button', { name: 'Legg til Veiledere og rundskriv' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Legg til dokumentsamling' }));
+    expect(await screen.findByText('Delt med dere')).toBeTruthy();
+    expect(screen.queryByText('Statsbudsjettet 2026')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Legg til Kudos-rapporter' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Legg til Veiledere og rundskriv' }));
+    expect(screen.queryByText('612 dokumenter')).toBeNull();
 
     fireEvent.click(
-      screen.getByRole('button', { name: 'Fjern datasettet Veiledere og rundskriv' }),
+      screen.getByRole('button', { name: 'Fjern dokumentsamlingen Veiledere og rundskriv' }),
     );
     expect(
-      screen.queryByRole('button', { name: 'Fjern datasettet Veiledere og rundskriv' }),
+      screen.queryByRole('button', { name: 'Fjern dokumentsamlingen Veiledere og rundskriv' }),
     ).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'Publiser' }));
@@ -183,7 +180,6 @@ describe('the live builder', () => {
     await startBuilder(fetch);
     await openSection(/^Verktøy/);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Legg til verktøy' }));
     fireEvent.click(screen.getByRole('button', { name: 'Legg til verktøy fra katalogen' }));
     expect(await screen.findByRole('button', { name: 'Legg til arkiv.hent' })).toBeTruthy();
     expect(screen.queryByText(/klarsprak|Enhetsregisteret|lovdata/i)).toBeNull();
@@ -210,7 +206,6 @@ describe('the live builder', () => {
         ),
     );
     await startBuilder(fetch);
-    await openSection(/^Risiko/);
     fireEvent.click(await screen.findByRole('button', { name: 'Bekreft risikonivå' }));
 
     fireEvent.click(screen.getByRole('button', { name: 'Publiser' }));
@@ -219,8 +214,8 @@ describe('the live builder', () => {
     expect(within(dialog).getByText(/Modellen behandler data i global region/)).toBeTruthy();
     expect(within(dialog).getByText('Formål og målgruppe:')).toBeTruthy();
     expect(within(dialog).queryByText('Alle krav er bestått.')).toBeNull();
-    expect(within(dialog).getByRole('heading', { name: 'Versjon 1, første versjon' })).toBeTruthy();
-    expect(within(dialog).queryByText('Ingen endringer siden forrige versjon')).toBeNull();
+    expect(within(dialog).getByRole('heading', { name: 'Utgave 1, første utgave' })).toBeTruthy();
+    expect(within(dialog).queryByText('Ingen endringer siden forrige utgave')).toBeNull();
 
     fireEvent.change(within(dialog).getByLabelText('Hva er endret, og hvorfor?'), {
       target: { value: 'Første versjon av tjenesten' },
@@ -238,10 +233,11 @@ describe('the live builder', () => {
   it('opens the published service with its status in the header right after the first publish', async () => {
     const { calls, fetch } = recorded();
     await startBuilder(fetch);
-    await openSection(/^Risiko/);
     fireEvent.click(await screen.findByRole('button', { name: 'Bekreft risikonivå' }));
     const header = document.querySelector('.service-head') as HTMLElement;
-    expect(within(header).getByText('Utkast')).toBeTruthy();
+    expect(
+      within(header).queryByRole('navigation', { name: 'Testutgave eller i bruk' }),
+    ).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'Publiser' }));
     const dialog = await screen.findByRole('dialog');
@@ -262,20 +258,20 @@ describe('the live builder', () => {
     await waitFor(() => expect(window.location.hash).toBe('#/services/ny-tjeneste'));
     const published = await waitFor(() => {
       const head = document.querySelector('.service-head') as HTMLElement;
-      expect(within(head).getByText('Versjon 1 i bruk')).toBeTruthy();
+      expect(
+        within(head).getByRole('navigation', { name: 'Testutgave eller i bruk' }),
+      ).toBeTruthy();
       return head;
     });
-    expect(within(published).queryByText('Utkast')).toBeNull();
+    expect(within(published).getByText(/^Lagres i testutgaven med en gang\./)).toBeTruthy();
   });
 
   it('drops the risk confirmation when the risk level changes', async () => {
     const { fetch } = recorded();
     await startBuilder(fetch);
-    await openSection(/^Risiko/);
     fireEvent.click(await screen.findByRole('button', { name: 'Bekreft risikonivå' }));
     expect(await screen.findByText('Bekreftet av Ingrid Berg i dag')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Velg et annet nivå' }));
-    fireEvent.click(await screen.findByRole('radio', { name: /^Høy/ }));
+    fireEvent.click(screen.getByRole('radio', { name: /^Høy/ }));
     expect(screen.queryByText('Bekreftet av Ingrid Berg i dag')).toBeNull();
   });
 
@@ -316,7 +312,7 @@ describe('the live builder', () => {
     await auth.login();
     window.location.hash = '#/services/rapportassistenten/setup?publiser=1';
     render(<App auth={auth} fetch={fetch} live />);
-    await screen.findByRole('heading', { level: 1, name: /^Publiser Rapportassistenten, versjon/ });
+    await screen.findByRole('heading', { level: 1, name: 'Publiser Rapportassistenten' });
     return document.body;
   };
 
@@ -338,9 +334,11 @@ describe('the live builder', () => {
     );
     expect(window.location.hash).toBe('#/services/rapportassistenten/setup/publish');
     await waitFor(() =>
-      expect(within(page).queryByText('Testsettet er ikke kjørt mot utkastet')).toBeNull(),
+      expect(
+        within(page).queryByText('Målt før siste endring. Du kan publisere likevel.'),
+      ).toBeNull(),
     );
-    expect(within(page).queryByText(/Uten testsett/)).toBeNull();
+    expect(within(page).queryByText('Ikke målt ennå.')).toBeNull();
   });
 
   it('counts a draft test run only when it ran the saved revision of the draft', async () => {
@@ -359,19 +357,26 @@ describe('the live builder', () => {
       ],
       [{ id: 'ts', name: 'Spørsmål', cases: 10 }],
     );
-    expect(await within(page).findByText('Testsettet er ikke kjørt mot utkastet')).toBeTruthy();
+    expect(
+      await within(page).findByText('Målt før siste endring. Du kan publisere likevel.'),
+    ).toBeTruthy();
   });
 
-  it('warns about a missing test set, and about a test set not run against the draft', async () => {
+  it('says when the quality is not measured, or measured before the last change', async () => {
     const page = await openPublish([], []);
-    expect(await within(page).findByText(/Uten testsett ser du ikke/)).toBeTruthy();
+    expect(await within(page).findByText('Ikke målt ennå.')).toBeTruthy();
     cleanup();
 
     const withSet = await openPublish([], [{ id: 'ts', name: 'Spørsmål', cases: 3 }]);
-    expect(await within(withSet).findByText('Testsettet er ikke kjørt mot utkastet')).toBeTruthy();
+    expect(
+      await within(withSet).findByText('Målt før siste endring. Du kan publisere likevel.'),
+    ).toBeTruthy();
     expect(within(withSet).getByRole('link', { name: 'Kjør testsettet' })).toBeTruthy();
   });
 });
+
+const instructionsField = () =>
+  screen.getByLabelText('Instruksjoner til tjenesten') as HTMLTextAreaElement;
 
 describe('the live builder and the server draft', () => {
   const after =
@@ -418,7 +423,7 @@ describe('the live builder and the server draft', () => {
     window.location.hash = '#/services/rapportassistenten/setup/instructions';
     await waitFor(() => expect(instructions().value).toBe(after));
     const page = await publishPage('Tar i bruk forbedringsforslaget');
-    expect(within(page).getAllByText(/Lagt til:/).length).toBeGreaterThan(0);
+    expect(within(page).getByRole('rowheader', { name: 'Instruksjoner' })).toBeTruthy();
     await publishOnPage(page);
 
     await waitFor(() => expect(draftWrites(calls, 'DELETE')).toHaveLength(1));
@@ -461,10 +466,111 @@ describe('the live builder and the server draft', () => {
     });
   });
 
+  const olderInUse = (urls: string[] = []) => {
+    const base = mockFetch(exampleServices, logTimelines, liveModels, exampleDatasets, {
+      features: {
+        environments: { initial: { rapportassistenten: { prod: { version: 6 }, test: {} } } },
+      },
+    });
+    const fetch: typeof globalThis.fetch = async (input, init) => {
+      const url = String(input);
+      urls.push(url);
+      const response = await base(input, init);
+      if (!url.endsWith('/rapportassistenten/versions/6')) return response;
+      const old = (await response.json()) as {
+        definition: { spec: { strategy: { config: Record<string, unknown> } } };
+      };
+      const spec = old.definition.spec;
+      return Response.json({
+        ...old,
+        definition: {
+          ...old.definition,
+          spec: {
+            ...spec,
+            strategy: {
+              ...spec.strategy,
+              config: { ...spec.strategy.config, instructions: 'Svar kort.' },
+            },
+          },
+        },
+      });
+    };
+    return fetch;
+  };
+
+  const openWith = async (fetch: typeof globalThis.fetch, hash: string) => {
+    const auth = mockAnsattporten({ name: 'Ingrid Berg', organisations: exampleOrganisations });
+    await auth.login();
+    window.location.hash = hash;
+    render(<App auth={auth} fetch={fetch} live />);
+    return (await screen.findByRole('heading', { level: 1, name: 'Rapportassistenten' })).closest(
+      'header',
+    ) as HTMLElement;
+  };
+
+  it('shows the edition users have in the in use view, not the latest published one, without opening the test edition', async () => {
+    const urls: string[] = [];
+    const header = await openWith(
+      olderInUse(urls),
+      '#/services/rapportassistenten/setup/purpose?edition=in-use',
+    );
+    expect(await within(header).findByText(/^Det brukerne har nå/)).toBeTruthy();
+    await waitFor(() => expect(instructionsField().value).toBe('Svar kort.'));
+    expect(urls.some((u) => u.includes('/rapportassistenten/draft'))).toBe(false);
+  });
+
+  it('offers no way to publish from the in use view, even from a publish link', async () => {
+    const header = await openWith(
+      olderInUse(),
+      '#/services/rapportassistenten/setup?edition=in-use&publiser=1',
+    );
+    await within(header).findByText(/^Det brukerne har nå/);
+    expect(within(header).queryByRole('button', { name: 'Publiser' })).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('offers no Byggeassistent in the in use view, which cannot be changed', async () => {
+    const header = await openWith(
+      olderInUse(),
+      '#/services/rapportassistenten/setup/purpose?edition=in-use',
+    );
+    await within(header).findByText(/^Det brukerne har nå/);
+    expect(await screen.findByRole('tab', { name: 'Prøv' })).toBeTruthy();
+    expect(screen.queryByRole('tab', { name: 'Byggeassistent' })).toBeNull();
+  });
+
+  it('says Prøv in the in use view tries the edition users have, not the test edition', async () => {
+    const header = await openWith(
+      olderInUse(),
+      '#/services/rapportassistenten/setup/purpose?edition=in-use',
+    );
+    await within(header).findByText(/^Det brukerne har nå/);
+    expect(
+      await screen.findByText(
+        'Prøver utgave 6, som brukerne har. Bare du ser svaret. Koster som en vanlig kjøring.',
+      ),
+    ).toBeTruthy();
+  });
+
+  it('offers no Publiser on Historikk, which shows what users have', async () => {
+    const header = await openWith(olderInUse(), '#/services/rapportassistenten/versions');
+    await within(header).findByText(/^Det brukerne har nå/);
+    expect(within(header).queryByRole('button', { name: 'Publiser' })).toBeNull();
+  });
+
+  it('counts the changes users do not have yet and lets the owner publish them', async () => {
+    const header = await openWith(olderInUse(), '#/services/rapportassistenten/setup');
+    expect(
+      await within(header).findByRole('link', { name: 'Én endring er ikke publisert' }),
+    ).toBeTruthy();
+    const publish = within(header).getByRole('button', { name: 'Publiser' });
+    await waitFor(() => expect(publish.getAttribute('aria-disabled')).toBeNull());
+  });
+
   it('opening a service opens its draft once', async () => {
     const { calls } = await openService('#/services/rapportassistenten/setup');
     await screen.findByRole('heading', { level: 1, name: 'Rapportassistenten' });
-    await screen.findByText('Versjon 7 i bruk');
+    await screen.findByRole('navigation', { name: 'Testutgave eller i bruk' });
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(calls.filter((c) => c.url.endsWith('/draft?rebase=clean'))).toHaveLength(1);
   });
@@ -490,14 +596,14 @@ describe('the live builder and the server draft', () => {
     const header = (
       await screen.findByRole('heading', { level: 1, name: 'Rapportassistenten' })
     ).closest('header') as HTMLElement;
-    await within(header).findByText('Versjon 7 i bruk');
+    await within(header).findByText(/^Lagres i testutgaven med en gang\./);
 
     for (const [section, tab] of [
-      ['interface', 'Grensesnitt'],
-      ['versions', 'Utviklerverktøy'],
+      ['interface', 'Utforming'],
+      ['versions', 'Historikk'],
       ['quality', 'Kvalitet'],
       ['settings', 'Oppsett'],
-      ['log', 'Utviklerverktøy'],
+      ['log', 'Teknisk'],
       ['setup', 'Oppsett'],
     ] as const) {
       window.location.hash = `#/services/rapportassistenten/${section}`;
@@ -508,7 +614,9 @@ describe('the live builder and the server draft', () => {
           }).textContent,
         ).toBe(tab),
       );
-      expect(within(header).getByText('Versjon 7 i bruk')).toBeTruthy();
+      expect(
+        within(header).getByRole('heading', { level: 1, name: 'Rapportassistenten' }),
+      ).toBeTruthy();
     }
     expect(header.isConnected).toBe(true);
     expect(
@@ -518,7 +626,7 @@ describe('the live builder and the server draft', () => {
 
   it('switching tabs while the definition is fresh sends no request for it again', async () => {
     const { calls } = await openService('#/services/rapportassistenten/setup');
-    await screen.findByText('Versjon 7 i bruk');
+    await screen.findByRole('navigation', { name: 'Testutgave eller i bruk' });
     await new Promise((resolve) => setTimeout(resolve, 50));
     const definitionReads = () =>
       calls.filter(
@@ -537,16 +645,14 @@ describe('the live builder and the server draft', () => {
     expect(definitionReads()).toBe(before);
   });
 
-  it('offers Prøv tjenesten in the header of a draft too', async () => {
+  it('offers Prøv in the header of a draft too', async () => {
     await startBuilder(mockFetch(exampleServices, logTimelines, liveModels, exampleDatasets));
-    fireEvent.click(screen.getByRole('tab', { name: 'Grensesnitt' }));
-    await screen.findByRole('tab', { name: 'Grensesnitt', selected: true });
     const header = screen
       .getAllByRole('heading', { level: 1 })[0]
       ?.closest('header') as HTMLElement;
-    expect(
-      within(header).getByRole('link', { name: 'Prøv tjenesten' }).getAttribute('href'),
-    ).toMatch(/^#\/services\/[^/]+\/test$/);
+    expect(within(header).getByRole('link', { name: 'Prøv' }).getAttribute('href')).toMatch(
+      /^#\/services\/[^/]+\/test$/,
+    );
   });
 
   it('makes a copy as a new draft named Kopi av, with the files, and opens it at Oppsett', async () => {
@@ -571,12 +677,12 @@ describe('the live builder and the server draft', () => {
     );
   });
 
-  it('offers Prøv tjenesten in the header, leading to the service in Prøveområdet', async () => {
+  it('offers Prøv in the header, leading to the service in Prøveområdet', async () => {
     await openService('#/services/rapportassistenten');
     const header = (
       await screen.findByRole('heading', { level: 1, name: 'Rapportassistenten' })
     ).closest('header') as HTMLElement;
-    expect(within(header).getByRole('link', { name: 'Prøv tjenesten' }).getAttribute('href')).toBe(
+    expect(within(header).getByRole('link', { name: 'Prøv' }).getAttribute('href')).toBe(
       '#/playground?service=rapportassistenten',
     );
   });
@@ -586,7 +692,7 @@ describe('the live builder and the server draft', () => {
     const header = (
       await screen.findByRole('heading', { level: 1, name: 'Rapportassistenten' })
     ).closest('header') as HTMLElement;
-    expect(await within(header).findByText('Versjon 7 i bruk')).toBeTruthy();
+    expect(await within(header).findByText(/^Lagres i testutgaven med en gang\./)).toBeTruthy();
 
     const found = exampleServices.find((s) => s.id === 'rapportassistenten');
     await fetch('/api/definitions', {
@@ -607,7 +713,7 @@ describe('the live builder and the server draft', () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
 
     expect(definitionReads()).toBe(before);
-    expect(within(header).getByText('Versjon 7 i bruk')).toBeTruthy();
+    expect(within(header).getByText(/^Lagres i testutgaven med en gang\./)).toBeTruthy();
   });
 });
 
@@ -669,7 +775,7 @@ describe('the live builder when the draft is outdated', () => {
   const instructionsField = () =>
     screen.getByLabelText('Instruksjoner til tjenesten') as HTMLTextAreaElement;
 
-  it('a draft based on an older version opens rebased onto the latest by the API, not the portal', async () => {
+  it('a draft based on an older edition opens rebased onto the latest by the API, not the portal', async () => {
     const { calls } = await startOutdated(
       {
         ...published,
@@ -677,24 +783,24 @@ describe('the live builder when the draft is outdated', () => {
       },
       false,
     );
-    expect(await screen.findByText('Utkastet er oppdatert til versjon 8.')).toBeTruthy();
+    expect(await screen.findByText('Testutgaven er oppdatert til utgave 8.')).toBeTruthy();
     expect(instructionsField().value).toBe('Svar kort.');
     expect(calls.some((c) => c.method === 'GET' && c.url.endsWith('/draft?rebase=clean'))).toBe(
       true,
     );
     expect(calls.some((c) => c.url.endsWith('/draft/rebase'))).toBe(false);
-    expect(screen.queryByText('Utkastet bygger på en eldre versjon')).toBeNull();
+    expect(screen.queryByText('Testutgaven bygger på en eldre utgave')).toBeNull();
   });
 
   it('conflicting fields are shown, not silently overwritten', async () => {
     await startOutdated(withInstructions('Svar utfyllende.'), false);
-    const alert = (await screen.findByText('Utkastet bygger på en eldre versjon')).closest(
+    const alert = (await screen.findByText('Testutgaven bygger på en eldre utgave')).closest(
       '[role="alert"]',
     ) as HTMLElement;
     const group = within(alert).getByRole('group', { name: /Instruksjoner/ });
     expect(within(group).getByText('Svar kort.')).toBeTruthy();
     expect(within(group).getByText('Svar utfyllende.')).toBeTruthy();
-    expect(screen.queryByText(/Utkastet er oppdatert til versjon/)).toBeNull();
+    expect(screen.queryByText(/Testutgaven er oppdatert til utgave/)).toBeNull();
   });
 
   it('names what changed since the draft, updates it and publishes again', async () => {
@@ -703,13 +809,13 @@ describe('the live builder when the draft is outdated', () => {
       spec: { ...published.spec, model: { ...published.spec.model, primary: 'aivar/qwen3-8' } },
     });
     await publishIn(dialog);
-    const warning = await within(dialog).findByText('Utkastet bygger på en eldre versjon');
+    const warning = await within(dialog).findByText('Testutgaven bygger på en eldre utgave');
     const alert = warning.closest('[role="alert"]') as HTMLElement;
     expect(within(alert).getByText('Modell')).toBeTruthy();
     expect(publishes(calls)[0]?.body).toMatchObject({ draftRevision: 2 });
 
-    fireEvent.click(within(alert).getByRole('button', { name: 'Oppdater utkastet' }));
-    expect(await within(dialog).findByText(/Utkastet er oppdatert/)).toBeTruthy();
+    fireEvent.click(within(alert).getByRole('button', { name: 'Oppdater testutgaven' }));
+    expect(await within(dialog).findByText(/Testutgaven er oppdatert/)).toBeTruthy();
     expect(calls.some((c) => c.method === 'POST' && c.url.endsWith('/draft/rebase'))).toBe(true);
     await publishIn(dialog);
     await waitFor(() => expect(publishes(calls)).toHaveLength(2));
@@ -722,27 +828,27 @@ describe('the live builder when the draft is outdated', () => {
         },
       },
     });
-    expect(await screen.findByText('Versjon 9 er publisert.')).toBeTruthy();
+    expect(await screen.findByText('Utgave 9 er publisert.')).toBeTruthy();
   });
 
   it('lets the user pick the published value when both changed the same setting', async () => {
     const { calls, dialog } = await openOutdated(withInstructions('Svar utfyllende.'));
     await publishIn(dialog);
-    fireEvent.click(await within(dialog).findByRole('button', { name: 'Oppdater utkastet' }));
+    fireEvent.click(await within(dialog).findByRole('button', { name: 'Oppdater testutgaven' }));
 
     const group = await within(dialog).findByRole('group', { name: /Instruksjoner/ });
     expect(within(group).getByText('Svar kort.')).toBeTruthy();
     expect(within(group).getByText('Svar utfyllende.')).toBeTruthy();
-    fireEvent.click(within(group).getByLabelText(/Bruk publisert versjon/));
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Lagre valgene i utkastet' }));
+    fireEvent.click(within(group).getByLabelText(/Bruk publisert utgave/));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Lagre valgene' }));
 
-    expect(await within(dialog).findByText(/Utkastet er oppdatert/)).toBeTruthy();
+    expect(await within(dialog).findByText(/Testutgaven er oppdatert/)).toBeTruthy();
     const saved = calls.filter((c) => c.method === 'PUT' && c.url.endsWith('/draft')).at(-1);
     expect(saved?.body).toMatchObject({
       revision: 3,
       definition: { spec: { strategy: { config: { instructions: 'Svar utfyllende.' } } } },
     });
-    fireEvent.click(within(dialog).getByRole('link', { name: 'Fortsett å redigere' }));
+    fireEvent.click(within(dialog).getByRole('link', { name: 'Avbryt' }));
     await screen.findByRole('navigation', { name: 'Deler av oppsettet' });
     openArea(/^Formål og målgruppe/);
     await waitFor(() =>
@@ -815,79 +921,42 @@ describe('a new service saved as a draft on the server', () => {
     render(<App auth={auth} fetch={fetch} live />);
   };
 
-  it('saves one empty draft under its own id as Ny tjeneste opens, and moves the address to its Oppsett', async () => {
+  it('saves nothing while nothing has changed, and saves the first change the person makes', async () => {
     const { calls, fetch } = quiet();
-    await startBuilder(fetch);
-
-    const writes = draftWrites(calls, 'PUT');
-    expect(writes).toHaveLength(1);
-    expect(revisions(calls)).toEqual([0]);
-    const id = idOf(writes[0]);
-    expect(window.location.hash).toBe(`#/services/${id}/setup`);
-    expect(screen.getByText('Ikke publisert · lagres automatisk')).toBeTruthy();
+    const panel = await startBuilder(fetch);
+    await within(panel).findAllByText('Jeg venter på mer fra deg.');
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    expect(calls.filter((c) => c.url.includes('/draft'))).toEqual([]);
 
     await rename('Permisjonssvar');
     await savedAs(calls, 'Permisjonssvar');
-    expect(revisions(calls)).toEqual([0, 1]);
+    expect(revisions(calls)).toEqual([0]);
   });
 
-  it('saves only one draft when React starts Ny tjeneste twice, as StrictMode does', async () => {
-    const { calls, fetch } = quiet();
-    const auth = mockAnsattporten({ name: 'Ingrid Berg', organisations: exampleOrganisations });
-    await auth.login();
-    window.location.hash = '#/services/new';
-    render(
-      <StrictMode>
-        <App auth={auth} fetch={fetch} live />
-      </StrictMode>,
-    );
-    await screen.findByRole('navigation', { name: 'Deler av oppsettet' });
-    expect(draftWrites(calls, 'PUT')).toHaveLength(1);
-  });
-
-  it('starts with an empty name, so the person names the service', async () => {
-    const { calls, fetch } = quiet();
+  it('saves the work as a draft under its own id from the first change, and moves the address there', async () => {
+    const { calls, fetch } = recorded();
     await startBuilder(fetch);
-    expect(nameIn(draftWrites(calls, 'PUT')[0])).toBe('');
-    expect(((await screen.findByLabelText('Navn')) as HTMLInputElement).value).toBe('');
-  });
 
-  it('says what went wrong when the first draft cannot be saved, and tries again on request', async () => {
-    let refused = true;
-    const { calls, fetch } = quiet((method, url) =>
-      method === 'PUT' && draftPath.test(url) && refused
-        ? new Response(null, { status: 500 })
-        : undefined,
-    );
-    const auth = mockAnsattporten({ name: 'Ingrid Berg', organisations: exampleOrganisations });
-    await auth.login();
-    window.location.hash = '#/services/new';
-    render(<App auth={auth} fetch={fetch} live />);
-
-    const retry = await screen.findByRole('button', { name: 'Prøv igjen' });
-    expect(window.location.hash).toBe('#/services/new');
-    refused = false;
-    fireEvent.click(retry);
-    await screen.findByRole('navigation', { name: 'Deler av oppsettet' });
-    expect(window.location.hash).toBe(`#/services/${idOf(draftWrites(calls, 'PUT').at(-1))}/setup`);
+    await waitFor(() => expect(draftWrites(calls, 'PUT').length).toBeGreaterThan(0), {
+      timeout: 3000,
+    });
+    const id = idOf(draftWrites(calls, 'PUT')[0]);
+    expect(revisions(calls)[0]).toBe(0);
+    await waitFor(() => expect(window.location.hash).toBe(`#/services/${id}`));
+    expect(screen.getByText(/^Lagres i testutgaven med en gang\./)).toBeTruthy();
   });
 
   it('keeps the conversation when the address moves, saves every change to the same draft and never reloads it', async () => {
     const { calls, panel, id } = await startNamed('Permisjonssvar');
-    expect(window.location.hash).toBe(`#/services/${id}/setup`);
-    const reopened = () =>
-      calls.filter((c) => c.url.endsWith(`/services/${id}/draft?rebase=clean`)).length;
-    const opened = reopened();
-    fireEvent.change(within(panel).getByLabelText('Skriv til assistenten'), {
-      target: { value: 'Svar på spørsmål om permisjon' },
-    });
-    fireEvent.click(within(panel).getByRole('button', { name: 'Send' }));
-    expect(await within(panel).findByText('Svar på spørsmål om permisjon')).toBeTruthy();
+    await waitFor(() => expect(window.location.hash).toBe(`#/services/${id}`));
+
+    expect(screen.getByRole('complementary', { name: 'Byggeassistent' })).toBe(panel);
+    expect(within(panel).getByText('Svar på spørsmål om permisjon')).toBeTruthy();
     await rename('Permisjonssvar for ledere');
     await savedAs(calls, 'Permisjonssvar for ledere');
     expect(new Set(draftWrites(calls, 'PUT').map(idOf))).toEqual(new Set([id]));
     expect(revisions(calls)).toEqual(revisions(calls).map((_, i) => i));
-    expect(reopened()).toBe(opened);
+    expect(calls.filter((c) => c.url.endsWith(`/services/${id}/draft?rebase=clean`))).toEqual([]);
   });
 
   it('lists the draft under Tjenester as Utkast and resumes it in another browser', async () => {
@@ -905,7 +974,7 @@ describe('a new service saved as a draft on the server', () => {
     expect(((await screen.findByLabelText('Navn')) as HTMLInputElement).value).toBe(
       'Permisjonssvar',
     );
-    expect(screen.getByText('Ikke publisert · lagres automatisk')).toBeTruthy();
+    expect(screen.getByText(/^Lagres i testutgaven med en gang\./)).toBeTruthy();
     await rename('Permisjonssvar for ledere');
     await savedAs(calls, 'Permisjonssvar for ledere');
     expect(revisions(calls).at(-1)).toBe(saved);
@@ -992,10 +1061,14 @@ describe('a new service saved as a draft on the server', () => {
       rapportassistenten: { definition: published?.latest.definition ?? {} },
     });
     await startBuilder(fetch);
+    await screen.findByRole('button', { name: 'Publiser' });
+    expect(screen.queryByRole('button', { name: 'Slett utkastet' })).toBeNull();
+
+    await rename('Permisjonssvar');
     expect(await screen.findByRole('button', { name: 'Slett utkastet' })).toBeTruthy();
 
     window.location.hash = '#/services/rapportassistenten';
-    await screen.findByText(/^Versjon \d+ i bruk$/);
+    await screen.findByRole('navigation', { name: 'Testutgave eller i bruk' });
     expect(screen.queryByRole('button', { name: 'Slett utkastet' })).toBeNull();
   });
 
@@ -1012,14 +1085,13 @@ describe('a new service saved as a draft on the server', () => {
     fireEvent.click(within(await confirmBox()).getByRole('button', { name: 'Slett utkastet' }));
 
     expect(await screen.findByText('Kunne ikke slette utkastet. Prøv igjen om litt.')).toBeTruthy();
-    expect(window.location.hash).toBe(`#/services/${id}/setup`);
+    expect(window.location.hash).toBe(`#/services/${id}`);
     await rename('Permisjonssvar for ledere');
     await savedAs(calls, 'Permisjonssvar for ledere');
   });
 
   it('publishing clears the draft, opens the published service and drops the draft from the list', async () => {
     const { calls, id } = await startNamed('Permisjonssvar');
-    await openSection(/^Risiko/);
     fireEvent.click(await screen.findByRole('button', { name: 'Bekreft risikonivå' }));
     fireEvent.click(screen.getByRole('button', { name: 'Publiser' }));
     const dialog = await screen.findByRole('dialog');

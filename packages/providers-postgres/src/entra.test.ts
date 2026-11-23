@@ -178,4 +178,24 @@ describe('knowledge server settings', () => {
     ]);
     expect(api.host).toBe('127.0.0.1:55433');
   });
+
+  it("the API's knowledge pools hold 20 connections unless KNOWLEDGE_DATABASE_POOL_MAX says otherwise", () => {
+    const identity = () => tokens;
+    expect(knowledgeSourceFromEnv(azure, 'api', identity)?.max).toBe(20);
+    expect(
+      knowledgeSourceFromEnv({ ...azure, KNOWLEDGE_DATABASE_POOL_MAX: '8' }, 'api', identity)?.max,
+    ).toBe(8);
+    expect(
+      knowledgeReadSourceFromEnv(
+        { ...azure, KNOWLEDGE_READ_PGHOST: 'replica.example', KNOWLEDGE_DATABASE_POOL_MAX: '8' },
+        identity,
+      )?.max,
+    ).toBe(8);
+    expect(knowledgeSourceFromEnv(azure, 'worker', identity)?.max).toBeUndefined();
+    for (const value of ['0', '4.5', 'ten'])
+      expect(
+        () => knowledgeSourceFromEnv({ ...azure, KNOWLEDGE_DATABASE_POOL_MAX: value }, 'api'),
+        value,
+      ).toThrow('KNOWLEDGE_DATABASE_POOL_MAX');
+  });
 });
