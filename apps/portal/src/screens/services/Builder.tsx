@@ -1,7 +1,6 @@
 import {
   Alert,
   Button,
-  Dialog,
   Heading,
   Link,
   Paragraph,
@@ -1026,7 +1025,7 @@ export const Builder = ({
   }, [draftBar, saveState]);
 
   useEffect(() => {
-    if (draftBar && openPublish) go('setup', '/publish');
+    if (openPublish && edition !== 'inUse') go('setup', '/publish');
   }, []);
 
   useEffect(() => {
@@ -1681,13 +1680,16 @@ export const Builder = ({
     setPublish(publishPage ? 'prod' : null);
     if (publishPage) void saveDraft();
   }, [draftBar, publishPage]);
-  const firstPublishPage =
-    isNew && serverDraft && canPublish && section === 'setup' && detail === 'publish';
+  const firstPublishPage = !draftBar && canPublish && section === 'setup' && detail === 'publish';
   useEffect(() => {
-    if (!firstPublishPage) return;
-    setPublish('prod');
-    void saveDraft();
-  }, [firstPublishPage]);
+    if (draftBar) return;
+    if (!firstPublishPage) {
+      setPublish(null);
+      return;
+    }
+    setPublish((now) => now ?? 'prod');
+    if (serverDraft) void saveDraft();
+  }, [draftBar, firstPublishPage]);
   const screenProps = { api, tenant, tenantName, route, live };
   const versionsView = section === 'definition' ? 'yaml' : 'history';
   const latest = versions[0];
@@ -2140,7 +2142,7 @@ export const Builder = ({
 
   const publishBody = (
     <div className="stack">
-      <Heading level={firstPublishPage ? 1 : 2} data-size="sm" id="pub-h">
+      <Heading level={1} data-size="sm" id="pub-h">
         {t('services.publishTitle', {
           name: service.metadata.name || t('services.publishFallbackName'),
         })}
@@ -2246,8 +2248,18 @@ export const Builder = ({
               },
             })}
         headingLevel={3}
-        onPublish={doPublish}
-        {...(live ? {} : { onPublishToTest: doPublishToTest })}
+        onPublish={async (input) => {
+          await doPublish(input);
+          if (!(isNew && serverDraft)) go('setup');
+        }}
+        {...(live
+          ? {}
+          : {
+              onPublishToTest: (input: PublishInput) => {
+                doPublishToTest(input);
+                go('setup');
+              },
+            })}
         onCancel={() => {
           setPublish(null);
           setProblems(undefined);
@@ -2341,7 +2353,14 @@ export const Builder = ({
                 </Button>
               )}
               {live || !canPublish || showsInUse ? null : (
-                <Button variant="secondary" data-size="sm" onClick={() => setPublish('test')}>
+                <Button
+                  variant="secondary"
+                  data-size="sm"
+                  onClick={() => {
+                    setPublish('test');
+                    go('setup', '/publish');
+                  }}
+                >
                   {t('services.publishToTest')}
                 </Button>
               )}
@@ -2381,13 +2400,7 @@ export const Builder = ({
                   {t('edition.publish')}
                 </Button>
               ) : (
-                <Button
-                  variant="primary"
-                  data-size="sm"
-                  onClick={() =>
-                    isNew && serverDraft ? go('setup', '/publish') : setPublish('prod')
-                  }
-                >
+                <Button variant="primary" data-size="sm" onClick={() => go('setup', '/publish')}>
                   {t('edition.publish')}
                 </Button>
               )}
@@ -2538,21 +2551,6 @@ export const Builder = ({
             <TabsPanel value="tjeneste">{pane === 'tjeneste' ? content : null}</TabsPanel>
           </Tabs>
         )}
-        {publish && canPublish && !draftBar && !firstPublishPage ? (
-          <Dialog
-            open
-            modal
-            closeButton={t('services.close')}
-            onClose={() => {
-              setPublish(null);
-              setProblems(undefined);
-            }}
-            aria-labelledby="pub-h"
-            className="publish-dialog"
-          >
-            {publishBody}
-          </Dialog>
-        ) : null}
       </div>
     </ServicePageContext.Provider>
   );
