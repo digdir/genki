@@ -73,6 +73,7 @@ import {
   gateSystemHint,
   groundingDecision,
   responseValidationHint,
+  confidentReadSignalFinalize,
   shadowGateDecision,
   shouldRunResponseValidation,
   standsWhenUnsure,
@@ -924,8 +925,10 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
           shadowRaw.suggestedStrategy === 'ask-clarification')
           ? enforceSufficiencyLimit(workspace, shadowRaw)
           : undefined;
+      const weakSufficient =
+        shadowCounted?.status === 'sufficient' && !confidentReadSignalFinalize(workspace);
       const shadow =
-        shadowCounted && !(citedDraft && shadowCounted.status !== 'sufficient')
+        shadowCounted && !weakSufficient && !(citedDraft && shadowCounted.status !== 'sufficient')
           ? shadowCounted
           : undefined;
       const lastStatus = workspace.lastReadSignal?.status;
@@ -996,6 +999,12 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
 
       const active = validation ?? grounding ?? sufficiency;
       const activeHint = validationHint ?? hint;
+      const overriddenReadStatus =
+        active?.status === 'sufficient' &&
+        lastStatus !== undefined &&
+        lastStatus !== 'support-found'
+          ? lastStatus
+          : undefined;
       if (active)
         yield {
           type: 'kernel.notice',
@@ -1004,6 +1013,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
             source: active.source,
             status: active.status,
             strategy: active.suggestedStrategy,
+            ...(overriddenReadStatus ? { overriddenReadStatus } : {}),
           },
         };
 

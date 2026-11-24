@@ -1,0 +1,27 @@
+.playground-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.playground-views {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+
+.playground-make {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.playground-frontend {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-top: 16px;
+}

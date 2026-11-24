@@ -598,6 +598,37 @@ describe('the run mapper', () => {
     });
   });
 
+  it('names who decided at a gate and the read status it overrode', () => {
+    const mapper = new RunMapper();
+    [
+      notice(0, {
+        stage: 'gate',
+        source: 'llm-sufficiency-gate',
+        status: 'sufficient',
+        strategy: 'finalize',
+        overriddenReadStatus: 'gap-remaining',
+      }),
+      notice(1, {
+        stage: 'gate',
+        source: 'shadow-read-signals',
+        status: 'insufficient',
+        strategy: 'read-more',
+      }),
+    ].forEach((e) => mapper.push(e));
+
+    const [overrode, plain] = mapper.steps.filter((s) => s.type === 'guard');
+    expect(overrode?.blocks).toEqual([
+      {
+        kind: 'kv',
+        rows: [
+          ['Avgjort av', 'Modellen som vurderer kildene'],
+          ['Overstyrte lesesjekken', 'Mangler fortsatt noe'],
+        ],
+      },
+    ]);
+    expect(plain?.blocks).toEqual([{ kind: 'kv', rows: [['Avgjort av', 'Lesesjekken']] }]);
+  });
+
   it('replaces a renumbered answer without a warning step', () => {
     const mapper = new RunMapper({ details: true });
     const changes = [

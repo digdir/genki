@@ -51,7 +51,7 @@ const withPlayground = (playground: PlaygroundMockOptions, seen: string[] = []) 
 };
 
 const openPage = async (playground: PlaygroundMockOptions = {}, seen: string[] = []) => {
-  await renderAt('#/playground', withPlayground(playground, seen));
+  await renderAt('#/playground/backend', withPlayground(playground, seen));
   return screen.findByRole('textbox', { name: 'Spørsmål' });
 };
 
@@ -775,6 +775,17 @@ describe('Prøveområde', () => {
         data: btoa(String.fromCharCode(...new TextEncoder().encode('Søker: Eksempel IL'))),
       },
     });
+  });
+
+  it('the side panel links to Backend in the playground, where questions are asked', async () => {
+    const api = createApiClient({
+      baseUrl: '/api',
+      fetch: withPlayground({}),
+      token: () => 'kari',
+    });
+    render(<PlaygroundPanel layout="side" api={api} tenant="991825827" tenantName="Testetaten" />);
+    const link = await screen.findByRole('link', { name: 'Åpne i prøveområdet' });
+    expect(link.getAttribute('href')).toBe('#/playground/backend');
   });
 
   it('on the test page of a published service, the setup lists the draft and the published versions, and runs the chosen published one', async () => {

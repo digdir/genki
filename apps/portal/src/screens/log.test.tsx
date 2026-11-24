@@ -706,7 +706,7 @@ describe('Logg: run rows', () => {
 
     expect(await screen.findByRole('heading', { name: 'Ingen kjøringer ennå' })).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Åpne prøveområdet' }).getAttribute('href')).toBe(
-      '#/playground',
+      '#/playground/backend',
     );
     expect(screen.queryByRole('search')).toBeNull();
   });

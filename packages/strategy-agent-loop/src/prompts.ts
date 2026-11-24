@@ -15,7 +15,7 @@ export const searchPromptSections: PromptSection[] = [
   },
   {
     id: 'reasoning',
-    text: "Always include your reasoning in your message text before making tool calls. Explain what you're about to do and why.",
+    text: 'When you call a tool, you may first say in one short sentence what you are looking for.',
   },
   {
     id: 'workflow',
@@ -38,7 +38,7 @@ export const toolsOnlyPromptSections: PromptSection[] = [
   },
   {
     id: 'reasoning',
-    text: "Always include your reasoning in your message text before making tool calls. Explain what you're about to do and why. When you have what you need, answer in your message text without calling a tool.",
+    text: 'When you call a tool, you may first say in one short sentence what you are looking for. When you have what you need, answer in your message text without calling a tool.',
   },
 ];
 
