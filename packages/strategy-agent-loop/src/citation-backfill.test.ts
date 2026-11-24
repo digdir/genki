@@ -688,6 +688,27 @@ describe('adding citations to a draft', () => {
     expect(out.meta).toEqual({ citations: [{ index: 1, chunkId: 'c1' }] });
   });
 
+  it('reads a page the added citation holds inside its bracket as the citation', async () => {
+    const draft = list.replace('2019: tildelingsbrev', '2019: tildelingsbrev s. 63');
+    const out = await run({
+      scripts: {
+        primary: {
+          loop: [
+            () => result('', [call('search', { queries: ['tildelingsbrev'] })]),
+            () => result('', [call('read_chunks', { chunk_ids: ['c1', 'c2'] })]),
+            () => result(draft),
+          ],
+          read: [unsure],
+          sufficiency: [() => decision('insufficient', 're-search')],
+          synth: [() => draft.replace('tildelingsbrev s. 63', 'tildelingsbrev [1, s. 63]')],
+        },
+      },
+    });
+
+    expect(out.text).toBe(draft.replace('tildelingsbrev s. 63', 'tildelingsbrev [1] s. 63'));
+    expect(out.meta).toEqual({ citations: [{ index: 1, chunkId: 'c1' }] });
+  });
+
   it('does not use a rewrite of the same length that changes the wording', async () => {
     const reworded = list
       .replace('2019: tildelingsbrev', '2019: tildelingsbrev [1]')

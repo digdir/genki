@@ -282,7 +282,7 @@ export const synthesizeBlock: Block<
       temperature: params.temperature,
       maxTokens: params.maxTokens ?? defaultMaxOutputTokens,
     });
-    const answer = normaliseCitationMarkers(result.content);
+    const answer = normaliseCitationMarkers(result.content, (n) => n in index);
     const renumbered = renumberCitations(answer, parseCitations(answer, index), index);
     const insufficiency = detectInsufficientContext(renumbered.text);
     return {
