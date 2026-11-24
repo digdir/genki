@@ -313,8 +313,7 @@ export const collapseReportCopies = (
     const slot = slots.find(
       (s) =>
         !s.documents.has(document) &&
-        s.members.every((m) => closePages(m.info.pages, info.pages)) &&
-        s.members.some((m) => samePage(m, member)),
+        s.members.every((m) => closePages(m.info.pages, info.pages) && samePage(m, member)),
     );
     if (!slot) {
       const fresh = {

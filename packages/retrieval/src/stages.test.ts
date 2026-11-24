@@ -323,19 +323,19 @@ describe('records of one report', () => {
   describe('a copy whose PDF is cut into chunks at other places', () => {
     const words = (prefix: string, count: number) =>
       Array.from({ length: count }, (_, i) => `${prefix}${i}`).join(' ');
-    // The 2023 HOD copy's chunk starts at another heading and ends on another table row than the
-    // agency's own chunk of the same page: 154 and 140 distinct words, 128 of them shared.
+    // The HOD copy's chunk of the 826 000 page starts and ends elsewhere than the agency's own.
     const table = `${salary} ${words('rad', 119)}`;
     const ownChunk = `# Redegjørelse om likestilling ${table} ${words('innledning', 23)}`;
     const hodChunk = `# Kjønnsbalanse ${table} ${words('sluttrad', 11)}`;
 
-    it('the regression chunks have 154 and 140 distinct words, 128 shared, as measured in test', () => {
+    it('the regression chunks overlap less than 0.8 over both word sets, as the HOD copy did in test', () => {
       const own = tokenize(ownChunk);
       const copy = tokenize(hodChunk);
 
-      expect([own.size, copy.size, [...own].filter((w) => copy.has(w)).length]).toEqual([
-        154, 140, 128,
-      ]);
+      const shared = [...own].filter((w) => copy.has(w)).length;
+
+      expect([own.size, copy.size, shared]).toEqual([154, 140, 128]);
+      expect(shared / (own.size + copy.size - shared)).toBeLessThan(0.8);
     });
 
     it("a copy's hit is grouped with the own record's hit when nearly all of the shorter hit's words are in the other", () => {
@@ -391,6 +391,18 @@ describe('records of one report', () => {
     ]);
 
     expect(kept.map((c) => c.id)).toEqual(['hod#17', 'own#17']);
+  });
+
+  it('a hit joins a group only when it is the same page as every hit in it', () => {
+    const words = (prefix: string, count: number) =>
+      Array.from({ length: count }, (_, i) => `${prefix}${i}`).join(' ');
+    const kept = collapseReportCopies([
+      record('own#15', 'kudos:51fe0107', own, `${words('a', 100)} ${words('b', 40)}`),
+      record('hod#15', 'kudos:fdfac1a8', hod, `${words('a', 100)} ${words('b', 80)}`),
+      record('dup#16', 'kudos:a2a2fe02', sameYearCopy, `${words('a', 60)} ${words('b', 80)}`),
+    ]);
+
+    expect(kept.map((c) => c.id)).toEqual(['own#15', 'dup#16']);
   });
 
   it('a record with no page count is never grouped', () => {
