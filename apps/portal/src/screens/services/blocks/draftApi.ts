@@ -118,7 +118,12 @@ export const sourcesOf = (sources: readonly PlaygroundSource[]): Source[] => {
 // The excerpt each [N] cites, as the run gives it; none when the run cites documents.
 const markersOf = (result: PlaygroundResult) =>
   result.markers?.length
-    ? result.markers.map((m) => ({ marker: m.marker, chunkId: m.chunk_id, documentId: m.document }))
+    ? result.markers.map((m) => ({
+        marker: m.marker,
+        chunkId: m.chunk_id,
+        documentId: m.document,
+        ...(m.quote ? { quote: m.quote } : {}),
+      }))
     : undefined;
 
 const answerTextOf = (result: PlaygroundResult) =>

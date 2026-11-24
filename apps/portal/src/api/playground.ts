@@ -222,6 +222,8 @@ export interface PlaygroundMarker {
   marker: string;
   chunk_id: string;
   document: string;
+  /** The words the marker rests on in its excerpt, as `/v1` gives them. */
+  quote?: { type: 'TextQuoteSelector'; exact: string; prefix: string; suffix: string };
 }
 
 export interface PlaygroundModelUsage {
