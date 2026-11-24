@@ -676,8 +676,9 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
             push(text);
           },
         );
-        refusal ??= refusalOf(written);
-        return written.content;
+        const refused = refusalOf(written);
+        refusal ??= refused;
+        return refused ? undefined : written.content;
       },
       ...(settings.generationPrompt ? { generationPrompt: settings.generationPrompt } : {}),
       ...(settings.citeBy ? { citeBy: settings.citeBy } : {}),
@@ -1073,6 +1074,10 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
             { query },
           ),
         );
+        if (refusal) {
+          yield refusedNotice(refusal, iteration);
+          break;
+        }
         const usable =
           workspace.lastGeneratedResponse?.trim() && !workspace.lastGenerateInsufficient
             ? workspace.lastGeneratedResponse

@@ -121,14 +121,12 @@ const citeDraft = async (
   const { workspace } = env;
   const { context, index, chunks } =
     env.citeBy === 'excerpt' ? numberByExcerpt(candidates) : numberByDocument(candidates);
-  const text = stripSourceLists(
-    normaliseCitationMarkers(
-      await env.synthesize(
-        env.systemPrompt + skillsSection([...workspace.loadedSkills.values()]),
-        citeDraftPrompt(context, untrustedData('draft-answer', draft)),
-      ),
-    ),
+  const written = await env.synthesize(
+    env.systemPrompt + skillsSection([...workspace.loadedSkills.values()]),
+    citeDraftPrompt(context, untrustedData('draft-answer', draft)),
   );
+  if (written === undefined) return undefined;
+  const text = stripSourceLists(normaliseCitationMarkers(written));
   if (
     !validateCitations(text, index).grounded ||
     insufficientContextResponse(text) ||

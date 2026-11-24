@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import type { ChatResult } from '@genai/port-model';
 import { modelRefusals } from './index.js';
-import { baseConfig, call, decision, readSignal, result, run } from './harness.test-utils.js';
+import {
+  allSupported,
+  baseConfig,
+  call,
+  decision,
+  readSignal,
+  result,
+  run,
+} from './harness.test-utils.js';
 
 const refused = (category?: string): ChatResult => ({
   ...result(''),
@@ -121,6 +129,52 @@ describe('a model refusal', () => {
       expect.objectContaining({ stage: 'model-refused', category: 'general_harms' }),
     );
     expect(out.text).toBe(modelRefusals.nb);
+  });
+
+  it('shows a refusal when the draft the loop writes after a finalize verdict is refused', async () => {
+    const out = await run({
+      scripts: {
+        primary: {
+          loop: [
+            () => result('', [call('search', { queries: ['x'] })]),
+            () => result('', [call('read_chunks', { chunk_ids: ['c1', 'c2', 'c3', 'c4', 'c5'] })]),
+            () => result('Svar.'),
+          ],
+          read: [allSupported],
+          sufficiency: [() => decision('sufficient', 'finalize')],
+          synth: [() => refused('cyber')],
+        },
+      },
+    });
+
+    expect(out.notices).toContainEqual(
+      expect.objectContaining({ stage: 'model-refused', category: 'cyber' }),
+    );
+    expect(out.text).toBe(modelRefusals.nb);
+  });
+
+  it('keeps an earlier cited draft when a later draft is refused', async () => {
+    const out = await run({
+      scripts: {
+        primary: {
+          loop: [
+            () => result('', [call('search', { queries: ['x'] })]),
+            () => result('', [call('read_chunks', { chunk_ids: ['c1'] })]),
+            () => result('', [call('generate_response', { query: 'x' })]),
+            () => result('', [call('generate_response', { query: 'x' })]),
+            () => result('Svar.'),
+          ],
+          read: [() => readSignal('gap-remaining')],
+          synth: [() => 'Svar fra utkastet [1].', () => refused('general_harms')],
+          sufficiency: [() => decision('insufficient', 're-search')],
+        },
+      },
+    });
+
+    expect(out.notices).toContainEqual(
+      expect.objectContaining({ stage: 'model-refused', category: 'general_harms' }),
+    );
+    expect(out.text).toBe('Svar fra utkastet [1].');
   });
 
   it('does not treat a filtered turn that still calls tools as a refusal', async () => {

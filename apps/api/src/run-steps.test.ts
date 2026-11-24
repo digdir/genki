@@ -593,6 +593,32 @@ describe('the run mapper', () => {
       });
     });
 
+    it("takes the finish reason and category from the model step's latest call", () => {
+      seq = 0;
+      const mapper = new RunMapper();
+      const usageEnded = (ms: number, end: Record<string, string>) =>
+        at(
+          ms,
+          'kernel.usage',
+          {
+            usage: { inputTokens: 10, outputTokens: 0 },
+            port: 'model',
+            model: { kind: 'model', id: 'claude-opus-5-5' },
+            ...end,
+          },
+          'audit',
+        );
+      [
+        notice(100, { stage: 'tool', tool: 'generate_response', iteration: 0 }),
+        usageEnded(200, { finishReason: 'content_filter', refusalCategory: 'cyber' }),
+        usageEnded(300, { finishReason: 'stop' }),
+      ].forEach((e) => mapper.push(e));
+
+      const step = mapper.steps.find((s) => s.title === 'Skrev svaret');
+      expect(step?.finishReason).toBe('stop');
+      expect(step?.refusalCategory).toBeUndefined();
+    });
+
     it('upserts the same step id while it runs and when it finishes', () => {
       const mapper = new RunMapper();
       const changes = agentRun()
