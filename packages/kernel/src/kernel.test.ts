@@ -645,6 +645,44 @@ describe('kernel: budgets, deadlines and limits', () => {
     expect(usage?.data).toEqual({ usage: { inputTokens: 5 }, model: { kind: 'model', id: 'gpt' } });
   });
 
+  it('puts how a model call ended on its usage event', async () => {
+    const opus = { kind: 'model', id: 'claude-opus' };
+    const asker = strategy(
+      'asker',
+      async function* (ctx) {
+        const model = await ctx.use<{ chat(): Promise<void> }>('model', opus);
+        await model.chat();
+        yield { type: 'kernel.result', data: [] };
+      },
+      { requires: { kernel: 1, ports: ['model'], features: [] } },
+    );
+    const kernel = kernelWith({
+      strategies: [asker],
+      capabilities: [capability('ka', 'asker', { grants: [{ port: 'model', ref: opus }] })],
+      ports: {
+        model: {
+          open: (_ref, ctx) => ({
+            chat: () =>
+              ctx.meter({ inputTokens: 4923, outputTokens: 0 }, opus, {
+                finishReason: 'content_filter',
+                refusalCategory: 'reasoning_extraction',
+              }),
+          }),
+        },
+      },
+    });
+
+    const run = await kernel.invoke(kari, 'ka', {});
+    await run.result;
+
+    const audit = await collect(await kernel.events(kari, run.task, { audience: 'audit' }));
+    expect(audit.find((e) => e.type === 'kernel.usage')?.data).toMatchObject({
+      model: opus,
+      finishReason: 'content_filter',
+      refusalCategory: 'reasoning_extraction',
+    });
+  });
+
   it('fails the task even when the strategy catches the budget error, and refuses refunds', async () => {
     let refund: unknown;
     const cheat = strategy('cheat', async function* (ctx) {

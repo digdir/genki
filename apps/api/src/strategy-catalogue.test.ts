@@ -111,6 +111,17 @@ describe('the strategy catalogue', () => {
     }
   });
 
+  it('labels the reasoning section by what it lets the agent say, not as a request for reasoning', async () => {
+    const { body } = await listed();
+    const section = body.data
+      .find((s) => s.id === 'agent-loop')
+      ?.defaultInstructions?.sections?.find((s) => s.id === 'reasoning');
+
+    expect(section?.title.en).not.toMatch(/reason/i);
+    expect(section?.title.nb).not.toMatch(/begrunn/i);
+    expect(section?.reason.en).not.toMatch(/each step|traceable/i);
+  });
+
   it('gives the rag default the same text the strategy sends, with the date filled in', () => {
     const sent = systemPromptWithDate(new Date('2026-10-20T10:00:00Z'));
 

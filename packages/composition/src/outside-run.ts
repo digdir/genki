@@ -20,6 +20,6 @@ export const outsideRun = (log: EventLog, now: () => Date = () => new Date()): O
   };
   return {
     audit: (ctx, record) => append(ctx, 'kernel.gate.call', { ...record }),
-    meter: (ctx, usage, model) => append(ctx, 'kernel.usage', { usage, model }),
+    meter: (ctx, usage, model, end) => append(ctx, 'kernel.usage', { usage, model, ...end }),
   };
 };

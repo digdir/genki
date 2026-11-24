@@ -39,10 +39,16 @@ export interface ChatRequest {
 
 export type FinishReason = 'stop' | 'length' | 'tool_calls' | 'content_filter' | 'other';
 
+export interface StopDetail {
+  category?: string;
+}
+
 export interface ChatResult {
   content: string;
   toolCalls: ToolCall[];
   finishReason: FinishReason;
+  /** Why the provider stopped, when it says more than the finish reason: the category of a refusal. */
+  stopDetail?: StopDetail;
   usage: Usage;
   servedModel: string;
   continuation?: unknown;
