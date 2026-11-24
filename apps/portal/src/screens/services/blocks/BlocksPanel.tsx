@@ -5,6 +5,7 @@ import {
   Heading,
   Paragraph,
   Switch,
+  Tag,
 } from '@digdir/designsystemet-react';
 import { SchemaForm, type UiSchema, type Value } from '@genai/schema-forms';
 import {
@@ -33,6 +34,19 @@ import {
   type Zone,
 } from '@genai/ui-blocks/builder';
 import { Fragment } from 'react';
+
+/** A name with the «Kommer» tag, for what is not built yet. */
+export const ComingName = ({ name }: { name: string }) => {
+  const t = useT();
+  return (
+    <span className="coming-name">
+      {name}
+      <Tag data-size="sm" data-color="neutral">
+        {t('setupList.comingTag')}
+      </Tag>
+    </span>
+  );
+};
 import { useT, type PlainKey, type T } from '../../../i18n';
 
 /** The catalogue key of a block's name. */
@@ -118,7 +132,7 @@ const BlockOptions = ({
   const notes = options.flatMap((option) => {
     const offer = optionOfferOf(id, option.id, facts);
     const label = t(optionKey(id, option.id));
-    if (offer.planned) return [t('builderBlocks.planned', { block: label })];
+    if (offer.planned) return [t('builderBlocks.plannedNote', { block: label })];
     if (!offer.offered) return [`${label}: ${reasons(t, offer.unmet)}`];
     // On, but with no partner in the layout: it is not in force.
     const partners = (option.needs ?? []).filter((need) => partnersOf(need).length > 0);
@@ -217,7 +231,7 @@ export const BlocksPanel = ({
                   <Switch
                     variant="outline"
                     position="end"
-                    label={offer.planned ? t('builderBlocks.planned', { block: name }) : name}
+                    label={offer.planned ? <ComingName name={name} /> : name}
                     description={description}
                     checked={here || held}
                     disabled={!offer.offered && !here && !held}

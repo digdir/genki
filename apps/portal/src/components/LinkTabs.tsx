@@ -1,10 +1,12 @@
 import type { KeyboardEvent } from 'react';
+import { Icon, type IconComponent } from './Icon';
 
 export interface LinkTab {
   key: string;
   label: string;
   href: string;
   count?: string | undefined;
+  icon?: IconComponent | undefined;
 }
 
 const across: Record<string, (at: number, count: number) => number> = {
@@ -62,7 +64,9 @@ export const LinkTabs = ({
             aria-selected={selected}
             tabIndex={selected ? 0 : -1}
             onKeyDown={(e) => onKeyDown(e, i)}
+            className={tab.icon ? 'link-tab-with-icon' : undefined}
           >
+            {tab.icon ? <Icon icon={tab.icon} /> : null}
             {tab.count === undefined ? (
               tab.label
             ) : (

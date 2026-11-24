@@ -235,7 +235,7 @@ export const assistantUi = {
     applied: 'Endringene er brukt i oppsettet.',
     discarded: 'Endringene er forkastet.',
     unreadable: 'YAML-en kunne ikke leses.',
-    label: 'Teknisk tekst (YAML)',
+    label: 'Oppsettet som YAML',
     description:
       'Hele oppsettet som tekst. Lagres sammen med hver utgave, og kan sjekkes inn i et kodelager.',
     apply: 'Bruk endringene',

@@ -1,7 +1,6 @@
 import {
   Alert,
   Button,
-  Dialog,
   Heading,
   Link,
   Paragraph,
@@ -10,6 +9,9 @@ import {
   TabsPanel,
   TabsTab,
 } from '@digdir/designsystemet-react';
+import { PlayIcon, TrashIcon } from '@navikt/aksel-icons';
+import { BackLink } from '../../components/BackLink';
+import { Icon } from '../../components/Icon';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ApiError, type ApiClient } from '../../api';
 import type { AssistantProposal } from '../../api/assistant';
@@ -97,6 +99,7 @@ import { DiscardDialog } from './DiscardDialog';
 import { newDraftId } from './draft-id';
 import { HandoverNotice } from './HandoverNotice';
 import { PublishDiff, type TestWarning } from './PublishDiff';
+import { SetupForm } from './setup-form';
 import { SetupLayout, type AreaFact, type SidePane } from './setup-layout';
 import { areaLabelKeys, changeLabel, changeText, type ChangeNames } from './setup-change-text';
 import { draftChecks } from './setup-checks';
@@ -132,12 +135,15 @@ import { OverviewSection } from '../service/OverviewSection';
 import { QualitySection } from '../service/QualitySection';
 import { BatchSection } from '../batch/BatchSection';
 import {
+  advancedItemOf,
+  advancedItems,
   availableSections,
   editionView,
   servicePath,
   subSections,
   switchPaths,
   tabOf,
+  usesNewSetup,
   type Edition,
   type ServiceSection,
 } from '../service/sections';
@@ -155,7 +161,11 @@ import { VersionsSection } from '../service/VersionsSection';
 import { EnvironmentsSection } from '../service/EnvironmentsSection';
 import { LanguageInstructionTabs } from './LanguageInstructionTabs';
 import type { AssistantLayout } from '@genai/ui-blocks/builder';
+import { AdvancedTab } from './AdvancedTab';
+import { ConfirmedTag, FirstPublish, type Left } from './FirstPublish';
 import { InterfaceTab } from './blocks/InterfaceTab';
+import { LayoutTransfer } from './blocks/LayoutTransfer';
+import { shownLayoutOf } from './blocks/layoutStore';
 import { TryViewKeeper } from './blocks/TryViewKeeper';
 import { UnmaskedInputConsent } from './UnmaskedInputConsent';
 import {
@@ -401,7 +411,9 @@ export const Builder = ({
   filesRef.current = files;
   const showsInUse = edition === 'inUse';
   const serverDraft = live && (!isNew || id !== 'new') && !showsInUse;
-  const setupLayout = !isNew || (serverDraft && init.draftRevision !== undefined);
+  // Every service gets the shared Oppsett; only a live #/services/new has no draft yet.
+  const setupLayout = !isNew || !live || init.draftRevision !== undefined;
+  const fresh = usesNewSetup({ isNew });
   const areaShown = (d: string | undefined) => {
     const area = areaOf(d);
     return isNew && area === 'limits' ? undefined : area;
@@ -620,8 +632,8 @@ export const Builder = ({
       go('test');
       return;
     }
-    go('setup');
     const section = c.section as SectionId;
+    go('setup', fresh ? `/${areaOfSection[section] ?? 'purpose'}` : '');
     setSetupArea(areaOfSection[section] ?? 'purpose');
     setOpen((o) => ({ ...o, [section]: true }));
     setHighlight(section);
@@ -1010,8 +1022,10 @@ export const Builder = ({
   const overviewPublished = inUseEdition ?? remoteLatest;
   const [checks, retryChecks] = useAsync(
     (signal) =>
-      draftBar && draftRevision > 0 ? draftChecks(api, tenant, id, signal) : Promise.resolve(null),
-    [api, tenant, id, draftBar, draftRevision],
+      serverDraft && draftRevision > 0
+        ? draftChecks(api, tenant, id, signal)
+        : Promise.resolve(null),
+    [api, tenant, id, serverDraft, draftRevision],
   );
   const checkProblems = checks.status === 'ready' && checks.data ? checks.data.problems : [];
 
@@ -1024,13 +1038,23 @@ export const Builder = ({
   }, [draftBar, saveState]);
 
   useEffect(() => {
-    if (draftBar && openPublish) go('setup', '/publish');
+    if (openPublish && edition !== 'inUse') go('setup', '/publish');
   }, []);
 
   useEffect(() => {
     const area = section === 'setup' ? areaShown(detail) : undefined;
     if (area) setSetupArea(area);
   }, [section, detail]);
+
+  // In the one long form, an area's address scrolls to it.
+  useEffect(() => {
+    if (!fresh || section !== 'setup' || !detail) return;
+    const timer = setTimeout(
+      () => document.getElementById(`omrade-${detail}`)?.scrollIntoView?.({ block: 'start' }),
+      60,
+    );
+    return () => clearTimeout(timer);
+  }, [fresh, section, detail]);
 
   const applyProposal = (entry: TurnEntry, proposal: AssistantProposal) => {
     if (proposal.kind === 'interface' && proposal.blocks?.length) {
@@ -1223,6 +1247,8 @@ export const Builder = ({
     uses: UnmaskedInputUse[];
     messages: Record<string, string>;
   }>({ uses: [], messages: {} });
+  const checkedRef = useRef<Record<string, unknown>>(undefined);
+  const [recheck, setRecheck] = useState(0);
   useEffect(() => {
     if (!publish) {
       setCheck(undefined);
@@ -1230,6 +1256,7 @@ export const Builder = ({
       return;
     }
     let active = true;
+    checkedRef.current = definitionRef.current;
     setCheck({ status: 'checking' });
     api
       .completeDefinition(definitionRef.current)
@@ -1257,7 +1284,13 @@ export const Builder = ({
     return () => {
       active = false;
     };
-  }, [publish]);
+  }, [publish, recheck]);
+  // Risk and guards can be fixed on the publish page, so a change there is checked again.
+  useEffect(() => {
+    if (!publish || definition === checkedRef.current) return;
+    const timer = setTimeout(() => setRecheck((n) => n + 1), 400);
+    return () => clearTimeout(timer);
+  }, [publish, definition]);
   const validationErrors = check?.status === 'done' ? check.errors : [];
   const unmaskedUses = [
     ...(check?.status === 'done' ? check.unmasked : []),
@@ -1680,12 +1713,16 @@ export const Builder = ({
     if (publishPage) void saveDraft();
   }, [draftBar, publishPage]);
   const firstPublishPage =
-    isNew && serverDraft && canPublish && section === 'setup' && detail === 'publish';
+    !draftBar && !showsInUse && canPublish && section === 'setup' && detail === 'publish';
   useEffect(() => {
-    if (!firstPublishPage) return;
-    setPublish('prod');
-    window.location.replace(`#${servicePath(routeId, 'setup')}`);
-  }, [firstPublishPage, routeId]);
+    if (draftBar) return;
+    if (!firstPublishPage) {
+      setPublish(null);
+      return;
+    }
+    setPublish((now) => now ?? 'prod');
+    if (serverDraft) void saveDraft();
+  }, [draftBar, firstPublishPage]);
   const screenProps = { api, tenant, tenantName, route, live };
   const versionsView = section === 'definition' ? 'yaml' : 'history';
   const latest = versions[0];
@@ -1709,6 +1746,7 @@ export const Builder = ({
   const setup = (only: SectionId[], area?: SetupArea) => (
     <SetupTab
       area={area}
+      fresh={fresh}
       {...(readOnly
         ? {}
         : {
@@ -1807,6 +1845,30 @@ export const Builder = ({
     />
   );
 
+  const chatAssistantPanel = (
+    <AssistantPanel
+      chat
+      messages={messages}
+      cardFor={cardFor}
+      undone={undone}
+      done={done}
+      applied={Object.fromEntries(Object.keys(assisted).map((k) => [k, true]))}
+      typing={typing}
+      composer={composer}
+      suggestions={[]}
+      userName={userName}
+      tenantName={tenantName}
+      assistant={assistant}
+      canApprove={canApprove}
+      onDecide={decide}
+      onComposer={setComposer}
+      onSend={send}
+      onShow={showCard}
+      onUndo={toggleUndo}
+      onAction={action}
+    />
+  );
+
   const sideAssistantPanel = (
     <AssistantPanel
       side
@@ -1830,6 +1892,31 @@ export const Builder = ({
       onAction={action}
     />
   );
+
+  const deleteQuestion =
+    canDelete && deleting ? (
+      <Alert data-color="danger" data-size="sm">
+        <Paragraph data-size="sm">{t('services.deleteDraftQuestion', { name })}</Paragraph>
+        {deleting === 'failed' ? (
+          <Paragraph data-size="sm">{t('services.deleteDraftFailed')}</Paragraph>
+        ) : null}
+        {deleting === 'busy' ? null : (
+          <div className="actions">
+            <Button
+              variant="primary"
+              data-color="danger"
+              data-size="sm"
+              onClick={() => void deleteDraft()}
+            >
+              {t('services.deleteDraft')}
+            </Button>
+            <Button variant="secondary" data-size="sm" onClick={() => setDeleting(undefined)}>
+              {t('common.cancel')}
+            </Button>
+          </div>
+        )}
+      </Alert>
+    ) : null;
 
   const body = (() => {
     if (section === 'overview')
@@ -1926,8 +2013,46 @@ export const Builder = ({
           {...(readOnly ? {} : { assistant: assistantPanel })}
           onFullscreen={() => go('interface', '/preview')}
           onExitFullscreen={() => go('interface')}
+          simple={fresh}
         />
       );
+    if (section === 'advanced') {
+      const item = advancedItemOf(detail);
+      const shownLayout = shownLayoutOf(definition);
+      return (
+        <AdvancedTab id={routeId} current={item}>
+          {item === 'limits' ? (
+            <>
+              {isNew ? <Paragraph>{t('service.limitsAfterPublish')}</Paragraph> : null}
+              <SettingsSection
+                {...screenProps}
+                id={id}
+                readOnly={readOnly || isNew}
+                limits={{
+                  logMasked: guardOn(service.spec, 'pii-out-of-log'),
+                  own: service.spec.settings ?? {},
+                  onLogging: () => go('setup', '/publish'),
+                }}
+              />
+            </>
+          ) : item === 'json' ? (
+            shownLayout ? (
+              <LayoutTransfer layout={shownLayout} onPaste={writeLayout} titled={false} />
+            ) : (
+              <Paragraph>{t('builderBlocks.foreignText')}</Paragraph>
+            )
+          ) : item === 'yaml' ? (
+            <YamlTab
+              api={api}
+              generated={yaml}
+              onApply={(d) => replaceWith(asServiceDefinition(d))}
+            />
+          ) : (
+            setup(setupSections, item)
+          )}
+        </AdvancedTab>
+      );
+    }
     if (section === 'settings') return <SettingsSection {...screenProps} id={id} />;
     if (section === 'quality') return <QualitySection {...screenProps} id={id} />;
     if (section === 'batch')
@@ -1975,6 +2100,39 @@ export const Builder = ({
               generated={yaml}
               onApply={(d) => replaceWith(asServiceDefinition(d))}
             />
+          }
+        />
+      );
+    if (fresh && setupLayout)
+      return (
+        <SetupForm
+          facts={areaFacts}
+          area={(a) => setup(setupSections, a)}
+          {...(readOnly ? {} : { assistant: chatAssistantPanel })}
+          footer={
+            <div className="stack">
+              <div className="stack-xs">
+                <Paragraph data-size="sm" className="meta">
+                  {t('service.draftNote')}
+                </Paragraph>
+                <Paragraph data-size="sm" className="meta">
+                  {t('setupList.savedNote')}
+                </Paragraph>
+              </div>
+              {canDelete && !deleting ? (
+                <Button
+                  variant="secondary"
+                  data-color="danger"
+                  data-size="sm"
+                  className="align-start"
+                  onClick={() => setDeleting('asking')}
+                >
+                  <Icon icon={TrashIcon} />
+                  {t('services.deleteDraft')}
+                </Button>
+              ) : null}
+              {deleteQuestion}
+            </div>
           }
         />
       );
@@ -2057,25 +2215,26 @@ export const Builder = ({
     </div>
   );
 
-  const publishProblems = (
+  const invalidAlert = invalid ? (
+    <Alert data-color="danger" data-size="sm" role="alert">
+      <Heading level={3} data-size="2xs">
+        {t('services.notAccepted')}
+      </Heading>
+      <ul className="bullets">
+        {validationErrors.map((e) => {
+          const problem = describeProblem(e, t);
+          return (
+            <li key={`${e.path}-${e.message}`}>
+              <strong>{problem.section}:</strong> {problem.message}
+            </li>
+          );
+        })}
+      </ul>
+    </Alert>
+  ) : null;
+  // What the first publish page lists in its summary is not repeated below it.
+  const publishProblemsAfter = (
     <>
-      {invalid ? (
-        <Alert data-color="danger" data-size="sm" role="alert">
-          <Heading level={3} data-size="2xs">
-            {t('services.notAccepted')}
-          </Heading>
-          <ul className="bullets">
-            {validationErrors.map((e) => {
-              const problem = describeProblem(e, t);
-              return (
-                <li key={`${e.path}-${e.message}`}>
-                  <strong>{problem.section}:</strong> {problem.message}
-                </li>
-              );
-            })}
-          </ul>
-        </Alert>
-      ) : null}
       {draftBase !== undefined && draftBase !== remoteLatestVersion && draftBase > 0 ? (
         <Paragraph data-size="sm">
           {t('services.basedOnVersion', { base: draftBase, latest: remoteLatestVersion })}
@@ -2124,6 +2283,12 @@ export const Builder = ({
       ) : null}
     </>
   );
+  const publishProblems = (
+    <>
+      {invalidAlert}
+      {publishProblemsAfter}
+    </>
+  );
   const publishNotes = (
     <>
       {hasTestSet ? null : (
@@ -2134,6 +2299,135 @@ export const Builder = ({
       )}
       {publishProblems}
     </>
+  );
+
+  const publishBody = (
+    <div className="stack">
+      <Heading level={1} data-size="sm" id="pub-h">
+        {t('services.publishTitle', {
+          name: service.metadata.name || t('services.publishFallbackName'),
+        })}
+      </Heading>
+      <Paragraph>
+        {publish === 'test'
+          ? t('services.publishTestInfo')
+          : current === 0
+            ? t('services.publishFirstInfo')
+            : t('services.publishProdInfo')}
+      </Paragraph>
+      {publishNotes}
+      <PublishSummary
+        tenantName={tenantName}
+        currentVersion={current}
+        nextVersion={current + 1}
+        changes={
+          changes.length
+            ? changes
+            : current === 0
+              ? [t('services.changeFirstVersion')]
+              : draftRevision > 0
+                ? [t('services.changeDraft')]
+                : edited
+                  ? [t('services.changeForm')]
+                  : [t('services.changeNone')]
+        }
+        inTest={publish === 'test'}
+        blockedBy={blockedBy}
+        updates={live ? [] : (exampleUpdates[id] ?? [])}
+        facts={[
+          { label: t('services.factTestset'), value: testsetFact },
+          {
+            label: t('services.factCost'),
+            value: live
+              ? notPricedLabel(t)
+              : per1000
+                ? t('services.factCostPer1000', { cost: per1000 })
+                : t('services.factNotCalculated'),
+          },
+          {
+            label: t('services.factResidency'),
+            value: fallback
+              ? t('services.residencyWithReserve', {
+                  where: modelWord(t, model?.where ?? 'Norge'),
+                  reserve: modelWord(t, fallback.where),
+                })
+              : modelWord(t, model?.where ?? 'Norge'),
+          },
+          { label: t('services.factRisk'), value: riskNote },
+        ]}
+        gates={[
+          {
+            name: t('services.gateNoForbidden'),
+            value: forbidden ? t('services.gateChecked') : t('services.gateNone'),
+            passed: !forbidden,
+            explanation: t('services.gateForbiddenWhy'),
+          },
+          {
+            name: t('services.gateRiskConfirmed'),
+            value: !riskSet
+              ? t('services.unset')
+              : riskConfirmed
+                ? t('services.gateConfirmed')
+                : t('services.gateNotConfirmed'),
+            passed: riskPassed,
+            explanation: t('services.gateRiskWhy'),
+          },
+          ...(unmaskedTypeList.length
+            ? [
+                {
+                  name: t('unmaskedInput.gate'),
+                  value: unmaskedMissing
+                    ? t('unmaskedInput.gateMissing', {
+                        missing: unmaskedMissing,
+                        count: unmaskedTypeList.length,
+                      })
+                    : t('services.gateConfirmed'),
+                  passed: unmaskedMissing === 0,
+                  explanation: t('unmaskedInput.gateWhy'),
+                },
+              ]
+            : []),
+        ]}
+        apiCall={{
+          action: t('services.publishAction'),
+          method: 'POST',
+          path: '/definitions',
+          body: { definition: publishable, files },
+          right: rightLabel(t, 'manage-services'),
+        }}
+        {...(riskPassed && !forbidden
+          ? {}
+          : {
+              fixAction: {
+                label: t('services.fixRisk'),
+                onClick: () => {
+                  setPublish(null);
+                  go('setup', isNew ? '/purpose' : '/risk');
+                  showPane('tjeneste');
+                  setOpen((o) => ({ ...o, purpose: true }));
+                },
+              },
+            })}
+        headingLevel={3}
+        onPublish={async (input) => {
+          await doPublish(input);
+          if (!(isNew && serverDraft)) go('setup');
+        }}
+        {...(live
+          ? {}
+          : {
+              onPublishToTest: (input: PublishInput) => {
+                doPublishToTest(input);
+                go('setup');
+              },
+            })}
+        onCancel={() => {
+          setPublish(null);
+          setProblems(undefined);
+          if (firstPublishPage) go('setup');
+        }}
+      />
+    </div>
   );
 
   const view = editionView(section, edition);
@@ -2210,7 +2504,14 @@ export const Builder = ({
                   {...(live ? { onCopy: () => void copyService() } : {})}
                 />
               ) : null}
-              {archived ? null : setupLayout && section === 'setup' && !showsInUse ? (
+              {fresh ? (
+                <Button asChild variant="secondary" data-size="sm">
+                  <a href={`#${servicePath(routeId, 'interface', '/preview')}`}>
+                    <Icon icon={PlayIcon} />
+                    {t('edition.testService')}
+                  </a>
+                </Button>
+              ) : archived ? null : setupLayout && section === 'setup' && !showsInUse ? (
                 <Button variant="secondary" data-size="sm" onClick={() => setSidePane('try')}>
                   {t('edition.tryIt')}
                 </Button>
@@ -2219,12 +2520,19 @@ export const Builder = ({
                   <a href={playgroundHref}>{t('edition.tryIt')}</a>
                 </Button>
               )}
-              {live || !canPublish || showsInUse ? null : (
-                <Button variant="secondary" data-size="sm" onClick={() => setPublish('test')}>
+              {fresh || live || !canPublish || showsInUse ? null : (
+                <Button
+                  variant="secondary"
+                  data-size="sm"
+                  onClick={() => {
+                    setPublish('test');
+                    go('setup', '/publish');
+                  }}
+                >
                   {t('services.publishToTest')}
                 </Button>
               )}
-              {canDelete ? (
+              {canDelete && !fresh ? (
                 <Button
                   variant="secondary"
                   data-color="danger"
@@ -2260,42 +2568,21 @@ export const Builder = ({
                   {t('edition.publish')}
                 </Button>
               ) : (
-                <Button variant="primary" data-size="sm" onClick={() => setPublish('prod')}>
+                <Button variant="primary" data-size="sm" onClick={() => go('setup', '/publish')}>
                   {t('edition.publish')}
                 </Button>
               )}
             </>
           }
         />
-        {canDelete && deleting ? (
-          <Alert data-color="danger" data-size="sm">
-            <Paragraph data-size="sm">{t('services.deleteDraftQuestion', { name })}</Paragraph>
-            {deleting === 'failed' ? (
-              <Paragraph data-size="sm">{t('services.deleteDraftFailed')}</Paragraph>
-            ) : null}
-            {deleting === 'busy' ? null : (
-              <div className="actions">
-                <Button
-                  variant="primary"
-                  data-color="danger"
-                  data-size="sm"
-                  onClick={() => void deleteDraft()}
-                >
-                  {t('services.deleteDraft')}
-                </Button>
-                <Button variant="secondary" data-size="sm" onClick={() => setDeleting(undefined)}>
-                  {t('common.cancel')}
-                </Button>
-              </div>
-            )}
-          </Alert>
-        ) : null}
+        {fresh ? null : deleteQuestion}
         <ServiceNav
           id={routeId}
           name={service.metadata.name}
           sections={sections}
           current={section}
           edition={edition}
+          icons={fresh}
         />
         {draftBar && !archived && (saveState === 'failed' || saveState === 'conflict') ? (
           <DraftBar
@@ -2412,134 +2699,121 @@ export const Builder = ({
             <TabsPanel value="tjeneste">{pane === 'tjeneste' ? content : null}</TabsPanel>
           </Tabs>
         )}
-        {publish && canPublish && !draftBar ? (
-          <Dialog
-            open
-            modal
-            closeButton={t('services.close')}
-            onClose={() => {
-              setPublish(null);
-              setProblems(undefined);
-            }}
-            aria-labelledby="pub-h"
-            className="publish-dialog"
-          >
-            <div className="stack">
-              <Heading level={2} data-size="sm" id="pub-h">
-                {t('services.publishTitle', {
-                  name: service.metadata.name || t('services.publishFallbackName'),
-                })}
-              </Heading>
-              <Paragraph>
-                {publish === 'test' ? t('services.publishTestInfo') : t('services.publishProdInfo')}
-              </Paragraph>
-              {publishNotes}
-              <PublishSummary
-                tenantName={tenantName}
-                currentVersion={current}
-                nextVersion={current + 1}
-                changes={
-                  changes.length
-                    ? changes
-                    : current === 0
-                      ? [t('services.changeFirstVersion')]
-                      : draftRevision > 0
-                        ? [t('services.changeDraft')]
-                        : edited
-                          ? [t('services.changeForm')]
-                          : [t('services.changeNone')]
-                }
-                inTest={publish === 'test'}
-                blockedBy={blockedBy}
-                updates={live ? [] : (exampleUpdates[id] ?? [])}
-                facts={[
-                  { label: t('services.factTestset'), value: testsetFact },
-                  {
-                    label: t('services.factCost'),
-                    value: live
-                      ? notPricedLabel(t)
-                      : per1000
-                        ? t('services.factCostPer1000', { cost: per1000 })
-                        : t('services.factNotCalculated'),
-                  },
-                  {
-                    label: t('services.factResidency'),
-                    value: fallback
-                      ? t('services.residencyWithReserve', {
-                          where: modelWord(t, model?.where ?? 'Norge'),
-                          reserve: modelWord(t, fallback.where),
-                        })
-                      : modelWord(t, model?.where ?? 'Norge'),
-                  },
-                  { label: t('services.factRisk'), value: riskNote },
-                ]}
-                gates={[
-                  {
-                    name: t('services.gateNoForbidden'),
-                    value: forbidden ? t('services.gateChecked') : t('services.gateNone'),
-                    passed: !forbidden,
-                    explanation: t('services.gateForbiddenWhy'),
-                  },
-                  {
-                    name: t('services.gateRiskConfirmed'),
-                    value: !riskSet
-                      ? t('services.unset')
-                      : riskConfirmed
-                        ? t('services.gateConfirmed')
-                        : t('services.gateNotConfirmed'),
-                    passed: riskPassed,
-                    explanation: t('services.gateRiskWhy'),
-                  },
-                  ...(unmaskedTypeList.length
-                    ? [
-                        {
-                          name: t('unmaskedInput.gate'),
-                          value: unmaskedMissing
-                            ? t('unmaskedInput.gateMissing', {
-                                missing: unmaskedMissing,
-                                count: unmaskedTypeList.length,
-                              })
-                            : t('services.gateConfirmed'),
-                          passed: unmaskedMissing === 0,
-                          explanation: t('unmaskedInput.gateWhy'),
-                        },
-                      ]
-                    : []),
-                ]}
-                apiCall={{
-                  action: t('services.publishAction'),
-                  method: 'POST',
-                  path: '/definitions',
-                  body: { definition: publishable, files },
-                  right: rightLabel(t, 'manage-services'),
-                }}
-                {...(riskPassed && !forbidden
-                  ? {}
-                  : {
-                      fixAction: {
-                        label: t('services.fixRisk'),
-                        onClick: () => {
-                          setPublish(null);
-                          go('setup', isNew ? '/purpose' : '/risk');
-                          showPane('tjeneste');
-                          setOpen((o) => ({ ...o, purpose: true }));
-                        },
-                      },
-                    })}
-                headingLevel={3}
-                onPublish={doPublish}
-                {...(live ? {} : { onPublishToTest: doPublishToTest })}
-                onCancel={() => {
-                  setPublish(null);
-                  setProblems(undefined);
-                }}
-              />
-            </div>
-          </Dialog>
-        ) : null}
       </div>
     </ServicePageContext.Provider>
   );
+  const formAreas: SetupArea[] = ['purpose', 'sources', 'input', 'result', 'model'];
+  const leftFor = (p: { path: string; message: string }, key: string): Left => {
+    const area = areaOfPath(p.path);
+    const problem = describeProblem(p as PublishProblem, t);
+    const where = area === 'risk' ? 'risk' : area === 'guards' ? 'guards' : undefined;
+    return {
+      key,
+      text: t('publish.leftProblem', {
+        problem: problem.message,
+        area: area ? t(areaLabelKeys[area]) : problem.section,
+      }),
+      ...(where ? { on: where } : {}),
+      href:
+        area && formAreas.includes(area)
+          ? `#${servicePath(routeId, 'setup', `/${area}`)}`
+          : area && (advancedItems as readonly string[]).includes(area)
+            ? `#${servicePath(routeId, 'advanced', `/${area}`)}`
+            : `#${servicePath(routeId, 'setup', '/publish')}`,
+    };
+  };
+  const listed: Left[] = [
+    ...(check?.status === 'checking' ? [{ key: 'checking', text: t('publish.leftChecking') }] : []),
+    ...validationErrors.map((e, i) => leftFor(e, `invalid-${i}`)),
+    ...checkProblems
+      .filter((p) => areaOfPath(p.path) !== 'risk')
+      .map((p, i) => leftFor(p, `check-${i}`)),
+    ...(forbidden
+      ? [{ key: 'forbidden', text: t('publish.leftForbidden'), on: 'risk' as const }]
+      : riskPassed
+        ? []
+        : [
+            {
+              key: 'risk',
+              text: riskSet
+                ? t('publish.leftConfirmRisk')
+                : (riskProblem ?? t('services.riskNotSet')),
+              on: 'risk' as const,
+            },
+          ]),
+    ...(unmaskedMissing ? [{ key: 'unmasked', text: t('publish.leftUnmasked') }] : []),
+  ];
+  // The draft checks and the schema check can name the same problem.
+  const left = listed.filter((item, i) => listed.findIndex((x) => x.text === item.text) === i);
+  const freshPublish = (
+    <FirstPublish
+      title={t('services.publishTitle', {
+        name: service.metadata.name || t('services.publishFallbackName'),
+      })}
+      intro={t('services.publishFirstInfo')}
+      backHref={`#${servicePath(routeId, 'setup')}`}
+      left={left}
+      facts={[
+        { label: t('services.factTestset'), value: testsetFact },
+        {
+          label: t('services.factCost'),
+          value: live
+            ? notPricedLabel(t)
+            : per1000
+              ? t('services.factCostPer1000', { cost: per1000 })
+              : t('services.factNotCalculated'),
+        },
+        {
+          label: t('services.factResidency'),
+          value: fallback
+            ? t('services.residencyWithReserve', {
+                where: modelWord(t, model?.where ?? 'Norge'),
+                reserve: modelWord(t, fallback.where),
+              })
+            : modelWord(t, model?.where ?? 'Norge'),
+        },
+        {
+          label: t('services.factRisk'),
+          value: (
+            <span className="tag-row">
+              <ConfirmedTag confirmed={riskPassed} />
+              {riskLabel ?? t('services.riskNotSet')}
+            </span>
+          ),
+        },
+      ]}
+      riskConfirmed={riskPassed}
+      riskName={riskLabel ?? t('services.riskNotSet')}
+      risk={setup(setupSections, 'risk')}
+      guards={setup(setupSections, 'guards')}
+      problems={publishProblemsAfter}
+      apiCall={{
+        action: t('services.publishAction'),
+        method: 'POST',
+        path: '/definitions',
+        body: { definition: publishable, files },
+        right: rightLabel(t, 'manage-services'),
+      }}
+      canPublish={canPublish}
+      onPublish={async (reason) => {
+        await doPublish({ reason, include: [] });
+        if (!(isNew && serverDraft)) go('setup');
+      }}
+    />
+  );
+  const firstPublishView =
+    firstPublishPage && fresh ? (
+      <ServicePageContext.Provider value>
+        <div className="service-page">{freshPublish}</div>
+      </ServicePageContext.Provider>
+    ) : firstPublishPage ? (
+      <ServicePageContext.Provider value>
+        <div className="service-page">
+          <BackLink label={t('edition.back')} href={`#${servicePath(routeId, 'setup')}`} />
+          {publishBody}
+        </div>
+      </ServicePageContext.Provider>
+    ) : null;
   const publishView =
     publishPage && liveVersion && publishedDefinition ? (
       <ServicePageContext.Provider value>
@@ -2600,5 +2874,5 @@ export const Builder = ({
       </ServicePageContext.Provider>
     ) : null;
   // The «Grensesnitt» tab's try view goes on while the reader is on another tab of the page.
-  return <TryViewKeeper>{publishView ?? page}</TryViewKeeper>;
+  return <TryViewKeeper>{firstPublishView ?? publishView ?? page}</TryViewKeeper>;
 };

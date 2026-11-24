@@ -1,0 +1,22 @@
+/* The Avansert menu stays on the left; it goes above the content only on a phone-sized page. */
+@container page (min-width: 600px) {
+  .service-sub.advanced-tab {
+    grid-template-columns: 240px minmax(0, 1fr);
+    gap: 32px;
+  }
+
+  .advanced-tab .service-subnav {
+    flex-direction: column;
+    flex-wrap: nowrap;
+    border-right: 1px solid var(--ds-color-neutral-border-subtle);
+    padding-right: 24px;
+  }
+
+  .advanced-tab .service-subnav a {
+    white-space: normal;
+  }
+}
+
+.advanced-body {
+  max-width: 720px;
+}

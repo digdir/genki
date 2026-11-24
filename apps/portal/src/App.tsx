@@ -15,6 +15,7 @@ import { useSessionTimer } from './session-timer';
 import { EmptyState, Loading, NavigationProgress } from './states';
 import { pendingInputHash, restoreUnsavedInput, saveUnsavedInput } from './unsaved-input';
 import type { Organisation, Session } from './types';
+import { forgetNotYetSaved } from './screens/services/not-yet-saved';
 
 const Shell = lazy(() => import('./Shell').then((m) => ({ default: m.Shell })));
 const NoAccess = lazy(() => import('./screens/NoAccess').then((m) => ({ default: m.NoAccess })));
@@ -79,6 +80,9 @@ const Portal = ({
   const slowNavigation = useDelayed(navigating, 200);
   const orgParam = route.query.get('org');
   const [session, setSession] = useState<Session | undefined>(auth.current());
+  useEffect(() => {
+    if (!session) forgetNotYetSaved();
+  }, [session]);
   const [picked, setOrganisation] = useState<Organisation | undefined>(
     () => session && chosen(session, orgParam),
   );

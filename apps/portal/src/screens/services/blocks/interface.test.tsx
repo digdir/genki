@@ -77,17 +77,15 @@ describe('the Utforming tab', () => {
     expectAccessible();
   });
 
-  it('is on the page of a new service, between Oppsett and Teknisk', async () => {
+  it('is on the page of a new service, between Oppsett and Avansert', async () => {
     await renderAt('#/services/new');
-    await screen.findByRole('heading', { level: 1, name: 'Ny tjeneste' });
-    fireEvent.click(screen.getByRole('button', { name: /Henter ut opplysninger/ }));
-    await screen.findByText('Satte jobb: henter ut opplysninger');
+    await screen.findByRole('heading', { level: 2, name: 'Grunnleggende' });
     const nav = screen.getByRole('tablist', { name: /^Faner for/ });
     expect(
       within(nav)
         .getAllByRole('tab')
         .map((a) => a.textContent),
-    ).toEqual(['Oppsett', 'Utforming', 'Teknisk']);
+    ).toEqual(['Oppsett', 'Utforming', 'Avansert']);
     fireEvent.click(navLink('Utforming'));
     expect(await screen.findByRole('group', { name: 'Designelementer og maler' })).toBeTruthy();
     expectAccessible();

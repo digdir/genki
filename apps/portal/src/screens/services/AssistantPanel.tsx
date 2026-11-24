@@ -1,4 +1,4 @@
-import { CodeIcon, PaperplaneIcon, SparklesIcon } from '@navikt/aksel-icons';
+import { ArrowUpIcon, CodeIcon, PaperplaneIcon, SparklesIcon } from '@navikt/aksel-icons';
 import { Button, Chip, Field, Label, Tag, Textarea } from '@digdir/designsystemet-react';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { AssistantProposal, AssistantTurn, ProposalDecision } from '../../api/assistant';
@@ -46,6 +46,8 @@ interface Props {
   onUndo: (id: string) => void;
   onAction: (id: string) => void;
   side?: boolean;
+  /** Beside the new Oppsett: the same writing box as the chat, and no introduction. */
+  chat?: boolean;
 }
 
 const exampleResponse = (message: ChatMessage, cardFor: Props['cardFor']): AssistantTurn => ({
@@ -92,9 +94,11 @@ export const AssistantPanel = ({
   onShow,
   onUndo,
   onAction,
-  side = false,
+  side: sideProp = false,
+  chat = false,
 }: Props) => {
   const t = useT();
+  const side = sideProp || chat;
   const log = useRef<HTMLDivElement>(null);
   const [call, setCall] = useState<MessageCall | null>(null);
   const [policyDone, setPolicyDone] = useState<Record<string, boolean>>({});
@@ -191,7 +195,7 @@ export const AssistantPanel = ({
         {assistant.announce}
       </div>
       <div ref={log} aria-live={streaming ? 'off' : 'polite'} className="assistant-log">
-        {side && messages.length === 0 ? (
+        {side && !chat && messages.length === 0 ? (
           <div className="assistant-intro">
             <span aria-hidden="true" className="assistant-intro-icon">
               <Icon icon={SparklesIcon} size={16} />
@@ -321,7 +325,12 @@ export const AssistantPanel = ({
             ))}
           </div>
         )}
-        <form onSubmit={submit} className={side ? 'compose-form compose-box' : 'compose-form'}>
+        <form
+          onSubmit={submit}
+          className={
+            chat ? 'compose-form compose-chat' : side ? 'compose-form compose-box' : 'compose-form'
+          }
+        >
           <Field className="compose-field">
             <Label
               htmlFor="til-assistenten"
@@ -345,7 +354,18 @@ export const AssistantPanel = ({
               }}
             />
           </Field>
-          {side ? (
+          {chat ? (
+            <Button
+              variant={composer.trim() && !pending && !streaming && !off ? 'primary' : 'tertiary'}
+              {...(composer.trim() ? {} : { 'data-color': 'neutral' })}
+              icon
+              type="submit"
+              aria-label={t('assistant.send')}
+              aria-disabled={!composer.trim() || pending || streaming || off || undefined}
+            >
+              <Icon icon={ArrowUpIcon} size={20} />
+            </Button>
+          ) : side ? (
             <Button
               variant="tertiary"
               icon

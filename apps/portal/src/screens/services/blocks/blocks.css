@@ -403,3 +403,9 @@
   flex: none;
   align-self: stretch;
 }
+
+.coming-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}

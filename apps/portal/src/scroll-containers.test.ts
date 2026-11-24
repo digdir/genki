@@ -83,10 +83,6 @@ describe('long words', () => {
     expect(css('app.css')).toMatch(/body \{[^}]*overflow-wrap: break-word;/);
     expect(css('app.css')).toMatch(/\.ds-heading \{\s*overflow-wrap: anywhere;/);
   });
-
-  it('let the new service page fill the page column so its suggestion chips shorten', () => {
-    expect(css('screens/services.css')).toMatch(/\.new-service \{\s*width: 100%;/);
-  });
 });
 
 describe('bordered tables', () => {

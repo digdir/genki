@@ -124,6 +124,7 @@ import {
   type DatasetOption,
   type FileInput,
 } from './setup-area-views';
+import { MoreSources, ResultWish } from './not-yet-saved';
 
 export interface OperationModelChoice {
   kind: string;
@@ -693,6 +694,8 @@ interface Props {
   api?: ApiClient | undefined;
   operationModels?: OperationModelChoice[] | undefined;
   area?: SetupArea | undefined;
+  /** The new Oppsett: Suggestion for the datasets. */
+  fresh?: boolean;
   ask?: ((question: string) => void) | undefined;
   modelNote?: ReactNode;
   inUse?: ServiceDefinition | undefined;
@@ -734,6 +737,7 @@ export const SetupTab = ({
   api,
   operationModels = [],
   area,
+  fresh = false,
   ask,
   modelNote,
   inUse,
@@ -1905,6 +1909,7 @@ export const SetupTab = ({
     </>
   );
 
+  const keptKey = `${tenant ?? d.metadata.tenant ?? ''}/${serviceId}`;
   const publishedDatasets = inUse ? datasetsOf(inUse.spec).map((x) => x.dataset) : [];
   const sourcesArea = live ? (
     <SourcesArea
@@ -1927,6 +1932,20 @@ export const SetupTab = ({
       onClear={() => patch((cur) => withDatasets(cur.spec, []))}
       ask={ask}
       nameOf={(ref) => datasetName(ref, datasetNames)}
+      {...(fresh
+        ? {
+            onSet: (ids: string[]) =>
+              patch((cur) =>
+                withDatasets(
+                  cur.spec,
+                  ids.map(
+                    (ref) =>
+                      datasetsOf(cur.spec).find((x) => x.dataset === ref) ?? { dataset: ref },
+                  ),
+                ),
+              ),
+          }
+        : {})}
     />
   ) : null;
   const publishedFieldIds = new Set((inUse?.spec.input.fields ?? []).map((x) => x.id));
@@ -2026,9 +2045,16 @@ export const SetupTab = ({
             key={id}
             name="area-audience"
             label={
-              offeredAudiences.has(id)
-                ? labelOf(t, audienceKeys, id)
-                : t('setup.comingLater', { label: labelOf(t, audienceKeys, id) })
+              offeredAudiences.has(id) ? (
+                labelOf(t, audienceKeys, id)
+              ) : (
+                <span className="tag-row">
+                  {labelOf(t, audienceKeys, id)}
+                  <Tag data-size="sm" data-color="neutral">
+                    {t('setupList.comingTag')}
+                  </Tag>
+                </span>
+              )
             }
             value={id}
             checked={(s.audience as string[] | undefined)?.includes(id) ?? false}
@@ -2054,7 +2080,12 @@ export const SetupTab = ({
               <span className="meta">{t('setup.characters', { count: instructions.length })}</span>
               {ask ? (
                 <div className="area-instr-improve">
-                  <AskChip label={t('setupList.askImprove')} onAsk={ask} off={assistantOff} />
+                  <AskChip
+                    label={t('setupList.askImprove')}
+                    onAsk={ask}
+                    off={assistantOff}
+                    variant="tertiary"
+                  />
                 </div>
               ) : null}
             </div>
@@ -2104,11 +2135,15 @@ export const SetupTab = ({
           return purposeArea;
         case 'sources':
           return live ? (
-            sourcesArea
+            <div className="stack area-stack">
+              {sourcesArea}
+              <MoreSources service={keptKey} readOnly={readOnly} />
+            </div>
           ) : (
             <>
               {askButton('setupList.askSources')}
               {knowledgeBody}
+              <MoreSources service={keptKey} readOnly={readOnly} />
             </>
           );
         case 'input':
@@ -2116,12 +2151,18 @@ export const SetupTab = ({
         case 'result':
           return (
             <div className="stack area-stack area-result">
+              <ResultWish service={keptKey} readOnly={readOnly} />
               {outputBody}
               {askButton('setupList.askOutcome')}
             </div>
           );
         case 'model':
-          return modelArea;
+          return (
+            <div className="stack area-stack">
+              {modelArea}
+              {askButton('setupList.askModel')}
+            </div>
+          );
         case 'tools':
           return (
             <RowsArea

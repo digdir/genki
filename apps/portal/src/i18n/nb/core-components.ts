@@ -54,6 +54,21 @@ export const runFailure = defineNamespace({
 });
 
 export const publish = defineNamespace({
+  leftHeading: 'Dette gjenstår før du kan publisere',
+  leftProblem: '{area}: {problem}',
+  leftConfirmRisk: 'Bekreft risikonivået',
+  leftForbidden: 'Fjern det som er forbudt i KI-forordningen, under Risiko og KI-forordningen',
+  leftUnmasked: 'Begrunn innholdet som sendes umaskert',
+  leftChecking: 'Vent til utkastet er sjekket',
+  testsetHeading: 'Anbefalt: lag et testsett',
+  testsetFirst:
+    'Uten testsett ser du ikke om endringer gjør resultatene dårligere. Testsett lages under Kvalitet når tjenesten er publisert. Det stopper ikke publiseringen.',
+  colWhat: 'Hva',
+  colVersion: 'Utgave {next}',
+  confirmed: 'Bekreftet',
+  notConfirmed: 'Ikke bekreftet',
+  cannotYet:
+    'Du kan ikke publisere ennå. Gjør det som står under «Dette gjenstår før du kan publisere» først.',
   lockedByGate:
     'Publiser er låst fordi et krav til kvalitet ikke er oppfylt. Se forklaringen over.',
   publishedFirst: 'Utgave {next} er publisert og i bruk.',
@@ -77,10 +92,11 @@ export const publish = defineNamespace({
   notPassed: 'Ikke bestått',
   cannotPublishYet: 'Kan ikke publiseres ennå',
   gatesNotMet: {
-    one: '{failed} av {count} krav til kvalitet er ikke oppfylt. Kravet «{name}» er satt av {tenant} og kan ikke overstyres her. Du kan fortsatt publisere som testutgave.',
+    one: '{failed} av {count} krav til kvalitet er ikke oppfylt. Kravet «{name}» er satt av {tenant} og kan ikke overstyres her.',
     other:
-      '{failed} av {count} krav til kvalitet er ikke oppfylt. Kravet «{name}» er satt av {tenant} og kan ikke overstyres her. Du kan fortsatt publisere som testutgave.',
+      '{failed} av {count} krav til kvalitet er ikke oppfylt. Kravet «{name}» er satt av {tenant} og kan ikke overstyres her.',
   },
+  gatesNotMetTest: 'Du kan fortsatt publisere som testutgave.',
   reasonLabel: 'Hva er endret, og hvorfor?',
   reasonHelp: 'Påkrevd. Vises i Historikk og i Logg under Endringer.',
   previousStays:

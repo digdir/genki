@@ -1,5 +1,5 @@
 import { Alert, Heading, Paragraph } from '@digdir/designsystemet-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { ApiError } from '../api';
 import {
   exampleDefinitions,
@@ -7,10 +7,9 @@ import {
   exampleTemplate,
   exampleVersions,
   serviceRows,
-  type JobId,
   type ServiceRow,
 } from '../data/services';
-import { applySpec, asServiceDefinition } from '../data/service-definition';
+import { applySpec, asServiceDefinition, forTenant } from '../data/service-definition';
 import { channelKeys, channelOn, jobOf } from '../data/service-form';
 import { usePortalFormat } from '../format';
 import { navigate, useAsync } from '../hooks';
@@ -23,10 +22,8 @@ import { modelLabel } from '../models';
 import { StrategyCatalogue } from '../strategy-catalogue';
 import { ServiceLoading } from './service/ServiceLoading';
 import { productionEnvironment } from '../api/environments';
-import { availableSections, editionOf, editionView, locate } from './service/sections';
+import { availableSections, editionOf, editionView, locate, servicePath } from './service/sections';
 import { Builder, newDraftId, newServiceInit, type BuilderInit } from './services/Builder';
-import { LiveNewService } from './services/LiveNewService';
-import { NewService } from './services/NewService';
 import { ServiceList, type ListedService } from './services/ServiceList';
 import { startKeys } from './services/SetupTab';
 import './services.css';
@@ -152,8 +149,18 @@ const ListScreen = ({ api, tenant, tenantName, live }: ScreenProps) => {
   );
 };
 
+// Until the service loads, its address may name a section of either kind.
+const eitherKind = [
+  ...new Set([...availableSections({ isNew: false }), ...availableSections({ isNew: true })]),
+];
+
 const useLocation = (id: string, route: ScreenProps['route'], isNew: boolean) => {
-  const location = locate(id, route.segments, route.query, availableSections({ isNew }));
+  const location = locate(
+    id,
+    route.segments,
+    route.query,
+    isNew ? availableSections({ isNew }) : eitherKind,
+  );
   const { redirect } = location;
   useEffect(() => {
     if (redirect) window.location.replace(`#${redirect}`);
@@ -213,6 +220,18 @@ const BuilderScreen = (
     state.data !== undefined &&
     'found' in state.data &&
     loadedInUse !== (inUse && props.live === true);
+  const unpublishedDraft =
+    state.status === 'ready' && state.data !== undefined && 'unpublished' in state.data;
+  const settled = locate(
+    id,
+    route.segments,
+    route.query,
+    availableSections({ isNew: unpublishedDraft }),
+  );
+  const settledRedirect = state.status === 'ready' ? settled.redirect : undefined;
+  useEffect(() => {
+    if (settledRedirect) window.location.replace(`#${settledRedirect}`);
+  }, [settledRedirect, route]);
   if (state.status === 'loading' || otherEdition)
     return (
       <ServiceLoading
@@ -246,8 +265,8 @@ const BuilderScreen = (
           status: 'Utkast',
         }}
         route={route}
-        section={sections.includes(location.section) ? location.section : 'setup'}
-        detail={location.detail}
+        section={sections.includes(settled.section) ? settled.section : 'setup'}
+        detail={settled.detail}
         pane={paneOf(route.query)}
         openPublish={false}
       />
@@ -312,8 +331,8 @@ const BuilderScreen = (
       live={props.live}
       init={init}
       route={route}
-      section={location.section}
-      detail={location.detail}
+      section={settled.section}
+      detail={settled.detail}
       pane={pane}
       openPublish={route.query.get('publiser') === '1'}
       edition={inUse ? 'inUse' : 'test'}
@@ -351,32 +370,67 @@ export const Services = (props: ScreenProps) => {
   );
 };
 
+/** A new service in the example portal, which has no drafts to save. */
+const mockStart: BuilderInit = {
+  ...newServiceInit('answers', '', '', false),
+  messages: [],
+  extraCards: {},
+};
+
+/** Saves an empty draft for a new service and opens its Oppsett. */
+const StartDraft = ({ api, tenant }: Pick<ScreenProps, 'api' | 'tenant'>) => {
+  const t = useT();
+  const reason = t('services.draftSavedReason');
+  // One draft per visit and tenant: React may run the effect twice in development.
+  const started = useRef<{ tenant: string; id: Promise<string> }>(undefined);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const [state, retry] = useAsync(() => {
+    if (started.current?.tenant !== tenant)
+      started.current = {
+        tenant,
+        id: (async () => {
+          const template = await api.definitionTemplate(tenant, 'Service');
+          // Switching organisation leaves this screen; save nothing for the one switched to.
+          if (!mounted.current) throw new Error('left Ny tjeneste');
+          const id = newDraftId();
+          const { definition } = newServiceInit('answers', '', '', true, template);
+          const stamped = forTenant(definition, { tenant, id: 'ny-tjeneste', version: 1 });
+          const draft = { ...stamped, metadata: { ...stamped.metadata, name: '' } };
+          await api.quality.saveDraft(
+            tenant,
+            id,
+            { definition: draft as unknown as Record<string, unknown>, files: {}, revision: 0 },
+            reason,
+          );
+          return id;
+        })(),
+      };
+    const current = started.current;
+    return current.id.catch((error: unknown) => {
+      if (started.current === current) started.current = undefined;
+      throw error;
+    });
+  }, [api, tenant]);
+  useEffect(() => {
+    if (state.status === 'ready') window.location.replace(`#${servicePath(state.data, 'setup')}`);
+  }, [state]);
+  if (state.status === 'error') return <ErrorState error={state.error} onRetry={retry} />;
+  return <Loading label={t('servicesScreen.loadingStart')} shape="form" />;
+};
+
 const ServiceScreens = (props: ScreenProps) => {
   const t = useT();
   const canCreate = useRights().has('manage-services');
   const { route } = props;
   const [, id] = route.segments;
-  const [draft, setDraft] = useState<BuilderInit>();
-  const [starting, setStarting] = useState<{ error?: unknown }>();
-  const building = id === 'new' || (!!draft && id === draft.id);
+  const building = id === 'new';
   const location = useLocation(id ?? '', route, building);
-  useEffect(() => {
-    if (!building) {
-      setDraft(undefined);
-      setStarting(undefined);
-    }
-  }, [building]);
-
-  const startLive = async (job: JobId, text: string, name = '') => {
-    setStarting({});
-    try {
-      const template = await props.api.definitionTemplate(props.tenant, 'Service');
-      setDraft({ ...newServiceInit(job, text, name, true, template), id: newDraftId() });
-      setStarting(undefined);
-    } catch (error) {
-      setStarting({ error });
-    }
-  };
 
   if (!id) return <ListScreen {...props} />;
   if (id === 'new' && !canCreate)
@@ -397,21 +451,7 @@ const ServiceScreens = (props: ScreenProps) => {
       </div>
     );
   if (building) {
-    if (id === 'new' && props.live && route.query.get('skjema') === '1')
-      return <LiveNewService api={props.api} tenant={props.tenant} />;
-    if (starting?.error) return <ErrorState error={starting.error} />;
-    if (starting) return <Loading label={t('servicesScreen.loadingStart')} shape="form" />;
-    if (!draft)
-      return (
-        <NewService
-          live={props.live}
-          onStart={(job, text, name) =>
-            props.live
-              ? void startLive(job, text, name)
-              : setDraft(newServiceInit(job, text, name, false))
-          }
-        />
-      );
+    if (props.live) return <StartDraft api={props.api} tenant={props.tenant} />;
     return (
       <Builder
         key="new"
@@ -419,7 +459,7 @@ const ServiceScreens = (props: ScreenProps) => {
         tenant={props.tenant}
         tenantName={props.tenantName}
         live={props.live}
-        init={draft}
+        init={mockStart}
         route={route}
         section={location.section}
         detail={location.detail}

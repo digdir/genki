@@ -60,6 +60,21 @@ export const runFailure = {
 } satisfies Translation<typeof runFailureSource>;
 
 export const publish = {
+  leftHeading: 'This is left before you can publish',
+  leftProblem: '{area}: {problem}',
+  leftConfirmRisk: 'Confirm the risk level',
+  leftForbidden: 'Remove what the AI Act forbids, under Risk and the AI Act',
+  leftUnmasked: 'Give a reason for the content sent unmasked',
+  leftChecking: 'Wait until the draft has been checked',
+  testsetHeading: 'Recommended: make a test set',
+  testsetFirst:
+    'Without a test set you cannot see whether changes make the results worse. Test sets are made under Quality once the service is published. It does not stop publishing.',
+  colWhat: 'What',
+  colVersion: 'Edition {next}',
+  confirmed: 'Confirmed',
+  notConfirmed: 'Not confirmed',
+  cannotYet:
+    'You cannot publish yet. Do what is listed under «This is left before you can publish» first.',
   lockedByGate:
     'Publishing is locked because a quality requirement is not met. See the explanation above.',
   publishedFirst: 'Edition {next} is published and in use.',
@@ -83,10 +98,11 @@ export const publish = {
   notPassed: 'Not passed',
   cannotPublishYet: 'Cannot be published yet',
   gatesNotMet: {
-    one: '{failed} of {count} quality requirement is not met. The requirement "{name}" is set by {tenant} and cannot be overridden here. You can still publish as a test edition.',
+    one: '{failed} of {count} quality requirement is not met. The requirement "{name}" is set by {tenant} and cannot be overridden here.',
     other:
-      '{failed} of {count} quality requirements are not met. The requirement "{name}" is set by {tenant} and cannot be overridden here. You can still publish as a test edition.',
+      '{failed} of {count} quality requirements are not met. The requirement "{name}" is set by {tenant} and cannot be overridden here.',
   },
+  gatesNotMetTest: 'You can still publish as a test edition.',
   reasonLabel: 'What changed, and why?',
   reasonHelp: 'Required. Shown in History and in Log under Changes.',
   previousStays:

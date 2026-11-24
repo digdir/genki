@@ -282,13 +282,15 @@
 .service-subnav a {
   display: block;
   padding: 9px 12px;
+  border-bottom: 0;
   border-radius: var(--ds-border-radius-md);
   color: var(--ds-color-neutral-text-default);
   text-decoration: none;
 }
 
+/* Like the active item in the side menu: a background, no line under it. */
 .service-subnav a:hover {
-  background: var(--ds-color-neutral-background-tinted);
+  background: var(--ds-color-neutral-surface-hover);
 }
 
 .service-subnav a[aria-selected='true'] {

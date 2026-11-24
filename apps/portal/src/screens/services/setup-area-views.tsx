@@ -1,6 +1,7 @@
 import {
   Button,
   Checkbox,
+  EXPERIMENTAL_Suggestion as Suggestion,
   Field,
   Heading,
   Input,
@@ -9,7 +10,7 @@ import {
   Select,
   Tag,
 } from '@digdir/designsystemet-react';
-import { ChatIcon, XMarkIcon } from '@navikt/aksel-icons';
+import { SparklesIcon, XMarkIcon } from '@navikt/aksel-icons';
 import { useId, useState, type ReactNode } from 'react';
 import { ErrorState } from '../../states';
 import { Icon } from '../../components/Icon';
@@ -29,25 +30,29 @@ export interface DatasetOption {
   owner?: { tenant: string; name: string | null };
 }
 
+/** A question the owner could ask the builder assistant; pressing it asks. */
 export const AskChip = ({
   label,
   onAsk,
   off = false,
+  variant = 'secondary',
 }: {
   label: string;
   onAsk?: ((q: string) => void) | undefined;
   off?: boolean;
+  variant?: 'secondary' | 'tertiary';
 }) =>
   onAsk ? (
-    <button
-      type="button"
+    <Button
+      variant={variant}
+      data-size="sm"
       className="ask-chip"
       aria-disabled={off || undefined}
       onClick={() => !off && onAsk(label)}
     >
-      <Icon icon={ChatIcon} size={16} />
+      <Icon icon={SparklesIcon} size={18} />
       {label}
-    </button>
+    </Button>
   ) : null;
 
 const ownerLabel = (t: T, d: DatasetOption) =>
@@ -68,6 +73,61 @@ export const datasetMeta = (t: T, f: Format, d: DatasetOption) => {
   return `${documents} · ${second}`;
 };
 
+const DatasetSuggestion = ({
+  chosen,
+  options,
+  readOnly,
+  nameOf,
+  onChange,
+}: {
+  chosen: string[];
+  options: AsyncState<DatasetOption[]>;
+  readOnly: boolean;
+  nameOf: (id: string) => string;
+  onChange: (ids: string[]) => void;
+}) => {
+  const t = useT();
+  const id = useId();
+  const list = options.status === 'ready' ? options.data : [];
+  const known = new Set(list.map((d) => d.id));
+  // A chosen collection the catalogue does not list is still shown, by its id.
+  const items = [
+    ...list.map((d) => ({ value: d.id, label: d.name })),
+    ...chosen.filter((c) => !known.has(c)).map((c) => ({ value: c, label: nameOf(c) })),
+  ];
+  return (
+    <Field>
+      <Label htmlFor={id}>{t('setupList.datasetsLabel')}</Label>
+      <Field.Description>{t('setupList.datasetsHelp')}</Field.Description>
+      <Suggestion
+        multiple
+        selected={items.filter((item) => chosen.includes(item.value))}
+        onSelectedChange={(picked) => {
+          const ids = picked.map((item) => item.value);
+          if (ids.join('\n') !== chosen.join('\n')) onChange(ids);
+        }}
+      >
+        <Suggestion.Input id={id} readOnly={readOnly} />
+        <Suggestion.Clear aria-label={t('setupList.datasetsClear')} />
+        <Suggestion.List>
+          <Suggestion.Empty>
+            {options.status === 'loading'
+              ? t('setup.loadingDatasets')
+              : options.status === 'error'
+                ? t('setupList.datasetsFailed')
+                : t('setupList.noHits')}
+          </Suggestion.Empty>
+          {items.map((item) => (
+            <Suggestion.Option key={item.value} value={item.value} label={item.label}>
+              {item.label}
+            </Suggestion.Option>
+          ))}
+        </Suggestion.List>
+      </Suggestion>
+    </Field>
+  );
+};
+
 export const SourcesArea = ({
   chosen,
   options,
@@ -79,6 +139,7 @@ export const SourcesArea = ({
   onClear,
   ask,
   nameOf,
+  onSet,
 }: {
   chosen: string[];
   options: AsyncState<DatasetOption[]>;
@@ -90,10 +151,28 @@ export const SourcesArea = ({
   onClear: () => void;
   ask?: ((q: string) => void) | undefined;
   nameOf: (id: string) => string;
+  /** Sets the whole list. With it, the choice is Designsystemet's Suggestion, several at once. */
+  onSet?: ((ids: string[]) => void) | undefined;
 }) => {
   const t = useT();
   const f = useFormat();
   const [query, setQuery] = useState('');
+  if (onSet)
+    return (
+      <div className="stack area-stack">
+        <AskChip label={t('setupList.askSources')} onAsk={ask} />
+        <DatasetSuggestion
+          chosen={chosen}
+          options={options}
+          readOnly={readOnly}
+          nameOf={nameOf}
+          onChange={onSet}
+        />
+        <p className="area-note">
+          {withSources ? t('setupList.sourcesShown') : t('setupList.sourcesHidden')}
+        </p>
+      </div>
+    );
   const needle = query.trim().toLowerCase();
   const list = options.status === 'ready' ? options.data : [];
   const hits = needle

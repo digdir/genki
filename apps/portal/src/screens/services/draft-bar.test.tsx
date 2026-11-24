@@ -358,13 +358,9 @@ describe('a new service', () => {
     render(
       <App auth={auth} fetch={mockFetch([], logTimelines, liveModels, exampleDatasets)} live />,
     );
-    await screen.findByRole('heading', { name: 'Lag med KI' });
-    fireEvent.change(screen.getByLabelText('Hva skal tjenesten gjøre?'), {
-      target: { value: 'Svar på spørsmål om permisjon' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Start med byggeassistenten' }));
-    expect(await screen.findByRole('complementary', { name: 'Byggeassistent' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Bekreft risikonivå' })).toBeTruthy();
+    await screen.findByRole('heading', { level: 2, name: 'Grunnleggende' });
+    expect(window.location.hash).toMatch(/^#\/services\/utkast-[0-9a-f]{8}\/setup$/);
+    expect(screen.getByRole('region', { name: 'Byggeassistent og prøving' })).toBeTruthy();
     expect(screen.queryByRole('region', { name: 'Lagring' })).toBeNull();
     expect(screen.queryByRole('navigation', { name: 'Deler av oppsettet' })).toBeNull();
   });

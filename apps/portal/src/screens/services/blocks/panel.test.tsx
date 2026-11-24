@@ -67,8 +67,8 @@ describe('the building blocks per panel', () => {
   it('marks Prosjekter and Notater as coming, from the catalogue, and keeps them off', () => {
     render(<Harness />);
     for (const [group, name] of [
-      ['Venstre', 'Prosjekter (kommer)'],
-      ['Høyre', 'Notater (kommer)'],
+      ['Venstre', /^Prosjekter\s*Kommer$/],
+      ['Høyre', /^Notater\s*Kommer$/],
     ] as const) {
       expect(switchIn(group, name).disabled).toBe(true);
       expect(switchIn(group, name).checked).toBe(false);
@@ -142,7 +142,7 @@ describe('the options on a block', () => {
     expect(
       screen.getByText('Tilbakemelding: Tilbakemelding er ikke slått på for denne egne løsningen.'),
     ).toBeTruthy();
-    expect(screen.getByText('Vedlegg (kommer)')).toBeTruthy();
+    expect(screen.getByText('Vedlegg kommer senere.')).toBeTruthy();
     expect(screen.queryByRole('switch', { name: /Tilbakemelding/ })).toBeNull();
   });
 });
@@ -217,9 +217,11 @@ describe('the templates', () => {
 
   it('mark the blocks not built yet as coming in a template’s list', () => {
     render(<WithTemplates />);
-    expect(screen.getByRole('button', { name: 'Bruk Kunnskapsassistenten' }).textContent).toContain(
-      'Notater (kommer)',
-    );
+    const template = screen.getByRole('button', { name: 'Bruk Kunnskapsassistenten' });
+    const tagged = within(template)
+      .getAllByText('Kommer')
+      .map((tag) => tag.parentElement?.firstChild?.textContent);
+    expect(tagged).toContain('Notater');
   });
 });
 

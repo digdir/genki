@@ -24,7 +24,7 @@ export const blocksUi = {
     panelLeftShort: 'Left',
     panelMainShort: 'Middle',
     panelRightShort: 'Right',
-    planned: '{block} (coming)',
+    plannedNote: '{block} is coming later.',
     optionsFor: 'Options for {block}',
     templatesIntro:
       'The templates are common combinations of the design elements. A template fills the areas in the preview, and you can keep building with the design elements. Changing template replaces the layout you have now.',
