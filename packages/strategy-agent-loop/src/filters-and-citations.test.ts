@@ -93,6 +93,54 @@ describe('agent loop with caller filters', () => {
     expect(out.notices).not.toContainEqual(expect.objectContaining({ source: 'grounding-gate' }));
   });
 
+  it.each([
+    [
+      // Run 90db9807 (deploy smoke test 2026-11-24), shortened.
+      'Det gjelder særlig deltakere med svake forutsetninger for å bruke digitale tilbud [1, s. 63].',
+      'Det gjelder særlig deltakere med svake forutsetninger for å bruke digitale tilbud [1] s. 63.',
+    ],
+    [
+      // Run 0fc73255 (deploy smoke test 2026-11-24), shortened.
+      'Hvis kvaliteten er dårlig, vil effekten trolig utebli uansett form. [1 s. 61]',
+      'Hvis kvaliteten er dårlig, vil effekten trolig utebli uansett form. [1] s. 61',
+    ],
+  ])('reads a page written inside the citation bracket as citation [1]: %s', async (raw, shown) => {
+    const out = await run({
+      scripts: {
+        primary: {
+          loop: [
+            () => result('', [call('search', { queries: ['digital veiledning'] })]),
+            () => result('', [call('read_chunks', { chunk_ids: ['c1'] })]),
+          ],
+          synth: [() => raw],
+        },
+      },
+    });
+
+    expect(out.text).toBe(shown);
+    expect(out.meta?.citations).toEqual([{ index: 1, chunkId: 'c1' }]);
+  });
+
+  it('a generate_response draft with the page inside the citation bracket passes the grounding gate as cited', async () => {
+    const out = await run({
+      scripts: {
+        primary: {
+          loop: [
+            () => result('', [call('search', { queries: ['x'] })]),
+            () => result('', [call('read_chunks', { chunk_ids: ['c1'] })]),
+            () => result('', [call('generate_response', { query: 'x' })]),
+          ],
+          read: [() => readSignal('gap-remaining', { scope_assessment: 'ambiguous' })],
+          synth: [() => 'Svar [1, s. 63].'],
+        },
+      },
+    });
+
+    expect(out.text).toBe('Svar [1] s. 63.');
+    expect(out.meta?.citations).toEqual([{ index: 1, chunkId: 'c1' }]);
+    expect(out.notices).not.toContainEqual(expect.objectContaining({ source: 'grounding-gate' }));
+  });
+
   it('says nothing about filters when the caller set none', async () => {
     const out = await run({
       scripts: { primary: { loop: [() => result('Svaret er 42.')] } },

@@ -1021,7 +1021,7 @@ const generate = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome
     );
     // A refused draft leaves the earlier draft and its citations as they were.
     if (written === undefined) return { content: 'The model refused to write this draft.' };
-    text = stripSourceLists(normaliseCitationMarkers(written));
+    text = stripSourceLists(normaliseCitationMarkers(written, (n) => index.has(n)));
   } catch (error) {
     if (env.signal.aborted) throw error;
     return {

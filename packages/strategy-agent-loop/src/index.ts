@@ -1155,7 +1155,8 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
       }
     }
 
-    if (!clarification && answer !== undefined) answer = normaliseCitationMarkers(answer);
+    if (!clarification && answer !== undefined)
+      answer = normaliseCitationMarkers(answer, (n) => workspace.citationIndex.has(n));
 
     if (
       !clarification &&

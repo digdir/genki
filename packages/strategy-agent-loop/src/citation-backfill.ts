@@ -135,7 +135,7 @@ const citeDraft = async (
     citeDraftPrompt(context, untrustedData('draft-answer', draft)),
   );
   if (written === undefined) return undefined;
-  const text = stripSourceLists(normaliseCitationMarkers(written));
+  const text = stripSourceLists(normaliseCitationMarkers(written, (n) => index.has(n)));
   if (
     !validateCitations(text, index).grounded ||
     insufficientContextResponse(text) ||
