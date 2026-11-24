@@ -78,8 +78,8 @@ const unreadSearchHits = (workspace: Workspace) => {
     .slice(0, backfillReadLimit);
 };
 
-// The gate found nothing read answers the question, so a decline is the right answer:
-// writing a new one from what was read adds what the gate already judged beside the point.
+// The read check or the gate found that nothing read answers the question, so a decline is
+// the right answer: writing a new one from what was read adds what they judged beside the point.
 const declineJudged = new Set(['insufficient', 'off-topic']);
 
 export const settleCitations = (answer: string, workspace: Workspace): CitationSettlement => {
@@ -96,7 +96,7 @@ export const settleCitations = (answer: string, workspace: Workspace): CitationS
     return { action: 'carry-through' };
   if (refusal) {
     if (workspace.citationIndex.size > 0) return { action: 'keep', reason: 'generated-uncited' };
-    if (declineJudged.has(workspace.sufficiencyDecisions.at(-1)?.status ?? ''))
+    if (declineJudged.has(workspace.latestDecisionStatus() ?? ''))
       return { action: 'keep', reason: 'declined-after-insufficient' };
     return refusalBackfillCandidates(workspace).length
       ? { action: 'backfill', readFirst: [], refusal: true }

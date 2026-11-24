@@ -7,6 +7,22 @@ import type { SourceFactsQuery, SourceFactsReport } from './source-facts.js';
 
 export type SearchType = 'phrase' | 'metadata' | 'content';
 
+// The read check and the gate keep their decisions in two lists; each entry is stamped
+// as it is pushed, so the later of two decisions is known across both lists.
+let decisionClock = 0;
+const decidedAt = new WeakMap<object, number>();
+
+class DecisionList<T extends object> extends Array<T> {
+  static override get [Symbol.species]() {
+    return Array;
+  }
+
+  override push(...items: T[]) {
+    for (const item of items) decidedAt.set(item, ++decisionClock);
+    return super.push(...items);
+  }
+}
+
 export interface ChunkSummary {
   chunkId: string;
   document?: string;
@@ -250,8 +266,8 @@ export class Workspace {
   contradictions: ReadSignal['contradictions'] = [];
   nonSupporting = new Set<string>();
   refunded = new Set<string>();
-  shadowDecisions: ShadowDecision[] = [];
-  sufficiencyDecisions: SufficiencyDecision[] = [];
+  shadowDecisions: ShadowDecision[] = new DecisionList<ShadowDecision>();
+  sufficiencyDecisions: SufficiencyDecision[] = new DecisionList<SufficiencyDecision>();
   responseValidations: SufficiencyDecision[] = [];
   lastGeneratedResponse: string | undefined;
   lastGenerateInsufficient = false;
@@ -456,6 +472,14 @@ export class Workspace {
 
   latestSearchQueries(): string[] {
     return this.searches.at(-1)?.queries ?? [];
+  }
+
+  /** The status of the last decision pushed, by the read check or by the gate. */
+  latestDecisionStatus(): string | undefined {
+    const shadow = this.shadowDecisions.at(-1);
+    const gate = this.sufficiencyDecisions.at(-1);
+    if (!shadow || !gate) return (gate ?? shadow)?.status;
+    return (decidedAt.get(shadow) ?? 0) > (decidedAt.get(gate) ?? 0) ? shadow.status : gate.status;
   }
 
   countSufficiencyRejections(): number {
